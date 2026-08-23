@@ -1,0 +1,34 @@
+name: Forecasts (Open-Meteo Previous Runs)
+
+on:
+  schedule:
+    - cron: '20 5 * * *'       # daily, after overnight model cycles land
+  workflow_dispatch:
+    inputs:
+      start:
+        description: 'Backfill start date YYYY-MM-DD (blank = last 10 days)'
+        required: false
+      end:
+        description: 'Backfill end date YYYY-MM-DD'
+        required: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install -r requirements.txt
+      - name: Ingest
+        env:
+          PYTHONPATH: scripts
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          if [ -n "${{ github.event.inputs.start }}" ]; then
+            python scripts/ingest_forecasts.py "${{ github.event.inputs.start }}" "${{ github.event.inputs.end }}"
+          else
+            python scripts/ingest_forecasts.py
+          fi
