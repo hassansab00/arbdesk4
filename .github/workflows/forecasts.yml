@@ -2,7 +2,7 @@ name: Forecasts (Open-Meteo Previous Runs)
 
 on:
   schedule:
-    - cron: '20 5 * * *'       # daily, after overnight model cycles land
+    - cron: '20 5 * * *'
   workflow_dispatch:
     inputs:
       start:
@@ -11,24 +11,52 @@ on:
       end:
         description: 'Backfill end date YYYY-MM-DD'
         required: false
+      auto_continue:
+        description: 'Auto re-run if this run hits the time limit (true/false)'
+        required: false
+        default: 'true'
 
 jobs:
   ingest:
     runs-on: ubuntu-latest
     timeout-minutes: 350
+    outputs:
+      incomplete: ${{ steps.run.outputs.incomplete }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
       - run: pip install -r requirements.txt
       - name: Ingest
+        id: run
         env:
           PYTHONPATH: scripts
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
+          set +e
           if [ -n "${{ github.event.inputs.start }}" ]; then
-            python scripts/ingest_forecasts.py "${{ github.event.inputs.start }}" "${{ github.event.inputs.end }}"
+            python scripts/ingest_forecasts.py "${{ github.event.inputs.start }}" "${{ github.event.inputs.end }}" 2>&1 | tee run.log
           else
-            python scripts/ingest_forecasts.py
+            python scripts/ingest_forecasts.py 2>&1 | tee run.log
           fi
+          if grep -q "INCOMPLETE" run.log; then
+            echo "incomplete=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "incomplete=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  continue:
+    needs: ingest
+    if: needs.ingest.outputs.incomplete == 'true' && github.event.inputs.auto_continue != 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-trigger this workflow with the same inputs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run forecasts.yml \
+            -f start="${{ github.event.inputs.start }}" \
+            -f end="${{ github.event.inputs.end }}" \
+            -f auto_continue="${{ github.event.inputs.auto_continue }}" \
+            --repo ${{ github.repository }}
