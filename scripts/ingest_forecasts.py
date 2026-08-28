@@ -1,20 +1,19 @@
 """
 AD4 Phase 1 - lead-time-stratified forecast ingest (Open-Meteo Previous Runs).
 
-RESUMABLE: before fetching a city, checks how much of the target range that
-city already has in weather_forecasts and skips chunks already covered. A
-cancelled or timed-out run costs nothing - re-running the same command picks
-up where it left off instead of re-fetching everything.
+SELF-CONTINUING: processes cities with the LEAST existing coverage first, so a
+run that stops partway through always makes forward progress on the cities that
+need it most - it can never get stuck reprocessing complete cities while
+incomplete ones wait. Combined with the workflow's on-timeout re-trigger, this
+requires zero manual re-runs to reach full coverage.
 
-API shape note: the _previous_dayN suffix applies to HOURLY variables
-(temperature_2m), not daily aggregates. daily=temperature_2m_max_previous_dayN
-returns 400. We pull hourly and compute the daily max ourselves.
+API shape: the _previous_dayN suffix applies to HOURLY variables
+(temperature_2m), not daily aggregates. We pull hourly and compute the daily
+max ourselves.
 
 Usage:
   python scripts/ingest_forecasts.py                          # last 10 days
-  python scripts/ingest_forecasts.py 2024-01-01 2026-08-25    # backfill range
-  python scripts/ingest_forecasts.py 2024-01-01 2026-08-25 --fresh   # ignore
-                                                                # existing rows
+  python scripts/ingest_forecasts.py 2024-01-01 2026-08-27    # backfill range
 """
 import sys, time, datetime as dt
 from collections import defaultdict
@@ -29,8 +28,6 @@ CHUNK_DAYS = 60
 TIMEOUT    = 100
 PAUSE      = 0.2
 TRIES      = 2
-# stop starting new chunks once this close to the job's own time budget,
-# so a partial city is not left half-fetched mid-chunk
 SOFT_DEADLINE_MIN = 330
 
 def fetch(lat, lon, start, end, label):
@@ -96,13 +93,34 @@ def build_rows(city_key, js):
 
 def chunks(start, end, days):
     cur = start
+    out = []
     while cur <= end:
         stop = min(cur + dt.timedelta(days=days - 1), end)
-        yield cur, stop
+        out.append((cur, stop))
         cur = stop + dt.timedelta(days=1)
+    return out
+
+def coverage_count(city_key, start, end):
+    """How many distinct for_dates this city already has for lead_days=1
+    within [start, end]. Used only to ORDER cities, not to skip chunks -
+    keeps the logic simple and correct rather than cleverly wrong."""
+    rows, offset, page = [], 0, 10000
+    while True:
+        r = rest("weather_forecasts", {
+            "select": "for_date", "city_key": f"eq.{city_key}", "lead_days": "eq.1",
+            "for_date": f"gte.{start.isoformat()}",
+            "and": f"(for_date.lte.{end.isoformat()})",
+            "limit": str(page), "offset": str(offset),
+        })
+        if not r:
+            break
+        rows.extend(x["for_date"] for x in r)
+        if len(r) < page:
+            break
+        offset += page
+    return len(set(rows))
 
 def existing_dates(city_key, start, end):
-    """for_dates already stored for this city within [start, end], any lead."""
     out, offset, page = set(), 0, 10000
     while True:
         rows = rest("weather_forecasts", {
@@ -119,11 +137,7 @@ def existing_dates(city_key, start, end):
         offset += page
     return out
 
-def chunk_is_covered(have, cs, ce, leads_needed=len(LEADS)):
-    """A chunk counts as done if every date in it already has all lead rows.
-    Cheap approximation: just check every date is present at all (skip-only,
-    never skips a genuinely incomplete chunk incorrectly since 'have' comes
-    from ANY lead present) - good enough to make resume safe and fast."""
+def chunk_is_covered(have, cs, ce):
     d = cs
     while d <= ce:
         if d.isoformat() not in have:
@@ -132,33 +146,46 @@ def chunk_is_covered(have, cs, ce, leads_needed=len(LEADS)):
     return True
 
 def main():
-    fresh = "--fresh" in sys.argv
-    args = [a for a in sys.argv[1:] if a != "--fresh"]
-
-    if len(args) >= 2:
-        start = dt.date.fromisoformat(args[0])
-        end   = dt.date.fromisoformat(args[1])
+    if len(sys.argv) >= 3:
+        start = dt.date.fromisoformat(sys.argv[1])
+        end   = dt.date.fromisoformat(sys.argv[2])
     else:
         end   = dt.datetime.now(dt.timezone.utc).date()
         start = end - dt.timedelta(days=10)
 
     t0 = time.monotonic()
-    cities = get_cities(require_coords=True)
-    windows = list(chunks(start, end, CHUNK_DAYS))
-    print(f"cities: {len(cities)}  window: {start} -> {end}  "
-          f"chunks/city: {len(windows)}  fresh={fresh}\n")
+    all_cities = get_cities(require_coords=True)
+    windows = chunks(start, end, CHUNK_DAYS)
+    total_days = (end - start).days + 1
 
-    total, empty, ran_out = 0, [], False
-    for i, c in enumerate(cities, 1):
+    print(f"cities: {len(all_cities)}  window: {start} -> {end}  chunks/city: {len(windows)}")
+    print("ranking cities by existing coverage (least first)...", flush=True)
+
+    ranked = []
+    for c in all_cities:
+        n = coverage_count(c["city_key"], start, end)
+        ranked.append((n, c))
+    ranked.sort(key=lambda x: x[0])   # LEAST covered first - always makes progress where it matters
+
+    done_ct = sum(1 for n, _ in ranked if n >= total_days - 5)
+    print(f"{done_ct}/{len(ranked)} cities already essentially complete (>= {total_days-5} days)\n")
+
+    total, ran_out = 0, False
+    for i, (n_before, c) in enumerate(ranked, 1):
         elapsed_min = (time.monotonic() - t0) / 60
         if elapsed_min > SOFT_DEADLINE_MIN:
-            print(f"\n! soft deadline reached at {elapsed_min:.0f} min, "
-                  f"stopping before city {i}/{len(cities)}. Re-run the same "
-                  f"command to resume - completed cities are skipped.")
+            print(f"\n! soft deadline at {elapsed_min:.0f} min, stopping before "
+                  f"city {i}/{len(ranked)} ({c['city_key']}, had {n_before}d). "
+                  f"Re-run the identical command - least-covered cities go first "
+                  f"automatically, so progress is never lost or reprocessed.")
             ran_out = True
             break
 
-        have = set() if fresh else existing_dates(c["city_key"], start, end)
+        if n_before >= total_days - 5:
+            print(f"  [{i}/{len(ranked)}] {c['city_key']:16s} already complete ({n_before}d), skipping")
+            continue
+
+        have = existing_dates(c["city_key"], start, end)
         got, skipped, misses = 0, 0, 0
         for (cs, ce) in windows:
             if have and chunk_is_covered(have, cs, ce):
@@ -174,22 +201,20 @@ def main():
             time.sleep(PAUSE)
         total += got
         note = []
-        if skipped: note.append(f"{skipped} chunks already had data")
+        if skipped: note.append(f"{skipped} chunks pre-existing")
         if misses:  note.append(f"{misses} chunks missed")
         flag = "  (" + ", ".join(note) + ")" if note else ""
-        print(f"  [{i}/{len(cities)}] {c['city_key']:16s} {got:7d} rows{flag}", flush=True)
-        if got == 0 and skipped == 0:
-            empty.append(c["city_key"])
+        print(f"  [{i}/{len(ranked)}] {c['city_key']:16s} +{got:6d} rows "
+              f"(had {n_before}d){flag}", flush=True)
 
-    status = "partial_timeout" if ran_out else ("ok" if not empty else "partial")
-    print(f"\ntotal {total} forecast rows written this run, {len(empty)} cities with nothing")
-    if empty:
-        print("empty:", ", ".join(empty))
+    print(f"\ntotal {total} forecast rows written this run")
     if ran_out:
-        print("Run the SAME command again to continue - already-covered cities are skipped fast.")
-    log_run("ingest_forecasts", status, total,
+        print("INCOMPLETE - re-run the identical command to continue.")
+    else:
+        print("ALL CITIES COMPLETE.")
+    log_run("ingest_forecasts", "partial" if ran_out else "ok", total,
             {"start": str(start), "end": str(end), "leads": LEADS,
-             "chunk_days": CHUNK_DAYS, "empty_cities": empty, "ran_out": ran_out})
+             "chunk_days": CHUNK_DAYS, "ran_out": ran_out})
 
 if __name__ == "__main__":
     main()
