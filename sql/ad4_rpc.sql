@@ -38,6 +38,18 @@ do $$ begin
 end $$;
 
 -- --------------------------------------------------------------------------
+-- Realtime for the Task 14 signals slide-out panel (live, no polling).
+-- --------------------------------------------------------------------------
+do $$ begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'signals'
+  ) then
+    alter publication supabase_realtime add table signals;
+  end if;
+end $$;
+
+-- --------------------------------------------------------------------------
 -- walk_ladder_jsonb - PL/pgSQL port of scripts/cost_model.py:walk_ladder.
 -- p_levels: jsonb array of {"price":numeric,"size":numeric}, best-first.
 -- Consumes best-first up to p_usd_budget, stopping at p_max_slippage past
@@ -288,6 +300,17 @@ begin
 end;
 $$;
 
+create or replace function dismiss_signal(p_signal_id bigint) returns jsonb
+language plpgsql security definer as $$
+begin
+  update signals set status = 'dismissed' where signal_id = p_signal_id;
+  if not found then
+    return jsonb_build_object('ok', false, 'error', 'signal not found');
+  end if;
+  return jsonb_build_object('ok', true, 'signal_id', p_signal_id);
+end;
+$$;
+
 create or replace function close_position(p_trade_id bigint, p_exit_price numeric, p_reason text)
 returns jsonb language plpgsql security definer as $$
 declare
@@ -314,6 +337,86 @@ begin
           now());
 
   return jsonb_build_object('ok', true, 'gross_pnl', v_gross, 'net_pnl', v_net);
+end;
+$$;
+
+-- --------------------------------------------------------------------------
+-- update_setting - the write side of Task 14's editable settings (bankroll,
+-- auto_approve, max_slippage_cents, risk_limits, ...). Not explicitly
+-- listed in Revision A's RPC table but required by it implicitly (§6.3:
+-- "write operations go through security definer RPC functions", and
+-- Task 14 needs an editable bankroll with nowhere else to write it).
+-- Whitelists which keys are UI-editable rather than accepting any key,
+-- so this can't be used to, say, silently rewrite cost_params from the
+-- browser.
+-- --------------------------------------------------------------------------
+create or replace function update_setting(p_key text, p_value jsonb) returns jsonb
+language plpgsql security definer as $$
+begin
+  if p_key not in ('bankroll', 'auto_approve', 'max_slippage_cents', 'tradeability_yes',
+                    'tradeability_no', 'risk_limits', 'correlation_warn_threshold',
+                    'weather_alerts', 'email_recipient', 'goal') then
+    return jsonb_build_object('ok', false, 'error', 'key not editable from the UI: ' || p_key);
+  end if;
+  insert into settings (key, value) values (p_key, p_value)
+  on conflict (key) do update set value = excluded.value;
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+-- --------------------------------------------------------------------------
+-- upsert_deployment / set_deployment_status - Task 14 §9 Campaigns.
+-- Deployments aren't in Revision A's RPC list (§13b) but the frontend has
+-- no other way to write `deployments` under RLS - same reasoning as
+-- update_setting above.
+-- --------------------------------------------------------------------------
+alter table deployments add column if not exists deployment_id uuid default gen_random_uuid();
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'deployments_deployment_id_key') then
+    alter table deployments add constraint deployments_deployment_id_key unique (deployment_id);
+  end if;
+end $$;
+alter table deployments add column if not exists strategy_id text;
+alter table deployments add column if not exists target_kind text check (target_kind in ('city','list','cluster'));
+alter table deployments add column if not exists target jsonb;
+alter table deployments add column if not exists status text default 'draft'
+  check (status in ('draft','armed','running','paused','closed'));
+alter table deployments add column if not exists starts_at timestamptz;
+alter table deployments add column if not exists ends_at timestamptz;
+alter table deployments add column if not exists condition text;
+alter table deployments add column if not exists created_at timestamptz default now();
+alter table deployments add column if not exists name text;
+
+create or replace function upsert_deployment(p_deployment jsonb) returns jsonb
+language plpgsql security definer as $$
+declare
+  v_id uuid := coalesce((p_deployment->>'deployment_id')::uuid, gen_random_uuid());
+begin
+  insert into deployments (deployment_id, name, strategy_id, target_kind, target, status,
+                            starts_at, ends_at, condition, created_at)
+  values (v_id, p_deployment->>'name', p_deployment->>'strategy_id', p_deployment->>'target_kind',
+          p_deployment->'target', coalesce(p_deployment->>'status', 'draft'),
+          (p_deployment->>'starts_at')::timestamptz, (p_deployment->>'ends_at')::timestamptz,
+          p_deployment->>'condition', now())
+  on conflict (deployment_id) do update set
+    name = excluded.name, strategy_id = excluded.strategy_id, target_kind = excluded.target_kind,
+    target = excluded.target, starts_at = excluded.starts_at, ends_at = excluded.ends_at,
+    condition = excluded.condition;
+  return jsonb_build_object('ok', true, 'deployment_id', v_id);
+end;
+$$;
+
+create or replace function set_deployment_status(p_deployment_id uuid, p_status text) returns jsonb
+language plpgsql security definer as $$
+begin
+  if p_status not in ('draft','armed','running','paused','closed') then
+    return jsonb_build_object('ok', false, 'error', 'invalid status');
+  end if;
+  update deployments set status = p_status where deployment_id = p_deployment_id;
+  if not found then
+    return jsonb_build_object('ok', false, 'error', 'deployment not found');
+  end if;
+  return jsonb_build_object('ok', true);
 end;
 $$;
 
