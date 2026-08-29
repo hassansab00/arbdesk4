@@ -102,16 +102,23 @@ def anomaly_signals(anomaly_rows):
 # Strategy orchestration
 # --------------------------------------------------------------------------
 
-def run_strategies(ctx, strategy_configs, open_positions):
-    """Runs every enabled strategy's entry+exit rules, then applies the
-    Task 8 conflict rules to the ENTER signals before returning."""
+def run_strategies(ctx, strategy_configs, open_positions, portfolio=None):
+    """
+    Runs every enabled strategy's entry+exit rules, sizes every ENTER
+    signal via that strategy's own size(signal, portfolio) - entry_signals
+    itself has no portfolio context, so every strategy deliberately leaves
+    suggested_shares at 0.0/N-from-formula for this step to finalise -
+    then applies the Task 8 conflict rules before returning.
+    """
     all_entries, all_exits = [], []
     for cfg in strategy_configs:
         cls = REGISTRY.get(cfg.strategy_id)
         if cls is None or not cfg.enabled:
             continue
         strat = cls(cfg)
-        all_entries.extend(strat.entry_signals(ctx))
+        for sig in strat.entry_signals(ctx):
+            sig.suggested_shares = strat.size(sig, portfolio)
+            all_entries.append(sig)
         all_exits.extend(strat.exit_signals(ctx, open_positions))
 
     allowed_entries, blocked_entries, conflict_rows = resolve_conflicts(all_entries, open_positions)
@@ -215,7 +222,9 @@ def main():
     strategy_configs = _strategy_configs()
     open_positions = _open_positions()
 
-    fired, blocked, conflict_rows = run_strategies(ctx, strategy_configs, open_positions)
+    portfolio = paper_engine.Portfolio(bankroll=(ctx.settings.get("bankroll") or {}).get("amount") or 0.0,
+                                        compounding=bool((ctx.settings.get("bankroll") or {}).get("compounding")))
+    fired, blocked, conflict_rows = run_strategies(ctx, strategy_configs, open_positions, portfolio)
 
     ingest_log_rows = rest("ingest_log", [("select", "job,status,logged_at"), ("order", "job,logged_at.desc")])
     seen_job = set()
@@ -233,8 +242,6 @@ def main():
         print(f"  ! anomalies read failed: {e}")
 
     versions = {}  # forecast_version/calibration_version come from the band's own edge row, filled in per-signal below
-    portfolio = paper_engine.Portfolio(bankroll=(ctx.settings.get("bankroll") or {}).get("amount") or 0.0,
-                                        compounding=bool((ctx.settings.get("bankroll") or {}).get("compounding")))
 
     max_slippage = ((ctx.settings.get("max_slippage_cents") or {}).get("value", 5)) / 100.0
     n_fired, n_deduped, n_filled = 0, 0, 0

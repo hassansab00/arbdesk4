@@ -1,0 +1,24 @@
+name: Backtest Runner
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # polls for queued runs - no Vercel function, per Revision A §6.2
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Run a specific backtest_runs.run_id (leave blank to poll for queued)'
+        required: false
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install -r requirements.txt
+      - run: PYTHONPATH=scripts python scripts/backtest/runner.py ${{ github.event.inputs.run_id }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

@@ -52,14 +52,23 @@ def _now():
     return dt.datetime.now(dt.timezone.utc)
 
 
-def _forecasts_for_date(city_key, for_date):
-    """All forecast rows on record for this city+for_date, any lead/run."""
-    return rest("weather_forecasts", [
+def _forecasts_for_date(city_key, for_date, as_of=None):
+    """
+    All forecast rows on record for this city+for_date, any lead/run.
+    `as_of`: for walk-forward backtesting (Task 12) - restricts to rows
+    with run_at <= as_of, so a simulated day never sees a forecast that
+    hadn't been produced yet. None (live use) means no restriction: every
+    row that exists already happened before now by construction.
+    """
+    params = [
         ("select", "for_date,lead_days,forecast_max_c,model,run_at"),
         ("city_key", f"eq.{city_key}"),
         ("for_date", f"eq.{for_date}"),
         ("order", "lead_days.asc"),
-    ])
+    ]
+    if as_of is not None:
+        params.append(("run_at", f"lte.{as_of.isoformat()}"))
+    return rest("weather_forecasts", params)
 
 
 def _disagreement_proxy(rows):
@@ -89,20 +98,24 @@ def _disagreement_proxy(rows):
     return max(vals) - min(vals), len(vals), False
 
 
-def _history_disagreement(city_key, before_date, lookback_days=LOOKBACK_DAYS):
+def _history_disagreement(city_key, before_date, lookback_days=LOOKBACK_DAYS, as_of=None):
     """
     This city's own recent history of the disagreement proxy, one value per
     past for_date, used to build the per-city percentile threshold.
+    `as_of`: same point-in-time restriction as _forecasts_for_date.
     """
     start = (before_date - dt.timedelta(days=lookback_days)).isoformat()
     end = (before_date - dt.timedelta(days=1)).isoformat()
-    rows = rest("weather_forecasts", [
+    params = [
         ("select", "for_date,lead_days,forecast_max_c,model"),
         ("city_key", f"eq.{city_key}"),
         ("for_date", f"gte.{start}"),
         ("for_date", f"lte.{end}"),
         ("order", "for_date.asc"),
-    ])
+    ]
+    if as_of is not None:
+        params.append(("run_at", f"lte.{as_of.isoformat()}"))
+    rows = rest("weather_forecasts", params)
     by_date = defaultdict(list)
     for r in rows:
         by_date[r["for_date"]].append(r)
@@ -132,20 +145,20 @@ def _weather_peak(city_key, month):
     return rows[0] if rows else None
 
 
-def _latest_book_age_minutes(city_key):
+def _latest_book_age_minutes(city_key, as_of=None):
     """Best-effort: age of the freshest book snapshot for any of this city's live bands. None if unavailable."""
+    reference = as_of or _now()
     try:
-        rows = rest("book_snapshots", [
-            ("select", "observed_at,band_id"),
-            ("order", "observed_at.desc"),
-            ("limit", "1"),
-        ])
+        params = [("select", "observed_at,band_id"), ("order", "observed_at.desc"), ("limit", "1")]
+        if as_of is not None:
+            params.append(("observed_at", f"lte.{as_of.isoformat()}"))
+        rows = rest("book_snapshots", params)
     except Exception:
         return None
     if not rows or not rows[0].get("observed_at"):
         return None
     observed = dt.datetime.fromisoformat(rows[0]["observed_at"].replace("Z", "+00:00"))
-    return (_now() - observed).total_seconds() / 60.0
+    return (reference - observed).total_seconds() / 60.0
 
 
 class RegimeResult:
@@ -172,17 +185,22 @@ class RegimeResult:
         }
 
 
-def classify(city_key, for_date, history_cache=None):
+def classify(city_key, for_date, history_cache=None, as_of=None):
     """
     Classify one city-day. `for_date` is an ISO date string.
     `history_cache`: optional dict shared across calls in one run, keyed by
-    city_key, to avoid re-pulling the same city's history for every date.
+    (city_key, as_of date) to avoid re-pulling the same city's history for
+    every date - keyed on as_of too so a backtest walking many `for_date`s
+    doesn't reuse a later date's cache entry for an earlier one.
+    `as_of`: point-in-time evaluation instant (backtest, Task 12). None
+    (default, live use) means "now".
     """
     reasons = []
     diagnostics = {}
     for_date_obj = dt.date.fromisoformat(for_date)
+    reference = as_of or _now()
 
-    rows = _forecasts_for_date(city_key, for_date)
+    rows = _forecasts_for_date(city_key, for_date, as_of=as_of)
     if not rows:
         return RegimeResult(city_key, for_date, "BLOCKED", 0.0,
                              SIGMA_MULTIPLIER["BLOCKED"], SIZE_MULTIPLIER["BLOCKED"],
@@ -192,7 +210,7 @@ def classify(city_key, for_date, history_cache=None):
     forecast_age_h = None
     if shortest_lead_row.get("run_at"):
         run_at = dt.datetime.fromisoformat(shortest_lead_row["run_at"].replace("Z", "+00:00"))
-        forecast_age_h = (_now() - run_at).total_seconds() / 3600.0
+        forecast_age_h = (reference - run_at).total_seconds() / 3600.0
         diagnostics["forecast_age_h"] = round(forecast_age_h, 2)
         if forecast_age_h > STALE_FORECAST_HOURS:
             reasons.append(f"stale_forecast:{forecast_age_h:.1f}h")
@@ -206,11 +224,12 @@ def classify(city_key, for_date, history_cache=None):
     if not used_multi_model:
         reasons.append("disagreement_is_proxy_not_multi_model")
 
+    cache_key = (city_key, as_of.isoformat() if as_of else "live")
     if history_cache is None:
         history_cache = {}
-    if city_key not in history_cache:
-        history_cache[city_key] = _history_disagreement(city_key, for_date_obj)
-    history = history_cache[city_key]
+    if cache_key not in history_cache:
+        history_cache[cache_key] = _history_disagreement(city_key, for_date_obj, as_of=as_of)
+    history = history_cache[cache_key]
     diagnostics["history_n"] = len(history)
 
     if len(history) < MIN_HISTORY_DAYS or spread is None:
@@ -237,7 +256,7 @@ def classify(city_key, for_date, history_cache=None):
     elif not s5_allowed:
         reasons.append(f"seasonal_window_too_wide_for_s5:{window_width_h}h")
 
-    book_age_min = _latest_book_age_minutes(city_key)
+    book_age_min = _latest_book_age_minutes(city_key, as_of=as_of)
     diagnostics["book_age_min"] = book_age_min
     if book_age_min is not None and book_age_min > 60:
         reasons.append(f"stale_book:{book_age_min:.0f}min")
