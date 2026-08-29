@@ -1,0 +1,22 @@
+name: Probability Engine
+
+on:
+  schedule:
+    # 30 min after each of P0.2's market-discovery cycles (1,7,13,19 UTC),
+    # so a fresh forecast/skill read has something current to price against.
+    - cron: '30 1,7,13,19 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  probabilities:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install -r requirements.txt
+      - run: PYTHONPATH=scripts python scripts/probability_engine.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
