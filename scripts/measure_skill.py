@@ -22,14 +22,17 @@ def daily_max_observed(city_key, start, end):
     """Highest observed temp per local-ish day, from our own archive."""
     out, offset, page = defaultdict(lambda: None), 0, 10000
     while True:
-        rows = rest("weather_observations", {
-            "select": "valid_at,temp_c",
-            "city_key": f"eq.{city_key}",
-            "valid_at": f"gte.{start.isoformat()}",
-            "and": f"(valid_at.lte.{end.isoformat()})",
-            "order": "valid_at.asc",
-            "limit": str(page), "offset": str(offset),
-        })
+        rows = rest("weather_observations", [
+            ("select", "valid_at,temp_c"),
+            ("city_key", f"eq.{city_key}"),
+            # PostgREST range syntax: repeat the column key for each bound
+            # of the range (documented pattern), rather than an ad-hoc
+            # "and" combinator wrapping a single condition.
+            ("valid_at", f"gte.{start.isoformat()}"),
+            ("valid_at", f"lte.{end.isoformat()}"),
+            ("order", "valid_at.asc"),
+            ("limit", str(page)), ("offset", str(offset)),
+        ])
         if not rows:
             break
         for r in rows:
@@ -47,14 +50,14 @@ def daily_max_observed(city_key, start, end):
 def forecasts(city_key, start, end):
     rows, offset, page = [], 0, 10000
     while True:
-        r = rest("weather_forecasts", {
-            "select": "for_date,lead_days,forecast_max_c,model",
-            "city_key": f"eq.{city_key}",
-            "for_date": f"gte.{start.isoformat()}",
-            "and": f"(for_date.lte.{end.isoformat()})",
-            "order": "for_date.asc",
-            "limit": str(page), "offset": str(offset),
-        })
+        r = rest("weather_forecasts", [
+            ("select", "for_date,lead_days,forecast_max_c,model"),
+            ("city_key", f"eq.{city_key}"),
+            ("for_date", f"gte.{start.isoformat()}"),
+            ("for_date", f"lte.{end.isoformat()}"),
+            ("order", "for_date.asc"),
+            ("limit", str(page)), ("offset", str(offset)),
+        ])
         if not r:
             break
         rows.extend(r)
@@ -131,6 +134,22 @@ def main():
         print(f"  cities under 1 band: {sum(1 for b in bands if b < 1)}/{len(bands)}")
         print("\n  -> under 1 band favours concentration strategies")
         print("  -> over 2 bands favours intraday and arbitrage instead")
+
+    # Mirrors the verify query in AD4 spec Task 1: aggregate stats for the
+    # rows just written under this run's single computed_at.
+    if out_rows:
+        n_rows = len(out_rows)
+        n_cities = len({r["city_key"] for r in out_rows})
+        worst_sample = min(r["n_days"] for r in out_rows)
+        avg_mae = sum(r["mae_c"] for r in out_rows) / n_rows
+        avg_bands = sum(r["mae_bands"] for r in out_rows) / n_rows
+        print(f"\nVERIFY  rows={n_rows} cities={n_cities} worst_sample={worst_sample} "
+              f"avg_mae={avg_mae:.2f} avg_bands={avg_bands:.2f}")
+        thin = sorted({r["city_key"] for r in out_rows if r["n_days"] < 200})
+        if thin:
+            print(f"  UNDER-200-DAYS (untrusted, downgrade confidence in Task 4): {thin}")
+        else:
+            print("  all cities >= 200 days sample")
 
     log_run("measure_skill", "ok", len(out_rows),
             {"cities": len(summary), "window_days": days})
