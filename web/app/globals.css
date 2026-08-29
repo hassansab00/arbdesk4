@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .input {
+    @apply w-full rounded border border-border bg-panel2 px-2 py-1 text-sm font-mono text-text;
+  }
+}
+
+html, body {
+  background: #0b0e14;
+  color: #e6e9f0;
+}
+
+* {
+  border-color: #232a38;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #232a38; border-radius: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* -------------------------------------------------------------------- */
+/* Live Weather animated condition icons (Task 14 §8.4).                 */
+/* Respects prefers-reduced-motion: falls back to a static icon.         */
+/* -------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .wx-anim * { animation: none !important; }
+}
+
+@keyframes wx-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes wx-drift { from { transform: translateX(-8%); } to { transform: translateX(8%); } }
+@keyframes wx-drift-slow { from { transform: translateX(-4%); } to { transform: translateX(4%); } }
+@keyframes wx-fall {
+  from { transform: translateY(-10%); opacity: 0.9; }
+  to { transform: translateY(110%); opacity: 0.2; }
+}
+@keyframes wx-flash {
+  0%, 92%, 100% { opacity: 0; }
+  94%, 97% { opacity: 1; }
+}
+@keyframes wx-pulse-border {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(79, 140, 255, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(79, 140, 255, 0); }
+}
+
+.wx-sun { animation: wx-spin 40s linear infinite; }
+.wx-cloud-fast { animation: wx-drift 6s ease-in-out infinite alternate; }
+.wx-cloud-slow { animation: wx-drift-slow 12s ease-in-out infinite alternate; }
+.wx-drop { animation: wx-fall 1s linear infinite; }
+.wx-flake { animation: wx-fall 3s linear infinite; }
+.wx-bolt { animation: wx-flash 4s linear infinite; }
+.wx-fog-band { animation: wx-drift-slow 10s ease-in-out infinite alternate; }
+
+.peak-pulse { animation: wx-pulse-border 2s ease-in-out infinite; }

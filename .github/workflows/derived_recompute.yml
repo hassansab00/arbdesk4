@@ -1,0 +1,20 @@
+name: Derived Recompute (capacity + correlation)
+
+on:
+  schedule:
+    - cron: '0 5 * * *'   # daily, matches spec §7.9 P2.4 cadence
+  workflow_dispatch: {}
+
+jobs:
+  recompute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install -r requirements.txt
+      - run: PYTHONPATH=scripts python scripts/capacity.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

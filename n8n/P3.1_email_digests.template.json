@@ -1,0 +1,194 @@
+{
+  "name": "AD4 - P3.1 Email Digests",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "id": "trigger-morning",
+      "name": "Morning Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 4 * * *" }] } }
+    },
+    {
+      "id": "trigger-eod",
+      "name": "EOD Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 160],
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 21 * * *" }] } }
+    },
+    {
+      "id": "trigger-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 320],
+      "parameters": {}
+    },
+    {
+      "id": "config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [260, 160],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "1", "name": "supabase_url", "type": "string", "value": "" },
+            { "id": "2", "name": "service_key", "type": "string", "value": "" },
+            { "id": "3", "name": "digest_kind", "type": "string", "value": "={{ $json.digest_kind || 'morning' }}" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "set-kind-morning",
+      "name": "Tag: morning",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [260, 0],
+      "parameters": { "assignments": { "assignments": [{ "id": "1", "name": "digest_kind", "type": "string", "value": "morning" }] } }
+    },
+    {
+      "id": "set-kind-eod",
+      "name": "Tag: eod",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [260, 320],
+      "parameters": { "assignments": { "assignments": [{ "id": "1", "name": "digest_kind", "type": "string", "value": "eod" }] } }
+    },
+    {
+      "id": "switch-kind",
+      "name": "Which digest?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [520, 160],
+      "parameters": {
+        "rules": {
+          "values": [
+            { "outputKey": "morning", "conditions": { "conditions": [{ "leftValue": "={{ $json.digest_kind }}", "rightValue": "morning", "operator": { "type": "string", "operation": "equals" } }] } },
+            { "outputKey": "eod", "conditions": { "conditions": [{ "leftValue": "={{ $json.digest_kind }}", "rightValue": "eod", "operator": { "type": "string", "operation": "equals" } }] } }
+          ]
+        }
+      }
+    },
+    {
+      "id": "rpc-morning",
+      "name": "build_morning_brief",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [780, 40],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/build_morning_brief",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $('Config').first().json.service_key }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.service_key }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={}"
+      }
+    },
+    {
+      "id": "rpc-eod",
+      "name": "build_eod_report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [780, 280],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/build_eod_report",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $('Config').first().json.service_key }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.service_key }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={}"
+      }
+    },
+    {
+      "id": "render-html",
+      "name": "Render HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 160],
+      "parameters": {
+        "jsCode": "const kind = $('Config').first().json.digest_kind;\nconst payload = $input.first().json;\nlet subject, html;\nif (kind === 'morning') {\n  const opps = (payload.top_opportunities || []).slice(0, 15);\n  const rows = opps.map(o => `<tr><td>${o.display_name || o.city_key}</td><td>${o.band_label || ''}</td><td>${o.side}</td><td>${(o.market_price*100).toFixed(0)}c</td><td>${(o.model_prob*100).toFixed(0)}%</td><td>${(o.edge_net_pp*100).toFixed(1)}pp</td><td>${o.regime_label}</td></tr>`).join('');\n  subject = 'AD4 Morning Brief';\n  html = `<h2>AD4 Morning Brief</h2><p>Generated ${payload.generated_at}</p><table border=1 cellpadding=4><tr><th>City</th><th>Band</th><th>Side</th><th>Price</th><th>Model P</th><th>Net edge</th><th>Regime</th></tr>${rows}</table>`;\n} else {\n  const trades = payload.settled_today || [];\n  const rows = trades.map(t => `<tr><td>${t.strategy_id}</td><td>${t.band_id}</td><td>${t.side}</td><td>${t.shares}</td><td>${t.net_pnl?.toFixed(2)}</td></tr>`).join('');\n  const byStrategy = payload.net_pnl_by_strategy || {};\n  const stratRows = Object.entries(byStrategy).map(([k,v]) => `<tr><td>${k}</td><td>${Number(v).toFixed(2)}</td></tr>`).join('');\n  subject = 'AD4 End of Day Report';\n  html = `<h2>AD4 End of Day</h2><p>Generated ${payload.generated_at}</p><h3>Net P&L by strategy</h3><table border=1 cellpadding=4>${stratRows}</table><h3>Settled today</h3><table border=1 cellpadding=4><tr><th>Strategy</th><th>Band</th><th>Side</th><th>Shares</th><th>Net P&L</th></tr>${rows}</table>`;\n}\nreturn [{ json: { subject, html } }];"
+      }
+    },
+    {
+      "id": "get-recipient",
+      "name": "Get Recipient",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 160],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/settings?key=eq.email_recipient&select=value",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $('Config').first().json.service_key }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.service_key }}" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "send-email",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1560, 160],
+      "parameters": {
+        "fromEmail": "ad4-digests@example.com",
+        "toEmail": "={{ $json[0].value.address }}",
+        "subject": "={{ $('Render HTML').first().json.subject }}",
+        "emailFormat": "html",
+        "html": "={{ $('Render HTML').first().json.html }}"
+      }
+    },
+    {
+      "id": "summary",
+      "name": "Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1820, 160],
+      "parameters": {
+        "jsCode": "return [{ json: { summary: `AD4 P3.1: ${$('Render HTML').first().json.subject} sent.` } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Morning Schedule": { "main": [[{ "node": "Tag: morning", "type": "main", "index": 0 }]] },
+    "EOD Schedule": { "main": [[{ "node": "Tag: eod", "type": "main", "index": 0 }]] },
+    "Manual Trigger": { "main": [[{ "node": "Tag: morning", "type": "main", "index": 0 }]] },
+    "Tag: morning": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Tag: eod": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Config": { "main": [[{ "node": "Which digest?", "type": "main", "index": 0 }]] },
+    "Which digest?": { "main": [[{ "node": "build_morning_brief", "type": "main", "index": 0 }], [{ "node": "build_eod_report", "type": "main", "index": 0 }]] },
+    "build_morning_brief": { "main": [[{ "node": "Render HTML", "type": "main", "index": 0 }]] },
+    "build_eod_report": { "main": [[{ "node": "Render HTML", "type": "main", "index": 0 }]] },
+    "Render HTML": { "main": [[{ "node": "Get Recipient", "type": "main", "index": 0 }]] },
+    "Get Recipient": { "main": [[{ "node": "Send Email", "type": "main", "index": 0 }]] },
+    "Send Email": { "main": [[{ "node": "Summary", "type": "main", "index": 0 }]] }
+  }
+}

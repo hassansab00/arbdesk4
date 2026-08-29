@@ -1,34 +1,65 @@
-"""Shared Supabase helpers for AD4 Phase 1 jobs."""
+"""Shared Supabase helpers for AD4 jobs."""
 import os, sys, time, json
 import requests
 
-SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
-SERVICE_KEY  = os.environ["SUPABASE_SERVICE_KEY"]
+_config = None
 
-HEADERS = {
-    "apikey": SERVICE_KEY,
-    "Authorization": f"Bearer {SERVICE_KEY}",
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-}
+def _cfg():
+    """Lazy env lookup - importing this module (e.g. for unit tests of pure
+    functions elsewhere) must not require SUPABASE_URL/SUPABASE_SERVICE_KEY
+    to be set. Only actually calling rest()/insert()/upsert()/log_run() does."""
+    global _config
+    if _config is None:
+        _config = {
+            "url": os.environ["SUPABASE_URL"].rstrip("/"),
+            "key": os.environ["SUPABASE_SERVICE_KEY"],
+        }
+    return _config
+
+def _headers():
+    key = _cfg()["key"]
+    return {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
 
 def rest(path, params=None):
     """GET from PostgREST."""
-    r = requests.get(f"{SUPABASE_URL}/rest/v1/{path}", headers=HEADERS,
+    r = requests.get(f"{_cfg()['url']}/rest/v1/{path}", headers=_headers(),
                      params=params or {}, timeout=90)
     r.raise_for_status()
     return r.json()
+
+def insert(table, rows, chunk=500):
+    """Plain append - for time-series tables where every row is new (each
+    run stamps its own computed_at/detected_at), no on_conflict needed."""
+    if not rows:
+        return 0
+    written = 0
+    h = _headers()
+    h["Prefer"] = "return=minimal"
+    for i in range(0, len(rows), chunk):
+        batch = rows[i:i+chunk]
+        r = requests.post(f"{_cfg()['url']}/rest/v1/{table}",
+                          headers=h, data=json.dumps(batch), timeout=120)
+        if r.status_code >= 400:
+            print(f"  ! {table} insert failed {r.status_code}: {r.text[:300]}", file=sys.stderr)
+            r.raise_for_status()
+        written += len(batch)
+    return written
 
 def upsert(table, rows, on_conflict, chunk=500):
     """Insert rows, ignoring duplicates on the given unique key."""
     if not rows:
         return 0
     written = 0
-    h = dict(HEADERS)
+    h = _headers()
     h["Prefer"] = "resolution=ignore-duplicates,return=minimal"
     for i in range(0, len(rows), chunk):
         batch = rows[i:i+chunk]
-        r = requests.post(f"{SUPABASE_URL}/rest/v1/{table}",
+        r = requests.post(f"{_cfg()['url']}/rest/v1/{table}",
                           headers=h, params={"on_conflict": on_conflict},
                           data=json.dumps(batch), timeout=120)
         if r.status_code >= 400:
@@ -39,7 +70,7 @@ def upsert(table, rows, on_conflict, chunk=500):
 
 def log_run(job, status, rows, detail):
     try:
-        requests.post(f"{SUPABASE_URL}/rest/v1/rpc/log_ingest", headers=HEADERS,
+        requests.post(f"{_cfg()['url']}/rest/v1/rpc/log_ingest", headers=_headers(),
                       data=json.dumps({"p_job": job, "p_status": status,
                                        "p_rows": rows, "p_detail": detail}), timeout=30)
     except Exception as e:
@@ -56,6 +87,32 @@ def get_cities(require_coords=True, require_icao=False):
             continue
         out.append(c)
     return out
+
+SKY_CONDITION_MAP = {
+    "CLR": "CLEAR", "SKC": "CLEAR",
+    "FEW": "PARTLY_CLOUDY", "SCT": "PARTLY_CLOUDY",
+    "BKN": "CLOUDY", "OVC": "OVERCAST",
+}
+PRESENT_WEATHER_MAP = {
+    "RA": "RAIN", "SN": "SNOW", "FG": "FOG", "TS": "STORM",
+    "DZ": "RAIN", "SH": "RAIN", "GR": "STORM", "GS": "STORM",
+}
+
+def normalize_sky_condition(sky_raw, present_weather_raw=None):
+    """
+    METAR skyc1 (CLR/SKC/FEW/SCT/BKN/OVC) plus present-weather codes
+    (RA/SN/FG/TS/...) -> one of CLEAR/PARTLY_CLOUDY/CLOUDY/OVERCAST/RAIN/
+    SNOW/FOG/STORM. Present weather takes priority (spec §8.3) - rain
+    matters more than "also cloudy."
+    """
+    if present_weather_raw:
+        code = present_weather_raw.strip().upper()
+        for k, v in PRESENT_WEATHER_MAP.items():
+            if k in code:
+                return v
+    if not sky_raw:
+        return None
+    return SKY_CONDITION_MAP.get(sky_raw.strip().upper())
 
 def retry(fn, tries=3, wait=5, label=""):
     for a in range(tries):

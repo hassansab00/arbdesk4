@@ -61,7 +61,7 @@ def parse(text, city_key):
             "wind_speed": num(rec.get("sknt")),
             "wind_dir_deg": num(rec.get("drct")),
             "precip": num(rec.get("p01i")),
-            "cloud_cover": None,
+            "cloud_cover": (rec.get("skyc1") or "").strip() or None,
             "source": "IEM",
         })
     return rows
