@@ -88,6 +88,32 @@ def get_cities(require_coords=True, require_icao=False):
         out.append(c)
     return out
 
+SKY_CONDITION_MAP = {
+    "CLR": "CLEAR", "SKC": "CLEAR",
+    "FEW": "PARTLY_CLOUDY", "SCT": "PARTLY_CLOUDY",
+    "BKN": "CLOUDY", "OVC": "OVERCAST",
+}
+PRESENT_WEATHER_MAP = {
+    "RA": "RAIN", "SN": "SNOW", "FG": "FOG", "TS": "STORM",
+    "DZ": "RAIN", "SH": "RAIN", "GR": "STORM", "GS": "STORM",
+}
+
+def normalize_sky_condition(sky_raw, present_weather_raw=None):
+    """
+    METAR skyc1 (CLR/SKC/FEW/SCT/BKN/OVC) plus present-weather codes
+    (RA/SN/FG/TS/...) -> one of CLEAR/PARTLY_CLOUDY/CLOUDY/OVERCAST/RAIN/
+    SNOW/FOG/STORM. Present weather takes priority (spec §8.3) - rain
+    matters more than "also cloudy."
+    """
+    if present_weather_raw:
+        code = present_weather_raw.strip().upper()
+        for k, v in PRESENT_WEATHER_MAP.items():
+            if k in code:
+                return v
+    if not sky_raw:
+        return None
+    return SKY_CONDITION_MAP.get(sky_raw.strip().upper())
+
 def retry(fn, tries=3, wait=5, label=""):
     for a in range(tries):
         try:
