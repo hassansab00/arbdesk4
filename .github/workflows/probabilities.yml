@@ -1,4 +1,4 @@
-name: Probability Engine
+name: Probability + Edge Pipeline
 
 on:
   schedule:
@@ -17,6 +17,17 @@ jobs:
         with: { python-version: '3.11' }
       - run: pip install -r requirements.txt
       - run: PYTHONPATH=scripts python scripts/probability_engine.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      # Runs edge computation as a second Python step in the same job
+      # rather than the Postgres `compute_edges` RPC that Revision A's n8n
+      # spec (§7.6) describes: the ladder-walk + fee-curve math already
+      # lives in cost_model.py/edge_engine.py (Task 3/6), and duplicating
+      # it in PL/pgSQL would mean keeping two implementations in sync for
+      # no operational benefit - GitHub Actions minutes are effectively
+      # free here, unlike n8n's execution budget. See docs/architecture_deviations.md.
+      - run: PYTHONPATH=scripts python scripts/edge_engine.py
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
