@@ -32,42 +32,60 @@ below, not optional.
 
 ## How to actually run this
 
-1. Pick one city with at least one already-resolved (past) market and a
-   known ICAO code (from the `cities` table).
-2. Fetch `https://www.weather.gov/wrh/timeseries?site=<icao>` for that
-   date and inspect the actual page source - find where the hourly
-   temperature series actually lives (view source / dev tools network
-   tab). Update `fetch_resolution_source_reading()` in
-   `scripts/settlement.py` to match reality if the `obsData` regex
-   doesn't hit.
-3. Also fetch `https://api.weather.gov/stations/<icao>/observations` for
-   the same window (this is the OTHER surface, the one our IEM-sourced
-   archive is closest to in spirit but not identical to).
-4. Compare all three: our `weather_observations` (IEM), `api.weather.gov`,
-   and `weather.gov/wrh/timeseries` (the actual resolution source) for
-   that city-day's max temperature.
-5. Record the outcome below:
+**It is now one button.** `.github/workflows/verify_resolution_source.yml`
+does the whole procedure on a GitHub Actions runner, which unlike the build
+sandbox has normal internet access.
 
-   ```
-   City:              TODO
-   ICAO:              TODO
-   Date checked:      TODO
-   IEM max:           TODO
-   api.weather.gov max: TODO
-   weather.gov/wrh/timeseries max (the resolution source): TODO
-   Match?             TODO
+> GitHub -> **Actions -> Verify Resolution Source -> Run workflow**
+> (leave both inputs blank to auto-pick a city with a resolved past market
+> and use yesterday's date, or name a `city_key` and a `YYYY-MM-DD`.)
+
+Needs the same two secrets as every other workflow: `SUPABASE_URL` and
+`SUPABASE_SERVICE_KEY`.
+
+`scripts/verify_resolution_source.py` does two things, in this order:
+
+1. **Tests the real parser.** It calls
+   `settlement.fetch_resolution_source_reading()` itself - the actual
+   function that will decide settlements - not a copy of it. That parser
+   has never been checked against a live page, so this is the step that
+   matters. If it does not hit, the script does **not** guess a
+   temperature: it dumps the real page structure (script sources, inline
+   `var`/`const` names, candidate JSON blobs, whether the date appears at
+   all, the first 1500 bytes of body) and **fails the job**. Fix
+   `fetch_resolution_source_reading()` against that output and re-run.
+
+2. **Compares all three surfaces** for the same city-day - our IEM archive
+   (`weather_observations`), `api.weather.gov`, and
+   `weather.gov/wrh/timeseries`, the one that actually settles - and
+   prints a result block in exactly the shape this file wants below.
+
+The script is **read-only**. It cannot flip `settlement_verified`, by
+design: that stays a decision you make after reading the numbers yourself.
+
+### Then
+
+1. Copy the printed block into the `## Measured` section below.
+2. If, and only if, the parser hit a live page **and** the surfaces agree
+   (the script reports the spread and calls it), flip the gate:
+
+   ```sql
+   update settings
+   set value = jsonb_set(value, '{value}', 'true')
+   where key = 'settlement_verified';
    ```
 
-6. If all three agree (or IEM/api.weather.gov are within measurement
-   noise of the actual resolution source), it's reasonable to treat IEM
-   as a fast proxy for day-to-day monitoring while still verifying the
-   *actual* settlement value against `weather.gov/wrh/timeseries`
-   specifically before paying out - `scripts/settlement.py` already does
-   this correctly (it never settles off the IEM archive, only off a
-   direct fetch of the real resolution source).
-7. Once confirmed, run
-   `update settings set value = '{"value": true, ...}' where key =
-   'settlement_verified';` to take settlement out of dry-run mode.
+3. Re-run `sql/ad4_99_verify.sql` - its `settlement is still gated` row
+   will now read ATTENTION rather than PASS, which is the correct reading
+   once you have deliberately opened the gate.
+
+A disagreement between surfaces is not a nuisance to work around. It is
+exactly what this check exists to catch: settling off the wrong surface
+pays the wrong person.
+
+## Measured
+
+_(nothing yet - paste the workflow's output block here)_
 
 Until this file has real values in it, `scripts/settlement.py` runs in
 dry-run mode by design (see `settings.settlement_verified`) - it computes

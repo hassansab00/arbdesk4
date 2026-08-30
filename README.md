@@ -38,6 +38,12 @@ of what got built against it and where to find things.
    12. **`sql/ad4_rls.sql` last** (it grants EXECUTE on functions the
        earlier files define).
 
+   Then run **`sql/ad4_99_verify.sql`** against the real database. It is
+   read-only and returns one grid: every check PASS / FAIL / ATTENTION,
+   which file to re-run for anything that failed, which tables have data
+   and which job fills the ones that don't, and the **actual column shape**
+   of the six tables this repo previously had to guess at.
+
    Each of the eleven also opens with its own self-sufficiency guard, so
    any one of them can be re-run in isolation without the others. The
    preflight file is still the thing to run first - it is the only place

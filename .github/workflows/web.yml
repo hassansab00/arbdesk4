@@ -1,0 +1,58 @@
+name: Web build (Vercel conditions)
+
+# Reproduces the exact condition the Vercel build runs under - a clean
+# install with NO environment variables at all - on every push, so a
+# regression is caught here rather than on a deploy. The frontend reads
+# NEXT_PUBLIC_SUPABASE_* at runtime in the browser; needing them at build
+# time is the bug this job exists to prevent from coming back.
+
+on:
+  push:
+    paths: ['web/**', '.github/workflows/web.yml']
+  pull_request:
+    paths: ['web/**', '.github/workflows/web.yml']
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Confirm no Supabase env vars are present
+        run: |
+          if env | grep -qi 'SUPABASE'; then
+            echo "::error::A SUPABASE variable is set - this job must prove the build works without one."
+            env | grep -i SUPABASE
+            exit 1
+          fi
+          echo "No SUPABASE variables in the environment. Good."
+
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Build with zero env vars
+        run: npm run build
+
+      - name: Confirm every route prerendered
+        run: |
+          for r in "" analytics backtest board calculator campaigns clusters goals live opportunities; do
+            path="./.next/server/app/${r}.html"
+            [ -z "$r" ] && path="./.next/server/app/index.html"
+            if [ ! -f "$path" ]; then
+              echo "::error::route /${r} did not prerender ($path missing)"
+              exit 1
+            fi
+          done
+          echo "All 10 routes prerendered."

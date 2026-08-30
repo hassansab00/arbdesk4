@@ -72,7 +72,19 @@ working, not an error.
 
 ### Verify step 1
 
-Run this whole block as one query:
+**The fast way:** paste the whole of **`sql/ad4_99_verify.sql`** into the SQL
+editor and run it. It is read-only, safe to run any time, and returns one
+grid: every check with PASS / FAIL / ATTENTION and, where something failed,
+which file to re-run. It also reports the **real column shape** of the six
+tables this repo previously had to guess at — that grid is the thing to send
+back if anything looks wrong.
+
+Expect every row in sections 1–5 to read PASS. Sections 6 (DATA) and 7
+(ACTUAL SHAPE) are informational: at this point almost everything in section
+6 will read EMPTY, which is correct — steps 2 and 3 below fill it.
+
+**The manual way**, if you would rather see each number on its own — run
+this whole block as one query:
 
 ```sql
 -- 1a. every table exists
@@ -147,6 +159,13 @@ where schemaname='public' and policyname='anon_read';
 **If any of these numbers is lower than stated**, re-run
 `sql/ad4_00_preflight.sql` and read its NOTICE output — it names exactly
 what it could not create and why.
+
+---
+
+After step 3 and step 4, run `sql/ad4_99_verify.sql` again. By then
+section 6 should read HAS DATA for everything the workflows you ran are
+responsible for, and `MARKET VOLUME (rolling 24h)` tells you whether the
+volume layer has anything to work with.
 
 ---
 
@@ -310,7 +329,35 @@ select count(*) as bands_with_volume from v_band_volume;
 select coalesce(sum(volume_usd),0) as total_24h_volume from v_city_volume;
 ```
 
-### 3.9 Settlement Sweep
+### 3.9 Verify Resolution Source  (do this before trusting settlement)
+
+Actions → **Verify Resolution Source** → Run workflow. Leave both inputs
+blank — it picks a city with a resolved past market and checks yesterday.
+
+This is the check that gates settlement, and it could not be done from the
+build sandbox (no egress to weather.gov). A runner has normal internet
+access, so it happens here instead.
+
+**Expect one of two outcomes**, both useful:
+
+- **Green** — it prints a block with the max temperature from all three
+  surfaces (our IEM archive, `api.weather.gov`, and
+  `weather.gov/wrh/timeseries`, the one that actually settles) and the
+  spread between them. Paste that block into
+  `docs/settlement_verification.md`.
+- **Red, on the parser** — `fetch_resolution_source_reading()` in
+  `scripts/settlement.py` has never been checked against a live page, so
+  this is the likely first result. The log then dumps the real page
+  structure. Fix the parser against it and re-run. **Do not hand-write a
+  temperature into the doc.**
+
+Only once it is green, and you have read the numbers yourself, open the gate:
+```sql
+update settings set value = jsonb_set(value, '{value}', 'true')
+where key = 'settlement_verified';
+```
+
+### 3.10 Settlement Sweep
 
 Only useful once a market has actually resolved. Run it, expect it to do
 nothing on day one:
