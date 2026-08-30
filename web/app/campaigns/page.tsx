@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useQuery } from "@/lib/useQuery";
+import { DataState, InlineError } from "@/components/DataState";
 import { fmtUsd, pnlColor } from "@/lib/format";
 
 interface Deployment {
@@ -12,44 +14,65 @@ interface Deployment {
 const STATUSES = ["draft", "armed", "running", "paused", "closed"] as const;
 
 export default function CampaignsPage() {
-  const [deployments, setDeployments] = useState<Deployment[]>([]);
-  const [pnlByDeployment, setPnlByDeployment] = useState<Record<string, number>>({});
-  const [strategies, setStrategies] = useState<string[]>([]);
   const [form, setForm] = useState({ name: "", strategy_id: "", target_kind: "city", target: "", condition: "", ends_at: "" });
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  async function load() {
-    const { data } = await supabase.from("deployments").select("*").order("created_at", { ascending: false });
-    setDeployments((data as Deployment[]) ?? []);
+  const deploymentsQ = useQuery<Deployment[]>(
+    () => supabase.from("deployments").select("*").order("created_at", { ascending: false }),
+    []
+  );
+  const strategiesQ = useQuery<Array<{ strategy_id: string; name: string | null; enabled: boolean }>>(
+    () => supabase.from("strategies").select("strategy_id,name,enabled").order("strategy_id"),
+    []
+  );
+  const ledgerQ = useQuery<Array<{ deployment_id: string | null; detail: any }>>(
+    () => supabase.from("ledger").select("deployment_id,detail").eq("stage", "settlement"),
+    []
+  );
 
-    const { data: strategyRows } = await supabase.from("strategies").select("strategy_id");
-    setStrategies((strategyRows ?? []).map((s: any) => s.strategy_id));
+  const deployments = deploymentsQ.data ?? [];
+  const strategies = strategiesQ.data ?? [];
 
-    const { data: ledgerRows } = await supabase.from("ledger").select("deployment_id,detail").eq("stage", "settlement");
+  const pnlByDeployment = useMemo(() => {
     const grouped: Record<string, number> = {};
-    for (const r of (ledgerRows as any[]) ?? []) {
+    for (const r of ledgerQ.data ?? []) {
       if (!r.deployment_id) continue;
       grouped[r.deployment_id] = (grouped[r.deployment_id] ?? 0) + (r.detail?.net_pnl ?? 0);
     }
-    setPnlByDeployment(grouped);
+    return grouped;
+  }, [ledgerQ.data]);
+
+  function load() {
+    deploymentsQ.refresh();
+    ledgerQ.refresh();
   }
 
-  useEffect(() => { load(); }, []);
-
   async function create() {
-    await supabase.rpc("upsert_deployment", {
+    if (!form.name.trim() || !form.strategy_id) {
+      setActionError("A name and a strategy are required.");
+      return;
+    }
+    setBusy(true);
+    const { error } = await supabase.rpc("upsert_deployment", {
       p_deployment: {
         name: form.name, strategy_id: form.strategy_id, target_kind: form.target_kind,
-        target: { values: form.target.split(",").map((s) => s.trim()).filter(Boolean) },
+        target: { values: form.target.split(",").map((x) => x.trim()).filter(Boolean) },
         condition: form.condition || null, ends_at: form.ends_at || null, status: "draft",
       },
     });
-    setForm({ name: "", strategy_id: "", target_kind: "city", target: "", condition: "", ends_at: "" });
-    load();
+    setBusy(false);
+    setActionError(error ? `${error.message}${error.hint ? ` — ${error.hint}` : ""}` : null);
+    if (!error) {
+      setForm({ name: "", strategy_id: "", target_kind: "city", target: "", condition: "", ends_at: "" });
+      load();
+    }
   }
 
   async function setStatus(id: string, status: string) {
-    await supabase.rpc("set_deployment_status", { p_deployment_id: id, p_status: status });
-    load();
+    const { error } = await supabase.rpc("set_deployment_status", { p_deployment_id: id, p_status: status });
+    setActionError(error ? error.message : null);
+    if (!error) load();
   }
 
   return (
@@ -57,11 +80,20 @@ export default function CampaignsPage() {
       <h1 className="text-lg font-semibold">Campaigns / Deployments</h1>
       <p className="text-xs text-muted">Deploy a strategy to a city, list, or cluster, for a duration or until a condition. Separate P&amp;L per deployment (from the ledger&apos;s settlement stage).</p>
 
+      {actionError && <div className="rounded border border-bad/60 bg-bad/10 p-2 font-mono text-xs text-bad">{actionError}</div>}
+      <InlineError message={strategiesQ.error ?? ledgerQ.error} />
+
       <div className="grid gap-2 rounded border border-border bg-panel p-4 sm:grid-cols-3">
         <input placeholder="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input" />
         <select value={form.strategy_id} onChange={(e) => setForm({ ...form, strategy_id: e.target.value })} className="input">
-          <option value="">select strategy</option>
-          {strategies.map((s) => <option key={s} value={s}>{s}</option>)}
+          <option value="">
+            {strategiesQ.loading ? "loading strategies…" : strategies.length ? "select strategy" : "no strategies seeded"}
+          </option>
+          {strategies.map((s) => (
+            <option key={s.strategy_id} value={s.strategy_id}>
+              {s.name ?? s.strategy_id}{s.enabled ? "" : " (disabled)"}
+            </option>
+          ))}
         </select>
         <select value={form.target_kind} onChange={(e) => setForm({ ...form, target_kind: e.target.value })} className="input">
           <option value="city">single city</option>
@@ -71,9 +103,25 @@ export default function CampaignsPage() {
         <input placeholder="target (comma-separated)" value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })} className="input" />
         <input placeholder="condition (optional, free text)" value={form.condition} onChange={(e) => setForm({ ...form, condition: e.target.value })} className="input" />
         <input type="datetime-local" value={form.ends_at} onChange={(e) => setForm({ ...form, ends_at: e.target.value })} className="input" />
-        <button onClick={create} className="rounded bg-accent py-1.5 text-white hover:opacity-90 sm:col-span-3">Create draft deployment</button>
+        <button onClick={create} disabled={busy} className="rounded bg-accent py-1.5 text-white hover:opacity-90 disabled:opacity-50 sm:col-span-3">
+          {busy ? "Creating…" : "Create draft deployment"}
+        </button>
+        {strategies.length > 0 && strategies.every((s) => !s.enabled) && (
+          <p className="text-[10px] text-warn sm:col-span-3">
+            Every strategy is currently disabled, so a deployment created now will not trade until you
+            enable its strategy. That is deliberate — all six ship <code>enabled = false</code>.
+          </p>
+        )}
       </div>
 
+      <DataState
+        loading={deploymentsQ.loading}
+        error={deploymentsQ.error}
+        isEmpty={deployments.length === 0}
+        emptyTitle="No deployments yet"
+        emptyBody={<>Create one above to run a strategy against a city, list or cluster for a fixed window. Per-deployment P&amp;L is attributed from the ledger&apos;s settlement stage, so it only appears once trades under that deployment have settled.</>}
+        onRetry={deploymentsQ.refresh}
+      >
       <div className="space-y-2">
         {deployments.map((d) => (
           <div key={d.deployment_id} className="rounded border border-border bg-panel p-3 text-sm">
@@ -97,8 +145,8 @@ export default function CampaignsPage() {
             </div>
           </div>
         ))}
-        {deployments.length === 0 && <div className="p-6 text-center text-muted">No deployments yet.</div>}
       </div>
+      </DataState>
     </div>
   );
 }

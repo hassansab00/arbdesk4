@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { fmtUsd, pnlColor } from "@/lib/format";
+import { fmtCompactUsd, fmtUsd, pnlColor } from "@/lib/format";
 
 // Model cycles run 4x/day at 01:30/07:30/13:30/19:30 UTC (30 min after
 // P0.2 market discovery, matching .github/workflows/probabilities.yml).
@@ -38,6 +38,9 @@ export default function GlobalBar() {
   const [openExposure, setOpenExposure] = useState<number | null>(null);
   const [dayNetPnl, setDayNetPnl] = useState<number | null>(null);
   const [nextPeakMinutes, setNextPeakMinutes] = useState<number | null>(null);
+  const [volume24h, setVolume24h] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setNow(new Date());
@@ -47,19 +50,36 @@ export default function GlobalBar() {
 
   useEffect(() => {
     async function load() {
-      const { data: settingsRows } = await supabase.from("settings").select("key,value").eq("key", "bankroll");
-      const amount = (settingsRows?.[0]?.value as { amount?: number } | undefined)?.amount ?? null;
-      setBankroll(amount);
+      try {
+        const { data: settingsRows, error: sErr } = await supabase.from("settings").select("key,value").eq("key", "bankroll");
+        if (sErr) throw sErr;
+        const amount = (settingsRows?.[0]?.value as { amount?: number } | undefined)?.amount ?? null;
+        setBankroll(amount);
 
-      const { data: openTrades } = await supabase.from("paper_trades").select("shares,avg_fill_price").is("closed_at", null);
-      setOpenExposure((openTrades ?? []).reduce((s, t) => s + (t.shares ?? 0) * (t.avg_fill_price ?? 0), 0));
+        const { data: openTrades, error: oErr } = await supabase.from("paper_trades").select("shares,avg_fill_price").is("closed_at", null);
+        if (oErr) throw oErr;
+        setOpenExposure((openTrades ?? []).reduce((s, t) => s + (t.shares ?? 0) * (t.avg_fill_price ?? 0), 0));
 
-      const today = new Date().toISOString().slice(0, 10);
-      const { data: closedToday } = await supabase.from("paper_trades").select("net_pnl,closed_at").gte("closed_at", today);
-      setDayNetPnl((closedToday ?? []).reduce((s, t) => s + (t.net_pnl ?? 0), 0));
+        const today = new Date().toISOString().slice(0, 10);
+        const { data: closedToday, error: cErr } = await supabase.from("paper_trades").select("net_pnl,closed_at").gte("closed_at", today);
+        if (cErr) throw cErr;
+        setDayNetPnl((closedToday ?? []).reduce((s, t) => s + (t.net_pnl ?? 0), 0));
 
-      const { data: live } = await supabase.from("live_weather").select("minutes_to_peak").not("minutes_to_peak", "is", null).gte("minutes_to_peak", 0).order("minutes_to_peak", { ascending: true }).limit(1);
-      setNextPeakMinutes(live?.[0]?.minutes_to_peak ?? null);
+        const { data: live } = await supabase.from("live_weather").select("minutes_to_peak").not("minutes_to_peak", "is", null).gte("minutes_to_peak", 0).order("minutes_to_peak", { ascending: true }).limit(1);
+        setNextPeakMinutes(live?.[0]?.minutes_to_peak ?? null);
+
+        // Market volume belongs on the global bar for the same reason
+        // exposure does: it is a standing condition of the whole desk, not
+        // a per-page detail. A day with no volume anywhere is a day with
+        // nothing to trade, however good the edges look.
+        const { data: vol } = await supabase.from("v_city_volume").select("volume_usd");
+        setVolume24h((vol ?? []).reduce((s: number, v: { volume_usd: number | null }) => s + (v.volume_usd ?? 0), 0));
+
+        setError(null);
+      } catch (e) {
+        const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : String(e);
+        setError(msg);
+      }
     }
     load();
     const t = setInterval(load, 60000);
@@ -69,13 +89,29 @@ export default function GlobalBar() {
   async function saveBankroll() {
     const amount = parseFloat(draft);
     if (Number.isNaN(amount)) return setEditing(false);
-    await supabase.rpc("update_setting", { p_key: "bankroll", p_value: { amount, currency: "USD", compounding: false } });
-    setBankroll(amount);
+    setSaving(true);
+    const { error: rpcError } = await supabase.rpc("update_setting", {
+      p_key: "bankroll",
+      p_value: { amount, currency: "USD", compounding: false },
+    });
+    setSaving(false);
+    if (rpcError) {
+      setError(`Could not save bankroll: ${rpcError.message}`);
+    } else {
+      setBankroll(amount);
+      setError(null);
+    }
     setEditing(false);
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-border bg-panel px-4 py-2 text-sm font-mono">
+    <>
+    {error && (
+      <div className="border-b border-bad/50 bg-bad/10 px-4 py-1 font-mono text-[11px] text-bad">
+        {error}
+      </div>
+    )}
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-border bg-panel px-3 py-2 text-xs font-mono sm:px-4 sm:text-sm">
       <div className="flex items-center gap-2">
         <span className="text-muted">Bankroll</span>
         {editing ? (
@@ -89,7 +125,7 @@ export default function GlobalBar() {
           />
         ) : (
           <button className="hover:text-accent" onClick={() => { setDraft(String(bankroll ?? "")); setEditing(true); }}>
-            {bankroll === null ? "set bankroll" : fmtUsd(bankroll)}
+            {saving ? "saving…" : bankroll === null ? "set bankroll" : fmtUsd(bankroll)}
           </button>
         )}
       </div>
@@ -97,7 +133,9 @@ export default function GlobalBar() {
       <div><span className="text-muted">Day P&amp;L (net)</span> <span className={pnlColor(dayNetPnl)}>{fmtUsd(dayNetPnl, { signed: true })}</span></div>
       <div><span className="text-muted">UTC</span> {now ? now.toISOString().slice(11, 19) : "--:--:--"}</div>
       <div><span className="text-muted">Next model cycle</span> {now ? fmtCountdown(nextModelCycle(now), now) : "—"}</div>
-      <div><span className="text-muted">Next peak window</span> {nextPeakMinutes !== null ? `${nextPeakMinutes}m` : "—"}</div>
+      <div title="Traded volume across every city in the last 24h, from trades_observed."><span className="text-muted">Vol 24h</span> {volume24h !== null ? fmtCompactUsd(volume24h) : "—"}</div>
+      <div className="hidden sm:block"><span className="text-muted">Next peak window</span> {nextPeakMinutes !== null ? `${nextPeakMinutes}m` : "—"}</div>
     </div>
+    </>
   );
 }

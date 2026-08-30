@@ -2,17 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useQuery } from "@/lib/useQuery";
+import { DataState, ErrorBox, Loading } from "@/components/DataState";
 import { fmtPct, fmtUsd, pnlColor } from "@/lib/format";
 import type { BacktestRun } from "@/lib/types";
 
 interface ResultRow { run_id: string; scope: string; data: any; }
 
 export default function BacktestPage() {
-  const [runs, setRuns] = useState<BacktestRun[]>([]);
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const [compareRun, setCompareRun] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, any>>({});
   const [compareResults, setCompareResults] = useState<Record<string, any>>({});
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const [resultsError, setResultsError] = useState<string | null>(null);
+  const [queueError, setQueueError] = useState<string | null>(null);
+  const [queueMsg, setQueueMsg] = useState<string | null>(null);
 
   const [startDate, setStartDate] = useState("2026-06-01");
   const [endDate, setEndDate] = useState("2026-08-29");
@@ -21,20 +26,20 @@ export default function BacktestPage() {
   const [startingBudget, setStartingBudget] = useState("10000");
   const [label, setLabel] = useState("");
 
-  async function loadRuns() {
-    const { data } = await supabase.from("backtest_runs").select("*").order("created_at", { ascending: false }).limit(30);
-    setRuns((data as BacktestRun[]) ?? []);
-  }
+  const runsQ = useQuery<BacktestRun[]>(
+    () => supabase.from("backtest_runs").select("*").order("created_at", { ascending: false }).limit(30),
+    [],
+    15000
+  );
+  const runs = runsQ.data ?? [];
 
   useEffect(() => {
-    loadRuns();
-    const t = setInterval(loadRuns, 15000);
-    return () => clearInterval(t);
-  }, []);
-
-  useEffect(() => {
-    if (!selectedRun) return setResults({});
-    supabase.from("backtest_results").select("*").eq("run_id", selectedRun).then(({ data }) => {
+    if (!selectedRun) { setResults({}); setResultsError(null); return; }
+    setResultsLoading(true);
+    supabase.from("backtest_results").select("*").eq("run_id", selectedRun).then(({ data, error }) => {
+      setResultsLoading(false);
+      if (error) { setResultsError(error.message); setResults({}); return; }
+      setResultsError(null);
       const byScope: Record<string, any> = {};
       for (const r of (data as ResultRow[]) ?? []) byScope[r.scope] = r.data;
       setResults(byScope);
@@ -58,10 +63,26 @@ export default function BacktestPage() {
       starting_budget: parseFloat(startingBudget) || 10000,
       evaluation_lead_days: 1,
     };
-    const { data } = await supabase.rpc("queue_backtest", { p_params: params });
-    if (label && data) await supabase.from("backtest_runs").update({ label }).eq("run_id", data);
+    const { data, error } = await supabase.rpc("queue_backtest", { p_params: params });
+    if (error) {
+      setQueueError(`${error.message}${error.hint ? ` — ${error.hint}` : ""}`);
+      setQueueMsg(null);
+      return;
+    }
+    setQueueError(null);
+    // `label` is written by the queueing client rather than by
+    // queue_backtest(jsonb), which takes only params. anon has SELECT but
+    // no UPDATE on backtest_runs under RLS, so a label set from the
+    // browser is best-effort and its failure must not read as a failed
+    // queue - the run itself is already recorded.
+    let labelNote = "";
+    if (label && data) {
+      const { error: labelErr } = await supabase.from("backtest_runs").update({ label }).eq("run_id", data);
+      if (labelErr) labelNote = " (label not saved: writes to backtest_runs are blocked for the anon key)";
+    }
+    setQueueMsg(`Queued run ${String(data).slice(0, 8)}. GitHub Actions → Backtest picks it up within ~10 minutes.${labelNote}`);
     setLabel("");
-    loadRuns();
+    runsQ.refresh();
   }
 
   return (
@@ -84,11 +105,22 @@ export default function BacktestPage() {
           <Field label="Starting budget"><input value={startingBudget} onChange={(e) => setStartingBudget(e.target.value)} className="input" /></Field>
           <Field label="Label (optional)"><input value={label} onChange={(e) => setLabel(e.target.value)} className="input" /></Field>
           <button onClick={queueRun} className="mt-2 w-full rounded bg-accent py-1.5 text-white hover:opacity-90">Queue backtest</button>
+          {queueError && <ErrorBox message={queueError} compact />}
+          {queueMsg && <div className="rounded border border-good/50 bg-good/10 p-2 text-[11px] text-good">{queueMsg}</div>}
           <p className="text-[10px] text-muted">Polled every 10 minutes by .github/workflows/backtest.yml - no Vercel function.</p>
         </div>
 
         <div>
           <h2 className="mb-2 text-sm font-semibold text-muted">Saved runs</h2>
+          <DataState
+            loading={runsQ.loading}
+            error={runsQ.error}
+            isEmpty={runs.length === 0}
+            emptyTitle="No backtest runs yet"
+            emptyBody={<>Queue one on the left. The UI only writes a row to <code>backtest_runs</code> with <code>status = &apos;queued&apos;</code>; GitHub Actions → <b>Backtest</b> polls every 10 minutes and runs it. Nothing computes in the browser.</>}
+            onRetry={runsQ.refresh}
+            compact
+          >
           <div className="max-h-56 overflow-y-auto rounded border border-border">
             <table className="w-full text-sm">
               <thead className="bg-panel2 text-muted"><tr><th className="p-2 text-left">Run</th><th className="p-2 text-left">Status</th><th className="p-2 text-left">Created</th><th className="p-2" /></tr></thead>
@@ -104,22 +136,69 @@ export default function BacktestPage() {
                     </td>
                   </tr>
                 ))}
-                {runs.length === 0 && <tr><td colSpan={4} className="p-4 text-center text-muted">No runs queued yet.</td></tr>}
               </tbody>
             </table>
           </div>
+          </DataState>
         </div>
       </div>
 
-      {selectedRun && <RunDashboard results={results} compareResults={compareRun ? compareResults : undefined} />}
+      {selectedRun && resultsLoading && <Loading label="loading results…" />}
+      {selectedRun && resultsError && <ErrorBox message={resultsError} />}
+      {selectedRun && !resultsLoading && !resultsError && (
+        <RunDashboard
+          results={results}
+          compareResults={compareRun ? compareResults : undefined}
+          status={runs.find((r) => r.run_id === selectedRun)?.status}
+          error={runs.find((r) => r.run_id === selectedRun)?.error ?? null}
+        />
+      )}
     </div>
   );
 }
 
-function RunDashboard({ results, compareResults }: { results: Record<string, any>; compareResults?: Record<string, any> }) {
+function RunDashboard({
+  results, compareResults, status, error,
+}: {
+  results: Record<string, any>;
+  compareResults?: Record<string, any>;
+  status?: string;
+  error?: string | null;
+}) {
   const headline = results.headline;
   const compareHeadline = compareResults?.headline;
-  if (!headline) return <div className="text-muted text-sm">No results yet for this run - it may still be queued/running.</div>;
+  if (!headline) {
+    return (
+      <div className="rounded border border-dashed border-border p-6 text-center text-sm">
+        {status === "failed" ? (
+          <>
+            <div className="font-semibold text-bad">This run failed.</div>
+            {error && <pre className="mx-auto mt-1 max-w-2xl whitespace-pre-wrap break-words text-left font-mono text-xs text-bad">{error}</pre>}
+          </>
+        ) : status === "queued" ? (
+          <>
+            <div className="font-semibold">Queued — not picked up yet.</div>
+            <div className="mt-1 text-xs text-muted">
+              GitHub Actions → <b>Backtest</b> polls every 10 minutes. Trigger it manually to run now.
+            </div>
+          </>
+        ) : status === "running" ? (
+          <>
+            <div className="font-semibold">Running.</div>
+            <div className="mt-1 text-xs text-muted">Results appear here as each scope is written.</div>
+          </>
+        ) : (
+          <>
+            <div className="font-semibold">No results for this run.</div>
+            <div className="mt-1 text-xs text-muted">
+              It completed but wrote no <code>backtest_results</code> rows — usually because the date
+              range contained no book snapshots to trade against.
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import ConfigBanner from "@/components/ConfigBanner";
 import GlobalBar from "@/components/GlobalBar";
 import NavTabs from "@/components/NavTabs";
 import SignalsPanel from "@/components/SignalsPanel";
@@ -13,6 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="dark">
       <body className="bg-base text-text font-sans min-h-screen">
+        <ConfigBanner />
         <GlobalBar />
         <NavTabs />
         <div className="flex">

@@ -2,11 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useQuery } from "@/lib/useQuery";
+import { DataState, InlineError } from "@/components/DataState";
+import { fmtCompactUsd } from "@/lib/format";
 import { regionFromLonLat, utcOffsetHours, type Region } from "@/lib/region";
 import type { City } from "@/lib/types";
 
 interface ClusterCity extends City {
   volume24h: number;
+  nTrades24h: number;
   netEdge: number | null;
   peakWindowState: string | null;
   peakHourLocal: number | null;
@@ -16,7 +20,6 @@ interface ClusterCity extends City {
 const REGIONS: Region[] = ["Americas", "Europe/Africa", "West Asia", "East Asia", "Oceania"];
 
 export default function ClustersPage() {
-  const [cities, setCities] = useState<ClusterCity[]>([]);
   const [now, setNow] = useState(new Date());
   const [regionFilter, setRegionFilter] = useState<Region | "ALL">("ALL");
 
@@ -25,48 +28,48 @@ export default function ClustersPage() {
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => {
-    async function load() {
-      const { data: cityRows } = await supabase.from("cities").select("*").eq("status", "active");
-      const base = (cityRows as City[]) ?? [];
+  const cityQ = useQuery<City[]>(() => supabase.from("cities").select("*").eq("status", "active"), [], 60000);
+  // 24h rolling traded volume, not the calendar-day total: a city that was
+  // busy overnight is liquid now, and `trade_date` would hide that.
+  const volQ = useQuery<Array<{ city_key: string; volume_usd: number; n_trades: number }>>(
+    () => supabase.from("v_city_volume").select("city_key,volume_usd,n_trades"), [], 60000
+  );
+  const edgeQ = useQuery<Array<{ city_key: string; edge_net_pp: number }>>(
+    () => supabase.from("v_opportunities").select("city_key,edge_net_pp").eq("tradeable", true), [], 60000
+  );
+  const liveQ = useQuery<Array<{ city_key: string; peak_window_state: string | null }>>(
+    () => supabase.from("live_weather").select("city_key,peak_window_state"), [], 60000
+  );
+  const peakQ = useQuery<Array<Record<string, unknown>>>(
+    () => supabase.from("derived_weather_peak").select("*").eq("month", new Date().getMonth() + 1), []
+  );
 
-      const today = new Date().toISOString().slice(0, 10);
-      const { data: volRows } = await supabase.from("derived_city_day_volume").select("city_key,volume_usd").eq("trade_date", today);
-      const volByCity = new Map((volRows ?? []).map((r: any) => [r.city_key, r.volume_usd as number]));
-
-      const { data: edgeRows } = await supabase.from("v_opportunities").select("city_key,edge_net_pp").eq("tradeable", true);
-      const edgeByCity = new Map<string, number[]>();
-      for (const r of edgeRows ?? []) {
-        const arr = edgeByCity.get((r as any).city_key) ?? [];
-        arr.push((r as any).edge_net_pp);
-        edgeByCity.set((r as any).city_key, arr);
-      }
-
-      const { data: liveRows } = await supabase.from("live_weather").select("city_key,peak_window_state");
-      const liveByCity = new Map((liveRows ?? []).map((r: any) => [r.city_key, r.peak_window_state]));
-
-      const month = new Date().getMonth() + 1;
-      const { data: peakRows } = await supabase.from("derived_weather_peak").select("*").eq("month", month);
-      const peakByCity = new Map((peakRows ?? []).map((r: any) => [r.city_key, r]));
-
-      const merged: ClusterCity[] = base.map((c) => {
-        const edges = edgeByCity.get(c.city_key) ?? [];
-        const peak = peakByCity.get(c.city_key);
-        return {
-          ...c,
-          volume24h: volByCity.get(c.city_key) ?? 0,
-          netEdge: edges.length ? edges.reduce((s, v) => s + v, 0) / edges.length : null,
-          peakWindowState: liveByCity.get(c.city_key) ?? null,
-          peakHourLocal: peak?.peak_hour_local ?? peak?.peak_hour ?? null,
-          windowWidthH: peak?.window_width_h ?? null,
-        };
-      });
-      setCities(merged);
+  const cities: ClusterCity[] = useMemo(() => {
+    const base = cityQ.data ?? [];
+    const volByCity = new Map((volQ.data ?? []).map((r) => [r.city_key, r]));
+    const edgeByCity = new Map<string, number[]>();
+    for (const r of edgeQ.data ?? []) {
+      const arr = edgeByCity.get(r.city_key) ?? [];
+      arr.push(r.edge_net_pp);
+      edgeByCity.set(r.city_key, arr);
     }
-    load();
-    const t = setInterval(load, 60000);
-    return () => clearInterval(t);
-  }, []);
+    const liveByCity = new Map((liveQ.data ?? []).map((r) => [r.city_key, r.peak_window_state]));
+    const peakByCity = new Map((peakQ.data ?? []).map((r) => [r.city_key as string, r]));
+    return base.map((c) => {
+      const edges = edgeByCity.get(c.city_key) ?? [];
+      const peak = peakByCity.get(c.city_key) as any;
+      const vol = volByCity.get(c.city_key);
+      return {
+        ...c,
+        volume24h: vol?.volume_usd ?? 0,
+        nTrades24h: vol?.n_trades ?? 0,
+        netEdge: edges.length ? edges.reduce((s, v) => s + v, 0) / edges.length : null,
+        peakWindowState: liveByCity.get(c.city_key) ?? null,
+        peakHourLocal: peak?.peak_hour_local ?? peak?.peak_hour ?? null,
+        windowWidthH: peak?.window_width_h ?? null,
+      };
+    });
+  }, [cityQ.data, volQ.data, edgeQ.data, liveQ.data, peakQ.data]);
 
   const filtered = useMemo(
     () => cities.filter((c) => regionFilter === "ALL" || regionFromLonLat(c.longitude, c.latitude) === regionFilter),
@@ -78,16 +81,33 @@ export default function ClustersPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-lg font-semibold">City Clusters</h1>
-      <p className="text-xs text-muted">
-        Node size = 24h volume, colour = current net edge, pulse = peak window currently open.
-        Region is derived from longitude (no explicit region column in the schema) - see lib/region.ts.
+      <p className="max-w-3xl text-xs leading-relaxed text-muted">
+        Node size = 24h traded volume, colour = current net edge, pulse = peak window currently open.
+        Volume is the rolling 24h figure from <code>trades_observed</code> (via{" "}
+        <code>v_city_volume</code>), so a city that traded heavily overnight still reads as liquid.
+        Region is derived from longitude — there is no region column in the schema; see{" "}
+        <code>lib/region.ts</code>.
       </p>
+      <InlineError message={volQ.error ?? edgeQ.error ?? liveQ.error ?? peakQ.error} />
 
       <div className="flex flex-wrap gap-2 text-xs">
         <FilterChip active={regionFilter === "ALL"} onClick={() => setRegionFilter("ALL")} label="All regions" />
         {REGIONS.map((r) => <FilterChip key={r} active={regionFilter === r} onClick={() => setRegionFilter(r)} label={r} />)}
       </div>
 
+      <DataState
+        loading={cityQ.loading}
+        error={cityQ.error}
+        isEmpty={cities.length === 0}
+        emptyTitle="No active cities"
+        emptyBody={
+          <>
+            <code>cities</code> has no rows with <code>status = &apos;active&apos;</code>. The city
+            universe is Phase 0 data — load it before anything else here will render.
+          </>
+        }
+        onRetry={cityQ.refresh}
+      >
       <div className="rounded border border-border bg-panel p-2">
         <svg viewBox="0 0 360 180" className="w-full" style={{ maxHeight: 420 }}>
           <rect x={0} y={0} width={360} height={180} fill="#0e1219" />
@@ -104,7 +124,7 @@ export default function ClustersPage() {
               <g key={c.city_key}>
                 {pulsing && <circle cx={x} cy={y} r={r + 3} fill="none" stroke={color} strokeWidth={0.5} opacity={0.6} className="peak-pulse" />}
                 <circle cx={x} cy={y} r={r} fill={color} opacity={0.85} />
-                <title>{c.display_name ?? c.city_key} · vol {Math.round(c.volume24h)} · edge {c.netEdge?.toFixed(3) ?? "—"}</title>
+                <title>{`${c.display_name ?? c.city_key} · 24h vol ${fmtCompactUsd(c.volume24h)} (${c.nTrades24h} trades) · avg net edge ${c.netEdge?.toFixed(3) ?? "—"}`}</title>
               </g>
             );
           })}
@@ -152,6 +172,37 @@ export default function ClustersPage() {
           </div>
         </div>
       </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold text-muted">Traded volume by city (24h)</h2>
+        {cities.some((c) => c.volume24h > 0) ? (
+          <div className="space-y-1 rounded border border-border bg-panel p-3">
+            {[...cities]
+              .sort((a, b) => b.volume24h - a.volume24h)
+              .slice(0, 20)
+              .map((c) => (
+                <div key={c.city_key} className="flex items-center gap-2 text-[11px]">
+                  <span className="w-28 shrink-0 truncate text-muted">{c.display_name ?? c.city_key}</span>
+                  <div className="h-2 flex-1 rounded bg-panel2">
+                    <div
+                      className="h-2 rounded bg-accent/70"
+                      style={{ width: `${Math.max(1, (c.volume24h / maxVolume) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="w-16 shrink-0 text-right font-mono">{fmtCompactUsd(c.volume24h)}</span>
+                  <span className="w-14 shrink-0 text-right font-mono text-muted">{c.nTrades24h} tr</span>
+                </div>
+              ))}
+          </div>
+        ) : (
+          <div className="rounded border border-dashed border-border p-4 text-center text-xs text-muted">
+            No traded volume in the last 24h. <code>trades_observed</code> is empty or the trade
+            ingest has not run — this is where thin-market warnings across the rest of the platform
+            come from, so it is worth populating.
+          </div>
+        )}
+      </section>
+      </DataState>
     </div>
   );
 }
