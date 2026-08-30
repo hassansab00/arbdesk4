@@ -170,23 +170,43 @@ on conflict (key) do update set value = excluded.value;
 
 -- --------------------------------------------------------------------------
 -- VIEWS for the API layer
+--
+-- Dropped-then-created rather than `create or replace`: Postgres refuses
+-- `create or replace view` if the replacement would drop or reorder a
+-- column the current view has (e.g. after sql/ad4_phase2_ranking.sql has
+-- already added `score` to v_opportunities, re-running this file's
+-- narrower definition would error "cannot drop columns from view").
+-- `drop view if exists ... cascade` makes re-running this file safe
+-- regardless of what later files have already layered on top - nothing
+-- else in this schema is built on top of these views, so cascade has
+-- nothing to actually cascade to in practice.
+--
+-- OPERATIONAL NOTE: dropping and recreating a view also drops any grants
+-- on it. If you ever re-run this file (or ad4_phase2_ranking.sql) after
+-- ad4_rls.sql has already run, re-run ad4_rls.sql again afterward too -
+-- it's idempotent - so `anon` regains SELECT on the recreated views.
 -- --------------------------------------------------------------------------
-create or replace view v_latest_book as
+drop view if exists v_opportunities cascade;
+drop view if exists v_latest_edge cascade;
+drop view if exists v_latest_prob cascade;
+drop view if exists v_latest_book cascade;
+
+create view v_latest_book as
 select distinct on (bs.band_id) bs.*
 from book_snapshots bs
 order by bs.band_id, bs.observed_at desc;
 
-create or replace view v_latest_prob as
+create view v_latest_prob as
 select distinct on (bp.band_id) bp.*
 from band_probabilities bp
 order by bp.band_id, bp.computed_at desc;
 
-create or replace view v_latest_edge as
+create view v_latest_edge as
 select distinct on (e.band_id, e.side) e.*
 from edges e
 order by e.band_id, e.side, e.computed_at desc;
 
-create or replace view v_opportunities as
+create view v_opportunities as
 select
   e.edge_id, e.side, e.model_prob, e.market_price, e.edge_net_pp,
   e.edge_per_dollar, e.fillable_usd_5c, e.confidence, e.regime_label,

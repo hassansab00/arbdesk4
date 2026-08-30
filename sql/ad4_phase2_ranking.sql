@@ -8,7 +8,13 @@
 -- NOT by raw edge.
 -- ===========================================================================
 
-create or replace view v_opportunities as
+-- drop-then-create, not `create or replace`: safe to re-run regardless of
+-- which version of this view (ad4_phase2.sql's narrower one, or this
+-- file's own previous run) is currently in place - see the comment above
+-- ad4_phase2.sql's view section for why `create or replace` can fail here.
+drop view if exists v_opportunities cascade;
+
+create view v_opportunities as
 select
   e.edge_id, e.side, e.model_prob, e.market_price, e.edge_net_pp,
   e.edge_per_dollar, e.fillable_usd_5c, e.confidence, e.regime_label,
