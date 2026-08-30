@@ -1,3 +1,84 @@
+-- ---------------------------------------------------------------------------
+-- SELF-SUFFICIENCY GUARD (added by the final completion pass).
+--
+-- This file no longer assumes any prior schema state. Everything it reads
+-- or writes below is created here if absent, so it runs standalone against
+-- the live Supabase database, a fresh Postgres, or a half-migrated one.
+-- sql/ad4_00_preflight.sql does the same job for the whole system at once
+-- and should still be run first - this block is the belt to its braces.
+-- Idempotent: only ever ADDS, never drops, renames or retypes.
+-- ---------------------------------------------------------------------------
+create table if not exists bands (
+  band_id    uuid primary key default gen_random_uuid(),
+  market_id  uuid,
+  band_lo    numeric,
+  band_hi    numeric,
+  open_low   boolean default false,
+  open_high  boolean default false,
+  band_label text,
+  token_yes  text,
+  token_no   text
+);
+create table if not exists paper_trades (
+  trade_id  bigserial primary key,
+  opened_at timestamptz default now()
+);
+create table if not exists signals (
+  signal_id bigserial primary key,
+  fired_at  timestamptz default now()
+);
+create table if not exists ledger (
+  ledger_id   bigserial primary key,
+  recorded_at timestamptz default now()
+);
+create table if not exists settings (
+  key        text primary key,
+  value      jsonb,
+  updated_at timestamptz default now()
+);
+
+do $$
+declare r record;
+begin
+  for r in select * from (values
+      ('bands','band_id'),
+      ('settings','key')
+  ) as t(tbl, col) loop
+    if to_regclass('public.' || quote_ident(r.tbl)) is null then continue; end if;
+    if exists (select 1 from pg_index i
+               join pg_class c on c.oid = i.indrelid
+               join pg_namespace n on n.oid = c.relnamespace
+               join pg_attribute a on a.attrelid = c.oid and a.attnum = i.indkey[0]
+               where n.nspname='public' and c.relname=r.tbl
+                 and i.indisunique and i.indnatts = 1 and a.attname = r.col) then
+      continue;
+    end if;
+    begin
+      execute format('create unique index if not exists %I on public.%I (%I)',
+                     'ad4_uq_' || r.tbl || '_' || r.col, r.tbl, r.col);
+    exception when others then
+      raise notice 'guard: could not make %.% unique: %', r.tbl, r.col, sqlerrm;
+    end;
+  end loop;
+end $$;
+
+do $$
+declare r record;
+begin
+  for r in
+    select * from (values
+      ('settings','value','jsonb')
+    ) as t(tbl, col, def)
+  loop
+    if to_regclass('public.' || quote_ident(r.tbl)) is null then continue; end if;
+    if not exists (select 1 from information_schema.columns
+                   where table_schema='public' and table_name=r.tbl and column_name=r.col) then
+      execute format('alter table public.%I add column %I %s', r.tbl, r.col, r.def);
+      raise notice 'guard: added %.%', r.tbl, r.col;
+    end if;
+  end loop;
+end $$;
+
 -- ===========================================================================
 -- Tasks 9-11 - columns paper_engine.py / signals.py / settlement.py write,
 -- beyond what Task 2's ad4_phase2.sql already added to paper_trades.

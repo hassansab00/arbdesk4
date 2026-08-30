@@ -1,3 +1,117 @@
+-- ---------------------------------------------------------------------------
+-- SELF-SUFFICIENCY GUARD (added by the final completion pass).
+--
+-- This file no longer assumes any prior schema state. Everything it reads
+-- or writes below is created here if absent, so it runs standalone against
+-- the live Supabase database, a fresh Postgres, or a half-migrated one.
+-- sql/ad4_00_preflight.sql does the same job for the whole system at once
+-- and should still be run first - this block is the belt to its braces.
+-- Idempotent: only ever ADDS, never drops, renames or retypes.
+-- ---------------------------------------------------------------------------
+create table if not exists cities (
+  city_key          text primary key,
+  display_name      text,
+  icao              text,
+  station_name      text,
+  timezone          text,
+  unit              text default 'C',
+  band_width        numeric,
+  latitude          numeric,
+  longitude         numeric,
+  resolution_source text,
+  status            text default 'active'
+);
+create table if not exists markets (
+  market_id       uuid primary key default gen_random_uuid(),
+  city_key        text,
+  resolution_date date,
+  unit            text,
+  closed          boolean default false,
+  event_slug      text,
+  condition_id    text
+);
+create table if not exists bands (
+  band_id    uuid primary key default gen_random_uuid(),
+  market_id  uuid,
+  band_lo    numeric,
+  band_hi    numeric,
+  open_low   boolean default false,
+  open_high  boolean default false,
+  band_label text,
+  token_yes  text,
+  token_no   text
+);
+create table if not exists book_snapshots (
+  snapshot_id  bigserial primary key,
+  band_id      uuid,
+  observed_at  timestamptz default now(),
+  best_bid     numeric,
+  best_ask     numeric,
+  spread       numeric,
+  market_state text,
+  bid_levels   jsonb,
+  ask_levels   jsonb
+);
+create table if not exists weather_observations (
+  obs_id       bigserial primary key,
+  city_key     text,
+  station      text,
+  valid_at     timestamptz,
+  temp_c       numeric,
+  temp_f       numeric,
+  dewpoint_c   numeric,
+  humidity     numeric,
+  wind_speed   numeric,
+  wind_dir_deg numeric,
+  precip       numeric,
+  cloud_cover  text,
+  source       text
+);
+create table if not exists weather_forecasts (
+  forecast_id    bigserial primary key,
+  city_key       text,
+  model          text,
+  run_at         timestamptz,
+  for_date       date,
+  lead_days      int,
+  forecast_max_c numeric,
+  variables      jsonb,
+  source         text
+);
+
+do $$
+declare r record;
+begin
+--    columns recompute_capacity() and recompute_correlation() read at run time
+  for r in
+    select * from (values
+      ('book_snapshots','band_id','uuid'),
+      ('book_snapshots','observed_at','timestamptz default now()'),
+      ('book_snapshots','best_bid','numeric'),
+      ('book_snapshots','best_ask','numeric'),
+      ('book_snapshots','market_state','text'),
+      ('book_snapshots','bid_levels','jsonb'),
+      ('book_snapshots','ask_levels','jsonb'),
+      ('bands','market_id','uuid'),
+      ('markets','city_key','text'),
+      ('weather_observations','city_key','text'),
+      ('weather_observations','valid_at','timestamptz'),
+      ('weather_observations','temp_c','numeric'),
+      ('weather_forecasts','city_key','text'),
+      ('weather_forecasts','for_date','date'),
+      ('weather_forecasts','lead_days','int'),
+      ('weather_forecasts','forecast_max_c','numeric')
+    ) as t(tbl, col, def)
+  loop
+    if to_regclass('public.' || quote_ident(r.tbl)) is null then continue; end if;
+    if not exists (select 1 from information_schema.columns
+                   where table_schema='public' and table_name=r.tbl and column_name=r.col) then
+      execute format('alter table public.%I add column %I %s', r.tbl, r.col, r.def);
+      raise notice 'guard: added %.%', r.tbl, r.col;
+    end if;
+  end loop;
+end $$;
+
 -- ===========================================================================
 -- Task 7 - capacity and correlation, as Postgres RPCs.
 -- Run after sql/ad4_phase2.sql.

@@ -1,3 +1,86 @@
+-- ---------------------------------------------------------------------------
+-- SELF-SUFFICIENCY GUARD (added by the final completion pass).
+--
+-- This file no longer assumes any prior schema state. Everything it reads
+-- or writes below is created here if absent, so it runs standalone against
+-- the live Supabase database, a fresh Postgres, or a half-migrated one.
+-- sql/ad4_00_preflight.sql does the same job for the whole system at once
+-- and should still be run first - this block is the belt to its braces.
+-- Idempotent: only ever ADDS, never drops, renames or retypes.
+-- ---------------------------------------------------------------------------
+create table if not exists cities (
+  city_key          text primary key,
+  display_name      text,
+  icao              text,
+  station_name      text,
+  timezone          text,
+  unit              text default 'C',
+  band_width        numeric,
+  latitude          numeric,
+  longitude         numeric,
+  resolution_source text,
+  status            text default 'active'
+);
+create table if not exists weather_observations (
+  obs_id       bigserial primary key,
+  city_key     text,
+  station      text,
+  valid_at     timestamptz,
+  temp_c       numeric,
+  temp_f       numeric,
+  dewpoint_c   numeric,
+  humidity     numeric,
+  wind_speed   numeric,
+  wind_dir_deg numeric,
+  precip       numeric,
+  cloud_cover  text,
+  source       text
+);
+
+do $$
+declare r record;
+begin
+  for r in select * from (values
+      ('cities','city_key')
+  ) as t(tbl, col) loop
+    if to_regclass('public.' || quote_ident(r.tbl)) is null then continue; end if;
+    if exists (select 1 from pg_index i
+               join pg_class c on c.oid = i.indrelid
+               join pg_namespace n on n.oid = c.relnamespace
+               join pg_attribute a on a.attrelid = c.oid and a.attnum = i.indkey[0]
+               where n.nspname='public' and c.relname=r.tbl
+                 and i.indisunique and i.indnatts = 1 and a.attname = r.col) then
+      continue;
+    end if;
+    begin
+      execute format('create unique index if not exists %I on public.%I (%I)',
+                     'ad4_uq_' || r.tbl || '_' || r.col, r.tbl, r.col);
+    exception when others then
+      raise notice 'guard: could not make %.% unique: %', r.tbl, r.col, sqlerrm;
+    end;
+  end loop;
+end $$;
+
+do $$
+declare r record;
+begin
+  for r in
+    select * from (values
+      ('weather_observations','city_key','text'),
+      ('weather_observations','valid_at','timestamptz'),
+      ('weather_observations','temp_c','numeric'),
+      ('weather_observations','source','text')
+    ) as t(tbl, col, def)
+  loop
+    if to_regclass('public.' || quote_ident(r.tbl)) is null then continue; end if;
+    if not exists (select 1 from information_schema.columns
+                   where table_schema='public' and table_name=r.tbl and column_name=r.col) then
+      execute format('alter table public.%I add column %I %s', r.tbl, r.col, r.def);
+      raise notice 'guard: added %.%', r.tbl, r.col;
+    end if;
+  end loop;
+end $$;
+
 -- ===========================================================================
 -- Task 13c - live weather schema (Revision A §8.2).
 -- Run after ad4_phase2.sql.
@@ -91,11 +174,17 @@ create policy anon_read on weather_events for select to anon using (true);
 -- "already a member of publication").
 -- --------------------------------------------------------------------------
 do $$ begin
-  if not exists (
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    raise notice 'realtime: publication supabase_realtime does not exist - weather_events not added (normal outside Supabase)';
+  elsif not exists (
     select 1 from pg_publication_tables
     where pubname = 'supabase_realtime' and tablename = 'weather_events'
   ) then
-    alter publication supabase_realtime add table weather_events;
+    begin
+      alter publication supabase_realtime add table weather_events;
+    exception when others then
+      raise notice 'realtime: could not add weather_events to supabase_realtime: %', sqlerrm;
+    end;
   end if;
 end $$;
 

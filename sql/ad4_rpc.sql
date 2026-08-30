@@ -1,3 +1,208 @@
+-- ---------------------------------------------------------------------------
+-- SELF-SUFFICIENCY GUARD (added by the final completion pass).
+--
+-- This file no longer assumes any prior schema state. Everything it reads
+-- or writes below is created here if absent, so it runs standalone against
+-- the live Supabase database, a fresh Postgres, or a half-migrated one.
+-- sql/ad4_00_preflight.sql does the same job for the whole system at once
+-- and should still be run first - this block is the belt to its braces.
+-- Idempotent: only ever ADDS, never drops, renames or retypes.
+-- ---------------------------------------------------------------------------
+create table if not exists cities (
+  city_key          text primary key,
+  display_name      text,
+  icao              text,
+  station_name      text,
+  timezone          text,
+  unit              text default 'C',
+  band_width        numeric,
+  latitude          numeric,
+  longitude         numeric,
+  resolution_source text,
+  status            text default 'active'
+);
+create table if not exists markets (
+  market_id       uuid primary key default gen_random_uuid(),
+  city_key        text,
+  resolution_date date,
+  unit            text,
+  closed          boolean default false,
+  event_slug      text,
+  condition_id    text
+);
+create table if not exists bands (
+  band_id    uuid primary key default gen_random_uuid(),
+  market_id  uuid,
+  band_lo    numeric,
+  band_hi    numeric,
+  open_low   boolean default false,
+  open_high  boolean default false,
+  band_label text,
+  token_yes  text,
+  token_no   text
+);
+create table if not exists book_snapshots (
+  snapshot_id  bigserial primary key,
+  band_id      uuid,
+  observed_at  timestamptz default now(),
+  best_bid     numeric,
+  best_ask     numeric,
+  spread       numeric,
+  market_state text,
+  bid_levels   jsonb,
+  ask_levels   jsonb
+);
+create table if not exists band_probabilities (
+  prob_id             bigserial primary key,
+  band_id             uuid,
+  computed_at         timestamptz default now(),
+  calibrated_prob     numeric,
+  forecast_version    text,
+  calibration_version text
+);
+create table if not exists paper_trades (
+  trade_id  bigserial primary key,
+  opened_at timestamptz default now()
+);
+create table if not exists signals (
+  signal_id bigserial primary key,
+  fired_at  timestamptz default now()
+);
+create table if not exists ledger (
+  ledger_id   bigserial primary key,
+  recorded_at timestamptz default now()
+);
+create table if not exists settings (
+  key        text primary key,
+  value      jsonb,
+  updated_at timestamptz default now()
+);
+create table if not exists deployments (
+  deployment_id uuid primary key default gen_random_uuid(),
+  created_at    timestamptz default now()
+);
+create table if not exists trades_observed (
+  trade_id    bigserial primary key,
+  city_key    text,
+  band_id     uuid,
+  token_id    text,
+  side        text,
+  price       numeric,
+  size        numeric,
+  observed_at timestamptz
+);
+create table if not exists derived_city_day_volume (
+  city_key    text not null,
+  trade_date  date not null,
+  volume_usd  numeric,
+  n_trades    int,
+  computed_at timestamptz default now(),
+  primary key (city_key, trade_date)
+);
+create table if not exists derived_band_day_volume (
+  band_id     uuid not null,
+  city_key    text,
+  trade_date  date not null,
+  volume_usd  numeric,
+  n_trades    int,
+  computed_at timestamptz default now(),
+  primary key (band_id, trade_date)
+);
+
+do $$
+declare r record;
+begin
+  for r in select * from (values
+      ('settings','key'),
+      ('bands','band_id'),
+      ('markets','market_id')
+  ) as t(tbl, col) loop
+    if to_regclass('public.' || quote_ident(r.tbl)) is null then continue; end if;
+    if exists (select 1 from pg_index i
+               join pg_class c on c.oid = i.indrelid
+               join pg_namespace n on n.oid = c.relnamespace
+               join pg_attribute a on a.attrelid = c.oid and a.attnum = i.indkey[0]
+               where n.nspname='public' and c.relname=r.tbl
+                 and i.indisunique and i.indnatts = 1 and a.attname = r.col) then
+      continue;
+    end if;
+    begin
+      execute format('create unique index if not exists %I on public.%I (%I)',
+                     'ad4_uq_' || r.tbl || '_' || r.col, r.tbl, r.col);
+    exception when others then
+      raise notice 'guard: could not make %.% unique: %', r.tbl, r.col, sqlerrm;
+    end;
+  end loop;
+end $$;
+
+do $$
+declare r record;
+begin
+--    every column the RPCs below insert, update or select at run time
+  for r in
+    select * from (values
+      ('settings','value','jsonb'),
+      ('trades_observed','city_key','text'),
+      ('trades_observed','band_id','uuid'),
+      ('trades_observed','price','numeric'),
+      ('trades_observed','size','numeric'),
+      ('trades_observed','observed_at','timestamptz'),
+      ('derived_city_day_volume','volume_usd','numeric'),
+      ('derived_city_day_volume','n_trades','int'),
+      ('derived_city_day_volume','computed_at','timestamptz default now()'),
+      ('derived_band_day_volume','city_key','text'),
+      ('derived_band_day_volume','volume_usd','numeric'),
+      ('derived_band_day_volume','n_trades','int'),
+      ('derived_band_day_volume','computed_at','timestamptz default now()'),
+      ('paper_trades','strategy_id','text'),
+      ('paper_trades','band_id','uuid'),
+      ('paper_trades','side','text'),
+      ('paper_trades','action','text'),
+      ('paper_trades','shares','numeric'),
+      ('paper_trades','avg_fill_price','numeric'),
+      ('paper_trades','quoted_price','numeric'),
+      ('paper_trades','slippage_paid','numeric'),
+      ('paper_trades','fee_paid','numeric'),
+      ('paper_trades','gas_paid','numeric'),
+      ('paper_trades','partial_fill','boolean default false'),
+      ('paper_trades','requested_shares','numeric'),
+      ('paper_trades','legs_requested','int'),
+      ('paper_trades','legs_filled','int'),
+      ('paper_trades','fill_quality','numeric'),
+      ('paper_trades','max_slippage_setting','numeric'),
+      ('paper_trades','cost_version','text'),
+      ('paper_trades','forecast_version','text'),
+      ('paper_trades','calibration_version','text'),
+      ('paper_trades','regime_label','text'),
+      ('paper_trades','approved_by_user','boolean default true'),
+      ('paper_trades','opened_at','timestamptz'),
+      ('paper_trades','closed_at','timestamptz'),
+      ('paper_trades','exit_price','numeric'),
+      ('paper_trades','gross_pnl','numeric'),
+      ('paper_trades','net_pnl','numeric'),
+      ('signals','status','text default ''pending_approval'''),
+      ('signals','strategy_id','text'),
+      ('signals','band_id','uuid'),
+      ('ledger','stage','text'),
+      ('ledger','strategy_id','text'),
+      ('ledger','band_id','uuid'),
+      ('ledger','regime_label','text'),
+      ('ledger','forecast_version','text'),
+      ('ledger','calibration_version','text'),
+      ('ledger','cost_version','text'),
+      ('ledger','detail','jsonb'),
+      ('ledger','recorded_at','timestamptz default now()')
+    ) as t(tbl, col, def)
+  loop
+    if to_regclass('public.' || quote_ident(r.tbl)) is null then continue; end if;
+    if not exists (select 1 from information_schema.columns
+                   where table_schema='public' and table_name=r.tbl and column_name=r.col) then
+      execute format('alter table public.%I add column %I %s', r.tbl, r.col, r.def);
+      raise notice 'guard: added %.%', r.tbl, r.col;
+    end if;
+  end loop;
+end $$;
+
 -- ===========================================================================
 -- Task 13b - Supabase RPC layer.
 --
@@ -41,11 +246,17 @@ end $$;
 -- Realtime for the Task 14 signals slide-out panel (live, no polling).
 -- --------------------------------------------------------------------------
 do $$ begin
-  if not exists (
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    raise notice 'realtime: publication supabase_realtime does not exist - signals not added (normal outside Supabase)';
+  elsif not exists (
     select 1 from pg_publication_tables
     where pubname = 'supabase_realtime' and tablename = 'signals'
   ) then
-    alter publication supabase_realtime add table signals;
+    begin
+      alter publication supabase_realtime add table signals;
+    exception when others then
+      raise notice 'realtime: could not add signals to supabase_realtime: %', sqlerrm;
+    end;
   end if;
 end $$;
 
@@ -144,11 +355,19 @@ declare
   v_n_shares numeric;
   v_capacity_warning boolean := false;
   v_correlation_warning boolean := false;
+  v_volume_warning boolean := false;
+  v_thin_bands jsonb := '[]'::jsonb;
+  v_thin_band_usd numeric;
+  v_leg_volume numeric;
+  v_total_volume numeric := 0;
   v_cities text[];
   v_pair record;
   v_corr_threshold numeric;
 begin
   v_corr_threshold := coalesce(((select value from settings where key = 'correlation_warn_threshold')->>'value')::numeric, 0.6);
+  -- PROVISIONAL, UI-settable (settings.volume_thresholds). Drives a
+  -- warning label only - it never blocks or resizes a leg.
+  v_thin_band_usd := coalesce(((select value from settings where key = 'volume_thresholds')->>'thin_band_usd_24h')::numeric, 0);
 
   if v_mode = 'target_profit' then
     v_target_profit := coalesce((p_params->>'target_profit_usd')::numeric, 0);
@@ -164,7 +383,21 @@ begin
       v_p := coalesce((v_overrides->>band_id_txt)::numeric, v_band.calibrated_prob, 0);
       v_sum_ask := v_sum_ask + coalesce(v_band.best_ask, 1.0);
       v_p_covered := v_p_covered + v_p;
-      v_legs := v_legs || jsonb_build_object('band_id', band_id_txt, 'ask', v_band.best_ask, 'model_prob', v_p);
+
+      -- Traded volume for this leg. A basket priced off bands nobody
+      -- trades is a different risk from the same basket on a busy book,
+      -- and the caller must be told which one it is looking at.
+      select coalesce(volume_usd, 0) into v_leg_volume from v_band_volume where band_id = band_id_txt::uuid;
+      v_leg_volume := coalesce(v_leg_volume, 0);
+      v_total_volume := v_total_volume + v_leg_volume;
+      if v_leg_volume < v_thin_band_usd then
+        v_volume_warning := true;
+        v_thin_bands := v_thin_bands || to_jsonb(band_id_txt);
+      end if;
+
+      v_legs := v_legs || jsonb_build_object('band_id', band_id_txt, 'ask', v_band.best_ask,
+                                              'model_prob', v_p, 'volume_usd', round(v_leg_volume, 2),
+                                              'thin_market', v_leg_volume < v_thin_band_usd);
       v_n_legs := v_n_legs + 1;
     end loop;
 
@@ -177,10 +410,13 @@ begin
 
     v_n_shares := v_target_profit / (1.0 - v_sum_ask);
     return jsonb_build_object(
-      'mode', 'target_profit', 'legs', v_legs, 'n_shares', v_n_shares, 'sum_ask', v_sum_ask,
-      'total_cost', v_n_shares * v_sum_ask, 'best_case', v_n_shares * (1 - v_sum_ask),
-      'worst_case', -v_n_shares * v_sum_ask, 'p_covered', v_p_covered,
-      'insurance_cap_pass', true, 'feasible', true, 'breakeven', v_sum_ask,
+      'mode', 'target_profit', 'legs', v_legs,
+      'n_shares', round(v_n_shares, 4), 'sum_ask', round(v_sum_ask, 6),
+      'total_cost', round(v_n_shares * v_sum_ask, 2),
+      'best_case', round(v_n_shares * (1 - v_sum_ask), 2),
+      'worst_case', round(-v_n_shares * v_sum_ask, 2), 'p_covered', round(v_p_covered, 6),
+      'insurance_cap_pass', true, 'feasible', true, 'breakeven', round(v_sum_ask, 6),
+      'volume_usd', round(v_total_volume, 2), 'volume_warning', v_volume_warning, 'thin_bands', v_thin_bands,
       'gross_vs_net', jsonb_build_object('note', 'fees applied per-leg by the caller before this cap check')
     );
   end if;
@@ -212,9 +448,26 @@ begin
     v_worst_case := v_worst_case - v_fill.usd_spent;
     v_fillable_shares := v_fillable_shares + v_fill.shares;
     v_n_legs := v_n_legs + 1;
+
+    select coalesce(volume_usd, 0) into v_leg_volume from v_band_volume where band_id = band_id_txt::uuid;
+    v_leg_volume := coalesce(v_leg_volume, 0);
+    v_total_volume := v_total_volume + v_leg_volume;
+    if v_leg_volume < v_thin_band_usd then
+      v_volume_warning := true;
+      v_thin_bands := v_thin_bands || to_jsonb(band_id_txt);
+    end if;
+
+    -- Rounded on the way out. Postgres numeric division carries ~100
+    -- significant digits through the ladder walk; a UI showing
+    -- "294.1176470588235294117644444444444444444444 shares" is unreadable
+    -- and implies a precision the book does not have. Rounding happens
+    -- only here, at the JSON boundary - every intermediate above stays
+    -- full precision so the arithmetic itself is unchanged.
     v_legs := v_legs || jsonb_build_object(
-      'band_id', band_id_txt, 'shares', v_fill.shares, 'avg_fill_price', v_fill.avg_price,
-      'quoted_price', v_fill.quoted_price, 'fully_filled', v_fill.fully_filled, 'model_prob', v_p
+      'band_id', band_id_txt, 'shares', round(v_fill.shares, 4),
+      'avg_fill_price', round(v_fill.avg_price, 6),
+      'quoted_price', v_fill.quoted_price, 'fully_filled', v_fill.fully_filled, 'model_prob', v_p,
+      'volume_usd', round(v_leg_volume, 2), 'thin_market', v_leg_volume < v_thin_band_usd
     );
   end loop;
 
@@ -240,11 +493,15 @@ begin
   -- for now rather than a fabricated check. Wire it once Task 7's
   -- derived_capacity has enough real history to compare against.
   return jsonb_build_object(
-    'mode', 'budget', 'legs', v_legs, 'total_cost', v_total_cost, 'ev_net', v_ev_net,
-    'best_case', v_best_case, 'worst_case', v_worst_case, 'breakeven', v_total_cost,
-    'p_covered', v_p_covered, 'fillability_pct', case when v_amount > 0 then v_total_cost / v_amount else 0 end,
+    'mode', 'budget', 'legs', v_legs,
+    'total_cost', round(v_total_cost, 2), 'ev_net', round(v_ev_net, 2),
+    'best_case', round(v_best_case, 2), 'worst_case', round(v_worst_case, 2),
+    'breakeven', round(v_total_cost, 2),
+    'p_covered', round(v_p_covered, 6),
+    'fillability_pct', case when v_amount > 0 then round(v_total_cost / v_amount, 6) else 0 end,
     'insurance_cap_pass', null, 'capacity_warning', v_capacity_warning,
     'correlation_warning', v_correlation_warning,
+    'volume_usd', round(v_total_volume, 2), 'volume_warning', v_volume_warning, 'thin_bands', v_thin_bands,
     'gross_vs_net', jsonb_build_object('note', 'ev_net already nets executable price vs model_prob; fee/slippage shown separately by the UI from each leg''s own edges row')
   );
 end;
@@ -421,22 +678,47 @@ end;
 $$;
 
 -- --------------------------------------------------------------------------
--- refresh_derived - market peak + city-day volume from trades_observed.
--- Genuine SQL aggregation, not a stub.
+-- refresh_derived - traded volume from trades_observed, at BOTH grains.
+--
+-- Market volume is a first-class input across AD4 (opportunity ranking,
+-- tradeability, calculator, goals), and a city-day total is too coarse to
+-- carry it: a city can be busy all day while the one band you actually
+-- want has never printed. So this recomputes city-day AND band-day volume.
+-- Genuine SQL aggregation, not a stub. Upserts rather than skipping on
+-- conflict, so re-running mid-day refreshes the running total instead of
+-- freezing the first value of the day.
 -- --------------------------------------------------------------------------
 create or replace function refresh_derived() returns jsonb
 language plpgsql security definer as $$
 declare
-  v_volume_rows int;
+  v_city_rows int;
+  v_band_rows int;
 begin
-  insert into derived_city_day_volume (city_key, trade_date, volume_usd, computed_at)
-  select city_key, observed_at::date, sum(price * size), now()
+  insert into derived_city_day_volume (city_key, trade_date, volume_usd, n_trades, computed_at)
+  select city_key, observed_at::date, sum(price * size), count(*), now()
   from trades_observed
+  where city_key is not null and observed_at is not null
   group by city_key, observed_at::date
-  on conflict do nothing;
-  get diagnostics v_volume_rows = row_count;
+  on conflict (city_key, trade_date) do update
+    set volume_usd = excluded.volume_usd,
+        n_trades   = excluded.n_trades,
+        computed_at = excluded.computed_at;
+  get diagnostics v_city_rows = row_count;
 
-  return jsonb_build_object('city_day_volume_rows', v_volume_rows);
+  insert into derived_band_day_volume (band_id, city_key, trade_date, volume_usd, n_trades, computed_at)
+  select t.band_id, max(t.city_key), t.observed_at::date, sum(t.price * t.size), count(*), now()
+  from trades_observed t
+  where t.band_id is not null and t.observed_at is not null
+  group by t.band_id, t.observed_at::date
+  on conflict (band_id, trade_date) do update
+    set city_key   = excluded.city_key,
+        volume_usd = excluded.volume_usd,
+        n_trades   = excluded.n_trades,
+        computed_at = excluded.computed_at;
+  get diagnostics v_band_rows = row_count;
+
+  return jsonb_build_object('city_day_volume_rows', v_city_rows,
+                             'band_day_volume_rows', v_band_rows);
 end;
 $$;
 

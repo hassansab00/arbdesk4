@@ -1,3 +1,118 @@
+-- ---------------------------------------------------------------------------
+-- SELF-SUFFICIENCY GUARD (added by the final completion pass).
+--
+-- This file no longer assumes any prior schema state. Everything it reads
+-- or writes below is created here if absent, so it runs standalone against
+-- the live Supabase database, a fresh Postgres, or a half-migrated one.
+-- sql/ad4_00_preflight.sql does the same job for the whole system at once
+-- and should still be run first - this block is the belt to its braces.
+-- Idempotent: only ever ADDS, never drops, renames or retypes.
+-- ---------------------------------------------------------------------------
+create table if not exists markets (
+  market_id       uuid primary key default gen_random_uuid(),
+  city_key        text,
+  resolution_date date,
+  unit            text,
+  closed          boolean default false,
+  event_slug      text,
+  condition_id    text
+);
+create table if not exists bands (
+  band_id    uuid primary key default gen_random_uuid(),
+  market_id  uuid,
+  band_lo    numeric,
+  band_hi    numeric,
+  open_low   boolean default false,
+  open_high  boolean default false,
+  band_label text,
+  token_yes  text,
+  token_no   text
+);
+create table if not exists paper_trades (
+  trade_id  bigserial primary key,
+  opened_at timestamptz default now()
+);
+create table if not exists ledger (
+  ledger_id   bigserial primary key,
+  recorded_at timestamptz default now()
+);
+create table if not exists settings (
+  key        text primary key,
+  value      jsonb,
+  updated_at timestamptz default now()
+);
+
+do $$
+declare r record;
+begin
+  for r in select * from (values
+      ('bands','band_id'),
+      ('markets','market_id'),
+      ('settings','key')
+  ) as t(tbl, col) loop
+    if to_regclass('public.' || quote_ident(r.tbl)) is null then continue; end if;
+    if exists (select 1 from pg_index i
+               join pg_class c on c.oid = i.indrelid
+               join pg_namespace n on n.oid = c.relnamespace
+               join pg_attribute a on a.attrelid = c.oid and a.attnum = i.indkey[0]
+               where n.nspname='public' and c.relname=r.tbl
+                 and i.indisunique and i.indnatts = 1 and a.attname = r.col) then
+      continue;
+    end if;
+    begin
+      execute format('create unique index if not exists %I on public.%I (%I)',
+                     'ad4_uq_' || r.tbl || '_' || r.col, r.tbl, r.col);
+    exception when others then
+      raise notice 'guard: could not make %.% unique: %', r.tbl, r.col, sqlerrm;
+    end;
+  end loop;
+end $$;
+
+do $$
+declare r record;
+begin
+--    every column settle_markets() touches at run time
+  for r in
+    select * from (values
+      ('markets','closed','boolean default false'),
+      ('bands','market_id','uuid'),
+      ('settings','value','jsonb'),
+      ('paper_trades','band_id','uuid'),
+      ('paper_trades','side','text'),
+      ('paper_trades','shares','numeric'),
+      ('paper_trades','avg_fill_price','numeric'),
+      ('paper_trades','fee_paid','numeric'),
+      ('paper_trades','gas_paid','numeric'),
+      ('paper_trades','strategy_id','text'),
+      ('paper_trades','opened_at','timestamptz'),
+      ('paper_trades','closed_at','timestamptz'),
+      ('paper_trades','exit_price','numeric'),
+      ('paper_trades','gross_pnl','numeric'),
+      ('paper_trades','net_pnl','numeric'),
+      ('paper_trades','regime_label','text'),
+      ('paper_trades','forecast_version','text'),
+      ('paper_trades','calibration_version','text'),
+      ('paper_trades','cost_version','text'),
+      ('ledger','stage','text'),
+      ('ledger','strategy_id','text'),
+      ('ledger','band_id','uuid'),
+      ('ledger','regime_label','text'),
+      ('ledger','forecast_version','text'),
+      ('ledger','calibration_version','text'),
+      ('ledger','cost_version','text'),
+      ('ledger','detail','jsonb'),
+      ('ledger','recorded_at','timestamptz default now()')
+    ) as t(tbl, col, def)
+  loop
+    if to_regclass('public.' || quote_ident(r.tbl)) is null then continue; end if;
+    if not exists (select 1 from information_schema.columns
+                   where table_schema='public' and table_name=r.tbl and column_name=r.col) then
+      execute format('alter table public.%I add column %I %s', r.tbl, r.col, r.def);
+      raise notice 'guard: added %.%', r.tbl, r.col;
+    end if;
+  end loop;
+end $$;
+
 -- ===========================================================================
 -- Task 11 - settlement RPC + supporting columns.
 -- scripts/settlement.py does the external fetch-and-verify (Postgres can't

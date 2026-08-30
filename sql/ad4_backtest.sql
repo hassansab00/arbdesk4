@@ -1,3 +1,24 @@
+-- ---------------------------------------------------------------------------
+-- SELF-SUFFICIENCY GUARD (added by the final completion pass).
+--
+-- This file no longer assumes any prior schema state. Everything it reads
+-- or writes below is created here if absent, so it runs standalone against
+-- the live Supabase database, a fresh Postgres, or a half-migrated one.
+-- sql/ad4_00_preflight.sql does the same job for the whole system at once
+-- and should still be run first - this block is the belt to its braces.
+-- Idempotent: only ever ADDS, never drops, renames or retypes.
+-- ---------------------------------------------------------------------------
+create table if not exists backtest_runs (
+  run_id     uuid primary key default gen_random_uuid(),
+  created_at timestamptz default now()
+);
+create table if not exists backtest_results (
+  result_id bigserial primary key
+);
+create table if not exists backtest_trades (
+  bt_trade_id bigserial primary key
+);
+
 -- ===========================================================================
 -- Task 12 - backtest job queue RPC + supporting columns.
 --
