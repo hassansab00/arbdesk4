@@ -50,8 +50,24 @@ export function ErrorBox({
   onRetry?: () => void;
   compact?: boolean;
 }) {
+  const secretKey = /secret api key|SECRET Supabase key/i.test(message);
   const configIssue = /supabase is not configured/i.test(message);
   const missingRelation = /does not exist|schema cache|PGRST\d+/i.test(message);
+
+  // The secret-key case is page-wide: ConfigBanner already states it in full
+  // at the top. Repeating the whole remediation in every failed query - and
+  // there are a dozen per page - buries the one instruction that matters.
+  if (secretKey) {
+    return (
+      <div className={`rounded border border-bad/60 bg-bad/10 ${compact ? "p-2" : "p-3"}`}>
+        <div className="text-sm font-semibold text-bad">Blocked: secret key in the browser</div>
+        <p className="mt-0.5 text-xs text-bad">
+          No request was sent. See the banner at the top of the page — the key must be rotated.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className={`rounded border border-bad/60 bg-bad/10 ${compact ? "p-2" : "p-4"}`}>
       <div className="text-sm font-semibold text-bad">Query failed</div>
@@ -105,7 +121,12 @@ export function EmptyBox({
 /** Inline banner for a secondary query that failed inside an otherwise-fine page. */
 export function InlineError({ message }: { message: string | null }) {
   if (!message) return null;
+  // Same reasoning as ErrorBox: the secret-key case is stated once, at the
+  // top of the page, not repeated in every corner of it.
+  const short = /secret api key|SECRET Supabase key/i.test(message)
+    ? "Blocked: secret key in the browser - see the banner at the top of the page."
+    : message;
   return (
-    <div className="rounded border border-bad/50 bg-bad/10 px-2 py-1 font-mono text-[11px] text-bad">{message}</div>
+    <div className="rounded border border-bad/50 bg-bad/10 px-2 py-1 font-mono text-[11px] text-bad">{short}</div>
   );
 }

@@ -108,7 +108,9 @@ export default function GlobalBar() {
     <>
     {error && (
       <div className="border-b border-bad/50 bg-bad/10 px-4 py-1 font-mono text-[11px] text-bad">
-        {error}
+        {/secret api key|SECRET Supabase key/i.test(error)
+          ? "Blocked: secret key in the browser - see the banner above."
+          : error}
       </div>
     )}
     <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-border bg-panel px-3 py-2 text-xs font-mono sm:px-4 sm:text-sm">

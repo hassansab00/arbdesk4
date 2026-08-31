@@ -112,9 +112,21 @@ environment variables. No other config needed - there is no API layer to
 deploy alongside it, and `web/vercel.json` already sets the framework,
 build, dev and install commands for that root.
 
-Never set `SUPABASE_SERVICE_KEY` here: anything prefixed `NEXT_PUBLIC_` is
-compiled into the JavaScript every visitor downloads. The service key
-belongs only in GitHub Actions secrets and n8n Config nodes.
+Use the **publishable** key — `sb_publishable_…` on newer Supabase
+projects, or the legacy `anon` JWT. Never a secret key: anything prefixed
+`NEXT_PUBLIC_` is compiled into the JavaScript every visitor downloads, so a
+secret key set here is published the moment the page is served and must then
+be **rotated**, not just replaced. The secret key (`sb_secret_…` /
+`service_role`) belongs only in the GitHub Actions secret
+`SUPABASE_SERVICE_KEY` and in n8n Config nodes.
+
+`lib/keyGuard.ts` enforces this rather than trusting it: it classifies the
+configured key across both Supabase key generations, and `lib/supabase.ts`
+refuses to construct a client from a secret one — so no request is ever
+attempted with it — while `ConfigBanner` states on every page that the key
+is already public and must be rotated. Verified end to end against a built
+app with a planted secret key: banner on every route, zero outbound
+requests.
 
 Both env vars are inlined at **build** time, so adding them after a failed
 deploy needs a redeploy, not a restart. The build itself does not need

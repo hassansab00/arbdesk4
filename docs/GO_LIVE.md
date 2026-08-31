@@ -12,8 +12,8 @@ GitHub Actions.
 | Thing | Where it comes from |
 |---|---|
 | Supabase project URL | Supabase → Project Settings → Data API → Project URL |
-| Supabase `anon` key | same page, "Project API keys" → `anon public` |
-| Supabase `service_role` key | same page → `service_role` (**never** put this in Vercel) |
+| Supabase **publishable** key | same page. Newer projects: `sb_publishable_…`. Older: the `anon public` JWT. **This is the browser one.** |
+| Supabase **secret** key | same page. Newer: `sb_secret_…`. Older: `service_role`. **Never** goes in Vercel — see the warning in step 4. |
 | GitHub repo admin | to set Actions secrets |
 | Vercel account | to deploy `web/` |
 | n8n instance | optional; only for email digests and alerts |
@@ -392,11 +392,27 @@ select value from settings where key = 'settlement_verified';
 | Name | Value |
 |---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://YOURPROJECT.supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the `anon public` key |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the **publishable** key — `sb_publishable_…`, or the legacy `anon` JWT |
 
-**Never add `SUPABASE_SERVICE_KEY` to Vercel.** Anything prefixed
-`NEXT_PUBLIC_` is compiled into the JavaScript every visitor downloads. The
-service key belongs only in GitHub Actions secrets and n8n Config nodes.
+> ### ⚠ Get this one right
+>
+> **Never put a secret key in any `NEXT_PUBLIC_` variable.** They are
+> compiled into the JavaScript every visitor downloads, so a secret key put
+> here is published the moment the page is served — and then has to be
+> **rotated**, not just replaced.
+>
+> Supabase renamed these keys, which is the usual cause of the mistake:
+>
+> | | Browser (Vercel) | Server only (GitHub Actions, n8n) |
+> |---|---|---|
+> | Newer projects | `sb_publishable_…` | `sb_secret_…` |
+> | Older projects | `anon` JWT | `service_role` JWT |
+>
+> If you get it wrong the site tells you: a red **"SECURITY: a secret
+> Supabase key is exposed in this build"** banner appears on every page, and
+> AD4 refuses to open a connection at all, so no request is ever sent with
+> it. Rotate the key in Supabase → Project Settings → API Keys, set the
+> publishable one, and redeploy.
 
 5. **Deploy.**
 

@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { classifyKey, SECRET_KEY_MESSAGE } from "./keyGuard";
 
 // Anon key only, never the service key (Revision A §6.3/§9). Every table
 // read through this client is behind an RLS policy from sql/ad4_rls.sql;
@@ -29,6 +30,12 @@ function getClient(): SupabaseClient {
         "Supabase is not configured: set NEXT_PUBLIC_SUPABASE_URL and " +
           "NEXT_PUBLIC_SUPABASE_ANON_KEY (see web/.env.local.example)."
       );
+    }
+    // Never send a secret key from a browser. Supabase's API rejects it too,
+    // but by then it has already been shipped to every visitor - refusing
+    // here means no request is attempted and the UI states the real problem.
+    if (classifyKey(key) === "secret") {
+      throw new Error(SECRET_KEY_MESSAGE);
     }
     cached = createClient(url, key);
   }
