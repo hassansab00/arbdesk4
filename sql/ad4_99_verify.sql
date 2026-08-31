@@ -137,7 +137,8 @@ begin
       ('strategies','capital_cap_pct'), ('strategies','max_concurrent'),
       ('strategies','extra'),
       ('paper_trades','partial_fill'), ('paper_trades','requested_shares'),
-      ('backtest_trades','legs_requested'), ('backtest_trades','legs_filled')
+      ('backtest_trades','legs_requested'), ('backtest_trades','legs_filled'),
+      ('markets','rules_text'), ('markets','rules_changed_at')
     ) as t(tbl, col)
   loop
     insert into _ad4_verify (section, check_, status, detail)

@@ -1,0 +1,329 @@
+{
+  "name": "AD4 - P0.3 Book + Volume Snapshot (SCAFFOLD)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "note-1",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -620,
+        -160
+      ],
+      "parameters": {
+        "content": "## SCAFFOLD - NOT A VERIFIED TEMPLATE\n\nThis workflow ALREADY EXISTS and runs in Hassan's n8n (Phase 0). It was\nnever captured in the repo, so this file is a reconstruction.\n\n**DO NOT ACTIVATE THIS ALONGSIDE YOUR EXISTING P0.x WORKFLOW.** Two copies\nwriting the same tables is worse than one.\n\nUse it for exactly one of:\n  - a reference if the original is ever lost;\n  - a diff against the original, to see what the repo believes it does.\n\n**Better: capture the REAL one instead.** In n8n, open your working\nworkflow -> ... menu -> Download. Then:\n\n    python scripts/sanitise_n8n_export.py <downloaded>.json n8n/\n\nThat strips every Config value (the service key) and writes a safe\n`*.template.json` you can commit. The real one beats this reconstruction.\n\n### What IS grounded here\nThe Supabase side: table and column names come from\n`sql/ad4_00_preflight.sql`, which is verified against a real Postgres.\nAnything writing to Supabase below is correct.\n\n### What is NOT\nThe Polymarket endpoint. This repo contains exactly one Polymarket URL\n(`gamma-api.polymarket.com/markets`, in `scripts/settlement.py`, itself\nflagged unverified). So the endpoint is a **Config field**, not a\nhardcoded guess - paste the real URL from your working workflow.",
+        "height": 620,
+        "width": 560,
+        "color": 3
+      }
+    },
+    {
+      "id": "note-2",
+      "name": "Note 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -620,
+        500
+      ],
+      "parameters": {
+        "content": "## The ladder shape is the critical contract\n\n`bid_levels` / `ask_levels` must be jsonb arrays of\n`{\"price\": <0-1>, \"size\": <shares>}`, **best-first**.\n\nVerify against your real data after one run:\n\n```sql\nselect jsonb_typeof(ask_levels),\n       jsonb_object_keys(ask_levels->0)\nfrom book_snapshots\nwhere ask_levels is not null limit 1;\n```\n\nExpect `array` and the keys `price`, `size`.\n`sql/ad4_99_verify.sql` section 7 checks this for you.",
+        "height": 340,
+        "width": 560,
+        "color": 5
+      }
+    },
+    {
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */6 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        100
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "supabase_url",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "2",
+              "name": "service_key",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "3",
+              "name": "polymarket_book_url",
+              "type": "string",
+              "value": "PASTE THE URL YOUR WORKING P0.3 USES (this repo cannot verify it)"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "load-live-bands",
+      "name": "Load live bands",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/bands?select=band_id,token_yes,token_no,market_id&limit=5000",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "fetch-books",
+      "name": "Fetch books",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        0
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.polymarket_book_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "build-snapshots",
+      "name": "Build snapshots",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Build one book_snapshots row per band.\n//\n// GROUNDED, and the part that matters most:\n//\n//  * bid_levels / ask_levels MUST be jsonb arrays of {\"price\": n, \"size\": n},\n//    best-first. Everything downstream walks that shape - the ladder walker\n//    (cost_model.walk_ladder / walk_ladder_jsonb), the capacity RPCs\n//    (depth_usd, capacity_side) and the Goals engine (web/lib/spread.ts).\n//    Get this wrong and every fill price in AD4 is wrong.\n//\n//  * market_state is a verbatim port of scripts/market_state.py:classify().\n//    PRICE IS CHECKED BEFORE SIDES - a band at ask 0.001 with no bids is\n//    DEAD_LOSER, not ONE_SIDED. Getting that order wrong mislabelled 190 of\n//    231 rows earlier in this project.\n//\n// NOT GROUNDED: how the upstream book payload is shaped. Map it below.\nconst DEAD_LOSER_MAX_ASK = 0.02;\nconst DEAD_WINNER_MIN_BID = 0.96;\nconst WIDE_SPREAD_MIN = 0.10;\n\nfunction classify(bestBid, bestAsk) {\n  const hasBid = bestBid !== null && bestBid !== undefined;\n  const hasAsk = bestAsk !== null && bestAsk !== undefined;\n  if (!hasBid && !hasAsk) return 'NO_BOOK';\n  if (hasAsk && bestAsk <= DEAD_LOSER_MAX_ASK) return 'DEAD_LOSER';\n  if (hasBid && bestBid >= DEAD_WINNER_MIN_BID) return 'DEAD_WINNER';\n  if (!hasBid || !hasAsk) return 'ONE_SIDED';\n  return (bestAsk - bestBid) > WIDE_SPREAD_MIN ? 'WIDE' : 'LIVE';\n}\n\n// Normalise a raw ladder into [{price, size}], best-first.\n// Bids descend (best = highest), asks ascend (best = lowest).\nfunction ladder(levels, side) {\n  const out = (levels || [])\n    .map(l => ({\n      price: Number(l.price ?? l[0]),\n      size:  Number(l.size  ?? l.amount ?? l[1]),\n    }))\n    .filter(l => Number.isFinite(l.price) && Number.isFinite(l.size) && l.size > 0);\n  out.sort((a, b) => side === 'bid' ? b.price - a.price : a.price - b.price);\n  return out;\n}\n\nconst observedAt = new Date().toISOString();\nconst books = $('Fetch books').all().map(i => i.json).flat();\nconst rows = [];\n\nfor (const b of books) {\n  const bidLevels = ladder(b.bids || b.bid_levels, 'bid');\n  const askLevels = ladder(b.asks || b.ask_levels, 'ask');\n  const bestBid = bidLevels.length ? bidLevels[0].price : null;\n  const bestAsk = askLevels.length ? askLevels[0].price : null;\n  rows.push({\n    band_id: b.band_id,\n    observed_at: observedAt,          // OBSERVED, never the model's run time\n    best_bid: bestBid,\n    best_ask: bestAsk,\n    spread: (bestBid !== null && bestAsk !== null) ? Number((bestAsk - bestBid).toFixed(6)) : null,\n    market_state: classify(bestBid, bestAsk),\n    bid_levels: bidLevels,\n    ask_levels: askLevels,\n  });\n}\n\nconst byState = {};\nfor (const r of rows) byState[r.market_state] = (byState[r.market_state] || 0) + 1;\nreturn [{ json: { rows, n: rows.length, byState } }];"
+      }
+    },
+    {
+      "id": "insert-snapshots",
+      "name": "Insert snapshots",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        0
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/book_snapshots",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.rows) }}"
+      }
+    },
+    {
+      "id": "summary",
+      "name": "Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const p = $('Build snapshots').first().json;\nconst states = Object.entries(p.byState).map(([k, v]) => `${k}=${v}`).join(' ');\nreturn [{ json: { summary: `AD4 P0.3: ${p.n} book snapshots written. ${states}` } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Load live bands": {
+      "main": [
+        [
+          {
+            "node": "Fetch books",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch books": {
+      "main": [
+        [
+          {
+            "node": "Build snapshots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build snapshots": {
+      "main": [
+        [
+          {
+            "node": "Insert snapshots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert snapshots": {
+      "main": [
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Load live bands",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
