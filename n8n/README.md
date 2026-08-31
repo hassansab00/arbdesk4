@@ -9,6 +9,56 @@ for the full mapping and rationale).
 import, inside n8n - never re-export and commit a filled-in copy (§7.0
 rule 1: it would contain the service key).
 
+## The seven AD4 workflows
+
+| # | Workflow | Trigger | File | Status |
+|---|---|---|---|---|
+| P0.2 | Market Discovery | schedule | `P0.2_market_discovery.scaffold.json` | **scaffold** |
+| P0.3 | Book + Volume Snapshot | schedule | `P0.3_book_volume_snapshot.scaffold.json` | **scaffold** |
+| P0.4 | Trade History | schedule | `P0.4_trade_history.scaffold.json` | **scaffold** |
+| P0.5 | Refresh Rules Text | schedule | `P0.5_refresh_rules_text.scaffold.json` | **scaffold** |
+| P1.1 | Live Weather Alerts (notify half) | webhook | `P1.1_live_weather_alerts.template.json` | template |
+| P3.1 | Email Digests | schedule ×2 | `P3.1_email_digests.template.json` | template |
+| P4.1 | Health Watchdog | schedule | `P4.1_health_watchdog.template.json` | template |
+
+Everything else the spec names (P2.1 Probability + Edge, P2.2 Signals,
+P2.3 Settlement, P2.4 Derived Recompute, the backtest runner) runs as a
+GitHub Action, not in n8n — see `docs/n8n_workflows.md` for why.
+
+### template vs scaffold
+
+**`.template.json`** — built and checked against this repo's own schema and
+RPCs. Import, fill in Config, use.
+
+**`.scaffold.json`** — the four P0.x workflows **already exist and run in
+Hassan's n8n**; they were never captured here. These are reconstructions:
+the Supabase half is grounded (table and column names come from
+`sql/ad4_00_preflight.sql`, verified against a real Postgres), but the
+Polymarket endpoint is **not** — this repo contains exactly one Polymarket
+URL, in `scripts/settlement.py`, itself flagged unverified. So each
+scaffold takes the endpoint as a **Config field** rather than asserting one.
+
+> **Do not activate a scaffold alongside the P0.x workflow it reconstructs.**
+> Two copies writing the same tables is worse than one.
+
+Use a scaffold as a rebuild reference or to diff against the original.
+
+### Better: capture the real four
+
+```bash
+# n8n -> open the workflow -> ... menu -> Download
+python scripts/sanitise_n8n_export.py ~/Downloads/My_Workflow.json n8n/
+```
+
+That blanks every Config value, strips bound credentials, removes
+instance metadata, forces `active: false`, and redacts anything
+secret-shaped anywhere in the file — including a key hardcoded inside a
+Code node, which is the easiest one to miss. If a secret-shaped string
+survives, it **refuses to write** and tells you which node it is in.
+
+The real workflows beat the reconstructions. Once captured, delete the
+matching scaffold.
+
 ## Import
 
 n8n → Workflows → Import from File → pick one of these `.template.json`
@@ -17,6 +67,21 @@ at the time this was written; if your instance is on a different
 version, n8n's import will either auto-upgrade the node or flag it -
 neither is destructive, just re-check the flagged node's parameters
 against the spec in `docs/n8n_workflows.md` before activating.
+
+### P0.4 is the one to check first
+
+`trades_observed` is the only source of market volume in AD4 —
+`v_band_volume`, `v_city_volume`, the thin-market flag on every band, the
+`volume/(volume+k)` liquidity factor in the opportunity ranking, the
+calculator's volume warning, the Goals feasibility read and the P4.1
+watchdog's no-volume alarm all derive from it. If P0.4 is not running,
+none of that breaks loudly — every figure reads **$0** and every band shows
+as **thin**. Honest, but useless.
+
+```sql
+select count(*) as trades, max(observed_at) as newest from trades_observed;
+select coalesce(sum(volume_usd),0) as vol_24h from v_city_volume;
+```
 
 - `P1.1_live_weather_alerts.template.json` - webhook-triggered, called by
   `scripts/live_weather.py` when it detects a high/critical event. After

@@ -1,5 +1,13 @@
 # n8n workflows (Task 15 / spec §7)
 
+**All seven n8n workflows now have a file.** The four P0.x are
+`.scaffold.json` reconstructions - they already run in Hassan's n8n and
+were never captured here, so their Supabase half is grounded in
+`sql/ad4_00_preflight.sql` while their Polymarket endpoint is a Config
+field rather than an asserted URL. Capture the real ones with
+`scripts/sanitise_n8n_export.py` and delete the scaffolds; see
+`n8n/README.md`. The other three are checked templates.
+
 n8n isn't git-managed the way the rest of this repo is - workflows live in
 the n8n editor, not as files a build tool compiles. This doc is the spec
 for what to build there, plus **rule 1 from §7.0 stated again because it's
@@ -23,10 +31,10 @@ shows is already tight. GitHub Actions has no per-run execution quota.
 
 | Spec workflow | Where it actually runs | File |
 |---|---|---|
-| P0.2 Market Discovery | n8n (existing, unchanged) | - |
-| P0.3 Book + Volume Snapshot | n8n (existing, unchanged) | - |
-| P0.4 Trade History | n8n (existing, unchanged) | - |
-| P0.5 Refresh Rules Text | n8n (existing, unchanged) | - |
+| P0.2 Market Discovery | n8n (existing) | `n8n/P0.2_market_discovery.scaffold.json` |
+| P0.3 Book + Volume Snapshot | n8n (existing) | `n8n/P0.3_book_volume_snapshot.scaffold.json` |
+| P0.4 Trade History | n8n (existing) | `n8n/P0.4_trade_history.scaffold.json` |
+| P0.5 Refresh Rules Text | n8n (existing) | `n8n/P0.5_refresh_rules_text.scaffold.json` |
 | P1.1 Live Weather Monitor (poll) | GitHub Actions, every 15 min | `.github/workflows/live_weather.yml` -> `scripts/live_weather.py` |
 | P1.1 Live Weather Monitor (notify) | **n8n**, webhook-triggered | `n8n/P1.1_live_weather_alerts.template.json` |
 | P2.1 Probability + Edge Pipeline | GitHub Actions, 4x/day | `.github/workflows/probabilities.yml` -> `probability_engine.py` + `edge_engine.py` |

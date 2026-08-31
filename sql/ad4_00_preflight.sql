@@ -107,6 +107,9 @@ create table if not exists markets (
   closed          boolean default false,
   event_slug      text,
   condition_id    text,
+  rules_text      text,
+  rules_fetched_at timestamptz,
+  rules_changed_at timestamptz,
   created_at      timestamptz default now()
 );
 
@@ -380,6 +383,16 @@ begin
       ('markets','resolution_verified_at','timestamptz'),
       ('markets','resolution_source_used','text'),
       ('markets','dispute_flag','boolean default false'),
+      -- Written by the P0.5 Refresh Rules Text workflow. The rules say
+      -- WHICH station and WHICH surface settles a market; if Polymarket
+      -- edits that mid-life, every probability computed against the old
+      -- station is measuring the wrong thing, and nothing else in the
+      -- system would notice. rules_changed_at is stamped only when the
+      -- text actually moves, so it means "when did the terms last change"
+      -- rather than "when did we last poll".
+      ('markets','rules_text','text'),
+      ('markets','rules_fetched_at','timestamptz'),
+      ('markets','rules_changed_at','timestamptz'),
 
       -- bands ---------------------------------------------------------------
       ('bands','market_id','uuid'),
