@@ -3,7 +3,8 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { fmtPct, fmtPrice, fmtUsd } from "@/lib/format";
+import { ErrorBox, Loading } from "@/components/DataState";
+import { fmtAge, fmtCompactUsd, fmtPct, fmtPrice, fmtUsd } from "@/lib/format";
 import type { CalcRecommendation, Opportunity } from "@/lib/types";
 
 interface SelectedLeg {
@@ -12,6 +13,10 @@ interface SelectedLeg {
   model_prob: number | null;
   userProb: string;       // Hassan's own number - text so it can be blank
   autoFill: boolean;       // per-leg auto-fill toggle, DEFAULT OFF
+  volume_usd: number | null;
+  n_trades: number | null;
+  last_trade_at: string | null;
+  thin_market: boolean | null;
 }
 
 function CalculatorInner() {
@@ -24,11 +29,14 @@ function CalculatorInner() {
   const [legs, setLegs] = useState<SelectedLeg[]>([]);
   const [result, setResult] = useState<CalcRecommendation | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   useEffect(() => {
     const bandId = searchParams.get("band_id");
     if (!bandId) return;
-    supabase.from("v_opportunities").select("*").eq("band_id", bandId).limit(1).then(({ data }) => {
+    supabase.from("v_opportunities").select("*").eq("band_id", bandId).limit(1).then(({ data, error }) => {
+      if (error) return setError(error.message);
       const o = (data as Opportunity[] | null)?.[0];
       if (o) addLeg(o);
     });
@@ -38,12 +46,13 @@ function CalculatorInner() {
   useEffect(() => {
     if (!search) return setCandidates([]);
     const t = setTimeout(async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("v_opportunities")
         .select("*")
         .eq("tradeable", true)
         .or(`display_name.ilike.%${search}%,city_key.ilike.%${search}%`)
         .limit(20);
+      setSearchError(error ? error.message : null);
       setCandidates((data as Opportunity[]) ?? []);
     }, 250);
     return () => clearTimeout(t);
@@ -56,6 +65,8 @@ function CalculatorInner() {
         band_id: o.band_id,
         label: `${o.display_name ?? o.city_key} · ${o.band_label ?? `${o.band_lo}-${o.band_hi}`} · ${o.side}`,
         model_prob: o.model_prob, userProb: "", autoFill: false,
+        volume_usd: o.volume_usd, n_trades: o.n_trades,
+        last_trade_at: o.last_trade_at, thin_market: o.thin_market,
       }];
     });
     setSearch("");
@@ -90,9 +101,22 @@ function CalculatorInner() {
     if (mode === "budget") params.amount = parseFloat(amount) || 0;
     else params.target_profit_usd = parseFloat(targetProfit) || 0;
 
-    const { data, error } = await supabase.rpc("calc_recommendation", { p_params: params });
-    setLoading(false);
-    if (!error) setResult(data as CalcRecommendation);
+    try {
+      const { data, error } = await supabase.rpc("calc_recommendation", { p_params: params });
+      if (error) {
+        setError(`${error.message}${error.hint ? ` — ${error.hint}` : ""}`);
+        setResult(null);
+      } else {
+        setError(null);
+        setResult(data as CalcRecommendation);
+      }
+    } catch (e) {
+      // Unconfigured Supabase client throws rather than returning an error.
+      setError(e instanceof Error ? e.message : String(e));
+      setResult(null);
+    } finally {
+      setLoading(false);
+    }
   }, [mode, amount, targetProfit, legs, overrides]);
 
   useEffect(() => {
@@ -103,6 +127,12 @@ function CalculatorInner() {
   return (
     <div className="space-y-6">
       <h1 className="text-lg font-semibold">Calculator</h1>
+      <p className="max-w-3xl text-xs leading-relaxed text-muted">
+        Both modes walk the real ask ladder, so every price here is the average fill a market order
+        gets — never mid. Your own probability is never auto-filled from the model unless you tick
+        the per-leg toggle. Each leg carries its 24h traded volume: a leg the book quotes but nobody
+        trades is flagged, because the ladder overstates how much of it you can actually take.
+      </p>
 
       <div className="flex gap-2 text-sm">
         <button onClick={() => setMode("budget")} className={`rounded px-3 py-1 border ${mode === "budget" ? "border-accent text-accent" : "border-border text-muted"}`}>Budget mode</button>
@@ -118,6 +148,9 @@ function CalculatorInner() {
               placeholder="e.g. paris, tokyo..."
               className="mt-1 w-full rounded border border-border bg-panel2 px-2 py-1 text-sm"
             />
+            {searchError && (
+              <div className="mt-1"><ErrorBox message={searchError} compact /></div>
+            )}
             {candidates.length > 0 && (
               <div className="mt-1 max-h-48 overflow-y-auto rounded border border-border bg-panel2">
                 {candidates.map((c) => (
@@ -148,8 +181,14 @@ function CalculatorInner() {
                   <span>{l.label}</span>
                   <button onClick={() => removeLeg(l.band_id)} className="text-bad hover:underline">remove</button>
                 </div>
-                <div className="mt-1 flex items-center gap-3">
+                <div className="mt-1 flex flex-wrap items-center gap-3">
                   <span className="text-muted">Model P: <span className="font-mono text-text">{fmtPct(l.model_prob)}</span></span>
+                  <span className="text-muted" title={l.last_trade_at ? `last trade ${fmtAge(l.last_trade_at)}` : "no trades in the window"}>
+                    Vol 24h:{" "}
+                    <span className={`font-mono ${l.thin_market ? "text-warn" : "text-text"}`}>
+                      {fmtCompactUsd(l.volume_usd)}
+                    </span>
+                  </span>
                   <span className="text-muted">Your P:</span>
                   <input
                     value={l.userProb} onChange={(e) => updateLeg(l.band_id, { userProb: e.target.value })}
@@ -172,7 +211,20 @@ function CalculatorInner() {
             <h2 className="text-sm font-semibold text-muted">Recommendation</h2>
             {loading && <span className="text-xs text-muted">computing…</span>}
           </div>
-          {!result && <div className="text-muted text-sm">Add at least one band to see a live recommendation.</div>}
+          {error && <ErrorBox message={error} onRetry={recompute} compact />}
+          {!error && loading && !result && <Loading compact label="computing…" />}
+          {!error && !loading && !result && legs.length === 0 && (
+            <div className="text-sm text-muted">
+              Add at least one band to see a live recommendation. Search above, or click through from
+              Opportunities.
+            </div>
+          )}
+          {!error && !loading && !result && legs.length > 0 && (
+            <div className="text-sm text-muted">
+              No recommendation came back for these bands. That usually means none of them has a
+              current book snapshot to walk — check the Board for their market state.
+            </div>
+          )}
           {result && (
             <div className="space-y-3 text-sm">
               {result.feasible === false ? (
@@ -188,23 +240,33 @@ function CalculatorInner() {
                     <Metric label="P(covered wins)" value={fmtPct(result.p_covered)} />
                     {result.n_shares !== undefined && <Metric label="N shares" value={result.n_shares.toFixed(1)} />}
                     <Metric label="Fillability" value={fmtPct(result.fillability_pct)} />
+                    <Metric label="24h volume (legs)" value={fmtCompactUsd(result.volume_usd)} />
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Badge ok={result.insurance_cap_pass} label="Insurance cap" />
                     {result.capacity_warning && <Warn label="Capacity warning" />}
                     {result.correlation_warning && <Warn label="Correlation warning - these cities may be one bet" />}
+                    {result.volume_warning && (
+                      <Warn label={`Thin volume on ${result.thin_bands?.length ?? 0} leg${(result.thin_bands?.length ?? 0) === 1 ? "" : "s"}`} />
+                    )}
                   </div>
                   {result.legs?.length > 0 && (
                     <table className="w-full text-xs">
-                      <thead className="text-muted"><tr><th className="text-left">Leg</th><th className="text-right">Shares</th><th className="text-right">Price</th></tr></thead>
+                      <thead className="text-muted"><tr><th className="text-left">Leg</th><th className="text-right">Shares</th><th className="text-right">Price</th><th className="text-right">Vol 24h</th></tr></thead>
                       <tbody>
-                        {result.legs.map((leg: any, i: number) => (
-                          <tr key={i} className="border-t border-border">
-                            <td className="py-1">{leg.band_id?.slice(0, 8)}</td>
-                            <td className="py-1 text-right font-mono">{leg.shares?.toFixed?.(1) ?? "—"}</td>
-                            <td className="py-1 text-right font-mono">{fmtPrice(leg.avg_fill_price ?? leg.ask)}</td>
-                          </tr>
-                        ))}
+                        {result.legs.map((leg: any, i: number) => {
+                          const label = legs.find((l) => l.band_id === leg.band_id)?.label;
+                          return (
+                            <tr key={i} className="border-t border-border">
+                              <td className="py-1" title={leg.band_id}>{label ?? leg.band_id?.slice(0, 8)}</td>
+                              <td className="py-1 text-right font-mono">{leg.shares?.toFixed?.(1) ?? "—"}</td>
+                              <td className="py-1 text-right font-mono">{fmtPrice(leg.avg_fill_price ?? leg.ask)}</td>
+                              <td className={`py-1 text-right font-mono ${leg.thin_market ? "text-warn" : ""}`}>
+                                {fmtCompactUsd(leg.volume_usd)}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   )}

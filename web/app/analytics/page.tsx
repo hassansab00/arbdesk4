@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { supabase } from "@/lib/supabase";
-import { fmtPct, fmtUsd, pnlColor } from "@/lib/format";
+import { useQuery } from "@/lib/useQuery";
+import { DataState, InlineError } from "@/components/DataState";
+import { fmtCompactUsd, fmtInt, fmtPct, fmtUsd, pnlColor } from "@/lib/format";
 
 const MIN_TRADES_FOR_RATE = 20; // matches scripts/backtest/metrics.py's own threshold
 
@@ -10,47 +12,78 @@ interface SkillRow { city_key: string; mae_c: number; bias_c: number; mae_bands:
 interface StrategyAgg { strategy_id: string; n: number; netPnl: number; winRate: number | null; }
 
 export default function AnalyticsPage() {
-  const [skill, setSkill] = useState<SkillRow[]>([]);
-  const [byStrategy, setByStrategy] = useState<StrategyAgg[]>([]);
-  const [signalFreq, setSignalFreq] = useState<Record<string, number>>({});
-  const [capacity, setCapacity] = useState<Array<{ city_key: string; usd_at_5c: number }>>([]);
-
-  useEffect(() => {
-    async function load() {
-      const { data: skillRows } = await supabase
+  const skillQ = useQuery<any[]>(
+    () =>
+      supabase
         .from("derived_forecast_skill")
         .select("city_key,mae_c,bias_c,mae_bands,n_days,lead_days,computed_at")
         .eq("lead_days", 1)
         .order("computed_at", { ascending: false })
-        .limit(60);
-      const latestByCity = new Map<string, SkillRow>();
-      for (const r of (skillRows as any[]) ?? []) if (!latestByCity.has(r.city_key)) latestByCity.set(r.city_key, r);
-      setSkill(Array.from(latestByCity.values()).sort((a, b) => a.mae_c - b.mae_c));
+        .limit(500),
+    []
+  );
 
-      const { data: trades } = await supabase.from("paper_trades").select("strategy_id,net_pnl,gross_pnl").not("closed_at", "is", null);
-      const grouped = new Map<string, { n: number; netPnl: number; wins: number }>();
-      for (const t of (trades as any[]) ?? []) {
-        const g = grouped.get(t.strategy_id) ?? { n: 0, netPnl: 0, wins: 0 };
-        g.n += 1;
-        g.netPnl += t.net_pnl ?? 0;
-        if ((t.net_pnl ?? 0) > 0) g.wins += 1;
-        grouped.set(t.strategy_id, g);
-      }
-      setByStrategy(Array.from(grouped.entries()).map(([strategy_id, g]) => ({
-        strategy_id, n: g.n, netPnl: g.netPnl, winRate: g.n > 0 ? g.wins / g.n : null,
-      })));
+  const tradesQ = useQuery<any[]>(
+    () => supabase.from("paper_trades").select("strategy_id,net_pnl,gross_pnl").not("closed_at", "is", null),
+    []
+  );
 
-      const since = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
-      const { data: sig } = await supabase.from("signals").select("strategy_id").gte("fired_at", since);
-      const freq: Record<string, number> = {};
-      for (const s of (sig as any[]) ?? []) freq[s.strategy_id] = (freq[s.strategy_id] ?? 0) + 1;
-      setSignalFreq(freq);
+  const signalsQ = useQuery<any[]>(
+    () =>
+      supabase
+        .from("signals")
+        .select("strategy_id")
+        .gte("fired_at", new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString()),
+    []
+  );
 
-      const { data: cap } = await supabase.from("derived_capacity").select("city_key,usd_at_5c").order("computed_at", { ascending: false }).limit(54);
-      setCapacity((cap as any[]) ?? []);
+  const capacityQ = useQuery<any[]>(
+    () => supabase.from("derived_capacity").select("city_key,usd_at_5c,computed_at").order("computed_at", { ascending: false }).limit(200),
+    []
+  );
+
+  const volumeQ = useQuery<Array<{ city_key: string; volume_usd: number; n_trades: number }>>(
+    () => supabase.from("v_city_volume").select("city_key,volume_usd,n_trades"),
+    [],
+    60000
+  );
+
+  const skill: SkillRow[] = useMemo(() => {
+    const latestByCity = new Map<string, SkillRow>();
+    for (const r of skillQ.data ?? []) if (!latestByCity.has(r.city_key)) latestByCity.set(r.city_key, r);
+    return Array.from(latestByCity.values()).sort((a, b) => a.mae_c - b.mae_c);
+  }, [skillQ.data]);
+
+  const byStrategy: StrategyAgg[] = useMemo(() => {
+    const grouped = new Map<string, { n: number; netPnl: number; wins: number }>();
+    for (const t of tradesQ.data ?? []) {
+      const g = grouped.get(t.strategy_id) ?? { n: 0, netPnl: 0, wins: 0 };
+      g.n += 1;
+      g.netPnl += t.net_pnl ?? 0;
+      if ((t.net_pnl ?? 0) > 0) g.wins += 1;
+      grouped.set(t.strategy_id, g);
     }
-    load();
-  }, []);
+    return Array.from(grouped.entries()).map(([strategy_id, g]) => ({
+      strategy_id, n: g.n, netPnl: g.netPnl, winRate: g.n > 0 ? g.wins / g.n : null,
+    }));
+  }, [tradesQ.data]);
+
+  const signalFreq: Record<string, number> = useMemo(() => {
+    const freq: Record<string, number> = {};
+    for (const s of signalsQ.data ?? []) freq[s.strategy_id] = (freq[s.strategy_id] ?? 0) + 1;
+    return freq;
+  }, [signalsQ.data]);
+
+  // Latest capacity row per city (the query is ordered newest-first).
+  const capacity = useMemo(() => {
+    const seen = new Map<string, { city_key: string; usd_at_5c: number }>();
+    for (const c of capacityQ.data ?? []) if (!seen.has(c.city_key)) seen.set(c.city_key, c);
+    return Array.from(seen.values());
+  }, [capacityQ.data]);
+
+  const volume = volumeQ.data ?? [];
+  const totalVolume = volume.reduce((s, v) => s + (v.volume_usd ?? 0), 0);
+  const capacityByCity = new Map(capacity.map((c) => [c.city_key, c.usd_at_5c]));
 
   return (
     <div className="space-y-8">
@@ -58,6 +91,14 @@ export default function AnalyticsPage() {
 
       <section>
         <h2 className="mb-2 text-sm font-semibold text-muted">Forecast skill by city (lead 1)</h2>
+        <DataState
+          loading={skillQ.loading}
+          error={skillQ.error}
+          isEmpty={skill.length === 0}
+          emptyTitle="No forecast skill measured yet"
+          emptyBody={<>Run GitHub Actions → <b>Skill</b> (<code>scripts/measure_skill.py</code>). It needs both forecast and observation history for a city before it can measure bias. See <code>docs/skill_baseline.md</code>.</>}
+          onRetry={skillQ.refresh}
+        >
         <div className="overflow-x-auto rounded border border-border">
           <table className="w-full text-sm">
             <thead className="bg-panel2 text-muted"><tr>
@@ -75,14 +116,22 @@ export default function AnalyticsPage() {
                   <td className={`p-2 text-right font-mono ${s.n_days < 200 ? "text-warn" : ""}`}>{s.n_days}{s.n_days < 200 ? " ⚠" : ""}</td>
                 </tr>
               ))}
-              {skill.length === 0 && <tr><td colSpan={5} className="p-4 text-center text-muted">No derived_forecast_skill rows yet - see docs/skill_baseline.md.</td></tr>}
             </tbody>
           </table>
         </div>
+        </DataState>
       </section>
 
       <section>
         <h2 className="mb-2 text-sm font-semibold text-muted">Strategy attribution (net P&amp;L, never merged with microstructure edge)</h2>
+        <DataState
+          loading={tradesQ.loading}
+          error={tradesQ.error}
+          isEmpty={byStrategy.length === 0}
+          emptyTitle="No settled trades yet"
+          emptyBody={<>Attribution needs closed paper trades. Nothing settles until a strategy is enabled, fires a signal, and its market resolves — GitHub Actions → <b>Settlement</b> writes the close.</>}
+          onRetry={tradesQ.refresh}
+        >
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {byStrategy.map((s) => (
             <div key={s.strategy_id} className="rounded border border-border bg-panel p-3 text-sm">
@@ -94,8 +143,8 @@ export default function AnalyticsPage() {
               )}
             </div>
           ))}
-          {byStrategy.length === 0 && <div className="col-span-full p-4 text-center text-muted">No settled trades yet.</div>}
         </div>
+        </DataState>
       </section>
 
       <section>
@@ -106,19 +155,79 @@ export default function AnalyticsPage() {
               <span className="text-muted">{id}</span> <span className="font-mono">{n}</span>
             </div>
           ))}
-          {Object.keys(signalFreq).length === 0 && <div className="text-muted text-sm">No signals fired in the last 7 days.</div>}
+          {Object.keys(signalFreq).length === 0 && !signalsQ.loading && (
+            <div className="text-sm text-muted">
+              No signals fired in the last 7 days. All six strategies ship disabled — nothing fires
+              until you enable one.
+            </div>
+          )}
+          <InlineError message={signalsQ.error} />
         </div>
       </section>
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold text-muted">Capacity utilisation (usd_at_5c, latest)</h2>
-        <p className="mb-2 text-xs text-muted">Capacity is a curve, not a number - this shows the 5c-slippage slice only; see Board for full depth.</p>
-        <div className="flex flex-wrap gap-2 text-xs">
-          {capacity.map((c) => (
-            <div key={c.city_key} className="rounded bg-panel2 px-2 py-1">{c.city_key}: {fmtUsd(c.usd_at_5c)}</div>
-          ))}
-          {capacity.length === 0 && <div className="text-muted">No derived_capacity rows yet.</div>}
-        </div>
+        <h2 className="mb-2 text-sm font-semibold text-muted">Liquidity: book depth vs traded volume</h2>
+        <p className="mb-2 max-w-3xl text-xs leading-relaxed text-muted">
+          Two different facts, shown side by side rather than merged. <b>Depth (5c)</b> is what the
+          current quotes can absorb inside 5c of slippage — capacity is a curve, this is one slice of
+          it. <b>Volume (24h)</b> is what actually traded. A city with depth and no volume is quoted
+          but not traded; a city with volume and no depth trades in bursts against a thin book. Both
+          shapes cost money in different ways, and the opportunity ranking discounts the first.
+        </p>
+        <DataState
+          loading={capacityQ.loading || volumeQ.loading}
+          error={capacityQ.error ?? volumeQ.error}
+          isEmpty={capacity.length === 0 && volume.length === 0}
+          emptyTitle="No liquidity data yet"
+          emptyBody={
+            <>
+              <code>derived_capacity</code> is filled by <code>recompute_capacity()</code> (GitHub
+              Actions → <b>Derived Recompute</b>) and <code>v_city_volume</code> reads{" "}
+              <code>trades_observed</code>, which the trade ingest fills. Neither has run yet.
+            </>
+          }
+          onRetry={() => { capacityQ.refresh(); volumeQ.refresh(); }}
+        >
+          <div className="mb-2 text-xs text-muted">
+            Total traded volume across all cities in the last 24h:{" "}
+            <span className="font-mono text-text">{fmtCompactUsd(totalVolume)}</span>
+          </div>
+          <div className="overflow-x-auto rounded border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-panel2 text-muted">
+                <tr>
+                  <th className="p-2 text-left">City</th>
+                  <th className="p-2 text-right">Depth 5c (latest)</th>
+                  <th className="p-2 text-right">Volume 24h</th>
+                  <th className="p-2 text-right">Trades 24h</th>
+                  <th className="p-2 text-left">Shape</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from(new Set([...capacity.map((c) => c.city_key), ...volume.map((v) => v.city_key)]))
+                  .sort((a, b) => (volumeByKey(volume, b) ?? 0) - (volumeByKey(volume, a) ?? 0))
+                  .map((city) => {
+                    const d = capacityByCity.get(city) ?? null;
+                    const v = volume.find((x) => x.city_key === city);
+                    const vol = v?.volume_usd ?? 0;
+                    const shape =
+                      d && d > 0 && vol === 0 ? "quoted, not traded"
+                      : vol > 0 && (!d || d === 0) ? "traded, thin book"
+                      : d && vol ? "both" : "neither";
+                    return (
+                      <tr key={city} className="border-t border-border">
+                        <td className="p-2">{city}</td>
+                        <td className="p-2 text-right font-mono">{d !== null ? fmtUsd(d) : "—"}</td>
+                        <td className="p-2 text-right font-mono">{fmtCompactUsd(vol)}</td>
+                        <td className="p-2 text-right font-mono text-muted">{fmtInt(v?.n_trades ?? 0)}</td>
+                        <td className={`p-2 text-xs ${shape === "both" ? "text-good" : shape === "neither" ? "text-muted" : "text-warn"}`}>{shape}</td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </DataState>
       </section>
 
       <section>
@@ -131,4 +240,8 @@ export default function AnalyticsPage() {
       </section>
     </div>
   );
+}
+
+function volumeByKey(rows: Array<{ city_key: string; volume_usd: number }>, key: string): number | null {
+  return rows.find((r) => r.city_key === key)?.volume_usd ?? null;
 }

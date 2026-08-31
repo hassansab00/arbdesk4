@@ -54,3 +54,10 @@ html, body {
 .wx-fog-band { animation: wx-drift-slow 10s ease-in-out infinite alternate; }
 
 .peak-pulse { animation: wx-pulse-border 2s ease-in-out infinite; }
+
+/* Card flash when a city posts a new running max (§8.4 card states). */
+@keyframes wx-card-flash {
+  0%   { background-color: rgba(255, 176, 32, 0.28); }
+  100% { background-color: transparent; }
+}
+.wx-flash-card { animation: wx-card-flash 3s ease-out 1; }

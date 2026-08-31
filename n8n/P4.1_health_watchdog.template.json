@@ -1,22 +1,39 @@
 {
   "name": "AD4 - P4.1 Health Watchdog",
   "active": false,
-  "settings": { "executionOrder": "v1" },
+  "settings": {
+    "executionOrder": "v1"
+  },
   "nodes": [
     {
       "id": "trigger-schedule",
       "name": "Schedule (every 6h)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [0, 0],
-      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 */6 * * *" }] } }
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */6 * * *"
+            }
+          ]
+        }
+      }
     },
     {
       "id": "trigger-manual",
       "name": "Manual Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [0, 160],
+      "position": [
+        0,
+        160
+      ],
       "parameters": {}
     },
     {
@@ -24,13 +41,31 @@
       "name": "Config",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [260, 80],
+      "position": [
+        260,
+        80
+      ],
       "parameters": {
         "assignments": {
           "assignments": [
-            { "id": "1", "name": "supabase_url", "type": "string", "value": "" },
-            { "id": "2", "name": "service_key", "type": "string", "value": "" },
-            { "id": "3", "name": "alert_email", "type": "string", "value": "" }
+            {
+              "id": "1",
+              "name": "supabase_url",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "2",
+              "name": "service_key",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "3",
+              "name": "alert_email",
+              "type": "string",
+              "value": ""
+            }
           ]
         }
       }
@@ -40,17 +75,28 @@
       "name": "Check: latest book_snapshot",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [520, 80],
+      "position": [
+        520,
+        80
+      ],
       "alwaysOutputData": true,
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "GET",
         "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/book_snapshots?select=observed_at&order=observed_at.desc&limit=1",
         "sendHeaders": true,
-        "headerParameters": { "parameters": [
-          { "name": "apikey", "value": "={{ $('Config').first().json.service_key }}" },
-          { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.service_key }}" }
-        ]}
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            }
+          ]
+        }
       }
     },
     {
@@ -58,17 +104,28 @@
       "name": "Check: latest forecast run",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [780, 80],
+      "position": [
+        780,
+        80
+      ],
       "alwaysOutputData": true,
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "GET",
         "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/weather_forecasts?select=run_at&order=run_at.desc&limit=1",
         "sendHeaders": true,
-        "headerParameters": { "parameters": [
-          { "name": "apikey", "value": "={{ $('Config').first().json.service_key }}" },
-          { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.service_key }}" }
-        ]}
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            }
+          ]
+        }
       }
     },
     {
@@ -76,17 +133,28 @@
       "name": "Check: failed ingest jobs (24h)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1040, 80],
+      "position": [
+        1040,
+        80
+      ],
       "alwaysOutputData": true,
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "GET",
         "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/ingest_log?select=job,status,logged_at&status=eq.error&order=logged_at.desc&limit=20",
         "sendHeaders": true,
-        "headerParameters": { "parameters": [
-          { "name": "apikey", "value": "={{ $('Config').first().json.service_key }}" },
-          { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.service_key }}" }
-        ]}
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            }
+          ]
+        }
       }
     },
     {
@@ -94,17 +162,28 @@
       "name": "Check: anomalies (24h)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1300, 80],
+      "position": [
+        1300,
+        80
+      ],
       "alwaysOutputData": true,
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "GET",
         "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/anomalies?select=id,kind,detected_at&order=detected_at.desc&limit=20",
         "sendHeaders": true,
-        "headerParameters": { "parameters": [
-          { "name": "apikey", "value": "={{ $('Config').first().json.service_key }}" },
-          { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.service_key }}" }
-        ]}
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            }
+          ]
+        }
       }
     },
     {
@@ -112,10 +191,13 @@
       "name": "Evaluate Thresholds",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1560, 80],
+      "position": [
+        1560,
+        80
+      ],
       "notes": "Checks run sequentially (Config -> book -> forecast -> ingest -> anomalies -> here) rather than in parallel through a Merge node, specifically so this node can reliably read all four via $('NodeName').first().json without depending on a Merge node's exact combine semantics for this n8n version.",
       "parameters": {
-        "jsCode": "const now = Date.now();\nconst failures = [];\n\nconst bookRow = ($('Check: latest book_snapshot').first().json || [])[0];\nif (bookRow?.observed_at) {\n  const ageMin = (now - new Date(bookRow.observed_at).getTime()) / 60000;\n  if (ageMin > 60) failures.push(`stale_book: ${ageMin.toFixed(0)}min old`);\n} else failures.push('stale_book: no rows at all');\n\nconst fcRow = ($('Check: latest forecast run').first().json || [])[0];\nif (fcRow?.run_at) {\n  const ageH = (now - new Date(fcRow.run_at).getTime()) / 3600000;\n  if (ageH > 12) failures.push(`stale_forecast: ${ageH.toFixed(1)}h old`);\n} else failures.push('stale_forecast: no rows at all');\n\nconst errRows = $('Check: failed ingest jobs (24h)').first().json || [];\nconst recentErrs = (Array.isArray(errRows) ? errRows : []).filter(r => (now - new Date(r.logged_at).getTime()) < 24*3600000);\nif (recentErrs.length) failures.push(`${recentErrs.length} failed ingest job(s) in 24h: ${recentErrs.map(r=>r.job).join(', ')}`);\n\nconst anomRows = $('Check: anomalies (24h)').first().json || [];\nconst recentAnom = (Array.isArray(anomRows) ? anomRows : []).filter(r => (now - new Date(r.detected_at).getTime()) < 24*3600000);\nif (recentAnom.length) failures.push(`${recentAnom.length} anomaly row(s) in 24h`);\n\n// n8n's own execution count can't be read via Supabase - check manually\n// against n8n's Insights/usage page or /api/v1/executions; not automated\n// here (documented in docs/n8n_workflows.md).\n\nreturn [{ json: { has_failures: failures.length > 0, failures, checked_at: new Date().toISOString() } }];"
+        "jsCode": "const now = Date.now();\nconst failures = [];\nconst context_notes = [];\n\nconst bookRow = ($('Check: latest book_snapshot').first().json || [])[0];\nif (bookRow?.observed_at) {\n  const ageMin = (now - new Date(bookRow.observed_at).getTime()) / 60000;\n  if (ageMin > 60) failures.push(`stale_book: ${ageMin.toFixed(0)}min old`);\n} else failures.push('stale_book: no rows at all');\n\nconst fcRow = ($('Check: latest forecast run').first().json || [])[0];\nif (fcRow?.run_at) {\n  const ageH = (now - new Date(fcRow.run_at).getTime()) / 3600000;\n  if (ageH > 12) failures.push(`stale_forecast: ${ageH.toFixed(1)}h old`);\n} else failures.push('stale_forecast: no rows at all');\n\nconst errRows = $('Check: failed ingest jobs (24h)').first().json || [];\nconst recentErrs = (Array.isArray(errRows) ? errRows : []).filter(r => (now - new Date(r.logged_at).getTime()) < 24*3600000);\nif (recentErrs.length) failures.push(`${recentErrs.length} failed ingest job(s) in 24h: ${recentErrs.map(r=>r.job).join(', ')}`);\n\nconst anomRows = $('Check: anomalies (24h)').first().json || [];\nconst recentAnom = (Array.isArray(anomRows) ? anomRows : []).filter(r => (now - new Date(r.detected_at).getTime()) < 24*3600000);\nif (recentAnom.length) failures.push(`${recentAnom.length} anomaly row(s) in 24h`);\n\n// n8n's own execution count can't be read via Supabase - check manually\n// against n8n's Insights/usage page or /api/v1/executions; not automated\n// here (documented in docs/n8n_workflows.md).\n\n// --- market volume ---------------------------------------------------\n// A desk with live books and zero traded volume is not a working desk:\n// either the trade ingest has stopped, or every market really has gone\n// quiet. Both are things the operator needs told, and neither shows up in\n// any of the checks above - book_snapshots keeps updating either way.\ntry {\n  const volRows = $('Check: traded volume (24h)').first().json || [];\n  const totalVol = volRows.reduce((s, r) => s + Number(r.volume_usd || 0), 0);\n  const totalTrades = volRows.reduce((s, r) => s + Number(r.n_trades || 0), 0);\n  if (!Array.isArray(volRows) || volRows.length === 0) {\n    failures.push('no_market_volume: v_city_volume returned no rows - trades_observed is empty or the trade ingest has stopped');\n  } else if (totalTrades === 0) {\n    failures.push('no_market_volume: 0 trades across all cities in the last 24h');\n  }\n  // Reported either way, so a clean run still tells you the size of the\n  // market you are trading into.\n  context_notes.push(`market volume 24h: $${totalVol.toFixed(0)} across ${volRows.length} cities, ${totalTrades} trades`);\n} catch (e) {\n  failures.push('no_market_volume: volume check itself failed - ' + e.message);\n}\n\nreturn [{ json: { has_failures: failures.length > 0, failures, context_notes, checked_at: new Date().toISOString() } }];"
       }
     },
     {
@@ -123,11 +205,27 @@
       "name": "Any failures?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [1820, 80],
+      "position": [
+        1820,
+        80
+      ],
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
-          "conditions": [{ "leftValue": "={{ $json.has_failures }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true" } }],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.has_failures }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
           "combinator": "and"
         }
       }
@@ -137,13 +235,16 @@
       "name": "Send Email",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [2080, 0],
+      "position": [
+        2080,
+        0
+      ],
       "parameters": {
         "fromEmail": "ad4-watchdog@example.com",
         "toEmail": "={{ $('Config').first().json.alert_email }}",
         "subject": "=AD4 Health Watchdog: {{ $json.failures.length }} check(s) failing",
         "emailFormat": "text",
-        "text": "={{ $json.failures.join('\\n') }}"
+        "text": "={{ $json.failures.join('\\n') }}\n\n---\n{{ ($json.context_notes || []).join('\\n') }}"
       }
     },
     {
@@ -151,22 +252,170 @@
       "name": "Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2080, 200],
+      "position": [
+        2080,
+        200
+      ],
       "parameters": {
         "jsCode": "const r = $('Evaluate Thresholds').first().json;\nreturn [{ json: { summary: r.has_failures ? `AD4 P4.1: ${r.failures.length} check(s) FAILED - email sent.` : 'AD4 P4.1: all clear.' } }];"
       }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/v_city_volume?select=city_key,volume_usd,n_trades",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        260
+      ],
+      "id": "check-traded-volume-(24h)",
+      "name": "Check: traded volume (24h)"
     }
   ],
   "connections": {
-    "Schedule (every 6h)": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
-    "Manual Trigger": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
-    "Config": { "main": [[{ "node": "Check: latest book_snapshot", "type": "main", "index": 0 }]] },
-    "Check: latest book_snapshot": { "main": [[{ "node": "Check: latest forecast run", "type": "main", "index": 0 }]] },
-    "Check: latest forecast run": { "main": [[{ "node": "Check: failed ingest jobs (24h)", "type": "main", "index": 0 }]] },
-    "Check: failed ingest jobs (24h)": { "main": [[{ "node": "Check: anomalies (24h)", "type": "main", "index": 0 }]] },
-    "Check: anomalies (24h)": { "main": [[{ "node": "Evaluate Thresholds", "type": "main", "index": 0 }]] },
-    "Evaluate Thresholds": { "main": [[{ "node": "Any failures?", "type": "main", "index": 0 }]] },
-    "Any failures?": { "main": [[{ "node": "Send Email", "type": "main", "index": 0 }], [{ "node": "Summary", "type": "main", "index": 0 }]] },
-    "Send Email": { "main": [[{ "node": "Summary", "type": "main", "index": 0 }]] }
+    "Schedule (every 6h)": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Check: latest book_snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: latest book_snapshot": {
+      "main": [
+        [
+          {
+            "node": "Check: latest forecast run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: latest forecast run": {
+      "main": [
+        [
+          {
+            "node": "Check: failed ingest jobs (24h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: failed ingest jobs (24h)": {
+      "main": [
+        [
+          {
+            "node": "Check: anomalies (24h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: anomalies (24h)": {
+      "main": [
+        [
+          {
+            "node": "Check: traded volume (24h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Thresholds": {
+      "main": [
+        [
+          {
+            "node": "Any failures?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any failures?": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: traded volume (24h)": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Thresholds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   }
 }

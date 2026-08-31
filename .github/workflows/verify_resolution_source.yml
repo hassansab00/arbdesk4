@@ -1,0 +1,46 @@
+name: Verify Resolution Source
+
+# The spot-check that gates settlement (docs/settlement_verification.md).
+# It could never be done from the build sandbox - no egress to weather.gov -
+# but a GitHub Actions runner has normal internet access, so it runs here.
+#
+# Read-only. It cannot flip settings.settlement_verified; that stays a
+# deliberate decision you make after reading this job's log.
+
+on:
+  workflow_dispatch:
+    inputs:
+      city_key:
+        description: 'City to check (blank = pick one with a resolved past market)'
+        required: false
+        default: ''
+      date:
+        description: 'UTC date YYYY-MM-DD (blank = yesterday)'
+        required: false
+        default: ''
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install -r requirements.txt
+      - name: Compare all three surfaces
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          PYTHONPATH=scripts python scripts/verify_resolution_source.py \
+            "${{ github.event.inputs.city_key || '-' }}" \
+            "${{ github.event.inputs.date || '-' }}"
+      - name: What to do with this
+        if: always()
+        run: |
+          echo "If the run PASSED: copy the block above into docs/settlement_verification.md,"
+          echo "then flip the gate yourself in the Supabase SQL editor."
+          echo "If it FAILED on the parser: the diagnostics above show the real page"
+          echo "structure - fix fetch_resolution_source_reading() in scripts/settlement.py"
+          echo "and re-run. Never hand-write a temperature into the doc."

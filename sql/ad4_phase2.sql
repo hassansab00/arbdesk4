@@ -1,3 +1,163 @@
+-- ---------------------------------------------------------------------------
+-- SELF-SUFFICIENCY GUARD (added by the final completion pass).
+--
+-- This file no longer assumes any prior schema state. Everything it reads
+-- or writes below is created here if absent, so it runs standalone against
+-- the live Supabase database, a fresh Postgres, or a half-migrated one.
+-- sql/ad4_00_preflight.sql does the same job for the whole system at once
+-- and should still be run first - this block is the belt to its braces.
+-- Idempotent: only ever ADDS, never drops, renames or retypes.
+-- ---------------------------------------------------------------------------
+create table if not exists cities (
+  city_key          text primary key,
+  display_name      text,
+  icao              text,
+  station_name      text,
+  timezone          text,
+  unit              text default 'C',
+  band_width        numeric,
+  latitude          numeric,
+  longitude         numeric,
+  resolution_source text,
+  status            text default 'active'
+);
+create table if not exists markets (
+  market_id       uuid primary key default gen_random_uuid(),
+  city_key        text,
+  resolution_date date,
+  unit            text,
+  closed          boolean default false,
+  event_slug      text,
+  condition_id    text
+);
+create table if not exists bands (
+  band_id    uuid primary key default gen_random_uuid(),
+  market_id  uuid,
+  band_lo    numeric,
+  band_hi    numeric,
+  open_low   boolean default false,
+  open_high  boolean default false,
+  band_label text,
+  token_yes  text,
+  token_no   text
+);
+create table if not exists book_snapshots (
+  snapshot_id  bigserial primary key,
+  band_id      uuid,
+  observed_at  timestamptz default now(),
+  best_bid     numeric,
+  best_ask     numeric,
+  spread       numeric,
+  market_state text,
+  bid_levels   jsonb,
+  ask_levels   jsonb
+);
+create table if not exists band_probabilities (
+  prob_id             bigserial primary key,
+  band_id             uuid,
+  computed_at         timestamptz default now(),
+  calibrated_prob     numeric,
+  forecast_version    text,
+  calibration_version text
+);
+create table if not exists paper_trades (
+  trade_id  bigserial primary key,
+  opened_at timestamptz default now()
+);
+create table if not exists settings (
+  key        text primary key,
+  value      jsonb,
+  updated_at timestamptz default now()
+);
+create table if not exists trades_observed (
+  trade_id    bigserial primary key,
+  city_key    text,
+  band_id     uuid,
+  token_id    text,
+  side        text,
+  price       numeric,
+  size        numeric,
+  observed_at timestamptz
+);
+
+do $$
+declare r record;
+begin
+  for r in select * from (values
+      ('cities','city_key'),
+      ('markets','market_id'),
+      ('bands','band_id'),
+      ('book_snapshots','snapshot_id'),
+      ('band_probabilities','prob_id'),
+      ('settings','key')
+  ) as t(tbl, col) loop
+    if to_regclass('public.' || quote_ident(r.tbl)) is null then continue; end if;
+    if exists (select 1 from pg_index i
+               join pg_class c on c.oid = i.indrelid
+               join pg_namespace n on n.oid = c.relnamespace
+               join pg_attribute a on a.attrelid = c.oid and a.attnum = i.indkey[0]
+               where n.nspname='public' and c.relname=r.tbl
+                 and i.indisunique and i.indnatts = 1 and a.attname = r.col) then
+      continue;
+    end if;
+    begin
+      execute format('create unique index if not exists %I on public.%I (%I)',
+                     'ad4_uq_' || r.tbl || '_' || r.col, r.tbl, r.col);
+    exception when others then
+      raise notice 'guard: could not make %.% unique: %', r.tbl, r.col, sqlerrm;
+    end;
+  end loop;
+end $$;
+
+do $$
+declare r record;
+begin
+--    columns this file's views, FKs and inserts read or write
+  for r in
+    select * from (values
+      ('cities','display_name','text'),
+      ('cities','icao','text'),
+      ('cities','station_name','text'),
+      ('cities','timezone','text'),
+      ('cities','band_width','numeric'),
+      ('cities','status','text'),
+      ('markets','city_key','text'),
+      ('markets','resolution_date','date'),
+      ('markets','unit','text'),
+      ('markets','closed','boolean default false'),
+      ('bands','market_id','uuid'),
+      ('bands','band_lo','numeric'),
+      ('bands','band_hi','numeric'),
+      ('bands','open_low','boolean default false'),
+      ('bands','open_high','boolean default false'),
+      ('bands','band_label','text'),
+      ('bands','token_yes','text'),
+      ('bands','token_no','text'),
+      ('book_snapshots','band_id','uuid'),
+      ('book_snapshots','observed_at','timestamptz default now()'),
+      ('book_snapshots','best_bid','numeric'),
+      ('book_snapshots','best_ask','numeric'),
+      ('book_snapshots','spread','numeric'),
+      ('book_snapshots','market_state','text'),
+      ('book_snapshots','bid_levels','jsonb'),
+      ('book_snapshots','ask_levels','jsonb'),
+      ('band_probabilities','band_id','uuid'),
+      ('band_probabilities','computed_at','timestamptz default now()'),
+      ('band_probabilities','calibrated_prob','numeric'),
+      ('band_probabilities','forecast_version','text'),
+      ('band_probabilities','calibration_version','text'),
+      ('settings','value','jsonb')
+    ) as t(tbl, col, def)
+  loop
+    if to_regclass('public.' || quote_ident(r.tbl)) is null then continue; end if;
+    if not exists (select 1 from information_schema.columns
+                   where table_schema='public' and table_name=r.tbl and column_name=r.col) then
+      execute format('alter table public.%I add column %I %s', r.tbl, r.col, r.def);
+      raise notice 'guard: added %.%', r.tbl, r.col;
+    end if;
+  end loop;
+end $$;
+
 -- ===========================================================================
 -- AD4 PHASE 2 SCHEMA
 -- Run after ad4_schema.sql, ad4_functions*.sql, ad4_phase1_tables.sql
@@ -168,6 +328,22 @@ insert into settings (key, value) values
   ('correlation_warn_threshold', '{"value": 0.6, "provisional": true}'::jsonb)
 on conflict (key) do update set value = excluded.value;
 
+-- Market-volume thresholds. PROVISIONAL Claude placeholders with NO
+-- evidential basis, UI-settable, labelled as such - same contract as
+-- max_slippage_cents and risk_limits above. `do nothing` (not `do update`)
+-- so a value Hassan has already tuned in the UI is never overwritten by a
+-- re-run of this file.
+insert into settings (key, value) values
+  ('volume_thresholds', '{
+     "thin_band_usd_24h": 500,
+     "thin_city_usd_24h": 5000,
+     "liquidity_half_saturation_usd": 2000,
+     "lookback_hours": 24,
+     "provisional": true, "origin": "claude_invented",
+     "note": "NO evidential basis. thin_* drive a UI warning only; liquidity_half_saturation_usd is the k in vol/(vol+k), a saturating factor in [0,1) that discounts illiquid markets in the ranking and never inflates a liquid one. Replace with measured values once trades_observed has history."
+   }'::jsonb)
+on conflict (key) do nothing;
+
 -- --------------------------------------------------------------------------
 -- VIEWS for the API layer
 --
@@ -190,6 +366,8 @@ drop view if exists v_opportunities cascade;
 drop view if exists v_latest_edge cascade;
 drop view if exists v_latest_prob cascade;
 drop view if exists v_latest_book cascade;
+drop view if exists v_band_volume cascade;
+drop view if exists v_city_volume cascade;
 
 create view v_latest_book as
 select distinct on (bs.band_id) bs.*
@@ -206,6 +384,43 @@ select distinct on (e.band_id, e.side) e.*
 from edges e
 order by e.band_id, e.side, e.computed_at desc;
 
+-- --------------------------------------------------------------------------
+-- TRADED VOLUME - the second liquidity dimension, alongside book depth.
+--
+-- Depth (fillable_usd_*) says what the book can absorb RIGHT NOW.
+-- Volume says whether anyone has actually traded this market at all.
+-- They disagree often: a fat resting quote nobody ever hits is depth
+-- without volume, and a market that printed all morning but is currently
+-- quoted 1c wide is volume without depth. AD4 surfaces both everywhere
+-- rather than collapsing them into one "liquidity" number.
+--
+-- Window comes from settings.volume_thresholds.lookback_hours so it stays
+-- tunable without a schema change.
+-- --------------------------------------------------------------------------
+create view v_band_volume as
+select
+  t.band_id,
+  sum(t.price * t.size) as volume_usd,
+  count(*)::int         as n_trades,
+  max(t.observed_at)    as last_trade_at
+from trades_observed t
+where t.band_id is not null
+  and t.observed_at >= now() - make_interval(hours =>
+        coalesce(((select value from settings where key = 'volume_thresholds')->>'lookback_hours')::int, 24))
+group by t.band_id;
+
+create view v_city_volume as
+select
+  t.city_key,
+  sum(t.price * t.size) as volume_usd,
+  count(*)::int         as n_trades,
+  max(t.observed_at)    as last_trade_at
+from trades_observed t
+where t.city_key is not null
+  and t.observed_at >= now() - make_interval(hours =>
+        coalesce(((select value from settings where key = 'volume_thresholds')->>'lookback_hours')::int, 24))
+group by t.city_key;
+
 create view v_opportunities as
 select
   e.edge_id, e.side, e.model_prob, e.market_price, e.edge_net_pp,
@@ -215,12 +430,21 @@ select
   b.token_yes, b.token_no,
   m.city_key, m.resolution_date, m.unit,
   c.display_name, c.icao, c.station_name, c.timezone, c.band_width,
-  bk.best_bid, bk.best_ask, bk.spread, bk.market_state
+  bk.best_bid, bk.best_ask, bk.spread, bk.market_state,
+  coalesce(bv.volume_usd, 0)  as volume_usd,
+  coalesce(bv.n_trades, 0)    as n_trades,
+  bv.last_trade_at,
+  coalesce(cv.volume_usd, 0)  as city_volume_usd,
+  (coalesce(bv.volume_usd, 0) <
+     coalesce(((select value from settings where key = 'volume_thresholds')->>'thin_band_usd_24h')::numeric, 0)
+  ) as thin_market
 from v_latest_edge e
 join bands b   on b.band_id = e.band_id
 join markets m on m.market_id = b.market_id
 join cities c  on c.city_key = m.city_key
 left join v_latest_book bk on bk.band_id = b.band_id
+left join v_band_volume bv on bv.band_id = b.band_id
+left join v_city_volume cv on cv.city_key = m.city_key
 where m.resolution_date >= current_date;
 
 -- ===========================================================================

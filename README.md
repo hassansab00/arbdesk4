@@ -11,14 +11,43 @@ of what got built against it and where to find things.
 
 ## Start here if you're picking this up
 
-1. **Run the SQL, in this order**, in the Supabase SQL editor (each file
-   is idempotent - safe to re-run):
-   `ad4_phase1_tables.sql` (pre-existing) → `sql/ad4_phase2.sql` →
-   `sql/ad4_phase2_ranking.sql` → `sql/ad4_capacity_correlation.sql` →
-   `sql/ad4_strategies_seed.sql` → `sql/ad4_paper_engine_columns.sql` →
-   `sql/ad4_settlement.sql` → `sql/ad4_backtest.sql` → `sql/ad4_rpc.sql` →
-   `sql/ad4_live_weather.sql` → **`sql/ad4_rls.sql` last** (it grants
-   EXECUTE on functions the earlier files define).
+0. **Follow `docs/GO_LIVE.md`.** It is the single ordered checklist for
+   taking this from a fresh Supabase project to a working desk, with the
+   exact command and the exact expected result at every step. Everything
+   below is the map; that file is the route.
+
+1. **Run the SQL, in this order** - twelve files, in the Supabase SQL
+   editor (each file is idempotent, safe to re-run any number of times):
+
+   1. **`sql/ad4_00_preflight.sql`** - **run this first.** It guarantees
+      every table, column and unique key the other eleven need, whatever
+      state the database is in, and prints a NOTICE listing exactly what
+      it had to add. This is what makes the rest of the run order safe:
+      the base Phase 0 schema is not in this repo, so nothing else may
+      assume a column exists.
+   2. `ad4_phase1_tables.sql`
+   3. `sql/ad4_phase2.sql`
+   4. `sql/ad4_phase2_ranking.sql`
+   5. `sql/ad4_capacity_correlation.sql`
+   6. `sql/ad4_strategies_seed.sql`
+   7. `sql/ad4_paper_engine_columns.sql`
+   8. `sql/ad4_settlement.sql`
+   9. `sql/ad4_backtest.sql`
+   10. `sql/ad4_rpc.sql`
+   11. `sql/ad4_live_weather.sql`
+   12. **`sql/ad4_rls.sql` last** (it grants EXECUTE on functions the
+       earlier files define).
+
+   Then run **`sql/ad4_99_verify.sql`** against the real database. It is
+   read-only and returns one grid: every check PASS / FAIL / ATTENTION,
+   which file to re-run for anything that failed, which tables have data
+   and which job fills the ones that don't, and the **actual column shape**
+   of the six tables this repo previously had to guess at.
+
+   Each of the eleven also opens with its own self-sufficiency guard, so
+   any one of them can be re-run in isolation without the others. The
+   preflight file is still the thing to run first - it is the only place
+   that sees the whole picture at once.
 2. Set the GitHub Actions secrets `SUPABASE_URL` / `SUPABASE_SERVICE_KEY`
    (already required by the three pre-existing workflows) - every new
    workflow under `.github/workflows/` reuses them.
@@ -52,7 +81,9 @@ scripts/                   Python engines (Tasks 1, 3-13d)
   live_weather.py                Task 13d - resolution-source-first weather poll
   measure_skill.py, ingest_*.py  pre-existing Phase 0/1, lightly patched
 
-sql/                        Every ad4_*.sql file from Task 2 onward
+sql/                        Every ad4_*.sql file. ad4_00_preflight.sql
+                             runs FIRST and guarantees the schema the
+                             other eleven assume.
 docs/                       Honest-limitation write-ups and design decisions -
                              read architecture_deviations.md and
                              schema_assumptions.md first
@@ -64,9 +95,9 @@ tests/                      pytest suite - 112 tests, run with:
 
 ## What to read before changing anything
 
-- `docs/schema_assumptions.md` - every place this build guessed a column
-  name because the base schema (`ad4_schema.sql`) isn't in this repo and
-  this session had no live database to inspect.
+- `docs/GO_LIVE.md` - the one ordered first-run checklist. Start here.
+- `docs/schema_assumptions.md` - what the build used to guess about the
+  base schema, and how `sql/ad4_00_preflight.sql` removed the guessing.
 - `docs/architecture_deviations.md` - where this build deliberately
   differs from the literal spec text (mainly: several things Revision A
   describes as n8n-triggered Postgres RPCs are GitHub Actions Python jobs
@@ -78,7 +109,9 @@ tests/                      pytest suite - 112 tests, run with:
 
 ## Non-negotiable rules (from the spec, still true)
 
-Never invent an empirical claim. Preserve `observed_at`/`valid_at` and
+Never invent an empirical claim. Market volume and book depth are
+different facts and are never merged into one "liquidity" number.
+Preserve `observed_at`/`valid_at` and
 `run_at`/`for_date` separation. All P&L is net outside cost-analysis
 views. The paper engine fills at executable price, not mid. Every fired
 signal is logged, approved or not. Band identity is not comparable across

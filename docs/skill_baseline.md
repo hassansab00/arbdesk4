@@ -33,38 +33,58 @@ live data for the reason above; verify it as the first step below.
 
 ## How to actually produce this baseline
 
-1. Run the workflow (either is fine — the fix is now on this branch and
-   will be on `main` once merged):
-   - GitHub UI → Actions → "Measure Forecast Skill" → Run workflow →
-     `days = 400` (or via `gh workflow run skill.yml -f days=400`), **or**
-   - locally: `SUPABASE_URL=... SUPABASE_SERVICE_KEY=... PYTHONPATH=scripts
-     python scripts/measure_skill.py 400`
-2. Before trusting the new numbers, sanity-check the filter change: compare
-   total `weather_observations`/`weather_forecasts` row counts pulled per
-   city against a run from before this fix (e.g. re-run against a couple
-   of cities on the previous commit and diff the counts). They must match.
-3. Copy the full printed table (`CITY / n / MAE C / bias / bands /
-   within1`) and the `VERIFY` line the script now prints into this file,
-   under a `## Measured <date>` heading.
-4. Run the SQL verification query from the spec against
-   `derived_forecast_skill` and paste the result:
+**One button plus one paste.** This never needed anything the build
+sandbox lacked except credentials.
 
-   ```sql
-   select
-     count(*) as rows,
-     count(distinct city_key) as cities,
-     min(n_days) as worst_sample,
-     round(avg(mae_c)::numeric,2) as avg_mae,
-     round(avg(mae_bands)::numeric,2) as avg_bands
-   from derived_forecast_skill
-   where computed_at = (select max(computed_at) from derived_forecast_skill);
-   ```
+### 1. Run it
 
-   `worst_sample` should be 200+. List any city below that explicitly —
-   its confidence gets downgraded in the probability engine (Task 4;
-   see `scripts/probability_engine.py`, which already reads `n_days` and
-   `bias_c >= mae_c` per the spec's "handling untrusted cities" rule and
-   will downgrade automatically once this table has real, complete rows).
+> GitHub -> **Actions -> Measure Forecast Skill -> Run workflow** ->
+> `days = 400`
+
+(or locally:
+`SUPABASE_URL=... SUPABASE_SERVICE_KEY=... PYTHONPATH=scripts python scripts/measure_skill.py 400`)
+
+### 2. Sanity-check the filter change first
+
+`scripts/measure_skill.py` had a fragile PostgREST filter (a `valid_at` /
+`for_date` key mixed with a separate `and` key wrapping one condition),
+replaced with PostgREST's documented repeated-key range syntax. That
+changes *how* the range is expressed, not *which* rows match, so the
+per-city row counts in the log must be unchanged from a pre-fix run. If
+they are not, stop - the filter is now selecting different data and every
+number below it is wrong.
+
+### 3. Paste the result
+
+Copy the full printed table (`CITY / n / MAE C / bias / bands / within1`)
+and the `VERIFY` line into a `## Measured <date>` heading below.
+
+### 4. Confirm the sample size in SQL
+
+```sql
+select
+  count(*)                          as rows,
+  count(distinct city_key)          as cities,
+  min(n_days)                       as worst_sample,
+  round(avg(mae_c)::numeric, 2)     as avg_mae,
+  round(avg(mae_bands)::numeric, 2) as avg_bands
+from derived_forecast_skill
+where computed_at = (select max(computed_at) from derived_forecast_skill);
+```
+
+`worst_sample` should be 200 or more. **List any city below that
+explicitly** in the section you paste - the probability engine already
+downgrades those cities' confidence automatically
+(`scripts/probability_engine.py` reads `n_days` and applies the
+`bias_c >= mae_c` rule), so this is about you knowing which cities are
+thin, not about changing code.
+
+`sql/ad4_99_verify.sql` also reports whether `derived_forecast_skill` has
+rows at all, if you just want to know whether the job has ever run.
+
+## Measured
+
+_(nothing yet - paste the run's table here)_
 
 ## Downstream dependency
 

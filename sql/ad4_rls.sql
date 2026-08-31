@@ -10,6 +10,13 @@
 -- Run after every other sql/ad4_*.sql file (needs the tables/views they
 -- create). Idempotent: `enable row level security` is a no-op if already
 -- enabled, and policies are dropped-and-recreated by name.
+--
+-- SELF-SUFFICIENCY: this file no longer assumes any table or function it
+-- names actually exists. Every loop below skips (with a NOTICE) anything
+-- missing instead of aborting the whole script - so a database that is a
+-- few tables behind still gets RLS on everything it does have, and the
+-- NOTICE tells you exactly what was skipped. sql/ad4_00_preflight.sql
+-- should have created them all already.
 -- ===========================================================================
 
 -- --------------------------------------------------------------------------
@@ -22,7 +29,8 @@ declare
   anon_read_tables text[] := array[
     'cities', 'markets', 'bands', 'book_snapshots', 'band_probabilities',
     'edges', 'derived_forecast_skill', 'derived_weather_peak', 'derived_market_peak',
-    'derived_city_day_volume', 'derived_capacity', 'derived_city_correlation',
+    'derived_city_day_volume', 'derived_band_day_volume',
+    'derived_capacity', 'derived_city_correlation',
     'strategies', 'deployments', 'signals', 'paper_trades', 'ledger',
     'backtest_runs', 'backtest_results', 'backtest_trades',
     'cost_params', 'anomaly_rules', 'strategy_conflicts', 'weather_observations',
@@ -30,6 +38,10 @@ declare
   ];
 begin
   foreach t in array anon_read_tables loop
+    if to_regclass('public.' || quote_ident(t)) is null then
+      raise notice 'rls: table % does not exist - skipped (run sql/ad4_00_preflight.sql)', t;
+      continue;
+    end if;
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists anon_read on %I', t);
     execute format('create policy anon_read on %I for select to anon using (true)', t);
@@ -42,23 +54,41 @@ end $$;
 -- them), but WRITES must go through RPCs only (see below), never a direct
 -- UPDATE from the browser using the anon key.
 -- --------------------------------------------------------------------------
-alter table settings enable row level security;
-drop policy if exists anon_read on settings;
-create policy anon_read on settings for select to anon using (true);
+do $$ begin
+  if to_regclass('public.settings') is null then
+    raise notice 'rls: settings does not exist - skipped';
+  else
+    alter table settings enable row level security;
+    drop policy if exists anon_read on settings;
+    create policy anon_read on settings for select to anon using (true);
+  end if;
+end $$;
 
 -- --------------------------------------------------------------------------
 -- anomalies: readable (the UI surfaces them), never anon-writable.
 -- --------------------------------------------------------------------------
-alter table anomalies enable row level security;
-drop policy if exists anon_read on anomalies;
-create policy anon_read on anomalies for select to anon using (true);
+do $$ begin
+  if to_regclass('public.anomalies') is null then
+    raise notice 'rls: anomalies does not exist - skipped';
+  else
+    alter table anomalies enable row level security;
+    drop policy if exists anon_read on anomalies;
+    create policy anon_read on anomalies for select to anon using (true);
+  end if;
+end $$;
 
 -- --------------------------------------------------------------------------
 -- trades_observed: large, historical, read-only market data - anon read.
 -- --------------------------------------------------------------------------
-alter table trades_observed enable row level security;
-drop policy if exists anon_read on trades_observed;
-create policy anon_read on trades_observed for select to anon using (true);
+do $$ begin
+  if to_regclass('public.trades_observed') is null then
+    raise notice 'rls: trades_observed does not exist - skipped';
+  else
+    alter table trades_observed enable row level security;
+    drop policy if exists anon_read on trades_observed;
+    create policy anon_read on trades_observed for select to anon using (true);
+  end if;
+end $$;
 
 -- --------------------------------------------------------------------------
 -- Views inherit the RLS of their underlying tables automatically in
@@ -102,12 +132,27 @@ grant usage on schema public to anon;
 grant select on all tables in schema public to anon;
 
 revoke execute on all functions in schema public from anon, public;
-grant execute on function calc_recommendation(jsonb) to anon;
-grant execute on function log_paper_trade(jsonb) to anon;
-grant execute on function approve_signal(bigint) to anon;
-grant execute on function dismiss_signal(bigint) to anon;
-grant execute on function close_position(bigint, numeric, text) to anon;
-grant execute on function queue_backtest(jsonb) to anon;
-grant execute on function update_setting(text, jsonb) to anon;
-grant execute on function upsert_deployment(jsonb) to anon;
-grant execute on function set_deployment_status(uuid, text) to anon;
+
+do $$
+declare
+  sig text;
+  anon_execute text[] := array[
+    'calc_recommendation(jsonb)',
+    'log_paper_trade(jsonb)',
+    'approve_signal(bigint)',
+    'dismiss_signal(bigint)',
+    'close_position(bigint, numeric, text)',
+    'queue_backtest(jsonb)',
+    'update_setting(text, jsonb)',
+    'upsert_deployment(jsonb)',
+    'set_deployment_status(uuid, text)'
+  ];
+begin
+  foreach sig in array anon_execute loop
+    begin
+      execute format('grant execute on function %s to anon', sig);
+    exception when undefined_function then
+      raise notice 'rls: function %  does not exist - grant skipped. Run sql/ad4_rpc.sql (and ad4_backtest.sql) before this file.', sig;
+    end;
+  end loop;
+end $$;

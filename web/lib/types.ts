@@ -40,7 +40,33 @@ export interface Opportunity {
   best_ask: number | null;
   spread: number | null;
   market_state: MarketState | null;
+  // Traded volume, from sql/ad4_phase2.sql's v_band_volume / v_city_volume.
+  // Distinct from fillable_usd_* (book depth): depth is what the current
+  // quote can absorb, volume is whether this market trades at all.
+  volume_usd: number | null;
+  n_trades: number | null;
+  last_trade_at: string | null;
+  city_volume_usd: number | null;
+  thin_market: boolean | null;
+  liquidity_factor: number | null;
+  score_depth_only: number | null;
   score: number | null;
+}
+
+export interface BookLevel {
+  price: number;
+  size: number;
+}
+
+export interface LatestBook {
+  band_id: string;
+  observed_at: string;
+  best_bid: number | null;
+  best_ask: number | null;
+  spread: number | null;
+  market_state: MarketState | null;
+  bid_levels: BookLevel[] | null;
+  ask_levels: BookLevel[] | null;
 }
 
 export interface City {
@@ -150,4 +176,7 @@ export interface CalcRecommendation {
   correlation_warning?: boolean;
   feasible?: boolean;
   reason?: string;
+  volume_usd?: number;
+  volume_warning?: boolean;
+  thin_bands?: string[];
 }

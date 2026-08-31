@@ -25,9 +25,21 @@ against the spec in `docs/n8n_workflows.md` before activating.
   directly in the SQL editor).
 - `P3.1_email_digests.template.json` - morning brief (04:00 UTC) and
   end-of-day report (21:00 UTC), both via `sql/ad4_rpc.sql`'s
-  `build_morning_brief`/`build_eod_report` RPCs.
+  `build_morning_brief`/`build_eod_report` RPCs. The morning brief's
+  table carries **Depth 5c** and **Vol 24h** beside price and edge, and
+  shades any row on a thin-volume band - an edge on a band nobody has
+  traded in 24h is a different proposition from the same edge on a busy
+  one, and the brief has to say which it is.
 - `P4.1_health_watchdog.template.json` - every 6 hours, emails only on
-  failure. The one check it can't do (n8n's own execution count vs. the
+  failure. Five checks: stale book snapshots, stale forecast runs, failed
+  ingest jobs, anomalies, and **traded market volume**. The volume check
+  exists because none of the others can see it: `book_snapshots` keeps
+  updating whether or not anyone is trading, so a desk with live books
+  and zero volume looks healthy to every other check while being
+  untradeable. It fails on zero trades across all cities in 24h, and
+  reports the total either way as a context line on the alert email, so
+  a clean run still tells you the size of the market you are trading
+  into. The one check it can't do (n8n's own execution count vs. the
   plan limit) is a manual/n8n-side check, noted in the workflow's own
   Evaluate Thresholds node and in `docs/n8n_workflows.md` - Postgres has
   no visibility into n8n's own usage.
@@ -39,3 +51,10 @@ against the spec in `docs/n8n_workflows.md` before activating.
    (401/403 usually means the service key wasn't pasted in, not a bug).
 3. Activate the workflow (top-right toggle) so its real trigger
    (Schedule/Webhook) takes over.
+
+## Where these fit in the first run
+
+`docs/GO_LIVE.md` step 5 walks the import, the Config fields, the test
+execution and the expected result for each of the three, in order. Import
+them after the SQL and the GitHub Actions workflows are working - all
+three read data those produce.
