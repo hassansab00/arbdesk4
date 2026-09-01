@@ -1,17 +1,32 @@
 -- ===========================================================================
 -- AD4 VERIFY  --  run this LAST, after all 12 files, against the REAL database.
 --
--- One paste, one report. Every check reads the system catalogs rather than
--- the tables themselves, so this file cannot fail on a missing relation -
--- a missing table is a FAIL row, not an error.
+-- v2 - REWRITTEN AS A FUNCTION.
 --
--- Read-only. It creates nothing, changes nothing, and is safe to run at any
--- time, as often as you like.
+-- The previous version built its report in a scratch table across several
+-- statements, and failed on the live Supabase SQL editor with
+-- `relation "_ad4_verify" does not exist` - as a TEMPORARY table and again
+-- as a permanent one.
+--
+-- This version does not rely on anything surviving between statements. All
+-- the work happens inside one function body, which is a single call on a
+-- single connection by construction; the scratch table is created and used
+-- entirely within it. Functions are known to persist across statements in
+-- this setup - sql/ad4_rpc.sql defines them and sql/ad4_rls.sql grants on
+-- them a whole file later, which works.
+--
+-- If the two statements below somehow still get separated, the function is
+-- committed and you can simply run this on its own, any time:
+--
+--     select * from ad4_verify();
+--
+-- Read-only with respect to your data: it creates one function and reads
+-- catalogs. It changes no table, row, policy or setting.
 --
 -- WHAT TO DO WITH THE OUTPUT
 -- Copy the whole result grid and paste it back. It answers, from the real
 -- database rather than a test one:
---   * did the 12 files actually take, and completely (section 1-3);
+--   * did the 12 files actually take, and completely (sections 1-3);
 --   * is the security boundary the one we intended (section 4);
 --   * is Realtime actually wired (section 5);
 --   * which tables have data and which are still waiting on a job (6);
@@ -20,25 +35,10 @@
 -- data-shape assumptions in docs/schema_assumptions.md.
 -- ===========================================================================
 
--- A REGULAR table, not temporary: a `create temporary table` is scoped to
--- one physical database connection, and the Supabase SQL editor does not
--- guarantee a pasted multi-statement script stays on a single connection
--- end to end - which surfaces as `relation "_ad4_verify" does not exist`
--- the moment a later statement lands on a different connection than the
--- one that created it. A real table has no such scoping. Dropped both
--- before creating (idempotent re-run) and at the very end (below the
--- report, so it never affects what you see or copy) - this file still
--- creates nothing that outlives the run.
-drop table if exists _ad4_verify;
-create table _ad4_verify (
-  seq      int generated always as identity,
-  section  text,
-  check_   text,
-  status   text,
-  detail   text
-);
-
-do $$
+create or replace function ad4_verify()
+returns table (section text, check_name text, status text, detail text)
+language plpgsql
+as $ad4v$
 declare
   r          record;
   v_missing  text[];
@@ -47,6 +47,17 @@ declare
   v_txt      text;
   v_ok       boolean;
 begin
+  -- Scratch table lives entirely inside this one function call, so it
+  -- cannot be lost between statements - there are none to cross.
+  drop table if exists _ad4_verify;
+  create temp table _ad4_verify (
+    seq      int generated always as identity,
+    section  text,
+    check_   text,
+    status   text,
+    detail   text
+  );
+
   -- =========================================================================
   -- 1. TABLES
   -- =========================================================================
@@ -405,15 +416,15 @@ begin
         'column absent -> band-level volume cannot be computed; only city-level');
     end if;
   end if;
-end $$;
+
+  return query
+    select v.section, v.check_, v.status, v.detail
+    from _ad4_verify v
+    order by v.seq;
+end
+$ad4v$;
 
 -- ===========================================================================
 -- THE REPORT.  Copy the whole grid.
 -- ===========================================================================
-select section, check_ as check, status, detail
-from _ad4_verify
-order by seq;
-
--- Runs after the SELECT above has already returned its result set to the
--- client, so this never affects what you see or copy.
-drop table if exists _ad4_verify;
+select * from ad4_verify();
