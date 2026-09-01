@@ -2,10 +2,56 @@
 
 ## The short version
 
-They are gone. `sql/ad4_00_preflight.sql` now guarantees every table,
-column and unique key the rest of the SQL needs, and each of the other
-eleven files opens with its own guard for what that file touches. Nothing
-in this repo assumes a schema state it has not itself ensured.
+They are gone, in two rounds.
+
+**Round 1** — `sql/ad4_00_preflight.sql` guarantees every table, column and
+unique key the rest of the SQL needs, and each of the other files opens
+with its own guard for what it touches. That removed every *missing*-object
+assumption.
+
+**Round 2** — `sql/ad4_99_verify.sql` was run against the live database and
+reported the real column shapes. Three assumptions were not about missing
+objects at all; they were about objects that existed with a **different
+shape than assumed**, which no `add column if not exists` can catch.
+`sql/ad4_13_reconcile.sql` fixes those, and fixes them by reading
+`information_schema` at run time rather than by hard-coding the newly
+discovered names.
+
+## CONFIRMED shapes (from the live database, not assumed)
+
+| Table | What was assumed | What it actually is |
+|---|---|---|
+| `book_snapshots` | `bid_levels` / `ask_levels` are jsonb ladders of `{price,size}` | **integer level counts.** The ladder is in `raw_book jsonb`; depth is pre-aggregated into `ask_usd_1c/2c/5c/10c/25c`, `bid_usd_*`, `ask_total_usd`, `bid_total_usd`, and the table also carries `band_volume` and `band_volume_24hr` |
+| `trades_observed` | timestamps in `observed_at` | **`traded_at`.** `observed_at` is this repo's own addition and is NULL on all 122,373 rows. Also carries `condition_id`, `proxy_wallet`, `ingested_at`, `token_id`, `city_key` |
+| `paper_trades` | `trade_id bigint`, exit written to `exit_price` | **`trade_id uuid`**, with `close_price` / `close_reason` as the real close columns; `cost_version` / `forecast_version` / `calibration_version` are `uuid` |
+| `ledger` | PK `ledger_id` | **`entry_id`**, and its `forecast_version` / `calibration_version` / `cost_version` are `text` while `paper_trades`' are `uuid` |
+| `signals` | `status` alone | also carries `approved boolean` and `acted_on boolean`; setting only `status` left an approved signal looking unapproved |
+| `band_probabilities` | version columns `text` | `forecast_version` / `calibration_version` are `uuid` |
+| `strategies` | — | `strategy_id` is `text`, not uuid |
+| `markets` | — | also carries `winning_band_id`, `resolution_verified_at`, `resolution_source_used`, `dispute_flag` |
+| `model_versions` | a `detail` column | `config jsonb`, `structural boolean`, `active boolean` |
+| — | — | two tables nothing in this repo knew about: `ensemble_forecasts`, `regimes` |
+
+## How the fix avoids a round 3
+
+`sql/ad4_13_reconcile.sql` never names a discovered column in a way that
+can go stale:
+
+* **The book** goes through one adapter view, `v_band_book`, which tries
+  `raw_book` → jsonb `*_levels` → a ladder synthesised from the cumulative
+  USD-depth tiers, and reports which one it used in
+  `ask_levels_source` / `bid_levels_source`. `v_latest_book` then re-exports
+  those normalised ladders under the original column names, so
+  `calc_recommendation` and the Goals page needed no change at all.
+* **The trade timestamp** goes through `ad4_trades_ts_expr()`, which returns
+  a `coalesce()` over every candidate column that exists, in preference
+  order. It does not matter which one the ingest populates.
+* **The RPC types** are generated from `information_schema` at install
+  time — `close_position` takes `uuid` here and `bigint` on a database
+  built only from `ad4_00_preflight.sql`, from the same file.
+
+The whole sequence is proven twice, on both shapes: against a
+reconstruction of the real Phase 0 schema, and against an empty database.
 
 ## What the problem was
 

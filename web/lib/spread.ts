@@ -39,6 +39,13 @@ export interface SpreadBand {
   /** 24h traded volume in USD for this band. */
   volumeUsd: number;
   city_key?: string;
+  /**
+   * Where the YES ladder came from: "raw_book"/"levels_jsonb" is a real
+   * order book, "synthetic_tiers" is approximated from the cumulative
+   * USD-depth columns because no ladder was stored. The maths below treats
+   * both the same - it is the UI's job to say which one you are looking at.
+   */
+  ladderSource?: string;
 }
 
 export interface SpreadLeg {

@@ -257,7 +257,12 @@ begin
     case when cardinality(v_extra) = 0 then 'select only, as intended'
          else 'WRITE GRANTED: ' || array_to_string(v_extra, ', ') || ' -> revoke these' end);
 
-  -- anon EXECUTE must be exactly the nine UI-callable RPCs.
+  -- anon EXECUTE must be exactly the nine UI-callable RPCs, plus the six
+  -- pure helpers that v_latest_book / v_band_book call from inside
+  -- themselves. A view's function calls are permission-checked against the
+  -- CALLING role, so without those grants `select * from v_latest_book`
+  -- fails for anon. They take jsonb/numeric arguments, read no tables and
+  -- write nothing, so granting them costs no privilege.
   v_extra := '{}';
   for r in
     select p.proname
@@ -267,16 +272,19 @@ begin
       and p.proname not in (
         'calc_recommendation','log_paper_trade','approve_signal','dismiss_signal',
         'close_position','queue_backtest','update_setting','upsert_deployment',
-        'set_deployment_status')
+        'set_deployment_status',
+        -- pure view helpers (sql/ad4_13_reconcile.sql)
+        'ad4_num','ad4_norm_levels','ad4_raw_book_side','ad4_synth_levels',
+        'depth_usd','capacity_side')
   loop
     v_extra := v_extra || r.proname;
   end loop;
   insert into _ad4_verify (section, check_, status, detail) values (
-    '4. SECURITY', 'anon EXECUTE is exactly the 9 UI RPCs',
+    '4. SECURITY', 'anon EXECUTE is exactly the 9 UI RPCs + view helpers',
     case when cardinality(v_extra) = 0 then 'PASS' else 'ATTENTION' end,
     case when cardinality(v_extra) = 0 then 'no extras'
          else 'also executable by anon: ' || array_to_string(v_extra, ', ')
-              || '  -> settle_markets / recompute_* / build_* must NOT be here' end);
+              || '  -> settle_markets / recompute_* / build_* / ad4_verify must NOT be here' end);
 
   -- =========================================================================
   -- 7. REALTIME  (the thing that could not be verified without a live project)
@@ -372,32 +380,61 @@ begin
     end if;
   end loop;
 
-  -- The single biggest remaining data-shape assumption: that
-  -- book_snapshots.bid_levels / ask_levels are jsonb arrays of
-  -- {"price": n, "size": n}. Sample one real row and report the keys.
-  if to_regclass('public.book_snapshots') is not null
-     and exists (select 1 from information_schema.columns
-                 where table_schema='public' and table_name='book_snapshots' and column_name='ask_levels') then
+  -- The book ladder. This used to probe book_snapshots.ask_levels directly
+  -- and blew up with "jsonb_typeof(integer) does not exist", which is how we
+  -- learned those columns are level COUNTS. Ask the adapter instead: what
+  -- matters is whether a usable ladder comes out and where it came from.
+  if to_regclass('public.v_band_book') is not null then
     begin
       execute $q$
-        select coalesce(
-          (select 'jsonb_typeof=' || jsonb_typeof(ask_levels)
-                  || '  first element keys: ' || coalesce((
-                       select string_agg(k, ',') from jsonb_object_keys(ask_levels->0) k
-                     ), '(not an object)')
-           from book_snapshots
-           where ask_levels is not null and jsonb_typeof(ask_levels) = 'array'
-             and jsonb_array_length(ask_levels) > 0
-           limit 1),
-          'no non-empty ask_levels row to sample')
+        select string_agg(src || '=' || n, ', ' order by src)
+        from (select ask_levels_source src, count(*) n from v_band_book group by 1) x
       $q$ into v_txt;
+      execute 'select count(*) from v_band_book where jsonb_array_length(ask_levels) > 0' into v_n;
     exception when others then
-      v_txt := 'could not sample: ' || sqlerrm;
+      v_txt := 'could not sample: ' || sqlerrm; v_n := 0;
     end;
     insert into _ad4_verify (section, check_, status, detail) values (
-      '7. ACTUAL SHAPE', 'book_snapshots.ask_levels element shape',
-      case when v_txt like '%price%' and v_txt like '%size%' then 'PASS' else 'ATTENTION' end,
-      v_txt || '   [expected keys: price, size - the ladder walker, capacity RPCs and the Goals engine all assume this]');
+      '7. ACTUAL SHAPE', 'book ladder resolves (v_band_book)',
+      case when v_n > 0 then 'PASS' else 'ATTENTION' end,
+      coalesce(v_txt, 'no book snapshots') || '  [' || v_n ||
+      ' bands have a non-empty ask ladder. raw_book/levels_jsonb are real books; ' ||
+      'synthetic_tiers is approximated from the cumulative *_usd_*c depth columns]');
+  else
+    insert into _ad4_verify (section, check_, status, detail) values (
+      '7. ACTUAL SHAPE', 'book ladder resolves (v_band_book)', 'FAIL',
+      'v_band_book does not exist - run sql/ad4_13_reconcile.sql');
+  end if;
+
+  -- Where the volume figure comes from, per band.
+  if to_regclass('public.v_band_volume') is not null then
+    begin
+      execute $q$
+        select string_agg(src || '=' || n, ', ' order by src)
+        from (select volume_source src, count(*) n from v_band_volume group by 1) x
+      $q$ into v_txt;
+    exception when others then
+      v_txt := 'v_band_volume has no volume_source column - run sql/ad4_13_reconcile.sql';
+    end;
+    insert into _ad4_verify (section, check_, status, detail) values (
+      '7. ACTUAL SHAPE', 'volume provenance (v_band_volume)',
+      case when coalesce(v_txt, '') like '%book_24h%' or coalesce(v_txt, '') like '%trades_observed%'
+           then 'PASS' else 'ATTENTION' end,
+      coalesce(v_txt, 'no rows'));
+  end if;
+
+  -- close_position must take whatever type paper_trades.trade_id actually is.
+  if to_regclass('public.paper_trades') is not null then
+    select data_type into v_txt from information_schema.columns
+     where table_schema='public' and table_name='paper_trades' and column_name='trade_id';
+    insert into _ad4_verify (section, check_, status, detail)
+    select '7. ACTUAL SHAPE', 'close_position argument type',
+           case when pg_get_function_identity_arguments(p.oid) like 'p_trade_id ' || v_txt || '%'
+                then 'PASS' else 'FAIL' end,
+           pg_get_function_identity_arguments(p.oid) ||
+           '   [paper_trades.trade_id is ' || v_txt || ']'
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'close_position';
   end if;
 
   -- Same question for trades_observed: band_id is what band-level volume needs.
@@ -427,4 +464,9 @@ $ad4v$;
 -- ===========================================================================
 -- THE REPORT.  Copy the whole grid.
 -- ===========================================================================
+-- ad4_verify() is created by the statement above and so arrives with
+-- PUBLIC EXECUTE, which is how it ended up callable on the anon key.
+-- Take it back: a schema audit is not something the browser may run.
+revoke execute on function ad4_verify() from public;
+
 select * from ad4_verify();

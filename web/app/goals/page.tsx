@@ -100,7 +100,7 @@ export default function GoalsPage() {
   );
 
   const books = useQuery(
-    () => supabase.from("v_latest_book").select("band_id,best_bid,best_ask,bid_levels,ask_levels"),
+    () => supabase.from("v_latest_book").select("band_id,best_bid,best_ask,bid_levels,ask_levels,ask_levels_source,bid_levels_source"),
     [cityKey],
     30000
   );
@@ -186,6 +186,7 @@ export default function GoalsPage() {
           noBook: noAsks,
           volumeUsd: o.volume_usd ?? 0,
           city_key: o.city_key,
+          ladderSource: (bk?.ask_levels_source ?? "none") as string,
         } as SpreadBand;
       })
       .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
@@ -249,6 +250,13 @@ export default function GoalsPage() {
   const err = opps.error ?? books.error ?? cities.error;
   const isEmpty = !loading && !err && rawBands.length === 0;
 
+  // On the real database some bands have no stored order book at all - only
+  // cumulative USD depth per cent-tier. Those ladders are reconstructed and
+  // are coarser than a real one, so say so rather than let the fill prices
+  // below imply a precision the data does not have.
+  const syntheticLadders = rawBands.filter((b) => b.ladderSource === "synthetic_tiers");
+  const noLadders = rawBands.filter((b) => !b.ladderSource || b.ladderSource === "none");
+
   return (
     <div className="space-y-5">
       <div>
@@ -260,6 +268,23 @@ export default function GoalsPage() {
           gets, not top-of-book. Traded volume is shown on every leg: depth tells you what the
           current quote can absorb, volume tells you whether anyone trades this band at all.
         </p>
+        {syntheticLadders.length > 0 && (
+          <p className="mt-2 max-w-3xl rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn">
+            <b>{syntheticLadders.length} of {rawBands.length} bands have no stored order book.</b>{" "}
+            Their ladders are reconstructed from the cumulative depth totals on the snapshot
+            (<code>ask_usd_1c</code> … <code>ask_total_usd</code>), priced at the outer edge of each
+            tier. Total depth is right; the shape inside a tier is an approximation, so treat the
+            average fill prices for those bands as conservative estimates rather than quotes.
+          </p>
+        )}
+        {noLadders.length > 0 && (
+          <p className="mt-2 max-w-3xl rounded border border-border px-3 py-2 text-xs leading-relaxed text-muted">
+            {noLadders.length} of {rawBands.length} bands have no book at all — no ladder and no
+            depth totals on the latest snapshot. They fall back to top-of-book, so any size beyond
+            the touch is unpriced for them. Run the book/volume snapshot workflow
+            (<code>n8n/P0.3_book_volume_snapshot.scaffold.json</code>) to fill them in.
+          </p>
+        )}
       </div>
 
       {/* ------------------------------------------------------ controls */}

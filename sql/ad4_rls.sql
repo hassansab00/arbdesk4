@@ -106,17 +106,19 @@ end $$;
 --
 --   (nothing currently needs to be fully hidden from anon - every table
 --   above is safe to read; the boundary AD4 actually needs is WRITE, not
---   READ, which is enforced by never granting UPDATE/INSERT/DELETE to
---   anon at all - PostgREST only allows what a policy explicitly grants,
---   and none of the policies above are `for insert`/`for update`/
---   `for delete`, so anon can SELECT and nothing else on every table.)
+--   READ. That boundary is enforced by the explicit REVOKE below, not by
+--   the read-only policies above: a `for select` policy does not stop an
+--   INSERT from a role that holds the INSERT privilege. Verified against
+--   the live database, where anon held writes on ~40 tables while every
+--   policy here said `for select`.)
 -- --------------------------------------------------------------------------
 
 -- --------------------------------------------------------------------------
 -- Grants: RLS policies only take effect once the role actually has the
 -- underlying SQL privilege too. Supabase's `anon` role needs USAGE on the
--- schema and SELECT on these tables (writes are not granted here at all,
--- so even a security-definer-less RPC bug can't let anon write through).
+-- schema and SELECT on these tables - and must be stripped of everything
+-- else first, because privileges granted before this file ever ran are
+-- still in force until something takes them away.
 --
 -- Function execution is explicitly NOT blanket-granted - only the RPCs
 -- the frontend is actually meant to call directly (Revision A §6.2/§6.4:
@@ -128,8 +130,33 @@ end $$;
 -- key - an anon user must never be able to trigger settlement, force a
 -- recompute, or forge a morning brief.
 -- --------------------------------------------------------------------------
-grant usage on schema public to anon;
-grant select on all tables in schema public to anon;
+-- REVOKE BEFORE GRANT. This file used to only ever add privileges, which
+-- is why the write boundary was open for so long: Phase 0 had run a
+-- `grant all in schema public to anon` at some point, and a grant that is
+-- never revoked never goes away. An anon_read policy does not save you -
+-- RLS gates rows, the GRANT gates the verb, and anon held INSERT/UPDATE/
+-- DELETE/TRUNCATE on ~40 tables while every policy here said "for select".
+do $$
+declare r text;
+begin
+  foreach r in array array['anon','authenticated'] loop
+    if not exists (select 1 from pg_roles where rolname = r) then
+      raise notice 'rls: role % does not exist here - skipped', r;
+      continue;
+    end if;
+    execute format('revoke insert, update, delete, truncate, references, trigger on all tables in schema public from %I', r);
+    execute format('revoke update on all sequences in schema public from %I', r);
+    begin
+      execute format('alter default privileges in schema public revoke insert, update, delete, truncate on tables from %I', r);
+    exception when others then
+      raise notice 'rls: could not alter default privileges for % (%)', r, sqlerrm;
+    end;
+    execute format('grant usage on schema public to %I', r);
+    execute format('grant select on all tables in schema public to %I', r);
+    execute format('grant usage, select on all sequences in schema public to %I', r);
+  end loop;
+  execute 'revoke insert, update, delete, truncate on all tables in schema public from public';
+end $$;
 
 revoke execute on all functions in schema public from anon, public;
 
@@ -141,7 +168,11 @@ declare
     'log_paper_trade(jsonb)',
     'approve_signal(bigint)',
     'dismiss_signal(bigint)',
-    'close_position(bigint, numeric, text)',
+    -- paper_trades.trade_id is uuid on the real database and bigserial on
+    -- one this repo built from scratch; resolve it rather than assume.
+    'close_position(' || coalesce((select data_type from information_schema.columns
+       where table_schema = 'public' and table_name = 'paper_trades'
+         and column_name = 'trade_id'), 'bigint') || ', numeric, text)',
     'queue_backtest(jsonb)',
     'update_setting(text, jsonb)',
     'upsert_deployment(jsonb)',
