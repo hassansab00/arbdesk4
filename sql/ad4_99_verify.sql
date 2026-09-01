@@ -20,8 +20,17 @@
 -- data-shape assumptions in docs/schema_assumptions.md.
 -- ===========================================================================
 
+-- A REGULAR table, not temporary: a `create temporary table` is scoped to
+-- one physical database connection, and the Supabase SQL editor does not
+-- guarantee a pasted multi-statement script stays on a single connection
+-- end to end - which surfaces as `relation "_ad4_verify" does not exist`
+-- the moment a later statement lands on a different connection than the
+-- one that created it. A real table has no such scoping. Dropped both
+-- before creating (idempotent re-run) and at the very end (below the
+-- report, so it never affects what you see or copy) - this file still
+-- creates nothing that outlives the run.
 drop table if exists _ad4_verify;
-create temporary table _ad4_verify (
+create table _ad4_verify (
   seq      int generated always as identity,
   section  text,
   check_   text,
@@ -404,3 +413,7 @@ end $$;
 select section, check_ as check, status, detail
 from _ad4_verify
 order by seq;
+
+-- Runs after the SELECT above has already returned its result set to the
+-- client, so this never affects what you see or copy.
+drop table if exists _ad4_verify;

@@ -343,12 +343,18 @@ create table if not exists derived_forecast_skill (
 --    `alter table ... add column if not exists` semantics, one row each:
 --    (table, column, type-and-default). Nothing is ever retyped.
 -- --------------------------------------------------------------------------
--- Session-scoped scratch table for the verification block at the end.
--- NOT `on commit drop`: the Supabase SQL editor and psql differ on whether
--- a multi-statement script is one transaction, and dropping it mid-file
--- would break section 8. Dropped explicitly at the end instead.
+-- Scratch table for the verification block at the end. A REGULAR table,
+-- not temporary: a `create temporary table` is scoped to one physical
+-- database connection, and the Supabase SQL editor does not guarantee a
+-- pasted multi-statement script stays on a single connection end to end
+-- (it can hand statements to different backends through the pooler) -
+-- which surfaces as `relation "_ad4_preflight_added" does not exist` the
+-- moment a later statement lands on a different connection than the one
+-- that created it. A real table has no such scoping - any connection can
+-- see it once it is created. Dropped both before creating (idempotent
+-- re-run) and at the very end (leaves no clutter behind).
 drop table if exists _ad4_preflight_added;
-create temporary table _ad4_preflight_added (
+create table _ad4_preflight_added (
   tbl text, col text, kind text
 );
 
