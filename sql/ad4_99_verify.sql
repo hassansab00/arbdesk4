@@ -464,9 +464,25 @@ $ad4v$;
 -- ===========================================================================
 -- THE REPORT.  Copy the whole grid.
 -- ===========================================================================
--- ad4_verify() is created by the statement above and so arrives with
--- PUBLIC EXECUTE, which is how it ended up callable on the anon key.
--- Take it back: a schema audit is not something the browser may run.
-revoke execute on function ad4_verify() from public;
+-- ad4_verify() is created by the statement above, and Supabase's default
+-- privileges (`alter default privileges in schema public grant all on
+-- functions to anon, authenticated, service_role`) hand anon EXECUTE on it
+-- the instant it exists. That is how it ended up callable on the anon key.
+--
+-- Revoking from PUBLIC is NOT enough - the grant is to anon and
+-- authenticated by name. Take it back from both.
+do $ad4rv$
+declare r text;
+begin
+  execute 'revoke execute on function ad4_verify() from public';
+  foreach r in array array['anon','authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = r) then
+      execute format('revoke execute on function ad4_verify() from %I', r);
+    end if;
+  end loop;
+exception when undefined_object then
+  null;
+end
+$ad4rv$;
 
 select * from ad4_verify();

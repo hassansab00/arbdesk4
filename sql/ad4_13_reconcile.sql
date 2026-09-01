@@ -178,10 +178,28 @@ $ad4$;
 -- worst price inside it. The first tier sits at the touch itself, since
 -- the touch level is most of it.
 --
+-- The last bucket - ask_total_usd minus ask_usd_25c - is everything past
+-- the furthest tier anyone measured, and we have NO idea how far past. It
+-- is priced at touch +/- 0.26, one cent OUTSIDE the widest tier, and that
+-- is deliberate: a slippage-capped ladder walk must refuse it. Pricing it
+-- at exactly +/- 0.25 made it pass a 25c slippage test and the calculator
+-- reported fills that do not exist - on a test ladder whose real depth ran
+-- out at $1,146, the 0.25-capped walk claimed $1,500 filled at avg 0.4085
+-- instead of stopping at $1,146 / 0.3760. Total depth is unaffected either
+-- way (the USD is the same wherever it is priced); what changes is whether
+-- an unreachable bucket can masquerade as reachable.
+--
+-- Known residual bias, in the honest direction as far as it can be: the
+-- first tier is priced at the touch, so a small order's average fill comes
+-- out marginally cheaper than reality (0.3409 vs 0.3415 on the same test
+-- ladder - about 0.2%). Splitting it would mean inventing how much sits
+-- exactly at the touch, which is a worse lie than a measured 0.2%.
+--
 -- This is an approximation and every consumer labels it as one
 -- (v_band_book.ask_levels_source = 'synthetic_tiers'). It is never
 -- preferred over a real ladder; it exists so capacity, the calculator and
 -- Goals degrade to "coarse but directionally right" instead of "zero".
+-- The cure is to populate raw_book - see n8n/P0.3_book_volume_snapshot.
 create or replace function ad4_synth_levels(
   p_touch numeric, p_u1 numeric, p_u2 numeric, p_u5 numeric,
   p_u10 numeric, p_u25 numeric, p_total numeric, p_is_ask boolean)
@@ -205,7 +223,9 @@ begin
       (0.05::numeric, p_u5),
       (0.10::numeric, p_u10),
       (0.25::numeric, p_u25),
-      (0.25::numeric, p_total)
+      -- one cent OUTSIDE the widest measured tier: unreachable under a 25c
+      -- slippage cap, which is exactly what an unmeasured residual is.
+      (0.26::numeric, p_total)
     ) as t(off, cum)
   loop
     continue when r.cum is null;
@@ -1022,9 +1042,17 @@ begin
     execute format('revoke insert, update, delete, truncate, references, trigger on all tables in schema public from %I', r);
     execute format('revoke update on all sequences in schema public from %I', r);
     execute format('revoke all on schema public from %I', r);
-    -- and stop future tables from arriving pre-granted
+    -- Stop future objects arriving pre-granted. Supabase ships with
+    --   alter default privileges in schema public
+    --     grant all on functions to anon, authenticated, service_role;
+    -- which is why every function this repo creates comes out anon-callable
+    -- the moment it is created - ad4_verify() included. A `revoke ... from
+    -- public` does nothing about it, because the grant is to anon
+    -- EXPLICITLY, not via PUBLIC. This is the actual cause; the explicit
+    -- revokes further down are the belt to this file's braces.
     begin
       execute format('alter default privileges in schema public revoke insert, update, delete, truncate on tables from %I', r);
+      execute format('alter default privileges in schema public revoke execute on functions from %I', r);
     exception when others then
       raise notice 'reconcile: could not alter default privileges for % (%)', r, sqlerrm;
     end;
@@ -1142,6 +1170,37 @@ begin
   detail := coalesce(v_t, 'no book snapshots');
   return next;
 
+  check_name := 'raw_book coverage';
+  if ad4_hascol('book_snapshots', 'raw_book') then
+    execute 'select count(*) filter (where raw_book is not null) || '' of '' || count(*) || '' snapshots carry raw_book'' from book_snapshots' into v_t;
+    execute 'select count(*) filter (where raw_book is not null) from book_snapshots' into v_n;
+    status := case when v_n > 0 then 'PASS' else 'ATTENTION' end;
+    detail := v_t || case when v_n = 0
+      then '  -> every ladder is being RECONSTRUCTED from the *_usd_*c depth tiers. Total depth is exact and a capped walk matches within ~0.2%, but the shape inside a tier is approximated. Fix: n8n/P0.3_book_volume_snapshot writes raw_book.'
+      else '' end;
+  else
+    status := 'ATTENTION';
+    detail := 'book_snapshots has no raw_book column';
+  end if;
+  return next;
+
+  check_name := 'bands with no usable book';
+  if to_regclass('public.v_band_book') is not null then
+    execute $q$
+      select count(*) || ' of ' || (select count(*) from v_band_book) ||
+             ' bands: ' ||
+             count(*) filter (where best_ask is null) || ' have no best_ask, ' ||
+             count(*) filter (where best_ask is not null) || ' have a touch but no depth behind it'
+      from v_band_book where ask_levels_source = 'none'
+    $q$ into v_t;
+    execute 'select count(*) from v_band_book where ask_levels_source = ''none''' into v_n;
+    status := case when v_n = 0 then 'PASS' else 'INFO' end;
+    detail := v_t || case when v_n > 0
+      then '  -> these are unfillable in the calculator by design: no ladder means no size beyond the touch.'
+      else '' end;
+    return next;
+  end if;
+
   check_name := 'anon/authenticated write grants';
   select count(*) into v_n from information_schema.role_table_grants
    where table_schema = 'public' and grantee in ('anon','authenticated','PUBLIC')
@@ -1169,7 +1228,25 @@ begin
 end;
 $ad4$;
 
--- A function created after the revoke above arrives with PUBLIC EXECUTE, so
--- it has to give it back itself. This is exactly how ad4_verify() ended up
--- anon-callable.
-revoke execute on function ad4_reconcile_report() from public;
+-- This function is created AFTER the revokes above, so Supabase's default
+-- privileges hand anon EXECUTE on it the instant it exists. Take it back by
+-- name: revoking from PUBLIC alone is not enough, because the grant is to
+-- anon and authenticated explicitly. (The `alter default privileges` in
+-- section 8 stops this happening to anything created from here on, but this
+-- function was already created by the time that ran on a first pass.)
+do $ad4$
+declare r text;
+begin
+  execute 'revoke execute on function ad4_reconcile_report() from public';
+  foreach r in array array['anon','authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = r) then
+      execute format('revoke execute on function ad4_reconcile_report() from %I', r);
+    end if;
+  end loop;
+  if has_function_privilege('anon', 'ad4_reconcile_report()', 'execute') then
+    raise warning 'reconcile: ad4_reconcile_report is STILL anon-executable';
+  end if;
+exception when undefined_object then
+  null;  -- no anon role here (plain Postgres); nothing to take back
+end
+$ad4$;

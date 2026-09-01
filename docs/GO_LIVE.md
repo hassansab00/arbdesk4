@@ -125,9 +125,40 @@ select * from ad4_reconcile_report();
 | `trades timestamp column` | the expression the volume layer is actually filtering on |
 | `band volume is non-zero` | at least one band reports traded volume |
 | `book ladders resolve` | how many bands got a real book vs. a reconstructed one |
+| `raw_book coverage` | how many snapshots carry a real ladder |
+| `bands with no usable book` | bands with neither a ladder nor depth totals — unfillable by design |
 | `anon/authenticated write grants` | zero — the browser key cannot write |
-| `anon EXECUTE surface` | the exact list of functions the browser key can call |
+| `anon EXECUTE surface` | should be exactly 15: the 9 UI RPCs plus 6 pure view helpers |
 | `close_position signature` | its argument type matches `paper_trades.trade_id` |
+
+### If `raw_book coverage` reads 0
+
+Then every ladder in AD4 is being **reconstructed** from the cumulative
+depth columns (`ask_usd_1c` … `ask_total_usd`) rather than read from a real
+order book. That is not broken — but it is worth knowing how good the
+approximation is, because it prices every fill in Goals and the Calculator.
+Measured against a known six-level ladder:
+
+| | real ladder | reconstructed |
+|---|---|---|
+| total depth | $2,946.75 | $2,946.75 (exact) |
+| $500 order, 25c cap | 1464.2 sh @ 0.3415 | 1466.5 sh @ 0.3409 |
+| $1,500 order, 25c cap | stops at $1,146.75, 3050.0 sh @ 0.3760 | stops at $1,146.75, 3052.3 sh @ 0.3757 |
+| whole side, uncapped | $2,946.75 @ 0.4871 | $2,946.75 @ 0.4787 |
+
+Total depth is exact, and a slippage-capped walk is within ~0.2%. The error
+lives in the far tail, where the depth columns genuinely stop telling you
+anything — everything past 25c is one bucket, so it is priced *outside* 25c
+so a capped walk correctly refuses it rather than promising fills that are
+not there.
+
+**The cure is to populate `raw_book`.**
+`n8n/P0.3_book_volume_snapshot.scaffold.json` now writes it, along with the
+level counts and all twelve depth columns, in the real production shape. Its
+earlier version wrote the ladders into `bid_levels`/`ask_levels`, which are
+`integer` — so the ladder never landed anywhere. Re-import that workflow and
+run it, and `book ladders resolve` flips to `raw_book=…` on the next
+snapshot cycle.
 
 ### Verify step 1
 
