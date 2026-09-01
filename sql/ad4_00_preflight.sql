@@ -26,6 +26,18 @@
 -- ===========================================================================
 
 -- --------------------------------------------------------------------------
+-- Version stamp. The first line in the "Messages" tab tells you which copy
+-- of this file actually ran - a stale paste is otherwise indistinguishable
+-- from a broken one.
+-- --------------------------------------------------------------------------
+do $$
+begin
+  raise notice '=====================================================';
+  raise notice 'AD4 PREFLIGHT  v3  (single-statement, no scratch table)';
+  raise notice '=====================================================';
+end $$;
+
+-- --------------------------------------------------------------------------
 -- 0. Extensions. gen_random_uuid() is built in from Postgres 13; pgcrypto
 --    is the fallback for older servers. Supabase already has both.
 -- --------------------------------------------------------------------------
@@ -330,39 +342,112 @@ create table if not exists derived_forecast_skill (
   band_width_c         numeric,
   primary key (city_key, computed_at, lead_days)
 );
+-- --------------------------------------------------------------------------
+-- 5. Composite uniques the Python ingest jobs upsert against.
+--    scripts/ingest_observations.py upserts on (city_key, valid_at, source);
+--    scripts/ingest_forecasts.py on (city_key, model, run_at, for_date).
+--    PostgREST needs a matching unique constraint or every upsert 400s.
+-- --------------------------------------------------------------------------
+do $$
+begin
+  if to_regclass('public.weather_observations') is not null then
+    begin
+      create unique index if not exists ad4_uq_wx_obs
+        on public.weather_observations (city_key, valid_at, source);
+    exception when others then
+      raise notice 'preflight: could not add weather_observations unique (city_key,valid_at,source): %', sqlerrm;
+    end;
+  end if;
+  if to_regclass('public.weather_forecasts') is not null then
+    begin
+      create unique index if not exists ad4_uq_wx_fc
+        on public.weather_forecasts (city_key, model, run_at, for_date);
+    exception when others then
+      raise notice 'preflight: could not add weather_forecasts unique (city_key,model,run_at,for_date): %', sqlerrm;
+    end;
+  end if;
+end $$;
 
 -- --------------------------------------------------------------------------
--- 3. COLUMNS.
---
---    Every column any of the 11 later files (or any scripts/*.py job that
---    writes through PostgREST) reads or writes, on a table it does not
---    itself create. Driven off a list rather than 200 hand-written ALTERs
---    so the verification block at the end can report exactly what was
---    missing rather than asserting it blindly.
---
---    `alter table ... add column if not exists` semantics, one row each:
---    (table, column, type-and-default). Nothing is ever retyped.
+-- 6. log_ingest(). scripts/common.py:log_run() POSTs to this RPC after
+--    every job. It lives in the base ad4_functions*.sql that is not in this
+--    repo, so create it only if it is genuinely absent - never replace a
+--    working production version with this one.
 -- --------------------------------------------------------------------------
--- Scratch table for the verification block at the end. A REGULAR table,
--- not temporary: a `create temporary table` is scoped to one physical
--- database connection, and the Supabase SQL editor does not guarantee a
--- pasted multi-statement script stays on a single connection end to end
--- (it can hand statements to different backends through the pooler) -
--- which surfaces as `relation "_ad4_preflight_added" does not exist` the
--- moment a later statement lands on a different connection than the one
--- that created it. A real table has no such scoping - any connection can
--- see it once it is created. Dropped both before creating (idempotent
--- re-run) and at the very end (leaves no clutter behind).
-drop table if exists _ad4_preflight_added;
-create table _ad4_preflight_added (
-  tbl text, col text, kind text
-);
+do $$
+begin
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'log_ingest'
+  ) then
+    execute $fn$
+      create function log_ingest(p_job text, p_status text, p_rows int, p_detail jsonb)
+      returns void language plpgsql security definer as $body$
+      begin
+        insert into ingest_log (job, status, "rows", detail, logged_at)
+        values (p_job, p_status, p_rows, p_detail, now());
+      end;
+      $body$;
+    $fn$;
+    raise notice 'preflight: created log_ingest() (was missing)';
+  end if;
+end $$;
 
+-- --------------------------------------------------------------------------
+-- 7. Market-volume settings.
+--
+--    Market volume is an input everywhere in AD4 (ranking, tradeability,
+--    calculator, goals). The thresholds below are PROVISIONAL Claude
+--    placeholders with NO evidential basis, UI-settable, and labelled as
+--    such exactly like every other provisional value in this schema.
+--    Nothing here asserts what a "thin" market is - it states where the
+--    number the UI uses comes from, so it can be replaced with a measured
+--    one once AD4's own trades_observed history is long enough to measure.
+-- --------------------------------------------------------------------------
+insert into settings (key, value) values
+  ('volume_thresholds', '{
+     "thin_band_usd_24h": 500,
+     "thin_city_usd_24h": 5000,
+     "liquidity_half_saturation_usd": 2000,
+     "lookback_hours": 24,
+     "provisional": true, "origin": "claude_invented",
+     "note": "NO evidential basis. thin_* only drive a UI warning label; liquidity_half_saturation_usd is the k in the saturating volume factor vol/(vol+k) used to rank opportunities - it discounts illiquid markets, it never inflates a liquid one. Replace with measured values once trades_observed has enough history."
+   }'::jsonb)
+on conflict (key) do nothing;
+
+-- ===========================================================================
+-- ---------------------------------------------------------------------------
+-- 3+4+8. COLUMNS, UNIQUE KEYS, AND THE VERIFICATION REPORT - ONE STATEMENT.
+--
+-- Deliberately a single `do $$ ... $$` block rather than three, with the
+-- list of what got added held in a PL/pgSQL array rather than a scratch
+-- table.
+--
+-- WHY: a scratch table has to survive from the statement that fills it to
+-- the statement that reads it. That held under `psql -f`, which runs a
+-- whole file down one connection, but NOT in the Supabase SQL editor,
+-- which gave `relation "_ad4_preflight_added" does not exist` - as a
+-- TEMPORARY table (connection-scoped, and the editor does not pin one
+-- connection for a whole script) and again as a permanent one.
+--
+-- Rather than keep guessing at that execution model, this removes the
+-- dependency: one DO block is ONE statement, so every line below runs in
+-- the same call on the same connection in the same transaction, by
+-- construction. There is no cross-statement state left to lose.
+--
+-- Everything it does is still exactly as before: add only what is missing,
+-- never drop/rename/retype, fully idempotent, and RAISE NOTICE a report of
+-- precisely what it had to add.
+-- ---------------------------------------------------------------------------
 do $$
 declare
-  r record;
-  n_added int := 0;
+  r          record;
+  v_added    text[] := '{}';   -- 'kind|table|column', one per object added
+  v_idx_name text;
+  n_added    int := 0;
+  n          int;
 begin
+  -- ======================= COLUMNS =======================
   for r in
     select * from (values
       -- cities ------------------------------------------------------------
@@ -640,29 +725,20 @@ begin
       where table_schema = 'public' and table_name = r.tbl and column_name = r.col
     ) then
       execute format('alter table public.%I add column %I %s', r.tbl, r.col, r.def);
-      insert into _ad4_preflight_added values (r.tbl, r.col, 'column');
+      v_added := v_added || ('column|' || r.tbl || '|' || r.col);
       n_added := n_added + 1;
     end if;
   end loop;
   raise notice 'preflight: % missing column(s) added', n_added;
-end $$;
 
--- --------------------------------------------------------------------------
--- 4. UNIQUE / PRIMARY KEY guarantees.
---
---    Later files declare foreign keys (edges.band_id -> bands.band_id,
---    edges.prob_id -> band_probabilities.prob_id, ...) and use ON CONFLICT
---    (strategy_id) / (key) / (rule_id). Both need a unique index on the
---    referenced column. If the live table has the column but no unique
---    index on it, those statements fail - so ensure one, unless existing
---    duplicate data makes that impossible (in which case: report, don't
---    crash, and let the operator decide).
--- --------------------------------------------------------------------------
-do $$
-declare
-  r record;
-  v_idx_name text;
-begin
+  -- ======================= UNIQUE / PRIMARY KEYS =======================
+  -- Later files declare foreign keys (edges.band_id -> bands.band_id,
+  -- edges.prob_id -> band_probabilities.prob_id, ...) and use ON CONFLICT
+  -- (strategy_id) / (key) / (rule_id). Both need a unique index on the
+  -- referenced column. If the live table has the column but no unique index
+  -- on it, those statements fail - so ensure one, unless existing duplicate
+  -- data makes that impossible (in which case: report, don't crash, and let
+  -- the operator decide).
   for r in
     select * from (values
       ('cities','city_key'),
@@ -697,98 +773,16 @@ begin
     v_idx_name := 'ad4_uq_' || r.tbl || '_' || r.col;
     begin
       execute format('create unique index if not exists %I on public.%I (%I)', v_idx_name, r.tbl, r.col);
-      insert into _ad4_preflight_added values (r.tbl, r.col, 'unique index');
+      v_added := v_added || ('unique index|' || r.tbl || '|' || r.col);
       raise notice 'preflight: added unique index on %.%', r.tbl, r.col;
     exception when others then
       raise notice 'preflight: COULD NOT make %.% unique (%) - later FKs/ON CONFLICT on it will fail. Resolve the duplicates, then re-run this file.', r.tbl, r.col, sqlerrm;
     end;
   end loop;
-end $$;
 
--- --------------------------------------------------------------------------
--- 5. Composite uniques the Python ingest jobs upsert against.
---    scripts/ingest_observations.py upserts on (city_key, valid_at, source);
---    scripts/ingest_forecasts.py on (city_key, model, run_at, for_date).
---    PostgREST needs a matching unique constraint or every upsert 400s.
--- --------------------------------------------------------------------------
-do $$
-begin
-  if to_regclass('public.weather_observations') is not null then
-    begin
-      create unique index if not exists ad4_uq_wx_obs
-        on public.weather_observations (city_key, valid_at, source);
-    exception when others then
-      raise notice 'preflight: could not add weather_observations unique (city_key,valid_at,source): %', sqlerrm;
-    end;
-  end if;
-  if to_regclass('public.weather_forecasts') is not null then
-    begin
-      create unique index if not exists ad4_uq_wx_fc
-        on public.weather_forecasts (city_key, model, run_at, for_date);
-    exception when others then
-      raise notice 'preflight: could not add weather_forecasts unique (city_key,model,run_at,for_date): %', sqlerrm;
-    end;
-  end if;
-end $$;
-
--- --------------------------------------------------------------------------
--- 6. log_ingest(). scripts/common.py:log_run() POSTs to this RPC after
---    every job. It lives in the base ad4_functions*.sql that is not in this
---    repo, so create it only if it is genuinely absent - never replace a
---    working production version with this one.
--- --------------------------------------------------------------------------
-do $$
-begin
-  if not exists (
-    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = 'log_ingest'
-  ) then
-    execute $fn$
-      create function log_ingest(p_job text, p_status text, p_rows int, p_detail jsonb)
-      returns void language plpgsql security definer as $body$
-      begin
-        insert into ingest_log (job, status, "rows", detail, logged_at)
-        values (p_job, p_status, p_rows, p_detail, now());
-      end;
-      $body$;
-    $fn$;
-    raise notice 'preflight: created log_ingest() (was missing)';
-  end if;
-end $$;
-
--- --------------------------------------------------------------------------
--- 7. Market-volume settings.
---
---    Market volume is an input everywhere in AD4 (ranking, tradeability,
---    calculator, goals). The thresholds below are PROVISIONAL Claude
---    placeholders with NO evidential basis, UI-settable, and labelled as
---    such exactly like every other provisional value in this schema.
---    Nothing here asserts what a "thin" market is - it states where the
---    number the UI uses comes from, so it can be replaced with a measured
---    one once AD4's own trades_observed history is long enough to measure.
--- --------------------------------------------------------------------------
-insert into settings (key, value) values
-  ('volume_thresholds', '{
-     "thin_band_usd_24h": 500,
-     "thin_city_usd_24h": 5000,
-     "liquidity_half_saturation_usd": 2000,
-     "lookback_hours": 24,
-     "provisional": true, "origin": "claude_invented",
-     "note": "NO evidential basis. thin_* only drive a UI warning label; liquidity_half_saturation_usd is the k in the saturating volume factor vol/(vol+k) used to rank opportunities - it discounts illiquid markets, it never inflates a liquid one. Replace with measured values once trades_observed has enough history."
-   }'::jsonb)
-on conflict (key) do nothing;
-
--- ===========================================================================
--- 8. VERIFICATION - prints exactly what this run had to add, then a full
---    inventory of every table/column it guarantees. Read the NOTICE output
---    in the Supabase SQL editor's "Messages" tab.
--- ===========================================================================
-do $$
-declare
-  r record;
-  n int;
-begin
-  select count(*) into n from _ad4_preflight_added;
+  -- ======================= VERIFICATION REPORT =======================
+  -- Read this in the Supabase SQL editor's "Messages" tab.
+  n := coalesce(array_length(v_added, 1), 0);
   raise notice '=====================================================';
   raise notice 'AD4 PREFLIGHT COMPLETE';
   raise notice '=====================================================';
@@ -796,7 +790,13 @@ begin
     raise notice 'Nothing was missing - the database already had every table, column and unique key the other 11 files need.';
   else
     raise notice '% object(s) had to be added:', n;
-    for r in select tbl, col, kind from _ad4_preflight_added order by kind, tbl, col loop
+    for r in
+      select split_part(x, '|', 1) as kind,
+             split_part(x, '|', 2) as tbl,
+             split_part(x, '|', 3) as col
+      from unnest(v_added) x
+      order by 1, 2, 3
+    loop
       raise notice '  + %  %.%', rpad(r.kind, 13), r.tbl, r.col;
     end loop;
   end if;
@@ -823,5 +823,3 @@ begin
   raise notice '-----------------------------------------------------';
   raise notice 'Next: run ad4_phase1_tables.sql, then sql/ad4_phase2.sql, then the rest in README order.';
 end $$;
-
-drop table if exists _ad4_preflight_added;
