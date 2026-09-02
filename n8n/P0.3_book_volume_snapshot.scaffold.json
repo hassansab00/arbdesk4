@@ -31,9 +31,9 @@
         500
       ],
       "parameters": {
-        "content": "## The ladder shape is the critical contract\n\n`bid_levels` / `ask_levels` must be jsonb arrays of\n`{\"price\": <0-1>, \"size\": <shares>}`, **best-first**.\n\nVerify against your real data after one run:\n\n```sql\nselect jsonb_typeof(ask_levels),\n       jsonb_object_keys(ask_levels->0)\nfrom book_snapshots\nwhere ask_levels is not null limit 1;\n```\n\nExpect `array` and the keys `price`, `size`.\n`sql/ad4_99_verify.sql` section 7 checks this for you.",
-        "height": 340,
-        "width": 560,
+        "content": "## This scaffold CANNOT replace your working P0.3 as-is\n\n`Fetch books` does ONE static GET against whatever you put in\n`polymarket_book_url`. It does not iterate the bands loaded above it, and\nit does not substitute each band's `token_yes` into the request - which a\nreal book fetch must do, because Polymarket serves one book per token.\n\nYour existing P0.3 already does that properly. This file is a reference\nfor the SHAPE of the rows, not a drop-in replacement.\n\n**What is worth copying out of it: the `Build snapshots` code node.**\nThat is the part that was wrong - it used to write the ladder into\n`bid_levels`/`ask_levels`, which are `integer` columns on the real\nschema, so the ladder never landed anywhere and `raw_book` stayed empty.\nThe version here writes `raw_book`, the integer level counts, and all\ntwelve cumulative `*_usd_*c` depth columns.\n\nIf you do rebuild from this file, the per-band fetch is yours to add:\nsplit the bands, call the book endpoint per `token_yes`, and hand\n`Build snapshots` one object per band carrying `band_id` plus `bids` and\n`asks` arrays.",
+        "height": 420,
+        "width": 460,
         "color": 5
       }
     },
@@ -156,18 +156,6 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
             {
               "name": "Accept",
               "value": "application/json"

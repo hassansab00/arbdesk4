@@ -31,9 +31,9 @@
         500
       ],
       "parameters": {
-        "content": "## This is where market volume comes from\n\n`trades_observed` is the ONLY source of volume in AD4. Everything\ndownstream reads it:\n\n- `v_band_volume` / `v_city_volume`\n- the thin-market flag on every band\n- the `volume/(volume+k)` liquidity factor in the opportunity ranking\n- the calculator's per-leg volume warning\n- the Goals feasibility read\n- the P4.1 watchdog's no-volume alarm\n\nIf this workflow is not running, none of that breaks loudly - every\nfigure just reads **$0** and every band shows as **thin**, which is\nhonest but useless.\n\nThe last node calls `refresh_derived()`, which recomputes\n`derived_city_day_volume` and `derived_band_day_volume` from what was\njust written. Without that call the rollup tables go stale.\n\nCheck it landed:\n\n```sql\nselect count(*), max(observed_at) from trades_observed;\nselect coalesce(sum(volume_usd),0) from v_city_volume;\n```",
-        "height": 460,
-        "width": 560,
+        "content": "## This scaffold CANNOT replace your working P0.4 as-is\n\n`Fetch trades` does ONE static GET against `polymarket_trades_url`, with\nno per-band token substitution and no pagination. A real trade-tape pull\nneeds both. Your existing P0.4 already does it.\n\nUse this file for the row shape and for the `Refresh volume rollups`\nnode (it calls `refresh_derived()`, which is what fills\n`derived_city_day_volume` and `derived_band_day_volume`).\n\nNote the column name: the real table stores the timestamp in\n**`traded_at`**, not `observed_at`.",
+        "height": 420,
+        "width": 460,
         "color": 4
       }
     },
@@ -162,18 +162,6 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
             {
               "name": "Accept",
               "value": "application/json"

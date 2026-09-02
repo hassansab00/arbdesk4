@@ -88,8 +88,50 @@ project with "Credentials not found".
 |---|---|---|
 | `supabase_url` | `https://YOURPROJECT.supabase.co` | all |
 | `service_key` | the **`service_role`** / secret key | all |
-| `polymarket_*_url` | the endpoint your working P0.x uses | P0.2–P0.5 |
+| `polymarket_*_url` | see below | P0.2–P0.5 |
 | `alert_email` | where alerts go | P1.1, P4.1 |
+
+### What `polymarket_*_url` is, and where to find yours
+
+It is the Polymarket API endpoint that workflow calls to *read* data — the
+markets list, an order book, the trade tape, a market's rules text. It is not
+something this repo can tell you, and that is deliberate: the four P0.x
+workflows were built directly in n8n and never captured here, so the repo has
+never seen the URLs they use. Guessing one and writing it down as fact would
+be worse than leaving it blank.
+
+**Your existing workflows already have them.** To read one out:
+
+1. n8n → open your working **P0.3** (or P0.2 / P0.4 / P0.5).
+2. Click its HTTP Request node — the one fetching *from Polymarket*, not the
+   ones pointing at `supabase.co`.
+3. Copy the **URL** field.
+
+The only Polymarket URL this repo contains at all is
+`https://gamma-api.polymarket.com/markets`, in `scripts/settlement.py`, and
+that one is itself flagged unverified. Do not treat it as the answer for the
+other three.
+
+**If you take Option A above, you never need this.** Patching the
+`Build snapshots` code node inside your existing P0.3 leaves its fetch — and
+its URL — untouched.
+
+> **Fixed here:** these four fetch nodes used to send `apikey` and
+> `Authorization: Bearer <service_key>` headers to the Polymarket URL —
+> copy-pasted from the Supabase nodes. That put your Supabase service key in a
+> request to a third party. They now send only `Accept: application/json`.
+> Worth checking the same thing in your own workflows.
+
+### The scaffolds are not drop-in replacements
+
+`Fetch books` and `Fetch trades` do a single static GET. They do **not**
+iterate the bands loaded above them or substitute each band's `token_yes` into
+the request — which a real book or trade fetch has to do, because Polymarket
+serves one book per token. Your existing P0.3/P0.4 already handle that; these
+files reconstruct the row *shape*, not the fetch. The sticky note on each
+canvas says so too.
+
+That is the strongest reason to prefer **Option A**.
 
 > The service key belongs **only** here and in the GitHub Actions secret. Never
 > in a `NEXT_PUBLIC_*` variable — that compiles it into the browser bundle.
