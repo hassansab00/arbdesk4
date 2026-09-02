@@ -1,72 +1,102 @@
 {
-  "name": "AD4 - P0.4 Trade History (SCAFFOLD)",
+  "name": "AD4 P0.4 - Trade History",
   "active": false,
   "settings": {
     "executionOrder": "v1"
   },
   "nodes": [
     {
-      "id": "note-1",
-      "name": "Note",
+      "id": "warn",
+      "name": "Note warn",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -620,
-        -160
+        -560,
+        -60
       ],
       "parameters": {
-        "content": "## SCAFFOLD - NOT A VERIFIED TEMPLATE\n\nThis workflow ALREADY EXISTS and runs in Hassan's n8n (Phase 0). It was\nnever captured in the repo, so this file is a reconstruction.\n\n**DO NOT ACTIVATE THIS ALONGSIDE YOUR EXISTING P0.x WORKFLOW.** Two copies\nwriting the same tables is worse than one.\n\nUse it for exactly one of:\n  - a reference if the original is ever lost;\n  - a diff against the original, to see what the repo believes it does.\n\n**Better: capture the REAL one instead.** In n8n, open your working\nworkflow -> ... menu -> Download. Then:\n\n    python scripts/sanitise_n8n_export.py <downloaded>.json n8n/\n\nThat strips every Config value (the service key) and writes a safe\n`*.template.json` you can commit. The real one beats this reconstruction.\n\n### What IS grounded here\nThe Supabase side: table and column names come from\n`sql/ad4_00_preflight.sql`, which is verified against a real Postgres.\nAnything writing to Supabase below is correct.\n\n### What is NOT\nThe Polymarket endpoint. This repo contains exactly one Polymarket URL\n(`gamma-api.polymarket.com/markets`, in `scripts/settlement.py`, itself\nflagged unverified). So the endpoint is a **Config field**, not a\nhardcoded guess - paste the real URL from your working workflow.",
-        "height": 620,
-        "width": 560,
-        "color": 3
+        "content": "## READ BEFORE ACTIVATING\n\nYour n8n ALREADY RUNS a P0.4. This file is a rebuild, not a patch.\n\n**Never leave both Active.** Two workflows writing trades_observed is\nworse than one.\n\nSafe cutover:\n  1. Import this. Leave it INACTIVE.\n  2. Fill in Config.\n  3. Run it once with the Manual Trigger (or the AD4 Workflows page).\n  4. Compare its Summary line against your original's.\n  5. Only then: deactivate the original, activate this.",
+        "width": 480,
+        "height": 340
       }
     },
     {
-      "id": "note-2",
-      "name": "Note 2",
+      "id": "endpoint",
+      "name": "Note endpoint",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -620,
-        500
+        -560,
+        320
       ],
       "parameters": {
-        "content": "## This scaffold CANNOT replace your working P0.4 as-is\n\n`Fetch trades` does ONE static GET against `polymarket_trades_url`, with\nno per-band token substitution and no pagination. A real trade-tape pull\nneeds both. Your existing P0.4 already does it.\n\nUse this file for the row shape and for the `Refresh volume rollups`\nnode (it calls `refresh_derived()`, which is what fills\n`derived_city_day_volume` and `derived_band_day_volume`).\n\nNote the column name: the real table stores the timestamp in\n**`traded_at`**, not `observed_at`.",
-        "height": 420,
-        "width": 460,
-        "color": 4
+        "content": "## The Polymarket endpoint is NOT verified\n\n`trades_url` is pre-filled with Polymarket's standard public trades\nendpoint. It could NOT be tested when this file was built - the build\nsandbox blocks polymarket.com - so treat it as a starting guess.\n\nYour working P0.4 already has the right one:\nn8n -> open your original P0.4 -> click the HTTP node that fetches from\nPolymarket -> copy the URL.\n\n`{market}` is replaced with each band's `condition_id`.\n`{limit}` is replaced with `trades_per_band` from Config.\n\n**Nothing is written unless trades parse.** `Guard: did anything parse?`\nstops before the insert if zero rows came back.",
+        "width": 480,
+        "height": 360
       }
     },
     {
-      "id": "schedule-trigger",
-      "name": "Schedule Trigger",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
+      "id": "volume",
+      "name": "Note volume",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
       "position": [
-        0,
-        0
+        1180,
+        400
       ],
       "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "cronExpression",
-              "expression": "0 3 * * *"
-            }
-          ]
-        }
+        "content": "## This is where market volume comes from\n\n`trades_observed` is one of only two volume sources in AD4. Everything\ndownstream reads it:\n\n  v_band_volume / v_city_volume\n  the thin-market flag on every band\n  the volume/(volume+k) liquidity factor in the ranking\n  the calculator's per-leg volume warning\n  the Goals feasibility read\n  the P4.1 watchdog's no-volume alarm\n\n**The column is `traded_at`, not `observed_at`.** The old version of this\nworkflow wrote `observed_at` - a column that exists but is NULL on all\n122,373 existing rows, which is why every band read $0 volume for so long.\nThis version writes `traded_at`.\n\nThe last node calls `refresh_derived()`, which rebuilds\n`derived_city_day_volume` and `derived_band_day_volume` from what was just\nwritten. Skip that and the rollups go stale.",
+        "width": 480,
+        "height": 420
       }
     },
     {
-      "id": "manual-trigger",
+      "id": "trigger-manual",
       "name": "Manual Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
         0,
-        200
+        0
       ],
       "parameters": {}
+    },
+    {
+      "id": "trigger-schedule",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        160
+      ],
+      "parameters": {
+        "rule": {
+          "interval": {
+            "field": "hours",
+            "hoursInterval": 6
+          }
+        }
+      }
+    },
+    {
+      "id": "trigger-webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        320
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ad4-trade-history",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "ad4-trade-history"
     },
     {
       "id": "config",
@@ -74,7 +104,7 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        220,
+        240,
         100
       ],
       "parameters": {
@@ -94,15 +124,21 @@
             },
             {
               "id": "3",
-              "name": "polymarket_trades_url",
+              "name": "trades_url",
               "type": "string",
-              "value": "PASTE THE URL YOUR WORKING P0.4 USES (this repo cannot verify it)"
+              "value": "https://data-api.polymarket.com/trades?market={market}&limit={limit}"
             },
             {
               "id": "4",
-              "name": "lookback_hours",
+              "name": "trades_per_band",
               "type": "string",
-              "value": "48"
+              "value": "100"
+            },
+            {
+              "id": "5",
+              "name": "max_bands_per_run",
+              "type": "string",
+              "value": "0"
             }
           ]
         }
@@ -114,14 +150,12 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        440,
-        0
+        460,
+        100
       ],
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput",
       "parameters": {
         "method": "GET",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/bands?select=band_id,token_yes,token_no,market_id&limit=5000",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/bands?select=band_id,token_yes,token_no,condition_id,market_id&condition_id=not.is.null&limit=5000",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -143,6 +177,21 @@
             }
           ]
         }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "build-requests",
+      "name": "Build request list",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// One request per band. The old version fired a single static GET and could\n// never pull a trade tape per market.\nconst cfg = $('Config').first().json;\nconst template = String(cfg.trades_url || '');\nif (!template.includes('{market}')) {\n  throw new Error('trades_url must contain the placeholder {market}. Got: ' + template);\n}\nconst limit = String(Number(cfg.trades_per_band || 100) || 100);\n\nconst bands = $('Load bands').all().map(i => i.json).flat();\nconst cap = Number(cfg.max_bands_per_run || 0) || 0;\n\n// One request per distinct condition_id - bands of the same market share it,\n// so requesting per band would fetch the same tape many times over.\nconst seen = new Set();\nconst out = [];\nfor (const b of bands) {\n  const cid = b && b.condition_id;\n  if (!cid || seen.has(String(cid))) continue;\n  seen.add(String(cid));\n  out.push({ json: {\n    condition_id: cid,\n    trades_url: template.replace('{market}', encodeURIComponent(cid))\n                        .replace('{limit}', limit),\n  }});\n  if (cap && out.length >= cap) break;\n}\nif (out.length === 0) {\n  throw new Error('No bands with a condition_id came back from Supabase. ' +\n                  'Check that bands.condition_id is populated.');\n}\nreturn out;"
       }
     },
     {
@@ -151,14 +200,12 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        660,
-        0
+        900,
+        100
       ],
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput",
       "parameters": {
         "method": "GET",
-        "url": "={{ $('Config').first().json.polymarket_trades_url }}",
+        "url": "={{ $json.trades_url }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -168,19 +215,34 @@
             }
           ]
         }
-      }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
     },
     {
-      "id": "map-trades-to-bands",
+      "id": "map-trades",
       "name": "Map trades to bands",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        880,
-        0
+        1120,
+        100
       ],
       "parameters": {
-        "jsCode": "// Build trades_observed rows. This table is the ONLY source of market\n// volume in AD4 - v_band_volume, v_city_volume, the thin-market warnings,\n// the liquidity factor in the opportunity ranking, the calculator's volume\n// warning and the Goals feasibility read all derive from it. If this\n// workflow stops, every volume figure in the platform silently reads $0\n// and every band is flagged thin.\n//\n// GROUNDED: the target columns, from sql/ad4_00_preflight.sql -\n// trades_observed(city_key, band_id, token_id, side, price, size, observed_at).\n//\n// band_id is what makes BAND-level volume possible. Without it only\n// city-level volume works and every band still reads thin, so map it if\n// the upstream payload carries a token id we can resolve.\n//\n// NOT GROUNDED: the upstream payload shape. Map the reads below.\nconst bands = $('Load bands').all().map(i => i.json);\n\n// token id -> {band_id, city_key}, so a trade on either leg attributes home.\nconst byToken = new Map();\nfor (const b of bands) {\n  if (b.token_yes) byToken.set(String(b.token_yes), b);\n  if (b.token_no)  byToken.set(String(b.token_no),  b);\n}\n\nconst raw = $('Fetch trades').all().map(i => i.json).flat();\nconst rows = [];\nlet unmatched = 0;\n\nfor (const t of raw) {\n  const token = String(t.asset_id ?? t.token_id ?? t.tokenId ?? '');\n  const band = byToken.get(token);\n  if (!band) { unmatched++; continue; }\n\n  const price = Number(t.price);\n  const size = Number(t.size ?? t.amount ?? t.shares);\n  if (!Number.isFinite(price) || !Number.isFinite(size) || size <= 0) continue;\n\n  // Trade timestamps are often unix seconds. Normalise to ISO, and keep\n  // this as the OBSERVED time - never substitute the ingest run's clock.\n  let ts = t.timestamp ?? t.match_time ?? t.observed_at;\n  if (typeof ts === 'number' || /^\\d+$/.test(String(ts))) {\n    const n = Number(ts);\n    ts = new Date(n < 1e12 ? n * 1000 : n).toISOString();\n  } else {\n    ts = new Date(ts).toISOString();\n  }\n\n  rows.push({\n    city_key: band.city_key || null,\n    band_id: band.band_id,\n    token_id: token,\n    side: (t.side || t.taker_side || '').toUpperCase() || null,\n    price,\n    size,\n    observed_at: ts,\n  });\n}\n\nconst volume = rows.reduce((s, r) => s + r.price * r.size, 0);\nreturn [{ json: { rows, n: rows.length, unmatched, volume_usd: Number(volume.toFixed(2)) } }];"
+        "jsCode": "// Build trades_observed rows.\n//\n// CONFIRMED against the live database (sql/ad4_99_verify.sql section 7):\n//   trade_id bigint, band_id uuid, condition_id text, traded_at timestamptz,\n//   price numeric, size numeric, side text, proxy_wallet text,\n//   ingested_at timestamptz, city_key text, token_id text\n//\n// THE TIMESTAMP COLUMN IS `traded_at`. An earlier version wrote\n// `observed_at` - a column that exists but is NULL on every one of the\n// 122,373 existing rows, which is exactly why every band reported $0 traded\n// volume while the data sat right there.\n//\n// band_id is what makes BAND-level volume possible. Without it only\n// city-level volume works and every band still reads thin.\nconst bands = $('Load bands').all().map(i => i.json).flat();\n\n// token id -> band, so a trade on either leg attributes home.\nconst byToken = new Map();\nfor (const b of bands) {\n  if (b.token_yes) byToken.set(String(b.token_yes), b);\n  if (b.token_no)  byToken.set(String(b.token_no),  b);\n}\n// condition_id -> the bands under it. Used ONLY when the payload names no\n// token at all, and only when that condition has exactly ONE band - so a\n// trade is never attributed to an arbitrary band of a multi-band market.\nconst byCondition = new Map();\nfor (const b of bands) {\n  if (!b.condition_id) continue;\n  const k = String(b.condition_id);\n  if (!byCondition.has(k)) byCondition.set(k, []);\n  byCondition.get(k).push(b);\n}\n\nconst requests = $('Build request list').all().map(i => i.json);\nconst responses = $input.all().map(i => i.json);\n\nconst ingestedAt = new Date().toISOString();\nconst rows = [];\nlet unmatched = 0, failed = 0;\n\nfunction toIso(v) {\n  if (v === null || v === undefined || v === '') return null;\n  if (typeof v === 'number' || /^\\d+$/.test(String(v))) {\n    const num = Number(v);\n    // seconds vs milliseconds: anything below ~1e12 is seconds\n    return new Date(num < 1e12 ? num * 1000 : num).toISOString();\n  }\n  const d = new Date(v);\n  return isNaN(d.getTime()) ? null : d.toISOString();\n}\n\nfor (let i = 0; i < requests.length; i++) {\n  const req = requests[i];\n  const res = responses[i];\n  if (!res || res.error) { failed++; continue; }\n\n  // the tape may come back as an array, or wrapped in {data|trades|history}\n  const tape = Array.isArray(res) ? res\n             : (res.data || res.trades || res.history || []);\n  if (!Array.isArray(tape)) { failed++; continue; }\n\n  for (const t of tape) {\n    if (!t) continue;\n    const token = String(t.asset_id ?? t.token_id ?? t.tokenId ?? '');\n    // A NAMED token that we do not recognise is unmatched - never guess.\n    // Falling back to the condition here would credit one band's volume to\n    // another band of the same market, which is worse than dropping it.\n    let band = token ? byToken.get(token) : null;\n    if (!band && !token) {\n      const candidates = byCondition.get(String(req.condition_id)) || [];\n      if (candidates.length === 1) band = candidates[0];\n    }\n    if (!band) { unmatched++; continue; }\n\n    const price = Number(t.price);\n    const size = Number(t.size ?? t.amount ?? t.shares);\n    if (!Number.isFinite(price) || !Number.isFinite(size) || size <= 0) continue;\n    if (price <= 0 || price >= 1) continue;   // outside a probability\n\n    const tradedAt = toIso(t.timestamp ?? t.match_time ?? t.traded_at ?? t.time);\n    if (!tradedAt) continue;                  // no time = useless for volume\n\n    rows.push({\n      band_id: band.band_id,\n      condition_id: req.condition_id,\n      city_key: band.city_key ?? null,\n      token_id: token || null,\n      side: t.side ?? t.taker_side ?? null,\n      price,\n      size,\n      traded_at: tradedAt,                    // THE real column\n      proxy_wallet: t.proxyWallet ?? t.proxy_wallet ?? t.maker ?? null,\n      ingested_at: ingestedAt,                // when WE saw it, kept separate\n    });\n  }\n}\n\nconst volumeUsd = rows.reduce((s, r) => s + r.price * r.size, 0);\nreturn [{ json: {\n  rows, n: rows.length, unmatched, failed,\n  requested: requests.length,\n  volume_usd: Number(volumeUsd.toFixed(2)),\n} }];"
+      }
+    },
+    {
+      "id": "guard",
+      "name": "Guard: did anything parse?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const p = $('Map trades to bands').first().json;\nif (p.n === 0) {\n  throw new Error(\n    `Parsed 0 trades out of ${p.requested} requests ` +\n    `(${p.failed} failed, ${p.unmatched} unmatched tokens). Nothing was ` +\n    `written. Most likely the Polymarket trades endpoint in Config is wrong ` +\n    `for your setup, or its response shape is not an array of ` +\n    `{price,size,timestamp}. Open your original P0.4 and copy its URL across.`);\n}\nreturn [{ json: p }];"
       }
     },
     {
@@ -189,11 +251,9 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1100,
-        0
+        1560,
+        100
       ],
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput",
       "parameters": {
         "method": "POST",
         "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/trades_observed",
@@ -225,19 +285,19 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json.rows) }}"
-      }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
     },
     {
-      "id": "refresh-volume-rollups",
+      "id": "refresh-rollups",
       "name": "Refresh volume rollups",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1320,
-        0
+        1780,
+        100
       ],
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput",
       "parameters": {
         "method": "POST",
         "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/refresh_derived",
@@ -259,17 +319,15 @@
             {
               "name": "Accept",
               "value": "application/json"
-            },
-            {
-              "name": "Prefer",
-              "value": "return=representation"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={}"
-      }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
     },
     {
       "id": "summary",
@@ -277,31 +335,12 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1540,
-        0
+        2000,
+        100
       ],
       "parameters": {
-        "jsCode": "const p = $('Map trades to bands').first().json;\nconst d = $('Refresh volume rollups').first().json || {};\nconst rows = p.n || 0;\nconst summary =\n  `AD4 P0.4: ${rows} trades ($${p.volume_usd}) written, ${p.unmatched} unmatched tokens. ` +\n  `Rollups: ${d.city_day_volume_rows ?? '?'} city-day, ${d.band_day_volume_rows ?? '?'} band-day rows.`;\nreturn [{ json: {\n  summary,\n  status: rows > 0 ? 'ok' : 'attention',\n  rows,\n  log: {\n    p_job: 'P0.4_trade_history',\n    p_status: rows > 0 ? 'ok' : 'attention',\n    p_rows: rows,\n    p_detail: {\n      summary,\n      volume_usd: p.volume_usd ?? null,\n      unmatched: p.unmatched ?? null,\n      rollups: d,\n      trigger: $execution.mode,\n      execution_id: $execution.id,\n    },\n  },\n} }];"
+        "jsCode": "const p = $('Map trades to bands').first().json;\nconst d = $('Refresh volume rollups').first().json || {};\nconst rows = p.n || 0;\nconst summary =\n  `AD4 P0.4: ${rows} trades ($${p.volume_usd}) written from ${p.requested} markets, ` +\n  `${p.unmatched} unmatched tokens. ` +\n  `Rollups: ${d.city_day_volume_rows ?? '?'} city-day, ${d.band_day_volume_rows ?? '?'} band-day.`;\nconst status = rows > 0 ? 'ok' : 'attention';\nconst detail = { volume_usd: p.volume_usd, unmatched: p.unmatched,\n                 failed: p.failed, requested: p.requested, rollups: d };\nreturn [{ json: {\n  summary, status, rows,\n  log: { p_job: 'P0.4_trade_history', p_status: status, p_rows: rows,\n         p_detail: { ...detail, summary, trigger: $execution.mode, execution_id: $execution.id } },\n} }];"
       }
-    },
-    {
-      "id": "trigger-webhook",
-      "name": "Webhook Trigger",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        0,
-        380
-      ],
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "ad4-trade-history",
-        "responseMode": "responseNode",
-        "options": {
-          "allowedOrigins": "*"
-        }
-      },
-      "webhookId": "ad4-trade-history"
     },
     {
       "id": "log-run",
@@ -309,8 +348,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1800,
-        0
+        2220,
+        100
       ],
       "parameters": {
         "method": "POST",
@@ -349,8 +388,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        2060,
-        0
+        2440,
+        100
       ],
       "parameters": {
         "respondWith": "json",
@@ -359,7 +398,62 @@
     }
   ],
   "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Load bands",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Load bands": {
+      "main": [
+        [
+          {
+            "node": "Build request list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build request list": {
       "main": [
         [
           {
@@ -382,6 +476,17 @@
       ]
     },
     "Map trades to bands": {
+      "main": [
+        [
+          {
+            "node": "Guard: did anything parse?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard: did anything parse?": {
       "main": [
         [
           {
@@ -408,50 +513,6 @@
         [
           {
             "node": "Summary",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Schedule Trigger": {
-      "main": [
-        [
-          {
-            "node": "Config",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Manual Trigger": {
-      "main": [
-        [
-          {
-            "node": "Config",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Config": {
-      "main": [
-        [
-          {
-            "node": "Load bands",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Webhook Trigger": {
-      "main": [
-        [
-          {
-            "node": "Config",
             "type": "main",
             "index": 0
           }
