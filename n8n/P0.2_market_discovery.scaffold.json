@@ -271,7 +271,80 @@
         0
       ],
       "parameters": {
-        "jsCode": "const p = $('Parse markets + bands').first().json;\nreturn [{ json: { summary: `AD4 P0.2: ${p.n_markets} markets, ${p.n_bands} bands upserted.` } }];"
+        "jsCode": "const p = $('Parse markets + bands').first().json;\nconst rows = (p.n_markets || 0) + (p.n_bands || 0);\nconst summary = `AD4 P0.2: ${p.n_markets} markets, ${p.n_bands} bands upserted.`;\nreturn [{ json: {\n  summary,\n  status: rows > 0 ? 'ok' : 'attention',\n  rows,\n  log: {\n    p_job: 'P0.2_market_discovery',\n    p_status: rows > 0 ? 'ok' : 'attention',\n    p_rows: rows,\n    p_detail: {\n      summary,\n      n_markets: p.n_markets ?? null,\n      n_bands: p.n_bands ?? null,\n      trigger: $execution.mode,\n      execution_id: $execution.id,\n    },\n  },\n} }];"
+      }
+    },
+    {
+      "id": "trigger-webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        380
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ad4-market-discovery",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "ad4-market-discovery"
+    },
+    {
+      "id": "log-run",
+      "name": "Log run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1800,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.log) }}"
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2060,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
       }
     }
   ],
@@ -358,6 +431,39 @@
         [
           {
             "node": "Load cities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary": {
+      "main": [
+        [
+          {
+            "node": "Log run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log run": {
+      "main": [
+        [
+          {
+            "node": "Respond",
             "type": "main",
             "index": 0
           }

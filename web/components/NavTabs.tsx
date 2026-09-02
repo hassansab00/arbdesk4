@@ -14,6 +14,7 @@ const TABS = [
   { href: "/backtest", label: "Backtest" },
   { href: "/campaigns", label: "Campaigns" },
   { href: "/goals", label: "Goals" },
+  { href: "/workflows", label: "Workflows" },
 ];
 
 export default function NavTabs() {

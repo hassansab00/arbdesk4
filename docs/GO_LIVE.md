@@ -40,7 +40,8 @@ starting the next.
 | 10 | `sql/ad4_rpc.sql` | `calc_recommendation()` and the rest of the RPC layer |
 | 11 | `sql/ad4_live_weather.sql` | `live_weather`, `weather_events` |
 | 12 | `sql/ad4_rls.sql` | RLS policies, and the revoke-then-grant that closes the write boundary. |
-| 13 | `sql/ad4_13_reconcile.sql` | **Run this last.** Reconciles everything above with the real Phase 0 column shapes. |
+| 13 | `sql/ad4_13_reconcile.sql` | Reconciles everything above with the real Phase 0 column shapes. |
+| 14 | `sql/ad4_14_workflows.sql` | **Run this last.** Lets the UI run the n8n workflows and read their run history. |
 
 Every file is idempotent — re-running any of them is safe and changes
 nothing that is already correct.
@@ -532,9 +533,28 @@ cd web && rm -rf node_modules .next && npm install && npm run build
 
 ---
 
-## STEP 5 — n8n (optional)
+## STEP 5 — n8n
 
-Only needed for email digests and alerting. The desk works without it.
+**Full instructions: `docs/n8n_setup.md`.** What follows is the short version.
+
+The desk works without n8n — but P0.2–P0.5 are what keep `markets`, `bands`,
+`book_snapshots` and `trades_observed` current, so "optional" only applies to
+the last three (digests, alerting, the watchdog).
+
+> **If P0.2–P0.5 already run in your n8n** — they do; they are what put the
+> data there — do **not** import and activate these files alongside them. Two
+> copies writing the same tables is worse than one. `docs/n8n_setup.md` has
+> both safe paths: patch your originals, or cut over one at a time.
+
+All seven now carry a **Webhook Trigger** next to their Manual and Schedule
+ones, and a **Log run** node that writes `ingest_log` at the end of every
+execution. That gives you the **Workflows** page in the UI: run any job on
+demand, and see when each last ran and how it went — including the runs that
+started from a schedule or from inside n8n.
+
+To turn the Run buttons on: run `sql/ad4_14_workflows.sql`, then paste each
+workflow's **Production webhook URL** into AD4 → **Workflows** → *set URL*.
+Leave them empty and the page stays a read-only status board.
 
 Import each file: n8n → **Workflows → Import from File**.
 
