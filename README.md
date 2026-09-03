@@ -16,11 +16,13 @@ of what got built against it and where to find things.
    exact command and the exact expected result at every step. Everything
    below is the map; that file is the route.
 
-1. **Run the SQL, in this order** - twelve files, in the Supabase SQL
-   editor (each file is idempotent, safe to re-run any number of times):
+1. **Run the SQL, in this order** - sixteen files, in the Supabase SQL
+   editor (each file is idempotent, safe to re-run any number of times).
+   `docs/GO_LIVE.md` step 3 is the same list with a one-line description
+   of each:
 
    1. **`sql/ad4_00_preflight.sql`** - **run this first.** It guarantees
-      every table, column and unique key the other eleven need, whatever
+      every table, column and unique key the other fifteen need, whatever
       state the database is in, and prints a NOTICE listing exactly what
       it had to add. This is what makes the rest of the run order safe:
       the base Phase 0 schema is not in this repo, so nothing else may
@@ -35,8 +37,15 @@ of what got built against it and where to find things.
    9. `sql/ad4_backtest.sql`
    10. `sql/ad4_rpc.sql`
    11. `sql/ad4_live_weather.sql`
-   12. **`sql/ad4_rls.sql` last** (it grants EXECUTE on functions the
-       earlier files define).
+   12. `sql/ad4_rls.sql` (it grants EXECUTE on functions the earlier
+       files define, so it has to come after them).
+   13. `sql/ad4_13_reconcile.sql` - reconciles files 1-12 with the real
+       Phase 0 column shapes, which none of them could see.
+   14. `sql/ad4_14_workflows.sql` - the Workflows page and its run history.
+   15. `sql/ad4_15_pipeline_fixes.sql` - the `system` strategy the Signal
+       Engine writes against.
+   16. **`sql/ad4_16_nws.sql` last** - api.weather.gov: per-city NWS ids,
+       today's solar transit, and `v_forecast_divergence`.
 
    Then run **`sql/ad4_99_verify.sql`** against the real database. It is
    read-only and returns one grid: every check PASS / FAIL / ATTENTION,
@@ -44,7 +53,7 @@ of what got built against it and where to find things.
    and which job fills the ones that don't, and the **actual column shape**
    of the six tables this repo previously had to guess at.
 
-   Each of the eleven also opens with its own self-sufficiency guard, so
+   Each of the others also opens with its own self-sufficiency guard, so
    any one of them can be re-run in isolation without the others. The
    preflight file is still the thing to run first - it is the only place
    that sees the whole picture at once.
@@ -83,13 +92,13 @@ scripts/                   Python engines (Tasks 1, 3-13d)
 
 sql/                        Every ad4_*.sql file. ad4_00_preflight.sql
                              runs FIRST and guarantees the schema the
-                             other eleven assume.
+                             other fifteen assume.
 docs/                       Honest-limitation write-ups and design decisions -
                              read architecture_deviations.md and
                              schema_assumptions.md first
 n8n/                        Importable workflow templates (Task 15)
 web/                        Next.js frontend (Task 14)
-tests/                      pytest suite - 112 tests, run with:
+tests/                      pytest suite - 201 tests, run with:
                              PYTHONPATH=scripts python -m pytest tests/ -q
 ```
 

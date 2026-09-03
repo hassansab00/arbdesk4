@@ -130,6 +130,49 @@ def _forecast_for(city_key, for_date):
     return rows[0] if rows else None
 
 
+# --------------------------------------------------------------------------
+# Forecast divergence.
+#
+# Every other input to sigma is HISTORICAL: mae_c is measured skill over past
+# days, and the regime multiplier is a classification of the recent past. None
+# of it says how uncertain TODAY is. When two independent models disagree
+# about the same date, that disagreement is live evidence - and it is the only
+# such evidence AD4 has.
+#
+# The multiplier is clamped at a floor of 1.0 in v_forecast_divergence, so a
+# second source can only ever make AD4 LESS confident than its own measured
+# skill says, never more. With one model, or with divergence disabled, it is
+# exactly 1.0 and behaviour is unchanged.
+# --------------------------------------------------------------------------
+_divergence_cache = None
+
+def _divergence():
+    """(city_key, for_date) -> divergence row, read once per run."""
+    global _divergence_cache
+    if _divergence_cache is None:
+        _divergence_cache = {}
+        try:
+            for r in rest("v_forecast_divergence",
+                          {"select": "city_key,for_date,n_models,models,spread_c,sigma_multiplier"}):
+                _divergence_cache[(r["city_key"], str(r["for_date"]))] = r
+        except Exception as e:
+            # A database without ad4_16 has no such view. Carry on with the
+            # historical sigma rather than refuse to price anything.
+            print(f"  note: no forecast divergence available ({e})", file=sys.stderr)
+    return _divergence_cache
+
+
+def _divergence_for(city_key, for_date):
+    row = _divergence().get((city_key, str(for_date)))
+    if not row:
+        return 1.0, None
+    try:
+        mult = float(row.get("sigma_multiplier") or 1.0)
+    except (TypeError, ValueError):
+        return 1.0, None
+    return max(1.0, mult), row
+
+
 def _skill_for(city_key, lead_days):
     rows = rest("derived_forecast_skill", [
         ("select", "city_key,lead_days,n_days,mae_c,bias_c,computed_at"),
@@ -175,7 +218,14 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
 
     centre = forecast["forecast_max_c"]
     centre_corrected = centre - bias_c
-    sigma = mae_c * MAE_TO_SIGMA * reg.sigma_multiplier
+
+    div_mult, div_row = _divergence_for(city_key, for_date)
+    sigma_historical = mae_c * MAE_TO_SIGMA * reg.sigma_multiplier
+    sigma = sigma_historical * div_mult
+    if div_row and div_mult > 1.0:
+        reasons.append(
+            f"models_disagree:{div_row.get('spread_c')}C_over_{div_row.get('n_models')}")
+        confidence *= min(1.0, 1.0 / div_mult)
 
     probs = compute_band_probabilities(centre_corrected, sigma, unit, bands)
     computed_at = dt.datetime.now(dt.timezone.utc).isoformat()
@@ -199,6 +249,10 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
         "lead_days": lead_days, "lattice_applied": True,
         "confidence": round(confidence, 4), "regime_label": reg.label,
     }
+    # A widened sigma must be explainable after the fact, not mysterious.
+    if div_row and div_mult > 1.0:
+        print(f"  {city_key} {for_date}: sigma {sigma_historical:.3f} -> {sigma:.3f} "
+              f"({div_row.get('models')} differ by {div_row.get('spread_c')}C)")
     # Omit rather than send null: a database where model_versions is absent
     # should still get its probabilities written.
     if forecast_version:
