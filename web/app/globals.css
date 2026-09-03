@@ -61,3 +61,25 @@ html, body {
   100% { background-color: transparent; }
 }
 .wx-flash-card { animation: wx-card-flash 3s ease-out 1; }
+
+/* ---- ArbDesk mark -------------------------------------------------------
+   The sun and snowflake counter-rotate so they stay upright while the pair
+   orbits; without the counter-spin the snowflake arrives upside down at the
+   bottom of every loop.                                                     */
+.ad4-mark { color: theme("colors.text"); overflow: visible; }
+.ad4-orbit { stroke: theme("colors.border"); }
+.ad4-mercury { fill: theme("colors.bad"); }
+.ad4-sun { fill: theme("colors.warn"); stroke: theme("colors.warn"); }
+.ad4-flake { stroke: theme("colors.accent"); fill: none; }
+
+.ad4-spin { transform-origin: 20px 20px; animation: ad4-orbit 18s linear infinite; }
+.ad4-sun, .ad4-flake { animation: ad4-counter 18s linear infinite; }
+.ad4-sun { transform-box: fill-box; transform-origin: center; }
+.ad4-flake { transform-box: fill-box; transform-origin: center; }
+
+@keyframes ad4-orbit   { from { transform: rotate(0deg); }   to { transform: rotate(360deg); } }
+@keyframes ad4-counter { from { transform: rotate(0deg); }   to { transform: rotate(-360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ad4-spin, .ad4-sun, .ad4-flake { animation: none; }
+}
