@@ -214,6 +214,15 @@
               "value": "application/json"
             }
           ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 10,
+              "batchInterval": 400
+            }
+          },
+          "timeout": 20000
         }
       },
       "alwaysOutputData": true,
