@@ -146,14 +146,32 @@ def _forecast_for(city_key, for_date):
 # --------------------------------------------------------------------------
 _divergence_cache = None
 
+# The view carries one row per (city, date) that has ever had a forecast -
+# tens of thousands of rows on a database with any history. This engine only
+# ever prices resolution_date >= today (see _upcoming_markets), so asking for
+# the rest is not just waste: rest() is a single unpaginated GET, and if
+# PostgREST caps the response the cache comes back PARTIAL. Every city past
+# the cap would then silently price at multiplier 1.0 - the failure would look
+# exactly like "the models agree", which is the one thing it must never be
+# confused with. Bound the query by date, and make a truncated page loud.
+_DIVERGENCE_LIMIT = 5000
+
 def _divergence():
     """(city_key, for_date) -> divergence row, read once per run."""
     global _divergence_cache
     if _divergence_cache is None:
         _divergence_cache = {}
         try:
-            for r in rest("v_forecast_divergence",
-                          {"select": "city_key,for_date,n_models,models,spread_c,sigma_multiplier"}):
+            rows = rest("v_forecast_divergence", [
+                ("select", "city_key,for_date,n_models,models,spread_c,sigma_multiplier"),
+                ("for_date", f"gte.{dt.date.today().isoformat()}"),
+                ("limit", str(_DIVERGENCE_LIMIT)),
+            ])
+            if len(rows) >= _DIVERGENCE_LIMIT:
+                print(f"  WARNING: forecast divergence hit the {_DIVERGENCE_LIMIT}-row "
+                      f"limit, so some city-days were not read and will price at "
+                      f"multiplier 1.0. Raise _DIVERGENCE_LIMIT.", file=sys.stderr)
+            for r in rows:
                 _divergence_cache[(r["city_key"], str(r["for_date"]))] = r
         except Exception as e:
             # A database without ad4_16 has no such view. Carry on with the
