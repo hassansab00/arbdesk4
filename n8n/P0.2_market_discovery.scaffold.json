@@ -57,10 +57,12 @@
       ],
       "parameters": {
         "rule": {
-          "interval": {
-            "field": "hours",
-            "hoursInterval": 6
-          }
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
         }
       }
     },

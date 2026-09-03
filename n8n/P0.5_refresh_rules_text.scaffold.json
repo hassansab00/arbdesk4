@@ -72,10 +72,12 @@
       ],
       "parameters": {
         "rule": {
-          "interval": {
-            "field": "days",
-            "daysInterval": 1
-          }
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1
+            }
+          ]
         }
       }
     },
