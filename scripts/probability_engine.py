@@ -30,7 +30,7 @@ import math
 import sys
 from collections import defaultdict
 
-from common import rest, insert, get_cities, log_run
+from common import rest, insert, get_cities, log_run, model_version_id
 import regime
 
 MAE_TO_SIGMA = 1.2533          # sourced: sigma = MAE * sqrt(pi/2) for a normal distribution
@@ -179,15 +179,35 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
 
     probs = compute_band_probabilities(centre_corrected, sigma, unit, bands)
     computed_at = dt.datetime.now(dt.timezone.utc).isoformat()
-    forecast_version = f"{forecast.get('model')}:{forecast.get('run_at')}"
 
-    rows = [{
-        "band_id": band_id, "computed_at": computed_at, "calibrated_prob": round(p, 6),
+    # forecast_version / calibration_version are uuid columns referencing
+    # model_versions - not free text. Resolve the readable labels to their
+    # ids (registering them on first use). See common.model_version_id.
+    forecast_label = f"{forecast.get('model')}:{forecast.get('run_at')}"
+    forecast_version = model_version_id(
+        "forecast", forecast_label,
+        config={"model": forecast.get("model"), "run_at": forecast.get("run_at")},
+        structural=False)
+    calibration_version = model_version_id(
+        "calibration", CALIBRATION_VERSION,
+        config={"note": "no calibration applied; normal lattice only"},
+        structural=True)
+
+    row = {
+        "computed_at": computed_at,
         "forecast_max_c": centre, "bias_applied_c": bias_c, "sigma_c": round(sigma, 4),
         "lead_days": lead_days, "lattice_applied": True,
         "confidence": round(confidence, 4), "regime_label": reg.label,
-        "forecast_version": forecast_version, "calibration_version": CALIBRATION_VERSION,
-    } for band_id, p in probs]
+    }
+    # Omit rather than send null: a database where model_versions is absent
+    # should still get its probabilities written.
+    if forecast_version:
+        row["forecast_version"] = forecast_version
+    if calibration_version:
+        row["calibration_version"] = calibration_version
+
+    rows = [dict(row, band_id=band_id, calibrated_prob=round(p, 6))
+            for band_id, p in probs]
     return rows, reg, reasons
 
 

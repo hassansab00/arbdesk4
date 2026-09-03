@@ -175,12 +175,16 @@ begin
   -- 5. SEED AND SETTINGS
   -- =========================================================================
   if to_regclass('public.strategies') is not null then
-    execute 'select count(*) from strategies' into v_n;
+    -- Count TRADEABLE strategies. sql/ad4_15_pipeline_fixes.sql adds a
+    -- 'system' row that owns the alerts signals.py raises (job_failed,
+    -- job_stale, anomaly); it is machinery, permanently disabled with a zero
+    -- capital cap, and must not be counted as a seventh strategy.
+    execute 'select count(*) from strategies where coalesce(origin, '''') <> ''system''' into v_n;
     execute 'select count(*) from strategies where enabled = true' into v_txt;
     insert into _ad4_verify (section, check_, status, detail) values (
       '3. SEED', 'six strategies seeded',
       case when v_n = 6 then 'PASS' else 'FAIL' end,
-      v_n || ' rows' || case when v_n = 6 then '' else ' (expected 6) -> re-run sql/ad4_strategies_seed.sql' end);
+      v_n || ' tradeable rows' || case when v_n = 6 then '' else ' (expected 6) -> re-run sql/ad4_strategies_seed.sql' end);
     insert into _ad4_verify (section, check_, status, detail) values (
       '3. SEED', 'all strategies DISABLED',
       case when v_txt::bigint = 0 then 'PASS' else 'ATTENTION' end,

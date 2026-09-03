@@ -41,7 +41,8 @@ starting the next.
 | 11 | `sql/ad4_live_weather.sql` | `live_weather`, `weather_events` |
 | 12 | `sql/ad4_rls.sql` | RLS policies, and the revoke-then-grant that closes the write boundary. |
 | 13 | `sql/ad4_13_reconcile.sql` | Reconciles everything above with the real Phase 0 column shapes. |
-| 14 | `sql/ad4_14_workflows.sql` | **Run this last.** Lets the UI run the n8n workflows and read their run history. |
+| 14 | `sql/ad4_14_workflows.sql` | Lets the UI run the n8n workflows and read their run history. |
+| 15 | `sql/ad4_15_pipeline_fixes.sql` | **Run this last.** Adds the `system` strategy the Signal Engine writes its alerts against. |
 
 Every file is idempotent — re-running any of them is safe and changes
 nothing that is already correct.

@@ -29,7 +29,7 @@ import sys
 
 import requests
 
-from common import rest, insert, upsert, get_cities, log_run, normalize_sky_condition
+from common import rest, insert, upsert, get_cities, log_run, normalize_sky_condition, retry
 from ingest_observations import fetch_station, parse as parse_iem
 
 COMPASS_16 = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
@@ -73,7 +73,13 @@ def fetch_reading(city_key, icao, resolution_source):
 
     end = dt.datetime.now(dt.timezone.utc)
     start = end - dt.timedelta(hours=3)
-    text = fetch_station(icao, start.date(), end.date())
+    # Through retry(), not raw: this runs every 15 minutes across ~54
+    # stations, which reliably trips the IEM API's rate limit. An unretried
+    # 429 here killed the whole run - one busy station took every city's
+    # reading down with it. retry() returns None on give-up, so a station
+    # that stays rate-limited is skipped and the rest still get read.
+    text = retry(lambda: fetch_station(icao, start.date(), end.date()),
+                 label=f"IEM {icao}")
     rows = parse_iem(text, city_key) if text else []
     if not rows:
         return None, None
