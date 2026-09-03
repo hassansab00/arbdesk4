@@ -254,8 +254,13 @@ def main():
         levels_by_side = {}
         if sig.action == "ENTER" and sig.band_id:
             try:
-                book_rows = rest("book_snapshots", [("select", "*"), ("band_id", f"eq.{sig.band_id}"),
-                                                     ("order", "observed_at.desc"), ("limit", "1")])
+                # v_latest_book, NOT book_snapshots: the raw table's
+                # bid_levels/ask_levels are integer level counts, so reading it
+                # here would hand paper_engine an EMPTY ladder for every signal
+                # and quietly size every fill at zero. The view exposes
+                # normalised {"price","size"} ladders under the same names.
+                book_rows = rest("v_latest_book", [("select", "*"), ("band_id", f"eq.{sig.band_id}"),
+                                                    ("order", "observed_at.desc"), ("limit", "1")])
                 book = book_rows[0] if book_rows else {}
                 levels_by_side = {"YES": edge_engine.levels_for_side(book, "YES"),
                                    "NO": edge_engine.levels_for_side(book, "NO")}

@@ -266,3 +266,59 @@ def test_present_weather_still_outranks_sky_cover():
     """Spec 8.3: rain matters more than "also cloudy" - true for oktas too."""
     assert normalize_sky_condition(8, "RA") == "RAIN"
     assert normalize_sky_condition(0, "TS") == "STORM"
+
+# --------------------------------------------------------------------------
+# Probability + Edge: "'int' object is not iterable"
+#
+# book_snapshots.bid_levels / ask_levels are integer LEVEL COUNTS on the real
+# schema. edge_engine and signals both read that table directly and handed the
+# integer to a sort. They now read v_latest_book, which
+# sql/ad4_13_reconcile.sql rebuilt to expose normalised {"price","size"}
+# ladders under the same two column names.
+# --------------------------------------------------------------------------
+import pathlib
+
+import edge_engine
+
+
+def test_integer_level_count_yields_no_ladder_instead_of_crashing():
+    """The exact shape that killed the run: ask_levels as a count."""
+    assert edge_engine.levels_for_side({"ask_levels": 3, "bid_levels": 2}, "YES") == []
+    assert edge_engine.levels_for_side({"ask_levels": 3, "bid_levels": 2}, "NO") == []
+
+
+@pytest.mark.parametrize("value", [None, 0, 7, "", "3", {}, float("nan")])
+def test_unusable_book_sides_are_skipped_quietly(value):
+    assert edge_engine.levels_for_side({"ask_levels": value}, "YES") == []
+
+
+def test_real_ladder_is_sorted_best_first():
+    snap = {"ask_levels": [{"price": 0.34, "size": 5}, {"price": 0.32, "size": 10}]}
+    assert edge_engine.levels_for_side(snap, "YES") == [
+        {"price": 0.32, "size": 10.0}, {"price": 0.34, "size": 5.0}]
+
+
+def test_no_side_is_still_the_complement_of_the_yes_bids():
+    snap = {"bid_levels": [{"price": 0.30, "size": 7}]}
+    assert edge_engine.levels_for_side(snap, "NO") == [{"price": 0.7, "size": 7.0}]
+
+
+def test_malformed_levels_are_dropped_not_fatal():
+    snap = {"ask_levels": [{"price": 0.3, "size": 1}, "junk", {"price": None, "size": 2}, 5]}
+    assert edge_engine.levels_for_side(snap, "YES") == [{"price": 0.3, "size": 1.0}]
+
+
+@pytest.mark.parametrize("script", ["edge_engine.py", "signals.py"])
+def test_ladder_readers_use_the_view_not_the_raw_table(script):
+    """Reading book_snapshots directly is the bug; guard against it returning.
+
+    A silent regression here is worse than the crash was: levels_for_side now
+    returns [] for an integer, so every fill would be sized at zero with no
+    error at all.
+    """
+    src = (pathlib.Path(__file__).parent.parent / "scripts" / script).read_text()
+    assert '"v_latest_book"' in src, f"{script} should fetch from v_latest_book"
+    # both call styles in this codebase: rest(table, ...) and the
+    # _latest_by_band(table, ...) helper that wraps it
+    for call in ('rest("book_snapshots"', '_latest_by_band("book_snapshots"'):
+        assert call not in src, f"{script} still fetches ladders from book_snapshots"

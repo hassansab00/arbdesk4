@@ -5,10 +5,12 @@ For every band, both sides: walk the live book to find what is ACTUALLY
 executable (never top-of-book), net it against the full cost model, apply
 tradeability + anomaly rules, and write to `edges`.
 
-SCHEMA ASSUMPTION (see docs/schema_assumptions.md): `book_snapshots` is
-read as one order book per band, representing the YES token
-(`bid_levels`/`ask_levels`, falling back to `bids`/`asks`, each a list of
-{"price","size"} best-first). Polymarket weather bands trade YES and NO as
+BOOK SOURCE: reads `v_latest_book`, one order book per band, representing
+the YES token. Its `bid_levels`/`ask_levels` are normalised
+{"price","size"} ladders, best-first - the view derives them from whichever
+shape the underlying `book_snapshots` actually has (raw_book, jsonb levels,
+or the cumulative *_usd_*c depth tiers). Do NOT read `book_snapshots`
+directly: those two columns are integer LEVEL COUNTS there. Polymarket weather bands trade YES and NO as
 separate CTF tokens with their own books in principle, but nothing in the
 spec names a second per-band book column, so the NO side is derived as the
 complement of the YES book (NO ask at price q <=> YES bid at price 1-q).
@@ -40,10 +42,35 @@ UNLIMITED_BUDGET = 1e12
 # Pure math - independently unit-testable, no network.
 # --------------------------------------------------------------------------
 
+def _ladder(value):
+    """Coerce a book side into a list of {"price","size"} dicts.
+
+    Returns [] for anything that is not a usable ladder. That matters because
+    book_snapshots.bid_levels / ask_levels are INTEGER level counts on the
+    real schema - reading them straight killed the whole Probability + Edge
+    run with "'int' object is not iterable". A band with no usable book
+    should be skipped, not take the other 5,862 down with it.
+    """
+    if not isinstance(value, (list, tuple)):
+        return []
+    out = []
+    for lvl in value:
+        if not isinstance(lvl, dict):
+            continue
+        price, size = lvl.get("price"), lvl.get("size")
+        if price is None or size is None:
+            continue
+        try:
+            out.append({"price": float(price), "size": float(size)})
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def levels_for_side(snapshot, side):
     """Best-first {"price","size"} levels for the given side of one band."""
-    asks = snapshot.get("ask_levels") or snapshot.get("asks") or []
-    bids = snapshot.get("bid_levels") or snapshot.get("bids") or []
+    asks = _ladder(snapshot.get("ask_levels") or snapshot.get("asks"))
+    bids = _ladder(snapshot.get("bid_levels") or snapshot.get("bids"))
     if side == "YES":
         return sorted(asks, key=lambda l: l["price"])
     derived = [{"price": 1.0 - lvl["price"], "size": lvl["size"]} for lvl in bids]
@@ -215,7 +242,14 @@ def main():
     probs = _latest_by_band("band_probabilities",
                              "band_id,calibrated_prob,computed_at,confidence,regime_label,forecast_max_c,bias_applied_c,prob_id",
                              band_ids, "computed_at")
-    books = _latest_by_band("book_snapshots", "*", band_ids, "observed_at")
+    # v_latest_book, NOT book_snapshots. On the real schema
+    # book_snapshots.bid_levels / ask_levels are integer LEVEL COUNTS - the
+    # ladder lives in raw_book, with pre-aggregated depth in the *_usd_*c
+    # columns. sql/ad4_13_reconcile.sql rebuilds v_latest_book to expose
+    # normalised {"price","size"} ladders under those same two names, which is
+    # why this needs no other change. Reading the table directly is what threw
+    #     TypeError: 'int' object is not iterable
+    books = _latest_by_band("v_latest_book", "*", band_ids, "observed_at")
 
     settings = _settings()
     max_slippage_c = (settings.get("max_slippage_cents") or {}).get("value", 5) / 100.0
