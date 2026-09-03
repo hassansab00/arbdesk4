@@ -2,7 +2,7 @@
 
 **Setup instructions: `docs/n8n_setup.md`.** Read that, not this.
 
-7 files. All rebuilt to run three ways - their own schedule, the Execute
+9 files. All built to run three ways - their own schedule, the Execute
 button in n8n, or the Run button on the AD4 Workflows page - and all of them
 write a row to `ingest_log` when they finish, so `v_workflow_runs` shows the
 last run of each whichever way it was started.
@@ -19,6 +19,8 @@ last run of each whichever way it was started.
 | P0.4 Trade History | `/webhook/ad4-trade-history` |
 | P0.5 Refresh Rules Text | `/webhook/ad4-refresh-rules` |
 | P1.1 Live Weather Alerts | `/webhook/ad4-weather-alert` |
+| P1.2 NWS Monitor | `/webhook/ad4-nws-monitor` |
+| P1.3 NWS Forecast | `/webhook/ad4-nws-forecast` |
 | P3.1 Email Digests | `/webhook/ad4-email-digests` - body `{"digest":"morning"|"eod"}` |
 | P4.1 Health Watchdog | `/webhook/ad4-health-watchdog` |
 
@@ -28,7 +30,7 @@ n8n - never re-export and commit a filled-in copy (it would contain the
 service key). Use `python scripts/sanitise_n8n_export.py <export>.json n8n/`
 if you ever do need to capture one back.
 
-## The seven AD4 workflows
+## The nine AD4 workflows
 
 | # | Workflow | Trigger | File | Status |
 |---|---|---|---|---|
@@ -37,6 +39,8 @@ if you ever do need to capture one back.
 | P0.4 | Trade History | schedule | `P0.4_trade_history.scaffold.json` | **scaffold** |
 | P0.5 | Refresh Rules Text | schedule | `P0.5_refresh_rules_text.scaffold.json` | **scaffold** |
 | P1.1 | Live Weather Alerts (notify half) | webhook | `P1.1_live_weather_alerts.template.json` | template |
+| P1.2 | NWS Monitor | schedule 2h | `P1.2_nws_monitor.template.json` | template |
+| P1.3 | NWS Forecast | schedule 6h | `P1.3_nws_forecast.template.json` | template |
 | P3.1 | Email Digests | schedule ×2 | `P3.1_email_digests.template.json` | template |
 | P4.1 | Health Watchdog | schedule | `P4.1_health_watchdog.template.json` | template |
 
@@ -114,6 +118,38 @@ select coalesce(sum(volume_usd),0) as vol_24h from v_city_volume;
   shades any row on a thin-volume band - an edge on a band nobody has
   traded in 24h is a different proposition from the same edge on a busy
   one, and the brief has to say which it is.
+- `P1.2_nws_monitor.template.json` - every 2 hours. Reads
+  **api.weather.gov**, the National Weather Service's own JSON API, which is
+  the service most of these markets settle on. The repo previously reached it
+  by scraping an HTML page and that parser was never finished, so every live
+  reading silently fell through to IEM. Three calls per US city: the latest
+  observation (with its quality-control flag and the station's own 24-hour
+  maximum), any active heat advisory or warning, and today's **solar transit**
+  - the sun's zenith, which is the physical anchor of the daily peak.
+  Observations are written with `source='NWS'` **beside** the IEM rows for the
+  same instant, not instead of them: the unique key is
+  `(city_key, valid_at, source)`, so the two feeds coexist and can be
+  compared - which is the evidence the settlement-source gate has been waiting
+  for. Alerts land in `weather_events` as `kind='nws_alert'`, so P1.1 emails
+  them and the UI feed shows them with no new plumbing, and an alert only
+  raises an event when it **changes**, so re-running does not re-send it.
+  A non-US city 404s, is marked `nws_supported = false`, and is skipped from
+  then on. api.weather.gov imposes no rate limit, but **n8n does**: 30-minute
+  polling would be 1,440 executions/month against a ~2,000 cap with ~930
+  already committed, so the schedule is 2h (360) and the Workflows page's Run
+  button covers refreshing sooner. Genuine 30-minute freshness belongs in a
+  GitHub Action, which has no per-run quota.
+- `P1.3_nws_forecast.template.json` - every 6 hours. The **second forecast
+  model**. `v_forecast_divergence` measures how far apart two models are about
+  the same day and `probability_engine.py` widens sigma by that spread - but
+  with only Open-Meteo in `weather_forecasts` the spread is always 0 and the
+  whole mechanism is dormant. This writes NWS's hourly gridpoint forecast as
+  `model='nws'` and switches it on. The multiplier has a **floor of 1.0**: a
+  second opinion can only ever make AD4 less confident than its measured
+  historical skill says, never more. A day is only written if its hourly
+  series actually covers the 12:00-18:00 local peak window - a day cut short
+  at either end has a max below the real one, and a too-low max would
+  manufacture disagreement that is not there.
 - `P4.1_health_watchdog.template.json` - every 6 hours, emails only on
   failure. Five checks: stale book snapshots, stale forecast runs, failed
   ingest jobs, anomalies, and **traded market volume**. The volume check

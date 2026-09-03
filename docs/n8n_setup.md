@@ -1,6 +1,6 @@
 # n8n setup
 
-7 workflow files. Import them, fill in 2 boxes, press play.
+9 workflow files. Import them, fill in 2 boxes, press play.
 
 ---
 
@@ -13,6 +13,8 @@
 | `P0.4_trade_history` | Saves recent trades. This is where all your volume numbers come from. | every 6h |
 | `P0.5_refresh_rules_text` | Checks if Polymarket changed a market's rules. | daily |
 | `P1.1_live_weather_alerts` | Emails you when the weather spikes. | when it happens |
+| `P1.2_nws_monitor` | Reads the National Weather Service directly: the temperature, any heat warning, and when the sun peaks today. | every 2h, or on demand |
+| `P1.3_nws_forecast` | The government's own forecast, as a second opinion next to Open-Meteo. | every 6h |
 | `P3.1_email_digests` | Morning brief + end of day report. | 04:00 and 21:00 UTC |
 | `P4.1_health_watchdog` | Emails you if something broke. Silent when fine. | every 6h |
 
@@ -30,21 +32,28 @@ tables at the same time.** That is the thing that breaks your data.
 So: import them, but leave them **OFF**. Test each one. Only then turn the
 old one off and the new one on. Step 5 below.
 
-P1.1, P3.1 and P4.1 are new. Nothing to clash with. Just import and go.
+P1.1, P1.2, P1.3, P3.1 and P4.1 are new. Nothing to clash with. Just import
+and go.
 
 ---
 
 ## Step 1 — Run the SQL
 
-In Supabase, SQL Editor, paste and run **`sql/ad4_14_workflows.sql`**.
+In Supabase, SQL Editor, paste and run these two, in order:
 
-This adds the bits the UI needs to show and run the workflows.
+1. **`sql/ad4_14_workflows.sql`** — the bits the UI needs to show and run the
+   workflows.
+2. **`sql/ad4_16_nws.sql`** — the columns the two weather.gov workflows write
+   to, and it adds those two to the Workflows page.
+
+If you already ran `ad4_14` once, run it again anyway. It is safe to re-run,
+and `ad4_16` is what actually adds the two new rows to the page.
 
 ---
 
 ## Step 2 — Import
 
-In n8n: **Workflows → Import from File**. One file at a time. All 7.
+In n8n: **Workflows → Import from File**. One file at a time. All 9.
 
 ---
 
@@ -59,6 +68,9 @@ Every workflow has a box called **Config**. Open it. Fill in:
 | `alert_email` | your email — only on P1.1 and P4.1 |
 
 That's it. Nothing else needs touching.
+
+P1.2 and P1.3 have a few more boxes (how many cities per run, how far ahead to
+forecast, and so on). They come filled in with sensible values. Leave them.
 
 **Do not put the secret key anywhere in Vercel.** It goes here and in GitHub
 Actions only.
@@ -92,6 +104,41 @@ The workflow swaps the real value in for you.
 usable data before it writes anything, and stops with a message telling you
 what went wrong. A wrong address costs you a failed run, not bad data.
 
+### About the two weather.gov workflows
+
+Nothing to fill in. No key, no sign-up, no rate limit — `api.weather.gov` is
+free and public. The only box is a `user_agent`, which is already filled in;
+weather.gov asks that apps identify themselves, that's all.
+
+**P1.2 (NWS Monitor)** is the reading you actually settle against. Until now
+AD4 read US temperatures from IEM, and the weather.gov side was a half-finished
+HTML scraper that never returned anything. This reads the real thing. It saves
+its reading *next to* the IEM one for the same minute rather than replacing it,
+so you can finally see whether the two agree — which is the question the
+settlement check has been stuck on.
+
+It also picks up heat warnings and advisories, and today's **solar transit** —
+the moment the sun is highest, which is roughly when the day's peak lands.
+
+Only US cities work. A non-US city gets checked once, marked as unsupported,
+and skipped after that. No repeated failures.
+
+**P1.3 (NWS Forecast)** is a second forecast next to Open-Meteo. When the two
+disagree about a day, AD4 treats that day as less certain and widens its range.
+It can only ever make AD4 **less** sure, never more — two forecasts agreeing is
+not evidence that the day is easy.
+
+Both can be run by hand any time from the Workflows page (step 6). That is the
+"refresh now" button for weather — press it whenever you want a fresh reading
+rather than waiting for the schedule.
+
+**Why every 2 hours and not every 30 minutes**, when the API itself has no
+limit: n8n does. Your plan allows about 2,000 workflow runs a month and the
+existing jobs already use about 930. Every 30 minutes would be 1,440 on its
+own — over budget. Every 2 hours is 360, and the Run button costs one run when
+you actually want it. If you ever want it genuinely every 30 minutes, the
+place for that is a GitHub Action, which has no run limit.
+
 ---
 
 ## Step 4 — Test each one
@@ -103,8 +150,15 @@ Watch the last box, **Summary**. It tells you what happened in one line:
 ```
 AD4 P0.3: 5457 book snapshots written from 5863 bands, 406 failed. LIVE=5100 WIDE=357
 AD4 P0.4: 1204 trades ($48,300) written from 210 markets, 3 unmatched tokens.
+AD4 P1.2: 41 NWS observations from 54 cities, 13 not US stations. no new alerts.
+AD4 P1.3: 287 NWS forecast day(s) for 41 cities, 13 not US locations, 41 partial day(s) skipped.
 AD4 P4.1: all clear.
 ```
+
+"partial day(s) skipped" is normal, not a fault. The hourly forecast starts at
+the current hour and stops mid-day at the far end, so the first and last days
+are often missing the afternoon. Their maximum would read too low, so they are
+left out rather than written wrong.
 
 If it goes red, click the red box and read the message. It says what to fix.
 
@@ -124,8 +178,8 @@ Do these **one at a time**. Don't do all four at once.
 If anything looks wrong: turn the new one off, turn the old one back on.
 Nothing is lost.
 
-For P1.1, P3.1, P4.1 — just switch **Active** on. No old version to worry
-about.
+For P1.1, P1.2, P1.3, P3.1, P4.1 — just switch **Active** on. No old version to
+worry about.
 
 ---
 

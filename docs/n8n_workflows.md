@@ -1,12 +1,12 @@
 # n8n workflows (Task 15 / spec §7)
 
-**All seven n8n workflows now have a file.** The four P0.x are
+**All nine n8n workflows now have a file.** The four P0.x are
 `.scaffold.json` reconstructions - they already run in Hassan's n8n and
 were never captured here, so their Supabase half is grounded in
 `sql/ad4_00_preflight.sql` while their Polymarket endpoint is a Config
 field rather than an asserted URL. Capture the real ones with
 `scripts/sanitise_n8n_export.py` and delete the scaffolds; see
-`n8n/README.md`. The other three are checked templates.
+`n8n/README.md`. The other five are checked templates.
 
 n8n isn't git-managed the way the rest of this repo is - workflows live in
 the n8n editor, not as files a build tool compiles. This doc is the spec
@@ -37,6 +37,8 @@ shows is already tight. GitHub Actions has no per-run execution quota.
 | P0.5 Refresh Rules Text | n8n (existing) | `n8n/P0.5_refresh_rules_text.scaffold.json` |
 | P1.1 Live Weather Monitor (poll) | GitHub Actions, every 15 min | `.github/workflows/live_weather.yml` -> `scripts/live_weather.py` |
 | P1.1 Live Weather Monitor (notify) | **n8n**, webhook-triggered | `n8n/P1.1_live_weather_alerts.template.json` |
+| P1.2 NWS Monitor (observations, alerts, solar transit) | **n8n**, every 2h + on demand | `n8n/P1.2_nws_monitor.template.json` |
+| P1.3 NWS Forecast (second forecast model) | **n8n**, every 6h | `n8n/P1.3_nws_forecast.template.json` |
 | P2.1 Probability + Edge Pipeline | GitHub Actions, 4x/day | `.github/workflows/probabilities.yml` -> `probability_engine.py` + `edge_engine.py` |
 | P2.2 Signal Engine | GitHub Actions, 4x/day | `.github/workflows/signals.yml` -> `scripts/signals.py` |
 | P2.3 Settlement Sweep | GitHub Actions, daily | `.github/workflows/settlement.yml` -> `scripts/settlement.py` |
@@ -181,10 +183,23 @@ Three logical triggers in one workflow, per the spec's own table:
 | P0.4 Trade History | 1x/day | 30 |
 | P0.5 Refresh Rules | 1x/day | 30 |
 | P1.1 Weather Alerts (notify only) | event-driven | ~450 worst case |
+| P1.2 NWS Monitor | 12x/day | 360 |
+| P1.3 NWS Forecast | 4x/day | 120 |
 | P3.1 Email Digests | 2x/day | ~60 |
 | P4.1 Watchdog | 4x/day | 120 |
-| **TOTAL** | | **~930 / 2,000** |
+| **TOTAL** | | **~1,410 / 2,000** |
 
-Comfortably inside budget - more headroom than the original §7.12
-accounting, because P2.1/P2.2/P2.3/P2.4's 4x/day polling loops moved to
-GitHub Actions instead of stacking onto n8n.
+Still inside budget, with ~590 spare for manual Run-button executions - and
+the 4x/day polling loops of P2.1/P2.2/P2.3/P2.4 are on GitHub Actions rather
+than stacked on top of this, which is what leaves the room.
+
+**This is why P1.2 runs every 2 hours and not every 30 minutes.**
+api.weather.gov imposes no rate limit of its own - the constraint is entirely
+n8n's execution count. At 30-minute polling P1.2 alone would be 1,440/month
+and the total ~2,490, i.e. over the cap; the first things to fail would be
+the digests and the watchdog, silently, at the end of a month. Two hours is
+360. The Workflows page's Run button covers "I want a reading now" for one
+execution each time, which is the shape the freshness requirement actually
+has. If continuous 30-minute NWS polling is ever genuinely wanted, its home
+is a GitHub Action beside `live_weather.yml` - no per-run quota - not a
+bigger n8n bill.

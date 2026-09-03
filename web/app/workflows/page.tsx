@@ -77,6 +77,22 @@ const CATALOGUE: Array<{
     note: "Running this from here sends an empty payload, so it exercises the workflow without emailing anything. That is the intended smoke test.",
   },
   {
+    job: "P1.2_nws_monitor",
+    label: "NWS Monitor",
+    schedule: "every 2 hours",
+    what:
+      "Reads api.weather.gov \u2014 the service most of these markets settle on \u2014 for every US city: the current observation with its quality-control flag, any active heat advisory or warning, and today's solar transit (the sun's zenith, which is where the daily peak sits). Writes observations beside the IEM ones so the two feeds can be compared, and raises an alert only when it changes.",
+    note: "api.weather.gov has no rate limit, but n8n's execution budget does \u2014 hence 2 hours, with this button for refreshing sooner. Non-US cities are checked once, marked unsupported, and skipped from then on.",
+  },
+  {
+    job: "P1.3_nws_forecast",
+    label: "NWS Forecast",
+    schedule: "every 6 hours",
+    what:
+      "The second forecast model. Takes NWS's hourly gridpoint forecast and writes a daily maximum per city, beside Open-Meteo's. Where the two disagree about a day, that day's sigma widens \u2014 disagreement can only ever make AD4 less confident, never more.",
+    note: "A day whose hourly series misses the 12:00\u201318:00 peak window is skipped rather than written low: an understated max would invent disagreement that is not there.",
+  },
+  {
     job: "P3.1_email_digests",
     label: "Email Digests",
     schedule: "04:00 and 21:00 UTC",

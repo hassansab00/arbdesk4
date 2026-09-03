@@ -28,7 +28,7 @@ starting the next.
 
 | # | File | What it does |
 |---|---|---|
-| 1 | `sql/ad4_00_preflight.sql` | **Run this first.** Guarantees every table, column and unique key the other 11 files need. |
+| 1 | `sql/ad4_00_preflight.sql` | **Run this first.** Guarantees every table, column and unique key the other 15 files need. |
 | 2 | `ad4_phase1_tables.sql` | forecast-skill table |
 | 3 | `sql/ad4_phase2.sql` | cost params, edges, anomaly rules, correlation, capacity, views |
 | 4 | `sql/ad4_phase2_ranking.sql` | `v_opportunities` with the ranking score |
@@ -42,7 +42,8 @@ starting the next.
 | 12 | `sql/ad4_rls.sql` | RLS policies, and the revoke-then-grant that closes the write boundary. |
 | 13 | `sql/ad4_13_reconcile.sql` | Reconciles everything above with the real Phase 0 column shapes. |
 | 14 | `sql/ad4_14_workflows.sql` | Lets the UI run the n8n workflows and read their run history. |
-| 15 | `sql/ad4_15_pipeline_fixes.sql` | **Run this last.** Adds the `system` strategy the Signal Engine writes its alerts against. |
+| 15 | `sql/ad4_15_pipeline_fixes.sql` | Adds the `system` strategy the Signal Engine writes its alerts against. |
+| 16 | `sql/ad4_16_nws.sql` | **Run this last.** Makes room for api.weather.gov: per-city NWS ids, today's solar transit, and `v_forecast_divergence`. |
 
 Every file is idempotent — re-running any of them is safe and changes
 nothing that is already correct.
@@ -547,13 +548,14 @@ the last three (digests, alerting, the watchdog).
 > copies writing the same tables is worse than one. `docs/n8n_setup.md` has
 > both safe paths: patch your originals, or cut over one at a time.
 
-All seven now carry a **Webhook Trigger** next to their Manual and Schedule
+All nine now carry a **Webhook Trigger** next to their Manual and Schedule
 ones, and a **Log run** node that writes `ingest_log` at the end of every
 execution. That gives you the **Workflows** page in the UI: run any job on
 demand, and see when each last ran and how it went — including the runs that
 started from a schedule or from inside n8n.
 
-To turn the Run buttons on: run `sql/ad4_14_workflows.sql`, then paste each
+To turn the Run buttons on: run `sql/ad4_14_workflows.sql` and
+`sql/ad4_16_nws.sql`, then paste each
 workflow's **Production webhook URL** into AD4 → **Workflows** → *set URL*.
 Leave them empty and the page stays a read-only status board.
 
@@ -605,6 +607,57 @@ select update_setting('weather_alert_webhook',
 
 **Expect:** `scripts/live_weather.py` now POSTs to it whenever it detects a
 high or critical weather event.
+
+### 5.4 `n8n/P1.2_nws_monitor.template.json` — every 2 hours
+
+Fill in `supabase_url` and `service_key` only. There is no api.weather.gov
+key: it is free, public, and imposes no rate limit. Then **Execute Workflow**.
+
+**Expect:** a Summary like
+`AD4 P1.2: 41 NWS observations from 54 cities, 13 not US stations. no new
+alerts.` Non-US cities 404 once, are recorded as `nws_supported = false`, and
+are never asked again.
+
+Then check the thing this workflow exists to make answerable — whether the
+two feeds agree on the same instant:
+
+```sql
+select o.city_key, o.valid_at,
+       max(o.temp_c) filter (where o.source = 'NWS') as nws_c,
+       max(o.temp_c) filter (where o.source = 'IEM') as iem_c
+  from weather_observations o
+ where o.valid_at > now() - interval '6 hours'
+ group by o.city_key, o.valid_at
+having count(distinct o.source) > 1
+ order by o.valid_at desc limit 20;
+```
+
+Both columns populated on the same row is the evidence
+`docs/settlement_verification.md` has been waiting for. Activate it.
+
+### 5.5 `n8n/P1.3_nws_forecast.template.json` — every 6 hours
+
+Same two Config fields. **Execute Workflow**.
+
+**Expect:** `AD4 P1.3: 287 NWS forecast day(s) for 41 cities …, 41 partial
+day(s) skipped.` Skipped days are correct behaviour, not a fault: the hourly
+series starts at the current hour and stops mid-day at the far end, so those
+days' maxima would read low — and a low maximum would invent disagreement
+with Open-Meteo that is not there.
+
+This is the second forecast model, and it is what switches sigma widening on:
+
+```sql
+select city_key, for_date, models, spread_c, sigma_multiplier
+  from v_forecast_divergence
+ where n_models > 1
+ order by spread_c desc limit 10;
+```
+
+`sigma_multiplier` above 1.0 means the next Probability Engine run will price
+that day less confidently, and its reason string will say
+`models_disagree:<spread>C_over_<n>`. It can never drop below 1.0 — two
+models agreeing is not evidence that a day is easy. Activate it.
 
 ---
 

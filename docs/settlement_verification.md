@@ -30,6 +30,43 @@ never been checked against a live page** - it's a best guess at a
 plausible structure, not a confirmed one. Fixing the parser is step 1
 below, not optional.
 
+## A second, better source is now in the database
+
+`n8n/P1.2_nws_monitor.template.json` reads **api.weather.gov** — the NWS's
+own documented JSON API, the same office that publishes the timeseries page
+the rules point at — and writes each reading into `weather_observations` with
+`source='NWS'`, **beside** the IEM row for the same instant rather than
+instead of it. The unique key is `(city_key, valid_at, source)`, so both feeds
+coexist per timestamp.
+
+That makes the comparison this file has been waiting on a query rather than a
+manual spot-check:
+
+```sql
+select o.city_key, o.valid_at,
+       max(o.temp_c) filter (where o.source = 'NWS') as nws_c,
+       max(o.temp_c) filter (where o.source = 'IEM') as iem_c,
+       max(o.temp_c) filter (where o.source = 'NWS')
+     - max(o.temp_c) filter (where o.source = 'IEM') as diff_c
+  from weather_observations o
+ where o.valid_at > now() - interval '7 days'
+ group by o.city_key, o.valid_at
+having count(distinct o.source) > 1
+ order by abs(coalesce(max(o.temp_c) filter (where o.source = 'NWS')
+                     - max(o.temp_c) filter (where o.source = 'IEM'), 0)) desc;
+```
+
+**This does not by itself flip `settlement_verified`.** It compares two
+observation feeds; the gate is about the *settlement surface* — the
+timeseries page the rules name — and the parser that reads it. What it does
+give is the thing the spot-check was for: standing evidence about whether the
+archive AD4 prices against agrees with the NWS's own numbers, on every city
+and every timestamp rather than one sampled day. A material disagreement here
+would be a reason to stop before the gate, not after it.
+
+Run **Verify Resolution Source** below as well. The two answer different
+questions and both are needed.
+
 ## How to actually run this
 
 **It is now one button.** `.github/workflows/verify_resolution_source.yml`
