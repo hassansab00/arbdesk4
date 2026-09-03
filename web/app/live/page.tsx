@@ -6,6 +6,8 @@ import { useQuery } from "@/lib/useQuery";
 import { DataState, ErrorBox, InlineError, Loading } from "@/components/DataState";
 import WeatherIcon from "@/components/WeatherIcon";
 import { fmtAge, fmtCompactUsd, severityColor } from "@/lib/format";
+import { fmtTemp, fmtTempDelta, fmtBandRange, toDisplay, type Unit } from "@/lib/units";
+import { fmtTime, fmtCityHour, shortZone } from "@/lib/time";
 import type { City, LiveWeather, WeatherEvent } from "@/lib/types";
 
 const STATE_ORDER: Record<string, number> = { INSIDE: 0, BEFORE: 1, AFTER: 2 };
@@ -25,6 +27,21 @@ export default function LiveWeatherPage() {
   const events = useQuery<WeatherEvent[]>(
     () => supabase.from("weather_events").select("*").order("detected_at", { ascending: false }).limit(50),
     []
+  );
+  // Today's forecast maximum, per city. The card needs it beside the running
+  // max: "23.1 now, 28.4 forecast, 24.6 so far" is a position; "23.1 now" is
+  // a thermometer. Every model that has an opinion on today is fetched, and
+  // the shortest lead time wins - that is the freshest view of the same day.
+  const forecasts = useQuery<Array<{ city_key: string; forecast_max_c: number | null; lead_days: number | null; model: string | null; run_at: string | null }>>(
+    () =>
+      supabase
+        .from("weather_forecasts")
+        .select("city_key,forecast_max_c,lead_days,model,run_at,for_date")
+        .eq("for_date", new Date().toISOString().slice(0, 10))
+        .order("run_at", { ascending: false })
+        .limit(1000),
+    [],
+    5 * 60000
   );
 
   // Supabase Realtime: new weather_events push straight in, no polling.
@@ -70,6 +87,17 @@ export default function LiveWeatherPage() {
     () => new Map((cities.data ?? []).map((c) => [c.city_key, c])),
     [cities.data]
   );
+
+  // Shortest lead time per city; ties broken by the newest run.
+  const forecastByCity = useMemo(() => {
+    const m = new Map<string, { forecast_max_c: number | null; model: string | null; run_at: string | null }>();
+    for (const f of forecasts.data ?? []) {
+      if (f.forecast_max_c === null) continue;
+      const cur = m.get(f.city_key);
+      if (!cur) m.set(f.city_key, f);
+    }
+    return m;
+  }, [forecasts.data]);
 
   const rows = useMemo(() => {
     const merged = (live.data ?? []).map((l) => ({ ...l, city: cityByKey.get(l.city_key) }));
@@ -121,6 +149,14 @@ export default function LiveWeatherPage() {
               const inside = r.peak_window_state === "INSIDE";
               const crossed = bandCrossCities.has(r.city_key);
               const flash = flashing[r.city_key] !== undefined;
+              const unit = (r.city?.unit ?? "C") as Unit;
+              const cityTz = r.city?.timezone ?? null;
+              const fc = forecastByCity.get(r.city_key);
+              // How much of the forecast day is still ahead of the running max.
+              const toGo =
+                fc?.forecast_max_c != null && r.running_max_c != null
+                  ? fc.forecast_max_c - r.running_max_c
+                  : null;
               return (
                 <button
                   key={r.city_key}
@@ -137,22 +173,55 @@ export default function LiveWeatherPage() {
                     <span className="font-semibold">{r.city?.display_name ?? r.city_key}</span>
                     <WeatherIcon condition={r.sky_condition} size={28} />
                   </div>
-                  <div className="mt-1 font-mono text-lg">
-                    {r.temp_c?.toFixed(1) ?? "—"}°C
-                    {r.trend === "RISING" && <span className="ml-1 text-good">↑</span>}
-                    {r.trend === "FALLING" && <span className="ml-1 text-bad">↓</span>}
+                  <div className="mt-1 flex items-baseline gap-2 font-mono text-lg">
+                    <span>{fmtTemp(r.temp_c, unit)}</span>
+                    {r.temp_change_1h !== null && Math.abs(r.temp_change_1h) > 0.05 && (
+                      <span className={`text-xs ${r.temp_change_1h > 0 ? "text-good" : "text-bad"}`}>
+                        {r.temp_change_1h > 0 ? "▲" : "▼"} {fmtTempDelta(r.temp_change_1h, unit)}/h
+                      </span>
+                    )}
                   </div>
-                  <div className="text-xs text-muted">
-                    max {r.running_max_c?.toFixed(1) ?? "—"}°C
-                    {r.running_max_at ? ` @ ${new Date(r.running_max_at).toISOString().slice(11, 16)}Z` : ""}
+
+                  {/* The three numbers that make this a position rather than a
+                      thermometer: where the day is forecast to end up, where it
+                      has got to, and how much of that is still to come. */}
+                  <div className="mt-1.5 grid grid-cols-3 gap-1 border-t border-border pt-1.5 font-mono text-[11px]">
+                    <div>
+                      <div className="text-[9px] uppercase tracking-wide text-muted">Forecast</div>
+                      <span className={fc ? "text-text" : "text-muted"}>
+                        {fc ? fmtTemp(fc.forecast_max_c, unit) : "—"}
+                      </span>
+                    </div>
+                    <div>
+                      <div className="text-[9px] uppercase tracking-wide text-muted">Max so far</div>
+                      {fmtTemp(r.running_max_c, unit)}
+                    </div>
+                    <div>
+                      <div className="text-[9px] uppercase tracking-wide text-muted">To go</div>
+                      <span className={toGo !== null && toGo > 0 ? "text-warn" : "text-muted"}>
+                        {toGo === null ? "—" : toGo <= 0 ? "reached" : fmtTempDelta(toGo, unit)}
+                      </span>
+                    </div>
                   </div>
-                  <div className="mt-1 text-[10px] text-muted">
-                    {r.peak_window_state ?? "—"}
-                    {r.minutes_to_peak !== null && r.peak_window_state === "BEFORE" ? ` · ${r.minutes_to_peak}m` : ""}
-                    {r.day_decided && " · DAY DECIDED"}
-                    {crossed && <span className="ml-1 text-bad">· BAND CROSS</span>}
+
+                  <div className="mt-1.5 text-[10px] leading-relaxed text-muted">
+                    <div>
+                      max at{" "}
+                      {r.running_max_at
+                        ? `${fmtTime(r.running_max_at, cityTz ?? undefined)} ${shortZone(cityTz)}`
+                        : "—"}
+                      {" · peak "}
+                      {r.peak_window_state ?? "—"}
+                      {r.minutes_to_peak !== null && r.peak_window_state === "BEFORE"
+                        ? ` in ${r.minutes_to_peak}m`
+                        : ""}
+                    </div>
+                    <div>
+                      obs {fmtAge(r.observed_at)}
+                      {r.day_decided && <span className="ml-1 text-muted">· DAY DECIDED</span>}
+                      {crossed && <span className="ml-1 text-bad">· BAND CROSS</span>}
+                    </div>
                   </div>
-                  <div className="mt-1 text-[10px] text-muted">obs {fmtAge(r.observed_at)}</div>
                 </button>
               );
             })}
@@ -196,8 +265,8 @@ export default function LiveWeatherPage() {
                 </div>
                 <div className="text-muted">
                   {e.city_key} · {fmtAge(e.detected_at)}
-                  {e.temp_c !== null && ` · ${e.temp_c.toFixed(1)}°C`}
-                  {e.change_c !== null && ` · Δ${e.change_c.toFixed(1)}°C`}
+                  {e.temp_c !== null && ` · ${fmtTemp(e.temp_c, cityByKey.get(e.city_key)?.unit)}`}
+                  {e.change_c !== null && ` · ${fmtTempDelta(e.change_c, cityByKey.get(e.city_key)?.unit)}`}
                 </div>
               </div>
             ))}
@@ -215,6 +284,8 @@ export default function LiveWeatherPage() {
 // ---------------------------------------------------------------------------
 function CityDetail({ row, onClose }: { row: LiveWeather & { city: City | undefined }; onClose: () => void }) {
   const since = useMemo(() => new Date(Date.now() - 24 * 3600 * 1000).toISOString(), []);
+  // The market settles in this city's unit. Every temperature below follows it.
+  const dUnit = (row.city?.unit ?? "C") as Unit;
 
   const obs = useQuery<Obs[]>(
     () =>
@@ -267,15 +338,25 @@ function CityDetail({ row, onClose }: { row: LiveWeather & { city: City | undefi
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4 lg:grid-cols-6">
-        <Field label="Now" value={`${row.temp_c?.toFixed(1) ?? "—"}°C`} />
-        <Field label="Running max" value={`${row.running_max_c?.toFixed(1) ?? "—"}°C`} />
-        <Field label="Δ 1h" value={row.temp_change_1h !== null ? `${row.temp_change_1h.toFixed(1)}°C` : "—"} />
+        <Field label="Now" value={fmtTemp(row.temp_c, dUnit)} />
+        <Field label="Running max" value={fmtTemp(row.running_max_c, dUnit)} />
+        <Field label="Δ 1h" value={fmtTempDelta(row.temp_change_1h, dUnit)} />
         <Field label="Wind" value={`${row.wind_speed_kt ?? "—"}kt ${row.wind_dir_compass ?? ""}`} />
         <Field label="Humidity" value={`${row.humidity ?? "—"}%`} />
         <Field label="Pressure" value={`${row.pressure_hpa ?? "—"}hPa`} />
         <Field label="Visibility" value={`${row.visibility_m ?? "—"}m`} />
         <Field label="Sky" value={row.sky_condition ?? "—"} />
-        <Field label="Peak window" value={row.peak_window_state ?? "—"} />
+        {/* The peak hour is a CITY-local fact - it is when the sun is highest
+            there - so it is shown on that clock, with your own beside it. */}
+        <Field
+          label="Peak window"
+          value={
+            peak.data?.[0]?.peak_hour_local != null
+              ? fmtCityHour(peak.data[0].peak_hour_local, row.city?.timezone)
+              : (row.peak_window_state ?? "—")
+          }
+          wide
+        />
         <Field label="Day decided" value={row.day_decided ? "yes" : "no"} />
         <Field
           label="Market vol 24h"
@@ -306,6 +387,7 @@ function CityDetail({ row, onClose }: { row: LiveWeather & { city: City | undefi
           peakHourLocal={peak.data?.[0]?.peak_hour_local ?? null}
           windowWidthH={peak.data?.[0]?.window_width_h ?? null}
           timezone={row.city?.timezone ?? null}
+          chartUnit={dUnit}
         />
       )}
       <InlineError message={bands.error ?? peak.error ?? volume.error} />
@@ -325,7 +407,7 @@ function CityDetail({ row, onClose }: { row: LiveWeather & { city: City | undefi
 }
 
 function TempChart({
-  series, bands, runningMax, peakHourLocal, windowWidthH, timezone,
+  series, bands, runningMax, peakHourLocal, windowWidthH, timezone, chartUnit,
 }: {
   series: Array<{ valid_at: string; temp_c: number }>;
   bands: BandRow[];
@@ -333,6 +415,9 @@ function TempChart({
   peakHourLocal: number | null;
   windowWidthH: number | null;
   timezone: string | null;
+  // The plot stays in Celsius - every value on it is Celsius, and converting
+  // the geometry would be pointless work. Only the LABELS convert.
+  chartUnit: Unit;
 }) {
   const W = 720, H = 240, PAD_L = 34, PAD_R = 8, PAD_T = 8, PAD_B = 20;
   const t0 = new Date(series[0].valid_at).getTime();
@@ -404,7 +489,7 @@ function TempChart({
               />
               <line x1={PAD_L} x2={W - PAD_R} y1={yTop} y2={yTop} stroke="#232a38" strokeDasharray="3 3" />
               <text x={W - PAD_R - 2} y={yTop + 9} textAnchor="end" fontSize="8" fill="#8a93a6">
-                {b.band_label ?? `${b.band_lo}-${b.band_hi}`}
+                {b.band_label ?? fmtBandRange(b.band_lo, b.band_hi, chartUnit, b.open_low, b.open_high)}
               </text>
             </g>
           );
@@ -416,7 +501,9 @@ function TempChart({
           return (
             <g key={i}>
               <line x1={PAD_L} x2={W - PAD_R} y1={y(v)} y2={y(v)} stroke="#1a2030" />
-              <text x={PAD_L - 4} y={y(v) + 3} textAnchor="end" fontSize="9" fill="#8a93a6">{v.toFixed(0)}</text>
+              <text x={PAD_L - 4} y={y(v) + 3} textAnchor="end" fontSize="9" fill="#8a93a6">
+                {toDisplay(v, chartUnit).toFixed(0)}
+              </text>
             </g>
           );
         })}
@@ -425,7 +512,9 @@ function TempChart({
         {runningMax !== null && (
           <>
             <line x1={PAD_L} x2={W - PAD_R} y1={y(runningMax)} y2={y(runningMax)} stroke="#ffb020" strokeWidth={1} />
-            <text x={PAD_L + 3} y={y(runningMax) - 3} fontSize="9" fill="#ffb020">running max {runningMax.toFixed(1)}°C</text>
+            <text x={PAD_L + 3} y={y(runningMax) - 3} fontSize="9" fill="#ffb020">
+              running max {fmtTemp(runningMax, chartUnit)}
+            </text>
           </>
         )}
 
@@ -453,9 +542,11 @@ function TempChart({
   );
 }
 
-function Field({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Field({ label, value, hint, wide }: { label: string; value: string; hint?: string; wide?: boolean }) {
   return (
-    <div title={hint}>
+    // `wide` is for values that carry two clocks ("15:00 CDT · 23:00 your
+    // time") and would otherwise wrap mid-phrase in a one-column cell.
+    <div title={hint} className={wide ? "col-span-2" : undefined}>
       <div className="text-muted">{label}</div>
       <div className="font-mono">{value}</div>
     </div>
