@@ -39,10 +39,37 @@ starting the next.
 | 9 | `sql/ad4_backtest.sql` | `queue_backtest()` |
 | 10 | `sql/ad4_rpc.sql` | `calc_recommendation()` and the rest of the RPC layer |
 | 11 | `sql/ad4_live_weather.sql` | `live_weather`, `weather_events` |
-| 12 | `sql/ad4_rls.sql` | **Run this last.** RLS policies and grants. |
+| 12 | `sql/ad4_rls.sql` | RLS policies, and the revoke-then-grant that closes the write boundary. |
+| 13 | `sql/ad4_13_reconcile.sql` | Reconciles everything above with the real Phase 0 column shapes. |
+| 14 | `sql/ad4_14_workflows.sql` | **Run this last.** Lets the UI run the n8n workflows and read their run history. |
 
 Every file is idempotent — re-running any of them is safe and changes
 nothing that is already correct.
+
+**File 13 is not optional, and it genuinely has to be last.** Files 1–12
+were written before anyone could see the real Phase 0 schema, and three of
+their assumptions were wrong on the live database:
+
+* `book_snapshots.bid_levels` / `ask_levels` are **integer level counts**,
+  not jsonb ladders. The real book is in `raw_book`, with pre-aggregated
+  depth in `ask_usd_1c … ask_total_usd`. Anything that walked a ladder was
+  reading an integer.
+* `trades_observed` timestamps live in **`traded_at`**. File 1 adds an
+  `observed_at` column that is NULL on every existing row, and the volume
+  views filtered on it — so every band reported **$0 traded volume** with
+  122,373 trades sitting in the table.
+* `anon` still held **INSERT/UPDATE/DELETE/TRUNCATE** on about 40 tables
+  from an old `grant all`. File 12 only ever added SELECT; a grant nobody
+  revokes never goes away, and a `for select` RLS policy does not stop an
+  INSERT from a role that holds the INSERT privilege.
+
+File 13 fixes all three, plus the type mismatches underneath them
+(`paper_trades.trade_id` is `uuid`, not `bigint`; the close columns are
+`close_price` / `close_reason`). It does it by **inspecting the schema at
+run time** rather than hard-coding names, so it is correct on your database
+and on a fresh one, and it stays correct if the ingest changes shape again.
+
+If you re-run file 12 for any reason, run file 13 again after it.
 
 ### What step 1 should look like
 
@@ -66,9 +93,73 @@ NOTICE:    + column         strategies.universe
 `Nothing was missing` is also a valid result — it means your database
 already had everything.
 
-**Files 2–12** finish with `Success. No rows returned`. Some print
+**Files 2–13** finish with `Success. No rows returned`. Some print
 `NOTICE: relation "x" already exists, skipping` — that is the idempotency
 working, not an error.
+
+**File 13** prints what it found and what it decided, which is worth
+reading:
+
+```
+NOTICE:  v_band_book built: raw_book=t  jsonb_levels=f  usd_tiers=t
+NOTICE:  reconcile: trades_observed timestamp = coalesce(t.traded_at, t.observed_at, t.ingested_at), city_key column = t
+NOTICE:  reconcile: v_band_volume / v_city_volume rebuilt
+NOTICE:  reconcile: v_latest_book + v_opportunities rebuilt
+NOTICE:  reconcile: close_position(uuid, numeric, text) rebuilt
+NOTICE:  reconcile: log_paper_trade rebuilt (trade_id returned as text)
+NOTICE:  reconcile: approve_signal / dismiss_signal rebuilt
+NOTICE:  reconcile: SECURITY OK - anon/authenticated hold zero write grants in public
+```
+
+That last line is the one to check. If it says `WARNING: n write grants
+SURVIVED` instead, something else is re-granting them — send the output of
+`select * from ad4_reconcile_report();`.
+
+You can re-run that report on its own at any time:
+
+```sql
+select * from ad4_reconcile_report();
+```
+
+| check | what PASS means |
+|---|---|
+| `trades timestamp column` | the expression the volume layer is actually filtering on |
+| `band volume is non-zero` | at least one band reports traded volume |
+| `book ladders resolve` | how many bands got a real book vs. a reconstructed one |
+| `raw_book coverage` | how many snapshots carry a real ladder |
+| `bands with no usable book` | bands with neither a ladder nor depth totals — unfillable by design |
+| `anon/authenticated write grants` | zero — the browser key cannot write |
+| `anon EXECUTE surface` | should be exactly 15: the 9 UI RPCs plus 6 pure view helpers |
+| `close_position signature` | its argument type matches `paper_trades.trade_id` |
+
+### If `raw_book coverage` reads 0
+
+Then every ladder in AD4 is being **reconstructed** from the cumulative
+depth columns (`ask_usd_1c` … `ask_total_usd`) rather than read from a real
+order book. That is not broken — but it is worth knowing how good the
+approximation is, because it prices every fill in Goals and the Calculator.
+Measured against a known six-level ladder:
+
+| | real ladder | reconstructed |
+|---|---|---|
+| total depth | $2,946.75 | $2,946.75 (exact) |
+| $500 order, 25c cap | 1464.2 sh @ 0.3415 | 1466.5 sh @ 0.3409 |
+| $1,500 order, 25c cap | stops at $1,146.75, 3050.0 sh @ 0.3760 | stops at $1,146.75, 3052.3 sh @ 0.3757 |
+| whole side, uncapped | $2,946.75 @ 0.4871 | $2,946.75 @ 0.4787 |
+
+Total depth is exact, and a slippage-capped walk is within ~0.2%. The error
+lives in the far tail, where the depth columns genuinely stop telling you
+anything — everything past 25c is one bucket, so it is priced *outside* 25c
+so a capped walk correctly refuses it rather than promising fills that are
+not there.
+
+**The cure is to populate `raw_book`.**
+`n8n/P0.3_book_volume_snapshot.scaffold.json` now writes it, along with the
+level counts and all twelve depth columns, in the real production shape. Its
+earlier version wrote the ladders into `bid_levels`/`ask_levels`, which are
+`integer` — so the ladder never landed anywhere. Re-import that workflow and
+run it, and `book ladders resolve` flips to `raw_book=…` on the next
+snapshot cycle.
 
 ### Verify step 1
 
@@ -442,9 +533,28 @@ cd web && rm -rf node_modules .next && npm install && npm run build
 
 ---
 
-## STEP 5 — n8n (optional)
+## STEP 5 — n8n
 
-Only needed for email digests and alerting. The desk works without it.
+**Full instructions: `docs/n8n_setup.md`.** What follows is the short version.
+
+The desk works without n8n — but P0.2–P0.5 are what keep `markets`, `bands`,
+`book_snapshots` and `trades_observed` current, so "optional" only applies to
+the last three (digests, alerting, the watchdog).
+
+> **If P0.2–P0.5 already run in your n8n** — they do; they are what put the
+> data there — do **not** import and activate these files alongside them. Two
+> copies writing the same tables is worse than one. `docs/n8n_setup.md` has
+> both safe paths: patch your originals, or cut over one at a time.
+
+All seven now carry a **Webhook Trigger** next to their Manual and Schedule
+ones, and a **Log run** node that writes `ingest_log` at the end of every
+execution. That gives you the **Workflows** page in the UI: run any job on
+demand, and see when each last ran and how it went — including the runs that
+started from a schedule or from inside n8n.
+
+To turn the Run buttons on: run `sql/ad4_14_workflows.sql`, then paste each
+workflow's **Production webhook URL** into AD4 → **Workflows** → *set URL*.
+Leave them empty and the page stays a read-only status board.
 
 Import each file: n8n → **Workflows → Import from File**.
 
@@ -537,7 +647,11 @@ Read the message — it is the raw Postgres error, not a summary.
 | Message contains | Fix |
 |---|---|
 | `relation "x" does not exist` | A SQL file did not run. Go back to step 1 and run `sql/ad4_00_preflight.sql`, then the rest in order. |
-| `permission denied` | `sql/ad4_rls.sql` did not run, or ran before the file that defines the function. Re-run `sql/ad4_rls.sql` — it is last for exactly this reason. |
+| `permission denied for table …` | Expected for a write. The browser key is read-only by design — writes go through the RPCs. If it happens on a **read**, re-run `sql/ad4_13_reconcile.sql`: it re-grants SELECT after rebuilding the views. |
+| `permission denied for function …` | `sql/ad4_rls.sql` did not run, or ran before the file that defines the function. Re-run `sql/ad4_rls.sql` then `sql/ad4_13_reconcile.sql` — 13 is last for exactly this reason. |
+| Every band shows `$0` volume / `THIN` | `sql/ad4_13_reconcile.sql` has not run, or `trades_observed` is genuinely empty for the lookback window. Check with `select * from ad4_reconcile_report();` — the `trades timestamp column` row shows what is being filtered on. |
+| `function jsonb_typeof(integer) does not exist` | You are on the real schema without file 13. `book_snapshots.ask_levels` is an integer there. Run `sql/ad4_13_reconcile.sql`. |
+| `operator does not exist: uuid = bigint` | `close_position` still has its old signature. Run `sql/ad4_13_reconcile.sql`. |
 | `Supabase is not configured` | Env vars missing from the Vercel build. Step 4, then **redeploy**. |
 | `column ... does not exist` | Re-run `sql/ad4_00_preflight.sql` and read its NOTICE output. |
 

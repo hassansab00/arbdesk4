@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
 import { fmtAge, fmtCompactUsd, fmtInt, fmtPct, fmtPp, fmtPrice, fmtUsd, regimeColor } from "@/lib/format";
-import type { Opportunity } from "@/lib/types";
+import { LADDER_SOURCE_LABEL, VOLUME_SOURCE_LABEL, type Opportunity } from "@/lib/types";
 
 type SortKey = "score" | "edge_net_pp" | "model_prob" | "market_price" | "fillable_usd_5c" | "volume_usd" | "city_key";
 
@@ -119,7 +119,7 @@ export default function BoardPage() {
                   <Th onClick={() => headerClick("model_prob")} align="right">Model P</Th>
                   <Th onClick={() => headerClick("edge_net_pp")} align="right">Net edge</Th>
                   <Th onClick={() => headerClick("fillable_usd_5c")} align="right" title="Book depth fillable inside 5c of slippage.">Depth (5c)</Th>
-                  <Th onClick={() => headerClick("volume_usd")} align="right" title="24h traded volume on this band, from trades_observed.">Vol 24h</Th>
+                  <Th onClick={() => headerClick("volume_usd")} align="right" title="24h traded volume on this band. Two possible sources: the exchange's own 24h figure carried on the latest book snapshot, or the sum of the trades we captured ourselves. Whichever is larger wins, since both can only undercount. Hover a cell for which one it is.">Vol 24h</Th>
                   <th className="p-2 text-right" title="Number of prints in the last 24h.">Trades</th>
                   <th className="p-2 text-left">State</th>
                   <th className="p-2 text-left">Regime</th>
@@ -136,12 +136,21 @@ export default function BoardPage() {
                     <td className="p-2 text-right font-mono">{fmtPrice(o.market_price)}</td>
                     <td className="p-2 text-right font-mono">{fmtPct(o.model_prob)}</td>
                     <td className="p-2 text-right font-mono">{fmtPp(o.edge_net_pp)}</td>
-                    <td className="p-2 text-right font-mono">{fmtUsd(o.fillable_usd_5c)}</td>
+                    <td
+                      className={`p-2 text-right font-mono ${o.ask_levels_source === "synthetic_tiers" ? "text-warn" : ""}`}
+                      title={o.ask_levels_source ? `ladder: ${LADDER_SOURCE_LABEL[o.ask_levels_source]}` : "ladder source unknown"}
+                    >
+                      {fmtUsd(o.fillable_usd_5c)}{o.ask_levels_source === "synthetic_tiers" ? " ~" : ""}
+                    </td>
                     <td
                       className={`p-2 text-right font-mono ${o.thin_market ? "text-warn" : o.volume_usd ? "" : "text-muted"}`}
-                      title={o.last_trade_at ? `last trade ${fmtAge(o.last_trade_at)}` : "no trades in the window"}
+                      title={[
+                        o.volume_source ? VOLUME_SOURCE_LABEL[o.volume_source] : "source unknown",
+                        o.volume_stale ? "STALE: the book snapshot behind this figure is older than three lookback windows" : null,
+                        o.last_trade_at ? `last trade ${fmtAge(o.last_trade_at)}` : "no trades in the window",
+                      ].filter(Boolean).join(" · ")}
                     >
-                      {fmtCompactUsd(o.volume_usd)}{o.thin_market ? " ⚠" : ""}
+                      {fmtCompactUsd(o.volume_usd)}{o.thin_market ? " ⚠" : ""}{o.volume_stale ? " ·" : ""}
                     </td>
                     <td className="p-2 text-right font-mono text-muted">{fmtInt(o.n_trades)}</td>
                     <td className="p-2 text-xs">{o.market_state}</td>

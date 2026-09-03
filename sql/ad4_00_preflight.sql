@@ -48,7 +48,7 @@ declare
   n          int;
 begin
   raise notice '=====================================================';
-  raise notice 'AD4 PREFLIGHT  v4  (entire file = one statement)';
+  raise notice 'AD4 PREFLIGHT  v5  (entire file = one statement)';
   raise notice '=====================================================';
 
   -- ==========================================================================
@@ -394,8 +394,31 @@ begin
         ('book_snapshots','best_ask','numeric'),
         ('book_snapshots','spread','numeric'),
         ('book_snapshots','market_state','text'),
+        -- NOTE: on the real Phase 0 database bid_levels/ask_levels are
+        -- integer LEVEL COUNTS, not ladders - these two adds are no-ops
+        -- there. The ladder lives in raw_book, with pre-aggregated depth
+        -- in the *_usd_*c columns below. sql/ad4_13_reconcile.sql builds
+        -- v_band_book to normalise whichever of them a database has.
         ('book_snapshots','bid_levels','jsonb'),
         ('book_snapshots','ask_levels','jsonb'),
+        ('book_snapshots','raw_book','jsonb'),
+        ('book_snapshots','mid','numeric'),
+        ('book_snapshots','tradeable','boolean'),
+        ('book_snapshots','snapshot_hour_utc','smallint'),
+        ('book_snapshots','ask_usd_1c','numeric'),
+        ('book_snapshots','bid_usd_1c','numeric'),
+        ('book_snapshots','ask_usd_2c','numeric'),
+        ('book_snapshots','bid_usd_2c','numeric'),
+        ('book_snapshots','ask_usd_5c','numeric'),
+        ('book_snapshots','bid_usd_5c','numeric'),
+        ('book_snapshots','ask_usd_10c','numeric'),
+        ('book_snapshots','bid_usd_10c','numeric'),
+        ('book_snapshots','ask_usd_25c','numeric'),
+        ('book_snapshots','bid_usd_25c','numeric'),
+        ('book_snapshots','ask_total_usd','numeric'),
+        ('book_snapshots','bid_total_usd','numeric'),
+        ('book_snapshots','band_volume','numeric'),
+        ('book_snapshots','band_volume_24hr','numeric'),
 
         -- trades_observed -----------------------------------------------------
         ('trades_observed','city_key','text'),
@@ -404,7 +427,15 @@ begin
         ('trades_observed','side','text'),
         ('trades_observed','price','numeric'),
         ('trades_observed','size','numeric'),
+        -- traded_at is the column the real ingest populates; observed_at
+        -- is this file's own addition and is NULL on every existing row.
+        -- Everything downstream coalesces across both - see
+        -- ad4_trades_ts_expr() in sql/ad4_13_reconcile.sql.
         ('trades_observed','observed_at','timestamptz'),
+        ('trades_observed','traded_at','timestamptz'),
+        ('trades_observed','condition_id','text'),
+        ('trades_observed','proxy_wallet','text'),
+        ('trades_observed','ingested_at','timestamptz'),
 
         -- band_probabilities --------------------------------------------------
         ('band_probabilities','band_id','uuid'),

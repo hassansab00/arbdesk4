@@ -51,13 +51,47 @@ export interface Opportunity {
   liquidity_factor: number | null;
   score_depth_only: number | null;
   score: number | null;
+  // Provenance, added by sql/ad4_13_reconcile.sql. Volume has two possible
+  // sources and the book ladder has three; the UI never shows one of these
+  // numbers without being able to say which it is.
+  //   volume_source     'book_24h' | 'trades_observed' | 'none'
+  //   ask_levels_source 'raw_book' | 'levels_jsonb' | 'synthetic_tiers' | 'none'
+  volume_source: VolumeSource | null;
+  volume_stale: boolean | null;
+  city_volume_source: VolumeSource | null;
+  ask_levels_source: LadderSource | null;
+  bid_levels_source: LadderSource | null;
+  ask_depth_usd: number | null;
+  bid_depth_usd: number | null;
+  book_observed_at: string | null;
 }
+
+export type VolumeSource = "book_24h" | "trades_observed" | "none";
+export type LadderSource = "raw_book" | "levels_jsonb" | "synthetic_tiers" | "none";
+
+export const VOLUME_SOURCE_LABEL: Record<VolumeSource, string> = {
+  book_24h: "exchange 24h volume, from the latest book snapshot",
+  trades_observed: "summed from our own captured trades",
+  none: "no volume from either source",
+};
+
+export const LADDER_SOURCE_LABEL: Record<LadderSource, string> = {
+  raw_book: "real order book",
+  levels_jsonb: "real order book",
+  synthetic_tiers: "APPROXIMATED from tiered depth totals - not a real ladder",
+  none: "no book",
+};
 
 export interface BookLevel {
   price: number;
   size: number;
 }
 
+// v_latest_book. NOTE: on the real database book_snapshots.bid_levels /
+// ask_levels are integer LEVEL COUNTS, not ladders - the view replaces them
+// with normalised jsonb ladders (sql/ad4_13_reconcile.sql), which is why
+// these are typed as BookLevel[] here. *_levels_source says whether the
+// ladder is a real book or one approximated from tiered depth totals.
 export interface LatestBook {
   band_id: string;
   observed_at: string;
@@ -67,6 +101,10 @@ export interface LatestBook {
   market_state: MarketState | null;
   bid_levels: BookLevel[] | null;
   ask_levels: BookLevel[] | null;
+  bid_levels_source: LadderSource | null;
+  ask_levels_source: LadderSource | null;
+  bid_depth_usd: number | null;
+  ask_depth_usd: number | null;
 }
 
 export interface City {

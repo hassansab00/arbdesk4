@@ -1,13 +1,32 @@
-# n8n workflow templates
+# n8n workflow files
 
-Importable skeletons for the three workflows that genuinely live in n8n
-(everything else moved to GitHub Actions - see `docs/n8n_workflows.md`
-for the full mapping and rationale).
+**Setup instructions: `docs/n8n_setup.md`.** Read that, not this.
 
-**Safe to commit**: every `Config` node here has blank
-`supabase_url`/`service_key`/`alert_email` values. Fill those in after
-import, inside n8n - never re-export and commit a filled-in copy (§7.0
-rule 1: it would contain the service key).
+7 files. All rebuilt to run three ways - their own schedule, the Execute
+button in n8n, or the Run button on the AD4 Workflows page - and all of them
+write a row to `ingest_log` when they finish, so `v_workflow_runs` shows the
+last run of each whichever way it was started.
+
+> **P0.2-P0.5 already run in your n8n.** These are new versions of those same
+> four. Importing and activating them alongside the originals means two
+> workflows writing the same tables. Import them OFF, test, then swap one at
+> a time - `docs/n8n_setup.md` step 5.
+
+| Workflow | Webhook path |
+|---|---|
+| P0.2 Market Discovery | `/webhook/ad4-market-discovery` |
+| P0.3 Book + Volume Snapshot | `/webhook/ad4-book-snapshot` |
+| P0.4 Trade History | `/webhook/ad4-trade-history` |
+| P0.5 Refresh Rules Text | `/webhook/ad4-refresh-rules` |
+| P1.1 Live Weather Alerts | `/webhook/ad4-weather-alert` |
+| P3.1 Email Digests | `/webhook/ad4-email-digests` - body `{"digest":"morning"|"eod"}` |
+| P4.1 Health Watchdog | `/webhook/ad4-health-watchdog` |
+
+**Safe to commit**: every `Config` node ships with blank
+`supabase_url`/`service_key`/`alert_email`. Fill them in after import, inside
+n8n - never re-export and commit a filled-in copy (it would contain the
+service key). Use `python scripts/sanitise_n8n_export.py <export>.json n8n/`
+if you ever do need to capture one back.
 
 ## The seven AD4 workflows
 

@@ -1,19 +1,27 @@
 {
   "name": "AD4 - P1.1 Live Weather Alerts",
   "active": false,
-  "settings": { "executionOrder": "v1", "saveDataSuccessExecution": "none" },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none"
+  },
   "nodes": [
     {
       "id": "trigger-webhook",
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [0, 0],
+      "position": [
+        0,
+        0
+      ],
       "parameters": {
         "httpMethod": "POST",
         "path": "ad4-weather-alert",
         "responseMode": "onReceived",
-        "options": {}
+        "options": {
+          "allowedOrigins": "*"
+        }
       }
     },
     {
@@ -21,7 +29,10 @@
       "name": "Manual Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [0, 200],
+      "position": [
+        0,
+        200
+      ],
       "parameters": {}
     },
     {
@@ -29,13 +40,31 @@
       "name": "Config",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [260, 100],
+      "position": [
+        260,
+        100
+      ],
       "parameters": {
         "assignments": {
           "assignments": [
-            { "id": "1", "name": "supabase_url", "type": "string", "value": "" },
-            { "id": "2", "name": "service_key", "type": "string", "value": "" },
-            { "id": "3", "name": "alert_email", "type": "string", "value": "" }
+            {
+              "id": "1",
+              "name": "supabase_url",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "2",
+              "name": "service_key",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "3",
+              "name": "alert_email",
+              "type": "string",
+              "value": ""
+            }
           ]
         }
       }
@@ -45,7 +74,10 @@
       "name": "Format Events",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [520, 100],
+      "position": [
+        520,
+        100
+      ],
       "parameters": {
         "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst events = body.events || [{city_key:'TEST',kind:'SPIKE',severity:'high',temp_c:30,change_c:3}];\nconst high = events.filter(e => ['high','critical'].includes(e.severity));\nconst lines = high.map(e => `${e.city_key}: ${e.kind} (severity=${e.severity}) temp=${e.temp_c ?? '?'}C change=${e.change_c ?? '?'}C`);\nreturn [{ json: { has_high: high.length > 0, count: high.length, body_html: lines.join('<br>'), ids: high.map(e => e.event_id).filter(Boolean) } }];"
       }
@@ -55,12 +87,26 @@
       "name": "Any high/critical?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [780, 100],
+      "position": [
+        780,
+        100
+      ],
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
           "conditions": [
-            { "leftValue": "={{ $json.has_high }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true" } }
+            {
+              "leftValue": "={{ $json.has_high }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
           ],
           "combinator": "and"
         }
@@ -71,7 +117,10 @@
       "name": "Send Email",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [1040, 0],
+      "position": [
+        1040,
+        0
+      ],
       "parameters": {
         "fromEmail": "ad4-alerts@example.com",
         "toEmail": "={{ $('Config').first().json.alert_email }}",
@@ -85,7 +134,10 @@
       "name": "Mark Notified",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1300, 0],
+      "position": [
+        1300,
+        0
+      ],
       "alwaysOutputData": true,
       "onError": "continueRegularOutput",
       "parameters": {
@@ -94,10 +146,22 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey", "value": "={{ $('Config').first().json.service_key }}" },
-            { "name": "Authorization", "value": "=Bearer {{ $('Config').first().json.service_key }}" },
-            { "name": "Content-Type", "value": "application/json" },
-            { "name": "Accept", "value": "application/json" }
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -110,19 +174,144 @@
       "name": "Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1560, 100],
+      "position": [
+        1560,
+        100
+      ],
       "parameters": {
-        "jsCode": "const items = $input.all();\nconst notified = items.length;\nreturn [{ json: { summary: `AD4 P1.1: ${notified} event(s) notified this run.` } }];"
+        "jsCode": "const items = $input.all();\nconst notified = items.length;\nconst summary = `AD4 P1.1: ${notified} event(s) notified this run.`;\nreturn [{ json: {\n  summary,\n  status: 'ok',\n  rows: notified,\n  log: {\n    p_job: 'P1.1_live_weather_alerts',\n    p_status: 'ok',\n    p_rows: notified,\n    p_detail: {\n      summary,\n      notified,\n      trigger: $execution.mode,\n      execution_id: $execution.id,\n    },\n  },\n} }];"
       }
+    },
+    {
+      "id": "log-run",
+      "name": "Log run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1820,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.log) }}"
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
-    "Webhook Trigger": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
-    "Manual Trigger": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
-    "Config": { "main": [[{ "node": "Format Events", "type": "main", "index": 0 }]] },
-    "Format Events": { "main": [[{ "node": "Any high/critical?", "type": "main", "index": 0 }]] },
-    "Any high/critical?": { "main": [[{ "node": "Send Email", "type": "main", "index": 0 }], []] },
-    "Send Email": { "main": [[{ "node": "Mark Notified", "type": "main", "index": 0 }]] },
-    "Mark Notified": { "main": [[{ "node": "Summary", "type": "main", "index": 0 }]] }
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Format Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Events": {
+      "main": [
+        [
+          {
+            "node": "Any high/critical?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any high/critical?": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Mark Notified",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Notified": {
+      "main": [
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary": {
+      "main": [
+        [
+          {
+            "node": "Log run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   }
 }
