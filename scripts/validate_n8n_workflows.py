@@ -44,6 +44,37 @@ for path in sorted(glob.glob("n8n/*.json")):
         dupes = {x for x in coll if coll.count(x) > 1}
         if dupes: bad(f, f"duplicate node {label}s: {sorted(dupes)}")
 
+    # -- parameter shapes n8n's importer ITERATES ---------------------------
+    #
+    # This is the check that was missing. Six of these files shipped with
+    # `rule: {interval: {...}}` where n8n expects `interval` to be a LIST of
+    # interval objects. n8n loops over it on import, a bare object is not
+    # iterable, and the whole import dies with "h[g] is not iterable" - a
+    # message that names a minified variable and nothing else, so it points
+    # nowhere near the schedule trigger. Every file with a Schedule Trigger
+    # failed to import; the only one that worked was the one without one.
+    #
+    # A JSON file being valid JSON says nothing about whether n8n can load
+    # it. Anything n8n iterates has to be checked as a list here.
+    for n in d["nodes"]:
+        p = n.get("parameters", {})
+        if n["type"] == "n8n-nodes-base.scheduleTrigger":
+            iv = p.get("rule", {}).get("interval")
+            if not isinstance(iv, list):
+                bad(f, f"{n['name']}: rule.interval is "
+                       f"{type(iv).__name__}, must be a list - n8n cannot import this")
+        if "headerParameters" in p and not isinstance(
+                p["headerParameters"].get("parameters"), list):
+            bad(f, f"{n['name']}: headerParameters.parameters must be a list")
+        if "assignments" in p and not isinstance(
+                p["assignments"].get("assignments"), list):
+            bad(f, f"{n['name']}: assignments.assignments must be a list")
+        if not isinstance(n.get("position"), list) or len(n.get("position", [])) != 2:
+            bad(f, f"{n['name']}: position must be [x, y]")
+        if "main" in conns.get(n["name"], {}) and not isinstance(
+                conns[n["name"]]["main"], list):
+            bad(f, f"{n['name']}: connections.main must be a list of lists")
+
     # -- every connection points at a node that exists ----------------------
     for src, v in conns.items():
         if src not in nodes: bad(f, f"connection from unknown node {src!r}")
