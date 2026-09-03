@@ -260,7 +260,7 @@ begin
     wind_speed  numeric,
     wind_dir_deg numeric,
     precip      numeric,
-    cloud_cover text,
+    cloud_cover numeric,   -- oktas 0-8, converted from the METAR sky-cover code
     source      text
   );
 
@@ -601,7 +601,9 @@ begin
         ('weather_observations','wind_speed','numeric'),
         ('weather_observations','wind_dir_deg','numeric'),
         ('weather_observations','precip','numeric'),
-        ('weather_observations','cloud_cover','text'),
+        -- numeric on the real database: IEM's skyc1 is a METAR CODE (FEW/SCT/
+        -- BKN/OVC) and scripts/ingest_observations.py converts it to oktas.
+        ('weather_observations','cloud_cover','numeric'),
         ('weather_observations','source','text'),
         ('weather_observations','sky_condition','text'),
         ('weather_observations','sky_raw','text'),

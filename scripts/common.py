@@ -114,12 +114,89 @@ def normalize_sky_condition(sky_raw, present_weather_raw=None):
         return None
     return SKY_CONDITION_MAP.get(sky_raw.strip().upper())
 
-def retry(fn, tries=3, wait=5, label=""):
+def retry(fn, tries=4, wait=5, label=""):
+    """Call fn(), retrying transient failures. Returns None once it gives up.
+
+    429 is treated as its own case. The IEM station API rate-limits a caller
+    that walks 50+ stations back to back, and a linear 5s/10s backoff is not
+    enough to clear it - live_weather.py was dying outright on 429 because it
+    called fetch_station directly with no retry at all. Retry-After is
+    honoured when sent; otherwise the wait grows exponentially from 15s.
+    """
     for a in range(tries):
         try:
             return fn()
         except Exception as e:
-            if a == tries - 1:
+            last = a == tries - 1
+            resp = getattr(e, "response", None)
+            status = getattr(resp, "status_code", None)
+
+            if status == 429:
+                after = None
+                try:
+                    after = float((resp.headers or {}).get("Retry-After", ""))
+                except (TypeError, ValueError):
+                    after = None
+                delay = after if after else 15 * (2 ** a)
+                if last:
+                    print(f"  ! {label} still rate-limited after {tries} tries",
+                          file=sys.stderr)
+                    return None
+                print(f"  . {label} rate-limited, waiting {delay:.0f}s", file=sys.stderr)
+                time.sleep(min(delay, 120))
+                continue
+
+            if last:
                 print(f"  ! {label} gave up after {tries}: {e}", file=sys.stderr)
                 return None
             time.sleep(wait * (a + 1))
+
+
+# model_versions cache, so one run resolves each label once
+_version_ids = {}
+
+def model_version_id(kind, label, config=None, structural=False, active=True):
+    """Resolve a readable version label to its model_versions.version_id uuid.
+
+    band_probabilities.forecast_version / calibration_version are uuid on the
+    real schema - they are references into model_versions, whose `label`
+    column is where the readable string belongs. Writing the label straight
+    into the uuid column is what made every Probability + Edge run fail with
+
+        invalid input syntax for type uuid: "v0_normal_lattice_no_calibration"
+
+    Looks the row up by (kind, label) and creates it if absent, so a new
+    model version registers itself the first time it is used. Returns None if
+    model_versions is missing entirely, which leaves the caller free to omit
+    the field rather than crash.
+    """
+    key = (kind, label)
+    if key in _version_ids:
+        return _version_ids[key]
+
+    try:
+        found = rest("model_versions", {
+            "kind": f"eq.{kind}", "label": f"eq.{label}",
+            "select": "version_id", "limit": "1",
+        })
+        if found:
+            _version_ids[key] = found[0]["version_id"]
+            return _version_ids[key]
+
+        h = _headers()
+        h["Prefer"] = "return=representation"
+        r = requests.post(f"{_cfg()['url']}/rest/v1/model_versions", headers=h,
+                          data=json.dumps([{
+                              "kind": kind, "label": label,
+                              "config": config or {}, "structural": structural,
+                              "active": active,
+                          }]), timeout=30)
+        r.raise_for_status()
+        body = r.json()
+        vid = body[0]["version_id"] if body else None
+        _version_ids[key] = vid
+        return vid
+    except Exception as e:
+        print(f"  ! could not resolve model version {kind}/{label}: {e}", file=sys.stderr)
+        _version_ids[key] = None
+        return None

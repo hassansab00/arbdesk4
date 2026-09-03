@@ -37,6 +37,36 @@ def num(x):
     except Exception:
         return None
 
+
+# METAR sky-cover code -> oktas (eighths of sky covered). IEM's skyc1 column
+# is a CODE, not a number, and weather_observations.cloud_cover is numeric on
+# the real database - so writing the raw code straight through is what made
+# every observations run die with:
+#
+#     invalid input syntax for type numeric: "FEW"
+#
+# Oktas is the standard numeric form of exactly this measurement, so the
+# conversion loses nothing: FEW is 1-2 oktas, SCT 3-4, BKN 5-7, OVC 8. The
+# midpoint of each band is used. VV (vertical visibility) means the sky is
+# obscured, which is a full 8.
+SKY_OKTAS = {
+    "SKC": 0, "CLR": 0, "NSC": 0, "NCD": 0, "CAVOK": 0,
+    "FEW": 2, "SCT": 4, "BKN": 6, "OVC": 8, "VV": 8,
+}
+
+def sky_oktas(code):
+    """METAR sky-cover code -> 0-8, or None when absent/unrecognised."""
+    c = (code or "").strip().upper()
+    if not c:
+        return None
+    if c in SKY_OKTAS:
+        return SKY_OKTAS[c]
+    # some feeds send e.g. "BKN035" (cover + height) or "VV003"
+    for prefix, oktas in SKY_OKTAS.items():
+        if c.startswith(prefix):
+            return oktas
+    return None
+
 def parse(text, city_key):
     rows, rdr = [], csv.DictReader(io.StringIO(text))
     for rec in rdr:
@@ -61,7 +91,7 @@ def parse(text, city_key):
             "wind_speed": num(rec.get("sknt")),
             "wind_dir_deg": num(rec.get("drct")),
             "precip": num(rec.get("p01i")),
-            "cloud_cover": (rec.get("skyc1") or "").strip() or None,
+            "cloud_cover": sky_oktas(rec.get("skyc1")),
             "source": "IEM",
         })
     return rows
