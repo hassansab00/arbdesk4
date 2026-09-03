@@ -20,11 +20,13 @@ def clear_cache():
     pe._divergence_cache = None
 
 
-def load(monkeypatch, rows, count=None):
+def load(monkeypatch, rows, count=None, seen=None):
     def fake_rest(table, params=None, **kw):
         assert table == "v_forecast_divergence"
         if count is not None:
             count.append(1)
+        if seen is not None:
+            seen.append(dict(params or []))
         return rows
     monkeypatch.setattr(pe, "rest", fake_rest)
 
@@ -100,3 +102,34 @@ def test_date_objects_and_strings_match_the_same_row(monkeypatch):
     by_str = pe._divergence_for("nyc", "2026-09-04")
     by_date = pe._divergence_for("nyc", dt.date(2026, 9, 4))
     assert by_str[0] == by_date[0] == pytest.approx(1.8)
+
+
+# --------------------------------------------------------------------------
+# The view holds one row per (city, date) that ever had a forecast - 47,099 on
+# a real database. rest() is a single unpaginated GET, so an unbounded query
+# risks a truncated page, and a missing row is indistinguishable from "the
+# models agree". Both halves of that are tested here.
+# --------------------------------------------------------------------------
+def test_only_dates_this_engine_prices_are_fetched(monkeypatch):
+    import datetime as dt
+    seen = []
+    load(monkeypatch, [row()], seen=seen)
+    pe._divergence()
+    params = seen[0]
+    assert params["for_date"] == f"gte.{dt.date.today().isoformat()}"
+    assert int(params["limit"]) == pe._DIVERGENCE_LIMIT
+
+
+def test_a_truncated_page_is_reported_not_swallowed(monkeypatch, capsys):
+    """Silently pricing half the cities at 1.0 would look like model agreement."""
+    monkeypatch.setattr(pe, "_DIVERGENCE_LIMIT", 3)
+    load(monkeypatch, [row(city_key=f"c{i}") for i in range(3)])
+    pe._divergence()
+    assert "hit the 3-row limit" in capsys.readouterr().err
+
+
+def test_a_full_page_under_the_limit_is_silent(monkeypatch, capsys):
+    monkeypatch.setattr(pe, "_DIVERGENCE_LIMIT", 10)
+    load(monkeypatch, [row(city_key=f"c{i}") for i in range(3)])
+    pe._divergence()
+    assert "limit" not in capsys.readouterr().err
