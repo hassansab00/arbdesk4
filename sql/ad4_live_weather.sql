@@ -33,7 +33,7 @@ create table if not exists weather_observations (
   wind_speed   numeric,
   wind_dir_deg numeric,
   precip       numeric,
-  cloud_cover  text,
+  cloud_cover  numeric,   -- oktas 0-8, not a METAR code (see scripts/ingest_observations.sky_oktas)
   source       text
 );
 

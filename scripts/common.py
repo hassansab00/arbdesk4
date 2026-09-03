@@ -98,21 +98,52 @@ PRESENT_WEATHER_MAP = {
     "DZ": "RAIN", "SH": "RAIN", "GR": "STORM", "GS": "STORM",
 }
 
+# Oktas (eighths of sky covered) -> the same buckets SKY_CONDITION_MAP uses.
+# weather_observations.cloud_cover is NUMERIC on the real database, so anything
+# read back from it - or produced by ingest_observations.sky_oktas() - arrives
+# as a number, not a METAR code. The boundaries mirror the code mapping exactly:
+# FEW(2) and SCT(4) are PARTLY_CLOUDY, BKN(6) is CLOUDY, OVC(8) is OVERCAST.
+def _sky_from_oktas(oktas):
+    if oktas <= 0:  return "CLEAR"
+    if oktas <= 4:  return "PARTLY_CLOUDY"
+    if oktas <= 7:  return "CLOUDY"
+    return "OVERCAST"
+
 def normalize_sky_condition(sky_raw, present_weather_raw=None):
     """
-    METAR skyc1 (CLR/SKC/FEW/SCT/BKN/OVC) plus present-weather codes
-    (RA/SN/FG/TS/...) -> one of CLEAR/PARTLY_CLOUDY/CLOUDY/OVERCAST/RAIN/
-    SNOW/FOG/STORM. Present weather takes priority (spec §8.3) - rain
-    matters more than "also cloudy."
+    Sky cover plus present-weather codes (RA/SN/FG/TS/...) -> one of
+    CLEAR/PARTLY_CLOUDY/CLOUDY/OVERCAST/RAIN/SNOW/FOG/STORM. Present weather
+    takes priority (spec 8.3) - rain matters more than "also cloudy."
+
+    sky_raw accepts EITHER form, because both exist in this codebase:
+      * a METAR code   - CLR/SKC/FEW/SCT/BKN/OVC, straight off the IEM feed
+      * oktas 0-8      - what ingest_observations writes and what the numeric
+                         cloud_cover column reads back
+
+    Taking only the code is what broke the Live Weather Monitor with
+    "'int' object has no attribute 'strip'" after cloud_cover became numeric.
     """
     if present_weather_raw:
-        code = present_weather_raw.strip().upper()
+        code = str(present_weather_raw).strip().upper()
         for k, v in PRESENT_WEATHER_MAP.items():
             if k in code:
                 return v
-    if not sky_raw:
+
+    if sky_raw is None or sky_raw == "":
         return None
-    return SKY_CONDITION_MAP.get(sky_raw.strip().upper())
+
+    # numeric oktas, whether as a number or a numeric string from PostgREST
+    if isinstance(sky_raw, bool):
+        return None
+    if isinstance(sky_raw, (int, float)):
+        return _sky_from_oktas(float(sky_raw))
+    text = str(sky_raw).strip()
+    try:
+        return _sky_from_oktas(float(text))
+    except ValueError:
+        pass
+
+    return SKY_CONDITION_MAP.get(text.upper())
 
 def retry(fn, tries=4, wait=5, label=""):
     """Call fn(), retrying transient failures. Returns None once it gives up.

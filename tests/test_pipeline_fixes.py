@@ -211,3 +211,58 @@ def test_missing_model_versions_degrades_instead_of_crashing(monkeypatch):
     monkeypatch.setattr(common.requests, "get", boom)
     assert common.model_version_id("forecast", "x") is None
     common._version_ids.clear()
+
+# --------------------------------------------------------------------------
+# Live weather: "'int' object has no attribute 'strip'"
+#
+# Self-inflicted. Converting cloud_cover to oktas fixed the observations
+# ingest and immediately broke live_weather.py, which handed the same value
+# to normalize_sky_condition() expecting a METAR code. The function now takes
+# either form - both are real, because the column is numeric but the IEM feed
+# is textual.
+# --------------------------------------------------------------------------
+from common import normalize_sky_condition
+
+
+@pytest.mark.parametrize("code,expected", [
+    ("CLR", "CLEAR"), ("SKC", "CLEAR"),
+    ("FEW", "PARTLY_CLOUDY"), ("SCT", "PARTLY_CLOUDY"),
+    ("BKN", "CLOUDY"), ("OVC", "OVERCAST"),
+])
+def test_sky_condition_still_accepts_metar_codes(code, expected):
+    assert normalize_sky_condition(code) == expected
+
+
+@pytest.mark.parametrize("oktas,expected", [
+    (0, "CLEAR"),
+    (1, "PARTLY_CLOUDY"), (2, "PARTLY_CLOUDY"), (4, "PARTLY_CLOUDY"),
+    (5, "CLOUDY"), (6, "CLOUDY"), (7, "CLOUDY"),
+    (8, "OVERCAST"),
+])
+def test_sky_condition_accepts_oktas(oktas, expected):
+    """The exact call that crashed the Live Weather Monitor."""
+    assert normalize_sky_condition(oktas) == expected
+
+
+def test_sky_condition_oktas_agree_with_the_codes_they_came_from():
+    """Round-trip: code -> oktas -> condition must equal code -> condition."""
+    for code in ("CLR", "SKC", "FEW", "SCT", "BKN", "OVC"):
+        assert normalize_sky_condition(sky_oktas(code)) == normalize_sky_condition(code)
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("0", "CLEAR"), ("8", "OVERCAST"), (6.0, "CLOUDY"), ("6.0", "CLOUDY"),
+])
+def test_sky_condition_accepts_numeric_strings_from_postgrest(value, expected):
+    assert normalize_sky_condition(value) == expected
+
+
+@pytest.mark.parametrize("value", [None, "", "XXX"])
+def test_sky_condition_unknown_is_none(value):
+    assert normalize_sky_condition(value) is None
+
+
+def test_present_weather_still_outranks_sky_cover():
+    """Spec 8.3: rain matters more than "also cloudy" - true for oktas too."""
+    assert normalize_sky_condition(8, "RA") == "RAIN"
+    assert normalize_sky_condition(0, "TS") == "STORM"
