@@ -29,7 +29,22 @@ in TIME ORDER, never shuffled: shuffling would let the model see days on
 either side of the ones it is scored on, and weather is autocorrelated enough
 that this alone can manufacture skill.
 
-  python scripts/weather_model.py [--min-days 120] [--dry-run]
+PREDICTING FORWARD. Fitting on observed mornings only ever explains a day
+after its morning has happened. sql/ad4_24_nws_gridpoint.sql removed that
+limit: weather_forecast_features carries the SAME COLUMN NAMES for days that
+have not happened yet, so the fitted coefficients apply to a forecast day with
+no translation step. This script fits, then predicts forward in the same run,
+and writes both - derived_weather_model (the fit) and derived_model_forecast
+(the prediction, with the arithmetic that produced it).
+
+Two cadences, one script. Fitting is WEEKLY - the relationship is seasonal
+and a day of new observations cannot move it. Predicting is every few hours,
+because that is how often new forecast conditions arrive, so --predict-only
+reads the stored coefficients back rather than paying for a fit it would
+only reproduce.
+
+  python scripts/weather_model.py [--min-days 120] [--dry-run] [--no-forecast]
+  python scripts/weather_model.py --predict-only [--dry-run]
 """
 import argparse
 import datetime as dt
@@ -173,6 +188,76 @@ def fit_city(rows, features, target="max_c"):
     }, len(rows)
 
 
+def contributions(coef, row, features):
+    """Each feature's share of the prediction, in degrees.
+
+    Storing this alongside the number is the difference between a forecast and
+    a reason. The desk's claim is that it can say WHY it disagrees with the
+    market; a decomposition reconstructed later, from coefficients that may
+    since have been refitted, is a plausible story rather than the actual
+    arithmetic.
+    """
+    out = {"intercept": round(coef["intercept"], 3)}
+    for f in features:
+        out[f] = round(coef[f] * float(row[f]), 3)
+    return out
+
+
+def forecast_city(city, fit, fc_rows, last_observed_max):
+    """Apply the fitted coefficients to forecast days, nearest lead first.
+
+    prev_max_c is the problem. For the first day it is a real archived
+    maximum. Beyond that there is no observation yet, so the model's own
+    prediction for the previous day is chained in - and error compounds along
+    a chain. Every row records which of the two it used, because a day-5
+    prediction resting on four of its own guesses is not the same object as a
+    day-0 one and must not be presented as though it were.
+
+    A gap in the forecast series breaks the chain rather than skipping over
+    it: chaining across a missing day would quietly pass off a two-day-old
+    prediction as yesterday's number.
+    """
+    features = fit["features"]
+    fc_rows = sorted(fc_rows, key=lambda r: r["for_date"])
+    prev, prev_src = last_observed_max, "observed"
+    prev_date = None
+    out = []
+
+    for r in fc_rows:
+        if prev_date is not None:
+            gap = (dt.date.fromisoformat(r["for_date"])
+                   - dt.date.fromisoformat(prev_date)).days
+            if gap != 1:
+                prev, prev_src = None, None      # chain broken; nothing to carry
+        prev_date = r["for_date"]
+
+        row = dict(r)
+        row["prev_max_c"] = prev
+        if any(row.get(f) is None for f in features):
+            prev, prev_src = None, None
+            continue
+
+        pred = predict(fit["coefficients"], row, features)
+        out.append({
+            "city_key": city,
+            "for_date": r["for_date"],
+            "run_at": r["run_at"],
+            "lead_days": r.get("lead_days"),
+            "predicted_max_c": round(pred, 2),
+            "nws_max_c": r.get("forecast_max_c"),
+            "prev_max_c": None if prev is None else round(float(prev), 2),
+            "prev_source": prev_src,
+            "contributions": contributions(fit["coefficients"], row, features),
+            "inputs": {f: row[f] for f in features},
+            "model_mae_c": fit["mae_c"],
+            "persistence_mae_c": fit["persistence_mae_c"],
+            "beats_persistence": fit["beats_persistence"],
+        })
+        prev, prev_src = round(pred, 2), "chained"
+
+    return out
+
+
 def describe(fit):
     """The coefficients in words. Six numbers are not a finding."""
     c = fit["coefficients"]
@@ -188,12 +273,155 @@ def describe(fit):
     return "; ".join(bits) or "no coefficient large enough to describe"
 
 
+def write_rows(table, rows, on_conflict, chunk=500):
+    """Upsert, merging duplicates. Raises on anything but success."""
+    written = 0
+    for i in range(0, len(rows), chunk):
+        batch = rows[i:i + chunk]
+        r = requests.post(
+            f"{_cfg()['url']}/rest/v1/{table}",
+            headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+            params={"on_conflict": on_conflict},
+            data=json.dumps(batch), timeout=60)
+        if r.status_code >= 400:
+            raise RuntimeError(f"{table} write failed {r.status_code}: {r.text[:300]}")
+        written += len(batch)
+    return written
+
+
+# How stale an observed maximum may be and still anchor a chain. Beyond this
+# the anchor is guesswork dressed as an observation, and the city is skipped
+# with a reason rather than predicted badly.
+MAX_ANCHOR_AGE_DAYS = 3
+
+
+def predict_forward(fits, by_city):
+    """Apply each city's fit to its forecast days.
+
+    Returns (rows, note). The note is the human-readable reason when nothing
+    came back - an empty result here has several very different causes and
+    "0 predictions" tells the operator none of them.
+    """
+    try:
+        fc = rest("v_forecast_features", [
+            ("select", "city_key,for_date,run_at,lead_days,forecast_max_c,"
+                       "morning_temp_c,dewpoint_depression_c,cloud_mean,"
+                       "wind_mean,precip_total"),
+            ("for_date", f"gte.{dt.date.today().isoformat()}"),
+            ("limit", "20000"),
+        ])
+    except Exception as e:
+        return [], (f"No forward predictions: v_forecast_features unavailable ({e}). "
+                    f"Run sql/ad4_24_nws_gridpoint.sql.")
+    if not fc:
+        return [], ("No forward predictions: weather_forecast_features has no days "
+                    "from today on. Run n8n P1.4 (NWS Gridpoint).")
+
+    fc_by_city = {}
+    for r in fc:
+        fc_by_city.setdefault(r["city_key"], []).append(r)
+
+    preds, no_anchor = [], []
+    for city, fit in fits.items():
+        rows = fc_by_city.get(city)
+        if not rows:
+            continue
+        first = min(dt.date.fromisoformat(r["for_date"]) for r in rows)
+
+        # The chain has to start from a real number. Prefer the day before the
+        # first forecast day; walk back a little if that day is missing, and
+        # give up rather than anchor on something a week old.
+        observed = {r["obs_date"]: r["max_c"] for r in by_city.get(city, [])
+                    if r.get("max_c") is not None and (r.get("n_obs") or 0) >= 12}
+        anchor = None
+        for back in range(1, MAX_ANCHOR_AGE_DAYS + 1):
+            d = (first - dt.timedelta(days=back)).isoformat()
+            if d in observed:
+                anchor = float(observed[d])
+                break
+        if anchor is None:
+            no_anchor.append(city)
+            continue
+
+        preds.extend(forecast_city(city, fit, rows, anchor))
+
+    note = None
+    if no_anchor and not preds:
+        note = ("No forward predictions: no city has an observed maximum within "
+                f"{MAX_ANCHOR_AGE_DAYS} days of its first forecast day to start the "
+                "chain from. Run the observation ingest (n8n P1.2 or "
+                "scripts/ingest_observations.py) first.")
+    elif no_anchor:
+        note = (f"{len(no_anchor)} city/cities skipped for no recent observed maximum "
+                f"to anchor the chain: " + ", ".join(sorted(no_anchor)[:8]))
+    return preds, note
+
+
+def stored_fits():
+    """Rebuild each city's fit from derived_weather_model.
+
+    Refitting is weekly - the relationship is seasonal and a day of new
+    observations cannot move it. Predicting is every few hours, because that
+    is how often new forecast conditions arrive. So the frequent run reads the
+    coefficients back rather than paying for a fit it would only reproduce.
+
+    The feature list is recovered from the coefficient keys, not from FEATURES.
+    A city whose fit dropped a zero-variance feature has fewer coefficients
+    than the constant does, and using FEATURES here would look up a
+    coefficient that was never fitted.
+    """
+    rows = rest("derived_weather_model", [
+        ("select", "city_key,target,coefficients,mae_c,persistence_mae_c,beats_persistence"),
+        ("target", "eq.max_c"),
+        ("limit", "5000"),
+    ])
+    fits = {}
+    for r in rows:
+        coef = r.get("coefficients") or {}
+        if "intercept" not in coef:
+            continue
+        fits[r["city_key"]] = {
+            "coefficients": {k: float(v) for k, v in coef.items()},
+            "features": [k for k in coef if k != "intercept"],
+            "mae_c": r.get("mae_c"),
+            "persistence_mae_c": r.get("persistence_mae_c"),
+            "beats_persistence": r.get("beats_persistence"),
+        }
+    return fits
+
+
+def recent_days(days=10):
+    """Just enough observed history to anchor a chain - not the whole archive.
+
+    The fit needs every day there is; the prediction needs one real maximum
+    per city. Pulling 200k rows for that would make the frequent run as
+    expensive as the weekly one.
+    """
+    since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
+    rows = rest("v_city_day_features", [
+        ("select", "city_key,obs_date,max_c,n_obs"),
+        ("obs_date", f"gte.{since}"),
+        ("limit", "20000"),
+    ])
+    by_city = {}
+    for r in rows:
+        by_city.setdefault(r["city_key"], []).append(r)
+    return by_city
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--min-days", type=int, default=MIN_DAYS)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--no-forecast", action="store_true",
+                    help="fit only; do not predict forward")
+    ap.add_argument("--predict-only", action="store_true",
+                    help="skip the fit; predict forward from the stored coefficients")
     args = ap.parse_args()
     globals()["MIN_DAYS"] = args.min_days
+
+    if args.predict_only:
+        return predict_only(args)
 
     try:
         rows = rest("v_city_day_features", [
@@ -212,11 +440,13 @@ def main():
         by_city.setdefault(r["city_key"], []).append(r)
 
     out, skipped, beat = [], [], 0
+    fits = {}
     for city, rs in sorted(by_city.items()):
         fit, n = fit_city(rs, FEATURES)
         if fit is None:
             skipped.append((city, n))
             continue
+        fits[city] = fit
         if fit["beats_persistence"]:
             beat += 1
         print(f"{city:<14} n={fit['n_days']:<5} model MAE {fit['mae_c']:.2f}°C  "
@@ -244,6 +474,20 @@ def main():
                   "morning conditions add nothing over yesterday's maximum, and no forecast "
                   "built on them should be trusted yet.")
 
+    # ---- forward predictions ------------------------------------------------
+    preds, fc_note = [], None
+    if not args.no_forecast and fits:
+        preds, fc_note = predict_forward(fits, by_city)
+        if fc_note:
+            print(f"\n{fc_note}")
+        if preds:
+            trade = sum(1 for p in preds
+                        if p["beats_persistence"] and p["nws_max_c"] is not None
+                        and abs(p["predicted_max_c"] - float(p["nws_max_c"])) > p["model_mae_c"])
+            print(f"\n{len(preds)} forward prediction(s) across "
+                  f"{len({p['city_key'] for p in preds})} city/cities. "
+                  f"{trade} differ from NWS by more than the model's own error.")
+
     if args.dry_run:
         print("\n--dry-run: nothing written")
         return 0
@@ -251,18 +495,82 @@ def main():
         log_run("weather_model", "attention", 0, {"skipped": len(skipped), "min_days": MIN_DAYS})
         return 0
 
-    r = requests.post(
-        f"{_cfg()['url']}/rest/v1/derived_weather_model",
-        headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
-        params={"on_conflict": "city_key,target"},
-        data=json.dumps(out), timeout=60)
-    if r.status_code >= 400:
-        print(f"  ! write failed {r.status_code}: {r.text[:300]}", file=sys.stderr)
-        r.raise_for_status()
+    write_rows("derived_weather_model", out, "city_key,target")
+
+    n_pred = 0
+    if preds:
+        try:
+            n_pred = write_rows("derived_model_forecast", preds,
+                                "city_key,for_date,run_at")
+            print(f"wrote {n_pred} forward prediction(s) to derived_model_forecast")
+        except Exception as e:
+            # The fit is the durable asset and it is already written. A missing
+            # ad4_25 must not throw away a successful fit.
+            print(f"  ! derived_model_forecast unavailable ({e}). "
+                  f"Run sql/ad4_25_model_forecast.sql.", file=sys.stderr)
 
     log_run("weather_model", "ok", len(out),
-            {"cities": len(out), "beat_persistence": beat, "skipped": len(skipped)})
+            {"cities": len(out), "beat_persistence": beat, "skipped": len(skipped),
+             "forward_predictions": n_pred})
     print(f"\nwrote {len(out)} city model(s) to derived_weather_model")
+    return 0
+
+
+def predict_only(args):
+    """Predict forward from the stored fit. No refit, no full-history read."""
+    try:
+        fits = stored_fits()
+    except Exception as e:
+        print(f"derived_weather_model unavailable ({e}). "
+              f"Run sql/ad4_21_weather_features.sql, then this script without "
+              f"--predict-only to fit.", file=sys.stderr)
+        log_run("weather_model_forecast", "attention", 0, {"error": str(e)})
+        return 1
+    if not fits:
+        print("No fitted model yet. Run scripts/weather_model.py without "
+              "--predict-only first (weekly, via the Weather Model action).")
+        log_run("weather_model_forecast", "attention", 0, {"reason": "no fitted model"})
+        return 0
+
+    preds, note = predict_forward(fits, recent_days())
+    if note:
+        print(note)
+    if not preds:
+        log_run("weather_model_forecast", "attention", 0,
+                {"cities_fitted": len(fits), "reason": note})
+        return 0
+
+    trade = sum(1 for p in preds
+                if p["beats_persistence"] and p["nws_max_c"] is not None
+                and p["model_mae_c"] is not None
+                and abs(p["predicted_max_c"] - float(p["nws_max_c"])) > p["model_mae_c"])
+    cities = len({p["city_key"] for p in preds})
+    print(f"{len(preds)} forward prediction(s) across {cities} city/cities from "
+          f"{len(fits)} stored fit(s). {trade} differ from NWS by more than the "
+          f"model's own error.")
+    for p in sorted(preds, key=lambda x: (x["city_key"], x["for_date"]))[:12]:
+        gap = ("" if p["nws_max_c"] is None
+               else f"  NWS {float(p['nws_max_c']):.1f}  "
+                    f"({p['predicted_max_c'] - float(p['nws_max_c']):+.1f})")
+        print(f"  {p['city_key']:<14} {p['for_date']}  "
+              f"{p['predicted_max_c']:.1f}°C{gap}  [{p['prev_source']}]")
+
+    if args.dry_run:
+        print("\n--dry-run: nothing written")
+        return 0
+
+    try:
+        n = write_rows("derived_model_forecast", preds, "city_key,for_date,run_at")
+    except Exception as e:
+        print(f"  ! derived_model_forecast unavailable ({e}). "
+              f"Run sql/ad4_25_model_forecast.sql.", file=sys.stderr)
+        log_run("weather_model_forecast", "attention", 0, {"error": str(e)})
+        return 1
+
+    log_run("weather_model_forecast", "ok", n,
+            {"predictions": n, "cities": cities, "disagreements": trade,
+             "cities_fitted": len(fits)})
+    print(f"\nwrote {n} forward prediction(s) to derived_model_forecast")
     return 0
 
 

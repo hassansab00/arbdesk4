@@ -17,10 +17,12 @@ import { fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
  *   2 persistence           what yesterday did - the benchmark to beat
  *   3 this morning          dry and clear, or damp and grey, and what that is
  *                           worth in degrees IN THIS CITY
- *   4 where the day is now  how far it has climbed, is the peak still ahead
- *   5 how wrong we usually are here, at this lead
- *   6 do the models agree
- *   7 therefore             the bucket, its price, and whether to act
+ *   4 AD4's own call        the same coefficients applied to the FORECAST
+ *                           conditions, and where that lands against NWS
+ *   5 where the day is now  how far it has climbed, is the peak still ahead
+ *   6 how wrong we usually are here, at this lead
+ *   7 do the models agree
+ *   8 therefore             the bucket, its price, and whether to act
  *
  * A step whose input is missing says which job fills it rather than being
  * hidden. That is the point: a chain with a visible hole is still reasoning,
@@ -75,6 +77,23 @@ export interface Reasoning {
   hours_to_resolution: number | null;
 }
 
+/** One row of v_model_disagreement — AD4's own forward prediction for a day. */
+export interface ModelView {
+  city_key: string;
+  for_date: string;
+  lead_days: number | null;
+  predicted_max_c: number | null;
+  nws_max_c: number | null;
+  disagreement_c: number | null;
+  beats_persistence: boolean | null;
+  model_mae_c: number | null;
+  persistence_mae_c: number | null;
+  tradeable_view: boolean | null;
+  prev_source: string | null;
+  contributions: Record<string, number> | null;
+  inputs: Record<string, number> | null;
+}
+
 export function useReasoning(cityKey: string | null) {
   return useQuery<Reasoning[]>(
     () =>
@@ -86,8 +105,38 @@ export function useReasoning(cityKey: string | null) {
   );
 }
 
+/** Fetched separately rather than joined into v_city_reasoning, because
+ *  sql/ad4_25 is optional: a desk that has not run it should lose one step,
+ *  not the whole panel. */
+export function useModelView(cityKey: string | null, forDate: string | null) {
+  return useQuery<ModelView[]>(
+    () =>
+      cityKey && forDate
+        ? supabase
+            .from("v_model_disagreement")
+            .select("*")
+            .eq("city_key", cityKey)
+            .eq("for_date", forDate)
+        : Promise.resolve({ data: [] as ModelView[], error: null }),
+    [cityKey, forDate],
+    60000
+  );
+}
+
+/** Coefficient keys are column names; a reader is owed words. */
+const DRIVER: Record<string, string> = {
+  prev_max_c: "yesterday",
+  morning_temp_c: "morning",
+  dewpoint_depression_c: "dryness",
+  cloud_mean: "cloud",
+  wind_mean: "wind",
+  precip_total: "rain",
+};
+
 export default function ReasoningPanel({ r }: { r: Reasoning }) {
   const u = r.unit as Unit;
+  const mv = useModelView(r.city_key, r.resolution_date);
+  const m = mv.data?.[0] ?? null;
 
   // What this morning's conditions are worth, in degrees, using THIS city's
   // own fitted coefficients. Not a rule of thumb - the numbers the model
@@ -217,7 +266,83 @@ export default function ReasoningPanel({ r }: { r: Reasoning }) {
           )}
         </Step>
 
-        <Step n={4} title="Where the day has got to">
+        <Step n={4} title="AD4's own call">
+          {m === null ? (
+            <Gap>
+              {mv.error
+                ? <>Own-model view unavailable: <code>{mv.error}</code>. Run <code>sql/ad4_25</code>.</>
+                : <>No forward prediction for this day. Needs <b>P1.4 NWS Gridpoint</b> for the
+                   forecast conditions and <b>Actions → Weather Model</b> to apply the fit to
+                   them.</>}
+            </Gap>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span>
+                  AD4 makes it{" "}
+                  <b className="text-accent">{fmtTemp(m.predicted_max_c, u)}</b>
+                </span>
+                {m.nws_max_c !== null && (
+                  <span className="text-muted">
+                    NWS {fmtTemp(m.nws_max_c, u)}
+                    {m.disagreement_c !== null && (
+                      <b className={m.tradeable_view ? " text-accent" : ""}>
+                        {" "}({fmtTempDelta(m.disagreement_c, u)})
+                      </b>
+                    )}
+                  </span>
+                )}
+              </div>
+
+              {m.contributions && (
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[11px]">
+                  {Object.entries(m.contributions)
+                    .filter(([k, v]) => k !== "intercept" && Math.abs(v) >= 0.05)
+                    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+                    .map(([k, v]) => (
+                      <span key={k} title={`${k} = ${m.inputs?.[k] ?? "?"}`}>
+                        <span className="text-muted">{DRIVER[k] ?? k} </span>
+                        <span className={v > 0 ? "text-good" : "text-bad"}>{fmtTempDelta(v, u)}</span>
+                      </span>
+                    ))}
+                </div>
+              )}
+
+              <div className="mt-1 text-muted">
+                {m.prev_source === "chained" ? (
+                  <>
+                    Built on AD4&apos;s own prediction for the day before, not an observation —
+                    error compounds with each day out, and this is {m.lead_days ?? "?"} day(s)
+                    ahead.
+                  </>
+                ) : (
+                  <>Anchored on an observed maximum, not on another prediction.</>
+                )}
+              </div>
+
+              {m.beats_persistence === false ? (
+                <div className="mt-1 text-warn">
+                  This city&apos;s fit does <b>not</b> beat repeating yesterday, so this number is
+                  shown and not traded. A finding, not a gap.
+                </div>
+              ) : m.tradeable_view ? (
+                <div className="mt-1 rounded bg-accent/10 px-2 py-1 text-accent">
+                  The gap to NWS is larger than this model&apos;s own average error
+                  {m.model_mae_c !== null && <> ({fmtTempDelta(m.model_mae_c, u).replace("+", "")})</>}
+                  , so it is a view rather than noise.
+                </div>
+              ) : (
+                <div className="mt-1 text-muted">
+                  The gap is smaller than the model&apos;s own average error
+                  {m.model_mae_c !== null && <> ({fmtTempDelta(m.model_mae_c, u).replace("+", "")})</>}
+                  , so it is noise, not a view.
+                </div>
+              )}
+            </>
+          )}
+        </Step>
+
+        <Step n={5} title="Where the day has got to">
           {r.running_max_c === null ? (
             <Gap>
               No live reading. <b>P1.2 NWS Monitor</b> or the Live Weather action fills this — until
@@ -246,7 +371,7 @@ export default function ReasoningPanel({ r }: { r: Reasoning }) {
           )}
         </Step>
 
-        <Step n={5} title="How wrong we usually are here">
+        <Step n={6} title="How wrong we usually are here">
           {r.forecast_mae_c === null ? (
             <Gap>Forecast error not measured yet — <b>Actions → Skill</b>.</Gap>
           ) : (
@@ -266,7 +391,7 @@ export default function ReasoningPanel({ r }: { r: Reasoning }) {
           )}
         </Step>
 
-        <Step n={6} title="Do the models agree">
+        <Step n={7} title="Do the models agree">
           {r.n_models === null || r.n_models < 2 ? (
             <Gap>
               Only one forecast model. Run <b>P1.3 NWS Forecast</b> for a second — disagreement
@@ -285,7 +410,7 @@ export default function ReasoningPanel({ r }: { r: Reasoning }) {
           )}
         </Step>
 
-        <Step n={7} title="Therefore" last>
+        <Step n={8} title="Therefore" last>
           {r.top_band_label === null && r.top_model_prob === null ? (
             <Gap>
               No priced bucket yet. <b>Actions → Probabilities</b> after a book snapshot from P0.3.

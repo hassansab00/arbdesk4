@@ -7,6 +7,10 @@ name: Weather Model
 # Weekly, not daily: the relationship is seasonal and a day of new observations
 # cannot move it. Running it daily would burn minutes to re-derive the same
 # coefficients.
+#
+# It also predicts forward at the end of the run, but the prediction that
+# matters comes from Model Forecast, which applies these same coefficients to
+# fresh NWS conditions every 6 hours.
 on:
   schedule:
     - cron: '0 8 * * 1'         # Mondays, after the weekend's observations land
