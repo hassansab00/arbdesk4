@@ -187,3 +187,65 @@ def test_an_unrecognised_unit_is_null_not_the_raw_number(p12):
     """A value whose unit is unknown is not a measurement. Store nothing."""
     obs = {o["city_key"]: o for o in p12["Build rows"][0]["observations"]}
     assert obs["austin"]["wind_speed"] is None
+
+
+# --------------------------------------------------------------- schedule --
+# n8n bills per execution and a Schedule Trigger cannot be told from outside
+# n8n not to fire. The gate is what makes activating these workflows safe: it
+# asks the database once and, when the answer is no, returns no items - which
+# stops every node below it.
+#
+# The failure mode that matters is not a missed run. It is a gate that fails
+# CLOSED: one missing settings row and every workflow silently stops working,
+# looking exactly like a broken pipeline.
+def gate(plan):
+    r = run("P1.2_nws_monitor.template.json", plan)
+    assert r["ok"], r
+    return r["outputs"]["Stop if skipped"]
+
+
+def test_a_run_inside_its_interval_is_skipped():
+    assert gate("plan_gate_skip.json") == []
+
+
+def test_a_run_past_its_interval_proceeds():
+    assert len(gate("plan_gate_run.json")) == 2
+
+
+def test_a_missing_rpc_fails_OPEN():
+    """sql/ad4_20 may not have been run. That must mean 'run', never 'stop'."""
+    assert len(gate("plan_gate_absent.json")) == 2
+
+
+@pytest.mark.parametrize("body", [
+    {},                                   # empty response
+    {"run": None},                        # present but unusable
+    {"error": "boom"},                    # an error object
+])
+def test_any_unusable_answer_fails_open(body, tmp_path):
+    import copy
+    src = json.load(open(os.path.join(ROOT, "tests", "n8n", "plan_gate_run.json")))
+    plan = copy.deepcopy(src)
+    plan["seed"]["Check schedule"] = body
+    name = "plan_gate_generated.json"
+    path = os.path.join(ROOT, "tests", "n8n", name)
+    try:
+        with open(path, "w") as fh:
+            json.dump(plan, fh)
+        assert len(gate(name)) == 2, f"{body} must not stop the workflow"
+    finally:
+        if os.path.exists(path):
+            os.remove(path)
+
+
+def test_every_workflow_is_gated():
+    """A workflow without the gate runs at full cost on every schedule fire."""
+    import glob
+    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
+        wf = json.load(open(path))
+        names = {n["name"] for n in wf["nodes"]}
+        f = os.path.basename(path)
+        assert {"Check schedule", "Run now?", "Stop if skipped"} <= names, f"{f} is not gated"
+        # and the gate must sit between Config and the work, not beside it
+        after_config = [c["node"] for br in wf["connections"]["Config"]["main"] for c in br]
+        assert after_config == ["Check schedule"], f"{f}: Config bypasses the gate ({after_config})"

@@ -1,0 +1,32 @@
+{
+ "seed": {
+  "Config": {
+   "supabase_url": "https://x.supabase.co",
+   "service_key": "k"
+  },
+  "Load cities": [
+   {
+    "city_key": "nyc"
+   },
+   {
+    "city_key": "chi"
+   }
+  ],
+  "Check schedule": {
+   "code": "PGRST202",
+   "message": "Could not find the function public.should_run"
+  }
+ },
+ "run": [
+  {
+   "node": "Run now?",
+   "input": "Load cities",
+   "show": 300
+  },
+  {
+   "node": "Stop if skipped",
+   "input": "Run now?",
+   "show": 200
+  }
+ ]
+}
