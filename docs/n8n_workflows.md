@@ -181,26 +181,41 @@ Three logical triggers in one workflow, per the spec's own table:
 
 | Workflow | Cadence | Executions/month |
 |---|---|---|
-| P0.2 Market Discovery | 4x/day | 120 |
-| P0.3 Book Snapshot | 4x/day | 120 |
-| P0.4 Trade History | 1x/day | 30 |
-| P0.5 Refresh Rules | 1x/day | 30 |
-| P1.1 Weather Alerts (notify only) | event-driven | ~450 worst case |
-| P1.2 NWS Monitor | 12x/day | 360 |
-| P1.3 NWS Forecast | 4x/day | 120 |
-| P1.4 NWS Gridpoint | 4x/day | 120 |
-| P3.1 Email Digests | 2x/day | ~60 |
-| P4.1 Watchdog | 4x/day | 120 |
-| **TOTAL** | | **~1,530 / 2,000** |
+These are the defaults in `settings.workflow_schedules`, which
+`sql/ad4_20_schedules.sql` seeds and `should_run()` enforces. **Read them from
+`v_execution_budget`, not from here** - the table below is a snapshot and the
+settings row is the authority.
 
-Still inside budget, with ~470 spare for manual Run-button executions - and
+| Workflow | Cadence | Executions/month |
+|---|---|---|
+| P0.2 Market Discovery | every 6h | 120 |
+| P0.3 Book Snapshot | **hourly** | **720** |
+| P0.4 Trade History | every 6h | 120 |
+| P0.5 Refresh Rules | daily | 30 |
+| P1.1 Weather Alerts (notify only) | event-driven | ~450 worst case |
+| P1.2 NWS Monitor | every 2h | 360 |
+| P1.3 NWS Forecast | every 6h | 120 |
+| P1.4 NWS Gridpoint | every 6h | 120 |
+| P3.1 Email Digests | 2x/day | 60 |
+| P4.1 Watchdog | every 6h | 120 |
+| **TOTAL** | | **1,770 / 2,000** |
+
+P0.3 is 720 of that on its own, because a book snapshot is the one thing every
+price on the desk depends on and an hour-old book prices nothing well. It is
+also the first knob to turn if the cap gets tight.
+
+An earlier version of this table said 1,530 and had P0.3 at 4x/day. That was
+wrong - it did not match the seeded default, which is hourly - and the gap
+mattered, because 1,530 leaves comfortable room and 1,770 does not.
+
+Still inside budget, with ~230 spare for manual Run-button executions - and
 the 4x/day polling loops of P2.1/P2.2/P2.3/P2.4 are on GitHub Actions rather
 than stacked on top of this, which is what leaves the room.
 
 **This is why P1.2 runs every 2 hours and not every 30 minutes.**
 api.weather.gov imposes no rate limit of its own - the constraint is entirely
 n8n's execution count. At 30-minute polling P1.2 alone would be 1,440/month
-and the total ~2,610, i.e. over the cap; the first things to fail would be
+and the total ~2,850, i.e. over the cap; the first things to fail would be
 the digests and the watchdog, silently, at the end of a month. Two hours is
 360. The Workflows page's Run button covers "I want a reading now" for one
 execution each time, which is the shape the freshness requirement actually

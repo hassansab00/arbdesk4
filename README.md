@@ -11,7 +11,11 @@ of what got built against it and where to find things.
 
 ## Start here if you're picking this up
 
-0. **Follow `docs/GO_LIVE.md`.** It is the single ordered checklist for
+0. **Short on time? `docs/DO_THIS_NOW.md`.** Only the steps that are
+   outstanding: 7 SQL files, 6 n8n imports, 8 GitHub Actions, in order,
+   with nothing else in the way.
+
+0b. **Follow `docs/GO_LIVE.md`.** It is the single ordered checklist for
    taking this from a fresh Supabase project to a working desk, with the
    exact command and the exact expected result at every step. Everything
    below is the map; that file is the route.
