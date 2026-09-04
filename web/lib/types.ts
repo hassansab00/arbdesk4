@@ -268,3 +268,30 @@ export interface CityStats {
   day_decided: boolean | null;
   observed_at: string | null;
 }
+
+
+/** One row per live band from v_opportunity_context (sql/ad4_22): how the
+ *  price and the forecast have MOVED, and whether the market has repriced
+ *  since the forecast last changed. */
+export interface OpportunityContext {
+  band_id: string;
+  city_key: string;
+  resolution_date: string;
+  mid_now: number | null;
+  book_at: string | null;
+  mid_1h: number | null;
+  mid_6h: number | null;
+  mid_24h: number | null;
+  drift_1h: number | null;
+  drift_6h: number | null;
+  drift_24h: number | null;
+  forecast_now_c: number | null;
+  forecast_prev_c: number | null;
+  forecast_move_c: number | null;
+  forecast_at: string | null;
+  /** The forecast is newer than the book: the price was set against older
+   *  information than the desk is holding. */
+  forecast_ahead_of_book: boolean | null;
+  forecast_lead_hours: number | null;
+  hours_to_resolution: number | null;
+}
