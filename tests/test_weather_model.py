@@ -131,3 +131,180 @@ def test_the_description_names_the_drivers():
     text = wm.describe(fit)
     assert "cloud" in text
     assert "dry" in text or "dryness" in text
+
+
+# ------------------------------------------------------ predicting forward --
+# The fit only ever explained days that had already happened. These cover the
+# step that turns it into a forecast: applying the same coefficients to
+# weather_forecast_features, whose columns carry the same names on purpose.
+def fc_days(n, *, start="2026-09-05", cloud=4.0, run="2026-09-04T12:00:00+00:00"):
+    d0 = __import__("datetime").date.fromisoformat(start)
+    return [{
+        "city_key": "t",
+        "for_date": (d0 + __import__("datetime").timedelta(days=i)).isoformat(),
+        "run_at": run, "lead_days": i + 1, "forecast_max_c": 25.0,
+        "morning_temp_c": 14.0, "dewpoint_depression_c": 9.0,
+        "cloud_mean": cloud, "wind_mean": 5.0, "precip_total": 0.0,
+    } for i in range(n)]
+
+
+def fitted():
+    fit, _ = wm.fit_city(synth(400), wm.FEATURES)
+    return fit
+
+
+def test_the_first_day_is_anchored_on_an_observation_and_the_rest_are_chained():
+    """Only day one has a real yesterday. Every day after it rests on the
+    model's own previous answer, and the row has to say which it is - a day-5
+    prediction built on four of its own guesses is not the same object as a
+    day-0 one."""
+    rows = wm.forecast_city("t", fitted(), fc_days(4), last_observed_max=26.0)
+    assert [r["prev_source"] for r in rows] == ["observed", "chained", "chained", "chained"]
+    assert rows[0]["prev_max_c"] == pytest.approx(26.0)
+    # each row carries forward exactly the previous row's prediction
+    for a, b in zip(rows, rows[1:]):
+        assert b["prev_max_c"] == pytest.approx(a["predicted_max_c"])
+
+
+def test_a_gap_in_the_series_breaks_the_chain_rather_than_stepping_over_it():
+    """Chaining across a missing day would pass a two-day-old prediction off
+    as yesterday's number, and nothing downstream could tell."""
+    days = fc_days(2) + fc_days(1, start="2026-09-09")
+    rows = wm.forecast_city("t", fitted(), days, last_observed_max=26.0)
+    # the day after the gap has no usable prev_max_c, so it is not predicted
+    assert [r["for_date"] for r in rows] == ["2026-09-05", "2026-09-06"]
+
+
+def test_cloud_still_costs_what_the_fit_said_it_costs():
+    """The whole design rests on the coefficients applying unchanged to
+    forecast columns. A clear forecast day must come out hotter than an
+    overcast one by the fitted cloud coefficient times the difference."""
+    fit = fitted()
+    clear = wm.forecast_city("t", fit, fc_days(1, cloud=0.0), 26.0)[0]
+    overcast = wm.forecast_city("t", fit, fc_days(1, cloud=8.0), 26.0)[0]
+    expected = fit["coefficients"]["cloud_mean"] * 8.0
+    assert (overcast["predicted_max_c"] - clear["predicted_max_c"]) == pytest.approx(
+        expected, abs=0.02)
+
+
+def test_the_contributions_add_up_to_the_prediction():
+    """Stored so the UI shows the arithmetic the number was actually made
+    from. If they do not sum to it, the explanation is decoration."""
+    row = wm.forecast_city("t", fitted(), fc_days(1), 26.0)[0]
+    assert sum(row["contributions"].values()) == pytest.approx(
+        row["predicted_max_c"], abs=0.02)
+
+
+def test_a_forecast_day_missing_a_feature_is_not_guessed_at():
+    days = fc_days(2)
+    days[0]["cloud_mean"] = None
+    rows = wm.forecast_city("t", fitted(), days, 26.0)
+    # and the missing day breaks the chain rather than being skipped silently
+    assert rows == []
+
+
+def test_the_model_s_measured_skill_travels_with_every_prediction():
+    """A prediction from a model that loses to persistence is still written -
+    the point is that it is written MARKED, so nothing downstream trusts it
+    blind."""
+    fit = fitted()
+    row = wm.forecast_city("t", fit, fc_days(1), 26.0)[0]
+    assert row["model_mae_c"] == fit["mae_c"]
+    assert row["persistence_mae_c"] == fit["persistence_mae_c"]
+    assert row["beats_persistence"] == fit["beats_persistence"]
+    assert row["nws_max_c"] == 25.0        # carried for comparison, never used as input
+
+
+def test_the_chain_is_anchored_on_the_day_before_not_just_any_recent_day(monkeypatch):
+    """The anchor must be the day BEFORE the first forecast day. Reaching
+    further back is allowed within a few days - an ingest can be late - but
+    the row still has to be built from the nearest real maximum available,
+    not the newest row in the table."""
+    days = fc_days(2)                                  # 2026-09-05, 09-06
+    monkeypatch.setattr(wm, "rest", lambda *a, **k: days)
+    observed = [
+        {"obs_date": "2026-09-01", "max_c": 40.0, "n_obs": 24},   # too old to use
+        {"obs_date": "2026-09-04", "max_c": 26.0, "n_obs": 24},   # the day before
+    ]
+    preds, note = wm.predict_forward({"t": fitted()}, {"t": observed})
+    assert note is None
+    assert preds[0]["prev_max_c"] == pytest.approx(26.0)
+    assert preds[0]["prev_source"] == "observed"
+
+
+def test_a_city_with_no_recent_observation_is_named_not_silently_dropped(monkeypatch):
+    monkeypatch.setattr(wm, "rest", lambda *a, **k: fc_days(2))
+    preds, note = wm.predict_forward(
+        {"t": fitted()}, {"t": [{"obs_date": "2026-08-01", "max_c": 26.0, "n_obs": 24}]})
+    assert preds == []
+    assert "observed maximum" in note and "P1.2" in note
+
+
+def test_a_thin_observed_day_cannot_anchor_a_chain(monkeypatch):
+    """n_obs < 12 means the day's maximum is understated - the same rule the
+    fit uses. Anchoring on one would bias every day chained off it."""
+    monkeypatch.setattr(wm, "rest", lambda *a, **k: fc_days(2))
+    preds, _ = wm.predict_forward(
+        {"t": fitted()}, {"t": [{"obs_date": "2026-09-04", "max_c": 26.0, "n_obs": 3}]})
+    assert preds == []
+
+
+def test_no_forecast_rows_says_which_job_fills_them(monkeypatch):
+    monkeypatch.setattr(wm, "rest", lambda *a, **k: [])
+    preds, note = wm.predict_forward({"t": fitted()}, {"t": []})
+    assert preds == []
+    assert "P1.4" in note
+
+
+def test_a_stored_fit_uses_the_features_it_was_actually_fitted_with(monkeypatch):
+    """A city whose fit dropped a zero-variance feature has fewer coefficients
+    than FEATURES does. Predicting with FEATURES would look up a coefficient
+    that was never fitted, and the run would die on the city that needed the
+    drop most."""
+    stored = [{
+        "city_key": "t", "target": "max_c",
+        # no precip_total: it never varied in that city's training window
+        "coefficients": {"intercept": 10.0, "prev_max_c": 0.1, "morning_temp_c": 0.9,
+                         "dewpoint_depression_c": 0.35, "cloud_mean": -1.1,
+                         "wind_mean": 0.0},
+        "mae_c": 0.9, "persistence_mae_c": 1.6, "beats_persistence": True,
+    }]
+    monkeypatch.setattr(wm, "rest", lambda *a, **k: stored)
+    fits = wm.stored_fits()
+    assert "precip_total" not in fits["t"]["features"]
+
+    rows = wm.forecast_city("t", fits["t"], fc_days(1), 26.0)
+    assert len(rows) == 1
+    assert "precip_total" not in rows[0]["contributions"]
+    assert rows[0]["model_mae_c"] == 0.9
+
+
+def test_a_stored_row_with_no_intercept_is_not_used(monkeypatch):
+    """An empty or half-written coefficients blob would silently predict from
+    a missing intercept, i.e. from zero."""
+    monkeypatch.setattr(wm, "rest", lambda *a, **k: [
+        {"city_key": "t", "target": "max_c", "coefficients": {"cloud_mean": -1.1}},
+        {"city_key": "u", "target": "max_c", "coefficients": None},
+    ])
+    assert wm.stored_fits() == {}
+
+
+def test_every_key_written_is_a_column_that_exists():
+    """PostgREST rejects the whole batch on one unknown column, and the run
+    would fail with a 400 that names the column but not the cause. Checked
+    against the DDL rather than a copy of it, so a rename in either place has
+    to be made in both."""
+    import pathlib
+    import re
+
+    ddl = pathlib.Path(__file__).resolve().parents[1] / "sql" / "ad4_25_model_forecast.sql"
+    body = re.search(r"create table if not exists derived_model_forecast \((.*?)\n\);",
+                     ddl.read_text(), re.S).group(1)
+    columns = {
+        m.group(1) for line in body.splitlines()
+        if (m := re.match(r"\s{2}([a-z_]+)\s+\S", line))
+    }
+    assert "predicted_max_c" in columns, "the DDL was not parsed"
+
+    row = wm.forecast_city("t", fitted(), fc_days(1), 26.0)[0]
+    assert set(row) <= columns, sorted(set(row) - columns)

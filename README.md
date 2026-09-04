@@ -69,10 +69,16 @@ of what got built against it and where to find things.
    23. `sql/ad4_23_reasoning.sql` - the desk's whole argument for one
        city in one row. It computes nothing new; it is a join, so every
        number shown as a reason is the same number the engine priced with.
-   24. **`sql/ad4_24_nws_gridpoint.sql` last** - the forecast side of file
+   24. `sql/ad4_24_nws_gridpoint.sql` - the forecast side of file
        21. Its columns carry the same names `v_city_day_features` uses for
        observed conditions, so the model fitted on what happened applies
        to what is forecast without a translation layer. n8n P1.4 fills it.
+   25. **`sql/ad4_25_model_forecast.sql` last** - AD4's own forward
+       prediction, with the arithmetic that produced it stored beside the
+       number. Deliberately not written into `weather_forecasts`: it is
+       post-processing of NWS, not independent of it, and feeding it back
+       into `v_forecast_divergence` would inflate the spread with its own
+       reflection.
 
    Then run **`sql/ad4_99_verify.sql`** against the real database. It is
    read-only and returns one grid: every check PASS / FAIL / ATTENTION,

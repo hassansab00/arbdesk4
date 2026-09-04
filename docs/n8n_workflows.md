@@ -46,6 +46,8 @@ shows is already tight. GitHub Actions has no per-run execution quota.
 | P2.4 Derived Recompute | GitHub Actions, daily | `.github/workflows/derived_recompute.yml` -> `scripts/capacity.py` (+ SQL RPCs) |
 | P3.1 Email Digests | **n8n** | `n8n/P3.1_email_digests.template.json` |
 | P4.1 Health Watchdog | **n8n** | `n8n/P4.1_health_watchdog.template.json` |
+| Weather Model fit | GitHub Actions, weekly | `.github/workflows/weather_model.yml` -> `scripts/weather_model.py` |
+| Model Forecast (AD4's own prediction) | GitHub Actions, 4x/day | `.github/workflows/model_forecast.yml` -> `scripts/weather_model.py --predict-only` |
 | Backtest runner | GitHub Actions, polls every 10 min | `.github/workflows/backtest.yml` -> `scripts/backtest/runner.py` |
 
 Email digests and the health watchdog stay in n8n deliberately: they're

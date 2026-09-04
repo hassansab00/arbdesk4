@@ -51,7 +51,8 @@ starting the next.
 | 21 | `sql/ad4_21_weather_features.sql` | Morning conditions per city-day — dewpoint depression, cloud, wind, rain — plus the persistence benchmark every forecast must beat. |
 | 22 | `sql/ad4_22_opportunity_context.sql` | Price and forecast movement per band, and whether the market has repriced since the forecast moved. |
 | 23 | `sql/ad4_23_reasoning.sql` | The desk's whole argument for one city in one row — forecast, persistence, this morning, where the day is, measured error, model agreement, and therefore which bucket. Safe to run before 21 and 22: it builds from whatever exists and names what is missing. |
-| 24 | `sql/ad4_24_nws_gridpoint.sql` | **Run this last.** The forecast side of file 21: `weather_forecast_features`, whose columns carry the same names `v_city_day_features` uses for observed conditions, so a model fitted on what happened reads a forecast day untranslated. Filled by n8n **P1.4**. |
+| 24 | `sql/ad4_24_nws_gridpoint.sql` | The forecast side of file 21: `weather_forecast_features`, whose columns carry the same names `v_city_day_features` uses for observed conditions, so a model fitted on what happened reads a forecast day untranslated. Filled by n8n **P1.4**. |
+| 25 | `sql/ad4_25_model_forecast.sql` | **Run this last.** AD4's own forward prediction — the fitted coefficients applied to those forecast conditions — with its arithmetic stored beside it. Filled by the **Model Forecast** action. |
 
 Every file is idempotent — re-running any of them is safe and changes
 nothing that is already correct.
@@ -715,6 +716,59 @@ select column_name
 `dewpoint_depression_c`, `cloud_mean`, `wind_mean`, `precip_total` and
 `morning_temp_c` must all appear. Activate it.
 
+### 5.7 Actions → **Weather Model**, then **Model Forecast**
+
+Two GitHub Actions, listed here rather than in step 3 because they only do
+anything once 5.6 has run. Requires `sql/ad4_25_model_forecast.sql`.
+
+**Weather Model** (weekly) fits each city's daily maximum against its own
+morning conditions and scores it against persistence — yesterday's maximum,
+unchanged — on held-out days, in time order. Run it once by hand now.
+
+**Expect** a line per city, and this is the honest outcome either way:
+
+```
+nyc            n=284   model MAE 1.42°C  persistence 2.10°C  BEATS persistence by 32.4%
+               -1.07°C per okta of daytime cloud; +0.34°C per °C of dryness at 08:00; 0.31 carry-over from yesterday
+```
+
+A city that reads `loses to persistence` is a result, not a failure: on that
+city's data the morning adds nothing over yesterday, and `beats_persistence`
+is the only column that decides whether anything downstream may use it.
+
+**Model Forecast** (every 6h, 15 minutes before the probability pipeline)
+applies those stored coefficients to the forecast conditions from 5.6. It does
+not refit — the relationship is seasonal and a day of new observations cannot
+move it.
+
+**Expect:**
+```
+118 forward prediction(s) across 34 city/cities from 41 stored fit(s). 9 differ from NWS by more than the model's own error.
+  austin         2026-09-05  34.2°C  NWS 32.8  (+1.4)  [observed]
+```
+
+Then read where AD4 actually disagrees, and only where its own measured skill
+says the disagreement is worth something:
+
+```sql
+select city_key, for_date, lead_days, predicted_max_c, nws_max_c,
+       disagreement_c, model_mae_c, tradeable_view, prev_source
+  from v_model_disagreement
+ where tradeable_view
+ order by abs(disagreement_c) desc limit 20;
+```
+
+`tradeable_view` is false whenever the gap is smaller than the model's own
+average error, or the model loses to persistence. Both cases are still
+written and still shown — marked, so nothing downstream trusts them blind.
+
+`prev_source` matters as much as the number. `observed` means the prediction
+was anchored on a real archived maximum; `chained` means it rests on AD4's own
+prediction of the day before, and error compounds with each day out. A day-5
+row is not the same object as a day-0 row and the column says so.
+
+This is also the fourth step of the **Why this city** panel on the Board.
+
 ---
 
 ## STEP 6 — Smoke test: what each page should show
@@ -733,7 +787,7 @@ a reload. If it does not, `update_setting` is not granted to `anon`: re-run
 | Page | What working looks like |
 |---|---|
 | **Overview** `/` | Five stat tiles (Cities live, Open positions, Signals 24h, Open P&L, Market volume 24h). A "Top opportunities" table with City / Band / Side / Price / Model P / Net edge / **Vol 24h** / Regime. "Open positions" shows the empty state explaining all six strategies ship disabled. |
-| **Board** `/board` | One row per band per side, sortable. Columns include **Depth (5c)** and **Vol 24h** side by side, plus **Rank** with a `×0.xx` volume factor next to it. The "hide thin-volume markets" checkbox filters. Footer reads `N rows · total 24h volume $X`. |
+| **Board** `/board` | One row per band per side, sortable. Columns include **Depth (5c)** and **Vol 24h** side by side, plus **Rank** with a `×0.xx` volume factor next to it. The "hide thin-volume markets" checkbox filters. Footer reads `N rows · total 24h volume $X`. Below it, **Why this city** — eight steps, each either a fact or a named gap. Step 4 is AD4's own forward call with its per-driver arithmetic; it says "no forward prediction" until 5.6 and 5.7 have both run. |
 | **Opportunities** `/opportunities` | Ranked cards, best first. Two sliders: min confidence and **min 24h volume**. Cards on thin bands carry an amber "Thin market" note. Clicking a card opens the calculator with that band loaded. |
 | **Calculator** `/calculator` | Search a city, add legs. Budget and target-profit modes. Each leg shows Model P, **Vol 24h**, and a "Your P" box that stays blank unless you tick *auto-fill from model*. The recommendation panel updates as you type and shows a "Thin volume on N legs" badge when relevant. |
 | **City Clusters** `/clusters` | A world map with one node per city, sized by 24h volume; a 24h UTC timeline showing each city's peak window against a "now" line; and a volume-by-city bar chart. |
