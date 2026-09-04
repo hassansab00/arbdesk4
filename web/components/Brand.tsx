@@ -12,7 +12,7 @@
  * currentColor so it works on either theme. `prefers-reduced-motion` stops
  * the orbit and leaves the mark composed rather than frozen mid-sweep.
  */
-export default function Brand() {
+export default function Brand({ subtitle }: { subtitle?: string | null }) {
   return (
     <div className="flex items-center gap-2.5 select-none">
       <svg
@@ -68,9 +68,15 @@ export default function Brand() {
       <div className="leading-none">
         <div className="text-[15px] font-bold tracking-tight">
           Arb<span className="text-accent">Desk</span>
+          <span className="ml-1.5 align-middle font-mono text-[9px] font-normal uppercase tracking-[0.12em] text-muted">
+            v4
+          </span>
         </div>
-        <div className="mt-0.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-muted">
-          temperature markets
+        {/* The line under the name earns its place by saying what the desk is
+            doing right now, not by repeating the category. It falls back to a
+            static description before the counts have loaded. */}
+        <div className="mt-1 whitespace-nowrap font-mono text-[9.5px] tracking-[0.04em] text-muted">
+          {subtitle ?? "Polymarket daily-temperature markets · forecast vs. book"}
         </div>
       </div>
     </div>

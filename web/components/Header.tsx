@@ -22,11 +22,15 @@ import { fmtAge } from "@/lib/format";
  */
 type Feed = { label: string; at: string | null; staleAfterMin: number; what: string };
 
+/** What the desk is looking at right now, for the line under the wordmark. */
+interface Scope { cities: number; markets: number; days: number; edges: number }
+
 export default function Header() {
   const [feeds, setFeeds] = useState<Feed[] | null>(null);
   const [now, setNow] = useState<Date | null>(null);
   const [tz, setTz] = useState<string>("UTC");
   const [picking, setPicking] = useState(false);
+  const [scope, setScope] = useState<Scope | null>(null);
 
   useEffect(() => {
     setTz(displayTz());
@@ -51,6 +55,25 @@ export default function Header() {
         newest("live_weather", "updated_at"),
         newest("weather_forecasts", "run_at"),
       ]);
+      // The masthead line: how much market this desk is actually covering.
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const [{ count: cityCount }, mkt, { count: edgeCount }] = await Promise.all([
+          supabase.from("cities").select("city_key", { count: "exact", head: true }),
+          supabase.from("markets").select("market_id,resolution_date").gte("resolution_date", today).limit(2000),
+          supabase.from("v_opportunities").select("edge_id", { count: "exact", head: true }).eq("tradeable", true),
+        ]);
+        const dates = new Set((mkt.data ?? []).map((m: { resolution_date: string }) => m.resolution_date));
+        setScope({
+          cities: cityCount ?? 0,
+          markets: (mkt.data ?? []).length,
+          days: dates.size,
+          edges: edgeCount ?? 0,
+        });
+      } catch {
+        setScope(null);
+      }
+
       setFeeds([
         { label: "Books", at: books, staleAfterMin: 120,
           what: "order books from Polymarket — P0.3, hourly" },
@@ -71,7 +94,15 @@ export default function Header() {
 
   return (
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-base px-3 py-2 sm:px-4">
-      <Brand />
+      <Brand
+        subtitle={
+          scope
+            ? `Polymarket daily-temperature markets · ${scope.cities} cities · ` +
+              `${scope.markets} live over ${scope.days} settlement day${scope.days === 1 ? "" : "s"} · ` +
+              `${scope.edges} tradeable edge${scope.edges === 1 ? "" : "s"}`
+            : null
+        }
+      />
 
       <div className="flex items-center gap-4">
         {feeds && (

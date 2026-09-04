@@ -158,6 +158,12 @@ export interface SignalRow {
   signal_id?: number;
   strategy_id: string;
   band_id: string | null;
+  /** Written by scripts/signals.py. A signal that cannot name its city is
+   *  unreadable in the UI, which is what this column exists to prevent. */
+  city_key: string | null;
+  /** Free-form context from whatever raised it - for an anomaly, the
+   *  anomaly_id and the rule's own detail blob. */
+  payload: Record<string, unknown> | null;
   side: string | null;
   action: "ENTER" | "EXIT" | "ALERT";
   reason: string;

@@ -244,6 +244,8 @@ def main():
     versions = {}  # forecast_version/calibration_version come from the band's own edge row, filled in per-signal below
 
     max_slippage = ((ctx.settings.get("max_slippage_cents") or {}).get("value", 5)) / 100.0
+    # band_id -> city_key, so every signal row can name its city (see below).
+    band_city = {str(b.band_id): b.city_key for b in ctx.bands if getattr(b, "band_id", None)}
     n_fired, n_deduped, n_filled = 0, 0, 0
     signal_rows, conflict_log_rows = [], conflict_rows
     for sig in fired:
@@ -268,7 +270,15 @@ def main():
                 print(f"  ! book fetch failed for {sig.band_id}: {e}")
         result = paper_engine.process_signal(sig, levels_by_side=levels_by_side, portfolio=portfolio,
                                               settings=ctx.settings, versions=versions, max_slippage=max_slippage)
-        signal_rows.append(result["signal_row"])
+        row = result["signal_row"]
+        # signals.city_key is a real column and nothing has ever written it.
+        # Without it a signal in the UI can name no city - which is exactly how
+        # "system / critical / implausible_edge_anomaly" ended up on screen,
+        # naming neither a place nor a trade. band_id resolves through the
+        # band->market->city map this run already built.
+        if not row.get("city_key") and row.get("band_id"):
+            row["city_key"] = band_city.get(str(row["band_id"]))
+        signal_rows.append(row)
         if result["status"] == "filled":
             n_filled += 1
             insert("paper_trades", [result["trade_row"]])
