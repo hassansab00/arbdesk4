@@ -50,7 +50,7 @@ starting the next.
 | 20 | `sql/ad4_20_schedules.sql` | Moves each workflow's cadence out of its n8n JSON and into a setting the Workflows page owns, with a runs/month budget. |
 | 21 | `sql/ad4_21_weather_features.sql` | Morning conditions per city-day — dewpoint depression, cloud, wind, rain — plus the persistence benchmark every forecast must beat. |
 | 22 | `sql/ad4_22_opportunity_context.sql` | Price and forecast movement per band, and whether the market has repriced since the forecast moved. |
-| 23 | `sql/ad4_23_reasoning.sql` | **Run this last.** The desk's whole argument for one city in one row — forecast, persistence, this morning, where the day is, measured error, model agreement, and therefore which bucket. |
+| 23 | `sql/ad4_23_reasoning.sql` | **Run this last.** The desk's whole argument for one city in one row — forecast, persistence, this morning, where the day is, measured error, model agreement, and therefore which bucket. Safe to run before 21 and 22: it builds from whatever exists and names what is missing. |
 
 Every file is idempotent — re-running any of them is safe and changes
 nothing that is already correct.
