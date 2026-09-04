@@ -62,6 +62,7 @@ function saveWatch(keys: string[]) {
 export default function CityWatch() {
   const [watch, setWatch] = useState<string[]>([]);
   const [editing, setEditing] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => { setWatch(loadWatch()); setHydrated(true); }, []);
@@ -98,7 +99,9 @@ export default function CityWatch() {
     return best;
   }, [oppQ.data]);
 
-  const rows = watch.map((k) => byCity.get(k)).filter(Boolean) as CityStats[];
+  const allRows = watch.map((k) => byCity.get(k)).filter(Boolean) as CityStats[];
+  const VISIBLE = 5;
+  const rows = showAll ? allRows : allRows.slice(0, VISIBLE);
   const available = useMemo(
     () => [...stats].sort((a, b) => (a.display_name ?? a.city_key).localeCompare(b.display_name ?? b.city_key)),
     [stats]
@@ -163,8 +166,8 @@ export default function CityWatch() {
         </div>
       )}
 
-      <div className="max-h-[46vh] space-y-1.5 overflow-y-auto p-2">
-        {rows.length === 0 && !editing && (
+      <div className={`space-y-1.5 overflow-y-auto p-2 ${showAll ? "max-h-[46vh]" : ""}`}>
+        {allRows.length === 0 && !editing && (
           <div className="rounded border border-dashed border-border p-3 text-[11px] leading-relaxed text-muted">
             <div className="font-semibold text-text">Nothing watched yet</div>
             Pick a few cities and this becomes a standing glance at them — the band most likely to
@@ -243,12 +246,36 @@ export default function CityWatch() {
                 <span className="flex items-center gap-1.5">
                   {c.peak_window_state === "INSIDE" && <span className="text-accent">peak open</span>}
                   {c.day_decided && <span>decided</span>}
-                  <span title="Age of the newest observation for this city">{fmtAge(c.observed_at)}</span>
+                  {/* An hours-old reading beside a live-looking price is how a
+                      stale number gets traded on. Say it in colour. */}
+                  <span
+                    className={
+                      !c.observed_at ? "text-bad"
+                      : Date.now() - new Date(c.observed_at).getTime() > 3 * 3600_000 ? "text-bad"
+                      : Date.now() - new Date(c.observed_at).getTime() > 90 * 60_000 ? "text-warn"
+                      : "text-muted"
+                    }
+                    title={
+                      "Age of the newest observation for this city. Anything over about 90 minutes " +
+                      "means the running max may already have moved; hours means the weather feed is not running."
+                    }
+                  >
+                    {fmtAge(c.observed_at)}
+                  </span>
                 </span>
               </div>
             </div>
           );
         })}
+
+        {allRows.length > VISIBLE && (
+          <button
+            onClick={() => setShowAll((v) => !v)}
+            className="w-full rounded border border-border py-1.5 text-[10px] text-muted hover:border-accent hover:text-accent"
+          >
+            {showAll ? "Show fewer" : `Show ${allRows.length - VISIBLE} more`}
+          </button>
+        )}
       </div>
     </div>
   );

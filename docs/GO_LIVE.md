@@ -28,7 +28,7 @@ starting the next.
 
 | # | File | What it does |
 |---|---|---|
-| 1 | `sql/ad4_00_preflight.sql` | **Run this first.** Guarantees every table, column and unique key the other 18 files need. |
+| 1 | `sql/ad4_00_preflight.sql` | **Run this first.** Guarantees every table, column and unique key the other 19 files need. |
 | 2 | `ad4_phase1_tables.sql` | forecast-skill table |
 | 3 | `sql/ad4_phase2.sql` | cost params, edges, anomaly rules, correlation, capacity, views |
 | 4 | `sql/ad4_phase2_ranking.sql` | `v_opportunities` with the ranking score |
@@ -46,7 +46,8 @@ starting the next.
 | 16 | `sql/ad4_16_nws.sql` | Makes room for api.weather.gov: per-city NWS ids, today's solar transit, and `v_forecast_divergence`. |
 | 17 | `sql/ad4_17_city_stats.sql` | Each city's climatological normal and volatility, so City Clusters can say how hot today is *for that city*. |
 | 18 | `sql/ad4_18_databank.sql` | The immutable record: what was predicted, what the market charged, what happened. Feeds calibration. |
-| 19 | `sql/ad4_19_stats_cache.sql` | **Run this last.** Caches the climatology and bounds the divergence join — without it City Clusters and Analytics time out on a real archive. |
+| 19 | `sql/ad4_19_stats_cache.sql` | Caches the climatology and bounds the divergence join — without it City Clusters and Analytics time out on a real archive. |
+| 20 | `sql/ad4_20_schedules.sql` | **Run this last.** Moves each workflow's cadence out of its n8n JSON and into a setting the Workflows page owns, with a runs/month budget. |
 
 Every file is idempotent — re-running any of them is safe and changes
 nothing that is already correct.

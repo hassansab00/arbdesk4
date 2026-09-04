@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
+import { fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
 import { DataState, ErrorBox, InlineError } from "@/components/DataState";
 import { fmtCompactUsd, fmtPct, fmtUsd, pnlColor } from "@/lib/format";
 import {
@@ -72,6 +73,12 @@ export default function GoalsPage() {
   const [manualProb, setManualProb] = useState<Record<string, string>>({});
   const [periodDays, setPeriodDays] = useState("30");
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  // A city has a market PER SETTLEMENT DAY, and each has its own ~11 buckets.
+  // Without this the page pulled every day at once and showed thirty-odd
+  // buckets for one city - buckets that do not compete with each other,
+  // because they resolve on different days. Every figure built on that set
+  // (coverage, spread, the goal ladder) was wrong.
+  const [goalDay, setGoalDay] = useState<string | null>(null);
 
   // ---- data --------------------------------------------------------------
   const cities = useQuery(
@@ -86,16 +93,29 @@ export default function GoalsPage() {
     return Array.from(m.entries()).sort((a, b) => a[1].localeCompare(b[1]));
   }, [cities.data]);
 
+  // The settlement days this city actually has a market on, nearest first.
+  const dayOptions = useMemo(() => {
+    const rows = (cities.data as Array<{ city_key: string; resolution_date: string }> | null) ?? [];
+    return Array.from(new Set(rows.filter((r) => r.city_key === cityKey).map((r) => r.resolution_date))).sort();
+  }, [cities.data, cityKey]);
+
   useEffect(() => {
     if (!cityKey && cityOptions.length) setCityKey(cityOptions[0][0]);
   }, [cityOptions, cityKey]);
 
+  useEffect(() => {
+    if (dayOptions.length && (!goalDay || !dayOptions.includes(goalDay))) setGoalDay(dayOptions[0]);
+  }, [dayOptions, goalDay]);
+
   const opps = useQuery(
     () =>
-      cityKey
-        ? supabase.from("v_opportunities").select("*").eq("city_key", cityKey).eq("side", "YES")
+      cityKey && goalDay
+        ? supabase.from("v_opportunities").select("*")
+            .eq("city_key", cityKey)
+            .eq("resolution_date", goalDay)      // ONE market, not every day at once
+            .eq("side", "YES")
         : Promise.resolve({ data: [] as Opportunity[], error: null }),
-    [cityKey],
+    [cityKey, goalDay],
     30000
   );
 
@@ -299,6 +319,20 @@ export default function GoalsPage() {
             {cityOptions.length === 0 && <option value="">no cities yet</option>}
             {cityOptions.map(([k, name]) => (
               <option key={k} value={k}>{name}</option>
+            ))}
+          </select>
+          {/* One market at a time. A city has a separate market per settlement
+              day, each with its own bucket ladder, and they do not compete -
+              exactly one bucket of ONE day pays. */}
+          <label className="text-xs text-muted">Settles</label>
+          <select
+            value={goalDay ?? ""}
+            onChange={(e) => setGoalDay(e.target.value)}
+            className="rounded border border-border bg-panel2 px-2 py-1 text-sm"
+          >
+            {dayOptions.length === 0 && <option value="">no markets</option>}
+            {dayOptions.map((d) => (
+              <option key={d} value={d}>{fmtResolutionDate(d)} — {fmtDaysAhead(d)}</option>
             ))}
           </select>
           <Seg

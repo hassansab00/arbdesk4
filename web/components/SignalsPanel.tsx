@@ -31,6 +31,8 @@ export default function SignalsPanel({ onHide }: { onHide: () => void }) {
   const [signals, setSignals] = useState<SignalRow[]>([]);
   const [bands, setBands] = useState<Record<string, BandInfo>>({});
   const [expanded, setExpanded] = useState<number | null>(null);
+  // Five is a glance; fifty is a scroll that hides the page behind it.
+  const [showAll, setShowAll] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -124,6 +126,8 @@ export default function SignalsPanel({ onHide }: { onHide: () => void }) {
   }
 
   const pending = signals.filter((s) => s.status === "pending_approval").length;
+  const VISIBLE = 5;
+  const shown = showAll ? signals : signals.slice(0, VISIBLE);
 
   return (
     <div className="flex min-h-0 flex-col">
@@ -137,7 +141,7 @@ export default function SignalsPanel({ onHide }: { onHide: () => void }) {
         <button className="text-xs text-muted hover:text-text" onClick={onHide}>hide</button>
       </div>
 
-      <div className="max-h-[52vh] space-y-2 overflow-y-auto p-2">
+      <div className={`space-y-2 overflow-y-auto p-2 ${showAll ? "max-h-[60vh]" : ""}`}>
         {loading && <Loading compact />}
         {error && <ErrorBox message={error} onRetry={load} compact />}
         {!loading && !error && signals.length === 0 && (
@@ -149,7 +153,7 @@ export default function SignalsPanel({ onHide }: { onHide: () => void }) {
           </div>
         )}
 
-        {signals.map((s) => {
+        {shown.map((s) => {
           const m = signalMeaning(s.reason, s.action);
           const b = s.band_id ? bands[s.band_id] : undefined;
           const city = s.city_key || b?.city_key || "";
@@ -255,6 +259,14 @@ export default function SignalsPanel({ onHide }: { onHide: () => void }) {
             </div>
           );
         })}
+        {signals.length > VISIBLE && (
+          <button
+            onClick={() => setShowAll((v) => !v)}
+            className="w-full rounded border border-border py-1.5 text-[11px] text-muted hover:border-accent hover:text-accent"
+          >
+            {showAll ? `Show fewer` : `Show ${signals.length - VISIBLE} more`}
+          </button>
+        )}
       </div>
     </div>
   );

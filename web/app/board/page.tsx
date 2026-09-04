@@ -128,6 +128,36 @@ export default function BoardPage() {
   }, [cityOptions, city]);
 
   const board = cities.find((c) => c.city_key === city) ?? null;
+
+  // Why is everything blocked, and are buckets missing?
+  //
+  // Both questions were answerable only by hovering eleven rows one at a time.
+  // They are properties of the MARKET, so they belong above it.
+  //
+  // The expected bucket count is not asserted - it is the widest ladder any
+  // city on this same day actually has. If every other city lists eleven and
+  // this one lists six, five were not captured; if they all list six, six is
+  // simply what this exchange published and nothing is wrong.
+  const diagnosis = useMemo(() => {
+    if (!board) return null;
+    const total = board.bands.length;
+    const blocked = board.bands.filter(({ yes, no }) => !(yes?.tradeable || no?.tradeable));
+    const reasons = new Map<string, number>();
+    for (const { yes, no } of blocked) {
+      const r = (yes ?? no)!.block_reason ?? "no reason recorded";
+      reasons.set(r, (reasons.get(r) ?? 0) + 1);
+    }
+    const top = [...reasons.entries()].sort((a, b) => b[1] - a[1]);
+    const priced = board.bands.filter(({ yes }) => yes?.market_price != null).length;
+    const widest = Math.max(0, ...cities.map((c) => c.bands.length));
+    return {
+      total, blocked: blocked.length, priced, widest,
+      allBlocked: blocked.length === total && total > 0,
+      topReason: top[0]?.[0] ?? null,
+      reasons: top,
+      short: widest > total,
+    };
+  }, [board, cities]);
   const unit = (board?.head.unit ?? "C") as Unit;
   const lw = board ? liveByCity.get(board.city_key) : undefined;
   const fc = board && day ? fcByCityDay.get(`${board.city_key}|${day}`) : undefined;
@@ -253,6 +283,51 @@ export default function BoardPage() {
               </div>
             </div>
 
+            {/* ---- what is wrong with this market, stated once ----------- */}
+            {diagnosis && (diagnosis.allBlocked || diagnosis.short || diagnosis.priced === 0) && (
+              <div className="space-y-1.5 rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn">
+                {diagnosis.priced === 0 && (
+                  <div>
+                    <b>No bucket has a price.</b> Every figure below is blank because there is no
+                    book snapshot for this market — that is <b>P0.3 Book + Volume Snapshot</b>, which
+                    has to be imported and Active in n8n. You can still type prices into the Yes and
+                    No columns and the ticket will calculate.
+                  </div>
+                )}
+                {diagnosis.allBlocked && diagnosis.priced > 0 && (
+                  <div>
+                    <b>All {diagnosis.total} buckets are blocked from trading.</b>{" "}
+                    {diagnosis.topReason && (
+                      <>
+                        The edge engine&apos;s reason on most of them is{" "}
+                        <code>{diagnosis.topReason}</code>.
+                      </>
+                    )}{" "}
+                    Blocked means the engine will not trade them; the prices and probabilities are
+                    still real and the ticket still calculates.
+                  </div>
+                )}
+                {diagnosis.short && (
+                  <div>
+                    <b>
+                      This market shows {diagnosis.total} buckets; the widest ladder on this day is{" "}
+                      {diagnosis.widest}.
+                    </b>{" "}
+                    Buckets are not hidden here — every one in the database is listed — so{" "}
+                    {diagnosis.widest - diagnosis.total} were never captured. That is{" "}
+                    <b>P0.2 Market Discovery</b>: it writes <code>bands</code>, and a partial ladder
+                    there means the sum-of-Yes check below cannot reach 100¢ however the market is
+                    priced.
+                  </div>
+                )}
+                {diagnosis.reasons.length > 1 && (
+                  <div className="font-mono text-[10px] opacity-80">
+                    {diagnosis.reasons.map(([r, n]) => `${n}x ${r}`).join(" · ")}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ---- the ladder -------------------------------------------- */}
             <div className="overflow-x-auto rounded border border-border">
               <table className="w-full text-sm">
@@ -341,7 +416,14 @@ export default function BoardPage() {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-border bg-panel2 text-[11px]">
-                    <td className="p-2 font-semibold">Sum of Yes across {board.bands.length} buckets</td>
+                    <td className="p-2 font-semibold">
+                      Sum of Yes across {board.bands.length} buckets
+                      {diagnosis?.short && (
+                        <span className="ml-1 text-warn" title={`The widest ladder on this day has ${diagnosis.widest} buckets. A partial ladder cannot sum to 100c.`}>
+                          (incomplete)
+                        </span>
+                      )}
+                    </td>
                     <td className={`p-2 text-right font-mono font-semibold ${
                       book === null ? "text-muted" : book < 0.97 ? "text-good" : book > 1.03 ? "text-warn" : "text-text"}`}>
                       {book === null ? "—" : fmtPct(book, 1)}
