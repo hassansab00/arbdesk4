@@ -73,12 +73,18 @@ of what got built against it and where to find things.
        21. Its columns carry the same names `v_city_day_features` uses for
        observed conditions, so the model fitted on what happened applies
        to what is forecast without a translation layer. n8n P1.4 fills it.
-   25. **`sql/ad4_25_model_forecast.sql` last** - AD4's own forward
+   25. `sql/ad4_25_model_forecast.sql` - AD4's own forward
        prediction, with the arithmetic that produced it stored beside the
        number. Deliberately not written into `weather_forecasts`: it is
        post-processing of NWS, not independent of it, and feeding it back
        into `v_forecast_divergence` would inflate the spread with its own
        reflection.
+   26. **`sql/ad4_26_temp_trend.sql` last** - which way today is pointing
+       and how fast, and how much this city has HISTORICALLY still climbed
+       from this hour. A temperature is a trajectory, not a number: 28.4C
+       an hour before peak is a buy after 26.9 / 27.7 / 28.4 and a sell
+       after 29.1 / 28.8 / 28.4. Feeds the City Monitor page and strategy
+       S7.
 
    Then run **`sql/ad4_99_verify.sql`** against the real database. It is
    read-only and returns one grid: every check PASS / FAIL / ATTENTION,
@@ -144,6 +150,11 @@ tests/                      pytest suite - 246 tests, run with:
   differs from the literal spec text (mainly: several things Revision A
   describes as n8n-triggered Postgres RPCs are GitHub Actions Python jobs
   instead, to keep non-trivial logic in one tested place).
+- `docs/strategies.md` - all eight strategies, what each reads, and why
+  each gate exists. Start here for S7 (pre-peak gradient entry) and S8
+  (two-bucket cover), which are Hassan's own manual trading written down
+  as rules. All eight ship disabled; that file says how to turn one on
+  and why one at a time.
 - `docs/skill_baseline.md` / `docs/settlement_verification.md` - both
   document a real network-access gap in this build session (no egress to
   Supabase or weather.gov from the sandbox it ran in) and exactly what to

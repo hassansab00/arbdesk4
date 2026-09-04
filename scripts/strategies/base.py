@@ -81,6 +81,29 @@ class BandView:
     day_decided: bool = False
     window_width_h: Optional[float] = None
     s5_allowed: bool = False
+    # The shape of today so far (sql/ad4_26_temp_trend.sql). running_max_c
+    # says how hot it has been; these say which way it is pointing and how
+    # fast, which is the difference between a band that is still live and one
+    # the day has already walked away from. All default to None so a desk that
+    # has not run ad4_26 simply never fires the strategies that need them,
+    # rather than firing on assumed values.
+    slope_3_c_per_h: Optional[float] = None
+    slope_6_c_per_h: Optional[float] = None
+    trend_direction: Optional[str] = None      # climbing fast | climbing | flat | falling | falling fast
+    rolling_over: bool = False
+    latest_temp_c: Optional[float] = None
+    reading_age_min: Optional[float] = None
+    # Measured per city and local hour, from this desk's own archive: how much
+    # further the day still climbed from here, historically.
+    typical_climb_left_c: Optional[float] = None
+    implied_max_c: Optional[float] = None      # latest reading + typical climb left
+    implied_max_low_c: Optional[float] = None  # the p10 case
+    implied_max_high_c: Optional[float] = None # the p90 case
+    pct_already_peaked: Optional[float] = None
+    # Today's forecast maximum for this city, in Celsius. Carried on the band
+    # so a strategy can ask "does this bucket contain where the day is going"
+    # without a second lookup.
+    forecast_max_c: Optional[float] = None
 
 
 @dataclass
