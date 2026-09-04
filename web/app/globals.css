@@ -83,3 +83,36 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .ad4-spin, .ad4-sun, .ad4-flake { animation: none; }
 }
+
+/* ---- charts --------------------------------------------------------------
+   Colours as CSS variables so inline SVG can reach them - an SVG `fill` will
+   not resolve a Tailwind class. Kept in sync with tailwind.config.ts.        */
+:root {
+  --chart-axis: #8a93a6;
+  --chart-grid: #1a2030;
+  --c-accent: #4f8cff;
+  --c-good:   #2ecc71;
+  --c-warn:   #ffb020;
+  --c-bad:    #ff5c5c;
+  --c-muted:  #8a93a6;
+}
+
+/* Entrances, not decoration: each one resolves to the chart's resting state
+   within a few hundred ms, so the first still frame is the finished chart. */
+.chart-draw {
+  stroke-dasharray: 2000;
+  stroke-dashoffset: 2000;
+  animation: chart-draw 900ms ease-out forwards;
+}
+@keyframes chart-draw { to { stroke-dashoffset: 0; } }
+
+.chart-grow { transform-origin: bottom; animation: chart-grow 380ms ease-out both; }
+@keyframes chart-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+.chart-pop { animation: chart-pop 320ms ease-out both; }
+@keyframes chart-pop { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: scale(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .chart-draw { stroke-dasharray: none; stroke-dashoffset: 0; animation: none; }
+  .chart-grow, .chart-pop { animation: none; }
+}
