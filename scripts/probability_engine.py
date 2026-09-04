@@ -35,6 +35,51 @@ import regime
 
 MAE_TO_SIGMA = 1.2533          # sourced: sigma = MAE * sqrt(pi/2) for a normal distribution
 CALIBRATION_VERSION = "v0_normal_lattice_no_calibration"
+
+# --------------------------------------------------------------------------
+# Calibration.
+#
+# The lattice gives a probability from a normal centred on the forecast. That
+# is a MODEL of how the day resolves, not a measurement of how often this desk
+# is right, and the two differ in a way only the desk's own history can show.
+# scripts/calibration.py fits a two-parameter Platt map on settled bands from
+# fact_band_outcome and writes it to settings.calibration_map.
+#
+# Two guards, because a wrong calibration map is worse than none - it rescales
+# every probability while looking exactly like a right one:
+#
+#   applies=false, written by the fitter when the correction did not improve
+#   the Brier score on its own training data, is honoured here.
+#
+#   A map is only used when the fitter had enough evidence; below that it
+#   writes nothing at all, and this reads nothing.
+# --------------------------------------------------------------------------
+_calibration = None
+
+def _calibration_map():
+    """{'a','b','applies'} or None. Read once per run."""
+    global _calibration
+    if _calibration is None:
+        _calibration = {}
+        try:
+            rows = rest("settings", [("select", "value"), ("key", "eq.calibration_map")])
+            v = rows[0]["value"] if rows else None
+            if isinstance(v, dict) and v.get("applies") and v.get("method") == "platt":
+                a, b = float(v["a"]), float(v["b"])
+                _calibration = {"a": a, "b": b, "n": v.get("n"), "note": v.get("note")}
+        except Exception as e:
+            print(f"  note: no calibration map ({e})", file=sys.stderr)
+    return _calibration or None
+
+
+def _calibrate(p):
+    """Apply the fitted map to one probability. Identity when none is fitted."""
+    m = _calibration_map()
+    if not m:
+        return p
+    q = min(max(p, 1e-6), 1 - 1e-6)
+    z = m["a"] * math.log(q / (1 - q)) + m["b"]
+    return 1.0 / (1.0 + math.exp(-z)) if z >= 0 else math.exp(z) / (1.0 + math.exp(z))
 UNTRUSTED_N_DAYS = 200          # matches Task 1's "worst_sample should be 200+"
 BIAS_EXCEEDS_MAE_RATIO = 0.95   # matches anomaly_rules.bias_exceeds_mae threshold
 UNTRUSTED_CONFIDENCE_PENALTY = 0.5
@@ -256,9 +301,11 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
         "forecast", forecast_label,
         config={"model": forecast.get("model"), "run_at": forecast.get("run_at")},
         structural=False)
+    _cal = _calibration_map()
     calibration_version = model_version_id(
-        "calibration", CALIBRATION_VERSION,
-        config={"note": "no calibration applied; normal lattice only"},
+        "calibration",
+        f"platt:a={_cal['a']:.4f}:b={_cal['b']:+.4f}" if _cal else CALIBRATION_VERSION,
+        config=_cal or {"note": "no calibration applied; normal lattice only"},
         structural=True)
 
     row = {
@@ -278,9 +325,29 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
     if calibration_version:
         row["calibration_version"] = calibration_version
 
-    rows = [dict(row, band_id=band_id, calibrated_prob=round(p, 6))
-            for band_id, p in probs]
-    return rows, reg, reasons
+    # raw_prob is what the lattice said; calibrated_prob is what the desk's own
+    # record says that number has been worth. Both are stored: the fitter needs
+    # the raw one to keep learning, and unpicking a calibration after the fact
+    # is impossible if only the corrected number survives.
+    cal = _calibration_map()
+    out = []
+    for band_id, p in probs:
+        r = dict(row, band_id=band_id, raw_prob=round(p, 6))
+        r["calibrated_prob"] = round(_calibrate(p), 6) if cal else round(p, 6)
+        out.append(r)
+
+    # Calibration breaks the lattice's guarantee that the bands sum to 1, since
+    # each is mapped independently. Renormalise: exactly one band resolves yes,
+    # so the probabilities must still sum to one or every downstream figure -
+    # edge, EV, Kelly size - is built on a distribution that is not one.
+    if cal:
+        total = sum(r["calibrated_prob"] for r in out)
+        if total > 0:
+            for r in out:
+                r["calibrated_prob"] = round(r["calibrated_prob"] / total, 6)
+        reasons.append(f"calibrated:platt(a={cal['a']:.3f},b={cal['b']:+.3f},n={cal.get('n')})")
+
+    return out, reg, reasons
 
 
 def main():
