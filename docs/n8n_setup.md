@@ -164,6 +164,36 @@ If it goes red, click the red box and read the message. It says what to fix.
 
 ---
 
+## Before you activate — you control the cost
+
+Every one of these files now asks the database whether it should actually run,
+before it does anything. If the answer is no it stops at the second node.
+
+That matters because n8n charges per execution and a schedule inside n8n cannot
+be turned down from outside it. The trigger still fires — but a run that stops
+at the second node costs you almost nothing, instead of fetching fifty-four
+cities.
+
+You set that from **AD4 → Workflows → Schedules & execution budget**:
+
+| Mode | What happens |
+|---|---|
+| **auto** | Runs on its own, but never more often than the interval you set. |
+| **manual** | Only runs when you press Run. A scheduled firing stops immediately. |
+| **off** | Same as manual, and marked as deliberately stopped. |
+
+The page shows a **runs/month** total that updates as you change things, so you
+can see the cost before you save it. At the shipped defaults it is about 1,650 a
+month — P0.3 hourly is 720 of that on its own.
+
+Run `sql/ad4_20_schedules.sql` first or the controls will not appear.
+
+**If the database cannot answer, the workflow runs.** A missing settings row
+must never silently switch off your whole pipeline, so the gate fails open on
+purpose.
+
+---
+
 ## Step 5 — Swap the old ones out (P0.2–P0.5 only)
 
 Do these **one at a time**. Don't do all four at once.

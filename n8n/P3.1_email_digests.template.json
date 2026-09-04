@@ -409,6 +409,80 @@
         "respondWith": "json",
         "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
       }
+    },
+    {
+      "id": "sched-check",
+      "name": "Check schedule",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        450,
+        30
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/should_run",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_job: \"P3.1_email_digests\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "sched-gate",
+      "name": "Run now?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        30
+      ],
+      "parameters": {
+        "jsCode": "// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
+      }
+    },
+    {
+      "id": "sched-stop",
+      "name": "Stop if skipped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        30
+      ],
+      "parameters": {
+        "jsCode": "// Returning [] stops the workflow here. Everything below this node\n// is skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
+      }
     }
   ],
   "connections": {
@@ -471,7 +545,7 @@
       "main": [
         [
           {
-            "node": "Which digest?",
+            "node": "Check schedule",
             "type": "main",
             "index": 0
           }
@@ -589,6 +663,39 @@
         [
           {
             "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check schedule": {
+      "main": [
+        [
+          {
+            "node": "Run now?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now?": {
+      "main": [
+        [
+          {
+            "node": "Stop if skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stop if skipped": {
+      "main": [
+        [
+          {
+            "node": "Which digest?",
             "type": "main",
             "index": 0
           }

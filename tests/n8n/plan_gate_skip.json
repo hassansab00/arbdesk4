@@ -1,0 +1,34 @@
+{
+ "seed": {
+  "Config": {
+   "supabase_url": "https://x.supabase.co",
+   "service_key": "k"
+  },
+  "Load cities": [
+   {
+    "city_key": "nyc"
+   },
+   {
+    "city_key": "chi"
+   }
+  ],
+  "Check schedule": {
+   "run": false,
+   "reason": "P1.2_nws_monitor ran 10 min ago; minimum interval is 120 min",
+   "minutes_since": 10,
+   "every_minutes": 120
+  }
+ },
+ "run": [
+  {
+   "node": "Run now?",
+   "input": "Load cities",
+   "show": 300
+  },
+  {
+   "node": "Stop if skipped",
+   "input": "Run now?",
+   "show": 200
+  }
+ ]
+}
