@@ -7,10 +7,10 @@ import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
 import RefreshButton from "@/components/RefreshButton";
 import { fmtAge, fmtCompactUsd, fmtPct, fmtPp, fmtPrice, fmtUsd, regimeColor } from "@/lib/format";
-import { fmtBandRange, fmtTemp, type Unit } from "@/lib/units";
+import { fmtBandRange, fmtTemp, fmtTempDelta, type Unit } from "@/lib/units";
 import { fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
 import { buy, feeRateAt } from "@/lib/costs";
-import type { Opportunity } from "@/lib/types";
+import type { Opportunity, OpportunityContext } from "@/lib/types";
 
 /**
  * An opportunity is a TRADE, not a row of statistics.
@@ -42,6 +42,7 @@ export default function OpportunitiesPage() {
   const [stake, setStake] = useState(100);
   const [dayFilter, setDayFilter] = useState("");
   const [showBlocked, setShowBlocked] = useState(false);
+  const [onlyUnrepriced, setOnlyUnrepriced] = useState(false);
 
   // Everything is fetched, tradeable or not, so the page can tell you WHY it
   // is empty. Filtering in the query made "no opportunities" and "every
@@ -61,6 +62,14 @@ export default function OpportunitiesPage() {
     [],
     60000
   );
+  // How the price and the forecast have MOVED. An edge is a still photograph
+  // without this: it cannot say whether the market is coming round or walking
+  // away, nor whether the price was even set against the current forecast.
+  const ctxQ = useQuery<OpportunityContext[]>(
+    () => supabase.from("v_opportunity_context").select("*").limit(4000),
+    [],
+    60000
+  );
 
   const allRows = q.data ?? [];
   const blocked = allRows.filter((r) => !r.tradeable);
@@ -68,6 +77,14 @@ export default function OpportunitiesPage() {
   const liveByCity = useMemo(
     () => new Map((live.data ?? []).map((l) => [l.city_key, l])),
     [live.data]
+  );
+  const ctxByBand = useMemo(
+    () => new Map((ctxQ.data ?? []).map((c) => [c.band_id, c])),
+    [ctxQ.data]
+  );
+  const unrepriced = useMemo(
+    () => (ctxQ.data ?? []).filter((c) => c.forecast_ahead_of_book).length,
+    [ctxQ.data]
   );
 
   const days = useMemo(
@@ -79,7 +96,8 @@ export default function OpportunitiesPage() {
     (r) =>
       (r.edge_net_pp ?? 0) >= minEdge / 100 &&
       (r.volume_usd ?? 0) >= minVolume &&
-      (!dayFilter || r.resolution_date === dayFilter)
+      (!dayFilter || r.resolution_date === dayFilter) &&
+      (!onlyUnrepriced || ctxByBand.get(r.band_id)?.forecast_ahead_of_book === true)
   );
 
   return (
@@ -126,6 +144,13 @@ export default function OpportunitiesPage() {
         <label className="flex items-center gap-1.5 text-xs text-muted" title="Bands the engine refused to trade - too wide, too thin, no book, or a stale price. Each one shows its reason.">
           <input type="checkbox" checked={showBlocked} onChange={(e) => setShowBlocked(e.target.checked)} />
           show blocked ({blocked.length})
+        </label>
+        <label
+          className={`flex items-center gap-1.5 text-xs ${unrepriced > 0 ? "text-accent" : "text-muted"}`}
+          title="Bands whose forecast changed AFTER the market last repriced. The price on screen was set against older information than the desk is holding - the only kind of edge with a cause behind it."
+        >
+          <input type="checkbox" checked={onlyUnrepriced} onChange={(e) => setOnlyUnrepriced(e.target.checked)} />
+          market hasn&apos;t repriced ({unrepriced})
         </label>
         <label className="flex items-center gap-2" title="Filter out bands that have barely traded in the last 24h.">
           <span className="text-muted">Min 24h volume</span>
@@ -206,6 +231,7 @@ export default function OpportunitiesPage() {
                 rank={i + 1}
                 stake={stake}
                 lw={liveByCity.get(o.city_key)}
+                ctx={ctxByBand.get(o.band_id)}
                 onOpen={() => router.push(`/calculator?band_id=${o.band_id}`)}
               />
             ))}
@@ -216,13 +242,41 @@ export default function OpportunitiesPage() {
   );
 }
 
+/**
+ * A price move, coloured by whether it helps THIS side.
+ *
+ * A band drifting up is good news for a YES holder and bad for a NO holder,
+ * so the same number is green on one card and red on another. Colouring by
+ * direction alone would tell half the readers the opposite of the truth.
+ */
+function Drift({ label, v, side }: { label: string; v: number; side: string }) {
+  const helps = side === "YES" ? v > 0 : v < 0;
+  const flat = Math.abs(v) < 0.005;
+  return (
+    <span
+      className={flat ? "text-muted" : helps ? "text-good" : "text-bad"}
+      title={
+        flat
+          ? `Unchanged over ${label}.`
+          : helps
+          ? `Moved ${Math.abs(v * 100).toFixed(1)}c toward this side over ${label} - the market is coming round.`
+          : `Moved ${Math.abs(v * 100).toFixed(1)}c against this side over ${label}. A market walking away from the model is more often the model being wrong than the edge growing.`
+      }
+    >
+      <span className="text-muted">{label} </span>
+      {flat ? "flat" : `${v > 0 ? "▲" : "▼"}${Math.abs(v * 100).toFixed(1)}c`}
+    </span>
+  );
+}
+
 function Card({
-  o, rank, stake, lw, onOpen,
+  o, rank, stake, lw, ctx, onOpen,
 }: {
   o: Opportunity;
   rank: number;
   stake: number;
   lw: LiveRow | undefined;
+  ctx: OpportunityContext | undefined;
   onOpen: () => void;
 }) {
   const unit = o.unit as Unit;
@@ -287,6 +341,23 @@ function Card({
         <span className="shrink-0 font-mono text-[11px] text-muted">#{rank}</span>
       </div>
 
+      {/* ---- has the market even seen this? ------------------------------
+          The strongest form of edge is not "the model disagrees with the
+          market" - it is "the market has not repriced since the forecast
+          moved". That one has a cause behind it. */}
+      {ctx?.forecast_ahead_of_book && (
+        <div className="mt-2 rounded border border-accent/50 bg-accent/10 px-2 py-1.5 text-[11px] leading-relaxed text-accent">
+          <b>The market hasn&apos;t repriced.</b> The forecast moved{" "}
+          {ctx.forecast_move_c !== null && (
+            <b>{ctx.forecast_move_c > 0 ? "+" : ""}{fmtTempDelta(ctx.forecast_move_c, unit)}</b>
+          )}{" "}
+          {ctx.forecast_lead_hours !== null && (
+            <>{ctx.forecast_lead_hours.toFixed(1)}h after the last book snapshot</>
+          )}
+          . This price was set against older information than the desk is holding.
+        </div>
+      )}
+
       {/* ---- price vs value --------------------------------------------- */}
       <div className="mt-3 flex items-center gap-3 rounded bg-panel2 px-3 py-2">
         <div>
@@ -323,6 +394,27 @@ function Card({
           </span>
         </div>
       </div>
+
+      {/* ---- which way is it moving, and how long is left ---------------- */}
+      {ctx && (ctx.drift_1h !== null || ctx.drift_24h !== null || ctx.hours_to_resolution !== null) && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-2 font-mono text-[10px]">
+          {ctx.drift_1h !== null && <Drift label="1h" v={ctx.drift_1h} side={o.side} />}
+          {ctx.drift_6h !== null && <Drift label="6h" v={ctx.drift_6h} side={o.side} />}
+          {ctx.drift_24h !== null && <Drift label="24h" v={ctx.drift_24h} side={o.side} />}
+          {ctx.hours_to_resolution !== null && (
+            <span
+              className={`ml-auto ${
+                ctx.hours_to_resolution < 6 ? "text-warn" : "text-muted"
+              }`}
+              title="Hours until this market settles. An edge with hours left is a different trade from one with days - there is less time for the forecast to move, and less time to get out."
+            >
+              {ctx.hours_to_resolution < 0
+                ? "settling"
+                : `${ctx.hours_to_resolution.toFixed(0)}h to settle`}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* ---- how much of it is actually available ------------------------ */}
       <div className="mt-2 flex items-center justify-between text-[11px]">
