@@ -1,0 +1,47 @@
+name: Data Bank
+
+# Freezes the desk's own record - what it predicted, what the market said, what
+# happened - and then re-fits the calibration map on it.
+#
+# Runs after settlement, because a day cannot be banked until it has settled,
+# and these rows are never updated: a maximum frozen too early is wrong forever.
+on:
+  schedule:
+    - cron: '30 7 * * *'        # daily, after Settlement (and after Skill at 06:00)
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'How many days back to look for settled days'
+        required: false
+        default: '7'
+      force:
+        description: 'Re-bank days already recorded'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  bank:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install -r requirements.txt
+
+      - name: Freeze settled city-days
+        run: python scripts/databank.py --days ${{ github.event.inputs.days || '7' }} ${{ github.event.inputs.force == 'true' && '--force' || '' }}
+        env:
+          PYTHONPATH: scripts
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+      # Re-fit on everything banked so far. Refuses to write a map below its
+      # minimum sample count, so this is safe from the first day it runs.
+      - name: Re-fit calibration
+        run: python scripts/calibration.py
+        env:
+          PYTHONPATH: scripts
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

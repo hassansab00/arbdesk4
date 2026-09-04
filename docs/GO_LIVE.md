@@ -28,7 +28,7 @@ starting the next.
 
 | # | File | What it does |
 |---|---|---|
-| 1 | `sql/ad4_00_preflight.sql` | **Run this first.** Guarantees every table, column and unique key the other 16 files need. |
+| 1 | `sql/ad4_00_preflight.sql` | **Run this first.** Guarantees every table, column and unique key the other 17 files need. |
 | 2 | `ad4_phase1_tables.sql` | forecast-skill table |
 | 3 | `sql/ad4_phase2.sql` | cost params, edges, anomaly rules, correlation, capacity, views |
 | 4 | `sql/ad4_phase2_ranking.sql` | `v_opportunities` with the ranking score |
@@ -44,7 +44,8 @@ starting the next.
 | 14 | `sql/ad4_14_workflows.sql` | Lets the UI run the n8n workflows and read their run history. |
 | 15 | `sql/ad4_15_pipeline_fixes.sql` | Adds the `system` strategy the Signal Engine writes its alerts against. |
 | 16 | `sql/ad4_16_nws.sql` | Makes room for api.weather.gov: per-city NWS ids, today's solar transit, and `v_forecast_divergence`. |
-| 17 | `sql/ad4_17_city_stats.sql` | **Run this last.** Each city's climatological normal and volatility, so City Clusters can say how hot today is *for that city*. |
+| 17 | `sql/ad4_17_city_stats.sql` | Each city's climatological normal and volatility, so City Clusters can say how hot today is *for that city*. |
+| 18 | `sql/ad4_18_databank.sql` | **Run this last.** The immutable record: what was predicted, what the market charged, what happened. Feeds calibration. |
 
 Every file is idempotent — re-running any of them is safe and changes
 nothing that is already correct.
