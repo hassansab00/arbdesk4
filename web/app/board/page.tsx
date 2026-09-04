@@ -5,32 +5,39 @@ import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
 import RefreshButton from "@/components/RefreshButton";
-import { fmtAge, fmtCompactUsd, fmtPct, fmtPp, fmtPrice, fmtUsd, regimeColor } from "@/lib/format";
+import { fmtAge, fmtCompactUsd, fmtPct, fmtPrice, fmtUsd, regimeColor } from "@/lib/format";
 import { fmtBandRange, fmtTemp, type Unit } from "@/lib/units";
 import { fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
-import { buy, feeRateAt } from "@/lib/costs";
+import { solveBoard, overround, type Leg } from "@/lib/ladder";
+import { feeRateAt } from "@/lib/costs";
 import { LADDER_SOURCE_LABEL, VOLUME_SOURCE_LABEL, type Opportunity } from "@/lib/types";
 
 /**
- * The Board is ONE DAY'S MARKETS, laid out the way the exchange lays them out.
+ * The Board, in the shape ArbDesk 1 had it, with what AD4 knows that AD1 did
+ * not.
  *
- * It used to be a flat table of every band on every city on every date, sorted
- * by rank - a screener. A screener answers "where is the best edge anywhere";
- * it cannot answer "what is Chicago doing today", which is the question you
- * actually sit down with. Worse, with several resolution dates live at once,
- * consecutive rows were different DAYS and nothing said so.
+ * AD1's board was: bucket, market %, YOUR %, Yes c, No c, volume, bet Yes,
+ * bet No - and under it a ladder of "if the day lands on ...". Two things
+ * about that were right and the AD4 board had lost both.
  *
- * So: pick a day, then read each city as a ladder of bands in temperature
- * order - the shape the market itself has. Three things follow from that shape
- * and none of them were visible before:
+ *   PROBABILITY IS THE UNIT. A price in cents IS an implied probability, and
+ *   the trade is a disagreement between two probabilities. Showing only cents
+ *   asks the reader to convert in their head on every row.
  *
- *   * the YES prices across one city's bands should sum to about 100c, since
- *     exactly one band pays. The gap IS the combination arbitrage, and here it
- *     is a number at the foot of every city.
- *   * the day's forecast and its running maximum sit at the top of the ladder,
- *     so the price of a band can be read against where the weather actually is.
- *   * a stake typed against a band shows cost, payoff and net immediately -
- *     sizing at the point of decision rather than on another tab.
+ *   THE POSITION IS THE LADDER, NOT THE ROW. Exactly one bucket resolves Yes,
+ *   so a board with several legs has one P&L per outcome. A NO leg makes this
+ *   impossible to see row-by-row: betting No on one bucket pays out on every
+ *   other, so a single stake moves ten rows of the ladder at once.
+ *
+ * What AD4 adds: a MODEL % beside the market's, measured from forecast skill
+ * rather than typed in; depth-capped fills, so a stake larger than the book
+ * shows what would actually fill; and the city's live weather above the
+ * ladder, because the whole thesis is where the day lands.
+ *
+ * Every band is shown. The previous version hid untradeable ones by default,
+ * which is why a market Polymarket displays with eleven buckets appeared here
+ * with six - the missing ones were blocked, not absent, and hiding them made
+ * the board disagree with the exchange.
  */
 
 interface LiveRow {
@@ -40,17 +47,15 @@ interface LiveRow {
   peak_window_state: string | null;
   day_decided: boolean | null;
   observed_at: string | null;
+  trend: string | null;
 }
 
 export default function BoardPage() {
   const [day, setDay] = useState<string | null>(null);
-  // ONE city at a time. Showing every city at once is a screener again: the
-  // point of a board is the ladder of one market, read top to bottom, with
-  // that city's weather above it. null means "not chosen yet", and the first
-  // city is selected as soon as the data arrives.
   const [city, setCity] = useState<string | null>(null);
-  const [stakes, setStakes] = useState<Record<string, string>>({});
-  const [showUntradeable, setShowUntradeable] = useState(false);
+  const [yesStakes, setYesStakes] = useState<Record<string, string>>({});
+  const [noStakes, setNoStakes] = useState<Record<string, string>>({});
+  const [myProb, setMyProb] = useState<Record<string, string>>({});
 
   const q = useQuery<Opportunity[]>(
     () => supabase.from("v_opportunities").select("*").limit(4000),
@@ -58,51 +63,35 @@ export default function BoardPage() {
     30000
   );
   const live = useQuery<LiveRow[]>(
-    () => supabase.from("live_weather").select("city_key,temp_c,running_max_c,peak_window_state,day_decided,observed_at"),
+    () => supabase.from("live_weather").select("city_key,temp_c,running_max_c,peak_window_state,day_decided,observed_at,trend"),
     [],
     60000
   );
-  const forecasts = useQuery<Array<{ city_key: string; for_date: string; forecast_max_c: number | null; model: string | null }>>(
+  const forecasts = useQuery<Array<{ city_key: string; for_date: string; forecast_max_c: number | null; model: string | null; run_at: string | null }>>(
     () =>
-      supabase
-        .from("weather_forecasts")
+      supabase.from("weather_forecasts")
         .select("city_key,for_date,forecast_max_c,model,run_at")
         .gte("for_date", new Date().toISOString().slice(0, 10))
-        .order("run_at", { ascending: false })
-        .limit(2000),
+        .order("run_at", { ascending: false }).limit(2000),
     [],
     5 * 60000
   );
 
   const rows = q.data ?? [];
+  const days = useMemo(() => Array.from(new Set(rows.map((r) => r.resolution_date))).sort(), [rows]);
+  useEffect(() => { if (!day && days.length) setDay(days[0]); }, [days, day]);
 
-  // Every resolution date on the board, nearest first. This is the control
-  // that was missing: "1 day ahead" and "2 days ahead" are separate markets
-  // and were previously interleaved with no way to tell them apart.
-  const days = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.resolution_date))).sort(),
-    [rows]
-  );
-  useEffect(() => {
-    if (!day && days.length) setDay(days[0]);
-  }, [days, day]);
-
-  const liveByCity = useMemo(
-    () => new Map((live.data ?? []).map((l) => [l.city_key, l])),
-    [live.data]
-  );
-  const forecastByCityDay = useMemo(() => {
-    const m = new Map<string, number>();
+  const liveByCity = useMemo(() => new Map((live.data ?? []).map((l) => [l.city_key, l])), [live.data]);
+  const fcByCityDay = useMemo(() => {
+    const m = new Map<string, { max: number | null; model: string | null; at: string | null }>();
     for (const f of forecasts.data ?? []) {
-      if (f.forecast_max_c === null) continue;
       const k = `${f.city_key}|${f.for_date}`;
-      if (!m.has(k)) m.set(k, f.forecast_max_c);   // newest run wins
+      if (!m.has(k)) m.set(k, { max: f.forecast_max_c, model: f.model, at: f.run_at });
     }
     return m;
   }, [forecasts.data]);
 
-  // One entry per city on the chosen day, each holding its bands in
-  // temperature order - lowest band at the bottom, like a thermometer.
+  // One entry per city on the chosen day, bands hottest-first, ALL of them.
   const cities = useMemo(() => {
     const onDay = rows.filter((r) => r.resolution_date === day);
     const byCity = new Map<string, Opportunity[]>();
@@ -110,65 +99,74 @@ export default function BoardPage() {
       if (!byCity.has(r.city_key)) byCity.set(r.city_key, []);
       byCity.get(r.city_key)!.push(r);
     }
-    const out = Array.from(byCity.entries()).map(([city_key, all]) => {
-      // v_opportunities has a row per band PER SIDE; the ladder wants one row
-      // per band, with the YES side leading and the NO side alongside.
-      const byBand = new Map<string, { yes?: Opportunity; no?: Opportunity }>();
-      for (const r of all) {
-        const e = byBand.get(r.band_id) ?? {};
-        if (r.side === "YES") e.yes = r;
-        else e.no = r;
-        byBand.set(r.band_id, e);
-      }
-      const bands = Array.from(byBand.values())
-        .filter((b) => b.yes || b.no)
-        .sort((a, b) => {
-          const av = (a.yes ?? a.no)!;
-          const bv = (b.yes ?? b.no)!;
-          // open-low tail at the bottom, open-high at the top
-          const ak = av.open_low ? -Infinity : av.open_high ? Infinity : (av.band_lo ?? 0);
-          const bk = bv.open_low ? -Infinity : bv.open_high ? Infinity : (bv.band_lo ?? 0);
-          return bk - ak;                      // descending: hottest first
+    return Array.from(byCity.entries())
+      .map(([city_key, all]) => {
+        const byBand = new Map<string, { yes?: Opportunity; no?: Opportunity }>();
+        for (const r of all) {
+          const e = byBand.get(r.band_id) ?? {};
+          if (r.side === "YES") e.yes = r; else e.no = r;
+          byBand.set(r.band_id, e);
+        }
+        const bands = Array.from(byBand.values()).sort((a, b) => {
+          const av = (a.yes ?? a.no)!, bv = (b.yes ?? b.no)!;
+          const ak = av.open_low ? -1e9 : av.open_high ? 1e9 : (av.band_lo ?? 0);
+          const bk = bv.open_low ? -1e9 : bv.open_high ? 1e9 : (bv.band_lo ?? 0);
+          return bk - ak;
         });
-      const head = (bands[0]?.yes ?? bands[0]?.no)!;
-      return { city_key, head, bands };
-    });
-    out.sort((a, b) => (a.head.display_name ?? a.city_key).localeCompare(b.head.display_name ?? b.city_key));
-    return out;
+        return { city_key, head: (bands[0]?.yes ?? bands[0]?.no)!, bands };
+      })
+      .sort((a, b) => (a.head.display_name ?? a.city_key).localeCompare(b.head.display_name ?? b.city_key));
   }, [rows, day]);
 
-  // Every city with a market on the chosen day, with enough detail for the
-  // dropdown to be worth reading rather than a list of keys.
   const cityOptions = useMemo(
-    () =>
-      cities.map((c) => ({
-        key: c.city_key,
-        label: c.head.display_name ?? c.city_key,
-        bands: c.bands.length,
-        best: Math.max(0, ...c.bands.map((b) => b.yes?.edge_net_pp ?? 0)),
-      })),
+    () => cities.map((c) => ({ key: c.city_key, label: c.head.display_name ?? c.city_key, bands: c.bands.length })),
     [cities]
   );
-
   useEffect(() => {
     if (cityOptions.length === 0) return;
     if (!city || !cityOptions.some((c) => c.key === city)) setCity(cityOptions[0].key);
   }, [cityOptions, city]);
 
-  const shown = cities.filter((c) => c.city_key === city);
+  const board = cities.find((c) => c.city_key === city) ?? null;
+  const unit = (board?.head.unit ?? "C") as Unit;
+  const lw = board ? liveByCity.get(board.city_key) : undefined;
+  const fc = board && day ? fcByCityDay.get(`${board.city_key}|${day}`) : undefined;
 
-  const totals = useMemo(() => {
-    let cost = 0, legs = 0;
-    for (const [key, raw] of Object.entries(stakes)) {
-      const usd = parseFloat(raw);
-      if (!Number.isFinite(usd) || usd <= 0) continue;
-      const o = rows.find((r) => `${r.band_id}-${r.side}` === key);
-      if (!o?.market_price) continue;
-      legs += 1;
-      cost += usd;
+  // ---- the position ------------------------------------------------------
+  const legs: Leg[] = useMemo(
+    () =>
+      (board?.bands ?? []).map(({ yes, no }) => {
+        const o = (yes ?? no)!;
+        return {
+          band_id: o.band_id,
+          label: o.band_label ?? fmtBandRange(o.band_lo, o.band_hi, unit, o.open_low, o.open_high),
+          yesPrice: yes?.market_price ?? null,
+          noPrice: no?.market_price ?? null,
+          depthUsd: yes?.fillable_usd_5c ?? null,
+          yesStake: parseFloat(yesStakes[o.band_id] ?? "") || 0,
+          noStake: parseFloat(noStakes[o.band_id] ?? "") || 0,
+        };
+      }),
+    [board, unit, yesStakes, noStakes]
+  );
+
+  // The probability each outcome is weighted by: the reader's own number where
+  // they have typed one, the model's otherwise. That override IS the edge.
+  const probs = useMemo(() => {
+    const m = new Map<string, number | null>();
+    for (const { yes, no } of board?.bands ?? []) {
+      const o = (yes ?? no)!;
+      const mine = parseFloat(myProb[o.band_id] ?? "");
+      m.set(o.band_id, Number.isFinite(mine) ? mine / 100 : (yes?.model_prob ?? null));
     }
-    return { cost, legs };
-  }, [stakes, rows]);
+    return m;
+  }, [board, myProb]);
+
+  const result = useMemo(() => solveBoard(legs, probs), [legs, probs]);
+  const book = overround(legs);
+  const staked = legs.some((l) => l.yesStake > 0 || l.noStake > 0);
+
+  function clearAll() { setYesStakes({}); setNoStakes({}); setMyProb({}); }
 
   return (
     <div className="space-y-4">
@@ -176,281 +174,288 @@ export default function BoardPage() {
         <div>
           <h1 className="text-lg font-semibold">Board</h1>
           <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted">
-            One day, one city, bands in temperature order — the shape the market has.
-            Prices are <b>executable</b> (depth-weighted), never top-of-book. The{" "}
-            <b>sum of YES</b> under each city is the coherence check: exactly one band pays $1, so
-            the prices should add to about 100¢. A sum meaningfully under 100¢ is a combination
-            arbitrage; over 100¢ means the book is charging a premium to be on any side at all.
+            One city&apos;s full bucket ladder, priced in <b>probability</b> as well as cents — a
+            price in cents <em>is</em> an implied probability, and the trade is the gap between two
+            of them. <b>Model %</b> is AD4&apos;s own read from forecast skill; type over it in{" "}
+            <b>Your %</b> where you disagree, and every figure below re-weights to your number.
           </p>
         </div>
-        <RefreshButton
-          job="P0.3_book_volume_snapshot"
-          label="Refresh books"
-          onDone={() => { q.refresh(); live.refresh(); }}
-        />
+        <div className="flex flex-col items-end gap-1">
+          <RefreshButton job="P0.3_book_volume_snapshot" label="Refresh books" onDone={() => { q.refresh(); live.refresh(); }} />
+          <RefreshButton job="P1.2_nws_monitor" label="Refresh weather" onDone={() => { live.refresh(); forecasts.refresh(); }} />
+        </div>
       </div>
 
-      {/* ---- day selector: the control that was missing entirely ---------- */}
       {days.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted">Settles</span>
           {days.map((d) => (
-            <button
-              key={d}
-              onClick={() => setDay(d)}
+            <button key={d} onClick={() => { setDay(d); clearAll(); }}
               className={`rounded border px-2.5 py-1 text-xs transition ${
-                d === day ? "border-accent bg-accent/10 text-accent" : "border-border text-muted hover:text-text"
-              }`}
-            >
-              {fmtResolutionDate(d)}
-              <span className="ml-1.5 opacity-70">{fmtDaysAhead(d)}</span>
+                d === day ? "border-accent bg-accent/10 text-accent" : "border-border text-muted hover:text-text"}`}>
+              {fmtResolutionDate(d)}<span className="ml-1.5 opacity-70">{fmtDaysAhead(d)}</span>
             </button>
           ))}
-          <select
-            value={city ?? ""}
-            onChange={(e) => setCity(e.target.value)}
-            className="ml-2 rounded border border-accent/50 bg-panel2 px-2 py-1 text-xs font-semibold text-text"
-            title="The board shows one city at a time - the full band ladder for that market."
-          >
+          <select value={city ?? ""} onChange={(e) => { setCity(e.target.value); clearAll(); }}
+            className="ml-2 rounded border border-accent/50 bg-panel2 px-2 py-1 text-xs font-semibold text-text">
             {cityOptions.map((c) => (
-              <option key={c.key} value={c.key}>
-                {c.label} — {c.bands} bands{c.best > 0 ? ` · best ${(c.best * 100).toFixed(1)}pp` : ""}
-              </option>
+              <option key={c.key} value={c.key}>{c.label} — {c.bands} buckets</option>
             ))}
           </select>
-          <label className="flex items-center gap-1 text-xs text-muted">
-            <input type="checkbox" checked={showUntradeable} onChange={(e) => setShowUntradeable(e.target.checked)} />
-            show blocked bands
-          </label>
-          {totals.legs > 0 && (
-            <span className="ml-auto rounded border border-accent/40 bg-accent/5 px-2.5 py-1 font-mono text-xs">
-              {totals.legs} leg{totals.legs === 1 ? "" : "s"} · cost {fmtUsd(totals.cost)}
-              <button
-                onClick={() => setStakes({})}
-                className="ml-2 text-[10px] text-muted underline hover:text-text"
-              >
-                clear
-              </button>
-            </span>
+          {staked && (
+            <button onClick={clearAll} className="text-[11px] text-muted underline hover:text-text">clear ticket</button>
           )}
         </div>
       )}
 
       <DataState
-        loading={q.loading}
-        error={q.error}
-        isEmpty={rows.length === 0}
+        loading={q.loading} error={q.error} isEmpty={rows.length === 0}
         emptyTitle="The board is empty"
-        emptyBody={
-          <>
-            <code>v_opportunities</code> returned no rows. It is built from <code>edges</code>, which
-            the edge engine writes — run GitHub Actions → <b>Probabilities</b>. If the board has one
-            city when you expect many, that is <code>markets</code>, not this page: P0.2 Market
-            Discovery is what finds them.
-          </>
-        }
+        emptyBody={<><code>v_opportunities</code> has no rows. It is built from <code>edges</code> — run GitHub Actions → <b>Probabilities</b>. If a city is missing entirely, that is <code>markets</code>, which P0.2 fills.</>}
         onRetry={q.refresh}
       >
-        {shown.length === 0 ? (
+        {!board ? (
           <div className="rounded border border-dashed border-border p-6 text-center text-sm text-muted">
-            Nothing settles on {day ? fmtResolutionDate(day) : "this day"}
-            {city ? ` for ${city}` : ""}.
-            {cities.length > 0 && (
-              <div className="mt-1 text-xs">
-                {cities.length} other cit{cities.length === 1 ? "y" : "ies"} do — pick one above.
-              </div>
-            )}
+            Nothing settles on {day ? fmtResolutionDate(day) : "this day"}.
           </div>
         ) : (
-          <div className="space-y-4">
-            {shown.map(({ city_key, head, bands }) => {
-              const unit = head.unit as Unit;
-              const lw = liveByCity.get(city_key);
-              const fc = forecastByCityDay.get(`${city_key}|${day}`);
-              const yesSum = bands.reduce((s, b) => s + (b.yes?.market_price ?? 0), 0);
-              const priced = bands.filter((b) => b.yes?.market_price != null).length;
-              const coherence = priced >= 2 ? yesSum : null;
+          <div className="space-y-3">
+            {/* ---- the weather this whole board is about ------------------ */}
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-border bg-panel2 px-3 py-2">
+              <div className="flex items-baseline gap-3">
+                <h2 className="font-semibold">{board.head.display_name ?? board.city_key}</h2>
+                <span className="font-mono text-[11px] text-muted">
+                  {board.head.icao ?? ""} · settles {fmtResolutionDate(board.head.resolution_date)}
+                </span>
+                <span className={`text-xs ${regimeColor(board.head.regime_label)}`}>{board.head.regime_label}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-4 font-mono text-[11px]">
+                <span><span className="text-muted">Now </span>{fmtTemp(lw?.temp_c, unit)}
+                  {lw?.trend === "RISING" && <span className="ml-0.5 text-good">↑</span>}
+                  {lw?.trend === "FALLING" && <span className="ml-0.5 text-bad">↓</span>}
+                </span>
+                <span><span className="text-muted">Max </span>{fmtTemp(lw?.running_max_c, unit)}</span>
+                <span><span className="text-muted">Forecast </span>{fmtTemp(fc?.max, unit)}</span>
+                <span className={lw?.peak_window_state === "INSIDE" ? "text-accent" : "text-muted"}>
+                  peak {lw?.peak_window_state ?? "—"}
+                </span>
+                {/* Staleness is a fact about the trade, not a footnote. */}
+                <span
+                  className={
+                    !lw?.observed_at ? "text-bad"
+                    : Date.now() - new Date(lw.observed_at).getTime() > 90 * 60000 ? "text-warn"
+                    : "text-muted"
+                  }
+                  title="Age of the newest observation for this city. Anything over 90 minutes is old enough that the running max may already have moved."
+                >
+                  obs {fmtAge(lw?.observed_at)}
+                </span>
+              </div>
+            </div>
 
-              return (
-                <section key={city_key} className="overflow-hidden rounded border border-border bg-panel">
-                  {/* --- city header: the weather, so a price can be read against it --- */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-panel2 px-3 py-2">
-                    <div className="flex items-baseline gap-3">
-                      <h2 className="font-semibold">{head.display_name ?? city_key}</h2>
-                      <span className="font-mono text-[11px] text-muted">
-                        {head.icao ?? ""} · settles {fmtResolutionDate(head.resolution_date)}
-                      </span>
-                      <span className={`text-xs ${regimeColor(head.regime_label)}`}>{head.regime_label}</span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-4 font-mono text-[11px]">
-                      <Stat label="Now" value={fmtTemp(lw?.temp_c, unit)} />
-                      <Stat label="Max so far" value={fmtTemp(lw?.running_max_c, unit)} />
-                      <Stat label="Forecast" value={fmtTemp(fc, unit)} tone={fc == null ? "muted" : undefined} />
-                      <Stat
-                        label="Peak"
-                        value={lw?.peak_window_state ?? "—"}
-                        tone={lw?.peak_window_state === "INSIDE" ? "accent" : undefined}
-                      />
-                      {lw?.day_decided && <span className="rounded bg-muted/10 px-1.5 py-0.5 text-muted">DAY DECIDED</span>}
-                    </div>
-                  </div>
+            {/* ---- the ladder -------------------------------------------- */}
+            <div className="overflow-x-auto rounded border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-panel2 text-[10px] uppercase tracking-wide text-muted">
+                  <tr>
+                    <th className="p-2 text-left">Bucket</th>
+                    <th className="p-2 text-right" title="The market's implied probability. For a binary contract the price IS the probability.">Mkt %</th>
+                    <th className="p-2 text-right" title="AD4's own probability, from the forecast and this city's measured forecast error.">Model %</th>
+                    <th className="p-2 text-right" title="Your read. Defaults to the model's. Where you disagree with the market, that difference IS your edge - every number below re-weights to it.">Your %</th>
+                    <th className="p-2 text-right text-good">Yes ¢</th>
+                    <th className="p-2 text-right text-bad">No ¢</th>
+                    <th className="p-2 text-right" title="24h traded volume on this bucket. A thin bucket moves when you hit it.">Vol $</th>
+                    <th className="p-2 text-right" title="Dollars fillable inside 5c of slippage on the YES side. A stake above this will not fill at the price shown.">Depth</th>
+                    <th className="p-2 text-right text-good">Bet Yes $</th>
+                    <th className="p-2 text-right text-bad">Bet No $</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {board.bands.map(({ yes, no }) => {
+                    const o = (yes ?? no)!;
+                    const label = o.band_label ?? fmtBandRange(o.band_lo, o.band_hi, unit, o.open_low, o.open_high);
+                    const mkt = yes?.market_price ?? null;
+                    const mine = parseFloat(myProb[o.band_id] ?? "");
+                    const usingMine = Number.isFinite(mine);
+                    const blocked = !(yes?.tradeable || no?.tradeable);
+                    const inBand =
+                      lw?.running_max_c != null &&
+                      (o.band_lo == null || lw.running_max_c >= o.band_lo) &&
+                      (o.band_hi == null || lw.running_max_c < o.band_hi);
+                    const fills = result.fills.filter((f) => f.band_id === o.band_id);
+                    const capped = fills.some((f) => f.capped);
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-panel text-[11px] uppercase tracking-wide text-muted">
-                        <tr>
-                          <th className="p-2 text-left">Band</th>
-                          <th className="p-2 text-right">YES</th>
-                          <th className="p-2 text-right">NO</th>
-                          <th className="p-2 text-right" title="The model's probability that the day's maximum lands in this band.">Model</th>
-                          <th className="p-2 text-right" title="Model probability minus executable price, after fees.">Edge</th>
-                          <th className="p-2 text-right" title="What the current quote can absorb inside 5c of slippage.">Depth 5c</th>
-                          <th className="p-2 text-right" title="What has actually traded on this band in 24h.">Vol 24h</th>
-                          <th className="p-2 text-right" title="Type a dollar stake. Everything to the right is that stake at the executable price, after fees.">Stake $</th>
-                          <th className="p-2 text-right">Shares</th>
-                          <th className="p-2 text-right" title="What this leg returns if the day settles in this band.">If it hits</th>
-                          <th className="p-2 text-right">Net</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {bands.map(({ yes, no }) => {
-                          const o = (yes ?? no)!;
-                          const blocked = !(yes?.tradeable || no?.tradeable);
-                          if (blocked && !showUntradeable) return null;
-                          const key = `${o.band_id}-YES`;
-                          const raw = stakes[key] ?? "";
-                          const usd = parseFloat(raw);
-                          const valid = Number.isFinite(usd) && usd > 0 && yes?.market_price;
-                          const pos = valid ? buy(usd, yes!.market_price!, o.model_prob) : null;
-                          // Is the day's running max already inside this band?
-                          const inBand =
-                            lw?.running_max_c != null &&
-                            (o.band_lo == null || lw.running_max_c >= o.band_lo) &&
-                            (o.band_hi == null || lw.running_max_c < o.band_hi);
+                    return (
+                      <tr key={o.band_id} className={[
+                        "border-t border-border",
+                        blocked ? "opacity-60" : "hover:bg-panel2",
+                        inBand ? "bg-warn/5" : "",
+                      ].join(" ")}>
+                        <td className="whitespace-nowrap p-2 font-mono">
+                          {label}
+                          {inBand && <span className="ml-1.5 text-[10px] text-warn" title="The day's running maximum is currently inside this bucket.">← max</span>}
+                          {blocked && (
+                            <span className="ml-1.5 text-[9px] uppercase tracking-wide text-warn" title={o.block_reason ?? "blocked by the edge engine"}>
+                              blocked
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-2 text-right font-mono">{mkt === null ? "—" : fmtPct(mkt, 1)}</td>
+                        <td className="p-2 text-right font-mono text-accent">{fmtPct(yes?.model_prob, 1)}</td>
+                        <td className="p-2 text-right">
+                          <input
+                            inputMode="decimal"
+                            value={myProb[o.band_id] ?? ""}
+                            onChange={(e) => setMyProb((s) => ({ ...s, [o.band_id]: e.target.value }))}
+                            placeholder={yes?.model_prob != null ? (yes.model_prob * 100).toFixed(1) : "—"}
+                            className={`w-16 rounded border bg-panel2 px-1 py-0.5 text-right font-mono text-xs ${
+                              usingMine ? "border-warn text-warn" : "border-border text-muted"}`}
+                          />
+                        </td>
+                        <td className="p-2 text-right font-mono text-good">{fmtPrice(yes?.market_price)}</td>
+                        <td className="p-2 text-right font-mono text-bad">{fmtPrice(no?.market_price)}</td>
+                        <td className={`p-2 text-right font-mono ${o.thin_market ? "text-warn" : o.volume_usd ? "" : "text-muted"}`}
+                            title={[o.volume_source ? VOLUME_SOURCE_LABEL[o.volume_source] : "source unknown",
+                                    o.last_trade_at ? `last trade ${fmtAge(o.last_trade_at)}` : "no trades in the window"].join(" · ")}>
+                          {fmtCompactUsd(o.volume_usd)}{o.thin_market ? " ⚠" : ""}
+                        </td>
+                        <td className={`p-2 text-right font-mono ${capped ? "text-warn" : "text-muted"}`}
+                            title={yes?.ask_levels_source ? `ladder: ${LADDER_SOURCE_LABEL[yes.ask_levels_source]}` : ""}>
+                          {fmtUsd(yes?.fillable_usd_5c)}
+                        </td>
+                        <td className="p-2 text-right">
+                          <input inputMode="decimal" value={yesStakes[o.band_id] ?? ""}
+                            onChange={(e) => setYesStakes((s) => ({ ...s, [o.band_id]: e.target.value }))}
+                            placeholder="—" disabled={!yes?.market_price}
+                            className="w-20 rounded border border-good/40 bg-good/5 px-1.5 py-0.5 text-right font-mono text-xs text-text disabled:opacity-30" />
+                        </td>
+                        <td className="p-2 text-right">
+                          <input inputMode="decimal" value={noStakes[o.band_id] ?? ""}
+                            onChange={(e) => setNoStakes((s) => ({ ...s, [o.band_id]: e.target.value }))}
+                            placeholder="—" disabled={!no?.market_price}
+                            className="w-20 rounded border border-bad/40 bg-bad/5 px-1.5 py-0.5 text-right font-mono text-xs text-text disabled:opacity-30" />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-panel2 text-[11px]">
+                    <td className="p-2 font-semibold">Sum of Yes across {board.bands.length} buckets</td>
+                    <td className={`p-2 text-right font-mono font-semibold ${
+                      book === null ? "text-muted" : book < 0.97 ? "text-good" : book > 1.03 ? "text-warn" : "text-text"}`}>
+                      {book === null ? "—" : fmtPct(book, 1)}
+                    </td>
+                    <td colSpan={8} className="p-2 text-muted">
+                      {book === null ? "not enough priced buckets"
+                        : book < 0.97 ? `${fmtPct(1 - book, 1)} under par — buying the whole set is a guaranteed payoff before fees. Size to the thinnest leg.`
+                        : book > 1.03 ? `${fmtPct(book - 1, 1)} over par — the book charges a premium to hold any side.`
+                        : "coherent — exactly one bucket pays $1 and the prices agree"}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
 
-                          return (
-                            <tr
-                              key={o.band_id}
-                              className={[
-                                "border-t border-border",
-                                blocked ? "opacity-45" : "hover:bg-panel2",
-                                inBand ? "bg-warn/5" : "",
-                              ].join(" ")}
-                            >
-                              <td className="whitespace-nowrap p-2 font-mono">
-                                {o.band_label ?? fmtBandRange(o.band_lo, o.band_hi, unit, o.open_low, o.open_high)}
-                                {inBand && (
-                                  <span className="ml-1.5 text-[10px] text-warn" title="The day's running maximum is currently inside this band.">
-                                    ← max
-                                  </span>
-                                )}
-                              </td>
-                              <td className="p-2 text-right font-mono">{fmtPrice(yes?.market_price)}</td>
-                              <td className="p-2 text-right font-mono text-muted">{fmtPrice(no?.market_price)}</td>
-                              <td className="p-2 text-right font-mono">{fmtPct(o.model_prob)}</td>
-                              <td className={`p-2 text-right font-mono ${(yes?.edge_net_pp ?? 0) > 0 ? "text-good" : "text-muted"}`}>
-                                {fmtPp(yes?.edge_net_pp)}
-                              </td>
-                              <td
-                                className={`p-2 text-right font-mono ${yes?.ask_levels_source === "synthetic_tiers" ? "text-warn" : ""}`}
-                                title={yes?.ask_levels_source ? `ladder: ${LADDER_SOURCE_LABEL[yes.ask_levels_source]}` : ""}
-                              >
-                                {fmtUsd(yes?.fillable_usd_5c)}
-                                {yes?.ask_levels_source === "synthetic_tiers" ? " ~" : ""}
-                              </td>
-                              <td
-                                className={`p-2 text-right font-mono ${o.thin_market ? "text-warn" : o.volume_usd ? "" : "text-muted"}`}
-                                title={[
-                                  o.volume_source ? VOLUME_SOURCE_LABEL[o.volume_source] : "source unknown",
-                                  o.last_trade_at ? `last trade ${fmtAge(o.last_trade_at)}` : "no trades in the window",
-                                ].filter(Boolean).join(" · ")}
-                              >
-                                {fmtCompactUsd(o.volume_usd)}{o.thin_market ? " ⚠" : ""}
-                              </td>
-                              <td className="p-2 text-right">
-                                <input
-                                  inputMode="decimal"
-                                  value={raw}
-                                  onChange={(e) => setStakes((s) => ({ ...s, [key]: e.target.value }))}
-                                  placeholder="—"
-                                  disabled={!yes?.market_price}
-                                  className="w-20 rounded border border-border bg-panel2 px-1.5 py-0.5 text-right font-mono text-xs text-text disabled:opacity-40"
-                                />
-                              </td>
-                              <td
-                                className="p-2 text-right font-mono text-muted"
-                                title={pos ? `fee ${fmtUsd(pos.fee)} (${fmtPct(feeRateAt(yes!.market_price!), 2)} of notional), taken out of the stake` : ""}
-                              >
-                                {pos === null ? "—" : pos.shares.toFixed(0)}
-                              </td>
-                              <td className="p-2 text-right font-mono">{pos === null ? "—" : fmtUsd(pos.payout)}</td>
-                              <td className={`p-2 text-right font-mono ${pos && pos.profit > 0 ? "text-good" : "text-muted"}`}>
-                                {pos === null ? "—" : fmtUsd(pos.profit, { signed: true })}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-
-                      {/* --- the coherence check ------------------------------------- */}
-                      <tfoot>
-                        <tr className="border-t-2 border-border bg-panel2 text-[11px]">
-                          <td className="p-2 font-semibold">Sum of YES across {priced} band{priced === 1 ? "" : "s"}</td>
-                          <td
-                            className={`p-2 text-right font-mono font-semibold ${
-                              coherence === null ? "text-muted"
-                                : coherence < 0.97 ? "text-good"
-                                : coherence > 1.03 ? "text-warn"
-                                : "text-text"
-                            }`}
-                            title={
-                              coherence === null ? "Needs at least two priced bands."
-                                : coherence < 0.97
-                                ? "Under 100c: buying every band costs less than the $1 exactly one of them pays. That is the combination arbitrage - if every leg fills."
-                                : coherence > 1.03
-                                ? "Over 100c: the book is charging a premium to hold any side. Selling the full set is the mirror trade, subject to the same fill risk."
-                                : "Within 3c of 100c - coherent, no free money here."
-                            }
-                          >
-                            {coherence === null ? "—" : fmtPrice(coherence)}
-                          </td>
-                          <td colSpan={9} className="p-2 text-muted">
-                            {coherence === null
-                              ? "not enough priced bands to check"
-                              : coherence < 0.97
-                              ? `${fmtPrice(1 - coherence)} under par — buying the full set is a guaranteed payoff before fees. Size to the thinnest leg.`
-                              : coherence > 1.03
-                              ? `${fmtPrice(coherence - 1)} over par.`
-                              : "coherent"}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                </section>
-              );
-            })}
+            {/* ---- if the day lands on ... -------------------------------- */}
+            {staked ? (
+              <OutcomeLadder result={result} unit={unit} />
+            ) : (
+              <div className="rounded border border-dashed border-border p-4 text-center text-xs leading-relaxed text-muted">
+                <b className="text-text">Stake a bucket to see the ticket.</b> Type dollars in{" "}
+                <span className="text-good">Bet Yes</span> or <span className="text-bad">Bet No</span>{" "}
+                and this becomes a ladder of what the whole position returns under every outcome —
+                which is the only view that shows what a NO leg does, since one No stake pays out on
+                every bucket except its own.
+              </div>
+            )}
           </div>
         )}
       </DataState>
 
       <p className="max-w-3xl text-[11px] leading-relaxed text-muted">
-        Stakes are a calculator, not an order — nothing here places a trade. Every figure is{" "}
-        <b>net</b>: the taker fee is <code>shares × 0.05 × p × (1 − p)</code>, taken out of the
-        stake, so &ldquo;$100&rdquo; means $100 at risk. That fee peaks at 1.25% around 50¢ and
-        falls to almost nothing at both extremes — resting a limit order instead pays{" "}
-        <b>zero</b> and earns a rebate. Returns assume the whole stake fills at the executable
-        price shown; a stake larger than <b>Depth 5c</b> will not.
+        Nothing here places an order. Fills are capped at each bucket&apos;s measured{" "}
+        <b>Depth</b> — a stake larger than the book buys the book, not the stake, and the ticket says
+        so rather than quoting an imaginary fill. Fees are the real taker schedule,{" "}
+        <code>shares × 0.05 × p × (1 − p)</code>, taken out of the stake. Resting a limit order
+        instead pays zero and earns a rebate.
       </p>
     </div>
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone?: "muted" | "accent" }) {
+/**
+ * "If the day lands on ..." - one row per bucket, the whole ticket's P&L.
+ * The bar is centred: profit right of the line, loss left, scaled to the
+ * biggest swing on the ticket so the shape of the position is readable at a
+ * glance rather than requiring the numbers to be compared.
+ */
+function OutcomeLadder({ result, unit }: { result: ReturnType<typeof solveBoard>; unit: Unit }) {
+  const span = Math.max(Math.abs(result.worst), Math.abs(result.best), 1);
   return (
-    <span>
-      <span className="text-muted">{label} </span>
-      <span className={tone === "muted" ? "text-muted" : tone === "accent" ? "text-accent" : "text-text"}>{value}</span>
-    </span>
+    <div className="rounded border border-border bg-panel p-3">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-sm font-semibold">If the day lands on…</h3>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px]">
+          <span><span className="text-muted">cost </span>{fmtUsd(result.cost)}
+            {result.anyCapped && (
+              <span className="ml-1 text-warn" title={`You asked for ${fmtUsd(result.requested)}. The rest is more than the book can absorb inside 5c.`}>
+                of {fmtUsd(result.requested)} requested
+              </span>
+            )}
+          </span>
+          <span><span className="text-muted">worst </span>
+            <span className={result.worst >= 0 ? "text-good" : "text-bad"}>{fmtUsd(result.worst, { signed: true })}</span>
+          </span>
+          <span><span className="text-muted">best </span>
+            <span className="text-good">{fmtUsd(result.best, { signed: true })}</span>
+          </span>
+          {result.ev !== null && (
+            <span title="Sum of probability x P&L across every outcome, using Your % where you set it and the model's otherwise.">
+              <span className="text-muted">EV </span>
+              <span className={result.ev > 0 ? "text-good" : "text-bad"}>{fmtUsd(result.ev, { signed: true })}</span>
+            </span>
+          )}
+        </div>
+      </div>
+
+      {result.locked && (
+        <div className="mb-2 rounded border border-good/40 bg-good/10 px-2 py-1.5 text-[11px] text-good">
+          <b>Locked.</b> Every outcome on this ticket makes money — the weather cannot take it away.
+          It is only a lock if every leg actually fills, so size to the thinnest one.
+        </div>
+      )}
+
+      <div className="space-y-1">
+        {result.outcomes.map((o) => {
+          const pos = o.pnl >= 0;
+          const w = (Math.abs(o.pnl) / span) * 48;   // half-width percentage
+          return (
+            <div key={o.band_id} className="flex items-center gap-2 text-[11px]">
+              <span className="w-24 shrink-0 truncate font-mono text-muted">{o.label}</span>
+              <span className="w-12 shrink-0 text-right font-mono text-muted"
+                    title="The probability this outcome is weighted by.">
+                {o.prob === null ? "—" : fmtPct(o.prob, 0)}
+              </span>
+              <div className="relative h-3 flex-1 rounded bg-panel2">
+                <div className="absolute inset-y-0 left-1/2 w-px bg-border" />
+                <div
+                  className={`absolute inset-y-0 rounded ${pos ? "bg-good/70" : "bg-bad/70"}`}
+                  style={pos ? { left: "50%", width: `${w}%` } : { right: "50%", width: `${w}%` }}
+                />
+              </div>
+              <span className={`w-20 shrink-0 text-right font-mono ${pos ? "text-good" : "text-bad"}`}>
+                {fmtUsd(o.pnl, { signed: true })}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="mt-2 text-[10px] leading-relaxed text-muted">
+        Exactly one bucket resolves Yes. A <span className="text-bad">Bet No</span> pays out on every
+        row except its own, which is why one No stake moves the whole ladder.
+      </p>
+    </div>
   );
 }

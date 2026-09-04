@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
+import { useCityStats } from "@/lib/useCityStats";
+import StatsNotice from "@/components/StatsNotice";
 import { DataState, InlineError } from "@/components/DataState";
 import { Empty, Histogram, LineChart, Scatter } from "@/components/charts";
 import { fmtCompactUsd, fmtInt, fmtPct, fmtPrice, fmtUsd, pnlColor } from "@/lib/format";
@@ -30,7 +32,7 @@ export default function AnalyticsPage() {
   const oppQ = useQuery<Opportunity[]>(
     () => supabase.from("v_opportunities").select("*").limit(4000), [], 60000
   );
-  const statsQ = useQuery<CityStats[]>(() => supabase.from("v_city_stats").select("*"), [], 60000);
+  const statsQ = useCityStats(60000);
   const tradesQ = useQuery<TradeRow[]>(
     () => supabase.from("paper_trades").select("strategy_id,net_pnl,gross_pnl,closed_at").not("closed_at", "is", null).order("closed_at", { ascending: true }),
     []
@@ -63,16 +65,7 @@ export default function AnalyticsPage() {
         </p>
       </div>
 
-      {/* A missing v_city_stats degrades quietly - grey dots instead of heat
-          colours - which reads as "nothing changed" rather than "one file has
-          not been run". Say which it is. */}
-      {statsQ.error && /does not exist|not find|schema cache/i.test(statsQ.error) && (
-        <div className="rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn">
-          <b>Run <code>sql/ad4_17_city_stats.sql</code>.</b> The charts below work without it, but
-          every city renders grey instead of coloured by how hot today is, and the liquidity plot has
-          no depth figures. It is the last file in <code>docs/GO_LIVE.md</code> step 3.
-        </div>
-      )}
+      <StatsNotice mode={statsQ.mode} viewError={statsQ.viewError} />
 
       {/* ============================================ model vs market ==== */}
       <section>
@@ -91,7 +84,7 @@ export default function AnalyticsPage() {
           onRetry={oppQ.refresh}
         >
           <div className="rounded border border-border bg-panel p-3">
-            <ModelVsMarket rows={yes} stats={statsQ.data ?? []} />
+            <ModelVsMarket rows={yes} stats={statsQ.rows} />
           </div>
         </DataState>
       </section>
@@ -177,7 +170,7 @@ export default function AnalyticsPage() {
         </p>
         <DataState
           loading={statsQ.loading} error={statsQ.error}
-          isEmpty={(statsQ.data ?? []).length === 0}
+          isEmpty={(statsQ.rows).length === 0}
           emptyTitle="No liquidity data yet"
           emptyBody={<><code>derived_capacity</code> comes from <b>Derived Recompute</b>; volume comes from <code>trades_observed</code>, which P0.4 fills.</>}
           onRetry={statsQ.refresh}
@@ -189,7 +182,7 @@ export default function AnalyticsPage() {
               yLabel="Book depth inside 5¢ (USD)"
               xTickFormat={(v) => fmtCompactUsd(v)}
               yTickFormat={(v) => fmtCompactUsd(v)}
-              points={(statsQ.data ?? [])
+              points={(statsQ.rows)
                 .filter((c) => (c.volume_24h ?? 0) > 0 || (c.depth_5c ?? 0) > 0)
                 .map((c) => ({
                   x: Math.max(c.volume_24h ?? 0, 1),
