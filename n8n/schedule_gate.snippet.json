@@ -1,0 +1,152 @@
+{
+ "name": "AD4 schedule gate (paste into an existing workflow)",
+ "nodes": [
+  {
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "u",
+       "name": "supabase_url",
+       "value": "",
+       "type": "string"
+      },
+      {
+       "id": "k",
+       "name": "service_key",
+       "value": "",
+       "type": "string"
+      },
+      {
+       "id": "j",
+       "name": "job",
+       "value": "P0.3_book_volume_snapshot",
+       "type": "string"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "id": "gate-cfg",
+   "name": "Gate config",
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    0,
+    0
+   ],
+   "notes": "Self-contained on purpose. The gate does not read your workflow's existing credential node, because it cannot know what you called it. Fill in the two boxes, and set `job` to the key this workflow uses in settings.workflow_schedules: P0.2_market_discovery, P0.3_book_volume_snapshot, P0.4_trade_history or P0.5_refresh_rules_text."
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Gate config').first().json.supabase_url }}/rest/v1/rpc/should_run",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Gate config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Gate config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ p_job: $('Gate config').first().json.job, p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+    "options": {
+     "timeout": 10000,
+     "response": {
+      "response": {
+       "neverError": true
+      }
+     }
+    }
+   },
+   "id": "gate-ask",
+   "name": "Check schedule",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    200,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the\n// saving is here: returning no items stops every node below, and the\n// execution ends having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql).\n// A manual or webhook run always proceeds - a Run button that obeyed the\n// cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A gate that fails CLOSED would silently disable the workflow the first time\n// the settings row is missing or the RPC is absent - and a job that stopped\n// running for a reason nobody can see is worse than one that runs too often.\n// Fail OPEN, and say so.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  return [{ json: { __skipped: true, reason: decision.reason || 'not due' } }];\n}\nreturn $input.all();"
+   },
+   "id": "gate-decide",
+   "name": "Run now?",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    400,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "// Returning [] stops the workflow here. Everything below this node is\n// skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
+   },
+   "id": "gate-stop",
+   "name": "Stop if skipped",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    600,
+    0
+   ]
+  }
+ ],
+ "connections": {
+  "Gate config": {
+   "main": [
+    [
+     {
+      "node": "Check schedule",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Check schedule": {
+   "main": [
+    [
+     {
+      "node": "Run now?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Run now?": {
+   "main": [
+    [
+     {
+      "node": "Stop if skipped",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "pinData": {},
+ "meta": {
+  "instanceId": "ad4"
+ }
+}
