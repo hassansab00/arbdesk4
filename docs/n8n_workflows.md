@@ -39,6 +39,7 @@ shows is already tight. GitHub Actions has no per-run execution quota.
 | P1.1 Live Weather Monitor (notify) | **n8n**, webhook-triggered | `n8n/P1.1_live_weather_alerts.template.json` |
 | P1.2 NWS Monitor (observations, alerts, solar transit) | **n8n**, every 2h + on demand | `n8n/P1.2_nws_monitor.template.json` |
 | P1.3 NWS Forecast (second forecast model) | **n8n**, every 6h | `n8n/P1.3_nws_forecast.template.json` |
+| P1.4 NWS Gridpoint (forecast conditions) | **n8n**, every 6h | `n8n/P1.4_nws_gridpoint.template.json` |
 | P2.1 Probability + Edge Pipeline | GitHub Actions, 4x/day | `.github/workflows/probabilities.yml` -> `probability_engine.py` + `edge_engine.py` |
 | P2.2 Signal Engine | GitHub Actions, 4x/day | `.github/workflows/signals.yml` -> `scripts/signals.py` |
 | P2.3 Settlement Sweep | GitHub Actions, daily | `.github/workflows/settlement.yml` -> `scripts/settlement.py` |
@@ -185,18 +186,19 @@ Three logical triggers in one workflow, per the spec's own table:
 | P1.1 Weather Alerts (notify only) | event-driven | ~450 worst case |
 | P1.2 NWS Monitor | 12x/day | 360 |
 | P1.3 NWS Forecast | 4x/day | 120 |
+| P1.4 NWS Gridpoint | 4x/day | 120 |
 | P3.1 Email Digests | 2x/day | ~60 |
 | P4.1 Watchdog | 4x/day | 120 |
-| **TOTAL** | | **~1,410 / 2,000** |
+| **TOTAL** | | **~1,530 / 2,000** |
 
-Still inside budget, with ~590 spare for manual Run-button executions - and
+Still inside budget, with ~470 spare for manual Run-button executions - and
 the 4x/day polling loops of P2.1/P2.2/P2.3/P2.4 are on GitHub Actions rather
 than stacked on top of this, which is what leaves the room.
 
 **This is why P1.2 runs every 2 hours and not every 30 minutes.**
 api.weather.gov imposes no rate limit of its own - the constraint is entirely
 n8n's execution count. At 30-minute polling P1.2 alone would be 1,440/month
-and the total ~2,490, i.e. over the cap; the first things to fail would be
+and the total ~2,610, i.e. over the cap; the first things to fail would be
 the digests and the watchdog, silently, at the end of a month. Two hours is
 360. The Workflows page's Run button covers "I want a reading now" for one
 execution each time, which is the shape the freshness requirement actually

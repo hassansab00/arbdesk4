@@ -1,0 +1,618 @@
+{
+ "name": "AD4 P1.4 - NWS Gridpoint",
+ "active": false,
+ "settings": {
+  "executionOrder": "v1"
+ },
+ "nodes": [
+  {
+   "id": "why",
+   "name": "Note why",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -560,
+    -60
+   ],
+   "parameters": {
+    "content": "## What this is for\n\nad4_21 established that a day's maximum is largely settled by conditions\nobservable in the morning: dewpoint depression, cloud, rain. But those come\nfrom `weather_observations`, so the desk could only EXPLAIN a day after its\nmorning had happened. It could not use them to predict tomorrow.\n\napi.weather.gov already forecasts every one of them. This reads the RAW\ngridpoint - `/gridpoints/{wfo}/{x},{y}`, not the `/forecast` convenience\nendpoint P1.3 uses - which returns about forty time series. AD4 was taking\nthe temperature out of it and throwing the rest away.\n\nThe columns written here are named to MATCH v_city_day_features exactly, so\nthe model fitted on observed conditions applies to forecast ones with no\ntranslation layer. That is what turns \"explain today\" into \"predict\ntomorrow\".",
+    "width": 480,
+    "height": 420
+   }
+  },
+  {
+   "id": "traps",
+   "name": "Note traps",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -560,
+    400
+   ],
+   "parameters": {
+    "content": "## Three unit traps, all handled\n\nThe raw gridpoint does NOT speak in the units the observations table uses,\nand every one of these would be wrong in a way that still looks plausible:\n\n  skyCover      NWS gives PERCENT (0-100). weather_observations.cloud_cover\n                is OKTAS (0-8), because that is what METAR reports. Storing\n                a percent in an oktas column would make an overcast day read\n                as 100 oktas and every cloud coefficient meaningless.\n\n  quantitativePrecipitation   millimetres. The observed column is INCHES.\n\n  windSpeed     km/h. The observed column is KNOTS.\n\nAnd `validTime` is an ISO interval, not an instant:\n`2026-09-04T12:00:00+00:00/PT6H` means this one value covers SIX HOURS. A\nparser that treated it as a single hour would weight a six-hour block the\nsame as a one-hour block and skew every daily average.",
+    "width": 480,
+    "height": 460
+   }
+  },
+  {
+   "id": "trigger-manual",
+   "name": "Manual Trigger",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {}
+  },
+  {
+   "id": "trigger-schedule",
+   "name": "Schedule Trigger",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    160
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "hours",
+       "hoursInterval": 6
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "trigger-webhook",
+   "name": "Webhook Trigger",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2,
+   "position": [
+    0,
+    320
+   ],
+   "parameters": {
+    "httpMethod": "POST",
+    "path": "ad4-nws-gridpoint",
+    "responseMode": "responseNode",
+    "options": {
+     "allowedOrigins": "*"
+    }
+   },
+   "webhookId": "ad4-nws-gridpoint"
+  },
+  {
+   "id": "config",
+   "name": "Config",
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    240,
+    100
+   ],
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "1",
+       "name": "supabase_url",
+       "type": "string",
+       "value": ""
+      },
+      {
+       "id": "2",
+       "name": "service_key",
+       "type": "string",
+       "value": ""
+      },
+      {
+       "id": "3",
+       "name": "user_agent",
+       "type": "string",
+       "value": "ArbDesk4 (github.com/hassansab00/arbdesk4)"
+      },
+      {
+       "id": "4",
+       "name": "max_horizon_days",
+       "type": "string",
+       "value": "7"
+      },
+      {
+       "id": "5",
+       "name": "peak_window",
+       "type": "string",
+       "value": "12-18"
+      },
+      {
+       "id": "6",
+       "name": "morning_hour",
+       "type": "string",
+       "value": "8"
+      },
+      {
+       "id": "7",
+       "name": "max_cities_per_run",
+       "type": "string",
+       "value": "0"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "load-cities",
+   "name": "Load cities",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    460,
+    100
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/cities?select=city_key,timezone,nws_supported,nws_grid_wfo,nws_grid_x,nws_grid_y&nws_grid_wfo=not.is.null&limit=200",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      }
+     ]
+    }
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "build-requests",
+   "name": "Build requests",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    680,
+    100
+   ],
+   "parameters": {
+    "jsCode": "// One item per city that has a cached NWS gridpoint. P1.2 and P1.3 write\n// nws_grid_wfo/x/y onto `cities`; this needs no /points lookup of its own.\nconst cfg = $('Config').first().json;\nconst cities = $('Load cities').all().map(i => i.json).flat();\nconst cap = Number(cfg.max_cities_per_run || 0) || 0;\n\nconst out = [];\nfor (const c of cities) {\n  if (!c || !c.city_key) continue;\n  if (c.nws_supported === false) continue;\n  if (!c.nws_grid_wfo || c.nws_grid_x == null || c.nws_grid_y == null) continue;\n  out.push({ json: {\n    city_key: c.city_key,\n    timezone: c.timezone || 'UTC',\n    grid: `${c.nws_grid_wfo}/${c.nws_grid_x},${c.nws_grid_y}`,\n    url: `https://api.weather.gov/gridpoints/${c.nws_grid_wfo}/${c.nws_grid_x},${c.nws_grid_y}`,\n  }});\n  if (cap && out.length >= cap) break;\n}\nif (out.length === 0) {\n  throw new Error(\n    'No city has a cached NWS gridpoint. P1.2 or P1.3 must run first - they ' +\n    'resolve /points and store nws_grid_wfo/x/y on `cities`.');\n}\nreturn out;"
+   }
+  },
+  {
+   "id": "fetch-grid",
+   "name": "Fetch gridpoint",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    900,
+    100
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "={{ $json.url }}",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "User-Agent",
+       "value": "={{ $('Config').first().json.user_agent }}"
+      },
+      {
+       "name": "Accept",
+       "value": "application/geo+json"
+      }
+     ]
+    },
+    "options": {
+     "batching": {
+      "batch": {
+       "batchSize": 10,
+       "batchInterval": 200
+      }
+     },
+     "timeout": 20000,
+     "response": {
+      "response": {
+       "neverError": true
+      }
+     }
+    }
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "build-rows",
+   "name": "Build rows",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1100,
+    100
+   ],
+   "parameters": {
+    "jsCode": "// Turn ~40 forecast series into one row per city-day, in the units the\n// observations table already uses.\nconst cfg = $('Config').first().json;\nconst horizon = Number(cfg.max_horizon_days || 7);\nconst [winFrom, winTo] = String(cfg.peak_window || '12-18').split('-').map(Number);\nconst morningHour = Number(cfg.morning_hour || 8);\n\nconst reqs = $('Build requests').all().map(i => i.json);\nconst res  = $('Fetch gridpoint').all().map(i => i.json);\n\nif (res.length !== reqs.length) {\n  throw new Error(\n    `Gridpoint fetch returned ${res.length} responses for ${reqs.length} cities. ` +\n    `Rows pair by position, so a mismatch would file one city's forecast under ` +\n    `another. Nothing written.`);\n}\n\n// A validTime is an ISO INTERVAL - \"2026-09-04T12:00:00+00:00/PT6H\" - so one\n// value can cover six hours. Expanding it is not optional: treating it as a\n// single hour weights a six-hour block the same as a one-hour block and skews\n// every daily average it lands in.\nfunction expand(validTime) {\n  const [startStr, dur] = String(validTime || '').split('/');\n  const start = Date.parse(startStr);\n  if (!Number.isFinite(start)) return [];\n  // PnDTnH: days and hours are the only parts NWS uses here.\n  const m = /^P(?:(\\d+)D)?(?:T(?:(\\d+)H)?(?:(\\d+)M)?)?$/.exec(dur || 'PT1H');\n  const hours = m ? (Number(m[1] || 0) * 24 + Number(m[2] || 0) + (Number(m[3] || 0) >= 30 ? 1 : 0)) : 1;\n  const out = [];\n  for (let h = 0; h < Math.max(1, hours); h++) out.push(start + h * 3600_000);\n  return out;\n}\n\n// ACCUMULATING vs INSTANTANEOUS series - the subtlety that makes expanding an\n// interval correct for one and wrong for the other.\n//\n// Temperature over a six-hour block means \"it is 22C for each of these six\n// hours\", so every expanded hour carries 22 and averaging works.\n// Precipitation over a six-hour block means \"25mm falls across these six\n// hours IN TOTAL\". Give every expanded hour 25mm and summing the day returns\n// 150mm - which is exactly the bug this comment exists because of: the first\n// version reported 6 inches of rain where the forecast said one.\n//\n// So an accumulating series is divided by the hours it spans, and summing the\n// expanded points recovers the block total.\nconst ACCUMULATING = new Set(['quantitativePrecipitation', 'snowfallAmount', 'iceAccumulation']);\n\n// The local calendar day and hour for an instant, in the city's own zone -\n// which is the day a daily maximum belongs to.\nfunction localParts(ms, tz) {\n  try {\n    const p = new Intl.DateTimeFormat('en-CA', {\n      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',\n      hour: '2-digit', hour12: false,\n    }).formatToParts(new Date(ms));\n    const g = (t) => p.find(x => x.type === t)?.value;\n    return { date: `${g('year')}-${g('month')}-${g('day')}`, hour: Number(g('hour')) };\n  } catch {\n    const d = new Date(ms);\n    return { date: d.toISOString().slice(0, 10), hour: d.getUTCHours() };\n  }\n}\n\n// ---- unit conversions, each one a trap that still looks plausible if wrong -\nconst pctToOktas = (v) => v === null ? null : (v / 100) * 8;   // NWS %, we store oktas\nconst mmToInches = (v) => v === null ? null : v / 25.4;        // NWS mm, we store inches\nconst kmhToKnots = (v) => v === null ? null : v / 1.852;       // NWS km/h, we store knots\n\nfunction series(props, name) {\n  const s = props?.[name];\n  if (!s || !Array.isArray(s.values)) return [];\n  const uom = String(s.uom || '');\n  const accumulates = ACCUMULATING.has(name);\n  return s.values.flatMap(v => {\n    if (v?.value === null || v?.value === undefined) return [];\n    let val = Number(v.value);\n    if (!Number.isFinite(val)) return [];\n    // The gridpoint states its own unit. Honour it rather than assume degC:\n    // a server answering degF into a Celsius column is the same class of bug\n    // as the three conversions above.\n    if (name.toLowerCase().includes('temperature') || name === 'dewpoint') {\n      if (uom.includes('degF')) val = (val - 32) * 5 / 9;\n    }\n    const hours = expand(v.validTime);\n    if (!hours.length) return [];\n    // Spread an accumulating total across the hours it covers, so a sum over\n    // the day recovers the forecast rather than multiplying it by the block\n    // length.\n    const per = accumulates ? val / hours.length : val;\n    return hours.map(ms => ({ ms, val: per }));\n  });\n}\n\nconst rows = [];\nlet ok = 0, failed = 0, partial = 0;\nconst runAtFallback = new Date().toISOString();\n\nfor (let i = 0; i < reqs.length; i++) {\n  const req = reqs[i], r = res[i] || {};\n  const props = r.properties || {};\n  if (!props.temperature) { failed++; continue; }\n\n  if (props.gridId && !req.grid.startsWith(props.gridId)) {\n    throw new Error(\n      `Gridpoint ${props.gridId} came back where ${req.grid} (${req.city_key}) was ` +\n      `expected. Responses are out of order - nothing written.`);\n  }\n\n  const runAt = props.updateTime || runAtFallback;\n  const tz = req.timezone;\n\n  // Bucket every series by local day.\n  const byDay = new Map();\n  const put = (key, ms, val) => {\n    const { date, hour } = localParts(ms, tz);\n    if (!byDay.has(date)) byDay.set(date, { hours: new Set(), vals: {} });\n    const d = byDay.get(date);\n    d.hours.add(hour);\n    (d.vals[key] = d.vals[key] || []).push({ hour, val });\n  };\n\n  for (const p of series(props, 'temperature'))                 put('temp', p.ms, p.val);\n  for (const p of series(props, 'dewpoint'))                    put('dew', p.ms, p.val);\n  for (const p of series(props, 'relativeHumidity'))            put('rh', p.ms, p.val);\n  for (const p of series(props, 'skyCover'))                    put('sky', p.ms, p.val);\n  for (const p of series(props, 'windSpeed'))                   put('wind', p.ms, p.val);\n  for (const p of series(props, 'probabilityOfPrecipitation'))  put('pop', p.ms, p.val);\n  for (const p of series(props, 'quantitativePrecipitation'))   put('qpf', p.ms, p.val);\n  for (const p of series(props, 'apparentTemperature'))         put('app', p.ms, p.val);\n\n  const days = [...byDay.keys()].sort();\n  if (!days.length) { failed++; continue; }\n  const today = days[0];\n  let wrote = 0;\n\n  for (const date of days) {\n    const d = byDay.get(date);\n    // The same peak-window rule P1.3 uses: a day missing its afternoon has an\n    // understated maximum, and a low max invents disagreement out of nothing.\n    let covered = true;\n    for (let h = winFrom; h <= winTo; h++) if (!d.hours.has(h)) { covered = false; break; }\n    if (!covered) { partial++; continue; }\n\n    const lead = Math.round((Date.parse(date + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86400000);\n    if (lead < 0 || lead > horizon) continue;\n\n    const at = (k, hour) => {\n      const list = d.vals[k] || [];\n      if (!list.length) return null;\n      let best = list[0];\n      for (const v of list) if (Math.abs(v.hour - hour) < Math.abs(best.hour - hour)) best = v;\n      return best.val;\n    };\n    const agg = (k, fn, filter) => {\n      let list = d.vals[k] || [];\n      if (filter) list = list.filter(v => filter(v.hour));\n      if (!list.length) return null;\n      const vals = list.map(v => v.val);\n      return fn === 'max' ? Math.max(...vals)\n           : fn === 'min' ? Math.min(...vals)\n           : fn === 'sum' ? vals.reduce((s, v) => s + v, 0)\n           : vals.reduce((s, v) => s + v, 0) / vals.length;\n    };\n    const daytime = (h) => h >= 9 && h <= 17;\n\n    const mTemp = at('temp', morningHour);\n    const mDew = at('dew', morningHour);\n    const round = (v, n) => v === null || v === undefined ? null : Number(v.toFixed(n));\n\n    rows.push({\n      city_key: req.city_key, for_date: date, run_at: runAt,\n      source: 'api.weather.gov', lead_days: lead,\n      forecast_max_c: round(agg('temp', 'max'), 2),\n      forecast_min_c: round(agg('temp', 'min'), 2),\n      apparent_max_c: round(agg('app', 'max'), 2),\n      morning_temp_c: round(mTemp, 2),\n      morning_dewpoint_c: round(mDew, 2),\n      dewpoint_depression_c: (mTemp !== null && mDew !== null) ? round(mTemp - mDew, 2) : null,\n      morning_humidity: round(at('rh', morningHour), 1),\n      cloud_mean: round(pctToOktas(agg('sky', 'avg', daytime)), 2),\n      cloud_max: round(pctToOktas(agg('sky', 'max', daytime)), 2),\n      wind_mean: round(kmhToKnots(agg('wind', 'avg', daytime)), 2),\n      wind_max: round(kmhToKnots(agg('wind', 'max', daytime)), 2),\n      precip_total: round(mmToInches(agg('qpf', 'sum')), 4),\n      precip_probability: round(agg('pop', 'max'), 0),\n      n_hours: d.hours.size,\n    });\n    wrote++;\n  }\n  if (wrote) ok++; else failed++;\n}\n\nreturn [{ json: { rows, n_rows: rows.length, cities_ok: ok, cities_failed: failed,\n                  partial_days: partial, requested: reqs.length } }];"
+   }
+  },
+  {
+   "id": "guard",
+   "name": "Guard: did anything parse?",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1300,
+    100
+   ],
+   "parameters": {
+    "jsCode": "const p = $('Build rows').first().json;\nif (p.n_rows === 0) {\n  throw new Error(\n    `Parsed 0 forecast day(s) from ${p.requested} cities (${p.cities_failed} failed). ` +\n    `Nothing written. If every city failed, check that cities.nws_grid_wfo/x/y are ` +\n    `populated - P1.2 or P1.3 fills them.`);\n}\nreturn [{ json: p }];"
+   }
+  },
+  {
+   "id": "write",
+   "name": "Write forecast features",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1500,
+    100
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/weather_forecast_features?on_conflict=city_key,for_date,run_at",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      },
+      {
+       "name": "Prefer",
+       "value": "resolution=merge-duplicates,return=minimal"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.rows) }}"
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "summary",
+   "name": "Summary",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1700,
+    100
+   ],
+   "parameters": {
+    "jsCode": "const p = $('Build rows').first().json;\nconst rows = p.n_rows || 0;\nconst summary =\n  `AD4 P1.4: ${rows} forecast-condition day(s) for ${p.cities_ok} cities` +\n  (p.cities_failed ? `, ${p.cities_failed} failed` : '') +\n  (p.partial_days ? `, ${p.partial_days} partial day(s) skipped` : '') + '.';\nconst status = rows > 0 ? (p.cities_failed ? 'attention' : 'ok') : 'attention';\nconst detail = { cities_ok: p.cities_ok, cities_failed: p.cities_failed,\n                 partial_days: p.partial_days, requested: p.requested };\nreturn [{ json: {\n  summary, status, rows,\n  log: { p_job: 'P1.4_nws_gridpoint', p_status: status, p_rows: rows,\n         p_detail: { ...detail, summary, trigger: $execution.mode, execution_id: $execution.id } },\n} }];"
+   }
+  },
+  {
+   "id": "log-run",
+   "name": "Log run",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1900,
+    100
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.log) }}"
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "respond",
+   "name": "Respond",
+   "type": "n8n-nodes-base.respondToWebhook",
+   "typeVersion": 1,
+   "position": [
+    2100,
+    100
+   ],
+   "parameters": {
+    "respondWith": "json",
+    "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
+   }
+  },
+  {
+   "id": "sched-check",
+   "name": "Check schedule",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    430,
+    -30
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/should_run",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ p_job: \"P1.4_nws_gridpoint\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+    "options": {
+     "timeout": 10000,
+     "response": {
+      "response": {
+       "neverError": true
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "sched-gate",
+   "name": "Run now?",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    620,
+    -30
+   ],
+   "parameters": {
+    "jsCode": "// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
+   }
+  },
+  {
+   "id": "sched-stop",
+   "name": "Stop if skipped",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    620,
+    -30
+   ],
+   "parameters": {
+    "jsCode": "// Returning [] stops the workflow here. Everything below this node\n// is skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
+   }
+  }
+ ],
+ "connections": {
+  "Manual Trigger": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Schedule Trigger": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Webhook Trigger": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "Check schedule",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Load cities": {
+   "main": [
+    [
+     {
+      "node": "Build requests",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build requests": {
+   "main": [
+    [
+     {
+      "node": "Fetch gridpoint",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Fetch gridpoint": {
+   "main": [
+    [
+     {
+      "node": "Build rows",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build rows": {
+   "main": [
+    [
+     {
+      "node": "Guard: did anything parse?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Guard: did anything parse?": {
+   "main": [
+    [
+     {
+      "node": "Write forecast features",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Write forecast features": {
+   "main": [
+    [
+     {
+      "node": "Summary",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Summary": {
+   "main": [
+    [
+     {
+      "node": "Log run",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Log run": {
+   "main": [
+    [
+     {
+      "node": "Respond",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Check schedule": {
+   "main": [
+    [
+     {
+      "node": "Run now?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Run now?": {
+   "main": [
+    [
+     {
+      "node": "Stop if skipped",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Stop if skipped": {
+   "main": [
+    [
+     {
+      "node": "Load cities",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ }
+}

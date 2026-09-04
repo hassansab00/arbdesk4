@@ -1,6 +1,6 @@
 # n8n setup
 
-9 workflow files. Import them, fill in 2 boxes, press play.
+10 workflow files. Import them, fill in 2 boxes, press play.
 
 ---
 
@@ -15,6 +15,7 @@
 | `P1.1_live_weather_alerts` | Emails you when the weather spikes. | when it happens |
 | `P1.2_nws_monitor` | Reads the National Weather Service directly: the temperature, any heat warning, and when the sun peaks today. | every 2h, or on demand |
 | `P1.3_nws_forecast` | The government's own forecast, as a second opinion next to Open-Meteo. | every 6h |
+| `P1.4_nws_gridpoint` | The forecast *conditions* — cloud, dewpoint, wind, rain — which is what actually moves the temperature. | every 6h |
 | `P3.1_email_digests` | Morning brief + end of day report. | 04:00 and 21:00 UTC |
 | `P4.1_health_watchdog` | Emails you if something broke. Silent when fine. | every 6h |
 
@@ -32,28 +33,30 @@ tables at the same time.** That is the thing that breaks your data.
 So: import them, but leave them **OFF**. Test each one. Only then turn the
 old one off and the new one on. Step 5 below.
 
-P1.1, P1.2, P1.3, P3.1 and P4.1 are new. Nothing to clash with. Just import
+P1.1, P1.2, P1.3, P1.4, P3.1 and P4.1 are new. Nothing to clash with. Just import
 and go.
 
 ---
 
 ## Step 1 — Run the SQL
 
-In Supabase, SQL Editor, paste and run these two, in order:
+In Supabase, SQL Editor, paste and run these, in order:
 
 1. **`sql/ad4_14_workflows.sql`** — the bits the UI needs to show and run the
    workflows.
-2. **`sql/ad4_16_nws.sql`** — the columns the two weather.gov workflows write
-   to, and it adds those two to the Workflows page.
+2. **`sql/ad4_16_nws.sql`** — the columns the weather.gov workflows write
+   to, and it adds them to the Workflows page.
+3. **`sql/ad4_24_nws_gridpoint.sql`** — the table P1.4 writes its forecast
+   conditions into, and it adds P1.4 to the Workflows page.
 
 If you already ran `ad4_14` once, run it again anyway. It is safe to re-run,
-and `ad4_16` is what actually adds the two new rows to the page.
+and `ad4_16`/`ad4_24` are what actually add the new rows to the page.
 
 ---
 
 ## Step 2 — Import
 
-In n8n: **Workflows → Import from File**. One file at a time. All 9.
+In n8n: **Workflows → Import from File**. One file at a time. All 10.
 
 ---
 
@@ -69,8 +72,9 @@ Every workflow has a box called **Config**. Open it. Fill in:
 
 That's it. Nothing else needs touching.
 
-P1.2 and P1.3 have a few more boxes (how many cities per run, how far ahead to
-forecast, and so on). They come filled in with sensible values. Leave them.
+P1.2, P1.3 and P1.4 have a few more boxes (how many cities per run, how far
+ahead to forecast, and so on). They come filled in with sensible values.
+Leave them.
 
 **Do not put the secret key anywhere in Vercel.** It goes here and in GitHub
 Actions only.
@@ -104,7 +108,7 @@ The workflow swaps the real value in for you.
 usable data before it writes anything, and stops with a message telling you
 what went wrong. A wrong address costs you a failed run, not bad data.
 
-### About the two weather.gov workflows
+### About the three weather.gov workflows
 
 Nothing to fill in. No key, no sign-up, no rate limit — `api.weather.gov` is
 free and public. The only box is a `user_agent`, which is already filled in;
@@ -117,6 +121,12 @@ its reading *next to* the IEM one for the same minute rather than replacing it,
 so you can finally see whether the two agree — which is the question the
 settlement check has been stuck on.
 
+It reads the **whole last 26 hours** of observations, not just the newest
+one. These markets settle on a daily *maximum*, and a maximum cannot come
+from a single reading — running every 2 hours, one reading would miss the
+peak on most days and there would be nothing left to go back to. The newest
+reading is the one shown as "now"; all of them are kept.
+
 It also picks up heat warnings and advisories, and today's **solar transit** —
 the moment the sun is highest, which is roughly when the day's peak lands.
 
@@ -128,7 +138,15 @@ disagree about a day, AD4 treats that day as less certain and widens its range.
 It can only ever make AD4 **less** sure, never more — two forecasts agreeing is
 not evidence that the day is easy.
 
-Both can be run by hand any time from the Workflows page (step 6). That is the
+**P1.4 (NWS Gridpoint)** forecasts the *conditions*, not the temperature:
+cloud cover, how dry the air is, wind, rain, and how warm the morning starts.
+Those are what decide how far the temperature climbs — on the record so far,
+a clear day climbs about 11°C from its morning reading and an overcast one
+about 3°C. The numbers it writes carry the same names as the ones measured
+on days that already happened, so the model built on history reads a
+forecast day without any translation.
+
+All three can be run by hand any time from the Workflows page (step 6). That is the
 "refresh now" button for weather — press it whenever you want a fresh reading
 rather than waiting for the schedule.
 
@@ -152,6 +170,7 @@ AD4 P0.3: 5457 book snapshots written from 5863 bands, 406 failed. LIVE=5100 WID
 AD4 P0.4: 1204 trades ($48,300) written from 210 markets, 3 unmatched tokens.
 AD4 P1.2: 41 NWS observations from 54 cities, 13 not US stations. no new alerts.
 AD4 P1.3: 287 NWS forecast day(s) for 41 cities, 13 not US locations, 41 partial day(s) skipped.
+AD4 P1.4: 246 forecast-condition day(s) for 41 cities, 41 partial day(s) skipped.
 AD4 P4.1: all clear.
 ```
 
@@ -208,7 +227,7 @@ Do these **one at a time**. Don't do all four at once.
 If anything looks wrong: turn the new one off, turn the old one back on.
 Nothing is lost.
 
-For P1.1, P1.2, P1.3, P3.1, P4.1 — just switch **Active** on. No old version to
+For P1.1, P1.2, P1.3, P1.4, P3.1, P4.1 — just switch **Active** on. No old version to
 worry about.
 
 ---

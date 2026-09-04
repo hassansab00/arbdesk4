@@ -2,7 +2,7 @@
 
 **Setup instructions: `docs/n8n_setup.md`.** Read that, not this.
 
-9 files. All built to run three ways - their own schedule, the Execute
+10 files. All built to run three ways - their own schedule, the Execute
 button in n8n, or the Run button on the AD4 Workflows page - and all of them
 write a row to `ingest_log` when they finish, so `v_workflow_runs` shows the
 last run of each whichever way it was started.
@@ -21,6 +21,7 @@ last run of each whichever way it was started.
 | P1.1 Live Weather Alerts | `/webhook/ad4-weather-alert` |
 | P1.2 NWS Monitor | `/webhook/ad4-nws-monitor` |
 | P1.3 NWS Forecast | `/webhook/ad4-nws-forecast` |
+| P1.4 NWS Gridpoint | `/webhook/ad4-nws-gridpoint` |
 | P3.1 Email Digests | `/webhook/ad4-email-digests` - body `{"digest":"morning"|"eod"}` |
 | P4.1 Health Watchdog | `/webhook/ad4-health-watchdog` |
 
@@ -30,7 +31,7 @@ n8n - never re-export and commit a filled-in copy (it would contain the
 service key). Use `python scripts/sanitise_n8n_export.py <export>.json n8n/`
 if you ever do need to capture one back.
 
-## The nine AD4 workflows
+## The ten AD4 workflows
 
 | # | Workflow | Trigger | File | Status |
 |---|---|---|---|---|
@@ -41,6 +42,7 @@ if you ever do need to capture one back.
 | P1.1 | Live Weather Alerts (notify half) | webhook | `P1.1_live_weather_alerts.template.json` | template |
 | P1.2 | NWS Monitor | schedule 2h | `P1.2_nws_monitor.template.json` | template |
 | P1.3 | NWS Forecast | schedule 6h | `P1.3_nws_forecast.template.json` | template |
+| P1.4 | NWS Gridpoint | schedule 6h | `P1.4_nws_gridpoint.template.json` | template |
 | P3.1 | Email Digests | schedule ×2 | `P3.1_email_digests.template.json` | template |
 | P4.1 | Health Watchdog | schedule | `P4.1_health_watchdog.template.json` | template |
 
@@ -122,10 +124,16 @@ select coalesce(sum(volume_usd),0) as vol_24h from v_city_volume;
   **api.weather.gov**, the National Weather Service's own JSON API, which is
   the service most of these markets settle on. The repo previously reached it
   by scraping an HTML page and that parser was never finished, so every live
-  reading silently fell through to IEM. Three calls per US city: the latest
-  observation (with its quality-control flag and the station's own 24-hour
-  maximum), any active heat advisory or warning, and today's **solar transit**
-  - the sun's zenith, which is the physical anchor of the daily peak.
+  reading silently fell through to IEM. Three calls per US city: the
+  observations of the **last 26 hours** (each with its quality-control flag
+  and the station's own 24-hour maximum), any active heat advisory or
+  warning, and today's **solar transit** - the sun's zenith, which is the
+  physical anchor of the daily peak. It asks for the series, not
+  `/observations/latest`, because these markets settle on a daily
+  **maximum** and one reading can never produce one: taken every 2 hours,
+  `latest` would miss the peak on most days and there would be nothing to
+  go back to. The newest reading in the series drives `live_weather`;
+  every reading is archived.
   Observations are written with `source='NWS'` **beside** the IEM rows for the
   same instant, not instead of them: the unique key is
   `(city_key, valid_at, source)`, so the two feeds coexist and can be
@@ -150,6 +158,25 @@ select coalesce(sum(volume_usd),0) as vol_24h from v_city_volume;
   series actually covers the 12:00-18:00 local peak window - a day cut short
   at either end has a max below the real one, and a too-low max would
   manufacture disagreement that is not there.
+- `P1.4_nws_gridpoint.template.json` - every 6 hours. P1.3 forecasts the
+  **temperature**; this forecasts the **conditions that move** it. Cloud
+  cover, dewpoint depression, wind, precipitation and the morning
+  temperature are what `sql/ad4_21_weather_features.sql` measured on
+  observed days (clear skies climb +11.4C from the morning reading,
+  overcast +2.8), and api.weather.gov forecasts every one of them on the
+  raw `/gridpoints/{wfo}/{x},{y}` endpoint. The columns it writes into
+  `weather_forecast_features` **match `v_city_day_features` by name**, so
+  the model `scripts/weather_model.py` fits on observed conditions applies
+  to forecast ones with no translation - rename a column on either side and
+  the two silently decouple, which is what
+  `test_columns_match_the_observed_feature_names` exists to catch. Two unit traps it handles: gridpoint
+  `validTime` is an **ISO interval** (`2026-09-04T12:00:00+00:00/PT6H`),
+  which has to be expanded to the hours it covers, and an **accumulating**
+  series (precipitation, snowfall, ice) carries a total for the whole block
+  where an instantaneous one (temperature, sky cover) carries a level - so
+  the total is divided across its hours and the level is not. Divide a
+  30C six-hour temperature and you get 5C; don't divide a 1-inch six-hour
+  QPF and you get 6 inches.
 - `P4.1_health_watchdog.template.json` - every 6 hours, emails only on
   failure. Five checks: stale book snapshots, stale forecast runs, failed
   ingest jobs, anomalies, and **traded market volume**. The volume check
@@ -175,6 +202,6 @@ select coalesce(sum(volume_usd),0) as vol_24h from v_city_volume;
 ## Where these fit in the first run
 
 `docs/GO_LIVE.md` step 5 walks the import, the Config fields, the test
-execution and the expected result for each of the three, in order. Import
-them after the SQL and the GitHub Actions workflows are working - all
-three read data those produce.
+execution and the expected result for each one, in order. Import them
+after the SQL and the GitHub Actions workflows are working - they read
+data those produce.
