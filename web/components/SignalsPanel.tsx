@@ -27,10 +27,9 @@ type BandInfo = Pick<
   "band_id" | "city_key" | "band_lo" | "band_hi" | "open_low" | "open_high" | "unit" | "resolution_date" | "band_label"
 >;
 
-export default function SignalsPanel() {
+export default function SignalsPanel({ onHide }: { onHide: () => void }) {
   const [signals, setSignals] = useState<SignalRow[]>([]);
   const [bands, setBands] = useState<Record<string, BandInfo>>({});
-  const [collapsed, setCollapsed] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,15 +46,31 @@ export default function SignalsPanel() {
       setSignals(rows);
       setError(null);
 
-      // Resolve the bands these signals point at, so each one can name a city.
+      // Resolve the band a signal points at, so it can show the range and the
+      // settlement date. v_opportunities is the richer source but it only
+      // holds bands that currently have an EDGE - so a signal about a band
+      // whose market has moved on, or a database where the edge engine has not
+      // run, resolved to nothing and every card read "Desk". `bands` always
+      // has the row. Try the rich view first, then fill the gaps from the table.
       const ids = Array.from(new Set(rows.map((s) => s.band_id).filter(Boolean))) as string[];
       if (ids.length) {
-        const { data: bandRows } = await supabase
+        const map: Record<string, BandInfo> = {};
+        const { data: rich } = await supabase
           .from("v_opportunities")
           .select("band_id,city_key,band_lo,band_hi,open_low,open_high,unit,resolution_date,band_label")
           .in("band_id", ids);
-        const map: Record<string, BandInfo> = {};
-        for (const b of (bandRows as BandInfo[]) ?? []) map[b.band_id] = b;
+        for (const b of (rich as BandInfo[]) ?? []) map[b.band_id] = b;
+
+        const missing = ids.filter((id) => !map[id]);
+        if (missing.length) {
+          const { data: raw } = await supabase
+            .from("bands")
+            .select("band_id,band_lo,band_hi,open_low,open_high,band_label")
+            .in("band_id", missing);
+          for (const b of (raw as Array<Omit<BandInfo, "city_key" | "unit" | "resolution_date">> ?? [])) {
+            map[b.band_id] = { ...b, city_key: "", unit: "C", resolution_date: "" } as BandInfo;
+          }
+        }
         setBands(map);
       }
     } catch (e) {
@@ -110,19 +125,8 @@ export default function SignalsPanel() {
 
   const pending = signals.filter((s) => s.status === "pending_approval").length;
 
-  if (collapsed) {
-    return (
-      <button
-        onClick={() => setCollapsed(false)}
-        className="fixed right-0 top-24 rounded-l border border-r-0 border-border bg-panel px-2 py-3 text-xs text-muted hover:text-text"
-      >
-        Signals ({pending})
-      </button>
-    );
-  }
-
   return (
-    <aside className="hidden w-96 shrink-0 flex-col border-l border-border bg-panel lg:flex">
+    <div className="flex min-h-0 flex-col">
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <div>
           <span className="text-sm font-semibold">Signals</span>
@@ -130,10 +134,10 @@ export default function SignalsPanel() {
             {pending > 0 ? `${pending} awaiting you` : "nothing awaiting you"}
           </span>
         </div>
-        <button className="text-xs text-muted hover:text-text" onClick={() => setCollapsed(true)}>hide</button>
+        <button className="text-xs text-muted hover:text-text" onClick={onHide}>hide</button>
       </div>
 
-      <div className="flex-1 space-y-2 overflow-y-auto p-2">
+      <div className="max-h-[52vh] space-y-2 overflow-y-auto p-2">
         {loading && <Loading compact />}
         {error && <ErrorBox message={error} onRetry={load} compact />}
         {!loading && !error && signals.length === 0 && (
@@ -148,6 +152,7 @@ export default function SignalsPanel() {
         {signals.map((s) => {
           const m = signalMeaning(s.reason, s.action);
           const b = s.band_id ? bands[s.band_id] : undefined;
+          const city = s.city_key || b?.city_key || "";
           const open = expanded === (s.signal_id ?? -1);
           return (
             <div
@@ -157,22 +162,26 @@ export default function SignalsPanel() {
               {/* WHERE: the city and band, or the desk itself */}
               <div className="flex items-baseline justify-between gap-2">
                 <span className="font-semibold text-text">
-                  {b ? (
-                    <>
-                      {b.city_key}{" "}
-                      <span className="font-mono text-accent">
-                        {b.band_label ?? fmtBandRange(b.band_lo, b.band_hi, b.unit, b.open_low, b.open_high)}
-                      </span>
-                    </>
-                  ) : (
-                    "Desk"
+                  {/* The signal knows its own city. The band lookup only adds
+                      the RANGE - it is not what tells us where this is. */}
+                  {city || (b?.city_key ?? (s.band_id ? "Unknown city" : "Desk"))}
+                  {b && (
+                    <span className="ml-1.5 font-mono text-accent">
+                      {b.band_label ?? fmtBandRange(b.band_lo, b.band_hi, b.unit, b.open_low, b.open_high)}
+                    </span>
                   )}
                 </span>
                 <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide">{s.severity}</span>
               </div>
-              {b && (
+              {b?.resolution_date && (
                 <div className="text-[10px] text-muted">
                   settles {fmtResolutionDate(b.resolution_date)} · {fmtDaysAhead(b.resolution_date)}
+                </div>
+              )}
+              {!city && !b && s.band_id && (
+                <div className="text-[10px] text-warn">
+                  This signal names a band that is no longer in the book. It fired before the market
+                  moved on — most likely stale rather than wrong.
                 </div>
               )}
 
@@ -210,6 +219,14 @@ export default function SignalsPanel() {
                 <div className="mt-1 space-y-1.5 border-l border-border pl-2 text-[11px] leading-relaxed text-muted">
                   <p>{m.detail}</p>
                   <p className="text-text">{m.action}</p>
+                  {/* Whatever raised it recorded its own context. For an
+                      anomaly that is the rule that tripped and the value that
+                      tripped it - the part that says whether to believe it. */}
+                  {s.payload && Object.keys(s.payload).length > 0 && (
+                    <pre className="overflow-x-auto rounded bg-panel px-1.5 py-1 font-mono text-[9.5px] leading-snug text-muted">
+                      {JSON.stringify(s.payload, null, 1)}
+                    </pre>
+                  )}
                   <p className="font-mono text-[10px]">
                     {s.strategy_id} · {s.action}
                     {s.side ? ` ${s.side}` : ""} · {s.reason}
@@ -239,6 +256,6 @@ export default function SignalsPanel() {
           );
         })}
       </div>
-    </aside>
+    </div>
   );
 }

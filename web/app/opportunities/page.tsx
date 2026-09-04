@@ -33,19 +33,26 @@ interface LiveRow { city_key: string; temp_c: number | null; running_max_c: numb
 
 export default function OpportunitiesPage() {
   const router = useRouter();
-  const [minEdge, setMinEdge] = useState(0);
+  // Starts at -10pp, i.e. showing everything. It used to start at 0, which
+  // silently hid every band the model rates BELOW its market price - and on a
+  // fairly-priced day that is most of them, so the page just went blank with
+  // no way to tell that from having no data at all.
+  const [minEdge, setMinEdge] = useState(-10);
   const [minVolume, setMinVolume] = useState(0);
   const [stake, setStake] = useState(100);
   const [dayFilter, setDayFilter] = useState("");
+  const [showBlocked, setShowBlocked] = useState(false);
 
+  // Everything is fetched, tradeable or not, so the page can tell you WHY it
+  // is empty. Filtering in the query made "no opportunities" and "every
+  // opportunity is blocked" look identical, and they need different actions.
   const q = useQuery<Opportunity[]>(
     () =>
       supabase
         .from("v_opportunities")
         .select("*")
-        .eq("tradeable", true)
         .order("score", { ascending: false, nullsFirst: false })
-        .limit(200),
+        .limit(400),
     [],
     30000
   );
@@ -55,7 +62,9 @@ export default function OpportunitiesPage() {
     60000
   );
 
-  const rows = q.data ?? [];
+  const allRows = q.data ?? [];
+  const blocked = allRows.filter((r) => !r.tradeable);
+  const rows = showBlocked ? allRows : allRows.filter((r) => r.tradeable);
   const liveByCity = useMemo(
     () => new Map((live.data ?? []).map((l) => [l.city_key, l])),
     [live.data]
@@ -109,10 +118,14 @@ export default function OpportunitiesPage() {
             </button>
           ))}
         </label>
-        <label className="flex items-center gap-2" title="Net of fees. 0 shows everything the engine judged tradeable.">
+        <label className="flex items-center gap-2" title="Net of fees. Negative values show bands the model rates BELOW their market price - which is most of them on a fairly-priced day.">
           <span className="text-muted">Min edge</span>
-          <input type="range" min={0} max={25} step={1} value={minEdge} onChange={(e) => setMinEdge(parseFloat(e.target.value))} />
-          <span className="w-10 font-mono text-xs">{minEdge}pp</span>
+          <input type="range" min={-10} max={25} step={1} value={minEdge} onChange={(e) => setMinEdge(parseFloat(e.target.value))} />
+          <span className="w-12 font-mono text-xs">{minEdge > 0 ? "+" : ""}{minEdge}pp</span>
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-muted" title="Bands the engine refused to trade - too wide, too thin, no book, or a stale price. Each one shows its reason.">
+          <input type="checkbox" checked={showBlocked} onChange={(e) => setShowBlocked(e.target.checked)} />
+          show blocked ({blocked.length})
         </label>
         <label className="flex items-center gap-2" title="Filter out bands that have barely traded in the last 24h.">
           <span className="text-muted">Min 24h volume</span>
@@ -132,30 +145,57 @@ export default function OpportunitiesPage() {
           </select>
         )}
         <span className="ml-auto font-mono text-[11px] text-muted">
-          {filtered.length} of {rows.length}
+          {filtered.length} of {rows.length} shown
+          {blocked.length > 0 && !showBlocked ? ` · ${blocked.length} blocked` : ""}
         </span>
       </div>
 
       <DataState
         loading={q.loading}
         error={q.error}
-        isEmpty={rows.length === 0}
+        isEmpty={allRows.length === 0}
         emptyTitle="No opportunities yet"
         emptyBody={
           <>
-            Run GitHub Actions → <b>Probabilities</b> to populate this. Until the probability and
-            edge engines have run, <code>edges</code> is empty and so is{" "}
-            <code>v_opportunities</code>. If only one city appears here when you expect many, the
-            gap is upstream in <code>markets</code> — P0.2 Market Discovery is what finds them.
+            <code>v_opportunities</code> returned nothing at all — not even blocked rows. It is built
+            from <code>edges</code>, so run GitHub Actions → <b>Probabilities</b>. If only one city
+            appears when you expect many, the gap is upstream in <code>markets</code>, which P0.2
+            Market Discovery fills.
           </>
         }
         onRetry={q.refresh}
       >
         {filtered.length === 0 ? (
-          <div className="rounded border border-dashed border-border p-6 text-center text-sm text-muted">
-            {rows.length} tradeable opportunit{rows.length === 1 ? "y" : "ies"} loaded, none above{" "}
-            {minEdge}pp of edge{minVolume ? ` with ${fmtCompactUsd(minVolume)} of volume` : ""}.
-            Lower the filters to see what is there.
+          // Empty for a REASON, and the reason decides what to do about it.
+          <div className="space-y-2 rounded border border-dashed border-border p-6 text-center text-sm text-muted">
+            {rows.length === 0 && blocked.length > 0 ? (
+              <>
+                <div className="font-semibold text-warn">
+                  Every one of the {blocked.length} priced bands is blocked from trading.
+                </div>
+                <div className="mx-auto max-w-lg leading-relaxed">
+                  Nothing here is a filter — the edge engine refused all of them. Common causes: no
+                  book snapshot yet (P0.3), a spread wider than the tradeability thresholds, or a
+                  stale price. Tick <b>show blocked</b> to see each one&apos;s reason.
+                </div>
+                <button onClick={() => setShowBlocked(true)} className="rounded border border-accent px-2.5 py-1 text-xs text-accent hover:bg-accent/10">
+                  Show me why
+                </button>
+              </>
+            ) : (
+              <>
+                <div>
+                  {rows.length} opportunit{rows.length === 1 ? "y" : "ies"} loaded, none matching
+                  these filters.
+                </div>
+                <button
+                  onClick={() => { setMinEdge(-10); setMinVolume(0); setDayFilter(""); }}
+                  className="rounded border border-accent px-2.5 py-1 text-xs text-accent hover:bg-accent/10"
+                >
+                  Clear filters
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
@@ -219,7 +259,9 @@ function Card({
   return (
     <button
       onClick={onOpen}
-      className="flex flex-col rounded border border-border bg-panel p-3 text-left transition hover:border-accent"
+      className={`flex flex-col rounded border bg-panel p-3 text-left transition hover:border-accent ${
+        o.tradeable ? "border-border" : "border-warn/30 opacity-70"
+      }`}
     >
       {/* ---- the trade, in one sentence ---------------------------------- */}
       <div className="flex items-start justify-between gap-2">
@@ -307,6 +349,14 @@ function Card({
             <li key={d}>• {d}</li>
           ))}
         </ul>
+      )}
+
+      {!o.tradeable && (
+        <div className="mt-2 rounded border border-warn/40 bg-warn/10 px-2 py-1.5 text-[10px] leading-relaxed text-warn">
+          <b>Blocked by the edge engine — not tradeable.</b>{" "}
+          {o.block_reason ? <code>{o.block_reason}</code> : "no reason recorded"}. The numbers above
+          are the model&apos;s, but nothing will fill at them.
+        </div>
       )}
 
       <div className="mt-2 flex items-center justify-between border-t border-border pt-2 text-[10px] text-muted">

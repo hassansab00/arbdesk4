@@ -44,7 +44,11 @@ interface LiveRow {
 
 export default function BoardPage() {
   const [day, setDay] = useState<string | null>(null);
-  const [cityFilter, setCityFilter] = useState("");
+  // ONE city at a time. Showing every city at once is a screener again: the
+  // point of a board is the ladder of one market, read top to bottom, with
+  // that city's weather above it. null means "not chosen yet", and the first
+  // city is selected as soon as the data arrives.
+  const [city, setCity] = useState<string | null>(null);
   const [stakes, setStakes] = useState<Record<string, string>>({});
   const [showUntradeable, setShowUntradeable] = useState(false);
 
@@ -130,13 +134,28 @@ export default function BoardPage() {
       return { city_key, head, bands };
     });
     out.sort((a, b) => (a.head.display_name ?? a.city_key).localeCompare(b.head.display_name ?? b.city_key));
-    return cityFilter ? out.filter((c) => c.city_key === cityFilter) : out;
-  }, [rows, day, cityFilter]);
+    return out;
+  }, [rows, day]);
 
-  const allCityKeys = useMemo(
-    () => Array.from(new Set(rows.filter((r) => r.resolution_date === day).map((r) => r.city_key))).sort(),
-    [rows, day]
+  // Every city with a market on the chosen day, with enough detail for the
+  // dropdown to be worth reading rather than a list of keys.
+  const cityOptions = useMemo(
+    () =>
+      cities.map((c) => ({
+        key: c.city_key,
+        label: c.head.display_name ?? c.city_key,
+        bands: c.bands.length,
+        best: Math.max(0, ...c.bands.map((b) => b.yes?.edge_net_pp ?? 0)),
+      })),
+    [cities]
   );
+
+  useEffect(() => {
+    if (cityOptions.length === 0) return;
+    if (!city || !cityOptions.some((c) => c.key === city)) setCity(cityOptions[0].key);
+  }, [cityOptions, city]);
+
+  const shown = cities.filter((c) => c.city_key === city);
 
   const totals = useMemo(() => {
     let cost = 0, legs = 0;
@@ -157,7 +176,7 @@ export default function BoardPage() {
         <div>
           <h1 className="text-lg font-semibold">Board</h1>
           <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted">
-            One day, one city per block, bands in temperature order — the shape the market has.
+            One day, one city, bands in temperature order — the shape the market has.
             Prices are <b>executable</b> (depth-weighted), never top-of-book. The{" "}
             <b>sum of YES</b> under each city is the coherence check: exactly one band pays $1, so
             the prices should add to about 100¢. A sum meaningfully under 100¢ is a combination
@@ -188,12 +207,16 @@ export default function BoardPage() {
             </button>
           ))}
           <select
-            value={cityFilter}
-            onChange={(e) => setCityFilter(e.target.value)}
-            className="ml-2 rounded border border-border bg-panel2 px-2 py-1 text-xs"
+            value={city ?? ""}
+            onChange={(e) => setCity(e.target.value)}
+            className="ml-2 rounded border border-accent/50 bg-panel2 px-2 py-1 text-xs font-semibold text-text"
+            title="The board shows one city at a time - the full band ladder for that market."
           >
-            <option value="">All cities</option>
-            {allCityKeys.map((c) => <option key={c} value={c}>{c}</option>)}
+            {cityOptions.map((c) => (
+              <option key={c.key} value={c.key}>
+                {c.label} — {c.bands} bands{c.best > 0 ? ` · best ${(c.best * 100).toFixed(1)}pp` : ""}
+              </option>
+            ))}
           </select>
           <label className="flex items-center gap-1 text-xs text-muted">
             <input type="checkbox" checked={showUntradeable} onChange={(e) => setShowUntradeable(e.target.checked)} />
@@ -228,14 +251,19 @@ export default function BoardPage() {
         }
         onRetry={q.refresh}
       >
-        {cities.length === 0 ? (
+        {shown.length === 0 ? (
           <div className="rounded border border-dashed border-border p-6 text-center text-sm text-muted">
             Nothing settles on {day ? fmtResolutionDate(day) : "this day"}
-            {cityFilter ? ` for ${cityFilter}` : ""}.
+            {city ? ` for ${city}` : ""}.
+            {cities.length > 0 && (
+              <div className="mt-1 text-xs">
+                {cities.length} other cit{cities.length === 1 ? "y" : "ies"} do — pick one above.
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
-            {cities.map(({ city_key, head, bands }) => {
+            {shown.map(({ city_key, head, bands }) => {
               const unit = head.unit as Unit;
               const lw = liveByCity.get(city_key);
               const fc = forecastByCityDay.get(`${city_key}|${day}`);

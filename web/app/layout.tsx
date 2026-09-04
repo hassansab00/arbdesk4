@@ -4,7 +4,7 @@ import ConfigBanner from "@/components/ConfigBanner";
 import Header from "@/components/Header";
 import GlobalBar from "@/components/GlobalBar";
 import NavTabs from "@/components/NavTabs";
-import SignalsPanel from "@/components/SignalsPanel";
+import RightRail from "@/components/RightRail";
 
 export const metadata: Metadata = {
   title: "ArbDesk — temperature markets",
@@ -21,7 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <NavTabs />
         <div className="flex">
           <main className="flex-1 min-w-0 p-4">{children}</main>
-          <SignalsPanel />
+          <RightRail />
         </div>
       </body>
     </html>

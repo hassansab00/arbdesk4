@@ -63,6 +63,17 @@ export default function AnalyticsPage() {
         </p>
       </div>
 
+      {/* A missing v_city_stats degrades quietly - grey dots instead of heat
+          colours - which reads as "nothing changed" rather than "one file has
+          not been run". Say which it is. */}
+      {statsQ.error && /does not exist|not find|schema cache/i.test(statsQ.error) && (
+        <div className="rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn">
+          <b>Run <code>sql/ad4_17_city_stats.sql</code>.</b> The charts below work without it, but
+          every city renders grey instead of coloured by how hot today is, and the liquidity plot has
+          no depth figures. It is the last file in <code>docs/GO_LIVE.md</code> step 3.
+        </div>
+      )}
+
       {/* ============================================ model vs market ==== */}
       <section>
         <h2 className="text-sm font-semibold">Model against market</h2>

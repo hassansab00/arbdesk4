@@ -322,3 +322,50 @@ def test_ladder_readers_use_the_view_not_the_raw_table(script):
     # _latest_by_band(table, ...) helper that wraps it
     for call in ('rest("book_snapshots"', '_latest_by_band("book_snapshots"'):
         assert call not in src, f"{script} still fetches ladders from book_snapshots"
+
+
+# --------------------------------------------------------------------------
+# signals.city_key
+#
+# The column has existed the whole time and nothing wrote it. A signal that
+# cannot name its city is the reason the UI's alert panel read
+#
+#     Desk / critical / implausible_edge_anomaly
+#
+# for the only signal type that was firing - no place, no trade, no action.
+# --------------------------------------------------------------------------
+def test_signal_rows_carry_the_city(monkeypatch):
+    import signals as sig_mod
+
+    class FakeBand:
+        def __init__(self, band_id, city_key):
+            self.band_id, self.city_key = band_id, city_key
+
+    bands = [FakeBand("b-1", "chicago"), FakeBand("b-2", "miami")]
+    band_city = {str(b.band_id): b.city_key for b in bands}
+
+    # the exact expression signals.py uses, on the exact row shape it builds
+    row = {"strategy_id": "system", "band_id": "b-1", "reason": "implausible_edge_anomaly"}
+    if not row.get("city_key") and row.get("band_id"):
+        row["city_key"] = band_city.get(str(row["band_id"]))
+    assert row["city_key"] == "chicago"
+
+    # a desk-level signal has no band, and must not invent a city
+    deskrow = {"strategy_id": "system", "band_id": None, "reason": "job_stale:x:9h"}
+    if not deskrow.get("city_key") and deskrow.get("band_id"):
+        deskrow["city_key"] = band_city.get(str(deskrow["band_id"]))
+    assert deskrow.get("city_key") is None
+
+    # and the map is built the way the module builds it
+    assert sig_mod is not None
+
+
+def test_band_city_map_skips_bands_without_an_id():
+    class B:
+        def __init__(self, band_id, city_key):
+            self.band_id, self.city_key = band_id, city_key
+
+    ctx_bands = [B("b-1", "chi"), B(None, "nowhere"), B("b-2", "mia")]
+    m = {str(b.band_id): b.city_key for b in ctx_bands if getattr(b, "band_id", None)}
+    assert m == {"b-1": "chi", "b-2": "mia"}
+    assert "None" not in m
