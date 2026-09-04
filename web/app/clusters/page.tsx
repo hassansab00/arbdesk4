@@ -60,24 +60,53 @@ export default function ClustersPage() {
       regionFilter === "ALL"
         ? all
         : all.filter((c) => regionFromLonLat(c.longitude, c.latitude) === regionFilter);
-    const val = (c: CityStats): number => {
+    const raw = (c: CityStats): number | null => {
       switch (sortKey) {
-        case "hotness": return c.hotness_sigma ?? -Infinity;
-        case "volatility": return c.volatility_c ?? -Infinity;
-        case "volume": return c.volume_24h ?? 0;
-        case "edge": return c.best_edge_pp ?? -Infinity;
-        case "mae": return c.mae_c === null ? Infinity : c.mae_c;   // low is good
-        default: return 0;
+        case "hotness": return c.hotness_sigma;
+        case "volatility": return c.volatility_c;
+        case "volume": return c.volume_24h;
+        case "edge": return c.best_edge_pp;
+        case "mae": return c.mae_c;
+        default: return null;
       }
     };
-    return [...filtered].sort((a, b) =>
-      sortKey === "name"
-        ? (a.display_name ?? a.city_key).localeCompare(b.display_name ?? b.city_key)
-        : sortKey === "mae"
-        ? val(a) - val(b)
-        : val(b) - val(a)
-    );
+    const byName = (a: CityStats, b: CityStats) =>
+      (a.display_name ?? a.city_key).localeCompare(b.display_name ?? b.city_key);
+
+    if (sortKey === "name") return [...filtered].sort(byName);
+
+    // Cities with no value for this key sort LAST rather than being scattered
+    // through the list, and name breaks the tie. Without the tiebreak, sorting
+    // on a column where every value is null was a no-op: the buttons moved,
+    // the list did not, and the sort looked broken when it was simply sorting
+    // a column of nothing.
+    const lowIsBetter = sortKey === "mae";
+    return [...filtered].sort((a, b) => {
+      const av = raw(a), bv = raw(b);
+      if (av === null && bv === null) return byName(a, b);
+      if (av === null) return 1;
+      if (bv === null) return -1;
+      if (av === bv) return byName(a, b);
+      return lowIsBetter ? av - bv : bv - av;
+    });
   }, [all, regionFilter, sortKey]);
+
+  // How many cities actually have a value for the active sort. Zero means the
+  // control cannot do anything, and the page should say so instead of
+  // appearing to ignore the click.
+  const sortable = useMemo(() => {
+    const has = (c: CityStats) => {
+      switch (sortKey) {
+        case "hotness": return c.hotness_sigma !== null;
+        case "volatility": return c.volatility_c !== null;
+        case "volume": return (c.volume_24h ?? 0) > 0;
+        case "edge": return c.best_edge_pp !== null;
+        case "mae": return c.mae_c !== null;
+        default: return true;
+      }
+    };
+    return all.filter(has).length;
+  }, [all, sortKey]);
 
   const maxVolume = Math.max(1, ...all.map((c) => c.volume_24h ?? 0));
   const withBaseline = all.filter((c) => c.hotness_sigma !== null).length;
@@ -124,6 +153,27 @@ export default function ClustersPage() {
           ))}
         </span>
       </div>
+
+      {/* A sort that cannot sort says so, and names what would fill it. */}
+      {sortKey !== "name" && sortable === 0 && all.length > 0 && (
+        <div className="rounded border border-warn/40 bg-warn/10 px-3 py-1.5 text-[11px] leading-relaxed text-warn">
+          No city has a value for <b>{SORTS.find((s2) => s2.key === sortKey)?.label}</b> yet, so this
+          sort has nothing to order by.{" "}
+          {sortKey === "hotness" || sortKey === "volatility"
+            ? "Both come from the climate baseline — run sql/ad4_17 and sql/ad4_19, then the daily Derived Recompute."
+            : sortKey === "mae"
+            ? "Forecast error is measured by GitHub Actions → Skill."
+            : sortKey === "volume"
+            ? "Volume comes from trades_observed, which P0.4 fills."
+            : "Edges come from the probability and edge engines."}
+        </div>
+      )}
+      {sortKey !== "name" && sortable > 0 && sortable < all.length && (
+        <p className="text-[11px] text-muted">
+          {sortable} of {all.length} cities have a{" "}
+          {SORTS.find((s2) => s2.key === sortKey)?.label.toLowerCase()} value; the rest sort last.
+        </p>
+      )}
 
       <DataState
         loading={q.loading}

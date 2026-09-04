@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import ScheduleControl from "@/components/ScheduleControl";
 import { useQuery } from "@/lib/useQuery";
 import { DataState, InlineError } from "@/components/DataState";
 import { fmtAge, fmtInt } from "@/lib/format";
@@ -239,6 +240,8 @@ export default function WorkflowsPage() {
           </p>
         )}
       </div>
+
+      <ScheduleControl jobs={CATALOGUE.map((c) => ({ job: c.job, label: c.label }))} />
 
       <DataState
         loading={settingsQ.loading || runsQ.loading}
