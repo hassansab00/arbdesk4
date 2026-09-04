@@ -28,7 +28,7 @@ starting the next.
 
 | # | File | What it does |
 |---|---|---|
-| 1 | `sql/ad4_00_preflight.sql` | **Run this first.** Guarantees every table, column and unique key the other 21 files need. |
+| 1 | `sql/ad4_00_preflight.sql` | **Run this first.** Guarantees every table, column and unique key the other 22 files need. |
 | 2 | `ad4_phase1_tables.sql` | forecast-skill table |
 | 3 | `sql/ad4_phase2.sql` | cost params, edges, anomaly rules, correlation, capacity, views |
 | 4 | `sql/ad4_phase2_ranking.sql` | `v_opportunities` with the ranking score |
@@ -49,7 +49,8 @@ starting the next.
 | 19 | `sql/ad4_19_stats_cache.sql` | Caches the climatology and bounds the divergence join — without it City Clusters and Analytics time out on a real archive. |
 | 20 | `sql/ad4_20_schedules.sql` | Moves each workflow's cadence out of its n8n JSON and into a setting the Workflows page owns, with a runs/month budget. |
 | 21 | `sql/ad4_21_weather_features.sql` | Morning conditions per city-day — dewpoint depression, cloud, wind, rain — plus the persistence benchmark every forecast must beat. |
-| 22 | `sql/ad4_22_opportunity_context.sql` | **Run this last.** Price and forecast movement per band, and whether the market has repriced since the forecast moved. |
+| 22 | `sql/ad4_22_opportunity_context.sql` | Price and forecast movement per band, and whether the market has repriced since the forecast moved. |
+| 23 | `sql/ad4_23_reasoning.sql` | **Run this last.** The desk's whole argument for one city in one row — forecast, persistence, this morning, where the day is, measured error, model agreement, and therefore which bucket. |
 
 Every file is idempotent — re-running any of them is safe and changes
 nothing that is already correct.

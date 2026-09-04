@@ -11,6 +11,7 @@ import { fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
 import { solveBoard, overround, type Leg } from "@/lib/ladder";
 import { feeRateAt } from "@/lib/costs";
 import { LADDER_SOURCE_LABEL, VOLUME_SOURCE_LABEL, type Opportunity } from "@/lib/types";
+import ReasoningPanel, { useReasoning } from "@/components/Reasoning";
 
 /**
  * The Board, in the shape ArbDesk 1 had it, with what AD4 knows that AD1 did
@@ -128,6 +129,10 @@ export default function BoardPage() {
   }, [cityOptions, city]);
 
   const board = cities.find((c) => c.city_key === city) ?? null;
+  // The desk's argument for THIS city, above its ladder. The board shows the
+  // answer; this shows the working, which is the difference between a number
+  // and a reason to act on it.
+  const reasoning = useReasoning(city);
 
   // Why is everything blocked, and are buckets missing?
   //
@@ -282,6 +287,9 @@ export default function BoardPage() {
                 </span>
               </div>
             </div>
+
+            {/* ---- the argument, before the numbers ----------------------- */}
+            {reasoning.data?.[0] && <ReasoningPanel r={reasoning.data[0]} />}
 
             {/* ---- what is wrong with this market, stated once ----------- */}
             {diagnosis && (diagnosis.allBlocked || diagnosis.short || diagnosis.priced === 0) && (
