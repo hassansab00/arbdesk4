@@ -16,13 +16,13 @@ of what got built against it and where to find things.
    exact command and the exact expected result at every step. Everything
    below is the map; that file is the route.
 
-1. **Run the SQL, in this order** - twenty files, in the Supabase SQL
+1. **Run the SQL, in this order** - twenty-one files, in the Supabase SQL
    editor (each file is idempotent, safe to re-run any number of times).
    `docs/GO_LIVE.md` step 3 is the same list with a one-line description
    of each:
 
    1. **`sql/ad4_00_preflight.sql`** - **run this first.** It guarantees
-      every table, column and unique key the other nineteen need, whatever
+      every table, column and unique key the other twenty need, whatever
       state the database is in, and prints a NOTICE listing exactly what
       it had to add. This is what makes the rest of the run order safe:
       the base Phase 0 schema is not in this repo, so nothing else may
@@ -56,9 +56,13 @@ of what got built against it and where to find things.
    19. `sql/ad4_19_stats_cache.sql` - caches the climatology and
        bounds the forecast-divergence join. Without it City Clusters and
        Analytics time out once the observation archive is real.
-   20. **`sql/ad4_20_schedules.sql` last** - each workflow's cadence as a
+   20. `sql/ad4_20_schedules.sql` - each workflow's cadence as a
        setting the UI owns, with `should_run()` for the workflows to check
        and a runs-per-month budget. n8n charges per execution.
+   21. **`sql/ad4_21_weather_features.sql` last** - what the morning already
+       shows about the afternoon: dewpoint depression, cloud, wind and rain
+       per city-day, plus persistence, the benchmark any forecast has to
+       beat.
 
    Then run **`sql/ad4_99_verify.sql`** against the real database. It is
    read-only and returns one grid: every check PASS / FAIL / ATTENTION,
@@ -105,7 +109,7 @@ scripts/                   Python engines (Tasks 1, 3-13d)
 
 sql/                        Every ad4_*.sql file. ad4_00_preflight.sql
                              runs FIRST and guarantees the schema the
-                             other nineteen assume.
+                             other twenty assume.
 docs/                       Honest-limitation write-ups and design decisions -
                              read architecture_deviations.md and
                              schema_assumptions.md first

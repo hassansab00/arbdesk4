@@ -1,0 +1,38 @@
+name: Weather Model
+
+# Fits each city's daily maximum against the conditions its own morning shows -
+# dewpoint depression, cloud, wind, rain - and scores it against persistence
+# (yesterday's max, unchanged) on held-out days.
+#
+# Weekly, not daily: the relationship is seasonal and a day of new observations
+# cannot move it. Running it daily would burn minutes to re-derive the same
+# coefficients.
+on:
+  schedule:
+    - cron: '0 8 * * 1'         # Mondays, after the weekend's observations land
+  workflow_dispatch:
+    inputs:
+      min_days:
+        description: 'Minimum usable days before a city is modelled'
+        required: false
+        default: '120'
+      dry_run:
+        description: 'Fit and report without writing'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  fit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install -r requirements.txt
+      - run: python scripts/weather_model.py --min-days ${{ github.event.inputs.min_days || '120' }} ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
+        env:
+          PYTHONPATH: scripts
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
