@@ -16,13 +16,13 @@ of what got built against it and where to find things.
    exact command and the exact expected result at every step. Everything
    below is the map; that file is the route.
 
-1. **Run the SQL, in this order** - twenty-two files, in the Supabase SQL
+1. **Run the SQL, in this order** - twenty-three files, in the Supabase SQL
    editor (each file is idempotent, safe to re-run any number of times).
    `docs/GO_LIVE.md` step 3 is the same list with a one-line description
    of each:
 
    1. **`sql/ad4_00_preflight.sql`** - **run this first.** It guarantees
-      every table, column and unique key the other twenty-one need, whatever
+      every table, column and unique key the other twenty-two need, whatever
       state the database is in, and prints a NOTICE listing exactly what
       it had to add. This is what makes the rest of the run order safe:
       the base Phase 0 schema is not in this repo, so nothing else may
@@ -63,9 +63,12 @@ of what got built against it and where to find things.
        shows about the afternoon: dewpoint depression, cloud, wind and rain
        per city-day, plus persistence, the benchmark any forecast has to
        beat.
-   22. **`sql/ad4_22_opportunity_context.sql` last** - how the price and the
+   22. `sql/ad4_22_opportunity_context.sql` - how the price and the
        forecast have MOVED, and whether the market has repriced since the
        forecast last changed. An edge with a cause behind it.
+   23. **`sql/ad4_23_reasoning.sql` last** - the desk's whole argument for one
+       city in one row. It computes nothing new; it is a join, so every
+       number shown as a reason is the same number the engine priced with.
 
    Then run **`sql/ad4_99_verify.sql`** against the real database. It is
    read-only and returns one grid: every check PASS / FAIL / ATTENTION,
@@ -112,7 +115,7 @@ scripts/                   Python engines (Tasks 1, 3-13d)
 
 sql/                        Every ad4_*.sql file. ad4_00_preflight.sql
                              runs FIRST and guarantees the schema the
-                             other twenty-one assume.
+                             other twenty-two assume.
 docs/                       Honest-limitation write-ups and design decisions -
                              read architecture_deviations.md and
                              schema_assumptions.md first

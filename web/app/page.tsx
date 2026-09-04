@@ -4,6 +4,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState, InlineError } from "@/components/DataState";
+import PipelineStatus from "@/components/PipelineStatus";
 import { fmtCompactUsd, fmtPct, fmtPp, fmtPrice, fmtUsd, pnlColor, regimeColor } from "@/lib/format";
 import type { Opportunity, PaperTrade } from "@/lib/types";
 
@@ -12,8 +13,11 @@ export default function OverviewPage() {
     () =>
       supabase
         .from("v_opportunities")
+        // NOT filtered to tradeable: with every bucket blocked - which is what
+        // happens when no book snapshot exists - a filtered query returns
+        // nothing and the page shows an empty box that explains nothing. Show
+        // what is there and mark what cannot be traded.
         .select("*")
-        .eq("tradeable", true)
         .order("score", { ascending: false, nullsFirst: false })
         .limit(8),
     [],
@@ -56,6 +60,11 @@ export default function OverviewPage() {
     <div className="space-y-6">
       <h1 className="text-lg font-semibold">Overview</h1>
 
+      {/* Every empty container below has one of a handful of causes, and they
+          form a chain. Show the chain once, at the top, rather than making the
+          reader assemble it from six separate "this table is empty" boxes. */}
+      <PipelineStatus />
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Stat label="Cities live" value={cities.loading ? "…" : String((cities.data ?? []).length)} />
         <Stat label="Open positions" value={positions.loading ? "…" : String(openList.length)} />
@@ -78,7 +87,7 @@ export default function OverviewPage() {
           loading={opps.loading}
           error={opps.error}
           isEmpty={oppList.length === 0}
-          emptyTitle="No tradeable opportunities yet"
+          emptyTitle="Nothing priced yet"
           emptyBody={
             <>
               <code>v_opportunities</code> is empty or nothing is currently tradeable. Run the
@@ -101,11 +110,12 @@ export default function OverviewPage() {
                   <th className="p-2 text-right">Net edge</th>
                   <th className="p-2 text-right" title="24h traded volume on this band. Depth says what the quote can absorb; volume says whether it trades at all.">Vol 24h</th>
                   <th className="p-2 text-left">Regime</th>
+                  <th className="p-2 text-left"></th>
                 </tr>
               </thead>
               <tbody>
                 {oppList.map((o) => (
-                  <tr key={o.edge_id} className="border-t border-border hover:bg-panel2">
+                  <tr key={o.edge_id} className={`border-t border-border hover:bg-panel2 ${o.tradeable ? "" : "opacity-60"}`}>
                     <td className="p-2">{o.display_name ?? o.city_key}</td>
                     <td className="p-2">{o.band_label ?? `${o.band_lo}-${o.band_hi}`}</td>
                     <td className="p-2">{o.side}</td>
@@ -116,6 +126,9 @@ export default function OverviewPage() {
                       {fmtCompactUsd(o.volume_usd)}{o.thin_market ? " ⚠" : ""}
                     </td>
                     <td className={`p-2 ${regimeColor(o.regime_label)}`}>{o.regime_label}</td>
+                    <td className="p-2 text-[10px] text-warn" title={o.block_reason ?? ""}>
+                      {o.tradeable ? "" : "blocked"}
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -33,6 +33,10 @@ export default function SignalsPanel({ onHide }: { onHide: () => void }) {
   const [expanded, setExpanded] = useState<number | null>(null);
   // Five is a glance; fifty is a scroll that hides the page behind it.
   const [showAll, setShowAll] = useState(false);
+  // Six strategies ship disabled, so no TRADE signal can fire until one is
+  // enabled. Without knowing that, an empty panel looks broken rather than
+  // switched off - which is the single reason this panel has read as useless.
+  const [strategies, setStrategies] = useState<Array<{ strategy_id: string; enabled: boolean }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,6 +51,13 @@ export default function SignalsPanel({ onHide }: { onHide: () => void }) {
       const rows = (data as SignalRow[]) ?? [];
       setSignals(rows);
       setError(null);
+
+      try {
+        const { data: st } = await supabase.from("strategies").select("strategy_id,enabled");
+        setStrategies((st as Array<{ strategy_id: string; enabled: boolean }>) ?? []);
+      } catch {
+        /* the roster is context, never a reason to fail the panel */
+      }
 
       // Resolve the band a signal points at, so it can show the range and the
       // settlement date. v_opportunities is the richer source but it only
@@ -125,9 +136,20 @@ export default function SignalsPanel({ onHide }: { onHide: () => void }) {
     load();
   }
 
-  const pending = signals.filter((s) => s.status === "pending_approval").length;
+  // A signal is either a TRADE (a strategy proposing a position) or a DESK
+  // ALERT (the system reporting on itself). They demand different things from
+  // the reader - approve or ignore versus go and fix something - and showing
+  // them in one undifferentiated list is why this panel never made sense.
+  const trades = signals.filter((s) => s.strategy_id !== "system" && s.action !== "ALERT");
+  const alerts = signals.filter((s) => s.strategy_id === "system" || s.action === "ALERT");
+  const pending = trades.filter((s) => s.status === "pending_approval").length;
+
+  const tradeable = strategies.filter((s) => s.strategy_id !== "system");
+  const enabled = tradeable.filter((s) => s.enabled);
+
   const VISIBLE = 5;
-  const shown = showAll ? signals : signals.slice(0, VISIBLE);
+  const shownTrades = showAll ? trades : trades.slice(0, VISIBLE);
+  const shownAlerts = showAll ? alerts : alerts.slice(0, VISIBLE);
 
   return (
     <div className="flex min-h-0 flex-col">
@@ -135,7 +157,7 @@ export default function SignalsPanel({ onHide }: { onHide: () => void }) {
         <div>
           <span className="text-sm font-semibold">Signals</span>
           <span className="ml-2 text-xs text-muted">
-            {pending > 0 ? `${pending} awaiting you` : "nothing awaiting you"}
+            {pending > 0 ? `${pending} awaiting you` : `${trades.length} trade · ${alerts.length} desk`}
           </span>
         </div>
         <button className="text-xs text-muted hover:text-text" onClick={onHide}>hide</button>
@@ -144,16 +166,51 @@ export default function SignalsPanel({ onHide }: { onHide: () => void }) {
       <div className={`space-y-2 overflow-y-auto p-2 ${showAll ? "max-h-[60vh]" : ""}`}>
         {loading && <Loading compact />}
         {error && <ErrorBox message={error} onRetry={load} compact />}
-        {!loading && !error && signals.length === 0 && (
-          <div className="rounded border border-dashed border-border p-3 text-xs leading-relaxed text-muted">
-            <div className="font-semibold text-text">No signals yet</div>
-            Every fired signal is logged here, approved or not. Nothing fires until a strategy is
-            enabled — all six ship <code>enabled = false</code> — and the Signals workflow runs
-            (GitHub Actions → <b>Signals</b>, 4× a day).
+        {/* WHY THERE ARE NO TRADES. This is the fact the panel was missing:
+            every strategy ships switched off, so no trade signal can fire, and
+            an empty list looks broken instead of simply not turned on. */}
+        {!loading && !error && trades.length === 0 && (
+          <div className="rounded border border-dashed border-border p-3 text-xs leading-relaxed">
+            {tradeable.length > 0 && enabled.length === 0 ? (
+              <>
+                <div className="font-semibold text-text">No trade signals — every strategy is off</div>
+                <p className="mt-1 text-muted">
+                  All {tradeable.length} strategies ship <code>enabled = false</code> on purpose, so
+                  nothing proposes a trade until you switch one on. That is a deliberate safety
+                  default, not a fault.
+                </p>
+                <p className="mt-1.5 text-muted">Turn one on in the Supabase SQL editor:</p>
+                <pre className="mt-1 overflow-x-auto rounded bg-panel px-2 py-1 font-mono text-[10px] text-text">
+{`update strategies set enabled = true
+ where strategy_id = '${tradeable[0].strategy_id}';`}
+                </pre>
+                <p className="mt-1.5 text-muted">
+                  Then GitHub Actions → <b>Signals</b>. Anything it proposes lands here for approval;
+                  nothing is ever traded automatically.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="font-semibold text-text">
+                  No trade signals in the last {signals.length ? "50 records" : "run"}
+                </div>
+                <p className="mt-1 text-muted">
+                  {enabled.length} strateg{enabled.length === 1 ? "y is" : "ies are"} enabled
+                  {enabled.length > 0 && ` (${enabled.map((e) => e.strategy_id).join(", ")})`}.
+                  Signals runs 4× a day; if none has fired, no band met its entry rules.
+                </p>
+              </>
+            )}
           </div>
         )}
 
-        {shown.map((s) => {
+        {trades.length > 0 && (
+          <div className="px-0.5 pt-0.5 text-[10px] uppercase tracking-wide text-muted">
+            Trades — approve or dismiss
+          </div>
+        )}
+
+        {shownTrades.map((s) => {
           const m = signalMeaning(s.reason, s.action);
           const b = s.band_id ? bands[s.band_id] : undefined;
           const city = s.city_key || b?.city_key || "";
@@ -259,12 +316,59 @@ export default function SignalsPanel({ onHide }: { onHide: () => void }) {
             </div>
           );
         })}
-        {signals.length > VISIBLE && (
+        {alerts.length > 0 && (
+          <div className="px-0.5 pt-2 text-[10px] uppercase tracking-wide text-muted">
+            Desk alerts — about the system, not a trade
+          </div>
+        )}
+        {shownAlerts.map((s) => {
+          const m = signalMeaning(s.reason, s.action);
+          const b = s.band_id ? bands[s.band_id] : undefined;
+          const city = s.city_key || b?.city_key || "";
+          const open = expanded === (s.signal_id ?? -1);
+          return (
+            <div key={s.signal_id ?? s.fired_at} className={`rounded border-l-4 bg-panel2 p-2.5 text-xs ${severityColor(s.severity)}`}>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="font-medium text-text">{m.headline}</span>
+                <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide">{s.severity}</span>
+              </div>
+              <div className="mt-0.5 text-[10px] text-muted">
+                {city ? <>{city}{b?.band_label ? ` · ${b.band_label}` : ""} · </> : "the desk · "}
+                {fmtAge(s.fired_at)}
+              </div>
+              <div className="mt-1 leading-relaxed text-muted">{m.detail}</div>
+              <div className="mt-1 text-[11px] text-text">{m.action}</div>
+              <button
+                className="mt-1 text-[10px] text-muted underline decoration-dotted hover:text-text"
+                onClick={() => setExpanded(open ? null : (s.signal_id ?? -1))}
+              >
+                {open ? "less" : "detail"}
+              </button>
+              {open && (
+                <div className="mt-1 space-y-1 border-l border-border pl-2 text-[10px] text-muted">
+                  {s.payload && Object.keys(s.payload).length > 0 && (
+                    <pre className="overflow-x-auto rounded bg-panel px-1.5 py-1 font-mono leading-snug">
+                      {JSON.stringify(s.payload, null, 1)}
+                    </pre>
+                  )}
+                  <p className="font-mono">{s.reason}</p>
+                </div>
+              )}
+              {s.status === "pending_approval" && (
+                <button onClick={() => dismiss(s.signal_id)} className="mt-1.5 rounded border border-border px-2 py-0.5 text-[10px] text-muted hover:text-text">
+                  Acknowledge
+                </button>
+              )}
+            </div>
+          );
+        })}
+
+        {(trades.length > VISIBLE || alerts.length > VISIBLE) && (
           <button
             onClick={() => setShowAll((v) => !v)}
             className="w-full rounded border border-border py-1.5 text-[11px] text-muted hover:border-accent hover:text-accent"
           >
-            {showAll ? `Show fewer` : `Show ${signals.length - VISIBLE} more`}
+            {showAll ? "Show fewer" : "Show all"}
           </button>
         )}
       </div>
