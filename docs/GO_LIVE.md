@@ -50,7 +50,8 @@ starting the next.
 | 20 | `sql/ad4_20_schedules.sql` | Moves each workflow's cadence out of its n8n JSON and into a setting the Workflows page owns, with a runs/month budget. |
 | 21 | `sql/ad4_21_weather_features.sql` | Morning conditions per city-day — dewpoint depression, cloud, wind, rain — plus the persistence benchmark every forecast must beat. |
 | 22 | `sql/ad4_22_opportunity_context.sql` | Price and forecast movement per band, and whether the market has repriced since the forecast moved. |
-| 23 | `sql/ad4_23_reasoning.sql` | **Run this last.** The desk's whole argument for one city in one row — forecast, persistence, this morning, where the day is, measured error, model agreement, and therefore which bucket. Safe to run before 21 and 22: it builds from whatever exists and names what is missing. |
+| 23 | `sql/ad4_23_reasoning.sql` | The desk's whole argument for one city in one row — forecast, persistence, this morning, where the day is, measured error, model agreement, and therefore which bucket. Safe to run before 21 and 22: it builds from whatever exists and names what is missing. |
+| 24 | `sql/ad4_24_nws_gridpoint.sql` | **Run this last.** The forecast side of file 21: `weather_forecast_features`, whose columns carry the same names `v_city_day_features` uses for observed conditions, so a model fitted on what happened reads a forecast day untranslated. Filled by n8n **P1.4**. |
 
 Every file is idempotent — re-running any of them is safe and changes
 nothing that is already correct.
@@ -555,14 +556,14 @@ the last three (digests, alerting, the watchdog).
 > copies writing the same tables is worse than one. `docs/n8n_setup.md` has
 > both safe paths: patch your originals, or cut over one at a time.
 
-All nine now carry a **Webhook Trigger** next to their Manual and Schedule
+All ten now carry a **Webhook Trigger** next to their Manual and Schedule
 ones, and a **Log run** node that writes `ingest_log` at the end of every
 execution. That gives you the **Workflows** page in the UI: run any job on
 demand, and see when each last ran and how it went — including the runs that
 started from a schedule or from inside n8n.
 
-To turn the Run buttons on: run `sql/ad4_14_workflows.sql` and
-`sql/ad4_16_nws.sql`, then paste each
+To turn the Run buttons on: run `sql/ad4_14_workflows.sql`,
+`sql/ad4_16_nws.sql` and `sql/ad4_24_nws_gridpoint.sql`, then paste each
 workflow's **Production webhook URL** into AD4 → **Workflows** → *set URL*.
 Leave them empty and the page stays a read-only status board.
 
@@ -621,9 +622,16 @@ Fill in `supabase_url` and `service_key` only. There is no api.weather.gov
 key: it is free, public, and imposes no rate limit. Then **Execute Workflow**.
 
 **Expect:** a Summary like
-`AD4 P1.2: 41 NWS observations from 54 cities, 13 not US stations. no new
+`AD4 P1.2: 246 NWS observations from 54 cities, 13 not US stations. no new
 alerts.` Non-US cities 404 once, are recorded as `nws_supported = false`, and
 are never asked again.
+
+The observation count is larger than the city count because this fetches the
+**last 26 hours of readings**, not just the newest one. These markets settle
+on a daily *maximum*; running every 2 hours, a single `latest` reading would
+miss the peak on most days and leave nothing to go back to. The newest
+reading drives `live_weather`; all of them are archived under the
+`(city_key, valid_at, source)` key, so re-running costs nothing.
 
 Then check the thing this workflow exists to make answerable — whether the
 two feeds agree on the same instant:
@@ -665,6 +673,47 @@ select city_key, for_date, models, spread_c, sigma_multiplier
 that day less confidently, and its reason string will say
 `models_disagree:<spread>C_over_<n>`. It can never drop below 1.0 — two
 models agreeing is not evidence that a day is easy. Activate it.
+
+### 5.6 `n8n/P1.4_nws_gridpoint.template.json` — every 6 hours
+
+Same two Config fields. Requires `sql/ad4_24_nws_gridpoint.sql`.
+**Execute Workflow**.
+
+**Expect:** `AD4 P1.4: 246 forecast-condition day(s) for 41 cities, 41
+partial day(s) skipped.` Same peak-window rule as P1.3, for the same reason.
+
+P1.3 forecasts the temperature. This forecasts **what moves it** — cloud
+cover, dewpoint depression, wind, rain, and the morning temperature — off
+the raw `/gridpoints/{wfo}/{x},{y}` endpoint. Those are exactly the
+quantities `sql/ad4_21_weather_features.sql` measured on days that already
+happened, and the columns here carry the **same names**, so the model
+`scripts/weather_model.py` fits on observed conditions applies to a forecast
+day with no translation step:
+
+```sql
+select f.city_key, f.for_date, f.lead_days,
+       f.forecast_max_c, f.morning_temp_c, f.dewpoint_depression_c,
+       f.cloud_mean, f.wind_mean, f.precip_total
+  from weather_forecast_features f
+ where f.for_date >= current_date
+ order by f.city_key, f.for_date limit 20;
+```
+
+Then confirm the two sides really do line up — this is the assumption the
+whole design rests on, and a rename on either side breaks it silently:
+
+```sql
+select column_name
+  from information_schema.columns
+ where table_name = 'weather_forecast_features'
+intersect
+select column_name
+  from information_schema.columns
+ where table_name = 'v_city_day_features';
+```
+
+`dewpoint_depression_c`, `cloud_mean`, `wind_mean`, `precip_total` and
+`morning_temp_c` must all appear. Activate it.
 
 ---
 

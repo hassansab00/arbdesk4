@@ -249,3 +249,96 @@ def test_every_workflow_is_gated():
         # and the gate must sit between Config and the work, not beside it
         after_config = [c["node"] for br in wf["connections"]["Config"]["main"] for c in br]
         assert after_config == ["Check schedule"], f"{f}: Config bypasses the gate ({after_config})"
+
+
+# ------------------------------------------------------- P1.4 gridpoint ----
+# The raw NWS gridpoint does not speak in the units weather_observations uses,
+# and every mismatch here is the dangerous kind: the number stays plausible.
+# An overcast day arriving as "100 oktas" or a 25mm forecast stored as 6 inches
+# both look like data until something downstream multiplies by them.
+@pytest.fixture(scope="module")
+def p14():
+    r = run("P1.4_nws_gridpoint.template.json", "plan_P1.4_gridpoint.json")
+    assert r["ok"], r
+    return r["outputs"]["Build rows"][0]["rows"][0]
+
+
+def test_sky_cover_percent_becomes_oktas(p14):
+    """NWS gives 0-100%. weather_observations.cloud_cover is 0-8 oktas, because
+    that is what METAR reports. 50% is 4 oktas, not 50."""
+    assert p14["cloud_mean"] == pytest.approx(4.0, abs=0.01)
+
+
+def test_wind_kmh_becomes_knots(p14):
+    assert p14["wind_mean"] == pytest.approx(10.0, abs=0.05)
+
+
+def test_an_accumulating_total_is_not_multiplied_by_its_block_length(p14):
+    """The bug this test exists for: 25.4mm forecast over a SIX-HOUR block.
+
+    Expanding the interval to six hourly points and summing gave 6 inches of
+    rain where the forecast said one. Temperature over a block means "it is
+    22C for each of these hours"; precipitation means "25mm falls across them
+    in total", and the two cannot share an expansion rule.
+    """
+    assert p14["precip_total"] == pytest.approx(1.0, abs=0.001)
+
+
+def test_instantaneous_series_are_not_divided(p14):
+    """The mirror of the above: temperature must NOT be spread across its
+    block, or a six-hour 30C forecast would read as 5C."""
+    assert p14["forecast_max_c"] == pytest.approx(30.0, abs=0.1)
+
+
+def test_a_partial_day_is_still_skipped(p14):
+    """Same peak-window rule as P1.3: the first local day is missing its
+    afternoon, so it is not written - and the run says so, because a day
+    silently absent and a day that failed to fetch look identical otherwise."""
+    r = run("P1.4_nws_gridpoint.template.json", "plan_P1.4_gridpoint.json")
+    out = r["outputs"]["Build rows"][0]
+    assert len(out["rows"]) == 1, [x["for_date"] for x in out["rows"]]
+    assert out["partial_days"] == 1
+
+
+def test_columns_match_the_observed_feature_names():
+    """The whole design rests on this: a model fitted on observed conditions
+    applies to forecast ones only because the names are identical. A rename on
+    either side silently decouples them."""
+    r = run("P1.4_nws_gridpoint.template.json", "plan_P1.4_gridpoint.json")
+    row = r["outputs"]["Build rows"][0]["rows"][0]
+    for shared in ("dewpoint_depression_c", "cloud_mean", "wind_mean",
+                   "precip_total", "morning_temp_c"):
+        assert shared in row, f"{shared} missing — the model could not apply forward"
+
+
+# --------------------------------------------- P1.2 observation series -----
+# P1.2 used to fetch /observations/latest - ONE reading. A daily maximum
+# cannot be computed from one reading, which is the number these markets
+# settle on, so the NWS feed could never produce the figure it exists for.
+def test_the_whole_series_is_archived(p12):
+    nyc = [o for o in p12["Build rows"][0]["observations"] if o["city_key"] == "nyc"]
+    assert len(nyc) == 4, [o["temp_c"] for o in nyc]
+    assert max(o["temp_c"] for o in nyc) == pytest.approx(28.3)
+
+
+def test_live_weather_takes_the_newest_reading_not_the_first(p12):
+    live = {r["city_key"]: r for r in p12["Build rows"][0]["liveRows"]}
+    assert live["nyc"]["temp_c"] == pytest.approx(26.9)
+    assert live["nyc"]["observed_at"] == "2026-09-04T21:51:00+00:00"
+
+
+def test_a_single_feature_response_still_works(p12):
+    """Not every station answers with a FeatureCollection. The old shape must
+    keep working, or switching to the series would break the stations that
+    only serve `latest`."""
+    phx = [o for o in p12["Build rows"][0]["observations"] if o["city_key"] == "phoenix"]
+    assert len(phx) == 1
+    assert phx[0]["temp_c"] == pytest.approx(45.0, abs=0.05)
+
+
+def test_a_series_response_is_not_mistaken_for_a_failed_fetch(p12):
+    """The 404 guard predated the series shape: a FeatureCollection has no
+    `properties`, so every series response was being counted as a failure and
+    dropped. Nothing about that looked wrong from the summary line."""
+    assert p12["Build rows"][0]["failed"] == 0
+    assert p12["Build rows"][0]["ok"] == 3

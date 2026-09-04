@@ -66,9 +66,13 @@ of what got built against it and where to find things.
    22. `sql/ad4_22_opportunity_context.sql` - how the price and the
        forecast have MOVED, and whether the market has repriced since the
        forecast last changed. An edge with a cause behind it.
-   23. **`sql/ad4_23_reasoning.sql` last** - the desk's whole argument for one
+   23. `sql/ad4_23_reasoning.sql` - the desk's whole argument for one
        city in one row. It computes nothing new; it is a join, so every
        number shown as a reason is the same number the engine priced with.
+   24. **`sql/ad4_24_nws_gridpoint.sql` last** - the forecast side of file
+       21. Its columns carry the same names `v_city_day_features` uses for
+       observed conditions, so the model fitted on what happened applies
+       to what is forecast without a translation layer. n8n P1.4 fills it.
 
    Then run **`sql/ad4_99_verify.sql`** against the real database. It is
    read-only and returns one grid: every check PASS / FAIL / ATTENTION,

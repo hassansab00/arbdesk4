@@ -68,53 +68,174 @@
   ],
   "Fetch observation": [
    {
-    "properties": {
-     "timestamp": "2026-09-03T19:51:00+00:00",
-     "stationId": "KNYC",
-     "temperature": {
-      "value": 28.3,
-      "unitCode": "wmoUnit:degC",
-      "qualityControl": "V"
-     },
-     "dewpoint": {
-      "value": 12.2,
-      "unitCode": "wmoUnit:degC"
-     },
-     "relativeHumidity": {
-      "value": 54.0,
-      "unitCode": "wmoUnit:percent"
-     },
-     "windSpeed": {
-      "value": 5.0,
-      "unitCode": "wmoUnit:m_s-1"
-     },
-     "windDirection": {
-      "value": 250,
-      "unitCode": "wmoUnit:degree_(angle)"
-     },
-     "precipitationLastHour": {
-      "value": 2.54,
-      "unitCode": "wmoUnit:mm"
-     },
-     "cloudLayers": [
-      {
-       "amount": "SCT",
-       "base": {
-        "value": 2000
-       }
-      },
-      {
-       "amount": "BKN",
-       "base": {
-        "value": 3000
+    "features": [
+     {
+      "properties": {
+       "timestamp": "2026-09-04T15:51:00+00:00",
+       "stationId": "K",
+       "temperature": {
+        "value": 21.0,
+        "unitCode": "wmoUnit:degC",
+        "qualityControl": "V"
+       },
+       "dewpoint": {
+        "value": 12.2,
+        "unitCode": "wmoUnit:degC"
+       },
+       "relativeHumidity": {
+        "value": 54.0,
+        "unitCode": "wmoUnit:percent"
+       },
+       "windSpeed": {
+        "value": 5.0,
+        "unitCode": "wmoUnit:m_s-1"
+       },
+       "windDirection": {
+        "value": 250,
+        "unitCode": "wmoUnit:degree_(angle)"
+       },
+       "precipitationLastHour": {
+        "value": 2.54,
+        "unitCode": "wmoUnit:mm"
+       },
+       "cloudLayers": [
+        {
+         "amount": "FEW"
+        }
+       ],
+       "maxTemperatureLast24Hours": {
+        "value": null,
+        "unitCode": "wmoUnit:degC"
        }
       }
-     ],
-     "maxTemperatureLast24Hours": {
-      "value": 31.1,
-      "unitCode": "wmoUnit:degC"
+     },
+     {
+      "properties": {
+       "timestamp": "2026-09-04T17:51:00+00:00",
+       "stationId": "K",
+       "temperature": {
+        "value": 25.4,
+        "unitCode": "wmoUnit:degC",
+        "qualityControl": "V"
+       },
+       "dewpoint": {
+        "value": 12.2,
+        "unitCode": "wmoUnit:degC"
+       },
+       "relativeHumidity": {
+        "value": 54.0,
+        "unitCode": "wmoUnit:percent"
+       },
+       "windSpeed": {
+        "value": 5.0,
+        "unitCode": "wmoUnit:m_s-1"
+       },
+       "windDirection": {
+        "value": 250,
+        "unitCode": "wmoUnit:degree_(angle)"
+       },
+       "precipitationLastHour": {
+        "value": 2.54,
+        "unitCode": "wmoUnit:mm"
+       },
+       "cloudLayers": [
+        {
+         "amount": "SCT"
+        }
+       ],
+       "maxTemperatureLast24Hours": {
+        "value": null,
+        "unitCode": "wmoUnit:degC"
+       }
+      }
+     },
+     {
+      "properties": {
+       "timestamp": "2026-09-04T19:51:00+00:00",
+       "stationId": "K",
+       "temperature": {
+        "value": 28.3,
+        "unitCode": "wmoUnit:degC",
+        "qualityControl": "V"
+       },
+       "dewpoint": {
+        "value": 12.2,
+        "unitCode": "wmoUnit:degC"
+       },
+       "relativeHumidity": {
+        "value": 54.0,
+        "unitCode": "wmoUnit:percent"
+       },
+       "windSpeed": {
+        "value": 5.0,
+        "unitCode": "wmoUnit:m_s-1"
+       },
+       "windDirection": {
+        "value": 250,
+        "unitCode": "wmoUnit:degree_(angle)"
+       },
+       "precipitationLastHour": {
+        "value": 2.54,
+        "unitCode": "wmoUnit:mm"
+       },
+       "cloudLayers": [
+        {
+         "amount": "SCT"
+        },
+        {
+         "amount": "BKN"
+        }
+       ],
+       "maxTemperatureLast24Hours": {
+        "value": null,
+        "unitCode": "wmoUnit:degC"
+       }
+      }
+     },
+     {
+      "properties": {
+       "timestamp": "2026-09-04T21:51:00+00:00",
+       "stationId": "K",
+       "temperature": {
+        "value": 26.9,
+        "unitCode": "wmoUnit:degC",
+        "qualityControl": "V"
+       },
+       "dewpoint": {
+        "value": 12.2,
+        "unitCode": "wmoUnit:degC"
+       },
+       "relativeHumidity": {
+        "value": 54.0,
+        "unitCode": "wmoUnit:percent"
+       },
+       "windSpeed": {
+        "value": 5.0,
+        "unitCode": "wmoUnit:m_s-1"
+       },
+       "windDirection": {
+        "value": 250,
+        "unitCode": "wmoUnit:degree_(angle)"
+       },
+       "precipitationLastHour": {
+        "value": 2.54,
+        "unitCode": "wmoUnit:mm"
+       },
+       "cloudLayers": [
+        {
+         "amount": "SCT"
+        },
+        {
+         "amount": "BKN"
+        }
+       ],
+       "maxTemperatureLast24Hours": {
+        "value": 31.1,
+        "unitCode": "wmoUnit:degC"
+       }
+      }
      }
-    }
+    ]
    },
    {
     "status": 404,
