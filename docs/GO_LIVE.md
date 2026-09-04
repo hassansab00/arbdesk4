@@ -33,7 +33,7 @@ starting the next.
 | 3 | `sql/ad4_phase2.sql` | cost params, edges, anomaly rules, correlation, capacity, views |
 | 4 | `sql/ad4_phase2_ranking.sql` | `v_opportunities` with the ranking score |
 | 5 | `sql/ad4_capacity_correlation.sql` | `recompute_capacity()`, `recompute_correlation()` |
-| 6 | `sql/ad4_strategies_seed.sql` | the six strategies, all disabled |
+| 6 | `sql/ad4_strategies_seed.sql` | the eight strategies, all disabled |
 | 7 | `sql/ad4_paper_engine_columns.sql` | paper-trade / signal / ledger columns |
 | 8 | `sql/ad4_settlement.sql` | `settle_markets()` |
 | 9 | `sql/ad4_backtest.sql` | `queue_backtest()` |
@@ -52,7 +52,8 @@ starting the next.
 | 22 | `sql/ad4_22_opportunity_context.sql` | Price and forecast movement per band, and whether the market has repriced since the forecast moved. |
 | 23 | `sql/ad4_23_reasoning.sql` | The desk's whole argument for one city in one row — forecast, persistence, this morning, where the day is, measured error, model agreement, and therefore which bucket. Safe to run before 21 and 22: it builds from whatever exists and names what is missing. |
 | 24 | `sql/ad4_24_nws_gridpoint.sql` | The forecast side of file 21: `weather_forecast_features`, whose columns carry the same names `v_city_day_features` uses for observed conditions, so a model fitted on what happened reads a forecast day untranslated. Filled by n8n **P1.4**. |
-| 25 | `sql/ad4_25_model_forecast.sql` | **Run this last.** AD4's own forward prediction — the fitted coefficients applied to those forecast conditions — with its arithmetic stored beside it. Filled by the **Model Forecast** action. |
+| 25 | `sql/ad4_25_model_forecast.sql` | AD4's own forward prediction — the fitted coefficients applied to those forecast conditions — with its arithmetic stored beside it. Filled by the **Model Forecast** action. |
+| 26 | `sql/ad4_26_temp_trend.sql` | **Run this last.** Which way today is pointing and how fast (least squares over the real timestamps), plus how much this city has historically still climbed from this local hour. Feeds the **City Monitor** page and strategy **S7**. Also adds `v_band_price_history` — per-bucket price movement, bounded to 48h. |
 
 Every file is idempotent — re-running any of them is safe and changes
 nothing that is already correct.
@@ -237,7 +238,7 @@ where n.nspname='public' and p.proname in (
 **Expect: `rpcs_present = 23`.**
 
 ```sql
--- 1e. all six strategies seeded and DISABLED
+-- 1e. all eight strategies seeded and DISABLED
 select strategy_id, enabled from strategies order by strategy_id;
 ```
 **Expect: exactly 6 rows, `enabled = false` on every one.**
@@ -370,7 +371,7 @@ Verify:
 ```sql
 select count(*) as signals_24h from signals where fired_at > now() - interval '24 hours';
 ```
-**Expect: 0.** All six strategies ship disabled, so nothing fires yet. A
+**Expect: 0.** All eight strategies ship disabled, so nothing fires yet. A
 non-zero count here means a strategy is already enabled — check
 `select strategy_id, enabled from strategies where enabled`.
 
@@ -786,15 +787,16 @@ a reload. If it does not, `update_setting` is not granted to `anon`: re-run
 
 | Page | What working looks like |
 |---|---|
-| **Overview** `/` | Five stat tiles (Cities live, Open positions, Signals 24h, Open P&L, Market volume 24h). A "Top opportunities" table with City / Band / Side / Price / Model P / Net edge / **Vol 24h** / Regime. "Open positions" shows the empty state explaining all six strategies ship disabled. |
+| **Overview** `/` | Five stat tiles (Cities live, Open positions, Signals 24h, Open P&L, Market volume 24h). A "Top opportunities" table with City / Band / Side / Price / Model P / Net edge / **Vol 24h** / Regime. "Open positions" shows the empty state explaining all eight strategies ship disabled. |
 | **Board** `/board` | One row per band per side, sortable. Columns include **Depth (5c)** and **Vol 24h** side by side, plus **Rank** with a `×0.xx` volume factor next to it. The "hide thin-volume markets" checkbox filters. Footer reads `N rows · total 24h volume $X`. Below it, **Why this city** — eight steps, each either a fact or a named gap. Step 4 is AD4's own forward call with its per-driver arithmetic; it says "no forward prediction" until 5.6 and 5.7 have both run. |
 | **Opportunities** `/opportunities` | Ranked cards, best first. Two sliders: min confidence and **min 24h volume**. Cards on thin bands carry an amber "Thin market" note. Clicking a card opens the calculator with that band loaded. |
 | **Calculator** `/calculator` | Search a city, add legs. Budget and target-profit modes. Each leg shows Model P, **Vol 24h**, and a "Your P" box that stays blank unless you tick *auto-fill from model*. The recommendation panel updates as you type and shows a "Thin volume on N legs" badge when relevant. |
 | **City Clusters** `/clusters` | A world map with one node per city, sized by 24h volume; a 24h UTC timeline showing each city's peak window against a "now" line; and a volume-by-city bar chart. |
+| **City Monitor** `/monitor` | One city, watched properly. Now / max so far / forecast / implied-by-observation as four figures; the 3-reading and 6-reading slope in °/h and a **rolling over** banner when the short one turns negative while the long one is still positive; today's trace against the forecast and implied maximum; every bucket's mid price over 48h; and the ladder with the **cover pair** flagged. Each panel names the job that fills it when it is empty. |
 | **Live Weather** `/live` | One card per city. Pulsing border = inside the peak window; dimmed = day decided; red border = a band was crossed in the last hour; a flash when the running max moves. Click a card for the detail view: a 24h temperature chart with **band overlay** (dashed lines, labelled) and **peak-window shading**, plus the running-max line. Right column is the event feed, labelled `live` when the Realtime subscription is connected. |
 | **Analytics** `/analytics` | Forecast skill per city (MAE, bias, MAE in bands, n days — with ⚠ under 200 days). Strategy attribution in **net** P&L. Signal frequency. A liquidity table showing **Depth 5c vs Volume 24h** per city and which shape each city is in (`both`, `quoted, not traded`, `traded, thin book`, `neither`). |
 | **Backtest** `/backtest` | The book-depth-history warning banner. A queue form. Queuing writes a `queued` row and says so; GitHub Actions picks it up within ~10 minutes. Selecting a queued run says "Queued — not picked up yet", not a blank panel. |
-| **Campaigns** `/campaigns` | A create form listing the six strategies (each marked `(disabled)`), with a note that a deployment created now will not trade until its strategy is enabled. |
+| **Campaigns** `/campaigns` | A create form listing the eight strategies (each marked `(disabled)`), with a note that a deployment created now will not trade until its strategy is enabled. |
 | **Goals** `/goals` | Pick a city, a **risk mode** (Very safe / Safe / Mid / Risky / Custom), and a **Solve** direction: *I set profit* or *I set budget*. The board table lists every band with Yes ¢, No ¢, Model %, Your %, **Vol 24h** and ladder depth; covered rows are highlighted. The spread pane gives budget, profit if a covered band wins, coverage %, tail risk, EV, total leg volume, and cent-exact legs. Four tier cards price the same target across all four risk modes. |
 
 ### The one thing to check on Goals

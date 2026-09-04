@@ -109,5 +109,20 @@ values
 
   ('s6_anchor_insurance', 'Anchor + insurance', 'BOTH', '["ALL"]'::jsonb,
    '["SHARP","NORMAL"]'::jsonb, 'basket', 8.0, 10, false,
-   '{"width_bands":2,"target_profit_usd":50.0,"origin":"candidate"}'::jsonb)
+   '{"width_bands":2,"target_profit_usd":50.0,"origin":"candidate"}'::jsonb),
+
+  -- S7 and S8 come from Hassan's own manual trading, written down as rules.
+  -- Both need sql/ad4_26_temp_trend.sql: without it the trend fields are null
+  -- and neither fires, which is the correct behaviour for a strategy whose
+  -- inputs are missing.
+  ('s7_pre_peak_gradient', 'Pre-peak gradient entry', 'BOTH', '["ALL"]'::jsonb,
+   '["SHARP","NORMAL"]'::jsonb, 'directional', 5.0, 10, false,
+   '{"entry_window_min":60,"max_reading_age_min":90,"min_slope_c_per_h":0.10,
+     "max_entry_price":0.85,"origin":"hassan",
+     "note":"enter under an hour before peak on the direction of travel, not the level. Mirror side sells bands a rolled-over day can no longer reach."}'::jsonb),
+
+  ('s8_two_bucket_cover', 'Two-bucket cover', 'YES', '["ALL"]'::jsonb,
+   '["SHARP","NORMAL"]'::jsonb, 'basket', 8.0, 8, false,
+   '{"max_pair_cost":0.70,"min_pair_prob":0.72,"min_liquidity_usd":100.0,"origin":"hassan",
+     "note":"the two most likely ADJACENT buckets when the pair costs under 70c including fees, and one of them contains the forecast or the observation-implied max"}'::jsonb)
 on conflict (strategy_id) do nothing;

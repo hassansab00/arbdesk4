@@ -185,6 +185,32 @@ def build_context():
     except Exception:
         live_weather = {}
 
+    # Which way today is pointing, and how much this city usually still climbs
+    # from this hour (sql/ad4_26_temp_trend.sql). Absent, every field stays
+    # None and S7 never fires - which is what a strategy should do when its
+    # inputs do not exist, rather than assume a flat day.
+    try:
+        approach = {r["city_key"]: r for r in rest("v_city_peak_approach", {"select": "*"})}
+    except Exception as e:
+        approach = {}
+        print(f"  ! v_city_peak_approach unavailable ({e}). "
+              f"S7 cannot fire. Run sql/ad4_26_temp_trend.sql.")
+
+    # Today's forecast maximum per city, shortest lead first - the same
+    # ordering v_city_stats uses, and for the same reason: run_at alone
+    # prefers a week-old seven-day-lead row over this morning's.
+    forecast_max = {}
+    try:
+        for r in rest("weather_forecasts", [
+            ("select", "city_key,forecast_max_c,for_date,lead_days,run_at"),
+            ("for_date", f"eq.{dt.date.today().isoformat()}"),
+            ("order", "lead_days.asc,run_at.desc"),
+            ("limit", "5000"),
+        ]):
+            forecast_max.setdefault(r["city_key"], r.get("forecast_max_c"))
+    except Exception:
+        pass
+
     history_cache = {}
     views = []
     for b in bands:
@@ -193,6 +219,7 @@ def build_context():
         yes = latest_edge.get((b["band_id"], "YES"), {})
         no = latest_edge.get((b["band_id"], "NO"), {})
         lw = live_weather.get(city_key, {})
+        ap = approach.get(city_key, {})
         reg = regime.classify(city_key, resolution_date, history_cache)
 
         views.append(BandView(
@@ -211,6 +238,15 @@ def build_context():
             running_max_c=lw.get("running_max_c"), minutes_to_peak=lw.get("minutes_to_peak"),
             peak_window_state=lw.get("peak_window_state"), day_decided=bool(lw.get("day_decided")),
             window_width_h=reg.window_width_h, s5_allowed=reg.s5_allowed,
+            slope_3_c_per_h=ap.get("slope_3_c_per_h"), slope_6_c_per_h=ap.get("slope_6_c_per_h"),
+            trend_direction=ap.get("direction"), rolling_over=bool(ap.get("rolling_over")),
+            latest_temp_c=ap.get("latest_temp_c"), reading_age_min=ap.get("reading_age_min"),
+            typical_climb_left_c=ap.get("typical_climb_left_c"),
+            implied_max_c=ap.get("implied_max_c"),
+            implied_max_low_c=ap.get("implied_max_low_c"),
+            implied_max_high_c=ap.get("implied_max_high_c"),
+            pct_already_peaked=ap.get("pct_already_peaked"),
+            forecast_max_c=forecast_max.get(city_key),
         ))
 
     settings = {r["key"]: r["value"] for r in rest("settings", {"select": "key,value"})}
