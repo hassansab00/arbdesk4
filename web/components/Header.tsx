@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Brand from "@/components/Brand";
+import BuildStamp from "@/components/BuildStamp";
 import { displayTz, setDisplayTz, tzLabel } from "@/lib/time";
 import { fmtAge } from "@/lib/format";
 
@@ -105,6 +106,7 @@ export default function Header() {
       />
 
       <div className="flex items-center gap-4">
+        <BuildStamp />
         {feeds && (
           <div className="hidden items-center gap-3 md:flex">
             {feeds.map((f) => (
