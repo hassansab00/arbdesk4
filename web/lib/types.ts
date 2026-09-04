@@ -267,6 +267,13 @@ export interface CityStats {
   peak_window_state: string | null;
   day_decided: boolean | null;
   observed_at: string | null;
+  // forecast provenance (sql/ad4_17 / ad4_19). A temperature with no
+  // provenance is unarguable-with: the board showed Chicago at 98F off a
+  // week-old seven-day-lead row and nothing on screen said so.
+  forecast_lead_days?: number | null;
+  forecast_at?: string | null;
+  observed_max_3d_c?: number | null;
+  forecast_suspect?: boolean | null;
 }
 
 

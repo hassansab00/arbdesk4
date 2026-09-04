@@ -211,9 +211,32 @@ end
 $ad4$;
 
 
+-- Say what was actually created, by name.
+--
+-- "Success. No rows returned." is what the SQL editor prints whether this file
+-- built four objects or was pasted in half. Later files then fail with
+-- `relation "v_city_day_features" does not exist` and the run that "worked" is
+-- the one nobody suspects. So the last thing this file does is look for its
+-- own objects and list them - and shout if one is missing.
 do $ad4$
-declare v_rows int; v_cities int;
+declare
+  v_rows int; v_cities int;
+  o text; gone text[] := array[]::text[];
 begin
+  foreach o in array array['v_city_day_features', 'v_persistence_skill',
+                           'v_weather_effects', 'derived_weather_model'] loop
+    if to_regclass('public.' || o) is null then
+      gone := array_append(gone, o);
+    end if;
+  end loop;
+
+  if array_length(gone, 1) > 0 then
+    raise exception 'ad4_21 did NOT create: %. Re-run the WHOLE file - a partial paste is the usual cause.',
+      array_to_string(gone, ', ');
+  end if;
+
+  raise notice 'ad4_21: created v_city_day_features, v_persistence_skill, v_weather_effects, derived_weather_model';
+
   select count(*), count(distinct city_key) into v_rows, v_cities
     from v_city_day_features where morning_to_max_c is not null;
   raise notice 'ad4_21: % city-day(s) with morning features across % cities', v_rows, v_cities;

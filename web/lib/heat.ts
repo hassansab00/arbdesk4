@@ -36,4 +36,7 @@ export const REGION_COLOR: Record<string, string> = {
   "West Asia": "#ffb020",
   "East Asia": "#ff6b9d",
   "Oceania": "#a78bfa",
+  // A city with neither a timezone nor coordinates. Grey on purpose: it must
+  // not look like one of the five real groups.
+  "Unknown": "#6b7280",
 };

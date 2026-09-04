@@ -43,7 +43,7 @@ def test_display_layer():
     result = json.loads(lines[-1])
     detail = "\n".join(l for l in r.stdout.splitlines() if "FAIL" in l)
     assert result["ok"], f"{result['failed']} display assertion(s) failed:\n{detail}"
-    assert result["passed"] >= 36, "assertions went missing from the harness"
+    assert result["passed"] >= 40, "assertions went missing from the harness"
 
 
 def test_ts_cost_model_agrees_with_the_python_one():

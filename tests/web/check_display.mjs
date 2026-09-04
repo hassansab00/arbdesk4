@@ -8,6 +8,7 @@
 import assert from "node:assert/strict";
 import * as U from "../../web/lib/units.ts";
 import * as T from "../../web/lib/time.ts";
+import * as R from "../../web/lib/region.ts";
 
 const out = [];
 function t(name, fn) {
@@ -286,6 +287,37 @@ t("an empty board is zero, not NaN", () => {
   assert.equal(r.cost, 0);
   assert.ok(r.outcomes.every((o) => o.pnl === 0));
   assert.ok(!r.locked, "a ticket with nothing on it is not a lock");
+});
+
+// ---- region --------------------------------------------------------------
+// The old rule was longitude-only with `if (lon === null) return "Americas"`,
+// so every city whose coordinates were never filled in was filed under the
+// Americas. Ankara and Moscow showed up beside Chicago on the clusters page.
+t("the timezone decides, not the longitude", () => {
+  assert.equal(R.regionFromCity({ timezone: "Europe/Istanbul" }), "Europe/Africa");
+  assert.equal(R.regionFromCity({ timezone: "Europe/Moscow" }), "Europe/Africa");
+  assert.equal(R.regionFromCity({ timezone: "America/Chicago" }), "Americas");
+  assert.equal(R.regionFromCity({ timezone: "Asia/Tokyo" }), "East Asia");
+  assert.equal(R.regionFromCity({ timezone: "Asia/Dubai" }), "West Asia");
+  assert.equal(R.regionFromCity({ timezone: "Australia/Sydney" }), "Oceania");
+  assert.equal(R.regionFromCity({ timezone: "Africa/Cairo" }), "Europe/Africa");
+});
+
+t("a city with no coordinates is Unknown, never Americas", () => {
+  assert.equal(R.regionFromCity({}), "Unknown");
+  assert.equal(R.regionFromCity({ timezone: null, longitude: null }), "Unknown");
+  assert.equal(R.regionFromLonLat(null, null), "Unknown");
+});
+
+t("the timezone wins over a longitude that disagrees", () => {
+  // Istanbul is at 29E, which the longitude rule alone calls West Asia.
+  assert.equal(R.regionFromCity({ timezone: "Europe/Istanbul", longitude: 28.98 }),
+    "Europe/Africa");
+});
+
+t("longitude still answers when there is no timezone", () => {
+  assert.equal(R.regionFromCity({ longitude: -87.6 }), "Americas");
+  assert.equal(R.regionFromCity({ longitude: 139.7 }), "Oceania");
 });
 
 const failed = out.filter(([s]) => s === "FAIL");

@@ -133,12 +133,35 @@ $ad4$;
 drop view if exists v_city_stats;
 create view v_city_stats as
 with fc as (
+  -- TODAY's forecast, on the CITY's calendar, at the shortest lead available.
+  --
+  -- Two bugs lived in this CTE and both put a wrong temperature on the board.
+  -- First, the only date filter was `for_date >= current_date - 1`, so
+  -- `distinct on (city_key) order by run_at desc` could pick a forecast for
+  -- NEXT WEEK and the page would label it Today - in a heat wave that is
+  -- several degrees, silently. Second, ordering by run_at alone prefers the
+  -- newest RUN over the shortest LEAD, and weather_forecasts is filled by the
+  -- Open-Meteo previous-runs archive: a day seven days out has exactly one
+  -- row, a lead-7 guess issued a week ago, and run_at picked it happily.
+  --
+  -- The city's own date comes from the climate cache rather than a per-row
+  -- `at time zone`, which is what this file exists to avoid paying for.
   select distinct on (f.city_key)
-    f.city_key, f.forecast_max_c, f.model, f.run_at
+    f.city_key, f.forecast_max_c, f.model, f.run_at, f.lead_days
   from weather_forecasts f
+  join derived_city_climate dc on dc.city_key = f.city_key
   where f.forecast_max_c is not null
-    and f.for_date >= current_date - 1
-  order by f.city_key, f.run_at desc
+    and f.for_date = dc.local_today
+  order by f.city_key, f.lead_days asc nulls last, f.run_at desc
+),
+-- The highest temperature actually observed here in three local days. Not
+-- used to price anything - used to CONTRADICT a forecast when the two are far
+-- apart, which is the check a trader does by eye and the platform never did.
+recent_obs as (
+  select o.city_key, max(o.temp_c) as observed_max_3d_c
+  from weather_observations o
+  where o.valid_at > now() - interval '3 days' and o.temp_c is not null
+  group by o.city_key
 ),
 skill as (
   select distinct on (city_key) city_key, mae_c, bias_c, n_days
@@ -194,11 +217,22 @@ select
   e.best_edge_pp, e.avg_edge_pp,
 
   pk.peak_hour_local, pk.window_width_h,
-  lw.peak_window_state, lw.day_decided, lw.observed_at
+  lw.peak_window_state, lw.day_decided, lw.observed_at,
+
+  -- ---- forecast provenance ----------------------------------------------
+  -- Same columns, same order, as the ad4_17 definition of this view, so the
+  -- UI reads one shape whichever file was run last.
+  fc.lead_days                                             as forecast_lead_days,
+  fc.run_at                                                as forecast_at,
+  ro.observed_max_3d_c,
+  (fc.forecast_max_c is not null
+     and ro.observed_max_3d_c is not null
+     and fc.forecast_max_c - ro.observed_max_3d_c > 4)     as forecast_suspect
 from cities c
 left join derived_city_climate cl on cl.city_key = c.city_key
 left join live_weather lw   on lw.city_key = c.city_key
 left join fc                on fc.city_key = c.city_key
+left join recent_obs ro     on ro.city_key = c.city_key
 left join skill sk          on sk.city_key = c.city_key
 left join cap cp            on cp.city_key = c.city_key
 left join div dv            on dv.city_key = c.city_key

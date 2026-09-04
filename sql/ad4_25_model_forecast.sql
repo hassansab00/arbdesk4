@@ -134,25 +134,42 @@ where m.predicted_max_c is not null;
 --    lead day, because a model that is sharp at lead 0 and useless at lead 4
 --    looks fine averaged together and is not.
 -- --------------------------------------------------------------------------
-create or replace view v_model_forecast_skill as
-select
-  m.city_key,
-  m.lead_days,
-  count(*)::int                                        as n_days,
-  round(avg(abs(m.predicted_max_c - o.max_c)), 2)      as model_mae_c,
-  round(avg(m.predicted_max_c - o.max_c), 2)           as model_bias_c,
-  round(avg(abs(m.nws_max_c - o.max_c)), 2)            as nws_mae_c,
-  round(avg(abs(m.prev_max_c - o.max_c)), 2)           as persistence_mae_c,
-  (avg(abs(m.predicted_max_c - o.max_c)) < avg(abs(m.nws_max_c - o.max_c)))  as beat_nws,
-  (avg(abs(m.predicted_max_c - o.max_c)) < avg(abs(m.prev_max_c - o.max_c))) as beat_persistence
-from derived_model_forecast m
-join v_city_day_features o
-  on o.city_key = m.city_key and o.obs_date = m.for_date and o.n_obs >= 12
-where m.predicted_max_c is not null
-group by m.city_key, m.lead_days;
+-- ADAPTIVE, for the same reason ad4_24's v_condition_skill is: this is the
+-- only object here that needs another file's view, and a missing sql/ad4_21
+-- must not abort the table, the two views the UI reads, or the grants.
+do $ad4$
+begin
+  if to_regclass('public.v_city_day_features') is null then
+    execute 'drop view if exists v_model_forecast_skill';
+    raise notice 'ad4_25: v_model_forecast_skill SKIPPED - v_city_day_features does not exist. Run sql/ad4_21_weather_features.sql, then re-run this file. Everything else in ad4_25 is installed.';
+    return;
+  end if;
 
-comment on view v_model_forecast_skill is
-  'Forward skill per lead day, scored on outcomes. Averaging leads together hides a model that is sharp today and useless on Friday.';
+  execute $v$
+    create or replace view v_model_forecast_skill as
+    select
+      m.city_key,
+      m.lead_days,
+      count(*)::int                                        as n_days,
+      round(avg(abs(m.predicted_max_c - o.max_c)), 2)      as model_mae_c,
+      round(avg(m.predicted_max_c - o.max_c), 2)           as model_bias_c,
+      round(avg(abs(m.nws_max_c - o.max_c)), 2)            as nws_mae_c,
+      round(avg(abs(m.prev_max_c - o.max_c)), 2)           as persistence_mae_c,
+      (avg(abs(m.predicted_max_c - o.max_c)) < avg(abs(m.nws_max_c - o.max_c)))  as beat_nws,
+      (avg(abs(m.predicted_max_c - o.max_c)) < avg(abs(m.prev_max_c - o.max_c))) as beat_persistence
+    from derived_model_forecast m
+    join v_city_day_features o
+      on o.city_key = m.city_key and o.obs_date = m.for_date and o.n_obs >= 12
+    where m.predicted_max_c is not null
+    group by m.city_key, m.lead_days
+  $v$;
+
+  execute $v$
+    comment on view v_model_forecast_skill is
+      'Forward skill per lead day, scored on outcomes. Averaging leads together hides a model that is sharp today and useless on Friday.'
+  $v$;
+end
+$ad4$;
 
 
 -- --------------------------------------------------------------------------

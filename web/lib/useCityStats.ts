@@ -87,9 +87,16 @@ export function useCityStats(pollMs = 60000): CityStatsResult {
         const [cities, live, fc, vol] = await Promise.all([
           supabase.from("cities").select("city_key,display_name,icao,timezone,unit,latitude,longitude"),
           supabase.from("live_weather").select("city_key,temp_c,running_max_c,peak_window_state,day_decided,observed_at"),
+          // Shortest lead first, THEN newest run. Ordering by run_at alone
+          // picks a seven-day-lead guess issued a week ago over this
+          // morning's one-day forecast, because the previous-runs archive
+          // stores both and the old row is a perfectly valid "newest run for
+          // that lead". Same bug the view had.
           supabase.from("weather_forecasts")
-            .select("city_key,forecast_max_c,model,run_at,for_date")
-            .eq("for_date", today).order("run_at", { ascending: false }).limit(2000),
+            .select("city_key,forecast_max_c,model,run_at,for_date,lead_days")
+            .eq("for_date", today)
+            .order("lead_days", { ascending: true, nullsFirst: false })
+            .order("run_at", { ascending: false }).limit(2000),
           supabase.from("v_city_volume").select("city_key,volume_usd,n_trades"),
         ]);
         if (cities.error) throw cities.error;
@@ -127,6 +134,8 @@ export function useCityStats(pollMs = 60000): CityStatsResult {
             running_max_c: (l.running_max_c as number) ?? null,
             forecast_max_c: (f.forecast_max_c as number) ?? null,
             forecast_model: (f.model as string) ?? null,
+            forecast_lead_days: (f.lead_days as number) ?? null,
+            forecast_at: (f.run_at as string) ?? null,
             volume_24h: (v.volume_usd as number) ?? 0,
             n_trades_24h: (v.n_trades as number) ?? 0,
             peak_window_state: (l.peak_window_state as string) ?? null,

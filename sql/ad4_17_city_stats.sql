@@ -100,15 +100,45 @@ left join recent r on r.city_key = t.city_key;
 -- --------------------------------------------------------------------------
 -- 3. One row per city: weather, market and model, side by side.
 -- --------------------------------------------------------------------------
-create or replace view v_city_stats as
+-- Dropped and recreated, not `create or replace`. sql/ad4_19 rebuilds this
+-- same view on the climate cache, which changes some column types; a later
+-- re-run of THIS file then failed with `cannot change data type of view
+-- column normal_max_c`, and the fix looked like a corrupt database. Nothing
+-- in the schema selects from v_city_stats - only the app does - so dropping
+-- it costs nothing and makes both files re-runnable in either order.
+drop view if exists v_city_stats;
+create view v_city_stats as
 with fc as (
-  -- the freshest forecast for today, whichever model produced it
+  -- The forecast for today that carries the MOST INFORMATION - which is the
+  -- shortest lead, not merely the newest run_at.
+  --
+  -- This was `order by run_at desc` and it produced a wrong number on a real
+  -- desk. weather_forecasts is filled by the Open-Meteo previous-runs ingest,
+  -- which archives leads 1 through 7 for every day; a day sitting seven days
+  -- out has exactly one row, a lead-7 forecast issued a week ago, and
+  -- `run_at desc` picked it happily. The board then showed Chicago at 98F on a
+  -- day nothing had been near 84F, with nothing on screen to say the figure
+  -- was a week-old seven-day-lead guess.
+  --
+  -- Lead ascending fixes the choice; lead_days and run_at come out of the view
+  -- so the UI can show the provenance instead of a bare number.
   select distinct on (f.city_key)
-    f.city_key, f.forecast_max_c, f.model, f.run_at
+    f.city_key, f.forecast_max_c, f.model, f.run_at, f.lead_days
   from weather_forecasts f
   join v_city_climate cl on cl.city_key = f.city_key and f.for_date = cl.local_today
   where f.forecast_max_c is not null
-  order by f.city_key, f.run_at desc
+  order by f.city_key, f.lead_days asc nulls last, f.run_at desc
+),
+-- The highest temperature actually observed in this city over the last three
+-- local days. Not used to price anything - used to CONTRADICT the forecast
+-- when the two are far apart, which is the check a trader does by eye and the
+-- platform never did.
+recent_obs as (
+  select o.city_key, max(o.temp_c) as observed_max_3d_c
+  from weather_observations o
+  join cities c2 on c2.city_key = o.city_key
+  where o.valid_at > now() - interval '3 days' and o.temp_c is not null
+  group by o.city_key
 ),
 skill as (
   select distinct on (city_key) city_key, mae_c, bias_c, n_days
@@ -187,11 +217,26 @@ select
   pk.window_width_h,
   lw.peak_window_state,
   lw.day_decided,
-  lw.observed_at
+  lw.observed_at,
+
+  -- ---- forecast provenance ----------------------------------------------
+  -- Appended rather than placed beside forecast_max_c on purpose: `create or
+  -- replace view` can only ADD columns at the end, and a desk that has to
+  -- drop this view first is a desk whose dependent views cascade away.
+  fc.lead_days                                             as forecast_lead_days,
+  fc.run_at                                                as forecast_at,
+  ro.observed_max_3d_c,
+  -- A forecast more than 4C above everything observed in three days is not
+  -- necessarily wrong - but it is the shape of a stale long-lead row, and the
+  -- desk should be told rather than shown a number it cannot check.
+  (fc.forecast_max_c is not null
+     and ro.observed_max_3d_c is not null
+     and fc.forecast_max_c - ro.observed_max_3d_c > 4)     as forecast_suspect
 from cities c
 left join v_city_climate cl on cl.city_key = c.city_key
 left join live_weather lw   on lw.city_key = c.city_key
 left join fc                on fc.city_key = c.city_key
+left join recent_obs ro     on ro.city_key = c.city_key
 left join skill sk          on sk.city_key = c.city_key
 left join cap cp            on cp.city_key = c.city_key
 left join div dv            on dv.city_key = c.city_key
