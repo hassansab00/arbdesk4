@@ -92,21 +92,40 @@ order by city_key, for_date, run_at desc;
 --    measured how wrong the CLOUD forecast is - and if cloud is worth -1C per
 --    okta, a cloud forecast that is two oktas out is a 2C error entering the
 --    model through a side door, invisible to every existing skill metric.
+--
+--    ADAPTIVE. This is the one thing in the file that needs another file's
+--    view, and hard-referencing it made a missing sql/ad4_21 abort the WHOLE
+--    of ad4_24 - the table, the freshest-forecast view, the P1.4 registration,
+--    all of it - over a diagnostic. A missing prerequisite must cost the thing
+--    that needs it, and nothing else. So: build it when the input is there,
+--    and name the file that supplies it when it is not.
 -- --------------------------------------------------------------------------
-create or replace view v_condition_skill as
-select
-  f.city_key,
-  count(*)::int                                              as n_days,
-  round(avg(abs(f.cloud_mean - o.cloud_mean)), 2)            as cloud_mae_oktas,
-  round(avg(f.cloud_mean - o.cloud_mean), 2)                 as cloud_bias_oktas,
-  round(avg(abs(f.dewpoint_depression_c - o.dewpoint_depression_c)), 2) as dryness_mae_c,
-  round(avg(f.dewpoint_depression_c - o.dewpoint_depression_c), 2)      as dryness_bias_c,
-  round(avg(abs(f.forecast_max_c - o.max_c)), 2)             as max_mae_c
-from v_forecast_features f
-join v_city_day_features o
-  on o.city_key = f.city_key and o.obs_date = f.for_date and o.n_obs >= 12
-where f.cloud_mean is not null and o.cloud_mean is not null
-group by f.city_key;
+do $ad4$
+begin
+  if to_regclass('public.v_city_day_features') is null then
+    execute 'drop view if exists v_condition_skill';
+    raise notice 'ad4_24: v_condition_skill SKIPPED - v_city_day_features does not exist. Run sql/ad4_21_weather_features.sql, then re-run this file. Everything else in ad4_24 is installed.';
+    return;
+  end if;
+
+  execute $v$
+    create or replace view v_condition_skill as
+    select
+      f.city_key,
+      count(*)::int                                              as n_days,
+      round(avg(abs(f.cloud_mean - o.cloud_mean)), 2)            as cloud_mae_oktas,
+      round(avg(f.cloud_mean - o.cloud_mean), 2)                 as cloud_bias_oktas,
+      round(avg(abs(f.dewpoint_depression_c - o.dewpoint_depression_c)), 2) as dryness_mae_c,
+      round(avg(f.dewpoint_depression_c - o.dewpoint_depression_c), 2)      as dryness_bias_c,
+      round(avg(abs(f.forecast_max_c - o.max_c)), 2)             as max_mae_c
+    from v_forecast_features f
+    join v_city_day_features o
+      on o.city_key = f.city_key and o.obs_date = f.for_date and o.n_obs >= 12
+    where f.cloud_mean is not null and o.cloud_mean is not null
+    group by f.city_key
+  $v$;
+end
+$ad4$;
 
 
 -- --------------------------------------------------------------------------
@@ -116,6 +135,7 @@ do $ad4$
 declare o text; r text;
 begin
   foreach o in array array['weather_forecast_features', 'v_forecast_features', 'v_condition_skill'] loop
+    if to_regclass('public.' || o) is null then continue; end if;   -- skipped above
     foreach r in array array['anon', 'authenticated'] loop
       if exists (select 1 from pg_roles where rolname = r) then
         execute format('revoke all on %I from %I', o, r);

@@ -9,7 +9,7 @@ import { fmtAge, fmtCompactUsd, fmtPp, fmtUsd } from "@/lib/format";
 import { fmtTemp, fmtTempDelta, type Unit } from "@/lib/units";
 import { fmtCityHour, displayTz, tzLabel } from "@/lib/time";
 import { heatColor, heatWord, REGION_COLOR } from "@/lib/heat";
-import { regionFromLonLat, type Region } from "@/lib/region";
+import { regionFromCity, type Region } from "@/lib/region";
 import type { CityStats } from "@/lib/types";
 
 /**
@@ -45,7 +45,39 @@ const SORTS: Array<{ key: SortKey; label: string; hint: string }> = [
   { key: "name",       label: "Name",        hint: "Alphabetical." },
 ];
 
+// "Unknown" is not offered as a filter chip - it is not a place. It shows in
+// the table so a city with no timezone and no coordinates is visible as the
+// data gap it is, rather than being quietly filed under the Americas.
 const REGIONS: Region[] = ["Americas", "Europe/Africa", "West Asia", "East Asia", "Oceania"];
+
+/** Where the number in the Today column came from. The board once showed
+ *  Chicago at 98F off a week-old seven-day-lead row, and no amount of staring
+ *  at the cell could have revealed that. */
+function forecastProvenance(c: CityStats): string {
+  if (c.forecast_max_c === null) {
+    return c.running_max_c === null
+      ? "No forecast and no live reading for this city."
+      : "No forecast for the local day - this is the running maximum observed so far today.";
+  }
+  const bits = [`forecast ${c.forecast_model ?? "unknown model"}`];
+  if (c.forecast_lead_days != null) bits.push(`${c.forecast_lead_days}-day lead`);
+  if (c.forecast_at) bits.push(`run ${fmtAge(c.forecast_at)}`);
+  if (c.observed_max_3d_c != null) bits.push(`observed max in 3 days ${c.observed_max_3d_c.toFixed(1)}C`);
+  if (c.forecast_suspect) {
+    bits.push("SUSPECT: more than 4C above anything observed in three days - usually a stale long-lead row. Run Actions -> Forecasts.");
+  }
+  return bits.join(" · ");
+}
+
+/** Amber past `hours` old, red past three times that. A timestamp the reader
+ *  has to subtract in their head is a timestamp nobody reads. */
+function staleClass(iso: string | null, hours: number): string {
+  if (!iso) return "text-bad";
+  const age = (Date.now() - new Date(iso).getTime()) / 3600_000;
+  if (age > hours * 3) return "text-bad";
+  if (age > hours) return "text-warn";
+  return "text-text";
+}
 
 export default function ClustersPage() {
   const [regionFilter, setRegionFilter] = useState<Region | "ALL">("ALL");
@@ -59,7 +91,7 @@ export default function ClustersPage() {
     const filtered =
       regionFilter === "ALL"
         ? all
-        : all.filter((c) => regionFromLonLat(c.longitude, c.latitude) === regionFilter);
+        : all.filter((c) => regionFromCity(c) === regionFilter);
     const raw = (c: CityStats): number | null => {
       switch (sortKey) {
         case "hotness": return c.hotness_sigma;
@@ -112,6 +144,24 @@ export default function ClustersPage() {
   const withBaseline = all.filter((c) => c.hotness_sigma !== null).length;
   const detail = cities.find((c) => c.city_key === selected);
 
+  // When this page's numbers were last extracted. Every figure here is as old
+  // as the run that produced it, and a page that shows a temperature without
+  // saying when it was taken invites the reader to assume "now".
+  const freshness = useMemo(() => {
+    const newest = (pick: (c: CityStats) => string | null | undefined) => {
+      let best: number | null = null;
+      for (const c of all) {
+        const v = pick(c);
+        if (!v) continue;
+        const t = new Date(v).getTime();
+        if (Number.isFinite(t) && (best === null || t > best)) best = t;
+      }
+      return best === null ? null : new Date(best).toISOString();
+    };
+    const suspect = all.filter((c) => c.forecast_suspect).length;
+    return { observed: newest((c) => c.observed_at), forecast: newest((c) => c.forecast_at), suspect };
+  }, [all]);
+
   return (
     <div className="space-y-5">
       <div>
@@ -124,6 +174,26 @@ export default function ClustersPage() {
           peak window is open there right now. Baseline is every year&apos;s observations within ten
           days of today&apos;s date; a city without enough history shows grey and says so.
         </p>
+
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-muted">
+          <span>
+            observations extracted{" "}
+            <b className={staleClass(freshness.observed, 3)}>
+              {freshness.observed ? fmtAge(freshness.observed) : "never"}
+            </b>
+          </span>
+          <span>
+            forecast run{" "}
+            <b className={staleClass(freshness.forecast, 24)}>
+              {freshness.forecast ? fmtAge(freshness.forecast) : "never"}
+            </b>
+          </span>
+          {freshness.suspect > 0 && (
+            <span className="text-warn" title="Today's forecast is more than 4C above anything observed in three days. Usually a stale long-lead row.">
+              {freshness.suspect} city/cities showing a suspect forecast
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -224,7 +294,7 @@ export default function ClustersPage() {
               const x = ((c.longitude + 180) / 360) * 360;
               const y = ((90 - c.latitude) / 180) * 180;
               const r = 2.5 + 5.5 * Math.sqrt((c.volume_24h ?? 0) / maxVolume);
-              const region = regionFromLonLat(c.longitude, c.latitude);
+              const region = regionFromCity(c);
               const on = c.peak_window_state === "INSIDE";
               return (
                 <g key={c.city_key} onClick={() => setSelected(c.city_key === selected ? null : c.city_key)} style={{ cursor: "pointer" }}>
@@ -304,7 +374,7 @@ export default function ClustersPage() {
             <tbody>
               {cities.map((c) => {
                 const unit = c.unit as Unit;
-                const region = regionFromLonLat(c.longitude, c.latitude);
+                const region = regionFromCity(c);
                 return (
                   <tr
                     key={c.city_key}
@@ -321,7 +391,21 @@ export default function ClustersPage() {
                       )}
                     </td>
                     <td className="p-2 text-[11px]" style={{ color: REGION_COLOR[region] }}>{region}</td>
-                    <td className="p-2 text-right font-mono">{fmtTemp(c.forecast_max_c ?? c.running_max_c, unit)}</td>
+                    <td className="p-2 text-right font-mono">
+                      <span
+                        className={c.forecast_suspect ? "text-warn" : ""}
+                        title={forecastProvenance(c)}
+                      >
+                        {fmtTemp(c.forecast_max_c ?? c.running_max_c, unit)}
+                        {c.forecast_suspect && <span className="ml-1 text-[10px]">!</span>}
+                      </span>
+                      {c.forecast_max_c !== null && c.forecast_lead_days != null && (
+                        <div className="text-[9px] font-normal text-muted">
+                          lead {c.forecast_lead_days}
+                          {c.forecast_at && ` · ${fmtAge(c.forecast_at)}`}
+                        </div>
+                      )}
+                    </td>
                     <td className="p-2 text-right font-mono text-muted">{fmtTemp(c.normal_max_c, unit)}</td>
                     <td className="p-2 text-right font-mono" style={{ color: heatColor(c.hotness_sigma) }}>
                       {c.anomaly_c === null ? (
