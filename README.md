@@ -16,13 +16,13 @@ of what got built against it and where to find things.
    exact command and the exact expected result at every step. Everything
    below is the map; that file is the route.
 
-1. **Run the SQL, in this order** - eighteen files, in the Supabase SQL
+1. **Run the SQL, in this order** - nineteen files, in the Supabase SQL
    editor (each file is idempotent, safe to re-run any number of times).
    `docs/GO_LIVE.md` step 3 is the same list with a one-line description
    of each:
 
    1. **`sql/ad4_00_preflight.sql`** - **run this first.** It guarantees
-      every table, column and unique key the other seventeen need, whatever
+      every table, column and unique key the other eighteen need, whatever
       state the database is in, and prints a NOTICE listing exactly what
       it had to add. This is what makes the rest of the run order safe:
       the base Phase 0 schema is not in this repo, so nothing else may
@@ -49,10 +49,13 @@ of what got built against it and where to find things.
    17. `sql/ad4_17_city_stats.sql` - each city's climatological normal and
        volatility, which is what lets the desk say how hot today is FOR THAT
        CITY rather than in absolute degrees.
-   18. **`sql/ad4_18_databank.sql` last** - the immutable record of
+   18. `sql/ad4_18_databank.sql` - the immutable record of
        predictions against outcomes. Everything else here is live or derived
        and is destroyed by its own next run; this is the only durable
        asset the desk has, and calibration is fitted on it.
+   19. **`sql/ad4_19_stats_cache.sql` last** - caches the climatology and
+       bounds the forecast-divergence join. Without it City Clusters and
+       Analytics time out once the observation archive is real.
 
    Then run **`sql/ad4_99_verify.sql`** against the real database. It is
    read-only and returns one grid: every check PASS / FAIL / ATTENTION,
@@ -99,7 +102,7 @@ scripts/                   Python engines (Tasks 1, 3-13d)
 
 sql/                        Every ad4_*.sql file. ad4_00_preflight.sql
                              runs FIRST and guarantees the schema the
-                             other seventeen assume.
+                             other eighteen assume.
 docs/                       Honest-limitation write-ups and design decisions -
                              read architecture_deviations.md and
                              schema_assumptions.md first

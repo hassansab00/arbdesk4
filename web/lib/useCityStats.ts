@@ -27,10 +27,13 @@ import type { CityStats } from "@/lib/types";
  */
 
 export type StatsMode = "view" | "fallback" | "empty";
+export type FallbackReason = "missing" | "timeout" | "other" | null;
 
 export interface CityStatsResult {
   rows: CityStats[];
   mode: StatsMode;
+  /** Why the view was not used, so the UI can name the right fix. */
+  reason: FallbackReason;
   /** The real Postgres message when the view was unusable, for the UI to show. */
   viewError: string | null;
   loading: boolean;
@@ -38,12 +41,20 @@ export interface CityStatsResult {
   refresh: () => void;
 }
 
+// Any failure of the view falls back, not just a missing one. The view timed
+// out in production - "canceling statement due to statement timeout" - and
+// because that message is not "does not exist", the fallback did not fire and
+// the page showed a red box instead of the temperatures it could have shown
+// from the base tables. The reason the view failed is worth REPORTING, but it
+// is never a reason to render nothing.
 const MISSING = /does not exist|could not find|schema cache|not found/i;
+const TIMEOUT = /timeout|canceling statement|too long/i;
 
 export function useCityStats(pollMs = 60000): CityStatsResult {
   const [rows, setRows] = useState<CityStats[]>([]);
   const [mode, setMode] = useState<StatsMode>("empty");
   const [viewError, setViewError] = useState<string | null>(null);
+  const [reason, setReason] = useState<FallbackReason>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -59,14 +70,18 @@ export function useCityStats(pollMs = 60000): CityStatsResult {
             setRows(data as CityStats[]);
             setMode(data.length ? "view" : "empty");
             setViewError(null);
+            setReason(null);
             setError(null);
           }
           return;
         }
         // The view is missing (or unreadable). Build the same shape from the
         // tables, minus the climate columns only it can compute.
-        if (!cancelled) setViewError(e?.message ?? "v_city_stats unavailable");
-        if (e && !MISSING.test(e.message ?? "")) throw e;
+        const emsg = e?.message ?? "v_city_stats unavailable";
+        if (!cancelled) {
+          setViewError(emsg);
+          setReason(MISSING.test(emsg) ? "missing" : TIMEOUT.test(emsg) ? "timeout" : "other");
+        }
 
         const today = new Date().toISOString().slice(0, 10);
         const [cities, live, fc, vol] = await Promise.all([
@@ -139,5 +154,5 @@ export function useCityStats(pollMs = 60000): CityStatsResult {
     return () => { cancelled = true; if (t) clearInterval(t); };
   }, [pollMs, tick]);
 
-  return { rows, mode, viewError, loading, error, refresh: () => setTick((n) => n + 1) };
+  return { rows, mode, reason, viewError, loading, error, refresh: () => setTick((n) => n + 1) };
 }

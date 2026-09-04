@@ -10,6 +10,7 @@ already there, not logic that needs Python. This script is a thin
 scheduling/logging wrapper so the job shows up in `ingest_log` next to
 every other daily job, consistent with how the rest of AD4 is run.
 """
+import sys
 from common import _cfg, _headers, log_run
 import requests
 
@@ -26,8 +27,23 @@ def main():
     correlation_rows = _call_rpc("recompute_correlation")
     print(f"derived_capacity: {capacity_rows} rows")
     print(f"derived_city_correlation: {correlation_rows} rows")
+
+    # The seasonal normal is a full pass over weather_observations for a figure
+    # that changes once a day. Computing it per page load is what made
+    # v_city_stats time out in the browser; it belongs here, with the other
+    # daily derivations. Optional: a database without ad4_19 simply has no such
+    # function, and nothing else in this job depends on it.
+    climate = None
+    try:
+        climate = _call_rpc("refresh_city_climate")
+        print(f"derived_city_climate: {climate}")
+    except Exception as e:
+        print(f"  note: refresh_city_climate unavailable ({e}) - run sql/ad4_19_stats_cache.sql",
+              file=sys.stderr)
+
     log_run("capacity", "ok", (capacity_rows or 0) + (correlation_rows or 0),
-            {"capacity_rows": capacity_rows, "correlation_rows": correlation_rows})
+            {"capacity_rows": capacity_rows, "correlation_rows": correlation_rows,
+             "climate": climate})
 
 
 if __name__ == "__main__":
