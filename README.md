@@ -16,13 +16,13 @@ of what got built against it and where to find things.
    exact command and the exact expected result at every step. Everything
    below is the map; that file is the route.
 
-1. **Run the SQL, in this order** - sixteen files, in the Supabase SQL
+1. **Run the SQL, in this order** - seventeen files, in the Supabase SQL
    editor (each file is idempotent, safe to re-run any number of times).
    `docs/GO_LIVE.md` step 3 is the same list with a one-line description
    of each:
 
    1. **`sql/ad4_00_preflight.sql`** - **run this first.** It guarantees
-      every table, column and unique key the other fifteen need, whatever
+      every table, column and unique key the other sixteen need, whatever
       state the database is in, and prints a NOTICE listing exactly what
       it had to add. This is what makes the rest of the run order safe:
       the base Phase 0 schema is not in this repo, so nothing else may
@@ -44,8 +44,11 @@ of what got built against it and where to find things.
    14. `sql/ad4_14_workflows.sql` - the Workflows page and its run history.
    15. `sql/ad4_15_pipeline_fixes.sql` - the `system` strategy the Signal
        Engine writes against.
-   16. **`sql/ad4_16_nws.sql` last** - api.weather.gov: per-city NWS ids,
-       today's solar transit, and `v_forecast_divergence`.
+   16. `sql/ad4_16_nws.sql` - api.weather.gov: per-city NWS ids, today's
+       solar transit, and `v_forecast_divergence`.
+   17. **`sql/ad4_17_city_stats.sql` last** - each city's climatological
+       normal and volatility, which is what lets the desk say how hot today
+       is FOR THAT CITY rather than in absolute degrees.
 
    Then run **`sql/ad4_99_verify.sql`** against the real database. It is
    read-only and returns one grid: every check PASS / FAIL / ATTENTION,
@@ -92,13 +95,13 @@ scripts/                   Python engines (Tasks 1, 3-13d)
 
 sql/                        Every ad4_*.sql file. ad4_00_preflight.sql
                              runs FIRST and guarantees the schema the
-                             other fifteen assume.
+                             other sixteen assume.
 docs/                       Honest-limitation write-ups and design decisions -
                              read architecture_deviations.md and
                              schema_assumptions.md first
 n8n/                        Importable workflow templates (Task 15)
 web/                        Next.js frontend (Task 14)
-tests/                      pytest suite - 201 tests, run with:
+tests/                      pytest suite - 210 tests, run with:
                              PYTHONPATH=scripts python -m pytest tests/ -q
 ```
 

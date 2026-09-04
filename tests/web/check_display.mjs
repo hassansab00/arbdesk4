@@ -145,6 +145,76 @@ t("nonsense input returns null, never a number", () => {
   assert.equal(C.buy(100, NaN), null);
 });
 
+// ---- monte carlo ---------------------------------------------------------
+import * as MC from "../../web/lib/montecarlo.ts";
+
+const ladder = (stakes = {}) => {
+  // 9 one-degree bands 20..29 plus two open tails, like a Celsius city
+  const bs = [{ band_id: "lo", label: "<20", lo: null, hi: 20, price: 0.05, stake: stakes.lo ?? 0 }];
+  for (let t = 20; t < 29; t++) {
+    bs.push({ band_id: `b${t}`, label: `${t}-${t + 1}`, lo: t, hi: t + 1, price: 0.1, stake: stakes[`b${t}`] ?? 0 });
+  }
+  bs.push({ band_id: "hi", label: "29+", lo: 29, hi: null, price: 0.05, stake: stakes.hi ?? 0 });
+  return bs;
+};
+
+t("the simulated distribution matches the analytic one", () => {
+  // Centre 24.5 with sigma 1: band [24,25) should take ~38% of draws
+  // (Phi(0.5) - Phi(-0.5) = 0.3829). The engine integrates this analytically;
+  // if the simulation disagrees, one of the two is wrong.
+  const r = MC.simulate(24.5, 1.0, ladder(), 40000);
+  const b24 = r.landed.find((l) => l.band_id === "b24");
+  assert.ok(Math.abs(b24.share - 0.3829) < 0.01, `b24 share ${b24.share}`);
+  const total = r.landed.reduce((s, l) => s + l.share, 0) + r.offLadder;
+  assert.ok(Math.abs(total - 1) < 1e-9, `shares sum to ${total}`);
+});
+t("a wider sigma spreads the mass, it does not move it", () => {
+  const tight = MC.simulate(24.5, 0.5, ladder(), 40000);
+  const wide = MC.simulate(24.5, 3.0, ladder(), 40000);
+  const s = (r) => r.landed.find((l) => l.band_id === "b24").share;
+  assert.ok(s(tight) > s(wide), "a tighter forecast must concentrate more mass");
+  assert.ok(wide.landed.filter((l) => l.share > 0.01).length > tight.landed.filter((l) => l.share > 0.01).length);
+});
+t("the same seed gives the same picture twice", () => {
+  const a = MC.simulate(24.5, 1.2, ladder({ b24: 100 }), 5000, 7);
+  const b = MC.simulate(24.5, 1.2, ladder({ b24: 100 }), 5000, 7);
+  assert.equal(a.mean, b.mean);
+  assert.equal(a.p5, b.p5);
+});
+t("a single losing leg loses exactly the stake", () => {
+  // centre far below the band bought: it essentially never hits
+  const r = MC.simulate(20.0, 0.5, ladder({ b28: 100 }), 5000);
+  assert.ok(Math.abs(r.worst + 100) < 1e-9, `worst ${r.worst}`);
+  assert.ok(r.probProfit < 0.01);
+});
+t("a leg that always hits returns the payout less the stake", () => {
+  const r = MC.simulate(24.5, 0.01, ladder({ b24: 100 }), 5000);
+  assert.ok(r.probProfit > 0.99);
+  // 100 at 10c, fee taken from the stake -> payout ~ 917 shares
+  assert.ok(r.best > 800, `best ${r.best}`);
+});
+t("P&L quantiles are ordered", () => {
+  const r = MC.simulate(24.5, 1.5, ladder({ b24: 60, b25: 40 }), 20000);
+  assert.ok(r.worst <= r.p5);
+  assert.ok(r.p5 <= r.median);
+  assert.ok(r.median <= r.p95);
+  assert.ok(r.p95 <= r.best);
+});
+t("mass off the ladder is counted, not silently dropped", () => {
+  // centre far above the top band: almost everything lands off-ladder... except
+  // the open-high tail catches it, which is what an open tail is FOR.
+  const noTails = ladder().filter((b) => b.lo !== null && b.hi !== null);
+  const r = MC.simulate(40, 1.0, noTails, 5000);
+  assert.ok(r.offLadder > 0.99, `offLadder ${r.offLadder}`);
+  const withTails = MC.simulate(40, 1.0, ladder(), 5000);
+  assert.ok(withTails.offLadder < 0.01);
+});
+t("the histogram covers every sample", () => {
+  const r = MC.simulate(24.5, 1.5, ladder({ b24: 100 }), 10000);
+  const h = MC.histogram(r.pnl, 20);
+  assert.equal(h.reduce((s, b) => s + b.value, 0), r.pnl.length);
+});
+
 const failed = out.filter(([s]) => s === "FAIL");
 for (const [s, n] of out) if (s === "FAIL") console.log("  FAIL", n);
 console.log(JSON.stringify({ ok: failed.length === 0, passed: out.length - failed.length, failed: failed.length }));

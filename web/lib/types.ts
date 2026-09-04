@@ -218,3 +218,47 @@ export interface CalcRecommendation {
   volume_warning?: boolean;
   thin_bands?: string[];
 }
+
+/** One row per city from v_city_stats (sql/ad4_17_city_stats.sql): the
+ *  weather, the model and the market side by side. */
+export interface CityStats {
+  city_key: string;
+  display_name: string | null;
+  icao: string | null;
+  timezone: string | null;
+  unit: "C" | "F";
+  latitude: number | null;
+  longitude: number | null;
+  // weather, against this city's own climatological normal
+  baseline: "seasonal" | "trailing_30d" | "none" | null;
+  baseline_days: number | null;
+  normal_max_c: number | null;
+  volatility_c: number | null;
+  now_c: number | null;
+  running_max_c: number | null;
+  forecast_max_c: number | null;
+  forecast_model: string | null;
+  anomaly_c: number | null;
+  hotness_sigma: number | null;
+  // model
+  mae_c: number | null;
+  bias_c: number | null;
+  skill_days: number | null;
+  model_spread_c: number | null;
+  n_models: number | null;
+  sigma_multiplier: number | null;
+  // market
+  volume_24h: number | null;
+  n_trades_24h: number | null;
+  depth_5c: number | null;
+  live_bands: number | null;
+  n_tradeable: number | null;
+  best_edge_pp: number | null;
+  avg_edge_pp: number | null;
+  // clock
+  peak_hour_local: number | null;
+  window_width_h: number | null;
+  peak_window_state: string | null;
+  day_decided: boolean | null;
+  observed_at: string | null;
+}
