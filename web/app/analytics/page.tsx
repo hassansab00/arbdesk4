@@ -66,7 +66,7 @@ export default function AnalyticsPage() {
         </p>
       </div>
 
-      <StatsNotice mode={statsQ.mode} viewError={statsQ.viewError} />
+      <StatsNotice mode={statsQ.mode} reason={statsQ.reason} viewError={statsQ.viewError} />
 
       {/* ============================================ model vs market ==== */}
       <section>

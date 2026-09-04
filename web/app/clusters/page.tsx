@@ -138,7 +138,7 @@ export default function ClustersPage() {
         }
         onRetry={q.refresh}
       >
-        <StatsNotice mode={q.mode} viewError={q.viewError} />
+        <StatsNotice mode={q.mode} reason={q.reason} viewError={q.viewError} />
 
         {/* ---- the heat scale, stated once ------------------------------- */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded border border-border bg-panel px-3 py-2 text-[10px]">
