@@ -215,6 +215,79 @@ t("the histogram covers every sample", () => {
   assert.equal(h.reduce((s, b) => s + b.value, 0), r.pnl.length);
 });
 
+// ---- board ladder --------------------------------------------------------
+import * as LAD from "../../web/lib/ladder.ts";
+
+const legs = (over = {}) => ["a", "b", "c"].map((id, i) => ({
+  band_id: id, label: `bucket ${id}`,
+  yesPrice: [0.2, 0.5, 0.3][i], noPrice: [0.8, 0.5, 0.7][i],
+  depthUsd: null, yesStake: 0, noStake: 0, ...(over[id] ?? {}),
+}));
+
+t("exactly one bucket pays, and the ladder says so", () => {
+  const r = LAD.solveBoard(legs({ b: { yesStake: 100 } }));
+  assert.equal(r.outcomes.length, 3);
+  const win = r.outcomes.find((o) => o.band_id === "b");
+  const lose = r.outcomes.filter((o) => o.band_id !== "b");
+  assert.ok(win.pnl > 0, `win ${win.pnl}`);
+  assert.ok(lose.every((o) => Math.abs(o.pnl + 100) < 1e-9), "every other bucket loses the stake");
+});
+
+t("a NO leg pays on every bucket except its own", () => {
+  // This is the case a per-row calculation cannot show: one stake, three rows.
+  const r = LAD.solveBoard(legs({ b: { noStake: 100 } }));
+  const own = r.outcomes.find((o) => o.band_id === "b");
+  const others = r.outcomes.filter((o) => o.band_id !== "b");
+  assert.ok(Math.abs(own.pnl + 100) < 1e-9, `own bucket must lose the stake, got ${own.pnl}`);
+  assert.ok(others.every((o) => o.pnl > 0), "every other bucket pays");
+});
+
+t("a full set of YES legs is a locked ticket when it costs under par", () => {
+  // 20 + 50 + 30 = 100c exactly; with fees it is over par, so NOT locked.
+  const fair = LAD.solveBoard(legs({ a: { yesStake: 20 }, b: { yesStake: 50 }, c: { yesStake: 30 } }));
+  assert.ok(!fair.locked, "a book at exactly par cannot be locked once fees are paid");
+  // Now underprice the set: 15 + 45 + 25 = 85c. Buying proportionally locks it.
+  const cheap = [
+    { band_id: "a", label: "a", yesPrice: 0.15, noPrice: 0.85, depthUsd: null, yesStake: 15, noStake: 0 },
+    { band_id: "b", label: "b", yesPrice: 0.45, noPrice: 0.55, depthUsd: null, yesStake: 45, noStake: 0 },
+    { band_id: "c", label: "c", yesPrice: 0.25, noPrice: 0.75, depthUsd: null, yesStake: 25, noStake: 0 },
+  ];
+  const r = LAD.solveBoard(cheap);
+  assert.ok(r.locked, `an 85c set must lock, worst was ${r.worst}`);
+  assert.ok(r.worst > 0);
+});
+
+t("depth caps a stake instead of pretending it filled", () => {
+  const r = LAD.solveBoard(legs({ b: { yesStake: 500, depthUsd: 80 } }));
+  assert.ok(r.anyCapped);
+  assert.ok(Math.abs(r.cost - 80) < 1e-9, `cost ${r.cost} should be the depth, not the stake`);
+  assert.equal(r.requested, 500);
+});
+
+t("EV needs every bucket to have a probability", () => {
+  const staked = legs({ b: { yesStake: 100 } });
+  assert.equal(LAD.solveBoard(staked).ev, null);
+  const partial = new Map([["a", 0.2], ["b", 0.5]]);
+  assert.equal(LAD.solveBoard(staked, partial).ev, null, "a missing bucket must not be treated as zero");
+  const all = new Map([["a", 0.2], ["b", 0.5], ["c", 0.3]]);
+  const ev = LAD.solveBoard(staked, all).ev;
+  assert.ok(ev !== null && Math.abs(ev) < 100, `ev ${ev}`);
+});
+
+t("overround is the book's edge over the punter", () => {
+  assert.ok(Math.abs(LAD.overround(legs()) - 1.0) < 1e-9);
+  const fat = legs(); fat[0].yesPrice = 0.3;
+  assert.ok(LAD.overround(fat) > 1);
+  assert.equal(LAD.overround([legs()[0]]), null, "one bucket is not a book");
+});
+
+t("an empty board is zero, not NaN", () => {
+  const r = LAD.solveBoard(legs());
+  assert.equal(r.cost, 0);
+  assert.ok(r.outcomes.every((o) => o.pnl === 0));
+  assert.ok(!r.locked, "a ticket with nothing on it is not a lock");
+});
+
 const failed = out.filter(([s]) => s === "FAIL");
 for (const [s, n] of out) if (s === "FAIL") console.log("  FAIL", n);
 console.log(JSON.stringify({ ok: failed.length === 0, passed: out.length - failed.length, failed: failed.length }));

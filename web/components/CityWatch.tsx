@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
+import { useCityStats } from "@/lib/useCityStats";
 import { fmtAge, fmtCompactUsd, fmtPct, fmtPrice, fmtPp } from "@/lib/format";
 import { fmtTemp, fmtTempDelta, fmtBandRange, type Unit } from "@/lib/units";
 import { fmtDaysAhead } from "@/lib/time";
@@ -65,7 +66,9 @@ export default function CityWatch() {
 
   useEffect(() => { setWatch(loadWatch()); setHydrated(true); }, []);
 
-  const statsQ = useQuery<CityStats[]>(() => supabase.from("v_city_stats").select("*"), [], 120000);
+  // Resilient: works from `cities` + `live_weather` when v_city_stats is
+  // absent, so the selector is never empty just because a migration is pending.
+  const statsQ = useCityStats(120000);
   const oppQ = useQuery<WatchBand[]>(
     () =>
       supabase
@@ -77,7 +80,7 @@ export default function CityWatch() {
     60000
   );
 
-  const stats = statsQ.data ?? [];
+  const stats = statsQ.rows;
   const byCity = useMemo(() => new Map(stats.map((s) => [s.city_key, s])), [stats]);
 
   // The band the model thinks is most likely, per city, on the nearest day.
@@ -132,8 +135,11 @@ export default function CityWatch() {
           </p>
           {available.length === 0 ? (
             <p className="px-1 text-[11px] text-muted">
-              No cities loaded. <code>v_city_stats</code> needs{" "}
-              <code>sql/ad4_17_city_stats.sql</code>.
+              {statsQ.loading
+                ? "Loading cities…"
+                : statsQ.error
+                ? `Could not read cities: ${statsQ.error}`
+                : "The cities table is empty — that is Phase 0 data."}
             </p>
           ) : (
             <div className="flex flex-wrap gap-1">

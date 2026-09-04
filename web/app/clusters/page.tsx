@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase";
-import { useQuery } from "@/lib/useQuery";
+import { useCityStats } from "@/lib/useCityStats";
 import { DataState } from "@/components/DataState";
+import StatsNotice from "@/components/StatsNotice";
 import { Scatter } from "@/components/charts";
 import { fmtAge, fmtCompactUsd, fmtPp, fmtUsd } from "@/lib/format";
 import { fmtTemp, fmtTempDelta, type Unit } from "@/lib/units";
@@ -52,8 +52,8 @@ export default function ClustersPage() {
   const [sortKey, setSortKey] = useState<SortKey>("hotness");
   const [selected, setSelected] = useState<string | null>(null);
 
-  const q = useQuery<CityStats[]>(() => supabase.from("v_city_stats").select("*"), [], 60000);
-  const all = q.data ?? [];
+  const q = useCityStats(60000);
+  const all = q.rows;
 
   const cities = useMemo(() => {
     const filtered =
@@ -132,14 +132,14 @@ export default function ClustersPage() {
         emptyTitle="No cities"
         emptyBody={
           <>
-            <code>v_city_stats</code> returned nothing. Run{" "}
-            <code>sql/ad4_17_city_stats.sql</code> if you have not — it is what computes each
-            city&apos;s climatological normal. If it exists and is empty, <code>cities</code> is
-            empty, which is Phase 0 data.
+            <code>cities</code> is empty. That is Phase 0 data and nothing on this page can render
+            without it — load the city universe first.
           </>
         }
         onRetry={q.refresh}
       >
+        <StatsNotice mode={q.mode} viewError={q.viewError} />
+
         {/* ---- the heat scale, stated once ------------------------------- */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded border border-border bg-panel px-3 py-2 text-[10px]">
           <span className="text-muted">Today vs normal:</span>
