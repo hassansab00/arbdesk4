@@ -242,13 +242,37 @@ def test_every_workflow_is_gated():
     """A workflow without the gate runs at full cost on every schedule fire."""
     import glob
     for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
+        f = os.path.basename(path)
+        if f.endswith(".snippet.json"):
+            continue                      # a fragment, checked separately below
         wf = json.load(open(path))
         names = {n["name"] for n in wf["nodes"]}
-        f = os.path.basename(path)
         assert {"Check schedule", "Run now?", "Stop if skipped"} <= names, f"{f} is not gated"
         # and the gate must sit between Config and the work, not beside it
         after_config = [c["node"] for br in wf["connections"]["Config"]["main"] for c in br]
         assert after_config == ["Check schedule"], f"{f}: Config bypasses the gate ({after_config})"
+
+
+def test_the_gate_snippet_is_the_gate():
+    """schedule_gate.snippet.json exists to be pasted into the four P0.x
+    workflows that predate should_run(). It is not a workflow - no trigger, no
+    Config - but it has to carry the whole gate and be self-contained, because
+    it cannot know what the host workflow named its credential node."""
+    wf = json.load(open(os.path.join(ROOT, "n8n", "schedule_gate.snippet.json")))
+    names = [n["name"] for n in wf["nodes"]]
+    assert names == ["Gate config", "Check schedule", "Run now?", "Stop if skipped"]
+
+    blob = json.dumps(wf)
+    assert "$('Gate config')" in blob, "the gate must read its own config node"
+    assert "$('Config')" not in blob, "it cannot depend on a node the host may not have"
+
+    # chained, so pasting it in gives one path from config to stop
+    for a, b in zip(names, names[1:]):
+        assert [c["node"] for br in wf["connections"][a]["main"] for c in br] == [b]
+
+    # and it fails OPEN: a missing settings row must not silently disable a job
+    decide = next(n for n in wf["nodes"] if n["name"] == "Run now?")
+    assert "running anyway" in decide["parameters"]["jsCode"]
 
 
 # ------------------------------------------------------- P1.4 gridpoint ----

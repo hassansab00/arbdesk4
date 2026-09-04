@@ -35,9 +35,17 @@ you will know either way.
 
 ### Do NOT import these four
 
-`P0.2`, `P0.3`, `P0.4`, `P0.5` already run in your n8n. The files in this repo
-are reconstructions. Importing and turning them on means **two workflows writing
-the same tables**. Leave them alone.
+`P0.2`, `P0.3`, `P0.4`, `P0.5` already run in your n8n, and they are what put
+841 markets and 122,000 trades in the database. The files in this repo are
+**reconstructions** — the Supabase half is grounded in the real schema, but the
+Polymarket endpoints in them were never verified against your working setup.
+
+So: **do not swap a working ingest for a reconstruction.** Importing them
+alongside is worse — two workflows writing the same tables.
+
+They do miss one thing the six below have: the schedule gate. If you want that
+on your existing four, add it to them rather than replacing them — see
+**Section C2** below.
 
 ### Import these six
 
@@ -57,11 +65,36 @@ Two copies is the same problem as above.
 
 ### Then, in each one
 
-1. Open the **Config** node.
-2. Fill in `supabase_url` — `https://YOURPROJECT.supabase.co`
-3. Fill in `service_key` — your Supabase **secret** (`service_role`) key.
-4. On **P1.1** and **P4.1** only, fill in `alert_email`.
-5. Leave every other box as it is.
+Open the **Config** node. Every workflow has `supabase_url` and `service_key`;
+this is everything else, and what it means.
+
+| Workflow | Also fill in | Comes pre-filled — leave alone |
+|---|---|---|
+| P1.1 | `alert_email` | — |
+| P1.2 | *nothing* | `user_agent`, `alert_events`, `observation_hours` 30, `observation_limit` 60, `max_cities_per_run` 0 |
+| P1.3 | *nothing* | `user_agent`, `model_label` nws, `max_horizon_days` 7, `peak_window` 12-18, `max_cities_per_run` 0 |
+| P1.4 | *nothing* | `user_agent`, `max_horizon_days` 7, `peak_window` 12-18, `morning_hour` 8, `max_cities_per_run` 0 |
+| P3.1 | *nothing* | `digest_kind` — an expression that reads the webhook body |
+| P4.1 | `alert_email` | — |
+
+What the pre-filled ones do, in case you ever want to change one:
+
+- `max_cities_per_run` / `max_bands_per_run` — **0 means no limit.** Set a number
+  only if a run is timing out and you want it to work through the list in
+  batches.
+- `observation_hours` 30 / `observation_limit` 60 — how far back P1.2 asks
+  weather.gov for readings. 30 hours covers a full local day in every timezone
+  with margin; 60 readings is enough for hourly METAR plus SPECIs.
+- `peak_window` 12-18 — the local hours a day's maximum must be covered by. A
+  day whose forecast misses this window has an understated maximum and is
+  skipped rather than written wrong.
+- `morning_hour` 8 — which local hour P1.4 calls "morning" for dewpoint
+  depression. 8 is after sunrise, so the air mass has declared itself, but
+  before the afternoon it is trying to predict.
+- `user_agent` — weather.gov asks apps to identify themselves. No key, no
+  sign-up, no rate limit.
+- `alert_events` — which NWS event names raise a weather event. Widen it if you
+  want cold-weather alerts too.
 
 > **The secret key goes in n8n and GitHub Actions only.** Never in Vercel, never
 > in anything starting `NEXT_PUBLIC_`. That would put it in the browser.
@@ -110,6 +143,30 @@ update settings
 ```
 
 `mode` is one of `auto`, `manual`, `off`.
+
+### C2 — Putting the gate on your existing P0.2–P0.5
+
+Those four were built before `should_run()` existed, so nothing above controls
+them — they run on whatever schedule is set inside n8n. To bring them under the
+same control without replacing them:
+
+1. Open `n8n/schedule_gate.snippet.json`, select all, copy.
+2. In n8n, open your existing P0.3 (say) and **paste onto the canvas**. Four
+   nodes appear: *Gate config → Check schedule → Run now? → Stop if skipped*.
+3. Fill in `supabase_url` and `service_key` in **Gate config**, and set `job` to
+   the matching key: `P0.2_market_discovery`, `P0.3_book_volume_snapshot`,
+   `P0.4_trade_history` or `P0.5_refresh_rules_text`.
+4. Rewire: your **Schedule Trigger → Gate config**, and **Stop if skipped →**
+   whatever your trigger used to connect to.
+5. Save.
+
+The snippet carries its own two credential boxes rather than reading a `Config`
+node, because it cannot know what you named yours.
+
+**The gate fails open.** If the settings row is missing or the RPC is
+unreachable, the workflow runs anyway and logs why. A gate that failed closed
+would silently disable a job for a reason nobody could see, which is worse than
+one that occasionally runs too often.
 
 **The six you are importing cost 780 runs a month** at their default cadences
 (P1.2 is 360 of those; P1.1 is event-driven and not counted). Your existing

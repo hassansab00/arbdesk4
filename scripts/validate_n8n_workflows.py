@@ -18,12 +18,42 @@ def bad(f, msg): FAIL.append(f"{f}: {msg}")
 TRIGGERS = {"n8n-nodes-base.manualTrigger", "n8n-nodes-base.scheduleTrigger",
             "n8n-nodes-base.webhook"}
 
+def check_intervals(f, d):
+    """The one check that applies to a fragment as much as a workflow.
+
+    A schedule trigger's rule.interval must be a LIST. n8n iterates it on
+    import, so a bare object fails with `h[g] is not iterable` - an error that
+    names nothing and points nowhere. It cost a whole afternoon once.
+    """
+    for n in d.get("nodes", []):
+        if not n.get("type", "").endswith("scheduleTrigger"):
+            continue
+        iv = n.get("parameters", {}).get("rule", {}).get("interval")
+        if iv is not None and not isinstance(iv, list):
+            bad(f, f"{n['name']}: rule.interval is {type(iv).__name__}, must be a list "
+                   f"(n8n iterates it - a bare object fails on import with "
+                   f"'h[g] is not iterable')")
+
+
 for path in sorted(glob.glob("n8n/*.json")):
     f = path.split("/")[-1]
     try:
         d = json.load(open(path))
     except Exception as e:
         bad(f, f"INVALID JSON: {e}"); continue
+
+    # A *.snippet.json is a FRAGMENT meant to be pasted onto an existing
+    # canvas - nodes and connections, no trigger, no Config/Summary/Log run.
+    # Holding it to the shape of a whole workflow would report five failures
+    # for a file that is correct.
+    if f.endswith(".snippet.json"):
+        if not d.get("nodes"):
+            bad(f, "snippet has no nodes")
+        for name in d.get("connections", {}):
+            if name not in {n["name"] for n in d.get("nodes", [])}:
+                bad(f, f"connection from unknown node {name!r}")
+        check_intervals(f, d)
+        continue
 
     nodes = {n["name"]: n for n in d["nodes"]}
     real = {k: v for k, v in nodes.items() if v["type"] != "n8n-nodes-base.stickyNote"}

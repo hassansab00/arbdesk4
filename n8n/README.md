@@ -2,7 +2,7 @@
 
 **Setup instructions: `docs/n8n_setup.md`.** Read that, not this.
 
-10 files. All built to run three ways - their own schedule, the Execute
+10 workflow files, plus one snippet. All built to run three ways - their own schedule, the Execute
 button in n8n, or the Run button on the AD4 Workflows page - and all of them
 write a row to `ingest_log` when they finish, so `v_workflow_runs` shows the
 last run of each whichever way it was started.
@@ -67,6 +67,22 @@ scaffold takes the endpoint as a **Config field** rather than asserting one.
 > Two copies writing the same tables is worse than one.
 
 Use a scaffold as a rebuild reference or to diff against the original.
+
+### `schedule_gate.snippet.json` - the gate, without the swap
+
+The four P0.x that really run in Hassan's n8n predate `should_run()`, so
+nothing in `settings.workflow_schedules` controls them. The obvious fix -
+import the scaffolds instead - trades a **working** ingest for a
+**reconstruction whose Polymarket endpoints were never verified against it**.
+That is a bad trade and this file is the alternative.
+
+It is a fragment, not a workflow: four nodes (*Gate config → Check schedule →
+Run now? → Stop if skipped*) meant to be copied and pasted onto an existing
+canvas, then wired between that workflow's Schedule Trigger and its first
+working node. It carries its own two credential boxes rather than reading a
+`Config` node, because it cannot know what the host workflow named its own.
+
+`docs/DO_THIS_NOW.md` section C2 has the five steps.
 
 ### Better: capture the real four
 
