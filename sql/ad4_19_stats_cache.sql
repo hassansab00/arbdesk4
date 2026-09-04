@@ -40,6 +40,31 @@ $ad4$;
 
 
 -- --------------------------------------------------------------------------
+-- 1b. Prerequisites, named rather than hit.
+--
+--     This file rebuilds v_city_stats on top of views ad4_16 and ad4_17
+--     create. Run out of order it used to fail with a bare `relation
+--     "v_city_climate" does not exist`, which says nothing about which file to
+--     run. Say it plainly and stop, instead of leaving a half-applied file.
+-- --------------------------------------------------------------------------
+do $ad4$
+declare missing text[] := array[]::text[];
+begin
+  if to_regclass('public.v_forecast_divergence') is null then
+    missing := array_append(missing, 'v_forecast_divergence -> run sql/ad4_16_nws.sql');
+  end if;
+  if to_regclass('public.v_city_climate') is null then
+    missing := array_append(missing, 'v_city_climate -> run sql/ad4_17_city_stats.sql');
+  end if;
+  if array_length(missing, 1) > 0 then
+    raise exception E'ad4_19 needs these first:\n  %',
+      array_to_string(missing, E'\n  ');
+  end if;
+end
+$ad4$;
+
+
+-- --------------------------------------------------------------------------
 -- 2. Forecast divergence, bounded to the days anything actually prices.
 --
 --    The full view stays as it is - the data bank and any backward-looking
