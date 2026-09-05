@@ -267,10 +267,23 @@ comment on view v_trade_timing is
 -- --------------------------------------------------------------------------
 -- 4. Grants.
 --
---    set_strategy_enabled is a WRITE, so it goes to authenticated and
---    service_role only - not anon. sql/ad4_13 revoked execute from anon on
---    everything and hands back only the browser RPCs; this joins that list
---    for authenticated, and anon keeps read-only on the views.
+--    set_strategy_enabled is a WRITE and it IS granted to anon, which is a
+--    deliberate exception worth stating rather than burying.
+--
+--    sql/ad4_13 revoked execute from anon on every function and hands back
+--    only the browser RPCs. This joins that short list, for one reason: this
+--    desk is a single operator behind Supabase's own publishable key, and the
+--    alternative is what has actually happened every time the question came
+--    up - the main switch lives in a SQL console and the app cannot be used
+--    to run the desk.
+--
+--    What makes it acceptable is the narrowness of the function, not trust in
+--    the caller. It flips one boolean on one row and refuses the system
+--    pseudo-strategy. capital_cap_pct and max_concurrent - the actual risk
+--    limits - are unreachable through it, which a `grant update on strategies`
+--    would not have been. Enabling a strategy also places no order: it lets
+--    that strategy write to `signals`, and the paper engine and approval
+--    queue still sit between a signal and money.
 -- --------------------------------------------------------------------------
 do $ad4$
 declare r text; v text;
