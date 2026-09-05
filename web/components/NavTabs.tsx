@@ -13,6 +13,7 @@ const TABS = [
   { href: "/live", label: "Live Weather" },
   { href: "/monitor", label: "City Monitor" },
   { href: "/analytics", label: "Analytics" },
+  { href: "/databank", label: "Data Bank" },
   { href: "/backtest", label: "Backtest" },
   { href: "/campaigns", label: "Campaigns" },
   { href: "/goals", label: "Goals" },

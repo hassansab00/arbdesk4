@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { useCityStats } from "@/lib/useCityStats";
@@ -13,7 +14,6 @@ import { fmtTemp, type Unit } from "@/lib/units";
 import { fmtDateTime, fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
 import { heatColor } from "@/lib/heat";
 import { histogram, simulate, type McBand } from "@/lib/montecarlo";
-import DataBank from "@/components/DataBank";
 import type { CityStats, Opportunity } from "@/lib/types";
 
 const MIN_TRADES_FOR_RATE = 20; // matches scripts/backtest/metrics.py's own threshold
@@ -133,11 +133,16 @@ export default function AnalyticsPage() {
         <h2 className="text-sm font-semibold">The desk&apos;s own record</h2>
         <p className="mb-2 max-w-3xl text-[11px] leading-relaxed text-muted">
           Every other chart on this page reads live tables that are overwritten by their own next
-          run. These read <b>frozen facts</b>: what was predicted, what the market charged, and what
-          actually happened — captured once a day and never updated. It is the only data here that
-          nobody else has, and the only basis on which the model can be said to work at all.
+          run. The frozen facts — what was predicted, what the market charged, what actually
+          happened — now have their own page, along with the archive underneath them and every
+          derived layer built out of it.
         </p>
-        <DataBank />
+        <Link
+          href="/databank"
+          className="inline-block rounded border border-accent/50 bg-accent/10 px-2.5 py-1 text-xs text-accent hover:bg-accent/20"
+        >
+          Open the Data Bank →
+        </Link>
       </section>
 
       {/* ============================================ forecast skill ===== */}

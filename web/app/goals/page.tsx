@@ -12,7 +12,7 @@ import {
   slipBands, spread, spreadNo, spreadWeighted, subMinLegs,
   type RiskMode, type Solve, type SpreadBand, type SpreadResult,
 } from "@/lib/spread";
-import type { Opportunity } from "@/lib/types";
+import type { Opportunity, TradePlan, TradeTiming } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // GOALS — profit → spread, exactly as AD4-1's Goal section.
@@ -117,6 +117,35 @@ export default function GoalsPage() {
         : Promise.resolve({ data: [] as Opportunity[], error: null }),
     [cityKey, goalDay],
     30000
+  );
+
+  // WHERE THE DAY IS ACTUALLY GOING. The spread below is priced entirely off
+  // the model and the book; neither of them has looked outside. A three-band
+  // cover of 29-31 prices happily at 81% while the station is reading 28.0
+  // and this city has historically finished climbing by now - and the page
+  // used to say nothing at all about that.
+  //
+  // v_trade_plan carries the containment tests (sql/ad4_34), so the band
+  // arithmetic - open tails, half-open intervals, C-to-F - is done in one
+  // place rather than reimplemented here in a second dialect.
+  const dayPath = useQuery<Array<Pick<TradePlan,
+    "band_id" | "holds_implied_max" | "holds_running_max" | "out_of_reach" | "model_prob">>>(
+    () =>
+      cityKey && goalDay
+        ? supabase.from("v_trade_plan")
+            .select("band_id,holds_implied_max,holds_running_max,out_of_reach,model_prob")
+            .eq("city_key", cityKey).eq("resolution_date", goalDay).eq("side", "YES")
+        : Promise.resolve({ data: [], error: null }),
+    [cityKey, goalDay],
+    60000
+  );
+  const timing = useQuery<TradeTiming[]>(
+    () =>
+      cityKey
+        ? supabase.from("v_trade_timing").select("*").eq("city_key", cityKey)
+        : Promise.resolve({ data: [], error: null }),
+    [cityKey],
+    60000
   );
 
   const books = useQuery(
@@ -274,6 +303,25 @@ export default function GoalsPage() {
   // cumulative USD depth per cent-tier. Those ladders are reconstructed and
   // are coarser than a real one, so say so rather than let the fill prices
   // below imply a precision the data does not have.
+  // What the day says about the set the spread actually covers. The spread is
+  // priced entirely off the model and the book; neither of them has looked out
+  // of the window, and this is the opinion that comes from measurement.
+  const dayVerdict = useMemo(() => {
+    const t = (timing.data ?? [])[0];
+    const path = new Map((dayPath.data ?? []).map((r) => [r.band_id, r]));
+    if (!t || path.size === 0) return null;
+    const coveredIds = cov.map((i) => rawBands[i]?.band_id).filter(Boolean) as string[];
+    const reachable = coveredIds.filter((id) => !path.get(id)?.out_of_reach);
+    const headingId = (dayPath.data ?? []).find((r) => r.holds_implied_max)?.band_id ?? null;
+    return {
+      t,
+      covers: coveredIds.length,
+      reachable: reachable.length,
+      headingCovered: headingId ? coveredIds.includes(headingId) : null,
+      headingLabel: headingId ? rawBands.find((b) => b.band_id === headingId)?.label ?? null : null,
+    };
+  }, [timing.data, dayPath.data, cov, rawBands]);
+
   const syntheticLadders = rawBands.filter((b) => b.ladderSource === "synthetic_tiers");
   const noLadders = rawBands.filter((b) => !b.ladderSource || b.ladderSource === "none");
 
@@ -440,6 +488,9 @@ export default function GoalsPage() {
                     <th className="p-1 text-right">Your %</th>
                     <th className="p-1 text-right">Vol 24h</th>
                     <th className="p-1 text-right">Ladder</th>
+                    <th className="p-1 text-left" title="Where the day is actually heading, from the station reading plus how much this city has historically still climbed from this local hour. Independent of the model and the book - which is what makes it worth holding them against.">
+                      The day
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -473,6 +524,19 @@ export default function GoalsPage() {
                         <td className="p-1 text-right font-mono text-muted">
                           {band.yesBook.length ? `${band.yesBook.length} lvl` : "flat"}
                         </td>
+                        <td className="p-1 text-[10px]">
+                          {(() => {
+                            const d = (dayPath.data ?? []).find((r) => r.band_id === band.band_id);
+                            if (!d) return <span className="text-muted">—</span>;
+                            if (d.holds_running_max)
+                              return <span className="text-good" title="The maximum already banked today is inside this band.">max is here</span>;
+                            if (d.holds_implied_max)
+                              return <span className="text-good" title="The latest reading plus this city's typical remaining climb lands inside this band.">heading here</span>;
+                            if (d.out_of_reach)
+                              return <span className="text-bad" title="Even this city's best historical climb from this hour does not reach this band.">out of reach</span>;
+                            return <span className="text-muted">—</span>;
+                          })()}
+                        </td>
                       </tr>
                     );
                   })}
@@ -493,6 +557,83 @@ export default function GoalsPage() {
               priced off top-of-book — use the slippage buffer as a margin.
             </p>
           </section>
+
+          {/* ---- what the day says about the set being covered -----------
+              The spread above is priced entirely off the model and the book.
+              Neither has looked out of the window. This is the third opinion,
+              and it is the one that comes from measurement rather than from a
+              distribution. */}
+          {dayVerdict && (
+            <section
+              className={`mt-4 rounded border p-3 ${
+                dayVerdict.headingCovered === false
+                  ? "border-warn/50 bg-warn/[0.06]"
+                  : "border-border bg-panel"
+              }`}
+            >
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h2 className="text-sm font-semibold">What the day says</h2>
+                <span className="text-[11px] text-muted">{dayVerdict.t.timing_note}</span>
+                <span className="ml-auto text-[10px] text-muted" title={dayVerdict.t.peak_source}>
+                  peak hour {dayVerdict.t.peak_hour == null ? "—" : `${Math.floor(dayVerdict.t.peak_hour)}:${String(Math.round((dayVerdict.t.peak_hour % 1) * 60)).padStart(2, "0")}`} local
+                  {!dayVerdict.t.peak_measured && <span className="text-warn"> · assumed</span>}
+                </span>
+              </div>
+              <div className="mt-2 grid gap-x-6 gap-y-1 text-xs sm:grid-cols-2 lg:grid-cols-4">
+                <Fact
+                  label="reading now"
+                  v={dayVerdict.t.latest_temp_c == null ? "—" : `${dayVerdict.t.latest_temp_c.toFixed(1)}°C`}
+                  sub={
+                    dayVerdict.t.slope_3_c_per_h == null
+                      ? undefined
+                      : `${dayVerdict.t.slope_3_c_per_h > 0 ? "▲" : dayVerdict.t.slope_3_c_per_h < 0 ? "▼" : "→"} ${Math.abs(dayVerdict.t.slope_3_c_per_h).toFixed(1)}/h`
+                  }
+                />
+                <Fact
+                  label="heading for"
+                  v={dayVerdict.t.implied_max_c == null ? "—" : `${dayVerdict.t.implied_max_c.toFixed(1)}°C`}
+                  sub={
+                    dayVerdict.t.implied_max_low_c != null && dayVerdict.t.implied_max_high_c != null
+                      ? `worst to best day: ${dayVerdict.t.implied_max_low_c.toFixed(1)}–${dayVerdict.t.implied_max_high_c.toFixed(1)}`
+                      : undefined
+                  }
+                />
+                <Fact
+                  label="covered bands the day can reach"
+                  v={`${dayVerdict.reachable} of ${dayVerdict.covers}`}
+                  tone={dayVerdict.reachable < dayVerdict.covers ? "text-warn" : ""}
+                />
+                <Fact
+                  label="band it is heading into"
+                  v={dayVerdict.headingLabel ?? "—"}
+                  tone={dayVerdict.headingCovered === false ? "text-warn" : dayVerdict.headingCovered ? "text-good" : ""}
+                  sub={
+                    dayVerdict.headingCovered === false
+                      ? "not in your spread"
+                      : dayVerdict.headingCovered
+                      ? "covered"
+                      : undefined
+                  }
+                />
+              </div>
+              {dayVerdict.headingCovered === false && (
+                <p className="mt-2 text-[11px] leading-relaxed text-warn">
+                  The spread does not cover the band the day is currently heading into. The
+                  coverage figure above is the <b>model&apos;s</b> probability; this is what the
+                  station has actually done today plus what this city typically still climbs from
+                  this hour. They disagree, and only one of them is a measurement.
+                </p>
+              )}
+              {dayVerdict.reachable < dayVerdict.covers && (
+                <p className="mt-1 text-[11px] leading-relaxed text-warn">
+                  {dayVerdict.covers - dayVerdict.reachable} covered band
+                  {dayVerdict.covers - dayVerdict.reachable === 1 ? " is" : "s are"} out of reach
+                  even on this city&apos;s best historical climb from this hour. You are paying for
+                  outcomes that would need a new record to happen.
+                </p>
+              )}
+            </section>
+          )}
 
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             {/* ------------------------------------------ the spread */}
@@ -911,6 +1052,16 @@ function Row({ k, v, cls }: { k: string; v: string; cls?: string }) {
     <div className="flex justify-between text-[10px]">
       <span className="text-muted">{k}</span>
       <span className={cls ?? ""}>{v}</span>
+    </div>
+  );
+}
+
+function Fact({ label, v, sub, tone = "" }: { label: string; v: string; sub?: string; tone?: string }) {
+  return (
+    <div>
+      <div className="text-[9px] uppercase tracking-wide text-muted">{label}</div>
+      <div className={`font-mono ${tone}`}>{v}</div>
+      {sub && <div className="text-[10px] text-muted">{sub}</div>}
     </div>
   );
 }
