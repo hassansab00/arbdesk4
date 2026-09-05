@@ -56,7 +56,7 @@ const CATALOGUE: Array<{
     label: "Book + Volume Snapshot",
     schedule: "scheduled in n8n",
     what:
-      "Writes one book_snapshots row per live band: the ladder into raw_book, the cumulative USD depth tiers, and the exchange's 24h volume. This is what every fill price on Goals and Calculator walks.",
+      "Writes one book_snapshots row per live band: the ladder into raw_book, the cumulative USD depth tiers, and the exchange's 24h volume. This is what every fill price on Goals and the Board walks.",
   },
   {
     job: "P0.4_trade_history",
@@ -92,6 +92,14 @@ const CATALOGUE: Array<{
     what:
       "The second forecast model. Takes NWS's hourly gridpoint forecast and writes a daily maximum per city, beside Open-Meteo's. Where the two disagree about a day, that day's sigma widens \u2014 disagreement can only ever make AD4 less confident, never more.",
     note: "A day whose hourly series misses the 12:00\u201318:00 peak window is skipped rather than written low: an understated max would invent disagreement that is not there.",
+  },
+  {
+    job: "P1.5_open_meteo",
+    label: "Open-Meteo Global",
+    schedule: "every 3 hours",
+    what:
+      "The only source here that covers every city. api.weather.gov is the United States and its territories, so P1.2\u2013P1.4 return 404 for Warsaw, Ankara, Moscow and Jinan \u2014 which left those cities with no live reading and no forward forecast from any job at all. This writes both, for all of them, in one HTTP call.",
+    note: "Registered by sql/ad4_30_open_meteo.sql. Its `current` block is model output interpolated to a coordinate, not an instrument reading, so it writes live_weather and never weather_observations \u2014 that table is the settlement evidence and what the model is fitted on. Read v_forecast_coverage to see which cities still have no forward forecast.",
   },
   {
     job: "P1.4_nws_gridpoint",

@@ -1,0 +1,699 @@
+{
+ "name": "AD4 P1.5 - Open-Meteo Global",
+ "active": false,
+ "settings": {
+  "executionOrder": "v1"
+ },
+ "nodes": [
+  {
+   "id": "trigger-manual",
+   "name": "Manual Trigger",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {}
+  },
+  {
+   "id": "trigger-schedule",
+   "name": "Schedule Trigger",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    160
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "hours",
+       "hoursInterval": 6
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "trigger-webhook",
+   "name": "Webhook Trigger",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2,
+   "position": [
+    0,
+    320
+   ],
+   "parameters": {
+    "httpMethod": "POST",
+    "path": "ad4-open-meteo",
+    "responseMode": "responseNode",
+    "options": {
+     "allowedOrigins": "*"
+    }
+   },
+   "webhookId": "ad4-open-meteo"
+  },
+  {
+   "id": "sched-check",
+   "name": "Check schedule",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    430,
+    -30
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/should_run",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ p_job: \"P1.5_open_meteo\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+    "options": {
+     "timeout": 10000,
+     "response": {
+      "response": {
+       "neverError": true
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "sched-gate",
+   "name": "Run now?",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    620,
+    -30
+   ],
+   "parameters": {
+    "jsCode": "// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A PERMISSION ERROR IS NOT AN UNAVAILABLE GATE. 42501 here means the key\n// cannot call should_run, and a key that cannot do that cannot write either -\n// so stop, rather than failing open into a run that writes nothing.\n//\n// THIS IS NOT THE MAIN DEFENCE AND MUST NOT BE MISTAKEN FOR IT. sql/ad4_20\n// grants should_run to anon ON PURPOSE, so the Workflows page can preview a\n// schedule change before saving it. On a database with that grant - which is\n// every database that ran ad4_20 - an anon key sails straight through this\n// check and only fails at the first WRITE. The write guard in the Summary\n// node is what actually catches it; run section 6 of sql/ad4_diagnose.sql to\n// see which key can write what before spending a run finding out.\nif (decision && (String(decision.code) === '42501' ||\n                 /permission denied/i.test(String(decision.message || '')))) {\n  throw new Error(\n    `Supabase refused should_run: ${decision.message} (${decision.code}). This is the ANON ` +\n    `key in the Config node, not the service key - anon is granted SELECT and nothing else. ` +\n    `Every write in this workflow would be refused the same way. Open Config -> service_key ` +\n    `and paste the SERVICE ROLE key (Supabase -> Project Settings -> API -> service_role, or ` +\n    `a key beginning sb_secret_). NEVER put that key anywhere starting NEXT_PUBLIC_.`);\n}\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
+   }
+  },
+  {
+   "id": "sched-stop",
+   "name": "Stop if skipped",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    620,
+    -30
+   ],
+   "parameters": {
+    "jsCode": "// Returning [] stops the workflow here. Everything below this node\n// is skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
+   }
+  },
+  {
+   "id": "respond",
+   "name": "Respond",
+   "type": "n8n-nodes-base.respondToWebhook",
+   "typeVersion": 1,
+   "position": [
+    1720,
+    300
+   ],
+   "parameters": {
+    "respondWith": "json",
+    "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
+   }
+  },
+  {
+   "id": "config",
+   "name": "Config",
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    240,
+    100
+   ],
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "1",
+       "name": "supabase_url",
+       "type": "string",
+       "value": ""
+      },
+      {
+       "id": "2",
+       "name": "service_key",
+       "type": "string",
+       "value": ""
+      },
+      {
+       "id": "3",
+       "name": "model_label",
+       "type": "string",
+       "value": "open_meteo_forecast"
+      },
+      {
+       "id": "4",
+       "name": "max_horizon_days",
+       "type": "string",
+       "value": "7"
+      },
+      {
+       "id": "5",
+       "name": "peak_window",
+       "type": "string",
+       "value": "12-18"
+      },
+      {
+       "id": "6",
+       "name": "morning_hour",
+       "type": "string",
+       "value": "8"
+      },
+      {
+       "id": "7",
+       "name": "max_cities_per_run",
+       "type": "string",
+       "value": "0"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "load-cities",
+   "name": "Load cities",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    -40,
+    300
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/cities?select=city_key,display_name,latitude,longitude,timezone,unit,status&latitude=not.is.null&limit=200",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      }
+     ]
+    }
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "// ONE request for every city. Open-Meteo takes comma-separated coordinate\n// lists and answers with one object per location, in the order asked - so 37\n// cities cost one HTTP call rather than 37, and there is no rate limit to\n// pace against.\n//\n// It is also GLOBAL, which is the entire reason this workflow exists.\n// api.weather.gov covers the US and its territories; Warsaw, Ankara, Moscow\n// and Jinan get a 404 from it and were therefore left with no live reading\n// and no forward forecast from any job at all.\nconst cfg = $('Config').first().json;\nconst cities = $('Load cities').all().map(i => i.json).flat();\nconst cap = Number(cfg.max_cities_per_run || 0) || 0;\nconst horizon = Number(cfg.max_horizon_days || 7);\n\nconst use = [];\nfor (const c of cities) {\n  if (!c || !c.city_key) continue;\n  if (c.latitude == null || c.longitude == null) continue;\n  if (c.status && c.status !== 'active') continue;\n  use.push({\n    city_key: c.city_key,\n    timezone: c.timezone || null,\n    latitude: Number(c.latitude),\n    longitude: Number(c.longitude),\n  });\n  if (cap && use.length >= cap) break;\n}\nif (use.length === 0) {\n  throw new Error(\n    'No active cities with coordinates. Open-Meteo is addressed by lat/lon - ' +\n    'check cities.latitude / longitude are populated and status is active.');\n}\n\n// UNITS ARE REQUESTED TO MATCH THE COLUMNS THEY LAND IN, not to taste.\n// The observation archive came from IEM METAR, so its wind_speed column is\n// KNOTS and its precip column is INCHES. Asking Open-Meteo for km/h and mm\n// and writing them through unconverted puts\n// 37 in a knots column for a 20kt wind - wrong, and not wrong-LOOKING, which\n// is the kind of error nobody finds. cloud_cover is the one Open-Meteo cannot\n// serve in the stored unit: it answers percent and the column is oktas, so\n// Build rows converts it.\nconst HOURLY = ['temperature_2m', 'relative_humidity_2m', 'dew_point_2m',\n                'apparent_temperature', 'precipitation', 'precipitation_probability',\n                'cloud_cover', 'wind_speed_10m', 'surface_pressure'];\nconst CURRENT = ['temperature_2m', 'relative_humidity_2m', 'dew_point_2m',\n                 'apparent_temperature', 'precipitation', 'cloud_cover',\n                 'wind_speed_10m', 'wind_direction_10m', 'surface_pressure',\n                 'is_day'];\n\n// The query string is built by hand. The Code node sandbox does not define\n// the browser's URL query-builder class, and a workflow that dies with\n// ReferenceError on its first node is worse than a slightly longer join.\nconst params = {\n  latitude: use.map(c => c.latitude.toFixed(4)).join(','),\n  longitude: use.map(c => c.longitude.toFixed(4)).join(','),\n  hourly: HOURLY.join(','),\n  current: CURRENT.join(','),\n  // lead 0 through `horizon`, so one more day than the horizon itself\n  forecast_days: String(Math.min(16, Math.max(2, horizon + 1))),\n  // Each location gets ITS OWN local time, which is the only clock a daily\n  // maximum means anything in.\n  timezone: 'auto',\n  temperature_unit: 'celsius',\n  wind_speed_unit: 'kn',\n  precipitation_unit: 'inch',\n};\nconst q = Object.keys(params)\n  .map(k => `${k}=${encodeURIComponent(params[k])}`)\n  .join('&');\n\nreturn [{ json: { url: `https://api.open-meteo.com/v1/forecast?${q}`,\n                  cities: use, n: use.length } }];\n"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    180,
+    300
+   ],
+   "id": "build-requests",
+   "name": "Build requests"
+  },
+  {
+   "parameters": {
+    "method": "GET",
+    "url": "={{ $json.url }}",
+    "options": {
+     "timeout": 60000,
+     "response": {
+      "response": {
+       "responseFormat": "json",
+       "neverError": true
+      }
+     }
+    }
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    400,
+    300
+   ],
+   "id": "fetch-open-meteo",
+   "name": "Fetch open-meteo",
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "// One Open-Meteo response per city, paired back by position, into three\n// shapes: a live reading, a daily maximum per forecast day, and the drivers\n// behind that maximum.\nconst cfg = $('Config').first().json;\nconst model = cfg.model_label || 'open_meteo_forecast';\nconst horizon = Number(cfg.max_horizon_days || 7);\nconst morningHour = Number(cfg.morning_hour || 8);\nconst [winFrom, winTo] = String(cfg.peak_window || '12-18').split('-').map(Number);\n\nconst req = $('Build requests').first().json;\nconst cities = req.cities || [];\n\n// n8n splits a JSON array body into one item per element, so a multi-location\n// answer arrives as N items. A single-location answer is a bare object and\n// arrives as one. Handle both rather than assuming the shape that happens to\n// be true for 37 cities and false for the one-city test.\nlet res = $('Fetch open-meteo').all().map(i => i.json);\nif (res.length === 1 && Array.isArray(res[0])) res = res[0];\n\nif (res.length !== cities.length) {\n  throw new Error(\n    `Open-Meteo returned ${res.length} location(s) for ${cities.length} cities. ` +\n    `Rows are paired by position, so a mismatch would file one city's weather ` +\n    `under another. Nothing was written.`);\n}\n\n// Open-Meteo answers cloud cover in PERCENT. Both the forecast-feature table\n// and the observation archive store OKTAS - eighths - because that is what\n// METAR reports and what the model was fitted on. 100% is 8 oktas, not 100.\nfunction oktas(pct) {\n  if (pct === null || pct === undefined) return null;\n  const v = Number(pct);\n  if (!Number.isFinite(v)) return null;\n  return Math.max(0, Math.min(8, Math.round(v / 12.5)));\n}\nfunction num(v) {\n  if (v === null || v === undefined) return null;\n  const n = Number(v);\n  return Number.isFinite(n) ? n : null;\n}\nfunction r2(v) { return v === null ? null : Number(v.toFixed(2)); }\nfunction compass(deg) {\n  if (deg === null || deg === undefined) return null;\n  const pts = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];\n  return pts[Math.round(Number(deg) / 22.5) % 16];\n}\n\nconst now = new Date().toISOString();\nconst forecasts = [], features = [], live = [];\nlet ok = 0, failed = 0, partial = 0;\nlet firstFailure = null;\n\nfor (let i = 0; i < cities.length; i++) {\n  const city = cities[i];\n  const r = res[i] || {};\n\n  if (r.error || r.reason) {\n    failed++;\n    if (!firstFailure) firstFailure = { city: city.city_key, reason: String(r.reason || r.error).slice(0, 300) };\n    continue;\n  }\n\n  const h = r.hourly || {};\n  const times = Array.isArray(h.time) ? h.time : [];\n  if (!times.length) {\n    failed++;\n    if (!firstFailure) firstFailure = {\n      city: city.city_key, reason: 'no hourly series in the response',\n      keys: Object.keys(r).slice(0, 12), body: JSON.stringify(r).slice(0, 300) };\n    continue;\n  }\n\n  // ---- the live reading -------------------------------------------------\n  // live_weather only, and deliberately. Open-Meteo's `current` is model\n  // output interpolated to a coordinate, not an instrument reading at the\n  // ICAO the market settles on - so it must never reach the raw observation\n  // archive, which is the settlement evidence and what the model is fitted\n  // on. Training a model on its own kind of guess is how a desk convinces\n  // itself it is right.\n  const cur = r.current || {};\n  if (num(cur.temperature_2m) !== null) {\n    const tc = num(cur.temperature_2m);\n    live.push({\n      city_key: city.city_key,\n      updated_at: now,\n      observed_at: cur.time || now,\n      temp_c: r2(tc),\n      temp_f: r2(tc * 9 / 5 + 32),\n      feels_like_c: r2(num(cur.apparent_temperature)),\n      humidity: num(cur.relative_humidity_2m),\n      wind_speed_kt: r2(num(cur.wind_speed_10m)),\n      wind_dir_deg: num(cur.wind_direction_10m),\n      wind_dir_compass: compass(num(cur.wind_direction_10m)),\n      pressure_hpa: r2(num(cur.surface_pressure)),\n      precip_1h: num(cur.precipitation),\n      sky_condition: oktas(cur.cloud_cover) === null ? null\n                   : (oktas(cur.cloud_cover) <= 1 ? 'CLEAR'\n                   : oktas(cur.cloud_cover) <= 4 ? 'PARTLY'\n                   : oktas(cur.cloud_cover) <= 7 ? 'CLOUDY' : 'OVERCAST'),\n      local_date: String(times[0]).slice(0, 10),\n      source: 'open-meteo',\n      source_kind: 'model',\n    });\n  }\n\n  // ---- the forecast, by the city's own local day -------------------------\n  // timezone=auto means these timestamps are already local, so slicing the\n  // date off gives the calendar day a daily maximum belongs to, with no\n  // timezone table on this side.\n  const byDay = new Map();\n  for (let k = 0; k < times.length; k++) {\n    const day = String(times[k]).slice(0, 10);\n    const hour = Number(String(times[k]).slice(11, 13));\n    const t = num(h.temperature_2m ? h.temperature_2m[k] : null);\n    if (t === null) continue;\n    if (!byDay.has(day)) byDay.set(day, {\n      hours: new Set(), max: -Infinity, min: Infinity, at: null, n: 0,\n      cloud: [], wind: [], precip: 0, pop: [], apparentMax: -Infinity,\n      morning: null, morningGap: Infinity,\n    });\n    const d = byDay.get(day);\n    d.hours.add(hour); d.n++;\n    if (t > d.max) { d.max = t; d.at = times[k]; }\n    if (t < d.min) d.min = t;\n\n    const ap = num(h.apparent_temperature ? h.apparent_temperature[k] : null);\n    if (ap !== null && ap > d.apparentMax) d.apparentMax = ap;\n\n    // daytime drivers only: what the sun had to work through\n    if (hour >= 9 && hour <= 17) {\n      const c = oktas(h.cloud_cover ? h.cloud_cover[k] : null);\n      if (c !== null) d.cloud.push(c);\n      const w = num(h.wind_speed_10m ? h.wind_speed_10m[k] : null);\n      if (w !== null) d.wind.push(w);\n    }\n    const pr = num(h.precipitation ? h.precipitation[k] : null);\n    if (pr !== null) d.precip += pr;\n    const pp = num(h.precipitation_probability ? h.precipitation_probability[k] : null);\n    if (pp !== null) d.pop.push(pp);\n\n    // the reading nearest the morning hour, for dewpoint depression - the\n    // single-instant quantity, not two series averaged and subtracted\n    const gap = Math.abs(hour - morningHour);\n    if (gap < d.morningGap) {\n      d.morningGap = gap;\n      d.morning = {\n        temp: t,\n        dew: num(h.dew_point_2m ? h.dew_point_2m[k] : null),\n        rh: num(h.relative_humidity_2m ? h.relative_humidity_2m[k] : null),\n      };\n    }\n  }\n\n  const days = [...byDay.keys()].sort();\n  if (!days.length) { failed++; continue; }\n  const today = days[0];\n  let wrote = 0;\n\n  for (const day of days) {\n    const d = byDay.get(day);\n    // A day whose series misses the peak window has an understated maximum,\n    // and a too-low max invents disagreement with the other model out of\n    // nothing. Skip it rather than write it wrong.\n    let covered = true;\n    for (let hr = winFrom; hr <= winTo; hr++) if (!d.hours.has(hr)) { covered = false; break; }\n    if (!covered) { partial++; continue; }\n\n    const lead = Math.round((Date.parse(day + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86400000);\n    if (lead < 0 || lead > horizon) continue;\n\n    const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;\n\n    forecasts.push({\n      city_key: city.city_key, model, run_at: now, for_date: day,\n      lead_days: lead, forecast_max_c: r2(d.max), source: 'open-meteo',\n      variables: {\n        min_c: r2(d.min), max_at_local: d.at, n_hours: d.n,\n        peak_window: `${winFrom}-${winTo}`, issued_at: now,\n      },\n    });\n\n    // The same column NAMES as the observed features, so a model fitted on\n    // days that already happened reads a forecast day with no translation.\n    features.push({\n      city_key: city.city_key, for_date: day, run_at: now,\n      source: 'open-meteo', lead_days: lead,\n      forecast_max_c: r2(d.max), forecast_min_c: r2(d.min),\n      apparent_max_c: d.apparentMax === -Infinity ? null : r2(d.apparentMax),\n      morning_temp_c: d.morning ? r2(d.morning.temp) : null,\n      morning_dewpoint_c: d.morning ? r2(d.morning.dew) : null,\n      dewpoint_depression_c: (d.morning && d.morning.dew !== null)\n        ? r2(d.morning.temp - d.morning.dew) : null,\n      morning_humidity: d.morning ? d.morning.rh : null,\n      cloud_mean: r2(mean(d.cloud)), cloud_max: d.cloud.length ? Math.max(...d.cloud) : null,\n      wind_mean: r2(mean(d.wind)), wind_max: d.wind.length ? r2(Math.max(...d.wind)) : null,\n      precip_total: Number(d.precip.toFixed(4)),\n      precip_probability: d.pop.length ? Math.max(...d.pop) : null,\n      n_hours: d.n,\n    });\n    wrote++;\n  }\n  if (wrote) ok++; else failed++;\n}\n\nreturn [{ json: {\n  forecasts, features, live,\n  n_forecasts: forecasts.length, n_features: features.length, n_live: live.length,\n  cities_ok: ok, cities_failed: failed, partial_days: partial,\n  requested: cities.length, first_failure: firstFailure,\n} }];\n"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    620,
+    300
+   ],
+   "id": "build-rows",
+   "name": "Build rows"
+  },
+  {
+   "parameters": {
+    "jsCode": "const p = $('Build rows').first().json;\nif (p.n_forecasts === 0 && p.n_live === 0) {\n  const f = p.first_failure;\n  // The cause first: n8n's banner shows one line and one line is what gets\n  // pasted into a report.\n  let why = 'Open-Meteo returned nothing usable and no failing location was captured.';\n  if (f && f.reason) {\n    why = /timezone|latitude|longitude/i.test(f.reason)\n      ? `Open-Meteo rejected the request: ${f.reason}. Check cities.latitude / longitude are real coordinates.`\n      : `Open-Meteo returned no hourly series: ${f.reason}`;\n    if (f.keys) why += ` Keys: ${f.keys.join(', ')}.`;\n  }\n  throw new Error(\n    why + ` [${p.cities_failed}/${p.requested} failed, ${p.partial_days} day(s) ` +\n    `skipped for not covering the peak window, nothing written]` +\n    (f ? `\\n\\nFirst failing city: ${f.city}` : ''));\n}\nreturn [{ json: p }];\n"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    840,
+    300
+   ],
+   "id": "guard-did-anything-parse",
+   "name": "Guard: did anything parse?"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/live_weather?on_conflict=city_key",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      },
+      {
+       "name": "Prefer",
+       "value": "resolution=merge-duplicates,return=minimal"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.live) }}",
+    "options": {
+     "response": {
+      "response": {
+       "neverError": true
+      }
+     }
+    }
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1060,
+    200
+   ],
+   "id": "write-live_weather",
+   "name": "Write live_weather",
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/weather_forecasts?on_conflict=city_key,model,run_at,for_date",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      },
+      {
+       "name": "Prefer",
+       "value": "resolution=merge-duplicates,return=minimal"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($('Build rows').first().json.forecasts) }}",
+    "options": {
+     "response": {
+      "response": {
+       "neverError": true
+      }
+     }
+    }
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1060,
+    300
+   ],
+   "id": "write-forecasts",
+   "name": "Write forecasts",
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/weather_forecast_features?on_conflict=city_key,for_date,source,lead_days",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      },
+      {
+       "name": "Prefer",
+       "value": "resolution=merge-duplicates,return=minimal"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($('Build rows').first().json.features) }}",
+    "options": {
+     "response": {
+      "response": {
+       "neverError": true
+      }
+     }
+    }
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1060,
+    400
+   ],
+   "id": "write-forecast-features",
+   "name": "Write forecast features",
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "// DID THE DATABASE ACTUALLY TAKE IT?\n//\n// Every write node here carries onError=continueRegularOutput, so the workflow\n// walks straight past a rejected write and reaches this node looking healthy.\n// That is how a run reports success having written nothing - which is exactly\n// what happened: reads worked, every write was refused, and the only visible\n// error was on the LAST node in the chain.\n//\n// With neverError on, a refusal arrives as the PostgREST error body instead of\n// an exception, so it can be read and named here.\nfunction writeError(node) {\n  let items;\n  try { items = $(node).all(); } catch (e) { return null; }\n  for (const it of items || []) {\n    const b = it && it.json;\n    if (!b || typeof b !== 'object') continue;\n    if (b.error && !b.code) return { node, code: null, message: String(b.error).slice(0, 300) };\n    if (b.code || b.message) {\n      return { node, code: b.code ?? null,\n               message: b.message ?? '', details: b.details ?? null, hint: b.hint ?? null };\n    }\n  }\n  return null;\n}\n\nconst WRITE_NODES = [\"Write live_weather\", \"Write forecasts\", \"Write forecast features\"];\nfor (const node of WRITE_NODES) {\n  const e = writeError(node);\n  if (!e) continue;\n  // 42501 is the one worth naming, because the cause is never the code.\n  if (String(e.code) === '42501' || /permission denied/i.test(e.message)) {\n    throw new Error(\n      `Supabase REFUSED the write: ${e.message} (${e.code}). This is the ANON key in the ` +\n      `Config node, not the service key - anon is granted SELECT and nothing else, which is ` +\n      `why reads worked and every write was silently dropped. Open Config -> service_key and ` +\n      `paste the SERVICE ROLE key (Supabase -> Project Settings -> API -> service_role, or a ` +\n      `key beginning sb_secret_). NEVER put that key anywhere starting NEXT_PUBLIC_. ` +\n      `Failing node: ${e.node}. Nothing was written.`);\n  }\n  throw new Error(\n    `Supabase refused the write at \"${e.node}\": ${e.message}` +\n    (e.code ? ` (${e.code})` : '') + (e.details ? ` - ${e.details}` : '') +\n    (e.hint ? ` Hint: ${e.hint}` : '') + ' Nothing was written.');\n}\n\nconst p = $('Build rows').first().json;\nconst summary =\n  `AD4 P1.5: ${p.n_forecasts} forecast day(s) and ${p.n_live} live reading(s) ` +\n  `from ${p.requested} cities` +\n  (p.cities_failed ? `, ${p.cities_failed} failed` : '') +\n  (p.partial_days ? `, ${p.partial_days} day(s) skipped for peak-window coverage` : '') + '.';\nconst status = p.n_forecasts > 0 ? 'ok' : 'attention';\nreturn [{ json: {\n  summary, status, rows: p.n_forecasts + p.n_live,\n  log: { p_job: 'P1.5_open_meteo', p_status: status,\n         p_rows: p.n_forecasts + p.n_live,\n         p_detail: { forecasts: p.n_forecasts, features: p.n_features,\n                     live: p.n_live, cities_ok: p.cities_ok,\n                     cities_failed: p.cities_failed, partial_days: p.partial_days,\n                     requested: p.requested, summary,\n                     trigger: $execution.mode, execution_id: $execution.id } },\n} }];\n"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1280,
+    300
+   ],
+   "id": "summary",
+   "name": "Summary"
+  },
+  {
+   "id": "log-run",
+   "name": "Log run",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1500,
+    300
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.log) }}"
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  }
+ ],
+ "connections": {
+  "Manual Trigger": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Schedule Trigger": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Webhook Trigger": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "Check schedule",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Check schedule": {
+   "main": [
+    [
+     {
+      "node": "Run now?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Run now?": {
+   "main": [
+    [
+     {
+      "node": "Stop if skipped",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Stop if skipped": {
+   "main": [
+    [
+     {
+      "node": "Load cities",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Load cities": {
+   "main": [
+    [
+     {
+      "node": "Build requests",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build requests": {
+   "main": [
+    [
+     {
+      "node": "Fetch open-meteo",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Fetch open-meteo": {
+   "main": [
+    [
+     {
+      "node": "Build rows",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build rows": {
+   "main": [
+    [
+     {
+      "node": "Guard: did anything parse?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Guard: did anything parse?": {
+   "main": [
+    [
+     {
+      "node": "Write live_weather",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Write live_weather": {
+   "main": [
+    [
+     {
+      "node": "Write forecasts",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Write forecasts": {
+   "main": [
+    [
+     {
+      "node": "Write forecast features",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Write forecast features": {
+   "main": [
+    [
+     {
+      "node": "Summary",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Summary": {
+   "main": [
+    [
+     {
+      "node": "Log run",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Log run": {
+   "main": [
+    [
+     {
+      "node": "Respond",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "pinData": {},
+ "tags": []
+}

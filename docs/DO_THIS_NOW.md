@@ -18,6 +18,27 @@ was stopping something from working. In order:
 | **SQL 8, 9, 10** (`ad4_21`, `ad4_28`, `ad4_29`) | Archive Observations failed with a bare HTTP 500. The cache refresh was one 6.5-second statement and Supabase cancels it. It is per-city now, which needed a one-word change in `ad4_21` to be fast. |
 | **Re-import n8n P1.2, P1.3, P1.4** | This is why all 37 cities failed. weather.gov answers `application/geo+json`; n8n's autodetect only recognises `application/json`, so every response was decoded as **text** and there was nothing to read. The fetch nodes now ask for JSON explicitly. |
 | Nothing — Data Bank, Live Weather and Signals | Fixed in code. They were 409/400 write errors and just need re-running. |
+| **Put the SERVICE ROLE key in every n8n Config node** | The n8n `service_key` field holds the **anon** key. `anon` is granted SELECT and nothing else, so reads worked and every write was silently refused — that is the `permission denied for function log_ingest` (42501) and the reason nothing updated. Supabase → Project Settings → API → `service_role`. Never anywhere starting `NEXT_PUBLIC_`. |
+| **Run `sql/ad4_30_open_meteo.sql`, then import n8n P1.5** | `api.weather.gov` covers the US only, so Warsaw, Ankara, Moscow and Jinan had **no live reading and no forward forecast from any job at all**. Open-Meteo is global. |
+
+### One thing worth knowing about the sources
+
+Every city here resolves on **`weather.gov/wrh/timeseries?site=<icao>`** — that
+surface is global and it is what the markets settle on. **`api.weather.gov` is
+a different surface and it is US-only.** `cities.nws_supported = false` means
+"the JSON API returned 404 for this point", never "weather.gov has no data for
+this city". Reading it the second way is what left a third of the desk with no
+forecast; the column now carries a comment saying so.
+
+After P1.5 has run once:
+
+```sql
+select * from v_forecast_coverage;
+```
+
+Any city still reading `NO FORWARD FORECAST` cannot be traded tomorrow, and any
+reading `one model` has a spread of zero — disagreement is what widens sigma, so
+a single model makes every band look equally likely.
 
 The n8n re-import is the one that matters most: until it is done, P1.2 and P1.3
 cannot work, and nothing else on this page can substitute for them.

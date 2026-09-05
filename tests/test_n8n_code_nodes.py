@@ -394,8 +394,11 @@ def test_every_workflow_file_has_a_cadence_registered():
     runs on whatever n8n says, which is the thing the gate exists to prevent."""
     import glob
 
-    seeded = (open(os.path.join(ROOT, "sql", "ad4_20_schedules.sql")).read()
-              + open(os.path.join(ROOT, "sql", "ad4_24_nws_gridpoint.sql")).read())
+    # Every SQL file, not a hardcoded two: a workflow registered in a new file
+    # is registered. Naming the files here made adding one fail a test that was
+    # actually satisfied.
+    seeded = "".join(open(f).read()
+                     for f in sorted(glob.glob(os.path.join(ROOT, "sql", "*.sql"))))
     for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
         f = os.path.basename(path)
         if f.endswith(".snippet.json"):
@@ -592,3 +595,294 @@ def test_the_first_line_carries_the_cause_not_the_count(workflow, plan, seed, ke
     assert "403" in first and "User-Agent" in first, first
     assert not first.startswith("Parsed 0"), first
     assert not first.startswith("No forecast URLs"), first
+
+
+# ------------------------------------------- a refused write is not a run ---
+# The workflows ran, reported healthy, and wrote nothing. Every write node
+# carries onError=continueRegularOutput, so a 401/42501 was walked straight
+# past and only the LAST node in the chain showed an error. Reads worked
+# because anon is granted SELECT; every write was refused because it is
+# granted nothing else.
+
+WRITE_NODES = {
+    "P1.1_live_weather_alerts.template.json": ["Mark Notified"],
+    "P1.2_nws_monitor.template.json": ["Write observations", "Write live_weather",
+                                       "Save NWS ids", "Raise alerts"],
+    "P1.3_nws_forecast.template.json": ["Write forecasts", "Save NWS ids"],
+    "P1.4_nws_gridpoint.template.json": ["Write forecast features"],
+}
+
+
+@pytest.mark.parametrize("workflow,nodes", sorted(WRITE_NODES.items()))
+def test_write_nodes_return_the_body_instead_of_throwing(workflow, nodes):
+    """Without neverError the refusal is an exception that onError swallows,
+    leaving nothing to read and nothing to report."""
+    d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
+    by = {n["name"]: n for n in d["nodes"]}
+    for name in nodes:
+        resp = by[name]["parameters"].get("options", {}).get("response", {}).get("response", {})
+        assert resp.get("neverError") is True, f"{workflow} / {name}"
+
+
+@pytest.mark.parametrize("workflow,nodes", sorted(WRITE_NODES.items()))
+def test_the_summary_refuses_to_report_success_on_a_refused_write(workflow, nodes):
+    code = json.load(open(os.path.join(ROOT, "n8n", workflow)))["nodes"]
+    code = [n for n in code if n["name"] == "Summary"][0]["parameters"]["jsCode"]
+    assert "DID THE DATABASE ACTUALLY TAKE IT?" in code, workflow
+    for name in nodes:
+        assert json.dumps(name) in code, f"{workflow} does not check {name}"
+
+
+def test_a_refused_write_names_the_anon_key():
+    def m(plan):
+        plan["seed"]["Write observations"] = [{
+            "code": "42501", "details": None, "hint": None,
+            "message": "permission denied for table weather_observations"}]
+    r = run_with("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json", m)
+    assert r["ok"] is False and r["node"] == "Summary", r
+    first = r["error"].splitlines()[0]
+    assert "ANON key" in first and "service_role" in first, first
+    assert "Nothing was written" in first, first
+
+
+def test_a_clean_run_is_not_flagged():
+    r = run("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json")
+    assert r["ok"], r
+    assert r["outputs"]["Summary"][0]["rows"] > 0
+
+
+def test_the_gate_stops_on_a_permission_error_rather_than_failing_open():
+    """The gate fails OPEN on an unreachable RPC, which is right. 42501 is not
+    unreachable - it is proof the key cannot write, on the first node that can
+    show it, two nodes before any data is touched. Failing open on THAT answer
+    is what let a whole run look healthy while writing nothing."""
+    r = run("P1.2_nws_monitor.template.json", "plan_gate_denied.json")
+    assert r["ok"] is False and r["node"] == "Run now?", r
+    assert "ANON key" in r["error"] and "service_role" in r["error"]
+
+
+@pytest.mark.parametrize("workflow", sorted(
+    [f for f in os.listdir(os.path.join(ROOT, "n8n")) if f.endswith(".json")]))
+def test_every_gate_carries_the_permission_check(workflow):
+    d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
+    gate = [n for n in d["nodes"] if n["name"] == "Run now?"]
+    if not gate:
+        pytest.skip("no schedule gate in this file")
+    assert "42501" in gate[0]["parameters"]["jsCode"], workflow
+
+
+# ------------------------------------------------------------- P1.5 --------
+# api.weather.gov covers the United States and its territories. Warsaw,
+# Ankara, Moscow and Jinan get a 404 from it, so P1.2-P1.4 skip them - and
+# nothing else wrote a live reading or a forward forecast for them at all.
+# ingest_forecasts.py looks like it does and does not: its window is
+# today-10 -> today, so it backfills what WAS forecast, never what will
+# happen. Open-Meteo is global and answers plain application/json.
+
+@pytest.fixture(scope="module")
+def p15():
+    r = run("P1.5_open_meteo.template.json", "plan_P1.5_open_meteo.json")
+    assert r["ok"], r
+    return r["outputs"]
+
+
+def test_all_cities_go_out_in_one_request(p15):
+    """Comma-separated coordinate lists: 37 cities cost one HTTP call."""
+    url = p15["Build requests"][0]["url"]
+    assert url.startswith("https://api.open-meteo.com/v1/forecast?")
+    assert "latitude=52.1657%2C41.7868" in url, url
+    assert "longitude=20.9671%2C-87.7522" in url, url
+    assert p15["Build requests"][0]["n"] == 2
+
+
+def test_the_request_asks_for_the_units_the_columns_already_use(p15):
+    """weather_observations came from IEM METAR, so wind is KNOTS and precip
+    is INCHES. Writing km/h into a knots column is wrong and not
+    wrong-looking, which is the kind nobody finds."""
+    url = p15["Build requests"][0]["url"]
+    assert "wind_speed_unit=kn" in url
+    assert "precipitation_unit=inch" in url
+    assert "temperature_unit=celsius" in url
+    assert "timezone=auto" in url, "a daily max only means anything in local time"
+
+
+def test_cloud_percent_becomes_oktas(p15):
+    """The one unit Open-Meteo cannot serve in the stored form: it answers
+    percent, the column is eighths."""
+    feats = {f["city_key"]: f for f in p15["Build rows"][0]["features"]}
+    assert feats["warsaw"]["cloud_max"] == 4, "50% is 4 oktas"
+    assert feats["chicago"]["cloud_max"] == 8, "100% is 8 oktas, not 100"
+
+
+def test_a_live_reading_is_marked_as_a_model_not_a_station(p15):
+    """Open-Meteo's current block is model output interpolated to a
+    coordinate, not an instrument reading at the ICAO the market settles on.
+    A page that cannot tell them apart is making a claim it cannot support."""
+    live = p15["Build rows"][0]["live"]
+    assert live and all(r["source_kind"] == "model" for r in live)
+    assert all(r["source"] == "open-meteo" for r in live)
+
+
+def test_it_never_writes_observations():
+    """weather_observations is the settlement evidence and what the model is
+    FITTED on. Model output in it would train the model on its own guess."""
+    d = json.load(open(os.path.join(ROOT, "n8n", "P1.5_open_meteo.template.json")))
+    for n in d["nodes"]:
+        p = n["parameters"]
+        for field in ("url", "jsonBody", "jsCode"):
+            assert "weather_observations" not in str(p.get(field, "")), \
+                f"{n['name']}.{field}"
+
+
+def test_lead_days_count_from_the_citys_own_first_local_day(p15):
+    fc = [f for f in p15["Build rows"][0]["forecasts"] if f["city_key"] == "chicago"]
+    assert sorted(f["lead_days"] for f in fc) == [0, 1, 2]
+
+
+def test_the_daily_max_is_the_peak_of_the_hourly_curve(p15):
+    fc = {(f["city_key"], f["lead_days"]): f for f in p15["Build rows"][0]["forecasts"]}
+    w = fc[("warsaw", 0)]
+    assert w["forecast_max_c"] == 22, w
+    assert w["variables"]["max_at_local"].endswith("T15:00"), "the seeded curve peaks at 15:00"
+    assert w["variables"]["min_c"] == 14
+
+
+def test_features_carry_the_same_column_names_as_the_observed_ones(p15):
+    """So a model fitted on days that happened reads a forecast day with no
+    translation - the thing that makes Model Forecast possible at all."""
+    f = p15["Build rows"][0]["features"][0]
+    for col in ("morning_temp_c", "morning_dewpoint_c", "dewpoint_depression_c",
+                "morning_humidity", "cloud_mean", "cloud_max", "wind_mean",
+                "wind_max", "precip_total", "forecast_max_c", "forecast_min_c"):
+        assert col in f, col
+
+
+def test_a_single_city_answer_is_not_an_array(p15):
+    """Open-Meteo returns a bare object for one location and an array for
+    many. n8n splits an array into items; the parser must take both."""
+    code = [n for n in json.load(open(os.path.join(
+        ROOT, "n8n", "P1.5_open_meteo.template.json")))["nodes"]
+        if n["name"] == "Build rows"][0]["parameters"]["jsCode"]
+    assert "if (res.length === 1 && Array.isArray(res[0])) res = res[0];" in code
+
+
+def test_the_code_node_sandbox_has_no_URLSearchParams():
+    """It does not, and a workflow that throws ReferenceError on its first
+    node is worse than a longer join."""
+    for n in json.load(open(os.path.join(
+            ROOT, "n8n", "P1.5_open_meteo.template.json")))["nodes"]:
+        if n["type"] == "n8n-nodes-base.code":
+            assert "URLSearchParams" not in n["parameters"]["jsCode"], n["name"]
+
+
+def test_every_workflow_that_writes_a_table_checks_the_write():
+    """The rule, not a list: any POST to a table (not an RPC) is a write, and a
+    write that was refused must not be reported as a run."""
+    import glob
+
+    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
+        d = json.load(open(path))
+        writes = [n["name"] for n in d["nodes"]
+                  if n["type"] == "n8n-nodes-base.httpRequest"
+                  and n["parameters"].get("method") == "POST"
+                  and "/rest/v1/" in str(n["parameters"].get("url", ""))
+                  and "/rpc/" not in str(n["parameters"].get("url", ""))]
+        if not writes:
+            continue
+        by = {n["name"]: n for n in d["nodes"]}
+        summary = by.get("Summary")
+        assert summary, f"{os.path.basename(path)} writes {writes} and has no Summary"
+        code = summary["parameters"]["jsCode"]
+        assert "DID THE DATABASE ACTUALLY TAKE IT?" in code, os.path.basename(path)
+        for name in writes:
+            assert json.dumps(name) in code, f"{os.path.basename(path)} does not check {name}"
+            resp = by[name]["parameters"].get("options", {}).get("response", {}).get("response", {})
+            assert resp.get("neverError") is True, f"{os.path.basename(path)} / {name}"
+
+
+# ------------------------------------------ the endpoints I cannot verify ---
+# P0.2-P0.5 are RECONSTRUCTIONS. Their Supabase half is grounded in the real
+# schema; their Polymarket half is a guess, and this sandbox's egress policy
+# refuses gamma-api / clob / data-api.polymarket.com, so it stays a guess.
+#
+# They used to ship with a plausible URL already filled in, which is worse than
+# shipping none: it reads as authoritative, nobody changes it, and the run dies
+# four nodes later with a message about response shapes.
+
+P0_SCAFFOLDS = ["P0.2_market_discovery.scaffold.json",
+                "P0.3_book_volume_snapshot.scaffold.json",
+                "P0.4_trade_history.scaffold.json",
+                "P0.5_refresh_rules_text.scaffold.json"]
+
+
+@pytest.mark.parametrize("workflow", P0_SCAFFOLDS)
+def test_no_unverified_endpoint_ships_prefilled(workflow):
+    d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
+    cfg = [n for n in d["nodes"] if n["name"] == "Config"][0]
+    for a in cfg["parameters"]["assignments"]["assignments"]:
+        if a["name"].endswith("_url") and a["name"] != "supabase_url":
+            assert a["value"] == "", (
+                f"{workflow}: {a['name']} ships with {a['value']!r}. This repo cannot "
+                f"verify a Polymarket endpoint, so it must not assert one.")
+
+
+@pytest.mark.parametrize("workflow", P0_SCAFFOLDS)
+def test_a_missing_endpoint_stops_before_any_request(workflow):
+    d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
+    gate = [n for n in d["nodes"] if n["name"] == "Run now?"][0]["parameters"]["jsCode"]
+    assert "AN ENDPOINT THIS FILE CANNOT KNOW" in gate, workflow
+    # and the gate really is node 2, before Load/Fetch
+    after_cfg = [c["node"] for br in d["connections"]["Config"]["main"] for c in br]
+    assert after_cfg == ["Check schedule"], workflow
+
+
+@pytest.mark.parametrize("workflow,field", [
+    ("P0.2_market_discovery.scaffold.json", "markets_url"),
+    ("P0.3_book_volume_snapshot.scaffold.json", "clob_book_url"),
+    ("P0.4_trade_history.scaffold.json", "trades_url"),
+    ("P0.5_refresh_rules_text.scaffold.json", "rules_url"),
+])
+def test_the_empty_endpoint_message_points_at_the_working_original(workflow, field, tmp_path):
+    """It must send the reader to their own working workflow, which is the only
+    authority on the endpoint, not to a guess or to the internet."""
+    import subprocess
+    js = f"""
+      const fs = require('fs');
+      const wf = JSON.parse(fs.readFileSync({json.dumps(os.path.join(ROOT, 'n8n', workflow))}, 'utf8'));
+      const code = wf.nodes.find(n => n.name === 'Run now?').parameters.jsCode;
+      const nodes = {{ Config: [{{ supabase_url: 'u', service_key: 'k', {field}: '' }}],
+                      'Check schedule': [{{ run: true }}] }};
+      const $ = n => ({{ all: () => (nodes[n]||[]).map(j => ({{json:j}})),
+                        first: () => ({{json:(nodes[n]||[])[0]}}) }});
+      try {{ new Function('$','$input','$execution', code)($, {{all:()=>[]}}, {{mode:'manual'}});
+             console.log('NOTHROW'); }}
+      catch (e) {{ console.log(e.message); }}
+    """
+    f = tmp_path / "t.js"
+    f.write_text(js)
+    out = subprocess.run([NODE, str(f)], capture_output=True, text=True, timeout=30).stdout
+    assert field in out, out
+    assert "your OWN working" in out, out
+    assert "Nothing was fetched and nothing was written" in out, out
+
+
+def test_the_gate_does_not_claim_to_catch_what_it_cannot():
+    """sql/ad4_20 grants should_run to anon on purpose, so an anon key sails
+    through the gate and only fails at the first write. Saying otherwise sends
+    the reader after the wrong thing."""
+    import glob
+
+    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
+        gate = [n for n in json.load(open(path))["nodes"] if n["name"] == "Run now?"]
+        if not gate:
+            continue
+        code = gate[0]["parameters"]["jsCode"]
+        assert "THIS IS NOT THE MAIN DEFENCE" in code, os.path.basename(path)
+
+
+def test_the_diagnostic_reports_who_can_write():
+    sql = open(os.path.join(ROOT, "sql", "ad4_diagnose.sql")).read()
+    assert "6 WRITE ACCESS" in sql
+    assert "has_table_privilege('anon'" in sql
+    assert "has_table_privilege('service_role'" in sql
+    assert "by design" in sql, "should_run being anon-callable must not read as a fault"
