@@ -46,13 +46,18 @@ All are safe to run again, in any order, any number of times.
 | 4 | `ad4_30_open_meteo.sql` | **New.** `live_weather.source` / `source_kind`, `v_forecast_coverage`, registers P1.5. |
 | 5 | `ad4_31_predictive.sql` | **New.** The five views behind the Predictive page. |
 | 6 | `ad4_32_run_scope.sql` | **New.** Lets a job cover selected cities instead of all 37. |
+| 7 | `ad4_33_control.sql` | **New.** `set_strategy_enabled()` — the switch the app never had. Plus `v_strategy_board` (every strategy with its own record) and `v_trade_timing` (when the day is decided, from each city's own measured peak hour). |
+| 8 | `ad4_34_trade_plan.sql` | **New.** `v_trade_plan` — every edge with **when** and **who** attached: which strategies would fire on it right now, what the entry costs at the ask, and where the day is heading relative to that band. Plus `v_city_day_plan` for the two-bucket cover. |
+| 9 | `ad4_35_databank_inventory.sql` | **New.** What the archive holds and what has been built from it, per dataset and per city. Behind the Data Bank page. |
 | — | `ad4_diagnose.sql` | **Read-only.** Run any time. Section 6 is the write-access check above. |
 
-Then two questions worth asking straight away:
+Then four questions worth asking straight away:
 
 ```sql
 select * from v_forecast_coverage;   -- which cities can be traded tomorrow
 select * from v_run_scope;           -- which cities each job covers
+select * from v_archive_inventory;   -- what has actually been collected
+select strategy_id, enabled, verdict from v_strategy_board;   -- what is switched on
 ```
 
 `NO FORWARD FORECAST` means that city has no price to disagree with.
@@ -140,6 +145,11 @@ fixes look like they had not worked.
 | **Live Weather** | One verdict at the top: newest reading anywhere, and if that is stale, what is not running. Cards now mark a `model` reading — Open-Meteo interpolates to a coordinate, a station measures at the ICAO the market settles on, and only one is evidence. |
 | **Analytics** | Four groups in dependency order: is the forecast good → is the pricing good → did it make money → can it take size. Line charts have a real crosshair tooltip; they previously had none. |
 | **Workflows** | Pick which cities each job covers. |
+| **Strategies** *(new)* | The main switch. Every strategy with its own record beside it — fired, filled, win rate, net P&L — and a verdict that separates "has never fired" from "loses money". |
+| **Globe** *(new)* | All 37 cities under real daylight, with the 12:00–17:00 local-solar band lit warm: the only strip on the planet where today's maxima are being made. Opens on that meridian, not on Greenwich. |
+| **Data Bank** *(new)* | What has been collected and what was built from it, per dataset and per city, then the frozen record asked whether a 30% settles 30% of the time. |
+| **Opportunities** | Now says **when** and **who**: which strategies would take each row (struck through when they are switched off), what the entry costs at the ask rather than the mid, where the day is heading relative to that band, and how old the book underneath it is. |
+| **Goals** | A "what the day says" panel. The spread was priced entirely off the model and the book; neither had looked out of the window. It now flags a covered band the day cannot physically reach. |
 | **Calculator** | Removed. Its one inbound link now opens the Board. |
 
 ### About scoping a run
@@ -165,7 +175,7 @@ zero cities is indistinguishable from a broken job, so it never happens.
 | | |
 |---|---|
 | **Settlement gate** (`settlement_verified`) | Deliberately false. Needs one live check of `weather.gov/wrh/timeseries?site=<icao>` against the archive; this environment's network policy refuses that host. `docs/settlement_verification.md` has the query. |
-| **Strategies** | All ship `enabled = false`. That is why Signals is empty — a safety default, not a fault. One at a time: `update strategies set enabled = true where strategy_id = '…';` Read `docs/strategies.md` first. |
+| **Strategies** | All ship `enabled = false` — a safety default, not a fault, and why Signals is empty. **This is now a toggle on the Strategies page**, not an UPDATE typed into the SQL editor. Each row shows how many bands on the board would pass its entry test right now, so the switch is a decision rather than a guess. Read `docs/strategies.md` first. |
 
 ---
 

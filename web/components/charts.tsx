@@ -264,6 +264,23 @@ function fmtBar(v: number): string {
 
 /* --------------------------------------------------------------- scatter -- */
 
+/**
+ * Keep the first tick for each distinct LABEL. The values are correct; it is
+ * the formatting that collides, so dropping a duplicate label is honest where
+ * relabelling or re-spacing the axis would not be.
+ */
+function dedupeByLabel(values: number[], label: (v: number) => string): number[] {
+  const seen = new Set<string>();
+  const out: number[] = [];
+  for (const v of values) {
+    const l = label(v);
+    if (seen.has(l)) continue;
+    seen.add(l);
+    out.push(v);
+  }
+  return out;
+}
+
 export function Scatter({
   points, height = 260, xLabel, yLabel, xTickFormat, yTickFormat, logX,
 }: {
@@ -289,13 +306,24 @@ export function Scatter({
   if (yhi === ylo) { yhi += 1; ylo -= 1; }
   const yp = (yhi - ylo) * 0.1; ylo -= yp; yhi += yp;
   const xp = (xhi - xlo) * 0.06; xlo -= xp; xhi += xp;
+  // Padding must not invent an impossible domain. Book depth, traded volume
+  // and every other count on this desk are non-negative, and a y-axis reading
+  // "-$1" under a chart of dollars quoted is not a rounding quirk - it is the
+  // chart claiming something that cannot happen. Only ever clamp toward zero,
+  // so a series that genuinely goes negative keeps its full range.
+  if (ys.every((v) => v >= 0) && ylo < 0) ylo = 0;
+  if (!logX && xs.every((v) => v >= 0) && xlo < 0) xlo = 0;
 
   const X = (v: number) => PAD_L + ((tx(v) - xlo) / (xhi - xlo)) * (W - PAD_L - PAD_R);
   const Y = (v: number) => H - PAD_B - ((v - ylo) / (yhi - ylo)) * (H - PAD_T - PAD_B);
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: H * 1.5 }} role="img">
-      {niceTicks(ylo, yhi).map((v) => (
+      {/* Ticks whose LABELS collide are dropped, not their values: on a
+          degenerate axis (every point the same, or a range under one unit)
+          niceTicks is right and the formatter is lossy, and two ticks reading
+          "$1" at different heights is the chart contradicting itself. */}
+      {dedupeByLabel(niceTicks(ylo, yhi), (v) => (yTickFormat ? yTickFormat(v) : v.toFixed(1))).map((v) => (
         <g key={`y${v}`}>
           <line x1={PAD_L} x2={W - PAD_R} y1={Y(v)} y2={Y(v)} stroke={GRID} />
           <text x={PAD_L - 5} y={Y(v) + 3} textAnchor="end" fontSize="9" fill={AXIS}>
@@ -303,7 +331,10 @@ export function Scatter({
           </text>
         </g>
       ))}
-      {niceTicks(xlo, xhi, 5).map((v) => {
+      {dedupeByLabel(niceTicks(xlo, xhi, 5), (v) => {
+        const r = logX ? Math.pow(10, v) : v;
+        return xTickFormat ? xTickFormat(r) : r.toFixed(0);
+      }).map((v) => {
         const real = logX ? Math.pow(10, v) : v;
         return (
           <g key={`x${v}`}>

@@ -97,6 +97,14 @@ export default function MonitorPage() {
   const stats = useCityStats(60000);
   const [watched, setWatched] = useState<string[]>([]);
   const [open, setOpen] = useState<string | null>(null);
+  // ?city= so the rail's rows open the city they name. Read from window rather
+  // than useSearchParams, which would force a Suspense boundary on the route
+  // for the benefit of a prerender that never runs.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const c = new URLSearchParams(window.location.search).get("city");
+    if (c) setOpen(c);
+  }, []);
   const [picking, setPicking] = useState(false);
 
   // The selection is a per-browser preference on a shared database, so it

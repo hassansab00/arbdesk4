@@ -95,3 +95,4 @@ def test_ts_cost_model_agrees_with_the_python_one():
         assert abs(spent - row["usd"]) < 1e-6, (
             f'stake does not reconstitute at price {row["p"]}: {spent} != {row["usd"]}'
         )
+

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { SQL_OWNER } from "@/lib/sqlOwner";
 
 /**
  * The three honest states, rendered the same way on every page (Task 2.2 /
@@ -81,8 +82,29 @@ export function ErrorBox({
       )}
       {missingRelation && !configIssue && (
         <p className="mt-2 text-xs text-muted">
-          A table or view this page reads does not exist yet. Run the SQL files in order, starting
-          with <code>sql/ad4_00_preflight.sql</code> — see <code>docs/GO_LIVE.md</code> step 1.
+          {(() => {
+            // NAME THE FILE THAT CREATES IT. This used to say "run
+            // sql/ad4_00_preflight.sql" for every missing relation, which is
+            // right about one file in thirty - every Predictive panel failed
+            // on a view created by ad4_31 and sent the reader to preflight.
+            const m = message.match(/'public\.([a-z0-9_]+)'|relation "([a-z0-9_]+)"/i);
+            const rel = (m?.[1] ?? m?.[2] ?? "").toLowerCase();
+            const file = SQL_OWNER[rel];
+            if (rel && file) {
+              return (
+                <>
+                  <code>{rel}</code> is created by <code>sql/{file}</code>. Run that file in the
+                  Supabase SQL editor — it is safe to run again.
+                </>
+              );
+            }
+            return (
+              <>
+                A table or view this page reads does not exist yet. Run the SQL files in order —
+                see <code>docs/EVERYTHING.md</code> step 3.
+              </>
+            );
+          })()}
         </p>
       )}
       {onRetry && (

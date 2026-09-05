@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { useCityStats } from "@/lib/useCityStats";
@@ -13,8 +14,7 @@ import { fmtTemp, type Unit } from "@/lib/units";
 import { fmtDateTime, fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
 import { heatColor } from "@/lib/heat";
 import { histogram, simulate, type McBand } from "@/lib/montecarlo";
-import DataBank from "@/components/DataBank";
-import type { CityStats, Opportunity } from "@/lib/types";
+import type { CityStats, Opportunity, StrategyBoardRow } from "@/lib/types";
 
 const MIN_TRADES_FOR_RATE = 20; // matches scripts/backtest/metrics.py's own threshold
 const RUNS = 20000;
@@ -38,6 +38,12 @@ export default function AnalyticsPage() {
   const tradesQ = useQuery<TradeRow[]>(
     () => supabase.from("paper_trades").select("strategy_id,net_pnl,gross_pnl,closed_at").not("closed_at", "is", null).order("closed_at", { ascending: true }),
     []
+  );
+  // The roster with its own record. Attribution used to show an empty box on a
+  // desk that has not traded, which reads as broken; the roster turns that into
+  // the reason - every strategy is off, or firing and not filling.
+  const boardQ = useQuery<StrategyBoardRow[]>(
+    () => supabase.from("v_strategy_board").select("*"), [], 60000
   );
   const signalsQ = useQuery<Array<{ strategy_id: string }>>(
     () => supabase.from("signals").select("strategy_id").gte("fired_at", new Date(Date.now() - 7 * 864e5).toISOString()),
@@ -85,6 +91,45 @@ export default function AnalyticsPage() {
           broken rather than early. */}
       <ModelAnalytics />
 
+      {/* ============================================ forecast skill ===== */}
+      <section>
+        <h2 className="text-sm font-semibold">Forecast skill by city (1-day lead)</h2>
+        <p className="mb-2 max-w-3xl text-[11px] leading-relaxed text-muted">
+          Mean absolute error against what actually happened — the number sigma is built from, so a
+          city high on this chart is one where every band probability is necessarily vague. This is
+          the one-day view; <a className="text-accent hover:underline" href="/predictive">Predictive</a>{" "}
+          has the same measure per lead day, with bias and hit rate beside it, which is where to go
+          when a city looks wrong here.
+        </p>
+        <DataState
+          loading={skillQ.loading} error={skillQ.error} isEmpty={skill.length === 0}
+          emptyTitle="No forecast skill measured yet"
+          emptyBody={<>Run GitHub Actions → <b>Skill</b> (<code>scripts/measure_skill.py</code>). It needs both forecast and observation history before it can measure anything. See <code>docs/skill_baseline.md</code>.</>}
+          onRetry={skillQ.refresh}
+        >
+          <div className="rounded border border-border bg-panel p-3">
+            <Histogram
+              height={190}
+              bins={skill.map((s) => ({
+                label: s.city_key,
+                value: s.mae_c,
+                hint: `${s.city_key}: MAE ${s.mae_c?.toFixed(2)}°C, bias ${s.bias_c > 0 ? "+" : ""}${s.bias_c?.toFixed(2)}°C, over ${s.n_days} days${s.n_days < 200 ? " (thin sample)" : ""}`,
+              }))}
+              colorFor={(b) => {
+                const row = skill.find((s) => s.city_key === b.label);
+                if (row && row.n_days < 200) return "var(--c-warn)";
+                return b.value > 2 ? "var(--c-bad)" : b.value > 1.2 ? "var(--c-warn)" : "var(--c-good)";
+              }}
+            />
+            <div className="mt-2 flex flex-wrap gap-4 text-[10px] text-muted">
+              <span><span className="mr-1 inline-block h-2 w-2 rounded-sm" style={{ background: "var(--c-good)" }} />under 1.2°C — the model knows this city</span>
+              <span><span className="mr-1 inline-block h-2 w-2 rounded-sm" style={{ background: "var(--c-warn)" }} />1.2–2°C, or fewer than 200 days measured</span>
+              <span><span className="mr-1 inline-block h-2 w-2 rounded-sm" style={{ background: "var(--c-bad)" }} />over 2°C — roughly a band and a half of error</span>
+            </div>
+          </div>
+        </DataState>
+      </section>
+
       <GroupHeading
         n={2}
         title="Is the pricing any good?"
@@ -128,56 +173,11 @@ export default function AnalyticsPage() {
         <MonteCarloPanel opps={opps} />
       </section>
 
-      {/* ============================================== the data bank ==== */}
-      <section>
-        <h2 className="text-sm font-semibold">The desk&apos;s own record</h2>
-        <p className="mb-2 max-w-3xl text-[11px] leading-relaxed text-muted">
-          Every other chart on this page reads live tables that are overwritten by their own next
-          run. These read <b>frozen facts</b>: what was predicted, what the market charged, and what
-          actually happened — captured once a day and never updated. It is the only data here that
-          nobody else has, and the only basis on which the model can be said to work at all.
-        </p>
-        <DataBank />
-      </section>
-
-      {/* ============================================ forecast skill ===== */}
-      <section>
-        <h2 className="text-sm font-semibold">Forecast skill by city (1-day lead)</h2>
-        <p className="mb-2 max-w-3xl text-[11px] leading-relaxed text-muted">
-          Mean absolute error against what actually happened — the number sigma is built from, so a
-          city high on this chart is one where every band probability is necessarily vague. This is
-          the one-day view; <a className="text-accent hover:underline" href="/predictive">Predictive</a>{" "}
-          has the same measure per lead day, with bias and hit rate beside it, which is where to go
-          when a city looks wrong here.
-        </p>
-        <DataState
-          loading={skillQ.loading} error={skillQ.error} isEmpty={skill.length === 0}
-          emptyTitle="No forecast skill measured yet"
-          emptyBody={<>Run GitHub Actions → <b>Skill</b> (<code>scripts/measure_skill.py</code>). It needs both forecast and observation history before it can measure anything. See <code>docs/skill_baseline.md</code>.</>}
-          onRetry={skillQ.refresh}
-        >
-          <div className="rounded border border-border bg-panel p-3">
-            <Histogram
-              height={190}
-              bins={skill.map((s) => ({
-                label: s.city_key,
-                value: s.mae_c,
-                hint: `${s.city_key}: MAE ${s.mae_c?.toFixed(2)}°C, bias ${s.bias_c > 0 ? "+" : ""}${s.bias_c?.toFixed(2)}°C, over ${s.n_days} days${s.n_days < 200 ? " (thin sample)" : ""}`,
-              }))}
-              colorFor={(b) => {
-                const row = skill.find((s) => s.city_key === b.label);
-                if (row && row.n_days < 200) return "var(--c-warn)";
-                return b.value > 2 ? "var(--c-bad)" : b.value > 1.2 ? "var(--c-warn)" : "var(--c-good)";
-              }}
-            />
-            <div className="mt-2 flex flex-wrap gap-4 text-[10px] text-muted">
-              <span><span className="mr-1 inline-block h-2 w-2 rounded-sm" style={{ background: "var(--c-good)" }} />under 1.2°C — the model knows this city</span>
-              <span><span className="mr-1 inline-block h-2 w-2 rounded-sm" style={{ background: "var(--c-warn)" }} />1.2–2°C, or fewer than 200 days measured</span>
-              <span><span className="mr-1 inline-block h-2 w-2 rounded-sm" style={{ background: "var(--c-bad)" }} />over 2°C — roughly a band and a half of error</span>
-            </div>
-          </div>
-        </DataState>
-      </section>
+      <GroupHeading
+        n={3}
+        title="Did it make money?"
+        body="The first group where a trade has to have happened. On a desk with every strategy switched off these are empty, and that is early rather than broken - the Strategies page is where that changes."
+      />
 
       {/* ================================================= P&L curve ===== */}
       <section>
@@ -186,21 +186,45 @@ export default function AnalyticsPage() {
           Cumulative net profit from closed paper trades, in settlement order. Net means after fees
           and spread — the desk quotes nothing gross.
         </p>
-        <PnlCurve trades={tradesQ.data ?? []} loading={tradesQ.loading} error={tradesQ.error} onRetry={tradesQ.refresh} />
+        <PnlCurve
+          trades={tradesQ.data ?? []}
+          enabledCount={(boardQ.data ?? []).filter((b) => b.enabled && b.strategy_id !== "system").length}
+          loading={tradesQ.loading}
+          error={tradesQ.error}
+          onRetry={tradesQ.refresh}
+        />
       </section>
 
       {/* ======================================= strategy attribution ==== */}
       <section>
         <h2 className="text-sm font-semibold">Strategy attribution</h2>
-        <StrategyAttribution trades={tradesQ.data ?? []} signals={signalsQ.data ?? []} loading={tradesQ.loading} error={tradesQ.error} onRetry={tradesQ.refresh} />
+        <StrategyAttribution
+          trades={tradesQ.data ?? []}
+          signals={signalsQ.data ?? []}
+          board={boardQ.data ?? []}
+          loading={tradesQ.loading}
+          error={tradesQ.error}
+          onRetry={() => { tradesQ.refresh(); boardQ.refresh(); }}
+        />
         <InlineError message={signalsQ.error} />
       </section>
 
-      <GroupHeading
-        n={4}
-        title="Can it take size?"
-        body="An edge you cannot fill is not an edge. Needs book snapshots from P0.3 and traded volume from P0.4."
-      />
+      {/* ============================================== the data bank ==== */}
+      <section>
+        <h2 className="text-sm font-semibold">The desk&apos;s own record</h2>
+        <p className="mb-2 max-w-3xl text-[11px] leading-relaxed text-muted">
+          Every other chart on this page reads live tables that are overwritten by their own next
+          run. The frozen facts — what was predicted, what the market charged, what actually
+          happened — now have their own page, along with the archive underneath them and every
+          derived layer built out of it.
+        </p>
+        <Link
+          href="/databank"
+          className="inline-block rounded border border-accent/50 bg-accent/10 px-2.5 py-1 text-xs text-accent hover:bg-accent/20"
+        >
+          Open the Data Bank →
+        </Link>
+      </section>
 
       <GroupHeading
         n={4}
@@ -568,7 +592,7 @@ function Mc({ label, v, tone, hint }: { label: string; v: string; tone?: "good" 
 
 /* ------------------------------------------------------------ P&L curve -- */
 
-function PnlCurve({ trades, loading, error, onRetry }: { trades: TradeRow[]; loading: boolean; error: string | null; onRetry: () => void }) {
+function PnlCurve({ trades, enabledCount, loading, error, onRetry }: { trades: TradeRow[]; enabledCount: number; loading: boolean; error: string | null; onRetry: () => void }) {
   const points = useMemo(() => {
     let cum = 0;
     return trades
@@ -583,7 +607,22 @@ function PnlCurve({ trades, loading, error, onRetry }: { trades: TradeRow[]; loa
     <DataState
       loading={loading} error={error} isEmpty={points.length === 0}
       emptyTitle="No settled trades yet"
-      emptyBody={<>Nothing settles until a strategy is enabled, fires a signal, and its market resolves. All six strategies ship <code>enabled = false</code>; GitHub Actions → <b>Settlement</b> writes the close.</>}
+      emptyBody={
+        <>
+          Nothing settles until a strategy is enabled, fires a signal, and its market resolves.{" "}
+          {enabledCount === 0 ? (
+            <>
+              Every strategy is currently switched off —{" "}
+              <a className="text-accent hover:underline" href="/strategies">turn one on</a>.
+            </>
+          ) : (
+            <>
+              {enabledCount} strateg{enabledCount === 1 ? "y is" : "ies are"} on; GitHub Actions →{" "}
+              <b>Settlement</b> writes the close.
+            </>
+          )}
+        </>
+      }
       onRetry={onRetry}
     >
       <div className="rounded border border-border bg-panel p-3">
@@ -613,8 +652,9 @@ function PnlCurve({ trades, loading, error, onRetry }: { trades: TradeRow[]; loa
 
 /* -------------------------------------------------- strategy attribution -- */
 
-function StrategyAttribution({ trades, signals, loading, error, onRetry }: {
-  trades: TradeRow[]; signals: Array<{ strategy_id: string }>; loading: boolean; error: string | null; onRetry: () => void;
+function StrategyAttribution({ trades, signals, board, loading, error, onRetry }: {
+  trades: TradeRow[]; signals: Array<{ strategy_id: string }>; board: StrategyBoardRow[];
+  loading: boolean; error: string | null; onRetry: () => void;
 }) {
   const byStrategy = useMemo(() => {
     const g = new Map<string, { n: number; net: number; wins: number }>();
@@ -633,6 +673,79 @@ function StrategyAttribution({ trades, signals, loading, error, onRetry }: {
     return f;
   }, [signals]);
 
+  // NO TRADES IS NOT AN EMPTY BOX. It has a cause, and the cause decides what
+  // to do about it: every strategy off is one click on the Strategies page,
+  // firing-but-not-filling is a liquidity or approval problem, and neither
+  // looks like the other. Showing the roster instead of a placeholder is the
+  // difference between "broken" and "early".
+  if (!loading && !error && byStrategy.length === 0 && board.length > 0) {
+    const trading = board.filter((b) => b.strategy_id !== "system");
+    const on = trading.filter((b) => b.enabled);
+    const fired = trading.filter((b) => b.fired_30d > 0);
+    const waiting = trading.reduce((a, b) => a + b.waiting, 0);
+    return (
+      <div className="rounded border border-border bg-panel p-3">
+        <p className="text-xs leading-relaxed text-muted">
+          {on.length === 0 ? (
+            <>
+              <b className="text-warn">Nothing has traded because nothing is switched on.</b> All{" "}
+              {trading.length} strategies ship disabled — a safety default, not a fault.{" "}
+              <a className="text-accent hover:underline" href="/strategies">
+                Turn one on
+              </a>{" "}
+              and this fills from the next engine run.
+            </>
+          ) : fired.length === 0 ? (
+            <>
+              <b className="text-warn">
+                {on.length} strateg{on.length === 1 ? "y is" : "ies are"} on, and none has fired in 30
+                days.
+              </b>{" "}
+              Their entry conditions have not been met. Opportunities shows which bands would pass
+              each one right now.
+            </>
+          ) : (
+            <>
+              <b className="text-warn">Signals are firing but nothing has settled.</b>{" "}
+              {waiting > 0 && <>{waiting} are waiting for approval. </>}
+              The gap is fills and settlement, not signal generation.
+            </>
+          )}
+        </p>
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="text-muted">
+              <tr>
+                <th className="p-1 text-left">Strategy</th>
+                <th className="p-1 text-right">On</th>
+                <th className="p-1 text-right">Fired 30d</th>
+                <th className="p-1 text-right">Waiting</th>
+                <th className="p-1 text-right">Filled</th>
+                <th className="p-1 text-left">Verdict</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trading.map((b) => (
+                <tr key={b.strategy_id} className="border-t border-border">
+                  <td className="p-1">{b.name ?? b.strategy_id}</td>
+                  <td className={`p-1 text-right ${b.enabled ? "text-good" : "text-muted"}`}>
+                    {b.enabled ? "yes" : "no"}
+                  </td>
+                  <td className="p-1 text-right font-mono tabular-nums">{b.fired_30d}</td>
+                  <td className={`p-1 text-right font-mono tabular-nums ${b.waiting ? "text-warn" : "text-muted"}`}>
+                    {b.waiting}
+                  </td>
+                  <td className="p-1 text-right font-mono tabular-nums">{b.filled_all_time}</td>
+                  <td className="p-1 text-[11px] text-muted">{b.verdict}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <DataState
       loading={loading} error={error} isEmpty={byStrategy.length === 0}
@@ -648,21 +761,31 @@ function StrategyAttribution({ trades, signals, loading, error, onRetry }: {
       onRetry={onRetry}
     >
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {byStrategy.map((s) => (
-          <div key={s.id} className="rounded border border-border bg-panel p-3 text-sm">
-            <div className="font-semibold">{s.id}</div>
-            <div className={`font-mono text-lg ${pnlColor(s.net)}`}>{fmtUsd(s.net, { signed: true })}</div>
-            <div className="text-xs text-muted">
-              {s.n} trades · win rate {fmtPct(s.winRate)} · {freq[s.id] ?? 0} signals in 7d
-            </div>
-            {s.n < MIN_TRADES_FOR_RATE && (
-              <div className="mt-1 text-[10px] text-warn">
-                {s.n} trades is too few for a win rate to mean anything — {MIN_TRADES_FOR_RATE} is the
-                threshold the backtest metrics use.
+        {byStrategy.map((s) => {
+          const b = board.find((r) => r.strategy_id === s.id);
+          return (
+            <div key={s.id} className="rounded border border-border bg-panel p-3 text-sm">
+              <div className="flex items-baseline gap-2">
+                <span className="font-semibold">{b?.name ?? s.id}</span>
+                {b && !b.enabled && (
+                  <span className="text-[10px] text-warn" title="This strategy has a record but is switched off now, so the curve above stops here.">
+                    now off
+                  </span>
+                )}
               </div>
-            )}
-          </div>
-        ))}
+              <div className={`font-mono text-lg ${pnlColor(s.net)}`}>{fmtUsd(s.net, { signed: true })}</div>
+              <div className="text-xs text-muted">
+                {s.n} trades · win rate {fmtPct(s.winRate)} · {freq[s.id] ?? 0} signals in 7d
+              </div>
+              {s.n < MIN_TRADES_FOR_RATE && (
+                <div className="mt-1 text-[10px] text-warn">
+                  {s.n} trades is too few for a win rate to mean anything — {MIN_TRADES_FOR_RATE} is the
+                  threshold the backtest metrics use.
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </DataState>
   );

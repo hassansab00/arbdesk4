@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
@@ -10,7 +11,8 @@ import { fmtAge, fmtCompactUsd, fmtPct, fmtPp, fmtPrice, fmtUsd, regimeColor } f
 import { fmtBandRange, fmtTemp, fmtTempDelta, type Unit } from "@/lib/units";
 import { fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
 import { buy, feeRateAt } from "@/lib/costs";
-import type { Opportunity, OpportunityContext } from "@/lib/types";
+import { DayPath, LivePrices, StrategyMirror, WindowPill } from "@/components/TradeTiming";
+import type { CityDayPlan, OpportunityContext, TradePlan } from "@/lib/types";
 
 /**
  * An opportunity is a TRADE, not a row of statistics.
@@ -25,6 +27,23 @@ import type { Opportunity, OpportunityContext } from "@/lib/types";
  * city, at this price, because the model says it is worth more. Then the
  * money - what a $100 stake risks and returns. Then the reasons to doubt it,
  * which are the part that decides whether it gets taken.
+ *
+ * WHAT THE SECOND PASS ADDED, and why the page was still not a trading page
+ * without it. An edge answers "is this mispriced". It does not answer:
+ *
+ *   WHEN - the same 16pp is a trade forty minutes before the peak with the
+ *   line still climbing, and a memory once the maximum is banked.
+ *   WHO - which strategy would take it, and whether that strategy is even
+ *   switched on. Nine ship disabled, so the desk could show a board full of
+ *   mispricings while Signals read "every strategy is off", with nothing
+ *   joining the two.
+ *   HOW OLD - every edge here is computed against a book snapshot. Polling
+ *   the database every thirty seconds does not make a three-hour-old book
+ *   current; it makes a stale page look live.
+ *
+ * All three come from v_trade_plan (sql/ad4_34_trade_plan.sql), which is
+ * v_opportunities plus the answers, computed against the same thresholds the
+ * Python strategy engine reads.
  */
 
 const STAKE_PRESETS = [50, 100, 250, 500];
@@ -47,15 +66,23 @@ export default function OpportunitiesPage() {
   // Everything is fetched, tradeable or not, so the page can tell you WHY it
   // is empty. Filtering in the query made "no opportunities" and "every
   // opportunity is blocked" look identical, and they need different actions.
-  const q = useQuery<Opportunity[]>(
+  const q = useQuery<TradePlan[]>(
     () =>
       supabase
-        .from("v_opportunities")
+        .from("v_trade_plan")
         .select("*")
         .order("score", { ascending: false, nullsFirst: false })
         .limit(400),
     [],
     30000
+  );
+  // s8's cover is a PAIR of adjacent buckets, so it cannot live on a band row
+  // - it is per city and day, and it is the one basket strategy the desk can
+  // state completely without guessing.
+  const coverQ = useQuery<CityDayPlan[]>(
+    () => supabase.from("v_city_day_plan").select("*"),
+    [],
+    60000
   );
   const live = useQuery<LiveRow[]>(
     () => supabase.from("live_weather").select("city_key,temp_c,running_max_c"),
@@ -72,6 +99,30 @@ export default function OpportunitiesPage() {
   );
 
   const allRows = q.data ?? [];
+  // The rows a strategy would actually take, right now. This is the answer to
+  // "what do I do in the next hour", and it is a different question from
+  // "what is mispriced" - which is what the rest of the page ranks.
+  const actionable = useMemo(
+    () =>
+      allRows
+        .filter((r) => r.tradeable && (r.would_fire?.length ?? 0) > 0)
+        .sort((a, b) => {
+          const aw = a.in_entry_window ? 1 : 0;
+          const bw = b.in_entry_window ? 1 : 0;
+          if (aw !== bw) return bw - aw;
+          const ae = a.would_fire_enabled?.length ?? 0;
+          const be = b.would_fire_enabled?.length ?? 0;
+          if (ae !== be) return be - ae;
+          return (b.score ?? 0) - (a.score ?? 0);
+        }),
+    [allRows]
+  );
+  // Newest book behind any row on the page. Every edge is priced against one.
+  const bookAge = useMemo(() => {
+    const ages = allRows.map((r) => r.book_age_min).filter((a): a is number => a != null);
+    return ages.length ? Math.min(...ages) : null;
+  }, [allRows]);
+  const covers = (coverQ.data ?? []).filter((c) => c.s8_would_fire || c.adjacent);
   const blocked = allRows.filter((r) => !r.tradeable);
   const rows = showBlocked ? allRows : allRows.filter((r) => r.tradeable);
   const liveByCity = useMemo(
@@ -113,11 +164,19 @@ export default function OpportunitiesPage() {
             discounts; it never inflates a rank.
           </p>
         </div>
-        <RefreshButton
-          job="P0.3_book_volume_snapshot"
-          label="Refresh books"
-          onDone={() => { q.refresh(); live.refresh(); }}
-        />
+        <div className="flex flex-col items-end gap-1.5">
+          <RefreshButton
+            job="P0.3_book_volume_snapshot"
+            label="Refresh books"
+            onDone={() => { q.refresh(); live.refresh(); coverQ.refresh(); }}
+          />
+          <LivePrices
+            ageMin={bookAge}
+            everyMs={30000}
+            loading={q.loading}
+            onRefresh={() => { q.refresh(); live.refresh(); ctxQ.refresh(); coverQ.refresh(); }}
+          />
+        </div>
       </div>
 
       {/* ---- controls: sized in the money, not in abstractions ------------ */}
@@ -175,6 +234,50 @@ export default function OpportunitiesPage() {
         </span>
       </div>
 
+      {/* ---- what a strategy would actually take, right now -------------
+          Separated from the ranked list on purpose. "What is mispriced" and
+          "what do I do in the next hour" are different questions, and mixing
+          them is why the old page could be full and still not tell you to do
+          anything. */}
+      {actionable.length > 0 && (
+        <section className="rounded border border-accent/40 bg-accent/[0.04] p-3">
+          <div className="mb-2 flex flex-wrap items-baseline gap-2">
+            <h2 className="text-sm font-semibold text-accent">A strategy would take these now</h2>
+            <span className="text-[11px] text-muted">
+              {actionable.filter((r) => (r.would_fire_enabled?.length ?? 0) > 0).length} of{" "}
+              {actionable.length} would reach Signals — the rest pass their entry test on a
+              strategy that is switched off.
+            </span>
+            <Link href="/strategies" className="ml-auto text-[11px] text-accent hover:underline">
+              Strategies →
+            </Link>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {actionable.slice(0, 6).map((r) => (
+              <button
+                key={`act-${r.band_id}-${r.side}`}
+                onClick={() => router.push(`/board?city=${encodeURIComponent(r.city_key)}&date=${r.resolution_date}`)}
+                className="rounded border border-border bg-panel p-2 text-left hover:border-accent"
+              >
+                <div className="flex items-baseline gap-2">
+                  <span className={`font-mono text-[10px] font-bold ${r.side === "YES" ? "text-good" : "text-bad"}`}>
+                    {r.side}
+                  </span>
+                  <span className="truncate text-xs font-semibold">{r.display_name ?? r.city_key}</span>
+                  <span className="font-mono text-xs text-accent">{r.band_label}</span>
+                  <span className="ml-auto"><WindowPill p={r} /></span>
+                </div>
+                <div className="mt-1 text-[11px] leading-relaxed text-muted">{r.action}</div>
+                <StrategyMirror p={r} />
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ---- the pair cover, which is per city-day and not per band ------ */}
+      {covers.length > 0 && <CoverStrip rows={covers} />}
+
       <DataState
         loading={q.loading}
         error={q.error}
@@ -182,7 +285,7 @@ export default function OpportunitiesPage() {
         emptyTitle="No opportunities yet"
         emptyBody={
           <>
-            <code>v_opportunities</code> returned nothing at all — not even blocked rows. It is built
+            <code>v_trade_plan</code> returned nothing at all — not even blocked rows. It is built
             from <code>edges</code>, so run GitHub Actions → <b>Probabilities</b>. If only one city
             appears when you expect many, the gap is upstream in <code>markets</code>, which P0.2
             Market Discovery fills.
@@ -272,7 +375,7 @@ function Drift({ label, v, side }: { label: string; v: number; side: string }) {
 function Card({
   o, rank, stake, lw, ctx, onOpen,
 }: {
-  o: Opportunity;
+  o: TradePlan;
   rank: number;
   stake: number;
   lw: LiveRow | undefined;
@@ -338,8 +441,24 @@ function Card({
             {inBand && <span className="ml-1 text-warn">← inside this band</span>}
           </div>
         </div>
-        <span className="shrink-0 font-mono text-[11px] text-muted">#{rank}</span>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span className="font-mono text-[11px] text-muted">#{rank}</span>
+          <WindowPill p={o} />
+        </div>
       </div>
+
+      {/* ---- the sentence: what to do, and why now ----------------------- */}
+      {o.action && (
+        <div
+          className={`mt-2 rounded px-2 py-1.5 text-[11px] leading-relaxed ${
+            (o.would_fire?.length ?? 0) > 0
+              ? "border border-accent/40 bg-accent/10 text-accent"
+              : "bg-panel2 text-muted"
+          }`}
+        >
+          {o.action}
+        </div>
+      )}
 
       {/* ---- has the market even seen this? ------------------------------
           The strongest form of edge is not "the model disagrees with the
@@ -434,6 +553,12 @@ function Card({
         />
       </div>
 
+      {/* ---- where the day is heading, relative to THIS band ------------- */}
+      <DayPath p={o} />
+
+      {/* ---- who would take it ------------------------------------------- */}
+      <StrategyMirror p={o} />
+
       {/* ---- reasons to doubt it ----------------------------------------- */}
       {doubts.length > 0 && (
         <ul className="mt-2 space-y-0.5 border-t border-border pt-2 text-[10px] leading-relaxed text-warn">
@@ -457,5 +582,71 @@ function Card({
         <span className="text-accent">open on the board →</span>
       </div>
     </button>
+  );
+}
+
+
+/**
+ * s8's two-bucket cover. It buys the two most likely ADJACENT buckets when the
+ * pair costs less than 70c including fees and one of them holds where the day
+ * is actually heading - so it is a property of a city-day, not of a band, and
+ * it has no home on a card.
+ *
+ * Rows that do NOT qualify are shown too, with the one reason. "The two most
+ * likely buckets are not neighbours" is a fact about today's distribution
+ * worth knowing; hiding it leaves the operator wondering whether the strategy
+ * is broken or just quiet.
+ */
+function CoverStrip({ rows }: { rows: CityDayPlan[] }) {
+  const [open, setOpen] = useState(false);
+  const firing = rows.filter((r) => r.s8_would_fire);
+  const shown = open ? rows : firing;
+  if (shown.length === 0 && !open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="w-full rounded border border-dashed border-border px-3 py-1.5 text-left text-[11px] text-muted hover:text-text"
+      >
+        Two-bucket cover (s8): nothing qualifies on {rows.length} city-day
+        {rows.length === 1 ? "" : "s"} — show why
+      </button>
+    );
+  }
+  return (
+    <section className="rounded border border-border bg-panel">
+      <div className="flex items-baseline gap-2 border-b border-border px-3 py-1.5">
+        <h2 className="text-sm font-semibold">Two-bucket cover</h2>
+        <span className="text-[11px] text-muted">
+          the two most likely neighbouring buckets, bought together — s8
+        </span>
+        <button onClick={() => setOpen((o) => !o)} className="ml-auto text-[11px] text-accent hover:underline">
+          {open ? "only the ones that qualify" : `show all ${rows.length}`}
+        </button>
+      </div>
+      <div className="divide-y divide-border">
+        {shown.map((r) => (
+          <div key={`${r.city_key}-${r.resolution_date}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-1.5 text-xs">
+            <span className="font-semibold">{r.city_key}</span>
+            <span className="font-mono text-accent">
+              {r.label_a} + {r.label_b}
+            </span>
+            <span className="font-mono text-muted">
+              costs {r.pair_cost_with_fee == null ? "—" : `${(r.pair_cost_with_fee * 100).toFixed(0)}c`} with fees
+            </span>
+            <span className="font-mono text-muted">
+              covers {r.pair_prob == null ? "—" : `${(r.pair_prob * 100).toFixed(0)}%`}
+            </span>
+            {r.thinner_leg_usd != null && (
+              <span className="font-mono text-muted" title="The thinner of the two legs. A cover only fills if BOTH sides do.">
+                thinner leg {fmtUsd(r.thinner_leg_usd)}
+              </span>
+            )}
+            <span className={`ml-auto text-[11px] ${r.s8_would_fire ? "text-good" : "text-muted"}`}>
+              {r.pair_note}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }

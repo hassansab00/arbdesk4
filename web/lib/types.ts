@@ -311,3 +311,123 @@ export interface OpportunityContext {
   forecast_lead_hours: number | null;
   hours_to_resolution: number | null;
 }
+
+/**
+ * sql/ad4_34_trade_plan.sql - an edge with WHEN and WHO attached.
+ *
+ * v_trade_plan is a superset of v_opportunities: every column above, plus the
+ * timing of the day, where the day is heading relative to THIS band, and the
+ * strategies whose entry test the row passes right now. Pages that need the
+ * trade rather than the statistic read this one.
+ */
+export interface TradePlan extends Opportunity {
+  // What the entry costs, at the ask rather than the mid.
+  entry_price: number | null;
+  round_trip_cost: number | null;
+  beats_round_trip: boolean | null;
+
+  // When.
+  window_state: "BEFORE" | "INSIDE" | "AFTER" | null;
+  minutes_to_peak: number | null;
+  in_entry_window: boolean | null;
+  timing_note: string | null;
+  peak_hour: number | null;
+  peak_source: string | null;
+  local_hour: number | null;
+  slope_3_c_per_h: number | null;
+  direction: string | null;
+  rolling_over: boolean | null;
+  day_decided: boolean | null;
+  reading_age_min: number | null;
+  latest_temp_c: number | null;
+  running_max_c: number | null;
+  implied_max_c: number | null;
+  implied_max_low_c: number | null;
+  implied_max_high_c: number | null;
+
+  // Where the day is going, relative to this band.
+  holds_implied_max: boolean | null;
+  holds_running_max: boolean | null;
+  holds_pessimistic_max: boolean | null;
+  out_of_reach: boolean | null;
+
+  // Who would take it. would_fire is every strategy whose entry test passes;
+  // would_fire_enabled is the subset that is switched on - the gap between
+  // them is the cost of leaving a strategy off.
+  would_fire: string[] | null;
+  would_fire_enabled: string[] | null;
+  action: string | null;
+  book_age_min: number | null;
+}
+
+/** sql/ad4_34_trade_plan.sql - s8's two-bucket cover, per city and day. */
+export interface CityDayPlan {
+  city_key: string;
+  resolution_date: string;
+  label_a: string | null;
+  label_b: string | null;
+  band_a: string;
+  band_b: string;
+  price_a: number | null;
+  price_b: number | null;
+  pair_prob: number | null;
+  pair_cost_with_fee: number | null;
+  adjacent: boolean | null;
+  thinner_leg_usd: number | null;
+  implied_max_c: number | null;
+  covers_implied_max: boolean | null;
+  window_state: string | null;
+  minutes_to_peak: number | null;
+  s8_would_fire: boolean | null;
+  pair_note: string | null;
+}
+
+/** sql/ad4_33_control.sql - the strategy roster with its own record. */
+export interface StrategyBoardRow {
+  strategy_id: string;
+  name: string | null;
+  side: string | null;
+  origin: string | null;
+  enabled: boolean;
+  conflict_class: string | null;
+  universe: unknown;
+  regime_filter: unknown;
+  capital_cap_pct: number | null;
+  max_concurrent: number | null;
+  fired_30d: number;
+  waiting: number;
+  last_fired_at: string | null;
+  filled_all_time: number;
+  won_all_time: number;
+  net_pnl: number | null;
+  avg_slippage_c: number | null;
+  win_rate_pct: number | null;
+  verdict: string;
+}
+
+/** sql/ad4_33_control.sql - when the day is decided, per city. */
+export interface TradeTiming {
+  city_key: string;
+  display_name: string | null;
+  local_hour: number | null;
+  peak_hour: number | null;
+  window_width_h: number | null;
+  peak_source: string;
+  peak_measured: boolean;
+  window_opens_hour: number | null;
+  window_closes_hour: number | null;
+  minutes_to_peak: number | null;
+  latest_temp_c: number | null;
+  running_max_c: number | null;
+  slope_3_c_per_h: number | null;
+  direction: string | null;
+  rolling_over: boolean | null;
+  reading_age_min: number | null;
+  implied_max_c: number | null;
+  implied_max_low_c: number | null;
+  implied_max_high_c: number | null;
+  day_decided: boolean | null;
+  window_state: string;
+  in_entry_window: boolean;
+  timing_note: string;
+}
