@@ -59,41 +59,76 @@ def _rpc(fn, params=None):
     return rpc(fn, params, timeout=600)
 
 
-def cold_rows(cutoff):
-    """Every observation strictly older than the cutoff, paged.
+def export_cold(cutoff):
+    """Every observation strictly older than the cutoff, as a gzipped CSV.
 
-    Paged because an unpaginated PostgREST read silently stops at the server's
-    row limit, and a silently short export is the one failure this whole design
-    cannot survive.
+    KEYSET PAGING ON THE PRIMARY KEY, and that is the whole point of this
+    function. It used to page with OFFSET over `order=valid_at.asc`, and
+    valid_at is nowhere near unique - 37 cities times two sources share every
+    timestamp. Postgres gives no order among ties, so rows at a page boundary
+    could be returned twice or not at all, and OFFSET would then walk past the
+    ones it skipped.
+
+    That is not a slow query, it is silent data loss: a skipped row is never
+    written to the archive, and the prune below deletes by DATE, so it deletes
+    that row anyway. The round-trip check downstream cannot catch it either,
+    because it compares the uploaded file against this same short list. The
+    one failure the design cannot survive, reintroduced by the paging that was
+    written to prevent it.
+
+    obs_id is the primary key, so `order=obs_id.asc` is a total order and
+    `obs_id=gt.<last>` cannot skip or repeat. It is also O(1) per page instead
+    of O(offset), which matters at 600k rows.
+
+    Streams into the CSV rather than accumulating a list of dicts: the same
+    export held ~600 MB of Python objects before being copied into a string and
+    then gzipped.
+
+    Returns (gzip blob, row count, earliest valid_at, latest valid_at).
     """
-    out, offset = [], 0
-    while True:
-        rows = rest("weather_observations", [
-            ("select", ",".join(COLUMNS)),
-            ("valid_at", f"lt.{cutoff.isoformat()}"),
-            ("order", "valid_at.asc"),
-            ("limit", str(PAGE)), ("offset", str(offset)),
-        ])
-        out.extend(rows)
-        if len(rows) < PAGE:
-            return out
-        offset += PAGE
-        print(f"  ... {len(out):,} rows")
-
-
-def to_gzip_csv(rows):
     buf = io.StringIO()
     w = csv.DictWriter(buf, fieldnames=COLUMNS, extrasaction="ignore")
     w.writeheader()
-    for r in rows:
-        w.writerow(r)
-    return gzip.compress(buf.getvalue().encode(), 9)
+
+    n, after, lo, hi = 0, None, None, None
+    while True:
+        params = [
+            ("select", ",".join(["obs_id"] + COLUMNS)),
+            ("valid_at", f"lt.{cutoff.isoformat()}"),
+            ("order", "obs_id.asc"),
+            ("limit", str(PAGE)),
+        ]
+        if after is not None:
+            params.append(("obs_id", f"gt.{after}"))
+        rows = rest("weather_observations", params)
+        if not rows:
+            break
+        for r in rows:
+            w.writerow(r)
+            v = r.get("valid_at")
+            if v:
+                if lo is None or v < lo:
+                    lo = v
+                if hi is None or v > hi:
+                    hi = v
+        n += len(rows)
+        after = rows[-1]["obs_id"]
+        if len(rows) < PAGE:
+            break
+        print(f"  ... {n:,} rows")
+
+    return gzip.compress(buf.getvalue().encode(), 9), n, lo, hi
 
 
 def count_rows(blob):
-    """Rows in a gzipped CSV, header excluded. Used to verify a round trip."""
+    """Rows in a gzipped CSV, header excluded. Used to verify a round trip.
+
+    Parsed rather than counted by newline: a line count is wrong the day any
+    exported field contains one, and this number is the only thing standing
+    between a truncated upload and a permanent delete.
+    """
     text = gzip.decompress(blob).decode()
-    return max(0, text.count("\n") - 1)
+    return max(0, sum(1 for _ in csv.reader(io.StringIO(text))) - 1)
 
 
 def gh(repo, token, method, path, **kw):
@@ -170,19 +205,24 @@ def main():
         return 1
 
     # 2 - export
-    print(f"reading observations older than {cutoff.date()} ...")
-    rows = cold_rows(cutoff)
-    if not rows:
+    print(f"reading observations older than {cutoff.isoformat()} ...")
+    blob, n_rows, lo, hi = export_cold(cutoff)
+    if not n_rows:
         print(f"nothing older than {cutoff.date()} - nothing to archive.")
         log_run("archive_observations", "ok", 0, {"keep_days": args.keep_days})
         return 0
-    blob = to_gzip_csv(rows)
-    name = f"observations-{rows[0]['valid_at'][:10]}-to-{rows[-1]['valid_at'][:10]}.csv.gz"
-    print(f"{len(rows):,} rows -> {name}  ({len(blob) / 1e6:.1f} MB gzipped, "
-          f"~{len(rows) * 272 / 1e6:.0f} MB in Postgres)")
+    # From the min/max seen, not from the first and last row: the export is
+    # ordered by obs_id now, which is not chronological.
+    name = f"observations-{lo[:10]}-to-{hi[:10]}.csv.gz"
+    print(f"{n_rows:,} rows -> {name}  ({len(blob) / 1e6:.1f} MB gzipped, "
+          f"~{n_rows * 272 / 1e6:.0f} MB in Postgres)")
+
+    # THE SAME INSTANT, both times. Letting the database recompute its own
+    # cutoff deletes the minutes that passed while this ran - unarchived.
+    prune_args = {"p_keep_days": args.keep_days, "p_before": cutoff.isoformat()}
 
     if not args.commit:
-        prune = _rpc("prune_observations", {"p_keep_days": args.keep_days, "p_dry_run": True})
+        prune = _rpc("prune_observations", {**prune_args, "p_dry_run": True})
         print(f"\n--dry-run: nothing uploaded, nothing deleted.\nprune would say: {prune}")
         return 0
 
@@ -194,22 +234,28 @@ def main():
     # 3 - upload, then read it back
     rel = ensure_release(args.repo, token)
     asset = upload(args.repo, token, rel, name, blob)
-    got, ok = verify(asset, len(rows), token)
+    got, ok = verify(asset, n_rows, token)
     if not ok:
-        print(f"VERIFY FAILED: uploaded {len(rows):,} rows, read back {got:,}. "
+        print(f"VERIFY FAILED: uploaded {n_rows:,} rows, read back {got:,}. "
               f"Nothing pruned.", file=sys.stderr)
         log_run("archive_observations", "attention", 0,
-                {"uploaded": len(rows), "read_back": got, "asset": name})
+                {"uploaded": n_rows, "read_back": got, "asset": name})
         return 1
     print(f"verified: {got:,} rows read back from the release")
 
-    # 4 - only now
-    prune = _rpc("prune_observations", {"p_keep_days": args.keep_days, "p_dry_run": False})
+    # 4 - only now, and only as far back as what was actually archived
+    prune = _rpc("prune_observations", {**prune_args, "p_dry_run": False})
     print(f"prune: {prune}")
+    if not (prune or {}).get("ok"):
+        print(f"PRUNE REFUSED: {prune}", file=sys.stderr)
+        log_run("archive_observations", "attention", n_rows,
+                {"asset": name, "rows": n_rows, "prune": prune})
+        return 1
 
-    log_run("archive_observations", "ok", len(rows), {
-        "asset": name, "rows": len(rows), "gzip_bytes": len(blob),
-        "keep_days": args.keep_days, "prune": prune,
+    log_run("archive_observations", "ok", n_rows, {
+        "asset": name, "rows": n_rows, "gzip_bytes": len(blob),
+        "keep_days": args.keep_days, "archived_through": cutoff.isoformat(),
+        "prune": prune,
     })
     return 0
 

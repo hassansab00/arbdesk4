@@ -643,3 +643,107 @@ def test_a_signal_row_has_the_same_keys_with_or_without_a_band():
     assert 'row["city_key"] = row.get("city_key") or (' in src
     assert 'if not row.get("city_key") and row.get("band_id"):' not in src, \
         "the conditional add is what produced two shapes"
+
+
+# --------------------------------------------------------------------------
+# Archive Observations: OFFSET paging over a non-unique sort key
+#
+# cold_rows() paged with `order=valid_at.asc` + limit/offset. valid_at is
+# nowhere near unique - on a 710k-row archive there are 19,200 distinct
+# timestamps, so ~37 rows share each one - and Postgres guarantees no order
+# among ties. Two pages fetched under different plans return different rows:
+# measured on a shuffled copy of that archive, the SAME page (offset 50000)
+# differed by 18 rows between an index-scan plan and a seq-scan plan.
+#
+# A row missed that way is never written to the archive, and the prune deletes
+# by date, so it is deleted anyway. The round-trip check cannot catch it: it
+# compares the upload against the same short list. Silent, permanent loss, in
+# the one job that deletes - reintroduced by the paging written to prevent it.
+#
+# Keyset paging on obs_id (the primary key) is a total order: 0 rows differed
+# across the same two plans, and a full walk returned all 710,400 exactly once.
+# --------------------------------------------------------------------------
+def test_the_export_pages_on_the_primary_key_not_on_valid_at():
+    import inspect
+
+    import archive_observations as ao
+    src = inspect.getsource(ao.export_cold)
+    assert '("order", "obs_id.asc")' in src, "paging must use a unique total order"
+    assert 'f"gt.{after}"' in src, "keyset, not offset"
+    # only the request itself - the docstring explains the bug by name
+    assert '("offset"' not in src, "OFFSET over a non-unique sort is the bug"
+    assert '("valid_at", f"lt.{cutoff.isoformat()}")' in src, \
+        "the window is still bounded by the cutoff, just not ordered by it"
+
+
+def test_the_export_does_not_hold_every_row_in_memory():
+    import inspect
+
+    import archive_observations as ao
+    src = inspect.getsource(ao.export_cold)
+    assert "w.writerow(r)" in src and "out.extend" not in src
+
+
+def test_the_archive_name_comes_from_the_min_and_max_seen():
+    """Ordered by obs_id, the first and last row are no longer the earliest and
+    latest, so the old `rows[0]`/`rows[-1]` naming would be wrong."""
+    import inspect
+
+    import archive_observations as ao
+    assert "if lo is None or v < lo" in inspect.getsource(ao.export_cold)
+    main = inspect.getsource(ao.main)
+    assert "{lo[:10]}-to-{hi[:10]}" in main
+    assert "rows[0]['valid_at']" not in main
+
+
+def test_row_counting_parses_the_csv_rather_than_counting_newlines():
+    import archive_observations as ao
+
+    blob = ao.gzip.compress(
+        ("city_key,station\n" + "nyc,KNYC\n" * 5).encode())
+    assert ao.count_rows(blob) == 5
+
+
+def test_a_field_containing_a_newline_is_still_counted_as_one_row():
+    """The count is the only thing between a truncated upload and a permanent
+    delete. A newline inside a quoted field made it silently wrong."""
+    import archive_observations as ao
+
+    buf = ao.io.StringIO()
+    w = ao.csv.writer(buf)
+    w.writerow(["city_key", "station"])
+    w.writerow(["nyc", "line one\nline two"])
+    w.writerow(["chi", "KORD"])
+    assert ao.count_rows(ao.gzip.compress(buf.getvalue().encode())) == 2
+
+
+def test_the_prune_is_given_the_exact_instant_that_was_exported():
+    """The script computed `now() - keep_days` in Python and the function
+    recomputed `current_date - p_keep_days` minutes later. Two different
+    cutoffs: everything between them was deleted having never been exported."""
+    import inspect
+
+    import archive_observations as ao
+    main = inspect.getsource(ao.main)
+    assert '"p_before": cutoff.isoformat()' in main
+    assert '{**prune_args, "p_dry_run": True}' in main
+    assert '{**prune_args, "p_dry_run": False}' in main
+
+
+def test_a_refused_prune_fails_the_job():
+    import inspect
+
+    import archive_observations as ao
+    assert "PRUNE REFUSED" in inspect.getsource(ao.main)
+
+
+def test_the_sql_takes_p_before_and_deletes_on_the_instant():
+    sql = open(os.path.join(SQL, "ad4_29_retention.sql")).read()
+    fn = sql[sql.index("create or replace function prune_observations"):]
+    fn = fn[:fn.index("$ad4$;")]
+    assert "p_before timestamptz default null" in fn
+    assert "delete from weather_observations where valid_at < v_before;" in fn
+    assert "(valid_at at time zone 'UTC')::date < v_cut" not in fn, \
+        "the date comparison is the wider window the export never covered"
+    assert "drop function if exists prune_observations(int, boolean);" in sql, \
+        "the two-argument version must go or a bare call is ambiguous"

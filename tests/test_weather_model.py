@@ -489,8 +489,20 @@ def test_the_archive_round_trips_every_row():
          "wind_speed": None, "wind_dir_deg": None, "precip": None,
          "cloud_cover": None, "pressure_hpa": None, "source": 'a,b"c'},
     ]
-    blob = mod.to_gzip_csv(rows)
+    # Drive the REAL export path - it streams now, and the paging, the CSV
+    # quoting and the count all have to hold together.
+    served = [dict(r, obs_id=i + 1) for i, r in enumerate(rows)]
+
+    def fake_rest(table, params):
+        after = next((int(v[3:]) for k, v in params if k == "obs_id"), 0)
+        return [r for r in served if r["obs_id"] > after]
+
+    mod.rest = fake_rest
+    import datetime as _dt
+    blob, n, lo, hi = mod.export_cold(_dt.datetime(2027, 1, 1, tzinfo=_dt.timezone.utc))
+    assert n == len(rows)
     assert mod.count_rows(blob) == len(rows), "the verify step would pass a short file"
+    assert lo == "2026-01-01T12:00:00+00:00" and hi == "2026-01-01T13:00:00+00:00", (lo, hi)
 
     import csv as _csv
     import gzip as _gzip
@@ -500,6 +512,7 @@ def test_the_archive_round_trips_every_row():
     assert back[0]["city_key"] == "nyc" and back[0]["temp_c"] == "4.4"
     assert back[1]["source"] == 'a,b"c', "quoting is not round-tripping"
     assert back[1]["temp_c"] == "", "a null must not become the string None"
+    assert "obs_id" not in back[0], "the paging key is not part of the archive"
 
 
 def test_the_archive_refuses_a_window_too_small_to_model_on():

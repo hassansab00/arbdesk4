@@ -184,10 +184,31 @@ comment on view v_storage_report is
 --    A prune that runs before the refresh destroys history permanently, and
 --    the only warning would be a model that quietly has less to learn from.
 -- --------------------------------------------------------------------------
-create or replace function prune_observations(p_keep_days int, p_dry_run boolean default true)
+-- p_before EXISTS BECAUSE THE TWO CUTOFFS WERE NOT THE SAME CUTOFF.
+--
+-- The archive script computed `now() - keep_days` in Python, exported
+-- everything older, uploaded it, verified it - and only then called this,
+-- which computed `current_date - p_keep_days` again, minutes later. On a date
+-- boundary that second cutoff is a day LATER, so a whole day of observations
+-- was deleted having never been exported. Even inside one day the window only
+-- ever moves forward, so the sliver between the two is deleted unarchived,
+-- silently, every run.
+--
+-- The caller now passes the exact instant it exported to, and this deletes
+-- strictly less than or equal to what was archived. p_keep_days stays, both
+-- for a hand-run and to keep the 30-day floor honest.
+drop function if exists prune_observations(int, boolean);
+
+create or replace function prune_observations(p_keep_days int,
+                                              p_dry_run boolean default true,
+                                              p_before timestamptz default null)
 returns jsonb language plpgsql security definer as $ad4$
 declare
-  v_cut date := current_date - p_keep_days;
+  -- p_before wins when the caller gives one: it is the instant actually
+  -- exported. Falling back to the date keeps a hand-run working.
+  v_before timestamptz := coalesce(p_before,
+                                   (current_date - p_keep_days)::timestamptz);
+  v_cut date := (v_before at time zone 'UTC')::date;
   v_doomed bigint; v_cached_before bigint; v_uncovered bigint; v_freed text;
 begin
   if p_keep_days < 30 then
@@ -198,17 +219,17 @@ begin
   end if;
 
   select count(*) into v_doomed
-    from weather_observations where (valid_at at time zone 'UTC')::date < v_cut;
+    from weather_observations where valid_at < v_before;
   if v_doomed = 0 then
     return jsonb_build_object('ok', true, 'deleted', 0,
-      'note', format('nothing older than %s', v_cut));
+      'note', format('nothing older than %s', v_before));
   end if;
 
   -- Every city-day about to lose its raw rows must already be in the cache.
   select count(*) into v_uncovered from (
     select distinct o.city_key, (o.valid_at at time zone 'UTC')::date as d
       from weather_observations o
-     where (o.valid_at at time zone 'UTC')::date < v_cut
+     where o.valid_at < v_before
   ) x
   where not exists (
     select 1 from derived_city_day_features f
@@ -226,21 +247,21 @@ begin
 
   if p_dry_run then
     return jsonb_build_object('ok', true, 'dry_run', true, 'would_delete', v_doomed,
-      'older_than', v_cut, 'cached_city_days', v_cached_before,
+      'older_than', v_before, 'cached_city_days', v_cached_before,
       'note', 'call again with p_dry_run => false to actually delete');
   end if;
 
-  delete from weather_observations where (valid_at at time zone 'UTC')::date < v_cut;
+  delete from weather_observations where valid_at < v_before;
   v_freed := pg_size_pretty(pg_total_relation_size('weather_observations'));
 
-  return jsonb_build_object('ok', true, 'deleted', v_doomed, 'older_than', v_cut,
+  return jsonb_build_object('ok', true, 'deleted', v_doomed, 'older_than', v_before,
     'cached_city_days', v_cached_before, 'table_now', v_freed,
     'note', 'run VACUUM FULL weather_observations to return the space to the OS');
 end;
 $ad4$;
 
-comment on function prune_observations(int, boolean) is
-  'Delete raw observations older than p_keep_days. Refuses unless every affected city-day is already in derived_city_day_features. Dry run by default.';
+comment on function prune_observations(int, boolean, timestamptz) is
+  'Delete raw observations older than p_before (or p_keep_days if not given). Refuses unless every affected city-day is already in derived_city_day_features. Dry run by default. Pass p_before with the exact instant you exported to - the two cutoffs must be the same cutoff or the gap between them is deleted unarchived.';
 
 
 -- --------------------------------------------------------------------------
@@ -257,7 +278,7 @@ begin
   end loop;
   if exists (select 1 from pg_roles where rolname = 'service_role') then
     execute 'grant select on v_storage_report to service_role';
-    execute 'grant execute on function prune_observations(int, boolean) to service_role';
+    execute 'grant execute on function prune_observations(int, boolean, timestamptz) to service_role';
   end if;
   foreach r in array array['anon', 'authenticated', 'service_role'] loop
     if exists (select 1 from pg_roles where rolname = r) then
