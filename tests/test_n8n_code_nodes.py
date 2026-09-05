@@ -773,3 +773,28 @@ def test_the_code_node_sandbox_has_no_URLSearchParams():
             ROOT, "n8n", "P1.5_open_meteo.template.json")))["nodes"]:
         if n["type"] == "n8n-nodes-base.code":
             assert "URLSearchParams" not in n["parameters"]["jsCode"], n["name"]
+
+
+def test_every_workflow_that_writes_a_table_checks_the_write():
+    """The rule, not a list: any POST to a table (not an RPC) is a write, and a
+    write that was refused must not be reported as a run."""
+    import glob
+
+    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
+        d = json.load(open(path))
+        writes = [n["name"] for n in d["nodes"]
+                  if n["type"] == "n8n-nodes-base.httpRequest"
+                  and n["parameters"].get("method") == "POST"
+                  and "/rest/v1/" in str(n["parameters"].get("url", ""))
+                  and "/rpc/" not in str(n["parameters"].get("url", ""))]
+        if not writes:
+            continue
+        by = {n["name"]: n for n in d["nodes"]}
+        summary = by.get("Summary")
+        assert summary, f"{os.path.basename(path)} writes {writes} and has no Summary"
+        code = summary["parameters"]["jsCode"]
+        assert "DID THE DATABASE ACTUALLY TAKE IT?" in code, os.path.basename(path)
+        for name in writes:
+            assert json.dumps(name) in code, f"{os.path.basename(path)} does not check {name}"
+            resp = by[name]["parameters"].get("options", {}).get("response", {}).get("response", {})
+            assert resp.get("neverError") is True, f"{os.path.basename(path)} / {name}"

@@ -289,7 +289,14 @@
     },
     "sendBody": true,
     "specifyBody": "json",
-    "jsonBody": "={{ JSON.stringify($json.rows) }}"
+    "jsonBody": "={{ JSON.stringify($json.rows) }}",
+    "options": {
+     "response": {
+      "response": {
+       "neverError": true
+      }
+     }
+    }
    },
    "alwaysOutputData": true,
    "onError": "continueRegularOutput"
@@ -304,7 +311,7 @@
     100
    ],
    "parameters": {
-    "jsCode": "const p = $('Diff rules').first().json;\nconst rows = p.n || 0;\nconst changed = p.n_changed || 0;\nconst list = changed > 0 ? (p.changed || []).map(c => c.city_key || c.market_id).join(', ') : '';\nconst summary = changed > 0\n  ? `AD4 P0.5: ${rows} markets refreshed. RULES CHANGED on ${changed}: ${list}. ` +\n    `Re-read those before trusting any probability computed against them.`\n  : `AD4 P0.5: ${rows} markets refreshed, no rule changes.`;\n// A rules change is not a failure, but it invalidates model output computed\n// against the old text - 'attention' so the UI and the watchdog both see it.\nconst status = changed > 0 ? 'attention' : 'ok';\nconst detail = { n_changed: changed, changed: p.changed ?? [],\n                 failed: p.failed, requested: p.requested };\nreturn [{ json: {\n  summary, status, rows,\n  log: { p_job: 'P0.5_refresh_rules_text', p_status: status, p_rows: rows,\n         p_detail: { ...detail, summary, trigger: $execution.mode, execution_id: $execution.id } },\n} }];"
+    "jsCode": "// DID THE DATABASE ACTUALLY TAKE IT?\n//\n// Every write node here carries onError=continueRegularOutput, so the workflow\n// walks straight past a rejected write and reaches this node looking healthy.\n// That is how a run reports success having written nothing - which is exactly\n// what happened: reads worked, every write was refused, and the only visible\n// error was on the LAST node in the chain.\n//\n// With neverError on, a refusal arrives as the PostgREST error body instead of\n// an exception, so it can be read and named here.\nfunction writeError(node) {\n  let items;\n  try { items = $(node).all(); } catch (e) { return null; }\n  for (const it of items || []) {\n    const b = it && it.json;\n    if (!b || typeof b !== 'object') continue;\n    if (b.error && !b.code) return { node, code: null, message: String(b.error).slice(0, 300) };\n    if (b.code || b.message) {\n      return { node, code: b.code ?? null,\n               message: b.message ?? '', details: b.details ?? null, hint: b.hint ?? null };\n    }\n  }\n  return null;\n}\n\nconst WRITE_NODES = [\"Upsert rules\"];\nfor (const node of WRITE_NODES) {\n  const e = writeError(node);\n  if (!e) continue;\n  // 42501 is the one worth naming, because the cause is never the code.\n  if (String(e.code) === '42501' || /permission denied/i.test(e.message)) {\n    throw new Error(\n      `Supabase REFUSED the write: ${e.message} (${e.code}). This is the ANON key in the ` +\n      `Config node, not the service key - anon is granted SELECT and nothing else, which is ` +\n      `why reads worked and every write was silently dropped. Open Config -> service_key and ` +\n      `paste the SERVICE ROLE key (Supabase -> Project Settings -> API -> service_role, or a ` +\n      `key beginning sb_secret_). NEVER put that key anywhere starting NEXT_PUBLIC_. ` +\n      `Failing node: ${e.node}. Nothing was written.`);\n  }\n  throw new Error(\n    `Supabase refused the write at \"${e.node}\": ${e.message}` +\n    (e.code ? ` (${e.code})` : '') + (e.details ? ` - ${e.details}` : '') +\n    (e.hint ? ` Hint: ${e.hint}` : '') + ' Nothing was written.');\n}\n\nconst p = $('Diff rules').first().json;\nconst rows = p.n || 0;\nconst changed = p.n_changed || 0;\nconst list = changed > 0 ? (p.changed || []).map(c => c.city_key || c.market_id).join(', ') : '';\nconst summary = changed > 0\n  ? `AD4 P0.5: ${rows} markets refreshed. RULES CHANGED on ${changed}: ${list}. ` +\n    `Re-read those before trusting any probability computed against them.`\n  : `AD4 P0.5: ${rows} markets refreshed, no rule changes.`;\n// A rules change is not a failure, but it invalidates model output computed\n// against the old text - 'attention' so the UI and the watchdog both see it.\nconst status = changed > 0 ? 'attention' : 'ok';\nconst detail = { n_changed: changed, changed: p.changed ?? [],\n                 failed: p.failed, requested: p.requested };\nreturn [{ json: {\n  summary, status, rows,\n  log: { p_job: 'P0.5_refresh_rules_text', p_status: status, p_rows: rows,\n         p_detail: { ...detail, summary, trigger: $execution.mode, execution_id: $execution.id } },\n} }];"
    }
   },
   {
