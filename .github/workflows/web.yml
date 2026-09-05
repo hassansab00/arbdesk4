@@ -46,13 +46,29 @@ jobs:
         run: npm run build
 
       - name: Confirm every route prerendered
+        # DERIVED FROM THE FILESYSTEM, not a hardcoded list. The list was
+        # hardcoded and went stale the moment a page was removed: deleting
+        # app/calculator/ failed this step on a route that no longer exists,
+        # while the newly added /predictive was never checked at all. A list
+        # that has to be edited by hand is a list that is wrong.
         run: |
-          for r in "" analytics backtest board calculator campaigns clusters goals live opportunities; do
+          set -e
+          fail=0
+          n=0
+          # every app/<route>/page.tsx, plus the root app/page.tsx
+          routes=$(cd app && find . -name page.tsx | sed 's|^\./||; s|/page.tsx$||; s|^page.tsx$||' | sort)
+          for r in $routes; do
             path="./.next/server/app/${r}.html"
             [ -z "$r" ] && path="./.next/server/app/index.html"
+            n=$((n+1))
             if [ ! -f "$path" ]; then
               echo "::error::route /${r} did not prerender ($path missing)"
-              exit 1
+              fail=1
             fi
           done
-          echo "All 10 routes prerendered."
+          if [ ! -f ./.next/server/app/index.html ]; then
+            echo "::error::route / did not prerender"
+            fail=1
+          fi
+          [ "$fail" = "0" ] || exit 1
+          echo "All $n routes prerendered."
