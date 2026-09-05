@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { heatColor } from "@/lib/heat";
 import { REGION_COLOR } from "@/lib/heat";
 import { regionFromCity } from "@/lib/region";
+import { LAND } from "@/lib/coastline";
 import type { CityStats } from "@/lib/types";
 
 /**
@@ -37,11 +38,41 @@ import type { CityStats } from "@/lib/types";
 const R_FRAC = 0.44;          // sphere radius as a fraction of the smaller side
 const AUTO_DEG_PER_S = 4;
 
+/**
+ * What the marker colour means. One globe, three questions - and they are
+ * genuinely different maps: the hottest city is often not the one with an edge
+ * on the board, and neither is the one whose feed has stopped.
+ */
+export type GlobeMode = "hotness" | "edge" | "health";
+
+const MODES: Array<{ key: GlobeMode; label: string; hint: string }> = [
+  { key: "hotness", label: "Hotness", hint: "How far today is from this city's own normal, in standard deviations. The only form comparable between Chicago and Beirut." },
+  { key: "edge",    label: "Best edge", hint: "The largest net edge currently tradeable in this city, after fees. Grey means nothing priced." },
+  { key: "health",  label: "Data health", hint: "Is this city's own feed current: a reading in the last three hours, and a forward forecast to price against." },
+];
+
+/** Green through amber to red as an edge grows - the same ramp everywhere. */
+function edgeColor(pp: number | null | undefined): string {
+  if (pp == null || pp <= 0) return "#5b6472";
+  if (pp < 0.02) return "#4f7d63";
+  if (pp < 0.05) return "#6fa86a";
+  if (pp < 0.10) return "#c7b04a";
+  return "#e0803a";
+}
+
 interface Placed {
   c: CityStats;
   x: number; y: number;      // screen px
   front: boolean;
   lat: number; lon: number;
+  /** Local solar hour, for the readout. */
+  solar: number;
+  /** Inside the measured peak window and the day is not over. */
+  live: boolean;
+  /** How old this city's own reading is, in hours. */
+  ageH: number | null;
+  /** Worth a permanent label rather than only a hover. */
+  important: boolean;
 }
 
 function solarPosition(now: Date) {
@@ -84,6 +115,7 @@ export default function Globe({
   const [tilt, setTilt] = useState(18);
   const [auto, setAuto] = useState(true);
   const [hover, setHover] = useState<Placed | null>(null);
+  const [mode, setMode] = useState<GlobeMode>("hotness");
   const [size, setSize] = useState({ w: 720, h: height });
   const drag = useRef<{ x: number; y: number; yaw: number; tilt: number } | null>(null);
 
@@ -135,15 +167,49 @@ export default function Globe({
       const cosC = Math.sin(p0) * Math.sin(phi) + Math.cos(p0) * Math.cos(phi) * Math.cos(lam - l0);
       const x = Math.cos(phi) * Math.sin(lam - l0);
       const y = Math.cos(p0) * Math.sin(phi) - Math.sin(p0) * Math.cos(phi) * Math.cos(lam - l0);
+      const ageH = c.observed_at
+        ? (Date.now() - new Date(c.observed_at).getTime()) / 3600000
+        : null;
       out.push({
         c, front: cosC > 0,
         x: cx + R * x, y: cy - R * y,
         lat: c.latitude, lon: c.longitude,
+        solar: solarHour(c.longitude, sun.lon),
+        live: c.peak_window_state === "INSIDE" && !c.day_decided,
+        ageH,
+        important: false,
       });
+    }
+    // A LABEL ON EVERY CITY IS A LABEL ON NONE. Only the rows a trader would
+    // actually look at get a permanent one: the cities making their maximum
+    // right now, and the three largest tradeable edges on the board.
+    const byEdge = [...out]
+      .filter((p) => p.front && (p.c.best_edge_pp ?? 0) > 0)
+      .sort((a, b) => (b.c.best_edge_pp ?? 0) - (a.c.best_edge_pp ?? 0))
+      .slice(0, 3);
+    for (const p of out) {
+      p.important = p.front && (p.live || byEdge.includes(p));
     }
     // Far side first so the near side draws over it.
     return out.sort((a, b) => Number(a.front) - Number(b.front));
-  }, [cities, geom, yaw, tilt]);
+  }, [cities, geom, yaw, tilt, sun.lon]);
+
+  /** How the desk's day is distributed right now - a headline the table cannot give. */
+  const tally = useMemo(() => {
+    // Every city lands in exactly one bucket, so the counts add up to the
+    // roster. A tally that silently drops a third of the desk is worse than
+    // no tally - it reads as a smaller desk rather than a missing case.
+    let live = 0, afternoon = 0, climbing = 0, decided = 0, dark = 0, stale = 0;
+    for (const p of placed) {
+      if (p.ageH != null && p.ageH > 3) stale++;
+      if (p.c.day_decided) decided++;
+      else if (p.live) live++;
+      else if (p.solar >= 12 && p.solar < 19) afternoon++;
+      else if (p.solar >= 6) climbing++;
+      else dark++;
+    }
+    return { live, afternoon, climbing, decided, dark, stale, total: placed.length };
+  }, [placed]);
 
   /* ---- the lit sphere ------------------------------------------------- */
   useEffect(() => {
@@ -209,6 +275,48 @@ export default function Globe({
       }
     }
     g.putImageData(img, x0, y0);
+
+    // ---- land ---------------------------------------------------------
+    // Drawn OVER the shading and translucent, so the terminator still shows
+    // through it: a continent at 03:00 local has to look like a continent at
+    // 03:00, not like a lit one with a line across it.
+    //
+    // A ring that crosses the limb is closed by clamping its hidden vertices
+    // onto the rim rather than dropping them. Dropping them leaves Africa with
+    // a bite out of it every time the planet turns; clamping is the standard
+    // approximation and is correct to within the line width at this scale.
+    g.save();
+    g.beginPath();
+    g.arc(cx, cy, R, 0, Math.PI * 2);
+    g.clip();
+    for (const ring of LAND) {
+      g.beginPath();
+      let started = false;
+      let anyVisible = false;
+      for (let i = 0; i < ring.length; i++) {
+        const phi = (ring[i][1] * Math.PI) / 180;
+        const lam = (ring[i][0] * Math.PI) / 180;
+        const cosC = Math.sin(p0) * Math.sin(phi) + Math.cos(p0) * Math.cos(phi) * Math.cos(lam - l0);
+        let ux = Math.cos(phi) * Math.sin(lam - l0);
+        let uy = Math.cos(p0) * Math.sin(phi) - Math.sin(p0) * Math.cos(phi) * Math.cos(lam - l0);
+        if (cosC > 0) {
+          anyVisible = true;
+        } else {
+          const m = Math.hypot(ux, uy) || 1;
+          ux /= m; uy /= m;                       // clamp to the rim
+        }
+        const sx = cx + R * ux, sy = cy - R * uy;
+        if (!started) { g.moveTo(sx, sy); started = true; } else g.lineTo(sx, sy);
+      }
+      if (!anyVisible) continue;
+      g.closePath();
+      g.fillStyle = "rgba(126,148,116,0.26)";
+      g.fill();
+      g.strokeStyle = "rgba(196,222,236,0.42)";
+      g.lineWidth = 0.7;
+      g.stroke();
+    }
+    g.restore();
 
     // Graticule, faint, over the shading.
     g.save();
@@ -284,100 +392,197 @@ export default function Globe({
   }
   function onUp() { drag.current = null; }
 
-  const inWindow = placed.filter(
-    (p) => p.front && (p.c.peak_window_state === "INSIDE" || (p.c.day_decided === false && solarHour(p.lon, sun.lon) >= 12 && solarHour(p.lon, sun.lon) <= 17))
-  ).length;
+  /** The colour channel, per mode. Grey always means "no data", never zero. */
+  function markerColor(p: Placed): string {
+    if (mode === "edge") return edgeColor(p.c.best_edge_pp);
+    if (mode === "health") {
+      if (p.ageH == null) return "#7a4b4b";
+      if (p.ageH > 6) return "#c05050";
+      if (p.ageH > 3) return "#c7a04a";
+      if ((p.c.forecast_max_c ?? null) === null) return "#c7a04a";
+      return "#4f9d6a";
+    }
+    return p.c.hotness_sigma == null ? "#5b6472" : heatColor(p.c.hotness_sigma);
+  }
+
+  // The subsolar point, so the lighting is legible rather than merely present.
+  const sunMark = (() => {
+    const p0 = (tilt * Math.PI) / 180, l0 = (yaw * Math.PI) / 180;
+    const phi = (sun.dec * Math.PI) / 180, lam = (sun.lon * Math.PI) / 180;
+    const cosC = Math.sin(p0) * Math.sin(phi) + Math.cos(p0) * Math.cos(phi) * Math.cos(lam - l0);
+    if (cosC <= 0) return null;
+    const { cx, cy, R } = geom;
+    return {
+      x: cx + R * Math.cos(phi) * Math.sin(lam - l0),
+      y: cy - R * (Math.cos(p0) * Math.sin(phi) - Math.sin(p0) * Math.cos(phi) * Math.cos(lam - l0)),
+    };
+  })();
 
   return (
     <div ref={wrap} className="relative select-none rounded border border-border bg-[#080b12]" style={{ height }}>
       <canvas
         ref={canvas}
-        style={{ width: size.w, height: size.h, position: "absolute", inset: 0, cursor: drag.current ? "grabbing" : "grab" }}
+        style={{ width: size.w, height: size.h, position: "absolute", inset: 0 }}
       />
       <svg
         viewBox={`0 0 ${size.w} ${size.h}`}
         width={size.w}
         height={size.h}
         className="absolute inset-0 touch-none"
-        style={{ cursor: "grab" }}
+        style={{ cursor: drag.current ? "grabbing" : "grab" }}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerLeave={() => { onUp(); setHover(null); }}
       >
+        {sunMark && (
+          <g opacity={0.8} pointerEvents="none">
+            <circle cx={sunMark.x} cy={sunMark.y} r={9} fill="none" stroke="#ffd98a" strokeWidth={0.8} opacity={0.5} />
+            <circle cx={sunMark.x} cy={sunMark.y} r={2.5} fill="#ffd98a" />
+            <title>The sun is directly overhead here right now.</title>
+          </g>
+        )}
+
         {placed.map((p) => {
-          const hot = p.c.hotness_sigma;
           const vol = p.c.volume_24h ?? 0;
-          const r = 3.4 + Math.min(5, Math.log10(1 + vol) * 1.1);
-          const open = p.c.peak_window_state === "INSIDE" && !p.c.day_decided;
-          const region = regionFromCity(p.c);
+          const r = 4 + Math.min(4.5, Math.log10(1 + vol) * 1.0);
+          const ring = REGION_COLOR[regionFromCity(p.c)] ?? "#8ab4ff";
+          const isHover = hover?.c.city_key === p.c.city_key;
+          const label = p.c.display_name ?? p.c.city_key;
           return (
-            <g key={p.c.city_key} opacity={p.front ? 1 : 0.1}>
-              {open && p.front && (
-                <circle cx={p.x} cy={p.y} r={r + 5} fill="none" stroke={REGION_COLOR[region] ?? "#8ab4ff"} strokeWidth={1}>
-                  <animate attributeName="r" values={`${r + 3};${r + 9};${r + 3}`} dur="2.4s" repeatCount="indefinite" />
-                  <animate attributeName="opacity" values="0.9;0.05;0.9" dur="2.4s" repeatCount="indefinite" />
+            <g key={p.c.city_key} opacity={p.front ? 1 : 0.09}>
+              {p.live && p.front && (
+                <circle cx={p.x} cy={p.y} r={r + 5} fill="none" stroke={ring} strokeWidth={1.2}>
+                  <animate attributeName="r" values={`${r + 3};${r + 11};${r + 3}`} dur="2.4s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.95;0.05;0.95" dur="2.4s" repeatCount="indefinite" />
                 </circle>
               )}
+              {/* A DARK HALO FIRST. The markers sit on ocean, on land and on
+                  night, and a coloured dot with no separation from its ground
+                  disappears against at least one of them. */}
+              <circle cx={p.x} cy={p.y} r={r + 2} fill="#080b12" opacity={0.75} />
               <circle
                 cx={p.x} cy={p.y} r={r}
-                fill={hot == null ? "#5b6472" : heatColor(hot)}
-                stroke={REGION_COLOR[region] ?? "#8ab4ff"}
-                strokeWidth={1.2}
+                fill={markerColor(p)}
+                stroke={isHover ? "#ffffff" : ring}
+                strokeWidth={isHover ? 2 : 1.6}
                 onClick={() => p.front && onPick?.(p.c.city_key)}
                 style={{ cursor: p.front ? "pointer" : "default" }}
               />
+              {/* An inner pip when this city has something tradeable on the
+                  board. Position on the globe says where; the pip says whether
+                  it is worth going there. */}
+              {(p.c.n_tradeable ?? 0) > 0 && p.front && (
+                <circle cx={p.x} cy={p.y} r={1.6} fill="#080b12" opacity={0.85} pointerEvents="none" />
+              )}
+              {(p.important || isHover) && p.front && (
+                <text
+                  x={p.x + r + 4}
+                  y={p.y + 3}
+                  fontSize={10}
+                  fill="#e6edf6"
+                  stroke="#080b12"
+                  strokeWidth={2.6}
+                  paintOrder="stroke"
+                  pointerEvents="none"
+                >
+                  {label}
+                </text>
+              )}
             </g>
           );
         })}
       </svg>
 
       {/* ---- the reading, docked, so the pointer never covers it -------- */}
-      {hover && (
-        <div className="pointer-events-none absolute bottom-2 left-2 max-w-[280px] rounded border border-border bg-panel/95 px-2.5 py-1.5 text-[11px] leading-relaxed">
-          <div className="font-semibold">{hover.c.display_name ?? hover.c.city_key}</div>
-          <div className="text-muted">
-            local solar {solarHour(hover.lon, sun.lon).toFixed(1)}h ·{" "}
-            {hover.c.peak_window_state ?? "window unknown"}
-            {hover.c.day_decided ? " · day decided" : ""}
+      {hover ? (
+        <div className="pointer-events-none absolute bottom-2 left-2 w-[290px] rounded border border-border bg-panel/95 px-2.5 py-1.5 text-[11px] leading-relaxed">
+          <div className="flex items-baseline gap-2">
+            <span className="font-semibold">{hover.c.display_name ?? hover.c.city_key}</span>
+            <span className="font-mono text-[10px] text-muted">
+              {hover.c.icao ?? ""} · solar {hover.solar.toFixed(1)}h
+            </span>
           </div>
-          <div className="font-mono text-muted">
-            {hover.c.now_c == null ? "no reading" : `${hover.c.now_c.toFixed(1)}°C now`}
-            {hover.c.hotness_sigma != null && (
-              <span className={hover.c.hotness_sigma > 0 ? " text-warn" : " text-accent"}>
-                {" "}({hover.c.hotness_sigma > 0 ? "+" : ""}
-                {hover.c.hotness_sigma.toFixed(1)}σ vs its own normal)
-              </span>
-            )}
+          <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[10px]">
+            <Row k="now" v={hover.c.now_c == null ? "—" : `${hover.c.now_c.toFixed(1)}°C`}
+                 sub={hover.ageH == null ? "no reading" : `${hover.ageH.toFixed(1)}h old`}
+                 warn={hover.ageH != null && hover.ageH > 3} />
+            <Row k="max so far" v={hover.c.running_max_c == null ? "—" : `${hover.c.running_max_c.toFixed(1)}°C`}
+                 sub={hover.c.day_decided ? "day decided" : hover.c.peak_window_state ?? ""} />
+            <Row k="vs normal"
+                 v={hover.c.hotness_sigma == null ? "—" : `${hover.c.hotness_sigma > 0 ? "+" : ""}${hover.c.hotness_sigma.toFixed(1)}σ`}
+                 sub={hover.c.normal_max_c == null ? "no baseline" : `normal ${hover.c.normal_max_c.toFixed(1)}°C`}
+                 warn={(hover.c.hotness_sigma ?? 0) > 1.5} />
+            <Row k="forecast" v={hover.c.forecast_max_c == null ? "—" : `${hover.c.forecast_max_c.toFixed(1)}°C`}
+                 sub={hover.c.forecast_model ?? "no forward forecast"}
+                 warn={hover.c.forecast_max_c == null} />
+            <Row k="best edge" v={hover.c.best_edge_pp == null ? "—" : `${(hover.c.best_edge_pp * 100).toFixed(1)}pp`}
+                 sub={`${hover.c.n_tradeable ?? 0} of ${hover.c.live_bands ?? 0} bands tradeable`} />
+            <Row k="model error" v={hover.c.mae_c == null ? "—" : `${hover.c.mae_c.toFixed(2)}°C`}
+                 sub={hover.c.skill_days ? `${hover.c.skill_days}d measured` : "never measured"}
+                 warn={hover.c.mae_c == null || (hover.c.skill_days ?? 0) < 200} />
           </div>
-          {hover.c.best_edge_pp != null && (
-            <div className="text-muted">best edge here {(hover.c.best_edge_pp * 100).toFixed(1)}pp</div>
-          )}
+          <div className="mt-1 text-[10px] text-accent">click to open its monitor</div>
+        </div>
+      ) : (
+        /* ---- with nothing hovered, say what the desk's day looks like --- */
+        <div className="pointer-events-none absolute bottom-2 left-2 rounded border border-border bg-panel/90 px-2.5 py-1.5 font-mono text-[10px] leading-relaxed">
+          <span className={tally.live ? "text-good" : "text-muted"}>
+            {tally.live} in the measured peak window
+          </span>
+          <span className="text-muted"> · {tally.afternoon} in the afternoon</span>
+          <span className="text-muted"> · {tally.climbing} still climbing</span>
+          <span className="text-muted"> · {tally.decided} decided</span>
+          <span className="text-muted"> · {tally.dark} overnight</span>
+          {tally.stale > 0 && <span className="text-warn"> · {tally.stale} with a stale reading</span>}
         </div>
       )}
 
       {/* ---- controls --------------------------------------------------- */}
-      <div className="absolute right-2 top-2 flex items-center gap-2 font-mono text-[10px] text-muted">
-        <span title="Cities on the lit side that are inside their peak window - where today's maxima are being made right now.">
-          {inWindow} in the window
-        </span>
-        <button
-          onClick={() => setAuto((a) => !a)}
-          className="rounded border border-border bg-panel/80 px-1.5 py-0.5 hover:text-text"
-        >
-          {auto ? "pause" : "spin"}
-        </button>
-        <button
-          onClick={() => { setYaw(sun.lon + 45); setTilt(18); setAuto(false); }}
-          className="rounded border border-border bg-panel/80 px-1.5 py-0.5 hover:text-text"
-          title="Rotate to the meridian where local solar time is about 15:00 - where the day's maximum is being made."
-        >
-          to the peak
-        </button>
+      <div className="absolute right-2 top-2 flex flex-col items-end gap-1.5 font-mono text-[10px] text-muted">
+        <div className="flex items-center gap-1">
+          {MODES.map((m) => (
+            <button
+              key={m.key}
+              onClick={() => setMode(m.key)}
+              title={m.hint}
+              className={`rounded border px-1.5 py-0.5 ${
+                mode === m.key ? "border-accent bg-accent/15 text-accent" : "border-border bg-panel/80 hover:text-text"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setAuto((a) => !a)}
+            className="rounded border border-border bg-panel/80 px-1.5 py-0.5 hover:text-text"
+          >
+            {auto ? "pause" : "spin"}
+          </button>
+          <button
+            onClick={() => { setYaw(sun.lon + 45); setTilt(18); setAuto(false); }}
+            className="rounded border border-border bg-panel/80 px-1.5 py-0.5 hover:text-text"
+            title="Rotate to the meridian where local solar time is about 15:00 - where the day's maximum is being made."
+          >
+            to the peak
+          </button>
+        </div>
       </div>
       <div className="absolute bottom-2 right-2 font-mono text-[10px] text-muted">
         drag to rotate · lit side is daylight now
       </div>
+    </div>
+  );
+}
+
+function Row({ k, v, sub, warn }: { k: string; v: string; sub?: string; warn?: boolean }) {
+  return (
+    <div>
+      <span className="text-muted">{k} </span>
+      <span className={warn ? "text-warn" : ""}>{v}</span>
+      {sub && <div className="text-[9px] text-muted">{sub}</div>}
     </div>
   );
 }
