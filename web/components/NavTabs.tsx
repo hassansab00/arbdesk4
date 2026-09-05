@@ -10,6 +10,7 @@ const TABS = [
   { href: "/predictive", label: "Predictive" },
   { href: "/strategies", label: "Strategies" },
   { href: "/clusters", label: "City Clusters" },
+  { href: "/globe", label: "Globe" },
   { href: "/live", label: "Live Weather" },
   { href: "/monitor", label: "City Monitor" },
   { href: "/analytics", label: "Analytics" },
