@@ -886,3 +886,80 @@ def test_the_diagnostic_reports_who_can_write():
     assert "has_table_privilege('anon'" in sql
     assert "has_table_privilege('service_role'" in sql
     assert "by design" in sql, "should_run being anon-callable must not read as a fault"
+
+
+# --------------------------------------------------------------- run scope --
+# Every workflow used to cover all 37 cities every run. Where a job makes one
+# request per item that is the difference between finishing and timing out:
+# P0.3 is ~800 requests a run, P1.2 is 111. Where a job batches - P1.5 sends
+# ONE request carrying every city - scoping changes the length of a URL and
+# nothing else, and ad4_32 says so rather than claiming a saving it does not
+# make.
+#
+# should_run() carries the scope, so this cost no new node in any file.
+
+SCOPED = ["P1.2_nws_monitor.template.json", "P1.3_nws_forecast.template.json",
+          "P1.4_nws_gridpoint.template.json", "P1.5_open_meteo.template.json"]
+
+
+@pytest.mark.parametrize("workflow", SCOPED)
+def test_the_scope_costs_no_extra_node_or_request(workflow):
+    d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
+    code = [n for n in d["nodes"] if n["name"] == "Build requests"][0]["parameters"]["jsCode"]
+    assert "$('Check schedule').first().json" in code, "the scope rides on should_run"
+    assert "_only.has(c.city_key)" in code
+    # and no node was added to fetch it
+    assert not any("run_scope" in str(n["parameters"].get("url", "")) for n in d["nodes"])
+
+
+def test_a_scoped_run_covers_only_the_named_cities():
+    def m(plan):
+        plan["seed"]["Check schedule"] = {"run": True, "reason": "manual",
+                                          "scope": {"mode": "selected", "n": 1, "of": 4,
+                                                    "cities": ["nyc"]}}
+        plan["run"] = [{"node": "Run now?", "input": "Load cities", "show": 300},
+                       {"node": "Stop if skipped", "input": "Run now?", "show": 300},
+                       {"node": "Build requests", "input": "Stop if skipped", "show": 4000}]
+    r = run_with("P1.3_nws_forecast.template.json", "plan_P1.3_nws_forecast.json", m)
+    assert r["ok"], r
+    cities = [i["city_key"] for i in r["outputs"]["Build requests"]]
+    assert cities == ["nyc"], cities
+
+
+def test_no_scope_still_covers_everything():
+    """A workflow that has never been scoped must not quietly start doing less."""
+    def m(plan):
+        plan["seed"]["Check schedule"] = {"run": True, "reason": "manual"}
+        plan["run"] = [{"node": "Run now?", "input": "Load cities", "show": 300},
+                       {"node": "Stop if skipped", "input": "Run now?", "show": 300},
+                       {"node": "Build requests", "input": "Stop if skipped", "show": 4000}]
+    r = run_with("P1.3_nws_forecast.template.json", "plan_P1.3_nws_forecast.json", m)
+    assert r["ok"], r
+    assert len(r["outputs"]["Build requests"]) > 1
+
+
+def test_an_empty_scope_list_is_not_an_empty_run():
+    """Zero cities looks exactly like a broken job, so it must never happen."""
+    def m(plan):
+        plan["seed"]["Check schedule"] = {"run": True, "reason": "manual",
+                                          "scope": {"mode": "selected", "cities": []}}
+        plan["run"] = [{"node": "Run now?", "input": "Load cities", "show": 300},
+                       {"node": "Stop if skipped", "input": "Run now?", "show": 300},
+                       {"node": "Build requests", "input": "Stop if skipped", "show": 4000}]
+    r = run_with("P1.3_nws_forecast.template.json", "plan_P1.3_nws_forecast.json", m)
+    assert r["ok"], r
+    assert len(r["outputs"]["Build requests"]) > 1
+
+
+def test_the_sql_refuses_to_scope_a_run_to_nothing():
+    sql = open(os.path.join(ROOT, "sql", "ad4_32_run_scope.sql")).read()
+    assert "matched no active city - running all" in sql
+    assert "must never silently reduce a run to zero" in sql
+
+
+def test_the_sql_is_honest_about_where_scoping_helps():
+    """P1.5 batches every city into one request. Claiming a saving there would
+    be a lie told by a feature."""
+    sql = open(os.path.join(ROOT, "sql", "ad4_32_run_scope.sql")).read()
+    assert "one request carries every city" in sql
+    assert "changes the length of a URL" in sql

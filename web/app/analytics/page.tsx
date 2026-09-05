@@ -61,14 +61,21 @@ export default function AnalyticsPage() {
       <div>
         <h1 className="text-lg font-semibold">Analytics</h1>
         <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted">
-          Where the model and the market disagree, how well the model has actually done, and what a
-          position&apos;s outcomes look like rather than just its average. Every chart draws from the
-          same tables the trading pages do — nothing here is a separate calculation. The first
-          seven sections need no trades at all: they are what the archive can answer about itself.
+          Four questions, in the order a desk actually asks them: is the forecast any good, is the
+          pricing any good, did it make money, and can it take size. Every chart reads the same
+          tables the trading pages do — nothing here is a second calculation of something computed
+          elsewhere. The first two groups need no trades at all; the third and fourth are marked,
+          so an empty desk reads as early rather than broken.
         </p>
       </div>
 
       <StatsNotice mode={statsQ.mode} reason={statsQ.reason} viewError={statsQ.viewError} />
+
+      <GroupHeading
+        n={1}
+        title="Is the forecast any good?"
+        body="What the archive can say about itself, with no trade ever placed. If these are weak, nothing below them can be strong — every band probability is built on this."
+      />
 
       {/* ===================================== what the desk has learned ==
           Seven views the archive can answer on its own, none of which need a
@@ -77,6 +84,12 @@ export default function AnalyticsPage() {
           enabled strategy those are empty - which made the whole page look
           broken rather than early. */}
       <ModelAnalytics />
+
+      <GroupHeading
+        n={2}
+        title="Is the pricing any good?"
+        body="The forecast turned into a probability, and the probability against what the market charges. Still no trades required — this is the model and the book disagreeing on paper."
+      />
 
       {/* ============================================ model vs market ==== */}
       <section>
@@ -131,9 +144,11 @@ export default function AnalyticsPage() {
       <section>
         <h2 className="text-sm font-semibold">Forecast skill by city (1-day lead)</h2>
         <p className="mb-2 max-w-3xl text-[11px] leading-relaxed text-muted">
-          Mean absolute error of the forecast against what actually happened. This is the number
-          sigma is built from, so a city high on this chart is one where every band probability is
-          necessarily vague. A thin sample is marked: under 200 days, the figure itself is uncertain.
+          Mean absolute error against what actually happened — the number sigma is built from, so a
+          city high on this chart is one where every band probability is necessarily vague. This is
+          the one-day view; <a className="text-accent hover:underline" href="/predictive">Predictive</a>{" "}
+          has the same measure per lead day, with bias and hit rate beside it, which is where to go
+          when a city looks wrong here.
         </p>
         <DataState
           loading={skillQ.loading} error={skillQ.error} isEmpty={skill.length === 0}
@@ -181,6 +196,18 @@ export default function AnalyticsPage() {
         <InlineError message={signalsQ.error} />
       </section>
 
+      <GroupHeading
+        n={4}
+        title="Can it take size?"
+        body="An edge you cannot fill is not an edge. Needs book snapshots from P0.3 and traded volume from P0.4."
+      />
+
+      <GroupHeading
+        n={4}
+        title="Can it take size?"
+        body="An edge you cannot fill is not an edge. Needs book snapshots from P0.3 and traded volume from P0.4."
+      />
+
       {/* ================================================= liquidity ===== */}
       <section>
         <h2 className="text-sm font-semibold">Liquidity: quoted against traded</h2>
@@ -223,6 +250,27 @@ export default function AnalyticsPage() {
 }
 
 /* ------------------------------------------------------ model vs market -- */
+
+/**
+ * A group heading, so the page has a spine.
+ *
+ * Fourteen panels in a flat list is why this read as "all over the place":
+ * nothing said which question each answered, or which of them are empty on a
+ * desk that has simply not traded yet. The numbering is not decoration - the
+ * groups are a dependency order. If group 1 is weak, nothing in group 2 can
+ * be strong, and money made in group 3 on a weak group 1 was luck.
+ */
+function GroupHeading({ n, title, body }: { n: number; title: string; body: string }) {
+  return (
+    <div className="border-t border-border pt-5">
+      <div className="flex items-baseline gap-2">
+        <span className="text-[10px] font-semibold tabular-nums text-accent">{n}</span>
+        <h2 className="text-base font-semibold">{title}</h2>
+      </div>
+      <p className="mt-0.5 max-w-3xl text-xs leading-relaxed text-muted">{body}</p>
+    </div>
+  );
+}
 
 function ModelVsMarket({ rows, stats }: { rows: Opportunity[]; stats: CityStats[] }) {
   const heatByCity = new Map(stats.map((s) => [s.city_key, s.hotness_sigma]));

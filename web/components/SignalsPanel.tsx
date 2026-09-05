@@ -27,7 +27,15 @@ type BandInfo = Pick<
   "band_id" | "city_key" | "band_lo" | "band_hi" | "open_low" | "open_high" | "unit" | "resolution_date" | "band_label"
 >;
 
-export default function SignalsPanel({ onHide }: { onHide: () => void }) {
+export default function SignalsPanel({
+  onHide,
+  onChanged,
+}: {
+  onHide: () => void;
+  /** Approving or dismissing changes the pending count in the rail's badge.
+      Without this the badge keeps claiming work that is already done. */
+  onChanged?: () => void;
+}) {
   const [signals, setSignals] = useState<SignalRow[]>([]);
   const [bands, setBands] = useState<Record<string, BandInfo>>({});
   const [expanded, setExpanded] = useState<number | null>(null);
@@ -125,6 +133,7 @@ export default function SignalsPanel({ onHide }: { onHide: () => void }) {
   async function approve(id?: number) {
     if (!id) return;
     const { error: e } = await supabase.rpc("approve_signal", { p_signal_id: id });
+    onChanged?.();
     if (e) setError(e.message);
     load();
   }
@@ -132,6 +141,7 @@ export default function SignalsPanel({ onHide }: { onHide: () => void }) {
   async function dismiss(id?: number) {
     if (!id) return;
     const { error: e } = await supabase.rpc("dismiss_signal", { p_signal_id: id });
+    onChanged?.();
     if (e) setError(e.message);
     load();
   }
@@ -153,13 +163,13 @@ export default function SignalsPanel({ onHide }: { onHide: () => void }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
-        <div>
-          <span className="text-sm font-semibold">Signals</span>
-          <span className="ml-2 text-xs text-muted">
-            {pending > 0 ? `${pending} awaiting you` : `${trades.length} trade · ${alerts.length} desk`}
-          </span>
-        </div>
+      {/* Inside the drawer the tab bar already says "Signals" and carries the
+          close button, so repeating both is two headers stacked on each other.
+          Keep the counts, which the tab bar does not have room for. */}
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-1.5">
+        <span className="text-xs text-muted">
+          {pending > 0 ? `${pending} awaiting you` : `${trades.length} trade · ${alerts.length} desk`}
+        </span>
         <button className="text-xs text-muted hover:text-text" onClick={onHide}>hide</button>
       </div>
 
