@@ -14,7 +14,7 @@ function t(name, fn) {
   catch (e) { out.push(["FAIL", name + " :: " + e.message]); }
 }
 
-const L = { ...E.DEFAULT_LIMITS, maxBookFraction: 1 };   // take the whole level, for clean arithmetic
+const L = E.DEFAULT_LIMITS;
 const near = (a, b, eps = 0.02) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b} (+-${eps})`);
 
 // ---- the venue's floor ---------------------------------------------------
@@ -85,7 +85,12 @@ t("a quote with a depth total gives ONE capped level, flagged as reconstructed",
   assert.match(f.note, /no stored ladder/);
 });
 
-t("max_book_fraction is respected - the desk does not assume it takes the lot", () => {
+t("the default takes the whole quoted level - no invisible haircut", () => {
+  const { levels } = E.ladderFor([[0.30, 100]], null, null, E.DEFAULT_LIMITS);
+  near(levels[0][1], 100, 0.001);
+});
+
+t("max_book_fraction still applies when an operator sets one", () => {
   const half = { ...E.DEFAULT_LIMITS, maxBookFraction: 0.5 };
   const { levels } = E.ladderFor([[0.30, 100]], null, null, half);
   near(levels[0][1], 50, 0.001);

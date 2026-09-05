@@ -11,7 +11,8 @@ import { fmtAge, fmtCompactUsd, fmtPct, fmtPp, fmtPrice, fmtUsd, regimeColor } f
 import { fmtBandRange, fmtTemp, fmtTempDelta, type Unit } from "@/lib/units";
 import { fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
 import { feeRateAt } from "@/lib/costs";
-import { DEFAULT_LIMITS, fill, ladderFor, maxCleanStake, type Level, type Limits } from "@/lib/execution";
+import { fill, ladderFor, maxCleanStake, parseLevels, type BookRow, type Limits } from "@/lib/execution";
+import { useExecutionLimits } from "@/lib/useExecutionLimits";
 import { DayPath, LivePrices, StrategyMirror, WindowPill } from "@/components/TradeTiming";
 import type { CityDayPlan, OpportunityContext, TradePlan } from "@/lib/types";
 
@@ -50,58 +51,6 @@ import type { CityDayPlan, OpportunityContext, TradePlan } from "@/lib/types";
 const STAKE_PRESETS = [50, 100, 250, 500];
 
 interface LiveRow { city_key: string; temp_c: number | null; running_max_c: number | null }
-
-interface BookRow {
-  band_id: string;
-  ask_levels: unknown;
-  bid_levels: unknown;
-  ask_levels_source: string | null;
-  bid_levels_source: string | null;
-  ask_depth_usd: number | null;
-  bid_depth_usd: number | null;
-  best_ask: number | null;
-  best_bid: number | null;
-}
-
-/**
- * Turn a stored book ladder into levels the execution model can walk.
- *
- * The stored shape varies - [{price, size}], [[price, size]], or a JSON string
- * - because three different jobs have written it over the life of this desk.
- * A parser that only handled one of them would silently return "no book" for
- * the others, which reads as a thin market rather than a parsing gap.
- *
- * A NO leg is bought on the other side of the same book: the ask for NO is
- * 1 minus the bid for YES.
- */
-function parseLevels(raw: unknown, side: string): Level[] | null {
-  let v = raw;
-  if (typeof v === "string") {
-    try { v = JSON.parse(v); } catch { return null; }
-  }
-  if (!Array.isArray(v) || v.length === 0) return null;
-  const out: Level[] = [];
-  for (const row of v) {
-    let price: number | undefined;
-    let size: number | undefined;
-    if (Array.isArray(row)) { price = Number(row[0]); size = Number(row[1]); }
-    else if (row && typeof row === "object") {
-      const r = row as Record<string, unknown>;
-      price = Number(r.price ?? r.p);
-      size = Number(r.size ?? r.shares ?? r.s);
-    }
-    if (!Number.isFinite(price!) || !Number.isFinite(size!) || size! <= 0) continue;
-    const p = side === "NO" ? 1 - price! : price!;
-    if (!(p > 0 && p < 1)) continue;
-    out.push([p, size!]);
-  }
-  if (out.length === 0) return null;
-  // Best price first. For a NO leg built from the YES bids that means the
-  // highest bid becomes the cheapest NO, so the sort has to happen after the
-  // conversion, not before it.
-  out.sort((a, b) => a[0] - b[0]);
-  return out;
-}
 
 export default function OpportunitiesPage() {
   const router = useRouter();
@@ -159,14 +108,6 @@ export default function OpportunitiesPage() {
     [],
     30000
   );
-  // What the venue will actually accept. Provisional venue-wide defaults until
-  // P0.2 stores Polymarket's per-market minimums - the row says which.
-  const limitsQ = useQuery<Limits[]>(
-    () => supabase.from("v_execution_limits").select("*"),
-    [],
-    300000
-  );
-
   const allRows = q.data ?? [];
   // The rows a strategy would actually take, right now. This is the answer to
   // "what do I do in the next hour", and it is a different question from
@@ -206,17 +147,7 @@ export default function OpportunitiesPage() {
     () => new Map((bookQ.data ?? []).map((b) => [b.band_id, b])),
     [bookQ.data]
   );
-  const limits: Limits = useMemo(() => {
-    const r = (limitsQ.data ?? [])[0] as unknown as Record<string, number | boolean> | undefined;
-    if (!r) return DEFAULT_LIMITS;
-    return {
-      minOrderUsd: Number(r.min_order_usd ?? DEFAULT_LIMITS.minOrderUsd),
-      shareStep: Number(r.share_step ?? DEFAULT_LIMITS.shareStep),
-      priceTick: Number(r.price_tick ?? DEFAULT_LIMITS.priceTick),
-      maxBookFraction: Number(r.max_book_fraction ?? DEFAULT_LIMITS.maxBookFraction),
-      provisional: Boolean(r.provisional ?? true),
-    };
-  }, [limitsQ.data]);
+  const { limits } = useExecutionLimits();
   const unrepriced = useMemo(
     () => (ctxQ.data ?? []).filter((c) => c.forecast_ahead_of_book).length,
     [ctxQ.data]

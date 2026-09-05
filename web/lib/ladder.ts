@@ -14,6 +14,7 @@
  */
 
 import { buy, takerFee } from "./costs.ts";
+import { DEFAULT_LIMITS, fill as walk, ladderFor, type Level, type Limits } from "./execution.ts";
 
 export interface Leg {
   band_id: string;
@@ -24,6 +25,10 @@ export interface Leg {
   noPrice: number | null;
   /** Dollars fillable inside 5c on the YES side - the depth cap. */
   depthUsd: number | null;
+  /** The real ask ladder, when the snapshot stored one. Walking it is the
+   *  difference between "capped at $80" and "$80 at a worse average price". */
+  yesLevels?: Level[] | null;
+  noLevels?: Level[] | null;
   yesStake: number;
   noStake: number;
 }
@@ -38,6 +43,12 @@ export interface LegFill {
   fee: number;
   /** True when the book cannot absorb the whole stake. */
   capped: boolean;
+  /** Average price actually paid, from walking the ladder. */
+  avgPrice: number | null;
+  /** avgPrice - top of book: what the size cost you. */
+  slippage: number | null;
+  /** True when the leg is under the venue's order minimum and would be rejected. */
+  belowMinimum: boolean;
 }
 
 export interface Outcome {
@@ -62,6 +73,8 @@ export interface BoardResult {
   /** True when no outcome loses money: a locked ticket. */
   locked: boolean;
   anyCapped: boolean;
+  /** True when any leg is under the venue's order minimum and would be rejected. */
+  anyBelowMinimum: boolean;
 }
 
 /**
@@ -72,8 +85,34 @@ export interface BoardResult {
  * $80 and then walks the price. Rather than pretend, the fill is capped at the
  * measured depth and flagged - an honest $80 beats an imaginary $500.
  */
-function fill(band_id: string, side: "YES" | "NO", stake: number, price: number | null, depthUsd: number | null): LegFill | null {
+function fill(
+  band_id: string, side: "YES" | "NO", stake: number, price: number | null,
+  depthUsd: number | null, levels: Level[] | null | undefined, limits: Limits
+): LegFill | null {
   if (!stake || stake <= 0 || price === null || price <= 0 || price >= 1) return null;
+
+  // With a real ladder, walk it: a stake bigger than the top level does not
+  // just cap, it fills at a WORSE AVERAGE, and the difference is the cost of
+  // the size. Without one, fall back to the depth cap, which is still better
+  // than pretending the book is bottomless.
+  const built = ladderFor(levels, price, depthUsd, limits);
+  if (built.levels.length) {
+    const f = walk(stake, built.levels, built.known, null, limits);
+    if (f.shares <= 0) {
+      return {
+        band_id, side, stake, filled: 0, shares: 0, fee: 0,
+        capped: true, avgPrice: null, slippage: null,
+        belowMinimum: f.problems.includes("below_minimum"),
+      };
+    }
+    return {
+      band_id, side, stake,
+      filled: f.spent, shares: f.shares, fee: f.fee,
+      capped: !f.complete, avgPrice: f.avgPrice, slippage: f.slippage,
+      belowMinimum: false,
+    };
+  }
+
   const cap = depthUsd !== null && depthUsd > 0 ? Math.min(stake, depthUsd) : stake;
   const pos = buy(cap, price);
   if (!pos) return null;
@@ -83,18 +122,21 @@ function fill(band_id: string, side: "YES" | "NO", stake: number, price: number 
     shares: pos.shares,
     fee: pos.fee,
     capped: cap < stake - 1e-9,
+    avgPrice: price,
+    slippage: 0,
+    belowMinimum: cap < limits.minOrderUsd,
   };
 }
 
-export function solveBoard(legs: Leg[], probs?: Map<string, number | null>): BoardResult {
+export function solveBoard(legs: Leg[], probs?: Map<string, number | null>, limits: Limits = DEFAULT_LIMITS): BoardResult {
   const fills: LegFill[] = [];
   for (const l of legs) {
-    const y = fill(l.band_id, "YES", l.yesStake, l.yesPrice, l.depthUsd);
+    const y = fill(l.band_id, "YES", l.yesStake, l.yesPrice, l.depthUsd, l.yesLevels, limits);
     if (y) fills.push(y);
-    // The NO side's depth is a different ladder from the YES side's, and the
-    // schema exposes only one figure. Rather than apply the YES cap to a book
-    // it does not describe, NO is left uncapped and the UI says so.
-    const n = fill(l.band_id, "NO", l.noStake, l.noPrice, null);
+    // The NO side has its OWN ladder. Where the snapshot stored one it is
+    // walked; where it did not, NO is left uncapped rather than borrowing the
+    // YES depth figure, which describes a different book.
+    const n = fill(l.band_id, "NO", l.noStake, l.noPrice, null, l.noLevels, limits);
     if (n) fills.push(n);
   }
 
@@ -126,6 +168,7 @@ export function solveBoard(legs: Leg[], probs?: Map<string, number | null>): Boa
     best: pnls.length ? Math.max(...pnls) : 0,
     locked: pnls.length > 0 && Math.min(...pnls) >= 0 && cost > 0,
     anyCapped: fills.some((f) => f.capped),
+    anyBelowMinimum: fills.some((f) => f.belowMinimum),
   };
 }
 

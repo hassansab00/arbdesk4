@@ -31,7 +31,15 @@ export interface Limits {
   shareStep: number;
   /** Limit prices snap to this. */
   priceTick: number;
-  /** Most of a visible level the desk assumes it can take. */
+  /**
+   * The fraction of a visible level the desk assumes it can take.
+   *
+   * Defaults to 1 - what is quoted is what is quoted. A haircut here is a
+   * SECOND helping of conservatism on top of a depth figure that is already
+   * measured inside 5c, and an invisible one: it makes every fill smaller
+   * than the book says without anything on screen explaining why. Operators
+   * who want the haircut can set it; nothing ships with it applied.
+   */
   maxBookFraction: number;
   /** True while these are venue-wide placeholders rather than per-market. */
   provisional: boolean;
@@ -41,7 +49,7 @@ export const DEFAULT_LIMITS: Limits = {
   minOrderUsd: 1,
   shareStep: 0.01,
   priceTick: 0.01,
-  maxBookFraction: 0.5,
+  maxBookFraction: 1,
   provisional: true,
 };
 
@@ -249,4 +257,68 @@ export function snapLeg(usd: number, limits: Limits = DEFAULT_LIMITS): number | 
   if (!Number.isFinite(usd) || usd <= 0) return null;
   if (usd < limits.minOrderUsd) return null;
   return Math.round(usd * 100) / 100;
+}
+
+
+/**
+ * Turn a stored book ladder into levels this module can walk.
+ *
+ * The stored shape varies - [{price, size}], [[price, size]], or a JSON string
+ * - because three different jobs have written it over the life of this desk.
+ * A parser that only handled one shape would silently return "no book" for the
+ * others, which reads on screen as a thin market rather than as a parsing gap.
+ *
+ * A NO leg is bought on the other side of the same book: the ask for NO is one
+ * minus the bid for YES. The conversion happens BEFORE the sort, because the
+ * highest YES bid is the cheapest NO.
+ */
+export function parseLevels(raw: unknown, side: "YES" | "NO"): Level[] | null {
+  let v = raw;
+  if (typeof v === "string") {
+    try { v = JSON.parse(v); } catch { return null; }
+  }
+  if (!Array.isArray(v) || v.length === 0) return null;
+  const out: Level[] = [];
+  for (const row of v) {
+    let price: number | undefined;
+    let size: number | undefined;
+    if (Array.isArray(row)) { price = Number(row[0]); size = Number(row[1]); }
+    else if (row && typeof row === "object") {
+      const r = row as Record<string, unknown>;
+      price = Number(r.price ?? r.p);
+      size = Number(r.size ?? r.shares ?? r.s);
+    }
+    if (!Number.isFinite(price as number) || !Number.isFinite(size as number) || (size as number) <= 0) continue;
+    const p = side === "NO" ? 1 - (price as number) : (price as number);
+    if (!(p > 0 && p < 1)) continue;
+    out.push([p, size as number]);
+  }
+  if (out.length === 0) return null;
+  out.sort((a, b) => a[0] - b[0]);
+  return out;
+}
+
+/** The row shape v_latest_book returns, for the pages that walk a book. */
+export interface BookRow {
+  band_id: string;
+  ask_levels: unknown;
+  bid_levels: unknown;
+  ask_levels_source: string | null;
+  bid_levels_source: string | null;
+  ask_depth_usd: number | null;
+  bid_depth_usd: number | null;
+  best_ask: number | null;
+  best_bid: number | null;
+}
+
+/** The columns v_execution_limits returns, mapped onto Limits. */
+export function limitsFromRow(r: Record<string, unknown> | undefined | null): Limits {
+  if (!r) return DEFAULT_LIMITS;
+  return {
+    minOrderUsd: Number(r.min_order_usd ?? DEFAULT_LIMITS.minOrderUsd),
+    shareStep: Number(r.share_step ?? DEFAULT_LIMITS.shareStep),
+    priceTick: Number(r.price_tick ?? DEFAULT_LIMITS.priceTick),
+    maxBookFraction: Number(r.max_book_fraction ?? DEFAULT_LIMITS.maxBookFraction),
+    provisional: Boolean(r.provisional ?? true),
+  };
 }

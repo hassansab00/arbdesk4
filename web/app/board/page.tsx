@@ -9,6 +9,8 @@ import { fmtAge, fmtCompactUsd, fmtPct, fmtPrice, fmtUsd, regimeColor } from "@/
 import { fmtBandRange, fmtTemp, type Unit } from "@/lib/units";
 import { fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
 import { solveBoard, overround, type Leg } from "@/lib/ladder";
+import { parseLevels, type BookRow, type Limits } from "@/lib/execution";
+import { useExecutionLimits } from "@/lib/useExecutionLimits";
 import { feeRateAt } from "@/lib/costs";
 import { LADDER_SOURCE_LABEL, VOLUME_SOURCE_LABEL, type Opportunity } from "@/lib/types";
 import ReasoningPanel, { useReasoning } from "@/components/Reasoning";
@@ -187,6 +189,22 @@ export default function BoardPage() {
   const fc = board && day ? fcByCityDay.get(`${board.city_key}|${day}`) : undefined;
 
   // ---- the position ------------------------------------------------------
+  // THE REAL LADDER. The board capped a leg at its depth figure and priced the
+  // whole thing at the mid; a stake bigger than the top level does not just
+  // cap, it fills at a worse average, and that difference is the cost of size.
+  const bookQ = useQuery<BookRow[]>(
+    () => supabase.from("v_latest_book")
+      .select("band_id,ask_levels,bid_levels,ask_levels_source,bid_levels_source,ask_depth_usd,bid_depth_usd,best_ask,best_bid"),
+    [],
+    30000
+  );
+  const { limits } = useExecutionLimits();
+
+  const bookByBand = useMemo(
+    () => new Map((bookQ.data ?? []).map((b) => [b.band_id, b])),
+    [bookQ.data]
+  );
+
   const legs: Leg[] = useMemo(
     () =>
       (board?.bands ?? []).map(({ yes, no }) => {
@@ -194,14 +212,18 @@ export default function BoardPage() {
         return {
           band_id: o.band_id,
           label: o.band_label ?? fmtBandRange(o.band_lo, o.band_hi, unit, o.open_low, o.open_high),
-          yesPrice: yes?.market_price ?? null,
-          noPrice: no?.market_price ?? null,
+          // The EXECUTABLE price, not the mid. You lift the ask to buy YES,
+          // and the other side of the same book to buy NO.
+          yesPrice: yes?.best_ask ?? yes?.market_price ?? null,
+          noPrice: no?.best_ask ?? (yes?.best_bid != null ? 1 - yes.best_bid : no?.market_price ?? null),
           depthUsd: yes?.fillable_usd_5c ?? null,
+          yesLevels: parseLevels(bookByBand.get(o.band_id)?.ask_levels, "YES"),
+          noLevels: parseLevels(bookByBand.get(o.band_id)?.bid_levels, "NO"),
           yesStake: parseFloat(yesStakes[o.band_id] ?? "") || 0,
           noStake: parseFloat(noStakes[o.band_id] ?? "") || 0,
         };
       }),
-    [board, unit, yesStakes, noStakes]
+    [board, unit, yesStakes, noStakes, bookByBand]
   );
 
   // The probability each outcome is weighted by: the reader's own number where
@@ -216,7 +238,7 @@ export default function BoardPage() {
     return m;
   }, [board, myProb]);
 
-  const result = useMemo(() => solveBoard(legs, probs), [legs, probs]);
+  const result = useMemo(() => solveBoard(legs, probs, limits), [legs, probs, limits]);
   const book = overround(legs);
   const staked = legs.some((l) => l.yesStake > 0 || l.noStake > 0);
 
@@ -468,7 +490,7 @@ export default function BoardPage() {
 
             {/* ---- if the day lands on ... -------------------------------- */}
             {staked ? (
-              <OutcomeLadder result={result} unit={unit} />
+              <OutcomeLadder result={result} unit={unit} limits={limits} />
             ) : (
               <div className="rounded border border-dashed border-border p-4 text-center text-xs leading-relaxed text-muted">
                 <b className="text-text">Stake a bucket to see the ticket.</b> Type dollars in{" "}
@@ -499,7 +521,7 @@ export default function BoardPage() {
  * biggest swing on the ticket so the shape of the position is readable at a
  * glance rather than requiring the numbers to be compared.
  */
-function OutcomeLadder({ result, unit }: { result: ReturnType<typeof solveBoard>; unit: Unit }) {
+function OutcomeLadder({ result, unit, limits }: { result: ReturnType<typeof solveBoard>; unit: Unit; limits: Limits }) {
   const span = Math.max(Math.abs(result.worst), Math.abs(result.best), 1);
   return (
     <div className="rounded border border-border bg-panel p-3">
@@ -527,6 +549,18 @@ function OutcomeLadder({ result, unit }: { result: ReturnType<typeof solveBoard>
           )}
         </div>
       </div>
+
+      {/* THE VENUE'S FLOOR. A leg under the minimum is not a small trade -
+          Polymarket rejects the order - and a ticket with one in it does not
+          exist as priced. Said before the P&L ladder, because the ladder is
+          the thing that looks authoritative. */}
+      {result.anyBelowMinimum && (
+        <div className="mb-2 rounded border border-warn/50 bg-warn/10 px-2 py-1.5 text-[11px] leading-relaxed text-warn">
+          <b>One or more legs are under the ${limits.minOrderUsd.toFixed(2)} order minimum.</b>{" "}
+          Polymarket rejects an order that size — it does not fill it small — so this exact ticket
+          cannot be placed. Raise those stakes or drop those legs.
+        </div>
+      )}
 
       {result.locked && (
         <div className="mb-2 rounded border border-good/40 bg-good/10 px-2 py-1.5 text-[11px] text-good">

@@ -259,9 +259,14 @@ t("a full set of YES legs is a locked ticket when it costs under par", () => {
 });
 
 t("depth caps a stake instead of pretending it filled", () => {
+  // depthUsd is NOTIONAL available in the book. Taking all of it costs that
+  // notional PLUS the taker fee on it, so the cash committed is a little over
+  // the depth figure and well under the stake. (Before lib/execution.ts the
+  // fee was carved out of the cap instead, which quietly bought slightly less
+  // than the book held.)
   const r = LAD.solveBoard(legs({ b: { yesStake: 500, depthUsd: 80 } }));
   assert.ok(r.anyCapped);
-  assert.ok(Math.abs(r.cost - 80) < 1e-9, `cost ${r.cost} should be the depth, not the stake`);
+  assert.ok(r.cost >= 80 && r.cost <= 84, `cost ${r.cost} should be the depth plus its fee, not the stake`);
   assert.equal(r.requested, 500);
 });
 

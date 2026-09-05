@@ -33,13 +33,13 @@ values ('execution_limits', jsonb_build_object(
   'min_order_usd',      1.0,
   'share_step',         0.01,
   'price_tick',         0.01,
-  'max_book_fraction',  0.5,
+  'max_book_fraction',  1.0,
   'provisional',        true,
   '_notes', jsonb_build_object(
     'min_order_usd',     'Polymarket rejects an order below this notional. A leg under it is not a small trade, it is no trade.',
     'share_step',        'Order quantities are rounded to this many shares.',
     'price_tick',        'Limit prices snap to this. 0.01 is the common case; some markets quote finer.',
-    'max_book_fraction', 'The most of a level the desk will assume it can take without moving the price against itself. Provisional and deliberately conservative: taking the whole visible ladder is a modelling assumption, not an execution.'
+    'max_book_fraction', 'The fraction of a visible level the desk assumes it can take. 1.0 means what is quoted is what is quoted - the depth figure is already measured inside 5c, and a haircut here would be a second, invisible helping of conservatism. Lower it if you want one.'
   )
 ))
 -- Re-running must never reset a limit the operator has tuned. Start from the
