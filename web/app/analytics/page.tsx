@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { useCityStats } from "@/lib/useCityStats";
 import StatsNotice from "@/components/StatsNotice";
+import ModelAnalytics from "@/components/ModelAnalytics";
 import { DataState, InlineError } from "@/components/DataState";
 import { Empty, Histogram, LineChart, Scatter } from "@/components/charts";
 import { fmtCompactUsd, fmtInt, fmtPct, fmtPrice, fmtUsd, pnlColor } from "@/lib/format";
@@ -62,11 +63,20 @@ export default function AnalyticsPage() {
         <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted">
           Where the model and the market disagree, how well the model has actually done, and what a
           position&apos;s outcomes look like rather than just its average. Every chart draws from the
-          same tables the trading pages do — nothing here is a separate calculation.
+          same tables the trading pages do — nothing here is a separate calculation. The first
+          seven sections need no trades at all: they are what the archive can answer about itself.
         </p>
       </div>
 
       <StatsNotice mode={statsQ.mode} reason={statsQ.reason} viewError={statsQ.viewError} />
+
+      {/* ===================================== what the desk has learned ==
+          Seven views the archive can answer on its own, none of which need a
+          single trade to have been placed. They come FIRST because three of
+          the panels below need settled paper trades, and on a desk with no
+          enabled strategy those are empty - which made the whole page look
+          broken rather than early. */}
+      <ModelAnalytics />
 
       {/* ============================================ model vs market ==== */}
       <section>

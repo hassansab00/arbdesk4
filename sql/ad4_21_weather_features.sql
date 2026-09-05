@@ -60,6 +60,11 @@ daily as (
     avg(cloud_cover) filter (where local_hour between 9 and 17)   as cloud_mean,
     max(cloud_cover) filter (where local_hour between 9 and 17)   as cloud_max,
     avg(wind_speed)  filter (where local_hour between 9 and 17)   as wind_mean,
+    -- wind_max exists on the FORECAST side (weather_forecast_features) and did
+    -- not exist here, so a model that used it could be fitted and then never
+    -- applied. The two column sets have to match or the forward model dies
+    -- silently, one skipped row at a time.
+    max(wind_speed)  filter (where local_hour between 9 and 17)   as wind_max,
     sum(coalesce(precip, 0))                                      as precip_total
   from obs group by city_key, obs_date
 ),
@@ -100,7 +105,18 @@ select
   round(d.cloud_mean, 2)                     as cloud_mean,
   d.cloud_max,
   round(d.wind_mean, 2)                      as wind_mean,
-  round(d.precip_total, 3)                   as precip_total
+  round(d.precip_total, 3)                   as precip_total,
+
+  -- ---- appended (create or replace can only add columns at the end) -------
+  round(d.wind_max, 2)                       as wind_max,
+  -- PRESSURE TENDENCY, not the level. Station pressure is mostly a statement
+  -- about altitude: Denver reads ~840 hPa and Miami ~1015 every single day, so
+  -- the level is near-constant per city and the intercept absorbs it. What
+  -- carries information is the CHANGE - falling pressure is an approaching
+  -- front, and a front is exactly when a persistence-style forecast fails.
+  round(m.morning_pressure_hpa
+        - lag(m.morning_pressure_hpa) over (partition by d.city_key order by d.obs_date), 2)
+                                             as pressure_change_24h_hpa
 from daily d
 left join morning m on m.city_key = d.city_key and m.obs_date = d.obs_date;
 
@@ -188,6 +204,12 @@ create table if not exists derived_weather_model (
   fitted_at      timestamptz not null default now(),
   primary key (city_key, target)
 );
+
+-- Why a variable is NOT in the model is worth as much as why one is: it says
+-- this measurement, taken on every reading, does not move this city's
+-- afternoon. Added rather than baked into the create so an existing table
+-- gains it without being dropped.
+alter table derived_weather_model add column if not exists selection jsonb;
 
 comment on table derived_weather_model is
   'Per-city model of the daily maximum from morning conditions. beats_persistence is the only column that matters: a model that cannot beat yesterday-equals-today is not a model.';

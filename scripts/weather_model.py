@@ -60,7 +60,12 @@ import requests
 MIN_DAYS = 120
 HOLDOUT = 0.25
 
-FEATURES = [
+# The features every fit starts from. Proven, and all of them exist on BOTH
+# sides - v_city_day_features for what happened, weather_forecast_features for
+# what is forecast. A feature present on only one side can be fitted and then
+# never applied, and the failure is silent: forecast_city skips any row with a
+# missing feature, so the model would just stop predicting.
+BASE_FEATURES = [
     "prev_max_c",
     "morning_temp_c",
     "dewpoint_depression_c",
@@ -68,6 +73,28 @@ FEATURES = [
     "wind_mean",
     "precip_total",
 ]
+
+# Collected all along and never used. Each is offered to the fit and kept only
+# if it earns its place on data the fit has not seen - see select_features.
+CANDIDATE_FEATURES = [
+    "morning_humidity",
+    "cloud_max",
+    "wind_max",
+]
+
+# NEVER usable, whatever they look like in the table.
+#
+# diurnal_range_c is max_c - min_c. Using it to predict max_c is asking the
+# answer to help predict itself: a model with it in would report a spectacular
+# MAE, beat persistence by a mile, and be worth exactly nothing forward, where
+# the day's minimum is not yet known either. morning_to_max_c and delta_max_c
+# are the same mistake in different clothes.
+LEAKY_FEATURES = {
+    "max_c", "min_c", "diurnal_range_c", "morning_to_max_c", "delta_max_c",
+}
+
+# Kept for callers that want the starting set by its old name.
+FEATURES = BASE_FEATURES
 
 # What each coefficient means, so the output is a finding and not six numbers.
 MEANING = {
@@ -77,7 +104,33 @@ MEANING = {
     "cloud_mean": "per okta of daytime cloud — sunlight that never lands",
     "wind_mean": "per unit of daytime wind — mixing flattens the peak",
     "precip_total": "per unit of rain — a wet surface evaporates instead of warming",
+    "morning_humidity": "per % of morning relative humidity — moisture the sun must boil off first",
+    "cloud_max": "per okta of the cloudiest daytime hour — one overcast hour at the peak costs the whole day",
+    "wind_max": "per unit of the windiest daytime hour — a gust front ends the climb",
 }
+
+# Two features are collinear when one is nearly a linear function of the other.
+# The normal equations then have no stable solution: the fit still returns
+# numbers, but enormous ones of opposite sign that cancel, and they change
+# wildly with one more day of data. morning_humidity and dewpoint_depression_c
+# are the pair to watch - relative humidity IS a function of temperature and
+# dewpoint, so on a city with a narrow temperature range they can be almost the
+# same column.
+MAX_ABS_CORRELATION = 0.95
+
+# A feature also has to matter, not merely to be real.
+#
+# The paired test below is easy to pass: adding any variable to a least-squares
+# fit nudges the error down slightly and CONSISTENTLY, so the differences are
+# tiny but systematically positive, the standard error is tinier still, and the
+# test says "clear of chance" for a gain of four thousandths of a degree. It
+# did exactly that.
+#
+# The floor comes from the decision this model feeds. Polymarket's buckets are
+# 1C wide, so a feature that moves the forecast by less than about 0.05C cannot
+# change which bucket a day lands in - and a feature that cannot change the
+# answer has no business being in the model, however real its effect.
+MIN_MATERIAL_GAIN_C = 0.05
 
 
 def solve(a, b):
@@ -143,8 +196,162 @@ def varying(rows, features, tol=1e-9):
     return keep, dropped
 
 
-def fit_city(rows, features, target="max_c"):
-    """Time-ordered split, fit on the first part, score on the last."""
+def correlation(rows, a, b):
+    """Pearson r between two features, over rows where both are present."""
+    xs, ys = [], []
+    for r in rows:
+        if r.get(a) is None or r.get(b) is None:
+            continue
+        xs.append(float(r[a]))
+        ys.append(float(r[b]))
+    n = len(xs)
+    if n < 3:
+        return 0.0
+    mx, my = sum(xs) / n, sum(ys) / n
+    sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    sxx = sum((x - mx) ** 2 for x in xs)
+    syy = sum((y - my) ** 2 for y in ys)
+    if sxx <= 0 or syy <= 0:
+        return 0.0
+    return sxy / ((sxx ** 0.5) * (syy ** 0.5))
+
+
+def abs_errors(rows, features, target, coef):
+    return [abs(predict(coef, r, features) - float(r[target])) for r in rows]
+
+
+def mae_on(rows, features, target, coef):
+    errs = abs_errors(rows, features, target, coef)
+    return sum(errs) / len(errs) if errs else None
+
+
+def beats(base_errs, trial_errs, k=1.5, floor=None):
+    """Is the trial's improvement bigger than chance? A PAIRED test.
+
+    The first version of this asked whether the validation MAE fell by more
+    than 0.001C, which is not a threshold - it is noise. With ~75 validation
+    days and half a degree of scatter, the standard error on an MAE is around
+    0.05C, so a feature made of pure random numbers clears 0.001 most of the
+    time. It did: a humidity column with no effect on the answer was selected.
+
+    The same days are scored both ways, so the honest comparison is the
+    per-day DIFFERENCE in absolute error. Its mean is the gain; its standard
+    error says how much of that gain is luck. Keep the feature only when the
+    gain is k standard errors clear of zero.
+
+    Two conditions, and both are needed: the gain must clear chance AND clear
+    MIN_MATERIAL_GAIN_C, because a statistically certain 0.004C is still 0.004C.
+
+    Returns (gain, kept).
+    """
+    if floor is None:
+        floor = MIN_MATERIAL_GAIN_C
+    n = len(base_errs)
+    if n < 10 or n != len(trial_errs):
+        return 0.0, False
+    d = [b - t for b, t in zip(base_errs, trial_errs)]
+    mean = sum(d) / n
+    if mean <= 0:
+        return mean, False
+    if mean < floor:
+        return mean, False
+    var = sum((x - mean) ** 2 for x in d) / (n - 1)
+    se = (var / n) ** 0.5
+    if se <= 0:
+        return mean, mean >= floor
+    return mean, mean > k * se
+
+
+def select_features(train, target):
+    """Start from the base set; add a candidate only if it earns its place.
+
+    FORWARD SELECTION ON A HELD-OUT SLICE OF THE TRAINING DATA. Going from six
+    features to nine on a few hundred days is exactly how a model learns the
+    noise in its own training set and reports a wonderful error on it. So each
+    candidate is judged on days the fit did not see - the last quarter of the
+    training window, in time order - and kept only if it actually lowers the
+    error there.
+
+    The validation slice is carved out of TRAIN, never out of the holdout. The
+    holdout has one job, which is to be the first data the finished model has
+    ever seen; selecting against it would make its score a description of the
+    selection rather than of the model.
+
+    Returns (features, notes) where notes records every candidate and why it
+    was kept or rejected - a rejected feature is a finding, not a silence.
+    """
+    cut = int(len(train) * 0.75)
+    inner, val = train[:cut], train[cut:]
+    notes = []
+    if len(val) < 15 or len(inner) < 40:
+        return list(BASE_FEATURES), [("selection skipped", "too few training days to validate on")]
+
+    chosen = [f for f in BASE_FEATURES if f in varying(inner, BASE_FEATURES)[0]]
+    coef = ols(inner, chosen, target)
+    if coef is None:
+        return chosen, [("selection skipped", "base fit is singular")]
+    base_errs = abs_errors(val, chosen, target, coef)
+
+    remaining = [f for f in CANDIDATE_FEATURES if f not in chosen]
+    while remaining:
+        scored = []
+        for f in remaining:
+            usable = [r for r in inner if r.get(f) is not None]
+            if len(usable) < len(inner):
+                notes.append((f, "not present on every training day"))
+                continue
+            if not varying(inner, [f])[0]:
+                notes.append((f, "constant across the training window"))
+                continue
+            worst = max((abs(correlation(inner, f, c)), c) for c in chosen)
+            if worst[0] > MAX_ABS_CORRELATION:
+                notes.append((f, f"collinear with {worst[1]} (r={worst[0]:.2f})"))
+                continue
+            trial = chosen + [f]
+            c2 = ols(inner, trial, target)
+            if c2 is None:
+                notes.append((f, "makes the fit singular"))
+                continue
+            errs = abs_errors(val, trial, target, c2)
+            gain, ok = beats(base_errs, errs)
+            scored.append((gain, ok, f, errs))
+
+        remaining = [f for f in remaining if f not in {n[0] for n in notes}]
+        if not scored:
+            break
+        scored.sort(key=lambda t: -t[0])
+        gain, ok, f, errs = scored[0]
+        if not ok:
+            for g, _, name, _ in scored:
+                notes.append((name, f"no material improvement on held-out days ({g:+.3f}°C, floor {MIN_MATERIAL_GAIN_C}°C)"))
+            break
+        base_errs = errs
+        chosen.append(f)
+        notes.append((f, f"kept — held-out error fell {gain:.3f}°C, clear of chance"))
+        remaining = [x for x in remaining if x != f]
+
+    return chosen, notes
+
+
+def fit_city(rows, features=None, target="max_c"):
+    """Time-ordered split, fit on the first part, score on the last.
+
+    `features` names the STARTING set. Candidates are added on top of it by
+    select_features, so callers get the same behaviour as before if they pass
+    the base list, and a better model if they pass nothing.
+    """
+    if features is None:
+        features = BASE_FEATURES
+    leaks = LEAKY_FEATURES & set(features)
+    if leaks:
+        # Loud, not silent. A leaked feature produces a model that looks
+        # extraordinary and is worth nothing, and the number that would give it
+        # away is the one it improves.
+        raise ValueError(
+            f"{sorted(leaks)} contain the target or are derived from it - "
+            f"a model using them cannot be applied to a day that has not happened"
+        )
+
     rows = sorted(rows, key=lambda r: r["obs_date"])
     rows = [r for r in rows if usable(r, features, target)]
     if len(rows) < MIN_DAYS:
@@ -159,6 +366,21 @@ def fit_city(rows, features, target="max_c"):
     # looking at the held-out days would be a leak, small but real.
     features, dropped = varying(train, features)
     if not features:
+        return None, len(rows)
+
+    # ...then offer the unused variables, judged on a slice of TRAIN.
+    features, selection = select_features(train, target)
+    features, more_dropped = varying(train, features)
+    dropped = dropped + [d for d in more_dropped if d not in dropped]
+
+    # A selected feature has to be present on the held-out days too, or the
+    # score is computed on a different set of days than it looks like.
+    test = [r for r in test if all(r.get(f) is not None for f in features)]
+    if len(test) < 20:
+        features = [f for f in features if f in BASE_FEATURES]
+        test = [r for r in rows[cut:] if all(r.get(f) is not None for f in features)]
+        selection = selection + [("fell back to the base set", "too few held-out days with every selected feature")]
+    if len(test) < 20:
         return None, len(rows)
 
     coef = ols(train, features, target)
@@ -180,6 +402,9 @@ def fit_city(rows, features, target="max_c"):
         "coefficients": {k: round(v, 5) for k, v in coef.items()},
         "features": features,
         "dropped_features": dropped,   # constant across training; not modellable
+        # every candidate and what happened to it - a rejection is a finding
+        "selection": [{"feature": f, "verdict": why} for f, why in selection],
+        "added_features": [f for f in features if f not in BASE_FEATURES],
         "n_days": len(rows), "n_train": len(train), "n_test": len(test),
         "mae_c": round(mae, 4), "persistence_mae_c": round(pmae, 4),
         "beats_persistence": mae < pmae,
@@ -456,9 +681,15 @@ def main():
         print(f"               {describe(fit)}")
         if fit["dropped_features"]:
             print(f"               (no variation in {', '.join(fit['dropped_features'])} — dropped)")
+        # A rejected candidate is a finding: it says this variable, which the
+        # desk collects on every reading, does not move this city's afternoon.
+        for v in fit.get("selection", []):
+            print(f"               · {v['feature']}: {v['verdict']}")
         out.append({
             "city_key": city, "target": "max_c", "n_days": fit["n_days"],
             "coefficients": fit["coefficients"], "mae_c": fit["mae_c"],
+            # stored so the reason a variable is absent survives the run
+            "selection": fit.get("selection"),
             "persistence_mae_c": fit["persistence_mae_c"],
             "beats_persistence": fit["beats_persistence"], "r2": fit["r2"],
             "notes": describe(fit), "fitted_at": dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -468,6 +699,16 @@ def main():
         print(f"\n{len(skipped)} city/cities skipped for too few usable days "
               f"(need {MIN_DAYS}): " + ", ".join(f"{c}({n})" for c, n in skipped[:8]))
     if out:
+        extra = {}
+        for o in out:
+            for f in [k for k in o["coefficients"] if k not in BASE_FEATURES and k != "intercept"]:
+                extra[f] = extra.get(f, 0) + 1
+        if extra:
+            print("\nVariables that earned a place beyond the base six: "
+                  + ", ".join(f"{f} in {n} city/cities" for f, n in sorted(extra.items())))
+        else:
+            print("\nNo city kept a variable beyond the base six. On this data the "
+                  "extra measurements do not move the afternoon - a finding, not a gap.")
         print(f"\n{beat} of {len(out)} cities beat persistence on held-out days.")
         if beat == 0:
             print("  None of them beat it. That is a real result, not a bug: on this data the "

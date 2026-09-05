@@ -308,3 +308,134 @@ def test_every_key_written_is_a_column_that_exists():
 
     row = wm.forecast_city("t", fitted(), fc_days(1), 26.0)[0]
     assert set(row) <= columns, sorted(set(row) - columns)
+
+
+# ------------------------------------------------- earning a place ---------
+# Six features to nine on a few hundred days is exactly how a model learns the
+# noise in its own training set. These decide whether the selection is real.
+def synth_plus(n, *, humidity_effect=0.0, noise=0.4, seed=7, collinear=False):
+    """The same known rule as synth(), plus the three unused variables.
+
+    humidity_effect=0 makes morning_humidity pure noise - it must be rejected.
+    Give it a coefficient and it must be kept.
+    """
+    rng = random.Random(seed)
+    rows, prev = [], None
+    for i in range(n):
+        cloud = rng.uniform(0, 8)
+        dry = rng.uniform(0, 18)
+        hum = rng.uniform(20, 95)
+        morning = 12 + 4 * math.sin(i / 30.0)
+        mx = (morning + 10 - 1.1 * cloud + 0.35 * dry
+              + humidity_effect * hum + rng.gauss(0, noise))
+        rows.append({
+            "city_key": "t", "obs_date": f"2026-{1 + i // 28:02d}-{1 + i % 28:02d}",
+            "max_c": mx, "n_obs": 24, "prev_max_c": prev if prev is not None else mx,
+            "morning_temp_c": morning, "dewpoint_depression_c": dry,
+            "cloud_mean": cloud, "wind_mean": 5.0 + rng.uniform(-1, 1),
+            "precip_total": 0.0,
+            # a near-duplicate of cloud_mean when collinear=True
+            "cloud_max": cloud * 1.0001 + 1e-6 if collinear else min(8, cloud + rng.uniform(0, 2)),
+            "morning_humidity": hum,
+            "wind_max": 7.0 + rng.uniform(-1, 1),
+        })
+        prev = mx
+    return rows
+
+
+def verdicts(fit):
+    return {s["feature"]: s["verdict"] for s in fit["selection"]}
+
+
+def test_a_useless_feature_is_rejected_and_says_so():
+    """morning_humidity is pure noise here. Keeping it would still lower the
+    error on the training days, which is the whole reason selection has to be
+    judged somewhere else."""
+    fit, _ = wm.fit_city(synth_plus(400, humidity_effect=0.0), wm.BASE_FEATURES)
+    assert "morning_humidity" not in fit["features"]
+    assert fit["added_features"] == [] or "morning_humidity" not in fit["added_features"]
+    assert any("no material improvement" in v for v in verdicts(fit).values())
+
+
+def test_a_real_feature_is_kept_and_the_reason_is_recorded():
+    fit, _ = wm.fit_city(synth_plus(400, humidity_effect=0.12, noise=0.3), wm.BASE_FEATURES)
+    assert "morning_humidity" in fit["features"], verdicts(fit)
+    assert "kept" in verdicts(fit)["morning_humidity"]
+
+
+def test_a_collinear_feature_is_refused_by_name():
+    """cloud_max as a near-copy of cloud_mean. The normal equations would still
+    return numbers - enormous ones of opposite sign that cancel - and they would
+    move wildly with one more day of data."""
+    fit, _ = wm.fit_city(synth_plus(400, collinear=True), wm.BASE_FEATURES)
+    v = verdicts(fit)
+    assert "cloud_max" not in fit["features"]
+    assert "collinear with cloud_mean" in v.get("cloud_max", ""), v
+
+
+def test_selection_never_looks_at_the_holdout():
+    """The holdout's one job is to be the first data the finished model has
+    ever seen. If selection could see it, its score would describe the
+    selection rather than the model - so removing the last quarter must not
+    change which features were chosen."""
+    # Both sets share their first 300 days, so the TRAINING window is
+    # identical and only the holdout differs. Trimming the list instead would
+    # have changed the training data too and tested nothing.
+    shared = synth_plus(400, humidity_effect=0.12, noise=0.3, seed=7)[:300]
+    a = shared + synth_plus(400, humidity_effect=0.12, noise=0.3, seed=11)[300:]
+    b = shared + synth_plus(400, humidity_effect=0.12, noise=0.3, seed=99)[300:]
+    fa, _ = wm.fit_city(a, wm.BASE_FEATURES)
+    fb, _ = wm.fit_city(b, wm.BASE_FEATURES)
+    assert fa["features"] == fb["features"], (fa["features"], fb["features"])
+
+
+def test_a_leaky_feature_is_refused_loudly():
+    """diurnal_range_c is max_c - min_c. A model using it reports a spectacular
+    error and is worth nothing forward, and the number that would give it away
+    is the one it improves - so this has to raise, not warn."""
+    for leak in ("diurnal_range_c", "morning_to_max_c", "max_c"):
+        with pytest.raises(ValueError, match="derived from it|contain the target"):
+            wm.fit_city(synth_plus(200), wm.BASE_FEATURES + [leak])
+
+
+def test_the_new_features_exist_on_both_sides_of_the_join():
+    """A feature the FORECAST table lacks can be fitted and then never applied,
+    and the failure is silent - forecast_city skips any row missing a feature.
+    Checked against the two DDLs rather than a copy of them."""
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parents[1] / "sql"
+    fc = re.search(r"create table if not exists weather_forecast_features \((.*?)\n\);",
+                   (root / "ad4_24_nws_gridpoint.sql").read_text(), re.S).group(1)
+    forecast_cols = {m.group(1) for line in fc.splitlines()
+                     if (m := re.match(r"\s{2}([a-z_]+)\s+\S", line))}
+    observed = (root / "ad4_21_weather_features.sql").read_text()
+
+    for f in wm.CANDIDATE_FEATURES:
+        assert f in forecast_cols, f"{f} is not in weather_forecast_features"
+        assert f in observed, f"{f} is not in v_city_day_features"
+
+
+def test_every_key_written_to_the_model_table_is_a_column():
+    """The same failure mode as derived_model_forecast: PostgREST rejects the
+    whole batch on one unknown column, and the 400 names the column but not the
+    cause. `selection` was added to the payload before it existed in the DDL."""
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    ddl = (root / "sql" / "ad4_21_weather_features.sql").read_text()
+    body = re.search(r"create table if not exists derived_weather_model \((.*?)\n\);", ddl, re.S).group(1)
+    cols = {m.group(1) for line in body.splitlines()
+            if (m := re.match(r"\s{2}([a-z_]+)\s+\S", line))}
+    cols |= set(re.findall(r"alter table derived_weather_model add column if not exists ([a-z_]+)", ddl))
+    assert "coefficients" in cols, "the DDL was not parsed"
+
+    src = (root / "scripts" / "weather_model.py").read_text()
+    # the derived_weather_model payload specifically - forecast_city has an
+    # out.append too, and matching the first one tested the wrong table
+    payload = re.search(r'out\.append\(\{\s*\n\s*"city_key": city, "target": "max_c"(.*?)\n        \}\)',
+                        src, re.S).group(1)
+    written = set(re.findall(r'"([a-z_]+)":', payload))
+    assert written <= cols, sorted(written - cols)
