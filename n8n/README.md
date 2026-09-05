@@ -12,6 +12,23 @@ last run of each whichever way it was started.
 > workflows writing the same tables. Import them OFF, test, then swap one at
 > a time - `docs/n8n_setup.md` step 5.
 
+## If you are re-importing P1.2, P1.3 or P1.4
+
+They failed on every city until now, for one reason worth knowing about if you
+ever add another weather.gov node.
+
+n8n's HTTP Request node decides how to decode a response from `Content-Type`,
+and its autodetect asks whether that header contains `application/json`.
+api.weather.gov answers `application/geo+json`, and `application/problem+json`
+on an error. Neither contains that substring, so every response was decoded as
+**text**: the Code node received `{ data: "{\"properties\":..." }` with no
+`properties`, no `status` and no `title` — nothing to read, and nothing to
+report beyond a count of failures.
+
+Every node that calls api.weather.gov now sets **Options → Response → Response
+Format = JSON** explicitly. Do the same on any node you add. The Code nodes also
+re-parse a string body, so a build of n8n that ignores the option still works.
+
 | Workflow | Webhook path |
 |---|---|
 | P0.2 Market Discovery | `/webhook/ad4-market-discovery` |

@@ -8,7 +8,23 @@ check that it worked.
 
 ---
 
-## A — Run 6 SQL files
+## Start here if you have already done most of this
+
+Four things changed after the last round, and every one of them is a bug that
+was stopping something from working. In order:
+
+| Re-do | Because |
+|---|---|
+| **SQL 8, 9, 10** (`ad4_21`, `ad4_28`, `ad4_29`) | Archive Observations failed with a bare HTTP 500. The cache refresh was one 6.5-second statement and Supabase cancels it. It is per-city now, which needed a one-word change in `ad4_21` to be fast. |
+| **Re-import n8n P1.2, P1.3, P1.4** | This is why all 37 cities failed. weather.gov answers `application/geo+json`; n8n's autodetect only recognises `application/json`, so every response was decoded as **text** and there was nothing to read. The fetch nodes now ask for JSON explicitly. |
+| Nothing — Data Bank, Live Weather and Signals | Fixed in code. They were 409/400 write errors and just need re-running. |
+
+The n8n re-import is the one that matters most: until it is done, P1.2 and P1.3
+cannot work, and nothing else on this page can substitute for them.
+
+---
+
+## A — Run 10 SQL files
 
 Supabase → **SQL Editor** → paste the whole file → **Run**. One at a time,
 **in this order**. Each one is safe to run again if you are unsure.
@@ -22,10 +38,20 @@ Supabase → **SQL Editor** → paste the whole file → **Run**. One at a time,
 | 5 | `sql/ad4_25_model_forecast.sql` | New. AD4's own forecast. |
 | 6 | `sql/ad4_26_temp_trend.sql` | New. Temperature direction + speed. Feeds the City Monitor page. |
 | 7 | `sql/ad4_strategies_seed.sql` | Adds the three new strategies. Safe: it never overwrites an existing row. |
-| 8 | **`sql/ad4_21_weather_features.sql`** | **It changed** — gained `wind_max` and `pressure_change_24h_hpa`, which step 9 needs. Re-run it even if you ran it before. |
-| 9 | **`sql/ad4_28_feature_cache.sql`** | **Fixes the `statement timeout` you were seeing everywhere.** Adds the missing index and caches the four views that scanned the whole archive on every page load. Must come after 26. |
+| 8 | **`sql/ad4_21_weather_features.sql`** | **It changed again.** Earlier it gained `wind_max` and `pressure_change_24h_hpa`; now its `obs` CTE is `not materialized`, which is what lets a per-city read use the index instead of scanning the whole archive (823 ms → 54 ms). Step 9 depends on that. Re-run it. |
+| 9 | **`sql/ad4_28_feature_cache.sql`** | **It changed.** Still fixes the `statement timeout` — the missing index, and the four views that scanned the whole archive on every page load — but `refresh_feature_cache()` now takes a city so the caller can split it. Must come after 26. |
 
-| 10 | **`sql/ad4_29_retention.sql`** | Lets you archive cold observations out of Supabase so the free tier lasts. See **Section F**. |
+| 10 | **`sql/ad4_29_retention.sql`** | **It changed.** Lets you archive cold observations out of Supabase so the free tier lasts (**Section F**) — and carries the same `refresh_feature_cache()` as step 9, byte for byte, so running 9 and 10 in either order gives the same result. |
+
+### Why 8, 9 and 10 must all be re-run together
+
+`refresh_feature_cache()` is declared identically in 9 and 10 on purpose. They
+used to differ — 9 rebuilt the cache whole, 10 made it incremental — and that
+made run order silently destructive: re-running 9 after 10 put the rebuild-whole
+version back, and after a prune "rebuild whole" destroys exactly the history the
+prune preserved. Now either order, any number of times, gives the same function.
+
+8 has to come first because the speed of 9 and 10 depends on it.
 
 ### If step 9 refuses
 
@@ -65,11 +91,37 @@ n8n → **Workflows → Import from File**. One at a time.
 | File | New or re-import |
 |---|---|
 | `n8n/P1.1_live_weather_alerts.template.json` | re-import (the schedule bug is fixed) |
-| `n8n/P1.2_nws_monitor.template.json` | **re-import, and the most important one** — see below |
-| `n8n/P1.3_nws_forecast.template.json` | new |
-| `n8n/P1.4_nws_gridpoint.template.json` | new |
+| `n8n/P1.2_nws_monitor.template.json` | **re-import — this is the fix for "37 failed"** |
+| `n8n/P1.3_nws_forecast.template.json` | **re-import — same fix** |
+| `n8n/P1.4_nws_gridpoint.template.json` | **re-import — same fix** |
 | `n8n/P3.1_email_digests.template.json` | new |
 | `n8n/P4.1_health_watchdog.template.json` | new |
+
+### Why P1.2, P1.3 and P1.4 all failed, and what changed
+
+Every request to api.weather.gov failed in all three, for one reason.
+
+n8n's HTTP node works out how to decode a response from its `Content-Type`, and
+the check it makes is whether that header contains `application/json`.
+api.weather.gov answers `application/geo+json` — and `application/problem+json`
+when it is reporting an error. Neither contains that string. So n8n decoded
+every response as **plain text**, and the workflow received
+
+```
+{ "data": "{\"properties\":{\"forecastHourly\":\"https://...\"}}" }
+```
+
+a string, with no `properties` to read, no `status` to check and no `title` to
+match. Not a 404, not a request error, not a bad station — nothing at all. That
+is precisely, and only, what *"0 are not US locations, 37 failed"* meant.
+
+The six fetch nodes now set **Response Format = JSON** explicitly, and the code
+re-parses a string body anyway, so it works either way. There is nothing for you
+to configure — just import the new files.
+
+If you ever see it again, the error now says so on its **first line**, with the
+node and the setting to change. (It said it before, on line three, under a blank
+line — which is why this took three rounds to find.)
 
 If you already imported an older copy of one of these, delete the old one first.
 Two copies is the same problem as above.
@@ -201,6 +253,11 @@ itself. Against a ~2,000/month cap that leaves room, but check
 ---
 
 ## D — Run the GitHub Actions, in order
+
+> **"Are all of these necessary?"** — twelve are load-bearing, one is monthly,
+> one is on demand, one is a fallback and three are not data jobs. One line on
+> each, with run counts, in `docs/compute_budget.md` → *Is every Action
+> necessary?*. The two that were 89% of your bill are already off.
 
 GitHub → **Actions** → pick the workflow → **Run workflow**.
 
