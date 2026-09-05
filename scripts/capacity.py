@@ -33,6 +33,26 @@ def main():
     # v_city_stats time out in the browser; it belongs here, with the other
     # daily derivations. Optional: a database without ad4_19 simply has no such
     # function, and nothing else in this job depends on it.
+    # THE PEAK HOUR NOTHING WAS COMPUTING.
+    #
+    # derived_weather_peak holds each city's measured peak hour and window
+    # width per calendar month. live_weather.minutes_to_peak, v_city_stats,
+    # v_trade_timing and strategy s7 all read it - and nothing in this repo
+    # ever wrote it, so every one of them has been silently running on a
+    # fallback since the schema was created. sql/ad4_37_peak_hour.sql adds the
+    # function; this is where it belongs, next to the other daily passes over
+    # the archive.
+    #
+    # Optional in the same way refresh_city_climate is: a database without
+    # ad4_37 has no such function, and nothing else in this job depends on it.
+    peaks = None
+    try:
+        peaks = _call_rpc("refresh_weather_peak")
+        print(f"derived_weather_peak: {peaks} city-month row(s)")
+    except Exception as e:
+        print(f"  note: refresh_weather_peak unavailable ({e}) - run sql/ad4_37_peak_hour.sql",
+              file=sys.stderr)
+
     climate = None
     try:
         climate = _call_rpc("refresh_city_climate")

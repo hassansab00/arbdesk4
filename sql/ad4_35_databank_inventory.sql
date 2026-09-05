@@ -136,7 +136,7 @@ begin
       ('Climb profile',           3, 'per city and local hour: how much this city HISTORICALLY still climbs',
        'sql/ad4_28 refresh_feature_cache', 'derived_climb_profile', 'computed_at'),
       ('Peak hour',               4, 'per city and month: when the maximum is actually made, and how wide the window is',
-       'Actions -> Regime', 'derived_weather_peak', 'computed_at'),
+       'sql/ad4_37 refresh_weather_peak, via Actions -> Derived Recompute', 'derived_weather_peak', 'computed_at'),
       ('City correlation',        5, 'which cities move together - ten positions across correlated cities is not ten bets',
        'Actions -> Capacity', 'derived_city_correlation', 'computed_at'),
       ('Frozen band outcomes',    6, 'what was predicted against what settled - the only asset nobody else has',

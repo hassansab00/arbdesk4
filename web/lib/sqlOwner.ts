@@ -85,6 +85,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_model_forecast_skill": "ad4_25_model_forecast.sql",
   "v_opportunities": "ad4_13_reconcile.sql",
   "v_opportunity_context": "ad4_22_opportunity_context.sql",
+  "v_peak_hour_coverage": "ad4_37_peak_hour.sql",
   "v_persistence_skill": "ad4_21_weather_features.sql",
   "v_prediction_ladder": "ad4_31_predictive.sql",
   "v_prediction_scorecard": "ad4_31_predictive.sql",
