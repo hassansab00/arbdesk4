@@ -41,9 +41,20 @@ def main():
         print(f"  note: refresh_city_climate unavailable ({e}) - run sql/ad4_19_stats_cache.sql",
               file=sys.stderr)
 
+    # Same reasoning, same place: v_city_day_features and the climb profile are
+    # passes over the whole archive for figures that change once a day. Left in
+    # the browser they cost 1-3 seconds each and Supabase cancels the statement.
+    features = None
+    try:
+        features = _call_rpc("refresh_feature_cache")
+        print(f"feature cache: {features}")
+    except Exception as e:
+        print(f"  note: refresh_feature_cache unavailable ({e}) - run sql/ad4_28_feature_cache.sql",
+              file=sys.stderr)
+
     log_run("capacity", "ok", (capacity_rows or 0) + (correlation_rows or 0),
             {"capacity_rows": capacity_rows, "correlation_rows": correlation_rows,
-             "climate": climate})
+             "climate": climate, "features": features})
 
 
 if __name__ == "__main__":

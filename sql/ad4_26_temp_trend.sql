@@ -166,7 +166,12 @@ comment on view v_city_temp_trend is
 --    v_city_day_features uses: a sparsely observed day has an understated
 --    maximum and would make the remaining climb look smaller than it is.
 -- --------------------------------------------------------------------------
-create or replace view v_city_climb_profile as
+-- ADAPTIVE. sql/ad4_28 caches this into derived_climb_profile because the live
+-- computation is two years of hourly observations windowed per city-day - 2.0s
+-- on a modest archive, which Supabase cancels. Re-running THIS file must not
+-- quietly put the slow version back under the name the UI reads, so when the
+-- cache exists the live definition goes to _live and the cache keeps the name.
+create or replace view v_city_climb_profile_live as
 with hourly as (
   select
     o.city_key,
@@ -223,8 +228,26 @@ from ahead a
 group by a.city_key, a.local_hour
 having count(*) >= 20;
 
-comment on view v_city_climb_profile is
+comment on view v_city_climb_profile_live is
   'Measured, per city and local hour: how much more the day still climbed, historically. Turns a slope into a decision - +0.9C/h at 13:00 is ordinary in Phoenix and remarkable in Seattle.';
+
+do $ad4$
+begin
+  if to_regclass('public.derived_climb_profile') is not null then
+    execute $v$
+      create or replace view v_city_climb_profile as
+      select city_key, local_hour, n_days, typical_climb_left_c, climb_left_sd_c,
+             climb_left_p10_c, climb_left_p90_c, pct_already_peaked
+      from derived_climb_profile $v$;
+    raise notice 'ad4_26: v_city_climb_profile reads the ad4_28 cache (fast). The live computation is v_city_climb_profile_live.';
+  else
+    execute $v$
+      create or replace view v_city_climb_profile as
+      select * from v_city_climb_profile_live $v$;
+    raise notice 'ad4_26: v_city_climb_profile computes live - run sql/ad4_28_feature_cache.sql to cache it, or a page load pays seconds for it.';
+  end if;
+end
+$ad4$;
 
 
 -- --------------------------------------------------------------------------
@@ -312,7 +335,8 @@ do $ad4$
 declare o text; r text;
 begin
   foreach o in array array['v_city_today_readings', 'v_city_temp_trend',
-                           'v_city_climb_profile', 'v_city_peak_approach',
+                           'v_city_climb_profile', 'v_city_climb_profile_live',
+                           'v_city_peak_approach',
                            'v_band_price_history'] loop
     if to_regclass('public.' || o) is null then continue; end if;
     foreach r in array array['anon', 'authenticated'] loop

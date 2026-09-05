@@ -21,7 +21,8 @@ Supabase → **SQL Editor** → paste the whole file → **Run**. One at a time,
 | 4 | `sql/ad4_24_nws_gridpoint.sql` | The one that failed for you. It no longer stops on a missing view. |
 | 5 | `sql/ad4_25_model_forecast.sql` | New. AD4's own forecast. |
 | 6 | `sql/ad4_26_temp_trend.sql` | New. Temperature direction + speed. Feeds the City Monitor page. |
-| 7 | `sql/ad4_strategies_seed.sql` | Adds the two new strategies. Safe: it never overwrites an existing row. |
+| 7 | `sql/ad4_strategies_seed.sql` | Adds the three new strategies. Safe: it never overwrites an existing row. |
+| 8 | **`sql/ad4_28_feature_cache.sql`** | **Fixes the `statement timeout` you were seeing everywhere.** Adds the missing index and caches the four views that scanned the whole archive on every page load. Must come after 26. |
 
 ### If step 1 says `v_city_day_features MISSING`
 

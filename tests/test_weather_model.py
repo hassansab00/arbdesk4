@@ -439,3 +439,23 @@ def test_every_key_written_to_the_model_table_is_a_column():
                         src, re.S).group(1)
     written = set(re.findall(r'"([a-z_]+)":', payload))
     assert written <= cols, sorted(written - cols)
+
+
+def test_the_cache_does_not_smuggle_a_leaky_column_into_the_model():
+    """sql/ad4_28 materialises v_city_day_features - diurnal_range_c included,
+    because the cache mirrors the view. That column must still be unusable: a
+    cache is a performance decision, never a change to what may be fitted."""
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parents[1] / "sql"
+    ddl = (root / "ad4_28_feature_cache.sql").read_text()
+    body = re.search(r"create table if not exists derived_city_day_features \((.*?)\n\);", ddl, re.S).group(1)
+    cached = {m.group(1) for line in body.splitlines()
+              if (m := re.match(r"\s{2}([a-z_0-9]+)\s+\S", line))}
+    assert "diurnal_range_c" in cached, "the cache no longer mirrors the view"
+
+    # every leaky column that reached the cache is still refused by the fit
+    for col in wm.LEAKY_FEATURES & cached:
+        with pytest.raises(ValueError):
+            wm.fit_city(synth_plus(200), wm.BASE_FEATURES + [col])
