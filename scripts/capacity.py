@@ -11,7 +11,7 @@ scheduling/logging wrapper so the job shows up in `ingest_log` next to
 every other daily job, consistent with how the rest of AD4 is run.
 """
 import sys
-from common import _cfg, _headers, log_run
+from common import _cfg, _headers, log_run, refresh_feature_cache
 import requests
 
 
@@ -44,18 +44,35 @@ def main():
     # Same reasoning, same place: v_city_day_features and the climb profile are
     # passes over the whole archive for figures that change once a day. Left in
     # the browser they cost 1-3 seconds each and Supabase cancels the statement.
-    features = None
+    #
+    # Per city, because statement_timeout is measured from the TOP-LEVEL
+    # statement and never reset by what a function runs inside itself - so the
+    # whole-archive call was one ~6.5 second statement that Supabase cancels,
+    # reaching here as a bare HTTP 500. See common.refresh_feature_cache.
+    #
+    # AND IT IS NO LONGER A NOTE. This used to swallow every failure into a
+    # one-line "unavailable" on stderr and report the job green - so when the
+    # refresh started failing, this job kept passing and the cache silently
+    # stopped being updated. The UI, the analytics views and the model all read
+    # that cache. A missing ad4_28 is still just a note; anything else fails the
+    # job, which is the only way anyone finds out.
+    features, features_error = None, None
     try:
-        features = _call_rpc("refresh_feature_cache")
-        print(f"feature cache: {features}")
+        features = refresh_feature_cache()
+    except RuntimeError as e:                     # signature missing: ad4_28/29 not run
+        print(f"  note: {e}", file=sys.stderr)
     except Exception as e:
-        print(f"  note: refresh_feature_cache unavailable ({e}) - run sql/ad4_28_feature_cache.sql",
-              file=sys.stderr)
+        features_error = str(e)
+        print(f"refresh_feature_cache FAILED: {e}", file=sys.stderr)
 
-    log_run("capacity", "ok", (capacity_rows or 0) + (correlation_rows or 0),
+    log_run("capacity", "attention" if features_error else "ok",
+            (capacity_rows or 0) + (correlation_rows or 0),
             {"capacity_rows": capacity_rows, "correlation_rows": correlation_rows,
-             "climate": climate, "features": features})
+             "climate": climate, "features": features, "features_error": features_error})
+    if features_error:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)

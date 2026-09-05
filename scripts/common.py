@@ -32,41 +32,138 @@ def rest(path, params=None):
     r.raise_for_status()
     return r.json()
 
+def by_shape(rows):
+    """Split rows into groups that all carry the SAME set of keys.
+
+    PostgREST refuses a bulk POST whose objects differ in their keys -
+    `PGRST102: All object keys must match` - because one INSERT statement has
+    one column list. Live Weather hit this the moment a poll produced two
+    different kinds of event in the same batch: a SPIKE carries change_c, a
+    CONDITION_CHANGE does not, and the whole write failed with none of it
+    landing.
+
+    Grouping rather than filling the gaps with nulls is deliberate. An absent
+    key takes the column's DEFAULT; an explicit null overrides it. Normalising
+    would have quietly turned `detected_at default now()` into NULL for any
+    row that did not mention it.
+
+    Order is preserved within each group, and groups come back in the order
+    their first row appeared, so a caller's rows are written in the order it
+    built them.
+    """
+    groups, order = {}, []
+    for r in rows:
+        sig = tuple(sorted(r.keys()))
+        if sig not in groups:
+            groups[sig] = []
+            order.append(sig)
+        groups[sig].append(r)
+    return [groups[sig] for sig in order]
+
+def _post_rows(table, rows, headers, params, chunk, verb):
+    written = 0
+    for group in by_shape(rows):
+        for i in range(0, len(group), chunk):
+            batch = group[i:i+chunk]
+            r = requests.post(f"{_cfg()['url']}/rest/v1/{table}",
+                              headers=headers, params=params or {},
+                              data=json.dumps(batch), timeout=120)
+            if r.status_code >= 400:
+                print(f"  ! {table} {verb} failed {r.status_code}: {r.text[:300]}", file=sys.stderr)
+                r.raise_for_status()
+            written += len(batch)
+    return written
+
 def insert(table, rows, chunk=500):
     """Plain append - for time-series tables where every row is new (each
-    run stamps its own computed_at/detected_at), no on_conflict needed."""
+    run stamps its own computed_at/detected_at), no on_conflict needed.
+
+    Rows may differ in which optional keys they carry; see by_shape."""
     if not rows:
         return 0
-    written = 0
     h = _headers()
     h["Prefer"] = "return=minimal"
-    for i in range(0, len(rows), chunk):
-        batch = rows[i:i+chunk]
-        r = requests.post(f"{_cfg()['url']}/rest/v1/{table}",
-                          headers=h, data=json.dumps(batch), timeout=120)
-        if r.status_code >= 400:
-            print(f"  ! {table} insert failed {r.status_code}: {r.text[:300]}", file=sys.stderr)
-            r.raise_for_status()
-        written += len(batch)
-    return written
+    return _post_rows(table, rows, h, None, chunk, "insert")
 
 def upsert(table, rows, on_conflict, chunk=500):
     """Insert rows, ignoring duplicates on the given unique key."""
     if not rows:
         return 0
-    written = 0
     h = _headers()
     h["Prefer"] = "resolution=ignore-duplicates,return=minimal"
-    for i in range(0, len(rows), chunk):
-        batch = rows[i:i+chunk]
-        r = requests.post(f"{_cfg()['url']}/rest/v1/{table}",
-                          headers=h, params={"on_conflict": on_conflict},
-                          data=json.dumps(batch), timeout=120)
-        if r.status_code >= 400:
-            print(f"  ! {table} write failed {r.status_code}: {r.text[:300]}", file=sys.stderr)
-            r.raise_for_status()
-        written += len(batch)
-    return written
+    return _post_rows(table, rows, h, {"on_conflict": on_conflict}, chunk, "write")
+
+def rpc(fn, params=None, timeout=120):
+    """POST to a PostgREST RPC, putting the SERVER's message in the exception.
+
+    raise_for_status() throws the response body away, and the body is where
+    Postgres puts the reason. Every failure of refresh_feature_cache - a
+    cancelled statement, a missing dependency, a genuine bug - arrived here as
+    the identical string "500 Server Error for url: .../refresh_feature_cache",
+    which is not a diagnosis.
+    """
+    r = requests.post(f"{_cfg()['url']}/rest/v1/rpc/{fn}", headers=_headers(),
+                      data=json.dumps(params or {}), timeout=timeout)
+    if r.status_code >= 400:
+        raise requests.HTTPError(f"{fn} -> HTTP {r.status_code}: {r.text[:400]}",
+                                 response=r)
+    return r.json()
+
+
+def refresh_feature_cache(days=None, quiet=False):
+    """Refresh the derived caches ONE CITY AT A TIME, and raise if any fail.
+
+    WHY PER CITY. statement_timeout is measured from the start of the TOP-LEVEL
+    statement and is never reset by the statements a function runs inside
+    itself. So `select refresh_feature_cache()` is one statement no matter how
+    the function is written internally, and over a 710k-row archive it takes
+    ~6 seconds - past what Supabase allows, which reaches a caller over
+    PostgREST as a bare HTTP 500. Splitting has to happen out here, where each
+    slice is genuinely its own statement: ~200ms a city, each with a fresh
+    timeout, at any archive size.
+
+    Raises on the first city that fails. Callers that prune must not proceed on
+    a partial cache - the cache is what survives the prune.
+    """
+    cities = [c["city_key"] for c in
+              rest("cities", [("select", "city_key"), ("order", "city_key")])]
+    if not cities:
+        return {"cities": 0, "city_days_total": 0}
+
+    params = {"p_days": days} if days is not None else {}
+    try:
+        first = rpc("refresh_feature_cache", {**params, "p_city": cities[0]})
+    except requests.HTTPError as e:
+        body = getattr(e.response, "text", "") or ""
+        if "PGRST202" in body or "PGRST203" in body:
+            raise RuntimeError(
+                "refresh_feature_cache does not accept p_city on this database - "
+                "re-run sql/ad4_28_feature_cache.sql and sql/ad4_29_retention.sql "
+                "(they changed: the refresh is per city now, because the "
+                "whole-archive version exceeds the statement timeout)") from e
+        raise
+
+    results = [first or {}]
+    for city in cities[1:]:
+        results.append(rpc("refresh_feature_cache", {**params, "p_city": city}) or {})
+
+    def total_of(key):
+        return sum(int(r.get(key) or 0) for r in results)
+
+    out = {
+        "cities": len(cities),
+        "city_days_touched": total_of("city_days_touched"),
+        "city_hours": total_of("city_hours"),
+        # city_days_total is a count of the whole cache, the same on every call
+        "city_days_total": int(results[-1].get("city_days_total") or 0),
+        "refreshed_from": results[-1].get("refreshed_from"),
+        "slowest_call_ms": max((int(r.get("ms") or 0) for r in results), default=0),
+        "total_ms": total_of("ms"),
+    }
+    if not quiet:
+        print(f"feature cache: {out}")
+    return out
+
 
 def log_run(job, status, rows, detail):
     try:

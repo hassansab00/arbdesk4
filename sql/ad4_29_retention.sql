@@ -44,78 +44,112 @@ $ad4$;
 --    first day of every refresh would get a null lag and quietly lose its
 --    carry-over term.
 -- --------------------------------------------------------------------------
--- Same signature as ad4_28's, deliberately, so this REPLACES rather than
--- overloads. Two overloads make a bare `select refresh_feature_cache()` fail
--- with "function is not unique" - which is how scripts/capacity.py calls it.
--- The drop below cleans up databases that ran the first version of ad4_28,
--- which declared it with no arguments at all.
+-- ONE SIGNATURE, and the drops below make sure of it. Two overloads make a
+-- bare `select refresh_feature_cache()` fail with "function is not unique",
+-- which is exactly how scripts/capacity.py calls it. The drops clean up
+-- databases that ran either earlier version - ad4_28's no-argument one, and
+-- the one-argument one this file used to declare.
 drop function if exists refresh_feature_cache();
+drop function if exists refresh_feature_cache(int);
 
-create or replace function refresh_feature_cache(p_days int default null)
+create or replace function refresh_feature_cache(p_days int default null,
+                                                 p_city text default null)
 returns jsonb language plpgsql security definer as $ad4$
 declare
   t0 timestamptz := clock_timestamp();
   v_from date;
-  v_days int; v_hours int; v_kept int;
+  v_days int := 0; v_hours int := 0; v_kept int; v_n int;
+  v_city text;
 begin
   -- null means "everything raw observations still cover", which is the right
   -- default both before and after a prune.
   if p_days is null then
-    select min((valid_at at time zone 'UTC')::date) into v_from from weather_observations;
+    select min((valid_at at time zone 'UTC')::date) into v_from from weather_observations
+     where p_city is null or city_key = p_city;
   else
     v_from := current_date - p_days;
   end if;
   -- two days of margin so the lag terms on the boundary day are real
   v_from := coalesce(v_from, current_date) - 2;
 
-  insert into derived_city_day_features (
-    city_key, obs_date, max_c, min_c, diurnal_range_c, n_obs, prev_max_c,
-    delta_max_c, morning_temp_c, morning_dewpoint_c, dewpoint_depression_c,
-    morning_humidity, morning_pressure_hpa, morning_to_max_c, cloud_mean,
-    cloud_max, wind_mean, wind_max, precip_total, pressure_change_24h_hpa,
-    computed_at)
-  select
-    city_key, obs_date, max_c, min_c, diurnal_range_c, n_obs, prev_max_c,
-    delta_max_c, morning_temp_c, morning_dewpoint_c, dewpoint_depression_c,
-    morning_humidity, morning_pressure_hpa, morning_to_max_c, cloud_mean,
-    cloud_max, wind_mean, wind_max, precip_total, pressure_change_24h_hpa,
-    now()
-  from v_city_day_features
-  where obs_date >= v_from
-  on conflict (city_key, obs_date) do update set
-    max_c = excluded.max_c, min_c = excluded.min_c,
-    diurnal_range_c = excluded.diurnal_range_c, n_obs = excluded.n_obs,
-    prev_max_c = excluded.prev_max_c, delta_max_c = excluded.delta_max_c,
-    morning_temp_c = excluded.morning_temp_c,
-    morning_dewpoint_c = excluded.morning_dewpoint_c,
-    dewpoint_depression_c = excluded.dewpoint_depression_c,
-    morning_humidity = excluded.morning_humidity,
-    morning_pressure_hpa = excluded.morning_pressure_hpa,
-    morning_to_max_c = excluded.morning_to_max_c,
-    cloud_mean = excluded.cloud_mean, cloud_max = excluded.cloud_max,
-    wind_mean = excluded.wind_mean, wind_max = excluded.wind_max,
-    precip_total = excluded.precip_total,
-    pressure_change_24h_hpa = excluded.pressure_change_24h_hpa,
-    computed_at = now();
-  get diagnostics v_days = row_count;
+  -- p_city IS THE WHOLE POINT, and it exists because of how statement_timeout
+  -- actually works.
+  --
+  -- The timer starts when the TOP-LEVEL statement starts and is never reset by
+  -- the statements a function runs inside itself. So a plpgsql loop cannot
+  -- rescue a call that is too slow: `select refresh_feature_cache()` is one
+  -- statement whether it runs one query or a thousand, and on a 710k-row
+  -- archive it took ~6.3 s and Supabase cancelled it - which reaches the caller
+  -- over PostgREST as a bare HTTP 500 with no message. Archive Observations
+  -- then refused to prune (correctly - the cache is what survives a prune) and
+  -- Derived Recompute swallowed the same failure as a note, so the cache
+  -- quietly stopped being refreshed at all while every job reported success.
+  --
+  -- Splitting has to happen where each slice is its own statement, so the
+  -- CALLER loops: scripts/capacity.py and scripts/archive_observations.py call
+  -- this once per city. Each call is ~100 ms and gets its own fresh timeout, on
+  -- any box, at any archive size. Called with no city it still does everything,
+  -- which is fine by hand and on a small database.
+  for v_city in
+    select city_key from cities
+     where p_city is null or city_key = p_city
+     order by city_key
+  loop
+    insert into derived_city_day_features (
+      city_key, obs_date, max_c, min_c, diurnal_range_c, n_obs, prev_max_c,
+      delta_max_c, morning_temp_c, morning_dewpoint_c, dewpoint_depression_c,
+      morning_humidity, morning_pressure_hpa, morning_to_max_c, cloud_mean,
+      cloud_max, wind_mean, wind_max, precip_total, pressure_change_24h_hpa,
+      computed_at)
+    select
+      city_key, obs_date, max_c, min_c, diurnal_range_c, n_obs, prev_max_c,
+      delta_max_c, morning_temp_c, morning_dewpoint_c, dewpoint_depression_c,
+      morning_humidity, morning_pressure_hpa, morning_to_max_c, cloud_mean,
+      cloud_max, wind_mean, wind_max, precip_total, pressure_change_24h_hpa,
+      now()
+    from v_city_day_features
+    where city_key = v_city and obs_date >= v_from
+    on conflict (city_key, obs_date) do update set
+      max_c = excluded.max_c, min_c = excluded.min_c,
+      diurnal_range_c = excluded.diurnal_range_c, n_obs = excluded.n_obs,
+      prev_max_c = excluded.prev_max_c, delta_max_c = excluded.delta_max_c,
+      morning_temp_c = excluded.morning_temp_c,
+      morning_dewpoint_c = excluded.morning_dewpoint_c,
+      dewpoint_depression_c = excluded.dewpoint_depression_c,
+      morning_humidity = excluded.morning_humidity,
+      morning_pressure_hpa = excluded.morning_pressure_hpa,
+      morning_to_max_c = excluded.morning_to_max_c,
+      cloud_mean = excluded.cloud_mean, cloud_max = excluded.cloud_max,
+      wind_mean = excluded.wind_mean, wind_max = excluded.wind_max,
+      precip_total = excluded.precip_total,
+      pressure_change_24h_hpa = excluded.pressure_change_24h_hpa,
+      computed_at = now();
+    get diagnostics v_n = row_count;
+    v_days := v_days + v_n;
 
-  -- The climb profile is a whole-history aggregate, so it is still rebuilt
-  -- whole - but from the CACHE, not from raw observations, so it keeps
-  -- working after a prune. That is the reason it is redefined here.
-  delete from derived_climb_profile;
-  insert into derived_climb_profile (
-    city_key, local_hour, n_days, typical_climb_left_c, climb_left_sd_c,
-    climb_left_p10_c, climb_left_p90_c, pct_already_peaked)
-  select city_key, local_hour, n_days, typical_climb_left_c, climb_left_sd_c,
-         climb_left_p10_c, climb_left_p90_c, pct_already_peaked
-  from v_city_climb_profile_live;
-  get diagnostics v_hours = row_count;
+    -- The climb profile is a whole-history aggregate, so it is still rebuilt
+    -- whole - but from the CACHE, not from raw observations, so it keeps
+    -- working after a prune. That is the reason it is redefined here. The
+    -- delete sits inside the loop so a city is never left with its old rows
+    -- gone and its new ones not yet written.
+    delete from derived_climb_profile where city_key = v_city;
+    insert into derived_climb_profile (
+      city_key, local_hour, n_days, typical_climb_left_c, climb_left_sd_c,
+      climb_left_p10_c, climb_left_p90_c, pct_already_peaked)
+    select city_key, local_hour, n_days, typical_climb_left_c, climb_left_sd_c,
+           climb_left_p10_c, climb_left_p90_c, pct_already_peaked
+    from v_city_climb_profile_live
+    where city_key = v_city;
+    get diagnostics v_n = row_count;
+    v_hours := v_hours + v_n;
+  end loop;
 
   select count(*) into v_kept from derived_city_day_features;
 
   return jsonb_build_object(
-    'ok', true, 'refreshed_from', v_from, 'city_days_touched', v_days,
-    'city_days_total', v_kept, 'city_hours', v_hours,
+    'ok', true, 'refreshed_from', v_from, 'city', p_city,
+    'city_days_touched', v_days, 'city_days_total', v_kept,
+    'city_hours', v_hours,
     'ms', round(extract(epoch from (clock_timestamp() - t0)) * 1000));
 end;
 $ad4$;
@@ -227,7 +261,7 @@ begin
   end if;
   foreach r in array array['anon', 'authenticated', 'service_role'] loop
     if exists (select 1 from pg_roles where rolname = r) then
-      execute format('grant execute on function refresh_feature_cache(int) to %I', r);
+      execute format('grant execute on function refresh_feature_cache(int, text) to %I', r);
     end if;
   end loop;
 end
