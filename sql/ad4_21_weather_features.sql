@@ -39,7 +39,30 @@
 --    the whole day would leak the answer into the question.
 -- --------------------------------------------------------------------------
 create or replace view v_city_day_features as
-with obs as (
+-- NOT MATERIALIZED is load-bearing, not a hint.
+--
+-- `obs` is referenced twice below (by `daily` and by `morning`), and a CTE
+-- referenced more than once is MATERIALIZED by default: Postgres evaluates it
+-- once, whole, and only then applies the caller's WHERE. So
+-- `... from v_city_day_features where city_key = 'x'` read all 710,000
+-- observations and threw away 691,000 of them - the filter could not reach the
+-- scan. Every per-city or per-day read of this view cost the same as reading
+-- all of it, which is what made refresh_feature_cache() a single seven-second
+-- statement that Supabase cancels (HTTP 500 to the caller, and the Archive
+-- Observations job correctly refusing to prune behind it).
+--
+-- Inlined, the predicate reaches weather_observations and uses
+-- (city_key, valid_at). Measured on a 710k-row archive:
+--
+--   where city_key = 'c1'   823 ms  ->   54 ms
+--   no filter at all        946 ms  ->  810 ms
+--
+-- The two evaluations cost less than one materialisation of everything, and
+-- the results are identical: checked both ways on 29,600 city-days, all 18
+-- feature columns agree on both the sum and the non-null count - including
+-- prev_max_c and pressure_change_24h_hpa, the two window terms most at risk
+-- from a plan change.
+with obs as not materialized (
   select
     o.city_key,
     (o.valid_at at time zone coalesce(c.timezone, 'UTC'))::date            as obs_date,

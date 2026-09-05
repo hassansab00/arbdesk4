@@ -497,3 +497,98 @@ def test_p13_points_failure_names_the_cause_and_blames_p12_first():
     assert r["ok"] is False and r["node"] == "Build forecast urls"
     assert "403" in r["error"] and "User-Agent" in r["error"]
     assert "P1.2" in r["error"], "it must point at the workflow that is actually broken"
+
+
+# ------------------------------------------- the geo+json decode bug -------
+# THE ACTUAL CAUSE of "37 failed" in both P1.2 and P1.3, found only after the
+# diagnostic above was added and still could not be read.
+#
+# n8n's HTTP node autodetects the response format from Content-Type, testing
+# `contentType.includes('application/json')`. api.weather.gov answers
+# `application/geo+json`, which does not contain that substring, so every
+# response was decoded as TEXT and reached the Code nodes as
+# `{ data: "{\"properties\":..." }` - no properties, no status, no title.
+# Not a 404, not an error, nothing to report. Every city, every run, forever.
+
+WEATHER_GOV_FETCHES = {
+    "P1.2_nws_monitor.template.json": ["Fetch observation", "Fetch alerts", "Fetch point"],
+    "P1.3_nws_forecast.template.json": ["Fetch point", "Fetch hourly forecast"],
+    "P1.4_nws_gridpoint.template.json": ["Fetch gridpoint"],
+}
+
+
+@pytest.mark.parametrize("workflow,nodes", sorted(WEATHER_GOV_FETCHES.items()))
+def test_weather_gov_fetches_ask_for_json_explicitly(workflow, nodes):
+    """Autodetect is wrong for every api.weather.gov endpoint. Say json."""
+    d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
+    by_name = {n["name"]: n for n in d["nodes"]}
+    for name in nodes:
+        n = by_name[name]
+        assert n["type"] == "n8n-nodes-base.httpRequest", name
+        resp = n["parameters"].get("options", {}).get("response", {}).get("response", {})
+        assert resp.get("responseFormat") == "json", (
+            f"{workflow} / {name} leaves the response format to autodetect, which "
+            f"decodes application/geo+json as text")
+
+
+def test_a_text_decoded_body_is_parsed_anyway():
+    """Belt and braces: the option above is the fix, but an n8n build that
+    ignores it must not put the desk back where it was."""
+    def m(plan):
+        plan["seed"]["Fetch point"] = [
+            {"data": json.dumps(p)} for p in plan["seed"]["Fetch point"]]
+    r = run_with("P1.3_nws_forecast.template.json", "plan_P1.3_nws_forecast.json", m)
+    assert r["ok"], r
+    urls = [i["hourly_url"] for i in r["outputs"]["Build forecast urls"]]
+    assert urls and all("api.weather.gov" in u for u in urls), urls
+
+
+def test_a_text_decoded_observation_series_is_parsed_anyway():
+    def m(plan):
+        for key in ("Fetch observation", "Fetch alerts", "Fetch point"):
+            plan["seed"][key] = [{"data": json.dumps(p)} for p in plan["seed"][key]]
+    r = run_with("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json", m)
+    assert r["ok"], r
+    assert r["outputs"]["Build rows"][0]["n_obs"] > 0
+
+
+def test_a_text_body_that_is_not_json_names_the_response_format_setting():
+    """The one shape asJson() cannot rescue - a body that is not JSON at all -
+    and the message must say which node to change, not print the count again.
+
+    The cached grid is cleared too: with it, P1.3 assembles the URL itself and
+    never notices, which is the whole point of that fallback existing."""
+    def m(plan):
+        for c in plan["seed"]["Load cities"]:
+            c["nws_grid_wfo"] = c["nws_grid_x"] = c["nws_grid_y"] = None
+        n = len(plan["seed"]["Fetch point"])
+        plan["seed"]["Fetch point"] = [{"data": "<html>503 Service Unavailable</html>"}] * n
+        plan["seed"]["Fetch hourly forecast"] = []
+    r = run_with("P1.3_nws_forecast.template.json", "plan_P1.3_nws_forecast.json", m)
+    assert r["ok"] is False and r["node"] == "Build forecast urls", r
+    first = r["error"].splitlines()[0]
+    assert "TEXT" in first and "Response Format" in first, first
+
+
+@pytest.mark.parametrize("workflow,plan,seed,key", [
+    ("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json",
+     "Fetch observation", "Fetch observation"),
+    ("P1.3_nws_forecast.template.json", "plan_P1.3_nws_forecast.json",
+     "Fetch point", "Fetch point"),
+])
+def test_the_first_line_carries_the_cause_not_the_count(workflow, plan, seed, key):
+    """n8n's error banner shows ONE line, and one line is what gets pasted into
+    a bug report. Three times the reason sat below a blank line, unread, while
+    "37 failed" was reported as if it were the diagnosis."""
+    def m(p):
+        p["seed"][seed] = [{"status": 403, "title": "Forbidden"}] * len(p["seed"][seed])
+        if workflow.startswith("P1.3"):
+            for c in p["seed"]["Load cities"]:
+                c["nws_grid_wfo"] = c["nws_grid_x"] = c["nws_grid_y"] = None
+            p["seed"]["Fetch hourly forecast"] = []
+    r = run_with(workflow, plan, m)
+    assert r["ok"] is False
+    first = r["error"].splitlines()[0]
+    assert "403" in first and "User-Agent" in first, first
+    assert not first.startswith("Parsed 0"), first
+    assert not first.startswith("No forecast URLs"), first

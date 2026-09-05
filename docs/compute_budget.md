@@ -89,6 +89,41 @@ curl -X POST -H "Authorization: Bearer $GH_PAT" \
 
 A daily sweep still picks up anything left queued, so nothing is forgotten.
 
+## Is every Action necessary? One line each
+
+Sixteen workflow files. Thirteen run on a schedule, three do not. Counts are
+runs per month; GitHub bills a **minimum of one minute per job**, rounded up, so
+runs and minutes are close to the same number for the short ones.
+
+| Action | Runs/mo | Necessary? |
+|---|---|---|
+| **Observations** (IEM METAR) | 120 | **Yes.** The second temperature source. Without it there is nothing to check the settlement source against, and `docs/settlement_verification.md` has no evidence base. |
+| **Forecasts** (Open-Meteo) | 30 | **Yes.** The second forecast model. Its disagreement with NWS is what widens sigma — with one model the spread is zero and the whole mechanism is dormant. |
+| **Measure Forecast Skill** | 30 | **Yes.** Scores every model against what happened. This is the number that decides whether AD4's forecast is worth trading on. |
+| **Probability + Edge Pipeline** | 120 | **Yes.** The model. Nothing downstream exists without it. |
+| **Signal Engine** | 120 | **Yes.** Turns edge into signals. Cheap while every strategy is disabled, and it is what you turn on first. |
+| **Settlement Sweep** | 30 | **Yes.** A day that never settles never enters the record, and the record is the only durable asset here. |
+| **Data Bank** | 30 | **Yes.** Freezes what was predicted against what happened. Every improvement is measured against it, and it cannot be reconstructed later. |
+| **Derived Recompute** | 30 | **Yes.** Refreshes the caches every page load reads. Skip it and the UI goes back to timing out. |
+| **Weather Model** | 4 | **Yes,** and weekly is right — a regression on 120+ days barely moves day to day. |
+| **Model Forecast** | 120 | **Yes.** Applies the fitted model forward. Separate from the fit because predicting is cheap and fitting is not. |
+| **Archive Observations** | 1 | **Yes, monthly.** This is what keeps the database inside the free tier. |
+| **Backtest** | 30 | **Kept, but it no longer polls.** It used to run every 10 minutes looking for queued work — 4,320 runs, and 54% of the entire bill. A backtest is something you ask for. |
+| **Live Weather Monitor** | 0 | **No — superseded, kept as a fallback.** n8n P1.2 does this better and far cheaper. Manual trigger only. Use it if n8n is down. |
+| **Tests** | on push | Not a data job. Free-ish and it is what stops a broken script reaching a schedule. |
+| **Web build** | on push | Not a data job. Vercel's build conditions. |
+| **Verify Resolution Source** | manual | An audit you run when you want it, not a schedule. |
+
+So: **twelve are load-bearing, one is monthly, one is on demand, one is a
+fallback, three are not data jobs at all.** Nothing here is redundant with n8n —
+see "Not duplication, deliberate" above for the two pairs that look like they
+are.
+
+If you need to cut further, the honest order is: Signal Engine and Model
+Forecast from 4×/day to 2×/day (−120 runs), then Backtest to weekly (−26). Do
+not cut Observations, Settlement or Data Bank — those three write history that
+cannot be recovered afterwards.
+
 ## The option that removes the limit entirely
 
 **GitHub Actions minutes are free and unlimited on public repositories.** The

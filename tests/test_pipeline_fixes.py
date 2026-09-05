@@ -369,3 +369,277 @@ def test_band_city_map_skips_bands_without_an_id():
     m = {str(b.band_id): b.city_key for b in ctx_bands if getattr(b, "band_id", None)}
     assert m == {"b-1": "chi", "b-2": "mia"}
     assert "None" not in m
+
+
+# --------------------------------------------------------------------------
+# Live Weather Monitor: PGRST102 "All object keys must match"
+#
+# PostgREST turns one bulk POST into one INSERT, which has one column list, so
+# every object in the body must carry the same keys. detect_events() does not:
+# a SPIKE carries change_c, a CONDITION_CHANGE does not, and a PEAK_WINDOW_OPEN
+# carries neither temp_c nor change_c. The first poll that produced two kinds
+# of event in one batch lost the whole write.
+# --------------------------------------------------------------------------
+class _FakePost:
+    """Records the bodies posted, and enforces PostgREST's key-set rule."""
+
+    def __init__(self):
+        self.bodies = []
+
+    def __call__(self, url, headers=None, params=None, data=None, timeout=None):
+        rows = json.loads(data)
+        self.bodies.append(rows)
+        shapes = {tuple(sorted(r.keys())) for r in rows}
+
+        class R:
+            status_code = 400 if len(shapes) > 1 else 201
+            text = '{"code":"PGRST102","message":"All object keys must match"}'
+
+            def raise_for_status(self):
+                if self.status_code >= 400:
+                    raise requests.HTTPError("400")
+        return R()
+
+
+@pytest.fixture
+def posted(monkeypatch):
+    p = _FakePost()
+    monkeypatch.setattr(common, "_config", {"url": "https://x", "key": "k"})
+    monkeypatch.setattr(common.requests, "post", p)
+    return p
+
+
+def test_rows_with_different_keys_are_posted_separately(posted):
+    rows = [
+        {"city_key": "nyc", "kind": "SPIKE", "temp_c": 22.0, "change_c": 2.4},
+        {"city_key": "nyc", "kind": "CONDITION_CHANGE", "detail": {"to": "RAIN"}},
+        {"city_key": "chicago", "kind": "SPIKE", "temp_c": 19.0, "change_c": 2.1},
+    ]
+    assert common.insert("weather_events", rows) == 3
+    assert len(posted.bodies) == 2, "one POST per key shape"
+    assert [r["kind"] for r in posted.bodies[0]] == ["SPIKE", "SPIKE"]
+    assert [r["kind"] for r in posted.bodies[1]] == ["CONDITION_CHANGE"]
+
+
+def test_upsert_obeys_the_same_rule(posted):
+    rows = [{"city_key": "nyc", "temp_c": 1.0}, {"city_key": "chicago"}]
+    assert common.upsert("live_weather", rows, "city_key") == 2
+    assert len(posted.bodies) == 2
+
+
+def test_missing_keys_are_not_filled_with_nulls(posted):
+    """An absent key takes the column's DEFAULT; an explicit null overrides it.
+    Normalising the shapes instead of grouping them would have turned
+    `detected_at default now()` into NULL for any row that did not mention it."""
+    common.insert("weather_events", [
+        {"city_key": "nyc", "kind": "SPIKE", "change_c": 2.4},
+        {"city_key": "nyc", "kind": "PRECIP_START"},
+    ])
+    for body in posted.bodies:
+        for row in body:
+            assert "change_c" not in row or row["change_c"] is not None
+    assert not any("change_c" in r for r in posted.bodies[1])
+
+
+def test_rows_keep_their_order_within_a_shape():
+    groups = common.by_shape([
+        {"a": 1}, {"b": 1}, {"a": 2}, {"b": 2}, {"a": 3},
+    ])
+    assert [g[0] for g in groups] == [{"a": 1}, {"b": 1}], "groups in first-seen order"
+    assert [r["a"] for r in groups[0]] == [1, 2, 3]
+
+
+def test_a_uniform_batch_is_still_one_post(posted):
+    common.insert("edges", [{"band_id": i, "edge": 0.1} for i in range(4)])
+    assert len(posted.bodies) == 1
+
+
+# --------------------------------------------------------------------------
+# Data Bank: 409 duplicate key on fact_forecast_outcome
+#
+# The fact tables are primary-keyed and immutable, and the job wrote them with
+# a plain POST guarded only by a read-back-and-filter in Python. The filter
+# keyed on (city_key, for_date) while the database keys on
+# (city_key, for_date, model, lead_days), so it was both too coarse - a day
+# banked for one model blocked every other model and lead forever - and no
+# protection at all against a partially-written day. One warsaw row killed a
+# run with 678 city-days behind it.
+# --------------------------------------------------------------------------
+def test_databank_writes_are_upserts_on_the_real_primary_key():
+    import inspect
+
+    import databank
+    src = inspect.getsource(databank.main)
+    assert "insert(" not in src.replace("upsert(", ""), \
+        "a plain insert into an immutable primary-keyed table 409s on re-run"
+    assert 'upsert("fact_forecast_outcome", fc, "city_key,for_date,model,lead_days")' in src
+    assert 'upsert("fact_band_outcome", bd, "band_id")' in src
+    assert 'upsert("fact_signal_outcome", sg, "signal_id")' in src
+
+
+def test_the_skip_list_keys_on_the_whole_primary_key(monkeypatch):
+    """Keyed on (city, date) alone, a day banked for one model at one lead
+    marked the whole day done - so a second model, or a later lead, could never
+    be added to it."""
+    import databank
+
+    rows = [{"city_key": "warsaw", "for_date": "2026-08-26",
+             "model": "open_meteo_best_match", "lead_days": 1}]
+    monkeypatch.setattr(databank, "rest", lambda *a, **k: rows)
+    done = databank._already_banked("fact_forecast_outcome", "2026-08-20")
+    assert ("warsaw", "2026-08-26", "open_meteo_best_match", 1) in done
+    assert ("warsaw", "2026-08-26", "nws", 1) not in done, \
+        "a different model on the same day is not banked"
+    assert ("warsaw", "2026-08-26", "open_meteo_best_match", 3) not in done, \
+        "a different lead on the same day is not banked"
+
+
+# --------------------------------------------------------------------------
+# Archive Observations: HTTP 500 from refresh_feature_cache
+#
+# statement_timeout is measured from the start of the TOP-LEVEL statement and
+# is never reset by the statements a function runs inside itself. So
+# `select refresh_feature_cache()` is ONE statement however the function is
+# written, and over a 710k-row archive it is a ~6.5 second one. Supabase
+# cancels it (SQLSTATE 57014) and PostgREST turns that into a bare 500.
+#
+# Measured against a local 710,400-row archive at statement_timeout=3s:
+#   one whole-archive call   HTTP 500, 57014
+#   one call per city        37 calls, slowest 222 ms, 29,600 city-days cached
+# --------------------------------------------------------------------------
+class _FakeRpc:
+    def __init__(self, fail=None, body=None, status=200):
+        self.calls = []
+        self.fail, self.body, self.status = fail, body, status
+
+    def __call__(self, url, headers=None, params=None, data=None, timeout=None):
+        args = json.loads(data or "{}")
+        self.calls.append((url.rsplit("/", 1)[-1], args))
+        outer = self
+
+        class R:
+            status_code = outer.status
+            text = outer.body or '{"message":"boom"}'
+
+            def json(self):
+                return {"ok": True, "city_days_touched": 800, "city_hours": 24,
+                        "city_days_total": 29600, "ms": 200}
+        return R()
+
+
+@pytest.fixture
+def rpc_calls(monkeypatch):
+    p = _FakeRpc()
+    monkeypatch.setattr(common, "_config", {"url": "https://x", "key": "k"})
+    monkeypatch.setattr(common.requests, "post", p)
+    monkeypatch.setattr(common, "rest",
+                        lambda *a, **k: [{"city_key": c} for c in ("nyc", "chicago", "austin")])
+    return p
+
+
+def test_the_cache_refresh_is_one_call_per_city(rpc_calls):
+    out = common.refresh_feature_cache(quiet=True)
+    assert [c[1].get("p_city") for c in rpc_calls.calls] == ["nyc", "chicago", "austin"]
+    assert out["cities"] == 3
+    assert out["city_days_touched"] == 2400, "per-city counts are summed, not overwritten"
+    assert out["city_hours"] == 72
+    assert out["slowest_call_ms"] == 200
+
+
+def test_a_days_window_is_passed_through(rpc_calls):
+    common.refresh_feature_cache(days=7, quiet=True)
+    assert all(c[1]["p_days"] == 7 for c in rpc_calls.calls)
+
+
+def test_an_rpc_failure_carries_the_servers_own_message(monkeypatch):
+    p = _FakeRpc(status=500,
+                 body='{"code":"57014","message":"canceling statement due to statement timeout"}')
+    monkeypatch.setattr(common, "_config", {"url": "https://x", "key": "k"})
+    monkeypatch.setattr(common.requests, "post", p)
+    with pytest.raises(requests.HTTPError) as e:
+        common.rpc("refresh_feature_cache")
+    assert "57014" in str(e.value) and "statement timeout" in str(e.value), \
+        "raise_for_status() drops the body, which is the only place the reason is"
+
+
+def test_a_database_without_the_p_city_signature_says_which_files_to_rerun(monkeypatch):
+    p = _FakeRpc(status=404, body='{"code":"PGRST202","message":"Could not find the function"}')
+    monkeypatch.setattr(common, "_config", {"url": "https://x", "key": "k"})
+    monkeypatch.setattr(common.requests, "post", p)
+    monkeypatch.setattr(common, "rest", lambda *a, **k: [{"city_key": "nyc"}])
+    with pytest.raises(RuntimeError) as e:
+        common.refresh_feature_cache()
+    assert "ad4_28" in str(e.value) and "ad4_29" in str(e.value)
+
+
+def test_a_refresh_failure_fails_the_job_rather_than_printing_a_note():
+    """It used to be swallowed onto stderr while the job reported green - so
+    the cache silently stopped being refreshed and every run said 'ok'. The UI,
+    the analytics views and the model all read that cache."""
+    import inspect
+
+    import capacity
+    src = inspect.getsource(capacity.main)
+    assert "features_error" in src
+    assert '"attention" if features_error else "ok"' in src
+    assert "return 1" in src
+
+
+# ------------------------------------------------------ the SQL side -------
+import os
+
+SQL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sql")
+
+
+def _function_text(path):
+    s = open(path).read()
+    a = s.index("drop function if exists refresh_feature_cache();")
+    b = s.index("$ad4$;\n", s.index("create or replace function refresh_feature_cache"))
+    return s[a:b]
+
+
+def test_both_sql_files_declare_the_identical_refresh_function():
+    """Run order was load-bearing and silently destructive: ad4_28 rebuilt the
+    cache whole, ad4_29 made it incremental, and re-running ad4_28 afterwards
+    put the destructive body back under the same name. After a prune, "rebuild
+    whole" destroys exactly the history the prune preserved."""
+    assert _function_text(os.path.join(SQL, "ad4_28_feature_cache.sql")) == \
+           _function_text(os.path.join(SQL, "ad4_29_retention.sql"))
+
+
+def test_the_refresh_takes_a_city_so_the_caller_can_split_it():
+    for f in ("ad4_28_feature_cache.sql", "ad4_29_retention.sql"):
+        t = _function_text(os.path.join(SQL, f))
+        assert "p_city text default null" in t, f
+        assert "where p_city is null or city_key = p_city" in t, f
+
+
+def test_only_one_signature_survives_either_run_order():
+    for f in ("ad4_28_feature_cache.sql", "ad4_29_retention.sql"):
+        t = _function_text(os.path.join(SQL, f))
+        assert "drop function if exists refresh_feature_cache();" in t, f
+        assert "drop function if exists refresh_feature_cache(int);" in t, f
+
+
+def test_the_features_cte_is_inlined_so_a_filter_can_reach_the_index():
+    """`obs` is referenced twice, and a CTE referenced more than once is
+    MATERIALIZED by default - so `where city_key = 'x'` could not reach
+    weather_observations and every per-city read cost a full scan.
+    Measured on 710k rows: 823 ms -> 54 ms, identical results."""
+    s = open(os.path.join(SQL, "ad4_21_weather_features.sql")).read()
+    view = s[s.index("create or replace view v_city_day_features as"):]
+    view = view[:view.index("from daily d")]
+    assert "with obs as not materialized (" in view
+
+
+def test_a_signal_row_has_the_same_keys_with_or_without_a_band():
+    """city_key used to be ADDED only when the signal had a band, so one batch
+    carried two key shapes and PostgREST refused the whole write. common.insert
+    groups by shape now, but the row should be uniform regardless."""
+    import inspect
+
+    import signals
+    src = inspect.getsource(signals.main)
+    assert 'row["city_key"] = row.get("city_key") or (' in src
+    assert 'if not row.get("city_key") and row.get("band_id"):' not in src, \
+        "the conditional add is what produced two shapes"

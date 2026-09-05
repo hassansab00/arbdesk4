@@ -42,7 +42,7 @@ import sys
 
 import requests
 
-from common import rest, log_run, _cfg, _headers
+from common import rest, log_run, rpc, refresh_feature_cache, _cfg, _headers
 
 COLUMNS = ["city_key", "station", "valid_at", "temp_c", "temp_f", "dewpoint_c",
            "humidity", "wind_speed", "wind_dir_deg", "precip", "cloud_cover",
@@ -54,10 +54,9 @@ PAGE = 50000
 
 
 def _rpc(fn, params=None):
-    r = requests.post(f"{_cfg()['url']}/rest/v1/rpc/{fn}", headers=_headers(),
-                      data=json.dumps(params or {}), timeout=600)
-    r.raise_for_status()
-    return r.json()
+    # common.rpc, so a Postgres error reaches the log instead of being replaced
+    # by "500 Server Error for url: ...".
+    return rpc(fn, params, timeout=600)
 
 
 def cold_rows(cutoff):
@@ -163,8 +162,7 @@ def main():
 
     # 1 - the cache must cover what is about to go
     try:
-        cache = _rpc("refresh_feature_cache")
-        print(f"feature cache: {cache}")
+        cache = refresh_feature_cache()
     except Exception as e:
         print(f"refresh_feature_cache failed ({e}). Not archiving - the derived "
               f"rows are what survives the prune.", file=sys.stderr)

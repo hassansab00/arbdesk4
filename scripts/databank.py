@@ -22,8 +22,9 @@ settled city-day, never updated:
                          whether that band settled yes
   fact_signal_outcome    every signal, and whether acting on it paid
 
-Run daily, after settlement. Idempotent: a day already banked is skipped, so
-re-running costs one query and writes nothing.
+Run daily, after settlement. Idempotent at the database, not just in this
+script: every write is an upsert that ignores duplicates on the table's primary
+key, so re-running is always safe and a half-written day repairs itself.
 
   python scripts/databank.py [--days 7] [--force]
 """
@@ -32,7 +33,7 @@ import datetime as dt
 import sys
 from collections import defaultdict
 
-from common import rest, insert, log_run
+from common import rest, upsert, log_run
 
 # A day is only banked once the observations for it are in. Running too early
 # would freeze a partial maximum as if it were the settled one - and because
@@ -80,10 +81,24 @@ def _observed_max(days_back):
 
 
 def _already_banked(table, since):
+    """The (city, date, model, lead) rows already frozen - the table's ACTUAL
+    primary key, not a prefix of it.
+
+    This used to return (city, date) pairs, which is a coarser key than the one
+    the database enforces: a day banked for one model at one lead marked the
+    whole day done, so a later model or a later lead could never be added. It
+    also silently hid the reverse failure - a day whose rows were only
+    partially written stayed partially written for good.
+
+    This is now an optimisation only. Correctness comes from the primary key:
+    every writer below goes through upsert(), so a row already present is
+    ignored by Postgres rather than raising 409 and killing the run.
+    """
     try:
-        rows = rest(table, [("select", "city_key,for_date"), ("for_date", f"gte.{since}"),
-                            ("limit", "20000")])
-        return {(r["city_key"], str(r["for_date"])) for r in rows}
+        rows = rest(table, [("select", "city_key,for_date,model,lead_days"),
+                            ("for_date", f"gte.{since}"), ("limit", "50000")])
+        return {(r["city_key"], str(r["for_date"]), r.get("model"), r.get("lead_days"))
+                for r in rows}
     except Exception:
         return set()
 
@@ -114,7 +129,7 @@ def bank_forecasts(observed, days_back, force):
 
     out, skipped_thin = [], 0
     for (city, date, model, lead), r in best.items():
-        if (city, date) in done:
+        if (city, date, model, lead if lead is not None else -1) in done:
             continue
         obs = observed.get((city, date))
         if not obs or obs["max_c"] is None:
@@ -270,7 +285,10 @@ def bank_signals(days_back, force):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--days", type=int, default=7, help="how far back to look for settled days")
-    ap.add_argument("--force", action="store_true", help="re-bank days already recorded")
+    ap.add_argument("--force", action="store_true",
+                    help="ignore the local skip-list and offer every settled day to the "
+                         "database. Rows already frozen stay as they are; rows MISSING from "
+                         "a partially-banked day get written. Use it to repair, not to rewrite.")
     args = ap.parse_args()
 
     observed = _observed_max(args.days)
@@ -280,9 +298,17 @@ def main():
     bd = bank_bands(observed, args.days, args.force)
     sg = bank_signals(args.days, args.force)
 
-    n_fc = insert("fact_forecast_outcome", fc) if fc else 0
-    n_bd = insert("fact_band_outcome", bd) if bd else 0
-    n_sg = insert("fact_signal_outcome", sg) if sg else 0
+    # upsert, not insert. These tables are immutable and primary-keyed, so a
+    # row already banked must be a no-op - not a 409 that aborts the run and
+    # loses every row after it in the batch. That is what happened on
+    # 2026-09-05: one warsaw forecast outcome was already present and the whole
+    # job died with 678 city-days waiting behind it.
+    #
+    # resolution=ignore-duplicates keeps the immutability guarantee - a frozen
+    # row is never rewritten - while making the job safe to re-run at will.
+    n_fc = upsert("fact_forecast_outcome", fc, "city_key,for_date,model,lead_days") if fc else 0
+    n_bd = upsert("fact_band_outcome", bd, "band_id") if bd else 0
+    n_sg = upsert("fact_signal_outcome", sg, "signal_id") if sg else 0
 
     summary = (f"banked {n_fc} forecast outcome(s), {n_bd} band outcome(s), "
                f"{n_sg} signal outcome(s)")

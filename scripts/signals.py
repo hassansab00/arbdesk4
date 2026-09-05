@@ -312,8 +312,16 @@ def main():
         # "system / critical / implausible_edge_anomaly" ended up on screen,
         # naming neither a place nor a trade. band_id resolves through the
         # band->market->city map this run already built.
-        if not row.get("city_key") and row.get("band_id"):
-            row["city_key"] = band_city.get(str(row["band_id"]))
+        # Set unconditionally, not only when there is a band. Conditionally
+        # ADDING the key gave band signals a city_key and band-less ones none,
+        # so one batch carried two key shapes - and PostgREST refuses that with
+        # PGRST102 "All object keys must match", which killed the whole write.
+        # common.insert now groups by shape, so this is no longer load-bearing;
+        # it is here because a uniform row is the right shape anyway, and
+        # city_key has no column default, so an explicit null is exactly what
+        # the absent key produced.
+        row["city_key"] = row.get("city_key") or (
+            band_city.get(str(row["band_id"])) if row.get("band_id") else None)
         signal_rows.append(row)
         if result["status"] == "filled":
             n_filled += 1
