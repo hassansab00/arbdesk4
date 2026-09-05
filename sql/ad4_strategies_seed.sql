@@ -124,5 +124,15 @@ values
   ('s8_two_bucket_cover', 'Two-bucket cover', 'YES', '["ALL"]'::jsonb,
    '["SHARP","NORMAL"]'::jsonb, 'basket', 8.0, 8, false,
    '{"max_pair_cost":0.70,"min_pair_prob":0.72,"min_liquidity_usd":100.0,"origin":"hassan",
-     "note":"the two most likely ADJACENT buckets when the pair costs under 70c including fees, and one of them contains the forecast or the observation-implied max"}'::jsonb)
+     "note":"the two most likely ADJACENT buckets when the pair costs under 70c including fees, and one of them contains the forecast or the observation-implied max"}'::jsonb),
+
+  -- S9 is the general form of S8: any contiguous run of 2-4 buckets, chosen on
+  -- expected return per dollar rather than a fixed price cap. They overlap on
+  -- purpose and the conflict layer decides; S8 encodes the specific sub-70c
+  -- rule, S9 finds the best window whatever it costs.
+  ('s9_ladder_basket', 'Ladder basket', 'YES', '["ALL"]'::jsonb,
+   '["SHARP","NORMAL"]'::jsonb, 'basket', 8.0, 8, false,
+   '{"max_buckets":4,"min_ev_per_dollar":0.08,"min_win_prob":0.55,
+     "min_liquidity_usd":100.0,"max_total_cost":0.92,"origin":"hassan",
+     "note":"buys the contiguous window of buckets with the highest expected return per dollar after fees, when it clears the floor and contains where the day is heading"}'::jsonb)
 on conflict (strategy_id) do nothing;

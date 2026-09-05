@@ -13,33 +13,27 @@ import { findCover } from "@/lib/cover";
 import type { CityStats, Opportunity } from "@/lib/types";
 
 /**
- * City Monitor: one city, watched properly.
- *
- * City Watch answers "what are my cities doing" in a line each. This answers
- * the next question, the one you ask right before you actually trade: what is
- * THIS day doing, and has the market noticed yet.
+ * City Monitor: the cities you chose, each as a card that opens.
  *
  * The organising idea is that a temperature is not a number, it is a
  * trajectory. 28.4C an hour before peak is a buy after 26.9 / 27.7 / 28.4 and
- * a sell after 29.1 / 28.8 / 28.4, and every panel here exists to make that
- * difference visible:
+ * a sell after 29.1 / 28.8 / 28.4, and the level alone cannot tell you which.
  *
- *   the trace        every reading of the local day, against the forecast, the
- *                    running max, and where observation alone says the day
- *                    ends up
- *   the read         slope over the last three readings and the last six, and
- *                    how much this city has HISTORICALLY still climbed from
- *                    this hour - measured, per city, from our own archive
- *   the market       what each bucket has cost over the last 48 hours. The
- *                    trade is the gap between that line and the one above it
- *   the ladder       every bucket priced now, with the two-bucket cover
- *                    flagged when the pair qualifies
+ * Two levels, on purpose. A CARD carries the four figures you would glance at
+ * to decide whether this city needs you right now - where the day is, which
+ * way it is moving, how long until the peak, and whether the market has a
+ * trade in it. Opening one adds everything: the trace, the measured climb
+ * profile, every bucket's price over 48 hours, and the ladder.
+ *
+ * Only the open city fetches its charts. Twelve cities' worth of book history
+ * is a quarter of a million rows and none of it is on screen.
  *
  * Every panel names the job that fills it when it is empty. A blank chart with
  * no explanation is the failure mode this page was written against.
  */
 
-const KEY = "ad4-monitor-city";
+const KEY = "ad4-monitor-cities";
+const OPEN_KEY = "ad4-monitor-open";
 
 interface Approach {
   city_key: string;
@@ -90,170 +84,346 @@ type LadderRow = Pick<
 
 const SERIES_COLORS = ["#4f8cff", "#2ecc71", "#ffb020", "#ff6b9d", "#a78bfa", "#22d3ee"];
 
+function loadList(key: string): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];        // private window or blocked storage: no selection, no problem
+  }
+}
+
 export default function MonitorPage() {
   const stats = useCityStats(60000);
-  const [city, setCity] = useState<string | null>(null);
+  const [watched, setWatched] = useState<string[]>([]);
+  const [open, setOpen] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
 
-  // The chosen city survives a reload. It is a per-browser preference, not
-  // shared state, so it belongs in localStorage and nowhere else.
+  // The selection is a per-browser preference on a shared database, so it
+  // lives in localStorage and nowhere else - syncing it would mean writing to
+  // `settings` from the browser, which the RLS boundary rightly refuses.
   useEffect(() => {
-    try {
-      const v = localStorage.getItem(KEY);
-      if (v) setCity(v);
-    } catch { /* private window: no preference, no problem */ }
+    setWatched(loadList(KEY));
+    try { setOpen(localStorage.getItem(OPEN_KEY)); } catch { /* ignore */ }
   }, []);
   useEffect(() => {
-    if (!city) return;
-    try { localStorage.setItem(KEY, city); } catch { /* ignore */ }
-  }, [city]);
+    try { localStorage.setItem(KEY, JSON.stringify(watched)); } catch { /* ignore */ }
+  }, [watched]);
+  useEffect(() => {
+    try {
+      if (open) localStorage.setItem(OPEN_KEY, open);
+      else localStorage.removeItem(OPEN_KEY);
+    } catch { /* ignore */ }
+  }, [open]);
 
-  const cities = useMemo(
+  const byKey = useMemo(
+    () => new Map(stats.rows.map((c) => [c.city_key, c])),
+    [stats.rows]
+  );
+  const allCities = useMemo(
     () => [...stats.rows].sort((a, b) => (b.volume_24h ?? 0) - (a.volume_24h ?? 0)),
     [stats.rows]
   );
-  useEffect(() => {
-    if (!city && cities.length) setCity(cities[0].city_key);
-  }, [cities, city]);
 
-  const c = cities.find((x) => x.city_key === city) ?? null;
-  const unit = (c?.unit ?? "C") as Unit;
+  // First visit: start with the four busiest rather than an empty page. A page
+  // that shows nothing until you configure it teaches you nothing about what
+  // it does.
+  const seeded = watched.length > 0;
+  const cities = useMemo(() => {
+    const keys = seeded ? watched : allCities.slice(0, 4).map((c) => c.city_key);
+    return keys.map((k) => byKey.get(k)).filter(Boolean) as CityStats[];
+  }, [watched, seeded, allCities, byKey]);
+
+  // One query for every watched city. The charts below are per-city and only
+  // for the open one; these two are cheap and drive every card's summary.
+  const keys = cities.map((c) => c.city_key);
+  const keyList = keys.join(",");
 
   const approach = useQuery<Approach[]>(
-    () => city
-      ? supabase.from("v_city_peak_approach").select("*").eq("city_key", city)
+    () => keys.length
+      ? supabase.from("v_city_peak_approach").select("*").in("city_key", keys)
       : Promise.resolve({ data: [] as Approach[], error: null }),
-    [city], 60000
+    [keyList], 60000
   );
   const readings = useQuery<Reading[]>(
-    () => city
+    () => keys.length
       ? supabase.from("v_city_today_readings")
           .select("city_key,valid_at,temp_c,local_hour,source")
-          .eq("city_key", city).order("valid_at", { ascending: true })
+          .in("city_key", keys).order("valid_at", { ascending: true }).limit(4000)
       : Promise.resolve({ data: [] as Reading[], error: null }),
-    [city], 60000
-  );
-  const prices = useQuery<PriceRow[]>(
-    () => city
-      ? supabase.from("v_band_price_history")
-          .select("band_id,band_label,band_lo,band_hi,observed_at,mid,best_ask")
-          .eq("city_key", city).order("observed_at", { ascending: true }).limit(4000)
-      : Promise.resolve({ data: [] as PriceRow[], error: null }),
-    [city], 120000
-  );
-  const ladder = useQuery<LadderRow[]>(
-    () => city
-      ? supabase.from("v_opportunities")
-          .select("band_id,band_label,band_lo,band_hi,open_low,open_high,side,model_prob,market_price,edge_net_pp,volume_usd,tradeable")
-          .eq("city_key", city).eq("side", "YES")
-      : Promise.resolve({ data: [] as LadderRow[], error: null }),
-    [city], 60000
+    [keyList], 60000
   );
 
-  const a = approach.data?.[0] ?? null;
+  const approachBy = useMemo(
+    () => new Map((approach.data ?? []).map((a) => [a.city_key, a])),
+    [approach.data]
+  );
+  const readingsBy = useMemo(() => {
+    const m = new Map<string, Reading[]>();
+    for (const r of readings.data ?? []) {
+      const list = m.get(r.city_key) ?? [];
+      list.push(r);
+      m.set(r.city_key, list);
+    }
+    return m;
+  }, [readings.data]);
+
+  const toggle = (k: string) =>
+    setWatched((w) => {
+      const base = w.length ? w : cities.map((c) => c.city_key);
+      return base.includes(k) ? base.filter((x) => x !== k) : [...base, k];
+    });
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div>
         <h1 className="text-lg font-semibold">City Monitor</h1>
         <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted">
           A temperature is not a number, it is a <b>trajectory</b>. The same 28.4&nbsp;°C an hour
           before peak is a buy after 26.9 / 27.7 / 28.4 and a sell after 29.1 / 28.8 / 28.4 — and
-          the level alone cannot tell you which. Everything here is built to show that difference:
-          how fast the day is moving, how much this city usually still climbs from this hour, and
-          whether the market has repriced for it yet.
+          the level alone cannot tell you which. Each card is the glance; open one for the trace,
+          the measured climb profile, every bucket&apos;s price over 48 hours, and the ladder.
         </p>
       </div>
 
+      {/* ---- who is on the page ------------------------------------- */}
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-muted">City</span>
-        <select
-          value={city ?? ""}
-          onChange={(e) => setCity(e.target.value)}
-          className="rounded border border-border bg-panel px-2 py-1"
+        <span className="text-muted">Watching {cities.length}</span>
+        {!seeded && <span className="text-[11px] text-muted">(the four busiest, until you choose)</span>}
+        <button
+          onClick={() => setPicking((p) => !p)}
+          className="rounded border border-border px-2 py-1 hover:bg-panel2"
         >
-          {cities.map((x) => (
-            <option key={x.city_key} value={x.city_key}>
-              {x.display_name ?? x.city_key}
-              {x.volume_24h ? ` — ${fmtCompactUsd(x.volume_24h)} 24h` : ""}
-            </option>
-          ))}
-        </select>
-        {c?.timezone && a?.latest_local_hour != null && (
-          <span className="font-mono text-[11px] text-muted">
-            {fmtCityHour(a.latest_local_hour, c.timezone)} there · {displayTz()} here
-          </span>
-        )}
-        {a?.latest_at && (
-          <span className={`font-mono text-[11px] ${(a.reading_age_min ?? 0) > 90 ? "text-bad" : "text-muted"}`}>
-            reading {fmtAge(a.latest_at)}
-            {(a.reading_age_min ?? 0) > 90 && " — too old to read a slope from"}
+          {picking ? "Done" : "Choose cities"}
+        </button>
+        {approach.data && approach.data.length < cities.length && (
+          <span className="text-[11px] text-warn">
+            {cities.length - approach.data.length} of them have no readings today
           </span>
         )}
       </div>
 
-      {/* ---- the read ------------------------------------------------- */}
-      <Section
-        title="Where the day is, and which way it is going"
-        hint="Slope is least squares over the real timestamps, not last-minus-first: METAR is hourly but SPECIs are not, and uneven spacing breaks the naive form."
-      >
-        <DataState
-          loading={approach.loading}
-          error={approach.error}
-          isEmpty={!a}
-          emptyTitle="No readings for this city today"
-          emptyBody={<>Run <b>n8n P1.2 (NWS Monitor)</b> or <b>Actions → Observations</b>. If the view itself is missing, run <code>sql/ad4_26_temp_trend.sql</code>.</>}
-        >
-          {a && <TheRead a={a} c={c} unit={unit} />}
-        </DataState>
-      </Section>
+      {picking && (
+        <div className="rounded border border-border bg-panel p-3">
+          <div className="mb-2 text-[11px] text-muted">
+            Click to add or remove. Busiest first. Saved in this browser only.
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {allCities.map((c) => {
+              const on = cities.some((x) => x.city_key === c.city_key);
+              return (
+                <button
+                  key={c.city_key}
+                  onClick={() => toggle(c.city_key)}
+                  className={`rounded border px-2 py-1 text-[11px] ${
+                    on ? "border-accent bg-accent/10 text-accent" : "border-border text-muted hover:text-text"
+                  }`}
+                >
+                  {c.display_name ?? c.city_key}
+                  {c.volume_24h ? <span className="ml-1 opacity-70">{fmtCompactUsd(c.volume_24h)}</span> : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
-      {/* ---- the trace ------------------------------------------------ */}
-      <Section
-        title="Today's trace"
-        hint="Every reading of the local day. The dashed lines are the forecast maximum and where observation alone says the day ends up."
+      <DataState
+        loading={stats.loading || approach.loading}
+        error={stats.error}
+        isEmpty={cities.length === 0}
+        emptyTitle="No cities selected"
+        emptyBody={<>Press <b>Choose cities</b> above.</>}
       >
-        <DataState
-          loading={readings.loading}
-          error={readings.error}
-          isEmpty={(readings.data?.length ?? 0) < 2}
-          emptyTitle="Fewer than two readings today"
-          emptyBody="A line needs two points. This is exactly what the observation series from n8n P1.2 exists to provide - the old single-reading fetch could never draw this chart."
-        >
-          <TempTrace rows={readings.data ?? []} a={a} c={c} unit={unit} />
-        </DataState>
-      </Section>
+        <div className="space-y-2">
+          {cities.map((c) => (
+            <CityCard
+              key={c.city_key}
+              c={c}
+              a={approachBy.get(c.city_key) ?? null}
+              readings={readingsBy.get(c.city_key) ?? []}
+              open={open === c.city_key}
+              onToggle={() => setOpen(open === c.city_key ? null : c.city_key)}
+              viewError={approach.error}
+            />
+          ))}
+        </div>
+      </DataState>
+    </div>
+  );
+}
 
-      {/* ---- the market ------------------------------------------------ */}
-      <Section
-        title="What the market has charged"
-        hint="Mid price per bucket over the last 48 hours. The trade is the gap between a bucket the day is climbing into and a price that has not moved."
-      >
-        <DataState
-          loading={prices.loading}
-          error={prices.error}
-          isEmpty={(prices.data?.length ?? 0) < 2}
-          emptyTitle="No book history"
-          emptyBody={<><b>n8n P0.3 (Book + Volume Snapshot)</b> writes it — without that job nothing on this desk has a price at all.</>}
-        >
-          <PriceTrace rows={prices.data ?? []} ladder={ladder.data ?? []} />
-        </DataState>
-      </Section>
+/* ------------------------------------------------------------------ card -- */
 
-      {/* ---- the ladder ------------------------------------------------ */}
-      <Section
-        title="The ladder now"
-        hint="Every bucket, priced. The cover pair is the two most likely ADJACENT buckets when they cost under 70c together including fees."
+function CityCard({
+  c, a, readings, open, onToggle, viewError,
+}: {
+  c: CityStats;
+  a: Approach | null;
+  readings: Reading[];
+  open: boolean;
+  onToggle: () => void;
+  viewError: string | null;
+}) {
+  const unit = (c.unit as Unit) ?? "C";
+  const dir = a?.direction ?? "unknown";
+  const climbing = dir.startsWith("climbing");
+  const falling = dir.startsWith("falling");
+  const dirColor = a?.rolling_over ? "text-warn" : climbing ? "text-good" : falling ? "text-bad" : "text-muted";
+  const stale = (a?.reading_age_min ?? 0) > 90;
+
+  // Only the open card pays for its charts. Twelve cities of book history is a
+  // quarter of a million rows and none of it would be on screen.
+  const prices = useQuery<PriceRow[]>(
+    () => open
+      ? supabase.from("v_band_price_history")
+          .select("band_id,band_label,band_lo,band_hi,observed_at,mid,best_ask")
+          .eq("city_key", c.city_key).order("observed_at", { ascending: true }).limit(4000)
+      : Promise.resolve({ data: [] as PriceRow[], error: null }),
+    [c.city_key, open], 120000
+  );
+  const ladder = useQuery<LadderRow[]>(
+    () => open
+      ? supabase.from("v_opportunities")
+          .select("band_id,band_label,band_lo,band_hi,open_low,open_high,side,model_prob,market_price,edge_net_pp,volume_usd,tradeable")
+          .eq("city_key", c.city_key).eq("side", "YES")
+      : Promise.resolve({ data: [] as LadderRow[], error: null }),
+    [c.city_key, open], 60000
+  );
+
+  // The one thing on the summary line that is about the MARKET rather than the
+  // weather: is there a basket worth taking right now.
+  const cover = useMemo(() => findCover(ladder.data ?? []), [ladder.data]);
+
+  return (
+    <section className={`rounded border bg-panel ${open ? "border-accent/60" : "border-border"}`}>
+      <button
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex w-full flex-wrap items-center gap-x-5 gap-y-2 px-3 py-2.5 text-left hover:bg-panel2"
       >
-        <DataState
-          loading={ladder.loading}
-          error={ladder.error}
-          isEmpty={(ladder.data?.length ?? 0) === 0}
-          emptyTitle="No priced buckets"
-          emptyBody={<>Needs bands from <b>n8n P0.2</b>, a book from <b>P0.3</b>, then <b>Actions → Probabilities</b>.</>}
-        >
-          <Ladder rows={ladder.data ?? []} a={a} unit={unit} />
-        </DataState>
-      </Section>
+        <span className="flex min-w-[150px] items-center gap-2">
+          <span className={`font-mono text-[10px] ${open ? "text-accent" : "text-muted"}`}>{open ? "▾" : "▸"}</span>
+          <b className="text-sm">{c.display_name ?? c.city_key}</b>
+          {a?.rolling_over && (
+            <span className="rounded bg-warn/15 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-warn">
+              rolled over
+            </span>
+          )}
+          {c.peak_window_state === "INSIDE" && (
+            <span className="text-[9px] uppercase tracking-wide text-accent">peak</span>
+          )}
+        </span>
+
+        <Mini label="now" value={fmtTemp(a?.latest_temp_c ?? c.now_c ?? null, unit)} />
+        <Mini label="max so far" value={fmtTemp(a?.running_max_c ?? c.running_max_c ?? null, unit)} />
+        <Mini label="heading for" value={fmtTemp(a?.implied_max_c ?? null, unit)} accent />
+        <Mini
+          label="rate"
+          value={a?.slope_3_c_per_h != null ? `${fmtTempDelta(a.slope_3_c_per_h, unit)}/h` : "—"}
+          className={dirColor}
+        />
+        <Mini label="forecast" value={fmtTemp(c.forecast_max_c, unit)} />
+
+        <span className="ml-auto flex items-center gap-3 text-[10px]">
+          {cover?.qualifies && (
+            <span className="rounded bg-good/10 px-1.5 py-0.5 text-good">
+              cover {fmtPrice(cover.total)} → {cover.returnPct?.toFixed(0)}%
+            </span>
+          )}
+          {a?.latest_at && (
+            <span className={stale ? "text-bad" : "text-muted"}>
+              {fmtAge(a.latest_at)}
+              {stale && " · stale"}
+            </span>
+          )}
+        </span>
+      </button>
+
+      {open && (
+        <div className="space-y-4 border-t border-border p-3">
+          {a === null ? (
+            <p className="text-xs text-muted">
+              {viewError
+                ? <>Trend unavailable: <code>{viewError}</code>. Run <code>sql/ad4_26_temp_trend.sql</code>.</>
+                : <>No readings for this city&apos;s current local day. Run <b>n8n P1.2</b> or <b>Actions → Observations</b>.</>}
+            </p>
+          ) : (
+            <>
+              <Block title="Where the day is, and which way it is going">
+                <TheRead a={a} c={c} unit={unit} />
+              </Block>
+
+              <Block
+                title="Today's trace"
+                hint="Every reading of the local day, against the forecast and where observation alone says the day ends up."
+              >
+                {readings.length < 2 ? (
+                  <Empty height={140}>
+                    Fewer than two readings today — a line needs two points. This is what the
+                    observation series from n8n P1.2 exists to provide.
+                  </Empty>
+                ) : (
+                  <TempTrace rows={readings} a={a} c={c} unit={unit} />
+                )}
+              </Block>
+            </>
+          )}
+
+          <Block
+            title="What the market has charged"
+            hint="Mid price per bucket over 48 hours. The trade is the gap between a bucket the day is climbing into and a price that has not moved."
+          >
+            <DataState
+              loading={prices.loading}
+              error={prices.error}
+              isEmpty={(prices.data?.length ?? 0) < 2}
+              emptyTitle="No book history"
+              emptyBody={<><b>n8n P0.3</b> writes it — without that job nothing here has a price at all.</>}
+              compact
+            >
+              <PriceTrace rows={prices.data ?? []} ladder={ladder.data ?? []} />
+            </DataState>
+          </Block>
+
+          <Block
+            title="The ladder now"
+            hint="Every bucket, priced. The cover pair is the two most likely adjacent buckets when they cost under 70c together including fees."
+          >
+            <DataState
+              loading={ladder.loading}
+              error={ladder.error}
+              isEmpty={(ladder.data?.length ?? 0) === 0}
+              emptyTitle="No priced buckets"
+              emptyBody={<>Needs bands from <b>n8n P0.2</b>, a book from <b>P0.3</b>, then <b>Actions → Probabilities</b>.</>}
+              compact
+            >
+              <Ladder rows={ladder.data ?? []} a={a} unit={unit} />
+            </DataState>
+          </Block>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function Mini({
+  label, value, accent, className,
+}: { label: string; value: string; accent?: boolean; className?: string }) {
+  return (
+    <span className="flex flex-col leading-tight">
+      <span className="text-[9px] uppercase tracking-wide text-muted">{label}</span>
+      <span className={`font-mono text-sm ${accent ? "text-accent" : ""} ${className ?? ""}`}>{value}</span>
+    </span>
+  );
+}
+
+function Block({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h3 className="text-xs font-semibold">{title}</h3>
+      {hint && <p className="mb-1.5 mt-0.5 text-[11px] leading-relaxed text-muted">{hint}</p>}
+      <div className={hint ? "" : "mt-1.5"}>{children}</div>
     </div>
   );
 }
@@ -549,16 +719,3 @@ function contains(r: LadderRow, celsius: number | null | undefined, unit: Unit):
   return r.band_lo <= v && v < r.band_hi;
 }
 
-/* --------------------------------------------------------------- chrome -- */
-
-function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded border border-border bg-panel">
-      <div className="border-b border-border px-3 py-2">
-        <h2 className="text-sm font-semibold">{title}</h2>
-        {hint && <p className="mt-0.5 text-[11px] leading-relaxed text-muted">{hint}</p>}
-      </div>
-      <div className="p-3">{children}</div>
-    </section>
-  );
-}
