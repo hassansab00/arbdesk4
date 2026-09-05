@@ -402,3 +402,98 @@ def test_every_workflow_file_has_a_cadence_registered():
             continue
         job = f.split(".template.")[0].split(".scaffold.")[0]
         assert job in seeded, f"{job} has no row in settings.workflow_schedules"
+
+
+# ------------------------------------------------- failure diagnosis -------
+# Both weather workflows failed on a real desk with "37 failed" and nothing
+# else. A 403 on the User-Agent, a malformed query and a request that never
+# arrived all produced that identical line, and each needs a different fix.
+# These hold the workflows to naming which one it was.
+import copy
+import tempfile
+
+
+def run_with(workflow, plan_name, mutate):
+    plan = json.load(open(os.path.join(ROOT, "tests", "n8n", plan_name)))
+    mutate(plan)
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+        json.dump(plan, fh)
+        path = fh.name
+    try:
+        out = subprocess.run([NODE, HARNESS, os.path.join(ROOT, "n8n", workflow), path],
+                             capture_output=True, text=True, timeout=60)
+        return json.loads(out.stdout.strip().splitlines()[-1])
+    finally:
+        os.unlink(path)
+
+
+def all_obs(resp):
+    def m(plan):
+        plan["seed"]["Fetch observation"] = [resp] * len(plan["seed"]["Fetch observation"])
+    return m
+
+
+def test_a_403_says_it_is_the_user_agent():
+    """weather.gov refuses a missing or generic User-Agent with 403. That
+    response carries a `status` field, so it passes the missing-response test
+    AND is not a 404 - it lands in a third branch that the first version of
+    this diagnostic did not instrument, and reported 'No detail captured'."""
+    r = run_with("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json",
+                 all_obs({"status": 403, "title": "Forbidden", "detail": "blocked"}))
+    assert r["ok"] is False and r["node"] == "Guard: did anything parse?"
+    assert "403" in r["error"] and "User-Agent" in r["error"]
+    assert "user_agent" in r["error"], "it must name the Config field to fix"
+
+
+def test_a_400_says_the_query_was_malformed_not_the_station():
+    r = run_with("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json",
+                 all_obs({"status": 400, "title": "Bad Request", "detail": 'Parameter "start" is invalid'}))
+    assert "400" in r["error"] and "malformed" in r["error"]
+    assert "start" in r["error"], "the API's own detail must survive"
+
+
+def test_a_request_that_never_arrived_is_not_blamed_on_the_data():
+    r = run_with("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json",
+                 all_obs({"error": "ETIMEDOUT connect to api.weather.gov:443"}))
+    assert "never completed" in r["error"] and "ETIMEDOUT" in r["error"]
+    assert "network" in r["error"] or "timeout" in r["error"]
+
+
+def test_an_unrecognised_shape_shows_the_body():
+    """When nothing matches, print what actually came back rather than guess."""
+    r = run_with("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json",
+                 all_obs({"foo": "bar"}))
+    assert '{"foo":"bar"}' in r["error"]
+
+
+def test_the_failure_names_the_city_and_the_url():
+    """Without these the operator cannot reproduce it in a browser."""
+    r = run_with("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json",
+                 all_obs({"status": 403, "title": "Forbidden"}))
+    assert "nyc" in r["error"]
+    assert "api.weather.gov/stations/KNYC/observations" in r["error"]
+
+
+def test_the_start_parameter_has_no_fractional_seconds():
+    """toISOString() appends milliseconds. api.weather.gov documents ISO8601
+    and accepts a plain Z timestamp; the milliseconds are one more thing that
+    can be rejected for no benefit."""
+    r = run_with("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json",
+                 all_obs({"status": 403}))
+    import re
+    assert re.search(r"start=\d{4}-\d{2}-\d{2}T\d{2}%3A\d{2}%3A\d{2}Z", r["error"]), r["error"]
+
+
+def test_p13_points_failure_names_the_cause_and_blames_p12_first():
+    """P1.3 falls back to the grid ids P1.2 caches. With no cached grid - which
+    is what a desk looks like when P1.2 has never succeeded - it must say so,
+    because fixing P1.3 alone would achieve nothing."""
+    def m(plan):
+        for c in plan["seed"]["Load cities"]:
+            c["nws_grid_wfo"] = c["nws_grid_x"] = c["nws_grid_y"] = None
+        plan["seed"]["Fetch point"] = [{"status": 403, "title": "Forbidden"}] * 4
+        plan["seed"]["Fetch hourly forecast"] = []
+    r = run_with("P1.3_nws_forecast.template.json", "plan_P1.3_nws_forecast.json", m)
+    assert r["ok"] is False and r["node"] == "Build forecast urls"
+    assert "403" in r["error"] and "User-Agent" in r["error"]
+    assert "P1.2" in r["error"], "it must point at the workflow that is actually broken"

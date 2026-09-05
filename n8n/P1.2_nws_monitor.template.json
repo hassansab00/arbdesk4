@@ -1,891 +1,891 @@
 {
-  "name": "AD4 P1.2 - NWS Monitor",
-  "active": false,
-  "settings": {
-    "executionOrder": "v1"
+ "name": "AD4 P1.2 - NWS Monitor",
+ "active": false,
+ "settings": {
+  "executionOrder": "v1"
+ },
+ "nodes": [
+  {
+   "id": "why",
+   "name": "Note why",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -560,
+    -60
+   ],
+   "parameters": {
+    "content": "## What this is for\n\napi.weather.gov is the surface 50 of 54 AD4 markets actually SETTLE on. The\nrepo previously tried to reach it by scraping an HTML page; that parser was\nnever finished, so every live reading silently fell through to IEM.\n\nThis workflow reads the documented JSON instead, and it costs nothing: the\nAPI imposes no rate limit based on User-Agent. That is also why the IEM 429\nthat kept killing the Live Weather Monitor stops mattering for US cities.\n\nThree calls per city, all keyed on data `cities` already holds:\n\n  /stations/{icao}/observations/latest   the reading, with QC flags and a\n                                         station-reported 24h maximum\n  /alerts/active?point={lat},{lon}       heat advisories and warnings\n  /points/{lat},{lon}                    today's SOLAR TRANSIT - the sun's\n                                         zenith, which is the physical anchor\n                                         of the daily temperature peak\n\nNon-US cities 404 and are skipped. They keep using IEM.",
+    "width": 480,
+    "height": 460
+   }
   },
-  "nodes": [
-    {
-      "id": "why",
-      "name": "Note why",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        -560,
-        -60
-      ],
-      "parameters": {
-        "content": "## What this is for\n\napi.weather.gov is the surface 50 of 54 AD4 markets actually SETTLE on. The\nrepo previously tried to reach it by scraping an HTML page; that parser was\nnever finished, so every live reading silently fell through to IEM.\n\nThis workflow reads the documented JSON instead, and it costs nothing: the\nAPI imposes no rate limit based on User-Agent. That is also why the IEM 429\nthat kept killing the Live Weather Monitor stops mattering for US cities.\n\nThree calls per city, all keyed on data `cities` already holds:\n\n  /stations/{icao}/observations/latest   the reading, with QC flags and a\n                                         station-reported 24h maximum\n  /alerts/active?point={lat},{lon}       heat advisories and warnings\n  /points/{lat},{lon}                    today's SOLAR TRANSIT - the sun's\n                                         zenith, which is the physical anchor\n                                         of the daily temperature peak\n\nNon-US cities 404 and are skipped. They keep using IEM.",
-        "width": 480,
-        "height": 460
+  {
+   "id": "writes",
+   "name": "Note writes",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -560,
+    440
+   ],
+   "parameters": {
+    "content": "## Where it writes, and why nothing new was needed\n\n  weather_observations   source='NWS', beside the existing source='IEM' rows.\n                         The unique key is (city_key, valid_at, source), so\n                         both feeds coexist per timestamp - which is what\n                         makes them COMPARABLE. That comparison is the\n                         evidence the settlement gate has been waiting for.\n\n  live_weather           one row per city: the running max, the trend, and now\n                         solar_transit_at, max_temp_24h_c and the active NWS\n                         alert.\n\n  weather_events         kind='nws_alert' / 'temp_spike'. P1.1 already emails\n                         unnotified events and they are on the Realtime\n                         publication, so alerts reach you and the UI feed with\n                         NO new plumbing.\n\nAn alert only raises an event when it CHANGES. Re-running this workflow ten\ntimes does not send ten emails.",
+    "width": 480,
+    "height": 440
+   }
+  },
+  {
+   "id": "trigger-manual",
+   "name": "Manual Trigger",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {}
+  },
+  {
+   "id": "trigger-schedule",
+   "name": "Schedule Trigger",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    160
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "hours",
+       "hoursInterval": 2
       }
-    },
-    {
-      "id": "writes",
-      "name": "Note writes",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        -560,
-        440
-      ],
-      "parameters": {
-        "content": "## Where it writes, and why nothing new was needed\n\n  weather_observations   source='NWS', beside the existing source='IEM' rows.\n                         The unique key is (city_key, valid_at, source), so\n                         both feeds coexist per timestamp - which is what\n                         makes them COMPARABLE. That comparison is the\n                         evidence the settlement gate has been waiting for.\n\n  live_weather           one row per city: the running max, the trend, and now\n                         solar_transit_at, max_temp_24h_c and the active NWS\n                         alert.\n\n  weather_events         kind='nws_alert' / 'temp_spike'. P1.1 already emails\n                         unnotified events and they are on the Realtime\n                         publication, so alerts reach you and the UI feed with\n                         NO new plumbing.\n\nAn alert only raises an event when it CHANGES. Re-running this workflow ten\ntimes does not send ten emails.",
-        "width": 480,
-        "height": 440
-      }
-    },
-    {
-      "id": "trigger-manual",
-      "name": "Manual Trigger",
-      "type": "n8n-nodes-base.manualTrigger",
-      "typeVersion": 1,
-      "position": [
-        0,
-        0
-      ],
-      "parameters": {}
-    },
-    {
-      "id": "trigger-schedule",
-      "name": "Schedule Trigger",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        0,
-        160
-      ],
-      "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "hours",
-              "hoursInterval": 2
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "trigger-webhook",
-      "name": "Webhook Trigger",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        0,
-        320
-      ],
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "ad4-nws-monitor",
-        "responseMode": "responseNode",
-        "options": {
-          "allowedOrigins": "*"
-        }
-      },
-      "webhookId": "ad4-nws-monitor"
-    },
-    {
-      "id": "config",
-      "name": "Config",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        240,
-        100
-      ],
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "1",
-              "name": "supabase_url",
-              "type": "string",
-              "value": ""
-            },
-            {
-              "id": "2",
-              "name": "service_key",
-              "type": "string",
-              "value": ""
-            },
-            {
-              "id": "3",
-              "name": "user_agent",
-              "type": "string",
-              "value": "ArbDesk4 (github.com/hassansab00/arbdesk4)"
-            },
-            {
-              "id": "4",
-              "name": "alert_events",
-              "type": "string",
-              "value": "Excessive Heat Warning, Heat Advisory, Extreme Heat Warning, Extreme Heat Watch, Excessive Heat Watch"
-            },
-            {
-              "id": "5",
-              "name": "observation_hours",
-              "type": "string",
-              "value": "30"
-            },
-            {
-              "id": "6",
-              "name": "observation_limit",
-              "type": "string",
-              "value": "60"
-            },
-            {
-              "id": "7",
-              "name": "max_cities_per_run",
-              "type": "string",
-              "value": "0"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "load-cities",
-      "name": "Load cities",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        460,
-        100
-      ],
-      "parameters": {
-        "method": "GET",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/cities?select=city_key,icao,unit,latitude,longitude,nws_supported,prior_alert:live_weather(nws_alert)&icao=not.is.null&limit=200",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Accept",
-              "value": "application/json"
-            }
-          ]
-        }
-      },
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "build-requests",
-      "name": "Build requests",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        680,
-        100
-      ],
-      "parameters": {
-        "jsCode": "// One item per city, carrying all three URLs it needs. Everything comes from\n// columns `cities` already has - no station discovery hop.\nconst cfg = $('Config').first().json;\nconst cities = $('Load cities').all().map(i => i.json).flat();\nconst cap = Number(cfg.max_cities_per_run || 0) || 0;\nconst obsHours = Number(cfg.observation_hours || 30);\nconst obsLimit = Number(cfg.observation_limit || 60);\nconst sinceIso = new Date(Date.now() - obsHours * 3600_000).toISOString();\n\nconst out = [];\nfor (const c of cities) {\n  if (!c || !c.city_key) continue;\n  // Skip cities a previous run already proved are not US stations.\n  if (c.nws_supported === false) continue;\n  if (!c.icao || c.latitude == null || c.longitude == null) continue;\n\n  const lat = Number(c.latitude).toFixed(4);\n  const lon = Number(c.longitude).toFixed(4);\n\n  // PostgREST returns an EMBEDDED resource as an array (or an object), never a\n  // bare string: prior_alert arrives as [{nws_alert: 'Heat Advisory'}]. Left in\n  // that shape, `event !== prior_alert` below is always true and every single\n  // run re-raises the same standing alert - which is exactly the email spam the\n  // change-detection exists to prevent. Flatten it here.\n  const pa = c.prior_alert;\n  const prior = Array.isArray(pa) ? ((pa[0] && pa[0].nws_alert) ?? null)\n              : (pa && typeof pa === 'object' ? (pa.nws_alert ?? null)\n              : (pa ?? null));\n\n  out.push({ json: {\n    city_key: c.city_key,\n    icao: c.icao,\n    unit: c.unit || 'C',\n    prior_alert: prior,\n    // The SERIES, not just the latest reading. This is what the weather.gov\n    // hourly tab shows and what the market settles against - and a single\n    // reading cannot give a daily maximum, which is the number being traded.\n    // A short window keeps it cheap; the archive backfill is a separate job.\n    obs_url:    `https://api.weather.gov/stations/${encodeURIComponent(c.icao)}/observations` +\n                `?start=${encodeURIComponent(sinceIso)}&limit=${obsLimit}`,\n    alerts_url: `https://api.weather.gov/alerts/active?point=${lat},${lon}`,\n    point_url:  `https://api.weather.gov/points/${lat},${lon}`,\n  }});\n  if (cap && out.length >= cap) break;\n}\nif (out.length === 0) {\n  throw new Error('No cities with an icao and coordinates. NWS needs both. ' +\n                  'Check cities.icao / latitude / longitude are populated.');\n}\nreturn out;"
-      }
-    },
-    {
-      "id": "fetch-obs",
-      "name": "Fetch observation",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        900,
-        100
-      ],
-      "parameters": {
-        "method": "GET",
-        "url": "={{ $json.obs_url }}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "User-Agent",
-              "value": "={{ $('Config').first().json.user_agent }}"
-            },
-            {
-              "name": "Accept",
-              "value": "application/geo+json"
-            }
-          ]
-        },
-        "options": {
-          "batching": {
-            "batch": {
-              "batchSize": 10,
-              "batchInterval": 200
-            }
-          },
-          "timeout": 20000,
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          }
-        }
-      },
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "fetch-alerts",
-      "name": "Fetch alerts",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1100,
-        100
-      ],
-      "parameters": {
-        "method": "GET",
-        "url": "={{ $('Build requests').all()[$itemIndex].json.alerts_url }}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "User-Agent",
-              "value": "={{ $('Config').first().json.user_agent }}"
-            },
-            {
-              "name": "Accept",
-              "value": "application/geo+json"
-            }
-          ]
-        },
-        "options": {
-          "batching": {
-            "batch": {
-              "batchSize": 10,
-              "batchInterval": 200
-            }
-          },
-          "timeout": 20000,
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          }
-        }
-      },
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "fetch-point",
-      "name": "Fetch point",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1300,
-        100
-      ],
-      "parameters": {
-        "method": "GET",
-        "url": "={{ $('Build requests').all()[$itemIndex].json.point_url }}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "User-Agent",
-              "value": "={{ $('Config').first().json.user_agent }}"
-            },
-            {
-              "name": "Accept",
-              "value": "application/geo+json"
-            }
-          ]
-        },
-        "options": {
-          "batching": {
-            "batch": {
-              "batchSize": 10,
-              "batchInterval": 200
-            }
-          },
-          "timeout": 20000,
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          }
-        }
-      },
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "build-rows",
-      "name": "Build rows",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1500,
-        100
-      ],
-      "parameters": {
-        "jsCode": "// Turn three NWS responses per city into rows for three tables.\n//\n// api.weather.gov returns every measurement as a QuantitativeValue:\n//   {\"value\": 22.2, \"unitCode\": \"wmoUnit:degC\", \"qualityControl\": \"V\"}\n// The unitCode is authoritative - never assume Celsius.\nconst requests = $('Build requests').all().map(i => i.json);\nconst obsRes   = $('Fetch observation').all().map(i => i.json);\nconst alertRes = $('Fetch alerts').all().map(i => i.json);\nconst pointRes = $('Fetch point').all().map(i => i.json);\n\nconst cfg = $('Config').first().json;\nconst alertEvents = (cfg.alert_events || '').split(',').map(s => s.trim()).filter(Boolean);\n\nconst now = new Date().toISOString();\n\n// QuantitativeValue -> Celsius, honouring unitCode.\nfunction degC(qv) {\n  if (!qv || qv.value === null || qv.value === undefined) return null;\n  const v = Number(qv.value);\n  if (!Number.isFinite(v)) return null;\n  const unit = String(qv.unitCode || '');\n  if (unit.includes('degF')) return Number(((v - 32) * 5 / 9).toFixed(4));\n  if (unit.includes('K'))    return Number((v - 273.15).toFixed(4));\n  return Number(v.toFixed(4));   // degC\n}\nfunction num(qv) {\n  if (!qv || qv.value === null || qv.value === undefined) return null;\n  const v = Number(qv.value);\n  return Number.isFinite(v) ? v : null;\n}\n// weather_observations was filled by IEM METAR, so its columns carry METAR's\n// units: wind_speed is KNOTS (sknt) and precip is INCHES (p01i).\n// api.weather.gov answers in km/h and mm. Writing those through unconverted\n// would put 37 in a knots column for a 20kt wind - wrong, but not\n// wrong-LOOKING, which is the kind of error nobody finds.\n//\n// An unrecognised unitCode returns null rather than the raw number: a value\n// whose unit is unknown is not a measurement, and these columns are nullable.\nfunction knots(qv) {\n  const v = num(qv);\n  if (v === null) return null;\n  const u = String(qv.unitCode || '');\n  if (u.includes('km_h')) return Number((v / 1.852).toFixed(3));\n  if (u.includes('m_s'))  return Number((v * 1.9438445).toFixed(3));\n  if (u.includes('mi_h')) return Number((v * 0.8689762).toFixed(3));\n  if (u.includes('knot') || u.includes('kt')) return Number(v.toFixed(3));\n  return null;\n}\nfunction inches(qv) {\n  const v = num(qv);\n  if (v === null) return null;\n  const u = String(qv.unitCode || '');\n  if (u.includes('mm')) return Number((v / 25.4).toFixed(4));\n  if (u.includes('cm')) return Number((v / 2.54).toFixed(4));\n  if (u.includes('m') && !u.includes('mm') && !u.includes('cm'))\n    return Number((v * 39.3701).toFixed(4));\n  if (u.includes('in')) return Number(v.toFixed(4));\n  return null;\n}\n// METAR sky cover -> oktas, matching scripts/ingest_observations.sky_oktas so\n// the two feeds store cloud_cover the same way.\nconst OKTAS = { SKC:0, CLR:0, NSC:0, NCD:0, FEW:2, SCT:4, BKN:6, OVC:8, VV:8 };\nfunction oktas(layers) {\n  if (!Array.isArray(layers) || !layers.length) return null;\n  let worst = null;\n  for (const l of layers) {\n    const o = OKTAS[String(l && l.amount || '').toUpperCase()];\n    if (o !== undefined && (worst === null || o > worst)) worst = o;\n  }\n  return worst;\n}\n\nconst observations = [], liveRows = [], events = [];\nlet ok = 0, notUS = 0, failed = 0;\nconst support = [];   // city_key -> nws_supported, written back to cities\n\nfor (let i = 0; i < requests.length; i++) {\n  const req = requests[i];\n  const o = obsRes[i], a = alertRes[i], p = pointRes[i];\n\n  // A 404 means this ICAO is not an api.weather.gov station - almost always a\n  // non-US city. Record that so the next run skips it instead of asking again.\n  // A series answers as a FeatureCollection - `features`, no `properties`.\n  // The original guard predates that shape and treated every series response\n  // as a failed fetch, silently dropping the whole point of the change.\n  const missing = !o || o.error || (!o.properties && !o.features && !o.status);\n  const is404 = o && (o.status === 404 || String(o.title || '').includes('Not Found'));\n  if (is404 || missing) {\n    if (is404) { notUS++; support.push({ city_key: req.city_key, nws_supported: false, nws_checked_at: now }); }\n    else failed++;\n    continue;\n  }\n\n  // A series response is a FeatureCollection; `latest` was a single Feature.\n  // Handle both, so a station that only answers the old shape still works.\n  const obsFeats = Array.isArray(o.features) ? o.features\n                 : (o.properties ? [{ properties: o.properties }] : []);\n  const readings = obsFeats\n    .map(f => f && f.properties)\n    .filter(pr => pr && pr.timestamp && degC(pr.temperature) !== null)\n    .sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)));\n\n  if (readings.length === 0) { failed++; continue; }\n\n  // The newest reading drives live_weather; every reading is archived.\n  const props = readings[readings.length - 1];\n  const tempC = degC(props.temperature);\n  ok++;\n\n  const pp = (p && p.properties) || {};\n  const astro = pp.astronomicalData || {};\n\n  support.push({\n    city_key: req.city_key,\n    nws_supported: true,\n    nws_station_id: req.icao,\n    nws_grid_wfo: pp.gridId ?? null,\n    nws_grid_x: pp.gridX ?? null,\n    nws_grid_y: pp.gridY ?? null,\n    nws_checked_at: now,\n  });\n\n  // ---- one row per READING, alongside the IEM ones for the same instants --\n  // The unique key is (city_key, valid_at, source), so a whole series upserts\n  // safely and re-running costs nothing. This is what makes a daily MAXIMUM\n  // computable from NWS at all - one reading never could.\n  for (const pr of readings) {\n    const t = degC(pr.temperature);\n    observations.push({\n      city_key: req.city_key,\n      // cities.icao, not the id NWS echoes back: IEM rows store the ICAO, and a\n      // different form here would split one station across two values.\n      station: req.icao,\n      valid_at: pr.timestamp,\n      temp_c: t,\n      temp_f: t === null ? null : Number((t * 9 / 5 + 32).toFixed(2)),\n      dewpoint_c: degC(pr.dewpoint),\n      humidity: num(pr.relativeHumidity),\n      wind_speed: knots(pr.windSpeed),      // knots, like IEM's sknt\n      wind_dir_deg: num(pr.windDirection),  // degrees either way\n      precip: inches(pr.precipitationLastHour),  // inches, like IEM's p01i\n      cloud_cover: oktas(pr.cloudLayers),\n      source: 'NWS',\n    });\n  }\n\n  // ---- alerts -------------------------------------------------------------\n  const feats = (a && Array.isArray(a.features)) ? a.features : [];\n  let headline = null, severity = null, event = null, alertId = null;\n  for (const f of feats) {\n    const ap = f.properties || {};\n    // Only heat-relevant events, unless the operator listed none at all.\n    if (alertEvents.length && !alertEvents.includes(ap.event)) continue;\n    headline = ap.headline || ap.event || null;\n    severity = ap.severity || null;\n    event = ap.event || null;\n    alertId = ap.id || null;\n    break;                                  // the most urgent one wins\n  }\n\n  // Only raise an event when the alert CHANGED, so re-running does not spam.\n  if (event && event !== req.prior_alert) {\n    events.push({\n      city_key: req.city_key,\n      kind: 'nws_alert',\n      // NWS severity -> AD4's four levels\n      severity: ({ Extreme: 'critical', Severe: 'high', Moderate: 'medium' })[severity] || 'low',\n      temp_c: tempC,\n      detail: { source: 'api.weather.gov', event, headline, nws_severity: severity,\n                nws_id: alertId, station: req.icao },\n    });\n  }\n\n  // ---- live_weather -------------------------------------------------------\n  liveRows.push({\n    city_key: req.city_key,\n    updated_at: now,\n    observed_at: props.timestamp,\n    temp_c: tempC,\n    temp_f: tempC === null ? null : Number((tempC * 9 / 5 + 32).toFixed(2)),\n    humidity: num(props.relativeHumidity),\n    wind_speed_kt: knots(props.windSpeed),\n    wind_dir_deg: num(props.windDirection),\n    // station-REPORTED daily maximum, not one we computed from samples\n    max_temp_24h_c: degC(props.maxTemperatureLast24Hours),\n    solar_transit_at: astro.transit ?? null,\n    sunrise_at: astro.sunrise ?? null,\n    sunset_at: astro.sunset ?? null,\n    nws_alert: event,\n    nws_alert_severity: severity,\n    obs_source: 'NWS',\n  });\n}\n\nreturn [{ json: {\n  observations, liveRows, events, support,\n  n_obs: observations.length, n_events: events.length,\n  ok, not_us: notUS, failed, requested: requests.length,\n} }];"
-      }
-    },
-    {
-      "id": "guard",
-      "name": "Guard: did anything parse?",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1700,
-        100
-      ],
-      "parameters": {
-        "jsCode": "const p = $('Build rows').first().json;\nif (p.n_obs === 0) {\n  throw new Error(\n    `Parsed 0 observations from ${p.requested} cities ` +\n    `(${p.not_us} are not US stations, ${p.failed} failed). Nothing written. ` +\n    `If every city is non-US that is expected and this workflow has nothing to ` +\n    `do; otherwise check cities.icao holds real station identifiers.`);\n}\nreturn [{ json: p }];"
-      }
-    },
-    {
-      "id": "write-obs",
-      "name": "Write observations",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1900,
-        100
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/weather_observations?on_conflict=city_key,valid_at,source",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Accept",
-              "value": "application/json"
-            },
-            {
-              "name": "Prefer",
-              "value": "resolution=merge-duplicates,return=minimal"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.observations) }}"
-      },
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "write-live",
-      "name": "Write live_weather",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2100,
-        100
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/live_weather?on_conflict=city_key",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Accept",
-              "value": "application/json"
-            },
-            {
-              "name": "Prefer",
-              "value": "resolution=merge-duplicates,return=minimal"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($('Guard: did anything parse?').first().json.liveRows) }}"
-      },
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "write-cities",
-      "name": "Save NWS ids",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2300,
-        100
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/cities?on_conflict=city_key",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Accept",
-              "value": "application/json"
-            },
-            {
-              "name": "Prefer",
-              "value": "resolution=merge-duplicates,return=minimal"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($('Guard: did anything parse?').first().json.support) }}"
-      },
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "write-events",
-      "name": "Raise alerts",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2500,
-        100
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/weather_events",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Accept",
-              "value": "application/json"
-            },
-            {
-              "name": "Prefer",
-              "value": "return=minimal"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($('Guard: did anything parse?').first().json.events) }}"
-      },
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "summary",
-      "name": "Summary",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2700,
-        100
-      ],
-      "parameters": {
-        "jsCode": "const p = $('Build rows').first().json;\nconst rows = p.n_obs || 0;\nconst summary =\n  `AD4 P1.2: ${rows} NWS observations from ${p.requested} cities` +\n  (p.not_us ? `, ${p.not_us} not US stations` : '') +\n  (p.failed ? `, ${p.failed} failed` : '') +\n  (p.n_events ? `. ${p.n_events} weather alert(s) raised` : '. no new alerts') + '.';\nconst status = rows > 0 ? (p.n_events ? 'attention' : 'ok') : 'attention';\nconst detail = { requested: p.requested, not_us: p.not_us, failed: p.failed,\n                 alerts: p.n_events };\nreturn [{ json: {\n  summary, status, rows,\n  log: { p_job: 'P1.2_nws_monitor', p_status: status, p_rows: rows,\n         p_detail: { ...detail, summary, trigger: $execution.mode, execution_id: $execution.id } },\n} }];"
-      }
-    },
-    {
-      "id": "log-run",
-      "name": "Log run",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2900,
-        100
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Accept",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.log) }}"
-      },
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "respond",
-      "name": "Respond",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [
-        3100,
-        100
-      ],
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
-      }
-    },
-    {
-      "id": "sched-check",
-      "name": "Check schedule",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        430,
-        -30
-      ],
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput",
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/should_run",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Accept",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_job: \"P1.2_nws_monitor\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
-        "options": {
-          "timeout": 10000,
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          }
-        }
-      }
-    },
-    {
-      "id": "sched-gate",
-      "name": "Run now?",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        620,
-        -30
-      ],
-      "parameters": {
-        "jsCode": "// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
-      }
-    },
-    {
-      "id": "sched-stop",
-      "name": "Stop if skipped",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        620,
-        -30
-      ],
-      "parameters": {
-        "jsCode": "// Returning [] stops the workflow here. Everything below this node\n// is skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
-      }
+     ]
     }
-  ],
-  "connections": {
-    "Manual Trigger": {
-      "main": [
-        [
-          {
-            "node": "Config",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Schedule Trigger": {
-      "main": [
-        [
-          {
-            "node": "Config",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Webhook Trigger": {
-      "main": [
-        [
-          {
-            "node": "Config",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Config": {
-      "main": [
-        [
-          {
-            "node": "Check schedule",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Load cities": {
-      "main": [
-        [
-          {
-            "node": "Build requests",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build requests": {
-      "main": [
-        [
-          {
-            "node": "Fetch observation",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch observation": {
-      "main": [
-        [
-          {
-            "node": "Fetch alerts",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch alerts": {
-      "main": [
-        [
-          {
-            "node": "Fetch point",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch point": {
-      "main": [
-        [
-          {
-            "node": "Build rows",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build rows": {
-      "main": [
-        [
-          {
-            "node": "Guard: did anything parse?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Guard: did anything parse?": {
-      "main": [
-        [
-          {
-            "node": "Write observations",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Write observations": {
-      "main": [
-        [
-          {
-            "node": "Write live_weather",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Write live_weather": {
-      "main": [
-        [
-          {
-            "node": "Save NWS ids",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Save NWS ids": {
-      "main": [
-        [
-          {
-            "node": "Raise alerts",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Raise alerts": {
-      "main": [
-        [
-          {
-            "node": "Summary",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Summary": {
-      "main": [
-        [
-          {
-            "node": "Log run",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Log run": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Check schedule": {
-      "main": [
-        [
-          {
-            "node": "Run now?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run now?": {
-      "main": [
-        [
-          {
-            "node": "Stop if skipped",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Stop if skipped": {
-      "main": [
-        [
-          {
-            "node": "Load cities",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+   }
+  },
+  {
+   "id": "trigger-webhook",
+   "name": "Webhook Trigger",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2,
+   "position": [
+    0,
+    320
+   ],
+   "parameters": {
+    "httpMethod": "POST",
+    "path": "ad4-nws-monitor",
+    "responseMode": "responseNode",
+    "options": {
+     "allowedOrigins": "*"
     }
+   },
+   "webhookId": "ad4-nws-monitor"
+  },
+  {
+   "id": "config",
+   "name": "Config",
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    240,
+    100
+   ],
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "1",
+       "name": "supabase_url",
+       "type": "string",
+       "value": ""
+      },
+      {
+       "id": "2",
+       "name": "service_key",
+       "type": "string",
+       "value": ""
+      },
+      {
+       "id": "3",
+       "name": "user_agent",
+       "type": "string",
+       "value": "ArbDesk4 (github.com/hassansab00/arbdesk4)"
+      },
+      {
+       "id": "4",
+       "name": "alert_events",
+       "type": "string",
+       "value": "Excessive Heat Warning, Heat Advisory, Extreme Heat Warning, Extreme Heat Watch, Excessive Heat Watch"
+      },
+      {
+       "id": "5",
+       "name": "observation_hours",
+       "type": "string",
+       "value": "30"
+      },
+      {
+       "id": "6",
+       "name": "observation_limit",
+       "type": "string",
+       "value": "60"
+      },
+      {
+       "id": "7",
+       "name": "max_cities_per_run",
+       "type": "string",
+       "value": "0"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "load-cities",
+   "name": "Load cities",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    460,
+    100
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/cities?select=city_key,icao,unit,latitude,longitude,nws_supported,prior_alert:live_weather(nws_alert)&icao=not.is.null&limit=200",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      }
+     ]
+    }
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "build-requests",
+   "name": "Build requests",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    680,
+    100
+   ],
+   "parameters": {
+    "jsCode": "// One item per city, carrying all three URLs it needs. Everything comes from\n// columns `cities` already has - no station discovery hop.\nconst cfg = $('Config').first().json;\nconst cities = $('Load cities').all().map(i => i.json).flat();\nconst cap = Number(cfg.max_cities_per_run || 0) || 0;\nconst obsHours = Number(cfg.observation_hours || 30);\nconst obsLimit = Number(cfg.observation_limit || 60);\n// No fractional seconds. api.weather.gov documents these as ISO8601 and\n// accepts `2026-09-04T07:05:20Z`; the milliseconds toISOString() adds are\n// one more thing that can be rejected for no benefit.\nconst sinceIso = new Date(Date.now() - obsHours * 3600_000)\n  .toISOString().replace(/\\.\\d{3}Z$/, 'Z');\n\nconst out = [];\nfor (const c of cities) {\n  if (!c || !c.city_key) continue;\n  // Skip cities a previous run already proved are not US stations.\n  if (c.nws_supported === false) continue;\n  if (!c.icao || c.latitude == null || c.longitude == null) continue;\n\n  const lat = Number(c.latitude).toFixed(4);\n  const lon = Number(c.longitude).toFixed(4);\n\n  // PostgREST returns an EMBEDDED resource as an array (or an object), never a\n  // bare string: prior_alert arrives as [{nws_alert: 'Heat Advisory'}]. Left in\n  // that shape, `event !== prior_alert` below is always true and every single\n  // run re-raises the same standing alert - which is exactly the email spam the\n  // change-detection exists to prevent. Flatten it here.\n  const pa = c.prior_alert;\n  const prior = Array.isArray(pa) ? ((pa[0] && pa[0].nws_alert) ?? null)\n              : (pa && typeof pa === 'object' ? (pa.nws_alert ?? null)\n              : (pa ?? null));\n\n  out.push({ json: {\n    city_key: c.city_key,\n    icao: c.icao,\n    unit: c.unit || 'C',\n    prior_alert: prior,\n    // The SERIES, not just the latest reading. This is what the weather.gov\n    // hourly tab shows and what the market settles against - and a single\n    // reading cannot give a daily maximum, which is the number being traded.\n    // A short window keeps it cheap; the archive backfill is a separate job.\n    obs_url:    `https://api.weather.gov/stations/${encodeURIComponent(c.icao)}/observations` +\n                `?start=${encodeURIComponent(sinceIso)}&limit=${obsLimit}`,\n    alerts_url: `https://api.weather.gov/alerts/active?point=${lat},${lon}`,\n    point_url:  `https://api.weather.gov/points/${lat},${lon}`,\n  }});\n  if (cap && out.length >= cap) break;\n}\nif (out.length === 0) {\n  throw new Error('No cities with an icao and coordinates. NWS needs both. ' +\n                  'Check cities.icao / latitude / longitude are populated.');\n}\nreturn out;"
+   }
+  },
+  {
+   "id": "fetch-obs",
+   "name": "Fetch observation",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    900,
+    100
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "={{ $json.obs_url }}",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "User-Agent",
+       "value": "={{ $('Config').first().json.user_agent }}"
+      },
+      {
+       "name": "Accept",
+       "value": "application/geo+json"
+      }
+     ]
+    },
+    "options": {
+     "batching": {
+      "batch": {
+       "batchSize": 10,
+       "batchInterval": 200
+      }
+     },
+     "timeout": 20000,
+     "response": {
+      "response": {
+       "neverError": true
+      }
+     }
+    }
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "fetch-alerts",
+   "name": "Fetch alerts",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1100,
+    100
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "={{ $('Build requests').all()[$itemIndex].json.alerts_url }}",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "User-Agent",
+       "value": "={{ $('Config').first().json.user_agent }}"
+      },
+      {
+       "name": "Accept",
+       "value": "application/geo+json"
+      }
+     ]
+    },
+    "options": {
+     "batching": {
+      "batch": {
+       "batchSize": 10,
+       "batchInterval": 200
+      }
+     },
+     "timeout": 20000,
+     "response": {
+      "response": {
+       "neverError": true
+      }
+     }
+    }
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "fetch-point",
+   "name": "Fetch point",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1300,
+    100
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "={{ $('Build requests').all()[$itemIndex].json.point_url }}",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "User-Agent",
+       "value": "={{ $('Config').first().json.user_agent }}"
+      },
+      {
+       "name": "Accept",
+       "value": "application/geo+json"
+      }
+     ]
+    },
+    "options": {
+     "batching": {
+      "batch": {
+       "batchSize": 10,
+       "batchInterval": 200
+      }
+     },
+     "timeout": 20000,
+     "response": {
+      "response": {
+       "neverError": true
+      }
+     }
+    }
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "build-rows",
+   "name": "Build rows",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1500,
+    100
+   ],
+   "parameters": {
+    "jsCode": "// Turn three NWS responses per city into rows for three tables.\n//\n// api.weather.gov returns every measurement as a QuantitativeValue:\n//   {\"value\": 22.2, \"unitCode\": \"wmoUnit:degC\", \"qualityControl\": \"V\"}\n// The unitCode is authoritative - never assume Celsius.\nconst requests = $('Build requests').all().map(i => i.json);\nconst obsRes   = $('Fetch observation').all().map(i => i.json);\nconst alertRes = $('Fetch alerts').all().map(i => i.json);\nconst pointRes = $('Fetch point').all().map(i => i.json);\n\nconst cfg = $('Config').first().json;\nconst alertEvents = (cfg.alert_events || '').split(',').map(s => s.trim()).filter(Boolean);\n\nconst now = new Date().toISOString();\n\n// QuantitativeValue -> Celsius, honouring unitCode.\nfunction degC(qv) {\n  if (!qv || qv.value === null || qv.value === undefined) return null;\n  const v = Number(qv.value);\n  if (!Number.isFinite(v)) return null;\n  const unit = String(qv.unitCode || '');\n  if (unit.includes('degF')) return Number(((v - 32) * 5 / 9).toFixed(4));\n  if (unit.includes('K'))    return Number((v - 273.15).toFixed(4));\n  return Number(v.toFixed(4));   // degC\n}\nfunction num(qv) {\n  if (!qv || qv.value === null || qv.value === undefined) return null;\n  const v = Number(qv.value);\n  return Number.isFinite(v) ? v : null;\n}\n// weather_observations was filled by IEM METAR, so its columns carry METAR's\n// units: wind_speed is KNOTS (sknt) and precip is INCHES (p01i).\n// api.weather.gov answers in km/h and mm. Writing those through unconverted\n// would put 37 in a knots column for a 20kt wind - wrong, but not\n// wrong-LOOKING, which is the kind of error nobody finds.\n//\n// An unrecognised unitCode returns null rather than the raw number: a value\n// whose unit is unknown is not a measurement, and these columns are nullable.\nfunction knots(qv) {\n  const v = num(qv);\n  if (v === null) return null;\n  const u = String(qv.unitCode || '');\n  if (u.includes('km_h')) return Number((v / 1.852).toFixed(3));\n  if (u.includes('m_s'))  return Number((v * 1.9438445).toFixed(3));\n  if (u.includes('mi_h')) return Number((v * 0.8689762).toFixed(3));\n  if (u.includes('knot') || u.includes('kt')) return Number(v.toFixed(3));\n  return null;\n}\nfunction inches(qv) {\n  const v = num(qv);\n  if (v === null) return null;\n  const u = String(qv.unitCode || '');\n  if (u.includes('mm')) return Number((v / 25.4).toFixed(4));\n  if (u.includes('cm')) return Number((v / 2.54).toFixed(4));\n  if (u.includes('m') && !u.includes('mm') && !u.includes('cm'))\n    return Number((v * 39.3701).toFixed(4));\n  if (u.includes('in')) return Number(v.toFixed(4));\n  return null;\n}\n// METAR sky cover -> oktas, matching scripts/ingest_observations.sky_oktas so\n// the two feeds store cloud_cover the same way.\nconst OKTAS = { SKC:0, CLR:0, NSC:0, NCD:0, FEW:2, SCT:4, BKN:6, OVC:8, VV:8 };\nfunction oktas(layers) {\n  if (!Array.isArray(layers) || !layers.length) return null;\n  let worst = null;\n  for (const l of layers) {\n    const o = OKTAS[String(l && l.amount || '').toUpperCase()];\n    if (o !== undefined && (worst === null || o > worst)) worst = o;\n  }\n  return worst;\n}\n\n// WHAT THE FAILURE ACTUALLY WAS.\n// This used to report only a count - \"37 failed\" - which says nothing about\n// whether weather.gov refused the User-Agent, rejected the query, timed out or\n// was never reached. Every one of those needs a different fix and they were\n// indistinguishable. Keep the first failing response verbatim.\nlet firstFailure = null;\nfunction describe(req, o) {\n  if (!o) return { city: req.city_key, url: req.obs_url, problem: 'no response object at all' };\n  if (o.error) {\n    return { city: req.city_key, url: req.obs_url, problem: 'request error',\n             error: String(o.error).slice(0, 300) };\n  }\n  return {\n    city: req.city_key, url: req.obs_url,\n    problem: 'response had no observations',\n    http_status: o.status ?? null,\n    title: o.title ?? null,\n    detail: typeof o.detail === 'string' ? o.detail.slice(0, 200) : null,\n    keys: Object.keys(o).slice(0, 12),\n    body: JSON.stringify(o).slice(0, 400),\n  };\n}\n\nconst observations = [], liveRows = [], events = [];\nlet ok = 0, notUS = 0, failed = 0;\nconst support = [];   // city_key -> nws_supported, written back to cities\n\nfor (let i = 0; i < requests.length; i++) {\n  const req = requests[i];\n  const o = obsRes[i], a = alertRes[i], p = pointRes[i];\n\n  // A 404 means this ICAO is not an api.weather.gov station - almost always a\n  // non-US city. Record that so the next run skips it instead of asking again.\n  // A series answers as a FeatureCollection - `features`, no `properties`.\n  // The original guard predates that shape and treated every series response\n  // as a failed fetch, silently dropping the whole point of the change.\n  const missing = !o || o.error || (!o.properties && !o.features && !o.status);\n  const is404 = o && (o.status === 404 || String(o.title || '').includes('Not Found'));\n  if (is404 || missing) {\n    if (is404) { notUS++; support.push({ city_key: req.city_key, nws_supported: false, nws_checked_at: now }); }\n    else { failed++; if (!firstFailure) firstFailure = describe(req, o); }\n    continue;\n  }\n\n  // A series response is a FeatureCollection; `latest` was a single Feature.\n  // Handle both, so a station that only answers the old shape still works.\n  const obsFeats = Array.isArray(o.features) ? o.features\n                 : (o.properties ? [{ properties: o.properties }] : []);\n  const readings = obsFeats\n    .map(f => f && f.properties)\n    .filter(pr => pr && pr.timestamp && degC(pr.temperature) !== null)\n    .sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)));\n\n  // THE PATH A 403 OR 400 ACTUALLY TAKES. Those responses carry a `status`\n  // field, so the `missing` test above passes them through and the 404 test\n  // does not match either - they arrive here, with no readings. Instrumenting\n  // only the first failure branch left exactly the two cases most likely to be\n  // the real cause reporting \"No detail captured\".\n  if (readings.length === 0) {\n    failed++;\n    if (!firstFailure) firstFailure = describe(req, o);\n    continue;\n  }\n\n  // The newest reading drives live_weather; every reading is archived.\n  const props = readings[readings.length - 1];\n  const tempC = degC(props.temperature);\n  ok++;\n\n  const pp = (p && p.properties) || {};\n  const astro = pp.astronomicalData || {};\n\n  support.push({\n    city_key: req.city_key,\n    nws_supported: true,\n    nws_station_id: req.icao,\n    nws_grid_wfo: pp.gridId ?? null,\n    nws_grid_x: pp.gridX ?? null,\n    nws_grid_y: pp.gridY ?? null,\n    nws_checked_at: now,\n  });\n\n  // ---- one row per READING, alongside the IEM ones for the same instants --\n  // The unique key is (city_key, valid_at, source), so a whole series upserts\n  // safely and re-running costs nothing. This is what makes a daily MAXIMUM\n  // computable from NWS at all - one reading never could.\n  for (const pr of readings) {\n    const t = degC(pr.temperature);\n    observations.push({\n      city_key: req.city_key,\n      // cities.icao, not the id NWS echoes back: IEM rows store the ICAO, and a\n      // different form here would split one station across two values.\n      station: req.icao,\n      valid_at: pr.timestamp,\n      temp_c: t,\n      temp_f: t === null ? null : Number((t * 9 / 5 + 32).toFixed(2)),\n      dewpoint_c: degC(pr.dewpoint),\n      humidity: num(pr.relativeHumidity),\n      wind_speed: knots(pr.windSpeed),      // knots, like IEM's sknt\n      wind_dir_deg: num(pr.windDirection),  // degrees either way\n      precip: inches(pr.precipitationLastHour),  // inches, like IEM's p01i\n      cloud_cover: oktas(pr.cloudLayers),\n      source: 'NWS',\n    });\n  }\n\n  // ---- alerts -------------------------------------------------------------\n  const feats = (a && Array.isArray(a.features)) ? a.features : [];\n  let headline = null, severity = null, event = null, alertId = null;\n  for (const f of feats) {\n    const ap = f.properties || {};\n    // Only heat-relevant events, unless the operator listed none at all.\n    if (alertEvents.length && !alertEvents.includes(ap.event)) continue;\n    headline = ap.headline || ap.event || null;\n    severity = ap.severity || null;\n    event = ap.event || null;\n    alertId = ap.id || null;\n    break;                                  // the most urgent one wins\n  }\n\n  // Only raise an event when the alert CHANGED, so re-running does not spam.\n  if (event && event !== req.prior_alert) {\n    events.push({\n      city_key: req.city_key,\n      kind: 'nws_alert',\n      // NWS severity -> AD4's four levels\n      severity: ({ Extreme: 'critical', Severe: 'high', Moderate: 'medium' })[severity] || 'low',\n      temp_c: tempC,\n      detail: { source: 'api.weather.gov', event, headline, nws_severity: severity,\n                nws_id: alertId, station: req.icao },\n    });\n  }\n\n  // ---- live_weather -------------------------------------------------------\n  liveRows.push({\n    city_key: req.city_key,\n    updated_at: now,\n    observed_at: props.timestamp,\n    temp_c: tempC,\n    temp_f: tempC === null ? null : Number((tempC * 9 / 5 + 32).toFixed(2)),\n    humidity: num(props.relativeHumidity),\n    wind_speed_kt: knots(props.windSpeed),\n    wind_dir_deg: num(props.windDirection),\n    // station-REPORTED daily maximum, not one we computed from samples\n    max_temp_24h_c: degC(props.maxTemperatureLast24Hours),\n    solar_transit_at: astro.transit ?? null,\n    sunrise_at: astro.sunrise ?? null,\n    sunset_at: astro.sunset ?? null,\n    nws_alert: event,\n    nws_alert_severity: severity,\n    obs_source: 'NWS',\n  });\n}\n\nreturn [{ json: {\n  observations, liveRows, events, support,\n  n_obs: observations.length, n_events: events.length,\n  ok, not_us: notUS, failed, requested: requests.length,\n  first_failure: firstFailure,\n} }];"
+   }
+  },
+  {
+   "id": "guard",
+   "name": "Guard: did anything parse?",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1700,
+    100
+   ],
+   "parameters": {
+    "jsCode": "const p = $('Build rows').first().json;\nif (p.n_obs === 0) {\n  const f = p.first_failure;\n  // A count is not a diagnosis. 403 means the User-Agent was refused, 400\n  // means the query was malformed, a request error means it never arrived -\n  // three different fixes that \"37 failed\" cannot tell apart.\n  let why = 'No detail captured.';\n  if (f) {\n    if (f.problem === 'request error') {\n      why = `The request never completed: ${f.error}. api.weather.gov was not reached - check n8n's outbound network, or raise the timeout on Fetch observation.`;\n    } else if (f.http_status === 403) {\n      why = `weather.gov answered 403 Forbidden. It REQUIRES a User-Agent identifying your app and refuses generic ones. Open the Config node and make sure user_agent is filled in (something like \"ArbDesk4 (your-email@example.com)\").`;\n    } else if (f.http_status === 400) {\n      why = `weather.gov answered 400 Bad Request: ${f.detail || f.title || ''}. The query was malformed rather than the station being wrong.`;\n    } else if (f.http_status) {\n      why = `weather.gov answered ${f.http_status} ${f.title || ''}. ${f.detail || ''}`;\n    } else {\n      why = `The response had none of the fields expected. Keys: ${(f.keys || []).join(', ')}. Body: ${f.body}`;\n    }\n    why += `\\n\\nFirst failing city: ${f.city}\\nURL: ${f.url}`;\n  }\n  throw new Error(\n    `Parsed 0 observations from ${p.requested} cities ` +\n    `(${p.not_us} are not US stations, ${p.failed} failed). Nothing written.\\n\\n` + why);\n}\nreturn [{ json: p }];"
+   }
+  },
+  {
+   "id": "write-obs",
+   "name": "Write observations",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1900,
+    100
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/weather_observations?on_conflict=city_key,valid_at,source",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      },
+      {
+       "name": "Prefer",
+       "value": "resolution=merge-duplicates,return=minimal"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.observations) }}"
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "write-live",
+   "name": "Write live_weather",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2100,
+    100
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/live_weather?on_conflict=city_key",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      },
+      {
+       "name": "Prefer",
+       "value": "resolution=merge-duplicates,return=minimal"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($('Guard: did anything parse?').first().json.liveRows) }}"
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "write-cities",
+   "name": "Save NWS ids",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2300,
+    100
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/cities?on_conflict=city_key",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      },
+      {
+       "name": "Prefer",
+       "value": "resolution=merge-duplicates,return=minimal"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($('Guard: did anything parse?').first().json.support) }}"
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "write-events",
+   "name": "Raise alerts",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2500,
+    100
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/weather_events",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      },
+      {
+       "name": "Prefer",
+       "value": "return=minimal"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($('Guard: did anything parse?').first().json.events) }}"
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "summary",
+   "name": "Summary",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2700,
+    100
+   ],
+   "parameters": {
+    "jsCode": "const p = $('Build rows').first().json;\nconst rows = p.n_obs || 0;\nconst summary =\n  `AD4 P1.2: ${rows} NWS observations from ${p.requested} cities` +\n  (p.not_us ? `, ${p.not_us} not US stations` : '') +\n  (p.failed ? `, ${p.failed} failed` : '') +\n  (p.n_events ? `. ${p.n_events} weather alert(s) raised` : '. no new alerts') + '.';\nconst status = rows > 0 ? (p.n_events ? 'attention' : 'ok') : 'attention';\nconst detail = { requested: p.requested, not_us: p.not_us, failed: p.failed,\n                 alerts: p.n_events };\nreturn [{ json: {\n  summary, status, rows,\n  log: { p_job: 'P1.2_nws_monitor', p_status: status, p_rows: rows,\n         p_detail: { ...detail, summary, trigger: $execution.mode, execution_id: $execution.id } },\n} }];"
+   }
+  },
+  {
+   "id": "log-run",
+   "name": "Log run",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2900,
+    100
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.log) }}"
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "respond",
+   "name": "Respond",
+   "type": "n8n-nodes-base.respondToWebhook",
+   "typeVersion": 1,
+   "position": [
+    3100,
+    100
+   ],
+   "parameters": {
+    "respondWith": "json",
+    "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
+   }
+  },
+  {
+   "id": "sched-check",
+   "name": "Check schedule",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    430,
+    -30
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/should_run",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ p_job: \"P1.2_nws_monitor\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+    "options": {
+     "timeout": 10000,
+     "response": {
+      "response": {
+       "neverError": true
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "sched-gate",
+   "name": "Run now?",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    620,
+    -30
+   ],
+   "parameters": {
+    "jsCode": "// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
+   }
+  },
+  {
+   "id": "sched-stop",
+   "name": "Stop if skipped",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    620,
+    -30
+   ],
+   "parameters": {
+    "jsCode": "// Returning [] stops the workflow here. Everything below this node\n// is skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
+   }
   }
+ ],
+ "connections": {
+  "Manual Trigger": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Schedule Trigger": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Webhook Trigger": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "Check schedule",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Load cities": {
+   "main": [
+    [
+     {
+      "node": "Build requests",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build requests": {
+   "main": [
+    [
+     {
+      "node": "Fetch observation",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Fetch observation": {
+   "main": [
+    [
+     {
+      "node": "Fetch alerts",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Fetch alerts": {
+   "main": [
+    [
+     {
+      "node": "Fetch point",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Fetch point": {
+   "main": [
+    [
+     {
+      "node": "Build rows",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Build rows": {
+   "main": [
+    [
+     {
+      "node": "Guard: did anything parse?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Guard: did anything parse?": {
+   "main": [
+    [
+     {
+      "node": "Write observations",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Write observations": {
+   "main": [
+    [
+     {
+      "node": "Write live_weather",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Write live_weather": {
+   "main": [
+    [
+     {
+      "node": "Save NWS ids",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Save NWS ids": {
+   "main": [
+    [
+     {
+      "node": "Raise alerts",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Raise alerts": {
+   "main": [
+    [
+     {
+      "node": "Summary",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Summary": {
+   "main": [
+    [
+     {
+      "node": "Log run",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Log run": {
+   "main": [
+    [
+     {
+      "node": "Respond",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Check schedule": {
+   "main": [
+    [
+     {
+      "node": "Run now?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Run now?": {
+   "main": [
+    [
+     {
+      "node": "Stop if skipped",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Stop if skipped": {
+   "main": [
+    [
+     {
+      "node": "Load cities",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ }
 }
