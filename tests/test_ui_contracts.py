@@ -166,3 +166,30 @@ def test_strategy_toggle_goes_through_the_rpc_not_a_table_write():
     src = _read("web/app/strategies/page.tsx")
     assert 'supabase.rpc("set_strategy_enabled"' in src
     assert 'from("strategies")' not in src, "the page must not write the table directly"
+
+
+def test_the_palette_does_not_shadow_a_tailwind_font_size():
+    """A colour named `base` makes `text-base` paint, not size.
+
+    THE BUG: the palette defined `base: "#0b0e14"` - the page background - so
+    `text-base` resolved as a TEXT COLOUR utility and every heading using it
+    rendered in the background colour. All four Analytics group headings and
+    all four Data Bank section headings were invisible. Nothing catches this:
+    it typechecks, it builds, the text is in the DOM and in innerText, and it
+    reads correctly to a screen reader. Only a human looking at the page sees
+    a blank line.
+
+    Tailwind's `text-*` namespace is shared between font sizes and text
+    colours, so no palette colour may be named after one of them.
+    """
+    import re
+    cfg = _read("web/tailwind.config.ts")
+    body = cfg[cfg.index("colors:"):cfg.index("fontFamily")]
+    names = set(re.findall(r"^\s*([A-Za-z][\w]*)\s*:", body, re.M))
+    sizes = {"xs", "sm", "base", "lg", "xl", "2xl", "3xl", "4xl", "5xl",
+             "6xl", "7xl", "8xl", "9xl"}
+    clash = names & sizes
+    assert not clash, (
+        f"palette colour(s) {sorted(clash)} shadow the text-<size> utility of the "
+        "same name; text-<name> will paint instead of size and headings vanish"
+    )

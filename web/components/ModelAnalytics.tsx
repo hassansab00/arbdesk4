@@ -513,12 +513,18 @@ function CalibrationKey() {
   const W = 300, H = 150, PAD = 26;
   const X = (p: number) => PAD + p * (W - PAD - 8);
   const Y = (p: number) => H - PAD - p * (H - PAD - 10);
+  // Clamped to [0, 1]: an observed frequency cannot be negative or over 100%,
+  // and an unclamped curve drew itself outside the axes - which made the
+  // reference diagram wrong in the one way a reference diagram must not be.
+  const clamp = (v: number) => Math.max(0, Math.min(1, v));
   const curve = (f: (p: number) => number) =>
-    Array.from({ length: 21 }, (_, i) => i / 20).map((p) => `${X(p)},${Y(f(p))}`).join(" ");
-  // Overconfident: extreme claims happen less often than claimed.
-  const over = (p: number) => p + (0.5 - p) * 0.45;
-  // Underconfident: hedged claims happen more often than claimed.
-  const under = (p: number) => p - (0.5 - p) * 0.45;
+    Array.from({ length: 41 }, (_, i) => i / 40).map((p) => `${X(p)},${Y(clamp(f(p)))}`).join(" ");
+  // Overconfident: extreme claims happen LESS often than claimed, so the curve
+  // is flatter than the diagonal and pulled toward the middle.
+  const over = (p: number) => 0.5 + (p - 0.5) * 0.55;
+  // Underconfident: hedged claims happen MORE often than claimed, so the curve
+  // is steeper and saturates at both ends.
+  const under = (p: number) => 0.5 + (p - 0.5) * 1.8;
   return (
     <div className="flex flex-wrap items-start gap-4 border-b border-border bg-panel2/40 px-3 py-2">
       <svg viewBox={`0 0 ${W} ${H}`} width={260} className="shrink-0" role="img" aria-label="Calibration reference">

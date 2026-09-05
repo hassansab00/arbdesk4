@@ -94,7 +94,7 @@ export default function Header() {
   const down = feeds?.filter(stale) ?? [];
 
   return (
-    <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-base px-3 py-2 sm:px-4">
+    <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-ground px-3 py-2 sm:px-4">
       <Brand
         subtitle={
           scope
