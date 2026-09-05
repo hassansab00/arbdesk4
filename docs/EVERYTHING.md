@@ -35,35 +35,36 @@ read **section 6 — WRITE ACCESS**. It reports which key can write which table.
 
 ## Step 1 · SQL (10 min)
 
-Supabase → **SQL Editor** → paste the whole file → **Run**, in this order.
-All are safe to run again, in any order, any number of times.
+Supabase → **SQL Editor** → paste the whole file → **Run**, in the order in
+`sql/INSTALL_ORDER.txt`. All are safe to run again, any number of times.
+
+**If you have already run up to `ad4_29_retention.sql`, you need 30 → 37.**
 
 | # | File | Why |
 |---|---|---|
-| 1 | `ad4_21_weather_features.sql` | **Changed.** Its `obs` CTE is `not materialized`, which lets a per-city read use the index instead of scanning the archive: **823 ms → 54 ms**. Steps 2 and 3 depend on it. |
-| 2 | `ad4_28_feature_cache.sql` | **Changed.** `refresh_feature_cache()` takes a city so the caller can split it. Fixes the HTTP 500 from Archive Observations. |
-| 3 | `ad4_29_retention.sql` | **Changed.** Same function byte-for-byte as step 2, so run order cannot matter. `prune_observations()` now takes the exact instant that was exported. |
-| 4 | `ad4_30_open_meteo.sql` | **New.** `live_weather.source` / `source_kind`, `v_forecast_coverage`, registers P1.5. |
-| 5 | `ad4_31_predictive.sql` | **New.** The five views behind the Predictive page. |
-| 6 | `ad4_32_run_scope.sql` | **New.** Lets a job cover selected cities instead of all 37. |
-| 7 | `ad4_33_control.sql` | **New.** `set_strategy_enabled()` — the switch the app never had. Plus `v_strategy_board` (every strategy with its own record) and `v_trade_timing` (when the day is decided, from each city's own measured peak hour). |
-| 8 | `ad4_34_trade_plan.sql` | **New.** `v_trade_plan` — every edge with **when** and **who** attached: which strategies would fire on it right now, what the entry costs at the ask, and where the day is heading relative to that band. Plus `v_city_day_plan` for the two-bucket cover. |
-| 9 | `ad4_35_databank_inventory.sql` | **New.** What the archive holds and what has been built from it, per dataset and per city. Behind the Data Bank page. |
-| — | `ad4_diagnose.sql` | **Read-only.** Run any time. Section 6 is the write-access check above. |
+| 30 | `ad4_30_open_meteo.sql` | `live_weather.source` / `source_kind`, `v_forecast_coverage`, registers P1.5. |
+| 31 | `ad4_31_predictive.sql` | The five views behind the Predictive page. **Changed** — it selected `bands.band_index`, a column no SQL file in this repo creates, so it could fail to install outright. |
+| 32 | `ad4_32_run_scope.sql` | Lets a job cover selected cities instead of all 37. |
+| 33 | `ad4_33_control.sql` | `set_strategy_enabled()` — the switch. `v_strategy_board`, `v_trade_timing`. |
+| 34 | `ad4_34_trade_plan.sql` | `v_trade_plan` — every edge with **when** and **who**. Needs 33. |
+| 35 | `ad4_35_databank_inventory.sql` | What the archive holds and what was built from it. |
+| 36 | `ad4_36_execution_limits.sql` | The venue's order minimum, share step and tick. Every money figure in the app now respects them. |
+| 37 | `ad4_37_peak_hour.sql` | **Computes the peak hour nothing was computing.** `derived_weather_peak` had no writer anywhere — `minutes_to_peak`, `v_trade_timing` and strategy s7's whole trigger were on a fallback. |
+| — | `ad4_00_preflight.sql` | **Changed, worth re-running.** Adds ~20 columns the live database has and this file never created — including `band_probabilities.raw_prob`, which `probability_engine.py` writes and `databank.py` reads. Idempotent: it cannot alter a column that already exists. |
+| — | `ad4_diagnose.sql` | **Read-only.** Section 6 is the write-access check. |
+
+The whole sequence has been run end to end onto an empty PostgreSQL 16
+database **and** onto an already-populated one, twice each, with zero errors.
+`tests/test_sql_order.py` keeps the manifest and the files in step.
 
 Then four questions worth asking straight away:
 
 ```sql
-select * from v_forecast_coverage;   -- which cities can be traded tomorrow
-select * from v_run_scope;           -- which cities each job covers
-select * from v_archive_inventory;   -- what has actually been collected
+select * from v_forecast_coverage;                            -- tradeable tomorrow
+select * from v_peak_hour_coverage where peak_hour_local is null;  -- still assuming 15:00
+select * from v_archive_inventory;                            -- what has been collected
 select strategy_id, enabled, verdict from v_strategy_board;   -- what is switched on
 ```
-
-`NO FORWARD FORECAST` means that city has no price to disagree with.
-`one model` means its spread is zero, so every band looks equally likely.
-
----
 
 ## Step 2 · n8n (10 min)
 

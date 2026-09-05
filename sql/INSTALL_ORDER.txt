@@ -1,0 +1,57 @@
+# The order these files install in, from an empty database.
+#
+# Verified, not asserted: tests/test_sql_order.py checks that every .sql file
+# in this directory appears here exactly once, and the full sequence has been
+# run end to end onto both an empty PostgreSQL 16 database and an already
+# populated one, twice each, with zero errors.
+#
+# Every file is re-runnable. Running one out of order fails loudly with the
+# name of the file it needs, rather than installing something half-built.
+#
+# Lines beginning with # are comments; blank lines are ignored.
+
+# ---- schema, then the views everything else builds on ---------------------
+ad4_00_preflight.sql
+ad4_phase2.sql
+ad4_phase2_ranking.sql
+ad4_rls.sql
+ad4_rpc.sql
+
+# ---- the subsystems -------------------------------------------------------
+ad4_live_weather.sql
+ad4_settlement.sql
+ad4_backtest.sql
+ad4_capacity_correlation.sql
+ad4_paper_engine_columns.sql
+ad4_strategies_seed.sql
+
+# ---- the numbered series --------------------------------------------------
+ad4_13_reconcile.sql
+ad4_14_workflows.sql
+ad4_15_pipeline_fixes.sql
+ad4_16_nws.sql
+ad4_17_city_stats.sql
+ad4_18_databank.sql
+ad4_19_stats_cache.sql
+ad4_20_schedules.sql
+ad4_21_weather_features.sql
+ad4_22_opportunity_context.sql
+ad4_23_reasoning.sql
+ad4_24_nws_gridpoint.sql
+ad4_25_model_forecast.sql
+ad4_26_temp_trend.sql
+ad4_28_feature_cache.sql
+ad4_29_retention.sql
+ad4_30_open_meteo.sql
+ad4_31_predictive.sql
+ad4_32_run_scope.sql
+ad4_33_control.sql
+ad4_34_trade_plan.sql
+ad4_35_databank_inventory.sql
+ad4_36_execution_limits.sql
+ad4_37_peak_hour.sql
+
+# ---- read-only, run any time ----------------------------------------------
+# Not part of the install: these inspect a database rather than change one.
+# ad4_diagnose.sql   what can write what, and why a job is failing
+# ad4_99_verify.sql  does the schema match what the code expects
