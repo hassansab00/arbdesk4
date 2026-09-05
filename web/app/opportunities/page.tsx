@@ -232,7 +232,7 @@ export default function OpportunitiesPage() {
                 stake={stake}
                 lw={liveByCity.get(o.city_key)}
                 ctx={ctxByBand.get(o.band_id)}
-                onOpen={() => router.push(`/calculator?band_id=${o.band_id}`)}
+                onOpen={() => router.push(`/board?city=${encodeURIComponent(o.city_key)}&date=${o.resolution_date}`)}
               />
             ))}
           </div>
@@ -284,7 +284,7 @@ function Card({
   const band = o.band_label ?? fmtBandRange(o.band_lo, o.band_hi, unit, o.open_low, o.open_high);
 
   // What the trade actually risks and returns, in dollars, at this stake -
-  // through the desk's own cost model, so this card and the calculator can
+  // through the desk's own cost model, so this card and the board can
   // never quote different numbers for the same trade.
   const pos = price ? buy(stake, price, o.model_prob) : null;
   const profit = pos?.profit ?? null;
@@ -454,7 +454,7 @@ function Card({
       <div className="mt-2 flex items-center justify-between border-t border-border pt-2 text-[10px] text-muted">
         <span className={regimeColor(o.regime_label)}>{o.regime_label}</span>
         <span>confidence {fmtPct(o.confidence, 0)}</span>
-        <span className="text-accent">open in calculator →</span>
+        <span className="text-accent">open on the board →</span>
       </div>
     </button>
   );

@@ -56,7 +56,7 @@ const CATALOGUE: Array<{
     label: "Book + Volume Snapshot",
     schedule: "scheduled in n8n",
     what:
-      "Writes one book_snapshots row per live band: the ladder into raw_book, the cumulative USD depth tiers, and the exchange's 24h volume. This is what every fill price on Goals and Calculator walks.",
+      "Writes one book_snapshots row per live band: the ladder into raw_book, the cumulative USD depth tiers, and the exchange's 24h volume. This is what every fill price on Goals and the Board walks.",
   },
   {
     job: "P0.4_trade_history",

@@ -52,8 +52,22 @@ interface LiveRow {
 }
 
 export default function BoardPage() {
+  // ?city=&date= so a card on Opportunities can open the ladder it is about.
+  // Read from window rather than useSearchParams: this is a client page and
+  // useSearchParams forces a Suspense boundary on the whole route for the
+  // benefit of a prerender that never runs.
   const [day, setDay] = useState<string | null>(null);
   const [city, setCity] = useState<string | null>(null);
+  const [linked, setLinked] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const q = new URLSearchParams(window.location.search);
+    const c = q.get("city");
+    const d = q.get("date");
+    if (c) setCity(c);
+    if (d) setDay(d);
+    setLinked(Boolean(c));
+  }, []);
   const [yesStakes, setYesStakes] = useState<Record<string, string>>({});
   const [noStakes, setNoStakes] = useState<Record<string, string>>({});
   const [myProb, setMyProb] = useState<Record<string, string>>({});
@@ -125,8 +139,13 @@ export default function BoardPage() {
   );
   useEffect(() => {
     if (cityOptions.length === 0) return;
-    if (!city || !cityOptions.some((c) => c.key === city)) setCity(cityOptions[0].key);
-  }, [cityOptions, city]);
+    // A city arriving from ?city= is honoured even before its row loads; only
+    // fall back to the first option once we can see it is genuinely not there.
+    if (!city || !cityOptions.some((c) => c.key === city)) {
+      if (linked && city && cityOptions.length === 0) return;
+      setCity(cityOptions[0].key);
+    }
+  }, [cityOptions, city, linked]);
 
   const board = cities.find((c) => c.city_key === city) ?? null;
   // The desk's argument for THIS city, above its ladder. The board shows the
