@@ -94,6 +94,14 @@ const CATALOGUE: Array<{
     note: "A day whose hourly series misses the 12:00\u201318:00 peak window is skipped rather than written low: an understated max would invent disagreement that is not there.",
   },
   {
+    job: "P1.5_open_meteo",
+    label: "Open-Meteo Global",
+    schedule: "every 3 hours",
+    what:
+      "The only source here that covers every city. api.weather.gov is the United States and its territories, so P1.2\u2013P1.4 return 404 for Warsaw, Ankara, Moscow and Jinan \u2014 which left those cities with no live reading and no forward forecast from any job at all. This writes both, for all of them, in one HTTP call.",
+    note: "Registered by sql/ad4_30_open_meteo.sql. Its `current` block is model output interpolated to a coordinate, not an instrument reading, so it writes live_weather and never weather_observations \u2014 that table is the settlement evidence and what the model is fitted on. Read v_forecast_coverage to see which cities still have no forward forecast.",
+  },
+  {
     job: "P1.4_nws_gridpoint",
     label: "NWS Gridpoint",
     schedule: "every 6 hours",

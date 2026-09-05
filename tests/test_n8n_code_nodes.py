@@ -394,8 +394,11 @@ def test_every_workflow_file_has_a_cadence_registered():
     runs on whatever n8n says, which is the thing the gate exists to prevent."""
     import glob
 
-    seeded = (open(os.path.join(ROOT, "sql", "ad4_20_schedules.sql")).read()
-              + open(os.path.join(ROOT, "sql", "ad4_24_nws_gridpoint.sql")).read())
+    # Every SQL file, not a hardcoded two: a workflow registered in a new file
+    # is registered. Naming the files here made adding one fail a test that was
+    # actually satisfied.
+    seeded = "".join(open(f).read()
+                     for f in sorted(glob.glob(os.path.join(ROOT, "sql", "*.sql"))))
     for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
         f = os.path.basename(path)
         if f.endswith(".snippet.json"):
@@ -666,3 +669,107 @@ def test_every_gate_carries_the_permission_check(workflow):
     if not gate:
         pytest.skip("no schedule gate in this file")
     assert "42501" in gate[0]["parameters"]["jsCode"], workflow
+
+
+# ------------------------------------------------------------- P1.5 --------
+# api.weather.gov covers the United States and its territories. Warsaw,
+# Ankara, Moscow and Jinan get a 404 from it, so P1.2-P1.4 skip them - and
+# nothing else wrote a live reading or a forward forecast for them at all.
+# ingest_forecasts.py looks like it does and does not: its window is
+# today-10 -> today, so it backfills what WAS forecast, never what will
+# happen. Open-Meteo is global and answers plain application/json.
+
+@pytest.fixture(scope="module")
+def p15():
+    r = run("P1.5_open_meteo.template.json", "plan_P1.5_open_meteo.json")
+    assert r["ok"], r
+    return r["outputs"]
+
+
+def test_all_cities_go_out_in_one_request(p15):
+    """Comma-separated coordinate lists: 37 cities cost one HTTP call."""
+    url = p15["Build requests"][0]["url"]
+    assert url.startswith("https://api.open-meteo.com/v1/forecast?")
+    assert "latitude=52.1657%2C41.7868" in url, url
+    assert "longitude=20.9671%2C-87.7522" in url, url
+    assert p15["Build requests"][0]["n"] == 2
+
+
+def test_the_request_asks_for_the_units_the_columns_already_use(p15):
+    """weather_observations came from IEM METAR, so wind is KNOTS and precip
+    is INCHES. Writing km/h into a knots column is wrong and not
+    wrong-looking, which is the kind nobody finds."""
+    url = p15["Build requests"][0]["url"]
+    assert "wind_speed_unit=kn" in url
+    assert "precipitation_unit=inch" in url
+    assert "temperature_unit=celsius" in url
+    assert "timezone=auto" in url, "a daily max only means anything in local time"
+
+
+def test_cloud_percent_becomes_oktas(p15):
+    """The one unit Open-Meteo cannot serve in the stored form: it answers
+    percent, the column is eighths."""
+    feats = {f["city_key"]: f for f in p15["Build rows"][0]["features"]}
+    assert feats["warsaw"]["cloud_max"] == 4, "50% is 4 oktas"
+    assert feats["chicago"]["cloud_max"] == 8, "100% is 8 oktas, not 100"
+
+
+def test_a_live_reading_is_marked_as_a_model_not_a_station(p15):
+    """Open-Meteo's current block is model output interpolated to a
+    coordinate, not an instrument reading at the ICAO the market settles on.
+    A page that cannot tell them apart is making a claim it cannot support."""
+    live = p15["Build rows"][0]["live"]
+    assert live and all(r["source_kind"] == "model" for r in live)
+    assert all(r["source"] == "open-meteo" for r in live)
+
+
+def test_it_never_writes_observations():
+    """weather_observations is the settlement evidence and what the model is
+    FITTED on. Model output in it would train the model on its own guess."""
+    d = json.load(open(os.path.join(ROOT, "n8n", "P1.5_open_meteo.template.json")))
+    for n in d["nodes"]:
+        p = n["parameters"]
+        for field in ("url", "jsonBody", "jsCode"):
+            assert "weather_observations" not in str(p.get(field, "")), \
+                f"{n['name']}.{field}"
+
+
+def test_lead_days_count_from_the_citys_own_first_local_day(p15):
+    fc = [f for f in p15["Build rows"][0]["forecasts"] if f["city_key"] == "chicago"]
+    assert sorted(f["lead_days"] for f in fc) == [0, 1, 2]
+
+
+def test_the_daily_max_is_the_peak_of_the_hourly_curve(p15):
+    fc = {(f["city_key"], f["lead_days"]): f for f in p15["Build rows"][0]["forecasts"]}
+    w = fc[("warsaw", 0)]
+    assert w["forecast_max_c"] == 22, w
+    assert w["variables"]["max_at_local"].endswith("T15:00"), "the seeded curve peaks at 15:00"
+    assert w["variables"]["min_c"] == 14
+
+
+def test_features_carry_the_same_column_names_as_the_observed_ones(p15):
+    """So a model fitted on days that happened reads a forecast day with no
+    translation - the thing that makes Model Forecast possible at all."""
+    f = p15["Build rows"][0]["features"][0]
+    for col in ("morning_temp_c", "morning_dewpoint_c", "dewpoint_depression_c",
+                "morning_humidity", "cloud_mean", "cloud_max", "wind_mean",
+                "wind_max", "precip_total", "forecast_max_c", "forecast_min_c"):
+        assert col in f, col
+
+
+def test_a_single_city_answer_is_not_an_array(p15):
+    """Open-Meteo returns a bare object for one location and an array for
+    many. n8n splits an array into items; the parser must take both."""
+    code = [n for n in json.load(open(os.path.join(
+        ROOT, "n8n", "P1.5_open_meteo.template.json")))["nodes"]
+        if n["name"] == "Build rows"][0]["parameters"]["jsCode"]
+    assert "if (res.length === 1 && Array.isArray(res[0])) res = res[0];" in code
+
+
+def test_the_code_node_sandbox_has_no_URLSearchParams():
+    """It does not, and a workflow that throws ReferenceError on its first
+    node is worse than a longer join."""
+    for n in json.load(open(os.path.join(
+            ROOT, "n8n", "P1.5_open_meteo.template.json")))["nodes"]:
+        if n["type"] == "n8n-nodes-base.code":
+            assert "URLSearchParams" not in n["parameters"]["jsCode"], n["name"]
