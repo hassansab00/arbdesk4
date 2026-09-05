@@ -1,5 +1,7 @@
 import datetime as dt
 
+import pytest
+
 from strategies.base import BandView, Context, StrategyConfig, Signal
 from strategies.s1_buy_low_sell_signal import S1BuyLowSellSignal
 from strategies.s2_combination_arb import S2CombinationArb
@@ -506,3 +508,135 @@ def test_the_browsers_cover_arithmetic_matches_the_engines():
             # keeps full precision. Half of the last rounded digit is the only
             # difference allowed - anything larger is the two drifting apart.
             assert abs(signals[0].payload["pair_cost_with_fee"] - got["total"]) <= 5e-5
+
+
+# ==========================================================================
+# S9 - ladder basket
+#
+# The general form of S8: any contiguous run of 2..N buckets, ranked by
+# expected return per dollar after fees rather than by a fixed price cap.
+# ==========================================================================
+from strategies.s9_ladder_basket import S9LadderBasket, basket_math, leg_fee
+
+
+def rung(i, price, prob, **over):
+    """One bucket of a 1C ladder starting at 27C."""
+    d = dict(band_lo=27 + i, band_hi=28 + i, band_label=f"{27+i}-{28+i}C",
+             yes_price=price, model_prob_yes=prob, implied_max_c=29.5)
+    d.update(over)
+    return make_band(f"r{i}", **d)
+
+
+def s9(**extra):
+    return S9LadderBasket(enabled_config("s9_ladder_basket", side="YES", extra=extra))
+
+
+def ladder(spec, **over):
+    return make_ctx([rung(i, p, q, **over) for i, (p, q) in enumerate(spec)])
+
+
+def test_s9_buys_a_window_whose_probability_beats_its_cost():
+    #        27-28  28-29  29-30  30-31
+    ctx = ladder([(0.05, 0.03), (0.28, 0.36), (0.30, 0.42), (0.10, 0.09)])
+    out = s9().entry_signals(ctx)
+    assert out, "a window paying 78% of the dollar for 58c should fire"
+    p = out[0].payload
+    assert p["buckets"] == ["28-29C", "29-30C"]
+    assert p["ev_per_dollar"] > 0.08
+    assert p["win_prob"] == pytest.approx(0.78)
+
+
+def test_s9_takes_a_wider_window_only_when_the_extra_bucket_earns_it():
+    """Width is not the objective and neither is cheapness - expected return is.
+
+    Here 28-29C is underpriced (10c for a 20% bucket), so adding it to the
+    29-31C pair raises the return per dollar from 43% to 52%. Going wider still,
+    to 27-31C, drops it back to 43% because 27-28C is not worth its price.
+    """
+    ctx = ladder([(0.05, 0.02), (0.10, 0.20), (0.25, 0.30), (0.22, 0.40), (0.05, 0.04)])
+    got = s9(min_ev_per_dollar=0.01).entry_signals(ctx)[0].payload
+    assert got["buckets"] == ["28-29C", "29-30C", "30-31C"], got["buckets"]
+    assert got["ev_per_dollar"] == pytest.approx(0.519, abs=0.005)
+
+
+def test_s9_takes_the_narrow_window_when_the_extra_bucket_does_not_earn_it():
+    """The same ladder with 28-29C fairly priced at 20c. Now the pair wins,
+    and a strategy that just preferred width would buy the worse basket."""
+    ctx = ladder([(0.05, 0.02), (0.20, 0.24), (0.25, 0.30), (0.22, 0.40), (0.05, 0.04)])
+    got = s9(min_ev_per_dollar=0.01).entry_signals(ctx)[0].payload
+    assert got["buckets"] == ["29-30C", "30-31C"], got["buckets"]
+    assert got["ev_per_dollar"] == pytest.approx(0.435, abs=0.005)
+
+
+def test_s9_refuses_a_window_that_costs_more_than_it_is_worth():
+    """Every bucket priced above the model. Nothing here is a basket."""
+    ctx = ladder([(0.20, 0.05), (0.40, 0.30), (0.40, 0.30), (0.20, 0.05)])
+    assert s9().entry_signals(ctx) == []
+
+
+def test_s9_will_not_buy_the_whole_ladder():
+    """Own every bucket and you have paid the overround for a certainty: the
+    total goes over a dollar and the EV is negative by the book's edge."""
+    ctx = ladder([(0.26, 0.25), (0.26, 0.25), (0.26, 0.25), (0.26, 0.25)])
+    assert s9(max_buckets=4).entry_signals(ctx) == []
+
+
+def test_s9_never_spans_a_gap_in_the_ladder():
+    """A basket with a hole is two claims, and the hole is usually where the
+    forecast points."""
+    a = make_band("a", band_lo=28, band_hi=29, band_label="28-29C",
+                  yes_price=0.20, model_prob_yes=0.40, implied_max_c=29.5)
+    far = make_band("f", band_lo=33, band_hi=34, band_label="33-34C",
+                    yes_price=0.20, model_prob_yes=0.40, implied_max_c=29.5)
+    assert s9().entry_signals(make_ctx([a, far])) == []
+
+
+def test_s9_requires_the_window_to_contain_where_the_day_is_going():
+    """The cheapest window is usually the tail, and it is cheap because the day
+    is not going there. Without the anchor that is exactly what gets bought."""
+    # the high-EV window is 27-29, but the day is heading for 29.5
+    ctx = ladder([(0.02, 0.30), (0.03, 0.35), (0.60, 0.30), (0.20, 0.05)])
+    out = s9(min_ev_per_dollar=0.01).entry_signals(ctx)
+    assert out == [] or "29" in "".join(out[0].payload["buckets"])
+
+
+def test_s9_fee_is_per_leg_and_peaks_at_the_middle():
+    """Four mid-priced legs carry far more fee than two at the extremes, and a
+    flat percentage would rank the baskets in the wrong order."""
+    mid = basket_math([rung(0, 0.5, 0.3), rung(1, 0.5, 0.3)])
+    ends = basket_math([rung(0, 0.95, 0.5), rung(1, 0.02, 0.1)])
+    assert mid["fee"] > ends["fee"] * 5
+    assert leg_fee(0.5) == pytest.approx(0.05 * 0.25)
+    assert leg_fee(0.0) == 0 and leg_fee(1.0) == 0
+
+
+def test_s9_ev_per_dollar_is_the_number_it_claims_to_be():
+    """(win_prob - total) / total. If this drifts the ranking is meaningless."""
+    m = basket_math([rung(0, 0.30, 0.40), rung(1, 0.30, 0.42)])
+    assert m["total"] == pytest.approx(0.60 + 2 * leg_fee(0.30))
+    assert m["ev_per_dollar"] == pytest.approx((0.82 - m["total"]) / m["total"])
+
+
+def test_s9_needs_every_leg_fillable():
+    ctx = ladder([(0.05, 0.03), (0.28, 0.36), (0.30, 0.42), (0.10, 0.09)],
+                 fillable_usd_5c_yes=10.0)
+    assert s9().entry_signals(ctx) == []
+
+
+def test_s9_sizes_every_leg_to_the_same_share_count():
+    class P:
+        bankroll = 1000.0
+    ctx = ladder([(0.05, 0.03), (0.28, 0.36), (0.30, 0.42), (0.10, 0.09)])
+    out = s9().entry_signals(ctx)
+    strat = s9()
+    sizes = {s.band_id: strat.size(s, P()) for s in out}
+    assert len(set(sizes.values())) == 1, sizes
+    assert next(iter(sizes.values())) > 0
+
+
+def test_s9_reports_what_the_trade_actually_returns():
+    ctx = ladder([(0.05, 0.03), (0.28, 0.36), (0.30, 0.42), (0.10, 0.09)])
+    p = s9().entry_signals(ctx)[0].payload
+    # 58c plus fee returning $1.00 is about 68%
+    assert 60 < p["return_if_win_pct"] < 75
+    assert p["range"] == [28, 30]

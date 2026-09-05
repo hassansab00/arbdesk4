@@ -7,6 +7,7 @@ from strategies.s5_running_max_lock import S5RunningMaxLock
 from strategies.s6_anchor_insurance import S6AnchorInsurance
 from strategies.s7_pre_peak_gradient import S7PrePeakGradient
 from strategies.s8_two_bucket_cover import S8TwoBucketCover
+from strategies.s9_ladder_basket import S9LadderBasket
 
 REGISTRY = {
     "s1_buy_low_sell_signal": S1BuyLowSellSignal,
@@ -17,6 +18,7 @@ REGISTRY = {
     "s6_anchor_insurance": S6AnchorInsurance,
     "s7_pre_peak_gradient": S7PrePeakGradient,
     "s8_two_bucket_cover": S8TwoBucketCover,
+    "s9_ladder_basket": S9LadderBasket,
 }
 
 __all__ = ["Strategy", "StrategyConfig", "Signal", "BandView", "Context", "dedupe_key", "REGISTRY"]
