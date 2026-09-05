@@ -366,3 +366,39 @@ def test_a_series_response_is_not_mistaken_for_a_failed_fetch(p12):
     dropped. Nothing about that looked wrong from the summary line."""
     assert p12["Build rows"][0]["failed"] == 0
     assert p12["Build rows"][0]["ok"] == 3
+
+
+def test_every_workflow_file_has_a_row_on_the_workflows_page():
+    """A workflow with no row in the UI catalogue has no Run button, no run
+    history and no cadence control - it exists only as a file. P1.4 shipped
+    that way: registered in settings by sql/ad4_24, invisible in the app.
+    """
+    import glob
+    import re
+
+    page = open(os.path.join(ROOT, "web", "app", "workflows", "page.tsx")).read()
+    listed = set(re.findall(r'job: "([^"]+)"', page))
+
+    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
+        f = os.path.basename(path)
+        if f.endswith(".snippet.json"):
+            continue
+        # P1.2_nws_monitor.template.json -> P1.2_nws_monitor
+        job = f.split(".template.")[0].split(".scaffold.")[0]
+        assert job in listed, f"{job} has no row on the Workflows page"
+
+
+def test_every_workflow_file_has_a_cadence_registered():
+    """should_run() falls open for an unknown job, so a missing schedule row is
+    not fatal - but it does mean the workflow ignores the Workflows page and
+    runs on whatever n8n says, which is the thing the gate exists to prevent."""
+    import glob
+
+    seeded = (open(os.path.join(ROOT, "sql", "ad4_20_schedules.sql")).read()
+              + open(os.path.join(ROOT, "sql", "ad4_24_nws_gridpoint.sql")).read())
+    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
+        f = os.path.basename(path)
+        if f.endswith(".snippet.json"):
+            continue
+        job = f.split(".template.")[0].split(".scaffold.")[0]
+        assert job in seeded, f"{job} has no row in settings.workflow_schedules"

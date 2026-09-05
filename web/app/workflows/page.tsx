@@ -94,6 +94,14 @@ const CATALOGUE: Array<{
     note: "A day whose hourly series misses the 12:00\u201318:00 peak window is skipped rather than written low: an understated max would invent disagreement that is not there.",
   },
   {
+    job: "P1.4_nws_gridpoint",
+    label: "NWS Gridpoint",
+    schedule: "every 6 hours",
+    what:
+      "P1.3 forecasts the temperature; this forecasts what MOVES it \u2014 cloud cover, dewpoint depression, wind, rain and the morning temperature, from the raw /gridpoints endpoint. The columns it writes carry the same names as the observed ones, so the model fitted on days that already happened reads a forecast day with no translation.",
+    note: "Registered by sql/ad4_24_nws_gridpoint.sql. Feeds Model Forecast \u2014 without it there is nothing for the fitted coefficients to be applied to.",
+  },
+  {
     job: "P3.1_email_digests",
     label: "Email Digests",
     schedule: "04:00 and 21:00 UTC",
