@@ -65,7 +65,7 @@ n8n → **Workflows → Import from File**. One at a time.
 | File | New or re-import |
 |---|---|
 | `n8n/P1.1_live_weather_alerts.template.json` | re-import (the schedule bug is fixed) |
-| `n8n/P1.2_nws_monitor.template.json` | **re-import** — it now reads the whole day's readings, not one |
+| `n8n/P1.2_nws_monitor.template.json` | **re-import, and the most important one** — see below |
 | `n8n/P1.3_nws_forecast.template.json` | new |
 | `n8n/P1.4_nws_gridpoint.template.json` | new |
 | `n8n/P3.1_email_digests.template.json` | new |
@@ -73,6 +73,18 @@ n8n → **Workflows → Import from File**. One at a time.
 
 If you already imported an older copy of one of these, delete the old one first.
 Two copies is the same problem as above.
+
+### P1.2 is no longer optional
+
+`live_weather.yml` used to run every 15 minutes and write `live_weather` too.
+It was 4,320 GitHub Actions runs a month for a job n8n does better and far
+cheaper, and two schedulers writing one table made "which reading is current?"
+unanswerable — so its schedule is gone.
+
+**P1.2 is now the only thing that keeps `live_weather` current.** Until it is
+imported and Active, the Live Weather page, the City Monitor and strategy S7 all
+read a table nobody is writing. The Action still exists as a manual fallback —
+Actions → *Live Weather Monitor* → Run workflow — for exactly this gap.
 
 ### Then, in each one
 
