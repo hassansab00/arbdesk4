@@ -13,6 +13,7 @@ Two things make this dangerous rather than merely wrong if it misbehaves:
   anything.
 """
 import math
+import os
 import random
 
 import pytest
@@ -459,3 +460,58 @@ def test_the_cache_does_not_smuggle_a_leaky_column_into_the_model():
     for col in wm.LEAKY_FEATURES & cached:
         with pytest.raises(ValueError):
             wm.fit_city(synth_plus(200), wm.BASE_FEATURES + [col])
+
+
+# ---------------------------------------------------- the archive round trip --
+# weather_observations is ~98% of the database. Moving it out is only safe if
+# the file that replaces it is complete, so the export is checked here the same
+# way the script checks it in production: count the rows back.
+def test_the_archive_round_trips_every_row():
+    import importlib.util
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "archive_observations", root / "scripts" / "archive_observations.py")
+    mod = importlib.util.module_from_spec(spec)
+    import sys as _s
+    _s.path.insert(0, str(root / "scripts"))
+    spec.loader.exec_module(mod)
+
+    rows = [
+        {"city_key": "nyc", "station": "KNYC", "valid_at": "2026-01-01T12:00:00+00:00",
+         "temp_c": 4.4, "temp_f": 39.9, "dewpoint_c": -1.1, "humidity": 68,
+         "wind_speed": 9.7, "wind_dir_deg": 250, "precip": 0.0, "cloud_cover": 6,
+         "pressure_hpa": 1013.2, "source": "IEM"},
+        # nulls, commas and quotes are what break a naive CSV writer
+        {"city_key": "beirut", "station": None, "valid_at": "2026-01-01T13:00:00+00:00",
+         "temp_c": None, "temp_f": None, "dewpoint_c": None, "humidity": None,
+         "wind_speed": None, "wind_dir_deg": None, "precip": None,
+         "cloud_cover": None, "pressure_hpa": None, "source": 'a,b"c'},
+    ]
+    blob = mod.to_gzip_csv(rows)
+    assert mod.count_rows(blob) == len(rows), "the verify step would pass a short file"
+
+    import csv as _csv
+    import gzip as _gzip
+    import io as _io
+    back = list(_csv.DictReader(_io.StringIO(_gzip.decompress(blob).decode())))
+    assert len(back) == 2
+    assert back[0]["city_key"] == "nyc" and back[0]["temp_c"] == "4.4"
+    assert back[1]["source"] == 'a,b"c', "quoting is not round-tripping"
+    assert back[1]["temp_c"] == "", "a null must not become the string None"
+
+
+def test_the_archive_refuses_a_window_too_small_to_model_on():
+    import subprocess
+    import sys as _s
+    r = subprocess.run([_s.executable, "scripts/archive_observations.py",
+                        "--keep-days", "7"], capture_output=True, text=True,
+                       cwd=str(pathlib_root()), env={**os.environ, "PYTHONPATH": "scripts"})
+    assert r.returncode == 1
+    assert "nothing to model on" in r.stderr
+
+
+def pathlib_root():
+    import pathlib
+    return pathlib.Path(__file__).resolve().parents[1]
