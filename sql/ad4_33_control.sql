@@ -95,6 +95,8 @@ select
   s.strategy_id,
   s.name,
   s.side,
+  -- The seed puts it in extra for most rows and in the column for some.
+  coalesce(s.origin, s.extra ->> 'origin')                   as origin,
   s.enabled,
   s.conflict_class,
   s.universe,

@@ -8,6 +8,7 @@ const TABS = [
   { href: "/board", label: "Board" },
   { href: "/opportunities", label: "Opportunities" },
   { href: "/predictive", label: "Predictive" },
+  { href: "/strategies", label: "Strategies" },
   { href: "/clusters", label: "City Clusters" },
   { href: "/live", label: "Live Weather" },
   { href: "/monitor", label: "City Monitor" },
