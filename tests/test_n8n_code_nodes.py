@@ -798,3 +798,91 @@ def test_every_workflow_that_writes_a_table_checks_the_write():
             assert json.dumps(name) in code, f"{os.path.basename(path)} does not check {name}"
             resp = by[name]["parameters"].get("options", {}).get("response", {}).get("response", {})
             assert resp.get("neverError") is True, f"{os.path.basename(path)} / {name}"
+
+
+# ------------------------------------------ the endpoints I cannot verify ---
+# P0.2-P0.5 are RECONSTRUCTIONS. Their Supabase half is grounded in the real
+# schema; their Polymarket half is a guess, and this sandbox's egress policy
+# refuses gamma-api / clob / data-api.polymarket.com, so it stays a guess.
+#
+# They used to ship with a plausible URL already filled in, which is worse than
+# shipping none: it reads as authoritative, nobody changes it, and the run dies
+# four nodes later with a message about response shapes.
+
+P0_SCAFFOLDS = ["P0.2_market_discovery.scaffold.json",
+                "P0.3_book_volume_snapshot.scaffold.json",
+                "P0.4_trade_history.scaffold.json",
+                "P0.5_refresh_rules_text.scaffold.json"]
+
+
+@pytest.mark.parametrize("workflow", P0_SCAFFOLDS)
+def test_no_unverified_endpoint_ships_prefilled(workflow):
+    d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
+    cfg = [n for n in d["nodes"] if n["name"] == "Config"][0]
+    for a in cfg["parameters"]["assignments"]["assignments"]:
+        if a["name"].endswith("_url") and a["name"] != "supabase_url":
+            assert a["value"] == "", (
+                f"{workflow}: {a['name']} ships with {a['value']!r}. This repo cannot "
+                f"verify a Polymarket endpoint, so it must not assert one.")
+
+
+@pytest.mark.parametrize("workflow", P0_SCAFFOLDS)
+def test_a_missing_endpoint_stops_before_any_request(workflow):
+    d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
+    gate = [n for n in d["nodes"] if n["name"] == "Run now?"][0]["parameters"]["jsCode"]
+    assert "AN ENDPOINT THIS FILE CANNOT KNOW" in gate, workflow
+    # and the gate really is node 2, before Load/Fetch
+    after_cfg = [c["node"] for br in d["connections"]["Config"]["main"] for c in br]
+    assert after_cfg == ["Check schedule"], workflow
+
+
+@pytest.mark.parametrize("workflow,field", [
+    ("P0.2_market_discovery.scaffold.json", "markets_url"),
+    ("P0.3_book_volume_snapshot.scaffold.json", "clob_book_url"),
+    ("P0.4_trade_history.scaffold.json", "trades_url"),
+    ("P0.5_refresh_rules_text.scaffold.json", "rules_url"),
+])
+def test_the_empty_endpoint_message_points_at_the_working_original(workflow, field, tmp_path):
+    """It must send the reader to their own working workflow, which is the only
+    authority on the endpoint, not to a guess or to the internet."""
+    import subprocess
+    js = f"""
+      const fs = require('fs');
+      const wf = JSON.parse(fs.readFileSync({json.dumps(os.path.join(ROOT, 'n8n', workflow))}, 'utf8'));
+      const code = wf.nodes.find(n => n.name === 'Run now?').parameters.jsCode;
+      const nodes = {{ Config: [{{ supabase_url: 'u', service_key: 'k', {field}: '' }}],
+                      'Check schedule': [{{ run: true }}] }};
+      const $ = n => ({{ all: () => (nodes[n]||[]).map(j => ({{json:j}})),
+                        first: () => ({{json:(nodes[n]||[])[0]}}) }});
+      try {{ new Function('$','$input','$execution', code)($, {{all:()=>[]}}, {{mode:'manual'}});
+             console.log('NOTHROW'); }}
+      catch (e) {{ console.log(e.message); }}
+    """
+    f = tmp_path / "t.js"
+    f.write_text(js)
+    out = subprocess.run([NODE, str(f)], capture_output=True, text=True, timeout=30).stdout
+    assert field in out, out
+    assert "your OWN working" in out, out
+    assert "Nothing was fetched and nothing was written" in out, out
+
+
+def test_the_gate_does_not_claim_to_catch_what_it_cannot():
+    """sql/ad4_20 grants should_run to anon on purpose, so an anon key sails
+    through the gate and only fails at the first write. Saying otherwise sends
+    the reader after the wrong thing."""
+    import glob
+
+    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
+        gate = [n for n in json.load(open(path))["nodes"] if n["name"] == "Run now?"]
+        if not gate:
+            continue
+        code = gate[0]["parameters"]["jsCode"]
+        assert "THIS IS NOT THE MAIN DEFENCE" in code, os.path.basename(path)
+
+
+def test_the_diagnostic_reports_who_can_write():
+    sql = open(os.path.join(ROOT, "sql", "ad4_diagnose.sql")).read()
+    assert "6 WRITE ACCESS" in sql
+    assert "has_table_privilege('anon'" in sql
+    assert "has_table_privilege('service_role'" in sql
+    assert "by design" in sql, "should_run being anon-callable must not read as a fault"

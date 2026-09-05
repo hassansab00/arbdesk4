@@ -18,6 +18,9 @@
 --   4 BUCKETS      how many buckets each market has, against the widest
 --                  ladder on the same day
 --   5 TRADING      why nothing is tradeable, counted by reason
+--   6 WRITE ACCESS which key can actually write, per table. "Permission
+--                  denied" arrives from n8n as a 401 several nodes deep;
+--                  this says it in advance.
 -- ===========================================================================
 
 with
@@ -194,10 +197,75 @@ sec5 as (
            case when count(*) = 0 then 'none - needs enabled strategies AND priced bands' else 'ok' end
       from signals where fired_at > now() - interval '24 hours'
   ) s
+),
+
+-- ---------------------------------------------------------------- 6 -------
+-- WHICH KEY CAN WRITE. The failure this exists for cost two rounds: an anon
+-- key in an n8n Config node reads everything (anon holds SELECT on every
+-- table) and writes nothing, so the workflow runs, the summary looks healthy,
+-- and the data silently stops moving. From n8n it surfaces as a 401 several
+-- nodes deep, usually on whichever node happens to be last.
+--
+-- The grants are the same information, available before it happens.
+sec6 as (
+  select 6, '6 WRITE ACCESS', g.item, g.value, g.meaning from (
+    select
+      'anon can write ' || t.tbl                                    as item,
+      case when has_table_privilege('anon', t.tbl, 'INSERT')
+           then 'YES' else 'no' end                                 as value,
+      case when has_table_privilege('anon', t.tbl, 'INSERT')
+           then 'unexpected - sql/ad4_13 revokes writes from anon; re-run it'
+           else 'correct. An n8n Config node holding the ANON key cannot write this table.'
+      end                                                           as meaning
+      from (values ('markets'), ('bands'), ('book_snapshots'),
+                   ('trades_observed'), ('weather_observations'),
+                   ('weather_forecasts'), ('live_weather')) as t(tbl)
+     where to_regclass('public.' || t.tbl) is not null
+       and exists (select 1 from pg_roles where rolname = 'anon')
+    union all
+    select
+      'service_role can write ' || t.tbl,
+      case when has_table_privilege('service_role', t.tbl, 'INSERT')
+           then 'YES' else 'NO' end,
+      case when has_table_privilege('service_role', t.tbl, 'INSERT')
+           then 'correct - this is the key every n8n Config node and GitHub secret must hold'
+           else 'BROKEN - re-run sql/ad4_13_reconcile.sql, which grants service_role everything'
+      end
+      from (values ('markets'), ('bands'), ('book_snapshots'),
+                   ('trades_observed'), ('weather_observations'),
+                   ('weather_forecasts'), ('live_weather')) as t(tbl)
+     where to_regclass('public.' || t.tbl) is not null
+       and exists (select 1 from pg_roles where rolname = 'service_role')
+    union all
+    select
+      'anon can call ' || f.fn,
+      case when has_function_privilege('anon', f.sig, 'EXECUTE') then 'YES' else 'no' end,
+      case when has_function_privilege('anon', f.sig, 'EXECUTE')
+           then 'unexpected - only the browser RPCs should be anon-callable'
+           else 'correct. A 42501 on this from n8n means the Config node holds the ANON key.'
+      end
+      from (values ('log_ingest', 'log_ingest(text,text,int,jsonb)')) as f(fn, sig)
+     where exists (select 1 from pg_roles where rolname = 'anon')
+       and to_regprocedure(f.sig) is not null
+    union all
+    -- should_run is anon-callable ON PURPOSE (ad4_20: the Workflows page
+    -- previews a schedule change before saving it). Which means a workflow
+    -- holding the anon key sails through the schedule gate and only fails at
+    -- its first WRITE - so the gate cannot be the thing that catches a bad
+    -- key on this database, and this row exists to stop anyone concluding it
+    -- can.
+    select 'anon can call should_run',
+           case when has_function_privilege('anon', 'should_run(text,text)', 'EXECUTE')
+                then 'YES (by design)' else 'no' end,
+           'Deliberate - the UI previews schedules with it. It also means the schedule gate CANNOT detect an anon key here; the write guard in each workflow''s Summary node is what catches that.'
+     where exists (select 1 from pg_roles where rolname = 'anon')
+       and to_regprocedure('should_run(text,text)') is not null
+  ) g
 )
 
 select section, item, value, meaning from (
   select * from sec1 union all select * from sec2 union all select * from sec3
   union all select * from sec4 union all select * from sec5
+  union all select * from sec6
 ) all_rows
 order by sec, item;

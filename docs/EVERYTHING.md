@@ -27,7 +27,7 @@ four refused writes and looking healthy.
 ## Step 1 — SQL
 
 Supabase → **SQL Editor** → paste the whole file → **Run**. In this order.
-All four are safe to run again.
+All are safe to run again.
 
 | # | File | Why you need it |
 |---|---|---|
@@ -35,6 +35,8 @@ All four are safe to run again.
 | 2 | `sql/ad4_28_feature_cache.sql` | **Changed.** `refresh_feature_cache()` takes a city, so the caller can split it. Fixes the HTTP 500 from Archive Observations. |
 | 3 | `sql/ad4_29_retention.sql` | **Changed.** Same function, byte-for-byte, so run order cannot matter. Also `prune_observations()` now takes the exact instant that was exported. |
 | 4 | `sql/ad4_30_open_meteo.sql` | **New.** `live_weather.source` / `source_kind`, the `v_forecast_coverage` view, and registers P1.5. |
+| 5 | `sql/ad4_31_predictive.sql` | **New.** The five views behind the Predictive page. |
+| — | `sql/ad4_diagnose.sql` | **Read-only, changes nothing.** Run it any time. It grew a section 6: which key can write which table. |
 
 Then, to see what the desk can actually trade tomorrow:
 
@@ -52,7 +54,7 @@ select * from v_forecast_coverage;
 n8n → **Workflows** → **Import from File**. Delete any older copy of the same
 workflow first — two copies is two schedulers writing one table.
 
-### Import these six
+### Import these seven
 
 | File | What it does | Cadence |
 |---|---|---|
@@ -67,17 +69,43 @@ workflow first — two copies is two schedulers writing one table.
 That is seven files. P1.5 is the one that matters most right now: **it is the
 only source that covers Warsaw, Ankara, Moscow and Jinan.**
 
-### Do NOT import these four
+### P0.2–P0.5: do not import these, and here is exactly why
 
-`P0.2`, `P0.3`, `P0.4`, `P0.5` — you already have working versions of these in
-n8n, and they are what put 841 markets and 122,000 trades in the database. The
-files in this repo are **reconstructions**: the Supabase half is grounded in
-the real schema, but the Polymarket endpoints were never verified against your
-setup. Do not swap a working ingest for a reconstruction, and do not run both.
+`P0.2`, `P0.3`, `P0.4`, `P0.5` in this repo are **reconstructions**. Their
+Supabase half is grounded in the real schema and is fine. Their **Polymarket
+half is a guess** — and it has to stay one: this build environment's network
+policy refuses `gamma-api.polymarket.com`, `clob.polymarket.com` and
+`data-api.polymarket.com`, exactly as it refuses `api.weather.gov`. I cannot
+verify those endpoints, so I must not assert them.
 
-If you want the schedule gate on your existing four, paste
-`schedule_gate.snippet.json` onto the canvas instead — instructions in
-`docs/DO_THIS_NOW.md` section C2.
+They used to ship with a plausible URL already filled in. That was the mistake:
+a wrong pre-filled value reads as authoritative, so nobody changes it, and the
+run dies four nodes later talking about response shapes. Those fields now ship
+**empty**, and the workflow stops at node 2 — before any HTTP call — saying to
+copy the URL out of your own working P0.x.
+
+**Your originals are the authority.** They put 841 markets and 122,000 trades
+in the database. Do not swap a working ingest for a reconstruction, and never
+run both against the same tables.
+
+So use these four for reference only. What is worth taking from them:
+
+| Take | How |
+|---|---|
+| The **schedule gate** — so the Workflows page controls their cadence | Paste `schedule_gate.snippet.json` onto your original's canvas. `docs/DO_THIS_NOW.md` § C2. |
+| The **write check** — so a refused write can never be reported as a run | Their write nodes need `Options → Response → Never Error` on, and a Code node after the last write that throws if the response carries a `code`/`message`. The `Summary` node of any P1.x file has the exact code. |
+
+### If your own P0.2–P0.5 are failing
+
+Run **section 6** of `sql/ad4_diagnose.sql` first. It reports which key can
+write which table, so a permission problem is visible *before* a run rather
+than as a 401 several nodes deep.
+
+The most likely cause is the same one that broke P1.2–P1.4: an **anon key** in
+the Config node. Note that this will *not* show up at the schedule gate —
+`sql/ad4_20` grants `should_run` to anon deliberately so the Workflows page can
+preview a schedule change, so an anon key passes the gate cleanly and only
+fails at the first write. Section 6 says this in as many words.
 
 ### After importing, in each one
 
