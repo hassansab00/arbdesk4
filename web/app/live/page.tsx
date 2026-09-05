@@ -15,14 +15,71 @@ const STATE_ORDER: Record<string, number> = { INSIDE: 0, BEFORE: 1, AFTER: 2 };
 interface Obs { valid_at: string; temp_c: number | null }
 interface BandRow { band_id: string; band_lo: number | null; band_hi: number | null; open_low: boolean; open_high: boolean; band_label: string | null }
 
+const WATCH_KEY = "ad4-city-watch";
+
+interface TrendRow {
+  city_key: string;
+  slope_3_c_per_h: number | null;
+  slope_6_c_per_h: number | null;
+  direction: string | null;
+  rolling_over: boolean | null;
+  implied_max_c: number | null;
+  typical_climb_left_c: number | null;
+  reading_age_min: number | null;
+  pct_already_peaked: number | null;
+}
+
+type SortKey = "peak" | "rate" | "togo" | "hottest" | "stale" | "name";
+
+/** Each sort answers a different question, so the label is the question. */
+const SORTS: Array<{ key: SortKey; label: string; hint: string }> = [
+  { key: "peak",    label: "peak window",    hint: "Inside the peak window first, then approaching, then done. What needs watching now." },
+  { key: "rate",    label: "moving fastest", hint: "Steepest climb first, by least squares over the last three readings. Where the day is still being decided." },
+  { key: "togo",    label: "furthest to go", hint: "Largest gap between the forecast maximum and the running max. Most room left to travel." },
+  { key: "hottest", label: "hottest now",    hint: "Highest current reading." },
+  { key: "stale",   label: "stalest data",   hint: "Oldest observation first - the cities the desk is flying blind on." },
+  { key: "name",    label: "name",           hint: "Alphabetical." },
+];
+
 export default function LiveWeatherPage() {
   const [selected, setSelected] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("peak");
+  const [query, setQuery] = useState("");
+  const [watchedOnly, setWatchedOnly] = useState(false);
+  // The SAME list City Watch uses. Two separate watchlists in one app is two
+  // things to maintain and one of them is always stale.
+  const [watched, setWatched] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(WATCH_KEY) || "[]");
+      if (Array.isArray(v)) setWatched(v.filter((x) => typeof x === "string"));
+    } catch { /* private window: no watchlist, no problem */ }
+  }, []);
+  function toggleWatch(k: string) {
+    setWatched((w) => {
+      const next = w.includes(k) ? w.filter((x) => x !== k) : [...w, k];
+      try { localStorage.setItem(WATCH_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      // City Watch reads on mount; tell it now rather than on next reload.
+      try { window.dispatchEvent(new StorageEvent("storage", { key: WATCH_KEY })); } catch { /* ignore */ }
+      return next;
+    });
+  }
   // Bands the running max has just crossed, and cities whose running max
   // just ticked up: both drive a transient card state (§8.4).
   const [flashing, setFlashing] = useState<Record<string, number>>({});
   const prevMax = useRef<Record<string, number>>({});
 
   const live = useQuery<LiveWeather[]>(() => supabase.from("live_weather").select("*"), [], 60000);
+  // Which way each city is moving and how fast (sql/ad4_26). live_weather has
+  // temp_change_1h, which is one difference between two readings; this is a
+  // least-squares slope over the last three, plus where the day is heading on
+  // observation alone. That is the difference between a thermometer and
+  // monitoring.
+  const trend = useQuery<TrendRow[]>(
+    () => supabase.from("v_city_peak_approach")
+      .select("city_key,slope_3_c_per_h,slope_6_c_per_h,direction,rolling_over,implied_max_c,typical_climb_left_c,reading_age_min,pct_already_peaked"),
+    [], 60000
+  );
   const cities = useQuery<City[]>(() => supabase.from("cities").select("*"), []);
   const events = useQuery<WeatherEvent[]>(
     () => supabase.from("weather_events").select("*").order("detected_at", { ascending: false }).limit(50),
@@ -99,13 +156,62 @@ export default function LiveWeatherPage() {
     return m;
   }, [forecasts.data]);
 
+  const trendByCity = useMemo(
+    () => new Map((trend.data ?? []).map((t) => [t.city_key, t])),
+    [trend.data]
+  );
+
   const rows = useMemo(() => {
-    const merged = (live.data ?? []).map((l) => ({ ...l, city: cityByKey.get(l.city_key) }));
-    merged.sort(
-      (a, b) => (STATE_ORDER[a.peak_window_state ?? "AFTER"] ?? 3) - (STATE_ORDER[b.peak_window_state ?? "AFTER"] ?? 3)
-    );
-    return merged;
-  }, [live.data, cityByKey]);
+    const q = query.trim().toLowerCase();
+    let merged = (live.data ?? []).map((l) => ({
+      ...l,
+      city: cityByKey.get(l.city_key),
+      // NOT `trend` - LiveWeather already has one (RISING/FALLING/FLAT,
+      // a single 1h difference). This is the least-squares slope.
+      approach: trendByCity.get(l.city_key) ?? null,
+    }));
+
+    if (watchedOnly && watched.length) merged = merged.filter((r) => watched.includes(r.city_key));
+    if (q) {
+      merged = merged.filter(
+        (r) =>
+          r.city_key.toLowerCase().includes(q) ||
+          (r.city?.display_name ?? "").toLowerCase().includes(q)
+      );
+    }
+
+    // A city with no value for the sort key SINKS, always - it must never
+    // float to the top because null happened to compare as less than a number.
+    const hi = (v: number | null | undefined) => (v == null ? -Infinity : v);
+    const lo = (v: number | null | undefined) => (v == null ? Infinity : v);
+    const gap = (r: (typeof merged)[number]) => {
+      const f = forecastByCity.get(r.city_key)?.forecast_max_c;
+      return f != null && r.running_max_c != null ? f - r.running_max_c : null;
+    };
+
+    const cmp: Record<SortKey, (a: (typeof merged)[number], b: (typeof merged)[number]) => number> = {
+      peak: (a, b) =>
+        (STATE_ORDER[a.peak_window_state ?? "AFTER"] ?? 3) -
+        (STATE_ORDER[b.peak_window_state ?? "AFTER"] ?? 3),
+      rate: (a, b) => hi(b.approach?.slope_3_c_per_h) - hi(a.approach?.slope_3_c_per_h),
+      togo: (a, b) => hi(gap(b)) - hi(gap(a)),
+      hottest: (a, b) => hi(b.temp_c) - hi(a.temp_c),
+      stale: (a, b) =>
+        lo(a.observed_at ? new Date(a.observed_at).getTime() : null) -
+        lo(b.observed_at ? new Date(b.observed_at).getTime() : null),
+      name: (a, b) =>
+        (a.city?.display_name ?? a.city_key).localeCompare(b.city?.display_name ?? b.city_key),
+    };
+
+    // Watched cities lead every sort. You chose them; they should not be
+    // twenty rows down because the sort disagrees.
+    const w = new Set(watched);
+    return merged.sort((a, b) => {
+      const wa = w.has(a.city_key) ? 0 : 1;
+      const wb = w.has(b.city_key) ? 0 : 1;
+      return wa !== wb ? wa - wb : cmp[sortKey](a, b);
+    });
+  }, [live.data, cityByKey, trendByCity, sortKey, query, watchedOnly, watched, forecastByCity]);
 
   // A BAND_CROSS event in the last hour puts a red border on that city.
   const bandCrossCities = useMemo(() => {
@@ -129,6 +235,44 @@ export default function LiveWeatherPage() {
           means the peak window is open, a flash means the running max just moved, a dimmed card
           means the day is decided, and a red border means a band was crossed in the last hour.
         </p>
+
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Find a city"
+            className="w-40 rounded border border-border bg-panel px-2 py-1 placeholder:text-muted"
+          />
+          <span className="text-muted">Sort</span>
+          {SORTS.map((o) => (
+            <button
+              key={o.key}
+              title={o.hint}
+              onClick={() => setSortKey(o.key)}
+              className={`rounded border px-2 py-1 ${
+                sortKey === o.key
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-border text-muted hover:text-text"
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+          <button
+            onClick={() => setWatchedOnly((v) => !v)}
+            disabled={watched.length === 0}
+            title={watched.length === 0 ? "Star a city first" : "Show only the cities you starred"}
+            className={`rounded border px-2 py-1 ${
+              watchedOnly ? "border-accent bg-accent/10 text-accent" : "border-border text-muted hover:text-text"
+            } ${watched.length === 0 ? "opacity-40" : ""}`}
+          >
+            ★ watched{watched.length ? ` (${watched.length})` : ""}
+          </button>
+          <span className="ml-auto font-mono text-[11px] text-muted">
+            {rows.length} of {live.data?.length ?? 0}
+            {trend.error && <span className="ml-2 text-warn">no trend data — run sql/ad4_26</span>}
+          </span>
+        </div>
 
         <DataState
           loading={live.loading || cities.loading}
@@ -170,7 +314,28 @@ export default function LiveWeatherPage() {
                   ].join(" ")}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold">{r.city?.display_name ?? r.city_key}</span>
+                    <span className="flex items-center gap-1.5 font-semibold">
+                      {/* A span, not a button: this card is already a button and
+                          nesting one inside it is invalid HTML that swallows
+                          the click in some browsers. */}
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        title={watched.includes(r.city_key) ? "Stop watching" : "Watch this city"}
+                        onClick={(e) => { e.stopPropagation(); toggleWatch(r.city_key); }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault(); e.stopPropagation(); toggleWatch(r.city_key);
+                          }
+                        }}
+                        className={`cursor-pointer text-sm leading-none ${
+                          watched.includes(r.city_key) ? "text-accent" : "text-border hover:text-muted"
+                        }`}
+                      >
+                        ★
+                      </span>
+                      {r.city?.display_name ?? r.city_key}
+                    </span>
                     <WeatherIcon condition={r.sky_condition} size={28} />
                   </div>
                   <div className="mt-1 flex items-baseline gap-2 font-mono text-lg">
@@ -203,6 +368,40 @@ export default function LiveWeatherPage() {
                       </span>
                     </div>
                   </div>
+
+                  {/* MONITORING, not a thermometer: which way it is going, how
+                      fast, and where that lands. temp_change_1h above is one
+                      difference between two readings; this is the slope. */}
+                  {r.approach && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-border pt-1.5 font-mono text-[10px]">
+                      <span
+                        className={
+                          r.approach.rolling_over ? "text-warn"
+                          : (r.approach.direction ?? "").startsWith("climbing") ? "text-good"
+                          : (r.approach.direction ?? "").startsWith("falling") ? "text-bad"
+                          : "text-muted"
+                        }
+                        title="Least squares over the last three readings, on their real timestamps."
+                      >
+                        {r.approach.rolling_over ? "ROLLED OVER" : (r.approach.direction ?? "—")}
+                        {r.approach.slope_3_c_per_h != null &&
+                          ` ${fmtTempDelta(r.approach.slope_3_c_per_h, unit)}/h`}
+                      </span>
+                      {r.approach.implied_max_c != null && (
+                        <span
+                          className="text-muted"
+                          title="This reading plus how much this city has historically still climbed from this local hour. An estimate from observation alone, to hold the forecast against."
+                        >
+                          heading for <b className="text-accent">{fmtTemp(r.approach.implied_max_c, unit)}</b>
+                        </span>
+                      )}
+                      {(r.approach.pct_already_peaked ?? 0) > 60 && (
+                        <span className="text-muted" title="Share of past days on which the maximum was already behind by this hour.">
+                          {Math.round(r.approach.pct_already_peaked!)}% done by now
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   <div className="mt-1.5 text-[10px] leading-relaxed text-muted">
                     <div>

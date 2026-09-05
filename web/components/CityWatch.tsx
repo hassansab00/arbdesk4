@@ -65,7 +65,16 @@ export default function CityWatch() {
   const [showAll, setShowAll] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
-  useEffect(() => { setWatch(loadWatch()); setHydrated(true); }, []);
+  useEffect(() => {
+    setWatch(loadWatch());
+    setHydrated(true);
+    // Live Weather writes the same key. Without this, starring a city there
+    // leaves this panel showing a stale list until the next reload - two views
+    // of one list disagreeing, which is worse than not sharing it at all.
+    const sync = (e: StorageEvent) => { if (!e.key || e.key === KEY) setWatch(loadWatch()); };
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, []);
 
   // Resilient: works from `cities` + `live_weather` when v_city_stats is
   // absent, so the selector is never empty just because a migration is pending.
@@ -118,8 +127,8 @@ export default function CityWatch() {
   if (!hydrated) return null;   // avoid a hydration mismatch on localStorage
 
   return (
-    <div className="border-t border-border">
-      <div className="flex items-center justify-between px-3 py-2">
+    <div className="flex min-h-0 flex-1 flex-col border-t border-border">
+      <div className="flex shrink-0 items-center justify-between px-3 py-2">
         <div>
           <span className="text-sm font-semibold">City Watch</span>
           <span className="ml-2 text-[11px] text-muted">
@@ -166,7 +175,7 @@ export default function CityWatch() {
         </div>
       )}
 
-      <div className={`space-y-1.5 overflow-y-auto p-2 ${showAll ? "max-h-[46vh]" : ""}`}>
+      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
         {allRows.length === 0 && !editing && (
           <div className="rounded border border-dashed border-border p-3 text-[11px] leading-relaxed text-muted">
             <div className="font-semibold text-text">Nothing watched yet</div>

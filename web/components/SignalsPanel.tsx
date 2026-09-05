@@ -152,8 +152,8 @@ export default function SignalsPanel({ onHide }: { onHide: () => void }) {
   const shownAlerts = showAll ? alerts : alerts.slice(0, VISIBLE);
 
   return (
-    <div className="flex min-h-0 flex-col">
-      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
         <div>
           <span className="text-sm font-semibold">Signals</span>
           <span className="ml-2 text-xs text-muted">
@@ -163,7 +163,10 @@ export default function SignalsPanel({ onHide }: { onHide: () => void }) {
         <button className="text-xs text-muted hover:text-text" onClick={onHide}>hide</button>
       </div>
 
-      <div className={`space-y-2 overflow-y-auto p-2 ${showAll ? "max-h-[60vh]" : ""}`}>
+      {/* The rail gives this a real height, so the list scrolls inside it
+          rather than growing the page. The old `max-h-[60vh]` was a guess that
+          only applied when "show all" was on. */}
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
         {loading && <Loading compact />}
         {error && <ErrorBox message={error} onRetry={load} compact />}
         {/* WHY THERE ARE NO TRADES. This is the fact the panel was missing:
