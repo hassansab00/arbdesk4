@@ -225,6 +225,30 @@ export default function LiveWeatherPage() {
 
   const detail = rows.find((r) => r.city_key === selected);
 
+  // HOW OLD IS THE FEED, as one number.
+  //
+  // The age was on every card in 10px grey, which is the right place for a
+  // per-city figure and the wrong place for "nothing here has updated since
+  // Thursday". A page whose every card is stale reads as a page that is
+  // working, and that is the single thing this section got wrong.
+  const feed = useMemo(() => {
+    const seen = (live.data ?? [])
+      .map((r) => (r.observed_at ? new Date(r.observed_at).getTime() : null))
+      .filter((v): v is number => v !== null);
+    if (!seen.length) return null;
+    const newest = Math.max(...seen);
+    const ageMin = (Date.now() - newest) / 60000;
+    const models = (live.data ?? []).filter((r) => r.source_kind === "model").length;
+    const stations = (live.data ?? []).filter((r) => r.source_kind === "station").length;
+    return {
+      newest, ageMin, models, stations,
+      cities: seen.length,
+      // Two hours is P1.2's own cadence, so anything past three is a job that
+      // did not run rather than a job between runs.
+      level: ageMin > 720 ? "bad" : ageMin > 180 ? "warn" : "ok",
+    };
+  }, [live.data]);
+
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
       <div>
@@ -235,6 +259,40 @@ export default function LiveWeatherPage() {
           means the peak window is open, a flash means the running max just moved, a dimmed card
           means the day is decided, and a red border means a band was crossed in the last hour.
         </p>
+
+        {feed && (
+          <div
+            className={`mb-3 rounded border px-3 py-2 text-xs leading-relaxed ${
+              feed.level === "bad"
+                ? "border-bad/50 bg-bad/10 text-bad"
+                : feed.level === "warn"
+                ? "border-warn/50 bg-warn/10 text-warn"
+                : "border-border bg-panel2 text-muted"
+            }`}
+          >
+            <b>
+              Newest reading anywhere: {fmtAge(new Date(feed.newest).toISOString())}
+            </b>{" "}
+            across {feed.cities} cities.
+            {feed.level !== "ok" && (
+              <>
+                {" "}
+                Nothing is updating this feed. n8n <b>P1.2</b> writes the US cities and{" "}
+                <b>P1.5</b> writes every city — check both are imported, Active, and that their
+                Config holds the <b>service_role</b> key, not the anon key. Actions → <i>Live
+                Weather Monitor</i> is the manual fallback.
+              </>
+            )}
+            {(feed.models > 0 || feed.stations > 0) && (
+              <>
+                {" "}
+                <span className="opacity-80">
+                  {feed.stations} from a station, {feed.models} interpolated by a model.
+                </span>
+              </>
+            )}
+          </div>
+        )}
 
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
           <input
@@ -417,6 +475,18 @@ export default function LiveWeatherPage() {
                     </div>
                     <div>
                       obs {fmtAge(r.observed_at)}
+                      {/* A model interpolation is an opinion about a
+                          coordinate; a station reading is an instrument at the
+                          ICAO the market settles on. Only one of them is
+                          evidence, so the card must not present them alike. */}
+                      {r.source_kind === "model" && (
+                        <span
+                          className="ml-1 rounded bg-warn/15 px-1 text-warn"
+                          title={`Modelled by ${r.source ?? "a forecast model"} — interpolated to this coordinate, not measured at the station the market settles on.`}
+                        >
+                          model
+                        </span>
+                      )}
                       {r.day_decided && <span className="ml-1 text-muted">· DAY DECIDED</span>}
                       {crossed && <span className="ml-1 text-bad">· BAND CROSS</span>}
                     </div>
@@ -563,6 +633,16 @@ function CityDetail({ row, onClose }: { row: LiveWeather & { city: City | undefi
           hint="Traded volume across this city's bands. A city with no volume has no market to trade, whatever the weather does."
         />
         <Field label="Last obs" value={fmtAge(row.observed_at)} />
+        <Field
+          label="Source"
+          value={
+            row.source_kind === "model"
+              ? `${row.source ?? "model"} · interpolated, not measured`
+              : row.source_kind === "station"
+              ? `${row.source ?? "station"} · instrument reading`
+              : "—"
+          }
+        />
       </div>
 
       <h3 className="mb-1 mt-4 text-xs font-semibold text-muted">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useMemo, useState } from "react";
 
 /**
  * Inline-SVG chart primitives.
@@ -62,7 +62,16 @@ export function LineChart({
   zeroLine?: boolean;
 }) {
   const id = useId();
+  // HOVER, because a line chart without it is a picture. Every other chart
+  // here had a tooltip and this one had `<title>{id}</title>` - the React
+  // id, on the whole SVG. Pointing at a line and being told nothing is what
+  // "the tooltips show nothing" meant.
+  const [hover, setHover] = useState<number | null>(null);
   const pts = series.flatMap((s) => s.points);
+  const xsAll = useMemo(
+    () => Array.from(new Set(pts.map((p) => p.x))).sort((a, b) => a - b),
+    [pts]
+  );
   if (pts.length < 2) return <Empty height={height}>Not enough points to draw a line yet.</Empty>;
 
   const W = 720, PAD_L = 48, PAD_R = 12, PAD_T = 10, PAD_B = 24;
@@ -78,8 +87,38 @@ export function LineChart({
   const X = (v: number) => PAD_L + ((v - x0) / (x1 - x0 || 1)) * (W - PAD_L - PAD_R);
   const Y = (v: number) => H - PAD_B - ((v - lo) / (hi - lo)) * (H - PAD_T - PAD_B);
 
+  // Snap to the nearest real x. Interpolating between points would invent a
+  // value the series never had, which is the one thing a readout must not do.
+  function nearestX(clientFrac: number): number | null {
+    if (!xsAll.length) return null;
+    const target = x0 + clientFrac * (x1 - x0);
+    let best = xsAll[0];
+    for (const v of xsAll) if (Math.abs(v - target) < Math.abs(best - target)) best = v;
+    return best;
+  }
+
+  const hoverAt = hover === null ? null : hover;
+  const readout =
+    hoverAt === null
+      ? null
+      : series
+          .map((s) => ({ s, p: s.points.find((q) => q.x === hoverAt) }))
+          .filter((r) => r.p !== undefined);
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: H * 1.6 }} role="img">
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="w-full"
+      style={{ maxHeight: H * 1.6 }}
+      role="img"
+      onMouseLeave={() => setHover(null)}
+      onMouseMove={(e) => {
+        const box = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+        const frac = ((e.clientX - box.left) / box.width) * W;
+        const inPlot = (frac - PAD_L) / (W - PAD_L - PAD_R);
+        setHover(nearestX(Math.min(1, Math.max(0, inPlot))));
+      }}
+    >
       {niceTicks(lo, hi).map((v) => (
         <g key={v}>
           <line x1={PAD_L} x2={W - PAD_R} y1={Y(v)} y2={Y(v)} stroke={GRID} />
@@ -130,6 +169,47 @@ export function LineChart({
           </g>
         );
       })}
+      {/* crosshair + readout */}
+      {hoverAt !== null && readout && readout.length > 0 && (
+        <g pointerEvents="none">
+          <line x1={X(hoverAt)} x2={X(hoverAt)} y1={PAD_T} y2={H - PAD_B}
+                stroke={AXIS} strokeOpacity={0.5} strokeDasharray="3 3" />
+          {readout.map((r) => (
+            <circle key={r.s.label} cx={X(hoverAt)} cy={Y(r.p!.y)} r={3.2}
+                    fill={r.s.color} stroke="var(--panel, #10141c)" strokeWidth={1} />
+          ))}
+          {(() => {
+            const lines = readout.length + 1;
+            const bw = 132, bh = 14 + lines * 12;
+            // Flip to the other side near the right edge rather than drawing
+            // the box off the plot.
+            const left = X(hoverAt) > W - bw - 20;
+            const bx = left ? X(hoverAt) - bw - 8 : X(hoverAt) + 8;
+            return (
+              <g transform={`translate(${bx}, ${PAD_T + 4})`}>
+                <rect width={bw} height={bh} rx={3}
+                      fill="var(--panel, #10141c)" stroke={GRID} />
+                <text x={7} y={13} fontSize="9" fill={AXIS}>
+                  {xTickFormat ? xTickFormat(hoverAt) : String(Math.round(hoverAt))}
+                </text>
+                {readout.map((r, i) => (
+                  <g key={r.s.label} transform={`translate(7, ${25 + i * 12})`}>
+                    <rect width={7} height={7} y={-6} rx={1.5} fill={r.s.color} />
+                    <text x={12} fontSize="9" fill="var(--text, #e6e9ef)">
+                      {r.s.label}
+                    </text>
+                    <text x={bw - 14} fontSize="9" textAnchor="end"
+                          fill="var(--text, #e6e9ef)"
+                          style={{ fontVariantNumeric: "tabular-nums" }}>
+                      {yTickFormat ? yTickFormat(r.p!.y) : r.p!.y.toFixed(2)}
+                    </text>
+                  </g>
+                ))}
+              </g>
+            );
+          })()}
+        </g>
+      )}
       <title>{id}</title>
     </svg>
   );

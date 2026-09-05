@@ -141,6 +141,15 @@ export interface LiveWeather {
   minutes_to_peak: number | null;
   peak_window_state: "BEFORE" | "INSIDE" | "AFTER" | null;
   day_decided: boolean;
+  /** Which feed wrote this row: NWS, IEM, or open-meteo (sql/ad4_30). */
+  source: string | null;
+  /**
+   * `station` is an instrument reading at the ICAO the market settles on.
+   * `model` is interpolated model output - an opinion about that coordinate.
+   * Only the first is evidence about settlement, and a page that cannot tell
+   * them apart is making a claim it cannot support.
+   */
+  source_kind: "station" | "model" | null;
 }
 
 export interface WeatherEvent {
