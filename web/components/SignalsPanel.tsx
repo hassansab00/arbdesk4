@@ -31,7 +31,8 @@ export default function SignalsPanel({
   onHide,
   onChanged,
 }: {
-  onHide: () => void;
+  /** Optional: only the old drawer had somewhere to hide to. */
+  onHide?: () => void;
   /** Approving or dismissing changes the pending count in the rail's badge.
       Without this the badge keeps claiming work that is already done. */
   onChanged?: () => void;
@@ -170,7 +171,9 @@ export default function SignalsPanel({
         <span className="text-xs text-muted">
           {pending > 0 ? `${pending} awaiting you` : `${trades.length} trade · ${alerts.length} desk`}
         </span>
-        <button className="text-xs text-muted hover:text-text" onClick={onHide}>hide</button>
+        {onHide && (
+          <button className="text-xs text-muted hover:text-text" onClick={onHide}>hide</button>
+        )}
       </div>
 
       {/* The rail gives this a real height, so the list scrolls inside it

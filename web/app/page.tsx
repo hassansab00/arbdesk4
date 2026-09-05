@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
+import SignalsPanel from "@/components/SignalsPanel";
 import { DataState, InlineError } from "@/components/DataState";
 import PipelineStatus from "@/components/PipelineStatus";
 import { fmtCompactUsd, fmtPct, fmtPp, fmtPrice, fmtUsd, pnlColor, regimeColor } from "@/lib/format";
@@ -180,6 +181,17 @@ export default function OverviewPage() {
             </table>
           </div>
         </DataState>
+      </section>
+
+      {/* SIGNALS LIVE HERE NOW, not in the right-hand rail.
+          A signal queue is something you sit down and work through - approve,
+          dismiss, read the reason - and that is a page, not a glance column.
+          Six versions in the rail proved the slot was wrong, not the panel. */}
+      <section>
+        <h2 className="mb-2 text-sm font-semibold">Signals awaiting you</h2>
+        <div className="rounded border border-border bg-panel">
+          <SignalsPanel />
+        </div>
       </section>
     </div>
   );

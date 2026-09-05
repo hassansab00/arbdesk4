@@ -1,117 +1,71 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import SignalsPanel from "@/components/SignalsPanel";
-import CityWatch from "@/components/CityWatch";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useQuery } from "@/lib/useQuery";
+import { fmtAge, severityColor } from "@/lib/format";
+import { fmtTemp, type Unit } from "@/lib/units";
+import type { LiveWeather, WeatherEvent } from "@/lib/types";
 
 /**
- * Signals and the watchlist, as a DRAWER rather than a column.
+ * A glimpse of the City Monitor: what is moving, what fired, what is stale.
  *
- * WHY THIS IS THE SIXTH VERSION. The previous five all improved a permanent
- * 320px column, and every one of them missed the same two things:
+ * WHAT THIS REPLACED AND WHY. Signals lived here through six versions and was
+ * wrong in this slot every time. It is a queue you work through, not a thing
+ * you glance at - and with every strategy shipping disabled it held one
+ * sentence about being switched off, permanently, on every page. The last
+ * version also OVERLAID the page, which nobody asked for and which makes a
+ * side panel worse than useless: you cannot read the thing you opened it
+ * beside.
  *
- *   IT COST WIDTH TO SAY NOTHING. Every strategy ships disabled, so on a
- *   working desk the column held one sentence - "no trade signals, every
- *   strategy is off" - on every page, forever, taking a quarter of a 1280px
- *   laptop away from the Board's ladder and the Analytics tables. A glance
- *   panel that is empty most of the time must not be paid for by the content
- *   you are actually reading.
- *
- *   IT DID NOT EXIST BELOW 1024px. `hidden lg:flex`. Narrow the window and
- *   Signals was simply gone, with nothing to click and no indication it was
- *   ever there. There is no width at which "you cannot see your signals" is
- *   the right answer.
- *
- * So: closed by default, opens over the page, and the trigger is a button with
- * a live count that is present at every width. Pinning docks it as a column
- * for anyone who wants the old behaviour on a wide screen - the difference is
- * that it is now a choice rather than a tax.
- *
- * The count polls whether the drawer is open or not, because the whole job of
- * this thing is to tell you something fired while you were looking elsewhere.
+ * So: no signals, no overlay. A docked column showing live city state -
+ * temperature now, which way it is moving and how fast, how far it still has
+ * to climb, and the events that fired - with the page reflowing beside it.
+ * Collapsing narrows the column; it never floats over anything.
  */
 
-const PIN_KEY = "ad4-rail-pinned";
 const W_KEY = "ad4-rail-width";
-const TAB_KEY = "ad4-rail-tab";
+const COLLAPSED_KEY = "ad4-rail-collapsed";
+const WATCH_KEY = "ad4-city-watch";
 
-const MIN_W = 280;
-const MAX_W = 620;
+const MIN_W = 240;
+const MAX_W = 520;
 
-function readNum(key: string, fallback: number): number {
-  try {
-    const v = Number(localStorage.getItem(key));
-    return Number.isFinite(v) && v > 0 ? v : fallback;
-  } catch {
-    return fallback; // private window or blocked storage
-  }
+interface TrendRow {
+  city_key: string;
+  slope_3_c_per_h: number | null;
+  direction: string | null;
+  rolling_over: boolean | null;
+  implied_max_c: number | null;
+  typical_climb_left_c: number | null;
+  reading_age_min: number | null;
 }
 
 export default function RightRail() {
-  const [open, setOpen] = useState(false);
-  const [pinned, setPinned] = useState(false);
-  const [width, setWidth] = useState(340);
-  const [drag, setDrag] = useState<null | "width">(null);
-  const [tab, setTab] = useState<"signals" | "watch">("signals");
-  const [pending, setPending] = useState<number | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const [width, setWidth] = useState(300);
+  const [drag, setDrag] = useState(false);
+  const [watched, setWatched] = useState<string[]>([]);
   const col = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    setWidth(readNum(W_KEY, 340));
     try {
-      const p = localStorage.getItem(PIN_KEY) === "1";
-      setPinned(p);
-      setOpen(p);
-      const t = localStorage.getItem(TAB_KEY);
-      if (t === "watch" || t === "signals") setTab(t);
-    } catch {
-      /* ignore */
-    }
+      const w = Number(localStorage.getItem(W_KEY));
+      if (Number.isFinite(w) && w >= MIN_W && w <= MAX_W) setWidth(w);
+      setCollapsed(localStorage.getItem(COLLAPSED_KEY) === "1");
+      const v = JSON.parse(localStorage.getItem(WATCH_KEY) || "[]");
+      if (Array.isArray(v)) setWatched(v.filter((x) => typeof x === "string"));
+    } catch { /* private window */ }
   }, []);
-
-  const persist = (k: string, v: string) => {
-    try { localStorage.setItem(k, v); } catch { /* ignore */ }
-  };
-
-  // THE COUNT IS THE POINT. It runs whether the drawer is open or shut - a
-  // notification you only see after opening the thing is not a notification.
-  const refreshCount = useCallback(async () => {
-    try {
-      const { count, error } = await supabase
-        .from("signals")
-        .select("signal_id", { count: "exact", head: true })
-        .eq("status", "pending_approval");
-      setPending(error ? null : count ?? 0);
-    } catch {
-      setPending(null); // unconfigured or offline: show no badge, never a zero
-    }
-  }, []);
-
-  useEffect(() => {
-    refreshCount();
-    const t = setInterval(refreshCount, 60000);
-    return () => clearInterval(t);
-  }, [refreshCount]);
-
-  // Escape closes it, unless it is pinned - a docked column is not a dialog.
-  useEffect(() => {
-    if (!open || pinned) return;
-    const k = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
-  }, [open, pinned]);
 
   useEffect(() => {
     if (!drag) return;
-    const move = (e: MouseEvent) => {
-      if (drag === "width") {
-        setWidth(Math.min(MAX_W, Math.max(MIN_W, window.innerWidth - e.clientX)));
-      }
-    };
+    const move = (e: MouseEvent) =>
+      setWidth(Math.min(MAX_W, Math.max(MIN_W, window.innerWidth - e.clientX)));
     const up = () => {
-      setDrag(null);
-      persist(W_KEY, String(width));
+      setDrag(false);
+      try { localStorage.setItem(W_KEY, String(width)); } catch { /* ignore */ }
     };
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
@@ -123,128 +77,181 @@ export default function RightRail() {
     };
   }, [drag, width]);
 
-  function togglePin() {
-    setPinned((p) => {
-      persist(PIN_KEY, p ? "0" : "1");
-      if (!p) setOpen(true);
-      return !p;
+  const liveQ = useQuery<LiveWeather[]>(
+    () => supabase.from("live_weather").select("*"), [], 60000
+  );
+  const trendQ = useQuery<TrendRow[]>(
+    () => supabase.from("v_city_peak_approach")
+      .select("city_key,slope_3_c_per_h,direction,rolling_over,implied_max_c,typical_climb_left_c,reading_age_min"),
+    [], 60000
+  );
+  const eventsQ = useQuery<WeatherEvent[]>(
+    () => supabase.from("weather_events").select("*")
+      .order("detected_at", { ascending: false }).limit(12),
+    [], 60000
+  );
+  const citiesQ = useQuery<Array<{ city_key: string; display_name: string | null; unit: string | null }>>(
+    () => supabase.from("cities").select("city_key,display_name,unit"), []
+  );
+
+  const trendBy = useMemo(() => {
+    const m = new Map<string, TrendRow>();
+    for (const t of trendQ.data ?? []) m.set(t.city_key, t);
+    return m;
+  }, [trendQ.data]);
+
+  const unitBy = useMemo(() => {
+    const m = new Map<string, Unit>();
+    for (const c of citiesQ.data ?? []) m.set(c.city_key, (c.unit ?? "C") as Unit);
+    return m;
+  }, [citiesQ.data]);
+
+  /**
+   * MOVING FIRST, not alphabetical. A glance column's whole job is to put the
+   * thing that changed at the top; sorted by name it is a directory.
+   * Starred cities win, then steepest climb, then staleness.
+   */
+  const rows = useMemo(() => {
+    const live = liveQ.data ?? [];
+    const star = new Set(watched);
+    const scored = live.map((r) => {
+      const t = trendBy.get(r.city_key);
+      return { r, t, rate: Math.abs(t?.slope_3_c_per_h ?? 0) };
+    });
+    scored.sort((a, b) => {
+      const sa = star.has(a.r.city_key) ? 1 : 0;
+      const sb = star.has(b.r.city_key) ? 1 : 0;
+      if (sa !== sb) return sb - sa;
+      if (a.r.peak_window_state === "INSIDE" && b.r.peak_window_state !== "INSIDE") return -1;
+      if (b.r.peak_window_state === "INSIDE" && a.r.peak_window_state !== "INSIDE") return 1;
+      return b.rate - a.rate;
+    });
+    return star.size ? scored.filter((s) => star.has(s.r.city_key)) : scored.slice(0, 12);
+  }, [liveQ.data, trendBy, watched]);
+
+  const newest = useMemo(() => {
+    const t = (liveQ.data ?? [])
+      .map((r) => (r.observed_at ? new Date(r.observed_at).getTime() : 0))
+      .filter(Boolean);
+    return t.length ? Math.max(...t) : null;
+  }, [liveQ.data]);
+
+  function toggle() {
+    setCollapsed((c) => {
+      try { localStorage.setItem(COLLAPSED_KEY, c ? "0" : "1"); } catch { /* ignore */ }
+      return !c;
     });
   }
 
-  function pick(t: "signals" | "watch") {
-    setTab(t);
-    persist(TAB_KEY, t);
+  if (collapsed) {
+    return (
+      <button
+        onClick={toggle}
+        title="Show the city monitor"
+        className="flex w-7 shrink-0 items-center justify-center border-l border-border bg-panel text-[10px] uppercase tracking-widest text-muted hover:text-text"
+      >
+        <span style={{ writingMode: "vertical-rl" }}>City monitor</span>
+      </button>
+    );
   }
-
-  const panel = (
-    <aside
-      ref={col}
-      className="flex min-h-0 min-w-0 flex-col border-l border-border bg-panel"
-      style={{ width }}
-    >
-      <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1.5 text-xs">
-        <button
-          onClick={() => pick("signals")}
-          className={`rounded px-2 py-0.5 ${tab === "signals" ? "bg-panel2 text-text" : "text-muted hover:text-text"}`}
-        >
-          Signals
-          {pending ? (
-            <span className="ml-1.5 rounded-full bg-accent px-1.5 text-[10px] font-semibold text-base">
-              {pending}
-            </span>
-          ) : null}
-        </button>
-        <button
-          onClick={() => pick("watch")}
-          className={`rounded px-2 py-0.5 ${tab === "watch" ? "bg-panel2 text-text" : "text-muted hover:text-text"}`}
-        >
-          Watchlist
-        </button>
-        <span className="flex-1" />
-        <button
-          onClick={togglePin}
-          title={pinned ? "Unpin — let it close and give the page its width back" : "Pin it open as a column"}
-          className={`rounded px-1.5 py-0.5 ${pinned ? "text-accent" : "text-muted hover:text-text"}`}
-        >
-          {pinned ? "unpin" : "pin"}
-        </button>
-        <button
-          onClick={() => { setOpen(false); if (pinned) togglePin(); }}
-          title="Close"
-          className="rounded px-1.5 py-0.5 text-muted hover:text-text"
-        >
-          ✕
-        </button>
-      </div>
-
-      {/* Both panels stay MOUNTED and the hidden one is display:none, so
-          switching tabs does not refetch and does not lose scroll position.
-          A tab that reloads is a tab people stop using. */}
-      <div className="flex min-h-0 flex-1 flex-col">
-        {/* display comes from the STYLE, not the `hidden` attribute: a
-            `flex` utility class beats the user-agent rule that `hidden`
-            relies on, so the inactive panel stayed visible. */}
-        <div
-          className="min-h-0 flex-col"
-          style={{ display: tab === "signals" ? "flex" : "none", flex: "1 1 0%" }}
-        >
-          <SignalsPanel onHide={() => setOpen(false)} onChanged={refreshCount} />
-        </div>
-        <div
-          className="min-h-0 flex-col"
-          style={{ display: tab === "watch" ? "flex" : "none", flex: "1 1 0%" }}
-        >
-          <CityWatch />
-        </div>
-      </div>
-    </aside>
-  );
 
   return (
     <>
-      {/* The trigger. Always present, every width - which the old column was
-          not. Vertical so it costs 28px instead of 320. */}
-      {!(open && pinned) && (
-        <button
-          onClick={() => setOpen((o) => !o)}
-          title="Signals and watchlist"
-          className="flex w-7 shrink-0 flex-col items-center gap-2 border-l border-border bg-panel py-2 text-[10px] uppercase tracking-widest text-muted hover:text-text"
-        >
-          {pending ? (
-            <span className="rounded-full bg-accent px-1 text-[10px] font-semibold leading-4 text-base">
-              {pending}
-            </span>
-          ) : (
-            <span className="text-accent">•</span>
-          )}
-          <span style={{ writingMode: "vertical-rl" }}>Signals</span>
-        </button>
-      )}
-
-      {/* Pinned: a real column, and the page reflows around it. */}
-      {open && pinned && (
-        <>
-          <div
-            onMouseDown={() => setDrag("width")}
-            title="Drag to resize"
-            className={`w-1.5 shrink-0 cursor-col-resize bg-border/40 hover:bg-accent/60 ${drag === "width" ? "bg-accent" : ""}`}
-          />
-          {panel}
-        </>
-      )}
-
-      {/* Unpinned: an overlay. It costs the page nothing when shut, and it
-          works at 700px wide as well as at 1600. */}
-      {open && !pinned && (
-        <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-label="Signals and watchlist">
-          <button
-            className="flex-1 bg-base/60"
-            aria-label="Close"
-            onClick={() => setOpen(false)}
-          />
-          <div className="flex max-w-full shadow-2xl">{panel}</div>
+      <div
+        onMouseDown={() => setDrag(true)}
+        title="Drag to resize"
+        className={`hidden w-1.5 shrink-0 cursor-col-resize bg-border/40 hover:bg-accent/60 md:block ${drag ? "bg-accent" : ""}`}
+      />
+      {/* A real column. The page reflows beside it - it never floats over the
+          thing you opened it to read. */}
+      <aside
+        ref={col}
+        className="hidden min-h-0 shrink-0 flex-col border-l border-border bg-panel md:flex"
+        style={{ width }}
+      >
+        <div className="flex shrink-0 items-baseline gap-2 border-b border-border px-2.5 py-1.5">
+          <Link href="/monitor" className="text-xs font-semibold hover:text-accent">
+            City monitor
+          </Link>
+          <span className="text-[10px] text-muted">
+            {newest ? fmtAge(new Date(newest).toISOString()) : "no readings"}
+          </span>
+          <span className="flex-1" />
+          <button onClick={toggle} className="text-[10px] text-muted hover:text-text">hide</button>
         </div>
-      )}
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {liveQ.error ? (
+            <p className="px-2.5 py-3 text-[11px] leading-relaxed text-bad">{liveQ.error}</p>
+          ) : rows.length === 0 ? (
+            <p className="px-2.5 py-3 text-[11px] leading-relaxed text-muted">
+              No live readings yet. n8n <b>P1.2</b> writes the US cities and <b>P1.5</b> writes
+              every city.
+            </p>
+          ) : (
+            rows.map(({ r, t }) => {
+              const unit = unitBy.get(r.city_key) ?? "C";
+              const rate = t?.slope_3_c_per_h ?? null;
+              const arrow = rate === null ? "" : rate > 0.15 ? "▲" : rate < -0.15 ? "▼" : "→";
+              const tone = rate === null ? "text-muted"
+                : rate > 0.15 ? "text-good" : rate < -0.15 ? "text-bad" : "text-muted";
+              const toGo = t?.typical_climb_left_c ?? null;
+              return (
+                <Link
+                  key={r.city_key}
+                  href={`/monitor?city=${encodeURIComponent(r.city_key)}`}
+                  className={`block border-b border-border px-2.5 py-1.5 hover:bg-panel2 ${
+                    r.peak_window_state === "INSIDE" ? "border-l-2 border-l-accent" : ""
+                  } ${r.day_decided ? "opacity-60" : ""}`}
+                >
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="truncate text-xs">{r.city_key}</span>
+                    <span className="flex-1" />
+                    <span className="text-xs tabular-nums">{fmtTemp(r.temp_c, unit, 1)}</span>
+                    <span className={`text-[10px] tabular-nums ${tone}`}>
+                      {arrow}
+                      {rate === null ? "" : ` ${Math.abs(rate).toFixed(1)}/h`}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 flex items-baseline gap-2 text-[10px] text-muted">
+                    <span>max {fmtTemp(r.running_max_c, unit, 1)}</span>
+                    {toGo !== null && toGo > 0.1 && !r.day_decided && (
+                      <span className="text-warn">+{toGo.toFixed(1)} to go</span>
+                    )}
+                    {r.day_decided && <span>decided</span>}
+                    {r.source_kind === "model" && (
+                      <span className="rounded bg-warn/15 px-1 text-warn" title="Interpolated by a model, not measured at the station">
+                        model
+                      </span>
+                    )}
+                    <span className="flex-1" />
+                    <span>{fmtAge(r.observed_at)}</span>
+                  </div>
+                </Link>
+              );
+            })
+          )}
+        </div>
+
+        <div className="shrink-0 border-t border-border">
+          <div className="px-2.5 py-1 text-[10px] uppercase tracking-widest text-muted">
+            Events
+          </div>
+          <div className="max-h-40 overflow-y-auto">
+            {(eventsQ.data ?? []).length === 0 ? (
+              <p className="px-2.5 pb-2 text-[11px] text-muted">Nothing fired yet.</p>
+            ) : (
+              (eventsQ.data ?? []).map((e) => (
+                <div key={e.event_id} className="border-t border-border px-2.5 py-1 text-[10px]">
+                  <span className={severityColor(e.severity)}>{e.kind}</span>{" "}
+                  <span className="text-text">{e.city_key}</span>{" "}
+                  <span className="text-muted">{fmtAge(e.detected_at)}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </aside>
     </>
   );
 }
