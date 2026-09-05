@@ -83,12 +83,17 @@ of what got built against it and where to find things.
        post-processing of NWS, not independent of it, and feeding it back
        into `v_forecast_divergence` would inflate the spread with its own
        reflection.
-   26. **`sql/ad4_26_temp_trend.sql` last** - which way today is pointing
+   26. `sql/ad4_26_temp_trend.sql` - which way today is pointing
        and how fast, and how much this city has HISTORICALLY still climbed
        from this hour. A temperature is a trajectory, not a number: 28.4C
        an hour before peak is a buy after 26.9 / 27.7 / 28.4 and a sell
        after 29.1 / 28.8 / 28.4. Feeds the City Monitor page and strategy
        S7.
+   28. **`sql/ad4_28_feature_cache.sql` last** - the index and the caches
+       that keep a page load off the archive. Without it
+       v_weather_effects, v_persistence_skill and v_city_climb_profile run
+       1-3 seconds each on a modest archive and Supabase cancels the
+       statement: `57014`.
 
    Then run **`sql/ad4_99_verify.sql`** against the real database. It is
    read-only and returns one grid: every check PASS / FAIL / ATTENTION,
