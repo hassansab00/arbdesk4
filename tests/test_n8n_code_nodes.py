@@ -592,3 +592,77 @@ def test_the_first_line_carries_the_cause_not_the_count(workflow, plan, seed, ke
     assert "403" in first and "User-Agent" in first, first
     assert not first.startswith("Parsed 0"), first
     assert not first.startswith("No forecast URLs"), first
+
+
+# ------------------------------------------- a refused write is not a run ---
+# The workflows ran, reported healthy, and wrote nothing. Every write node
+# carries onError=continueRegularOutput, so a 401/42501 was walked straight
+# past and only the LAST node in the chain showed an error. Reads worked
+# because anon is granted SELECT; every write was refused because it is
+# granted nothing else.
+
+WRITE_NODES = {
+    "P1.1_live_weather_alerts.template.json": ["Mark Notified"],
+    "P1.2_nws_monitor.template.json": ["Write observations", "Write live_weather",
+                                       "Save NWS ids", "Raise alerts"],
+    "P1.3_nws_forecast.template.json": ["Write forecasts", "Save NWS ids"],
+    "P1.4_nws_gridpoint.template.json": ["Write forecast features"],
+}
+
+
+@pytest.mark.parametrize("workflow,nodes", sorted(WRITE_NODES.items()))
+def test_write_nodes_return_the_body_instead_of_throwing(workflow, nodes):
+    """Without neverError the refusal is an exception that onError swallows,
+    leaving nothing to read and nothing to report."""
+    d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
+    by = {n["name"]: n for n in d["nodes"]}
+    for name in nodes:
+        resp = by[name]["parameters"].get("options", {}).get("response", {}).get("response", {})
+        assert resp.get("neverError") is True, f"{workflow} / {name}"
+
+
+@pytest.mark.parametrize("workflow,nodes", sorted(WRITE_NODES.items()))
+def test_the_summary_refuses_to_report_success_on_a_refused_write(workflow, nodes):
+    code = json.load(open(os.path.join(ROOT, "n8n", workflow)))["nodes"]
+    code = [n for n in code if n["name"] == "Summary"][0]["parameters"]["jsCode"]
+    assert "DID THE DATABASE ACTUALLY TAKE IT?" in code, workflow
+    for name in nodes:
+        assert json.dumps(name) in code, f"{workflow} does not check {name}"
+
+
+def test_a_refused_write_names_the_anon_key():
+    def m(plan):
+        plan["seed"]["Write observations"] = [{
+            "code": "42501", "details": None, "hint": None,
+            "message": "permission denied for table weather_observations"}]
+    r = run_with("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json", m)
+    assert r["ok"] is False and r["node"] == "Summary", r
+    first = r["error"].splitlines()[0]
+    assert "ANON key" in first and "service_role" in first, first
+    assert "Nothing was written" in first, first
+
+
+def test_a_clean_run_is_not_flagged():
+    r = run("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json")
+    assert r["ok"], r
+    assert r["outputs"]["Summary"][0]["rows"] > 0
+
+
+def test_the_gate_stops_on_a_permission_error_rather_than_failing_open():
+    """The gate fails OPEN on an unreachable RPC, which is right. 42501 is not
+    unreachable - it is proof the key cannot write, on the first node that can
+    show it, two nodes before any data is touched. Failing open on THAT answer
+    is what let a whole run look healthy while writing nothing."""
+    r = run("P1.2_nws_monitor.template.json", "plan_gate_denied.json")
+    assert r["ok"] is False and r["node"] == "Run now?", r
+    assert "ANON key" in r["error"] and "service_role" in r["error"]
+
+
+@pytest.mark.parametrize("workflow", sorted(
+    [f for f in os.listdir(os.path.join(ROOT, "n8n")) if f.endswith(".json")]))
+def test_every_gate_carries_the_permission_check(workflow):
+    d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
+    gate = [n for n in d["nodes"] if n["name"] == "Run now?"]
+    if not gate:
+        pytest.skip("no schedule gate in this file")
+    assert "42501" in gate[0]["parameters"]["jsCode"], workflow

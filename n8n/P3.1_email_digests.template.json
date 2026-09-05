@@ -1,706 +1,706 @@
 {
-  "name": "AD4 - P3.1 Email Digests",
-  "active": false,
-  "settings": {
-    "executionOrder": "v1"
+ "name": "AD4 - P3.1 Email Digests",
+ "active": false,
+ "settings": {
+  "executionOrder": "v1"
+ },
+ "nodes": [
+  {
+   "id": "trigger-morning",
+   "name": "Morning Schedule",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "cronExpression",
+       "expression": "0 4 * * *"
+      }
+     ]
+    }
+   }
   },
-  "nodes": [
-    {
-      "id": "trigger-morning",
-      "name": "Morning Schedule",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        0,
-        0
-      ],
-      "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "cronExpression",
-              "expression": "0 4 * * *"
-            }
-          ]
-        }
+  {
+   "id": "trigger-eod",
+   "name": "EOD Schedule",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    160
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "cronExpression",
+       "expression": "0 21 * * *"
       }
-    },
-    {
-      "id": "trigger-eod",
-      "name": "EOD Schedule",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        0,
-        160
-      ],
-      "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "cronExpression",
-              "expression": "0 21 * * *"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "trigger-manual",
-      "name": "Manual Trigger",
-      "type": "n8n-nodes-base.manualTrigger",
-      "typeVersion": 1,
-      "position": [
-        0,
-        320
-      ],
-      "parameters": {}
-    },
-    {
-      "id": "config",
-      "name": "Config",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        260,
-        160
-      ],
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "1",
-              "name": "supabase_url",
-              "type": "string",
-              "value": ""
-            },
-            {
-              "id": "2",
-              "name": "service_key",
-              "type": "string",
-              "value": ""
-            },
-            {
-              "id": "3",
-              "name": "digest_kind",
-              "type": "string",
-              "value": "={{ $json.digest_kind || 'morning' }}"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "set-kind-morning",
-      "name": "Tag: morning",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        260,
-        0
-      ],
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "1",
-              "name": "digest_kind",
-              "type": "string",
-              "value": "morning"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "set-kind-eod",
-      "name": "Tag: eod",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        260,
-        320
-      ],
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "1",
-              "name": "digest_kind",
-              "type": "string",
-              "value": "eod"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "switch-kind",
-      "name": "Which digest?",
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3.2,
-      "position": [
-        520,
-        160
-      ],
-      "parameters": {
-        "rules": {
-          "values": [
-            {
-              "outputKey": "morning",
-              "conditions": {
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.digest_kind }}",
-                    "rightValue": "morning",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "outputKey": "eod",
-              "conditions": {
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.digest_kind }}",
-                    "rightValue": "eod",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "rpc-morning",
-      "name": "build_morning_brief",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        780,
-        40
-      ],
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput",
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/build_morning_brief",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={}"
-      }
-    },
-    {
-      "id": "rpc-eod",
-      "name": "build_eod_report",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        780,
-        280
-      ],
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput",
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/build_eod_report",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={}"
-      }
-    },
-    {
-      "id": "render-html",
-      "name": "Render HTML",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1040,
-        160
-      ],
-      "parameters": {
-        "jsCode": "const kind = $('Config').first().json.digest_kind;\nconst payload = $input.first().json;\nconst money = (v) => v == null ? '-' : (Math.abs(v) >= 1000 ? '$' + (v/1000).toFixed(1) + 'k' : '$' + Number(v).toFixed(0));\nlet subject, html;\nif (kind === 'morning') {\n  const opps = (payload.top_opportunities || []).slice(0, 15);\n  // Volume sits beside price and edge, not buried: an edge on a band that\n  // has not traded in 24h is a different proposition from the same edge on\n  // a busy one, and the brief has to say which it is.\n  const rows = opps.map(o => {\n    const thin = o.thin_market ? ' style=\"background:#fff4e0\"' : '';\n    return `<tr${thin}><td>${o.display_name || o.city_key}</td><td>${o.band_label || ''}</td><td>${o.side}</td>` +\n      `<td>${(o.market_price*100).toFixed(0)}c</td><td>${(o.model_prob*100).toFixed(0)}%</td>` +\n      `<td>${(o.edge_net_pp*100).toFixed(1)}pp</td><td>${money(o.fillable_usd_5c)}</td>` +\n      `<td>${money(o.volume_usd)}${o.thin_market ? ' &#9888;' : ''}</td><td>${o.n_trades ?? 0}</td><td>${o.regime_label}</td></tr>`;\n  }).join('');\n  const thinCount = opps.filter(o => o.thin_market).length;\n  const totalVol = opps.reduce((s, o) => s + (o.volume_usd || 0), 0);\n  subject = 'AD4 Morning Brief';\n  html = `<h2>AD4 Morning Brief</h2><p>Generated ${payload.generated_at}</p>` +\n    `<p>${opps.length} ranked opportunities &middot; ${money(totalVol)} traded across them in the last 24h` +\n    (thinCount ? ` &middot; <b>${thinCount} on thin-volume bands (shaded)</b>` : '') + `</p>` +\n    `<table border=1 cellpadding=4 style=\"border-collapse:collapse;font-family:system-ui;font-size:13px\">` +\n    `<tr><th>City</th><th>Band</th><th>Side</th><th>Price</th><th>Model P</th><th>Net edge</th>` +\n    `<th>Depth 5c</th><th>Vol 24h</th><th>Trades</th><th>Regime</th></tr>${rows}</table>` +\n    `<p style=\"font-size:12px;color:#666\">Depth is what the current quote can absorb inside 5c of slippage. ` +\n    `Vol 24h is what actually traded. A shaded row is quoted but barely traded - the ladder overstates how much of it you can take.</p>`;\n} else {\n  const trades = payload.settled_today || [];\n  const rows = trades.map(t => `<tr><td>${t.strategy_id}</td><td>${t.band_id}</td><td>${t.side}</td><td>${t.shares}</td><td>${t.net_pnl?.toFixed(2)}</td></tr>`).join('');\n  const byStrategy = payload.net_pnl_by_strategy || {};\n  const stratRows = Object.entries(byStrategy).map(([k,v]) => `<tr><td>${k}</td><td>${Number(v).toFixed(2)}</td></tr>`).join('');\n  subject = 'AD4 End of Day Report';\n  html = `<h2>AD4 End of Day</h2><p>Generated ${payload.generated_at}</p><h3>Net P&L by strategy</h3><table border=1 cellpadding=4>${stratRows}</table><h3>Settled today</h3><table border=1 cellpadding=4><tr><th>Strategy</th><th>Band</th><th>Side</th><th>Shares</th><th>Net P&L</th></tr>${rows}</table><p style=\"font-size:12px;color:#666\">All figures are net. Gross is never shown outside the cost-analysis view.</p>`;\n}\nreturn [{ json: { subject, html } }];"
-      }
-    },
-    {
-      "id": "get-recipient",
-      "name": "Get Recipient",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1300,
-        160
-      ],
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput",
-      "parameters": {
-        "method": "GET",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/settings?key=eq.email_recipient&select=value",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "send-email",
-      "name": "Send Email",
-      "type": "n8n-nodes-base.emailSend",
-      "typeVersion": 2.1,
-      "position": [
-        1560,
-        160
-      ],
-      "parameters": {
-        "fromEmail": "ad4-digests@example.com",
-        "toEmail": "={{ $json[0].value.address }}",
-        "subject": "={{ $('Render HTML').first().json.subject }}",
-        "emailFormat": "html",
-        "html": "={{ $('Render HTML').first().json.html }}"
-      }
-    },
-    {
-      "id": "summary",
-      "name": "Summary",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1820,
-        160
-      ],
-      "parameters": {
-        "jsCode": "const r = $('Render HTML').first().json;\nconst summary = `AD4 P3.1: ${r.subject} sent.`;\nreturn [{ json: {\n  summary,\n  status: 'ok',\n  rows: 1,\n  log: {\n    p_job: 'P3.1_email_digests',\n    p_status: 'ok',\n    p_rows: 1,\n    p_detail: {\n      summary,\n      subject: r.subject ?? null,\n      digest_kind: $('Config').first().json.digest_kind ?? null,\n      trigger: $execution.mode,\n      execution_id: $execution.id,\n    },\n  },\n} }];"
-      }
-    },
-    {
-      "id": "trigger-webhook",
-      "name": "Webhook Trigger",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        0,
-        500
-      ],
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "ad4-email-digests",
-        "responseMode": "responseNode",
-        "options": {
-          "allowedOrigins": "*"
-        }
-      },
-      "webhookId": "ad4-email-digests"
-    },
-    {
-      "id": "webhook-pick-digest",
-      "name": "Webhook: pick digest",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        220,
-        500
-      ],
-      "parameters": {
-        "jsCode": "// POST {\"digest\":\"eod\"} to run the EOD report; anything\n// else (including an empty body) runs the morning brief.\nconst body = $json.body || {};\nconst kind = body.digest === 'eod' ? 'eod' : 'morning';\nreturn [{ json: { digest_kind: kind } }];"
-      }
-    },
-    {
-      "id": "log-run",
-      "name": "Log run",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2080,
-        160
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Accept",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.log) }}"
-      },
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "respond",
-      "name": "Respond",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [
-        2340,
-        160
-      ],
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
-      }
-    },
-    {
-      "id": "sched-check",
-      "name": "Check schedule",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        450,
-        30
-      ],
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput",
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/should_run",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Accept",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_job: \"P3.1_email_digests\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
-        "options": {
-          "timeout": 10000,
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          }
-        }
-      }
-    },
-    {
-      "id": "sched-gate",
-      "name": "Run now?",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        640,
-        30
-      ],
-      "parameters": {
-        "jsCode": "// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
-      }
-    },
-    {
-      "id": "sched-stop",
-      "name": "Stop if skipped",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        640,
-        30
-      ],
-      "parameters": {
-        "jsCode": "// Returning [] stops the workflow here. Everything below this node\n// is skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
-      }
+     ]
     }
-  ],
-  "connections": {
-    "Morning Schedule": {
-      "main": [
-        [
-          {
-            "node": "Tag: morning",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "EOD Schedule": {
-      "main": [
-        [
-          {
-            "node": "Tag: eod",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Manual Trigger": {
-      "main": [
-        [
-          {
-            "node": "Tag: morning",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Tag: morning": {
-      "main": [
-        [
-          {
-            "node": "Config",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Tag: eod": {
-      "main": [
-        [
-          {
-            "node": "Config",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Config": {
-      "main": [
-        [
-          {
-            "node": "Check schedule",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Which digest?": {
-      "main": [
-        [
-          {
-            "node": "build_morning_brief",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "build_eod_report",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "build_morning_brief": {
-      "main": [
-        [
-          {
-            "node": "Render HTML",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "build_eod_report": {
-      "main": [
-        [
-          {
-            "node": "Render HTML",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Render HTML": {
-      "main": [
-        [
-          {
-            "node": "Get Recipient",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Recipient": {
-      "main": [
-        [
-          {
-            "node": "Send Email",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Send Email": {
-      "main": [
-        [
-          {
-            "node": "Summary",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Webhook Trigger": {
-      "main": [
-        [
-          {
-            "node": "Webhook: pick digest",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Webhook: pick digest": {
-      "main": [
-        [
-          {
-            "node": "Config",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Summary": {
-      "main": [
-        [
-          {
-            "node": "Log run",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Log run": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Check schedule": {
-      "main": [
-        [
-          {
-            "node": "Run now?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run now?": {
-      "main": [
-        [
-          {
-            "node": "Stop if skipped",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Stop if skipped": {
-      "main": [
-        [
-          {
-            "node": "Which digest?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+   }
+  },
+  {
+   "id": "trigger-manual",
+   "name": "Manual Trigger",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    320
+   ],
+   "parameters": {}
+  },
+  {
+   "id": "config",
+   "name": "Config",
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    260,
+    160
+   ],
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "1",
+       "name": "supabase_url",
+       "type": "string",
+       "value": ""
+      },
+      {
+       "id": "2",
+       "name": "service_key",
+       "type": "string",
+       "value": ""
+      },
+      {
+       "id": "3",
+       "name": "digest_kind",
+       "type": "string",
+       "value": "={{ $json.digest_kind || 'morning' }}"
+      }
+     ]
     }
+   }
+  },
+  {
+   "id": "set-kind-morning",
+   "name": "Tag: morning",
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    260,
+    0
+   ],
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "1",
+       "name": "digest_kind",
+       "type": "string",
+       "value": "morning"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "set-kind-eod",
+   "name": "Tag: eod",
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    260,
+    320
+   ],
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "1",
+       "name": "digest_kind",
+       "type": "string",
+       "value": "eod"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "switch-kind",
+   "name": "Which digest?",
+   "type": "n8n-nodes-base.switch",
+   "typeVersion": 3.2,
+   "position": [
+    520,
+    160
+   ],
+   "parameters": {
+    "rules": {
+     "values": [
+      {
+       "outputKey": "morning",
+       "conditions": {
+        "conditions": [
+         {
+          "leftValue": "={{ $json.digest_kind }}",
+          "rightValue": "morning",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          }
+         }
+        ]
+       }
+      },
+      {
+       "outputKey": "eod",
+       "conditions": {
+        "conditions": [
+         {
+          "leftValue": "={{ $json.digest_kind }}",
+          "rightValue": "eod",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          }
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "rpc-morning",
+   "name": "build_morning_brief",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    780,
+    40
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/build_morning_brief",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={}"
+   }
+  },
+  {
+   "id": "rpc-eod",
+   "name": "build_eod_report",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    780,
+    280
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/build_eod_report",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={}"
+   }
+  },
+  {
+   "id": "render-html",
+   "name": "Render HTML",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1040,
+    160
+   ],
+   "parameters": {
+    "jsCode": "const kind = $('Config').first().json.digest_kind;\nconst payload = $input.first().json;\nconst money = (v) => v == null ? '-' : (Math.abs(v) >= 1000 ? '$' + (v/1000).toFixed(1) + 'k' : '$' + Number(v).toFixed(0));\nlet subject, html;\nif (kind === 'morning') {\n  const opps = (payload.top_opportunities || []).slice(0, 15);\n  // Volume sits beside price and edge, not buried: an edge on a band that\n  // has not traded in 24h is a different proposition from the same edge on\n  // a busy one, and the brief has to say which it is.\n  const rows = opps.map(o => {\n    const thin = o.thin_market ? ' style=\"background:#fff4e0\"' : '';\n    return `<tr${thin}><td>${o.display_name || o.city_key}</td><td>${o.band_label || ''}</td><td>${o.side}</td>` +\n      `<td>${(o.market_price*100).toFixed(0)}c</td><td>${(o.model_prob*100).toFixed(0)}%</td>` +\n      `<td>${(o.edge_net_pp*100).toFixed(1)}pp</td><td>${money(o.fillable_usd_5c)}</td>` +\n      `<td>${money(o.volume_usd)}${o.thin_market ? ' &#9888;' : ''}</td><td>${o.n_trades ?? 0}</td><td>${o.regime_label}</td></tr>`;\n  }).join('');\n  const thinCount = opps.filter(o => o.thin_market).length;\n  const totalVol = opps.reduce((s, o) => s + (o.volume_usd || 0), 0);\n  subject = 'AD4 Morning Brief';\n  html = `<h2>AD4 Morning Brief</h2><p>Generated ${payload.generated_at}</p>` +\n    `<p>${opps.length} ranked opportunities &middot; ${money(totalVol)} traded across them in the last 24h` +\n    (thinCount ? ` &middot; <b>${thinCount} on thin-volume bands (shaded)</b>` : '') + `</p>` +\n    `<table border=1 cellpadding=4 style=\"border-collapse:collapse;font-family:system-ui;font-size:13px\">` +\n    `<tr><th>City</th><th>Band</th><th>Side</th><th>Price</th><th>Model P</th><th>Net edge</th>` +\n    `<th>Depth 5c</th><th>Vol 24h</th><th>Trades</th><th>Regime</th></tr>${rows}</table>` +\n    `<p style=\"font-size:12px;color:#666\">Depth is what the current quote can absorb inside 5c of slippage. ` +\n    `Vol 24h is what actually traded. A shaded row is quoted but barely traded - the ladder overstates how much of it you can take.</p>`;\n} else {\n  const trades = payload.settled_today || [];\n  const rows = trades.map(t => `<tr><td>${t.strategy_id}</td><td>${t.band_id}</td><td>${t.side}</td><td>${t.shares}</td><td>${t.net_pnl?.toFixed(2)}</td></tr>`).join('');\n  const byStrategy = payload.net_pnl_by_strategy || {};\n  const stratRows = Object.entries(byStrategy).map(([k,v]) => `<tr><td>${k}</td><td>${Number(v).toFixed(2)}</td></tr>`).join('');\n  subject = 'AD4 End of Day Report';\n  html = `<h2>AD4 End of Day</h2><p>Generated ${payload.generated_at}</p><h3>Net P&L by strategy</h3><table border=1 cellpadding=4>${stratRows}</table><h3>Settled today</h3><table border=1 cellpadding=4><tr><th>Strategy</th><th>Band</th><th>Side</th><th>Shares</th><th>Net P&L</th></tr>${rows}</table><p style=\"font-size:12px;color:#666\">All figures are net. Gross is never shown outside the cost-analysis view.</p>`;\n}\nreturn [{ json: { subject, html } }];"
+   }
+  },
+  {
+   "id": "get-recipient",
+   "name": "Get Recipient",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1300,
+    160
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "parameters": {
+    "method": "GET",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/settings?key=eq.email_recipient&select=value",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "send-email",
+   "name": "Send Email",
+   "type": "n8n-nodes-base.emailSend",
+   "typeVersion": 2.1,
+   "position": [
+    1560,
+    160
+   ],
+   "parameters": {
+    "fromEmail": "ad4-digests@example.com",
+    "toEmail": "={{ $json[0].value.address }}",
+    "subject": "={{ $('Render HTML').first().json.subject }}",
+    "emailFormat": "html",
+    "html": "={{ $('Render HTML').first().json.html }}"
+   }
+  },
+  {
+   "id": "summary",
+   "name": "Summary",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1820,
+    160
+   ],
+   "parameters": {
+    "jsCode": "const r = $('Render HTML').first().json;\nconst summary = `AD4 P3.1: ${r.subject} sent.`;\nreturn [{ json: {\n  summary,\n  status: 'ok',\n  rows: 1,\n  log: {\n    p_job: 'P3.1_email_digests',\n    p_status: 'ok',\n    p_rows: 1,\n    p_detail: {\n      summary,\n      subject: r.subject ?? null,\n      digest_kind: $('Config').first().json.digest_kind ?? null,\n      trigger: $execution.mode,\n      execution_id: $execution.id,\n    },\n  },\n} }];"
+   }
+  },
+  {
+   "id": "trigger-webhook",
+   "name": "Webhook Trigger",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2,
+   "position": [
+    0,
+    500
+   ],
+   "parameters": {
+    "httpMethod": "POST",
+    "path": "ad4-email-digests",
+    "responseMode": "responseNode",
+    "options": {
+     "allowedOrigins": "*"
+    }
+   },
+   "webhookId": "ad4-email-digests"
+  },
+  {
+   "id": "webhook-pick-digest",
+   "name": "Webhook: pick digest",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    220,
+    500
+   ],
+   "parameters": {
+    "jsCode": "// POST {\"digest\":\"eod\"} to run the EOD report; anything\n// else (including an empty body) runs the morning brief.\nconst body = $json.body || {};\nconst kind = body.digest === 'eod' ? 'eod' : 'morning';\nreturn [{ json: { digest_kind: kind } }];"
+   }
+  },
+  {
+   "id": "log-run",
+   "name": "Log run",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2080,
+    160
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.log) }}"
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "respond",
+   "name": "Respond",
+   "type": "n8n-nodes-base.respondToWebhook",
+   "typeVersion": 1,
+   "position": [
+    2340,
+    160
+   ],
+   "parameters": {
+    "respondWith": "json",
+    "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
+   }
+  },
+  {
+   "id": "sched-check",
+   "name": "Check schedule",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    450,
+    30
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/should_run",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ p_job: \"P3.1_email_digests\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+    "options": {
+     "timeout": 10000,
+     "response": {
+      "response": {
+       "neverError": true
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "sched-gate",
+   "name": "Run now?",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    640,
+    30
+   ],
+   "parameters": {
+    "jsCode": "// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A PERMISSION ERROR IS NOT AN UNAVAILABLE GATE.\n// should_run is granted to service_role and revoked from anon, so 42501 here\n// is proof the Config node holds the anon key - and every write below would be\n// refused too, silently, because the write nodes continue on error. Failing\n// open on this particular answer is what let a whole run look healthy while\n// writing nothing. Stop on the first node that can prove it.\nif (decision && (String(decision.code) === '42501' ||\n                 /permission denied/i.test(String(decision.message || '')))) {\n  throw new Error(\n    `Supabase refused should_run: ${decision.message} (${decision.code}). This is the ANON ` +\n    `key in the Config node, not the service key - anon is granted SELECT and nothing else. ` +\n    `Every write in this workflow would be refused the same way. Open Config -> service_key ` +\n    `and paste the SERVICE ROLE key (Supabase -> Project Settings -> API -> service_role, or ` +\n    `a key beginning sb_secret_). NEVER put that key anywhere starting NEXT_PUBLIC_.`);\n}\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
+   }
+  },
+  {
+   "id": "sched-stop",
+   "name": "Stop if skipped",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    640,
+    30
+   ],
+   "parameters": {
+    "jsCode": "// Returning [] stops the workflow here. Everything below this node\n// is skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
+   }
   }
+ ],
+ "connections": {
+  "Morning Schedule": {
+   "main": [
+    [
+     {
+      "node": "Tag: morning",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "EOD Schedule": {
+   "main": [
+    [
+     {
+      "node": "Tag: eod",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Manual Trigger": {
+   "main": [
+    [
+     {
+      "node": "Tag: morning",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Tag: morning": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Tag: eod": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "Check schedule",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Which digest?": {
+   "main": [
+    [
+     {
+      "node": "build_morning_brief",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "build_eod_report",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "build_morning_brief": {
+   "main": [
+    [
+     {
+      "node": "Render HTML",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "build_eod_report": {
+   "main": [
+    [
+     {
+      "node": "Render HTML",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Render HTML": {
+   "main": [
+    [
+     {
+      "node": "Get Recipient",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Get Recipient": {
+   "main": [
+    [
+     {
+      "node": "Send Email",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Send Email": {
+   "main": [
+    [
+     {
+      "node": "Summary",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Webhook Trigger": {
+   "main": [
+    [
+     {
+      "node": "Webhook: pick digest",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Webhook: pick digest": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Summary": {
+   "main": [
+    [
+     {
+      "node": "Log run",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Log run": {
+   "main": [
+    [
+     {
+      "node": "Respond",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Check schedule": {
+   "main": [
+    [
+     {
+      "node": "Run now?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Run now?": {
+   "main": [
+    [
+     {
+      "node": "Stop if skipped",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Stop if skipped": {
+   "main": [
+    [
+     {
+      "node": "Which digest?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ }
 }

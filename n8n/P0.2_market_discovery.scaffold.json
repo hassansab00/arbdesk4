@@ -1,607 +1,607 @@
 {
-  "name": "AD4 P0.2 - Market Discovery",
-  "active": false,
-  "settings": {
-    "executionOrder": "v1"
+ "name": "AD4 P0.2 - Market Discovery",
+ "active": false,
+ "settings": {
+  "executionOrder": "v1"
+ },
+ "nodes": [
+  {
+   "id": "warn",
+   "name": "Note warn",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -560,
+    -60
+   ],
+   "parameters": {
+    "content": "## READ BEFORE ACTIVATING\n\nYour n8n ALREADY RUNS a P0.2. This file is a rebuild, not a patch.\n\n**Never leave both Active.** Two workflows writing the same tables is\nworse than one.\n\nSafe cutover:\n  1. Import this. Leave it INACTIVE.\n  2. Fill in Config.\n  3. Run it once with the Manual Trigger (or the AD4 Workflows page).\n  4. Compare its Summary line against your original's.\n  5. Only then: deactivate the original, activate this.",
+    "width": 480,
+    "height": 340
+   }
   },
-  "nodes": [
-    {
-      "id": "warn",
-      "name": "Note warn",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        -560,
-        -60
-      ],
-      "parameters": {
-        "content": "## READ BEFORE ACTIVATING\n\nYour n8n ALREADY RUNS a P0.2. This file is a rebuild, not a patch.\n\n**Never leave both Active.** Two workflows writing the same tables is\nworse than one.\n\nSafe cutover:\n  1. Import this. Leave it INACTIVE.\n  2. Fill in Config.\n  3. Run it once with the Manual Trigger (or the AD4 Workflows page).\n  4. Compare its Summary line against your original's.\n  5. Only then: deactivate the original, activate this.",
-        "width": 480,
-        "height": 340
+  {
+   "id": "endpoint",
+   "name": "Note endpoint",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -560,
+    320
+   ],
+   "parameters": {
+    "content": "## The Polymarket endpoint is NOT verified\n\n`markets_url` is pre-filled with Polymarket's public Gamma markets\nendpoint. It could NOT be tested when this file was built - the build\nsandbox blocks polymarket.com.\n\nThis is the ONE Polymarket URL that appears anywhere in the AD4 repo\n(scripts/settlement.py), and even there it is flagged unverified. Your\nworking P0.2 has the real one: open it, click its Polymarket HTTP node,\ncopy the URL.\n\nUnlike P0.3 and P0.4 this really is a single list call, so no {token}\nplaceholder is needed.\n\n**Nothing is written unless markets parse.**",
+    "width": 480,
+    "height": 340
+   }
+  },
+  {
+   "id": "trigger-manual",
+   "name": "Manual Trigger",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {}
+  },
+  {
+   "id": "trigger-schedule",
+   "name": "Schedule Trigger",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    160
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "hours",
+       "hoursInterval": 6
       }
-    },
-    {
-      "id": "endpoint",
-      "name": "Note endpoint",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        -560,
-        320
-      ],
-      "parameters": {
-        "content": "## The Polymarket endpoint is NOT verified\n\n`markets_url` is pre-filled with Polymarket's public Gamma markets\nendpoint. It could NOT be tested when this file was built - the build\nsandbox blocks polymarket.com.\n\nThis is the ONE Polymarket URL that appears anywhere in the AD4 repo\n(scripts/settlement.py), and even there it is flagged unverified. Your\nworking P0.2 has the real one: open it, click its Polymarket HTTP node,\ncopy the URL.\n\nUnlike P0.3 and P0.4 this really is a single list call, so no {token}\nplaceholder is needed.\n\n**Nothing is written unless markets parse.**",
-        "width": 480,
-        "height": 340
-      }
-    },
-    {
-      "id": "trigger-manual",
-      "name": "Manual Trigger",
-      "type": "n8n-nodes-base.manualTrigger",
-      "typeVersion": 1,
-      "position": [
-        0,
-        0
-      ],
-      "parameters": {}
-    },
-    {
-      "id": "trigger-schedule",
-      "name": "Schedule Trigger",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        0,
-        160
-      ],
-      "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "hours",
-              "hoursInterval": 6
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "trigger-webhook",
-      "name": "Webhook Trigger",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        0,
-        320
-      ],
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "ad4-market-discovery",
-        "responseMode": "responseNode",
-        "options": {
-          "allowedOrigins": "*"
-        }
-      },
-      "webhookId": "ad4-market-discovery"
-    },
-    {
-      "id": "config",
-      "name": "Config",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        240,
-        100
-      ],
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "1",
-              "name": "supabase_url",
-              "type": "string",
-              "value": ""
-            },
-            {
-              "id": "2",
-              "name": "service_key",
-              "type": "string",
-              "value": ""
-            },
-            {
-              "id": "3",
-              "name": "markets_url",
-              "type": "string",
-              "value": "https://gamma-api.polymarket.com/markets?closed=false&limit=500"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "load-cities",
-      "name": "Load cities",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        460,
-        100
-      ],
-      "parameters": {
-        "method": "GET",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/cities?select=city_key,unit,icao&limit=500",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Accept",
-              "value": "application/json"
-            }
-          ]
-        }
-      },
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "fetch-markets",
-      "name": "Fetch markets",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        680,
-        100
-      ],
-      "parameters": {
-        "method": "GET",
-        "url": "={{ $('Config').first().json.markets_url }}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Accept",
-              "value": "application/json"
-            }
-          ]
-        }
-      },
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "parse",
-      "name": "Parse markets + bands",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        900,
-        100
-      ],
-      "parameters": {
-        "jsCode": "// Normalise the Polymarket response into `markets` + `bands` rows.\n//\n// CONFIRMED target columns (sql/ad4_99_verify.sql section 7):\n//   markets(market_id uuid, city_key, resolution_date, event_slug, title,\n//           unit, band_count, closed, condition_id, ...)\n//   bands(band_id uuid, market_id uuid, band_index int, band_label,\n//         band_lo, band_hi, open_low, open_high, condition_id,\n//         token_yes, token_no)\n//\n// NOT GROUNDED: the shape of the upstream payload. Adjust the field reads\n// below to match what your endpoint returns - the OUTPUT shape above is\n// the part that must not change.\nconst cities = $('Load cities').all().map(i => i.json).flat();\nconst raw = $('Fetch markets').all().map(i => i.json).flat();\n\nconst markets = [], bands = [];\nlet skippedNoCity = 0;\n\nfor (const m of raw) {\n  if (!m) continue;\n  const slug = String(m.slug || m.event_slug || '');\n  const city = cities.find(c => c && c.city_key && slug.includes(c.city_key)) || null;\n  if (!city) { skippedNoCity++; continue; }     // not one of our cities\n\n  const marketId = m.market_id || m.id;         // must be stable across runs\n  if (!marketId) continue;\n\n  const outcomes = m.outcomes || m.bands || m.tokens || [];\n\n  markets.push({\n    market_id: marketId,\n    city_key: city.city_key,\n    resolution_date: String(m.resolution_date || m.endDate || m.end_date || '').slice(0, 10) || null,\n    event_slug: slug || null,\n    title: m.title || m.question || null,\n    unit: city.unit || 'C',\n    band_count: outcomes.length || null,\n    closed: Boolean(m.closed),\n    condition_id: m.conditionId || m.condition_id || null,\n    last_seen_at: new Date().toISOString(),\n  });\n\n  // One band per outcome. band_lo/band_hi are the numeric bounds;\n  // open_low/open_high mark the unbounded tails (\"27 or below\", \"31+\").\n  outcomes.forEach((o, idx) => {\n    if (!o) return;\n    const bandId = o.band_id || o.id;\n    if (!bandId) return;\n    const toks = o.tokens || [];\n    bands.push({\n      band_id: bandId,\n      market_id: marketId,\n      band_index: o.band_index ?? idx,\n      band_label: o.label || o.band_label || null,\n      band_lo: o.band_lo ?? o.lo ?? null,\n      band_hi: o.band_hi ?? o.hi ?? null,\n      open_low: Boolean(o.open_low),\n      open_high: Boolean(o.open_high),\n      condition_id: o.conditionId || o.condition_id || m.conditionId || m.condition_id || null,\n      token_yes: o.token_yes || toks[0] || null,\n      token_no:  o.token_no  || toks[1] || null,\n    });\n  });\n}\n\nreturn [{ json: { markets, bands, n_markets: markets.length,\n                  n_bands: bands.length, skipped_no_city: skippedNoCity,\n                  n_raw: raw.length } }];"
-      }
-    },
-    {
-      "id": "guard",
-      "name": "Guard: did anything parse?",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1120,
-        100
-      ],
-      "parameters": {
-        "jsCode": "const p = $('Parse markets + bands').first().json;\nif (p.n_markets === 0) {\n  throw new Error(\n    `Parsed 0 markets from ${p.n_raw} payload items ` +\n    `(${p.skipped_no_city} skipped: slug matched none of your cities). ` +\n    `Nothing was written. Either the Polymarket endpoint in Config is wrong, ` +\n    `or its response shape does not carry slug/id/outcomes. Open your ` +\n    `original P0.2 and copy its URL across.`);\n}\nreturn [{ json: p }];"
-      }
-    },
-    {
-      "id": "upsert-markets",
-      "name": "Upsert markets",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1340,
-        100
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/markets?on_conflict=market_id",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Accept",
-              "value": "application/json"
-            },
-            {
-              "name": "Prefer",
-              "value": "resolution=merge-duplicates,return=minimal"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.markets) }}"
-      },
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "upsert-bands",
-      "name": "Upsert bands",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1560,
-        100
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/bands?on_conflict=band_id",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Accept",
-              "value": "application/json"
-            },
-            {
-              "name": "Prefer",
-              "value": "resolution=merge-duplicates,return=minimal"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($('Parse markets + bands').first().json.bands) }}"
-      },
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "summary",
-      "name": "Summary",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1780,
-        100
-      ],
-      "parameters": {
-        "jsCode": "const p = $('Parse markets + bands').first().json;\nconst rows = (p.n_markets || 0) + (p.n_bands || 0);\nconst summary = `AD4 P0.2: ${p.n_markets} markets, ${p.n_bands} bands upserted ` +\n                `from ${p.n_raw} payload items (${p.skipped_no_city} not our cities).`;\nconst status = rows > 0 ? 'ok' : 'attention';\nconst detail = { n_markets: p.n_markets, n_bands: p.n_bands,\n                 n_raw: p.n_raw, skipped_no_city: p.skipped_no_city };\nreturn [{ json: {\n  summary, status, rows,\n  log: { p_job: 'P0.2_market_discovery', p_status: status, p_rows: rows,\n         p_detail: { ...detail, summary, trigger: $execution.mode, execution_id: $execution.id } },\n} }];"
-      }
-    },
-    {
-      "id": "log-run",
-      "name": "Log run",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2000,
-        100
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Accept",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.log) }}"
-      },
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "respond",
-      "name": "Respond",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [
-        2220,
-        100
-      ],
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
-      }
-    },
-    {
-      "id": "sched-check",
-      "name": "Check schedule",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        430,
-        -30
-      ],
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput",
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/should_run",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.service_key }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Accept",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_job: \"P0.2_market_discovery\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
-        "options": {
-          "timeout": 10000,
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          }
-        }
-      }
-    },
-    {
-      "id": "sched-gate",
-      "name": "Run now?",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        620,
-        -30
-      ],
-      "parameters": {
-        "jsCode": "// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
-      }
-    },
-    {
-      "id": "sched-stop",
-      "name": "Stop if skipped",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        620,
-        -30
-      ],
-      "parameters": {
-        "jsCode": "// Returning [] stops the workflow here. Everything below this node\n// is skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
-      }
+     ]
     }
-  ],
-  "connections": {
-    "Manual Trigger": {
-      "main": [
-        [
-          {
-            "node": "Config",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Schedule Trigger": {
-      "main": [
-        [
-          {
-            "node": "Config",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Webhook Trigger": {
-      "main": [
-        [
-          {
-            "node": "Config",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Config": {
-      "main": [
-        [
-          {
-            "node": "Check schedule",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Load cities": {
-      "main": [
-        [
-          {
-            "node": "Fetch markets",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch markets": {
-      "main": [
-        [
-          {
-            "node": "Parse markets + bands",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Parse markets + bands": {
-      "main": [
-        [
-          {
-            "node": "Guard: did anything parse?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Guard: did anything parse?": {
-      "main": [
-        [
-          {
-            "node": "Upsert markets",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert markets": {
-      "main": [
-        [
-          {
-            "node": "Upsert bands",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert bands": {
-      "main": [
-        [
-          {
-            "node": "Summary",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Summary": {
-      "main": [
-        [
-          {
-            "node": "Log run",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Log run": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Check schedule": {
-      "main": [
-        [
-          {
-            "node": "Run now?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run now?": {
-      "main": [
-        [
-          {
-            "node": "Stop if skipped",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Stop if skipped": {
-      "main": [
-        [
-          {
-            "node": "Load cities",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+   }
+  },
+  {
+   "id": "trigger-webhook",
+   "name": "Webhook Trigger",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2,
+   "position": [
+    0,
+    320
+   ],
+   "parameters": {
+    "httpMethod": "POST",
+    "path": "ad4-market-discovery",
+    "responseMode": "responseNode",
+    "options": {
+     "allowedOrigins": "*"
     }
+   },
+   "webhookId": "ad4-market-discovery"
+  },
+  {
+   "id": "config",
+   "name": "Config",
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    240,
+    100
+   ],
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "1",
+       "name": "supabase_url",
+       "type": "string",
+       "value": ""
+      },
+      {
+       "id": "2",
+       "name": "service_key",
+       "type": "string",
+       "value": ""
+      },
+      {
+       "id": "3",
+       "name": "markets_url",
+       "type": "string",
+       "value": "https://gamma-api.polymarket.com/markets?closed=false&limit=500"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "load-cities",
+   "name": "Load cities",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    460,
+    100
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/cities?select=city_key,unit,icao&limit=500",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      }
+     ]
+    }
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "fetch-markets",
+   "name": "Fetch markets",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    680,
+    100
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "={{ $('Config').first().json.markets_url }}",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Accept",
+       "value": "application/json"
+      }
+     ]
+    }
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "parse",
+   "name": "Parse markets + bands",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    900,
+    100
+   ],
+   "parameters": {
+    "jsCode": "// Normalise the Polymarket response into `markets` + `bands` rows.\n//\n// CONFIRMED target columns (sql/ad4_99_verify.sql section 7):\n//   markets(market_id uuid, city_key, resolution_date, event_slug, title,\n//           unit, band_count, closed, condition_id, ...)\n//   bands(band_id uuid, market_id uuid, band_index int, band_label,\n//         band_lo, band_hi, open_low, open_high, condition_id,\n//         token_yes, token_no)\n//\n// NOT GROUNDED: the shape of the upstream payload. Adjust the field reads\n// below to match what your endpoint returns - the OUTPUT shape above is\n// the part that must not change.\nconst cities = $('Load cities').all().map(i => i.json).flat();\nconst raw = $('Fetch markets').all().map(i => i.json).flat();\n\nconst markets = [], bands = [];\nlet skippedNoCity = 0;\n\nfor (const m of raw) {\n  if (!m) continue;\n  const slug = String(m.slug || m.event_slug || '');\n  const city = cities.find(c => c && c.city_key && slug.includes(c.city_key)) || null;\n  if (!city) { skippedNoCity++; continue; }     // not one of our cities\n\n  const marketId = m.market_id || m.id;         // must be stable across runs\n  if (!marketId) continue;\n\n  const outcomes = m.outcomes || m.bands || m.tokens || [];\n\n  markets.push({\n    market_id: marketId,\n    city_key: city.city_key,\n    resolution_date: String(m.resolution_date || m.endDate || m.end_date || '').slice(0, 10) || null,\n    event_slug: slug || null,\n    title: m.title || m.question || null,\n    unit: city.unit || 'C',\n    band_count: outcomes.length || null,\n    closed: Boolean(m.closed),\n    condition_id: m.conditionId || m.condition_id || null,\n    last_seen_at: new Date().toISOString(),\n  });\n\n  // One band per outcome. band_lo/band_hi are the numeric bounds;\n  // open_low/open_high mark the unbounded tails (\"27 or below\", \"31+\").\n  outcomes.forEach((o, idx) => {\n    if (!o) return;\n    const bandId = o.band_id || o.id;\n    if (!bandId) return;\n    const toks = o.tokens || [];\n    bands.push({\n      band_id: bandId,\n      market_id: marketId,\n      band_index: o.band_index ?? idx,\n      band_label: o.label || o.band_label || null,\n      band_lo: o.band_lo ?? o.lo ?? null,\n      band_hi: o.band_hi ?? o.hi ?? null,\n      open_low: Boolean(o.open_low),\n      open_high: Boolean(o.open_high),\n      condition_id: o.conditionId || o.condition_id || m.conditionId || m.condition_id || null,\n      token_yes: o.token_yes || toks[0] || null,\n      token_no:  o.token_no  || toks[1] || null,\n    });\n  });\n}\n\nreturn [{ json: { markets, bands, n_markets: markets.length,\n                  n_bands: bands.length, skipped_no_city: skippedNoCity,\n                  n_raw: raw.length } }];"
+   }
+  },
+  {
+   "id": "guard",
+   "name": "Guard: did anything parse?",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1120,
+    100
+   ],
+   "parameters": {
+    "jsCode": "const p = $('Parse markets + bands').first().json;\nif (p.n_markets === 0) {\n  throw new Error(\n    `Parsed 0 markets from ${p.n_raw} payload items ` +\n    `(${p.skipped_no_city} skipped: slug matched none of your cities). ` +\n    `Nothing was written. Either the Polymarket endpoint in Config is wrong, ` +\n    `or its response shape does not carry slug/id/outcomes. Open your ` +\n    `original P0.2 and copy its URL across.`);\n}\nreturn [{ json: p }];"
+   }
+  },
+  {
+   "id": "upsert-markets",
+   "name": "Upsert markets",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1340,
+    100
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/markets?on_conflict=market_id",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      },
+      {
+       "name": "Prefer",
+       "value": "resolution=merge-duplicates,return=minimal"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.markets) }}"
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "upsert-bands",
+   "name": "Upsert bands",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1560,
+    100
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/bands?on_conflict=band_id",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      },
+      {
+       "name": "Prefer",
+       "value": "resolution=merge-duplicates,return=minimal"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($('Parse markets + bands').first().json.bands) }}"
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "summary",
+   "name": "Summary",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1780,
+    100
+   ],
+   "parameters": {
+    "jsCode": "const p = $('Parse markets + bands').first().json;\nconst rows = (p.n_markets || 0) + (p.n_bands || 0);\nconst summary = `AD4 P0.2: ${p.n_markets} markets, ${p.n_bands} bands upserted ` +\n                `from ${p.n_raw} payload items (${p.skipped_no_city} not our cities).`;\nconst status = rows > 0 ? 'ok' : 'attention';\nconst detail = { n_markets: p.n_markets, n_bands: p.n_bands,\n                 n_raw: p.n_raw, skipped_no_city: p.skipped_no_city };\nreturn [{ json: {\n  summary, status, rows,\n  log: { p_job: 'P0.2_market_discovery', p_status: status, p_rows: rows,\n         p_detail: { ...detail, summary, trigger: $execution.mode, execution_id: $execution.id } },\n} }];"
+   }
+  },
+  {
+   "id": "log-run",
+   "name": "Log run",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2000,
+    100
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.log) }}"
+   },
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput"
+  },
+  {
+   "id": "respond",
+   "name": "Respond",
+   "type": "n8n-nodes-base.respondToWebhook",
+   "typeVersion": 1,
+   "position": [
+    2220,
+    100
+   ],
+   "parameters": {
+    "respondWith": "json",
+    "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
+   }
+  },
+  {
+   "id": "sched-check",
+   "name": "Check schedule",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    430,
+    -30
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/should_run",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "apikey",
+       "value": "={{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.service_key }}"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      },
+      {
+       "name": "Accept",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ p_job: \"P0.2_market_discovery\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+    "options": {
+     "timeout": 10000,
+     "response": {
+      "response": {
+       "neverError": true
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "sched-gate",
+   "name": "Run now?",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    620,
+    -30
+   ],
+   "parameters": {
+    "jsCode": "// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A PERMISSION ERROR IS NOT AN UNAVAILABLE GATE.\n// should_run is granted to service_role and revoked from anon, so 42501 here\n// is proof the Config node holds the anon key - and every write below would be\n// refused too, silently, because the write nodes continue on error. Failing\n// open on this particular answer is what let a whole run look healthy while\n// writing nothing. Stop on the first node that can prove it.\nif (decision && (String(decision.code) === '42501' ||\n                 /permission denied/i.test(String(decision.message || '')))) {\n  throw new Error(\n    `Supabase refused should_run: ${decision.message} (${decision.code}). This is the ANON ` +\n    `key in the Config node, not the service key - anon is granted SELECT and nothing else. ` +\n    `Every write in this workflow would be refused the same way. Open Config -> service_key ` +\n    `and paste the SERVICE ROLE key (Supabase -> Project Settings -> API -> service_role, or ` +\n    `a key beginning sb_secret_). NEVER put that key anywhere starting NEXT_PUBLIC_.`);\n}\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
+   }
+  },
+  {
+   "id": "sched-stop",
+   "name": "Stop if skipped",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    620,
+    -30
+   ],
+   "parameters": {
+    "jsCode": "// Returning [] stops the workflow here. Everything below this node\n// is skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
+   }
   }
+ ],
+ "connections": {
+  "Manual Trigger": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Schedule Trigger": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Webhook Trigger": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "Check schedule",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Load cities": {
+   "main": [
+    [
+     {
+      "node": "Fetch markets",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Fetch markets": {
+   "main": [
+    [
+     {
+      "node": "Parse markets + bands",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Parse markets + bands": {
+   "main": [
+    [
+     {
+      "node": "Guard: did anything parse?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Guard: did anything parse?": {
+   "main": [
+    [
+     {
+      "node": "Upsert markets",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Upsert markets": {
+   "main": [
+    [
+     {
+      "node": "Upsert bands",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Upsert bands": {
+   "main": [
+    [
+     {
+      "node": "Summary",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Summary": {
+   "main": [
+    [
+     {
+      "node": "Log run",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Log run": {
+   "main": [
+    [
+     {
+      "node": "Respond",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Check schedule": {
+   "main": [
+    [
+     {
+      "node": "Run now?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Run now?": {
+   "main": [
+    [
+     {
+      "node": "Stop if skipped",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Stop if skipped": {
+   "main": [
+    [
+     {
+      "node": "Load cities",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ }
 }
