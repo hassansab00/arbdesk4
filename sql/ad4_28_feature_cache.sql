@@ -30,7 +30,22 @@ begin
     raise exception 'ad4_28 needs weather_observations - run sql/ad4_00_preflight.sql first';
   end if;
   if to_regclass('public.v_city_day_features') is null then
-    raise exception 'ad4_28 caches sql/ad4_21_weather_features.sql - run that first';
+    raise exception
+      'ad4_28 caches v_city_day_features, which does not exist. Run sql/ad4_21_weather_features.sql first - it is the file that creates it, and it now refuses to report success unless it really did.';
+  end if;
+
+  -- Not just "does the view exist" - does it have the columns this file
+  -- caches. ad4_21 gained wind_max and pressure_change_24h_hpa in the same
+  -- change that added ad4_28, so a database running the PREVIOUS ad4_21 has
+  -- the view and would fail here on a missing column, several hundred lines
+  -- in, with a message about a column rather than about a stale file.
+  if not exists (
+    select 1 from information_schema.columns
+     where table_name = 'v_city_day_features'
+       and column_name = 'pressure_change_24h_hpa'
+  ) then
+    raise exception
+      'v_city_day_features exists but is the OLD version - it has no pressure_change_24h_hpa. RE-RUN sql/ad4_21_weather_features.sql (it changed), then this file.';
   end if;
 end
 $ad4$;
@@ -110,7 +125,15 @@ create table if not exists derived_climb_profile (
 -- --------------------------------------------------------------------------
 -- 4. Refresh both. Called daily by Derived Recompute.
 -- --------------------------------------------------------------------------
-create or replace function refresh_feature_cache()
+-- SIGNATURE MATTERS. sql/ad4_29 replaces this body with an incremental one and
+-- must be able to `create or replace` it - so both files declare the SAME
+-- signature. Declared with a different one they would OVERLOAD instead, and a
+-- bare `select refresh_feature_cache()` - which is how scripts/capacity.py
+-- calls it - then fails with "function is not unique". The argument is unused
+-- here; this version always rebuilds whole.
+drop function if exists refresh_feature_cache();
+
+create or replace function refresh_feature_cache(p_days int default null)
 returns jsonb language plpgsql security definer as $ad4$
 declare
   t0 timestamptz := clock_timestamp();
@@ -365,7 +388,7 @@ begin
   end loop;
   foreach r in array array['anon', 'authenticated', 'service_role'] loop
     if exists (select 1 from pg_roles where rolname = r) then
-      execute format('grant execute on function refresh_feature_cache() to %I', r);
+      execute format('grant execute on function refresh_feature_cache(int) to %I', r);
     end if;
   end loop;
 end

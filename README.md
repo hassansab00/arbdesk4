@@ -94,6 +94,11 @@ of what got built against it and where to find things.
        v_weather_effects, v_persistence_skill and v_city_climb_profile run
        1-3 seconds each on a modest archive and Supabase cancels the
        statement: `57014`.
+   29. `sql/ad4_29_retention.sql` - archive cold observations out of
+       Postgres so a 500 MB free tier is enough. weather_observations is
+       98% of the database and compresses ~50x as CSV; the derived
+       features, which are what the model actually reads, survive the
+       prune. `prune_observations()` refuses unless they do.
 
    Then run **`sql/ad4_99_verify.sql`** against the real database. It is
    read-only and returns one grid: every check PASS / FAIL / ATTENTION,

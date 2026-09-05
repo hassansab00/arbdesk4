@@ -22,11 +22,21 @@ Supabase → **SQL Editor** → paste the whole file → **Run**. One at a time,
 | 5 | `sql/ad4_25_model_forecast.sql` | New. AD4's own forecast. |
 | 6 | `sql/ad4_26_temp_trend.sql` | New. Temperature direction + speed. Feeds the City Monitor page. |
 | 7 | `sql/ad4_strategies_seed.sql` | Adds the three new strategies. Safe: it never overwrites an existing row. |
-| 8 | **`sql/ad4_28_feature_cache.sql`** | **Fixes the `statement timeout` you were seeing everywhere.** Adds the missing index and caches the four views that scanned the whole archive on every page load. Must come after 26. |
+| 8 | **`sql/ad4_21_weather_features.sql`** | **It changed** — gained `wind_max` and `pressure_change_24h_hpa`, which step 9 needs. Re-run it even if you ran it before. |
+| 9 | **`sql/ad4_28_feature_cache.sql`** | **Fixes the `statement timeout` you were seeing everywhere.** Adds the missing index and caches the four views that scanned the whole archive on every page load. Must come after 26. |
 
-### If step 1 says `v_city_day_features MISSING`
+| 10 | **`sql/ad4_29_retention.sql`** | Lets you archive cold observations out of Supabase so the free tier lasts. See **Section F**. |
 
-Run `sql/ad4_21_weather_features.sql` first, then do steps 4, 5, 6 again.
+### If step 9 refuses
+
+It checks two things and says which failed:
+
+- *"v_city_day_features does not exist"* — step 8 has not run. Run it.
+- *"exists but is the OLD version"* — you ran `ad4_21` before it changed. Run
+  step 8 again; it is safe to re-run.
+
+Step 8's own last act is to check it really created all four of its objects and
+raise if not, so "Success. No rows returned." from it now means something.
 That file now refuses to say "success" unless it really created everything, so
 you will know either way.
 
@@ -245,3 +255,73 @@ this repo can invent a bucket that was never ingested.
 This matters for the new **two-bucket cover** strategy: it picks the two most
 likely *adjacent* buckets, and on a truncated ladder those two may not be
 adjacent, so it will correctly refuse to fire.
+
+
+---
+
+## F — Staying inside the Supabase free plan
+
+`weather_observations` is normally **98% of the database** — 272 bytes a row in
+Postgres, where the same data as gzipped CSV is about **50× smaller**. On a
+710k-row archive that is 184 MB against 3.6 MB.
+
+See where yours is going:
+
+```sql
+select table_name, total, approx_rows, bytes_per_row from v_storage_report;
+```
+
+### The fix: keep a working window, archive the rest
+
+GitHub → Actions → **Archive Observations** → Run workflow.
+
+Leave **commit** unticked the first time. It prints what it *would* do and
+changes nothing:
+
+```
+feature cache: {"ok": true, "city_days_total": 39420, ...}
+591,948 rows -> observations-2024-09-06-to-2026-05-07.csv.gz  (3.6 MB gzipped, ~161 MB in Postgres)
+--dry-run: nothing uploaded, nothing deleted.
+```
+
+Then run it again with **commit** ticked. It uploads the file as a **GitHub
+Release asset** — free, 2 GB per asset, on this repo — reads it back to confirm
+the row count, and only then prunes. Monthly from there.
+
+Measured end to end on a 710k-row archive with a 120-day window kept:
+
+| | before | after |
+|---|---|---|
+| database total | 200 MB | **33 MB** |
+| `weather_observations` | 184 MB | 24 MB |
+| history the model can still see | 2 years | **2 years** |
+
+That last row is the point. Raw observations only reach back 120 days
+afterwards, but `derived_city_day_features` — one row per city-day, which is
+what the model and every analytics view actually read — keeps the full two
+years. Persistence, the climb profile and the weather-effects tables were all
+verified intact after the prune.
+
+### Two guards, and both have to pass
+
+1. The script refreshes the feature cache **first**, uploads, then
+   **re-downloads and counts the rows back**. An upload that returns 201 and
+   stored a truncated file would otherwise surface months later as a model with
+   a hole in it.
+2. `prune_observations()` independently refuses if any city-day about to lose
+   its raw rows is not already in the cache — so even run by hand, in the wrong
+   order, it will not destroy history.
+
+After a big prune, reclaim the space for real:
+
+```sql
+vacuum full weather_observations;
+```
+
+### About storing it in YouTube
+
+That does work and people do it — but it is against their terms, the data comes
+back unqueryable, and it takes minutes per megabyte. The instinct is right:
+cold storage should be free and should not be your database. A GitHub Release
+is the version of that idea that holds up, and it needs no new account, no new
+credential and no new bill.
