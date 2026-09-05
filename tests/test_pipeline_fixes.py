@@ -630,3 +630,16 @@ def test_the_features_cte_is_inlined_so_a_filter_can_reach_the_index():
     view = s[s.index("create or replace view v_city_day_features as"):]
     view = view[:view.index("from daily d")]
     assert "with obs as not materialized (" in view
+
+
+def test_a_signal_row_has_the_same_keys_with_or_without_a_band():
+    """city_key used to be ADDED only when the signal had a band, so one batch
+    carried two key shapes and PostgREST refused the whole write. common.insert
+    groups by shape now, but the row should be uniform regardless."""
+    import inspect
+
+    import signals
+    src = inspect.getsource(signals.main)
+    assert 'row["city_key"] = row.get("city_key") or (' in src
+    assert 'if not row.get("city_key") and row.get("band_id"):' not in src, \
+        "the conditional add is what produced two shapes"

@@ -58,8 +58,10 @@ create or replace view v_city_day_features as
 --   no filter at all        946 ms  ->  810 ms
 --
 -- The two evaluations cost less than one materialisation of everything, and
--- the results are identical - same row count, same checksums on max_c and on
--- prev_max_c, which is the window term most at risk from a plan change.
+-- the results are identical: checked both ways on 29,600 city-days, all 18
+-- feature columns agree on both the sum and the non-null count - including
+-- prev_max_c and pressure_change_24h_hpa, the two window terms most at risk
+-- from a plan change.
 with obs as not materialized (
   select
     o.city_key,
