@@ -50,6 +50,11 @@ shows is already tight. GitHub Actions has no per-run execution quota.
 | Model Forecast (AD4's own prediction) | GitHub Actions, 4x/day | `.github/workflows/model_forecast.yml` -> `scripts/weather_model.py --predict-only` |
 | Backtest runner | GitHub Actions, polls every 10 min | `.github/workflows/backtest.yml` -> `scripts/backtest/runner.py` |
 
+> **Which scheduler, and why:** `docs/compute_budget.md` sets out the split -
+> fetching is n8n's, thinking is Actions'. It also names the one place the two
+> genuinely duplicated each other (live weather) and the two places they only
+> look like they do (IEM vs NWS observations; Open-Meteo vs NWS forecasts).
+
 Email digests and the health watchdog stay in n8n deliberately: they're
 genuinely light (§7.12's own accounting: ~90/month + ~120/month), they're
 mostly "call one RPC, format the JSON as HTML/text, send" with no
