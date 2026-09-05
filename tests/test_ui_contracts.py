@@ -9,6 +9,13 @@ import os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB = os.path.join(ROOT, "web")
 
+
+def _read(rel):
+    """Read a repo-relative source file. These tests read files and nothing
+    else: no browser, no database, no skip marker - a UI contract that only
+    holds when a server happens to be running is not a contract."""
+    return open(os.path.join(ROOT, *rel.split("/"))).read()
+
 # --------------------------------------------------------------------------
 # The right-hand rail is a CITY MONITOR, not signals, and never an overlay.
 #
@@ -80,3 +87,82 @@ def test_every_predictive_view_maps_to_ad4_31():
     for v in ("v_forecast_convergence", "v_prediction_ladder", "v_prediction_scorecard",
               "v_bankroll_curve", "v_edge_scaling"):
         assert owner.get(v) == "ad4_31_predictive.sql", (v, owner.get(v))
+
+
+# ---------------------------------------------------------------------------
+# The pages added in the final round, and the two structural bugs that were
+# actually found on them.
+# ---------------------------------------------------------------------------
+
+def test_analytics_has_all_four_group_headings_exactly_once():
+    """The page promises "four questions, in the order a desk asks them".
+
+    It shipped with group 3 MISSING and group 4 duplicated - so the P&L curve
+    and attribution sat under the pricing heading, and "Can it take size?"
+    appeared twice in a row. Both are invisible in a diff and obvious on the
+    page.
+    """
+    src = _read("web/app/analytics/page.tsx")
+    for n in (1, 2, 3, 4):
+        assert src.count("n={%d}" % n) == 1, f"group {n} heading appears {src.count('n={%d}' % n)} times, expected once"
+
+
+def test_analytics_sections_sit_under_the_right_question():
+    """Forecast skill is a property of the FORECAST, so it belongs to group 1.
+
+    It was under group 2 (pricing), which is exactly the "all over the place"
+    complaint: the headings were right and the sections under them were not.
+    """
+    src = _read("web/app/analytics/page.tsx")
+    g1 = src.index("n={1}")
+    g2 = src.index("n={2}")
+    g3 = src.index("n={3}")
+    g4 = src.index("n={4}")
+    assert g1 < g2 < g3 < g4, "group headings are out of order"
+    assert g1 < src.index("Forecast skill by city") < g2, "forecast skill is not in group 1"
+    assert g2 < src.index("Model against market") < g3, "model vs market is not in group 2"
+    assert g3 < src.index("Realised P&amp;L") < g4, "the P&L curve is not in group 3"
+    assert g4 < src.index("Liquidity: quoted against traded"), "liquidity is not in group 4"
+
+
+def test_scatter_never_pads_a_non_negative_axis_below_zero():
+    """A depth axis reading "-$1" is the chart claiming something impossible.
+
+    The 10% padding was applied unconditionally, so a series of all-zero
+    depths produced a negative tick under a chart of dollars quoted.
+    """
+    src = _read("web/components/charts.tsx")
+    assert "ys.every((v) => v >= 0) && ylo < 0" in src
+    assert "dedupeByLabel" in src, "duplicate axis labels are not deduped"
+
+
+def test_new_routes_exist_and_are_in_the_nav():
+    nav = _read("web/components/NavTabs.tsx")
+    for route, label in [
+        ("/strategies", "Strategies"),
+        ("/globe", "Globe"),
+        ("/databank", "Data Bank"),
+    ]:
+        assert os.path.exists(os.path.join(ROOT, "web", "app", route.lstrip("/"), "page.tsx")), f"{route} has no page"
+        assert f'href: "{route}"' in nav, f"{route} is not in the nav"
+        assert f'label: "{label}"' in nav
+
+
+def test_only_s7_claims_the_peak_window():
+    """s7 is the only strategy whose entry test keys on the peak window.
+
+    Showing "ENTER NOW" over an s4 row states a property of the CITY'S DAY as
+    a property of that trade. Both the pill and the Strategies page count were
+    wrong this way first time round.
+    """
+    pill = _read("web/components/TradeTiming.tsx")
+    assert 'includes("s7_pre_peak_gradient")' in pill
+    board = _read("web/app/strategies/page.tsx")
+    assert 's === "s7_pre_peak_gradient"' in board
+
+
+def test_strategy_toggle_goes_through_the_rpc_not_a_table_write():
+    """A table grant would also expose capital_cap_pct and max_concurrent."""
+    src = _read("web/app/strategies/page.tsx")
+    assert 'supabase.rpc("set_strategy_enabled"' in src
+    assert 'from("strategies")' not in src, "the page must not write the table directly"
