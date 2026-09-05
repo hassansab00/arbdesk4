@@ -1,13 +1,27 @@
-name: Backtest Runner
+name: Backtest
 
+# A backtest is something you ASK for. This used to poll every 10 minutes -
+# 4,320 runs a month, and GitHub bills a minimum of one minute per job whether
+# it finds work or not, so it was ~6,500 minutes of a 2,000-minute allowance
+# spent almost entirely on discovering there was nothing to do.
+#
+# Three ways in now, none of them a poll:
+#
+#   Run workflow            here, after queuing one in AD4 -> Backtest
+#   repository_dispatch     instant, for anything holding a token:
+#     curl -X POST -H "Authorization: Bearer $GH_PAT" \
+#          -H "Accept: application/vnd.github+json" \
+#          https://api.github.com/repos/OWNER/REPO/dispatches \
+#          -d '{"event_type":"backtest-queued"}'
+#   the daily sweep        a safety net, so a queued run is never forgotten
+#
+# 4,320 runs a month becomes 30.
 on:
   schedule:
-    - cron: '*/10 * * * *'   # polls for queued runs - no Vercel function, per Revision A §6.2
-  workflow_dispatch:
-    inputs:
-      run_id:
-        description: 'Run a specific backtest_runs.run_id (leave blank to poll for queued)'
-        required: false
+    - cron: '0 2 * * *'          # daily safety net for anything left queued
+  repository_dispatch:
+    types: [backtest-queued]
+  workflow_dispatch: {}
 
 jobs:
   backtest:
@@ -16,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
+        with: { python-version: '3.11', cache: 'pip' }
       - run: pip install -r requirements.txt
       - run: PYTHONPATH=scripts python scripts/backtest/runner.py ${{ github.event.inputs.run_id }}
         env:

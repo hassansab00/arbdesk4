@@ -80,7 +80,7 @@ export default function BacktestPage() {
       const { error: labelErr } = await supabase.from("backtest_runs").update({ label }).eq("run_id", data);
       if (labelErr) labelNote = " (label not saved: writes to backtest_runs are blocked for the anon key)";
     }
-    setQueueMsg(`Queued run ${String(data).slice(0, 8)}. GitHub Actions → Backtest picks it up within ~10 minutes.${labelNote}`);
+    setQueueMsg(`Queued run ${String(data).slice(0, 8)}. Now press Run in GitHub Actions → Backtest — it no longer polls.${labelNote}`);
     setLabel("");
     runsQ.refresh();
   }
@@ -107,7 +107,7 @@ export default function BacktestPage() {
           <button onClick={queueRun} className="mt-2 w-full rounded bg-accent py-1.5 text-white hover:opacity-90">Queue backtest</button>
           {queueError && <ErrorBox message={queueError} compact />}
           {queueMsg && <div className="rounded border border-good/50 bg-good/10 p-2 text-[11px] text-good">{queueMsg}</div>}
-          <p className="text-[10px] text-muted">Polled every 10 minutes by .github/workflows/backtest.yml - no Vercel function.</p>
+          <p className="text-[10px] text-muted">Run from GitHub Actions → Backtest — no Vercel function, and no polling: a job that checks every 10 minutes and usually finds nothing costs a billed minute each time. See docs/compute_budget.md.</p>
         </div>
 
         <div>
@@ -117,7 +117,7 @@ export default function BacktestPage() {
             error={runsQ.error}
             isEmpty={runs.length === 0}
             emptyTitle="No backtest runs yet"
-            emptyBody={<>Queue one on the left. The UI only writes a row to <code>backtest_runs</code> with <code>status = &apos;queued&apos;</code>; GitHub Actions → <b>Backtest</b> polls every 10 minutes and runs it. Nothing computes in the browser.</>}
+            emptyBody={<>Queue one on the left. The UI only writes a row to <code>backtest_runs</code> with <code>status = &apos;queued&apos;</code>; GitHub Actions → <b>Backtest</b> then runs it — press <b>Run workflow</b>, or wait for the daily sweep. Nothing computes in the browser.</>}
             onRetry={runsQ.refresh}
             compact
           >
@@ -179,7 +179,7 @@ function RunDashboard({
           <>
             <div className="font-semibold">Queued — not picked up yet.</div>
             <div className="mt-1 text-xs text-muted">
-              GitHub Actions → <b>Backtest</b> polls every 10 minutes. Trigger it manually to run now.
+              GitHub Actions → <b>Backtest</b> runs it. Press <b>Run workflow</b> there to start it now; a daily sweep picks up anything left queued.
             </div>
           </>
         ) : status === "running" ? (

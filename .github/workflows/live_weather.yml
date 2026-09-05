@@ -1,8 +1,17 @@
 name: Live Weather Monitor
 
+# THE SCHEDULE IS GONE ON PURPOSE. This ran every 15 minutes - 2,880 runs and
+# ~4,300 minutes a month - and n8n P1.2 now does the same job better: it reads
+# api.weather.gov, which is what these markets settle on, and since the series
+# change it archives the whole day's readings rather than one. An n8n execution
+# for a fetch-and-write costs a fraction of a billed GitHub minute.
+#
+# Two jobs writing live_weather on different cadences was also the kind of
+# duplication that makes "which number is current?" unanswerable.
+#
+# Kept as a manual run: it is the fallback when n8n is down or not yet imported,
+# and the only path that works before P1.2 is activated.
 on:
-  schedule:
-    - cron: '*/15 * * * *'   # spec §8.3 / §7.5 P1.1 - GitHub Actions has no per-run execution quota
   workflow_dispatch: {}
 
 jobs:
@@ -12,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
+        with: { python-version: '3.11', cache: 'pip' }
       - run: pip install -r requirements.txt
       - run: PYTHONPATH=scripts python scripts/live_weather.py
         env:

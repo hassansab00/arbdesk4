@@ -2,7 +2,11 @@ name: Observations (IEM METAR)
 
 on:
   schedule:
-    - cron: '7 */2 * * *'      # every 2 hours
+    # Every 6 hours, not every 2. These feed a DAILY maximum and the
+    # settlement comparison against NWS, neither of which is finer-grained
+    # than a day; three extra runs an hour bought nothing and cost 360
+    # minutes a month.
+    - cron: '7 */6 * * *'
   workflow_dispatch:
     inputs:
       days:
@@ -17,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
+        with: { python-version: '3.11', cache: 'pip' }
       - run: pip install -r requirements.txt
       - run: python scripts/ingest_observations.py ${{ github.event.inputs.days || '2' }}
         working-directory: .

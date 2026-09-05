@@ -164,6 +164,10 @@ tests/                      pytest suite - 246 tests, run with:
   differs from the literal spec text (mainly: several things Revision A
   describes as n8n-triggered Postgres RPCs are GitHub Actions Python jobs
   instead, to keep non-trivial logic in one tested place).
+- `docs/compute_budget.md` - why some jobs run in n8n and some in GitHub
+  Actions, what each costs, and how the schedules went from ~12,100
+  billed minutes a month to ~800. Read this before adding a scheduled
+  job anywhere.
 - `docs/strategies.md` - all eight strategies, what each reads, and why
   each gate exists. Start here for S7 (pre-peak gradient entry) and S8
   (two-bucket cover), which are Hassan's own manual trading written down
