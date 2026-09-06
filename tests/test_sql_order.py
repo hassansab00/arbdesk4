@@ -14,7 +14,7 @@ MANIFEST = os.path.join(SQL, "INSTALL_ORDER.txt")
 
 # Read-only inspection files. They change nothing and are deliberately not in
 # the install sequence; the manifest names them in a trailing comment block.
-NOT_INSTALLED = {"ad4_diagnose.sql", "ad4_99_verify.sql"}
+NOT_INSTALLED = {"ad4_98_ui_health.sql", "ad4_diagnose.sql", "ad4_99_verify.sql"}
 
 
 def _listed():

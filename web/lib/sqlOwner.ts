@@ -32,7 +32,6 @@ export const SQL_OWNER: Record<string, string> = {
   "fact_band_outcome": "ad4_18_databank.sql",
   "fact_forecast_outcome": "ad4_18_databank.sql",
   "fact_signal_outcome": "ad4_18_databank.sql",
-  "if": "ad4_00_preflight.sql",
   "ingest_log": "ad4_00_preflight.sql",
   "ledger": "ad4_00_preflight.sql",
   "live_weather": "ad4_live_weather.sql",

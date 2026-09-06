@@ -53,5 +53,7 @@ ad4_37_peak_hour.sql
 
 # ---- read-only, run any time ----------------------------------------------
 # Not part of the install: these inspect a database rather than change one.
-# ad4_diagnose.sql   what can write what, and why a job is failing
-# ad4_99_verify.sql  does the schema match what the code expects
+# ad4_98_ui_health.sql  WHY IS THE UI RED? every relation the app reads, which
+#                       SQL file creates it, and the pages it makes red
+# ad4_diagnose.sql      what can write what, and why a job is failing
+# ad4_99_verify.sql     does the schema match what the code expects
