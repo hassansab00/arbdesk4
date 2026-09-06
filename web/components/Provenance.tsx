@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { fillersFor, tablesBehind, type Filler } from "@/lib/provenance";
+import { fillersFor, FILLED_BY, tablesBehind, type Filler } from "@/lib/provenance";
 import { SQL_OWNER } from "@/lib/sqlOwner";
 import { useFreshness, ageWords, type FreshRow } from "@/lib/useFreshness";
 
@@ -29,6 +29,14 @@ const STATE_STYLE: Record<FreshRow["state"], { dot: string; text: string; word: 
   stale:  { dot: "bg-warn",             text: "text-warn",  word: "stale" },
   ok:     { dot: "bg-good",             text: "text-good",  word: "current" },
 };
+
+/** Does this job write any of the tables that are currently a problem? */
+function fixesAProblem(f: Filler, problem: Set<string>): boolean {
+  for (const t of problem) {
+    if ((FILLED_BY[t] ?? []).some((x) => x.file === f.file && x.kind === f.kind)) return true;
+  }
+  return false;
+}
 
 function runInstruction(f: Filler): string {
   return f.kind === "action"
@@ -156,11 +164,29 @@ export function WhatFillsThis({ relation }: { relation: string }) {
     );
   }
 
+  // RANK BY WHAT IS ACTUALLY MISSING, and show a few.
+  //
+  // A view over eight tables lists eight jobs, which is not an answer - it is
+  // the whole pipeline printed out. Almost always one input is the problem and
+  // the rest are fine, so the jobs that feed an empty or stale table come
+  // first, three are shown, and the rest fold away.
+  const problem = new Set(
+    behind.filter((r) => r.state !== "ok").map((r) => r.table_name)
+  );
+  const ranked = fillers.slice().sort((a, b) => Number(fixesAProblem(b, problem)) - Number(fixesAProblem(a, problem)));
+  const primary = ranked.filter((f) => fixesAProblem(f, problem));
+  const shown = (primary.length ? primary : ranked).slice(0, 3);
+  const rest = ranked.filter((f) => !shown.includes(f));
+
   return (
     <div className="mt-3 space-y-2 text-left">
-      <div className="text-[10px] uppercase tracking-wide text-muted">What fills this</div>
+      <div className="text-[10px] uppercase tracking-wide text-muted">
+        {primary.length && primary.length < fillers.length
+          ? "What fills the part that is missing"
+          : "What fills this"}
+      </div>
       <ul className="space-y-1.5">
-        {fillers.map((f) => (
+        {shown.map((f) => (
           <li key={f.kind + f.file} className="text-xs leading-relaxed text-muted">
             <span className="font-medium text-text">{f.name}</span>{" "}
             <span className="rounded border border-border px-1 py-px text-[10px] uppercase tracking-wide">
@@ -173,6 +199,20 @@ export function WhatFillsThis({ relation }: { relation: string }) {
           </li>
         ))}
       </ul>
+      {rest.length > 0 && (
+        <details className="text-xs text-muted">
+          <summary className="cursor-pointer text-[11px] hover:text-text">
+            {rest.length} other job{rest.length === 1 ? "" : "s"} also feed this, and {rest.length === 1 ? "it is" : "they are"} current
+          </summary>
+          <ul className="mt-1 space-y-0.5 pl-3 text-[11px]">
+            {rest.map((f) => (
+              <li key={f.kind + f.file}>
+                {f.name} <span className="opacity-70">· {f.cadence}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {behind.length ? (
         <div className="space-y-0.5 text-xs text-muted">
           <div className="text-[10px] uppercase tracking-wide">Right now</div>
