@@ -150,6 +150,7 @@ export default function StrategiesPage() {
       </div>
 
       <DataState
+          relation="v_strategy_board"
         loading={boardQ.loading}
         error={boardQ.error}
         isEmpty={rows.length === 0}

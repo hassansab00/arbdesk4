@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { SQL_OWNER } from "@/lib/sqlOwner";
+import { WhatFillsThis } from "@/components/Provenance";
 
 /**
  * The three honest states, rendered the same way on every page (Task 2.2 /
@@ -17,6 +18,7 @@ export function DataState({
   onRetry,
   children,
   compact = false,
+  relation,
 }: {
   loading: boolean;
   error: string | null;
@@ -26,10 +28,22 @@ export function DataState({
   onRetry?: () => void;
   children: ReactNode;
   compact?: boolean;
+  /**
+   * The TABLE this panel ultimately depends on - not the view it reads.
+   *
+   * Given it, an empty panel stops being a dead end: it names the job that
+   * fills the table, how often that job runs, and where the button is. That
+   * mapping is derived by tools/gen_provenance.py, so it cannot drift from
+   * the Actions and workflows it describes.
+   */
+  relation?: string;
 }) {
   if (loading) return <Loading compact={compact} />;
   if (error) return <ErrorBox message={error} onRetry={onRetry} compact={compact} />;
-  if (isEmpty) return <EmptyBox title={emptyTitle} body={emptyBody} onRetry={onRetry} compact={compact} />;
+  if (isEmpty)
+    return (
+      <EmptyBox title={emptyTitle} body={emptyBody} onRetry={onRetry} compact={compact} relation={relation} />
+    );
   return <>{children}</>;
 }
 
@@ -121,16 +135,23 @@ export function EmptyBox({
   body,
   onRetry,
   compact = false,
+  relation,
 }: {
   title: string;
   body: ReactNode;
   onRetry?: () => void;
   compact?: boolean;
+  relation?: string;
 }) {
   return (
     <div className={`rounded border border-dashed border-border bg-panel/60 text-center ${compact ? "p-4" : "p-8"}`}>
       <div className="text-sm font-semibold text-text">{title}</div>
       <div className="mx-auto mt-1 max-w-lg text-xs leading-relaxed text-muted">{body}</div>
+      {relation ? (
+        <div className="mx-auto mt-3 max-w-lg border-t border-border/60 pt-2">
+          <WhatFillsThis relation={relation} />
+        </div>
+      ) : null}
       {onRetry && (
         <button onClick={onRetry} className="mt-3 rounded border border-border px-2 py-0.5 text-xs text-muted hover:text-text">
           Check again

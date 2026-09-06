@@ -4,7 +4,10 @@ These exist because each one is a mistake that was actually made and reported,
 some of them more than once. A comment saying "do not put signals in the rail"
 is advice; a test is a rule.
 """
+import json
 import os
+import re
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB = os.path.join(ROOT, "web")
@@ -224,3 +227,81 @@ def test_the_owner_map_has_no_sql_keywords_in_it():
     owner = _read("web/lib/sqlOwner.ts")
     for junk in ('"if"', '"not"', '"exists"', '"only"', '"table"', '"view"'):
         assert f"  {junk}:" not in owner, f"{junk} is a SQL keyword, not a relation"
+
+
+# ---------------------------------------------------------------------------
+# "THE DATA IS OUTDATED"
+#
+# Every panel had three ways of showing nothing and they all looked the same:
+# the table does not exist, no job has ever filled it, or a job filled it and
+# stopped. Nothing on the page distinguished them, so the complaint could not
+# be turned into an action. Two derived maps fix that and both have to stay
+# derived - a hand-written note about which Action fills which table is wrong
+# the first time an Action is renamed.
+# ---------------------------------------------------------------------------
+
+def test_the_provenance_map_is_generated_and_current():
+    import subprocess
+
+    before = _read("web/lib/provenance.ts")
+    r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "gen_provenance.py")],
+                       capture_output=True, text=True, cwd=ROOT)
+    assert r.returncode == 0, r.stderr
+    assert _read("web/lib/provenance.ts") == before, (
+        "web/lib/provenance.ts is stale - run python3 tools/gen_provenance.py")
+
+
+def test_every_ingest_table_names_the_job_that_fills_it():
+    """A table the UI shows and no job fills is a dead panel by construction."""
+    src = _read("web/lib/provenance.ts")
+    filled = json.loads(re.search(r"FILLED_BY: Record<string, Filler\[\]> = (\{.*?\});\n\n",
+                                  src, re.S).group(1))
+    for table in ["markets", "bands", "book_snapshots", "trades_observed",
+                  "weather_observations", "weather_forecasts", "live_weather",
+                  "band_probabilities", "edges", "signals",
+                  "fact_forecast_outcome", "fact_band_outcome", "fact_signal_outcome",
+                  "derived_city_day_features", "derived_weather_peak",
+                  "derived_forecast_skill", "derived_capacity"]:
+        assert filled.get(table), f"nothing in the repo fills {table}"
+
+
+def test_a_view_resolves_to_the_tables_underneath_it():
+    """A panel names the view it reads; what goes quiet is a table under it.
+    Without this the operator is told a view is empty and left to work out
+    which of the tables beneath it stopped being written."""
+    src = _read("web/lib/provenance.ts")
+    views = json.loads(re.search(r"VIEW_TABLES: Record<string, string\[\]> = (\{.*?\});\n\n",
+                                 src, re.S).group(1))
+    assert views.get("v_calibration") == ["fact_band_outcome"]
+    assert "fact_forecast_outcome" in views.get("v_prediction_scorecard", [])
+    assert "book_snapshots" in views.get("v_opportunities", [])
+
+
+def test_the_freshness_view_covers_what_the_provenance_map_knows_about():
+    """Two halves of one answer: who fills a table, and whether it is current.
+    A table in one and not the other can only half-explain itself."""
+    spec = _read("sql/ad4_39_freshness.sql")
+    body = spec[spec.index("insert into data_freshness_spec"):]
+    body = body[: body.index("on conflict")]
+    tracked = set(re.findall(r"\(\s*'([a-z0-9_]+)'\s*,", body))
+
+    filled = json.loads(re.search(r"FILLED_BY: Record<string, Filler\[\]> = (\{.*?\});\n\n",
+                                  _read("web/lib/provenance.ts"), re.S).group(1))
+    # settings is written by a job but is configuration, not a feed; the rest
+    # of what a job fills has to be trackable.
+    missing = sorted(set(filled) - tracked - {"settings"})
+    assert not missing, f"filled by a job but not tracked for freshness: {missing}"
+
+
+def test_the_freshness_spec_speaks_plain_english():
+    """The point of the column is that someone who did not build this can read
+    a panel and know what it holds. A schema-shaped description fails that."""
+    spec = _read("sql/ad4_39_freshness.sql")
+    body = spec[spec.index("insert into data_freshness_spec"):]
+    body = body[: body.index("on conflict")]
+    rows = re.findall(r"\(\s*'([a-z0-9_]+)'\s*,[^\n]*?,\s*'((?:[^']|'')+)'\)", body)
+    assert len(rows) >= 30, f"only parsed {len(rows)} spec rows"
+    for table, english in rows:
+        assert english[0].isupper(), f"{table}: description is not a sentence"
+        assert english.endswith("."), f"{table}: description is not a sentence"
+        assert "_" not in english, f"{table}: description names a column, not a thing"

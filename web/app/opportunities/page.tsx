@@ -297,6 +297,7 @@ export default function OpportunitiesPage() {
       {covers.length > 0 && <CoverStrip rows={covers} />}
 
       <DataState
+          relation="v_trade_plan"
         loading={q.loading}
         error={q.error}
         isEmpty={allRows.length === 0}

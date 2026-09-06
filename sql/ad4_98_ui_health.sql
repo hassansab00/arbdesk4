@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 97 of them - and for each MISSING one names the
+-- and function the app reads - 100 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -26,6 +26,7 @@ with expected(rel, owner, used_by) as (values
     ('book_snapshots', 'ad4_00_preflight.sql', ''),
     ('cities', 'ad4_00_preflight.sql', '(Header), (RightRail), (ScopeControl), /, /live, /predictive'),
     ('cost_params', 'ad4_phase2.sql', ''),
+    ('data_freshness_spec', 'ad4_39_freshness.sql', ''),
     ('deployments', 'ad4_00_preflight.sql', '/campaigns'),
     ('derived_band_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_capacity', 'ad4_phase2.sql', ''),
@@ -77,6 +78,8 @@ with expected(rel, owner, used_by) as (values
     ('v_city_today_readings', 'ad4_26_temp_trend.sql', '/monitor'),
     ('v_city_volume', 'ad4_13_reconcile.sql', '(GlobalBar), /, /live'),
     ('v_condition_skill', 'ad4_24_nws_gridpoint.sql', '(ModelAnalytics)'),
+    ('v_data_freshness', 'ad4_39_freshness.sql', ''),
+    ('v_data_health', 'ad4_39_freshness.sql', ''),
     ('v_databank_coverage', 'ad4_18_databank.sql', '(DataBank)'),
     ('v_edge_realisation', 'ad4_18_databank.sql', '(DataBank), (ModelAnalytics)'),
     ('v_edge_scaling', 'ad4_31_predictive.sql', '/predictive'),
@@ -145,6 +148,7 @@ begin
     ('book_snapshots', 'ad4_00_preflight.sql', ''),
     ('cities', 'ad4_00_preflight.sql', '(Header), (RightRail), (ScopeControl), /, /live, /predictive'),
     ('cost_params', 'ad4_phase2.sql', ''),
+    ('data_freshness_spec', 'ad4_39_freshness.sql', ''),
     ('deployments', 'ad4_00_preflight.sql', '/campaigns'),
     ('derived_band_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_capacity', 'ad4_phase2.sql', ''),
@@ -196,6 +200,8 @@ begin
     ('v_city_today_readings', 'ad4_26_temp_trend.sql', '/monitor'),
     ('v_city_volume', 'ad4_13_reconcile.sql', '(GlobalBar), /, /live'),
     ('v_condition_skill', 'ad4_24_nws_gridpoint.sql', '(ModelAnalytics)'),
+    ('v_data_freshness', 'ad4_39_freshness.sql', ''),
+    ('v_data_health', 'ad4_39_freshness.sql', ''),
     ('v_databank_coverage', 'ad4_18_databank.sql', '(DataBank)'),
     ('v_edge_realisation', 'ad4_18_databank.sql', '(DataBank), (ModelAnalytics)'),
     ('v_edge_scaling', 'ad4_31_predictive.sql', '/predictive'),

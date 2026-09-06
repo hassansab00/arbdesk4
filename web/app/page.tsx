@@ -85,6 +85,7 @@ export default function OverviewPage() {
           <Link href="/opportunities" className="text-xs text-accent hover:underline">view all →</Link>
         </div>
         <DataState
+          relation="v_opportunities"
           loading={opps.loading}
           error={opps.error}
           isEmpty={oppList.length === 0}
@@ -141,6 +142,7 @@ export default function OverviewPage() {
       <section>
         <h2 className="mb-2 text-sm font-semibold text-muted">Open positions</h2>
         <DataState
+          relation="paper_trades"
           loading={positions.loading}
           error={positions.error}
           isEmpty={openList.length === 0}

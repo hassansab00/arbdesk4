@@ -91,6 +91,7 @@ export default function DataBankPage() {
           because &ldquo;0 rows&rdquo; is only useful next to what to run about it.
         </p>
         <DataState
+          relation="v_archive_inventory"
           loading={invQ.loading} error={invQ.error} isEmpty={(invQ.data ?? []).length === 0}
           emptyTitle="No inventory"
           emptyBody={<>Run <code className="rounded bg-panel2 px-1">sql/ad4_35_databank_inventory.sql</code>.</>}
@@ -150,6 +151,7 @@ export default function DataBankPage() {
           it goes stale — it is recomputed by the job named on its row.
         </p>
         <DataState
+          relation="v_synthesis_inventory"
           loading={synQ.loading} error={synQ.error} isEmpty={(synQ.data ?? []).length === 0}
           emptyTitle="No derived layers"
           emptyBody={<>Run <code className="rounded bg-panel2 px-1">sql/ad4_35_databank_inventory.sql</code>.</>}
@@ -198,6 +200,7 @@ export default function DataBankPage() {
           has an understated daily maximum, and every feature built on it inherits that.
         </p>
         <DataState
+          relation="v_archive_by_city"
           loading={cityQ.loading} error={cityQ.error} isEmpty={shownCities.length === 0}
           emptyTitle={onlyProblems ? "Nothing incomplete" : "No cities"}
           emptyBody={

@@ -285,6 +285,7 @@ export default function BoardPage() {
       )}
 
       <DataState
+          relation="v_opportunities"
         loading={q.loading} error={q.error} isEmpty={rows.length === 0}
         emptyTitle="The board is empty"
         emptyBody={<><code>v_opportunities</code> has no rows. It is built from <code>edges</code> — run GitHub Actions → <b>Probabilities</b>. If a city is missing entirely, that is <code>markets</code>, which P0.2 fills.</>}

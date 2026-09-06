@@ -145,6 +145,7 @@ export default function AnalyticsPage() {
           when a city looks wrong here.
         </p>
         <DataState
+          relation="derived_forecast_skill"
           loading={skillQ.loading} error={skillQ.error} isEmpty={skill.length === 0}
           emptyTitle="No forecast skill measured yet"
           emptyBody={<>Run GitHub Actions → <b>Skill</b> (<code>scripts/measure_skill.py</code>). It needs both forecast and observation history before it can measure anything. See <code>docs/skill_baseline.md</code>.</>}
@@ -190,6 +191,7 @@ export default function AnalyticsPage() {
           against its own normal, so a cluster of buys on an unusually hot day is visible as one.
         </p>
         <DataState
+          relation="v_opportunities"
           loading={oppQ.loading} error={oppQ.error} isEmpty={yes.length === 0}
           emptyTitle="No priced bands yet"
           emptyBody={<>Needs both a book snapshot and a model probability — GitHub Actions → <b>Probabilities</b>, after P0.3 has written books.</>}
@@ -213,6 +215,7 @@ export default function AnalyticsPage() {
           edge engine will actually let you trade.
         </p>
         <DataState
+          relation="v_opportunities"
           loading={oppQ.loading} error={oppQ.error} isEmpty={bookCost.length === 0}
           emptyTitle="No priced ladders yet"
           emptyBody={<>Needs a book snapshot — n8n <b>P0.3</b> — and a model probability from GitHub Actions → <b>Probabilities</b>.</>}

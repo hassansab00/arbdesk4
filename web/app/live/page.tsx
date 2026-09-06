@@ -511,6 +511,7 @@ export default function LiveWeatherPage() {
           </span>
         </div>
         <DataState
+          relation="weather_events"
           loading={events.loading}
           error={events.error}
           isEmpty={(events.data ?? []).length === 0}

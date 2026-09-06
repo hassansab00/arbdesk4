@@ -115,6 +115,7 @@ export default function CampaignsPage() {
       </div>
 
       <DataState
+          relation="deployments"
         loading={deploymentsQ.loading}
         error={deploymentsQ.error}
         isEmpty={deployments.length === 0}

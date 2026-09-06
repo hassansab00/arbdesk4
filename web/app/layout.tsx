@@ -5,6 +5,7 @@ import Header from "@/components/Header";
 import GlobalBar from "@/components/GlobalBar";
 import NavTabs from "@/components/NavTabs";
 import RightRail from "@/components/RightRail";
+import { DataHealthStrip } from "@/components/Provenance";
 
 export const metadata: Metadata = {
   title: "ArbDesk — temperature markets",
@@ -37,7 +38,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <GlobalBar />
         <NavTabs />
         <div className="flex min-h-0 flex-1">
-          <main className="min-w-0 flex-1 overflow-y-auto p-4">{children}</main>
+          <main className="min-w-0 flex-1 overflow-y-auto p-4">
+            {/*
+              WHETHER THE DESK'S INPUTS ARE CURRENT, on every page, collapsed.
+              "The data is outdated" was a feeling with nothing behind it: no
+              page said which table had stopped being written or which job was
+              meant to write it. This is that list, one line until you open it.
+            */}
+            <div className="mb-4">
+              <DataHealthStrip />
+            </div>
+            {children}
+          </main>
           <RightRail />
         </div>
       </body>

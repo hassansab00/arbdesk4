@@ -113,6 +113,7 @@ export default function BacktestPage() {
         <div>
           <h2 className="mb-2 text-sm font-semibold text-muted">Saved runs</h2>
           <DataState
+          relation="backtest_runs"
             loading={runsQ.loading}
             error={runsQ.error}
             isEmpty={runs.length === 0}

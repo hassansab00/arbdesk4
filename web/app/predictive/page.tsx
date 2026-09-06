@@ -199,6 +199,7 @@ export default function PredictivePage() {
           A row with no probability has a forecast but no priced market yet.
         </p>
         <DataState
+          relation="v_prediction_ladder"
           loading={ladderQ.loading} error={ladderQ.error} isEmpty={forward.length === 0}
           emptyTitle="No open markets ahead"
           emptyBody={MISSING("sql/ad4_31_predictive.sql", "then let n8n P0.2 discover markets and P1.5 forecast them.")}
@@ -271,6 +272,7 @@ export default function PredictivePage() {
           boundaries, because a 0.6 °C miss across a line loses and a 0.9 °C miss inside one wins.
         </p>
         <DataState
+          relation="v_forecast_convergence"
           loading={convQ.loading} error={convQ.error} isEmpty={funnel.length === 0}
           emptyTitle="No forecast series for this city"
           emptyBody={MISSING("sql/ad4_31_predictive.sql", "and check v_forecast_coverage — a city with no forward forecast has nothing to draw.")}
@@ -289,6 +291,7 @@ export default function PredictivePage() {
             day came in hotter than said. Green is within 1 °C — one bucket.
           </p>
           <DataState
+          relation="v_forecast_convergence"
             loading={convQ.loading} error={convQ.error} isEmpty={scatter.length === 0}
             emptyTitle="No settled days yet"
             emptyBody="Actions → Data Bank freezes a day once it settles. This fills in from there."
@@ -306,6 +309,7 @@ export default function PredictivePage() {
             tomorrow and useless on Friday looks fine averaged together — this is where that shows.
           </p>
           <DataState
+          relation="v_prediction_scorecard"
             loading={scoreQ.loading} error={scoreQ.error} isEmpty={errByLead.length === 0}
             emptyTitle="No scorecard yet"
             emptyBody={MISSING("sql/ad4_31_predictive.sql", "and run Actions → Data Bank so there are settled days to score.")}
@@ -328,6 +332,7 @@ export default function PredictivePage() {
           for — did the day land in the bucket the forecast pointed at.
         </p>
         <DataState
+          relation="v_prediction_scorecard"
           loading={scoreQ.loading} error={scoreQ.error} isEmpty={(scoreQ.data ?? []).length === 0}
           emptyTitle="Nothing scored yet"
           emptyBody="Needs at least 5 settled days per city, model and lead."
@@ -383,6 +388,7 @@ export default function PredictivePage() {
             nothing and proved nothing. The win rate beside it is running, not final.
           </p>
           <DataState
+          relation="v_bankroll_curve"
             loading={bankQ.loading} error={bankQ.error} isEmpty={bank.length === 0}
             emptyTitle="No filled trades yet"
             emptyBody="Every strategy ships disabled. Turn one on, then Actions → Signal Engine."
@@ -418,6 +424,7 @@ export default function PredictivePage() {
             sizing up multiplies noise, not profit.
           </p>
           <DataState
+          relation="v_edge_scaling"
             loading={scaleQ.loading} error={scaleQ.error} isEmpty={scaling.length === 0}
             emptyTitle="Nothing to compare yet"
             emptyBody="Needs settled bands with both a claimed edge and a market price — Actions → Data Bank writes them."

@@ -51,11 +51,17 @@ ad4_35_databank_inventory.sql
 ad4_36_execution_limits.sql
 ad4_37_peak_hour.sql
 ad4_38_grants.sql
+ad4_39_freshness.sql
 
 # ad4_38 grants the write path to service_role and prints one row per ingest
 # table saying whether the service key can write it. It is last on purpose -
 # every table that exists by then is covered - and it is safe to re-run alone
 # the moment an n8n workflow reports `permission denied ... (42501)`.
+#
+# ad4_39 publishes v_data_freshness: one row per table the UI depends on, with
+# how many rows it holds, how old the newest one is, and whether that counts as
+# absent / empty / stale / ok. Every page reads it, so an empty panel can say
+# which job stopped filling it instead of just showing nothing.
 
 # ---- read-only, run any time ----------------------------------------------
 # Not part of the install: these inspect a database rather than change one.
