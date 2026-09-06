@@ -473,6 +473,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "markets",
     "trades_observed",
     "weather_events",
+    "weather_forecast_features",
     "weather_forecasts",
     "weather_observations"
   ],

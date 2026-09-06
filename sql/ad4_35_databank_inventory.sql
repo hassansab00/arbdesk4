@@ -64,6 +64,13 @@ with parts as (
          min(observed_at), max(observed_at)
     from book_snapshots
   union all
+  -- Hour-by-hour forecast detail: cloud, wind, humidity, pressure. It is the
+  -- only non-temperature thing the desk collects, and it was in no inventory
+  -- at all - so a workflow that had quietly stopped writing it was invisible.
+  select 'Forecast detail (hourly)', 3.5, 'n8n P1.4 gridpoint / P1.5 open-meteo',
+         count(*), count(distinct city_key), min(run_at), max(run_at)
+    from weather_forecast_features
+  union all
   select 'Trades seen', 4, 'n8n P0.4 trade history',
          count(*), (select count(distinct m.city_key)
                       from trades_observed t2
@@ -140,8 +147,16 @@ declare
 begin
   for r in
     select * from (values
+      -- POINTED AT THE WRONG TABLE. This read weather_forecast_features -
+      -- the hour-by-hour FORECAST detail P1.4/P1.5 collect - while its own
+      -- description, and the feeder it names, are about the per-city-day
+      -- derived cache. So the Data Bank reported "Day features: NEVER BUILT"
+      -- on a database whose derived_city_day_features had hundreds of rows,
+      -- and the one dataset most of the model rests on looked missing.
+      -- weather_forecast_features is a COLLECTED dataset and is now listed as
+      -- one, in v_archive_inventory above.
       ('Day features',            1, 'per city-day: max, range, cloud, wind, the shape of the day',
-       'sql/ad4_28 refresh_feature_cache, or Actions -> Feature Cache', 'weather_forecast_features', 'captured_at'),
+       'sql/ad4_28 refresh_feature_cache, or Actions -> Derived Recompute', 'derived_city_day_features', 'computed_at'),
       ('Forecast skill',          2, 'per city and lead: mean error, bias, how often it lands in the right band',
        'Actions -> Measure Skill', 'derived_forecast_skill', 'computed_at'),
       ('Climb profile',           3, 'per city and local hour: how much this city HISTORICALLY still climbs',

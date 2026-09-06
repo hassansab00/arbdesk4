@@ -305,3 +305,64 @@ def test_the_freshness_spec_speaks_plain_english():
         assert english[0].isupper(), f"{table}: description is not a sentence"
         assert english.endswith("."), f"{table}: description is not a sentence"
         assert "_" not in english, f"{table}: description names a column, not a thing"
+
+
+# ---------------------------------------------------------------------------
+# THE DATA BANK INVENTORY
+#
+# It reported "Day features: NEVER BUILT" on a database whose
+# derived_city_day_features held hundreds of rows, because the row pointed at
+# weather_forecast_features - a different table, collected by a different job,
+# holding a different thing. The description and the feeder it named were both
+# about the derived cache; only the table name was wrong, and nothing checked
+# that a row's table matched what the row said it was.
+# ---------------------------------------------------------------------------
+
+def _inventory_tables(section: str) -> set:
+    """The table names named inside one inventory view in ad4_35."""
+    # Comments talk about files and tables in prose - "a fresh install from
+    # ad4_00 carries created_at" is not a FROM clause.
+    src = re.sub(r"--[^\n]*", " ", _read("sql/ad4_35_databank_inventory.sql"))
+    start = src.index(section)
+    end = src.find("create or replace view", start + 10)
+    body = src[start: end if end != -1 else len(src)]
+    # `comment on view ... is '...collected from outside...'` is prose too, and
+    # it sits inside the slice. Scan the SQL, not the sentences about it.
+    prose_free = re.sub(r"'(?:[^']|'')*'", "''", body)
+    return set(re.findall(r"from ([a-z][a-z0-9_]+)\b", prose_free)) | set(
+        re.findall(r"'([a-z][a-z0-9_]+)', '(?:computed_at|captured_at|fitted_at|run_at)'", body))
+
+
+def test_the_databank_names_tables_that_exist():
+    owner = json.loads(re.search(r"SQL_OWNER: Record<string, string> = (\{.*?\});",
+                                 _read("web/lib/sqlOwner.ts"), re.S).group(1))
+    for section in ("create or replace view v_archive_inventory",
+                    "create or replace view v_synthesis_inventory"):
+        for t in _inventory_tables(section):
+            # CTEs, other views, and the catalog are not datasets.
+            if t.startswith("v_") or t.startswith("pg_") or t in {
+                "parts", "cfg", "information_schema", "unnest", "generate_series",
+            }:
+                continue
+            assert t in owner, f"{section} names {t}, which no SQL file creates"
+
+
+def test_day_features_means_the_day_feature_cache():
+    """The row says "per city-day: max, range, cloud, wind" and names
+    refresh_feature_cache as its feeder. Both describe
+    derived_city_day_features. Pointing it at weather_forecast_features made
+    the one dataset most of the model rests on read as missing."""
+    src = _read("sql/ad4_35_databank_inventory.sql")
+    row = re.search(r"\('Day features',.*?\),\n", src, re.S).group(0)
+    assert "derived_city_day_features" in row, "Day features points at the wrong table"
+    assert "weather_forecast_features" not in row
+
+
+def test_the_hourly_forecast_detail_is_listed_somewhere():
+    """It is the only non-temperature thing the desk collects, and it was in
+    no inventory at all - so a workflow that quietly stopped writing it was
+    invisible on the one page whose job is to say what has been collected."""
+    src = _read("sql/ad4_35_databank_inventory.sql")
+    collected = src[src.index("create or replace view v_archive_inventory"):
+                    src.index("create or replace view v_synthesis_inventory")]
+    assert "weather_forecast_features" in collected
