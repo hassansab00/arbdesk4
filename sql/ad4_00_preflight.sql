@@ -17,6 +17,116 @@
 -- boundaries left to cross.
 --
 -- WHY THIS FILE EXISTS
+-- --------------------------------------------------------------------------
+-- 2b. THE NATURAL KEY, on tables that predate its declaration.
+--
+-- `create table if not exists ... primary key (a, b)` declares the key only
+-- when it CREATES the table. On a database where that table already existed
+-- from an earlier hand-run migration, the body is skipped entirely and the key
+-- is never added - and the ensure-column loop below adds columns but has never
+-- added a constraint.
+--
+-- The failure is not subtle and it is not at install time. It is:
+--
+--     ERROR: there is no unique or exclusion constraint matching the
+--            ON CONFLICT specification
+--
+-- from the first job that tries to upsert - reported against a 40-line
+-- statement inside a plpgsql function, naming neither the table nor the
+-- missing key. Thirteen tables in this repo declare a composite key this way.
+--
+-- DUPLICATES ARE REMOVED FIRST, keeping the newest row per key. Without a
+-- unique key nothing has been stopping a job from inserting the same key twice,
+-- and adding the constraint would fail on the second copy. Keeping the newest
+-- is right for every table here: all thirteen are DERIVED, recomputed from the
+-- archive, so an older row is a stale recomputation and nothing else.
+-- --------------------------------------------------------------------------
+do $ad4$
+declare
+  r         record;
+  v_added   int := 0;
+  v_deduped int := 0;
+  v_n       int;
+begin
+  for r in
+    select * from (values
+      ('derived_weather_peak',       'city_key, month',                  'computed_at'),
+      ('derived_market_peak',        'city_key, month',                  'computed_at'),
+      ('derived_city_day_volume',    'city_key, trade_date',             'computed_at'),
+      ('derived_band_day_volume',    'band_id, trade_date',              'computed_at'),
+      ('derived_forecast_skill',     'city_key, computed_at, lead_days', 'computed_at'),
+      ('derived_weather_model',      'city_key, target',                 'computed_at'),
+      ('derived_model_forecast',     'city_key, for_date, run_at',       'computed_at'),
+      ('derived_city_day_features',  'city_key, obs_date',               'computed_at'),
+      ('derived_climb_profile',      'city_key, local_hour',             'computed_at'),
+      ('derived_city_correlation',   'city_a, city_b, computed_at',      'computed_at'),
+      ('derived_capacity',           'city_key, computed_at, hour_utc',  'computed_at'),
+      ('weather_forecast_features',  'city_key, for_date, run_at',       'captured_at'),
+      ('fact_forecast_outcome',      'city_key, for_date, model, lead_days', 'captured_at')
+    ) as t(tbl, cols, newest)
+  loop
+    continue when to_regclass('public.' || r.tbl) is null;
+
+    -- Already has a primary key or a unique constraint? Leave it alone. This
+    -- must never redefine a key someone chose on purpose.
+    continue when exists (
+      select 1 from pg_constraint c
+        join pg_class k on k.oid = c.conrelid
+        join pg_namespace n on n.oid = k.relnamespace
+       where n.nspname = 'public' and k.relname = r.tbl and c.contype in ('p', 'u'));
+
+    -- Every column of the key has to be present, and so does the tiebreaker.
+    continue when exists (
+      select 1 from unnest(string_to_array(replace(r.cols, ' ', ''), ',')) col
+       where not exists (select 1 from information_schema.columns ic
+                          where ic.table_schema = 'public' and ic.table_name = r.tbl
+                            and ic.column_name = col));
+
+    if exists (select 1 from information_schema.columns
+                where table_schema = 'public' and table_name = r.tbl
+                  and column_name = r.newest) then
+      execute format(
+        'delete from %I a using %I b where (%s) is not distinct from (%s) '
+        || 'and (b.%I > a.%I or (b.%I = a.%I and b.ctid > a.ctid))',
+        r.tbl, r.tbl,
+        (select string_agg('a.' || quote_ident(c), ', ')
+           from unnest(string_to_array(replace(r.cols, ' ', ''), ',')) c),
+        (select string_agg('b.' || quote_ident(c), ', ')
+           from unnest(string_to_array(replace(r.cols, ' ', ''), ',')) c),
+        r.newest, r.newest, r.newest, r.newest);
+      get diagnostics v_n = row_count;
+    else
+      execute format(
+        'delete from %I a using %I b where (%s) is not distinct from (%s) and b.ctid > a.ctid',
+        r.tbl, r.tbl,
+        (select string_agg('a.' || quote_ident(c), ', ')
+           from unnest(string_to_array(replace(r.cols, ' ', ''), ',')) c),
+        (select string_agg('b.' || quote_ident(c), ', ')
+           from unnest(string_to_array(replace(r.cols, ' ', ''), ',')) c));
+      get diagnostics v_n = row_count;
+    end if;
+    v_deduped := v_deduped + v_n;
+
+    begin
+      execute format('alter table %I add constraint %I primary key (%s)',
+                     r.tbl, r.tbl || '_pkey', r.cols);
+      v_added := v_added + 1;
+      raise notice '  + natural key %(%)  [% duplicate row(s) removed]', r.tbl, r.cols, v_n;
+    exception when others then
+      -- A not-null violation on a key column, most likely. Say so rather than
+      -- failing the whole install over one derived table.
+      raise warning 'could not add the natural key on % (%): % - upserts into it will fail until this is resolved',
+                    r.tbl, r.cols, sqlerrm;
+    end;
+  end loop;
+
+  if v_added > 0 then
+    raise notice 'ad4_00: added % missing natural key(s), removed % duplicate row(s)', v_added, v_deduped;
+  end if;
+end
+$ad4$;
+
+
 -- --------------------
 -- The base Phase 0 schema (ad4_schema.sql / ad4_functions*.sql) was applied
 -- straight to Supabase before this repo existed and is not in the repo.

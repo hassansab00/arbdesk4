@@ -747,3 +747,82 @@ def test_the_sql_takes_p_before_and_deletes_on_the_instant():
         "the date comparison is the wider window the export never covered"
     assert "drop function if exists prune_observations(int, boolean);" in sql, \
         "the two-argument version must go or a bare call is ambiguous"
+
+
+# ---------------------------------------------------------------------------
+# The natural key that `create table if not exists` never adds.
+#
+# ad4_00 declares composite keys inside `create table if not exists`, so on a
+# database where the table already existed from an earlier hand-run migration
+# the body is skipped and the key is never added. The ensure-column loop adds
+# columns and has never added a constraint.
+#
+# It surfaces as `42P10: there is no unique or exclusion constraint matching
+# the ON CONFLICT specification` from the first job that upserts, reported
+# against a 40-line statement inside a plpgsql function, naming neither the
+# table nor the missing key. Thirteen tables declare a key this way.
+# ---------------------------------------------------------------------------
+
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _sql(name):
+    return open(os.path.join(_REPO, "sql", name)).read()
+
+
+def test_preflight_repairs_every_table_that_declares_its_key_inline():
+    """Every composite key declared inside create-table-if-not-exists must be
+    in the repair list, or that table upserts into a missing constraint."""
+    import glob
+    import re
+
+    declared = set()
+    for path in sorted(glob.glob(os.path.join(_REPO, "sql", "*.sql"))):
+        src = open(path).read()
+        for m in re.finditer(
+            r"create\s+table\s+if\s+not\s+exists\s+([a-z0-9_]+)\s*\((.*?)\n\s*\);", src, re.S | re.I
+        ):
+            pk = re.search(r"\bprimary\s+key\s*\(([^)]+)\)", m.group(2), re.I)
+            if pk and "," in pk.group(1):
+                declared.add(m.group(1).lower())
+
+    repair = _sql("ad4_00_preflight.sql")
+    block = repair[repair.index("2b. THE NATURAL KEY"):repair.index("added % missing natural key")]
+    missing = sorted(t for t in declared if f"'{t}'" not in block)
+    assert not missing, (
+        f"these tables declare a composite key inline but preflight does not repair it: {missing}. "
+        "On any database where the table predates the declaration, every upsert into it fails "
+        "with 42P10."
+    )
+
+
+def test_the_repair_keeps_the_newest_duplicate():
+    """Adding a unique key over duplicates fails, so they must be removed - and
+    which one survives matters. All thirteen are DERIVED tables, recomputed
+    from the archive, so an older row is a stale recomputation."""
+    block = _sql("ad4_00_preflight.sql")
+    block = block[block.index("2b. THE NATURAL KEY"):block.index("added % missing natural key")]
+    assert "b.%I > a.%I" in block, "the dedupe must order by the recompute timestamp"
+    assert "b.ctid > a.ctid" in block, "ties need a deterministic tiebreak"
+
+
+def test_the_repair_never_redefines_an_existing_key():
+    block = _sql("ad4_00_preflight.sql")
+    block = block[block.index("2b. THE NATURAL KEY"):block.index("added % missing natural key")]
+    assert "c.contype in ('p', 'u')" in block, (
+        "it must skip a table that already has a primary key or a unique constraint - "
+        "never redefine a key someone chose on purpose"
+    )
+
+
+def test_ad4_37_repairs_its_own_table_so_it_works_standalone():
+    """The operator has already run preflight. Making them re-run it to fix a
+    file that fails on its own is the wrong way round."""
+    src = _sql("ad4_37_peak_hour.sql")
+    head = src[:src.index("create or replace function refresh_weather_peak")]
+    assert "derived_weather_peak_pkey" in head
+    assert "add constraint" in head
+    assert "delete from derived_weather_peak" in head, "it must dedupe before adding the key"
+    assert head.index("delete from derived_weather_peak") < head.index("add constraint"), (
+        "the dedupe has to happen BEFORE the constraint, or adding it fails"
+    )

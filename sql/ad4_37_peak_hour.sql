@@ -41,9 +41,48 @@
 -- ===========================================================================
 
 do $ad4$
+declare v_dupes int;
 begin
   if to_regclass('public.derived_weather_peak') is null then
     raise exception 'ad4_37 needs derived_weather_peak - run sql/ad4_00_preflight.sql first';
+  end if;
+
+  -- THE KEY THIS FILE UPSERTS ON MAY NOT EXIST.
+  --
+  -- ad4_00 declares `primary key (city_key, month)` INSIDE
+  -- `create table if not exists`, so on a database where the table already
+  -- existed from an earlier hand-run migration the body was skipped and the
+  -- key was never added. The refresh below then fails with
+  --
+  --     ERROR: there is no unique or exclusion constraint matching the
+  --            ON CONFLICT specification
+  --
+  -- reported against a 40-line statement inside a function, naming neither the
+  -- table nor the missing key. ad4_00 now repairs all thirteen tables that
+  -- declare a composite key this way; this repeats it for its own table so the
+  -- file works standalone, without a re-run of preflight.
+  if not exists (
+    select 1 from pg_constraint c
+      join pg_class k on k.oid = c.conrelid
+      join pg_namespace n on n.oid = k.relnamespace
+     where n.nspname = 'public' and k.relname = 'derived_weather_peak'
+       and c.contype in ('p', 'u'))
+  then
+    -- Nothing has been stopping a duplicate key going in, and the constraint
+    -- cannot be added over one. Keep the newest per key: every row here is
+    -- DERIVED, so an older one is a stale recomputation and nothing else.
+    delete from derived_weather_peak a
+     using derived_weather_peak b
+     where a.city_key = b.city_key and a.month = b.month
+       and (b.computed_at > a.computed_at
+            or (b.computed_at is not distinct from a.computed_at and b.ctid > a.ctid));
+    get diagnostics v_dupes = row_count;
+
+    alter table derived_weather_peak
+      add constraint derived_weather_peak_pkey primary key (city_key, month);
+
+    raise notice 'ad4_37: derived_weather_peak had no natural key - added primary key (city_key, month)%',
+                 case when v_dupes > 0 then format(', after removing %s duplicate row(s)', v_dupes) else '' end;
   end if;
 end
 $ad4$;
