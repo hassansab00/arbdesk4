@@ -26,7 +26,7 @@
 -- is never added - and the ensure-column loop below adds columns but has never
 -- added a constraint.
 --
--- The failure is not subtle and it is not at install time. It is:
+-- The failure is not at install time. It is:
 --
 --     ERROR: there is no unique or exclusion constraint matching the
 --            ON CONFLICT specification
@@ -34,94 +34,140 @@
 -- from the first job that tries to upsert - reported against a 40-line
 -- statement inside a plpgsql function, naming neither the table nor the
 -- missing key. Thirteen tables in this repo declare a composite key this way.
---
--- DUPLICATES ARE REMOVED FIRST, keeping the newest row per key. Without a
--- unique key nothing has been stopping a job from inserting the same key twice,
--- and adding the constraint would fail on the second copy. Keeping the newest
--- is right for every table here: all thirteen are DERIVED, recomputed from the
--- archive, so an older row is a stale recomputation and nothing else.
 -- --------------------------------------------------------------------------
-do $ad4$
+-- --------------------------------------------------------------------------
+-- ad4_ensure_natural_key(table, columns, newest_column)
+--
+-- Make `on conflict (columns)` possible on a table that does not currently
+-- support it, and say so when it cannot.
+--
+-- WHAT ON CONFLICT ACTUALLY REQUIRES, which is not what it looks like: a
+-- UNIQUE INDEX on exactly those columns. Not "a primary key". Not "some unique
+-- constraint". The first version of this checked pg_constraint for contype in
+-- ('p','u') and skipped the table if it found anything - so a table with a
+-- primary key on a surrogate id, or a unique on (city_key, computed_at), was
+-- declared healthy and the upsert failed anyway with the same 42P10. It was
+-- also wrong the other way: a plain `create unique index` writes no
+-- pg_constraint row at all, so a table that was already fine looked broken.
+--
+-- A UNIQUE INDEX, NOT A PRIMARY KEY. A table can only have one primary key,
+-- and several of these tables already have one on something else. A unique
+-- index is what the upsert needs, carries no NOT NULL requirement, and cannot
+-- collide with a key someone chose deliberately.
+-- --------------------------------------------------------------------------
+create or replace function ad4_ensure_natural_key(
+  p_table text, p_cols text[], p_newest text default null
+) returns text language plpgsql as $ad4$
 declare
-  r         record;
-  v_added   int := 0;
-  v_deduped int := 0;
-  v_n       int;
+  v_oid     oid   := to_regclass('public.' || p_table);
+  v_sorted  text[] := (select array_agg(c order by c) from unnest(p_cols) c);
+  v_missing text[];
+  v_dupes   int := 0;
+  v_idx     text;
+  v_have    text;
+begin
+  if v_oid is null then
+    return format('%s: no such table', p_table);
+  end if;
+
+  -- Every column of the key has to exist first.
+  select array_agg(c) into v_missing from unnest(p_cols) c
+   where not exists (select 1 from information_schema.columns
+                      where table_schema = 'public' and table_name = p_table and column_name = c);
+  if v_missing is not null then
+    return format('%s: cannot key on (%s) - missing column(s) %s',
+                  p_table, array_to_string(p_cols, ', '), array_to_string(v_missing, ', '));
+  end if;
+
+  -- Already has a unique index on EXACTLY these columns? Nothing to do.
+  if exists (
+    select 1 from pg_index i
+     where i.indrelid = v_oid and i.indisunique and i.indpred is null
+       and (select array_agg(a.attname::text order by a.attname)
+              from unnest(i.indkey::int[]) k
+              join pg_attribute a on a.attrelid = v_oid and a.attnum = k) = v_sorted)
+  then
+    return format('%s: already keyed on (%s)', p_table, array_to_string(p_cols, ', '));
+  end if;
+
+  -- Nothing has been stopping a duplicate key going in, and a unique index
+  -- cannot be built over one. Keep the newest per key: every table this is
+  -- applied to is DERIVED - recomputed from the archive - so an older row is a
+  -- stale recomputation and nothing else.
+  if p_newest is not null and exists (select 1 from information_schema.columns
+                                       where table_schema = 'public' and table_name = p_table
+                                         and column_name = p_newest) then
+    execute format(
+      'delete from %I a using %I b where (%s) is not distinct from (%s) '
+      'and (b.%I > a.%I or (b.%I is not distinct from a.%I and b.ctid > a.ctid))',
+      p_table, p_table,
+      (select string_agg('a.' || quote_ident(c), ', ') from unnest(p_cols) c),
+      (select string_agg('b.' || quote_ident(c), ', ') from unnest(p_cols) c),
+      p_newest, p_newest, p_newest, p_newest);
+  else
+    execute format(
+      'delete from %I a using %I b where (%s) is not distinct from (%s) and b.ctid > a.ctid',
+      p_table, p_table,
+      (select string_agg('a.' || quote_ident(c), ', ') from unnest(p_cols) c),
+      (select string_agg('b.' || quote_ident(c), ', ') from unnest(p_cols) c));
+  end if;
+  get diagnostics v_dupes = row_count;
+
+  v_idx := left('ad4_uq_' || p_table || '_' || array_to_string(p_cols, '_'), 63);
+  begin
+    execute format('create unique index if not exists %I on public.%I (%s)',
+                   v_idx, p_table,
+                   (select string_agg(quote_ident(c), ', ') from unnest(p_cols) c));
+  exception when others then
+    -- Say what is actually there. "No unique constraint matching" with no
+    -- further detail is the message that started this.
+    select string_agg(ic.relname || '(' ||
+             (select string_agg(a.attname, ',' order by a.attname)
+                from unnest(i.indkey::int[]) k
+                join pg_attribute a on a.attrelid = v_oid and a.attnum = k) || ')', '; ')
+      into v_have
+      from pg_index i join pg_class ic on ic.oid = i.indexrelid
+     where i.indrelid = v_oid and i.indisunique;
+    return format('%s: COULD NOT create a unique index on (%s): %s. Unique indexes present: %s',
+                  p_table, array_to_string(p_cols, ', '), sqlerrm, coalesce(v_have, 'none'));
+  end;
+
+  return format('%s: keyed on (%s)%s', p_table, array_to_string(p_cols, ', '),
+                case when v_dupes > 0 then format(' after removing %s duplicate row(s)', v_dupes) else '' end);
+end;
+$ad4$;
+
+
+do $ad4$
+declare r record; v_msg text; v_fixed int := 0;
 begin
   for r in
     select * from (values
-      ('derived_weather_peak',       'city_key, month',                  'computed_at'),
-      ('derived_market_peak',        'city_key, month',                  'computed_at'),
-      ('derived_city_day_volume',    'city_key, trade_date',             'computed_at'),
-      ('derived_band_day_volume',    'band_id, trade_date',              'computed_at'),
-      ('derived_forecast_skill',     'city_key, computed_at, lead_days', 'computed_at'),
-      ('derived_weather_model',      'city_key, target',                 'computed_at'),
-      ('derived_model_forecast',     'city_key, for_date, run_at',       'computed_at'),
-      ('derived_city_day_features',  'city_key, obs_date',               'computed_at'),
-      ('derived_climb_profile',      'city_key, local_hour',             'computed_at'),
-      ('derived_city_correlation',   'city_a, city_b, computed_at',      'computed_at'),
-      ('derived_capacity',           'city_key, computed_at, hour_utc',  'computed_at'),
-      ('weather_forecast_features',  'city_key, for_date, run_at',       'captured_at'),
-      ('fact_forecast_outcome',      'city_key, for_date, model, lead_days', 'captured_at')
+      ('derived_weather_peak',       array['city_key','month'],                        'computed_at'),
+      ('derived_market_peak',        array['city_key','month'],                        'computed_at'),
+      ('derived_city_day_volume',    array['city_key','trade_date'],                   'computed_at'),
+      ('derived_band_day_volume',    array['band_id','trade_date'],                    'computed_at'),
+      ('derived_forecast_skill',     array['city_key','computed_at','lead_days'],      'computed_at'),
+      ('derived_weather_model',      array['city_key','target'],                       'computed_at'),
+      ('derived_model_forecast',     array['city_key','for_date','run_at'],            'computed_at'),
+      ('derived_city_day_features',  array['city_key','obs_date'],                     'computed_at'),
+      ('derived_climb_profile',      array['city_key','local_hour'],                   'computed_at'),
+      ('derived_city_correlation',   array['city_a','city_b','computed_at'],           'computed_at'),
+      ('derived_capacity',           array['city_key','computed_at','hour_utc'],       'computed_at'),
+      ('weather_forecast_features',  array['city_key','for_date','run_at'],            'captured_at'),
+      ('fact_forecast_outcome',      array['city_key','for_date','model','lead_days'], 'captured_at')
     ) as t(tbl, cols, newest)
   loop
-    continue when to_regclass('public.' || r.tbl) is null;
-
-    -- Already has a primary key or a unique constraint? Leave it alone. This
-    -- must never redefine a key someone chose on purpose.
-    continue when exists (
-      select 1 from pg_constraint c
-        join pg_class k on k.oid = c.conrelid
-        join pg_namespace n on n.oid = k.relnamespace
-       where n.nspname = 'public' and k.relname = r.tbl and c.contype in ('p', 'u'));
-
-    -- Every column of the key has to be present, and so does the tiebreaker.
-    continue when exists (
-      select 1 from unnest(string_to_array(replace(r.cols, ' ', ''), ',')) col
-       where not exists (select 1 from information_schema.columns ic
-                          where ic.table_schema = 'public' and ic.table_name = r.tbl
-                            and ic.column_name = col));
-
-    if exists (select 1 from information_schema.columns
-                where table_schema = 'public' and table_name = r.tbl
-                  and column_name = r.newest) then
-      execute format(
-        'delete from %I a using %I b where (%s) is not distinct from (%s) '
-        || 'and (b.%I > a.%I or (b.%I = a.%I and b.ctid > a.ctid))',
-        r.tbl, r.tbl,
-        (select string_agg('a.' || quote_ident(c), ', ')
-           from unnest(string_to_array(replace(r.cols, ' ', ''), ',')) c),
-        (select string_agg('b.' || quote_ident(c), ', ')
-           from unnest(string_to_array(replace(r.cols, ' ', ''), ',')) c),
-        r.newest, r.newest, r.newest, r.newest);
-      get diagnostics v_n = row_count;
-    else
-      execute format(
-        'delete from %I a using %I b where (%s) is not distinct from (%s) and b.ctid > a.ctid',
-        r.tbl, r.tbl,
-        (select string_agg('a.' || quote_ident(c), ', ')
-           from unnest(string_to_array(replace(r.cols, ' ', ''), ',')) c),
-        (select string_agg('b.' || quote_ident(c), ', ')
-           from unnest(string_to_array(replace(r.cols, ' ', ''), ',')) c));
-      get diagnostics v_n = row_count;
+    v_msg := ad4_ensure_natural_key(r.tbl, r.cols, r.newest);
+    if v_msg like '%COULD NOT%' or v_msg like '%cannot key on%' then
+      raise warning 'ad4_00: %', v_msg;
+    elsif v_msg not like '%already keyed%' and v_msg not like '%no such table%' then
+      raise notice '  + %', v_msg;
+      v_fixed := v_fixed + 1;
     end if;
-    v_deduped := v_deduped + v_n;
-
-    begin
-      execute format('alter table %I add constraint %I primary key (%s)',
-                     r.tbl, r.tbl || '_pkey', r.cols);
-      v_added := v_added + 1;
-      raise notice '  + natural key %(%)  [% duplicate row(s) removed]', r.tbl, r.cols, v_n;
-    exception when others then
-      -- A not-null violation on a key column, most likely. Say so rather than
-      -- failing the whole install over one derived table.
-      raise warning 'could not add the natural key on % (%): % - upserts into it will fail until this is resolved',
-                    r.tbl, r.cols, sqlerrm;
-    end;
   end loop;
-
-  if v_added > 0 then
-    raise notice 'ad4_00: added % missing natural key(s), removed % duplicate row(s)', v_added, v_deduped;
+  if v_fixed > 0 then
+    raise notice 'ad4_00: added % missing natural key(s)', v_fixed;
   end if;
 end
 $ad4$;

@@ -41,49 +41,145 @@
 -- ===========================================================================
 
 do $ad4$
-declare v_dupes int;
 begin
   if to_regclass('public.derived_weather_peak') is null then
     raise exception 'ad4_37 needs derived_weather_peak - run sql/ad4_00_preflight.sql first';
   end if;
+end
+$ad4$;
 
-  -- THE KEY THIS FILE UPSERTS ON MAY NOT EXIST.
-  --
-  -- ad4_00 declares `primary key (city_key, month)` INSIDE
-  -- `create table if not exists`, so on a database where the table already
-  -- existed from an earlier hand-run migration the body was skipped and the
-  -- key was never added. The refresh below then fails with
-  --
-  --     ERROR: there is no unique or exclusion constraint matching the
-  --            ON CONFLICT specification
-  --
-  -- reported against a 40-line statement inside a function, naming neither the
-  -- table nor the missing key. ad4_00 now repairs all thirteen tables that
-  -- declare a composite key this way; this repeats it for its own table so the
-  -- file works standalone, without a re-run of preflight.
-  if not exists (
-    select 1 from pg_constraint c
-      join pg_class k on k.oid = c.conrelid
-      join pg_namespace n on n.oid = k.relnamespace
-     where n.nspname = 'public' and k.relname = 'derived_weather_peak'
-       and c.contype in ('p', 'u'))
-  then
-    -- Nothing has been stopping a duplicate key going in, and the constraint
-    -- cannot be added over one. Keep the newest per key: every row here is
-    -- DERIVED, so an older one is a stale recomputation and nothing else.
-    delete from derived_weather_peak a
-     using derived_weather_peak b
-     where a.city_key = b.city_key and a.month = b.month
-       and (b.computed_at > a.computed_at
-            or (b.computed_at is not distinct from a.computed_at and b.ctid > a.ctid));
-    get diagnostics v_dupes = row_count;
 
-    alter table derived_weather_peak
-      add constraint derived_weather_peak_pkey primary key (city_key, month);
-
-    raise notice 'ad4_37: derived_weather_peak had no natural key - added primary key (city_key, month)%',
-                 case when v_dupes > 0 then format(', after removing %s duplicate row(s)', v_dupes) else '' end;
+-- --------------------------------------------------------------------------
+-- THE KEY THIS FILE UPSERTS ON MAY NOT EXIST.
+--
+-- ad4_00 declares `primary key (city_key, month)` INSIDE
+-- `create table if not exists`, so on a database where the table already
+-- existed from an earlier migration the body was skipped and the key was never
+-- added. The refresh below then fails with 42P10, reported against a 40-line
+-- statement inside a function, naming neither the table nor the missing key.
+--
+-- WHAT ON CONFLICT ACTUALLY REQUIRES is a UNIQUE INDEX on exactly those two
+-- columns. Not "a primary key", not "some unique constraint" - the first
+-- attempt at this repair checked pg_constraint for contype in ('p','u') and
+-- skipped the table if it found anything, so a table with a primary key on a
+-- surrogate id, or a unique on (city_key, computed_at), was declared healthy
+-- and the upsert failed anyway with the same error.
+--
+-- ad4_00 now repairs all thirteen tables that declare a key this way. This
+-- repeats it for its own table so the file works standalone, without a re-run
+-- of preflight.
+-- --------------------------------------------------------------------------
+-- --------------------------------------------------------------------------
+-- ad4_ensure_natural_key(table, columns, newest_column)
+--
+-- Make `on conflict (columns)` possible on a table that does not currently
+-- support it, and say so when it cannot.
+--
+-- WHAT ON CONFLICT ACTUALLY REQUIRES, which is not what it looks like: a
+-- UNIQUE INDEX on exactly those columns. Not "a primary key". Not "some unique
+-- constraint". The first version of this checked pg_constraint for contype in
+-- ('p','u') and skipped the table if it found anything - so a table with a
+-- primary key on a surrogate id, or a unique on (city_key, computed_at), was
+-- declared healthy and the upsert failed anyway with the same 42P10. It was
+-- also wrong the other way: a plain `create unique index` writes no
+-- pg_constraint row at all, so a table that was already fine looked broken.
+--
+-- A UNIQUE INDEX, NOT A PRIMARY KEY. A table can only have one primary key,
+-- and several of these tables already have one on something else. A unique
+-- index is what the upsert needs, carries no NOT NULL requirement, and cannot
+-- collide with a key someone chose deliberately.
+-- --------------------------------------------------------------------------
+create or replace function ad4_ensure_natural_key(
+  p_table text, p_cols text[], p_newest text default null
+) returns text language plpgsql as $ad4$
+declare
+  v_oid     oid   := to_regclass('public.' || p_table);
+  v_sorted  text[] := (select array_agg(c order by c) from unnest(p_cols) c);
+  v_missing text[];
+  v_dupes   int := 0;
+  v_idx     text;
+  v_have    text;
+begin
+  if v_oid is null then
+    return format('%s: no such table', p_table);
   end if;
+
+  -- Every column of the key has to exist first.
+  select array_agg(c) into v_missing from unnest(p_cols) c
+   where not exists (select 1 from information_schema.columns
+                      where table_schema = 'public' and table_name = p_table and column_name = c);
+  if v_missing is not null then
+    return format('%s: cannot key on (%s) - missing column(s) %s',
+                  p_table, array_to_string(p_cols, ', '), array_to_string(v_missing, ', '));
+  end if;
+
+  -- Already has a unique index on EXACTLY these columns? Nothing to do.
+  if exists (
+    select 1 from pg_index i
+     where i.indrelid = v_oid and i.indisunique and i.indpred is null
+       and (select array_agg(a.attname::text order by a.attname)
+              from unnest(i.indkey::int[]) k
+              join pg_attribute a on a.attrelid = v_oid and a.attnum = k) = v_sorted)
+  then
+    return format('%s: already keyed on (%s)', p_table, array_to_string(p_cols, ', '));
+  end if;
+
+  -- Nothing has been stopping a duplicate key going in, and a unique index
+  -- cannot be built over one. Keep the newest per key: every table this is
+  -- applied to is DERIVED - recomputed from the archive - so an older row is a
+  -- stale recomputation and nothing else.
+  if p_newest is not null and exists (select 1 from information_schema.columns
+                                       where table_schema = 'public' and table_name = p_table
+                                         and column_name = p_newest) then
+    execute format(
+      'delete from %I a using %I b where (%s) is not distinct from (%s) '
+      'and (b.%I > a.%I or (b.%I is not distinct from a.%I and b.ctid > a.ctid))',
+      p_table, p_table,
+      (select string_agg('a.' || quote_ident(c), ', ') from unnest(p_cols) c),
+      (select string_agg('b.' || quote_ident(c), ', ') from unnest(p_cols) c),
+      p_newest, p_newest, p_newest, p_newest);
+  else
+    execute format(
+      'delete from %I a using %I b where (%s) is not distinct from (%s) and b.ctid > a.ctid',
+      p_table, p_table,
+      (select string_agg('a.' || quote_ident(c), ', ') from unnest(p_cols) c),
+      (select string_agg('b.' || quote_ident(c), ', ') from unnest(p_cols) c));
+  end if;
+  get diagnostics v_dupes = row_count;
+
+  v_idx := left('ad4_uq_' || p_table || '_' || array_to_string(p_cols, '_'), 63);
+  begin
+    execute format('create unique index if not exists %I on public.%I (%s)',
+                   v_idx, p_table,
+                   (select string_agg(quote_ident(c), ', ') from unnest(p_cols) c));
+  exception when others then
+    -- Say what is actually there. "No unique constraint matching" with no
+    -- further detail is the message that started this.
+    select string_agg(ic.relname || '(' ||
+             (select string_agg(a.attname, ',' order by a.attname)
+                from unnest(i.indkey::int[]) k
+                join pg_attribute a on a.attrelid = v_oid and a.attnum = k) || ')', '; ')
+      into v_have
+      from pg_index i join pg_class ic on ic.oid = i.indexrelid
+     where i.indrelid = v_oid and i.indisunique;
+    return format('%s: COULD NOT create a unique index on (%s): %s. Unique indexes present: %s',
+                  p_table, array_to_string(p_cols, ', '), sqlerrm, coalesce(v_have, 'none'));
+  end;
+
+  return format('%s: keyed on (%s)%s', p_table, array_to_string(p_cols, ', '),
+                case when v_dupes > 0 then format(' after removing %s duplicate row(s)', v_dupes) else '' end);
+end;
+$ad4$;
+
+
+do $ad4$
+declare v_msg text;
+begin
+  v_msg := ad4_ensure_natural_key('derived_weather_peak', array['city_key','month'], 'computed_at');
+  if v_msg like '%COULD NOT%' then
+    raise exception 'ad4_37 cannot proceed. %', v_msg;
+  end if;
+  raise notice 'ad4_37: %', v_msg;
 end
 $ad4$;
 
