@@ -747,3 +747,132 @@ def test_the_sql_takes_p_before_and_deletes_on_the_instant():
         "the date comparison is the wider window the export never covered"
     assert "drop function if exists prune_observations(int, boolean);" in sql, \
         "the two-argument version must go or a bare call is ambiguous"
+
+
+# ---------------------------------------------------------------------------
+# The natural key that `create table if not exists` never adds.
+#
+# ad4_00 declares composite keys inside `create table if not exists`, so on a
+# database where the table already existed from an earlier hand-run migration
+# the body is skipped and the key is never added. The ensure-column loop adds
+# columns and has never added a constraint.
+#
+# It surfaces as `42P10: there is no unique or exclusion constraint matching
+# the ON CONFLICT specification` from the first job that upserts, reported
+# against a 40-line statement inside a plpgsql function, naming neither the
+# table nor the missing key. Thirteen tables declare a key this way.
+# ---------------------------------------------------------------------------
+
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _sql(name):
+    return open(os.path.join(_REPO, "sql", name)).read()
+
+
+def test_preflight_repairs_every_table_that_declares_its_key_inline():
+    """Every composite key declared inside create-table-if-not-exists must be
+    in the repair list, or that table upserts into a missing constraint."""
+    import glob
+    import re
+
+    declared = set()
+    for path in sorted(glob.glob(os.path.join(_REPO, "sql", "*.sql"))):
+        src = open(path).read()
+        for m in re.finditer(
+            r"create\s+table\s+if\s+not\s+exists\s+([a-z0-9_]+)\s*\((.*?)\n\s*\);", src, re.S | re.I
+        ):
+            pk = re.search(r"\bprimary\s+key\s*\(([^)]+)\)", m.group(2), re.I)
+            if pk and "," in pk.group(1):
+                declared.add(m.group(1).lower())
+
+    repair = _sql("ad4_00_preflight.sql")
+    block = repair[repair.index("2b. THE NATURAL KEY"):repair.index("added % missing natural key")]
+    missing = sorted(t for t in declared if f"'{t}'" not in block)
+    assert not missing, (
+        f"these tables declare a composite key inline but preflight does not repair it: {missing}. "
+        "On any database where the table predates the declaration, every upsert into it fails "
+        "with 42P10."
+    )
+
+
+def test_the_repair_asks_what_ON_CONFLICT_actually_needs():
+    """A UNIQUE INDEX on exactly those columns. Not "a primary key", not "some
+    unique constraint".
+
+    The first attempt checked pg_constraint for contype in ('p','u') and
+    skipped the table if it found anything - so a table with a primary key on a
+    surrogate id, or a unique on the wrong columns, was declared healthy and
+    the upsert failed anyway with the same 42P10. It was wrong the other way
+    too: a plain `create unique index` writes no pg_constraint row, so a table
+    that was already fine looked broken.
+    """
+    fn = _sql("ad4_00_preflight.sql")
+    fn = fn[fn.index("create or replace function ad4_ensure_natural_key"):]
+    fn = fn[:fn.index("$ad4$;")]
+    assert "pg_index" in fn and "indisunique" in fn, "it must ask about unique INDEXES"
+    assert "= v_sorted" in fn, "and about EXACTLY the key columns, not any unique index"
+    assert "contype" not in fn, (
+        "checking pg_constraint is what made the first version wrong in both directions"
+    )
+
+
+def test_the_repair_creates_an_index_not_a_primary_key():
+    """A table can only have one primary key, and several of these already have
+    one on something else. A unique index is what the upsert needs, carries no
+    NOT NULL requirement, and cannot collide with a key chosen deliberately."""
+    fn = _sql("ad4_00_preflight.sql")
+    fn = fn[fn.index("create or replace function ad4_ensure_natural_key"):]
+    fn = fn[:fn.index("$ad4$;")]
+    assert "create unique index if not exists" in fn
+    assert "add constraint" not in fn
+
+
+def test_the_repair_keeps_the_newest_duplicate():
+    """Building a unique index over duplicates fails, so they must go - and
+    which one survives matters. Every table on the list is DERIVED, recomputed
+    from the archive, so an older row is a stale recomputation."""
+    fn = _sql("ad4_00_preflight.sql")
+    fn = fn[fn.index("create or replace function ad4_ensure_natural_key"):]
+    fn = fn[:fn.index("$ad4$;")]
+    assert "b.%I > a.%I" in fn, "the dedupe must order by the recompute timestamp"
+    assert "b.ctid > a.ctid" in fn, "ties need a deterministic tiebreak"
+    assert fn.index("delete from") < fn.index("create unique index"), (
+        "the dedupe has to happen BEFORE the index, or building it fails"
+    )
+
+
+def test_the_repair_says_what_is_actually_there_when_it_cannot():
+    """"No unique constraint matching", with no further detail, is the message
+    that started this. A repair that fails silently is no better."""
+    fn = _sql("ad4_00_preflight.sql")
+    fn = fn[fn.index("create or replace function ad4_ensure_natural_key"):]
+    fn = fn[:fn.index("$ad4$;")]
+    assert "COULD NOT create a unique index" in fn
+    assert "Unique indexes present" in fn, "it must name what the table does have"
+
+
+def test_ad4_37_repairs_its_own_table_so_it_works_standalone():
+    """The operator has already run preflight. Making them re-run it to fix a
+    file that fails on its own is the wrong way round."""
+    src = _sql("ad4_37_peak_hour.sql")
+    head = src[:src.index("create or replace function refresh_weather_peak")]
+    assert "create or replace function ad4_ensure_natural_key" in head
+    assert "ad4_ensure_natural_key('derived_weather_peak'" in head
+    assert "raise exception 'ad4_37 cannot proceed" in head, (
+        "if the repair fails it must stop with a message naming the cause, not "
+        "fall through to the same 42P10"
+    )
+
+
+def test_the_two_copies_of_the_repair_are_identical():
+    """ad4_37 carries its own copy so it works standalone. Two copies that
+    drift are worse than one that is inconvenient."""
+    a = _sql("ad4_00_preflight.sql")
+    b = _sql("ad4_37_peak_hour.sql")
+    marker = "create or replace function ad4_ensure_natural_key"
+    fa = a[a.index(marker):]
+    fa = fa[:fa.index("$ad4$;") + 6]
+    fb = b[b.index(marker):]
+    fb = fb[:fb.index("$ad4$;") + 6]
+    assert fa == fb, "ad4_00 and ad4_37 carry different versions of ad4_ensure_natural_key"
