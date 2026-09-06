@@ -193,7 +193,42 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, {"code": e.pgcode, "message": str(e.pgerror or e).strip(),
                                     "details": None, "hint": None})
 
-    do_PATCH = do_POST
+    def do_PATCH(self):
+        """A real PATCH with a filter, so a workflow that annotates an existing
+        row can be exercised end to end rather than only parsed."""
+        parsed = urllib.parse.urlparse(self.path)
+        m = re.match(r"/rest/v1/([a-zA-Z0-9_]+)$", parsed.path)
+        if not m:
+            return self._send(404, {"message": f"no route {parsed.path}"})
+        length = int(self.headers.get("Content-Length") or 0)
+        body = json.loads(self.rfile.read(length) or "{}") if length else {}
+        if not isinstance(body, dict) or not body:
+            return self._send(400, {"code": "PGRST102",
+                                    "message": "PATCH needs a single JSON object"})
+        qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+        where, params = [], []
+        for key, values in qs.items():
+            for raw in values:
+                op, _, val = raw.partition(".")
+                if op in OPS:
+                    where.append(f'"{key}" {OPS[op]} %s')
+                    params.append(val)
+        if not where:
+            # PostgREST refuses an unfiltered PATCH too. So does this.
+            return self._send(400, {"code": "PGRST103",
+                                    "message": "PATCH without a filter would update every row"})
+        sets = ", ".join(f'"{k}" = %s' for k in body)
+        sql = f'update public."{m.group(1)}" set {sets} where ' + " and ".join(where)
+        try:
+            with connect() as conn, conn.cursor() as cur:
+                cur.execute(sql, list(body.values()) + params)
+                n = cur.rowcount
+                conn.commit()
+            return self._send(204, [], {"Content-Range": f"0-{max(0, n - 1)}/{n}"})
+        except psycopg2.Error as e:
+            print(f"400 PATCH {m.group(1)}?{parsed.query}\n    {e}", flush=True)
+            return self._send(400, {"code": e.pgcode, "message": str(e.pgerror or e).strip(),
+                                    "details": None, "hint": None})
 
 
 if __name__ == "__main__":

@@ -257,16 +257,16 @@
     },
     {
       "id": "upsert-rules",
-      "name": "Upsert rules",
+      "name": "Save rules",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1560,
-        100
+        1740,
+        300
       ],
       "parameters": {
-        "method": "POST",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/markets?on_conflict=market_id",
+        "method": "PATCH",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/markets?market_id=eq.{{ $json.market_id || '__ad4_no_market__' }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -288,13 +288,13 @@
             },
             {
               "name": "Prefer",
-              "value": "resolution=merge-duplicates,return=minimal"
+              "value": "return=minimal"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.rows) }}",
+        "jsonBody": "={{ JSON.stringify($json.patch) }}",
         "options": {
           "response": {
             "response": {
@@ -304,7 +304,9 @@
         }
       },
       "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "notes": "PATCH, not upsert: this annotates a market P0.2 created and must never create one. An upsert with only the four rules columns fails with 23502 on any schema where markets has a NOT NULL column they do not cover, because ON CONFLICT DO UPDATE checks NOT NULL on the proposed row before it finds the conflict.",
+      "notesInFlow": false
     },
     {
       "id": "summary",
@@ -316,7 +318,7 @@
         100
       ],
       "parameters": {
-        "jsCode": "const AD4_WRITE_NODES = [\"Upsert rules\"];\n// AD4-WRITE-GUARD\n// DID THE DATABASE ACTUALLY TAKE IT?\n//\n// Every write node in this workflow carries onError=continueRegularOutput so\n// that one bad row cannot kill a run. The cost of that is a REFUSED write\n// walks straight past it and arrives here looking healthy - which is how a\n// workflow reports \"ok, 0 rows\" for days while the data quietly stops moving.\n//\n// With neverError on, a refusal arrives as the PostgREST error body instead of\n// an exception, so it can be read and named. That is what this does.\nfunction ad4WriteError(node) {\n  let items;\n  try { items = $(node).all(); } catch (e) { return null; }\n  for (const it of items || []) {\n    const b = it && it.json;\n    if (!b || typeof b !== 'object') continue;\n    if (b.error && !b.code) return { node, code: null, message: String(b.error).slice(0, 300) };\n    if (b.code || b.message) {\n      return { node, code: b.code ?? null, message: b.message ?? '',\n               details: b.details ?? null, hint: b.hint ?? null };\n    }\n  }\n  return null;\n}\n\nfor (const node of AD4_WRITE_NODES) {\n  const e = ad4WriteError(node);\n  if (!e) continue;\n  // 42501 is the one worth naming, because the cause is never in the code.\n  if (String(e.code) === '42501' || /permission denied/i.test(e.message)) {\n    throw new Error(\n      `Supabase REFUSED the write at \"${e.node}\": ${e.message} (${e.code}). The key was ` +\n      `already checked at \"Run now?\" and claims to be the service key, so this is the ` +\n      `DATABASE side: service_role has no INSERT on that table. Run sql/ad4_38_grants.sql ` +\n      `in the Supabase SQL editor - it grants the write path back, then prints one row per ` +\n      `ingest table saying whether the service key can write it. Nothing was written.`);\n  }\n  if (String(e.code) === '42P01') {\n    throw new Error(\n      `Supabase has no such table for \"${e.node}\": ${e.message}. The sql/ files that create ` +\n      `it have not been run - sql/ad4_98_ui_health.sql names which file owns which table. ` +\n      `Nothing was written.`);\n  }\n  throw new Error(\n    `Supabase refused the write at \"${e.node}\": ${e.message}` +\n    (e.code ? ` (${e.code})` : '') + (e.details ? ` - ${e.details}` : '') +\n    (e.hint ? ` Hint: ${e.hint}` : '') + ' Nothing was written.');\n}\n\nconst p = $('Diff rules').first().json;\nconst rows = p.n || 0;\nconst changed = p.n_changed || 0;\nconst list = changed > 0 ? (p.changed || []).map(c => c.city_key || c.market_id).join(', ') : '';\nconst summary = changed > 0\n  ? `AD4 P0.5: ${rows} markets refreshed. RULES CHANGED on ${changed}: ${list}. ` +\n    `Re-read those before trusting any probability computed against them.`\n  : `AD4 P0.5: ${rows} markets refreshed, no rule changes.`;\n// A rules change is not a failure, but it invalidates model output computed\n// against the old text - 'attention' so the UI and the watchdog both see it.\nconst status = changed > 0 ? 'attention' : 'ok';\nconst detail = { n_changed: changed, changed: p.changed ?? [],\n                 failed: p.failed, requested: p.requested };\nreturn [{ json: {\n  summary, status, rows,\n  log: { p_job: 'P0.5_refresh_rules_text', p_status: status, p_rows: rows,\n         p_detail: { ...detail, summary, trigger: $execution.mode, execution_id: $execution.id } },\n} }];"
+        "jsCode": "const AD4_WRITE_NODES = [\"Save rules\"];\n// AD4-WRITE-GUARD\n// DID THE DATABASE ACTUALLY TAKE IT?\n//\n// Every write node in this workflow carries onError=continueRegularOutput so\n// that one bad row cannot kill a run. The cost of that is a REFUSED write\n// walks straight past it and arrives here looking healthy - which is how a\n// workflow reports \"ok, 0 rows\" for days while the data quietly stops moving.\n//\n// With neverError on, a refusal arrives as the PostgREST error body instead of\n// an exception, so it can be read and named. That is what this does.\nfunction ad4WriteError(node) {\n  let items;\n  try { items = $(node).all(); } catch (e) { return null; }\n  for (const it of items || []) {\n    const b = it && it.json;\n    if (!b || typeof b !== 'object') continue;\n    if (b.error && !b.code) return { node, code: null, message: String(b.error).slice(0, 300) };\n    if (b.code || b.message) {\n      return { node, code: b.code ?? null, message: b.message ?? '',\n               details: b.details ?? null, hint: b.hint ?? null };\n    }\n  }\n  return null;\n}\n\nfor (const node of AD4_WRITE_NODES) {\n  const e = ad4WriteError(node);\n  if (!e) continue;\n  // 42501 is the one worth naming, because the cause is never in the code.\n  if (String(e.code) === '42501' || /permission denied/i.test(e.message)) {\n    throw new Error(\n      `Supabase REFUSED the write at \"${e.node}\": ${e.message} (${e.code}). The key was ` +\n      `already checked at \"Run now?\" and claims to be the service key, so this is the ` +\n      `DATABASE side: service_role has no INSERT on that table. Run sql/ad4_38_grants.sql ` +\n      `in the Supabase SQL editor - it grants the write path back, then prints one row per ` +\n      `ingest table saying whether the service key can write it. Nothing was written.`);\n  }\n  if (String(e.code) === '42P01') {\n    throw new Error(\n      `Supabase has no such table for \"${e.node}\": ${e.message}. The sql/ files that create ` +\n      `it have not been run - sql/ad4_98_ui_health.sql names which file owns which table. ` +\n      `Nothing was written.`);\n  }\n  throw new Error(\n    `Supabase refused the write at \"${e.node}\": ${e.message}` +\n    (e.code ? ` (${e.code})` : '') + (e.details ? ` - ${e.details}` : '') +\n    (e.hint ? ` Hint: ${e.hint}` : '') + ' Nothing was written.');\n}\n\nconst p = $('Diff rules').first().json;\nconst rows = p.n || 0;\nconst changed = p.n_changed || 0;\nconst list = changed > 0 ? (p.changed || []).map(c => c.city_key || c.market_id).join(', ') : '';\nconst summary = changed > 0\n  ? `AD4 P0.5: ${rows} markets refreshed. RULES CHANGED on ${changed}: ${list}. ` +\n    `Re-read those before trusting any probability computed against them.`\n  : `AD4 P0.5: ${rows} markets refreshed, no rule changes.`;\n// A rules change is not a failure, but it invalidates model output computed\n// against the old text - 'attention' so the UI and the watchdog both see it.\nconst status = changed > 0 ? 'attention' : 'ok';\nconst detail = { n_changed: changed, changed: p.changed ?? [],\n                 failed: p.failed, requested: p.requested };\nreturn [{ json: {\n  summary, status, rows,\n  log: { p_job: 'P0.5_refresh_rules_text', p_status: status, p_rows: rows,\n         p_detail: { ...detail, summary, trigger: $execution.mode, execution_id: $execution.id } },\n} }];"
       }
     },
     {
@@ -461,6 +463,19 @@
       ],
       "id": "note-limits-P0.5_refresh_rules_text",
       "name": "Note limits"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ONE PATCH PER MARKET, and never an INSERT.\n//\n// This workflow re-reads each open market's resolution rules and writes the\n// text back. It only ever ANNOTATES a market that P0.2 created - it has no\n// business creating one, and it does not carry the columns to create one with.\n//\n// It used to be a bulk POST to /markets?on_conflict=market_id with four\n// columns. That is an INSERT ... ON CONFLICT DO UPDATE, and Postgres evaluates\n// NOT NULL on the PROPOSED ROW before it ever detects the conflict - so on any\n// database whose `markets` has a NOT NULL column those four do not cover, the\n// write fails with 23502 even though the row is right there. The identical\n// mistake in P1.2/P1.3 against `cities` is what broke them on a real desk.\n//\n// PATCH cannot insert, so the question does not arise.\nconst rows = $('Guard: did anything parse?').first().json.rows ?? [];\n\nconst items = rows\n  .filter((r) => r && r.market_id)\n  .map((r) => ({\n    json: {\n      market_id: r.market_id,\n      patch: {\n        rules_text: r.rules_text ?? null,\n        rules_fetched_at: r.rules_fetched_at ?? null,\n        rules_changed_at: r.rules_changed_at ?? null,\n      },\n    },\n  }));\n\nif (!items.length) {\n  // A filter that matches nothing: the request runs, changes nothing, and\n  // leaves the Summary node's write guard something to read.\n  return [{ json: { market_id: '__ad4_no_market__', patch: { rules_fetched_at: null }, nothing_to_save: true } }];\n}\nreturn items;\n"
+      },
+      "id": "split-rules",
+      "name": "Split rules",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        300
+      ]
     }
   ],
   "connections": {
@@ -556,18 +571,7 @@
       "main": [
         [
           {
-            "node": "Upsert rules",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upsert rules": {
-      "main": [
-        [
-          {
-            "node": "Summary",
+            "node": "Split rules",
             "type": "main",
             "index": 0
           }
@@ -623,6 +627,28 @@
         [
           {
             "node": "Load open markets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split rules": {
+      "main": [
+        [
+          {
+            "node": "Save rules",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save rules": {
+      "main": [
+        [
+          {
+            "node": "Summary",
             "type": "main",
             "index": 0
           }
