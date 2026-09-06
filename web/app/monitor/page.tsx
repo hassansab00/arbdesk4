@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import ForecastValue from "@/components/ForecastValue";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { useCityStats } from "@/lib/useCityStats";
@@ -352,7 +354,7 @@ function CityCard({
           value={a?.slope_3_c_per_h != null ? `${fmtTempDelta(a.slope_3_c_per_h, unit)}/h` : "—"}
           className={dirColor}
         />
-        <Mini label="forecast" value={fmtTemp(c.forecast_max_c, unit)} />
+        <Mini label="forecast" value={<ForecastValue city={c} unit={unit} />} />
 
         <span className="ml-auto flex items-center gap-3 text-[10px]">
           {cover?.qualifies && (
@@ -438,7 +440,7 @@ function CityCard({
 
 function Mini({
   label, value, accent, className,
-}: { label: string; value: string; accent?: boolean; className?: string }) {
+}: { label: string; value: ReactNode; accent?: boolean; className?: string }) {
   return (
     <span className="flex flex-col leading-tight">
       <span className="text-[9px] uppercase tracking-wide text-muted">{label}</span>
@@ -476,7 +478,7 @@ function TheRead({ a, c, unit }: { a: Approach; c: CityStats | null; unit: Unit 
       <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
         <Figure label="Now" value={fmtTemp(a.latest_temp_c, unit)} big />
         <Figure label="Max so far" value={fmtTemp(a.running_max_c, unit)} />
-        <Figure label="Forecast" value={fmtTemp(c?.forecast_max_c ?? null, unit)} />
+        <Figure label="Forecast" value={c ? <ForecastValue city={c} unit={unit} /> : "—"} />
         <Figure
           label="Implied by observation"
           value={fmtTemp(a.implied_max_c, unit)}
@@ -551,7 +553,7 @@ function TheRead({ a, c, unit }: { a: Approach; c: CityStats | null; unit: Unit 
   );
 }
 
-function Figure({ label, value, sub, big }: { label: string; value: string; sub?: string; big?: boolean }) {
+function Figure({ label, value, sub, big }: { label: string; value: ReactNode; sub?: string; big?: boolean }) {
   return (
     <div>
       <div className="text-[10px] uppercase tracking-wide text-muted">{label}</div>

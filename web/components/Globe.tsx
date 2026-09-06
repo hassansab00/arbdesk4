@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { forecastProvenance } from "@/components/ForecastValue";
+import { fmtTemp, type Unit } from "@/lib/units";
 import { heatColor } from "@/lib/heat";
 import { REGION_COLOR } from "@/lib/heat";
 import { regionFromCity } from "@/lib/region";
@@ -522,9 +524,13 @@ export default function Globe({
                  v={hover.c.hotness_sigma == null ? "—" : `${hover.c.hotness_sigma > 0 ? "+" : ""}${hover.c.hotness_sigma.toFixed(1)}σ`}
                  sub={hover.c.normal_max_c == null ? "no baseline" : `normal ${hover.c.normal_max_c.toFixed(1)}°C`}
                  warn={(hover.c.hotness_sigma ?? 0) > 1.5} />
-            <Row k="forecast" v={hover.c.forecast_max_c == null ? "—" : `${hover.c.forecast_max_c.toFixed(1)}°C`}
-                 sub={hover.c.forecast_model ?? "no forward forecast"}
-                 warn={hover.c.forecast_max_c == null} />
+            {/* This printed °C for every city, whatever unit that city's
+                market is quoted in, and said nothing when the desk's own check
+                had already flagged the number. Both now come from one place. */}
+            <Row k="forecast"
+                 v={fmtTemp(hover.c.forecast_max_c, (hover.c.unit ?? "C") as Unit)}
+                 sub={forecastProvenance(hover.c, (hover.c.unit ?? "C") as Unit).slice(0, 46)}
+                 warn={hover.c.forecast_max_c == null || Boolean(hover.c.forecast_suspect)} />
             <Row k="best edge" v={hover.c.best_edge_pp == null ? "—" : `${(hover.c.best_edge_pp * 100).toFixed(1)}pp`}
                  sub={`${hover.c.n_tradeable ?? 0} of ${hover.c.live_bands ?? 0} bands tradeable`} />
             <Row k="model error" v={hover.c.mae_c == null ? "—" : `${hover.c.mae_c.toFixed(2)}°C`}

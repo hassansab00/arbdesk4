@@ -78,6 +78,8 @@ export const SQL_OWNER: Record<string, string> = {
   "v_edge_scaling": "ad4_31_predictive.sql",
   "v_execution_budget": "ad4_20_schedules.sql",
   "v_execution_limits": "ad4_36_execution_limits.sql",
+  "v_forecast_audit": "ad4_43_forecast_audit.sql",
+  "v_forecast_candidates": "ad4_43_forecast_audit.sql",
   "v_forecast_convergence": "ad4_31_predictive.sql",
   "v_forecast_coverage": "ad4_30_open_meteo.sql",
   "v_forecast_divergence": "ad4_16_nws.sql",

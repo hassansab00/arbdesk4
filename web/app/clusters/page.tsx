@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import ForecastValue from "@/components/ForecastValue";
 import { useCityStats } from "@/lib/useCityStats";
 import { DataState } from "@/components/DataState";
 import StatsNotice from "@/components/StatsNotice";
@@ -53,21 +55,6 @@ const REGIONS: Region[] = ["Americas", "Europe/Africa", "West Asia", "East Asia"
 /** Where the number in the Today column came from. The board once showed
  *  Chicago at 98F off a week-old seven-day-lead row, and no amount of staring
  *  at the cell could have revealed that. */
-function forecastProvenance(c: CityStats): string {
-  if (c.forecast_max_c === null) {
-    return c.running_max_c === null
-      ? "No forecast and no live reading for this city."
-      : "No forecast for the local day - this is the running maximum observed so far today.";
-  }
-  const bits = [`forecast ${c.forecast_model ?? "unknown model"}`];
-  if (c.forecast_lead_days != null) bits.push(`${c.forecast_lead_days}-day lead`);
-  if (c.forecast_at) bits.push(`run ${fmtAge(c.forecast_at)}`);
-  if (c.observed_max_3d_c != null) bits.push(`observed max in 3 days ${c.observed_max_3d_c.toFixed(1)}C`);
-  if (c.forecast_suspect) {
-    bits.push("SUSPECT: more than 4C above anything observed in three days - usually a stale long-lead row. Run Actions -> Forecasts.");
-  }
-  return bits.join(" · ");
-}
 
 /** Amber past `hours` old, red past three times that. A timestamp the reader
  *  has to subtract in their head is a timestamp nobody reads. */
@@ -392,13 +379,7 @@ export default function ClustersPage() {
                     </td>
                     <td className="p-2 text-[11px]" style={{ color: REGION_COLOR[region] }}>{region}</td>
                     <td className="p-2 text-right font-mono">
-                      <span
-                        className={c.forecast_suspect ? "text-warn" : ""}
-                        title={forecastProvenance(c)}
-                      >
-                        {fmtTemp(c.forecast_max_c ?? c.running_max_c, unit)}
-                        {c.forecast_suspect && <span className="ml-1 text-[10px]">!</span>}
-                      </span>
+                      <ForecastValue city={c} unit={unit} />
                       {c.forecast_max_c !== null && c.forecast_lead_days != null && (
                         <div className="text-[9px] font-normal text-muted">
                           lead {c.forecast_lead_days}
@@ -465,7 +446,7 @@ function Detail({ c, onClose }: { c: CityStats; onClose: () => void }) {
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4 lg:grid-cols-6">
         <F label="Now" v={fmtTemp(c.now_c, unit)} />
         <F label="Max so far" v={fmtTemp(c.running_max_c, unit)} />
-        <F label="Forecast" v={fmtTemp(c.forecast_max_c, unit)} hint={c.forecast_model ? `model: ${c.forecast_model}` : undefined} />
+        <F label="Forecast" v={<ForecastValue city={c} unit={unit} showLead />} />
         <F label="Normal for the date" v={fmtTemp(c.normal_max_c, unit)} hint={`${c.baseline ?? "no"} baseline from ${c.baseline_days ?? 0} days`} />
         <F label="Volatility (1σ)" v={c.volatility_c === null ? "—" : `±${fmtTempDelta(c.volatility_c, unit).replace("+", "")}`}
            hint="Standard deviation of the daily maximum around this date. This is what decides how many bands a day could plausibly land in." />
@@ -483,7 +464,7 @@ function Detail({ c, onClose }: { c: CityStats; onClose: () => void }) {
   );
 }
 
-function F({ label, v, hint, wide }: { label: string; v: string; hint?: string; wide?: boolean }) {
+function F({ label, v, hint, wide }: { label: string; v: ReactNode; hint?: string; wide?: boolean }) {
   return (
     <div title={hint} className={wide ? "col-span-2" : undefined}>
       <div className="text-[10px] uppercase tracking-wide text-muted">{label}</div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import ForecastValue from "@/components/ForecastValue";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState, ErrorBox, InlineError, Loading } from "@/components/DataState";
@@ -411,9 +412,11 @@ export default function LiveWeatherPage() {
                   <div className="mt-1.5 grid grid-cols-3 gap-1 border-t border-border pt-1.5 font-mono text-[11px]">
                     <div>
                       <div className="text-[9px] uppercase tracking-wide text-muted">Forecast</div>
-                      <span className={fc ? "text-text" : "text-muted"}>
-                        {fc ? fmtTemp(fc.forecast_max_c, unit) : "—"}
-                      </span>
+                      {fc ? (
+                        <ForecastValue city={fc} unit={unit} />
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
                     </div>
                     <div>
                       <div className="text-[9px] uppercase tracking-wide text-muted">Max so far</div>

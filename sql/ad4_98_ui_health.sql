@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 107 of them - and for each MISSING one names the
+-- and function the app reads - 109 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -89,6 +89,8 @@ with expected(rel, owner, used_by) as (values
     ('v_edge_scaling', 'ad4_31_predictive.sql', '/predictive'),
     ('v_execution_budget', 'ad4_20_schedules.sql', '(ScheduleControl)'),
     ('v_execution_limits', 'ad4_36_execution_limits.sql', ''),
+    ('v_forecast_audit', 'ad4_43_forecast_audit.sql', ''),
+    ('v_forecast_candidates', 'ad4_43_forecast_audit.sql', ''),
     ('v_forecast_convergence', 'ad4_31_predictive.sql', '/predictive'),
     ('v_forecast_coverage', 'ad4_30_open_meteo.sql', ''),
     ('v_forecast_divergence', 'ad4_16_nws.sql', ''),
@@ -218,6 +220,8 @@ begin
     ('v_edge_scaling', 'ad4_31_predictive.sql', '/predictive'),
     ('v_execution_budget', 'ad4_20_schedules.sql', '(ScheduleControl)'),
     ('v_execution_limits', 'ad4_36_execution_limits.sql', ''),
+    ('v_forecast_audit', 'ad4_43_forecast_audit.sql', ''),
+    ('v_forecast_candidates', 'ad4_43_forecast_audit.sql', ''),
     ('v_forecast_convergence', 'ad4_31_predictive.sql', '/predictive'),
     ('v_forecast_coverage', 'ad4_30_open_meteo.sql', ''),
     ('v_forecast_divergence', 'ad4_16_nws.sql', ''),

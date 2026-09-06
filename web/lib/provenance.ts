@@ -644,6 +644,16 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_execution_limits": [
     "markets"
   ],
+  "v_forecast_audit": [
+    "cities",
+    "weather_observations",
+    "weather_forecasts"
+  ],
+  "v_forecast_candidates": [
+    "cities",
+    "weather_observations",
+    "weather_forecasts"
+  ],
   "v_forecast_convergence": [
     "fact_forecast_outcome",
     "weather_forecasts"
