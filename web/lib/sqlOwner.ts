@@ -97,6 +97,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_trade_timing": "ad4_33_control.sql",
   "v_weather_effects": "ad4_21_weather_features.sql",
   "v_workflow_runs": "ad4_14_workflows.sql",
+  "v_write_access": "ad4_38_grants.sql",
   "weather_events": "ad4_live_weather.sql",
   "weather_forecast_features": "ad4_24_nws_gridpoint.sql",
   "weather_forecasts": "ad4_00_preflight.sql",

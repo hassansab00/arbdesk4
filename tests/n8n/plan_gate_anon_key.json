@@ -2,7 +2,7 @@
  "seed": {
   "Config": {
    "supabase_url": "https://testproject.supabase.co",
-   "service_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlc3Rwcm9qZWN0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MSwiZXhwIjoyfQ.dGVzdC1zaWduYXR1cmUtbm90LWEtcmVhbC1rZXk"
+   "service_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlc3Rwcm9qZWN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjEsImV4cCI6Mn0.dGVzdC1zaWduYXR1cmUtbm90LWEtcmVhbC1rZXk"
   },
   "Load cities": [
    {
@@ -13,10 +13,8 @@
    }
   ],
   "Check schedule": {
-   "run": false,
-   "reason": "P1.2_nws_monitor ran 10 min ago; minimum interval is 120 min",
-   "minutes_since": 10,
-   "every_minutes": 120
+   "run": true,
+   "reason": "300 min since last run"
   }
  },
  "run": [

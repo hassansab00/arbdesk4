@@ -1,8 +1,8 @@
 {
  "seed": {
   "Config": {
-   "supabase_url": "https://x.supabase.co",
-   "service_key": "k",
+   "supabase_url": "https://testproject.supabase.co",
+   "service_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlc3Rwcm9qZWN0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MSwiZXhwIjoyfQ.dGVzdC1zaWduYXR1cmUtbm90LWEtcmVhbC1rZXk",
    "user_agent": "ArbDesk4",
    "alert_events": "Excessive Heat Warning, Heat Advisory, Extreme Heat Warning, Extreme Heat Watch, Excessive Heat Watch",
    "max_cities_per_run": "0"

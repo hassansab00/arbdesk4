@@ -1,634 +1,634 @@
 {
- "name": "AD4 - P4.1 Health Watchdog",
- "active": false,
- "settings": {
-  "executionOrder": "v1"
- },
- "nodes": [
-  {
-   "id": "trigger-schedule",
-   "name": "Schedule (every 6h)",
-   "type": "n8n-nodes-base.scheduleTrigger",
-   "typeVersion": 1.2,
-   "position": [
-    0,
-    0
-   ],
-   "parameters": {
-    "rule": {
-     "interval": [
-      {
-       "field": "cronExpression",
-       "expression": "0 */6 * * *"
+  "name": "AD4 - P4.1 Health Watchdog",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "trigger-schedule",
+      "name": "Schedule (every 6h)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */6 * * *"
+            }
+          ]
+        }
       }
-     ]
-    }
-   }
-  },
-  {
-   "id": "trigger-manual",
-   "name": "Manual Trigger",
-   "type": "n8n-nodes-base.manualTrigger",
-   "typeVersion": 1,
-   "position": [
-    0,
-    160
-   ],
-   "parameters": {}
-  },
-  {
-   "id": "config",
-   "name": "Config",
-   "type": "n8n-nodes-base.set",
-   "typeVersion": 3.4,
-   "position": [
-    260,
-    80
-   ],
-   "parameters": {
-    "assignments": {
-     "assignments": [
-      {
-       "id": "1",
-       "name": "supabase_url",
-       "type": "string",
-       "value": ""
-      },
-      {
-       "id": "2",
-       "name": "service_key",
-       "type": "string",
-       "value": ""
-      },
-      {
-       "id": "3",
-       "name": "alert_email",
-       "type": "string",
-       "value": ""
-      }
-     ]
-    }
-   }
-  },
-  {
-   "id": "check-book",
-   "name": "Check: latest book_snapshot",
-   "type": "n8n-nodes-base.httpRequest",
-   "typeVersion": 4.2,
-   "position": [
-    520,
-    80
-   ],
-   "alwaysOutputData": true,
-   "onError": "continueRegularOutput",
-   "parameters": {
-    "method": "GET",
-    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/book_snapshots?select=observed_at&order=observed_at.desc&limit=1",
-    "sendHeaders": true,
-    "headerParameters": {
-     "parameters": [
-      {
-       "name": "apikey",
-       "value": "={{ $('Config').first().json.service_key }}"
-      },
-      {
-       "name": "Authorization",
-       "value": "=Bearer {{ $('Config').first().json.service_key }}"
-      }
-     ]
-    }
-   }
-  },
-  {
-   "id": "check-forecast",
-   "name": "Check: latest forecast run",
-   "type": "n8n-nodes-base.httpRequest",
-   "typeVersion": 4.2,
-   "position": [
-    780,
-    80
-   ],
-   "alwaysOutputData": true,
-   "onError": "continueRegularOutput",
-   "parameters": {
-    "method": "GET",
-    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/weather_forecasts?select=run_at&order=run_at.desc&limit=1",
-    "sendHeaders": true,
-    "headerParameters": {
-     "parameters": [
-      {
-       "name": "apikey",
-       "value": "={{ $('Config').first().json.service_key }}"
-      },
-      {
-       "name": "Authorization",
-       "value": "=Bearer {{ $('Config').first().json.service_key }}"
-      }
-     ]
-    }
-   }
-  },
-  {
-   "id": "check-ingest",
-   "name": "Check: failed ingest jobs (24h)",
-   "type": "n8n-nodes-base.httpRequest",
-   "typeVersion": 4.2,
-   "position": [
-    1040,
-    80
-   ],
-   "alwaysOutputData": true,
-   "onError": "continueRegularOutput",
-   "parameters": {
-    "method": "GET",
-    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/ingest_log?select=job,status,logged_at&status=eq.error&order=logged_at.desc&limit=20",
-    "sendHeaders": true,
-    "headerParameters": {
-     "parameters": [
-      {
-       "name": "apikey",
-       "value": "={{ $('Config').first().json.service_key }}"
-      },
-      {
-       "name": "Authorization",
-       "value": "=Bearer {{ $('Config').first().json.service_key }}"
-      }
-     ]
-    }
-   }
-  },
-  {
-   "id": "check-anomalies",
-   "name": "Check: anomalies (24h)",
-   "type": "n8n-nodes-base.httpRequest",
-   "typeVersion": 4.2,
-   "position": [
-    1300,
-    80
-   ],
-   "alwaysOutputData": true,
-   "onError": "continueRegularOutput",
-   "parameters": {
-    "method": "GET",
-    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/anomalies?select=anomaly_id,kind,detected_at,severity,city_key&order=detected_at.desc&limit=20",
-    "sendHeaders": true,
-    "headerParameters": {
-     "parameters": [
-      {
-       "name": "apikey",
-       "value": "={{ $('Config').first().json.service_key }}"
-      },
-      {
-       "name": "Authorization",
-       "value": "=Bearer {{ $('Config').first().json.service_key }}"
-      }
-     ]
-    }
-   }
-  },
-  {
-   "id": "evaluate",
-   "name": "Evaluate Thresholds",
-   "type": "n8n-nodes-base.code",
-   "typeVersion": 2,
-   "position": [
-    1560,
-    80
-   ],
-   "notes": "Checks run sequentially (Config -> book -> forecast -> ingest -> anomalies -> here) rather than in parallel through a Merge node, specifically so this node can reliably read all four via $('NodeName').first().json without depending on a Merge node's exact combine semantics for this n8n version.",
-   "parameters": {
-    "jsCode": "// n8n turns a JSON array response into ONE ITEM PER ROW. So the rows of a\n// PostgREST query are $('Node').all().map(i => i.json) - NOT\n// $('Node').first().json, which returns only the first row's object.\n//\n// The previous version used .first().json everywhere and then indexed or\n// .reduce()'d it as if it were an array. The effect: \"stale_book\" and\n// \"stale_forecast\" fired on EVERY run regardless of freshness, failed ingest\n// jobs and anomalies were never reported at all, and the volume check threw\n// and reported itself as a failure. A watchdog that always cries wolf and\n// never sees the wolf is worse than no watchdog.\n//\n// alwaysOutputData means a query with no rows still yields one item with an\n// empty object, so empties are filtered out rather than counted as rows.\nconst rowsOf = (name) => $(name).all()\n  .map(i => i.json)\n  .filter(r => r && typeof r === 'object' && Object.keys(r).length > 0);\n\nconst now = Date.now();\nconst failures = [];\nconst context_notes = [];\nconst checks = {};\n\n// --- book freshness ---------------------------------------------------\nconst bookRows = rowsOf('Check: latest book_snapshot');\nconst bookRow = bookRows[0];\nif (bookRow?.observed_at) {\n  const ageMin = (now - new Date(bookRow.observed_at).getTime()) / 60000;\n  checks.book_age_min = Number(ageMin.toFixed(0));\n  if (ageMin > 60) failures.push(`stale_book: ${ageMin.toFixed(0)}min old`);\n} else {\n  failures.push('stale_book: book_snapshots returned no rows at all');\n}\n\n// --- forecast freshness -----------------------------------------------\nconst fcRows = rowsOf('Check: latest forecast run');\nconst fcRow = fcRows[0];\nif (fcRow?.run_at) {\n  const ageH = (now - new Date(fcRow.run_at).getTime()) / 3600000;\n  checks.forecast_age_h = Number(ageH.toFixed(1));\n  if (ageH > 12) failures.push(`stale_forecast: ${ageH.toFixed(1)}h old`);\n} else {\n  failures.push('stale_forecast: weather_forecasts returned no rows at all');\n}\n\n// --- failed ingest jobs in the last 24h -------------------------------\nconst errRows = rowsOf('Check: failed ingest jobs (24h)')\n  .filter(r => r.logged_at && (now - new Date(r.logged_at).getTime()) < 24 * 3600000);\nchecks.failed_jobs_24h = errRows.length;\nif (errRows.length) {\n  const jobs = [...new Set(errRows.map(r => r.job).filter(Boolean))];\n  failures.push(`${errRows.length} failed ingest job(s) in 24h: ${jobs.join(', ')}`);\n}\n\n// --- anomalies in the last 24h ----------------------------------------\nconst anomRows = rowsOf('Check: anomalies (24h)')\n  .filter(r => r.detected_at && (now - new Date(r.detected_at).getTime()) < 24 * 3600000);\nchecks.anomalies_24h = anomRows.length;\nif (anomRows.length) failures.push(`${anomRows.length} anomaly row(s) in 24h`);\n\n// n8n's own execution count cannot be read via Supabase - check it against\n// n8n's Insights page; not automated here (docs/n8n_workflows.md).\n\n// --- market volume ----------------------------------------------------\n// A desk with live books and zero traded volume is not a working desk:\n// either the trade ingest has stopped, or every market really has gone\n// quiet. Both need telling, and neither shows up above - book_snapshots\n// keeps updating either way.\nconst volRows = rowsOf('Check: traded volume (24h)');\nconst totalVol = volRows.reduce((s, r) => s + Number(r.volume_usd || 0), 0);\nconst totalTrades = volRows.reduce((s, r) => s + Number(r.n_trades || 0), 0);\nchecks.volume_usd_24h = Number(totalVol.toFixed(0));\nchecks.trades_24h = totalTrades;\nchecks.cities_with_volume = volRows.length;\n\nif (volRows.length === 0) {\n  failures.push('no_market_volume: v_city_volume returned no rows - trades_observed is empty or the trade ingest has stopped');\n} else if (totalVol === 0) {\n  failures.push('no_market_volume: $0 traded across all cities in the last 24h');\n}\n// Reported either way, so a clean run still tells you the size of the\n// market you are trading into.\ncontext_notes.push(\n  `market volume 24h: $${totalVol.toFixed(0)} across ${volRows.length} cities, ${totalTrades} trades`);\n\nreturn [{ json: {\n  has_failures: failures.length > 0,\n  failures, context_notes, checks,\n  checked_at: new Date().toISOString(),\n} }];"
-   }
-  },
-  {
-   "id": "if-failures",
-   "name": "Any failures?",
-   "type": "n8n-nodes-base.if",
-   "typeVersion": 2.2,
-   "position": [
-    1820,
-    80
-   ],
-   "parameters": {
-    "conditions": {
-     "options": {
-      "caseSensitive": true,
-      "leftValue": "",
-      "typeValidation": "strict"
-     },
-     "conditions": [
-      {
-       "leftValue": "={{ $json.has_failures }}",
-       "rightValue": true,
-       "operator": {
-        "type": "boolean",
-        "operation": "true"
-       }
-      }
-     ],
-     "combinator": "and"
-    }
-   }
-  },
-  {
-   "id": "send-email",
-   "name": "Send Email",
-   "type": "n8n-nodes-base.emailSend",
-   "typeVersion": 2.1,
-   "position": [
-    2080,
-    0
-   ],
-   "parameters": {
-    "fromEmail": "ad4-watchdog@example.com",
-    "toEmail": "={{ $('Config').first().json.alert_email }}",
-    "subject": "=AD4 Health Watchdog: {{ $json.failures.length }} check(s) failing",
-    "emailFormat": "text",
-    "text": "={{ $json.failures.join('\\n') }}\n\n---\n{{ ($json.context_notes || []).join('\\n') }}"
-   }
-  },
-  {
-   "id": "summary",
-   "name": "Summary",
-   "type": "n8n-nodes-base.code",
-   "typeVersion": 2,
-   "position": [
-    2080,
-    200
-   ],
-   "parameters": {
-    "jsCode": "const r = $('Evaluate Thresholds').first().json;\nconst failures = r.failures || [];\nconst summary = r.has_failures\n  ? `AD4 P4.1: ${failures.length} check(s) FAILED - email sent.`\n  : 'AD4 P4.1: all clear.';\nreturn [{ json: {\n  summary,\n  status: r.has_failures ? 'error' : 'ok',\n  rows: failures.length,\n  log: {\n    p_job: 'P4.1_health_watchdog',\n    p_status: r.has_failures ? 'error' : 'ok',\n    p_rows: failures.length,\n    p_detail: {\n      summary,\n      failures,\n      checks: r.checks ?? null,\n      trigger: $execution.mode,\n      execution_id: $execution.id,\n    },\n  },\n} }];"
-   }
-  },
-  {
-   "parameters": {
-    "method": "GET",
-    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/v_city_volume?select=city_key,volume_usd,n_trades",
-    "sendHeaders": true,
-    "headerParameters": {
-     "parameters": [
-      {
-       "name": "apikey",
-       "value": "={{ $('Config').first().json.service_key }}"
-      },
-      {
-       "name": "Authorization",
-       "value": "=Bearer {{ $('Config').first().json.service_key }}"
-      }
-     ]
-    }
-   },
-   "type": "n8n-nodes-base.httpRequest",
-   "typeVersion": 4.2,
-   "position": [
-    1300,
-    260
-   ],
-   "id": "check-traded-volume-(24h)",
-   "name": "Check: traded volume (24h)"
-  },
-  {
-   "id": "trigger-webhook",
-   "name": "Webhook Trigger",
-   "type": "n8n-nodes-base.webhook",
-   "typeVersion": 2,
-   "position": [
-    0,
-    340
-   ],
-   "parameters": {
-    "httpMethod": "POST",
-    "path": "ad4-health-watchdog",
-    "responseMode": "responseNode",
-    "options": {
-     "allowedOrigins": "*"
-    }
-   },
-   "webhookId": "ad4-health-watchdog"
-  },
-  {
-   "id": "log-run",
-   "name": "Log run",
-   "type": "n8n-nodes-base.httpRequest",
-   "typeVersion": 4.2,
-   "position": [
-    2340,
-    200
-   ],
-   "parameters": {
-    "method": "POST",
-    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
-    "sendHeaders": true,
-    "headerParameters": {
-     "parameters": [
-      {
-       "name": "apikey",
-       "value": "={{ $('Config').first().json.service_key }}"
-      },
-      {
-       "name": "Authorization",
-       "value": "=Bearer {{ $('Config').first().json.service_key }}"
-      },
-      {
-       "name": "Content-Type",
-       "value": "application/json"
-      },
-      {
-       "name": "Accept",
-       "value": "application/json"
-      }
-     ]
     },
-    "sendBody": true,
-    "specifyBody": "json",
-    "jsonBody": "={{ JSON.stringify($json.log) }}"
-   },
-   "alwaysOutputData": true,
-   "onError": "continueRegularOutput"
-  },
-  {
-   "id": "respond",
-   "name": "Respond",
-   "type": "n8n-nodes-base.respondToWebhook",
-   "typeVersion": 1,
-   "position": [
-    2600,
-    200
-   ],
-   "parameters": {
-    "respondWith": "json",
-    "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
-   }
-  },
-  {
-   "id": "sched-check",
-   "name": "Check schedule",
-   "type": "n8n-nodes-base.httpRequest",
-   "typeVersion": 4.2,
-   "position": [
-    450,
-    -50
-   ],
-   "alwaysOutputData": true,
-   "onError": "continueRegularOutput",
-   "parameters": {
-    "method": "POST",
-    "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/should_run",
-    "sendHeaders": true,
-    "headerParameters": {
-     "parameters": [
-      {
-       "name": "apikey",
-       "value": "={{ $('Config').first().json.service_key }}"
-      },
-      {
-       "name": "Authorization",
-       "value": "=Bearer {{ $('Config').first().json.service_key }}"
-      },
-      {
-       "name": "Content-Type",
-       "value": "application/json"
-      },
-      {
-       "name": "Accept",
-       "value": "application/json"
-      }
-     ]
+    {
+      "id": "trigger-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        160
+      ],
+      "parameters": {}
     },
-    "sendBody": true,
-    "specifyBody": "json",
-    "jsonBody": "={{ JSON.stringify({ p_job: \"P4.1_health_watchdog\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
-    "options": {
-     "timeout": 10000,
-     "response": {
-      "response": {
-       "neverError": true
+    {
+      "id": "config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        260,
+        80
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "supabase_url",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "2",
+              "name": "service_key",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "3",
+              "name": "alert_email",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
       }
-     }
+    },
+    {
+      "id": "check-book",
+      "name": "Check: latest book_snapshot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        80
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/book_snapshots?select=observed_at&order=observed_at.desc&limit=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "check-forecast",
+      "name": "Check: latest forecast run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        80
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/weather_forecasts?select=run_at&order=run_at.desc&limit=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "check-ingest",
+      "name": "Check: failed ingest jobs (24h)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        80
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/ingest_log?select=job,status,logged_at&status=eq.error&order=logged_at.desc&limit=20",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "check-anomalies",
+      "name": "Check: anomalies (24h)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        80
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/anomalies?select=anomaly_id,kind,detected_at,severity,city_key&order=detected_at.desc&limit=20",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "evaluate",
+      "name": "Evaluate Thresholds",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        80
+      ],
+      "notes": "Checks run sequentially (Config -> book -> forecast -> ingest -> anomalies -> here) rather than in parallel through a Merge node, specifically so this node can reliably read all four via $('NodeName').first().json without depending on a Merge node's exact combine semantics for this n8n version.",
+      "parameters": {
+        "jsCode": "// n8n turns a JSON array response into ONE ITEM PER ROW. So the rows of a\n// PostgREST query are $('Node').all().map(i => i.json) - NOT\n// $('Node').first().json, which returns only the first row's object.\n//\n// The previous version used .first().json everywhere and then indexed or\n// .reduce()'d it as if it were an array. The effect: \"stale_book\" and\n// \"stale_forecast\" fired on EVERY run regardless of freshness, failed ingest\n// jobs and anomalies were never reported at all, and the volume check threw\n// and reported itself as a failure. A watchdog that always cries wolf and\n// never sees the wolf is worse than no watchdog.\n//\n// alwaysOutputData means a query with no rows still yields one item with an\n// empty object, so empties are filtered out rather than counted as rows.\nconst rowsOf = (name) => $(name).all()\n  .map(i => i.json)\n  .filter(r => r && typeof r === 'object' && Object.keys(r).length > 0);\n\nconst now = Date.now();\nconst failures = [];\nconst context_notes = [];\nconst checks = {};\n\n// --- book freshness ---------------------------------------------------\nconst bookRows = rowsOf('Check: latest book_snapshot');\nconst bookRow = bookRows[0];\nif (bookRow?.observed_at) {\n  const ageMin = (now - new Date(bookRow.observed_at).getTime()) / 60000;\n  checks.book_age_min = Number(ageMin.toFixed(0));\n  if (ageMin > 60) failures.push(`stale_book: ${ageMin.toFixed(0)}min old`);\n} else {\n  failures.push('stale_book: book_snapshots returned no rows at all');\n}\n\n// --- forecast freshness -----------------------------------------------\nconst fcRows = rowsOf('Check: latest forecast run');\nconst fcRow = fcRows[0];\nif (fcRow?.run_at) {\n  const ageH = (now - new Date(fcRow.run_at).getTime()) / 3600000;\n  checks.forecast_age_h = Number(ageH.toFixed(1));\n  if (ageH > 12) failures.push(`stale_forecast: ${ageH.toFixed(1)}h old`);\n} else {\n  failures.push('stale_forecast: weather_forecasts returned no rows at all');\n}\n\n// --- failed ingest jobs in the last 24h -------------------------------\nconst errRows = rowsOf('Check: failed ingest jobs (24h)')\n  .filter(r => r.logged_at && (now - new Date(r.logged_at).getTime()) < 24 * 3600000);\nchecks.failed_jobs_24h = errRows.length;\nif (errRows.length) {\n  const jobs = [...new Set(errRows.map(r => r.job).filter(Boolean))];\n  failures.push(`${errRows.length} failed ingest job(s) in 24h: ${jobs.join(', ')}`);\n}\n\n// --- anomalies in the last 24h ----------------------------------------\nconst anomRows = rowsOf('Check: anomalies (24h)')\n  .filter(r => r.detected_at && (now - new Date(r.detected_at).getTime()) < 24 * 3600000);\nchecks.anomalies_24h = anomRows.length;\nif (anomRows.length) failures.push(`${anomRows.length} anomaly row(s) in 24h`);\n\n// n8n's own execution count cannot be read via Supabase - check it against\n// n8n's Insights page; not automated here (docs/n8n_workflows.md).\n\n// --- market volume ----------------------------------------------------\n// A desk with live books and zero traded volume is not a working desk:\n// either the trade ingest has stopped, or every market really has gone\n// quiet. Both need telling, and neither shows up above - book_snapshots\n// keeps updating either way.\nconst volRows = rowsOf('Check: traded volume (24h)');\nconst totalVol = volRows.reduce((s, r) => s + Number(r.volume_usd || 0), 0);\nconst totalTrades = volRows.reduce((s, r) => s + Number(r.n_trades || 0), 0);\nchecks.volume_usd_24h = Number(totalVol.toFixed(0));\nchecks.trades_24h = totalTrades;\nchecks.cities_with_volume = volRows.length;\n\nif (volRows.length === 0) {\n  failures.push('no_market_volume: v_city_volume returned no rows - trades_observed is empty or the trade ingest has stopped');\n} else if (totalVol === 0) {\n  failures.push('no_market_volume: $0 traded across all cities in the last 24h');\n}\n// Reported either way, so a clean run still tells you the size of the\n// market you are trading into.\ncontext_notes.push(\n  `market volume 24h: $${totalVol.toFixed(0)} across ${volRows.length} cities, ${totalTrades} trades`);\n\nreturn [{ json: {\n  has_failures: failures.length > 0,\n  failures, context_notes, checks,\n  checked_at: new Date().toISOString(),\n} }];"
+      }
+    },
+    {
+      "id": "if-failures",
+      "name": "Any failures?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1820,
+        80
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.has_failures }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "send-email",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2080,
+        0
+      ],
+      "parameters": {
+        "fromEmail": "ad4-watchdog@example.com",
+        "toEmail": "={{ $('Config').first().json.alert_email }}",
+        "subject": "=AD4 Health Watchdog: {{ $json.failures.length }} check(s) failing",
+        "emailFormat": "text",
+        "text": "={{ $json.failures.join('\\n') }}\n\n---\n{{ ($json.context_notes || []).join('\\n') }}"
+      }
+    },
+    {
+      "id": "summary",
+      "name": "Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        200
+      ],
+      "parameters": {
+        "jsCode": "const r = $('Evaluate Thresholds').first().json;\nconst failures = r.failures || [];\nconst summary = r.has_failures\n  ? `AD4 P4.1: ${failures.length} check(s) FAILED - email sent.`\n  : 'AD4 P4.1: all clear.';\nreturn [{ json: {\n  summary,\n  status: r.has_failures ? 'error' : 'ok',\n  rows: failures.length,\n  log: {\n    p_job: 'P4.1_health_watchdog',\n    p_status: r.has_failures ? 'error' : 'ok',\n    p_rows: failures.length,\n    p_detail: {\n      summary,\n      failures,\n      checks: r.checks ?? null,\n      trigger: $execution.mode,\n      execution_id: $execution.id,\n    },\n  },\n} }];"
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/v_city_volume?select=city_key,volume_usd,n_trades",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        260
+      ],
+      "id": "check-traded-volume-(24h)",
+      "name": "Check: traded volume (24h)"
+    },
+    {
+      "id": "trigger-webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        340
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ad4-health-watchdog",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "ad4-health-watchdog"
+    },
+    {
+      "id": "log-run",
+      "name": "Log run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2340,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.log) }}"
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2600,
+        200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
+      }
+    },
+    {
+      "id": "sched-check",
+      "name": "Check schedule",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        450,
+        -50
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/should_run",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_job: \"P4.1_health_watchdog\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "sched-gate",
+      "name": "Run now?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        -50
+      ],
+      "parameters": {
+        "jsCode": "// AD4-KEY-CHECK\n// IS THIS THE SERVICE KEY, OR THE ANON KEY?\n//\n// Every request below goes through PostgREST as whatever role is baked into\n// the key. The anon key READS everything and is refused on every WRITE with\n// `permission denied for table <x> (42501)` - so a run made with it looks\n// completely healthy right up to the point where nothing was saved. That\n// exact confusion cost a full day, so it is settled here, before the first\n// request, instead of being inferred from an error four nodes deep.\n//\n// Nothing here prints, logs or returns the key. It reads one claim out of it.\n{\n  const cfg = $('Config').first().json ?? {};\n  const key = String(cfg.service_key ?? '').trim();\n  const url = String(cfg.supabase_url ?? '').trim();\n\n  if (!key) {\n    throw new Error(\n      'Config -> service_key is empty. Paste the SERVICE ROLE key: Supabase -> Project ' +\n      'Settings -> API keys -> service_role (a long token starting eyJ), or the newer ' +\n      'format starting sb_secret_. That key must NEVER appear in Vercel or in any ' +\n      'variable whose name starts NEXT_PUBLIC_ - those are compiled into the browser bundle.');\n  }\n  if (!/^https:\\/\\//.test(url) || /\\/rest\\b/.test(url)) {\n    throw new Error(\n      'Config -> supabase_url must be exactly https://<project-ref>.supabase.co - no ' +\n      'trailing slash, no /rest/v1 (every node below appends that itself). ' +\n      'The value currently there does not look like that.');\n  }\n\n  // Legacy Supabase keys are JWTs and carry {\"role\":\"anon\"|\"service_role\"}.\n  // The current format says it in the prefix. Decode with a local base64\n  // reader rather than Buffer/atob, neither of which is guaranteed to exist\n  // in every n8n Code-node runtime.\n  const b64 = (s) => {\n    const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';\n    let out = '', bits = 0, acc = 0;\n    for (const ch of s.replace(/-/g, '+').replace(/_/g, '/')) {\n      const v = A.indexOf(ch);\n      if (v < 0) continue;\n      acc = (acc << 6) | v; bits += 6;\n      if (bits >= 8) { bits -= 8; out += String.fromCharCode((acc >> bits) & 0xff); }\n    }\n    return out;\n  };\n\n  let role = null;\n  if (key.startsWith('sb_secret_')) role = 'service_role';\n  else if (key.startsWith('sb_publishable_')) role = 'anon';\n  else if (key.startsWith('eyJ')) {\n    const parts = key.split('.');\n    if (parts.length === 3) {\n      const m = /\"role\"\\s*:\\s*\"([a-z_]+)\"/.exec(b64(parts[1]));\n      role = m ? m[1] : null;\n    }\n  }\n\n  if (role && role !== 'service_role') {\n    throw new Error(\n      `Config -> service_key holds the \"${role}\" key, not the service key. anon and ` +\n      `publishable keys are granted SELECT and nothing else, so this run would read ` +\n      `every table, be refused (42501) on every write, and finish reporting success ` +\n      `having saved nothing. Fix it in Supabase -> Project Settings -> API keys -> ` +\n      `service_role. Nothing was fetched and nothing was written.`);\n  }\n  if (role === null) {\n    // An unrecognised format is not necessarily wrong - say so once and let the\n    // write guard in the Summary node have the final word.\n    console.log('service_key is in a format this check does not recognise; the write guard will confirm it.');\n  }\n}\n\n// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A PERMISSION ERROR IS NOT AN UNAVAILABLE GATE. 42501 here means the key\n// cannot even call should_run, and a key that cannot do that cannot write\n// either - so stop, rather than failing open into a run that writes nothing.\n//\n// The key-format check above has already ruled out the anon key, and ad4_20\n// grants should_run to anon ON PURPOSE (so the Workflows page can preview a\n// schedule change before saving it). So a refusal HERE is the database side:\n// the grants are missing, which means every write below would be refused too.\nif (decision && (String(decision.code) === '42501' ||\n                 /permission denied/i.test(String(decision.message || '')))) {\n  throw new Error(\n    `Supabase refused should_run: ${decision.message} (${decision.code}). The key format ` +\n    `checked out above, so this is the DATABASE side: service_role has not been granted ` +\n    `what it needs, and every write below would be refused the same way. Run ` +\n    `sql/ad4_38_grants.sql in the Supabase SQL editor - it grants the write path back and ` +\n    `then prints one row per ingest table saying whether the service key can write it. ` +\n    `Nothing was fetched and nothing was written.`);\n}\n\n// A PERMISSION ERROR IS NOT AN UNAVAILABLE GATE. 42501 here means the key\n// cannot call should_run, and a key that cannot do that cannot write either -\n// so stop, rather than failing open into a run that writes nothing.\n//\n// THIS IS NOT THE MAIN DEFENCE AND MUST NOT BE MISTAKEN FOR IT. sql/ad4_20\n// grants should_run to anon ON PURPOSE, so the Workflows page can preview a\n// schedule change before saving it. On a database with that grant - which is\n// every database that ran ad4_20 - an anon key sails straight through this\n// check and only fails at the first WRITE. The write guard in the Summary\n// node is what actually catches it; run section 6 of sql/ad4_diagnose.sql to\n// see which key can write what before spending a run finding out.\nif (decision && (String(decision.code) === '42501' ||\n                 /permission denied/i.test(String(decision.message || '')))) {\n  throw new Error(\n    `Supabase refused should_run: ${decision.message} (${decision.code}). This is the ANON ` +\n    `key in the Config node, not the service key - anon is granted SELECT and nothing else. ` +\n    `Every write in this workflow would be refused the same way. Open Config -> service_key ` +\n    `and paste the SERVICE ROLE key (Supabase -> Project Settings -> API -> service_role, or ` +\n    `a key beginning sb_secret_). NEVER put that key anywhere starting NEXT_PUBLIC_.`);\n}\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
+      }
+    },
+    {
+      "id": "sched-stop",
+      "name": "Stop if skipped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        -50
+      ],
+      "parameters": {
+        "jsCode": "// Returning [] stops the workflow here. Everything below this node\n// is skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
+      }
     }
-   }
-  },
-  {
-   "id": "sched-gate",
-   "name": "Run now?",
-   "type": "n8n-nodes-base.code",
-   "typeVersion": 2,
-   "position": [
-    640,
-    -50
-   ],
-   "parameters": {
-    "jsCode": "// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A PERMISSION ERROR IS NOT AN UNAVAILABLE GATE. 42501 here means the key\n// cannot call should_run, and a key that cannot do that cannot write either -\n// so stop, rather than failing open into a run that writes nothing.\n//\n// THIS IS NOT THE MAIN DEFENCE AND MUST NOT BE MISTAKEN FOR IT. sql/ad4_20\n// grants should_run to anon ON PURPOSE, so the Workflows page can preview a\n// schedule change before saving it. On a database with that grant - which is\n// every database that ran ad4_20 - an anon key sails straight through this\n// check and only fails at the first WRITE. The write guard in the Summary\n// node is what actually catches it; run section 6 of sql/ad4_diagnose.sql to\n// see which key can write what before spending a run finding out.\nif (decision && (String(decision.code) === '42501' ||\n                 /permission denied/i.test(String(decision.message || '')))) {\n  throw new Error(\n    `Supabase refused should_run: ${decision.message} (${decision.code}). This is the ANON ` +\n    `key in the Config node, not the service key - anon is granted SELECT and nothing else. ` +\n    `Every write in this workflow would be refused the same way. Open Config -> service_key ` +\n    `and paste the SERVICE ROLE key (Supabase -> Project Settings -> API -> service_role, or ` +\n    `a key beginning sb_secret_). NEVER put that key anywhere starting NEXT_PUBLIC_.`);\n}\n\n// A PERMISSION ERROR IS NOT AN UNAVAILABLE GATE. 42501 here means the key\n// cannot call should_run, and a key that cannot do that cannot write either -\n// so stop, rather than failing open into a run that writes nothing.\n//\n// THIS IS NOT THE MAIN DEFENCE AND MUST NOT BE MISTAKEN FOR IT. sql/ad4_20\n// grants should_run to anon ON PURPOSE, so the Workflows page can preview a\n// schedule change before saving it. On a database with that grant - which is\n// every database that ran ad4_20 - an anon key sails straight through this\n// check and only fails at the first WRITE. The write guard in the Summary\n// node is what actually catches it; run section 6 of sql/ad4_diagnose.sql to\n// see which key can write what before spending a run finding out.\nif (decision && (String(decision.code) === '42501' ||\n                 /permission denied/i.test(String(decision.message || '')))) {\n  throw new Error(\n    `Supabase refused should_run: ${decision.message} (${decision.code}). This is the ANON ` +\n    `key in the Config node, not the service key - anon is granted SELECT and nothing else. ` +\n    `Every write in this workflow would be refused the same way. Open Config -> service_key ` +\n    `and paste the SERVICE ROLE key (Supabase -> Project Settings -> API -> service_role, or ` +\n    `a key beginning sb_secret_). NEVER put that key anywhere starting NEXT_PUBLIC_.`);\n}\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
-   }
-  },
-  {
-   "id": "sched-stop",
-   "name": "Stop if skipped",
-   "type": "n8n-nodes-base.code",
-   "typeVersion": 2,
-   "position": [
-    640,
-    -50
-   ],
-   "parameters": {
-    "jsCode": "// Returning [] stops the workflow here. Everything below this node\n// is skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
-   }
+  ],
+  "connections": {
+    "Schedule (every 6h)": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Check schedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: latest book_snapshot": {
+      "main": [
+        [
+          {
+            "node": "Check: latest forecast run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: latest forecast run": {
+      "main": [
+        [
+          {
+            "node": "Check: failed ingest jobs (24h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: failed ingest jobs (24h)": {
+      "main": [
+        [
+          {
+            "node": "Check: anomalies (24h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: anomalies (24h)": {
+      "main": [
+        [
+          {
+            "node": "Check: traded volume (24h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Thresholds": {
+      "main": [
+        [
+          {
+            "node": "Any failures?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any failures?": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: traded volume (24h)": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Thresholds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary": {
+      "main": [
+        [
+          {
+            "node": "Log run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log run": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check schedule": {
+      "main": [
+        [
+          {
+            "node": "Run now?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now?": {
+      "main": [
+        [
+          {
+            "node": "Stop if skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stop if skipped": {
+      "main": [
+        [
+          {
+            "node": "Check: latest book_snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   }
- ],
- "connections": {
-  "Schedule (every 6h)": {
-   "main": [
-    [
-     {
-      "node": "Config",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Manual Trigger": {
-   "main": [
-    [
-     {
-      "node": "Config",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Config": {
-   "main": [
-    [
-     {
-      "node": "Check schedule",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Check: latest book_snapshot": {
-   "main": [
-    [
-     {
-      "node": "Check: latest forecast run",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Check: latest forecast run": {
-   "main": [
-    [
-     {
-      "node": "Check: failed ingest jobs (24h)",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Check: failed ingest jobs (24h)": {
-   "main": [
-    [
-     {
-      "node": "Check: anomalies (24h)",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Check: anomalies (24h)": {
-   "main": [
-    [
-     {
-      "node": "Check: traded volume (24h)",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Evaluate Thresholds": {
-   "main": [
-    [
-     {
-      "node": "Any failures?",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Any failures?": {
-   "main": [
-    [
-     {
-      "node": "Send Email",
-      "type": "main",
-      "index": 0
-     }
-    ],
-    [
-     {
-      "node": "Summary",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Send Email": {
-   "main": [
-    [
-     {
-      "node": "Summary",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Check: traded volume (24h)": {
-   "main": [
-    [
-     {
-      "node": "Evaluate Thresholds",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Webhook Trigger": {
-   "main": [
-    [
-     {
-      "node": "Config",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Summary": {
-   "main": [
-    [
-     {
-      "node": "Log run",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Log run": {
-   "main": [
-    [
-     {
-      "node": "Respond",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Check schedule": {
-   "main": [
-    [
-     {
-      "node": "Run now?",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Run now?": {
-   "main": [
-    [
-     {
-      "node": "Stop if skipped",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Stop if skipped": {
-   "main": [
-    [
-     {
-      "node": "Check: latest book_snapshot",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  }
- }
 }

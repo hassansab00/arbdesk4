@@ -634,7 +634,12 @@ def test_the_summary_refuses_to_report_success_on_a_refused_write(workflow, node
         assert json.dumps(name) in code, f"{workflow} does not check {name}"
 
 
-def test_a_refused_write_names_the_anon_key():
+def test_a_refused_write_sends_you_to_the_grants_not_the_key():
+    """A 42501 at a write used to be reported as "this is the anon key". It is
+    not - the key's role is now read out of the key itself at "Run now?", so by
+    the time a write is refused the key has already been cleared and the cause
+    is the DATABASE: service_role has no INSERT. Naming the wrong half of that
+    cost a day, so the message points at sql/ad4_38_grants.sql instead."""
     def m(plan):
         plan["seed"]["Write observations"] = [{
             "code": "42501", "details": None, "hint": None,
@@ -642,8 +647,20 @@ def test_a_refused_write_names_the_anon_key():
     r = run_with("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json", m)
     assert r["ok"] is False and r["node"] == "Summary", r
     first = r["error"].splitlines()[0]
-    assert "ANON key" in first and "service_role" in first, first
+    assert "ad4_38_grants.sql" in first, first
+    assert "service_role has no INSERT" in first, first
     assert "Nothing was written" in first, first
+
+
+def test_a_missing_table_is_not_reported_as_a_permission_problem():
+    def m(plan):
+        plan["seed"]["Write observations"] = [{
+            "code": "42P01", "details": None, "hint": None,
+            "message": 'relation "public.weather_observations" does not exist'}]
+    r = run_with("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json", m)
+    assert r["ok"] is False and r["node"] == "Summary", r
+    assert "no such table" in r["error"], r["error"]
+    assert "ad4_98_ui_health.sql" in r["error"], r["error"]
 
 
 def test_a_clean_run_is_not_flagged():
@@ -659,7 +676,8 @@ def test_the_gate_stops_on_a_permission_error_rather_than_failing_open():
     is what let a whole run look healthy while writing nothing."""
     r = run("P1.2_nws_monitor.template.json", "plan_gate_denied.json")
     assert r["ok"] is False and r["node"] == "Run now?", r
-    assert "ANON key" in r["error"] and "service_role" in r["error"]
+    assert "ad4_38_grants.sql" in r["error"], r["error"]
+    assert "service_role" in r["error"], r["error"]
 
 
 @pytest.mark.parametrize("workflow", sorted(
@@ -890,10 +908,14 @@ def test_a_missing_endpoint_still_stops_before_any_request(workflow):
     assert after_cfg == ["Check schedule"], workflow
 
 
-def test_the_gate_does_not_claim_to_catch_what_it_cannot():
-    """sql/ad4_20 grants should_run to anon on purpose, so an anon key sails
-    through the gate and only fails at the first write. Saying otherwise sends
-    the reader after the wrong thing."""
+def test_every_gate_reads_the_role_out_of_the_key_before_the_first_request():
+    """The gate used to be honest that it could not catch an anon key: ad4_20
+    grants should_run to anon on purpose, so an anon key sailed through and
+    only failed at the first write, several nodes and one full fetch later.
+
+    It no longer has to guess. A Supabase key STATES its role - in the prefix
+    for sb_secret_/sb_publishable_, in the JWT payload for the legacy format -
+    so the gate reads it and stops before any request at all."""
     import glob
 
     for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
@@ -901,7 +923,41 @@ def test_the_gate_does_not_claim_to_catch_what_it_cannot():
         if not gate:
             continue
         code = gate[0]["parameters"]["jsCode"]
-        assert "THIS IS NOT THE MAIN DEFENCE" in code, os.path.basename(path)
+        name = os.path.basename(path)
+        assert "AD4-KEY-CHECK" in code, name
+        assert "sb_publishable_" in code and "sb_secret_" in code, name
+        assert '"role"' in code, f"{name} does not read the JWT role claim"
+        # and it must not print the key it is inspecting
+        assert "console.log(key" not in code and "json: { key" not in code, name
+
+
+def test_the_anon_key_is_refused_before_anything_is_fetched():
+    r = run("P1.2_nws_monitor.template.json", "plan_gate_anon_key.json")
+    assert r["ok"] is False and r["node"] == "Run now?", r
+    assert 'holds the "anon" key' in r["error"], r["error"]
+    assert "Nothing was fetched and nothing was written" in r["error"], r["error"]
+
+
+def test_the_service_key_is_let_through():
+    """The check must not be so eager that a correct key cannot run."""
+    r = run("P1.2_nws_monitor.template.json", "plan_gate_run.json")
+    assert r["ok"], r
+
+
+def test_the_key_check_never_reaches_for_a_runtime_global_it_may_not_have():
+    """Buffer and atob are not guaranteed in every n8n Code-node runtime, and a
+    base64 decode that throws would turn a correct key into a failed run."""
+    import glob
+
+    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
+        gate = [n for n in json.load(open(path))["nodes"] if n["name"] == "Run now?"]
+        if not gate:
+            continue
+        block = gate[0]["parameters"]["jsCode"].split("// Ask the database")[0]
+        # comments may name them; the CODE must not call them
+        code = "\n".join(l for l in block.splitlines() if not l.strip().startswith("//"))
+        assert "Buffer" not in code, os.path.basename(path)
+        assert "atob" not in code, os.path.basename(path)
 
 
 def test_the_diagnostic_reports_who_can_write():

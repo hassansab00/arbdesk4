@@ -50,6 +50,12 @@ ad4_34_trade_plan.sql
 ad4_35_databank_inventory.sql
 ad4_36_execution_limits.sql
 ad4_37_peak_hour.sql
+ad4_38_grants.sql
+
+# ad4_38 grants the write path to service_role and prints one row per ingest
+# table saying whether the service key can write it. It is last on purpose -
+# every table that exists by then is covered - and it is safe to re-run alone
+# the moment an n8n workflow reports `permission denied ... (42501)`.
 
 # ---- read-only, run any time ----------------------------------------------
 # Not part of the install: these inspect a database rather than change one.

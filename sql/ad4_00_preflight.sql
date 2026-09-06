@@ -1007,6 +1007,50 @@ begin
      }'::jsonb)
   on conflict (key) do nothing;
 
+  -- ==========================================================================
+  -- 8. WRITE ACCESS. Every table above was just created by whoever is running
+  --    this file, and a freshly created table is writable by NOBODY else -
+  --    including service_role, which is the key every n8n workflow and every
+  --    GitHub Action holds. The grants used to live only in
+  --    sql/ad4_13_reconcile.sql, so a database built from a SUBSET of these
+  --    files ended up with tables the collectors could read and not write, and
+  --    n8n reported success having saved nothing: `permission denied for table
+  --    markets (42501)` at the last node in the chain.
+  --
+  --    Granting here means the write path works the moment the tables exist,
+  --    whatever else does or does not get run. sql/ad4_38_grants.sql does the
+  --    same thing on demand, with a report; ad4_13 still does it too. All
+  --    three are idempotent and agree.
+  -- ==========================================================================
+    if exists (select 1 from pg_roles where rolname = 'service_role') then
+      begin
+        execute 'grant usage on schema public to service_role';
+        execute 'grant all on all tables in schema public to service_role';
+        execute 'grant all on all sequences in schema public to service_role';
+        execute 'grant execute on all functions in schema public to service_role';
+        execute 'alter default privileges in schema public grant all on tables to service_role';
+        execute 'alter default privileges in schema public grant all on sequences to service_role';
+      exception when others then
+        raise notice 'preflight: could not grant service_role (%). Run sql/ad4_38_grants.sql as the table owner.', sqlerrm;
+      end;
+    end if;
+    -- The browser reads and does not write. Stated here as well as in ad4_13
+    -- so the boundary is closed on a partial install too, not just the door
+    -- opened for the collectors.
+    declare r text;
+    begin
+      foreach r in array array['anon', 'authenticated'] loop
+        if not exists (select 1 from pg_roles where rolname = r) then continue; end if;
+        begin
+          execute format('grant usage on schema public to %I', r);
+          execute format('grant select on all tables in schema public to %I', r);
+          execute format('revoke insert, update, delete, truncate on all tables in schema public from %I', r);
+        exception when others then
+          raise notice 'preflight: could not set %-level grants (%)', r, sqlerrm;
+        end;
+      end loop;
+    end;
+
   raise notice '-----------------------------------------------------';
   raise notice 'Next: run ad4_phase1_tables.sql, then sql/ad4_phase2.sql, then the rest in README order.';
 end

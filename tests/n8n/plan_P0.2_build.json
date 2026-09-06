@@ -1,35 +1,35 @@
 {
-  "seed": {
-    "Config": {
-      "supabase_url": "u",
-      "service_key": "k",
-      "slug_template": "highest-temperature-in-{city}-on-{month}-{day}",
-      "event_url_template": "https://gamma-api.polymarket.com/events?slug={slug}",
-      "city_slug_overrides": "{\"chi\":\"chicago\"}",
-      "days_ahead": "1",
-      "max_requests": "120",
-      "max_events": "200",
-      "max_bands": "4000"
-    },
-    "Load cities": [
-      {
-        "city_key": "nyc",
-        "unit": "F",
-        "icao": "KNYC",
-        "display_name": "New York"
-      },
-      {
-        "city_key": "chi",
-        "unit": "F",
-        "icao": "KORD",
-        "display_name": "Chicago"
-      }
-    ]
+ "seed": {
+  "Config": {
+   "supabase_url": "https://testproject.supabase.co",
+   "service_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlc3Rwcm9qZWN0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MSwiZXhwIjoyfQ.dGVzdC1zaWduYXR1cmUtbm90LWEtcmVhbC1rZXk",
+   "slug_template": "highest-temperature-in-{city}-on-{month}-{day}",
+   "event_url_template": "https://gamma-api.polymarket.com/events?slug={slug}",
+   "city_slug_overrides": "{\"chi\":\"chicago\"}",
+   "days_ahead": "1",
+   "max_requests": "120",
+   "max_events": "200",
+   "max_bands": "4000"
   },
-  "run": [
-    {
-      "node": "Build requests",
-      "input": "Load cities"
-    }
+  "Load cities": [
+   {
+    "city_key": "nyc",
+    "unit": "F",
+    "icao": "KNYC",
+    "display_name": "New York"
+   },
+   {
+    "city_key": "chi",
+    "unit": "F",
+    "icao": "KORD",
+    "display_name": "Chicago"
+   }
   ]
+ },
+ "run": [
+  {
+   "node": "Build requests",
+   "input": "Load cities"
+  }
+ ]
 }

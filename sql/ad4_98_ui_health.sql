@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 96 of them - and for each MISSING one names the
+-- and function the app reads - 97 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -108,6 +108,7 @@ with expected(rel, owner, used_by) as (values
     ('v_trade_timing', 'ad4_33_control.sql', '/goals'),
     ('v_weather_effects', 'ad4_21_weather_features.sql', '(ModelAnalytics)'),
     ('v_workflow_runs', 'ad4_14_workflows.sql', '/workflows'),
+    ('v_write_access', 'ad4_38_grants.sql', ''),
     ('weather_events', 'ad4_live_weather.sql', '(RightRail), /live'),
     ('weather_forecast_features', 'ad4_24_nws_gridpoint.sql', ''),
     ('weather_forecasts', 'ad4_00_preflight.sql', '/board, /live'),
@@ -226,6 +227,7 @@ begin
     ('v_trade_timing', 'ad4_33_control.sql', '/goals'),
     ('v_weather_effects', 'ad4_21_weather_features.sql', '(ModelAnalytics)'),
     ('v_workflow_runs', 'ad4_14_workflows.sql', '/workflows'),
+    ('v_write_access', 'ad4_38_grants.sql', ''),
     ('weather_events', 'ad4_live_weather.sql', '(RightRail), /live'),
     ('weather_forecast_features', 'ad4_24_nws_gridpoint.sql', ''),
     ('weather_forecasts', 'ad4_00_preflight.sql', '/board, /live'),

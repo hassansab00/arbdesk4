@@ -229,7 +229,7 @@ sec6 as (
            then 'YES' else 'NO' end,
       case when has_table_privilege('service_role', t.tbl, 'INSERT')
            then 'correct - this is the key every n8n Config node and GitHub secret must hold'
-           else 'BROKEN - re-run sql/ad4_13_reconcile.sql, which grants service_role everything'
+           else 'BROKEN - run sql/ad4_38_grants.sql, which grants service_role every table and reports what it fixed'
       end
       from (values ('markets'), ('bands'), ('book_snapshots'),
                    ('trades_observed'), ('weather_observations'),
