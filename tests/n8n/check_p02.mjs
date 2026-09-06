@@ -15,7 +15,8 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
 const CITIES = [{ city_key: 'nyc', unit: 'F', display_name: 'New York' },
                 { city_key: 'chi', unit: 'F', display_name: 'Chicago' }];
 const cfg = (v) => [{ json: {
-  supabase_url: 'u', service_key: 'k', slug_template: '',
+  supabase_url: 'u', service_key: 'k', slug_template: '', example_event_url: '',
+  discovery_pages: '8', discovery_page_size: '20',
   event_url_template: 'https://gamma-api.polymarket.com/events?slug={slug}',
   discovery_url: 'https://gamma-api.polymarket.com/events?closed=false',
   city_slug_overrides: '{}', days_ahead: '2', max_requests: '120',
@@ -58,9 +59,11 @@ t('discovery survives a 287 MB feed and reports the real slugs', () => {
   o['Parse markets + bands'] = r.out;
   const g = run('Guard: did anything parse?', o);
   ok(!g.ok, 'discovery must stop, having written nothing');
-  ok(/DISCOVERY COMPLETE/.test(g.error), g.error);
+  ok(/FOUND THEM/.test(g.error), g.error);
   ok(/highest-temperature-in-/.test(g.error), 'it must print the real slugs');
-  ok(/nyc, chi/.test(g.error), 'and the city keys, so a mismatch is visible');
+  // with a matchable slug it goes further and hands over the finished template
+  ok(g.error.includes('{city}') && g.error.includes('{month}'),
+     'it must derive the template from what it found: ' + g.error);
 });
 
 t('targeted mode builds one URL per city per day', () => {
@@ -126,9 +129,83 @@ t('a wrong template stops with the slugs it tried and how to fix it', () => {
   o['Parse markets + bands'] = run('Parse markets + bands', o).out;
   const g = run('Guard: did anything parse?', o);
   ok(!g.ok, 'it must stop');
-  ok(/slug_template in Config is almost certainly wrong/.test(g.error), g.error);
+  ok(/slug_template is wrong/.test(g.error), g.error);
   ok(/wrong-new-york/.test(g.error), 'it must name the slugs it tried');
-  ok(/Clear slug_template and run again/.test(g.error), 'and the way out');
+  ok(/example_event_url/.test(g.error), 'and the way out: ' + g.error);
+});
+
+const EV = (slug) => ({ id: 'e', slug, title: 'Highest temperature',
+  endDate: '2026-09-07T04:00:00Z', closed: false,
+  markets: [{ id: '1', conditionId: '0x1', groupItemTitle: '72°F or below', clobTokenIds: '["a","b"]' },
+            { id: '2', conditionId: '0x2', groupItemTitle: '73-74°F', clobTokenIds: '["c","d"]' },
+            { id: '3', conditionId: '0x3', groupItemTitle: '75-76°F', clobTokenIds: '["e","f"]' },
+            { id: '4', conditionId: '0x4', groupItemTitle: '77°F or above', clobTokenIds: '["g","h"]' }] });
+
+t('the reported case: 20 events, none weather, paging ignored', () => {
+  // ?closed=false returned 20 events and offset was not honoured, so every
+  // page came back identical. That looks like "Polymarket has 20 markets".
+  const o = { Config: cfg({}), 'Load cities': CITIES.map((j) => ({ json: j })) };
+  o['Build requests'] = run('Build requests', o).out;
+  ok(o['Build requests'].length === 8, 'it should walk 8 pages before giving up');
+  const twenty = Array.from({ length: 20 }, (_, i) => ({ id: String(i), slug: `election-${i}`, markets: [] }));
+  o['Fetch markets'] = o['Build requests'].map(() => ({ json: twenty }));
+  o['Parse markets + bands'] = run('Parse markets + bands', o).out;
+  const j = o['Parse markets + bands'][0].json;
+  ok(j.paging_works === false, 'identical pages must be reported as paging not working');
+  const g = run('Guard: did anything parse?', o);
+  ok(!g.ok, 'it must stop');
+  ok(/PAGING IS NOT WORKING/.test(g.error), g.error);
+  ok(/example_event_url/.test(g.error), 'it must name the one field that fixes this');
+  ok(/Nothing was written/.test(g.error), g.error);
+});
+
+t('one pasted link derives the template', () => {
+  const o = { Config: cfg({ example_event_url: 'https://polymarket.com/event/highest-temperature-in-nyc-on-september-6' }),
+              'Load cities': CITIES.map((j) => ({ json: j })) };
+  o['Build requests'] = run('Build requests', o).out;
+  ok(o['Build requests'][0].json.mode === 'derive', JSON.stringify(o['Build requests'][0].json));
+  ok(o['Build requests'][0].json.slug === 'highest-temperature-in-nyc-on-september-6', 'slug from the URL path');
+  o['Fetch markets'] = [{ json: [EV('highest-temperature-in-nyc-on-september-6')] }];
+  o['Parse markets + bands'] = run('Parse markets + bands', o).out;
+  const g = run('Guard: did anything parse?', o);
+  ok(!g.ok && /READY/.test(g.error), g.error);
+  ok(g.error.includes('highest-temperature-in-{city}-on-{month}-{day}'),
+     'it must print the ready-to-paste template: ' + g.error);
+  ok(/no override is needed/.test(g.error), 'nyc matches, so it should say so');
+  ok(/Nothing was written/.test(g.error), g.error);
+});
+
+t('a slug that names the city differently produces the override too', () => {
+  const o = { Config: cfg({ example_event_url: 'https://polymarket.com/event/highest-temperature-in-chicago-on-september-6' }),
+              'Load cities': [{ json: { city_key: 'chi', unit: 'F', display_name: 'Chi Town' } }] };
+  o['Build requests'] = run('Build requests', o).out;
+  o['Fetch markets'] = [{ json: [EV('highest-temperature-in-chicago-on-september-6')] }];
+  o['Parse markets + bands'] = run('Parse markets + bands', o).out;
+  const g = run('Guard: did anything parse?', o);
+  ok(g.error.includes('highest-temperature-in-{city}-on-{month}-{day}'), g.error);
+  ok(/calls the city "chicago"/.test(g.error), 'it must name the word to override: ' + g.error);
+});
+
+t('a URL that is not a market page says so', () => {
+  const o = { Config: cfg({ example_event_url: 'https://polymarket.com/event/some-slug' }),
+              'Load cities': CITIES.map((j) => ({ json: j })) };
+  o['Build requests'] = run('Build requests', o).out;
+  o['Fetch markets'] = [{ json: [] }];
+  o['Parse markets + bands'] = run('Parse markets + bands', o).out;
+  const g = run('Guard: did anything parse?', o);
+  ok(!g.ok && /returned no event/.test(g.error), g.error);
+  ok(/event_url_template/.test(g.error), 'it must name the other thing that could be wrong');
+});
+
+t('an ISO-dated slug derives {date} rather than {month}-{day}', () => {
+  const o = { Config: cfg({ example_event_url: 'https://polymarket.com/event/highest-temp-nyc-2026-09-06' }),
+              'Load cities': CITIES.map((j) => ({ json: j })) };
+  o['Build requests'] = run('Build requests', o).out;
+  o['Fetch markets'] = [{ json: [EV('highest-temp-nyc-2026-09-06')] }];
+  o['Parse markets + bands'] = run('Parse markets + bands', o).out;
+  const j = o['Parse markets + bands'][0].json;
+  ok(j.derived.template.includes('{date}'), JSON.stringify(j.derived));
+  ok(j.derived.template.includes('{city}'), JSON.stringify(j.derived));
 });
 
 const failed = out.filter(([s]) => s === 'FAIL');
