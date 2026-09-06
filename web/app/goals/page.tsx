@@ -9,7 +9,7 @@ import { fmtCompactUsd, fmtPct, fmtUsd, pnlColor } from "@/lib/format";
 import {
   buildTiers, centLegs, ceilC, coverageIndices, durAnalytic, guaranteedCheck,
   invertNoTarget, invertYesTarget, MIN_ORDER, minNoTarget, minYesTarget,
-  slipBands, spread, spreadNo, spreadWeighted, subMinLegs,
+  executablePlan, slipBands, spread, spreadNo, spreadWeighted, subMinLegs,
   type RiskMode, type Solve, type SpreadBand, type SpreadResult,
 } from "@/lib/spread";
 import type { Opportunity, TradePlan, TradeTiming } from "@/lib/types";
@@ -866,8 +866,27 @@ function LockPane({
     );
   }
 
-  const legs = centLegs(res.legs ?? []);
-  const budget = legs.reduce((a, L) => a + L.cost, 0);
+  // THE PLAN YOU CAN ACTUALLY PLACE.
+  //
+  // The solver's answer is a continuous ideal, and at small targets its legs
+  // come out at 40c, 60c, 80c - orders Polymarket rejects outright. The page
+  // used to print that plan's profit and warn about it underneath, which is
+  // the wrong way round: a number is louder than a caveat, so the numbers on
+  // screen have to be the placeable ones.
+  //
+  // Lifting scales the whole plan by whatever brings the smallest leg up to
+  // the minimum, then re-walks every leg through its real ladder - so the
+  // worse average fill that comes with the bigger size is shown rather than
+  // assumed away.
+  const lifted = executablePlan(res, B, kind === "no" ? "no" : "yes", MIN_ORDER, res.coverageProb);
+  const plan = lifted
+    ? { legs: centLegs(lifted.legs), budget: lifted.budget, shares: lifted.shares,
+        profitIfCovered: lifted.profitIfCovered, lossIfUncovered: lifted.lossIfUncovered, ev: lifted.ev }
+    : { legs: centLegs(res.legs ?? []), budget: (res.legs ?? []).reduce((a, L) => a + L.cost, 0),
+        shares: res.shares ?? 0, profitIfCovered: res.profitIfCovered ?? 0,
+        lossIfUncovered: res.lossIfUncovered ?? 0, ev: res.ev ?? null };
+  const legs = plan.legs;
+  const budget = plan.budget;
   const sub = subMinLegs(legs);
   const minT = kind === "yes" ? minYesTarget(B, cov) : minNoTarget(B, cov);
   const thin = res.thinLegs ?? [];
@@ -881,7 +900,23 @@ function LockPane({
           on the thinnest covered leg. The largest version of this spread the current book can fill.
         </div>
       )}
-      {sub > 0 && (
+      {lifted && (
+        <div className="rounded border border-accent/50 bg-accent/10 p-2 text-[11px] leading-relaxed text-accent">
+          <b>Lifted to a placeable size.</b> Your target put the smallest leg at{" "}
+          {fmtUsd(lifted.smallestIdealLeg)}, under Polymarket&apos;s ${MIN_ORDER} order minimum — an
+          order that size is rejected, not filled small. Every figure below is the smallest version
+          of this spread that can actually be placed: {lifted.scale.toFixed(2)}× the size you asked
+          for, {fmtUsd(budget)} of budget for {fmtUsd(plan.profitIfCovered)} of profit.
+          {lifted.slippageCost > 0.01 && (
+            <> The larger size fills {fmtUsd(lifted.slippageCost)} worse on the ladder; that is
+            already in the numbers.</>
+          )}
+          {lifted.depthCapped && (
+            <span className="text-warn"> Even lifted, the book runs out on the thinnest leg.</span>
+          )}
+        </div>
+      )}
+      {sub > 0 && !lifted && (
         <div className="rounded border border-warn/50 bg-warn/10 p-2 text-[11px] text-warn">
           {sub} leg{sub > 1 ? "s" : ""} under Polymarket&apos;s ${MIN_ORDER} order minimum — this
           exact spread cannot be placed. Smallest {solve === "budget" ? "budget" : "profit target"}{" "}
@@ -899,18 +934,18 @@ function LockPane({
       )}
       <Kv k="Budget needed" v={fmtUsd(budget)} cls="text-warn" />
       <Kv
-        k={kind === "yes" ? "Profit if a covered band wins" : "Profit if a covered band wins"}
-        v={fmtUsd(res.profitIfCovered, { signed: true })}
+        k="Profit if a covered band wins"
+        v={fmtUsd(plan.profitIfCovered, { signed: true })}
         cls="text-good"
       />
       {kind === "no" && (
         <Kv k="Profit if the winner is OUTSIDE coverage" v={fmtUsd(res.profitIfUncovered, { signed: true })} cls="text-good" />
       )}
-      <Kv k="Total return if it wins (profit + stake)" v={fmtUsd(budget + (res.profitIfCovered ?? 0))} />
+      <Kv k="Total return if it wins (profit + stake)" v={fmtUsd(budget + plan.profitIfCovered)} />
       <Kv k="Chance a covered band wins" v={fmtPct(res.coverageProb)} />
-      {kind === "yes" && <Kv k="If an uncovered band wins" v={fmtUsd(res.lossIfUncovered)} cls="text-bad" />}
+      {kind === "yes" && <Kv k="If an uncovered band wins" v={fmtUsd(plan.lossIfUncovered)} cls="text-bad" />}
       <Kv k="Tail risk" v={fmtPct(res.tailProb ?? null)} />
-      <Kv k="Expected value" v={fmtUsd(res.ev, { signed: true })} cls={pnlColor(res.ev)} />
+      <Kv k="Expected value" v={fmtUsd(plan.ev, { signed: true })} cls={pnlColor(plan.ev)} />
       <Kv k="24h traded volume across legs" v={fmtCompactUsd(res.volumeUsd)} cls={thin.length ? "text-warn" : ""} />
 
       <div className="mt-2 divide-y divide-border rounded border border-border">
@@ -924,10 +959,10 @@ function LockPane({
           </div>
         ))}
       </div>
-      <div className={`rounded p-2 text-[11px] ${(res.ev ?? 0) >= 0 ? "bg-good/10 text-good" : "bg-warn/10 text-warn"}`}>
-        Buy the cent-exact legs above (≈{res.shares?.toFixed(2)} sh each) — these numbers match a
-        real fill to the cent.{" "}
-        {(res.ev ?? 0) >= 0
+      <div className={`rounded p-2 text-[11px] ${(plan.ev ?? 0) >= 0 ? "bg-good/10 text-good" : "bg-warn/10 text-warn"}`}>
+        Buy the cent-exact legs above (≈{plan.shares.toFixed(2)} sh each) — these numbers match a
+        real fill to the cent, and every leg clears the ${MIN_ORDER} order minimum.{" "}
+        {(plan.ev ?? 0) >= 0
           ? "Positive EV on the probabilities driving this board."
           : "Negative EV here — this only wins if your read beats the market."}
       </div>

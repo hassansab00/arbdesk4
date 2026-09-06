@@ -57,6 +57,49 @@ export default function AnalyticsPage() {
   }, [skillQ.data]);
 
   const opps = oppQ.data ?? [];
+
+  /**
+   * What the book charges, per city-day. Computable with nothing but a book
+   * snapshot - no trades, no settled outcomes - which is why it belongs in
+   * group 2 rather than waiting behind a P&L curve that may be months away.
+   *
+   * Exactly one bucket pays, so the YES prices should sum to $1. The excess is
+   * the house's margin and comes out of every edge on that board before the
+   * desk sees a cent of it.
+   */
+  const bookCost = useMemo(() => {
+    const g = new Map<string, { city: string; day: string; prices: number[]; spreads: number[]; tradeable: number }>();
+    for (const o of opps) {
+      if (o.side !== "YES" || o.market_price == null) continue;
+      const key = `${o.city_key}|${o.resolution_date}`;
+      const e = g.get(key) ?? { city: o.display_name ?? o.city_key, day: o.resolution_date, prices: [], spreads: [], tradeable: 0 };
+      e.prices.push(o.market_price);
+      if (o.spread != null) e.spreads.push(o.spread);
+      if (o.tradeable) e.tradeable += 1;
+      g.set(key, e);
+    }
+    const median = (xs: number[]) => {
+      if (!xs.length) return 0;
+      const s = [...xs].sort((a, b) => a - b);
+      return s[Math.floor(s.length / 2)];
+    };
+    return Array.from(g.entries())
+      // A partial ladder has a meaningless sum: three of eleven buckets always
+      // total well under $1 and would read as a free arbitrage.
+      .filter(([, v]) => v.prices.length >= 5)
+      .map(([key, v]) => {
+        const sum = v.prices.reduce((a, b) => a + b, 0);
+        const spread = median(v.spreads);
+        const verdict =
+          sum < 0.99 ? "under $1 — a combination arb, if both legs fill"
+          : v.tradeable === 0 ? "priced but nothing passes the edge engine"
+          : spread > 0.08 ? "wide — you cross most of the edge getting in and out"
+          : sum > 1.1 ? "expensive book — the margin eats the edge"
+          : "normal book";
+        return { key, city: v.city, day: v.day, n: v.prices.length, sum, spread, tradeable: v.tradeable, verdict };
+      })
+      .sort((a, b) => a.sum - b.sum);
+  }, [opps]);
   const yes = useMemo(
     () => opps.filter((o) => o.side === "YES" && o.market_price !== null && o.model_prob !== null),
     [opps]
@@ -154,6 +197,93 @@ export default function AnalyticsPage() {
         >
           <div className="rounded border border-border bg-panel p-3">
             <ModelVsMarket rows={yes} stats={statsQ.rows} />
+          </div>
+        </DataState>
+      </section>
+
+      {/* ============================================ cost of the book === */}
+      <section>
+        <h2 className="text-sm font-semibold">What the book costs you, per city</h2>
+        <p className="mb-2 max-w-3xl text-[11px] leading-relaxed text-muted">
+          Exactly one bucket pays, so the YES prices across a city&apos;s ladder should sum to about
+          $1. What they actually sum to is the <b>overround</b> — the house&apos;s margin, and the
+          first thing subtracted from every edge on that board. Under $1.00 is not a rounding
+          artefact: it is a combination arb, which is s2&apos;s entire thesis and needs no forecast
+          at all. Beside it, the median spread you cross to get in, and how much of the ladder the
+          edge engine will actually let you trade.
+        </p>
+        <DataState
+          loading={oppQ.loading} error={oppQ.error} isEmpty={bookCost.length === 0}
+          emptyTitle="No priced ladders yet"
+          emptyBody={<>Needs a book snapshot — n8n <b>P0.3</b> — and a model probability from GitHub Actions → <b>Probabilities</b>.</>}
+          onRetry={oppQ.refresh}
+        >
+          <div className="overflow-x-auto rounded border border-border">
+            <table className="w-full text-xs">
+              <thead className="bg-panel2 text-muted">
+                <tr>
+                  <th className="px-2 py-1.5 text-left">City · day</th>
+                  <th className="px-2 py-1.5 text-right">Bands</th>
+                  <th className="px-2 py-1.5 text-right" title="Sum of the YES prices across the whole ladder. Exactly one bucket pays, so $1.00 is a fair book.">
+                    Book sum
+                  </th>
+                  <th className="px-2 py-1.5 text-left">Overround</th>
+                  <th className="px-2 py-1.5 text-right" title="Median bid/ask gap across the ladder. You cross half of it going in and half coming out.">
+                    Median spread
+                  </th>
+                  <th className="px-2 py-1.5 text-right" title="Bands the edge engine will let you trade, out of the bands that are priced.">
+                    Tradeable
+                  </th>
+                  <th className="px-2 py-1.5 text-left">Verdict</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bookCost.map((r) => (
+                  <tr key={r.key} className="border-t border-border">
+                    <td className="px-2 py-1.5">
+                      {r.city}
+                      <span className="ml-1 text-[10px] text-muted">{fmtResolutionDate(r.day)}</span>
+                    </td>
+                    <td className="px-2 py-1.5 text-right font-mono tabular-nums text-muted">{r.n}</td>
+                    <td className={`px-2 py-1.5 text-right font-mono tabular-nums ${
+                      r.sum < 1 ? "text-good" : r.sum > 1.1 ? "text-bad" : ""
+                    }`}>
+                      ${r.sum.toFixed(3)}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      {/* A bar centred on a fair book, so cheap and expensive
+                          lean in opposite directions instead of both being a
+                          number you have to read. */}
+                      <div className="relative h-2 w-28 rounded bg-panel2">
+                        <div className="absolute inset-y-0 left-1/2 w-px bg-border" />
+                        <div
+                          className={`absolute inset-y-0 ${r.sum >= 1 ? "left-1/2 bg-bad/70" : "bg-good/70"}`}
+                          style={
+                            r.sum >= 1
+                              ? { width: `${Math.min(50, (r.sum - 1) * 250)}%` }
+                              : { right: "50%", width: `${Math.min(50, (1 - r.sum) * 250)}%` }
+                          }
+                        />
+                      </div>
+                      <span className={`text-[10px] ${r.sum < 1 ? "text-good" : r.sum > 1.1 ? "text-bad" : "text-muted"}`}>
+                        {r.sum >= 1 ? "+" : ""}{((r.sum - 1) * 100).toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className={`px-2 py-1.5 text-right font-mono tabular-nums ${r.spread > 0.08 ? "text-warn" : "text-muted"}`}>
+                      {(r.spread * 100).toFixed(1)}¢
+                    </td>
+                    <td className={`px-2 py-1.5 text-right font-mono tabular-nums ${
+                      r.tradeable === 0 ? "text-bad" : r.tradeable < r.n / 2 ? "text-warn" : "text-muted"
+                    }`}>
+                      {r.tradeable}/{r.n}
+                    </td>
+                    <td className={`px-2 py-1.5 text-[11px] ${r.sum < 1 ? "text-good" : r.spread > 0.08 || r.sum > 1.1 ? "text-warn" : "text-muted"}`}>
+                      {r.verdict}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </DataState>
       </section>

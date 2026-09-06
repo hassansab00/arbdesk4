@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Globe from "@/components/Globe";
+import { supabase } from "@/lib/supabase";
+import { useQuery } from "@/lib/useQuery";
 import { useCityStats } from "@/lib/useCityStats";
 import StatsNotice from "@/components/StatsNotice";
 import { DataState } from "@/components/DataState";
@@ -177,6 +179,13 @@ export default function GlobePage() {
             )}
           </section>
 
+          {/* ---- can this city be timed at all? ------------------------
+              The globe shows WHERE the peak band is. This says whether the
+              desk actually knows when each city peaks, or is still assuming
+              15:00 - which is the difference between s7 being a strategy and
+              s7 being a guess. */}
+          <PeakCoverage />
+
           <p className="mt-3 max-w-3xl text-[10px] leading-relaxed text-muted">
             The lighting uses the standard low-precision solar model — declination from the day of
             year, hour angle from UTC, no equation of time — so the terminator is right to within a
@@ -187,5 +196,105 @@ export default function GlobePage() {
         </>
       </DataState>
     </div>
+  );
+}
+
+
+interface PeakRow {
+  city_key: string;
+  display_name: string | null;
+  peak_hour_local: number | null;
+  window_width_h: number | null;
+  n_days: number | null;
+  months_measured: number;
+  verdict: string;
+}
+
+/**
+ * Whether the desk knows when each city peaks.
+ *
+ * derived_weather_peak had no writer at all until sql/ad4_37 - every consumer
+ * of the peak hour, including strategy s7's entire trigger, was silently on a
+ * fallback. This is the check that it is being written, and the honest answer
+ * for cities where it cannot be: a six-hour window is not a measurement
+ * failure, it is a city whose peak genuinely moves, and timing it is not a
+ * strategy there.
+ */
+function PeakCoverage() {
+  const q = useQuery<PeakRow[]>(() => supabase.from("v_peak_hour_coverage").select("*"), [], 300000);
+  const [open, setOpen] = useState(false);
+  const rows = q.data ?? [];
+  const measured = rows.filter((r) => r.peak_hour_local != null);
+  const wide = measured.filter((r) => (r.window_width_h ?? 0) > 4);
+  const missing = rows.length - measured.length;
+
+  if (q.error && /does not exist|schema cache|could not find/i.test(q.error)) {
+    return (
+      <div className="mt-4 rounded border border-warn/40 bg-warn/10 px-3 py-2 text-[11px] leading-relaxed text-warn">
+        <b>The measured peak hour is not installed.</b> Run{" "}
+        <code>sql/ad4_37_peak_hour.sql</code>. Until then every peak window on this desk — including
+        strategy <b>s7</b>&apos;s entire trigger — falls back to an assumed 15:00.
+      </div>
+    );
+  }
+
+  return (
+    <section className="mt-4">
+      <div className="flex flex-wrap items-baseline gap-2">
+        <h2 className="text-sm font-semibold">Can these cities be timed?</h2>
+        <span className="text-xs text-muted">
+          <b className={measured.length ? "text-good" : "text-warn"}>{measured.length}</b> of{" "}
+          {rows.length} have a measured peak hour for this month
+          {wide.length > 0 && (
+            <span className="text-warn"> · {wide.length} peak too loosely to time</span>
+          )}
+          {missing > 0 && <span className="text-muted"> · {missing} still on the assumed 15:00</span>}
+        </span>
+        <button onClick={() => setOpen((o) => !o)} className="ml-auto text-xs text-accent hover:underline">
+          {open ? "hide" : "show each city"}
+        </button>
+      </div>
+      <p className="mt-0.5 max-w-3xl text-[11px] leading-relaxed text-muted">
+        Measured from this desk&apos;s own archive, per city and calendar month. The <b>window</b> is
+        how much the peak moves: a city with a 1.5-hour window can be timed to the hour, and one with
+        six hours cannot be timed at all — which is a real answer, not a gap.
+      </p>
+      {open && (
+        <div className="mt-2 overflow-x-auto rounded border border-border">
+          <table className="w-full text-xs">
+            <thead className="bg-panel2 text-muted">
+              <tr>
+                <th className="px-2 py-1.5 text-left">City</th>
+                <th className="px-2 py-1.5 text-right">Peak hour (local)</th>
+                <th className="px-2 py-1.5 text-right">Window</th>
+                <th className="px-2 py-1.5 text-right">Days measured</th>
+                <th className="px-2 py-1.5 text-right">Months on file</th>
+                <th className="px-2 py-1.5 text-left">Verdict</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.city_key} className="border-t border-border">
+                  <td className="px-2 py-1.5">{r.display_name ?? r.city_key}</td>
+                  <td className="px-2 py-1.5 text-right font-mono tabular-nums">
+                    {r.peak_hour_local == null
+                      ? <span className="text-warn">assumed 15:00</span>
+                      : `${String(Math.floor(r.peak_hour_local)).padStart(2, "0")}:${String(Math.round((r.peak_hour_local % 1) * 60)).padStart(2, "0")}`}
+                  </td>
+                  <td className={`px-2 py-1.5 text-right font-mono tabular-nums ${
+                    (r.window_width_h ?? 0) > 4 ? "text-warn" : "text-muted"
+                  }`}>
+                    {r.window_width_h == null ? "—" : `±${(r.window_width_h / 2).toFixed(1)}h`}
+                  </td>
+                  <td className="px-2 py-1.5 text-right font-mono tabular-nums text-muted">{r.n_days ?? "—"}</td>
+                  <td className="px-2 py-1.5 text-right font-mono tabular-nums text-muted">{r.months_measured}</td>
+                  <td className="px-2 py-1.5 text-[11px] text-muted">{r.verdict}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }

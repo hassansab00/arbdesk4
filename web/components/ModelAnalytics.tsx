@@ -6,6 +6,7 @@ import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
 import { LineChart, Empty } from "@/components/charts";
 import { fmtPct, fmtPp } from "@/lib/format";
+import { fmtResolutionDate } from "@/lib/time";
 
 /**
  * What the desk has learned about itself.
@@ -31,12 +32,28 @@ interface Climb { city_key: string; local_hour: number; n_days: number; typical_
 
 /** Every panel here reads one view. A missing view is a named SQL file, not a
  *  red box - so the page degrades one section at a time. */
+/**
+ * A panel that is EMPTY still has to be worth reading.
+ *
+ * "Nothing measured yet" on seven panels in a row reads as a broken page. It
+ * is not: most of these answer questions that need settled outcomes, and a
+ * desk three days old has none. So an empty panel now says what IS known -
+ * how many rows exist, how far off the answer is, and what will produce it -
+ * and shows a progress bar toward the sample size at which the number starts
+ * to mean anything. A honest "12 of 300, first settlement in 9 hours" is a
+ * different message from "nothing", and only one of them is actionable.
+ */
+const MIN_FOR_A_CURVE = 300;   // matches components/DataBank.tsx - one threshold, not two
+
 function Panel({
-  title, hint, sql, q, isEmpty, emptyBody, children,
+  title, hint, sql, q, isEmpty, emptyBody, progress, aside, children,
 }: {
   title: string; hint: string; sql: string;
   q: { loading: boolean; error: string | null; refresh: () => void };
-  isEmpty: boolean; emptyBody: React.ReactNode; children: React.ReactNode;
+  isEmpty: boolean; emptyBody: React.ReactNode;
+  progress?: { have: number; need: number; label: string; note?: React.ReactNode };
+  aside?: React.ReactNode;
+  children: React.ReactNode;
 }) {
   const missing = q.error && /does not exist|schema cache|could not find/i.test(q.error);
   return (
@@ -45,6 +62,7 @@ function Panel({
         <h2 className="text-sm font-semibold">{title}</h2>
         <p className="mt-0.5 max-w-3xl text-[11px] leading-relaxed text-muted">{hint}</p>
       </div>
+      {aside}
       <div className="p-3">
         {missing ? (
           <p className="text-xs text-muted">
@@ -53,7 +71,12 @@ function Panel({
         ) : (
           <DataState
             loading={q.loading} error={q.error} isEmpty={isEmpty}
-            emptyTitle="Nothing measured yet" emptyBody={emptyBody}
+            emptyTitle="Nothing measured yet" emptyBody={
+              <>
+                {emptyBody}
+                {progress && <Progress {...progress} />}
+              </>
+            }
             onRetry={q.refresh} compact
           >
             {children}
@@ -74,6 +97,43 @@ export default function ModelAnalytics() {
   const effects = useQuery<Effect[]>(() => supabase.from("v_weather_effects").select("*"), [], 300000);
   const persist = useQuery<Persist[]>(() => supabase.from("v_persistence_skill").select("*"), [], 300000);
   const climb = useQuery<Climb[]>(() => supabase.from("v_city_climb_profile").select("*"), [], 300000);
+  // WHAT IS KNOWN WHILE THE ANSWERS ARE STILL COMING. Every panel below that
+  // needs settled outcomes can at least say how many exist, how many are on
+  // their way, and when the next one lands.
+  const banked = useQuery<Array<{ captured_at: string }>>(
+    () => supabase.from("fact_band_outcome").select("captured_at").limit(5000), [], 300000
+  );
+  const pending = useQuery<Array<{ resolution_date: string }>>(
+    () => supabase.from("v_opportunities").select("resolution_date").eq("side", "YES").limit(4000), [], 300000
+  );
+  const settling = useMemo(() => {
+    const days = (pending.data ?? []).map((r) => r.resolution_date).filter(Boolean).sort();
+    const bands = days.length;
+    const next = days[0] ?? null;
+    return { bands, next };
+  }, [pending.data]);
+  const nBanked = (banked.data ?? []).length;
+
+  /** Shared by the two panels that wait on settled outcomes. */
+  const settledProgress = {
+    have: nBanked,
+    need: MIN_FOR_A_CURVE,
+    label: "settled bands banked",
+    note: (
+      <>
+        {settling.bands > 0 ? (
+          <>
+            {settling.bands.toLocaleString()} band{settling.bands === 1 ? " is" : "s are"} priced on
+            the board right now
+            {settling.next ? <>, the first settling <b>{fmtResolutionDate(settling.next)}</b></> : ""}.
+            Each settled band becomes one row here.
+          </>
+        ) : (
+          <>Nothing is priced on the board yet, so nothing is on its way to settling.</>
+        )}
+      </>
+    ),
+  };
 
   const climbCities = useMemo(
     () => Array.from(new Set((climb.data ?? []).map((c) => c.city_key))).sort(),
@@ -93,7 +153,9 @@ export default function ModelAnalytics() {
         hint="Every band the desk priced, grouped by what the model claimed, against how often it happened. A model can have a wonderful error and still be systematically overconfident, and that shows up here and nowhere else."
         sql="sql/ad4_18_databank.sql + Actions → Databank"
         q={calib} isEmpty={(calib.data?.length ?? 0) === 0}
-        emptyBody={<>Needs settled bands in <code>fact_band_outcome</code>. The <b>Databank</b> action fills it daily once markets start resolving.</>}
+        aside={<CalibrationKey />}
+        emptyBody={<>Needs settled bands in <code>fact_band_outcome</code>. The <b>Databank</b> action fills it daily once markets start resolving. Under {MIN_FOR_A_CURVE} outcomes the curve is noise dressed as evidence, so it is not drawn.</>}
+        progress={settledProgress}
       >
         <CalibrationChart rows={calib.data ?? []} />
       </Panel>
@@ -105,6 +167,7 @@ export default function ModelAnalytics() {
         sql="sql/ad4_18_databank.sql + Actions → Databank"
         q={edge} isEmpty={(edge.data?.length ?? 0) === 0}
         emptyBody={<>Needs settled bands. Same source as calibration above.</>}
+        progress={settledProgress}
       >
         <Table
           head={["Claimed edge", "n", "Claimed", "Realised", "Hit rate", "Avg price"]}
@@ -180,18 +243,7 @@ export default function ModelAnalytics() {
         q={persist} isEmpty={(persist.data?.length ?? 0) === 0}
         emptyBody={<>Needs observation history. Run <b>Actions → Observations</b>.</>}
       >
-        <Table
-          head={["City", "Days", "Persistence MAE", "Day-to-day σ", "Drift", "Biggest swing"]}
-          rows={(persist.data ?? [])
-            .sort((a, b) => (b.persistence_mae_c ?? 0) - (a.persistence_mae_c ?? 0))
-            .map((r) => [
-              r.city_key, String(r.n_days),
-              <b key="p">{r.persistence_mae_c?.toFixed(2) ?? "—"}°C</b>,
-              r.delta_sd_c?.toFixed(2) ?? "—",
-              <Bias key="d" v={r.mean_drift_c} unit="°C" />,
-              r.biggest_swing_c != null ? `${r.biggest_swing_c.toFixed(1)}°C` : "—",
-            ])}
-        />
+        <PersistenceTable rows={persist.data ?? []} />
       </Panel>
 
       {/* ---- 7. how much of the day is left ------------------------- */}
@@ -218,6 +270,54 @@ export default function ModelAnalytics() {
 }
 
 /* ------------------------------------------------------------- pieces -- */
+
+/**
+ * A number with its own magnitude drawn beside it.
+ *
+ * These panels were tables of digits, and a table of digits is read one cell
+ * at a time - which is a fair complaint about a page technically full of
+ * correct numbers. A bar scaled to the column's own maximum turns each table
+ * into a ranking you can see, without changing what any figure means.
+ */
+function Bar({ v, max, tone = "accent", suffix = "" }: {
+  v: number | null | undefined; max: number; tone?: "accent" | "good" | "warn" | "bad"; suffix?: string;
+}) {
+  if (v == null || !Number.isFinite(v)) return <span className="text-muted">—</span>;
+  const pct = max > 0 ? Math.min(100, (Math.abs(v) / max) * 100) : 0;
+  const bg = { accent: "bg-accent/60", good: "bg-good/60", warn: "bg-warn/60", bad: "bg-bad/60" }[tone];
+  return (
+    <span className="flex items-center justify-end gap-1.5">
+      <span className="relative h-1.5 w-14 shrink-0 overflow-hidden rounded bg-panel2">
+        <span className={`absolute inset-y-0 left-0 ${bg}`} style={{ width: `${pct}%` }} />
+      </span>
+      <span className="tabular-nums">{v.toFixed(2)}{suffix}</span>
+    </span>
+  );
+}
+
+/**
+ * A signed value drawn from a centre line, so "warming 0.9" and "cooling 0.9"
+ * lean in opposite directions instead of being two numbers with a minus sign
+ * between them.
+ */
+function Diverging({ v, max, suffix = "" }: { v: number | null | undefined; max: number; suffix?: string }) {
+  if (v == null || !Number.isFinite(v)) return <span className="text-muted">—</span>;
+  const pct = max > 0 ? Math.min(50, (Math.abs(v) / max) * 50) : 0;
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className="relative h-1.5 w-16 shrink-0 rounded bg-panel2">
+        <span className="absolute inset-y-0 left-1/2 w-px bg-border" />
+        <span
+          className={`absolute inset-y-0 ${v >= 0 ? "left-1/2 bg-good/60" : "bg-bad/60"}`}
+          style={v >= 0 ? { width: `${pct}%` } : { right: "50%", width: `${pct}%` }}
+        />
+      </span>
+      <span className={`tabular-nums ${v >= 0 ? "text-good" : "text-bad"}`}>
+        {v >= 0 ? "+" : ""}{v.toFixed(2)}{suffix}
+      </span>
+    </span>
+  );
+}
 
 function Bias({ v, unit }: { v: number | null; unit: string }) {
   if (v == null) return <span className="text-muted">—</span>;
@@ -331,16 +431,189 @@ function EffectsPanel({ rows }: { rows: Effect[] }) {
               spreads the climb by {span(list).toFixed(1)}°C
             </span>
           </div>
-          <Table
-            head={["Bucket", "Days", "Climbed from morning", "Change on yesterday"]}
-            rows={list.map((r) => [
-              r.bucket, String(r.n),
-              <b key="c">{r.avg_climb_c != null ? `+${r.avg_climb_c.toFixed(1)}°C` : "—"}</b>,
-              <Bias key="d" v={r.avg_day_change_c} unit="°C" />,
-            ])}
-          />
+          {/* Bars scaled to THIS variable's own range, so the shape of the
+              effect - monotonic, flat, or one outlier bucket - is visible.
+              A coefficient that only holds because of one bucket is the kind
+              of thing a column of numbers hides and a bar chart cannot. */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-muted">
+                <tr>
+                  <th className="p-1 text-left">Bucket</th>
+                  <th className="p-1 text-right">Days</th>
+                  <th className="p-1 text-right">Climbed from morning</th>
+                  <th className="p-1 text-left">Change on yesterday</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((r) => {
+                  const maxClimb = Math.max(...list.map((x) => x.avg_climb_c ?? 0), 0.1);
+                  const maxChange = Math.max(...list.map((x) => Math.abs(x.avg_day_change_c ?? 0)), 0.1);
+                  return (
+                    <tr key={r.bucket} className="border-t border-border">
+                      <td className="p-1">{r.bucket}</td>
+                      <td className={`p-1 text-right font-mono tabular-nums ${r.n < 20 ? "text-warn" : "text-muted"}`}
+                          title={r.n < 20 ? "Under 20 days - too thin to read as an effect." : ""}>
+                        {r.n}
+                      </td>
+                      <td className="p-1 text-right font-mono">
+                        <Bar v={r.avg_climb_c} max={maxClimb} tone="good" suffix="°C" />
+                      </td>
+                      <td className="p-1 font-mono">
+                        <Diverging v={r.avg_day_change_c} max={maxChange} suffix="°C" />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+
+/**
+ * How far off the answer is, in the units of the thing that produces it.
+ *
+ * The bar is not decoration: the whole reason these panels are empty is that
+ * a statistical answer needs a sample, and "how big is the sample so far"
+ * is the only actionable fact available before it arrives.
+ */
+function Progress({ have, need, label, note }: { have: number; need: number; label: string; note?: React.ReactNode }) {
+  const pct = need > 0 ? Math.min(100, (have / need) * 100) : 0;
+  return (
+    <div className="mt-2 max-w-md">
+      <div className="flex items-baseline justify-between font-mono text-[10px]">
+        <span className="text-muted">{label}</span>
+        <span className={have >= need ? "text-good" : "text-muted"}>
+          {have.toLocaleString()} of {need.toLocaleString()}
+        </span>
+      </div>
+      <div className="mt-0.5 h-1.5 overflow-hidden rounded bg-panel2">
+        <div className={`h-full ${have >= need ? "bg-good" : "bg-accent/70"}`} style={{ width: `${pct}%` }} />
+      </div>
+      {note && <div className="mt-1 text-[10px] leading-relaxed text-muted">{note}</div>}
+    </div>
+  );
+}
+
+/**
+ * What a calibration curve is, drawn rather than described.
+ *
+ * "Is a 30% actually a 30%" is the single most important question about this
+ * desk and the hardest to picture, and the panel above it was a title over an
+ * empty box. This is the reference: the diagonal is honesty, and the two ways
+ * of being wrong bend away from it in opposite directions and cost money in
+ * opposite ways.
+ */
+function CalibrationKey() {
+  const W = 300, H = 150, PAD = 26;
+  const X = (p: number) => PAD + p * (W - PAD - 8);
+  const Y = (p: number) => H - PAD - p * (H - PAD - 10);
+  // Clamped to [0, 1]: an observed frequency cannot be negative or over 100%,
+  // and an unclamped curve drew itself outside the axes - which made the
+  // reference diagram wrong in the one way a reference diagram must not be.
+  const clamp = (v: number) => Math.max(0, Math.min(1, v));
+  const curve = (f: (p: number) => number) =>
+    Array.from({ length: 41 }, (_, i) => i / 40).map((p) => `${X(p)},${Y(clamp(f(p)))}`).join(" ");
+  // Overconfident: extreme claims happen LESS often than claimed, so the curve
+  // is flatter than the diagonal and pulled toward the middle.
+  const over = (p: number) => 0.5 + (p - 0.5) * 0.55;
+  // Underconfident: hedged claims happen MORE often than claimed, so the curve
+  // is steeper and saturates at both ends.
+  const under = (p: number) => 0.5 + (p - 0.5) * 1.8;
+  return (
+    <div className="flex flex-wrap items-start gap-4 border-b border-border bg-panel2/40 px-3 py-2">
+      <svg viewBox={`0 0 ${W} ${H}`} width={260} className="shrink-0" role="img" aria-label="Calibration reference">
+        <line x1={X(0)} y1={Y(0)} x2={X(1)} y2={Y(1)} stroke="var(--c-good)" strokeWidth={1.5} strokeDasharray="4 3" />
+        <polyline points={curve(over)} fill="none" stroke="var(--c-bad)" strokeWidth={1.5} />
+        <polyline points={curve(under)} fill="none" stroke="var(--c-warn)" strokeWidth={1.5} />
+        <line x1={X(0)} y1={Y(0)} x2={X(1)} y2={Y(0)} stroke="var(--c-border)" />
+        <line x1={X(0)} y1={Y(0)} x2={X(0)} y2={Y(1)} stroke="var(--c-border)" />
+        <text x={X(0.5)} y={H - 6} textAnchor="middle" fontSize="9" fill="var(--c-muted)">what the model claimed</text>
+        <text x={9} y={Y(0.5)} fontSize="9" fill="var(--c-muted)" transform={`rotate(-90 9 ${Y(0.5)})`} textAnchor="middle">
+          how often it happened
+        </text>
+      </svg>
+      <div className="min-w-[220px] flex-1 space-y-1 text-[11px] leading-relaxed">
+        <div><span className="text-good">▬ ▬</span> <b>Calibrated.</b> Bands priced at 30% settle YES 30% of the time. Nothing to fix.</div>
+        <div><span className="text-bad">▬</span> <b>Overconfident.</b> The curve is flatter than the diagonal: when the model says 80% it happens 65% of the time. This is the expensive one — it makes the desk buy favourites that are not favourites, and every edge computed from those probabilities is overstated.</div>
+        <div><span className="text-warn">▬</span> <b>Underconfident.</b> Steeper than the diagonal: the model hedges toward 50% and is right more often than it claims. Costs opportunity rather than money — real edges get filtered out as too small.</div>
+        <div className="text-muted">The fix for either is sigma: overconfidence means the model&apos;s spread is too narrow for how wrong its forecasts actually are.</div>
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * The bar every forecast has to clear, drawn as a ranking.
+ *
+ * Persistence MAE decides whether a city is worth forecasting at all - a high
+ * number means yesterday is a poor guide and there is room to add value, a low
+ * one means nothing you can do beats doing nothing. It was the third column of
+ * a six-column table of digits, which is precisely the wrong shape for a
+ * question whose answer is an ordering.
+ */
+function PersistenceTable({ rows }: { rows: Persist[] }) {
+  const sorted = [...rows].sort((a, b) => (b.persistence_mae_c ?? 0) - (a.persistence_mae_c ?? 0));
+  const maxMae = Math.max(...sorted.map((r) => r.persistence_mae_c ?? 0), 0.1);
+  const maxSwing = Math.max(...sorted.map((r) => r.biggest_swing_c ?? 0), 0.1);
+  const maxDrift = Math.max(...sorted.map((r) => Math.abs(r.mean_drift_c ?? 0)), 0.1);
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead className="text-muted">
+          <tr>
+            <th className="p-1 text-left">City</th>
+            <th className="p-1 text-right">Days</th>
+            <th className="p-1 text-right" title="How wrong yesterday's maximum is as a forecast for today. A HIGH number is a beatable city - there is room for a forecast to add value. A low one means nothing you can do adds much.">
+              Persistence MAE
+            </th>
+            <th className="p-1 text-right" title="Standard deviation of the day-to-day change. High means the band the day lands in is genuinely uncertain.">
+              Day-to-day σ
+            </th>
+            <th className="p-1 text-left" title="Mean day-to-day change over the archive: a seasonal drift, warming or cooling.">
+              Drift
+            </th>
+            <th className="p-1 text-right" title="The largest single-day move in the archive.">Biggest swing</th>
+            <th className="p-1 text-left">Worth forecasting?</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((r) => (
+            <tr key={r.city_key} className="border-t border-border">
+              <td className="p-1">{r.city_key}</td>
+              <td className="p-1 text-right font-mono tabular-nums text-muted">{r.n_days}</td>
+              <td className="p-1 text-right font-mono">
+                <Bar v={r.persistence_mae_c} max={maxMae}
+                     tone={(r.persistence_mae_c ?? 0) > maxMae * 0.6 ? "good" : "accent"} suffix="°C" />
+              </td>
+              <td className="p-1 text-right font-mono tabular-nums text-muted">
+                {r.delta_sd_c?.toFixed(2) ?? "—"}
+              </td>
+              <td className="p-1 font-mono"><Diverging v={r.mean_drift_c} max={maxDrift} suffix="°C" /></td>
+              <td className="p-1 text-right font-mono">
+                <Bar v={r.biggest_swing_c} max={maxSwing} tone="warn" suffix="°C" />
+              </td>
+              <td className="p-1 text-[11px]">
+                {r.persistence_mae_c == null ? (
+                  <span className="text-muted">—</span>
+                ) : r.persistence_mae_c > 2.5 ? (
+                  <span className="text-good">yes — yesterday is a poor guide here</span>
+                ) : r.persistence_mae_c > 1.5 ? (
+                  <span className="text-muted">some room</span>
+                ) : (
+                  <span className="text-warn">barely — yesterday is already close</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

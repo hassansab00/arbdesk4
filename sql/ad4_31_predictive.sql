@@ -92,7 +92,15 @@ select
   m.resolution_date                                    as for_date,
   m.market_id,
   b.band_id,
-  b.band_index,
+  -- Position on the ladder, computed rather than read.
+  --
+  -- This used to select b.band_index, a column that EXISTS in the production
+  -- database and is created by no SQL file in this repo - so this whole view
+  -- failed to install on a fresh one, taking the Predictive page down with it.
+  -- band_lo is always present and is the same ordering; the open low tail has
+  -- a null floor and sorts first, which is where it belongs.
+  (row_number() over (partition by m.market_id order by b.band_lo nulls first))::int - 1
+                                                       as band_index,
   b.band_label,
   b.band_lo,
   b.band_hi,

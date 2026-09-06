@@ -72,9 +72,20 @@ with parts as (
          min(traded_at), max(traded_at)
     from trades_observed
   union all
+  -- WHICH TIMESTAMP COLUMN markets HAS depends on when the database was
+  -- built: the live one carries first_seen_at / last_seen_at from an early
+  -- hand-run migration, a fresh install from ad4_00 carries created_at, and
+  -- naming either one directly makes this view un-installable on the other.
+  -- Both were caught by installing every file onto an empty database and then
+  -- onto a populated one. Reading through to_jsonb names none of them.
   select 'Markets', 5, 'n8n P0.2 market discovery',
-         count(*), count(distinct city_key), min(first_seen_at), max(last_seen_at)
-    from markets
+         count(*), count(distinct city_key),
+         min(coalesce((to_jsonb(m) ->> 'first_seen_at')::timestamptz,
+                      (to_jsonb(m) ->> 'created_at')::timestamptz)),
+         max(coalesce((to_jsonb(m) ->> 'last_seen_at')::timestamptz,
+                      (to_jsonb(m) ->> 'first_seen_at')::timestamptz,
+                      (to_jsonb(m) ->> 'created_at')::timestamptz))
+    from markets m
   union all
   select 'Weather events', 6, 'n8n P1.2 / Actions -> Live Weather',
          count(*), count(distinct city_key), min(detected_at), max(detected_at)
@@ -136,7 +147,7 @@ begin
       ('Climb profile',           3, 'per city and local hour: how much this city HISTORICALLY still climbs',
        'sql/ad4_28 refresh_feature_cache', 'derived_climb_profile', 'computed_at'),
       ('Peak hour',               4, 'per city and month: when the maximum is actually made, and how wide the window is',
-       'Actions -> Regime', 'derived_weather_peak', 'computed_at'),
+       'sql/ad4_37 refresh_weather_peak, via Actions -> Derived Recompute', 'derived_weather_peak', 'computed_at'),
       ('City correlation',        5, 'which cities move together - ten positions across correlated cities is not ten bets',
        'Actions -> Capacity', 'derived_city_correlation', 'computed_at'),
       ('Frozen band outcomes',    6, 'what was predicted against what settled - the only asset nobody else has',

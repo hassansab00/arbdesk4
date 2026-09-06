@@ -166,3 +166,61 @@ def test_strategy_toggle_goes_through_the_rpc_not_a_table_write():
     src = _read("web/app/strategies/page.tsx")
     assert 'supabase.rpc("set_strategy_enabled"' in src
     assert 'from("strategies")' not in src, "the page must not write the table directly"
+
+
+def test_the_palette_does_not_shadow_a_tailwind_font_size():
+    """A colour named `base` makes `text-base` paint, not size.
+
+    THE BUG: the palette defined `base: "#0b0e14"` - the page background - so
+    `text-base` resolved as a TEXT COLOUR utility and every heading using it
+    rendered in the background colour. All four Analytics group headings and
+    all four Data Bank section headings were invisible. Nothing catches this:
+    it typechecks, it builds, the text is in the DOM and in innerText, and it
+    reads correctly to a screen reader. Only a human looking at the page sees
+    a blank line.
+
+    Tailwind's `text-*` namespace is shared between font sizes and text
+    colours, so no palette colour may be named after one of them.
+    """
+    import re
+    cfg = _read("web/tailwind.config.ts")
+    body = cfg[cfg.index("colors:"):cfg.index("fontFamily")]
+    names = set(re.findall(r"^\s*([A-Za-z][\w]*)\s*:", body, re.M))
+    sizes = {"xs", "sm", "base", "lg", "xl", "2xl", "3xl", "4xl", "5xl",
+             "6xl", "7xl", "8xl", "9xl"}
+    clash = names & sizes
+    assert not clash, (
+        f"palette colour(s) {sorted(clash)} shadow the text-<size> utility of the "
+        "same name; text-<name> will paint instead of size and headings vanish"
+    )
+
+
+def test_the_ui_health_report_is_generated_and_current():
+    """sql/ad4_98_ui_health.sql answers "why is the UI red" in one query.
+
+    It and web/lib/sqlOwner.ts come from the same pass over sql/*.sql, so a new
+    view or a new page query has to regenerate both or the report is a lie -
+    it would report a page as healthy because it does not know the page reads
+    that view.
+    """
+    import subprocess
+    import sys
+
+    before = _read("sql/ad4_98_ui_health.sql")
+    owner_before = _read("web/lib/sqlOwner.ts")
+    r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "gen_sql_owner.py")],
+                       capture_output=True, text=True, cwd=ROOT)
+    assert r.returncode == 0, r.stderr
+    assert _read("sql/ad4_98_ui_health.sql") == before, (
+        "sql/ad4_98_ui_health.sql is stale - run python3 tools/gen_sql_owner.py")
+    assert _read("web/lib/sqlOwner.ts") == owner_before, (
+        "web/lib/sqlOwner.ts is stale - run python3 tools/gen_sql_owner.py")
+
+
+def test_the_owner_map_has_no_sql_keywords_in_it():
+    """A comment reading "create table if not exists" produced a relation
+    literally named `if`, and the health report then told the operator a page
+    was broken because a table called "if" was missing."""
+    owner = _read("web/lib/sqlOwner.ts")
+    for junk in ('"if"', '"not"', '"exists"', '"only"', '"table"', '"view"'):
+        assert f"  {junk}:" not in owner, f"{junk} is a SQL keyword, not a relation"

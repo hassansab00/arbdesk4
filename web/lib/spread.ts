@@ -157,6 +157,95 @@ export function subMinLegs(legs: SpreadLeg[] | undefined): number {
   return (legs || []).filter((L) => L.cost > 0 && L.cost < MIN_ORDER - 1e-9).length;
 }
 
+/**
+ * The plan you can actually place.
+ *
+ * THE BUG THIS FIXES. The solver produces a continuous ideal: "833.33 shares
+ * of each of three bands". At small targets that puts legs at 40c, 60c, 80c -
+ * and Polymarket rejects an order under its minimum notional, so the plan does
+ * not exist. The page used to print that plan's profit anyway and warn about
+ * it in grey text underneath. A number you can read is louder than a caveat
+ * you can read, so the number itself has to be the placeable one.
+ *
+ * WHAT LIFTING DOES. Every leg here is the same trade at a different size, so
+ * the whole plan scales by one factor: whatever it takes to bring the SMALLEST
+ * leg up to the minimum. The legs are then re-walked through their real
+ * ladders rather than scaled arithmetically, because a bigger order fills at a
+ * worse average - which is exactly the cost of being forced up to a placeable
+ * size, and it should be visible rather than assumed away.
+ *
+ * Returns null when the plan is already placeable, so a caller can tell "no
+ * change needed" from "changed".
+ */
+export interface Executable {
+  /** Multiplier applied to the ideal plan. Always > 1. */
+  scale: number;
+  shares: number;
+  legs: SpreadLeg[];
+  budget: number;
+  profitIfCovered: number;
+  lossIfUncovered: number;
+  ev: number | null;
+  /** The smallest leg in the IDEAL plan - the one that could not be placed. */
+  smallestIdealLeg: number;
+  /** Extra cost of the worse average fill, over a straight scaling. */
+  slippageCost: number;
+  /** True when even the lifted plan runs out of book. */
+  depthCapped: boolean;
+}
+
+export function executablePlan(
+  res: SpreadResult,
+  b: SpreadBand[],
+  side: Side,
+  minOrder = MIN_ORDER,
+  coverageProb?: number
+): Executable | null {
+  const legs = res.legs ?? [];
+  if (!res.feasible || legs.length === 0) return null;
+
+  const positive = legs.filter((L) => L.cost > 1e-9);
+  if (positive.length === 0) return null;
+  const smallest = Math.min(...positive.map((L) => L.cost));
+  if (smallest >= minOrder - 1e-9) return null;          // already placeable
+
+  const scale = minOrder / smallest;
+  const shares = (res.shares ?? 0) * scale;
+
+  let budget = 0;
+  let capped = false;
+  const lifted: SpreadLeg[] = legs.map((L) => {
+    const book = bookOfSide(b[L.idx], side === "no" ? "no" : "yes");
+    const want = L.shares * scale;
+    const fc = ladderCost(book, want);
+    capped = capped || fc.capped;
+    budget += fc.cost;
+    return {
+      ...L,
+      shares: fc.filled,
+      cost: fc.cost,
+      price: fc.filled > 0 ? Math.round(fc.avg * 10) / 10 : L.price,
+    };
+  });
+
+  const naive = legs.reduce((a, L) => a + L.cost, 0) * scale;
+  const profit = shares - budget;
+  const p = coverageProb ?? res.coverageProb ?? 0;
+
+  return {
+    scale,
+    shares,
+    legs: lifted,
+    budget,
+    profitIfCovered: profit,
+    lossIfUncovered: -budget,
+    ev: p > 0 ? p * profit + (1 - p) * -budget : null,
+    smallestIdealLeg: smallest,
+    slippageCost: budget - naive,
+    depthCapped: capped,
+  };
+}
+
 export function minYesTarget(b: SpreadBand[], cov: number[]): number | null {
   const sumP = cov.reduce((s, i) => s + C(b[i].yes), 0);
   if (sumP >= 1 || !cov.length) return null;

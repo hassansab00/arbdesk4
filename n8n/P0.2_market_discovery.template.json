@@ -1,0 +1,621 @@
+{
+  "name": "AD4 P0.2 - Market Discovery",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "warn",
+      "name": "Note warn",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -60
+      ],
+      "parameters": {
+        "content": "## READ BEFORE ACTIVATING\n\nYour n8n ALREADY RUNS a P0.2. This file is a rebuild, not a patch.\n\n**Never leave both Active.** Two workflows writing the same tables is\nworse than one.\n\nSafe cutover:\n  1. Import this. Leave it INACTIVE.\n  2. Fill in Config.\n  3. Run it once with the Manual Trigger (or the AD4 Workflows page).\n  4. Compare its Summary line against your original's.\n  5. Only then: deactivate the original, activate this.",
+        "width": 480,
+        "height": 340
+      }
+    },
+    {
+      "id": "endpoint",
+      "name": "Note endpoint",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        320
+      ],
+      "parameters": {
+        "content": "## Endpoint: filled in, NOT reachable from the build machine\n\n`markets_url` is Polymarket's public **Gamma events** endpoint. It could not be\ncalled when this file was written - this build sandbox blocks polymarket.com -\nso the first run is the test.\n\n    https://gamma-api.polymarket.com/events\n      ?closed=false&limit=200&order=endDate&ascending=true&tag_slug=weather\n\n**If `tag_slug=weather` returns nothing**, that tag is the one part most likely\nto have moved. Drop it and the workflow will pull every open event and match on\nyour own city keys instead - slower, same result:\n\n    https://gamma-api.polymarket.com/events?closed=false&limit=500\n\n### The shape this expects\n\nA temperature market is an **event** (one city, one day) containing one\n**binary market per bucket**:\n\n    event            -> one row in `markets`\n    event.markets[]  -> one row in `bands`\n\n`Parse markets + bands` reads the bucket bounds out of `groupItemTitle`\n(\"70-71F\", \"78F or above\", \"59F or below\") because Polymarket states them only\nas text, and a band with no numeric bounds cannot be priced by anything\ndownstream.\n\n### Check these two things on the first run\n\n1. **The dates.** The Summary node prints every `resolution_date` it derived.\n   They come from `endDate` rolled back a day when it lands before noon UTC,\n   which is how these markets close. If they are all one day out, that rule is\n   what to change - it is a single function at the top of the parse node.\n2. **`bands with no bounds`.** The Summary prints the count and the first few\n   labels it could not read. A handful is normal; most of them means the label\n   format has changed and the patterns need a line adding.\n\n**Nothing is written unless markets parse**, and the run stops before the\ninsert if more than half the bands failed to parse.",
+        "width": 480,
+        "height": 684
+      }
+    },
+    {
+      "id": "trigger-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "trigger-schedule",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        160
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "trigger-webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        320
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ad4-market-discovery",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "ad4-market-discovery"
+    },
+    {
+      "id": "config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        100
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "supabase_url",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "2",
+              "name": "service_key",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "3",
+              "name": "markets_url",
+              "type": "string",
+              "value": "https://gamma-api.polymarket.com/events?closed=false&limit=200&order=endDate&ascending=true&tag_slug=weather"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "load-cities",
+      "name": "Load cities",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        100
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/cities?select=city_key,unit,icao&limit=500",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "fetch-markets",
+      "name": "Fetch markets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        100
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.markets_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "parse",
+      "name": "Parse markets + bands",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// Normalise Polymarket's Gamma response into `markets` + `bands` rows.\n//\n// THE SHAPE THIS EXPECTS, and why it is not the obvious one. A Polymarket\n// temperature market is an EVENT (one city, one day) containing one BINARY\n// MARKET PER BUCKET. So the mapping is:\n//\n//     event            -> one row in `markets`   (the city-day)\n//     event.markets[]  -> one row in `bands`     (one temperature bucket)\n//\n// The first version of this file assumed one market with an `outcomes` array\n// and produced zero bands against the real API.\n//\n// THE PART THAT MATTERS MOST: band_lo / band_hi. Polymarket states the bucket\n// in TEXT (\"70-71\u00b0F\", \"78\u00b0 or above\"), and every downstream thing on this desk\n// - the probability lattice, every edge, band_contains() in ad4_34 - needs the\n// numeric interval. A band with null bounds is a band the desk cannot price,\n// so the parse counts its failures and the guard refuses to write a run where\n// most of them failed.\n//\n// Intervals are HALF-OPEN [lo, hi), matching sql/ad4_34's band_contains().\n// \"70-71F\" settles on an integer high of 70 or 71, so it is [70, 72).\n\nconst cities = $('Load cities').all().map(i => i.json).flat();\nconst raw = $('Fetch markets').all().map(i => i.json).flat();\n\n// ---- deterministic ids ----------------------------------------------------\n// markets.market_id and bands.band_id are uuid columns, and Polymarket's own\n// ids are numeric strings and 0x hex - neither is a uuid. They must also be\n// STABLE across runs or every run inserts duplicates instead of upserting.\n// So: a hash of the natural key, formatted as a uuid. Same input, same id,\n// for ever.\nfunction uuidFrom(str) {\n  const s = String(str);\n  let h = '';\n  for (let salt = 0; salt < 4; salt++) {\n    let v = 0x811c9dc5 ^ salt;\n    for (let i = 0; i < s.length; i++) {\n      v ^= s.charCodeAt(i);\n      v = Math.imul(v, 0x01000193) >>> 0;\n    }\n    h += v.toString(16).padStart(8, '0');\n  }\n  // Stamp version 4 / variant bits so it is a well-formed uuid.\n  return [h.slice(0, 8), h.slice(8, 12), '4' + h.slice(13, 16),\n          ((parseInt(h[16], 16) & 0x3 | 0x8).toString(16)) + h.slice(17, 20),\n          h.slice(20, 32)].join('-');\n}\n\n// ---- the bucket text ------------------------------------------------------\n// Returns {lo, hi, open_low, open_high} or null when the text cannot be read.\nfunction parseBucket(text) {\n  if (!text) return null;\n  const t = String(text).replace(/[\u00b0\u2109\u2103]/g, ' ')     // degree signs\n                        .replace(/[\u2013\u2014]/g, '-')            // en/em dash\n                        .toLowerCase()\n                        // \"59 F or below\" -> \"59 or below\". The unit letter is\n                        // left behind by stripping the degree sign and breaks\n                        // every pattern that expects a number then a word.\n                        .replace(/(\\d)\\s*[fc](?![a-z])/g, '$1')\n                        .replace(/\\s+/g, ' ')\n                        .trim();\n\n  const num = '(-?\\\\d+(?:\\\\.\\\\d+)?)';\n\n  // \"70-71\", \"70 to 71\"\n  let m = t.match(new RegExp('^' + num + '\\\\s*(?:-|to)\\\\s*' + num));\n  if (m) {\n    const lo = parseFloat(m[1]), hiLabel = parseFloat(m[2]);\n    // Integer buckets are inclusive of both ends, so the half-open upper\n    // bound is one step past the label. A fractional label (21.5-21.9) is\n    // already a continuous range and keeps its own upper bound.\n    const step = Number.isInteger(lo) && Number.isInteger(hiLabel) ? 1 : 0;\n    return { lo, hi: hiLabel + step, open_low: false, open_high: false };\n  }\n\n  // \"78 or above\", \"78+\", \"above 78\", \"at least 78\", \"78 and up\"\n  m = t.match(new RegExp('^' + num + '\\\\s*(?:\\\\+|or (?:above|higher|more)|and (?:above|up|higher))'))\n      || t.match(new RegExp('^(?:above|over|at least|greater than)\\\\s*' + num));\n  if (m) return { lo: parseFloat(m[1]), hi: null, open_low: false, open_high: true };\n\n  // \"59 or below\", \"below 60\", \"under 60\", \"less than 60\", \"60 or lower\"\n  m = t.match(new RegExp('^' + num + '\\\\s*(?:-|or (?:below|less|lower|fewer))'))\n      || t.match(new RegExp('^(?:below|under|less than|at most)\\\\s*' + num));\n  if (m) {\n    const v = parseFloat(m[1]);\n    // \"59 or below\" is inclusive of 59, so the exclusive upper bound is 60.\n    // \"below 60\" is already exclusive.\n    const inclusive = /or (below|less|lower|fewer)/.test(t);\n    return { lo: null, hi: inclusive ? v + 1 : v, open_low: true, open_high: false };\n  }\n\n  // A bare number: a single-degree bucket.\n  m = t.match(new RegExp('^' + num + '\\\\s*$'));\n  if (m) {\n    const v = parseFloat(m[1]);\n    return { lo: v, hi: Number.isInteger(v) ? v + 1 : v, open_low: false, open_high: false };\n  }\n\n  return null;\n}\n\n// ---- which day does this market settle on? --------------------------------\n// Gamma gives endDate, and for a US market that is typically 04:00-05:00 UTC\n// on the day AFTER the local trading day. Rolling an early-UTC end time back\n// one day recovers the local day. Stated as a rule rather than buried, because\n// getting it wrong shifts every market by a day and nothing downstream can\n// tell: check the dates the Summary node prints on your first run.\nfunction resolutionDate(ev) {\n  const iso = ev.endDate || ev.end_date || ev.endDateIso || null;\n  if (!iso) return null;\n  const d = new Date(iso);\n  if (isNaN(d.getTime())) return null;\n  if (d.getUTCHours() < 12) d.setUTCDate(d.getUTCDate() - 1);\n  return d.toISOString().slice(0, 10);\n}\n\nfunction tokensOf(mk) {\n  // clobTokenIds arrives as a JSON STRING, not an array.\n  let raw = mk.clobTokenIds ?? mk.clob_token_ids ?? mk.tokens ?? null;\n  if (typeof raw === 'string') {\n    try { raw = JSON.parse(raw); } catch { raw = null; }\n  }\n  if (!Array.isArray(raw)) return [null, null];\n  const norm = raw.map(t => (t && typeof t === 'object') ? (t.token_id ?? t.tokenId ?? null) : t);\n  return [norm[0] ?? null, norm[1] ?? null];\n}\n\n// ---- walk it --------------------------------------------------------------\nconst markets = [], bands = [];\nlet skippedNoCity = 0, bandParseFailed = 0, nEvents = 0;\nconst failedLabels = [];\nconst datesSeen = new Set();\n\n// The payload may be a bare array of events, or {data:[...]}, or a single event.\nconst events = [];\nfor (const item of raw) {\n  if (!item) continue;\n  if (Array.isArray(item)) events.push(...item);\n  else if (Array.isArray(item.data)) events.push(...item.data);\n  else if (Array.isArray(item.events)) events.push(...item.events);\n  else events.push(item);\n}\n\nfor (const ev of events) {\n  if (!ev) continue;\n  nEvents++;\n  const slug = String(ev.slug || ev.event_slug || '');\n  const title = ev.title || ev.question || '';\n  const hay = (slug + ' ' + title).toLowerCase();\n\n  // Match on the city key, its display name, or its ICAO - a slug says\n  // \"nyc\" where the key might be \"new_york\".\n  const city = cities.find(c => c && c.city_key && (\n    hay.includes(String(c.city_key).toLowerCase()) ||\n    (c.icao && hay.includes(String(c.icao).toLowerCase())) ||\n    (c.display_name && hay.includes(String(c.display_name).toLowerCase().replace(/\\s+/g, '-')))\n  )) || null;\n  if (!city) { skippedNoCity++; continue; }\n\n  const forDate = resolutionDate(ev);\n  if (forDate) datesSeen.add(forDate);\n\n  const inner = Array.isArray(ev.markets) ? ev.markets : (Array.isArray(ev.outcomes) ? ev.outcomes : []);\n  if (inner.length === 0) continue;\n\n  const marketId = uuidFrom('ad4:market:' + (slug || ev.id));\n  markets.push({\n    market_id: marketId,\n    city_key: city.city_key,\n    resolution_date: forDate,\n    event_slug: slug || null,\n    title: title || null,\n    unit: city.unit || 'C',\n    band_count: inner.length,\n    closed: Boolean(ev.closed),\n    condition_id: ev.conditionId || ev.condition_id || null,\n    last_seen_at: new Date().toISOString(),\n  });\n\n  inner.forEach((mk, idx) => {\n    if (!mk) return;\n    const label = mk.groupItemTitle || mk.group_item_title || mk.outcome ||\n                  mk.band_label || mk.label || mk.question || '';\n    const b = parseBucket(label) ||\n              // Fall back to the tail of the full question: \"... be 70-71F?\"\n              parseBucket(String(mk.question || '').replace(/^.*\\bbe\\b\\s*/i, '').replace(/\\?\\s*$/, ''));\n    if (!b) {\n      bandParseFailed++;\n      if (failedLabels.length < 5) failedLabels.push(String(label).slice(0, 60));\n      return;                                   // a band with no bounds cannot be priced\n    }\n    const [yes, no] = tokensOf(mk);\n    bands.push({\n      band_id: uuidFrom('ad4:band:' + (mk.conditionId || mk.condition_id || (slug + ':' + idx))),\n      market_id: marketId,\n      band_index: idx,\n      band_label: String(label).trim() || null,\n      band_lo: b.lo,\n      band_hi: b.hi,\n      open_low: b.open_low,\n      open_high: b.open_high,\n      condition_id: mk.conditionId || mk.condition_id || null,\n      token_yes: yes,\n      token_no: no,\n    });\n  });\n}\n\n// Order the bands within each market by their floor, so band_index is the\n// ladder position rather than the order Polymarket happened to list them.\nconst byMarket = {};\nfor (const b of bands) (byMarket[b.market_id] = byMarket[b.market_id] || []).push(b);\nfor (const list of Object.values(byMarket)) {\n  list.sort((x, y) => (x.band_lo ?? -1e9) - (y.band_lo ?? -1e9));\n  list.forEach((b, i) => { b.band_index = i; });\n}\n\n// band_count is what the desk can actually PRICE, not what Polymarket listed.\n// The overround check sums a ladder and reads a short one as a cheap book, so\n// counting a bucket that was dropped for having no bounds would make an\n// incomplete ladder look complete.\nfor (const m of markets) m.band_count = (byMarket[m.market_id] || []).length;\n\nreturn [{ json: {\n  markets, bands,\n  n_markets: markets.length,\n  n_bands: bands.length,\n  n_events: nEvents,\n  skipped_no_city: skippedNoCity,\n  band_parse_failed: bandParseFailed,\n  failed_labels: failedLabels,\n  dates: Array.from(datesSeen).sort(),\n  n_raw: raw.length,\n} }];\n"
+      }
+    },
+    {
+      "id": "guard",
+      "name": "Guard: did anything parse?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const p = $('Parse markets + bands').first().json;\n\nif (p.n_markets === 0) {\n  throw new Error(\n    `Parsed 0 markets from ${p.n_events} event(s) ` +\n    `(${p.skipped_no_city} skipped: the slug matched none of your city keys). ` +\n    `Nothing was written. Two likely causes, in order: the tag_slug filter on ` +\n    `markets_url no longer matches Polymarket's weather tag - drop it and use ` +\n    `https://gamma-api.polymarket.com/events?closed=false&limit=500 - or your ` +\n    `cities table uses keys that do not appear in the slugs, in which case set ` +\n    `cities.display_name to the name Polymarket uses.`);\n}\n\n// A BAND WITH NO NUMERIC BOUNDS CANNOT BE PRICED. Not by the probability\n// lattice, not by any edge, not by band_contains() in ad4_34. Writing a ladder\n// with holes in it is worse than writing nothing: the overround check reads it\n// as a cheap book and every coverage figure computed from it is wrong.\n//\n// A few failures are normal - a market can carry a non-temperature outcome.\n// Most of them failing means the label format moved, and the run stops.\nconst attempted = (p.n_bands || 0) + (p.band_parse_failed || 0);\nif (attempted > 0 && p.band_parse_failed > attempted / 2) {\n  throw new Error(\n    `${p.band_parse_failed} of ${attempted} buckets had a label this workflow ` +\n    `could not read, so their bounds would be null and nothing downstream can ` +\n    `price them. Nothing was written. Labels it choked on: ` +\n    `${(p.failed_labels || []).join(' | ')}. Fix parseBucket() in ` +\n    `\"Parse markets + bands\" - the patterns are at the top of the node.`);\n}\n\nreturn [{ json: p }];"
+      }
+    },
+    {
+      "id": "upsert-markets",
+      "name": "Upsert markets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/markets?on_conflict=market_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.markets) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "upsert-bands",
+      "name": "Upsert bands",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/bands?on_conflict=band_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Parse markets + bands').first().json.bands) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "summary",
+      "name": "Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// DID THE DATABASE ACTUALLY TAKE IT?\n//\n// Every write node here carries onError=continueRegularOutput, so the workflow\n// walks straight past a rejected write and reaches this node looking healthy.\n// That is how a run reports success having written nothing - which is exactly\n// what happened: reads worked, every write was refused, and the only visible\n// error was on the LAST node in the chain.\n//\n// With neverError on, a refusal arrives as the PostgREST error body instead of\n// an exception, so it can be read and named here.\nfunction writeError(node) {\n  let items;\n  try { items = $(node).all(); } catch (e) { return null; }\n  for (const it of items || []) {\n    const b = it && it.json;\n    if (!b || typeof b !== 'object') continue;\n    if (b.error && !b.code) return { node, code: null, message: String(b.error).slice(0, 300) };\n    if (b.code || b.message) {\n      return { node, code: b.code ?? null,\n               message: b.message ?? '', details: b.details ?? null, hint: b.hint ?? null };\n    }\n  }\n  return null;\n}\n\nconst WRITE_NODES = [\"Upsert markets\", \"Upsert bands\"];\nfor (const node of WRITE_NODES) {\n  const e = writeError(node);\n  if (!e) continue;\n  // 42501 is the one worth naming, because the cause is never the code.\n  if (String(e.code) === '42501' || /permission denied/i.test(e.message)) {\n    throw new Error(\n      `Supabase REFUSED the write: ${e.message} (${e.code}). This is the ANON key in the ` +\n      `Config node, not the service key - anon is granted SELECT and nothing else, which is ` +\n      `why reads worked and every write was silently dropped. Open Config -> service_key and ` +\n      `paste the SERVICE ROLE key (Supabase -> Project Settings -> API -> service_role, or a ` +\n      `key beginning sb_secret_). NEVER put that key anywhere starting NEXT_PUBLIC_. ` +\n      `Failing node: ${e.node}. Nothing was written.`);\n  }\n  throw new Error(\n    `Supabase refused the write at \"${e.node}\": ${e.message}` +\n    (e.code ? ` (${e.code})` : '') + (e.details ? ` - ${e.details}` : '') +\n    (e.hint ? ` Hint: ${e.hint}` : '') + ' Nothing was written.');\n}\n\nconst p = $('Parse markets + bands').first().json;\nconst rows = (p.n_markets || 0) + (p.n_bands || 0);\nconst failed = p.band_parse_failed || 0;\n\n// CHECK THESE TWO ON THE FIRST RUN. The dates come from endDate rolled back a\n// day when it lands before noon UTC; if they are all one day out, that rule is\n// what to change. The unreadable labels are the other half - a handful is\n// normal, a pile means the format moved.\nconst summary =\n  `AD4 P0.2: ${p.n_markets} market(s), ${p.n_bands} band(s) upserted from ` +\n  `${p.n_events} event(s). Settlement dates: ${(p.dates || []).join(', ') || 'none'}. ` +\n  `${p.skipped_no_city} event(s) matched no city` +\n  (failed ? `. ${failed} bucket label(s) unreadable: ${(p.failed_labels || []).join(' | ')}` : '') + '.';\n\nconst status = rows > 0 ? (failed ? 'attention' : 'ok') : 'attention';\nconst detail = { n_markets: p.n_markets, n_bands: p.n_bands, n_events: p.n_events,\n                 skipped_no_city: p.skipped_no_city, band_parse_failed: failed,\n                 failed_labels: p.failed_labels || [], dates: p.dates || [] };\nreturn [{ json: {\n  summary, status, rows,\n  log: { p_job: 'P0.2_market_discovery', p_status: status, p_rows: rows,\n         p_detail: { ...detail, summary, trigger: $execution.mode, execution_id: $execution.id } },\n} }];"
+      }
+    },
+    {
+      "id": "log-run",
+      "name": "Log run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.log) }}"
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2220,
+        100
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
+      }
+    },
+    {
+      "id": "sched-check",
+      "name": "Check schedule",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        430,
+        -30
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/should_run",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_job: \"P0.2_market_discovery\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "sched-gate",
+      "name": "Run now?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        -30
+      ],
+      "parameters": {
+        "jsCode": "\n// AN ENDPOINT THIS FILE CANNOT KNOW.\n//\n// P0.2-P0.5 are RECONSTRUCTIONS. The Supabase half is grounded in the real\n// schema and is safe; the Polymarket half never was. These files used to ship\n// with a plausible-looking URL already filled in, which is worse than shipping\n// none: it reads as authoritative, so nobody changes it, and the run dies four\n// nodes later with a message about response shapes. That is exactly how this\n// wasted an afternoon.\n//\n// So the field ships EMPTY and the run stops here - before any HTTP call,\n// before any database read - saying where the real value is.\n{\n  const cfg = $('Config').first().json ?? {};\n  const missing = Object.keys(cfg)\n    .filter((k) => k.endsWith('_url') && k !== 'supabase_url')\n    .filter((k) => !String(cfg[k] ?? '').trim());\n  if (missing.length) {\n    throw new Error(\n      `Config.${missing.join(' and Config.')} is empty, and this file cannot fill it in. ` +\n      `Open your OWN working P0.2-P0.5 in n8n, click its Polymarket HTTP node, copy the URL ` +\n      `from it, and paste it here. Those workflows are what put 841 markets and 122,000 trades ` +\n      `in this database - they are the authority on the endpoint, not this reconstruction. ` +\n      `Nothing was fetched and nothing was written.`);\n  }\n}\n\n// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A PERMISSION ERROR IS NOT AN UNAVAILABLE GATE. 42501 here means the key\n// cannot call should_run, and a key that cannot do that cannot write either -\n// so stop, rather than failing open into a run that writes nothing.\n//\n// THIS IS NOT THE MAIN DEFENCE AND MUST NOT BE MISTAKEN FOR IT. sql/ad4_20\n// grants should_run to anon ON PURPOSE, so the Workflows page can preview a\n// schedule change before saving it. On a database with that grant - which is\n// every database that ran ad4_20 - an anon key sails straight through this\n// check and only fails at the first WRITE. The write guard in the Summary\n// node is what actually catches it; run section 6 of sql/ad4_diagnose.sql to\n// see which key can write what before spending a run finding out.\nif (decision && (String(decision.code) === '42501' ||\n                 /permission denied/i.test(String(decision.message || '')))) {\n  throw new Error(\n    `Supabase refused should_run: ${decision.message} (${decision.code}). This is the ANON ` +\n    `key in the Config node, not the service key - anon is granted SELECT and nothing else. ` +\n    `Every write in this workflow would be refused the same way. Open Config -> service_key ` +\n    `and paste the SERVICE ROLE key (Supabase -> Project Settings -> API -> service_role, or ` +\n    `a key beginning sb_secret_). NEVER put that key anywhere starting NEXT_PUBLIC_.`);\n}\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
+      }
+    },
+    {
+      "id": "sched-stop",
+      "name": "Stop if skipped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        -30
+      ],
+      "parameters": {
+        "jsCode": "// Returning [] stops the workflow here. Everything below this node\n// is skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Check schedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load cities": {
+      "main": [
+        [
+          {
+            "node": "Fetch markets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch markets": {
+      "main": [
+        [
+          {
+            "node": "Parse markets + bands",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse markets + bands": {
+      "main": [
+        [
+          {
+            "node": "Guard: did anything parse?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard: did anything parse?": {
+      "main": [
+        [
+          {
+            "node": "Upsert markets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert markets": {
+      "main": [
+        [
+          {
+            "node": "Upsert bands",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert bands": {
+      "main": [
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary": {
+      "main": [
+        [
+          {
+            "node": "Log run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log run": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check schedule": {
+      "main": [
+        [
+          {
+            "node": "Run now?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now?": {
+      "main": [
+        [
+          {
+            "node": "Stop if skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stop if skipped": {
+      "main": [
+        [
+          {
+            "node": "Load cities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

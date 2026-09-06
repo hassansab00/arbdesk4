@@ -1,4 +1,4 @@
-name: Derived Recompute (capacity + correlation)
+name: Derived Recompute (capacity, correlation, peak hour, caches)
 
 on:
   schedule:

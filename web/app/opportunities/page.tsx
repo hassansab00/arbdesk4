@@ -10,7 +10,9 @@ import RefreshButton from "@/components/RefreshButton";
 import { fmtAge, fmtCompactUsd, fmtPct, fmtPp, fmtPrice, fmtUsd, regimeColor } from "@/lib/format";
 import { fmtBandRange, fmtTemp, fmtTempDelta, type Unit } from "@/lib/units";
 import { fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
-import { buy, feeRateAt } from "@/lib/costs";
+import { feeRateAt } from "@/lib/costs";
+import { fill, ladderFor, maxCleanStake, parseLevels, type BookRow, type Limits } from "@/lib/execution";
+import { useExecutionLimits } from "@/lib/useExecutionLimits";
 import { DayPath, LivePrices, StrategyMirror, WindowPill } from "@/components/TradeTiming";
 import type { CityDayPlan, OpportunityContext, TradePlan } from "@/lib/types";
 
@@ -97,7 +99,15 @@ export default function OpportunitiesPage() {
     [],
     60000
   );
-
+  // THE ACTUAL BOOK, not a mid. Every "if right" and "EV" on this page used to
+  // be computed at market_price - a midpoint - as though any quantity could be
+  // bought there. You buy at the ask, and you buy down the ladder.
+  const bookQ = useQuery<BookRow[]>(
+    () => supabase.from("v_latest_book")
+      .select("band_id,ask_levels,bid_levels,ask_levels_source,bid_levels_source,ask_depth_usd,bid_depth_usd,best_ask,best_bid"),
+    [],
+    30000
+  );
   const allRows = q.data ?? [];
   // The rows a strategy would actually take, right now. This is the answer to
   // "what do I do in the next hour", and it is a different question from
@@ -133,6 +143,11 @@ export default function OpportunitiesPage() {
     () => new Map((ctxQ.data ?? []).map((c) => [c.band_id, c])),
     [ctxQ.data]
   );
+  const bookByBand = useMemo(
+    () => new Map((bookQ.data ?? []).map((b) => [b.band_id, b])),
+    [bookQ.data]
+  );
+  const { limits } = useExecutionLimits();
   const unrepriced = useMemo(
     () => (ctxQ.data ?? []).filter((c) => c.forecast_ahead_of_book).length,
     [ctxQ.data]
@@ -158,7 +173,10 @@ export default function OpportunitiesPage() {
           <h1 className="text-lg font-semibold">Opportunities</h1>
           <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted">
             Every band where the model and the market disagree by more than the cost of trading,
-            best first. Rank is{" "}
+            best first. Every money figure on a card is the <strong className="text-text">fill you
+            would actually get</strong>: the stake is walked through the real ask ladder, the
+            venue&apos;s order minimum is applied, and what the book cannot absorb is not counted.
+            Rank is{" "}
             <code>edge × confidence × ln(1 + depth) × volume/(volume + k)</code> — a large edge on a
             book you cannot fill ranks below a modest edge you can. The volume term only ever
             discounts; it never inflates a rank.
@@ -335,6 +353,8 @@ export default function OpportunitiesPage() {
                 stake={stake}
                 lw={liveByCity.get(o.city_key)}
                 ctx={ctxByBand.get(o.band_id)}
+                book={bookByBand.get(o.band_id)}
+                limits={limits}
                 onOpen={() => router.push(`/board?city=${encodeURIComponent(o.city_key)}&date=${o.resolution_date}`)}
               />
             ))}
@@ -373,30 +393,41 @@ function Drift({ label, v, side }: { label: string; v: number; side: string }) {
 }
 
 function Card({
-  o, rank, stake, lw, ctx, onOpen,
+  o, rank, stake, lw, ctx, book, limits, onOpen,
 }: {
   o: TradePlan;
   rank: number;
   stake: number;
   lw: LiveRow | undefined;
   ctx: OpportunityContext | undefined;
+  book: BookRow | undefined;
+  limits: Limits;
   onOpen: () => void;
 }) {
   const unit = o.unit as Unit;
   const price = o.market_price;
   const band = o.band_label ?? fmtBandRange(o.band_lo, o.band_hi, unit, o.open_low, o.open_high);
 
-  // What the trade actually risks and returns, in dollars, at this stake -
-  // through the desk's own cost model, so this card and the board can
-  // never quote different numbers for the same trade.
-  const pos = price ? buy(stake, price, o.model_prob) : null;
-  const profit = pos?.profit ?? null;
-  const ev = pos?.ev ?? null;
+  // WHAT THE TRADE ACTUALLY RETURNS. This used to be buy(stake, market_price)
+  // - a midpoint, with unlimited depth behind it. Both halves were wrong: you
+  // lift the ask, and you lift it DOWN THE LADDER, so a $500 ticket against a
+  // $120 book returns what $120 of shares return, not what $500 does. The
+  // ladder walk lives in lib/execution.ts and is unit-tested against the same
+  // fee model the paper engine settles with.
+  const side = o.side === "YES" ? "ask" : "bid";
+  const rawLevels = parseLevels(side === "ask" ? book?.ask_levels : book?.bid_levels, o.side);
+  const quoted = o.side === "YES" ? o.best_ask : (o.best_bid != null ? 1 - o.best_bid : null);
+  const depthUsd = o.side === "YES" ? (book?.ask_depth_usd ?? o.fillable_usd_5c) : (book?.bid_depth_usd ?? o.fillable_usd_5c);
+  const { levels, known: bookKnown } = ladderFor(rawLevels, quoted, depthUsd, limits);
+  const pos = fill(stake, levels, bookKnown, o.model_prob, limits);
+  const profit = pos.shares > 0 ? pos.profit : null;
+  const ev = pos.ev;
+  const cleanMax = levels.length ? maxCleanStake(levels, limits) : 0;
 
   // Can this stake even fill? Depth is the binding constraint far more often
   // than edge is, and it was previously just another number in a grid.
   const depth = o.fillable_usd_5c ?? 0;
-  const overDepth = depth > 0 && stake > depth;
+  const overDepth = !pos.complete && pos.shares > 0;
 
   // Where the day's maximum is now, relative to the band being bought.
   const inBand =
@@ -406,7 +437,10 @@ function Card({
 
   const doubts = [
     o.thin_market && "barely trades — the fill will move the price further than the ladder implies",
-    overDepth && `only ${fmtUsd(depth)} fillable inside 5¢ — this stake is larger than the book`,
+    overDepth && `only ${fmtUsd(pos.spent)} of this ${fmtUsd(stake)} stake actually fills — the book runs out`,
+    pos.problems.includes("below_minimum") && `under the venue's ${fmtUsd(limits.minOrderUsd)} order minimum — this would be rejected, not filled small`,
+    pos.problems.includes("no_book") && "no stored ladder for this side, so the fill above is priced off top-of-book and a depth total",
+    pos.slippage != null && pos.slippage > 0.01 && `walking the book costs ${(pos.slippage * 100).toFixed(1)}¢ a share on top of the quote`,
     o.ask_levels_source === "synthetic_tiers" && "book ladder reconstructed from depth totals, not the raw book",
     o.volume_stale && "the volume figure is from a snapshot older than three lookback windows",
     (o.confidence ?? 1) < 0.5 && `model confidence only ${fmtPct(o.confidence, 0)}`,
@@ -479,9 +513,18 @@ function Card({
 
       {/* ---- price vs value --------------------------------------------- */}
       <div className="mt-3 flex items-center gap-3 rounded bg-panel2 px-3 py-2">
-        <div>
+        <div title={
+          pos.avgPrice != null
+            ? `The average price this stake actually fills at, walking the real ladder. Top of book is ${fmtPrice(pos.topPrice)}; the mid is ${fmtPrice(price)}.`
+            : "No fill is possible at this size."
+        }>
           <div className="text-[9px] uppercase tracking-wide text-muted">You pay</div>
-          <div className="font-mono text-lg">{fmtPrice(price)}</div>
+          <div className="font-mono text-lg">
+            {pos.avgPrice != null ? fmtPrice(pos.avgPrice) : fmtPrice(price)}
+          </div>
+          {pos.avgPrice != null && pos.topPrice != null && pos.avgPrice - pos.topPrice > 0.001 && (
+            <div className="text-[9px] text-warn">top {fmtPrice(pos.topPrice)}</div>
+          )}
         </div>
         <div className="text-muted">→</div>
         <div>
@@ -496,22 +539,40 @@ function Card({
         </div>
       </div>
 
-      {/* ---- the same thing in money ------------------------------------- */}
+      {/* ---- the same thing in money, at the fill you would actually get -- */}
       <div className="mt-2 grid grid-cols-3 gap-2 font-mono text-xs">
-        <div>
+        <div title={`Requested ${fmtUsd(stake)}. This is what actually leaves the account once the order is walked through the real book and the venue's minimum is applied.`}>
           <div className="text-[9px] uppercase tracking-wide text-muted">Risk</div>
-          {fmtUsd(stake)}
+          <span className={pos.spent > 0 && pos.spent < stake - 0.02 ? "text-warn" : ""}>
+            {pos.shares > 0 ? fmtUsd(pos.spent) : "—"}
+          </span>
+          {pos.shares > 0 && pos.spent < stake - 0.02 && (
+            <div className="text-[9px] text-warn">of {fmtUsd(stake)}</div>
+          )}
         </div>
-        <div>
+        <div title="One dollar per share, minus what the fill cost. Computed on the shares actually obtainable, not on the requested stake.">
           <div className="text-[9px] uppercase tracking-wide text-muted">If right</div>
           <span className="text-good">{profit === null ? "—" : fmtUsd(profit, { signed: true })}</span>
+          {pos.shares > 0 && <div className="text-[9px] text-muted">{pos.shares.toFixed(0)} sh</div>}
         </div>
-        <div title={`Expected value at the model's own probability: p x profit - (1 - p) x stake. Positive is the whole point; it is not a promise. Taker fee here: ${pos ? fmtUsd(pos.fee) : "-"}, ${fmtPct(price ? feeRateAt(price) : 0, 2)} of notional.`}>
+        <div title={`Expected value at the model's own probability, on the fill: p x profit - (1 - p) x spent. Taker fee on this fill: ${fmtUsd(pos.fee)}, ${fmtPct(pos.avgPrice ? feeRateAt(pos.avgPrice) : 0, 2)} of notional.`}>
           <div className="text-[9px] uppercase tracking-wide text-muted">EV</div>
           <span className={ev !== null && ev > 0 ? "text-good" : "text-bad"}>
             {ev === null ? "—" : fmtUsd(ev, { signed: true })}
           </span>
         </div>
+      </div>
+
+      {/* ---- what the fill actually looks like ---------------------------- */}
+      <div className={`mt-1 rounded px-2 py-1 text-[10px] leading-relaxed ${
+        pos.shares === 0 ? "bg-bad/10 text-bad" : pos.complete ? "bg-panel2 text-muted" : "bg-warn/10 text-warn"
+      }`}>
+        {pos.note}
+        {pos.shares > 0 && Number.isFinite(cleanMax) && cleanMax > 0 && (
+          <span className="text-muted">
+            {" "}· biggest clean ticket here {fmtUsd(cleanMax)}
+          </span>
+        )}
       </div>
 
       {/* ---- which way is it moving, and how long is left ---------------- */}
@@ -535,21 +596,29 @@ function Card({
         </div>
       )}
 
-      {/* ---- how much of it is actually available ------------------------ */}
+      {/* ---- how much of it is actually available ------------------------
+          Two different facts, and they used to be shown as one. "Fillable
+          inside 5c" is the edge engine's estimate against the top of book;
+          the ladder is what is really quoted. Where both exist the ladder
+          wins, because it is the thing the fill above was computed from. */}
       <div className="mt-2 flex items-center justify-between text-[11px]">
         <span className={overDepth ? "text-warn" : "text-muted"}>
-          fillable {fmtUsd(depth)} inside 5¢
+          {bookKnown
+            ? `book holds ${fmtUsd(cleanMax)} across ${levels.length} level${levels.length === 1 ? "" : "s"}`
+            : `est. ${fmtUsd(depth)} fillable inside 5¢ — no stored ladder`}
         </span>
         <span className={o.thin_market ? "text-warn" : "text-muted"}>
           {fmtCompactUsd(o.volume_usd)} traded 24h
           {o.last_trade_at ? ` · last ${fmtAge(o.last_trade_at)}` : ""}
         </span>
       </div>
-      <div className="mt-1 h-1 overflow-hidden rounded bg-panel2">
-        {/* how much of this stake the book can absorb */}
+      <div
+        className="mt-1 h-1 overflow-hidden rounded bg-panel2"
+        title={`How much of the ${fmtUsd(stake)} you asked for actually fills at the quoted ladder.`}
+      >
         <div
-          className={`h-full ${overDepth ? "bg-warn" : "bg-good"}`}
-          style={{ width: `${Math.min(100, depth > 0 ? (Math.min(stake, depth) / stake) * 100 : 0)}%` }}
+          className={`h-full ${pos.complete ? "bg-good" : "bg-warn"}`}
+          style={{ width: `${Math.min(100, stake > 0 ? (pos.spent / stake) * 100 : 0)}%` }}
         />
       </div>
 

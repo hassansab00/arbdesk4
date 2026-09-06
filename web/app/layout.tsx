@@ -31,7 +31,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="dark">
-      <body className="flex h-screen flex-col overflow-hidden bg-base font-sans text-text">
+      <body className="flex h-screen flex-col overflow-hidden bg-ground font-sans text-text">
         <ConfigBanner />
         <Header />
         <GlobalBar />

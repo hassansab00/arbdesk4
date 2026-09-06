@@ -6,7 +6,13 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        base: "#0b0e14",
+        // NOT "base". A palette colour called `base` shadows Tailwind's
+        // `text-base` FONT SIZE utility - `text-base` then paints text in the
+        // page's own background colour and every heading using it becomes
+        // invisible. That is exactly what happened to all four Analytics
+        // group headings and all four Data Bank section headings, and it is
+        // invisible in a diff, in a typecheck, and in a build.
+        ground: "#0b0e14",
         panel: "#12161f",
         panel2: "#171c27",
         border: "#232a38",

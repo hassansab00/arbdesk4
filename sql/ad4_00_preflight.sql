@@ -617,6 +617,54 @@ begin
         ('weather_forecasts','variables','jsonb'),
         ('weather_forecasts','source','text'),
 
+        -- COLUMNS THE PRODUCTION DATABASE HAS AND THIS FILE DID NOT CREATE.
+        --
+        -- Found by installing every SQL file in order onto an empty database
+        -- and diffing the result against the live schema: fifty-odd columns
+        -- existed only because an earlier hand-run migration put them there.
+        -- Two consequences, and the second is the serious one:
+        --
+        --   sql/ad4_31 selected bands.band_index and failed to install at all
+        --   on a clean database, which is a Predictive page that is red for a
+        --   reason no error message names.
+        --
+        --   scripts/probability_engine.py WRITES band_probabilities.raw_prob
+        --   and scripts/databank.py READS it, and nothing here created it. A
+        --   rebuild from these files produces a schema the desk's own jobs
+        --   cannot write to - which is the difference between a repo that
+        --   documents a database and one that can restore it.
+        --
+        -- Only columns this repo's own code reads or writes are listed. Adding
+        -- a column is idempotent and cannot change one that already exists, so
+        -- this is safe on the live database and does nothing there.
+        ('band_probabilities','raw_prob','numeric'),
+        ('bands','band_index','int'),
+        ('bands','condition_id','text'),
+        ('markets','first_seen_at','timestamptz'),
+        ('markets','last_seen_at','timestamptz'),
+        ('markets','title','text'),
+        ('markets','band_count','int'),
+        ('markets','resolved_band_id','uuid'),
+        ('markets','settled_at','timestamptz'),
+        ('markets','settlement_source','text'),
+        ('signals','approved','boolean'),
+        ('signals','acted_on','boolean'),
+        ('signals','category','text'),
+        ('signals','book_snapshot_id','bigint'),
+        ('signals','deployment_id','uuid'),
+        ('paper_trades','close_price','numeric'),
+        ('paper_trades','close_reason','text'),
+        ('paper_trades','signal_id','bigint'),
+        ('anomalies','city_key','text'),
+        ('anomalies','severity','text'),
+        ('model_versions','structural','boolean'),
+        -- Integer LEVEL COUNTS, not the ladders. The ladder itself lives in
+        -- book_snapshots.raw_book and is unpacked by ad4_raw_book_side();
+        -- naming these the same thing has confused two readers already, so
+        -- the comment stays with the columns.
+        ('book_snapshots','bid_levels','int'),
+        ('book_snapshots','ask_levels','int'),
+
         -- derived ---------------------------------------------------------------
         ('derived_weather_peak','peak_hour_local','numeric'),
         ('derived_weather_peak','window_width_h','numeric'),
