@@ -4,10 +4,33 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState, ErrorBox, Loading } from "@/components/DataState";
-import { fmtPct, fmtUsd, pnlColor } from "@/lib/format";
+import { Freshness } from "@/components/Provenance";
+import { fmtInt, fmtPct, fmtUsd, pnlColor } from "@/lib/format";
 import type { BacktestRun } from "@/lib/types";
 
 interface ResultRow { run_id: string; scope: string; data: any; }
+
+/** sql/ad4_42_backtest.sql - the widest window that could produce trades. */
+interface BacktestWindow {
+  book_from: string | null; book_to: string | null; n_books: number;
+  obs_from: string | null; obs_to: string | null; n_obs: number;
+  mkt_from: string | null; mkt_to: string | null; n_markets: number;
+  usable_from: string | null; usable_to: string | null;
+  blocked_because: string | null;
+}
+
+/** What backtest_readiness() answers for the exact window in the form. */
+interface Readiness {
+  ok: boolean;
+  days: number;
+  markets: number;
+  with_bands: number;
+  with_observation: number;
+  with_forecast: number;
+  simulatable: number;
+  blocked_because: string | null;
+  summary: string;
+}
 
 export default function BacktestPage() {
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
@@ -19,8 +42,13 @@ export default function BacktestPage() {
   const [queueError, setQueueError] = useState<string | null>(null);
   const [queueMsg, setQueueMsg] = useState<string | null>(null);
 
-  const [startDate, setStartDate] = useState("2026-06-01");
-  const [endDate, setEndDate] = useState("2026-08-29");
+  // Dates start empty and are filled from the archive's own bounds below. They
+  // used to be hardcoded to a window somebody typed once, which is how the
+  // first run anyone tried came back with nothing to evaluate.
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [readiness, setReadiness] = useState<Readiness | null>(null);
+  const [readinessError, setReadinessError] = useState<string | null>(null);
   const [cities, setCities] = useState("");
   const [strategyIds, setStrategyIds] = useState("s2_combination_arb");
   const [startingBudget, setStartingBudget] = useState("10000");
@@ -32,6 +60,43 @@ export default function BacktestPage() {
     15000
   );
   const runs = runsQ.data ?? [];
+
+  const windowQ = useQuery<BacktestWindow[]>(
+    () => supabase.from("v_backtest_window").select("*").limit(1), []
+  );
+  const bounds = (windowQ.data ?? [])[0] ?? null;
+
+  // Default the form to a window that could actually produce trades.
+  useEffect(() => {
+    if (!bounds || startDate || endDate) return;
+    if (bounds.usable_from) setStartDate(bounds.usable_from);
+    if (bounds.usable_to) setEndDate(bounds.usable_to);
+  }, [bounds, startDate, endDate]);
+
+  /**
+   * ASK BEFORE RUNNING, NOT AFTER.
+   *
+   * runner.py skips a city-day silently when any of four inputs is missing,
+   * so an unrunnable window looks exactly like an unprofitable strategy: a
+   * completed run with no trades. This asks the same four questions against
+   * the exact window in the form, as the form changes, so the answer arrives
+   * before twenty minutes of Actions time rather than after.
+   */
+  useEffect(() => {
+    if (!startDate || !endDate) { setReadiness(null); return; }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const list = cities.split(",").map((c) => c.trim()).filter(Boolean);
+      const { data, error } = await supabase.rpc("backtest_readiness", {
+        p_start: startDate, p_end: endDate, p_cities: list.length ? list : null,
+      });
+      if (cancelled) return;
+      if (error) { setReadinessError(error.message); setReadiness(null); return; }
+      setReadinessError(null);
+      setReadiness(data as Readiness);
+    }, 350);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [startDate, endDate, cities]);
 
   useEffect(() => {
     if (!selectedRun) { setResults({}); setResultsError(null); return; }
@@ -88,23 +153,72 @@ export default function BacktestPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-lg font-semibold">Backtest</h1>
-      <div className="rounded border border-warn/50 bg-warn/10 p-3 text-xs text-warn">
-        Book depth history begins 22 Aug 2026 - Polymarket publishes no depth history, so there is
-        no way to obtain more. Forecast accuracy can be backtested against ~2.5 years; strategy
-        profitability cannot, until AD4&apos;s own market data accumulates. This is a property of the
-        data, not the harness.
+      {/* The binding constraint, read from the archive rather than asserted.
+          It said "begins 22 Aug 2026" in prose, which was true on the day it
+          was written and is a claim about someone else's database now. */}
+      <div className="rounded border border-warn/50 bg-warn/10 p-3 text-xs leading-relaxed text-warn">
+        {bounds?.book_from ? (
+          <>
+            Your book archive begins <b>{bounds.book_from}</b> and holds{" "}
+            {fmtInt(bounds.n_books)} snapshot(s). Polymarket publishes no depth history, so there is
+            no way to obtain more: <b>strategy profitability cannot be backtested before that date</b>,
+            however far back you set the start. Forecast accuracy can, because observations and
+            forecasts go back further — {bounds.obs_from ?? "no observations"} onward.
+          </>
+        ) : (
+          <>
+            There are no book snapshots yet, so no strategy can be backtested at all: every entry
+            price the simulation pays comes from a real book, and Polymarket publishes no depth
+            history to backfill from. Run P0.3 for a few days first.
+          </>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_2fr]">
         <div className="space-y-2 rounded border border-border bg-panel p-4 text-sm">
-          <h2 className="font-semibold text-muted">Queue a run</h2>
+          <div className="flex items-baseline gap-2">
+            <h2 className="font-semibold text-muted">Queue a run</h2>
+            <Freshness relation="book_snapshots" />
+          </div>
           <Field label="Start date"><input value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input" /></Field>
           <Field label="End date"><input value={endDate} onChange={(e) => setEndDate(e.target.value)} className="input" /></Field>
           <Field label="Cities (comma-separated, blank = all)"><input value={cities} onChange={(e) => setCities(e.target.value)} className="input" /></Field>
           <Field label="Strategies (comma-separated ids)"><input value={strategyIds} onChange={(e) => setStrategyIds(e.target.value)} className="input" /></Field>
           <Field label="Starting budget"><input value={startingBudget} onChange={(e) => setStartingBudget(e.target.value)} className="input" /></Field>
           <Field label="Label (optional)"><input value={label} onChange={(e) => setLabel(e.target.value)} className="input" /></Field>
-          <button onClick={queueRun} className="mt-2 w-full rounded bg-accent py-1.5 text-white hover:opacity-90">Queue backtest</button>
+          {/* ---- what this window actually contains -------------------- */}
+          {readinessError && <ErrorBox message={readinessError} compact />}
+          {readiness && (
+            <div
+              className={`mt-2 rounded border p-2.5 text-[11px] leading-relaxed ${
+                readiness.ok ? "border-good/50 bg-good/10 text-good" : "border-warn/50 bg-warn/10 text-warn"
+              }`}
+            >
+              <div className="font-semibold">
+                {readiness.ok ? "This window has data" : "This window will come back empty"}
+              </div>
+              <p className="mt-0.5">{readiness.summary}</p>
+              <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[10px] text-muted">
+                <Step label="market-days" n={readiness.markets} of={readiness.markets} />
+                <Step label="with buckets" n={readiness.with_bands} of={readiness.markets} />
+                <Step label="with an outcome" n={readiness.with_observation} of={readiness.markets} />
+                <Step label="with a forecast" n={readiness.with_forecast} of={readiness.markets} />
+                <Step label="with a book price" n={readiness.simulatable} of={readiness.markets} />
+                <span>
+                  <span className="text-muted">window </span>
+                  {fmtInt(readiness.days)} days
+                </span>
+              </dl>
+            </div>
+          )}
+          <button
+            onClick={queueRun}
+            className={`mt-2 w-full rounded py-1.5 text-white hover:opacity-90 ${
+              readiness && !readiness.ok ? "bg-muted" : "bg-accent"
+            }`}
+          >
+            {readiness && !readiness.ok ? "Queue anyway" : "Queue backtest"}
+          </button>
           {queueError && <ErrorBox message={queueError} compact />}
           {queueMsg && <div className="rounded border border-good/50 bg-good/10 p-2 text-[11px] text-good">{queueMsg}</div>}
           <p className="text-[10px] text-muted">Run from GitHub Actions → Backtest — no Vercel function, and no polling: a job that checks every 10 minutes and usually finds nothing costs a billed minute each time. See docs/compute_budget.md.</p>
@@ -320,5 +434,21 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <div className="text-[10px] text-muted">{label}</div>
       {children}
     </label>
+  );
+}
+
+/**
+ * One of the four inputs a simulated city-day needs, as a fraction of the
+ * market-days in the window. The number that matters is the last one: a
+ * market-day missing any of them is skipped in silence by runner.py.
+ */
+function Step({ label, n, of }: { label: string; n: number; of: number }) {
+  const short = of > 0 && n < of;
+  return (
+    <span className={short ? "text-warn" : ""}>
+      <span className="text-muted">{label} </span>
+      <span className="tabular-nums">{n}</span>
+      {of > 0 && n !== of ? <span className="text-muted">/{of}</span> : null}
+    </span>
   );
 }

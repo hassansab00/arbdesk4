@@ -53,6 +53,8 @@ ad4_37_peak_hour.sql
 ad4_38_grants.sql
 ad4_39_freshness.sql
 ad4_40_synthesis.sql
+ad4_41_campaigns.sql
+ad4_42_backtest.sql
 
 # ad4_38 grants the write path to service_role and prints one row per ingest
 # table saying whether the service key can write it. It is last on purpose -
@@ -68,6 +70,13 @@ ad4_40_synthesis.sql
 # has established, in sentences, each carrying the span, the cities and the
 # count behind it - and the four dated artefacts that make up "the desk has
 # learned something". The Synthesis page is entirely these two views.
+#
+# ad4_41 makes a campaign show what it would actually do: the cities its target
+# resolves to, what is live inside that scope, what its own strategy would take
+# right now, and the first reason it cannot.
+#
+# ad4_42 answers whether a backtest window has any data in it BEFORE the run,
+# rather than after twenty minutes of Actions time.
 
 # ---- read-only, run any time ----------------------------------------------
 # Not part of the install: these inspect a database rather than change one.

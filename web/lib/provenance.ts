@@ -476,6 +476,13 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_forecasts",
     "weather_observations"
   ],
+  "v_backtest_window": [
+    "bands",
+    "book_snapshots",
+    "markets",
+    "weather_forecasts",
+    "weather_observations"
+  ],
   "v_band_book": [
     "book_snapshots"
   ],
@@ -510,6 +517,26 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_calibration": [
     "fact_band_outcome"
+  ],
+  "v_campaign_state": [
+    "ledger",
+    "cities",
+    "fact_signal_outcome",
+    "signals",
+    "derived_forecast_skill",
+    "bands",
+    "book_snapshots",
+    "markets",
+    "paper_trades",
+    "trades_observed",
+    "edges",
+    "derived_weather_peak",
+    "live_weather",
+    "derived_climb_profile",
+    "weather_observations"
+  ],
+  "v_campaign_targets": [
+    "cities"
   ],
   "v_city_climate": [
     "cities",

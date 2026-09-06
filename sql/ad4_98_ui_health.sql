@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 103 of them - and for each MISSING one names the
+-- and function the app reads - 106 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -24,10 +24,10 @@ with expected(rel, owner, used_by) as (values
     ('band_probabilities', 'ad4_00_preflight.sql', '/analytics'),
     ('bands', 'ad4_00_preflight.sql', '(SignalsPanel)'),
     ('book_snapshots', 'ad4_00_preflight.sql', ''),
-    ('cities', 'ad4_00_preflight.sql', '(Header), (RightRail), (ScopeControl), /, /live, /predictive'),
+    ('cities', 'ad4_00_preflight.sql', '(Header), (RightRail), (ScopeControl), /, /campaigns, /live, /predictive'),
     ('cost_params', 'ad4_phase2.sql', ''),
     ('data_freshness_spec', 'ad4_39_freshness.sql', ''),
-    ('deployments', 'ad4_00_preflight.sql', '/campaigns'),
+    ('deployments', 'ad4_00_preflight.sql', ''),
     ('derived_band_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_capacity', 'ad4_phase2.sql', ''),
     ('derived_city_climate', 'ad4_19_stats_cache.sql', ''),
@@ -45,7 +45,7 @@ with expected(rel, owner, used_by) as (values
     ('fact_forecast_outcome', 'ad4_18_databank.sql', ''),
     ('fact_signal_outcome', 'ad4_18_databank.sql', ''),
     ('ingest_log', 'ad4_00_preflight.sql', '(PipelineStatus)'),
-    ('ledger', 'ad4_00_preflight.sql', '/campaigns'),
+    ('ledger', 'ad4_00_preflight.sql', ''),
     ('live_weather', 'ad4_live_weather.sql', '(GlobalBar), (RightRail), /board, /live, /opportunities'),
     ('markets', 'ad4_00_preflight.sql', '(Header)'),
     ('model_versions', 'ad4_00_preflight.sql', ''),
@@ -59,6 +59,7 @@ with expected(rel, owner, used_by) as (values
     ('v_archive_by_city', 'ad4_35_databank_inventory.sql', '/databank'),
     ('v_archive_daily', 'ad4_35_databank_inventory.sql', '/databank'),
     ('v_archive_inventory', 'ad4_35_databank_inventory.sql', '/databank'),
+    ('v_backtest_window', 'ad4_42_backtest.sql', '/backtest'),
     ('v_band_book', 'ad4_13_reconcile.sql', ''),
     ('v_band_ladder', 'ad4_34_trade_plan.sql', ''),
     ('v_band_price_history', 'ad4_26_temp_trend.sql', '/monitor'),
@@ -66,6 +67,8 @@ with expected(rel, owner, used_by) as (values
     ('v_bankroll_curve', 'ad4_31_predictive.sql', '/predictive'),
     ('v_book_ladder', 'ad4_13_reconcile.sql', ''),
     ('v_calibration', 'ad4_18_databank.sql', '(DataBank), (ModelAnalytics)'),
+    ('v_campaign_state', 'ad4_41_campaigns.sql', '/campaigns'),
+    ('v_campaign_targets', 'ad4_41_campaigns.sql', ''),
     ('v_city_climate', 'ad4_17_city_stats.sql', ''),
     ('v_city_climb_profile', 'ad4_26_temp_trend.sql', '(ModelAnalytics)'),
     ('v_city_climb_profile_live', 'ad4_26_temp_trend.sql', ''),
@@ -149,10 +152,10 @@ begin
     ('band_probabilities', 'ad4_00_preflight.sql', '/analytics'),
     ('bands', 'ad4_00_preflight.sql', '(SignalsPanel)'),
     ('book_snapshots', 'ad4_00_preflight.sql', ''),
-    ('cities', 'ad4_00_preflight.sql', '(Header), (RightRail), (ScopeControl), /, /live, /predictive'),
+    ('cities', 'ad4_00_preflight.sql', '(Header), (RightRail), (ScopeControl), /, /campaigns, /live, /predictive'),
     ('cost_params', 'ad4_phase2.sql', ''),
     ('data_freshness_spec', 'ad4_39_freshness.sql', ''),
-    ('deployments', 'ad4_00_preflight.sql', '/campaigns'),
+    ('deployments', 'ad4_00_preflight.sql', ''),
     ('derived_band_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_capacity', 'ad4_phase2.sql', ''),
     ('derived_city_climate', 'ad4_19_stats_cache.sql', ''),
@@ -170,7 +173,7 @@ begin
     ('fact_forecast_outcome', 'ad4_18_databank.sql', ''),
     ('fact_signal_outcome', 'ad4_18_databank.sql', ''),
     ('ingest_log', 'ad4_00_preflight.sql', '(PipelineStatus)'),
-    ('ledger', 'ad4_00_preflight.sql', '/campaigns'),
+    ('ledger', 'ad4_00_preflight.sql', ''),
     ('live_weather', 'ad4_live_weather.sql', '(GlobalBar), (RightRail), /board, /live, /opportunities'),
     ('markets', 'ad4_00_preflight.sql', '(Header)'),
     ('model_versions', 'ad4_00_preflight.sql', ''),
@@ -184,6 +187,7 @@ begin
     ('v_archive_by_city', 'ad4_35_databank_inventory.sql', '/databank'),
     ('v_archive_daily', 'ad4_35_databank_inventory.sql', '/databank'),
     ('v_archive_inventory', 'ad4_35_databank_inventory.sql', '/databank'),
+    ('v_backtest_window', 'ad4_42_backtest.sql', '/backtest'),
     ('v_band_book', 'ad4_13_reconcile.sql', ''),
     ('v_band_ladder', 'ad4_34_trade_plan.sql', ''),
     ('v_band_price_history', 'ad4_26_temp_trend.sql', '/monitor'),
@@ -191,6 +195,8 @@ begin
     ('v_bankroll_curve', 'ad4_31_predictive.sql', '/predictive'),
     ('v_book_ladder', 'ad4_13_reconcile.sql', ''),
     ('v_calibration', 'ad4_18_databank.sql', '(DataBank), (ModelAnalytics)'),
+    ('v_campaign_state', 'ad4_41_campaigns.sql', '/campaigns'),
+    ('v_campaign_targets', 'ad4_41_campaigns.sql', ''),
     ('v_city_climate', 'ad4_17_city_stats.sql', ''),
     ('v_city_climb_profile', 'ad4_26_temp_trend.sql', '(ModelAnalytics)'),
     ('v_city_climb_profile_live', 'ad4_26_temp_trend.sql', ''),
