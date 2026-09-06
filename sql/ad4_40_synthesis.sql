@@ -462,8 +462,6 @@ begin
       execute format('grant execute on function ad4_plural(bigint, text, text) to %I', r);
     end if;
   end loop;
-  if false then
-  end if;
 end
 $ad4$;
 

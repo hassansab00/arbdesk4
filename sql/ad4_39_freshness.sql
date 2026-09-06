@@ -62,7 +62,11 @@ create table if not exists data_freshness_spec (
 );
 
 insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plain_english) values
-  ('cities',                    null,  null, 'market',    'The cities the desk trades. Edited by hand, not by a job.'),
+  -- '-' rather than null: the resolver would otherwise pick the first
+  -- timestamp column it finds, which on this table is nws_checked_at -
+  -- when the NWS grid id was last looked up, not when the row changed.
+  -- A city list has no cadence and no age worth reporting.
+  ('cities',                    '-',   null, 'market',    'The cities the desk trades. Edited by hand, not by a job.'),
   ('markets',                   'last_seen_at',   26, 'market',    'One row per Polymarket day-market the desk knows about.'),
   ('bands',                     null,             26, 'market',    'The temperature buckets inside each market.'),
   ('book_snapshots',            'observed_at',     2, 'market',    'What the order book looked like, sampled through the day.'),
@@ -113,7 +117,7 @@ declare
   r   record;
   col text;
 begin
-  for r in select table_name from data_freshness_spec where ts_column is null loop
+  for r in select table_name from data_freshness_spec where ts_column is null loop  -- '-' is skipped: it means "deliberately none"
     if to_regclass('public.' || r.table_name) is null then continue; end if;
     select a.attname into col
       from pg_attribute a
@@ -157,7 +161,7 @@ begin
                   null::numeric as age_hours, %s::numeric as fresh_hours,
                   'absent'::text as state$q$,
         r.table_name, r.layer, r.plain_english, coalesce(r.fresh_hours::text, 'null'));
-    elsif r.ts_column is null then
+    elsif r.ts_column is null or r.ts_column = '-' then
       parts := parts || format(
         $q$select %L::text as table_name, %L::text as layer, %L::text as plain_english,
                   (select count(*) from public.%I)::bigint as rows,
@@ -219,12 +223,52 @@ comment on view v_data_health is
 
 
 -- --------------------------------------------------------------------------
+-- 4b. NUMBERS THAT WERE INVENTED, NOT MEASURED.
+--
+--     Several thresholds in `settings` carry provisional: true, and some also
+--     carry origin: claude_invented. They are honest in the database and
+--     invisible on the screen: a page shows "thin market" or "correlation
+--     warning" in exactly the same type as a number that came out of the
+--     archive, so a reader has no way to tell a measurement from a placeholder
+--     that nobody has revisited.
+--
+--     This is the list, so the UI can say it once, in one place, on every
+--     page - rather than each panel having to remember to caveat itself.
+--     A setting drops off this list the moment someone sets provisional to
+--     false, which is the point: replacing the number is what clears it.
+-- --------------------------------------------------------------------------
+create or replace view v_provisional_settings as
+select
+  s.key,
+  coalesce(s.value ->> 'origin', 'unknown')                       as origin,
+  s.value ->> 'note'                                              as note,
+  s.value ->> '_doc'                                              as doc,
+  -- what it actually drives, so the reader can judge whether it matters
+  case s.key
+    when 'risk_limits'                then 'How much of the bankroll a single band, city-day or open book may take, and the daily loss that stops trading.'
+    when 'correlation_warn_threshold' then 'How correlated two cities have to be before the desk warns that two positions are one bet.'
+    when 'max_slippage_cents'         then 'How far a fill may go against the quote before a signal is abandoned.'
+    when 'volume_thresholds'          then 'What counts as a thin market, and how hard illiquidity discounts an opportunity''s rank.'
+    when 'weather_alerts'             then 'The temperature moves that raise an alert, and when a day counts as decided.'
+    when 'execution_limits'           then 'The venue''s order minimum, share step and price tick - what the exchange will actually accept.'
+    else 'Not documented here.'
+  end                                                             as drives,
+  (s.value ->> 'origin') = 'claude_invented'                      as invented
+from settings s
+where coalesce((s.value ->> 'provisional')::boolean, false);
+
+comment on view v_provisional_settings is
+  'Every threshold currently driving a decision that has no evidential basis - provisional: true in settings. They read on screen exactly like a measured number, so the UI states them once, in one place. Setting provisional to false is what removes a row.';
+
+
+-- --------------------------------------------------------------------------
 -- 5. Grants. Read-only, and the browser needs it on every page.
 -- --------------------------------------------------------------------------
 do $ad4$
 declare o text; r text;
 begin
-  foreach o in array array['v_data_freshness', 'v_data_health', 'data_freshness_spec'] loop
+  foreach o in array array['v_data_freshness', 'v_data_health', 'data_freshness_spec',
+                           'v_provisional_settings'] loop
     foreach r in array array['anon', 'authenticated', 'service_role'] loop
       if exists (select 1 from pg_roles where rolname = r) then
         execute format('grant select on %I to %I', o, r);

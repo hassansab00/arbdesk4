@@ -96,6 +96,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_persistence_skill": "ad4_21_weather_features.sql",
   "v_prediction_ladder": "ad4_31_predictive.sql",
   "v_prediction_scorecard": "ad4_31_predictive.sql",
+  "v_provisional_settings": "ad4_39_freshness.sql",
   "v_run_scope": "ad4_32_run_scope.sql",
   "v_storage_report": "ad4_29_retention.sql",
   "v_strategy_board": "ad4_33_control.sql",

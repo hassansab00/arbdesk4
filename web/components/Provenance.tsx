@@ -4,6 +4,17 @@ import Link from "next/link";
 import { fillersFor, FILLED_BY, tablesBehind, type Filler } from "@/lib/provenance";
 import { SQL_OWNER } from "@/lib/sqlOwner";
 import { useFreshness, ageWords, type FreshRow } from "@/lib/useFreshness";
+import { supabase } from "@/lib/supabase";
+import { useQuery } from "@/lib/useQuery";
+
+/** sql/ad4_39_freshness.sql - thresholds that were invented, not measured. */
+interface ProvisionalRow {
+  key: string;
+  origin: string;
+  note: string | null;
+  drives: string;
+  invented: boolean;
+}
 
 /**
  * WHY IS THIS EMPTY, AND WHAT DO I DO ABOUT IT?
@@ -240,6 +251,15 @@ export function WhatFillsThis({ relation }: { relation: string }) {
  */
 export function DataHealthStrip({ layers }: { layers?: string[] }) {
   const { rows, loading, error } = useFreshness();
+  // Read alongside the freshness rows: both answer "can I trust what this
+  // page is showing me", and both were previously answerable only by reading
+  // the database.
+  const provQ = useQuery<ProvisionalRow[]>(
+    () => supabase.from("v_provisional_settings").select("*"),
+    [],
+    600000
+  );
+  const provisional = provQ.data ?? [];
   if (loading && !rows.length) return null;
 
   if (error) {
@@ -331,6 +351,43 @@ export function DataHealthStrip({ layers }: { layers?: string[] }) {
           </Link>{" "}
           shows the last run of each.
         </p>
+
+        {/* ---- and the numbers that were never measured ----------------
+            A placeholder threshold reads on screen in exactly the same type
+            as a number that came out of the archive. Stating it once, here,
+            is cheaper than caveating every panel that uses one - and it
+            clears itself: a setting drops off this list the moment someone
+            sets provisional to false. */}
+        {provisional.length > 0 && (
+          <div className="mt-2 border-t border-border/60 pt-2">
+            <div className="text-[10px] uppercase tracking-wide text-warn">
+              {provisional.length} threshold{provisional.length === 1 ? "" : "s"} in use{" "}
+              {provisional.length === 1 ? "was" : "were"} never measured
+            </div>
+            <ul className="mt-1 space-y-1 text-[11px] leading-relaxed text-muted">
+              {provisional
+                .slice()
+                .sort((a, b) => Number(b.invented) - Number(a.invented))
+                .map((p) => (
+                  <li key={p.key}>
+                    <code className="rounded bg-panel2 px-1">{p.key}</code>{" "}
+                    {p.invented && (
+                      <span className="rounded border border-warn/50 px-1 text-[9px] uppercase tracking-wide text-warn">
+                        invented
+                      </span>
+                    )}{" "}
+                    {p.drives}
+                    {p.note ? <span className="opacity-70"> {p.note}</span> : null}
+                  </li>
+                ))}
+            </ul>
+            <p className="mt-1 text-[10px] text-muted">
+              They are placeholders with no evidential basis, and they read on screen exactly like a
+              measured number. Replace one and set <code>provisional: false</code> on it — that is
+              what takes it off this list.
+            </p>
+          </div>
+        )}
       </div>
     </details>
   );

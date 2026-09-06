@@ -179,6 +179,89 @@ $ad4$;
 
 
 -- --------------------------------------------------------------------------
+-- 5b. FUNCTIONS THE BROWSER CAN CALL BUT NO LONGER SHOULD.
+--
+--     The browser writes only through RPCs, never direct DML, so a handful of
+--     SECURITY DEFINER functions are anon-callable on purpose - approving a
+--     signal, closing a position, switching a strategy on. That list has to be
+--     the functions the UI ACTUALLY calls, and it had drifted:
+--
+--       refresh_feature_cache  scans the whole observation archive on every
+--                              call. Its sibling refresh_city_climate was
+--                              revoked from anon for exactly that reason
+--                              (ad4_19 says so in a comment); this one was
+--                              missed. No page calls it - only
+--                              archive_observations.py and capacity.py do,
+--                              as service_role.
+--       calc_recommendation    was the Calculator section's RPC. The section
+--                              was removed; the grant was not.
+--       log_paper_trade        write paper_trades and ledger. NOTHING calls
+--       close_position         either one - not the app, not the scripts.
+--                              paper_engine.py has its own Python function of
+--                              the same name, which is unrelated.
+--       should_run             the schedule gate. Only n8n calls it, with the
+--                              SERVICE key. It was granted to anon so the
+--                              Workflows page could preview a cadence change;
+--                              that page reads v_execution_budget instead, so
+--                              the grant does nothing but soften the gate.
+--                              Revoking it makes the gate a genuine second
+--                              line of defence: a workflow holding the anon
+--                              key now stops at the gate rather than at the
+--                              first write.
+--
+--     The anon key is public by design - it ships in the browser bundle - so
+--     every one of these is a function anyone on the internet can call. None
+--     of them needs to be.
+-- --------------------------------------------------------------------------
+do $ad4$
+declare
+  f text;
+  r text;
+  v_done int := 0;
+begin
+  foreach f in array array[
+    'refresh_feature_cache', 'calc_recommendation',
+    'log_paper_trade', 'close_position', 'should_run'
+  ] loop
+    foreach r in array array['anon', 'authenticated'] loop
+      if not exists (select 1 from pg_roles where rolname = r) then continue; end if;
+      begin
+        execute format(
+          'revoke execute on all functions in schema public from %I', r);
+      exception when others then null;
+      end;
+    end loop;
+  end loop;
+
+  -- The blanket revoke above is deliberate: naming argument types here goes
+  -- stale the moment a signature changes. Now grant back exactly what the UI
+  -- does call, by name, so the list is visible and arguable.
+  foreach f in array array[
+    'approve_signal', 'dismiss_signal', 'set_run_scope', 'set_strategy_enabled',
+    'queue_backtest', 'backtest_readiness', 'upsert_deployment',
+    'set_deployment_status', 'update_setting', 'run_scope',
+    'band_contains', 'band_local_value', 'capacity_side', 'depth_usd',
+    'ad4_num', 'ad4_plural', 'ad4_region', 'ad4_norm_levels',
+    'ad4_synth_levels', 'ad4_raw_book_side'
+  ] loop
+    foreach r in array array['anon', 'authenticated'] loop
+      if not exists (select 1 from pg_roles where rolname = r) then continue; end if;
+      begin
+        execute format('grant execute on function public.%I to %I', f, r);
+        v_done := v_done + 1;
+      exception when undefined_function then
+        -- A function from a file that has not been run yet. Not an error:
+        -- re-running this file after that file grants it.
+        null;
+      end;
+    end loop;
+  end loop;
+  raise notice 'ad4_38: browser-callable functions re-granted (% grant(s)); everything else in public is now service_role only.', v_done;
+end
+$ad4$;
+
+
+-- --------------------------------------------------------------------------
 -- 6. Report. This is the part to read.
 --
 --    Every table an n8n workflow writes, and whether the service key can

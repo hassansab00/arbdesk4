@@ -972,7 +972,12 @@ def test_the_diagnostic_reports_who_can_write():
     assert "6 WRITE ACCESS" in sql
     assert "has_table_privilege('anon'" in sql
     assert "has_table_privilege('service_role'" in sql
-    assert "by design" in sql, "should_run being anon-callable must not read as a fault"
+    # should_run used to be anon-callable on purpose, and the diagnostic said
+    # so. ad4_38 revokes it: the Workflows page reads v_execution_budget, so
+    # the grant only softened the schedule gate. The row now reads the other
+    # way round - anon holding it is the thing to fix.
+    assert "ad4_38_grants.sql" in sql, "the row must name the file that revokes it"
+    assert "second line of defence" in sql
 
 
 # --------------------------------------------------------------- run scope --
@@ -1121,3 +1126,100 @@ def test_a_successful_run_does_not_persist_the_whole_payload(workflow):
     s = d.get("settings", {})
     assert s.get("saveDataSuccessExecution") == "none", workflow
     assert s.get("saveDataErrorExecution") == "all", f"{workflow}: keep failures"
+
+
+# ---------------------------------------------------------------------------
+# ON CONFLICT TARGETS
+#
+# P1.5 upserted weather_forecast_features on (city_key, for_date, source,
+# lead_days). The table's only unique index is its primary key,
+# (city_key, for_date, run_at). Every write from that node failed with 42P10,
+# so no forecast feature was ever stored for a non-US city - and P1.5 is the
+# only workflow that covers cities outside the United States.
+#
+# It is invisible until the first write, and the first write is minutes into a
+# run. This reads the keys out of the SQL instead.
+# ---------------------------------------------------------------------------
+
+def _unique_keys_by_table():
+    """Every unique key the SQL declares, as {table: {frozenset(cols), ...}}."""
+    import glob
+
+    out = {}
+    src = " ".join(re.sub(r"--[^\n]*", " ", open(f).read())
+                   for f in sorted(glob.glob(os.path.join(ROOT, "sql", "*.sql"))))
+
+    def add(table, cols):
+        cols = frozenset(c.strip().strip('"') for c in cols.split(",") if c.strip())
+        if cols:
+            out.setdefault(table.lower(), set()).add(cols)
+
+    # create table x ( ... primary key (a,b) ... )   /  ... unique (a,b)
+    for m in re.finditer(r"create\s+table\s+(?:if\s+not\s+exists\s+)?([a-z0-9_]+)\s*\((.*?)\n\s*\);",
+                         src, re.S | re.I):
+        table, body = m.group(1), m.group(2)
+        for k in re.finditer(r"(?:primary\s+key|unique)\s*\(([^)]*)\)", body, re.I):
+            add(table, k.group(1))
+        # a single-column `col type primary key`
+        for k in re.finditer(r"^\s*([a-z0-9_]+)\s+[a-z][^,]*\bprimary\s+key\b", body, re.I | re.M):
+            add(table, k.group(1))
+    # create unique index ... on t (a,b)
+    for m in re.finditer(r"create\s+unique\s+index\s+(?:concurrently\s+)?(?:if\s+not\s+exists\s+)?"
+                         r"[a-z0-9_]*\s*on\s+(?:public\.)?([a-z0-9_]+)\s*\(([^)]*)\)", src, re.I):
+        add(m.group(1), m.group(2))
+    # alter table t add constraint c unique (a,b) / primary key (a,b)
+    for m in re.finditer(r"alter\s+table\s+(?:public\.)?([a-z0-9_]+)[^;]*?"
+                         r"(?:unique|primary\s+key)\s*\(([^)]*)\)", src, re.I | re.S):
+        add(m.group(1), m.group(2))
+    # ad4_ensure_natural_key('t', array['a','b'])
+    for m in re.finditer(r"ad4_ensure_natural_key\(\s*'([a-z0-9_]+)'\s*,\s*array\[([^\]]*)\]", src, re.I):
+        add(m.group(1), m.group(2).replace("'", ""))
+    return out
+
+
+@pytest.mark.parametrize("workflow", sorted(
+    [f for f in os.listdir(os.path.join(ROOT, "n8n")) if f.endswith(".json")]))
+def test_every_on_conflict_target_has_a_unique_key(workflow):
+    keys = _unique_keys_by_table()
+    blob = json.dumps(json.load(open(os.path.join(ROOT, "n8n", workflow))))
+    targets = re.findall(r"/rest/v1/([a-z0-9_]+)\?on_conflict=([a-z0-9_,]+)", blob)
+    for table, cols in targets:
+        want = frozenset(c for c in cols.split(",") if c)
+        have = keys.get(table, set())
+        assert have, f"{workflow}: {table} has no unique key declared in sql/ at all"
+        assert want in have, (
+            f"{workflow}: upserts {table} on ({cols}) but the only unique key(s) are "
+            f"{[sorted(h) for h in have]} - PostgREST answers this with 42P10 and writes nothing")
+
+
+# ---------------------------------------------------------------------------
+# THE BROWSER'S RPC SURFACE
+#
+# ad4_38 revokes EXECUTE on everything in public from anon and grants back a
+# named list, because the list had drifted: refresh_feature_cache (a full
+# archive scan), calc_recommendation (whose page was deleted), log_paper_trade
+# and close_position (which write the money tables and are called by nothing)
+# were all callable by anyone holding the public key.
+#
+# A blanket revoke is only safe if the grant-back list is complete. This is
+# what makes it complete.
+# ---------------------------------------------------------------------------
+
+def test_every_rpc_the_ui_calls_is_granted_back():
+    import glob
+
+    called = set()
+    for path in glob.glob(os.path.join(ROOT, "web", "**", "*.ts*"), recursive=True):
+        if "node_modules" in path:
+            continue
+        called |= set(re.findall(r'\.rpc\(\s*"([a-z0-9_]+)"', open(path).read()))
+    assert called, "no RPC calls found - the scan is broken, not the grants"
+
+    sql = open(os.path.join(ROOT, "sql", "ad4_38_grants.sql")).read()
+    block = sql[sql.index("-- 5b."):]
+    granted = set(re.findall(r"'([a-z0-9_]+)'", block[block.index("foreach f in array array[", block.index("grant back")) :]))
+
+    missing = sorted(called - granted)
+    assert not missing, (
+        f"the UI calls {missing} and ad4_38 does not grant them back to anon - "
+        "those buttons would fail with 42501 after running it")
