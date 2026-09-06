@@ -5,7 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState, InlineError } from "@/components/DataState";
-import { Freshness } from "@/components/Provenance";
+import { Freshness, FreshnessRow } from "@/components/Provenance";
 import { SQL_OWNER } from "@/lib/sqlOwner";
 import { fmtInt, fmtUsd, pnlColor } from "@/lib/format";
 
@@ -181,6 +181,11 @@ export default function CampaignsPage() {
           resolves to, what is on the board inside that scope right now, and what this campaign&apos;s
           own strategy would take in the next hour.
         </p>
+        {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
+            identical, and only one of them is worth investigating. */}
+        <div className="mt-2">
+          <FreshnessRow relations={["ledger", "cities", "fact_signal_outcome", "signals", "derived_forecast_skill", "bands", "book_snapshots", "markets"]} />
+        </div>
       </div>
 
       {actionError && (

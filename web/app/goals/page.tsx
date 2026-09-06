@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
 import { DataState, ErrorBox, InlineError } from "@/components/DataState";
+import { FreshnessRow } from "@/components/Provenance";
 import { fmtCompactUsd, fmtPct, fmtUsd, pnlColor } from "@/lib/format";
 import {
   buildTiers, centLegs, ceilC, coverageIndices, durAnalytic, guaranteedCheck,
@@ -353,6 +354,11 @@ export default function GoalsPage() {
             (<code>n8n/P0.3_book_volume_snapshot.scaffold.json</code>) to fill them in.
           </p>
         )}
+        {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
+            identical, and only one of them is worth investigating. */}
+        <div className="mt-2">
+          <FreshnessRow relations={["bands", "book_snapshots", "cities", "markets", "paper_trades", "trades_observed", "edges", "derived_forecast_skill"]} />
+        </div>
       </div>
 
       {/* ------------------------------------------------------ controls */}

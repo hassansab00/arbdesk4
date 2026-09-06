@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
+import { FreshnessRow } from "@/components/Provenance";
 import RefreshButton from "@/components/RefreshButton";
 import { fmtAge, fmtCompactUsd, fmtPct, fmtPp, fmtPrice, fmtUsd, regimeColor } from "@/lib/format";
 import { fmtBandRange, fmtTemp, fmtTempDelta, type Unit } from "@/lib/units";
@@ -181,6 +182,11 @@ export default function OpportunitiesPage() {
             book you cannot fill ranks below a modest edge you can. The volume term only ever
             discounts; it never inflates a rank.
           </p>
+        {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
+            identical, and only one of them is worth investigating. */}
+        <div className="mt-2">
+          <FreshnessRow relations={["derived_forecast_skill", "bands", "book_snapshots", "cities", "markets", "paper_trades", "trades_observed", "edges"]} />
+        </div>
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <RefreshButton

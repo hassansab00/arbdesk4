@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
+import { FreshnessRow } from "@/components/Provenance";
 import RefreshButton from "@/components/RefreshButton";
 import { fmtAge, fmtCompactUsd, fmtPct, fmtPrice, fmtUsd, regimeColor } from "@/lib/format";
 import { fmtBandRange, fmtTemp, type Unit } from "@/lib/units";
@@ -255,6 +256,11 @@ export default function BoardPage() {
             of them. <b>Model %</b> is AD4&apos;s own read from forecast skill; type over it in{" "}
             <b>Your %</b> where you disagree, and every figure below re-weights to your number.
           </p>
+        {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
+            identical, and only one of them is worth investigating. */}
+        <div className="mt-2">
+          <FreshnessRow relations={["bands", "book_snapshots", "cities", "markets", "paper_trades", "trades_observed", "edges", "live_weather"]} />
+        </div>
         </div>
         <div className="flex flex-col items-end gap-1">
           <RefreshButton job="P0.3_book_volume_snapshot" label="Refresh books" onDone={() => { q.refresh(); live.refresh(); }} />

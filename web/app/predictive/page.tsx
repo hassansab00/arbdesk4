@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
-import { Freshness } from "@/components/Provenance";
+import { Freshness, FreshnessRow } from "@/components/Provenance";
 import { Empty, LineChart, Scatter } from "@/components/charts";
 import Convergence3D, { type ConvergencePoint } from "@/components/Convergence3D";
 import { fmtInt, fmtPct, fmtPrice, fmtUsd, pnlColor } from "@/lib/format";
@@ -293,6 +293,11 @@ export default function PredictivePage() {
           right — and separately, did being right pay. Those are different questions with different
           answers, because entry price, fees and fill size all sit between them.
         </p>
+        {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
+            identical, and only one of them is worth investigating. */}
+        <div className="mt-2">
+          <FreshnessRow relations={["cities", "fact_forecast_outcome", "weather_forecasts", "bands", "markets", "edges", "band_probabilities", "fact_signal_outcome"]} />
+        </div>
       </div>
 
       {/* ======================================================== 1. FORWARD == */}

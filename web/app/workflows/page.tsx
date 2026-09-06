@@ -6,6 +6,7 @@ import ScheduleControl from "@/components/ScheduleControl";
 import ScopeControl from "@/components/ScopeControl";
 import { useQuery } from "@/lib/useQuery";
 import { DataState, InlineError } from "@/components/DataState";
+import { FreshnessRow } from "@/components/Provenance";
 import { fmtAge, fmtInt } from "@/lib/format";
 
 /**
@@ -265,6 +266,11 @@ export default function WorkflowsPage() {
             which is still useful — the schedules populate it on their own.
           </p>
         )}
+        {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
+            identical, and only one of them is worth investigating. */}
+        <div className="mt-2">
+          <FreshnessRow relations={["settings", "ingest_log"]} />
+        </div>
       </div>
 
       <ScheduleControl jobs={CATALOGUE.map((c) => ({ job: c.job, label: c.label }))} />

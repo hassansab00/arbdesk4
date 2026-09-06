@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
+import { FreshnessRow } from "@/components/Provenance";
 import { fmtAge, fmtUsd } from "@/lib/format";
 import type { StrategyBoardRow, TradePlan } from "@/lib/types";
 
@@ -133,6 +134,11 @@ export default function StrategiesPage() {
           the paper engine and the Signals list read. The verdict beside each one distinguishes{" "}
           <b>has never fired</b> from <b>loses money</b>; a coloured toggle cannot.
         </p>
+        {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
+            identical, and only one of them is worth investigating. */}
+        <div className="mt-2">
+          <FreshnessRow relations={["fact_signal_outcome", "signals", "derived_forecast_skill", "bands", "book_snapshots", "cities", "markets", "paper_trades"]} />
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded border border-border bg-panel px-3 py-2 text-xs">

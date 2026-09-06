@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { useCityStats } from "@/lib/useCityStats";
 import { DataState } from "@/components/DataState";
+import { FreshnessRow } from "@/components/Provenance";
 import { LineChart, Empty } from "@/components/charts";
 import { fmtAge, fmtPct, fmtPrice, fmtPp, fmtCompactUsd } from "@/lib/format";
 import { fmtTemp, fmtTempDelta, fmtBandRange, type Unit } from "@/lib/units";
@@ -207,6 +208,11 @@ export default function MonitorPage() {
           the level alone cannot tell you which. Each card is the glance; open one for the trace,
           the measured climb profile, every bucket&apos;s price over 48 hours, and the ladder.
         </p>
+        {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
+            identical, and only one of them is worth investigating. */}
+        <div className="mt-2">
+          <FreshnessRow relations={["derived_climb_profile", "cities", "weather_observations", "bands", "book_snapshots", "markets", "paper_trades", "trades_observed"]} />
+        </div>
       </div>
 
       {/* ---- who is on the page ------------------------------------- */}

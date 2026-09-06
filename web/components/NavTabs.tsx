@@ -20,6 +20,7 @@ const TABS = [
   { href: "/campaigns", label: "Campaigns" },
   { href: "/goals", label: "Goals" },
   { href: "/workflows", label: "Workflows" },
+  { href: "/docs", label: "How it works" },
 ];
 
 export default function NavTabs() {

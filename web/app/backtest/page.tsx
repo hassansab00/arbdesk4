@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState, ErrorBox, Loading } from "@/components/DataState";
-import { Freshness } from "@/components/Provenance";
+import { Freshness, FreshnessRow } from "@/components/Provenance";
 import { fmtInt, fmtPct, fmtUsd, pnlColor } from "@/lib/format";
 import type { BacktestRun } from "@/lib/types";
 
@@ -172,6 +172,11 @@ export default function BacktestPage() {
             history to backfill from. Run P0.3 for a few days first.
           </>
         )}
+        {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
+            identical, and only one of them is worth investigating. */}
+        <div className="mt-2">
+          <FreshnessRow relations={["bands", "book_snapshots", "markets", "weather_forecasts", "weather_observations", "backtest_results"]} />
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_2fr]">

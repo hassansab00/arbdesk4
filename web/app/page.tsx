@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import SignalsPanel from "@/components/SignalsPanel";
 import { DataState, InlineError } from "@/components/DataState";
+import { FreshnessRow } from "@/components/Provenance";
 import PipelineStatus from "@/components/PipelineStatus";
 import { fmtCompactUsd, fmtPct, fmtPp, fmtPrice, fmtUsd, pnlColor, regimeColor } from "@/lib/format";
 import type { Opportunity, PaperTrade } from "@/lib/types";
@@ -76,6 +77,11 @@ export default function OverviewPage() {
           value={volume.loading ? "…" : fmtCompactUsd(totalVolume)}
           hint="Traded volume across every city, from trades_observed. Distinct from book depth — this is what actually printed."
         />
+        {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
+            identical, and only one of them is worth investigating. */}
+        <div className="mt-2">
+          <FreshnessRow relations={["bands", "book_snapshots", "cities", "markets", "paper_trades", "trades_observed", "edges", "signals"]} />
+        </div>
       </div>
       <InlineError message={cities.error ?? signals.error ?? volume.error} />
 

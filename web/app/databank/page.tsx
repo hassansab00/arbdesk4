@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
+import { FreshnessRow } from "@/components/Provenance";
 import DataBank from "@/components/DataBank";
 import { fmtAge, fmtInt } from "@/lib/format";
 
@@ -78,6 +79,11 @@ export default function DataBankPage() {
           kept apart on purpose: a thin collection makes everything below it decoration, while a
           stale derived layer is a job that has not run — a different problem with a different fix.
         </p>
+        {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
+            identical, and only one of them is worth investigating. */}
+        <div className="mt-2">
+          <FreshnessRow relations={["bands", "book_snapshots", "markets", "trades_observed", "weather_events", "weather_forecasts", "weather_observations", "cities"]} />
+        </div>
       </div>
 
       {/* ---------------------------------------------------- collected ---- */}

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
-import { Freshness } from "@/components/Provenance";
+import { Freshness, FreshnessRow } from "@/components/Provenance";
 import RefreshButton from "@/components/RefreshButton";
 import { fmtInt } from "@/lib/format";
 
@@ -104,6 +104,11 @@ export default function SynthesisPage() {
           rows this database holds, and where there is not enough evidence yet the line says so and
           names what is still needed.
         </p>
+        {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
+            identical, and only one of them is worth investigating. */}
+        <div className="mt-2">
+          <FreshnessRow relations={["bands", "derived_city_climate", "derived_city_day_features", "derived_weather_peak", "edges", "fact_band_outcome", "fact_forecast_outcome", "markets"]} />
+        </div>
       </div>
 
       {/* ===================================================== LEARNING STATE */}
