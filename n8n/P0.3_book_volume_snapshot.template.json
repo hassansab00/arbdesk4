@@ -1,0 +1,613 @@
+{
+  "name": "AD4 P0.3 - Book + Volume Snapshot",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "warn",
+      "name": "Note warn",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -60
+      ],
+      "parameters": {
+        "content": "## READ BEFORE ACTIVATING\n\nYour n8n ALREADY RUNS a P0.3. This file is a rebuild, not a patch.\n\n**Never leave both Active.** Two workflows writing book_snapshots is worse\nthan one.\n\nSafe cutover:\n  1. Import this. Leave it INACTIVE.\n  2. Fill in Config.\n  3. Run it once with the Manual Trigger (or the AD4 Workflows page).\n  4. Compare its Summary line against what your original produces.\n  5. Only when they match: deactivate the original, activate this.\n\nIf step 3 fails on the Polymarket call, the endpoint below is wrong for\nyour setup - open your ORIGINAL P0.3, copy the URL out of its HTTP node,\nand paste it into Config here.",
+        "width": 480,
+        "height": 400
+      }
+    },
+    {
+      "id": "endpoint",
+      "name": "Note endpoint",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        380
+      ],
+      "parameters": {
+        "content": "## Endpoint: filled in, NOT reachable from the build machine\n\n`clob_book_url` is Polymarket's public **CLOB order book** endpoint:\n\n    https://clob.polymarket.com/book?token_id={token}\n\n`{token}` is required - the workflow substitutes each band's `token_yes` and\nmakes ONE REQUEST PER BAND. That is roughly 800 requests across 37 cities, so\nuse **max_bands_per_run** or the city scope on the Workflows page while you are\ntesting.\n\nThe response is `{ market, asset_id, bids: [{price,size}], asks: [{price,size}] }`.\n`Build snapshots` stores the whole ladder in `book_snapshots.raw_book`, which is\nwhat the desk's fill model walks - top-of-book alone cannot say what a $500\nticket actually costs.\n\nOnly the YES token is snapshotted; the NO side is its complement and the app\nderives it.\n\n**Nothing is written unless a book parses.**\n\n### On the first run\n\nCheck the Summary node's `levels` count. A book that comes back with prices\nbut no depth means the response shape moved and `Build snapshots` is reading\nthe wrong keys - it expects `bids` / `asks` arrays of `{price, size}`.\n",
+        "width": 480,
+        "height": 490
+      }
+    },
+    {
+      "id": "shape",
+      "name": "Note shape",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1180,
+        420
+      ],
+      "parameters": {
+        "content": "## The column shape this writes (CONFIRMED against the live DB)\n\n  bid_levels / ask_levels   integer LEVEL COUNTS - not ladders\n  raw_book                  jsonb {\"bids\":[{price,size}],\"asks\":[...]}\n  ask_usd_1c .. ask_usd_25c numeric, CUMULATIVE USD within N cents of touch\n  ask_total_usd             numeric, whole side\n  band_volume_24hr          numeric, exchange 24h volume\n\nThe old version wrote the ladder INTO bid_levels/ask_levels. Those are\ninteger columns, so it never landed - which is why raw_book is empty and\nevery fill price in AD4 is currently computed from a ladder reconstructed\nout of the depth tiers.\n\nCheck after one run:\n\n    select count(*) filter (where raw_book is not null), count(*)\n    from book_snapshots where observed_at > now() - interval '1 hour';",
+        "width": 480,
+        "height": 360
+      }
+    },
+    {
+      "id": "trigger-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "trigger-schedule",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        160
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "trigger-webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        320
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ad4-book-snapshot",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "ad4-book-snapshot"
+    },
+    {
+      "id": "config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        100
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "supabase_url",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "2",
+              "name": "service_key",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "3",
+              "name": "clob_book_url",
+              "type": "string",
+              "value": "https://clob.polymarket.com/book?token_id={token}"
+            },
+            {
+              "id": "4",
+              "name": "max_bands_per_run",
+              "type": "string",
+              "value": "0"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "load-bands",
+      "name": "Load live bands",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        100
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/bands?select=band_id,token_yes,token_no,condition_id,market_id&token_yes=not.is.null&limit=5000",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "build-requests",
+      "name": "Build request list",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// One request per band. This is the part the old scaffold did not do: it\n// fired a single static GET and could never fetch a book per token.\n//\n// Polymarket serves one order book per TOKEN, and each band trades YES and\n// NO as separate tokens. We snapshot the YES token; the NO side is its\n// complement and the Goals engine derives it (see web/lib/spread.ts).\nconst cfg = $('Config').first().json;\nconst template = String(cfg.clob_book_url || '');\nif (!template.includes('{token}')) {\n  throw new Error(\n    'clob_book_url must contain the placeholder {token}. Got: ' + template +\n    '  -- the workflow substitutes each band\\'s token_yes for it.');\n}\n\nconst bands = $('Load live bands').all().map(i => i.json).flat();\nconst limit = Number(cfg.max_bands_per_run || 0) || 0;\n\nconst out = [];\nfor (const b of bands) {\n  if (!b || !b.band_id || !b.token_yes) continue;\n  out.push({ json: {\n    band_id: b.band_id,\n    token_yes: b.token_yes,\n    condition_id: b.condition_id ?? null,\n    book_url: template.replace('{token}', encodeURIComponent(b.token_yes)),\n  }});\n  if (limit && out.length >= limit) break;\n}\nif (out.length === 0) {\n  throw new Error('No bands with a token_yes came back from Supabase. ' +\n                  'Check that bands.token_yes is populated.');\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "fetch-book",
+      "name": "Fetch book",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        100
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.book_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 20,
+              "batchInterval": 250
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "build-snapshots",
+      "name": "Build snapshots",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// Build one book_snapshots row per band, in the REAL production shape.\n//\n// CONFIRMED against the live database (sql/ad4_99_verify.sql section 7):\n//   bid_levels / ask_levels   integer LEVEL COUNTS - NOT ladders\n//   raw_book                  jsonb {\"bids\":[{price,size}],\"asks\":[...]}\n//   ask_usd_1c .. ask_usd_25c numeric, CUMULATIVE USD within N cents of touch\n//   ask_total_usd             numeric, whole-side USD\n//   band_volume / _24hr       numeric traded volume, if the payload carries it\n//\n// market_state is a verbatim port of scripts/market_state.py:classify().\n// PRICE IS CHECKED BEFORE SIDES - a band at ask 0.001 with no bids is\n// DEAD_LOSER, not ONE_SIDED. Getting that order wrong mislabelled 190 of\n// 231 rows earlier in this project.\nconst DEAD_LOSER_MAX_ASK = 0.02;\nconst DEAD_WINNER_MIN_BID = 0.96;\nconst WIDE_SPREAD_MIN = 0.10;\n\nfunction classify(bestBid, bestAsk) {\n  const hasBid = bestBid !== null && bestBid !== undefined;\n  const hasAsk = bestAsk !== null && bestAsk !== undefined;\n  if (!hasBid && !hasAsk) return 'NO_BOOK';\n  if (hasAsk && bestAsk <= DEAD_LOSER_MAX_ASK) return 'DEAD_LOSER';\n  if (hasBid && bestBid >= DEAD_WINNER_MIN_BID) return 'DEAD_WINNER';\n  if (!hasBid || !hasAsk) return 'ONE_SIDED';\n  return (bestAsk - bestBid) > WIDE_SPREAD_MIN ? 'WIDE' : 'LIVE';\n}\n\n// Accepts {price,size} objects or [price,size] pairs, whichever the API sends.\nfunction ladder(levels, side) {\n  const out = (levels || [])\n    .map(l => ({\n      price: Number(l && l.price !== undefined ? l.price : (Array.isArray(l) ? l[0] : NaN)),\n      size:  Number(l && l.size  !== undefined ? l.size\n                    : (l && l.amount !== undefined ? l.amount\n                    : (Array.isArray(l) ? l[1] : NaN))),\n    }))\n    .filter(l => Number.isFinite(l.price) && Number.isFinite(l.size) && l.size > 0 && l.price > 0);\n  out.sort((a, b) => side === 'bid' ? b.price - a.price : a.price - b.price);\n  return out;\n}\n\nconst r6 = v => (v === null || v === undefined || !Number.isFinite(v)) ? null : Number(v.toFixed(6));\n\n// Cumulative USD within 1/2/5/10/25 cents of the touch, plus the whole side.\n// CUMULATIVE, not per-tier: ask_usd_5c includes everything inside 2c and 1c.\n// ad4_synth_levels() in sql/ad4_13_reconcile.sql differences them back apart,\n// so the two must agree on this.\nfunction tiers(levels, side) {\n  const out = { c1: 0, c2: 0, c5: 0, c10: 0, c25: 0, total: 0 };\n  if (!levels.length) return out;\n  const touch = levels[0].price;\n  const E = 1e-9;\n  for (const l of levels) {\n    const usd = l.price * l.size;\n    const d = side === 'ask' ? (l.price - touch) : (touch - l.price);\n    out.total += usd;\n    if (d <= 0.01 + E) out.c1 += usd;\n    if (d <= 0.02 + E) out.c2 += usd;\n    if (d <= 0.05 + E) out.c5 += usd;\n    if (d <= 0.10 + E) out.c10 += usd;\n    if (d <= 0.25 + E) out.c25 += usd;\n  }\n  return out;\n}\n\nconst requests = $('Build request list').all().map(i => i.json);\nconst responses = $input.all().map(i => i.json);\n\nconst observedAt = new Date().toISOString();\nconst hourUtc = new Date(observedAt).getUTCHours();\nconst rows = [];\nlet failed = 0;\n\n// responses are index-aligned with requests: the HTTP node runs once per item\nfor (let i = 0; i < requests.length; i++) {\n  const req = requests[i];\n  const res = responses[i];\n  if (!res || res.error || (!res.bids && !res.asks && !res.book)) { failed++; continue; }\n\n  const src = res.book || res;\n  const bidLevels = ladder(src.bids || src.buys, 'bid');\n  const askLevels = ladder(src.asks || src.sells, 'ask');\n  if (!bidLevels.length && !askLevels.length) { failed++; continue; }\n\n  const bestBid = bidLevels.length ? bidLevels[0].price : null;\n  const bestAsk = askLevels.length ? askLevels[0].price : null;\n  const state = classify(bestBid, bestAsk);\n  const A = tiers(askLevels, 'ask');\n  const D = tiers(bidLevels, 'bid');\n\n  rows.push({\n    band_id: req.band_id,\n    observed_at: observedAt,          // OBSERVED, never the model's run time\n    snapshot_hour_utc: hourUtc,\n    best_bid: bestBid,\n    best_ask: bestAsk,\n    mid: (bestBid !== null && bestAsk !== null) ? r6((bestBid + bestAsk) / 2) : null,\n    spread: (bestBid !== null && bestAsk !== null) ? r6(bestAsk - bestBid) : null,\n    market_state: state,\n    tradeable: state === 'LIVE' || state === 'WIDE',\n\n    // integer LEVEL COUNTS - this is what these two columns actually are\n    bid_levels: bidLevels.length,\n    ask_levels: askLevels.length,\n\n    // the ladder itself, which is what every fill price in AD4 walks\n    raw_book: { bids: bidLevels, asks: askLevels },\n\n    ask_usd_1c: r6(A.c1),   bid_usd_1c: r6(D.c1),\n    ask_usd_2c: r6(A.c2),   bid_usd_2c: r6(D.c2),\n    ask_usd_5c: r6(A.c5),   bid_usd_5c: r6(D.c5),\n    ask_usd_10c: r6(A.c10), bid_usd_10c: r6(D.c10),\n    ask_usd_25c: r6(A.c25), bid_usd_25c: r6(D.c25),\n    ask_total_usd: r6(A.total), bid_total_usd: r6(D.total),\n\n    band_volume: src.volume ?? src.band_volume ?? null,\n    band_volume_24hr: src.volume_24hr ?? src.volume24hr ?? src.band_volume_24hr ?? null,\n  });\n}\n\nconst byState = {};\nfor (const r of rows) byState[r.market_state] = (byState[r.market_state] || 0) + 1;\nreturn [{ json: { rows, n: rows.length, requested: requests.length, failed, byState } }];"
+      }
+    },
+    {
+      "id": "guard",
+      "name": "Guard: did anything parse?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// Refuse to write nothing. A wrong endpoint, a changed payload shape or a\n// dead token list all land here as n === 0, and this stops the run with a\n// message that says which - rather than inserting zero rows and reporting\n// success.\nconst p = $('Build snapshots').first().json;\nif (p.n === 0) {\n  throw new Error(\n    `Parsed 0 books out of ${p.requested} requests (${p.failed} failed). ` +\n    `Nothing was written. Most likely the Polymarket endpoint in Config is ` +\n    `wrong for your setup, or its response shape is not {bids:[...],asks:[...]}. ` +\n    `Open your original P0.3 and copy its URL across.`);\n}\nreturn [{ json: p }];"
+      }
+    },
+    {
+      "id": "insert-snapshots",
+      "name": "Insert snapshots",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/book_snapshots",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.rows) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "summary",
+      "name": "Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// DID THE DATABASE ACTUALLY TAKE IT?\n//\n// Every write node here carries onError=continueRegularOutput, so the workflow\n// walks straight past a rejected write and reaches this node looking healthy.\n// That is how a run reports success having written nothing - which is exactly\n// what happened: reads worked, every write was refused, and the only visible\n// error was on the LAST node in the chain.\n//\n// With neverError on, a refusal arrives as the PostgREST error body instead of\n// an exception, so it can be read and named here.\nfunction writeError(node) {\n  let items;\n  try { items = $(node).all(); } catch (e) { return null; }\n  for (const it of items || []) {\n    const b = it && it.json;\n    if (!b || typeof b !== 'object') continue;\n    if (b.error && !b.code) return { node, code: null, message: String(b.error).slice(0, 300) };\n    if (b.code || b.message) {\n      return { node, code: b.code ?? null,\n               message: b.message ?? '', details: b.details ?? null, hint: b.hint ?? null };\n    }\n  }\n  return null;\n}\n\nconst WRITE_NODES = [\"Insert snapshots\"];\nfor (const node of WRITE_NODES) {\n  const e = writeError(node);\n  if (!e) continue;\n  // 42501 is the one worth naming, because the cause is never the code.\n  if (String(e.code) === '42501' || /permission denied/i.test(e.message)) {\n    throw new Error(\n      `Supabase REFUSED the write: ${e.message} (${e.code}). This is the ANON key in the ` +\n      `Config node, not the service key - anon is granted SELECT and nothing else, which is ` +\n      `why reads worked and every write was silently dropped. Open Config -> service_key and ` +\n      `paste the SERVICE ROLE key (Supabase -> Project Settings -> API -> service_role, or a ` +\n      `key beginning sb_secret_). NEVER put that key anywhere starting NEXT_PUBLIC_. ` +\n      `Failing node: ${e.node}. Nothing was written.`);\n  }\n  throw new Error(\n    `Supabase refused the write at \"${e.node}\": ${e.message}` +\n    (e.code ? ` (${e.code})` : '') + (e.details ? ` - ${e.details}` : '') +\n    (e.hint ? ` Hint: ${e.hint}` : '') + ' Nothing was written.');\n}\n\nconst p = $('Build snapshots').first().json;\nconst states = Object.entries(p.byState || {}).map(([k, v]) => `${k}=${v}`).join(' ');\nconst rows = p.n || 0;\nconst summary =\n  `AD4 P0.3: ${rows} book snapshots written from ${p.requested} bands` +\n  (p.failed ? `, ${p.failed} failed` : '') + `. ${states}`;\nconst status = p.failed > rows ? 'attention' : 'ok';\nconst detail = { requested: p.requested, failed: p.failed, by_state: p.byState };\nreturn [{ json: {\n  summary, status, rows,\n  log: { p_job: 'P0.3_book_volume_snapshot', p_status: status, p_rows: rows,\n         p_detail: { ...detail, summary, trigger: $execution.mode, execution_id: $execution.id } },\n} }];"
+      }
+    },
+    {
+      "id": "log-run",
+      "name": "Log run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.log) }}"
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2220,
+        100
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
+      }
+    },
+    {
+      "id": "sched-check",
+      "name": "Check schedule",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        430,
+        -30
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/should_run",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_job: \"P0.3_book_volume_snapshot\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "sched-gate",
+      "name": "Run now?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        -30
+      ],
+      "parameters": {
+        "jsCode": "\n// AN ENDPOINT THIS FILE CANNOT KNOW.\n//\n// P0.2-P0.5 are RECONSTRUCTIONS. The Supabase half is grounded in the real\n// schema and is safe; the Polymarket half never was. These files used to ship\n// with a plausible-looking URL already filled in, which is worse than shipping\n// none: it reads as authoritative, so nobody changes it, and the run dies four\n// nodes later with a message about response shapes. That is exactly how this\n// wasted an afternoon.\n//\n// So the field ships EMPTY and the run stops here - before any HTTP call,\n// before any database read - saying where the real value is.\n{\n  const cfg = $('Config').first().json ?? {};\n  const missing = Object.keys(cfg)\n    .filter((k) => k.endsWith('_url') && k !== 'supabase_url')\n    .filter((k) => !String(cfg[k] ?? '').trim());\n  if (missing.length) {\n    throw new Error(\n      `Config.${missing.join(' and Config.')} is empty, and this file cannot fill it in. ` +\n      `Open your OWN working P0.2-P0.5 in n8n, click its Polymarket HTTP node, copy the URL ` +\n      `from it, and paste it here. Those workflows are what put 841 markets and 122,000 trades ` +\n      `in this database - they are the authority on the endpoint, not this reconstruction. ` +\n      `Nothing was fetched and nothing was written.`);\n  }\n}\n\n// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A PERMISSION ERROR IS NOT AN UNAVAILABLE GATE. 42501 here means the key\n// cannot call should_run, and a key that cannot do that cannot write either -\n// so stop, rather than failing open into a run that writes nothing.\n//\n// THIS IS NOT THE MAIN DEFENCE AND MUST NOT BE MISTAKEN FOR IT. sql/ad4_20\n// grants should_run to anon ON PURPOSE, so the Workflows page can preview a\n// schedule change before saving it. On a database with that grant - which is\n// every database that ran ad4_20 - an anon key sails straight through this\n// check and only fails at the first WRITE. The write guard in the Summary\n// node is what actually catches it; run section 6 of sql/ad4_diagnose.sql to\n// see which key can write what before spending a run finding out.\nif (decision && (String(decision.code) === '42501' ||\n                 /permission denied/i.test(String(decision.message || '')))) {\n  throw new Error(\n    `Supabase refused should_run: ${decision.message} (${decision.code}). This is the ANON ` +\n    `key in the Config node, not the service key - anon is granted SELECT and nothing else. ` +\n    `Every write in this workflow would be refused the same way. Open Config -> service_key ` +\n    `and paste the SERVICE ROLE key (Supabase -> Project Settings -> API -> service_role, or ` +\n    `a key beginning sb_secret_). NEVER put that key anywhere starting NEXT_PUBLIC_.`);\n}\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
+      }
+    },
+    {
+      "id": "sched-stop",
+      "name": "Stop if skipped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        -30
+      ],
+      "parameters": {
+        "jsCode": "// Returning [] stops the workflow here. Everything below this node\n// is skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Check schedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load live bands": {
+      "main": [
+        [
+          {
+            "node": "Build request list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build request list": {
+      "main": [
+        [
+          {
+            "node": "Fetch book",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch book": {
+      "main": [
+        [
+          {
+            "node": "Build snapshots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build snapshots": {
+      "main": [
+        [
+          {
+            "node": "Guard: did anything parse?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard: did anything parse?": {
+      "main": [
+        [
+          {
+            "node": "Insert snapshots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert snapshots": {
+      "main": [
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary": {
+      "main": [
+        [
+          {
+            "node": "Log run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log run": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check schedule": {
+      "main": [
+        [
+          {
+            "node": "Run now?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now?": {
+      "main": [
+        [
+          {
+            "node": "Stop if skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stop if skipped": {
+      "main": [
+        [
+          {
+            "node": "Load live bands",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

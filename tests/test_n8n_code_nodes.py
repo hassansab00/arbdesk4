@@ -801,69 +801,88 @@ def test_every_workflow_that_writes_a_table_checks_the_write():
 
 
 # ------------------------------------------ the endpoints I cannot verify ---
-# P0.2-P0.5 are RECONSTRUCTIONS. Their Supabase half is grounded in the real
-# schema; their Polymarket half is a guess, and this sandbox's egress policy
-# refuses gamma-api / clob / data-api.polymarket.com, so it stays a guess.
+# P0.2-P0.5 talk to Polymarket, and this sandbox's egress policy refuses
+# gamma-api / clob / data-api.polymarket.com. So the Supabase half of each of
+# these is grounded in the real schema and the Polymarket half has never been
+# called from the machine that wrote it.
 #
-# They used to ship with a plausible URL already filled in, which is worse than
-# shipping none: it reads as authoritative, nobody changes it, and the run dies
-# four nodes later with a message about response shapes.
+# THE POLICY CHANGED, DELIBERATELY. These shipped with the endpoint BLANK,
+# because a wrong pre-filled value reads as authoritative and the operator had
+# working originals to copy from. That reasoning does not survive a from-
+# scratch build: there is nothing to copy from, and a blank field is a dead end
+# rather than a caution. They now carry Polymarket's DOCUMENTED public endpoint
+# and say, on the canvas, that it was never reached from here and exactly what
+# to check on the first run.
+#
+# What these tests hold onto is the part that must not slip: the URL is stated
+# as documented rather than verified, the reader is told what to check, and the
+# run still stops at node 2 rather than firing a request into a URL nobody has
+# confirmed.
 
-P0_SCAFFOLDS = ["P0.2_market_discovery.scaffold.json",
-                "P0.3_book_volume_snapshot.scaffold.json",
-                "P0.4_trade_history.scaffold.json",
-                "P0.5_refresh_rules_text.scaffold.json"]
+P0_TEMPLATES = ["P0.2_market_discovery.template.json",
+                "P0.3_book_volume_snapshot.template.json",
+                "P0.4_trade_history.template.json",
+                "P0.5_refresh_rules_text.template.json"]
+
+P0_FIELD = {
+    "P0.2_market_discovery.template.json": "markets_url",
+    "P0.3_book_volume_snapshot.template.json": "clob_book_url",
+    "P0.4_trade_history.template.json": "trades_url",
+    "P0.5_refresh_rules_text.template.json": "rules_url",
+}
 
 
-@pytest.mark.parametrize("workflow", P0_SCAFFOLDS)
-def test_no_unverified_endpoint_ships_prefilled(workflow):
+@pytest.mark.parametrize("workflow", P0_TEMPLATES)
+def test_the_polymarket_endpoint_is_filled_in(workflow):
+    """A blank field is a dead end for someone building from scratch."""
     d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
     cfg = [n for n in d["nodes"] if n["name"] == "Config"][0]
-    for a in cfg["parameters"]["assignments"]["assignments"]:
-        if a["name"].endswith("_url") and a["name"] != "supabase_url":
-            assert a["value"] == "", (
-                f"{workflow}: {a['name']} ships with {a['value']!r}. This repo cannot "
-                f"verify a Polymarket endpoint, so it must not assert one.")
+    field = P0_FIELD[workflow]
+    val = [a for a in cfg["parameters"]["assignments"]["assignments"]
+           if a["name"] == field][0]["value"]
+    assert val.startswith("https://"), f"{workflow}: {field} is {val!r}"
+    assert "polymarket.com" in val, f"{workflow}: {field} does not point at Polymarket"
 
 
-@pytest.mark.parametrize("workflow", P0_SCAFFOLDS)
-def test_a_missing_endpoint_stops_before_any_request(workflow):
+@pytest.mark.parametrize("workflow", P0_TEMPLATES)
+def test_the_endpoint_is_marked_unverified_on_the_canvas(workflow):
+    """The one thing that must never be lost: it has not been called from here.
+
+    An endpoint presented as fact, that then fails, sends the reader looking at
+    their schema, their key and their cities table before they think to doubt
+    the URL.
+    """
+    d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
+    note = [n for n in d["nodes"] if n["name"] == "Note endpoint"][0]["parameters"]["content"]
+    assert "NOT reachable from the build machine" in note, workflow
+    assert "first run" in note.lower(), f"{workflow}: the note must say what to check"
+
+
+@pytest.mark.parametrize("workflow", P0_TEMPLATES)
+def test_the_placeholder_endpoints_still_declare_their_placeholder(workflow):
+    """P0.3/P0.4/P0.5 make one request per item and substitute into the URL.
+    A URL without the placeholder fires the same request N times."""
+    d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
+    cfg = [n for n in d["nodes"] if n["name"] == "Config"][0]
+    field = P0_FIELD[workflow]
+    val = [a for a in cfg["parameters"]["assignments"]["assignments"]
+           if a["name"] == field][0]["value"]
+    needed = {"P0.3_book_volume_snapshot.template.json": "{token}",
+              "P0.4_trade_history.template.json": "{market}",
+              "P0.5_refresh_rules_text.template.json": "{slug}"}.get(workflow)
+    if needed:
+        assert needed in val, f"{workflow}: {field} must contain {needed}"
+
+
+@pytest.mark.parametrize("workflow", P0_TEMPLATES)
+def test_a_missing_endpoint_still_stops_before_any_request(workflow):
+    """Filling the default in must not remove the stop for an emptied field."""
     d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
     gate = [n for n in d["nodes"] if n["name"] == "Run now?"][0]["parameters"]["jsCode"]
     assert "AN ENDPOINT THIS FILE CANNOT KNOW" in gate, workflow
     # and the gate really is node 2, before Load/Fetch
     after_cfg = [c["node"] for br in d["connections"]["Config"]["main"] for c in br]
     assert after_cfg == ["Check schedule"], workflow
-
-
-@pytest.mark.parametrize("workflow,field", [
-    ("P0.2_market_discovery.scaffold.json", "markets_url"),
-    ("P0.3_book_volume_snapshot.scaffold.json", "clob_book_url"),
-    ("P0.4_trade_history.scaffold.json", "trades_url"),
-    ("P0.5_refresh_rules_text.scaffold.json", "rules_url"),
-])
-def test_the_empty_endpoint_message_points_at_the_working_original(workflow, field, tmp_path):
-    """It must send the reader to their own working workflow, which is the only
-    authority on the endpoint, not to a guess or to the internet."""
-    import subprocess
-    js = f"""
-      const fs = require('fs');
-      const wf = JSON.parse(fs.readFileSync({json.dumps(os.path.join(ROOT, 'n8n', workflow))}, 'utf8'));
-      const code = wf.nodes.find(n => n.name === 'Run now?').parameters.jsCode;
-      const nodes = {{ Config: [{{ supabase_url: 'u', service_key: 'k', {field}: '' }}],
-                      'Check schedule': [{{ run: true }}] }};
-      const $ = n => ({{ all: () => (nodes[n]||[]).map(j => ({{json:j}})),
-                        first: () => ({{json:(nodes[n]||[])[0]}}) }});
-      try {{ new Function('$','$input','$execution', code)($, {{all:()=>[]}}, {{mode:'manual'}});
-             console.log('NOTHROW'); }}
-      catch (e) {{ console.log(e.message); }}
-    """
-    f = tmp_path / "t.js"
-    f.write_text(js)
-    out = subprocess.run([NODE, str(f)], capture_output=True, text=True, timeout=30).stdout
-    assert field in out, out
-    assert "your OWN working" in out, out
-    assert "Nothing was fetched and nothing was written" in out, out
 
 
 def test_the_gate_does_not_claim_to_catch_what_it_cannot():
@@ -963,3 +982,106 @@ def test_the_sql_is_honest_about_where_scoping_helps():
     sql = open(os.path.join(ROOT, "sql", "ad4_32_run_scope.sql")).read()
     assert "one request carries every city" in sql
     assert "changes the length of a URL" in sql
+
+
+# ---------------------------------------------------------------------------
+# P0.2 market discovery.
+#
+# The parse node had never seen a real Polymarket payload. It assumed one
+# market carrying an `outcomes` array; the real shape is an EVENT (one city,
+# one day) containing one BINARY MARKET PER BUCKET, with the bucket stated
+# only as TEXT in groupItemTitle. Against the live API the old node produced
+# zero bands, silently, and every band it did produce would have had null
+# bounds - which nothing on this desk can price.
+# ---------------------------------------------------------------------------
+
+def _p02():
+    return run("P0.2_market_discovery.template.json", "plan_P0.2_market_discovery.json")
+
+
+def test_p02_maps_events_to_markets_and_inner_markets_to_bands():
+    p = _p02()["outputs"]["Parse markets + bands"][0]
+    assert p["n_events"] == 3
+    assert p["n_markets"] == 2, "one event per city-day"
+    assert p["skipped_no_city"] == 1, "the Fed event is not one of our cities"
+    cities = sorted(m["city_key"] for m in p["markets"])
+    assert cities == ["nyc", "warsaw"]
+
+
+def test_p02_reads_the_numeric_bounds_out_of_the_label():
+    """The whole point. A band with null bounds cannot be priced by anything."""
+    p = _p02()["outputs"]["Parse markets + bands"][0]
+    by_label = {b["band_label"]: b for b in p["bands"]}
+
+    lo = by_label["72°F or below"]
+    assert lo["open_low"] is True and lo["band_lo"] is None
+    assert lo["band_hi"] == 73, "'72 or below' includes 72, so the exclusive bound is 73"
+
+    mid = by_label["73-74°F"]
+    assert (mid["band_lo"], mid["band_hi"]) == (73, 75), "an integer range includes both ends"
+    assert mid["open_low"] is False and mid["open_high"] is False
+
+    hi = by_label["77°F or above"]
+    assert hi["open_high"] is True and hi["band_hi"] is None and hi["band_lo"] == 77
+
+    c = by_label["21-22°C"]
+    assert (c["band_lo"], c["band_hi"]) == (21, 23)
+
+
+def test_p02_ladder_is_contiguous_and_ordered_by_floor():
+    """band_index is the ladder position, not the order Polymarket listed them."""
+    p = _p02()["outputs"]["Parse markets + bands"][0]
+    nyc_id = [m["market_id"] for m in p["markets"] if m["city_key"] == "nyc"][0]
+    nyc = [b for b in p["bands"] if b["market_id"] == nyc_id]
+    nyc.sort(key=lambda b: b["band_index"])
+    assert [b["band_index"] for b in nyc] == [0, 1, 2, 3]
+    # every band's floor is the previous band's ceiling: no gaps, no overlaps
+    for a, b in zip(nyc, nyc[1:]):
+        if a["band_hi"] is not None and b["band_lo"] is not None:
+            assert a["band_hi"] == b["band_lo"], f"gap between {a['band_label']} and {b['band_label']}"
+
+
+def test_p02_drops_a_bucket_it_cannot_read_and_says_which():
+    p = _p02()["outputs"]["Parse markets + bands"][0]
+    assert p["band_parse_failed"] == 1
+    assert "mostly cloudy" in p["failed_labels"]
+    # and it is not written as a band with null bounds
+    assert all(b["band_label"] != "mostly cloudy" for b in p["bands"])
+
+
+def test_p02_band_count_is_what_can_be_priced():
+    """The overround check sums a ladder; a short one reads as a cheap book."""
+    p = _p02()["outputs"]["Parse markets + bands"][0]
+    for m in p["markets"]:
+        actual = len([b for b in p["bands"] if b["market_id"] == m["market_id"]])
+        assert m["band_count"] == actual
+
+
+def test_p02_settlement_date_rolls_back_an_early_utc_close():
+    """endDate 2026-09-07T04:00Z is the local day 2026-09-06, not the 7th."""
+    p = _p02()["outputs"]["Parse markets + bands"][0]
+    assert p["dates"] == ["2026-09-06"]
+    assert all(m["resolution_date"] == "2026-09-06" for m in p["markets"])
+
+
+def test_p02_ids_are_uuids_and_stable_across_runs():
+    """market_id and band_id are uuid columns, and an unstable id inserts a
+    duplicate every run instead of upserting."""
+    import re
+    uuid_re = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    first = _p02()["outputs"]["Parse markets + bands"][0]
+    again = _p02()["outputs"]["Parse markets + bands"][0]
+    for m in first["markets"]:
+        assert uuid_re.match(m["market_id"]), m["market_id"]
+    for b in first["bands"]:
+        assert uuid_re.match(b["band_id"]), b["band_id"]
+    assert [m["market_id"] for m in first["markets"]] == [m["market_id"] for m in again["markets"]]
+    assert [b["band_id"] for b in first["bands"]] == [b["band_id"] for b in again["bands"]]
+
+
+def test_p02_guard_stops_when_most_labels_are_unreadable():
+    """Half a ladder is worse than none: the overround reads it as cheap."""
+    r = run("P0.2_market_discovery.template.json", "plan_P0.2_labels_broken.json")
+    assert r["ok"] is False
+    assert "could not read" in r["error"]
+    assert "parseBucket" in r["error"], "the error must name the thing to fix"

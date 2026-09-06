@@ -1,16 +1,44 @@
 # n8n workflow files
 
-**Setup instructions: `docs/n8n_setup.md`.** Read that, not this.
+**11 workflow files, plus one snippet.** All run three ways — their own
+schedule, the Execute button in n8n, or the Run button on the AD4 Workflows
+page — and all write a row to `ingest_log` when they finish, so
+`v_workflow_runs` shows the last run of each however it was started.
 
-10 workflow files, plus one snippet. All built to run three ways - their own schedule, the Execute
-button in n8n, or the Run button on the AD4 Workflows page - and all of them
-write a row to `ingest_log` when they finish, so `v_workflow_runs` shows the
-last run of each whichever way it was started.
+## Building n8n from scratch: import in this order
 
-> **P0.2-P0.5 already run in your n8n.** These are new versions of those same
-> four. Importing and activating them alongside the originals means two
-> workflows writing the same tables. Import them OFF, test, then swap one at
-> a time - `docs/n8n_setup.md` step 5.
+Fill **Config → `supabase_url`** and **`service_key`** in every one. The
+service key is Supabase → Project Settings → API → `service_role` (or a key
+beginning `sb_secret_`). Never put it anywhere starting `NEXT_PUBLIC_`.
+
+| # | File | What it does | Cadence | Needs |
+|---|---|---|---|---|
+| 1 | `P0.2_market_discovery.template.json` | Polymarket events → `markets` + `bands`. **Everything else is empty without this.** | 1 h | — |
+| 2 | `P0.3_book_volume_snapshot.template.json` | One order book per band → `book_snapshots`. Prices, depth, the fill model. | 15 min | 1 |
+| 3 | `P1.5_open_meteo.template.json` | Live reading + 7-day forecast for **every** city, in one request. | 3 h | — |
+| 4 | `P0.4_trade_history.template.json` | Trade tape per band → `trades_observed`. Volume, thin-market flags. | 1 h | 1 |
+| 5 | `P1.2_nws_monitor.template.json` | api.weather.gov observations + alerts. **US only.** | 2 h | — |
+| 6 | `P1.3_nws_forecast.template.json` | api.weather.gov hourly forecast → daily max. **US only.** | 6 h | — |
+| 7 | `P1.4_nws_gridpoint.template.json` | api.weather.gov gridpoint → cloud, dewpoint, wind, rain. **US only.** | 6 h | — |
+| 8 | `P4.1_health_watchdog.template.json` | Is anything stale or failing. Also wants `alert_email`. | 6 h | — |
+| 9 | `P3.1_email_digests.template.json` | Morning brief and end-of-day report. Wants `alert_email`. | 2×/day | — |
+| 10 | `P1.1_live_weather_alerts.template.json` | Webhook → email when a weather event fires. | event | — |
+| 11 | `P0.5_refresh_rules_text.template.json` | Watches the settlement rules for a mid-market change. Least urgent. | 1 day | 1 |
+
+**Import 1–3 first and get them green before importing anything else.** Those
+three fill the tables every page reads; the rest add accuracy and alerting to a
+desk that is already working.
+
+`schedule_gate.snippet.json` is the two-node gate to paste onto any workflow of
+your own that should honour the schedules set on the AD4 Workflows page.
+
+### The Polymarket endpoints
+
+P0.2–P0.5 ship with Polymarket's **documented** public endpoints filled in.
+They could not be called from the machine that built these files — that sandbox
+blocks polymarket.com — so each carries a sticky note saying exactly that, and
+what to check on its first run. If one is wrong, the workflow stops at its
+guard node and names the field to change; it never writes a partial table.
 
 ## If you are re-importing P1.2, P1.3 or P1.4
 

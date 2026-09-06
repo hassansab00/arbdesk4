@@ -1,0 +1,53 @@
+{
+  "seed": {
+    "Load cities": [
+      { "city_key": "nyc",     "unit": "F", "icao": "KNYC", "display_name": "New York" },
+      { "city_key": "chicago", "unit": "F", "icao": "KORD", "display_name": "Chicago" },
+      { "city_key": "warsaw",  "unit": "C", "icao": "EPWA", "display_name": "Warsaw" }
+    ],
+    "Fetch markets": [
+      {
+        "id": "900001",
+        "slug": "highest-temperature-in-nyc-on-september-6",
+        "title": "Highest temperature in NYC on September 6?",
+        "endDate": "2026-09-07T04:00:00Z",
+        "closed": false,
+        "markets": [
+          { "id": "1", "conditionId": "0xaa01", "groupItemTitle": "72°F or below",
+            "question": "Will the highest temperature in NYC on September 6 be 72°F or below?",
+            "clobTokenIds": "[\"tok-lo-yes\",\"tok-lo-no\"]" },
+          { "id": "2", "conditionId": "0xaa02", "groupItemTitle": "75-76°F",
+            "clobTokenIds": "[\"tok-75-yes\",\"tok-75-no\"]" },
+          { "id": "3", "conditionId": "0xaa03", "groupItemTitle": "73-74°F",
+            "clobTokenIds": "[\"tok-73-yes\",\"tok-73-no\"]" },
+          { "id": "4", "conditionId": "0xaa04", "groupItemTitle": "77°F or above",
+            "clobTokenIds": "[\"tok-hi-yes\",\"tok-hi-no\"]" },
+          { "id": "5", "conditionId": "0xaa05", "groupItemTitle": "mostly cloudy",
+            "clobTokenIds": "[\"tok-bad-yes\",\"tok-bad-no\"]" }
+        ]
+      },
+      {
+        "id": "900002",
+        "slug": "highest-temperature-in-warsaw-on-september-6",
+        "title": "Highest temperature in Warsaw on September 6?",
+        "endDate": "2026-09-06T22:00:00Z",
+        "closed": false,
+        "markets": [
+          { "id": "6", "conditionId": "0xbb01", "groupItemTitle": "21-22°C",
+            "clobTokenIds": "[\"tok-w21-yes\",\"tok-w21-no\"]" },
+          { "id": "7", "conditionId": "0xbb02", "groupItemTitle": "23-24°C",
+            "clobTokenIds": "[\"tok-w23-yes\",\"tok-w23-no\"]" }
+        ]
+      },
+      {
+        "id": "900003",
+        "slug": "will-the-fed-cut-rates-in-september",
+        "title": "Will the Fed cut rates in September?",
+        "endDate": "2026-09-30T23:00:00Z",
+        "closed": false,
+        "markets": [{ "id": "8", "conditionId": "0xcc01", "groupItemTitle": "Yes" }]
+      }
+    ]
+  },
+  "run": [{ "node": "Parse markets + bands", "input": "Fetch markets" }]
+}

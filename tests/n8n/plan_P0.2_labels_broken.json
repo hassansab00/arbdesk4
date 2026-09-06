@@ -1,0 +1,22 @@
+{
+  "seed": {
+    "Load cities": [{ "city_key": "nyc", "unit": "F", "icao": "KNYC", "display_name": "New York" }],
+    "Fetch markets": [
+      {
+        "id": "900001",
+        "slug": "highest-temperature-in-nyc-on-september-6",
+        "endDate": "2026-09-07T04:00:00Z",
+        "markets": [
+          { "id": "1", "conditionId": "0x1", "groupItemTitle": "Cool", "clobTokenIds": "[\"a\",\"b\"]" },
+          { "id": "2", "conditionId": "0x2", "groupItemTitle": "Warm", "clobTokenIds": "[\"c\",\"d\"]" },
+          { "id": "3", "conditionId": "0x3", "groupItemTitle": "Hot",  "clobTokenIds": "[\"e\",\"f\"]" },
+          { "id": "4", "conditionId": "0x4", "groupItemTitle": "70-71°F", "clobTokenIds": "[\"g\",\"h\"]" }
+        ]
+      }
+    ]
+  },
+  "run": [
+    { "node": "Parse markets + bands", "input": "Fetch markets" },
+    { "node": "Guard: did anything parse?", "input": "Parse markets + bands" }
+  ]
+}
