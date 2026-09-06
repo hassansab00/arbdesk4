@@ -52,6 +52,7 @@ ad4_36_execution_limits.sql
 ad4_37_peak_hour.sql
 ad4_38_grants.sql
 ad4_39_freshness.sql
+ad4_40_synthesis.sql
 
 # ad4_38 grants the write path to service_role and prints one row per ingest
 # table saying whether the service key can write it. It is last on purpose -
@@ -62,6 +63,11 @@ ad4_39_freshness.sql
 # how many rows it holds, how old the newest one is, and whether that counts as
 # absent / empty / stale / ok. Every page reads it, so an empty panel can say
 # which job stopped filling it instead of just showing nothing.
+#
+# ad4_40 publishes v_synthesis_findings and v_learning_state: what the archive
+# has established, in sentences, each carrying the span, the cities and the
+# count behind it - and the four dated artefacts that make up "the desk has
+# learned something". The Synthesis page is entirely these two views.
 
 # ---- read-only, run any time ----------------------------------------------
 # Not part of the install: these inspect a database rather than change one.

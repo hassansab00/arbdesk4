@@ -84,6 +84,24 @@ def _script_writes():
     return out
 
 
+def _function_body(src, start, hard_end):
+    """Just the dollar-quoted body of one function.
+
+    Taking everything up to the next `create function` looked equivalent and
+    was not: preflight defines log_ingest inside a DO block and then, six
+    hundred lines later and still before the next function, inserts a row into
+    `settings`. That insert was read as part of log_ingest, so every workflow
+    that logs a run was reported as a job that fills `settings`.
+    """
+    m = re.compile(r"\$([a-z0-9_]*)\$").search(src, start, hard_end)
+    if not m:
+        return src[start:hard_end]
+    close = src.find(m.group(0), m.end())
+    if close == -1 or close > hard_end:
+        return src[start:hard_end]
+    return src[m.end():close]
+
+
 def _rpc_writes():
     """SQL function name -> tables it inserts into or refreshes.
 
@@ -95,10 +113,10 @@ def _rpc_writes():
         r"create\s+(?:or\s+replace\s+)?function\s+(?:public\.)?([a-z0-9_]+)\s*\(", re.I)
     for path in sorted(glob.glob(os.path.join(ROOT, "sql", "*.sql"))):
         src = open(path).read()
-        marks = [(m.start(), m.group(1).lower()) for m in fn_re.finditer(src)]
-        for i, (pos, fn) in enumerate(marks):
-            end = marks[i + 1][0] if i + 1 < len(marks) else len(src)
-            body = src[pos:end]
+        marks = [(m.start(), m.end(), m.group(1).lower()) for m in fn_re.finditer(src)]
+        for i, (pos, hdr_end, fn) in enumerate(marks):
+            hard_end = marks[i + 1][0] if i + 1 < len(marks) else len(src)
+            body = _function_body(src, hdr_end, hard_end)
             tables = set(m.lower() for m in re.findall(
                 r"insert\s+into\s+(?:public\.)?([a-z0-9_]+)", body, re.I))
             tables |= set(m.lower() for m in re.findall(

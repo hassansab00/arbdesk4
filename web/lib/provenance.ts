@@ -330,83 +330,6 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/calibration.py",
       "kind": "action",
       "name": "Data Bank"
-    },
-    {
-      "cadence": "whenever its n8n schedule fires",
-      "file": "P0.2_market_discovery.template.json",
-      "how": "n8n",
-      "kind": "n8n",
-      "name": "AD4 P0.2 - Market Discovery"
-    },
-    {
-      "cadence": "whenever its n8n schedule fires",
-      "file": "P0.3_book_volume_snapshot.template.json",
-      "how": "n8n",
-      "kind": "n8n",
-      "name": "AD4 P0.3 - Book + Volume Snapshot"
-    },
-    {
-      "cadence": "whenever its n8n schedule fires",
-      "file": "P0.4_trade_history.template.json",
-      "how": "n8n",
-      "kind": "n8n",
-      "name": "AD4 P0.4 - Trade History"
-    },
-    {
-      "cadence": "whenever its n8n schedule fires",
-      "file": "P0.5_refresh_rules_text.template.json",
-      "how": "n8n",
-      "kind": "n8n",
-      "name": "AD4 P0.5 - Refresh Rules Text"
-    },
-    {
-      "cadence": "whenever its n8n schedule fires",
-      "file": "P1.1_live_weather_alerts.template.json",
-      "how": "n8n",
-      "kind": "n8n",
-      "name": "AD4 - P1.1 Live Weather Alerts"
-    },
-    {
-      "cadence": "whenever its n8n schedule fires",
-      "file": "P1.2_nws_monitor.template.json",
-      "how": "n8n",
-      "kind": "n8n",
-      "name": "AD4 P1.2 - NWS Monitor"
-    },
-    {
-      "cadence": "whenever its n8n schedule fires",
-      "file": "P1.3_nws_forecast.template.json",
-      "how": "n8n",
-      "kind": "n8n",
-      "name": "AD4 P1.3 - NWS Forecast"
-    },
-    {
-      "cadence": "whenever its n8n schedule fires",
-      "file": "P1.4_nws_gridpoint.template.json",
-      "how": "n8n",
-      "kind": "n8n",
-      "name": "AD4 P1.4 - NWS Gridpoint"
-    },
-    {
-      "cadence": "whenever its n8n schedule fires",
-      "file": "P1.5_open_meteo.template.json",
-      "how": "n8n",
-      "kind": "n8n",
-      "name": "AD4 P1.5 - Open-Meteo Global"
-    },
-    {
-      "cadence": "whenever its n8n schedule fires",
-      "file": "P3.1_email_digests.template.json",
-      "how": "n8n",
-      "kind": "n8n",
-      "name": "AD4 - P3.1 Email Digests"
-    },
-    {
-      "cadence": "whenever its n8n schedule fires",
-      "file": "P4.1_health_watchdog.template.json",
-      "how": "n8n",
-      "kind": "n8n",
-      "name": "AD4 - P4.1 Health Watchdog"
     }
   ],
   "signals": [
@@ -723,6 +646,21 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_latest_prob": [
     "band_probabilities"
   ],
+  "v_learning_state": [
+    "cities",
+    "derived_forecast_skill",
+    "derived_model_forecast",
+    "derived_weather_model",
+    "fact_forecast_outcome",
+    "bands",
+    "derived_city_climate",
+    "derived_city_day_features",
+    "derived_weather_peak",
+    "edges",
+    "fact_band_outcome",
+    "markets",
+    "weather_forecasts"
+  ],
   "v_model_disagreement": [
     "derived_model_forecast"
   ],
@@ -776,6 +714,17 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_strategy_board": [
     "fact_signal_outcome",
     "signals"
+  ],
+  "v_synthesis_findings": [
+    "bands",
+    "derived_city_climate",
+    "derived_city_day_features",
+    "derived_weather_peak",
+    "edges",
+    "fact_band_outcome",
+    "fact_forecast_outcome",
+    "markets",
+    "weather_forecasts"
   ],
   "v_trade_plan": [
     "derived_forecast_skill",

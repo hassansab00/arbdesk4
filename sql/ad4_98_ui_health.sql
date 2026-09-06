@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 100 of them - and for each MISSING one names the
+-- and function the app reads - 103 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -54,6 +54,7 @@ with expected(rel, owner, used_by) as (values
     ('signals', 'ad4_00_preflight.sql', '(SignalsPanel), /, /analytics'),
     ('strategies', 'ad4_00_preflight.sql', '(SignalsPanel), /campaigns'),
     ('strategy_conflicts', 'ad4_phase2.sql', ''),
+    ('synthesis_thresholds', 'ad4_40_synthesis.sql', ''),
     ('trades_observed', 'ad4_00_preflight.sql', ''),
     ('v_archive_by_city', 'ad4_35_databank_inventory.sql', '/databank'),
     ('v_archive_daily', 'ad4_35_databank_inventory.sql', '/databank'),
@@ -93,6 +94,7 @@ with expected(rel, owner, used_by) as (values
     ('v_latest_book', 'ad4_13_reconcile.sql', '/board, /goals, /opportunities'),
     ('v_latest_edge', 'ad4_phase2.sql', ''),
     ('v_latest_prob', 'ad4_phase2.sql', ''),
+    ('v_learning_state', 'ad4_40_synthesis.sql', '/synthesis'),
     ('v_model_disagreement', 'ad4_25_model_forecast.sql', '(Reasoning)'),
     ('v_model_forecast_current', 'ad4_25_model_forecast.sql', ''),
     ('v_model_forecast_skill', 'ad4_25_model_forecast.sql', '(ModelAnalytics)'),
@@ -106,6 +108,7 @@ with expected(rel, owner, used_by) as (values
     ('v_storage_report', 'ad4_29_retention.sql', ''),
     ('v_strategy_board', 'ad4_33_control.sql', '/analytics, /strategies'),
     ('v_strategy_params', 'ad4_34_trade_plan.sql', ''),
+    ('v_synthesis_findings', 'ad4_40_synthesis.sql', '/synthesis'),
     ('v_synthesis_inventory', 'ad4_35_databank_inventory.sql', '/databank'),
     ('v_trade_plan', 'ad4_34_trade_plan.sql', '/goals, /opportunities, /strategies'),
     ('v_trade_timing', 'ad4_33_control.sql', '/goals'),
@@ -176,6 +179,7 @@ begin
     ('signals', 'ad4_00_preflight.sql', '(SignalsPanel), /, /analytics'),
     ('strategies', 'ad4_00_preflight.sql', '(SignalsPanel), /campaigns'),
     ('strategy_conflicts', 'ad4_phase2.sql', ''),
+    ('synthesis_thresholds', 'ad4_40_synthesis.sql', ''),
     ('trades_observed', 'ad4_00_preflight.sql', ''),
     ('v_archive_by_city', 'ad4_35_databank_inventory.sql', '/databank'),
     ('v_archive_daily', 'ad4_35_databank_inventory.sql', '/databank'),
@@ -215,6 +219,7 @@ begin
     ('v_latest_book', 'ad4_13_reconcile.sql', '/board, /goals, /opportunities'),
     ('v_latest_edge', 'ad4_phase2.sql', ''),
     ('v_latest_prob', 'ad4_phase2.sql', ''),
+    ('v_learning_state', 'ad4_40_synthesis.sql', '/synthesis'),
     ('v_model_disagreement', 'ad4_25_model_forecast.sql', '(Reasoning)'),
     ('v_model_forecast_current', 'ad4_25_model_forecast.sql', ''),
     ('v_model_forecast_skill', 'ad4_25_model_forecast.sql', '(ModelAnalytics)'),
@@ -228,6 +233,7 @@ begin
     ('v_storage_report', 'ad4_29_retention.sql', ''),
     ('v_strategy_board', 'ad4_33_control.sql', '/analytics, /strategies'),
     ('v_strategy_params', 'ad4_34_trade_plan.sql', ''),
+    ('v_synthesis_findings', 'ad4_40_synthesis.sql', '/synthesis'),
     ('v_synthesis_inventory', 'ad4_35_databank_inventory.sql', '/databank'),
     ('v_trade_plan', 'ad4_34_trade_plan.sql', '/goals, /opportunities, /strategies'),
     ('v_trade_timing', 'ad4_33_control.sql', '/goals'),

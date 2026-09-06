@@ -248,6 +248,13 @@ def test_every_workflow_is_gated():
             continue                      # a fragment, checked separately below
         wf = json.load(open(path))
         names = {n["name"] for n in wf["nodes"]}
+        # A workflow with no schedule trigger cannot fire on a schedule, so
+        # there is no cost for the gate to prevent - gating it would only put
+        # a database round trip in front of a button press. P2.1 is that: you
+        # relearn after a run of days has settled, not every six hours.
+        if not any(n["type"].endswith("scheduleTrigger") for n in wf["nodes"]):
+            assert "Schedule Trigger" not in names, f"{f}: has a schedule and no gate"
+            continue
         assert {"Check schedule", "Run now?", "Stop if skipped"} <= names, f"{f} is not gated"
         # and the gate must sit between Config and the work, not beside it
         after_config = [c["node"] for br in wf["connections"]["Config"]["main"] for c in br]
