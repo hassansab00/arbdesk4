@@ -2,7 +2,12 @@
   "name": "AD4 P0.4 - Trade History",
   "active": false,
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false,
+    "executionTimeout": 900
   },
   "nodes": [
     {
@@ -140,7 +145,7 @@
               "id": "5",
               "name": "max_bands_per_run",
               "type": "string",
-              "value": "0"
+              "value": "60"
             }
           ]
         }
@@ -487,6 +492,21 @@
       "parameters": {
         "jsCode": "// Returning [] stops the workflow here. Everything below this node\n// is skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
       }
+    },
+    {
+      "parameters": {
+        "content": "## Why this workflow is capped, and why it forgets\n\n**max_bands_per_run / max_markets_per_run ship with a small number.**\nThis job makes ONE REQUEST PER ITEM - roughly 800 across 37 cities. A first\nExecute with no cap fires 800 sequential requests at Polymarket and either sits\nthere for an hour or takes the instance down. Raise it once you have seen a run\nfinish.\n\n**A successful run does not keep its data.** n8n's execution store holds the\ninput AND output of every node, so a workflow whose job is to move a large\nthird-party payload into Supabase holds that payload twice and then writes it\ninto the executions database - on every run. That is what shows up as\n\"workspace offline, 503\".\n\nFailed runs are still saved in full, which is when the payload is worth having.\nThe Summary node's line is written to `ingest_log` either way, so\n`v_workflow_runs` and the AD4 Workflows page still show what happened.",
+        "height": 420,
+        "width": 460
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        200,
+        320
+      ],
+      "id": "note-limits-P0.4_trade_history",
+      "name": "Note limits"
     }
   ],
   "connections": {

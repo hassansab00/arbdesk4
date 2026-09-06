@@ -10,6 +10,7 @@ node is not installed, so the Python suite still runs everywhere.
 """
 
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -1085,3 +1086,65 @@ def test_p02_guard_stops_when_most_labels_are_unreadable():
     assert r["ok"] is False
     assert "could not read" in r["error"]
     assert "parseBucket" in r["error"], "the error must name the thing to fix"
+
+
+def test_p02_cannot_take_an_n8n_instance_offline():
+    """The payload that caused "workspace offline, 503", rebuilt in memory.
+
+    P0.2 shipped `tag_slug=weather` on the Gamma URL. Gamma IGNORES unknown
+    query parameters, so the request quietly became "200 open events, any
+    topic" - elections and sports with hundreds of nested markets and
+    multi-kilobyte descriptions. Eighty megabytes, which n8n holds as one
+    node's output, again as the next node's input, and serialises into its
+    execution store. On a small instance that is an out-of-memory.
+    """
+    import subprocess
+    script = os.path.join(ROOT, "tests", "n8n", "check_p02_flood.mjs")
+    r = subprocess.run([NODE, script], capture_output=True, text=True, timeout=180, cwd=ROOT)
+    assert r.returncode == 0, r.stderr
+    lines = [l for l in r.stdout.strip().splitlines() if l.startswith("{")]
+    assert lines, r.stdout + r.stderr
+    result = json.loads(lines[-1])
+    detail = "\n".join(l for l in r.stdout.splitlines() if "FAIL" in l)
+    assert result["ok"], f"{result['failed']} assertion(s) failed:\n{detail}"
+
+
+def test_p02_does_not_ask_gamma_for_a_parameter_it_ignores():
+    """`tag_slug` is not a Gamma parameter. An ignored filter is worse than no
+    filter: the URL reads as narrow and the response is the whole site."""
+    d = json.load(open(os.path.join(ROOT, "n8n", "P0.2_market_discovery.template.json")))
+    cfg = [n for n in d["nodes"] if n["name"] == "Config"][0]
+    url = [a for a in cfg["parameters"]["assignments"]["assignments"]
+           if a["name"] == "markets_url"][0]["value"]
+    assert "tag_slug" not in url, "tag_slug is silently ignored by Gamma"
+    limit = int(re.search(r"limit=(\d+)", url).group(1))
+    assert limit <= 50, f"limit={limit} can return tens of megabytes of nested markets"
+
+
+@pytest.mark.parametrize("workflow,field,cap", [
+    ("P0.3_book_volume_snapshot.template.json", "max_bands_per_run", 200),
+    ("P0.4_trade_history.template.json", "max_bands_per_run", 200),
+    ("P0.5_refresh_rules_text.template.json", "max_markets_per_run", 200),
+])
+def test_the_per_item_jobs_ship_with_a_cap(workflow, field, cap):
+    """0 means unlimited. P0.3 makes one request per band - about 800 across 37
+    cities - so a first Execute with no cap fires 800 sequential requests at
+    Polymarket and sits there for an hour, or falls over."""
+    d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
+    cfg = [n for n in d["nodes"] if n["name"] == "Config"][0]
+    val = int([a for a in cfg["parameters"]["assignments"]["assignments"]
+               if a["name"] == field][0]["value"])
+    assert 0 < val <= cap, f"{workflow}: {field}={val} - must ship capped, raise it once it works"
+
+
+@pytest.mark.parametrize("workflow", P0_TEMPLATES + [
+    "P1.2_nws_monitor.template.json", "P1.5_open_meteo.template.json"])
+def test_a_successful_run_does_not_persist_the_whole_payload(workflow):
+    """n8n keeps the input and output of EVERY node. For a workflow whose job
+    is to move a large third-party payload into Supabase, that is the payload
+    held twice and then written to the executions database on every run.
+    Failures are still kept in full - that is when it is worth having."""
+    d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
+    s = d.get("settings", {})
+    assert s.get("saveDataSuccessExecution") == "none", workflow
+    assert s.get("saveDataErrorExecution") == "all", f"{workflow}: keep failures"
