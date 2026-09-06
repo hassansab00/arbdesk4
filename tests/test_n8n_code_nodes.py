@@ -825,8 +825,11 @@ P0_TEMPLATES = ["P0.2_market_discovery.template.json",
                 "P0.4_trade_history.template.json",
                 "P0.5_refresh_rules_text.template.json"]
 
+# P0.2 no longer has a single "the endpoint" field: it has a URL TEMPLATE it
+# fills with a slug it built itself, plus a discovery URL used once. Listing
+# and filtering is what took the instance down.
 P0_FIELD = {
-    "P0.2_market_discovery.template.json": "markets_url",
+    "P0.2_market_discovery.template.json": "event_url_template",
     "P0.3_book_volume_snapshot.template.json": "clob_book_url",
     "P0.4_trade_history.template.json": "trades_url",
     "P0.5_refresh_rules_text.template.json": "rules_url",
@@ -868,7 +871,8 @@ def test_the_placeholder_endpoints_still_declare_their_placeholder(workflow):
     field = P0_FIELD[workflow]
     val = [a for a in cfg["parameters"]["assignments"]["assignments"]
            if a["name"] == field][0]["value"]
-    needed = {"P0.3_book_volume_snapshot.template.json": "{token}",
+    needed = {"P0.2_market_discovery.template.json": "{slug}",
+              "P0.3_book_volume_snapshot.template.json": "{token}",
               "P0.4_trade_history.template.json": "{market}",
               "P0.5_refresh_rules_text.template.json": "{slug}"}.get(workflow)
     if needed:
@@ -988,125 +992,31 @@ def test_the_sql_is_honest_about_where_scoping_helps():
 # ---------------------------------------------------------------------------
 # P0.2 market discovery.
 #
-# The parse node had never seen a real Polymarket payload. It assumed one
-# market carrying an `outcomes` array; the real shape is an EVENT (one city,
-# one day) containing one BINARY MARKET PER BUCKET, with the bucket stated
-# only as TEXT in groupItemTitle. Against the live API the old node produced
-# zero bands, silently, and every band it did produce would have had null
-# bounds - which nothing on this desk can price.
+# Three versions of this workflow listed events and filtered client-side, and
+# all three were wrong for the same reason: Gamma IGNORES query parameters it
+# does not recognise rather than rejecting them. `?limit=40&tag_slug=weather`
+# returned 2160 events and 26 MB of elections and sports, and n8n went offline
+# holding it - which reached the operator as a 503.
+#
+# The dependency is now gone. A temperature market has a known slug, one per
+# city per day, so each event is asked for BY NAME: one event per response,
+# nothing to paginate, no tag taxonomy to be wrong about. The slug format
+# itself is discovered from the operator's own account rather than guessed at
+# here, because this repo cannot reach polymarket.com to check it.
 # ---------------------------------------------------------------------------
 
-def _p02():
-    return run("P0.2_market_discovery.template.json", "plan_P0.2_market_discovery.json")
-
-
-def test_p02_maps_events_to_markets_and_inner_markets_to_bands():
-    p = _p02()["outputs"]["Parse markets + bands"][0]
-    assert p["n_events"] == 3
-    assert p["n_markets"] == 2, "one event per city-day"
-    assert p["skipped_no_city"] == 1, "the Fed event is not one of our cities"
-    cities = sorted(m["city_key"] for m in p["markets"])
-    assert cities == ["nyc", "warsaw"]
-
-
-def test_p02_reads_the_numeric_bounds_out_of_the_label():
-    """The whole point. A band with null bounds cannot be priced by anything."""
-    p = _p02()["outputs"]["Parse markets + bands"][0]
-    by_label = {b["band_label"]: b for b in p["bands"]}
-
-    lo = by_label["72°F or below"]
-    assert lo["open_low"] is True and lo["band_lo"] is None
-    assert lo["band_hi"] == 73, "'72 or below' includes 72, so the exclusive bound is 73"
-
-    mid = by_label["73-74°F"]
-    assert (mid["band_lo"], mid["band_hi"]) == (73, 75), "an integer range includes both ends"
-    assert mid["open_low"] is False and mid["open_high"] is False
-
-    hi = by_label["77°F or above"]
-    assert hi["open_high"] is True and hi["band_hi"] is None and hi["band_lo"] == 77
-
-    c = by_label["21-22°C"]
-    assert (c["band_lo"], c["band_hi"]) == (21, 23)
-
-
-def test_p02_ladder_is_contiguous_and_ordered_by_floor():
-    """band_index is the ladder position, not the order Polymarket listed them."""
-    p = _p02()["outputs"]["Parse markets + bands"][0]
-    nyc_id = [m["market_id"] for m in p["markets"] if m["city_key"] == "nyc"][0]
-    nyc = [b for b in p["bands"] if b["market_id"] == nyc_id]
-    nyc.sort(key=lambda b: b["band_index"])
-    assert [b["band_index"] for b in nyc] == [0, 1, 2, 3]
-    # every band's floor is the previous band's ceiling: no gaps, no overlaps
-    for a, b in zip(nyc, nyc[1:]):
-        if a["band_hi"] is not None and b["band_lo"] is not None:
-            assert a["band_hi"] == b["band_lo"], f"gap between {a['band_label']} and {b['band_label']}"
-
-
-def test_p02_drops_a_bucket_it_cannot_read_and_says_which():
-    p = _p02()["outputs"]["Parse markets + bands"][0]
-    assert p["band_parse_failed"] == 1
-    assert "mostly cloudy" in p["failed_labels"]
-    # and it is not written as a band with null bounds
-    assert all(b["band_label"] != "mostly cloudy" for b in p["bands"])
-
-
-def test_p02_band_count_is_what_can_be_priced():
-    """The overround check sums a ladder; a short one reads as a cheap book."""
-    p = _p02()["outputs"]["Parse markets + bands"][0]
-    for m in p["markets"]:
-        actual = len([b for b in p["bands"] if b["market_id"] == m["market_id"]])
-        assert m["band_count"] == actual
-
-
-def test_p02_settlement_date_rolls_back_an_early_utc_close():
-    """endDate 2026-09-07T04:00Z is the local day 2026-09-06, not the 7th."""
-    p = _p02()["outputs"]["Parse markets + bands"][0]
-    assert p["dates"] == ["2026-09-06"]
-    assert all(m["resolution_date"] == "2026-09-06" for m in p["markets"])
-
-
-def test_p02_ids_are_uuids_and_stable_across_runs():
-    """market_id and band_id are uuid columns, and an unstable id inserts a
-    duplicate every run instead of upserting."""
-    import re
-    uuid_re = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
-    first = _p02()["outputs"]["Parse markets + bands"][0]
-    again = _p02()["outputs"]["Parse markets + bands"][0]
-    for m in first["markets"]:
-        assert uuid_re.match(m["market_id"]), m["market_id"]
-    for b in first["bands"]:
-        assert uuid_re.match(b["band_id"]), b["band_id"]
-    assert [m["market_id"] for m in first["markets"]] == [m["market_id"] for m in again["markets"]]
-    assert [b["band_id"] for b in first["bands"]] == [b["band_id"] for b in again["bands"]]
-
-
-def test_p02_guard_stops_when_most_labels_are_unreadable():
-    """Half a ladder is worse than none: the overround reads it as cheap."""
-    r = run("P0.2_market_discovery.template.json", "plan_P0.2_labels_broken.json")
-    assert r["ok"] is False
-    assert "could not read" in r["error"]
-    assert "parseBucket" in r["error"], "the error must name the thing to fix"
-
-
-def test_p02_cannot_take_an_n8n_instance_offline():
-    """The payload that caused "workspace offline, 503", rebuilt in memory.
-
-    P0.2 shipped `tag_slug=weather` on the Gamma URL. Gamma IGNORES unknown
-    query parameters, so the request quietly became "200 open events, any
-    topic" - elections and sports with hundreds of nested markets and
-    multi-kilobyte descriptions. Eighty megabytes, which n8n holds as one
-    node's output, again as the next node's input, and serialises into its
-    execution store. On a small instance that is an out-of-memory.
-    """
+def test_p02_both_modes():
     import subprocess
-    script = os.path.join(ROOT, "tests", "n8n", "check_p02_flood.mjs")
-    r = subprocess.run([NODE, script], capture_output=True, text=True, timeout=180, cwd=ROOT)
+    script = os.path.join(ROOT, "tests", "n8n", "check_p02.mjs")
+    r = subprocess.run([NODE, "--expose-gc", script], capture_output=True, text=True, timeout=180, cwd=ROOT)
     assert r.returncode == 0, r.stderr
     lines = [l for l in r.stdout.strip().splitlines() if l.startswith("{")]
     assert lines, r.stdout + r.stderr
     result = json.loads(lines[-1])
     detail = "\n".join(l for l in r.stdout.splitlines() if "FAIL" in l)
     assert result["ok"], f"{result['failed']} assertion(s) failed:\n{detail}"
+    assert result["passed"] >= 7
+
 
 
 def test_p02_does_not_ask_gamma_for_a_parameter_it_ignores():
@@ -1114,11 +1024,11 @@ def test_p02_does_not_ask_gamma_for_a_parameter_it_ignores():
     filter: the URL reads as narrow and the response is the whole site."""
     d = json.load(open(os.path.join(ROOT, "n8n", "P0.2_market_discovery.template.json")))
     cfg = [n for n in d["nodes"] if n["name"] == "Config"][0]
-    url = [a for a in cfg["parameters"]["assignments"]["assignments"]
-           if a["name"] == "markets_url"][0]["value"]
-    assert "tag_slug" not in url, "tag_slug is silently ignored by Gamma"
-    limit = int(re.search(r"limit=(\d+)", url).group(1))
-    assert limit <= 50, f"limit={limit} can return tens of megabytes of nested markets"
+    vals = " ".join(str(a["value"]) for a in cfg["parameters"]["assignments"]["assignments"])
+    assert "tag_slug" not in vals, "tag_slug is silently ignored by Gamma"
+    assert not re.search(r"[?&]limit=", vals), (
+        "limit was ignored too - limit=40 returned 2160 events and 26 MB"
+    )
 
 
 @pytest.mark.parametrize("workflow,field,cap", [
