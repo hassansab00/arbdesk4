@@ -97,21 +97,36 @@ export default function MonitorPage() {
   const stats = useCityStats(60000);
   const [watched, setWatched] = useState<string[]>([]);
   const [open, setOpen] = useState<string | null>(null);
-  // ?city= so the rail's rows open the city they name. Read from window rather
-  // than useSearchParams, which would force a Suspense boundary on the route
-  // for the benefit of a prerender that never runs.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const c = new URLSearchParams(window.location.search).get("city");
-    if (c) setOpen(c);
-  }, []);
   const [picking, setPicking] = useState(false);
 
-  // The selection is a per-browser preference on a shared database, so it
-  // lives in localStorage and nowhere else - syncing it would mean writing to
-  // `settings` from the browser, which the RLS boundary rightly refuses.
+  // ONE EFFECT, NOT TWO. This used to be two: the first read ?city= and
+  // opened it, the second read the last-opened city out of localStorage and
+  // opened THAT. Both ran on mount, in order, so the second always won and
+  // the ?city= was thrown away a frame after it arrived - which is why
+  // clicking a city on the Globe landed on the Monitor showing whatever you
+  // had open last, and looked like the click did nothing.
+  //
+  // The URL is an instruction from the person clicking; the stored value is a
+  // default for when there is no instruction. So the URL wins, and it also
+  // joins the watched list, because a card is only rendered for a watched
+  // city and arriving at a city with no card is the same dead end.
+  //
+  // Read from window rather than useSearchParams, which would force a
+  // Suspense boundary on the route for the benefit of a prerender that never
+  // runs.
   useEffect(() => {
-    setWatched(loadList(KEY));
+    const stored = loadList(KEY);
+    const fromUrl =
+      typeof window === "undefined"
+        ? null
+        : new URLSearchParams(window.location.search).get("city");
+
+    if (fromUrl) {
+      setWatched(stored.includes(fromUrl) ? stored : [...stored, fromUrl]);
+      setOpen(fromUrl);
+      return;
+    }
+    setWatched(stored);
     try { setOpen(localStorage.getItem(OPEN_KEY)); } catch { /* ignore */ }
   }, []);
   useEffect(() => {
