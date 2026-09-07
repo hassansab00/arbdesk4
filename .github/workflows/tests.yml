@@ -1,8 +1,30 @@
 name: Tests
 
+# WHY THE TRIGGERS ARE NARROW: minutes, and this repo ran out of them.
+#
+# `on: push` with no branch filter plus `on: pull_request` billed EVERY
+# commit two or three times over - once for the push to the feature branch,
+# once for the pull request on the same sha, and once again for the push to
+# main when the branch was merged. Three identical runs, three times the
+# minutes, one piece of information. A private repo meters Actions minutes,
+# and at ~100 commits a month that duplication alone was ~600 of the 2,000
+# in the free allowance.
+#
+# Now: a pull request is checked (that is the review gate), and main is
+# checked (that is what deploys). A push to a feature branch with no PR open
+# is not - run `pytest` locally, which is what it is for, or start the run by
+# hand from the Actions tab.
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch: {}
+
+# A second push while the first is still running makes the first answer
+# worthless. Cancel it rather than paying for both.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   pytest:

@@ -6,12 +6,20 @@ name: Web build (Vercel conditions)
 # NEXT_PUBLIC_SUPABASE_* at runtime in the browser; needing them at build
 # time is the bug this job exists to prevent from coming back.
 
+# Narrowed for the same reason as tests.yml: a push to a feature branch, the
+# pull request on that same sha, and the push to main after merging were three
+# billed runs of an identical build. See the comment there.
 on:
   push:
+    branches: [main]
     paths: ['web/**', '.github/workflows/web.yml']
   pull_request:
     paths: ['web/**', '.github/workflows/web.yml']
   workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:

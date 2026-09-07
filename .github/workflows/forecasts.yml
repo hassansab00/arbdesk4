@@ -15,11 +15,32 @@ on:
         description: 'Auto re-run if this run hits the time limit (true/false)'
         required: false
         default: 'true'
+      depth:
+        # THE CHAIN HAS TO END SOMEWHERE. This job re-triggers itself while the
+        # backfill reports INCOMPLETE, and nothing bounded that: a backfill that
+        # can never finish - a date range with no data, an API that answers but
+        # returns nothing, a bug that always prints INCOMPLETE - re-triggers
+        # forever, at up to 330 minutes a link. A private repo has 2,000 Actions
+        # minutes a month, so six links of a runaway chain is the whole month.
+        description: 'Internal: how many times this run has already re-triggered'
+        required: false
+        default: '0'
+
+concurrency:
+  # Two backfills at once fight over the same rows and bill twice for it.
+  # Queue rather than cancel: a half-finished backfill still wrote real rows,
+  # and killing it mid-city loses the run's whole soft-deadline budget.
+  group: forecasts-backfill
+  cancel-in-progress: false
 
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    # The daily scheduled run covers the last 10 days and finishes in ~25
+    # seconds. Only a manual backfill needs the long deadline, so only a manual
+    # backfill gets it - a scheduled run that hangs is capped at 30 minutes
+    # instead of burning 350 of the month's 2,000 on a socket nobody is reading.
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 350 || 30 }}
     outputs:
       incomplete: ${{ steps.run.outputs.incomplete }}
     steps:
@@ -48,15 +69,44 @@ jobs:
 
   continue:
     needs: ingest
-    if: needs.ingest.outputs.incomplete == 'true' && github.event.inputs.auto_continue != 'false'
+    # MAX_DEPTH is 8. Eight links at the 330-minute soft deadline is more than a
+    # month's allowance, so in practice the backfill finishes long before this -
+    # the point is that a chain which CANNOT finish stops on its own and says so,
+    # rather than draining the account until every workflow starts failing.
+    if: >-
+      needs.ingest.outputs.incomplete == 'true' &&
+      github.event.inputs.auto_continue != 'false' &&
+      fromJSON(github.event.inputs.depth || '0') < 8
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Re-trigger this workflow with the same inputs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPTH: ${{ github.event.inputs.depth || '0' }}
         run: |
+          next=$(( DEPTH + 1 ))
+          echo "Backfill incomplete; re-triggering (link $next of 8)."
           gh workflow run forecasts.yml \
             -f start="${{ github.event.inputs.start }}" \
             -f end="${{ github.event.inputs.end }}" \
             -f auto_continue="${{ github.event.inputs.auto_continue }}" \
+            -f depth="$next" \
             --repo ${{ github.repository }}
+
+  stopped:
+    needs: ingest
+    if: >-
+      needs.ingest.outputs.incomplete == 'true' &&
+      github.event.inputs.auto_continue != 'false' &&
+      fromJSON(github.event.inputs.depth || '0') >= 8
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Say why the chain stopped
+        run: |
+          echo "::warning::Backfill still INCOMPLETE after 8 self-triggered runs."
+          echo "Stopping rather than re-triggering again - a chain this long means"
+          echo "the range is not progressing, not that it needs more time. Check"
+          echo "the Ingest log of this run for what it was still trying to fetch."
+          exit 1
