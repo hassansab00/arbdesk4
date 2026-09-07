@@ -80,8 +80,10 @@ export function TruncatedBar({ relation }: { relation?: string }) {
       <strong className="font-semibold">Showing part of the data.</strong>{" "}
       This query came back exactly full{relation ? <> from <code className="rounded bg-panel2 px-1">{relation}</code></> : null},
       which means rows were dropped — what you see below is the first slice, not
-      everything. Narrow it (pick one city, a shorter window) or raise the row
-      limit for this panel.
+      everything. Supabase caps every response at <b>1,000 rows</b> by default
+      (Settings → API → Max rows), so asking for more than that does not get
+      more than that. Narrow it — one city, a shorter window — or raise that
+      setting.
     </div>
   );
 }

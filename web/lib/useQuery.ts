@@ -38,6 +38,14 @@ export interface QueryState<T> {
    * Pass the same number to `limit` here that you passed to `.limit()`, and
    * DataState will say the view is truncated rather than pretending the
    * missing rows do not exist.
+   *
+   * AND THE SERVER HAS ITS OWN CEILING. Supabase sets PostgREST's max-rows to
+   * 1,000 by default, so `.limit(4000)` never returns more than 1,000 rows no
+   * matter what the client asks for. A guard that only compared against the
+   * CLIENT's limit would therefore never fire on the exact case it exists to
+   * catch: a query that asked for 4,000, was cut to 1,000 by the platform,
+   * and looks complete because 1,000 is less than 4,000. Exactly 1,000 rows
+   * back is treated as truncated for that reason.
    */
   truncated: boolean;
 }
@@ -119,7 +127,9 @@ export function useQuery<T>(
   }, [intervalMs]);
 
   const refresh = useCallback(() => setTick((n) => n + 1), []);
+  const SUPABASE_MAX_ROWS = 1000;
+  const n = Array.isArray(data) ? (data as unknown[]).length : -1;
   const truncated =
-    limit !== undefined && Array.isArray(data) && (data as unknown[]).length >= limit;
+    n >= 0 && ((limit !== undefined && n >= limit) || n === SUPABASE_MAX_ROWS);
   return { data, loading, error, refresh, truncated };
 }

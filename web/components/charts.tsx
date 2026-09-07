@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 
 /**
  * Inline-SVG chart primitives.
@@ -283,6 +283,7 @@ function dedupeByLabel(values: number[], label: (v: number) => string): number[]
 
 export function Scatter({
   points, height = 260, xLabel, yLabel, xTickFormat, yTickFormat, logX,
+  maxLabels = 40, zoomable = false, diagonal = false,
 }: {
   points: Array<{ x: number; y: number; label: string; color: string; r?: number; hint?: string }>;
   height?: number;
@@ -291,7 +292,31 @@ export function Scatter({
   xTickFormat?: (v: number) => string;
   yTickFormat?: (v: number) => string;
   logX?: boolean;
+  /**
+   * Above this many points, STOP LABELLING THEM.
+   *
+   * Actual-against-predicted draws one dot per settled city-day - 2,134 of
+   * them on a desk with a few weeks of history - and every dot was carrying
+   * its city name. The result is a solid mat of overlapping words with the
+   * data somewhere underneath it: the chart got less readable with every day
+   * the desk ran, which is exactly backwards. Past this count the labels come
+   * off and the hovered point gets one instead.
+   */
+  maxLabels?: number;
+  /** Wheel/drag/buttons to zoom and pan. Off by default - a chart of 37
+   *  cities does not need it and the controls are clutter. */
+  zoomable?: boolean;
+  /** Draw y = x. On actual-against-predicted it is the whole reference and
+   *  the chart was drawn without it. */
+  diagonal?: boolean;
 }) {
+  // Hooks before the early return: React requires the same hook order every
+  // render, and `points.length === 0` is a normal state here, not an error.
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [hover, setHover] = useState<number | null>(null);
+  const dragRef = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
+
   if (points.length === 0) return <Empty height={height}>No cities have both figures yet.</Empty>;
 
   const W = 720, PAD_L = 52, PAD_R = 14, PAD_T = 12, PAD_B = 34;
@@ -314,10 +339,22 @@ export function Scatter({
   if (ys.every((v) => v >= 0) && ylo < 0) ylo = 0;
   if (!logX && xs.every((v) => v >= 0) && xlo < 0) xlo = 0;
 
+  // Zoom narrows the DOMAIN around its centre rather than scaling the drawing,
+  // so the axis labels keep telling the truth about what is on screen.
+  if (zoomable && (zoom !== 1 || pan.x !== 0 || pan.y !== 0)) {
+    const cx = (xlo + xhi) / 2 + pan.x * (xhi - xlo);
+    const cy = (ylo + yhi) / 2 + pan.y * (yhi - ylo);
+    const hw = (xhi - xlo) / (2 * zoom);
+    const hh = (yhi - ylo) / (2 * zoom);
+    xlo = cx - hw; xhi = cx + hw;
+    ylo = cy - hh; yhi = cy + hh;
+  }
+
   const X = (v: number) => PAD_L + ((tx(v) - xlo) / (xhi - xlo)) * (W - PAD_L - PAD_R);
   const Y = (v: number) => H - PAD_B - ((v - ylo) / (yhi - ylo)) * (H - PAD_T - PAD_B);
+  const showLabels = points.length <= maxLabels;
 
-  return (
+  const svg = (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: H * 1.5 }} role="img">
       {/* Ticks whose LABELS collide are dropped, not their values: on a
           degenerate axis (every point the same, or a range under one unit)
@@ -348,15 +385,81 @@ export function Scatter({
       <text x={W / 2} y={H - 4} textAnchor="middle" fontSize="9" fill={AXIS}>{xLabel}</text>
       <text x={10} y={PAD_T + 6} fontSize="9" fill={AXIS}>{yLabel}</text>
 
-      {points.map((p, i) => (
-        <g key={p.label} className="chart-pop" style={{ animationDelay: `${i * 18}ms` }}>
-          <circle cx={X(p.x)} cy={Y(p.y)} r={p.r ?? 5} fill={p.color} opacity={0.75} stroke={p.color} />
-          <text x={X(p.x)} y={Y(p.y) - (p.r ?? 5) - 3} textAnchor="middle" fontSize="8.5" fill={AXIS}>
-            {p.label}
-          </text>
-          <title>{p.hint ?? p.label}</title>
-        </g>
-      ))}
+      {/* y = x. On a chart of observed against forecast this line IS the
+          answer - every dot's distance from it is the miss - and drawing the
+          cloud without it left the reader to imagine where perfect was. */}
+      {diagonal && (() => {
+        const lo = Math.max(xlo, ylo), hi = Math.min(xhi, yhi);
+        if (!(hi > lo)) return null;
+        return (
+          <line x1={X(logX ? Math.pow(10, lo) : lo)} y1={Y(lo)}
+                x2={X(logX ? Math.pow(10, hi) : hi)} y2={Y(hi)}
+                stroke={AXIS} strokeOpacity={0.55} strokeDasharray="4 3" />
+        );
+      })()}
+
+      {points.map((p, i) => {
+        const cx = X(p.x), cy = Y(p.y);
+        if (cx < PAD_L - 8 || cx > W - PAD_R + 8 || cy < PAD_T - 8 || cy > H - PAD_B + 8) return null;
+        const isHover = hover === i;
+        return (
+          // key is the INDEX, not the label. Two thousand settled city-days
+          // contain the same city many times over, and duplicate React keys
+          // silently drop points from the chart.
+          <g key={i} className={showLabels ? "chart-pop" : undefined}
+             style={showLabels ? { animationDelay: `${i * 18}ms` } : undefined}
+             onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover((h) => (h === i ? null : h))}>
+            <circle cx={cx} cy={cy} r={(p.r ?? 5) * (isHover ? 1.6 : 1)}
+                    fill={p.color} opacity={isHover ? 1 : 0.7}
+                    stroke={isHover ? "#ffffff" : p.color} strokeWidth={isHover ? 1.4 : 1} />
+            {(showLabels || isHover) && (
+              <text x={cx} y={cy - (p.r ?? 5) - 4} textAnchor="middle" fontSize="8.5"
+                    fill={isHover ? "#e6edf6" : AXIS}
+                    stroke={isHover ? "#080b12" : undefined} strokeWidth={isHover ? 2.4 : undefined}
+                    paintOrder="stroke">
+                {p.label}
+              </text>
+            )}
+            <title>{p.hint ?? p.label}</title>
+          </g>
+        );
+      })}
+      {!showLabels && (
+        <text x={W - PAD_R} y={PAD_T + 8} textAnchor="end" fontSize="8.5" fill={AXIS}>
+          {points.length.toLocaleString()} points · hover one for its name
+        </text>
+      )}
     </svg>
   );
+
+  return zoomable ? (
+    <div>
+      <div
+        onWheel={(e) => setZoom((z) => Math.max(1, Math.min(20, z * (e.deltaY < 0 ? 1.15 : 1 / 1.15))))}
+        onPointerDown={(e) => { dragRef.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y };
+                                (e.target as Element).setPointerCapture?.(e.pointerId); }}
+        onPointerMove={(e) => {
+          const d = dragRef.current; if (!d) return;
+          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          setPan({ x: d.px - ((e.clientX - d.x) / r.width) / zoom,
+                   y: d.py + ((e.clientY - d.y) / r.height) / zoom });
+        }}
+        onPointerUp={() => { dragRef.current = null; }}
+        onPointerLeave={() => { dragRef.current = null; }}
+        style={{ cursor: dragRef.current ? "grabbing" : zoom > 1 ? "grab" : "crosshair", touchAction: "none" }}
+      >
+        {svg}
+      </div>
+      <div className="mt-1 flex items-center gap-1 text-[10px] text-muted">
+        <button onClick={() => setZoom((z) => Math.min(20, z * 1.5))}
+                className="rounded border border-border bg-panel2 px-2 py-0.5 hover:text-text">+</button>
+        <button onClick={() => setZoom((z) => Math.max(1, z / 1.5))}
+                className="rounded border border-border bg-panel2 px-2 py-0.5 hover:text-text">−</button>
+        <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}
+                className="rounded border border-border bg-panel2 px-1.5 py-0.5 hover:text-text">reset</button>
+        <span className="tabular-nums">{zoom.toFixed(1)}×</span>
+        <span className="ml-1">scroll to zoom · drag to pan · hover a dot for its city and day</span>
+      </div>
+    </div>
+  ) : svg;
 }

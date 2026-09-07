@@ -92,26 +92,31 @@ export default function PredictivePage() {
    * does hit its ceiling the page says so instead of quietly showing less.
    */
   const convQ = useQuery<ConvRow[]>(
+    // NEWEST DAYS FIRST, and capped at what the server will actually return.
+    // One city over 62 days at three models and eight leads is ~1,500 rows -
+    // still past Supabase's 1,000-row ceiling - so the order matters: the
+    // chart draws the most recent days, and those are the ones that arrive.
     () => supabase.from("v_forecast_convergence").select("*")
-            .eq("city_key", active).order("for_date").limit(4000),
-    [active], 300000, 4000
+            .eq("city_key", active).order("for_date", { ascending: false }).limit(1000),
+    [active], 300000, 1000
   );
   const settledQ = useQuery<ConvRow[]>(
     () => supabase.from("v_forecast_convergence").select("*")
-            .eq("is_settled", true).eq("lead_days", 1).limit(6000),
-    [], 300000, 6000
+            .eq("is_settled", true).eq("lead_days", 1)
+            .order("for_date", { ascending: false }).limit(1000),
+    [], 300000, 1000
   );
   // Forward only: the ladder is drawn for days that have not resolved, and
   // the whole table is one row per band per day for every city.
   const ladderQ = useQuery<LadderRow[]>(
     () => supabase.from("v_prediction_ladder").select("*")
-            .gte("for_date", new Date().toISOString().slice(0, 10)).limit(6000),
-    [], 120000, 6000
+            .gte("for_date", new Date().toISOString().slice(0, 10)).limit(1000),
+    [], 120000, 1000
   );
   const cityLadderQ = useQuery<Array<{ band_lo: number | null; band_hi: number | null }>>(
     () => supabase.from("v_prediction_ladder").select("band_lo,band_hi")
-            .eq("city_key", active).limit(3000),
-    [active], 120000, 3000
+            .eq("city_key", active).limit(1000),
+    [active], 120000, 1000
   );
   const scoreQ = useQuery<ScoreRow[]>(
     () => supabase.from("v_prediction_scorecard").select("*").limit(4000), [], undefined, 4000
@@ -476,6 +481,12 @@ export default function PredictivePage() {
                 height={340}
                 xTickFormat={(v) => v.toFixed(0)}
                 yTickFormat={(v) => v.toFixed(0)}
+                // 2,134 dots each carrying a city name is a mat of overlapping
+                // words with the data underneath it. Names on hover, and the
+                // diagonal drawn, which is the only reference the chart has.
+                maxLabels={40}
+                zoomable
+                diagonal
               />
             </div>
 

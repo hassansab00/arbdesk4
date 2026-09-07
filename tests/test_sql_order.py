@@ -234,3 +234,64 @@ def test_the_scan_risk_view_exists():
     sql = _sql("ad4_44_indexes.sql")
     assert "create or replace view v_table_scan_risk" in sql
     assert "AT RISK" in sql
+
+
+def test_every_function_a_public_view_calls_is_granted_to_the_browser():
+    """A view does not run its functions as its owner.
+
+    Unless a function is SECURITY DEFINER, a view executes it as the CALLER -
+    so a browser reading a view that calls ad4_plural() needs EXECUTE on
+    ad4_plural, or the whole select is refused with 42501.
+
+    ad4_38 revokes EXECUTE on everything from the browser roles and grants
+    back a named list, which is the right design. What went wrong is ORDER:
+    ad4_38 is file 38 and ad4_plural is created by file 40, so the grant found
+    no such function, swallowed the error by design, and nothing granted it
+    afterwards. Synthesis had been refusing the browser since the day ad4_38
+    was written.
+
+    It survived every test because `select count(*)` never evaluates the
+    columns that call the function. Only `select *` does - which is what the
+    browser sends and what no test sent.
+
+    So: any ad4_* helper defined in the SQL and used inside a view has to
+    appear in ad4_47's grant list, which runs LAST when the functions exist.
+    """
+    import glob
+    import os
+    import re
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sql = {}
+    for path in sorted(glob.glob(os.path.join(root, "sql", "*.sql"))):
+        sql[os.path.basename(path)] = open(path).read()
+
+    granted = set(re.findall(r"'(\w+)'", re.search(
+        r"foreach f in array array\[(.*?)\] loop", sql["ad4_47_repair.sql"], re.S).group(1)))
+
+    # every ad4_ helper this repo defines
+    defined = set()
+    for text in sql.values():
+        defined |= set(re.findall(r"create or replace function\s+(ad4_\w+)\s*\(", text))
+    # ...that is called from inside a CREATE VIEW body
+    used_in_views = set()
+    for name, text in sql.items():
+        if name == "ad4_47_repair.sql":
+            continue
+        for m in re.finditer(r"create (?:or replace )?view\s+\w+\s+as(.*?)(?=\ncreate |\Z)",
+                             text, re.S | re.I):
+            # A view body ends at the first statement that follows it. Without
+            # this the match runs on into the next DO block and reports every
+            # function called there as if a view had called it.
+            body = re.split(r"\n\s*(?:\$\w*\$|do \$|end\b|comment on|grant |revoke |notify |alter |insert )",
+                            m.group(1), maxsplit=1, flags=re.I)[0]
+            for fn in defined:
+                if re.search(rf"\b{fn}\s*\(", body):
+                    used_in_views.add(fn)
+
+    # the ones a view calls but nothing grants
+    ungranted = sorted(f for f in used_in_views if f not in granted)
+    assert not ungranted, (
+        "these functions are called from inside a view but are not on ad4_47's "
+        "browser grant list, so `select *` on that view fails for the browser "
+        "with 42501:\n  " + "\n  ".join(ungranted))

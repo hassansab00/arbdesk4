@@ -123,8 +123,26 @@ export default function ModelAnalytics() {
   // WHAT IS KNOWN WHILE THE ANSWERS ARE STILL COMING. Every panel below that
   // needs settled outcomes can at least say how many exist, how many are on
   // their way, and when the next one lands.
-  const banked = useQuery<Array<{ captured_at: string }>>(
-    () => supabase.from("fact_band_outcome").select("captured_at").limit(5000), [], 300000, 5000
+  /**
+   * COUNTED BY THE DATABASE, not by fetching rows and calling .length.
+   *
+   * This asked for 5,000 rows of fact_band_outcome and counted what came
+   * back. PostgREST caps a response at 1,000 rows by default, so the answer
+   * was always "1,000" the moment the table passed a thousand rows - which is
+   * how the progress bar came to read "1,000 of 300" while the panel beside
+   * it said "Nothing measured yet". Two numbers from the same page
+   * contradicting each other is worse than either being missing.
+   *
+   * head + count asks Postgres for the count and transfers no rows at all.
+   */
+  const banked = useQuery<{ count: number }>(
+    async () => {
+      const { count, error } = await supabase
+        .from("fact_band_outcome")
+        .select("*", { count: "exact", head: true });
+      return { data: { count: count ?? 0 }, error };
+    },
+    [], 300000
   );
   const pending = useQuery<Array<{ resolution_date: string }>>(
     () => supabase.from("v_opportunities").select("resolution_date").eq("side", "YES").limit(4000), [], 300000, 4000
@@ -135,7 +153,7 @@ export default function ModelAnalytics() {
     const next = days[0] ?? null;
     return { bands, next };
   }, [pending.data]);
-  const nBanked = (banked.data ?? []).length;
+  const nBanked = banked.data?.count ?? 0;
 
   /** Shared by the two panels that wait on settled outcomes. */
   const settledProgress = {

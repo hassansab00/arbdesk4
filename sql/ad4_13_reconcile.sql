@@ -750,6 +750,14 @@ order by score desc nulls last
 end
 $ad4$;
 
+-- AND TELL POSTGREST. It caches the schema and does not watch for DDL, so the
+-- six views the cascade above just dropped and rebuilt keep answering
+-- PGRST205 "could not find the table ... in the schema cache" until it
+-- reloads - while sitting perfectly healthy in the database. That error reads
+-- as a missing file and sends you to re-run the wrong one. On Supabase this
+-- NOTIFY triggers the reload; anywhere else it costs nothing.
+notify pgrst, 'reload schema';
+
 
 -- ===========================================================================
 -- 5. CAPACITY - reads normalised ladders instead of an integer.
