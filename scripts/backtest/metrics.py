@@ -7,7 +7,10 @@ distribution, signal_frequency, equity_curve.
 
 Every trade dict is expected to carry at least: strategy_id, city_key,
 band_id, side, shares, avg_fill_price, exit_price, gross_pnl, net_pnl,
-fee_paid, gas_paid, model_prob, won (bool), resolution_date.
+fee_paid, gas_paid, model_prob, resolution_date, and the three outcome
+fields: settled_winner (did the contract settle our way),
+profitable_after_costs (did it make money), closed_reason (how it ended).
+`won` is retained as an alias of profitable_after_costs for older rows.
 """
 import math
 from collections import defaultdict
@@ -21,10 +24,19 @@ def headline(trades):
     n = len(trades)
     total_net = sum(t["net_pnl"] for t in trades)
     total_gross = sum(t["gross_pnl"] for t in trades)
-    wins = sum(1 for t in trades if t.get("won"))
+    wins = sum(1 for t in trades if _profitable(t))
+    # Two rates, because they answer different questions and can disagree by a
+    # lot: a desk can be right about the weather and still lose money on the
+    # spread. settled is over the trades whose contract actually settled.
+    settled = [t for t in trades if t.get("settled_winner") is not None]
     return {
         "n_trades": n, "total_net_pnl": total_net, "total_gross_pnl": total_gross,
         "win_rate": wins / n, "avg_net_pnl_per_trade": total_net / n,
+        "profitable_rate": wins / n,
+        "settled_winner_rate": (
+            sum(1 for t in settled if t["settled_winner"]) / len(settled)
+            if settled else None),
+        "n_settled": len(settled),
     }
 
 
@@ -106,16 +118,38 @@ def equity_curve(trades, starting_budget):
     return curve
 
 
+def _settled(trade):
+    """Did the contract settle our way? None when that is not yet knowable.
+
+    Falls back to `won` only for rows written before settled_winner existed,
+    so an old backtest_results row still renders rather than vanishing.
+    """
+    v = trade.get("settled_winner")
+    return trade.get("won") if v is None else v
+
+
+def _profitable(trade):
+    v = trade.get("profitable_after_costs")
+    return trade.get("won") if v is None else v
+
+
 def calibration(trades, n_bins=10):
     """
     Reliability diagram: bucket trades by model_prob into n_bins, compare
-    each bucket's average predicted probability to its actual win rate.
-    Needs `model_prob` and `won` on every trade - both already available
-    from paper_trades/settlement, so this needs no separate data source.
+    each bucket's average predicted probability to how often the contract
+    actually settled that way.
+
+    THIS MUST BE SETTLEMENT, NOT PROFIT. model_prob is the desk's probability
+    that a BUCKET CONTAINS THE DAY'S HIGH. Scoring it against "did the trade
+    make money" charges the forecast for the spread, the fee and the gas, so a
+    perfectly calibrated model trading into a wide book reads as
+    overconfident - and ad4_45 feeds that number back as a sigma multiplier,
+    widening a distribution that was already right. The two questions are
+    separated at the source now; this reads the settlement one.
     """
     bins = defaultdict(list)
     for t in trades:
-        if t.get("model_prob") is None or t.get("won") is None:
+        if t.get("model_prob") is None or _settled(t) is None:
             continue
         idx = min(int(t["model_prob"] * n_bins), n_bins - 1)
         bins[idx].append(t)
@@ -124,7 +158,7 @@ def calibration(trades, n_bins=10):
         group = bins[idx]
         n = len(group)
         avg_pred = sum(t["model_prob"] for t in group) / n
-        actual_rate = sum(1 for t in group if t["won"]) / n
+        actual_rate = sum(1 for t in group if _settled(t)) / n
         out.append({"bin": idx, "n": n, "avg_predicted_prob": avg_pred, "actual_win_rate": actual_rate,
                     "overconfidence": avg_pred - actual_rate, "insufficient_sample": n < MIN_TRADES_FOR_RATE})
     return out

@@ -148,11 +148,16 @@ def simulate_city_day(city_key, resolution_date, unit, bands, forecast_rows_as_o
             # not "nothing happened", so it must not gate recording a trade.
 
         gross_total, fee_total, shares_total, cost_total = 0.0, 0.0, 0.0, 0.0
+        anchor_settled = None
         for leg in basket["legs"]:
             fill = leg["fill"]
             if fill["shares"] <= 0:
                 continue
             won_leg = (leg["band_id"] == winning_band_id) if sig.side == "YES" else (leg["band_id"] != winning_band_id)
+            # The anchor is the band model_prob was quoted for, so it is the
+            # only leg whose settlement can be compared against that number.
+            if leg["band_id"] == sig.band_id:
+                anchor_settled = won_leg
             exit_price = 1.0 if won_leg else 0.0
             fee = cost_model.taker_fee(fill["shares"], fill["avg_price"])
             gross_total += fill["shares"] * (exit_price - fill["avg_price"])
@@ -168,7 +173,32 @@ def simulate_city_day(city_key, resolution_date, unit, bands, forecast_rows_as_o
             "gross_pnl": gross_total, "net_pnl": net_total, "fee_paid": fee_total,
             "gas_paid": cost_model.DEFAULT_GAS_USD,
             "slippage_paid": basket["legs"][0]["fill"].get("slippage") if basket["legs"] else None,
-            "model_prob": sig.prob_at_fire, "won": net_total > 0,
+            # Three different questions, which `won` used to answer with one
+            # number. `won` was net_total > 0 - money - while model_prob is a
+            # probability that a CONTRACT settles yes. Scoring one against the
+            # other made every calibration figure a blend of forecast accuracy
+            # and execution cost, so a desk with a perfect model but a wide
+            # spread read as overconfident.
+            #
+            #   settled_winner         did the contract we were quoted on
+            #                          settle our way (None if the day never
+            #                          settled, or the anchor leg never filled)
+            #   profitable_after_costs did the trade make money once fees,
+            #                          gas and slippage were paid
+            #   closed_reason          how the position ended
+            #
+            # `won` is kept, equal to profitable_after_costs, because
+            # backtest_trades rows already carry it and the UI reads it.
+            "model_prob": sig.prob_at_fire,
+            "settled_winner": anchor_settled,
+            "profitable_after_costs": net_total > 0,
+            "won": net_total > 0,
+            # This harness holds every position to settlement - it has no
+            # intraday exit to model, because book history starts late August
+            # 2026. Recording that explicitly means "held to settlement" is a
+            # stated fact about the run rather than an assumption a reader has
+            # to make, and the column is already there when exits arrive.
+            "closed_reason": "settled",
             "resolution_date": resolution_date.isoformat(), "regime_label": reg.label,
             "legs_requested": basket["legs_requested"], "legs_filled": basket["legs_filled"],
         })

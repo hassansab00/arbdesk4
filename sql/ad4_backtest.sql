@@ -70,6 +70,14 @@ alter table backtest_trades add column if not exists gas_paid numeric;
 alter table backtest_trades add column if not exists slippage_paid numeric;
 alter table backtest_trades add column if not exists model_prob numeric;
 alter table backtest_trades add column if not exists won boolean;
+-- `won` was net_pnl > 0 - money - while model_prob is the probability a
+-- CONTRACT settles yes. Scoring one against the other charged the forecast
+-- for the spread and the fees, so calibration read a correct model as
+-- overconfident. Three questions, three columns; `won` stays as the
+-- profit one so existing rows and the UI keep working.
+alter table backtest_trades add column if not exists settled_winner boolean;
+alter table backtest_trades add column if not exists profitable_after_costs boolean;
+alter table backtest_trades add column if not exists closed_reason text;
 alter table backtest_trades add column if not exists resolution_date date;
 alter table backtest_trades add column if not exists regime_label text;
 create index if not exists idx_backtest_trades_run on backtest_trades (run_id);

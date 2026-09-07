@@ -727,6 +727,9 @@ begin
         ('backtest_trades','slippage_paid','numeric'),
         ('backtest_trades','model_prob','numeric'),
         ('backtest_trades','won','boolean'),
+        ('backtest_trades','settled_winner','boolean'),
+        ('backtest_trades','profitable_after_costs','boolean'),
+        ('backtest_trades','closed_reason','text'),
         ('backtest_trades','resolution_date','date'),
         ('backtest_trades','regime_label','text'),
         -- written by scripts/backtest/engine.py, missing from ad4_backtest.sql
