@@ -219,3 +219,60 @@ begin
   end if;
 end
 $ad4$;
+
+
+-- ===========================================================================
+-- 5. RLS AND search_path, asserted rather than assumed.
+--
+--    Two things a Supabase security advisor flags that are worth fixing, and
+--    that no other file was asserting:
+--
+--    RLS ON EVERY TABLE. Not because the browser must be kept out of them -
+--    it is granted SELECT on all of them deliberately - but because a table
+--    that is the ONLY one without RLS is a table somebody forgot, and the
+--    forgetting is the bug. derived_calibration_adjustment was the one of 48.
+--
+--    search_path ON EVERY SECURITY DEFINER FUNCTION. A SECURITY DEFINER
+--    function runs with its OWNER's privileges; if its search_path is not
+--    pinned, the CALLER decides which schema a bare table name resolves to.
+--    A caller who can create a table in a schema earlier on their own path
+--    can make a privileged function read or write THEIRS instead of the real
+--    one. All 34 were unpinned. Pinning changes no behaviour - public,
+--    pg_temp is what they already resolved to - it removes the redirection.
+-- ===========================================================================
+do $ad4$
+declare r record; n int := 0; m int := 0;
+begin
+  for r in
+    select c.relname
+      from pg_class c join pg_namespace ns on ns.oid = c.relnamespace
+     where ns.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity
+  loop
+    begin
+      execute format('alter table public.%I enable row level security', r.relname);
+      execute format('drop policy if exists anon_read on public.%I', r.relname);
+      execute format('create policy anon_read on public.%I for select to anon using (true)', r.relname);
+      execute format('drop policy if exists authenticated_read on public.%I', r.relname);
+      execute format('create policy authenticated_read on public.%I for select to authenticated using (true)', r.relname);
+      n := n + 1;
+    exception when others then
+      raise notice 'ad4_47: could not enable RLS on % (%)', r.relname, sqlerrm;
+    end;
+  end loop;
+
+  for r in
+    select p.oid::regprocedure::text as sig
+      from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
+     where ns.nspname = 'public' and p.prosecdef and p.proconfig is null
+  loop
+    begin
+      execute format('alter function %s set search_path = public, pg_temp', r.sig);
+      m := m + 1;
+    exception when others then
+      raise notice 'ad4_47: could not pin search_path on % (%)', r.sig, sqlerrm;
+    end;
+  end loop;
+
+  raise notice 'ad4_47: RLS enabled on % table(s) that lacked it; search_path pinned on % function(s)', n, m;
+end
+$ad4$;
