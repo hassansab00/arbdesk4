@@ -90,6 +90,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_forecast_divergence_current": "ad4_19_stats_cache.sql",
   "v_forecast_features": "ad4_24_nws_gridpoint.sql",
   "v_forecast_model_skill": "ad4_49_model_skill.sql",
+  "v_index_never_used": "ad4_50_index_dedupe.sql",
   "v_jit_state": "ad4_46_jit.sql",
   "v_latest_book": "ad4_13_reconcile.sql",
   "v_latest_edge": "ad4_phase2.sql",

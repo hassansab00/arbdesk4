@@ -73,7 +73,13 @@ begin
     -- the whole select is refused.
     'band_contains', 'band_local_value', 'capacity_side', 'depth_usd',
     'ad4_num', 'ad4_plural', 'ad4_region', 'ad4_norm_levels',
-    'ad4_synth_levels', 'ad4_raw_book_side', 'ad4_trades_ts_expr'
+    'ad4_synth_levels', 'ad4_raw_book_side', 'ad4_trades_ts_expr',
+    -- the Data Bank inventory (sql/ad4_51) counts rows and distinct cities
+    -- through these rather than scanning the whole archive. Same trap as
+    -- ad4_plural: the view is readable, the function inside it is not, and
+    -- the browser gets 42501 on select * while count(*) still works.
+    'ad4_table_rows', 'ad4_table_rows_estimated',
+    'ad4_distinct_values', 'ad4_distinct_count'
   ] loop
     if not exists (select 1 from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
                     where ns.nspname = 'public' and p.proname = f) then

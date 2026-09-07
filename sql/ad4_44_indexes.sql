@@ -54,12 +54,42 @@
 -- ===========================================================================
 
 -- --------------------------------------------------------------------------
+-- 0. What are an index's key columns, really?
+--
+--    `create index if not exists` tests the NAME. That is not the question
+--    worth asking - two indexes on the same columns under different names are
+--    the same index, and the second one is pure cost. This normalises a
+--    definition down to its keys so they compare equal: direction, null
+--    placement, whitespace and INCLUDE columns all drop out.
+--
+--    Defined here, in the index file, because this is the file that must not
+--    create duplicates. sql/ad4_50 uses it to remove the ones already built.
+-- --------------------------------------------------------------------------
+create or replace function ad4_index_keys(p_def text)
+returns text language sql immutable
+set search_path = public, pg_catalog as $ad4$
+  select regexp_replace(
+           regexp_replace(
+             regexp_replace(
+               substring(regexp_replace(p_def, '\s+include\s*\(.*$', '', 'i')
+                         from '\((.*)\)$'),
+               '\s+(desc|asc)\y', '', 'gi'),
+             '\s+nulls\s+(first|last)\y', '', 'gi'),
+           '\s+', '', 'g');
+$ad4$;
+
+comment on function ad4_index_keys(text) is
+  'The key columns of an index definition, normalised so that ordering direction, null placement, whitespace and INCLUDE columns do not make two equivalent indexes look different. Postgres reads a btree in either direction, so (a, b DESC) and (a, b) are interchangeable.';
+
+
+-- --------------------------------------------------------------------------
 -- 1. The market side: every one of these is read per band, thousands of times
 --    per page render.
 -- --------------------------------------------------------------------------
 do $ad4$
 declare
   v_made int := 0;
+  v_covered boolean := false;
   r record;
   spec text[][] := array[
     -- table                  index name                    columns
@@ -124,6 +154,41 @@ begin
       raise notice 'ad4_44: % does not exist - skipped', spec[i][1];
       continue;
     end if;
+    -- `create index if not exists` tests THE NAME, not the columns. This
+    -- database was born with idx_obs_city_time on exactly the columns
+    -- ad4_ix_obs_city_time wanted, so the guard passed and Postgres built a
+    -- second, identical index. Six times over, that came to 120 MB - most of
+    -- the way to the 500 MB free tier, paid for nothing. So ask the real
+    -- question first: does an index on these columns already exist, under
+    -- whatever name? ad4_index_keys (sql/ad4_50) normalises away direction,
+    -- null placement and whitespace so DESC and ASC do not read as different.
+    begin
+        execute format(
+          $q$select exists (
+               select 1 from pg_index x
+                 join pg_class i on i.oid = x.indexrelid
+                 join pg_class c on c.oid = x.indrelid
+                 join pg_namespace n on n.oid = c.relnamespace
+                where n.nspname = 'public' and c.relname = %L
+                  and x.indpred is null
+                    -- covered means EQUAL keys, or an existing index whose
+                  -- keys START with these - (a,b,c) answers everything
+                  -- (a,b) does. Same rule ad4_50 drops by, so the two files
+                  -- cannot disagree and churn an index in and out.
+                  and (ad4_index_keys(pg_get_indexdef(i.oid))
+                         = ad4_index_keys('create index z on t ' || %L)
+                    or ad4_index_keys(pg_get_indexdef(i.oid))
+                         like ad4_index_keys('create index z on t ' || %L) || ',%%'))$q$,
+          spec[i][1], spec[i][3], spec[i][3]) into v_covered;
+    exception when others then
+      v_covered := false;        -- never let the check itself stop the file
+    end;
+    if v_covered then
+      raise notice 'ad4_44: %.% already covered by an existing index - not duplicating',
+                   spec[i][1], spec[i][2];
+      continue;
+    end if;
+
     -- Nor is a column this schema does not carry. Checking beats failing the
     -- whole file on one name that differs between installs.
     begin
