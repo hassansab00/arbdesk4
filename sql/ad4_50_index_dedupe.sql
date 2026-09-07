@@ -232,7 +232,10 @@ begin
   select pg_database_size(current_database()) into v_size;
   raise notice 'ad4_50: database is now %', pg_size_pretty(v_size);
   if v_size > 500 * 1024 * 1024 then
-    raise notice 'ad4_50: still over the 500 MB free tier - see v_index_never_used and v_archive_retention';
+    raise notice 'ad4_50: still over the 500 MB free tier. Next places to look, in order:';
+    raise notice '  select * from v_index_never_used;        -- indexes nothing has read';
+    raise notice '  select * from v_archive_inventory;       -- which feed is growing fastest';
+    raise notice '  Deleting history is the LAST resort and nobody should do it silently.';
   end if;
 end
 $ad4$;

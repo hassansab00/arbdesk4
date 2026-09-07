@@ -719,6 +719,16 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_forecast_skill_model",
     "weather_forecasts"
   ],
+  "v_index_never_used": [
+    "bands",
+    "book_snapshots",
+    "markets",
+    "trades_observed",
+    "weather_events",
+    "weather_forecast_features",
+    "weather_forecasts",
+    "weather_observations"
+  ],
   "v_latest_book": [
     "book_snapshots",
     "bands"
