@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import Globe from "@/components/Globe";
+import Globe, { type CityBar } from "@/components/Globe";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { useCityStats } from "@/lib/useCityStats";
@@ -31,9 +31,46 @@ import type { CityStats } from "@/lib/types";
  * across correlated cities is not ten bets" is a sentence in a risk document
  * until you watch a whole continent turn the same colour.
  */
+interface GlobeOpp {
+  city_key: string;
+  model_prob: number | null;
+  edge_net_pp: number | null;
+  market_price: number | null;
+  band_label: string | null;
+  tradeable: boolean | null;
+  fillable_usd_5c: number | null;
+  resolution_date: string;
+}
+
 export default function GlobePage() {
   const router = useRouter();
   const stats = useCityStats(60000);
+
+  /**
+   * WHAT THE TOWERS STAND ON. The globe used to carry one channel - hotness -
+   * and every other question sent you to another page. These are the four a
+   * trader actually asks of a city at a glance, and they come from the board
+   * rather than from anything computed here, so they cannot disagree with it.
+   */
+  const oppQ = useQuery<GlobeOpp[]>(
+    () => supabase.from("v_opportunities")
+            .select("city_key,model_prob,edge_net_pp,market_price,band_label,tradeable,fillable_usd_5c,resolution_date")
+            .gte("resolution_date", new Date().toISOString().slice(0, 10))
+            .limit(4000),
+    [], 60000, 4000
+  );
+
+  // The best live band per city: highest net edge among the ones the desk
+  // would actually take. That single band is the entry the tower describes.
+  const bestByCity = useMemo(() => {
+    const m = new Map<string, GlobeOpp>();
+    for (const o of oppQ.data ?? []) {
+      if (!o.tradeable) continue;
+      const cur = m.get(o.city_key);
+      if (!cur || (o.edge_net_pp ?? -99) > (cur.edge_net_pp ?? -99)) m.set(o.city_key, o);
+    }
+    return m;
+  }, [oppQ.data]);
 
   const rows = stats.rows ?? [];
   const withCoords = rows.filter((c) => c.latitude != null && c.longitude != null);
@@ -50,6 +87,75 @@ export default function GlobePage() {
     [rows]
   );
 
+  const [picked, setPicked] = useState<string | null>(null);
+  const pickedCity = rows.find((c) => c.city_key === picked) ?? null;
+  const pickedOpp = picked ? bestByCity.get(picked) ?? null : null;
+
+  /**
+   * The four bars, per city. Each is normalised to 0..1 for HEIGHT and keeps
+   * its real figure for the readout - a normalised bar cannot be read as a
+   * number and a raw number cannot be compared between cities, so both.
+   *
+   * The ceilings are stated rather than derived from the data on screen: a
+   * scale that rescales itself makes a quiet day look like a good one.
+   *   ENTRY  net edge, 0-15 pp        - is there anything here
+   *   WIN    the model's probability  - how likely that entry is to pay
+   *   SKILL  1 - mae/5 C              - whether this city's forecast is worth
+   *                                     trusting at all, which gates the two
+   *                                     above rather than adding to them
+   *   CLIMB  forecast - running max   - how much of the day is still to come;
+   *                                     zero means the number is already in
+   */
+  const bars = useMemo(() => {
+    const m = new Map<string, CityBar[]>();
+    /**
+     * NOT EVERY CITY GETS A TOWER, and that restraint is the feature.
+     *
+     * Thirty-seven towers is 148 bars on one sphere; where two cities sit
+     * close together they overlap into a smear that says nothing, and a
+     * channel that is always on stops meaning anything even where it is
+     * readable. So a tower is drawn for the ten cities with the best live
+     * entry - which makes the tower itself a signal, "this is one worth
+     * looking at" - and the Globe adds one for whatever is under the pointer,
+     * so the channel is still discoverable by pointing at anything.
+     */
+    const TOWERS = 10;
+    const ranked = rows
+      .map((c) => ({ key: c.city_key, edge: bestByCity.get(c.city_key)?.edge_net_pp ?? -99 }))
+      .filter((r) => r.edge > 0)
+      .sort((a, b) => b.edge - a.edge)
+      .slice(0, TOWERS);
+    const show = new Set(ranked.map((r) => r.key));
+
+    for (const c of rows) {
+      const o = bestByCity.get(c.city_key);
+      const edge = o?.edge_net_pp ?? null;
+      const prob = o?.model_prob ?? null;
+      const mae = c.mae_c ?? null;
+      const climb =
+        c.forecast_max_c != null && c.running_max_c != null
+          ? Math.max(0, c.forecast_max_c - c.running_max_c)
+          : null;
+      m.set(c.city_key, [
+        { key: "edge", label: "entry", color: "#7ee081",
+          frac: !show.has(c.city_key) ? 0 : edge == null ? 0 : Math.min(1, Math.max(0, edge) / 15),
+          text: edge == null ? "no live band" : `${edge > 0 ? "+" : ""}${edge.toFixed(1)} pp` },
+        { key: "win", label: "win", color: "#4da3ff",
+          frac: !show.has(c.city_key) ? 0 : prob == null ? 0 : Math.min(1, Math.max(0, prob)),
+          text: prob == null ? "—" : `${(prob * 100).toFixed(0)}%` },
+        { key: "skill", label: "skill", color: "#c792ea",
+          frac: !show.has(c.city_key) ? 0 : mae == null ? 0 : Math.min(1, Math.max(0, 1 - mae / 5)),
+          text: mae == null ? "unmeasured" : `${mae.toFixed(2)} °C err` },
+        { key: "climb", label: "climb", color: "#ffb020",
+          // frac 0 on a city outside the top ten: the Globe draws nothing
+          // unless it is hovered, and the readout still shows every figure.
+          frac: !show.has(c.city_key) || climb == null ? 0 : Math.min(1, climb / 8),
+          text: climb == null ? "—" : `${climb.toFixed(1)} °C to go` },
+      ]);
+    }
+    return m;
+  }, [rows, bestByCity]);
+
   return (
     <div className="space-y-4">
       <div>
@@ -59,8 +165,9 @@ export default function GlobePage() {
           maxima this desk trades are made in the few hours around each city&apos;s solar afternoon,
           and that band sweeps west all day. A pulsing ring is a city inside its measured peak
           window right now. Colour is hotness against that city&apos;s own normal, in standard
-          deviations — the only form comparable between Chicago and Beirut. Drag to rotate; click a
-          city to open its monitor.
+          deviations — the only form comparable between Chicago and Beirut. Drag to turn it — it follows your hand — scroll or use +/− to zoom, and click a
+          city to open it underneath without leaving the globe. Each city carries a small tower:
+          entry, win, skill, climb.
         </p>
         {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
             identical, and only one of them is worth investigating. */}
@@ -90,8 +197,26 @@ export default function GlobePage() {
           <Globe
             cities={withCoords}
             height={520}
-            onPick={(k) => router.push(`/monitor?city=${encodeURIComponent(k)}`)}
+            bars={bars}
+            selected={picked}
+            // NOT a redirect any more. Clicking a city used to leave the page
+            // entirely, so the one thing the globe is for - seeing a city IN
+            // CONTEXT of the others - was lost the moment you asked about one.
+            // It opens underneath instead, and the monitor is still one click
+            // from there for anyone who wants the full page.
+            onPick={(k) => setPicked((cur) => (cur === k ? null : k))}
           />
+
+          {pickedCity && (
+            <CityPanel
+              city={pickedCity}
+              opp={pickedOpp}
+              bars={bars.get(pickedCity.city_key) ?? []}
+              onClose={() => setPicked(null)}
+              onOpenMonitor={() =>
+                router.push(`/monitor?city=${encodeURIComponent(pickedCity.city_key)}`)}
+            />
+          )}
 
           {/* ---- legend: every channel on the globe, named ------------- */}
           <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-[11px] text-muted">
@@ -301,6 +426,146 @@ function PeakCoverage() {
           </table>
         </div>
       )}
+    </section>
+  );
+}
+
+/* ==========================================================================
+   THE CITY, UNDER THE GLOBE.
+ 
+   Clicking a dot used to navigate to /monitor, which threw away the only
+   thing the globe is for: seeing one city in the context of the other
+   thirty-six. This opens beneath it instead - same page, globe still on
+   screen with the city ringed - and the full monitor stays one click away.
+ 
+   Everything here is already on the row or on the board. Nothing is
+   recomputed: a second implementation of "edge" drifts from the first and
+   then nobody knows which number is real.
+   ========================================================================== */
+function CityPanel({
+  city,
+  opp,
+  bars,
+  onClose,
+  onOpenMonitor,
+}: {
+  city: CityStats;
+  opp: GlobeOpp | null;
+  bars: CityBar[];
+  onClose: () => void;
+  onOpenMonitor: () => void;
+}) {
+  const climbing = city.forecast_max_c != null && city.running_max_c != null
+    ? city.forecast_max_c - city.running_max_c
+    : null;
+
+  // The one sentence. Six numbers and the reader still has to know the desk's
+  // rules to turn them into a decision, which is the gap this closes.
+  let verdict = "Nothing tradeable on the board for this city right now.";
+  let tone = "text-muted";
+  if (opp) {
+    const edge = opp.edge_net_pp ?? 0;
+    const trustworthy = city.mae_c != null && city.mae_c <= 2.5;
+    if (edge >= 5 && trustworthy) {
+      verdict = `${opp.band_label ?? "a band"} is the entry: ${edge.toFixed(1)} pp of net edge at ${opp.market_price != null ? opp.market_price.toFixed(2) : "—"}, on a city whose forecast has been good to ${city.mae_c!.toFixed(2)} °C.`;
+      tone = "text-good";
+    } else if (edge >= 5) {
+      verdict = `${opp.band_label ?? "a band"} shows ${edge.toFixed(1)} pp — but this city's forecast error is ${city.mae_c == null ? "unmeasured" : `${city.mae_c.toFixed(2)} °C`}, which is wide enough to be the whole edge. Size accordingly.`;
+      tone = "text-warn";
+    } else {
+      verdict = `Best live band is ${opp.band_label ?? "—"} at ${edge.toFixed(1)} pp. Thin, and not what the desk is for.`;
+      tone = "text-muted";
+    }
+  }
+
+  const F = ({ label, value, hint }: { label: string; value: string; hint?: string }) => (
+    <div className="rounded border border-border bg-panel2/60 px-2 py-1.5">
+      <div className="text-[10px] uppercase tracking-wide text-muted">{label}</div>
+      <div className="font-mono text-sm tabular-nums">{value}</div>
+      {hint ? <div className="text-[10px] text-muted">{hint}</div> : null}
+    </div>
+  );
+
+  return (
+    <section className="mt-3 rounded border border-accent/40 bg-panel/70 p-3">
+      <div className="flex flex-wrap items-baseline gap-2">
+        <span className="inline-block h-3 w-3 shrink-0 rounded-full border"
+              style={{
+                background: city.hotness_sigma == null ? "#5b6472" : heatColor(city.hotness_sigma),
+                borderColor: REGION_COLOR[regionFromCity(city)] ?? "#8ab4ff",
+              }} />
+        <h2 className="text-sm font-semibold">{city.display_name ?? city.city_key}</h2>
+        <span className="text-[11px] text-muted">
+          {regionFromCity(city)}
+          {city.timezone ? ` · ${city.timezone}` : ""}
+          {city.peak_hour_local != null ? ` · peaks about ${city.peak_hour_local}:00 local` : ""}
+        </span>
+        <button onClick={onOpenMonitor} className="ml-auto text-xs text-accent hover:underline">
+          full monitor →
+        </button>
+        <button onClick={onClose} className="text-xs text-muted hover:text-text">close</button>
+      </div>
+
+      <p className={`mt-1.5 text-xs leading-relaxed ${tone}`}>{verdict}</p>
+
+      {/* The same four channels the tower draws, as figures. The tower is for
+          comparing cities; this is for reading one. */}
+      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {bars.map((b) => (
+          <div key={b.key} className="rounded border border-border bg-panel2/60 px-2 py-1.5">
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block h-2 w-2 rounded-[1px]" style={{ background: b.color }} />
+              <span className="text-[10px] uppercase tracking-wide text-muted">{b.label}</span>
+            </div>
+            <div className="font-mono text-sm tabular-nums">{b.text}</div>
+            <div className="mt-1 h-1 rounded bg-panel2">
+              <div className="h-1 rounded" style={{ width: `${Math.round(b.frac * 100)}%`, background: b.color }} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <F label="now" value={city.now_c == null ? "—" : `${city.now_c.toFixed(1)}°`} />
+        <F label="running max" value={city.running_max_c == null ? "—" : `${city.running_max_c.toFixed(1)}°`} />
+        <F label="forecast"
+           value={city.forecast_max_c == null ? "—" : `${city.forecast_max_c.toFixed(1)}°`}
+           hint={city.forecast_model
+             ? `${city.forecast_model}${city.forecast_lead_days != null ? ` · ${city.forecast_lead_days}d lead` : ""}`
+             : undefined} />
+        <F label="still to climb"
+           value={climbing == null ? "—" : `${climbing > 0 ? "+" : ""}${climbing.toFixed(1)}°`}
+           hint={city.day_decided ? "day already decided" : city.peak_window_state ?? undefined} />
+        <F label="vs its normal"
+           value={city.hotness_sigma == null ? "—" : `${city.hotness_sigma > 0 ? "+" : ""}${city.hotness_sigma.toFixed(1)}σ`}
+           hint={city.hotness_sigma == null ? "no baseline yet" : heatWord(city.hotness_sigma)} />
+        <F label="24h volume"
+           value={fmtCompactUsd(city.volume_24h ?? 0)}
+           hint={`${city.n_tradeable ?? 0} tradeable of ${city.live_bands ?? 0}`} />
+      </div>
+
+      {opp ? (
+        <div className="mt-2 rounded border border-border bg-panel2/40 px-2 py-1.5 text-[11px]">
+          <span className="text-muted">best live band </span>
+          <span className="font-mono">{opp.band_label ?? "—"}</span>
+          <span className="text-muted"> · model </span>
+          <span className="font-mono">{opp.model_prob == null ? "—" : `${(opp.model_prob * 100).toFixed(0)}%`}</span>
+          <span className="text-muted"> · market </span>
+          <span className="font-mono">{opp.market_price == null ? "—" : opp.market_price.toFixed(2)}</span>
+          <span className="text-muted"> · edge </span>
+          <span className="font-mono">{fmtPp(opp.edge_net_pp)}</span>
+          <span className="text-muted"> · fillable at 5c </span>
+          <span className="font-mono">{fmtCompactUsd(opp.fillable_usd_5c ?? 0)}</span>
+        </div>
+      ) : null}
+
+      {city.forecast_suspect ? (
+        <p className="mt-1.5 text-[11px] text-warn">
+          This city&apos;s forecast is flagged suspect — it sits more than 4 °C above anything the
+          city has actually done in three days, which is the shape of a stale long-lead row. Check
+          <code className="mx-1 rounded bg-panel2 px-1">v_forecast_audit</code> before trading it.
+        </p>
+      ) : null}
     </section>
   );
 }

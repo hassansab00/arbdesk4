@@ -65,50 +65,87 @@ export default function PredictivePage() {
   const citiesQ = useQuery<CityRow[]>(
     () => supabase.from("cities").select("city_key,display_name,unit").order("city_key"), []
   );
+  const cities = citiesQ.data ?? [];
+  const [city, setCity] = useState<string>("");
+  // Declared HERE, above the queries, because the convergence and ladder
+  // queries are now filtered by it rather than filtered in the browser.
+  const active = city || cities[0]?.city_key || "";
+  /**
+   * WHY THESE ARE SPLIT AND FILTERED, and why it was showing one city.
+   *
+   * This page used to ask for `v_forecast_convergence` with `.limit(20000)`
+   * and then filter by city in the browser. That view carries one row per
+   * city, per day, per model, per lead: on a real desk it is 55,000 rows at
+   * three weeks of history and grows every day. PostgREST does not warn when
+   * it truncates - it returns the first 20,000 rows in view order, and that
+   * view is ordered by city_key. So the browser received the alphabetically
+   * first cities and nothing else, and every other city's funnel and 3D
+   * layers were correctly reported as "no data".
+   *
+   * It looked like a bug in one city. It was the twentieth-thousandth row.
+   *
+   * The two panels want different slices, so they are now two queries:
+   *   convQ    ONE city, every model and lead - the funnel and its ladder
+   *   settledQ EVERY city, but only settled days at lead 1 - the scatter
+   * Both are bounded by what they draw rather than by a number, and both
+   * carry a truncation guard (useQuery's `limit` option) so if either ever
+   * does hit its ceiling the page says so instead of quietly showing less.
+   */
   const convQ = useQuery<ConvRow[]>(
-    () => supabase.from("v_forecast_convergence").select("*").limit(20000), [], 300000
+    () => supabase.from("v_forecast_convergence").select("*")
+            .eq("city_key", active).order("for_date").limit(4000),
+    [active], 300000, 4000
   );
+  const settledQ = useQuery<ConvRow[]>(
+    () => supabase.from("v_forecast_convergence").select("*")
+            .eq("is_settled", true).eq("lead_days", 1).limit(6000),
+    [], 300000, 6000
+  );
+  // Forward only: the ladder is drawn for days that have not resolved, and
+  // the whole table is one row per band per day for every city.
   const ladderQ = useQuery<LadderRow[]>(
-    () => supabase.from("v_prediction_ladder").select("*").limit(8000), [], 120000
+    () => supabase.from("v_prediction_ladder").select("*")
+            .gte("for_date", new Date().toISOString().slice(0, 10)).limit(6000),
+    [], 120000, 6000
+  );
+  const cityLadderQ = useQuery<Array<{ band_lo: number | null; band_hi: number | null }>>(
+    () => supabase.from("v_prediction_ladder").select("band_lo,band_hi")
+            .eq("city_key", active).limit(3000),
+    [active], 120000, 3000
   );
   const scoreQ = useQuery<ScoreRow[]>(
-    () => supabase.from("v_prediction_scorecard").select("*").limit(4000), []
+    () => supabase.from("v_prediction_scorecard").select("*").limit(4000), [], undefined, 4000
   );
   const bankQ = useQuery<BankrollRow[]>(
-    () => supabase.from("v_bankroll_curve").select("*").limit(2000), []
+    () => supabase.from("v_bankroll_curve").select("*").limit(2000), [], undefined, 2000
   );
   const scaleQ = useQuery<ScalingRow[]>(
     () => supabase.from("v_edge_scaling").select("*"), []
   );
 
-  const cities = citiesQ.data ?? [];
   const conv = convQ.data ?? [];
-  const [city, setCity] = useState<string>("");
-  const active = city || conv[0]?.city_key || cities[0]?.city_key || "";
   const unit = (cities.find((c) => c.city_key === active)?.unit ?? "C") as Unit;
 
   /* ------------------------------------------------- the convergence funnel */
   const funnel = useMemo<ConvergencePoint[]>(
-    () => conv.filter((r) => r.city_key === active)
-              .map((r) => ({
-                for_date: r.for_date, lead_days: r.lead_days,
-                forecast_max_c: r.forecast_max_c, observed_max_c: r.observed_max_c,
-                model: r.model, is_past: r.is_past,
-              })),
-    [conv, active]
+    () => conv.map((r) => ({
+      for_date: r.for_date, lead_days: r.lead_days,
+      forecast_max_c: r.forecast_max_c, observed_max_c: r.observed_max_c,
+      model: r.model, is_past: r.is_past,
+    })),
+    [conv]
   );
 
   // The ladder edges for this city, so the planes are the real buckets rather
   // than a pretty grid.
   const bandEdges = useMemo(() => {
     const edges = new Set<number>();
-    for (const r of ladderQ.data ?? []) {
-      if (r.city_key !== active) continue;
+    for (const r of cityLadderQ.data ?? []) {
       if (r.band_lo !== null) edges.add(r.band_lo);
       if (r.band_hi !== null) edges.add(r.band_hi);
     }
     return Array.from(edges).sort((a, b) => a - b);
-  }, [ladderQ.data, active]);
+  }, [cityLadderQ.data]);
 
   /* --------------------------------------------------------------- forward */
   const forward = useMemo(() => {
@@ -145,16 +182,17 @@ export default function PredictivePage() {
   }, [ladderQ.data]);
 
   /* -------------------------------------------------- actual vs predicted */
+  const settled = settledQ.data ?? [];
   const scatter = useMemo(
-    () => conv
-      .filter((r) => r.is_settled && r.lead_days === 1 && r.observed_max_c !== null)
+    () => settled
+      .filter((r) => r.observed_max_c !== null)
       .map((r) => ({
         x: r.forecast_max_c, y: r.observed_max_c as number,
         label: r.city_key,
         color: Math.abs((r.error_c ?? 0)) <= 1 ? "var(--good, #7ee081)" : "var(--bad, #ff6b8a)",
         hint: `${r.city_key} ${r.for_date} · said ${r.forecast_max_c.toFixed(1)}, got ${(r.observed_max_c as number).toFixed(1)}`,
       })),
-    [conv]
+    [settled]
   );
 
   /**
@@ -170,8 +208,8 @@ export default function PredictivePage() {
    * not, and pooling them into "1.5 °C error" throws away which you have.
    */
   const accuracy = useMemo(() => {
-    const rows = conv.filter(
-      (r) => r.is_settled && r.lead_days === 1 && r.observed_max_c !== null && r.error_c !== null
+    const rows = settled.filter(
+      (r) => r.observed_max_c !== null && r.error_c !== null
     );
     const n = rows.length;
     if (!n) {
@@ -229,7 +267,7 @@ export default function PredictivePage() {
       verdictTone = "text-muted";
     }
     return { n, nCities: per.size, mae, bias, within1, worst, worstWhere, hotPct, byCity, maxCityBias, verdict, verdictTone };
-  }, [conv]);
+  }, [settled]);
 
   const errByLead = useMemo(() => {
     const byModel = new Map<string, Map<number, { sum: number; n: number }>>();
@@ -310,6 +348,7 @@ export default function PredictivePage() {
         </p>
         <DataState
           relation="v_prediction_ladder"
+          truncated={ladderQ.truncated}
           loading={ladderQ.loading} error={ladderQ.error} isEmpty={forward.length === 0}
           emptyTitle="No open markets ahead"
           emptyBody={MISSING("sql/ad4_31_predictive.sql", "then let n8n P0.2 discover markets and P1.5 forecast them.")}
@@ -367,9 +406,10 @@ export default function PredictivePage() {
             value={active} onChange={(e) => setCity(e.target.value)}
             className="rounded border border-border bg-panel2 px-2 py-1 text-xs"
           >
-            {(cities.length ? cities.map((c) => c.city_key)
-                            : Array.from(new Set(conv.map((c) => c.city_key)))).map((k) => (
-              <option key={k} value={k}>{k}</option>
+            {cities.map((c) => (
+              <option key={c.city_key} value={c.city_key}>
+                {c.display_name ?? c.city_key}
+              </option>
             ))}
           </select>
         </div>
@@ -383,6 +423,7 @@ export default function PredictivePage() {
         </p>
         <DataState
           relation="v_forecast_convergence"
+          truncated={convQ.truncated}
           loading={convQ.loading} error={convQ.error} isEmpty={funnel.length === 0}
           emptyTitle="No forecast series for this city"
           emptyBody={MISSING("sql/ad4_31_predictive.sql", "and check v_forecast_coverage — a city with no forward forecast has nothing to draw.")}
@@ -418,8 +459,9 @@ export default function PredictivePage() {
 
         <DataState
           relation="v_forecast_convergence"
-          loading={convQ.loading}
-          error={convQ.error}
+          truncated={settledQ.truncated}
+          loading={settledQ.loading}
+          error={settledQ.error}
           isEmpty={scatter.length === 0}
           emptyTitle="No settled days yet"
           emptyBody="Nothing has settled, so there is nothing to score. This fills in once a market resolves and the day is frozen."

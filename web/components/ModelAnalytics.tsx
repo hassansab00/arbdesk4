@@ -46,7 +46,7 @@ interface Climb { city_key: string; local_hour: number; n_days: number; typical_
 const MIN_FOR_A_CURVE = 300;   // matches components/DataBank.tsx - one threshold, not two
 
 function Panel({
-  title, hint, sql, q, isEmpty, emptyBody, progress, aside, children,
+  title, hint, sql, q, isEmpty, emptyBody, progress, aside, children, explain,
 }: {
   title: string; hint: string; sql: string;
   q: { loading: boolean; error: string | null; refresh: () => void };
@@ -54,6 +54,18 @@ function Panel({
   progress?: { have: number; need: number; label: string; note?: React.ReactNode };
   aside?: React.ReactNode;
   children: React.ReactNode;
+  /**
+   * The panel in plain words, with a worked example.
+   *
+   * `hint` says what the chart IS in one sentence, which is enough for
+   * someone who already knows the concept and no help at all to anyone else.
+   * These two panels measure the two things that decide whether the desk is
+   * real - are the probabilities honest, and does claimed edge turn into
+   * money - and both were being skipped because nobody could tell what they
+   * were looking at. A worked example with actual numbers in it is the
+   * difference.
+   */
+  explain?: React.ReactNode;
 }) {
   const missing = q.error && /does not exist|schema cache|could not find/i.test(q.error);
   return (
@@ -61,6 +73,17 @@ function Panel({
       <div className="border-b border-border px-3 py-2">
         <h2 className="text-sm font-semibold">{title}</h2>
         <p className="mt-0.5 max-w-3xl text-[11px] leading-relaxed text-muted">{hint}</p>
+        {explain ? (
+          <details className="group mt-1.5">
+            <summary className="cursor-pointer list-none text-[11px] text-accent hover:underline">
+              <span className="group-open:hidden">What am I looking at? →</span>
+              <span className="hidden group-open:inline">Hide the explanation ↑</span>
+            </summary>
+            <div className="mt-1.5 max-w-3xl space-y-2 rounded border border-border bg-panel2/50 px-2.5 py-2 text-[11px] leading-relaxed text-muted">
+              {explain}
+            </div>
+          </details>
+        ) : null}
       </div>
       {aside}
       <div className="p-3">
@@ -101,10 +124,10 @@ export default function ModelAnalytics() {
   // needs settled outcomes can at least say how many exist, how many are on
   // their way, and when the next one lands.
   const banked = useQuery<Array<{ captured_at: string }>>(
-    () => supabase.from("fact_band_outcome").select("captured_at").limit(5000), [], 300000
+    () => supabase.from("fact_band_outcome").select("captured_at").limit(5000), [], 300000, 5000
   );
   const pending = useQuery<Array<{ resolution_date: string }>>(
-    () => supabase.from("v_opportunities").select("resolution_date").eq("side", "YES").limit(4000), [], 300000
+    () => supabase.from("v_opportunities").select("resolution_date").eq("side", "YES").limit(4000), [], 300000, 4000
   );
   const settling = useMemo(() => {
     const days = (pending.data ?? []).map((r) => r.resolution_date).filter(Boolean).sort();
@@ -154,6 +177,41 @@ export default function ModelAnalytics() {
         sql="sql/ad4_18_databank.sql + Actions → Databank"
         q={calib} isEmpty={(calib.data?.length ?? 0) === 0}
         aside={<CalibrationKey />}
+        explain={
+          <>
+            <p>
+              <strong className="text-text">The question.</strong> The desk does not predict
+              temperatures, it prices <em>probabilities</em>: &ldquo;this band has a 30% chance&rdquo;.
+              A probability is only worth anything if it is <em>honest</em> — if the things it
+              calls 30% happen about 30% of the time. That is what calibration means, and it is a
+              completely different question from being accurate.
+            </p>
+            <p>
+              <strong className="text-text">How to read it.</strong> Every band the desk has ever
+              priced is put in a bucket by what the model claimed, then we count how many of them
+              actually happened. Take the bucket where the model said <b>30%</b>. If 30 out of
+              those 100 bands won, the dot sits on the diagonal and the model is honest at 30%. If
+              only <b>18</b> won, the dot sits below the line: the model says 30% and means 18%,
+              so it is <b>overconfident</b> and every edge computed from it is overstated. If{" "}
+              <b>42</b> won, it is underconfident and the desk is leaving money on the table.
+            </p>
+            <p>
+              <strong className="text-text">Why it is not the same as being accurate.</strong> A
+              model can have an excellent temperature error and still be badly calibrated — right
+              about the middle and far too sure of itself about the spread. That failure is
+              invisible in every error metric and shows up here and nowhere else. When it appears,{" "}
+              <code>scripts/calibration.py</code> fits a correction and the desk stops overstating
+              its edge; <code>sql/ad4_45</code> does the same for the width of the distribution.
+            </p>
+            <p>
+              <strong className="text-text">What to do about it.</strong> On the diagonal: nothing,
+              trade the edges as computed. Consistently below: the desk is over-betting and every
+              position should be smaller until the correction lands. Consistently above: it is
+              under-betting. A curve built on fewer than {MIN_FOR_A_CURVE} settled outcomes is
+              noise, so it is not drawn at all rather than drawn faintly.
+            </p>
+          </>
+        }
         emptyBody={<>Needs settled bands in <code>fact_band_outcome</code>. The <b>Databank</b> action fills it daily once markets start resolving. Under {MIN_FOR_A_CURVE} outcomes the curve is noise dressed as evidence, so it is not drawn.</>}
         progress={settledProgress}
       >
@@ -166,6 +224,42 @@ export default function ModelAnalytics() {
         hint="Edge is a prediction about profit. This is the only place it is checked against what actually happened — grouped by how much edge was claimed, so a desk that is right about small edges and wrong about large ones can see it."
         sql="sql/ad4_18_databank.sql + Actions → Databank"
         q={edge} isEmpty={(edge.data?.length ?? 0) === 0}
+        explain={
+          <>
+            <p>
+              <strong className="text-text">What &ldquo;edge&rdquo; is.</strong> When the market
+              prices a band at <b>30c</b> and the desk&apos;s model says it has a <b>38%</b> chance,
+              the desk is claiming <b>8 percentage points of edge</b>: it believes it is buying
+              something worth 38c for 30c. That number is a <em>prediction about profit</em>, and
+              like any prediction it can be wrong.
+            </p>
+            <p>
+              <strong className="text-text">What this table checks.</strong> Every settled band is
+              grouped by how much edge was claimed on it, and then we ask what those bands
+              actually returned. <b>Claimed</b> is what the desk said it was getting.{" "}
+              <b>Realised</b> is what it got. Buy a hundred bands at 30c claiming 8 pp of edge:
+              if 38 of them win, you paid $30 and collected $38, and realised matches claimed. If
+              only 31 win, you collected $31 — the claim was 8 pp and the reality was 1 pp, and{" "}
+              <b>seven points of the edge were imaginary</b>.
+            </p>
+            <p>
+              <strong className="text-text">Why it is split by size.</strong> The interesting
+              failure is not being wrong everywhere — it is being right about small edges and
+              wrong about big ones. A 2 pp claim that realises 2 pp and a 20 pp claim that
+              realises −4 pp average out to something that looks fine, and they mean opposite
+              things: a huge claimed edge is usually the model misunderstanding a market rather
+              than beating it. Split by bucket, that shows immediately.
+            </p>
+            <p>
+              <strong className="text-text">What to do about it.</strong> Realised tracking
+              claimed down the column: the model is real, trade it. Realised falling away in the
+              large-edge rows only: cap the size the desk will take on a big claimed edge, because
+              those are the ones it is wrong about. Realised negative across the board: the edge
+              is not there and the fee and slippage model is eating it — check the fill
+              assumptions on Goals before the model.
+            </p>
+          </>
+        }
         emptyBody={<>Needs settled bands. Same source as calibration above.</>}
         progress={settledProgress}
       >

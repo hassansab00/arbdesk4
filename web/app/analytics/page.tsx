@@ -33,7 +33,7 @@ export default function AnalyticsPage() {
     []
   );
   const oppQ = useQuery<Opportunity[]>(
-    () => supabase.from("v_opportunities").select("*").limit(4000), [], 60000
+    () => supabase.from("v_opportunities").select("*").limit(4000), [], 60000, 4000
   );
   const statsQ = useCityStats(60000);
   const tradesQ = useQuery<TradeRow[]>(
@@ -201,6 +201,7 @@ export default function AnalyticsPage() {
         </p>
         <DataState
           relation="v_opportunities"
+          truncated={oppQ.truncated}
           loading={oppQ.loading} error={oppQ.error} isEmpty={yes.length === 0}
           emptyTitle="No priced bands yet"
           emptyBody={<>Needs both a book snapshot and a model probability — GitHub Actions → <b>Probabilities</b>, after P0.3 has written books.</>}
@@ -228,6 +229,7 @@ export default function AnalyticsPage() {
         </p>
         <DataState
           relation="v_opportunities"
+          truncated={oppQ.truncated}
           loading={oppQ.loading} error={oppQ.error} isEmpty={bookCost.length === 0}
           emptyTitle="No priced ladders yet"
           emptyBody={<>Needs a book snapshot — n8n <b>P0.3</b> — and a model probability from GitHub Actions → <b>Probabilities</b>.</>}

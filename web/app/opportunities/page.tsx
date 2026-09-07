@@ -98,7 +98,8 @@ export default function OpportunitiesPage() {
   const ctxQ = useQuery<OpportunityContext[]>(
     () => supabase.from("v_opportunity_context").select("*").limit(4000),
     [],
-    60000
+    60000,
+    4000
   );
   // THE ACTUAL BOOK, not a mid. Every "if right" and "EV" on this page used to
   // be computed at market_price - a midpoint - as though any quantity could be
@@ -304,6 +305,7 @@ export default function OpportunitiesPage() {
 
       <DataState
           relation="v_trade_plan"
+        truncated={ctxQ.truncated}
         loading={q.loading}
         error={q.error}
         isEmpty={allRows.length === 0}

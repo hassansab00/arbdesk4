@@ -6,14 +6,12 @@ on:
     # settlement comparison against NWS, neither of which is finer-grained
     # than a day; three extra runs an hour bought nothing and cost 360
     # minutes a month.
-    # EVERY 12 HOURS, NOT EVERY 6. Each run re-fetches the last 2 DAYS, so a
-    # 12-hour cadence still covers every hour four times over - the only thing
-    # that changes is how soon a METAR reaches the archive, and nothing reads
-    # this table for a live number. live_weather comes from n8n's P1.5 every 3
-    # hours and P1.2's NWS observations every 2. This is the archive feed, and
-    # at ~2 billed minutes a run, 6-hourly was 360 of the month's 2,000
-    # minutes. Put it back to '7 */6 * * *' if you ever want it tighter.
-    - cron: '7 */12 * * *'
+    # BACK TO SIX HOURS. This was briefly halved to save Actions minutes and
+    # that was the wrong trade: the archive is the evidence base the settlement
+    # source is checked against, and a feed you thinned to save money is a feed
+    # you cannot argue from. Consolidating the two pipelines paid for it - see
+    # docs/compute_budget.md - so the cadence stays where the data wants it.
+    - cron: '7 */6 * * *'
   workflow_dispatch:
     inputs:
       days:

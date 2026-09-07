@@ -97,14 +97,42 @@ function solarHour(lon: number, sunLon: number) {
   return ((((lon - sunLon) / 15 + 12) % 24) + 24) % 24;
 }
 
+/**
+ * One bar of the little tower that stands on a city.
+ *
+ * `frac` is 0..1 and sets the HEIGHT - it is the only thing comparable
+ * between cities, which is the whole reason the tower exists. `text` is the
+ * real figure in its own units, shown on hover, because a normalised bar is
+ * unreadable as a number and a raw number is unreadable as a comparison.
+ */
+export interface CityBar {
+  key: string;
+  label: string;
+  frac: number;
+  text: string;
+  color: string;
+}
+
 export default function Globe({
   cities,
   onPick,
   height = 460,
+  bars,
+  selected,
 }: {
   cities: CityStats[];
   onPick?: (cityKey: string) => void;
   height?: number;
+  /**
+   * Per-city bar towers. A dot says WHERE a city is and one colour says one
+   * thing about it; a trader looking at the globe wants four at once - is
+   * there an entry, how likely is it to win, how good is this city's forecast,
+   * and how far the day still has to climb. Four channels do not fit in a
+   * dot, so they stand up off it.
+   */
+  bars?: Map<string, CityBar[]>;
+  /** The city the page is showing below the globe. Drawn with a hard ring. */
+  selected?: string | null;
 }) {
   const canvas = useRef<HTMLCanvasElement | null>(null);
   const wrap = useRef<HTMLDivElement | null>(null);
@@ -122,6 +150,10 @@ export default function Globe({
   const [hover, setHover] = useState<Placed | null>(null);
   const [mode, setMode] = useState<GlobeMode>("hotness");
   const [size, setSize] = useState({ w: 720, h: height });
+  // Zoom, because 37 cities on one sphere means Europe is a smudge. Clamped
+  // rather than free: past ~3.2x the sphere is bigger than the frame and the
+  // globe stops being a globe.
+  const [zoom, setZoom] = useState(1);
   const drag = useRef<{ x: number; y: number; yaw: number; tilt: number } | null>(null);
 
   useEffect(() => {
@@ -155,9 +187,9 @@ export default function Globe({
   const geom = useMemo(() => {
     const cx = size.w / 2;
     const cy = size.h / 2;
-    const R = Math.min(size.w, size.h) * R_FRAC;
+    const R = Math.min(size.w, size.h) * R_FRAC * zoom;
     return { cx, cy, R };
-  }, [size]);
+  }, [size, zoom]);
 
   /** Cities projected to screen, far side flagged rather than dropped. */
   const placed: Placed[] = useMemo(() => {
@@ -380,8 +412,12 @@ export default function Globe({
   function onMove(e: React.PointerEvent) {
     const d = drag.current;
     if (d) {
-      setYaw(d.yaw + (e.clientX - d.x) * 0.4);
-      setTilt(Math.max(-80, Math.min(80, d.tilt - (e.clientY - d.y) * 0.3)));
+      // REVERSED, and this is the correct direction. You are dragging the
+      // GLOBE, not the camera: grab a point and it should follow the pointer,
+      // the way a physical globe does. The old signs moved the world the
+      // opposite way to the hand, which reads as broken every single time.
+      setYaw(d.yaw - (e.clientX - d.x) * 0.4);
+      setTilt(Math.max(-80, Math.min(80, d.tilt + (e.clientY - d.y) * 0.3)));
       return;
     }
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -439,6 +475,13 @@ export default function Globe({
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerLeave={() => { onUp(); setHover(null); }}
+        onWheel={(e) => {
+          // No preventDefault: a passive listener cannot cancel the page
+          // scroll, and fighting it produces a console warning and nothing
+          // else. Clamped so the sphere always stays inside the frame.
+          setAuto(false);
+          setZoom((z) => Math.max(0.7, Math.min(3.2, z * (e.deltaY < 0 ? 1.12 : 1 / 1.12))));
+        }}
       >
         {sunMark && (
           <g opacity={0.8} pointerEvents="none">
@@ -480,6 +523,69 @@ export default function Globe({
               {(p.c.n_tradeable ?? 0) > 0 && p.front && (
                 <circle cx={p.x} cy={p.y} r={1.6} fill="#080b12" opacity={0.85} pointerEvents="none" />
               )}
+              {/* THE TOWER. Four bars standing off the marker, in a cabinet
+                  projection so they read as depth rather than as a bar chart
+                  that happens to be on a map: each bar is a parallelogram
+                  leaning up-and-right, with a lighter cap.
+
+                  Only for cities that HAVE something - a tower on every dot
+                  is 148 bars on one sphere and nobody reads any of them - and
+                  always for the one being hovered, so the channel is
+                  discoverable by pointing at anything. */}
+              {p.front && (() => {
+                const tower = bars?.get(p.c.city_key);
+                if (!tower || !tower.length) return null;
+                const any = tower.some((b) => b.frac > 0.02);
+                if (!any && !isHover) return null;
+                const BW = isHover ? 3.4 : 2.4;             // bar width
+                const GAP = isHover ? 1.6 : 1.2;
+                const MAXH = isHover ? 34 : 20;             // tallest bar
+                const DX = isHover ? 1.5 : 1.1;             // depth lean
+                const DY = isHover ? -1.5 : -1.1;
+                const x0 = p.x - ((tower.length * (BW + GAP)) - GAP) / 2;
+                const baseY = p.y - r - 1.5;
+                return (
+                  <g pointerEvents="none" opacity={isHover ? 1 : 0.85}>
+                    {tower.map((b, i) => {
+                      const h = Math.max(1.2, Math.min(1, Math.max(0, b.frac)) * MAXH);
+                      const bx = x0 + i * (BW + GAP);
+                      const top = baseY - h;
+                      return (
+                        <g key={b.key}>
+                          {/* side face, leaning back to the upper right */}
+                          <polygon
+                            points={`${bx + BW},${baseY} ${bx + BW + DX},${baseY + DY} ${bx + BW + DX},${top + DY} ${bx + BW},${top}`}
+                            fill={b.color} fillOpacity={0.45} />
+                          {/* top cap */}
+                          <polygon
+                            points={`${bx},${top} ${bx + BW},${top} ${bx + BW + DX},${top + DY} ${bx + DX},${top + DY}`}
+                            fill={b.color} fillOpacity={0.95} />
+                          {/* front face */}
+                          <rect x={bx} y={top} width={BW} height={h}
+                                fill={b.color} fillOpacity={0.8} />
+                        </g>
+                      );
+                    })}
+                    {isHover && tower.map((b, i) => (
+                      <text key={`lab${b.key}`}
+                            x={x0 + i * (BW + GAP) + BW / 2} y={baseY + 7}
+                            textAnchor="middle" fontSize={5.5} fill={b.color}
+                            stroke="#080b12" strokeWidth={1.4} paintOrder="stroke">
+                        {b.label}
+                      </text>
+                    ))}
+                  </g>
+                );
+              })()}
+
+              {/* The city the page is showing below. Without this the globe
+                  and the panel underneath it are two unrelated things. */}
+              {selected === p.c.city_key && p.front && (
+                <circle cx={p.x} cy={p.y} r={r + 8} fill="none"
+                        stroke="var(--accent, #4da3ff)" strokeWidth={1.6}
+                        strokeDasharray="3 2" pointerEvents="none" />
+              )}
+
               {(p.important || isHover) && p.front && (
                 <text
                   x={p.x + r + 4}
@@ -543,7 +649,25 @@ export default function Globe({
           <div className="mt-1 border-t border-border/60 pt-1 text-[10px] leading-snug">
             <span className={implication(hover.c, hover.ageH).tone}>{implication(hover.c, hover.ageH).text}</span>
           </div>
-          <div className="mt-0.5 text-[10px] text-accent">click to open its monitor</div>
+          {/* The tower, as numbers. The bars are comparable and unreadable;
+              these are readable and not comparable. Both, or neither works. */}
+          {(() => {
+            const tower = bars?.get(hover.c.city_key);
+            if (!tower || !tower.length) return null;
+            return (
+              <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 border-t border-border/60 pt-1 text-[10px]">
+                {tower.map((b) => (
+                  <span key={b.key} className="flex items-center gap-1">
+                    <span className="inline-block h-2 w-1.5 rounded-[1px] shrink-0"
+                          style={{ background: b.color }} />
+                    <span className="text-muted">{b.label}</span>
+                    <span className="ml-auto tabular-nums">{b.text}</span>
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
+          <div className="mt-0.5 text-[10px] text-accent">click to open it below</div>
         </div>
       ) : (
         /* ---- with nothing hovered, say what the desk's day looks like --- */
@@ -595,9 +719,23 @@ export default function Globe({
             to the peak
           </button>
         </div>
+        {/* Zoom. Thirty-seven cities on one sphere makes Europe a smudge, and
+            the scroll wheel is not discoverable and does not exist on touch. */}
+        <div className="flex items-center gap-1">
+          <button onClick={() => { setAuto(false); setZoom((z) => Math.min(3.2, z * 1.25)); }}
+                  className="rounded border border-border bg-panel/80 px-2 py-0.5 hover:text-text"
+                  title="Zoom in (or scroll on the globe)">+</button>
+          <button onClick={() => { setAuto(false); setZoom((z) => Math.max(0.7, z / 1.25)); }}
+                  className="rounded border border-border bg-panel/80 px-2 py-0.5 hover:text-text"
+                  title="Zoom out (or scroll on the globe)">−</button>
+          <button onClick={() => setZoom(1)}
+                  className="rounded border border-border bg-panel/80 px-1.5 py-0.5 hover:text-text"
+                  title="Back to the whole sphere">reset</button>
+          <span className="tabular-nums opacity-70">{zoom.toFixed(1)}×</span>
+        </div>
       </div>
       <div className="absolute bottom-2 left-2 font-mono text-[10px] text-muted">
-        drag to rotate · lit side is daylight now · click a city for its monitor
+        drag to turn · scroll or +/− to zoom · lit side is daylight now · click a city to open it below
       </div>
     </div>
   );

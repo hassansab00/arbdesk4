@@ -177,7 +177,7 @@ export default function MonitorPage() {
           .select("city_key,valid_at,temp_c,local_hour,source")
           .in("city_key", keys).order("valid_at", { ascending: true }).limit(4000)
       : Promise.resolve({ data: [] as Reading[], error: null }),
-    [keyList], 60000
+    [keyList], 60000, 4000
   );
 
   const approachBy = useMemo(
@@ -311,7 +311,7 @@ function CityCard({
           .select("band_id,band_label,band_lo,band_hi,observed_at,mid,best_ask")
           .eq("city_key", c.city_key).order("observed_at", { ascending: true }).limit(4000)
       : Promise.resolve({ data: [] as PriceRow[], error: null }),
-    [c.city_key, open], 120000
+    [c.city_key, open], 120000, 4000
   );
   const ladder = useQuery<LadderRow[]>(
     () => open

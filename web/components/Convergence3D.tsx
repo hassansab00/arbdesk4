@@ -143,14 +143,107 @@ export default function Convergence3D({
     if (p.observed_max_c !== null) observedByDay.set(p.for_date, p.observed_max_c);
   }
 
+  /**
+   * WHAT AM I LOOKING AT. The picture shows the shape of the error; these
+   * say what the shape MEANS, per model, in the same window the chart draws.
+   *
+   * Three failures look different here and identical in a table of mean
+   * error, so each gets its own word rather than one number:
+   *   converging  the miss shrinks as the day approaches - what you want
+   *   parallel    the miss is the same size a week out and the morning of,
+   *               and always the same SIGN. That is a bias, and a bias is a
+   *               correction you can apply rather than a model you distrust.
+   *   wandering   the miss shrinks but the sign keeps flipping - real noise,
+   *               and nothing to correct.
+   */
+  const bandOf = (t: number): number => {
+    const edges = (bands ?? []).slice().sort((a, b) => a - b);
+    let i = 0;
+    while (i < edges.length && t >= edges[i]) i++;
+    return i;
+  };
+
+  const verdicts = models.map((m) => {
+    const rows = visible.filter((p) => p.model === m && p.observed_max_c !== null);
+    const settledDays = Array.from(new Set(rows.map((r) => r.for_date)));
+    let far = 0, near = 0, nFar = 0, nNear = 0, signSum = 0, hits = 0, calls = 0;
+    for (const d of settledDays) {
+      const series = rows.filter((r) => r.for_date === d).sort((a, b) => a.lead_days - b.lead_days);
+      if (!series.length) continue;
+      const actual = series[0].observed_max_c as number;
+      const nearest = series[0];
+      const farthest = series[series.length - 1];
+      near += Math.abs(actual - nearest.forecast_max_c); nNear++;
+      far  += Math.abs(actual - farthest.forecast_max_c); nFar++;
+      signSum += Math.sign(actual - nearest.forecast_max_c);
+      calls++;
+      if (bands && bands.length && bandOf(nearest.forecast_max_c) === bandOf(actual)) hits++;
+    }
+    const nearMae = nNear ? near / nNear : null;
+    const farMae  = nFar  ? far  / nFar  : null;
+    const consistent = calls ? Math.abs(signSum) / calls : 0;
+    let verdict = "not enough settled days";
+    if (calls >= 3 && nearMae !== null && farMae !== null) {
+      if (nearMae < farMae * 0.7) verdict = "converging";
+      else if (consistent > 0.7) verdict = signSum > 0 ? "parallel — runs cold" : "parallel — runs hot";
+      else verdict = "wandering";
+    }
+    return { model: m, nearMae, farMae, verdict, calls,
+             bucketHitPct: bands && bands.length && calls ? (hits / calls) * 100 : null };
+  });
+
   const tempTicks: number[] = [];
   {
     const step = Math.max(1, Math.round((tHi - tLo) / 5));
     for (let v = Math.ceil(tLo / step) * step; v <= tHi; v += step) tempTicks.push(v);
   }
 
+  const VERDICT_TONE: Record<string, string> = {
+    converging: "border-good/40 bg-good/10 text-good",
+    wandering: "border-warn/40 bg-warn/10 text-warn",
+  };
+  const toneFor = (v: string) =>
+    VERDICT_TONE[v] ?? (v.startsWith("parallel") ? "border-bad/40 bg-bad/10 text-bad"
+                                                 : "border-border bg-panel2 text-muted");
+
   return (
     <div>
+      {/* WHAT THE SHAPE MEANS, before the shape. A 3D chart that a reader has
+          to decode is a 3D chart that gets ignored, so the reading is stated
+          in words first and the picture is there to check it against. */}
+      <div className="mb-2 flex flex-wrap gap-2">
+        {verdicts.map((v) => (
+          <div key={v.model}
+               className={`flex items-center gap-2 rounded border px-2 py-1 text-[11px] ${toneFor(v.verdict)}`}>
+            <span className="inline-block h-2 w-3 rounded-sm shrink-0"
+                  style={{ background: colorFor(v.model, models) }} />
+            <span className="font-semibold">{v.model}</span>
+            <span className="opacity-90">{v.verdict}</span>
+            {v.farMae !== null && v.nearMae !== null && (
+              <span className="tabular-nums opacity-80">
+                {v.farMae.toFixed(1)} → {v.nearMae.toFixed(1)} °C miss
+              </span>
+            )}
+            {v.bucketHitPct !== null && (
+              <span className="tabular-nums opacity-80">
+                · right bucket {v.bucketHitPct.toFixed(0)}%
+              </span>
+            )}
+            <span className="opacity-60">({v.calls}d)</span>
+          </div>
+        ))}
+      </div>
+      <p className="mb-2 max-w-3xl text-[11px] leading-relaxed text-muted">
+        <strong className="text-text">How to read it.</strong> Follow one coloured line from the
+        back (a week out) to the front (the morning of). It should walk toward the green bar,
+        which is what the day actually did — that is <em>converging</em>. A line that stays the
+        same distance from the bar the whole way is <em>parallel</em>: a bias, and a bias is a
+        correction you can apply. A line that jumps around while getting closer is{" "}
+        <em>wandering</em>: noise, and nothing to correct. The <strong className="text-text">ring
+        at the front</strong> is the only thing that got paid — filled and green if that model&apos;s
+        last call landed in the same bucket the day settled in, hollow and red if it missed by a
+        line. The grey planes are those bucket lines.
+      </p>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: H * 1.4 }} role="img"
            aria-label="Forecast convergence by lead day, temperature and resolution day">
         {/* bucket planes: what the market actually pays on */}
@@ -246,6 +339,28 @@ export default function Convergence3D({
                   })}
                   <line x1={px(di, 0) - 10} x2={px(di, 0) + 10} y1={py(actual, 0)} y2={py(actual, 0)}
                         stroke="var(--good, #7ee081)" strokeWidth={2.6} />
+                  {/* THE ONLY THING THE MARKET PAID ON. Close is not a
+                      result: a 0.6 C miss across a bucket line loses the
+                      whole ticket and a 0.9 C miss inside one wins it. So
+                      the last call of each model gets a ring - filled if it
+                      landed in the bucket the day settled in, hollow if it
+                      did not - and that ring, not the length of the dashed
+                      line, is what to read. */}
+                  {(bands ?? []).length > 0 && models.map((m) => {
+                    const last = (byDayModel.get(`${day}|${m}`) ?? [])
+                      .slice().sort((a, b) => a.lead_days - b.lead_days)[0];
+                    if (!last) return null;
+                    const hit = bandOf(last.forecast_max_c) === bandOf(actual);
+                    return (
+                      <circle key={`hit${m}`} cx={px(di, 0)} cy={py(last.forecast_max_c, 0)} r={5}
+                              fill={hit ? colorFor(m, models) : "none"}
+                              fillOpacity={hit ? 0.45 : 0}
+                              stroke={hit ? "var(--good, #7ee081)" : "var(--bad, #ff6b8a)"}
+                              strokeWidth={1.4}>
+                        <title>{`${m} · last call ${fmtTemp(last.forecast_max_c, unit, 1)} · settled ${fmtTemp(actual, unit, 1)} · ${hit ? "SAME bucket — this one paid" : "DIFFERENT bucket — this one lost"}`}</title>
+                      </circle>
+                    );
+                  })}
                   <title>{`${day} settled at ${fmtTemp(actual, unit, 1)}`}</title>
                 </g>
               )}
@@ -264,7 +379,7 @@ export default function Convergence3D({
           temperature
         </text>
         <text x={W - 30} y={H - 6} textAnchor="end" fontSize="9" fill="var(--chart-axis, #8a93a6)">
-          resolution day →   (depth = days before it)
+          → the day the market resolves      ↘ depth = how many days ahead the call was made
         </text>
       </svg>
 

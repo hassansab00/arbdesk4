@@ -109,10 +109,17 @@ def runs_per_30_days(expr):
 # dependency chains into one runner each - pipeline_intraday and
 # pipeline_daily - and halving the archive feed took it to 215.
 #
-# Budget 260: room to add something, not room to drift back. At ~2 billed
-# minutes a run that is ~520 of the 2,000, leaving the rest for CI and for a
+# The saving was then SPENT ON FRESHNESS rather than banked, which is the
+# whole point of making the schedule cheaper: the intraday pricing chain went
+# from every six hours to every four, and the IEM archive feed went back to
+# 6-hourly after a brief and wrong-headed halving. 335 runs a month - still
+# half of the 665 it started at, with the board repriced more often than
+# before, not less.
+#
+# Budget 360: room to add something, not room to drift back. At ~2 billed
+# minutes a run that is ~670 of the 2,000, leaving the rest for CI and for a
 # manual backfill, which is the one job here that can run for hours.
-SCHEDULED_RUN_BUDGET = 260
+SCHEDULED_RUN_BUDGET = 360
 
 
 def test_the_scheduled_workflows_fit_in_the_minute_allowance():

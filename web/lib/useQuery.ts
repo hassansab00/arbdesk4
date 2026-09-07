@@ -23,6 +23,23 @@ export interface QueryState<T> {
   loading: boolean;
   error: string | null;
   refresh: () => void;
+  /**
+   * The query came back with EXACTLY as many rows as it asked for, so there
+   * are almost certainly more it did not get.
+   *
+   * This is the failure mode that is worse than an error, because it looks
+   * like an answer. The Predictive page asked v_forecast_convergence for
+   * 20,000 rows and filtered by city in the browser; the view holds 55,000 at
+   * three weeks of history and is ordered by city_key, so PostgREST returned
+   * the alphabetically first cities and silently dropped the rest. Every
+   * other city's chart said "no data for this city" - which is what the page
+   * genuinely saw, and was completely wrong.
+   *
+   * Pass the same number to `limit` here that you passed to `.limit()`, and
+   * DataState will say the view is truncated rather than pretending the
+   * missing rows do not exist.
+   */
+  truncated: boolean;
 }
 
 function messageOf(e: unknown): string {
@@ -38,12 +55,14 @@ function messageOf(e: unknown): string {
  * PromiseLike, not Promise: a PostgREST query builder is a thenable that
  * only issues the request when awaited, so it satisfies this directly and
  * callers can `return supabase.from(...).select(...)` with no `.then()`.
- * `deps` re-runs the query; `intervalMs` optionally re-polls.
+ * `deps` re-runs the query; `intervalMs` optionally re-polls; `limit` is the
+ * number passed to `.limit()`, used only to detect silent truncation.
  */
 export function useQuery<T>(
   fn: () => PromiseLike<{ data: T | null; error: unknown }>,
   deps: unknown[] = [],
-  intervalMs?: number
+  intervalMs?: number,
+  limit?: number
 ): QueryState<T> {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,5 +119,7 @@ export function useQuery<T>(
   }, [intervalMs]);
 
   const refresh = useCallback(() => setTick((n) => n + 1), []);
-  return { data, loading, error, refresh };
+  const truncated =
+    limit !== undefined && Array.isArray(data) && (data as unknown[]).length >= limit;
+  return { data, loading, error, refresh, truncated };
 }

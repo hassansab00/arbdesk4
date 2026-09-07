@@ -121,3 +121,44 @@ def test_execution_layer():
     detail = "\n".join(l for l in r.stdout.splitlines() if "FAIL" in l)
     assert result["ok"], f"{result['failed']} execution assertion(s) failed:\n{detail}"
     assert result["passed"] >= 13, "assertions went missing from the harness"
+
+
+def test_a_big_row_limit_reports_when_it_truncates():
+    """A query that asks for N rows and gets exactly N has almost certainly
+    lost rows, and PostgREST does not say so.
+
+    This is how the Predictive page came to show one city. It asked
+    v_forecast_convergence for 20,000 rows and filtered by city in the
+    browser; that view holds 55,000 at three weeks of history and is ordered
+    by city_key, so the browser got the alphabetically first cities and every
+    other city's chart correctly reported "no data for this city".
+
+    A silent wrong answer is worse than an error, so every large limit must
+    pass its own number to useQuery as the fourth argument - that is what
+    makes `truncated` true and puts a warning above the chart.
+    """
+    import glob
+    import os
+    import re
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    offenders = []
+    for path in sorted(glob.glob(os.path.join(root, "web", "app", "**", "*.tsx"), recursive=True)
+                       + glob.glob(os.path.join(root, "web", "components", "*.tsx"))
+                       + glob.glob(os.path.join(root, "web", "lib", "*.ts"))):
+        src = open(path).read()
+        # each useQuery(...) call, up to the closing ");" of its argument list
+        for call in re.finditer(r"useQuery<[^>]*>\(\s*(.*?)\n\s*\);", src, re.S):
+            body = call.group(0)
+            m = re.search(r"\.limit\((\d{4,})\)", body)
+            if not m:
+                continue
+            n = m.group(1)
+            # The same number has to reappear as a bare argument AFTER the
+            # .limit() that produced it - that is useQuery's fourth parameter.
+            tail = body[m.end():]
+            if not re.search(rf",\s*{n}\s*[\n\s]*\)", tail):
+                offenders.append(f"{os.path.relpath(path, root)}: .limit({n}) not passed to useQuery")
+    assert not offenders, (
+        "these queries can truncate silently - pass the same number as useQuery's "
+        "fourth argument so the page can say so:\n  " + "\n  ".join(offenders))

@@ -88,7 +88,8 @@ export default function CityWatch() {
         .eq("side", "YES")
         .limit(2000),
     [],
-    60000
+    60000,
+    2000
   );
 
   const stats = statsQ.rows;

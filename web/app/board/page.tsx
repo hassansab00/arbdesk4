@@ -78,7 +78,8 @@ export default function BoardPage() {
   const q = useQuery<Opportunity[]>(
     () => supabase.from("v_opportunities").select("*").limit(4000),
     [],
-    30000
+    30000,
+    4000
   );
   const live = useQuery<LiveRow[]>(
     () => supabase.from("live_weather").select("city_key,temp_c,running_max_c,peak_window_state,day_decided,observed_at,trend"),
@@ -92,7 +93,8 @@ export default function BoardPage() {
         .gte("for_date", new Date().toISOString().slice(0, 10))
         .order("run_at", { ascending: false }).limit(2000),
     [],
-    5 * 60000
+    5 * 60000,
+    2000
   );
 
   const rows = q.data ?? [];
@@ -292,6 +294,7 @@ export default function BoardPage() {
 
       <DataState
           relation="v_opportunities"
+          truncated={q.truncated}
         loading={q.loading} error={q.error} isEmpty={rows.length === 0}
         emptyTitle="The board is empty"
         emptyBody={<><code>v_opportunities</code> has no rows. It is built from <code>edges</code> — run GitHub Actions → <b>Probabilities</b>. If a city is missing entirely, that is <code>markets</code>, which P0.2 fills.</>}

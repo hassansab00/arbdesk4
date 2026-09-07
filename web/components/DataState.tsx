@@ -19,6 +19,7 @@ export function DataState({
   children,
   compact = false,
   relation,
+  truncated = false,
 }: {
   loading: boolean;
   error: string | null;
@@ -37,6 +38,15 @@ export function DataState({
    * the Actions and workflows it describes.
    */
   relation?: string;
+  /**
+   * The query came back exactly full, so rows were dropped.
+   *
+   * Rendered ABOVE the content rather than instead of it, because truncated
+   * data is still data - the chart is right about the rows it has and wrong
+   * about being complete, and hiding it would be a worse answer than showing
+   * it with a warning. Pass `q.truncated` from useQuery.
+   */
+  truncated?: boolean;
 }) {
   if (loading) return <Loading compact={compact} />;
   if (error) return <ErrorBox message={error} onRetry={onRetry} compact={compact} />;
@@ -44,7 +54,36 @@ export function DataState({
     return (
       <EmptyBox title={emptyTitle} body={emptyBody} onRetry={onRetry} compact={compact} relation={relation} />
     );
+  if (truncated)
+    return (
+      <>
+        <TruncatedBar relation={relation} />
+        {children}
+      </>
+    );
   return <>{children}</>;
+}
+
+/**
+ * The warning for a query that hit its own ceiling.
+ *
+ * PostgREST does not tell you it truncated - it returns exactly as many rows
+ * as you asked for, in view order, and says nothing. A page that then filters
+ * those rows in the browser shows a confident, complete-looking answer built
+ * on the alphabetically first slice of the data. That is how the Predictive
+ * page came to show one city: it was not a bug in the other cities, they were
+ * past row 20,000.
+ */
+export function TruncatedBar({ relation }: { relation?: string }) {
+  return (
+    <div className="mb-2 rounded border border-warn/40 bg-warn/10 px-3 py-2 text-[11px] leading-relaxed text-warn">
+      <strong className="font-semibold">Showing part of the data.</strong>{" "}
+      This query came back exactly full{relation ? <> from <code className="rounded bg-panel2 px-1">{relation}</code></> : null},
+      which means rows were dropped — what you see below is the first slice, not
+      everything. Narrow it (pick one city, a shorter window) or raise the row
+      limit for this panel.
+    </div>
+  );
 }
 
 export function Loading({ compact = false, label = "Loading…" }: { compact?: boolean; label?: string }) {

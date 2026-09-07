@@ -21,9 +21,15 @@ name: Intraday Pipeline (model, probabilities, edges, signals)
 
 on:
   schedule:
-    # 15 min after each of P0.2's market-discovery cycles (1,7,13,19 UTC), so
-    # a fresh forecast and a fresh book have something current to price.
-    - cron: '15 1,7,13,19 * * *'
+    # EVERY FOUR HOURS, up from every six. Merging three workflows into this
+    # one freed enough of the monthly allowance to buy freshness with it
+    # rather than bank it: probabilities, edges and signals are now at most
+    # four hours old instead of six, and the whole schedule still costs about
+    # half what the nine separate workflows did.
+    #
+    # Offset 15 past the hour so each cycle lands after P0.2's market
+    # discovery rather than racing it.
+    - cron: '15 0,4,8,12,16,20 * * *'
   workflow_dispatch:
     inputs:
       dry_run:

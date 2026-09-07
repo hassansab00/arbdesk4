@@ -49,12 +49,21 @@ const CATALOGUE: Array<{
 }> = [
   {
     job: "P2.1_relearn",
-    label: "Relearn (the learning chain)",
-    schedule: "on demand only",
+    label: "GitHub Actions (relearn, and every job by hand)",
+    schedule: "weekly, plus whenever you press one of these",
     what:
-      "Asks GitHub to run the four learning Actions in order - freeze the settled days, measure how wrong each model was, refit the desk's own correction per city, then produce the corrected forward forecast. Each is queued a few minutes after the one before, because a stage reads what the one before it wrote.",
+      "The desk's remote control for GitHub Actions. With no argument it runs the learning chain in order - settle and freeze the evidence, refit the desk's own correction per city, then produce the corrected forecast and reprice the board on it - queuing each stage after the one before, because every stage reads what the last one wrote. The buttons beside it start one job on its own.",
     note:
-      "This is the only workflow that holds a GitHub token, and deliberately so: the Learn button on Synthesis calls this webhook rather than GitHub, because a page that could start a build would be a page carrying a credential. Put a fine-grained token scoped to this one repository, with Actions: Read and write, in its Config node - never in Vercel and never in a NEXT_PUBLIC_ variable.",
+      "This is the only workflow that holds a GitHub token, and deliberately so: every Run button here and the Learn button on Synthesis call this webhook rather than GitHub, because a page that could start a build would be a page carrying a credential. Put a fine-grained token scoped to this one repository, with Actions: Read and write, in its Config node - never in Vercel and never in a NEXT_PUBLIC_ variable.",
+    variants: [
+      { label: "Relearn (whole chain)", body: {} },
+      { label: "Daily pipeline", body: { only: "evidence" } },
+      { label: "Intraday (reprice)", body: { only: "prediction" } },
+      { label: "Refit model", body: { only: "correction" } },
+      { label: "Observations", body: { only: "observations" } },
+      { label: "Queued backtests", body: { only: "backtest" } },
+      { label: "Archive + prune", body: { only: "archive" } },
+    ],
   },
   {
     job: "P0.2_market_discovery",
