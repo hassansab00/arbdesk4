@@ -64,6 +64,12 @@
               "name": "alert_email",
               "type": "string",
               "value": ""
+            },
+            {
+              "id": "cfg-from-email",
+              "name": "from_email",
+              "value": "",
+              "type": "string"
             }
           ]
         }
@@ -223,11 +229,17 @@
         0
       ],
       "parameters": {
-        "fromEmail": "ad4-watchdog@example.com",
+        "fromEmail": "={{ $('Config').first().json.from_email }}",
         "toEmail": "={{ $('Config').first().json.alert_email }}",
         "subject": "=AD4 Health Watchdog: {{ $json.failures.length }} check(s) failing",
         "emailFormat": "text",
         "text": "={{ $json.failures.join('\\n') }}\n\n---\n{{ ($json.context_notes || []).join('\\n') }}"
+      },
+      "credentials": {
+        "smtp": {
+          "id": "ad4-smtp",
+          "name": "AD4 SMTP"
+        }
       }
     },
     {

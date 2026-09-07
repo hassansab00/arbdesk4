@@ -58,6 +58,12 @@
               "name": "alert_email",
               "type": "string",
               "value": ""
+            },
+            {
+              "id": "cfg-from-email",
+              "name": "from_email",
+              "value": "",
+              "type": "string"
             }
           ]
         }
@@ -116,11 +122,17 @@
         0
       ],
       "parameters": {
-        "fromEmail": "ad4-alerts@example.com",
+        "fromEmail": "={{ $('Config').first().json.from_email }}",
         "toEmail": "={{ $('Config').first().json.alert_email }}",
         "subject": "AD4 weather alert ({{ $json.count }} event(s))",
         "emailFormat": "html",
         "html": "={{ $json.body_html }}"
+      },
+      "credentials": {
+        "smtp": {
+          "id": "ad4-smtp",
+          "name": "AD4 SMTP"
+        }
       }
     },
     {

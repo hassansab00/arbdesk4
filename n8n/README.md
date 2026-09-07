@@ -27,9 +27,21 @@ a fresh instance. Create it first and every node comes in wired. Import first
 and the nodes come in unbound; you then pick the credential on each one, which
 works but is 57 dropdowns.
 
-Then per workflow you fill **Config → `supabase_url`**
-(the same host; an expression has to build the request URL and cannot read the
-credential's host, so it stays) and, on P3.1/P4.1, `alert_email`.
+### And, if you want the emails, one more
+
+P1.1, P3.1 and P4.1 send mail. Same pattern:
+
+**n8n → Credentials → New → SMTP** — name it **`AD4 SMTP`**, exactly. Those
+three workflows' Send Email nodes are already bound to that name.
+
+### Then, per workflow
+
+Fill **Config → `supabase_url`** (the same host; an expression has to build the
+request URL and cannot read the credential's host, so it stays). On P1.1, P3.1
+and P4.1 also fill **`from_email`** — an address the SMTP account is allowed to
+send as; no provider accepts a From it does not own. On P1.1 and P4.1 fill
+**`alert_email`**, the address alerts go to. On P2.1 fill the four GitHub
+fields.
 
 Never put the service key anywhere starting `NEXT_PUBLIC_` — that compiles it
 into the browser bundle.

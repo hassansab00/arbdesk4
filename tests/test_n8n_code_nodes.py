@@ -991,6 +991,36 @@ def test_every_supabase_node_is_bound_to_the_same_named_credential():
     assert bound == 57, f"expected 57 Supabase nodes across the files, found {bound}"
 
 
+def test_the_email_workflows_bind_smtp_and_a_real_sender():
+    """The three workflows that send mail had a hardcoded example.com sender.
+
+    No SMTP provider accepts a From it does not own - Gmail, SES and Postmark
+    all reject it outright - so every alert and every digest would have failed
+    at the last node, after doing all the work. The sender is now a Config
+    field, and the SMTP credential is pre-bound by name like the Supabase one."""
+    import glob
+
+    senders = 0
+    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
+        d = json.load(open(path))
+        name = os.path.basename(path)
+        mail = [n for n in d["nodes"] if n.get("type") == "n8n-nodes-base.emailSend"]
+        if not mail:
+            continue
+        cfg = [n for n in d["nodes"] if n["name"] == "Config"][0]
+        fields = {a["name"] for a in cfg["parameters"]["assignments"]["assignments"]}
+        assert "from_email" in fields, f"{name}: no from_email to configure"
+        for n in mail:
+            frm = n["parameters"].get("fromEmail", "")
+            assert "example.com" not in frm, f"{name} / {n['name']}: sender is example.com"
+            assert "from_email" in frm, f"{name} / {n['name']}: sender is not from Config"
+            cred = n.get("credentials", {}).get("smtp")
+            assert cred and cred.get("name") == "AD4 SMTP", (
+                f"{name} / {n['name']}: no SMTP credential bound")
+            senders += 1
+    assert senders == 3, f"expected 3 email senders, found {senders}"
+
+
 def test_the_preflight_names_the_credential_it_binds_to():
     """The instruction in the file and the binding in the file must agree. If
     the preflight tells you to name it one thing and the nodes are bound to

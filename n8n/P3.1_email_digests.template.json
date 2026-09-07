@@ -84,6 +84,12 @@
               "name": "digest_kind",
               "type": "string",
               "value": "={{ $json.digest_kind || 'morning' }}"
+            },
+            {
+              "id": "cfg-from-email",
+              "name": "from_email",
+              "value": "",
+              "type": "string"
             }
           ]
         }
@@ -299,11 +305,17 @@
         160
       ],
       "parameters": {
-        "fromEmail": "ad4-digests@example.com",
+        "fromEmail": "={{ $('Config').first().json.from_email }}",
         "toEmail": "={{ $json[0].value.address }}",
         "subject": "={{ $('Render HTML').first().json.subject }}",
         "emailFormat": "html",
         "html": "={{ $('Render HTML').first().json.html }}"
+      },
+      "credentials": {
+        "smtp": {
+          "id": "ad4-smtp",
+          "name": "AD4 SMTP"
+        }
       }
     },
     {
