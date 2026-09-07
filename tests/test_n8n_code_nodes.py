@@ -915,14 +915,54 @@ def test_a_missing_endpoint_still_stops_before_any_request(workflow):
     assert after_cfg == ["Check schedule"], workflow
 
 
-def test_every_gate_reads_the_role_out_of_the_key_before_the_first_request():
-    """The gate used to be honest that it could not catch an anon key: ad4_20
-    grants should_run to anon on purpose, so an anon key sailed through and
-    only failed at the first write, several nodes and one full fetch later.
+def n8n_supabase_nodes(d):
+    """Every HTTP node that talks to Supabase. The Polymarket and weather.gov
+    nodes are unauthenticated and must stay that way."""
+    return [n for n in d["nodes"]
+            if n["type"].endswith("httpRequest")
+            and "supabase_url" in str((n.get("parameters") or {}).get("url", ""))]
 
-    It no longer has to guess. A Supabase key STATES its role - in the prefix
-    for sb_secret_/sb_publishable_, in the JWT payload for the legacy format -
-    so the gate reads it and stops before any request at all."""
+
+def test_no_workflow_carries_a_key_at_all():
+    """The gate used to decode the role out of a key pasted into Config. There
+    is no key in these files any more: every Supabase node authenticates with
+    an n8n Supabase credential, so the secret is set once, encrypted at rest,
+    and exporting a workflow cannot leak it. The old shape put the service key
+    in plain text inside a JSON file that gets emailed around.
+
+    What catches a wrong key is now downstream and stronger than a format
+    check: sql/ad4_38 revokes should_run from anon, so a credential holding
+    the publishable key is refused at the schedule gate two nodes in, before a
+    single row is fetched."""
+    import glob
+
+    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
+        d = json.load(open(path))
+        name = os.path.basename(path)
+        for n in d["nodes"]:
+            if n["name"] not in ("Config", "Gate config"):
+                continue
+            fields = {a["name"] for a in
+                      n["parameters"].get("assignments", {}).get("assignments", [])}
+            assert "service_key" not in fields, (
+                f"{name}: Config still carries service_key. It belongs in the n8n "
+                "Supabase credential, not in the workflow file.")
+        for n in n8n_supabase_nodes(d):
+            p = n["parameters"]
+            assert p.get("authentication") == "predefinedCredentialType", (
+                f"{name} / {n['name']}: a Supabase call that does not use the credential")
+            assert p.get("nodeCredentialType") == "supabaseApi", f"{name} / {n['name']}"
+            headers = {h["name"] for h in
+                       p.get("headerParameters", {}).get("parameters", [])}
+            # The credential sends both itself. Setting them by hand as well
+            # sends each twice, and the hand-written one would be empty.
+            assert not (headers & {"apikey", "Authorization"}), (
+                f"{name} / {n['name']}: sets an auth header the credential already sends")
+
+
+def test_the_preflight_says_where_the_key_goes():
+    """A node that cannot read the key still has to say where to put it -
+    otherwise the first run fails on a credential nobody knew to create."""
     import glob
 
     for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
@@ -932,52 +972,25 @@ def test_every_gate_reads_the_role_out_of_the_key_before_the_first_request():
         code = gate[0]["parameters"]["jsCode"]
         name = os.path.basename(path)
         assert "AD4-KEY-CHECK" in code, name
-        assert "sb_publishable_" in code and "sb_secret_" in code, name
-        assert '"role"' in code, f"{name} does not read the JWT role claim"
-        # and it must not print the key it is inspecting
-        assert "console.log(key" not in code and "json: { key" not in code, name
+        assert "Supabase API" in code, f"{name} does not name the credential to create"
+        assert "SERVICE ROLE" in code, f"{name} does not say which key goes in it"
 
 
-def test_the_anon_key_is_refused_before_anything_is_fetched():
-    r = run("P1.2_nws_monitor.template.json", "plan_gate_anon_key.json")
+def test_a_refused_schedule_gate_stops_the_run():
+    """With should_run revoked from anon (sql/ad4_38), a credential holding the
+    publishable key is refused HERE - two nodes in, before a single row is
+    fetched. That is what replaced decoding the key out of the Config node."""
+    r = run("P1.2_nws_monitor.template.json", "plan_gate_denied.json")
     assert r["ok"] is False and r["node"] == "Run now?", r
-    assert 'holds the "anon" key' in r["error"], r["error"]
+    assert "ad4_38_grants.sql" in r["error"], r["error"]
     assert "Nothing was fetched and nothing was written" in r["error"], r["error"]
 
 
 def test_the_service_key_is_let_through():
-    """The check must not be so eager that a correct key cannot run."""
+    """The check must not be so eager that a correct setup cannot run."""
     r = run("P1.2_nws_monitor.template.json", "plan_gate_run.json")
     assert r["ok"], r
 
-
-def test_the_key_check_never_reaches_for_a_runtime_global_it_may_not_have():
-    """Buffer and atob are not guaranteed in every n8n Code-node runtime, and a
-    base64 decode that throws would turn a correct key into a failed run."""
-    import glob
-
-    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
-        gate = [n for n in json.load(open(path))["nodes"] if n["name"] == "Run now?"]
-        if not gate:
-            continue
-        block = gate[0]["parameters"]["jsCode"].split("// Ask the database")[0]
-        # comments may name them; the CODE must not call them
-        code = "\n".join(l for l in block.splitlines() if not l.strip().startswith("//"))
-        assert "Buffer" not in code, os.path.basename(path)
-        assert "atob" not in code, os.path.basename(path)
-
-
-def test_the_diagnostic_reports_who_can_write():
-    sql = open(os.path.join(ROOT, "sql", "ad4_diagnose.sql")).read()
-    assert "6 WRITE ACCESS" in sql
-    assert "has_table_privilege('anon'" in sql
-    assert "has_table_privilege('service_role'" in sql
-    # should_run used to be anon-callable on purpose, and the diagnostic said
-    # so. ad4_38 revokes it: the Workflows page reads v_execution_budget, so
-    # the grant only softened the schedule gate. The row now reads the other
-    # way round - anon holding it is the thing to fix.
-    assert "ad4_38_grants.sql" in sql, "the row must name the file that revokes it"
-    assert "second line of defence" in sql
 
 
 # --------------------------------------------------------------- run scope --

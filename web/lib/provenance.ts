@@ -98,6 +98,15 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "AD4 P0.4 - Trade History"
     }
   ],
+  "derived_calibration_adjustment": [
+    {
+      "cadence": "daily",
+      "file": "derived_recompute.yml",
+      "how": "scripts/capacity.py",
+      "kind": "action",
+      "name": "Derived Recompute (capacity, correlation, peak hour, caches)"
+    }
+  ],
   "derived_capacity": [
     {
       "cadence": "daily",
@@ -742,6 +751,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_prediction_scorecard": [
     "fact_forecast_outcome"
+  ],
+  "v_sigma_inputs": [
+    "cities",
+    "derived_calibration_adjustment",
+    "derived_forecast_skill"
   ],
   "v_storage_report": [
     "derived_city_day_features",
