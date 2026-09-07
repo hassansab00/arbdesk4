@@ -36,7 +36,16 @@ def fetch(lat, lon, start, end, label):
         "latitude": lat, "longitude": lon,
         "hourly": ",".join(fields),
         "start_date": start.isoformat(), "end_date": end.isoformat(),
-        "timezone": "UTC", "temperature_unit": "celsius",
+        # LOCAL DAYS, not UTC ones. A daily maximum is a local-calendar
+        # quantity - it is the thing the market settles on - and every other
+        # writer of weather_forecasts (n8n P1.3 and P1.5) groups by the city's
+        # own day. Asking for UTC here put a different quantity in the same
+        # column: for New York the "UTC day" runs from 20:00 the previous
+        # local evening to 19:59, so a warm evening ahead of a cold front
+        # became the next day's forecast maximum. Small, systematic, warm, and
+        # invisible - and derived_forecast_skill is measured from these rows,
+        # so it fed straight into every sigma and every band probability.
+        "timezone": "auto", "temperature_unit": "celsius",
     }
     for attempt in range(TRIES):
         try:
@@ -70,6 +79,8 @@ def build_rows(city_key, js):
             v = vals[i]
             if v is None:
                 continue
+            # timezone=auto means these timestamps are already the city's
+            # local time, so slicing the date off gives the local calendar day.
             d = t[:10]
             cur = daily[d]
             if cur is None or v > cur:

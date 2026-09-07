@@ -88,6 +88,7 @@ export default function ScopeControl({ jobs }: { jobs: Array<{ job: string; labe
       </p>
 
       <DataState
+          relation="v_run_scope"
         loading={scopeQ.loading} error={scopeQ.error} isEmpty={(scopeQ.data ?? []).length === 0}
         emptyTitle="No jobs registered"
         emptyBody={<>Run <code className="rounded bg-panel2 px-1">sql/ad4_32_run_scope.sql</code>.</>}

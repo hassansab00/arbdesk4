@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import ForecastValue from "@/components/ForecastValue";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { useCityStats } from "@/lib/useCityStats";
@@ -239,11 +240,9 @@ export default function CityWatch() {
                 <span title="Highest reading so far today">
                   <span className="text-muted">max </span>{fmtTemp(c.running_max_c, unit)}
                 </span>
-                <span title={c.forecast_model ? `forecast model: ${c.forecast_model}` : "no forecast for today"}>
+                <span>
                   <span className="text-muted">fcst </span>
-                  <span className={c.forecast_max_c === null ? "text-muted" : "text-text"}>
-                    {fmtTemp(c.forecast_max_c, unit)}
-                  </span>
+                  <ForecastValue city={c} unit={unit} />
                 </span>
               </div>
 

@@ -229,7 +229,7 @@ sec6 as (
            then 'YES' else 'NO' end,
       case when has_table_privilege('service_role', t.tbl, 'INSERT')
            then 'correct - this is the key every n8n Config node and GitHub secret must hold'
-           else 'BROKEN - re-run sql/ad4_13_reconcile.sql, which grants service_role everything'
+           else 'BROKEN - run sql/ad4_38_grants.sql, which grants service_role every table and reports what it fixed'
       end
       from (values ('markets'), ('bands'), ('book_snapshots'),
                    ('trades_observed'), ('weather_observations'),
@@ -248,16 +248,19 @@ sec6 as (
      where exists (select 1 from pg_roles where rolname = 'anon')
        and to_regprocedure(f.sig) is not null
     union all
-    -- should_run is anon-callable ON PURPOSE (ad4_20: the Workflows page
-    -- previews a schedule change before saving it). Which means a workflow
-    -- holding the anon key sails through the schedule gate and only fails at
-    -- its first WRITE - so the gate cannot be the thing that catches a bad
-    -- key on this database, and this row exists to stop anyone concluding it
-    -- can.
+    -- should_run WAS anon-callable on purpose - ad4_20 granted it so the
+    -- Workflows page could preview a schedule change before saving it. That
+    -- page reads v_execution_budget instead, so the grant did nothing except
+    -- let a workflow holding the anon key sail through the schedule gate and
+    -- fail at its first write instead. ad4_38 revokes it, which makes the
+    -- gate a real second line of defence.
     select 'anon can call should_run',
            case when has_function_privilege('anon', 'should_run(text,text)', 'EXECUTE')
-                then 'YES (by design)' else 'no' end,
-           'Deliberate - the UI previews schedules with it. It also means the schedule gate CANNOT detect an anon key here; the write guard in each workflow''s Summary node is what catches that.'
+                then 'YES' else 'no' end,
+           case when has_function_privilege('anon', 'should_run(text,text)', 'EXECUTE')
+                then 'Run sql/ad4_38_grants.sql - while anon can call this, a workflow holding the anon key passes the schedule gate and only fails at its first WRITE.'
+                else 'correct. A workflow holding the anon key now stops at the schedule gate, two nodes before it touches any data.'
+           end
      where exists (select 1 from pg_roles where rolname = 'anon')
        and to_regprocedure('should_run(text,text)') is not null
   ) g

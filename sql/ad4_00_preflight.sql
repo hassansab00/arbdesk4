@@ -1007,6 +1007,93 @@ begin
      }'::jsonb)
   on conflict (key) do nothing;
 
+  -- ==========================================================================
+  -- 7b. THE DAY-FEATURE CACHE.
+  --
+  --     ad4_28_feature_cache.sql owns FILLING this. The table itself is
+  --     created here because three earlier files read it - ad4_23's
+  --     reasoning chain, ad4_24's condition skill, ad4_25's model skill - and
+  --     ad4_28 cannot move earlier than they are: it depends on ad4_26.
+  --
+  --     They read the cache rather than v_city_day_features because that view
+  --     carries a window function (prev_max_c needs lag() across a city's
+  --     days) and a window cannot be pushed past a WHERE - so asking it for
+  --     one day still computes every day in the archive. Measured: 2.6
+  --     seconds for 37 rows on a 650k-row archive, which on the anon role is
+  --     a statement timeout and a red box.
+  --
+  --     Empty here, and it stays empty until Actions -> Derived Recompute
+  --     runs. An empty cache is a thin page; a missing table is a broken one.
+  -- ==========================================================================
+  create table if not exists derived_city_day_features (
+    city_key              text not null,
+    obs_date              date not null,
+    max_c                 numeric,
+    min_c                 numeric,
+    diurnal_range_c       numeric,
+    n_obs                 int,
+    prev_max_c            numeric,
+    delta_max_c           numeric,
+    morning_temp_c        numeric,
+    morning_dewpoint_c    numeric,
+    dewpoint_depression_c numeric,
+    morning_humidity      numeric,
+    morning_pressure_hpa  numeric,
+    morning_to_max_c      numeric,
+    cloud_mean            numeric,
+    cloud_max             numeric,
+    wind_mean             numeric,
+    wind_max              numeric,
+    precip_total          numeric,
+    pressure_change_24h_hpa numeric,
+    computed_at           timestamptz not null default now(),
+    primary key (city_key, obs_date)
+  );
+
+  -- ==========================================================================
+  -- 8. WRITE ACCESS. Every table above was just created by whoever is running
+  --    this file, and a freshly created table is writable by NOBODY else -
+  --    including service_role, which is the key every n8n workflow and every
+  --    GitHub Action holds. The grants used to live only in
+  --    sql/ad4_13_reconcile.sql, so a database built from a SUBSET of these
+  --    files ended up with tables the collectors could read and not write, and
+  --    n8n reported success having saved nothing: `permission denied for table
+  --    markets (42501)` at the last node in the chain.
+  --
+  --    Granting here means the write path works the moment the tables exist,
+  --    whatever else does or does not get run. sql/ad4_38_grants.sql does the
+  --    same thing on demand, with a report; ad4_13 still does it too. All
+  --    three are idempotent and agree.
+  -- ==========================================================================
+    if exists (select 1 from pg_roles where rolname = 'service_role') then
+      begin
+        execute 'grant usage on schema public to service_role';
+        execute 'grant all on all tables in schema public to service_role';
+        execute 'grant all on all sequences in schema public to service_role';
+        execute 'grant execute on all functions in schema public to service_role';
+        execute 'alter default privileges in schema public grant all on tables to service_role';
+        execute 'alter default privileges in schema public grant all on sequences to service_role';
+      exception when others then
+        raise notice 'preflight: could not grant service_role (%). Run sql/ad4_38_grants.sql as the table owner.', sqlerrm;
+      end;
+    end if;
+    -- The browser reads and does not write. Stated here as well as in ad4_13
+    -- so the boundary is closed on a partial install too, not just the door
+    -- opened for the collectors.
+    declare r text;
+    begin
+      foreach r in array array['anon', 'authenticated'] loop
+        if not exists (select 1 from pg_roles where rolname = r) then continue; end if;
+        begin
+          execute format('grant usage on schema public to %I', r);
+          execute format('grant select on all tables in schema public to %I', r);
+          execute format('revoke insert, update, delete, truncate on all tables in schema public from %I', r);
+        exception when others then
+          raise notice 'preflight: could not set %-level grants (%)', r, sqlerrm;
+        end;
+      end loop;
+    end;
+
   raise notice '-----------------------------------------------------';
   raise notice 'Next: run ad4_phase1_tables.sql, then sql/ad4_phase2.sql, then the rest in README order.';
 end

@@ -1,0 +1,354 @@
+{
+  "name": "AD4 P2.1 - Relearn (run the learning Actions in order)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false,
+    "executionTimeout": 1800
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## What this is\n\nThe only workflow in AD4 that holds a GitHub token.\n\nThe Synthesis page has a \"Learn from what has settled\" button. It cannot start a GitHub Action itself - a page that could would be a page carrying a credential, and that credential would end up in the browser bundle. So the button calls this workflow's webhook, and the token lives here.\n\n### Set up\n1. Config -> github_owner / github_repo\n2. Config -> github_token: a fine-grained PAT scoped to that ONE repository, with Repository permissions -> Actions: Read and write. Nothing else.\n3. Activate the workflow, copy the Production webhook URL, and paste it on the AD4 Workflows page as P2.1_relearn.\n\nNEVER put this token in Vercel or in any NEXT_PUBLIC_ variable.",
+        "height": 460,
+        "width": 420
+      },
+      "id": "note-1",
+      "name": "Note what",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -60
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "trig-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ad4-relearn",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "trig-hook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -40,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "github_owner",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "github_repo",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "github_ref",
+              "value": "main",
+              "type": "string"
+            },
+            {
+              "id": "4",
+              "name": "github_token",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "5",
+              "name": "seconds_between_stages",
+              "value": "240",
+              "type": "string"
+            },
+            {
+              "id": "6",
+              "name": "supabase_url",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "7",
+              "name": "service_key",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "cfg",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        180,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// AD4-KEY-CHECK\n// A TOKEN THAT CAN START A BUILD IS NOT A SUPABASE KEY.\n//\n// This workflow is the one place in AD4 that holds a GitHub token, and it is\n// deliberately the only one: the browser button that calls it holds nothing.\n// A page that could start a workflow on its own would be a page carrying a\n// credential, and that credential would end up in the bundle.\n//\n// So the checks here are about the GitHub side, not the database side. Nothing\n// below prints, returns or logs the token.\n{\n  const cfg = $('Config').first().json ?? {};\n  const need = ['github_owner', 'github_repo', 'github_token'];\n  const missing = need.filter((k) => !String(cfg[k] ?? '').trim());\n  if (missing.length) {\n    throw new Error(\n      `Config.${missing.join(' and Config.')} is empty. This workflow asks GitHub to run the ` +\n      `learning Actions, so it needs the repository and a token with the \"actions: write\" ` +\n      `permission - a fine-grained personal access token scoped to that one repository is ` +\n      `enough. Put it in Config -> github_token here in n8n and NOWHERE ELSE: not in Vercel, ` +\n      `not in any NEXT_PUBLIC_ variable, not in the browser.`);\n  }\n  const tok = String(cfg.github_token).trim();\n  if (tok.startsWith('eyJ') || tok.startsWith('sb_')) {\n    throw new Error(\n      'Config -> github_token holds a Supabase key, not a GitHub token. GitHub tokens begin ' +\n      'ghp_, github_pat_ or gho_. Nothing was dispatched.');\n  }\n  if (/\\s/.test(tok)) {\n    throw new Error('Config -> github_token has whitespace in it - it was probably pasted with a ' +\n                    'line break. Nothing was dispatched.');\n  }\n}\n\nreturn $input.all();\n"
+      },
+      "id": "check",
+      "name": "Check config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        380,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// THE FOUR STAGES, IN ORDER.\n//\n// Learning is sequential and each stage needs the one before it: nothing can\n// be measured from a day that has not settled, nothing fitted from accuracy\n// that has not been measured, nothing predicted from a fit that does not\n// exist. GitHub runs dispatched workflows concurrently, so dispatching all\n// four at once would race - the fit would read yesterday's accuracy and the\n// prediction would read no fit at all.\n//\n// So they are dispatched with a wait between them, long enough for the one\n// before to finish on this repo's data sizes. A stage that is skipped is\n// skipped on purpose: `only` in the webhook body runs one of them.\nconst cfg = $('Config').first().json ?? {};\nconst body = $input.first()?.json ?? {};\n\nconst STAGES = [\n  { stage: 'evidence',   file: 'databank.yml',        why: 'freeze the days that have settled since last time' },\n  { stage: 'accuracy',   file: 'skill.yml',           why: 'measure how wrong each model was on them' },\n  { stage: 'correction', file: 'weather_model.yml',   why: 'refit the desk\\'s own correction per city' },\n  { stage: 'prediction', file: 'model_forecast.yml',  why: 'produce the corrected forward forecast' },\n];\n\nconst only = String(body.only ?? '').trim();\nconst wanted = only ? STAGES.filter((s) => s.stage === only || s.file === only) : STAGES;\nif (only && !wanted.length) {\n  throw new Error(\n    `\"${only}\" is not a stage. Use one of: ${STAGES.map((s) => s.stage).join(', ')} - or send no ` +\n    `\"only\" at all to run the whole chain in order.`);\n}\n\nconst owner = String(cfg.github_owner).trim();\nconst repo  = String(cfg.github_repo).trim();\nconst ref   = String(cfg.github_ref || 'main').trim();\nconst waitS = Math.max(0, Number(cfg.seconds_between_stages ?? 240));\n\nreturn wanted.map((s, i) => ({\n  json: {\n    ...s,\n    index: i,\n    of: wanted.length,\n    ref,\n    url: `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${s.file}/dispatches`,\n    runs_url: `https://github.com/${owner}/${repo}/actions/workflows/${s.file}`,\n    // n8n's HTTP node has no per-item delay, so the wait is expressed as a\n    // batch interval on the request node: one item per batch, waitS between.\n    wait_seconds: waitS,\n  },\n}));\n"
+      },
+      "id": "build",
+      "name": "Build dispatches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        580,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.github_token }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            },
+            {
+              "name": "User-Agent",
+              "value": "ad4-relearn"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ ref: $json.ref }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 240000
+            }
+          },
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "dispatch",
+      "name": "Dispatch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        120
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// DID GITHUB TAKE IT?\n//\n// A dispatch that succeeds returns 204 with an EMPTY BODY, so \"no output\" is\n// the success case here and cannot be used as the failure test. The failures\n// all return a body, and each one means something specific and fixable.\nconst cfg = $('Config').first().json ?? {};\nconst asked = $('Build dispatches').all().map((i) => i.json);\nconst results = $('Dispatch').all().map((i) => i.json ?? {});\n\nconst problems = [];\nfor (const r of results) {\n  if (!r || typeof r !== 'object' || !r.message) continue;\n  problems.push(String(r.message));\n}\n\nif (problems.length) {\n  const m = problems[0];\n  if (/Bad credentials/i.test(m)) {\n    throw new Error(\n      'GitHub rejected the token (Bad credentials). It is wrong, revoked, or expired. ' +\n      'Replace Config -> github_token with a token that has \"actions: write\" on ' +\n      `${cfg.github_owner}/${cfg.github_repo}. Nothing was started.`);\n  }\n  if (/Resource not accessible|must have admin|permission/i.test(m)) {\n    throw new Error(\n      'The token is valid but is not allowed to start workflows. A fine-grained token needs ' +\n      'Repository permissions -> Actions: Read and write on ' +\n      `${cfg.github_owner}/${cfg.github_repo}. Nothing was started.`);\n  }\n  if (/Not Found/i.test(m)) {\n    throw new Error(\n      `GitHub says Not Found. Either ${cfg.github_owner}/${cfg.github_repo} is wrong, or one of ` +\n      'the workflow files does not exist on the default branch, or the token cannot see the ' +\n      'repository at all. A workflow can only be dispatched if it carries workflow_dispatch AND ' +\n      'exists on the branch in Config -> github_ref. Nothing was started.');\n  }\n  if (/No ref found|does not have a workflow/i.test(m)) {\n    throw new Error(\n      `Config -> github_ref is \"${cfg.github_ref || 'main'}\" and GitHub cannot find it, or the ` +\n      'workflow does not exist on it. Set it to the branch the Actions actually live on. ' +\n      'Nothing was started.');\n  }\n  throw new Error(`GitHub refused the dispatch: ${m}. Nothing was started.`);\n}\n\nconst started = asked.map((a) => a.stage);\nconst summary =\n  `AD4 P2.1: asked GitHub to run ${started.length} learning stage(s) in order: ${started.join(' -> ')}. ` +\n  `Each is queued ${asked[0]?.wait_seconds ?? 0}s apart so a stage reads what the one before it wrote. ` +\n  `Watch them at ${asked[0]?.runs_url ?? 'the repository Actions tab'}.`;\n\nreturn [{ json: {\n  summary,\n  status: 'ok',\n  rows: started.length,\n  stages: asked.map((a) => ({ stage: a.stage, file: a.file, why: a.why, runs_url: a.runs_url })),\n  log: {\n    p_job: 'P2.1_relearn',\n    p_status: 'ok',\n    p_rows: started.length,\n    p_detail: { stages: started, summary, trigger: $execution.mode, execution_id: $execution.id },\n  },\n}}];\n"
+      },
+      "id": "summary",
+      "name": "Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        980,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.service_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.log) }}"
+      },
+      "id": "log",
+      "name": "Log run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1180,
+        120
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1380,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Check config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check config": {
+      "main": [
+        [
+          {
+            "node": "Build dispatches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build dispatches": {
+      "main": [
+        [
+          {
+            "node": "Dispatch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dispatch": {
+      "main": [
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary": {
+      "main": [
+        [
+          {
+            "node": "Log run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log run": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

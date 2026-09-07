@@ -4,7 +4,10 @@ These exist because each one is a mistake that was actually made and reported,
 some of them more than once. A comment saying "do not put signals in the rail"
 is advice; a test is a rule.
 """
+import json
 import os
+import re
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB = os.path.join(ROOT, "web")
@@ -224,3 +227,223 @@ def test_the_owner_map_has_no_sql_keywords_in_it():
     owner = _read("web/lib/sqlOwner.ts")
     for junk in ('"if"', '"not"', '"exists"', '"only"', '"table"', '"view"'):
         assert f"  {junk}:" not in owner, f"{junk} is a SQL keyword, not a relation"
+
+
+# ---------------------------------------------------------------------------
+# "THE DATA IS OUTDATED"
+#
+# Every panel had three ways of showing nothing and they all looked the same:
+# the table does not exist, no job has ever filled it, or a job filled it and
+# stopped. Nothing on the page distinguished them, so the complaint could not
+# be turned into an action. Two derived maps fix that and both have to stay
+# derived - a hand-written note about which Action fills which table is wrong
+# the first time an Action is renamed.
+# ---------------------------------------------------------------------------
+
+def test_the_provenance_map_is_generated_and_current():
+    import subprocess
+
+    before = _read("web/lib/provenance.ts")
+    r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "gen_provenance.py")],
+                       capture_output=True, text=True, cwd=ROOT)
+    assert r.returncode == 0, r.stderr
+    assert _read("web/lib/provenance.ts") == before, (
+        "web/lib/provenance.ts is stale - run python3 tools/gen_provenance.py")
+
+
+def test_every_ingest_table_names_the_job_that_fills_it():
+    """A table the UI shows and no job fills is a dead panel by construction."""
+    src = _read("web/lib/provenance.ts")
+    filled = json.loads(re.search(r"FILLED_BY: Record<string, Filler\[\]> = (\{.*?\});\n\n",
+                                  src, re.S).group(1))
+    for table in ["markets", "bands", "book_snapshots", "trades_observed",
+                  "weather_observations", "weather_forecasts", "live_weather",
+                  "band_probabilities", "edges", "signals",
+                  "fact_forecast_outcome", "fact_band_outcome", "fact_signal_outcome",
+                  "derived_city_day_features", "derived_weather_peak",
+                  "derived_forecast_skill", "derived_capacity"]:
+        assert filled.get(table), f"nothing in the repo fills {table}"
+
+
+def test_a_view_resolves_to_the_tables_underneath_it():
+    """A panel names the view it reads; what goes quiet is a table under it.
+    Without this the operator is told a view is empty and left to work out
+    which of the tables beneath it stopped being written."""
+    src = _read("web/lib/provenance.ts")
+    views = json.loads(re.search(r"VIEW_TABLES: Record<string, string\[\]> = (\{.*?\});\n\n",
+                                 src, re.S).group(1))
+    assert views.get("v_calibration") == ["fact_band_outcome"]
+    assert "fact_forecast_outcome" in views.get("v_prediction_scorecard", [])
+    assert "book_snapshots" in views.get("v_opportunities", [])
+
+
+def test_the_freshness_view_covers_what_the_provenance_map_knows_about():
+    """Two halves of one answer: who fills a table, and whether it is current.
+    A table in one and not the other can only half-explain itself."""
+    spec = _read("sql/ad4_39_freshness.sql")
+    body = spec[spec.index("insert into data_freshness_spec"):]
+    body = body[: body.index("on conflict")]
+    tracked = set(re.findall(r"\(\s*'([a-z0-9_]+)'\s*,", body))
+
+    filled = json.loads(re.search(r"FILLED_BY: Record<string, Filler\[\]> = (\{.*?\});\n\n",
+                                  _read("web/lib/provenance.ts"), re.S).group(1))
+    # settings is written by a job but is configuration, not a feed; the rest
+    # of what a job fills has to be trackable.
+    missing = sorted(set(filled) - tracked - {"settings"})
+    assert not missing, f"filled by a job but not tracked for freshness: {missing}"
+
+
+def test_the_freshness_spec_speaks_plain_english():
+    """The point of the column is that someone who did not build this can read
+    a panel and know what it holds. A schema-shaped description fails that."""
+    spec = _read("sql/ad4_39_freshness.sql")
+    body = spec[spec.index("insert into data_freshness_spec"):]
+    body = body[: body.index("on conflict")]
+    rows = re.findall(r"\(\s*'([a-z0-9_]+)'\s*,[^\n]*?,\s*'((?:[^']|'')+)'\)", body)
+    assert len(rows) >= 30, f"only parsed {len(rows)} spec rows"
+    for table, english in rows:
+        assert english[0].isupper(), f"{table}: description is not a sentence"
+        assert english.endswith("."), f"{table}: description is not a sentence"
+        assert "_" not in english, f"{table}: description names a column, not a thing"
+
+
+# ---------------------------------------------------------------------------
+# THE DATA BANK INVENTORY
+#
+# It reported "Day features: NEVER BUILT" on a database whose
+# derived_city_day_features held hundreds of rows, because the row pointed at
+# weather_forecast_features - a different table, collected by a different job,
+# holding a different thing. The description and the feeder it named were both
+# about the derived cache; only the table name was wrong, and nothing checked
+# that a row's table matched what the row said it was.
+# ---------------------------------------------------------------------------
+
+def _inventory_tables(section: str) -> set:
+    """The table names named inside one inventory view in ad4_35."""
+    # Comments talk about files and tables in prose - "a fresh install from
+    # ad4_00 carries created_at" is not a FROM clause.
+    src = re.sub(r"--[^\n]*", " ", _read("sql/ad4_35_databank_inventory.sql"))
+    start = src.index(section)
+    end = src.find("create or replace view", start + 10)
+    body = src[start: end if end != -1 else len(src)]
+    # `comment on view ... is '...collected from outside...'` is prose too, and
+    # it sits inside the slice. Scan the SQL, not the sentences about it.
+    prose_free = re.sub(r"'(?:[^']|'')*'", "''", body)
+    return set(re.findall(r"from ([a-z][a-z0-9_]+)\b", prose_free)) | set(
+        re.findall(r"'([a-z][a-z0-9_]+)', '(?:computed_at|captured_at|fitted_at|run_at)'", body))
+
+
+def test_the_databank_names_tables_that_exist():
+    owner = json.loads(re.search(r"SQL_OWNER: Record<string, string> = (\{.*?\});",
+                                 _read("web/lib/sqlOwner.ts"), re.S).group(1))
+    for section in ("create or replace view v_archive_inventory",
+                    "create or replace view v_synthesis_inventory"):
+        for t in _inventory_tables(section):
+            # CTEs, other views, and the catalog are not datasets.
+            if t.startswith("v_") or t.startswith("pg_") or t in {
+                "parts", "cfg", "information_schema", "unnest", "generate_series",
+            }:
+                continue
+            assert t in owner, f"{section} names {t}, which no SQL file creates"
+
+
+def test_day_features_means_the_day_feature_cache():
+    """The row says "per city-day: max, range, cloud, wind" and names
+    refresh_feature_cache as its feeder. Both describe
+    derived_city_day_features. Pointing it at weather_forecast_features made
+    the one dataset most of the model rests on read as missing."""
+    src = _read("sql/ad4_35_databank_inventory.sql")
+    row = re.search(r"\('Day features',.*?\),\n", src, re.S).group(0)
+    assert "derived_city_day_features" in row, "Day features points at the wrong table"
+    assert "weather_forecast_features" not in row
+
+
+def test_the_hourly_forecast_detail_is_listed_somewhere():
+    """It is the only non-temperature thing the desk collects, and it was in
+    no inventory at all - so a workflow that quietly stopped writing it was
+    invisible on the one page whose job is to say what has been collected."""
+    src = _read("sql/ad4_35_databank_inventory.sql")
+    collected = src[src.index("create or replace view v_archive_inventory"):
+                    src.index("create or replace view v_synthesis_inventory")]
+    assert "weather_forecast_features" in collected
+
+
+# ---------------------------------------------------------------------------
+# A FORECAST WITHOUT ITS PROVENANCE
+#
+# The board said New York would reach 87°F; the day made about 76°F and the
+# market settled 74-75°F. v_city_stats had ALREADY flagged it - forecast_suspect
+# is true when the figure is more than 4°C above anything the city has done in
+# three days, which is the shape of a stale long-lead row.
+#
+# It was rendered on one page out of seven. Everywhere else the number was
+# printed in the same type as a measured one, with nothing saying which model
+# produced it or how far ahead it was issued. A check nobody sees is not a
+# check.
+# ---------------------------------------------------------------------------
+
+def test_no_page_prints_a_bare_forecast():
+    """Every render of forecast_max_c goes through <ForecastValue>, which
+    cannot be used without carrying the model, the lead, the run age and the
+    suspect flag with it."""
+    import glob
+
+    # Exempt, each for a stated reason. A bare list would rot; a reason can be
+    # argued with.
+    EXEMPT = {
+        # the row is a v_prediction_ladder row, which carries no provenance
+        # columns at all - there is nothing to show, and inventing one would
+        # be worse than showing none
+        "app/predictive/page.tsx",
+        # the chart's own axis IS the lead, and its tooltip already prints the
+        # model, the lead and the error against what actually happened
+        "components/Convergence3D.tsx",
+        # writes the provenance out in words in the sentence itself
+        "components/Reasoning.tsx",
+        # renders through forecastProvenance() into the row's subtitle
+        "components/Globe.tsx",
+    }
+    offenders = []
+    for path in sorted(glob.glob(os.path.join(WEB, "app", "**", "*.tsx"), recursive=True)
+                       + glob.glob(os.path.join(WEB, "components", "*.tsx"))):
+        rel = os.path.relpath(path, WEB)
+        if rel.endswith("ForecastValue.tsx") or rel.replace(os.sep, "/") in EXEMPT:
+            continue
+        src = open(path).read()
+        for m in re.finditer(r"fmtTemp\(\s*([^,]*forecast_max_c[^,]*),", src):
+            line = src[: m.start()].count("\n") + 1
+            offenders.append(f"{rel}:{line}  {m.group(0)}")
+    assert not offenders, (
+        "these print a forecast without its provenance - use <ForecastValue>:\n  "
+        + "\n  ".join(offenders))
+
+
+def test_the_globe_does_not_hardcode_celsius():
+    """It printed `${forecast_max_c.toFixed(1)}°C` for every city, whatever
+    unit that city's market is quoted in. A US market settles on whole degrees
+    Fahrenheit; 30.6°C is the same number made unreadable."""
+    src = _read("web/components/Globe.tsx")
+    assert 'forecast_max_c.toFixed(1)}°C' not in src
+
+
+def test_the_forecast_audit_exists_and_names_a_cause():
+    """A wrong number needs a verdict, not another number: "the model was
+    wrong" and "the view read the wrong row" need different fixes."""
+    sql = _read("sql/ad4_43_forecast_audit.sql")
+    assert "create view v_forecast_audit" in sql
+    for cause in ("STALE", "LONG LEAD", "IMPLAUSIBLE", "SUSPECT", "MODELS DISAGREE"):
+        assert cause in sql, f"the audit does not distinguish {cause}"
+    # and it must show what else was available, or "the view picked wrong"
+    # cannot be told from "every model said this"
+    assert "v_forecast_candidates" in sql
+    assert "board_uses_this" in sql
+
+
+def test_a_daily_maximum_is_a_local_day():
+    """The market settles on the city's local calendar day. ingest_forecasts.py
+    asked Open-Meteo for UTC days, so for New York its "day" ran from 20:00 the
+    previous local evening - a different quantity in the same column, and
+    derived_forecast_skill is measured from these rows."""
+    src = _read("scripts/ingest_forecasts.py")
+    assert '"timezone": "UTC"' not in src
+    assert '"timezone": "auto"' in src

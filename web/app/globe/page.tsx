@@ -9,6 +9,7 @@ import { useQuery } from "@/lib/useQuery";
 import { useCityStats } from "@/lib/useCityStats";
 import StatsNotice from "@/components/StatsNotice";
 import { DataState } from "@/components/DataState";
+import { FreshnessRow } from "@/components/Provenance";
 import { heatColor, heatWord, REGION_COLOR } from "@/lib/heat";
 import { regionFromCity } from "@/lib/region";
 import { fmtCompactUsd, fmtPp } from "@/lib/format";
@@ -61,6 +62,11 @@ export default function GlobePage() {
           deviations — the only form comparable between Chicago and Beirut. Drag to rotate; click a
           city to open its monitor.
         </p>
+        {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
+            identical, and only one of them is worth investigating. */}
+        <div className="mt-2">
+          <FreshnessRow relations={["cities", "derived_weather_peak"]} />
+        </div>
       </div>
 
       <StatsNotice mode={stats.mode} reason={stats.reason} viewError={stats.viewError} />

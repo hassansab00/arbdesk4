@@ -1,12 +1,16 @@
 {
  "seed": {
   "Config": {
-   "supabase_url": "https://x.supabase.co",
-   "service_key": "k"
+   "supabase_url": "https://testproject.supabase.co",
+   "service_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlc3Rwcm9qZWN0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MSwiZXhwIjoyfQ.dGVzdC1zaWduYXR1cmUtbm90LWEtcmVhbC1rZXk"
   },
   "Load cities": [
-   { "city_key": "nyc" },
-   { "city_key": "chi" }
+   {
+    "city_key": "nyc"
+   },
+   {
+    "city_key": "chi"
+   }
   ],
   "Check schedule": {
    "code": "42501",
@@ -16,6 +20,10 @@
   }
  },
  "run": [
-  { "node": "Run now?", "input": "Load cities", "show": 300 }
+  {
+   "node": "Run now?",
+   "input": "Load cities",
+   "show": 300
+  }
  ]
 }

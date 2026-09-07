@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
+import { FreshnessRow } from "@/components/Provenance";
 import DataBank from "@/components/DataBank";
 import { fmtAge, fmtInt } from "@/lib/format";
 
@@ -78,6 +79,11 @@ export default function DataBankPage() {
           kept apart on purpose: a thin collection makes everything below it decoration, while a
           stale derived layer is a job that has not run — a different problem with a different fix.
         </p>
+        {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
+            identical, and only one of them is worth investigating. */}
+        <div className="mt-2">
+          <FreshnessRow relations={["bands", "book_snapshots", "markets", "trades_observed", "weather_events", "weather_forecasts", "weather_observations", "cities"]} />
+        </div>
       </div>
 
       {/* ---------------------------------------------------- collected ---- */}
@@ -91,6 +97,7 @@ export default function DataBankPage() {
           because &ldquo;0 rows&rdquo; is only useful next to what to run about it.
         </p>
         <DataState
+          relation="v_archive_inventory"
           loading={invQ.loading} error={invQ.error} isEmpty={(invQ.data ?? []).length === 0}
           emptyTitle="No inventory"
           emptyBody={<>Run <code className="rounded bg-panel2 px-1">sql/ad4_35_databank_inventory.sql</code>.</>}
@@ -150,6 +157,7 @@ export default function DataBankPage() {
           it goes stale — it is recomputed by the job named on its row.
         </p>
         <DataState
+          relation="v_synthesis_inventory"
           loading={synQ.loading} error={synQ.error} isEmpty={(synQ.data ?? []).length === 0}
           emptyTitle="No derived layers"
           emptyBody={<>Run <code className="rounded bg-panel2 px-1">sql/ad4_35_databank_inventory.sql</code>.</>}
@@ -198,6 +206,7 @@ export default function DataBankPage() {
           has an understated daily maximum, and every feature built on it inherits that.
         </p>
         <DataState
+          relation="v_archive_by_city"
           loading={cityQ.loading} error={cityQ.error} isEmpty={shownCities.length === 0}
           emptyTitle={onlyProblems ? "Nothing incomplete" : "No cities"}
           emptyBody={

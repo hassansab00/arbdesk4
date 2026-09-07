@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { forecastProvenance } from "@/components/ForecastValue";
+import { fmtTemp, type Unit } from "@/lib/units";
 import { heatColor } from "@/lib/heat";
 import { REGION_COLOR } from "@/lib/heat";
 import { regionFromCity } from "@/lib/region";
@@ -45,10 +47,13 @@ const AUTO_DEG_PER_S = 4;
  */
 export type GlobeMode = "hotness" | "edge" | "health";
 
-const MODES: Array<{ key: GlobeMode; label: string; hint: string }> = [
-  { key: "hotness", label: "Hotness", hint: "How far today is from this city's own normal, in standard deviations. The only form comparable between Chicago and Beirut." },
-  { key: "edge",    label: "Best edge", hint: "The largest net edge currently tradeable in this city, after fees. Grey means nothing priced." },
-  { key: "health",  label: "Data health", hint: "Is this city's own feed current: a reading in the last three hours, and a forward forecast to price against." },
+const MODES: Array<{ key: GlobeMode; label: string; hint: string; reading: string }> = [
+  { key: "hotness", label: "Hotness", hint: "How far today is from this city's own normal, in standard deviations. The only form comparable between Chicago and Beirut.",
+    reading: "Red = far above this city's own normal. A whole continent turning red at once is one weather system, not ten independent bets." },
+  { key: "edge",    label: "Best edge", hint: "The largest net edge currently tradeable in this city, after fees. Grey means nothing priced.",
+    reading: "Orange = the biggest net edge after fees. Grey = nothing priced there, so there is nothing to take." },
+  { key: "health",  label: "Data health", hint: "Is this city's own feed current: a reading in the last three hours, and a forward forecast to price against.",
+    reading: "Red = this city's feed has stopped. Its colour in the other two modes is then meaningless, not neutral." },
 ];
 
 /** Green through amber to red as an edge grows - the same ramp everywhere. */
@@ -494,9 +499,15 @@ export default function Globe({
         })}
       </svg>
 
-      {/* ---- the reading, docked, so the pointer never covers it -------- */}
+      {/* ---- the reading, docked BOTTOM-RIGHT ---------------------------
+          Controls left, result right. It used to be the other way round -
+          you read the numbers bottom-left and reached top-right to change
+          what they meant, so every mode change was a diagonal trip across
+          the globe and the buttons sat over the limb on a narrow screen.
+          Left to right is now cause then effect: pick the mode, read the
+          result under your other hand. --------------------------------- */}
       {hover ? (
-        <div className="pointer-events-none absolute bottom-2 left-2 w-[290px] rounded border border-border bg-panel/95 px-2.5 py-1.5 text-[11px] leading-relaxed">
+        <div className="pointer-events-none absolute bottom-2 right-2 w-[290px] rounded border border-border bg-panel/95 px-2.5 py-1.5 text-[11px] leading-relaxed">
           <div className="flex items-baseline gap-2">
             <span className="font-semibold">{hover.c.display_name ?? hover.c.city_key}</span>
             <span className="font-mono text-[10px] text-muted">
@@ -513,20 +524,30 @@ export default function Globe({
                  v={hover.c.hotness_sigma == null ? "—" : `${hover.c.hotness_sigma > 0 ? "+" : ""}${hover.c.hotness_sigma.toFixed(1)}σ`}
                  sub={hover.c.normal_max_c == null ? "no baseline" : `normal ${hover.c.normal_max_c.toFixed(1)}°C`}
                  warn={(hover.c.hotness_sigma ?? 0) > 1.5} />
-            <Row k="forecast" v={hover.c.forecast_max_c == null ? "—" : `${hover.c.forecast_max_c.toFixed(1)}°C`}
-                 sub={hover.c.forecast_model ?? "no forward forecast"}
-                 warn={hover.c.forecast_max_c == null} />
+            {/* This printed °C for every city, whatever unit that city's
+                market is quoted in, and said nothing when the desk's own check
+                had already flagged the number. Both now come from one place. */}
+            <Row k="forecast"
+                 v={fmtTemp(hover.c.forecast_max_c, (hover.c.unit ?? "C") as Unit)}
+                 sub={forecastProvenance(hover.c, (hover.c.unit ?? "C") as Unit).slice(0, 46)}
+                 warn={hover.c.forecast_max_c == null || Boolean(hover.c.forecast_suspect)} />
             <Row k="best edge" v={hover.c.best_edge_pp == null ? "—" : `${(hover.c.best_edge_pp * 100).toFixed(1)}pp`}
                  sub={`${hover.c.n_tradeable ?? 0} of ${hover.c.live_bands ?? 0} bands tradeable`} />
             <Row k="model error" v={hover.c.mae_c == null ? "—" : `${hover.c.mae_c.toFixed(2)}°C`}
                  sub={hover.c.skill_days ? `${hover.c.skill_days}d measured` : "never measured"}
                  warn={hover.c.mae_c == null || (hover.c.skill_days ?? 0) < 200} />
           </div>
-          <div className="mt-1 text-[10px] text-accent">click to open its monitor</div>
+          {/* WHAT IT MEANS, not just what it is. Six numbers above, and the
+              reader still had to know the desk's rules to turn them into a
+              decision. This is that sentence, from the same fields. */}
+          <div className="mt-1 border-t border-border/60 pt-1 text-[10px] leading-snug">
+            <span className={implication(hover.c, hover.ageH).tone}>{implication(hover.c, hover.ageH).text}</span>
+          </div>
+          <div className="mt-0.5 text-[10px] text-accent">click to open its monitor</div>
         </div>
       ) : (
         /* ---- with nothing hovered, say what the desk's day looks like --- */
-        <div className="pointer-events-none absolute bottom-2 left-2 rounded border border-border bg-panel/90 px-2.5 py-1.5 font-mono text-[10px] leading-relaxed">
+        <div className="pointer-events-none absolute bottom-2 right-2 max-w-[290px] rounded border border-border bg-panel/90 px-2.5 py-1.5 font-mono text-[10px] leading-relaxed">
           <span className={tally.live ? "text-good" : "text-muted"}>
             {tally.live} in the measured peak window
           </span>
@@ -538,8 +559,8 @@ export default function Globe({
         </div>
       )}
 
-      {/* ---- controls --------------------------------------------------- */}
-      <div className="absolute right-2 top-2 flex flex-col items-end gap-1.5 font-mono text-[10px] text-muted">
+      {/* ---- controls, TOP-LEFT ----------------------------------------- */}
+      <div className="absolute left-2 top-2 flex w-[220px] flex-col items-start gap-1.5 font-mono text-[10px] text-muted">
         <div className="flex items-center gap-1">
           {MODES.map((m) => (
             <button
@@ -553,6 +574,11 @@ export default function Globe({
               {m.label}
             </button>
           ))}
+        </div>
+        {/* What the colour you are looking at actually means. It was only in a
+            title attribute, which is invisible on touch and unread on desktop. */}
+        <div className="rounded border border-border bg-panel/85 px-1.5 py-1 text-[10px] leading-snug text-muted">
+          {MODES.find((m) => m.key === mode)?.reading}
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -570,11 +596,48 @@ export default function Globe({
           </button>
         </div>
       </div>
-      <div className="absolute bottom-2 right-2 font-mono text-[10px] text-muted">
-        drag to rotate · lit side is daylight now
+      <div className="absolute bottom-2 left-2 font-mono text-[10px] text-muted">
+        drag to rotate · lit side is daylight now · click a city for its monitor
       </div>
     </div>
   );
+}
+
+/**
+ * The one sentence the six numbers add up to.
+ *
+ * Ordered by what disqualifies a city first: a dead feed makes every other
+ * number meaningless, a decided day makes the forecast irrelevant, and no
+ * priced band makes an edge unavailable however good the read is. Only a city
+ * that survives all three is worth a look, and only then does hotness matter.
+ */
+function implication(c: CityStats, ageH: number | null): { text: string; tone: string } {
+  const stale = ageH != null && ageH > 3;
+  if (c.now_c == null || stale) {
+    return { text: "The feed has stopped. Every other number here is out of date - fix the feed before reading the colour.", tone: "text-bad" };
+  }
+  if (c.day_decided) {
+    return { text: "The day is decided - the maximum is in. Nothing forward-looking left to trade here today.", tone: "text-muted" };
+  }
+  if (c.forecast_max_c == null) {
+    return { text: "No forward forecast, so there is nothing to price against. The colour says how today feels, not what to do.", tone: "text-warn" };
+  }
+  if ((c.live_bands ?? 0) === 0) {
+    return { text: "No live buckets in this city - a read with nowhere to express it.", tone: "text-muted" };
+  }
+  if ((c.n_tradeable ?? 0) === 0) {
+    return { text: `${c.live_bands} bucket(s) priced, none tradeable after fees. The edge is there and the book is not.`, tone: "text-warn" };
+  }
+  const edgePp = (c.best_edge_pp ?? 0) * 100;
+  const inWindow = c.peak_window_state === "INSIDE";
+  const where = inWindow ? "inside its peak window now" : "outside its peak window";
+  if (edgePp >= 5) {
+    return { text: `${edgePp.toFixed(1)}pp on the best bucket, ${where}. This is the size of thing the desk is looking for.`, tone: "text-good" };
+  }
+  if (edgePp > 0) {
+    return { text: `${edgePp.toFixed(1)}pp on the best bucket, ${where}. Thin - worth watching rather than taking.`, tone: "text-muted" };
+  }
+  return { text: `Priced with no edge, ${where}. The market and the desk agree here.`, tone: "text-muted" };
 }
 
 function Row({ k, v, sub, warn }: { k: string; v: string; sub?: string; warn?: boolean }) {

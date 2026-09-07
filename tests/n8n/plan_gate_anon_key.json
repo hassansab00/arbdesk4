@@ -1,0 +1,32 @@
+{
+ "seed": {
+  "Config": {
+   "supabase_url": "https://testproject.supabase.co",
+   "service_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlc3Rwcm9qZWN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjEsImV4cCI6Mn0.dGVzdC1zaWduYXR1cmUtbm90LWEtcmVhbC1rZXk"
+  },
+  "Load cities": [
+   {
+    "city_key": "nyc"
+   },
+   {
+    "city_key": "chi"
+   }
+  ],
+  "Check schedule": {
+   "run": true,
+   "reason": "300 min since last run"
+  }
+ },
+ "run": [
+  {
+   "node": "Run now?",
+   "input": "Load cities",
+   "show": 300
+  },
+  {
+   "node": "Stop if skipped",
+   "input": "Run now?",
+   "show": 200
+  }
+ ]
+}

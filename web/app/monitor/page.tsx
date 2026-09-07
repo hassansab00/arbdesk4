@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import ForecastValue from "@/components/ForecastValue";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { useCityStats } from "@/lib/useCityStats";
 import { DataState } from "@/components/DataState";
+import { FreshnessRow } from "@/components/Provenance";
 import { LineChart, Empty } from "@/components/charts";
 import { fmtAge, fmtPct, fmtPrice, fmtPp, fmtCompactUsd } from "@/lib/format";
 import { fmtTemp, fmtTempDelta, fmtBandRange, type Unit } from "@/lib/units";
@@ -97,21 +100,36 @@ export default function MonitorPage() {
   const stats = useCityStats(60000);
   const [watched, setWatched] = useState<string[]>([]);
   const [open, setOpen] = useState<string | null>(null);
-  // ?city= so the rail's rows open the city they name. Read from window rather
-  // than useSearchParams, which would force a Suspense boundary on the route
-  // for the benefit of a prerender that never runs.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const c = new URLSearchParams(window.location.search).get("city");
-    if (c) setOpen(c);
-  }, []);
   const [picking, setPicking] = useState(false);
 
-  // The selection is a per-browser preference on a shared database, so it
-  // lives in localStorage and nowhere else - syncing it would mean writing to
-  // `settings` from the browser, which the RLS boundary rightly refuses.
+  // ONE EFFECT, NOT TWO. This used to be two: the first read ?city= and
+  // opened it, the second read the last-opened city out of localStorage and
+  // opened THAT. Both ran on mount, in order, so the second always won and
+  // the ?city= was thrown away a frame after it arrived - which is why
+  // clicking a city on the Globe landed on the Monitor showing whatever you
+  // had open last, and looked like the click did nothing.
+  //
+  // The URL is an instruction from the person clicking; the stored value is a
+  // default for when there is no instruction. So the URL wins, and it also
+  // joins the watched list, because a card is only rendered for a watched
+  // city and arriving at a city with no card is the same dead end.
+  //
+  // Read from window rather than useSearchParams, which would force a
+  // Suspense boundary on the route for the benefit of a prerender that never
+  // runs.
   useEffect(() => {
-    setWatched(loadList(KEY));
+    const stored = loadList(KEY);
+    const fromUrl =
+      typeof window === "undefined"
+        ? null
+        : new URLSearchParams(window.location.search).get("city");
+
+    if (fromUrl) {
+      setWatched(stored.includes(fromUrl) ? stored : [...stored, fromUrl]);
+      setOpen(fromUrl);
+      return;
+    }
+    setWatched(stored);
     try { setOpen(localStorage.getItem(OPEN_KEY)); } catch { /* ignore */ }
   }, []);
   useEffect(() => {
@@ -192,6 +210,11 @@ export default function MonitorPage() {
           the level alone cannot tell you which. Each card is the glance; open one for the trace,
           the measured climb profile, every bucket&apos;s price over 48 hours, and the ladder.
         </p>
+        {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
+            identical, and only one of them is worth investigating. */}
+        <div className="mt-2">
+          <FreshnessRow relations={["derived_climb_profile", "cities", "weather_observations", "bands", "book_snapshots", "markets", "paper_trades", "trades_observed"]} />
+        </div>
       </div>
 
       {/* ---- who is on the page ------------------------------------- */}
@@ -331,7 +354,7 @@ function CityCard({
           value={a?.slope_3_c_per_h != null ? `${fmtTempDelta(a.slope_3_c_per_h, unit)}/h` : "—"}
           className={dirColor}
         />
-        <Mini label="forecast" value={fmtTemp(c.forecast_max_c, unit)} />
+        <Mini label="forecast" value={<ForecastValue city={c} unit={unit} />} />
 
         <span className="ml-auto flex items-center gap-3 text-[10px]">
           {cover?.qualifies && (
@@ -417,7 +440,7 @@ function CityCard({
 
 function Mini({
   label, value, accent, className,
-}: { label: string; value: string; accent?: boolean; className?: string }) {
+}: { label: string; value: ReactNode; accent?: boolean; className?: string }) {
   return (
     <span className="flex flex-col leading-tight">
       <span className="text-[9px] uppercase tracking-wide text-muted">{label}</span>
@@ -455,7 +478,7 @@ function TheRead({ a, c, unit }: { a: Approach; c: CityStats | null; unit: Unit 
       <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
         <Figure label="Now" value={fmtTemp(a.latest_temp_c, unit)} big />
         <Figure label="Max so far" value={fmtTemp(a.running_max_c, unit)} />
-        <Figure label="Forecast" value={fmtTemp(c?.forecast_max_c ?? null, unit)} />
+        <Figure label="Forecast" value={c ? <ForecastValue city={c} unit={unit} /> : "—"} />
         <Figure
           label="Implied by observation"
           value={fmtTemp(a.implied_max_c, unit)}
@@ -530,7 +553,7 @@ function TheRead({ a, c, unit }: { a: Approach; c: CityStats | null; unit: Unit 
   );
 }
 
-function Figure({ label, value, sub, big }: { label: string; value: string; sub?: string; big?: boolean }) {
+function Figure({ label, value, sub, big }: { label: string; value: ReactNode; sub?: string; big?: boolean }) {
   return (
     <div>
       <div className="text-[10px] uppercase tracking-wide text-muted">{label}</div>

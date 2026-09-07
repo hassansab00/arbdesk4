@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
+import { Freshness, FreshnessRow } from "@/components/Provenance";
 import { Empty, LineChart, Scatter } from "@/components/charts";
 import Convergence3D, { type ConvergencePoint } from "@/components/Convergence3D";
 import { fmtInt, fmtPct, fmtPrice, fmtUsd, pnlColor } from "@/lib/format";
@@ -156,6 +157,80 @@ export default function PredictivePage() {
     [conv]
   );
 
+  /**
+   * The six numbers the scatter is hiding.
+   *
+   * A cloud of dots cannot be argued with in either direction: it looks
+   * roughly diagonal whether the desk is calling days to a quarter of a degree
+   * or missing whole buckets. These are computed from the same settled rows
+   * the chart draws, so the picture and the numbers can never disagree.
+   *
+   * ERROR AND BIAS ARE KEPT APART. A forecast that is 1.5 °C hot every day is
+   * a correction you can apply; one that is 1.5 °C off in random directions is
+   * not, and pooling them into "1.5 °C error" throws away which you have.
+   */
+  const accuracy = useMemo(() => {
+    const rows = conv.filter(
+      (r) => r.is_settled && r.lead_days === 1 && r.observed_max_c !== null && r.error_c !== null
+    );
+    const n = rows.length;
+    if (!n) {
+      return {
+        n: 0, nCities: 0, mae: 0, bias: 0, within1: 0, worst: 0, worstWhere: null as string | null,
+        hotPct: 50, byCity: [] as Array<{ city: string; bias: number; n: number }>, maxCityBias: 1,
+        verdict: "Nothing has settled yet, so there is nothing to score.",
+        verdictTone: "text-muted",
+      };
+    }
+    // error_c is signed: observed minus forecast, so positive = hotter than said.
+    const errs = rows.map((r) => r.error_c as number);
+    const mae = errs.reduce((a, e) => a + Math.abs(e), 0) / n;
+    const bias = errs.reduce((a, e) => a + e, 0) / n;
+    const within1 = errs.filter((e) => Math.abs(e) <= 1).length / n;
+    const hotPct = (errs.filter((e) => e > 0).length / n) * 100;
+    let worst = 0;
+    let worstWhere: string | null = null;
+    for (const r of rows) {
+      const a = Math.abs(r.error_c as number);
+      if (a > worst) {
+        worst = a;
+        worstWhere = `${r.city_key} ${r.for_date}`;
+      }
+    }
+    const per = new Map<string, { sum: number; n: number }>();
+    for (const r of rows) {
+      const cur = per.get(r.city_key) ?? { sum: 0, n: 0 };
+      cur.sum += r.error_c as number;
+      cur.n += 1;
+      per.set(r.city_key, cur);
+    }
+    const byCity = Array.from(per.entries())
+      .map(([city, v]) => ({ city, bias: v.sum / v.n, n: v.n }))
+      .sort((a, b) => Math.abs(b.bias) - Math.abs(a.bias));
+    const maxCityBias = Math.max(0.5, ...byCity.map((c) => Math.abs(c.bias)));
+
+    // One sentence, ordered by what actually disqualifies the forecast first.
+    let verdict: string;
+    let verdictTone = "text-muted";
+    if (n < 20) {
+      verdict = `Only ${n} settled day(s) so far — enough to look at, not enough to conclude from. Treat every number here as provisional until there are a few weeks.`;
+      verdictTone = "text-warn";
+    } else if (mae > 2) {
+      verdict = `Missing by ${mae.toFixed(2)} °C on average is wider than a bucket, so the forecast is not resolving which bucket wins. Sizing off this edge is sizing off noise.`;
+      verdictTone = "text-bad";
+    } else if (Math.abs(bias) >= 0.5) {
+      verdict = `A steady ${Math.abs(bias).toFixed(2)} °C lean ${bias > 0 ? "cool" : "hot"} — days come in ${bias > 0 ? "hotter" : "cooler"} than forecast far more often than not. That is systematic, which means it is correctable: it is exactly what the fitted model absorbs. Until it does, the desk is paying for it every day.`;
+      verdictTone = "text-warn";
+    } else if (within1 >= 0.6) {
+      verdict = `${(within1 * 100).toFixed(0)}% of days land within one bucket of the call, with no meaningful lean either way. This is a forecast worth pricing against.`;
+      verdictTone = "text-good";
+    } else {
+      verdict = `No systematic lean, but only ${(within1 * 100).toFixed(0)}% of days land within a bucket. The direction is honest and the sharpness is not — edges here will be real but small.`;
+      verdictTone = "text-muted";
+    }
+    return { n, nCities: per.size, mae, bias, within1, worst, worstWhere, hotPct, byCity, maxCityBias, verdict, verdictTone };
+  }, [conv]);
+
   const errByLead = useMemo(() => {
     const byModel = new Map<string, Map<number, { sum: number; n: number }>>();
     for (const r of scoreQ.data ?? []) {
@@ -174,6 +249,36 @@ export default function PredictivePage() {
     }));
   }, [scoreQ.data]);
 
+  /** Where the forecast stops resolving buckets, read off the same series. */
+  const decay = useMemo(() => {
+    const all = errByLead.flatMap((s) => s.points);
+    if (!all.length) return { text: "" };
+    const byLead = new Map<number, number[]>();
+    for (const p of all) {
+      if (!byLead.has(p.x)) byLead.set(p.x, []);
+      byLead.get(p.x)!.push(p.y);
+    }
+    const avg = Array.from(byLead.entries())
+      .map(([lead, ys]) => ({ lead, mae: ys.reduce((a, b) => a + b, 0) / ys.length }))
+      .sort((a, b) => a.lead - b.lead);
+    const crossed = avg.find((a) => a.mae > 1);
+    const best = avg[0];
+    if (!crossed) {
+      return {
+        text: `Every lead day shown still averages under 1 °C — the forecast holds its resolution across the whole window, so there is no lead day at which the desk has to stop trusting it.`,
+      };
+    }
+    if (crossed.lead === best?.lead) {
+      return {
+        text: `Even at ${crossed.lead} day(s) out the average miss is ${crossed.mae.toFixed(2)} °C — already wider than a bucket. The forecast is not resolving which bucket wins at any lead shown here.`,
+      };
+    }
+    return {
+      text: `The average miss crosses one bucket (1 °C) at ${crossed.lead} days out, at ${crossed.mae.toFixed(2)} °C. Inside that the forecast is picking buckets; past it, it is picking a range. Day ${best.lead} is the sharpest at ${best.mae.toFixed(2)} °C.`,
+    };
+  }, [errByLead]);
+
+
   const bank = bankQ.data ?? [];
   const scaling = scaleQ.data ?? [];
 
@@ -188,6 +293,11 @@ export default function PredictivePage() {
           right — and separately, did being right pay. Those are different questions with different
           answers, because entry price, fees and fill size all sit between them.
         </p>
+        {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
+            identical, and only one of them is worth investigating. */}
+        <div className="mt-2">
+          <FreshnessRow relations={["cities", "fact_forecast_outcome", "weather_forecasts", "bands", "markets", "edges", "band_probabilities", "fact_signal_outcome"]} />
+        </div>
       </div>
 
       {/* ======================================================== 1. FORWARD == */}
@@ -199,6 +309,7 @@ export default function PredictivePage() {
           A row with no probability has a forecast but no priced market yet.
         </p>
         <DataState
+          relation="v_prediction_ladder"
           loading={ladderQ.loading} error={ladderQ.error} isEmpty={forward.length === 0}
           emptyTitle="No open markets ahead"
           emptyBody={MISSING("sql/ad4_31_predictive.sql", "then let n8n P0.2 discover markets and P1.5 forecast them.")}
@@ -271,6 +382,7 @@ export default function PredictivePage() {
           boundaries, because a 0.6 °C miss across a line loses and a 0.9 °C miss inside one wins.
         </p>
         <DataState
+          relation="v_forecast_convergence"
           loading={convQ.loading} error={convQ.error} isEmpty={funnel.length === 0}
           emptyTitle="No forecast series for this city"
           emptyBody={MISSING("sql/ad4_31_predictive.sql", "and check v_forecast_coverage — a city with no forward forecast has nothing to draw.")}
@@ -280,41 +392,162 @@ export default function PredictivePage() {
         </DataState>
       </section>
 
-      {/* ================================================== 3. DID WE NAIL IT */}
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-2">
+      {/* =========================================== 3. ACTUAL AGAINST PREDICTED
+          Its own section, full width, because it is the one question that
+          decides whether anything else on this page is worth reading. It used
+          to be a half-width chart sharing a row with error-by-lead, with two
+          sentences and no numbers - a picture of a cloud of dots that could
+          not be argued with either way. */}
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className="text-sm font-semibold">Actual against predicted</h2>
-          <p className="text-xs leading-relaxed text-muted">
-            Day-ahead forecasts against what the day did. On the diagonal is perfect; above it the
-            day came in hotter than said. Green is within 1 °C — one bucket.
-          </p>
-          <DataState
-            loading={convQ.loading} error={convQ.error} isEmpty={scatter.length === 0}
-            emptyTitle="No settled days yet"
-            emptyBody="Actions → Data Bank freezes a day once it settles. This fills in from there."
-            onRetry={convQ.refresh}
-          >
-            <Scatter points={scatter} xLabel="forecast °C" yLabel="observed °C" height={330}
-                     xTickFormat={(v) => v.toFixed(0)} yTickFormat={(v) => v.toFixed(0)} />
-          </DataState>
+          <Freshness relation="v_forecast_convergence" />
+          <span className="text-[11px] text-muted">
+            the only question that decides whether the rest of this page is worth reading
+          </span>
         </div>
+        <p className="max-w-3xl text-xs leading-relaxed text-muted">
+          Every settled day, one dot: what was forecast a day out against what the day actually
+          did. On the diagonal is a perfect call; above it the day came in hotter than said, below
+          it cooler. Green is within 1 °C, which is roughly one bucket — the resolution the market
+          actually pays at, so a dot being green matters more than it being close.{" "}
+          <strong className="text-text">Bias and error are read separately</strong>: a forecast that
+          is 1.5 °C hot every day is a correction you can apply, and one that is 1.5 °C off in
+          random directions is not. The numbers below split them.
+        </p>
 
-        <div className="space-y-2">
-          <h2 className="text-sm font-semibold">Error by lead day</h2>
-          <p className="text-xs leading-relaxed text-muted">
-            Mean absolute error against how far ahead the call was made. A model that is sharp
-            tomorrow and useless on Friday looks fine averaged together — this is where that shows.
-          </p>
-          <DataState
-            loading={scoreQ.loading} error={scoreQ.error} isEmpty={errByLead.length === 0}
-            emptyTitle="No scorecard yet"
-            emptyBody={MISSING("sql/ad4_31_predictive.sql", "and run Actions → Data Bank so there are settled days to score.")}
-            onRetry={scoreQ.refresh}
-          >
-            <LineChart series={errByLead} height={280} yLabel="MAE °C"
-                       xTickFormat={(v) => `${v}d`} yTickFormat={(v) => v.toFixed(1)} />
-          </DataState>
+        <DataState
+          relation="v_forecast_convergence"
+          loading={convQ.loading}
+          error={convQ.error}
+          isEmpty={scatter.length === 0}
+          emptyTitle="No settled days yet"
+          emptyBody="Nothing has settled, so there is nothing to score. This fills in once a market resolves and the day is frozen."
+          onRetry={convQ.refresh}
+        >
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+            <div className="rounded border border-border bg-panel/60 p-3">
+              <Scatter
+                points={scatter}
+                xLabel="forecast °C"
+                yLabel="observed °C"
+                height={340}
+                xTickFormat={(v) => v.toFixed(0)}
+                yTickFormat={(v) => v.toFixed(0)}
+              />
+            </div>
+
+            <div className="space-y-3">
+              {/* ---- the six numbers the cloud of dots is hiding ---------- */}
+              <div className="grid grid-cols-2 gap-2">
+                <Readout
+                  label="Days scored"
+                  value={fmtInt(accuracy.n)}
+                  sub={`${accuracy.nCities} cit${accuracy.nCities === 1 ? "y" : "ies"}`}
+                />
+                <Readout
+                  label="Within 1 °C"
+                  value={accuracy.n ? `${(accuracy.within1 * 100).toFixed(0)}%` : "—"}
+                  sub="one bucket wide"
+                  tone={accuracy.within1 >= 0.6 ? "good" : accuracy.within1 >= 0.4 ? "warn" : "bad"}
+                />
+                <Readout
+                  label="Average miss"
+                  value={accuracy.n ? `${accuracy.mae.toFixed(2)} °C` : "—"}
+                  sub="how far off, ignoring direction"
+                  tone={accuracy.mae <= 1 ? "good" : accuracy.mae <= 2 ? "warn" : "bad"}
+                />
+                <Readout
+                  label="Bias"
+                  value={accuracy.n ? `${accuracy.bias > 0 ? "+" : ""}${accuracy.bias.toFixed(2)} °C` : "—"}
+                  sub={
+                    Math.abs(accuracy.bias) < 0.25
+                      ? "no systematic lean"
+                      : accuracy.bias > 0
+                        ? "days run hotter than said"
+                        : "days run cooler than said"
+                  }
+                  tone={Math.abs(accuracy.bias) < 0.25 ? "good" : "warn"}
+                />
+                <Readout
+                  label="Worst miss"
+                  value={accuracy.n ? `${accuracy.worst.toFixed(1)} °C` : "—"}
+                  sub={accuracy.worstWhere ?? ""}
+                  tone={accuracy.worst >= 5 ? "bad" : accuracy.worst >= 3 ? "warn" : "good"}
+                />
+                <Readout
+                  label="Too hot / too cool"
+                  value={accuracy.n ? `${accuracy.hotPct.toFixed(0)} / ${(100 - accuracy.hotPct).toFixed(0)}` : "—"}
+                  sub="a 50/50 split means no lean"
+                  tone={Math.abs(accuracy.hotPct - 50) < 12 ? "good" : "warn"}
+                />
+              </div>
+
+              {/* ---- what those six numbers mean, in one sentence -------- */}
+              <div className="rounded border border-border bg-panel2/40 p-2.5">
+                <div className="text-[10px] uppercase tracking-wide text-muted">What this says</div>
+                <p className={`mt-1 text-xs leading-relaxed ${accuracy.verdictTone}`}>
+                  {accuracy.verdict}
+                </p>
+              </div>
+
+              {/* ---- and where the misses are concentrated --------------- */}
+              {accuracy.byCity.length > 1 && (
+                <div className="rounded border border-border bg-panel/60 p-2.5">
+                  <div className="text-[10px] uppercase tracking-wide text-muted">
+                    Lean per city — bars right of the line ran hotter than forecast
+                  </div>
+                  <div className="mt-1.5 space-y-1">
+                    {accuracy.byCity.slice(0, 8).map((c) => (
+                      <BiasBar key={c.city} city={c.city} bias={c.bias} n={c.n} max={accuracy.maxCityBias} />
+                    ))}
+                  </div>
+                  <p className="mt-1.5 text-[10px] leading-snug text-muted">
+                    A city with a consistent lean is a correction waiting to be applied, not noise —
+                    it is exactly what the fitted model in <code>derived_weather_model</code> exists
+                    to absorb.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </DataState>
+      </section>
+
+      {/* ---------------------------------------------- error against lead day */}
+      <section className="space-y-2">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 className="text-sm font-semibold">How fast the forecast decays</h2>
+          <Freshness relation="v_prediction_scorecard" />
         </div>
+        <p className="max-w-3xl text-xs leading-relaxed text-muted">
+          The same error, split by how far ahead the call was made. A model that is sharp tomorrow
+          and useless on Friday averages out to &ldquo;fine&rdquo; — this is the only place that
+          shows. The practical use is picking the lead day at which to stop trusting it: where the
+          line crosses one bucket wide, the forecast has stopped resolving which bucket wins.
+        </p>
+        <DataState
+          relation="v_prediction_scorecard"
+          loading={scoreQ.loading}
+          error={scoreQ.error}
+          isEmpty={errByLead.length === 0}
+          emptyTitle="No scorecard yet"
+          emptyBody={MISSING("sql/ad4_31_predictive.sql", "and let a few days settle so there is something to score.")}
+          onRetry={scoreQ.refresh}
+        >
+          <div className="rounded border border-border bg-panel/60 p-3">
+            <LineChart
+              series={errByLead}
+              height={260}
+              yLabel="average miss °C"
+              xTickFormat={(v) => `${v}d`}
+              yTickFormat={(v) => v.toFixed(1)}
+            />
+            <p className="mt-2 text-[11px] leading-relaxed text-muted">
+              {decay.text}
+            </p>
+          </div>
+        </DataState>
       </section>
 
       {/* ------------------------------------------------ the scorecard table */}
@@ -328,6 +561,7 @@ export default function PredictivePage() {
           for — did the day land in the bucket the forecast pointed at.
         </p>
         <DataState
+          relation="v_prediction_scorecard"
           loading={scoreQ.loading} error={scoreQ.error} isEmpty={(scoreQ.data ?? []).length === 0}
           emptyTitle="Nothing scored yet"
           emptyBody="Needs at least 5 settled days per city, model and lead."
@@ -383,6 +617,7 @@ export default function PredictivePage() {
             nothing and proved nothing. The win rate beside it is running, not final.
           </p>
           <DataState
+          relation="v_bankroll_curve"
             loading={bankQ.loading} error={bankQ.error} isEmpty={bank.length === 0}
             emptyTitle="No filled trades yet"
             emptyBody="Every strategy ships disabled. Turn one on, then Actions → Signal Engine."
@@ -418,6 +653,7 @@ export default function PredictivePage() {
             sizing up multiplies noise, not profit.
           </p>
           <DataState
+          relation="v_edge_scaling"
             loading={scaleQ.loading} error={scaleQ.error} isEmpty={scaling.length === 0}
             emptyTitle="Nothing to compare yet"
             emptyBody="Needs settled bands with both a claimed edge and a market price — Actions → Data Bank writes them."
@@ -459,6 +695,57 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: str
     <div className="rounded border border-border bg-panel2 px-2 py-1.5">
       <div className="text-[10px] uppercase tracking-wide text-muted">{label}</div>
       <div className={`tabular-nums ${tone ?? ""}`}>{value}</div>
+    </div>
+  );
+}
+
+/** One number with what it means under it. Colour is a verdict, not decoration. */
+function Readout({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: "good" | "warn" | "bad";
+}) {
+  const toneClass =
+    tone === "good" ? "text-good" : tone === "warn" ? "text-warn" : tone === "bad" ? "text-bad" : "text-text";
+  return (
+    <div className="rounded border border-border bg-panel/60 p-2">
+      <div className="text-[10px] uppercase tracking-wide text-muted">{label}</div>
+      <div className={`mt-0.5 text-base font-semibold tabular-nums ${toneClass}`}>{value}</div>
+      {sub ? <div className="mt-0.5 text-[10px] leading-snug text-muted">{sub}</div> : null}
+    </div>
+  );
+}
+
+/**
+ * A city's lean, drawn from a centre line so direction is visible without
+ * reading a sign. Right of the line = days ran hotter than forecast.
+ */
+function BiasBar({ city, bias, n, max }: { city: string; bias: number; n: number; max: number }) {
+  const frac = Math.min(1, Math.abs(bias) / max);
+  const pct = frac * 50;
+  const hot = bias > 0;
+  return (
+    <div className="flex items-center gap-2 text-[10px]">
+      <span className="w-16 shrink-0 truncate font-mono text-muted" title={`${city} · ${n} day(s)`}>
+        {city}
+      </span>
+      <span className="relative h-2.5 flex-1 rounded-sm bg-panel2">
+        <span className="absolute inset-y-0 left-1/2 w-px bg-border" />
+        <span
+          className={`absolute inset-y-0 rounded-sm ${hot ? "bg-bad/70" : "bg-accent/70"}`}
+          style={hot ? { left: "50%", width: `${pct}%` } : { right: "50%", width: `${pct}%` }}
+        />
+      </span>
+      <span className={`w-14 shrink-0 text-right tabular-nums ${Math.abs(bias) >= 0.5 ? "text-warn" : "text-muted"}`}>
+        {bias > 0 ? "+" : ""}
+        {bias.toFixed(2)}°
+      </span>
     </div>
   );
 }

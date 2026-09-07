@@ -40,6 +40,19 @@
 
 do $ad4$
 declare
+  -- THE CACHE FIRST. v_city_day_features carries a window function
+  -- (prev_max_c needs lag() across a city's days), and a window cannot be
+  -- pushed past a WHERE - so `where obs_date >= current_date - 1` still made
+  -- Postgres compute EVERY day in the archive before discarding all but two.
+  -- On 650k observations that is 2.8 seconds for 37 rows, which is a
+  -- statement timeout on the anon role and a red box on the page.
+  --
+  -- derived_city_day_features is the same rows, already computed, indexed,
+  -- and carrying every column this view reads. It exists for exactly this.
+  -- The view stays as the fallback for a database whose cache has never been
+  -- filled, and the notice below says which one was used.
+  has_cache boolean := to_regclass('public.derived_city_day_features') is not null;
+  feat_src  text;
   has_feat  boolean := to_regclass('public.v_city_day_features')      is not null;
   has_wmod  boolean := to_regclass('public.derived_weather_model')    is not null;
   has_pers  boolean := to_regclass('public.v_persistence_skill')      is not null;
@@ -88,17 +101,20 @@ $q$;
 )$q$;
   end if;
 
-  if has_feat then
-    sql := sql || $q$, feat as (
+  feat_src := case when has_cache then 'derived_city_day_features'
+                   when has_feat  then 'v_city_day_features'
+                   else null end;
+  if feat_src is not null then
+    sql := sql || format($q$, feat as (
   select distinct on (city_key)
     city_key, obs_date, morning_temp_c, dewpoint_depression_c, cloud_mean,
     wind_mean, precip_total, prev_max_c
-  from v_city_day_features
+  from %s
   where obs_date >= current_date - 1
   order by city_key, obs_date desc
-)$q$;
+)$q$, feat_src);
   else
-    missing := array_append(missing, 'v_city_day_features (sql/ad4_21_weather_features.sql)');
+    missing := array_append(missing, 'derived_city_day_features (sql/ad4_28_feature_cache.sql, then Actions -> Derived Recompute)');
     sql := sql || $q$, feat as (
   select null::text as city_key, null::date as obs_date,
          null::numeric as morning_temp_c, null::numeric as dewpoint_depression_c,

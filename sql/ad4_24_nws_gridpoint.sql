@@ -102,9 +102,9 @@ order by city_key, for_date, run_at desc;
 -- --------------------------------------------------------------------------
 do $ad4$
 begin
-  if to_regclass('public.v_city_day_features') is null then
+  if to_regclass('public.derived_city_day_features') is null then
     execute 'drop view if exists v_condition_skill';
-    raise notice 'ad4_24: v_condition_skill SKIPPED - v_city_day_features does not exist. Run sql/ad4_21_weather_features.sql, then re-run this file. Everything else in ad4_24 is installed.';
+    raise notice 'ad4_24: v_condition_skill SKIPPED - derived_city_day_features does not exist. Run sql/ad4_28_feature_cache.sql, then re-run this file. Everything else in ad4_24 is installed.';
     return;
   end if;
 
@@ -119,7 +119,10 @@ begin
       round(avg(f.dewpoint_depression_c - o.dewpoint_depression_c), 2)      as dryness_bias_c,
       round(avg(abs(f.forecast_max_c - o.max_c)), 2)             as max_mae_c
     from v_forecast_features f
-    join v_city_day_features o
+    -- The CACHE, for the same reason ad4_23 reads it: v_city_day_features
+    -- recomputes every day in the archive through a window function before
+    -- anything can be filtered, and this view then aggregates all of it.
+    join derived_city_day_features o
       on o.city_key = f.city_key and o.obs_date = f.for_date and o.n_obs >= 12
     where f.cloud_mean is not null and o.cloud_mean is not null
     group by f.city_key

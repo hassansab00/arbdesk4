@@ -248,6 +248,13 @@ def test_every_workflow_is_gated():
             continue                      # a fragment, checked separately below
         wf = json.load(open(path))
         names = {n["name"] for n in wf["nodes"]}
+        # A workflow with no schedule trigger cannot fire on a schedule, so
+        # there is no cost for the gate to prevent - gating it would only put
+        # a database round trip in front of a button press. P2.1 is that: you
+        # relearn after a run of days has settled, not every six hours.
+        if not any(n["type"].endswith("scheduleTrigger") for n in wf["nodes"]):
+            assert "Schedule Trigger" not in names, f"{f}: has a schedule and no gate"
+            continue
         assert {"Check schedule", "Run now?", "Stop if skipped"} <= names, f"{f} is not gated"
         # and the gate must sit between Config and the work, not beside it
         after_config = [c["node"] for br in wf["connections"]["Config"]["main"] for c in br]
@@ -634,7 +641,12 @@ def test_the_summary_refuses_to_report_success_on_a_refused_write(workflow, node
         assert json.dumps(name) in code, f"{workflow} does not check {name}"
 
 
-def test_a_refused_write_names_the_anon_key():
+def test_a_refused_write_sends_you_to_the_grants_not_the_key():
+    """A 42501 at a write used to be reported as "this is the anon key". It is
+    not - the key's role is now read out of the key itself at "Run now?", so by
+    the time a write is refused the key has already been cleared and the cause
+    is the DATABASE: service_role has no INSERT. Naming the wrong half of that
+    cost a day, so the message points at sql/ad4_38_grants.sql instead."""
     def m(plan):
         plan["seed"]["Write observations"] = [{
             "code": "42501", "details": None, "hint": None,
@@ -642,8 +654,20 @@ def test_a_refused_write_names_the_anon_key():
     r = run_with("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json", m)
     assert r["ok"] is False and r["node"] == "Summary", r
     first = r["error"].splitlines()[0]
-    assert "ANON key" in first and "service_role" in first, first
+    assert "ad4_38_grants.sql" in first, first
+    assert "service_role has no INSERT" in first, first
     assert "Nothing was written" in first, first
+
+
+def test_a_missing_table_is_not_reported_as_a_permission_problem():
+    def m(plan):
+        plan["seed"]["Write observations"] = [{
+            "code": "42P01", "details": None, "hint": None,
+            "message": 'relation "public.weather_observations" does not exist'}]
+    r = run_with("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json", m)
+    assert r["ok"] is False and r["node"] == "Summary", r
+    assert "no such table" in r["error"], r["error"]
+    assert "ad4_98_ui_health.sql" in r["error"], r["error"]
 
 
 def test_a_clean_run_is_not_flagged():
@@ -659,7 +683,8 @@ def test_the_gate_stops_on_a_permission_error_rather_than_failing_open():
     is what let a whole run look healthy while writing nothing."""
     r = run("P1.2_nws_monitor.template.json", "plan_gate_denied.json")
     assert r["ok"] is False and r["node"] == "Run now?", r
-    assert "ANON key" in r["error"] and "service_role" in r["error"]
+    assert "ad4_38_grants.sql" in r["error"], r["error"]
+    assert "service_role" in r["error"], r["error"]
 
 
 @pytest.mark.parametrize("workflow", sorted(
@@ -890,10 +915,14 @@ def test_a_missing_endpoint_still_stops_before_any_request(workflow):
     assert after_cfg == ["Check schedule"], workflow
 
 
-def test_the_gate_does_not_claim_to_catch_what_it_cannot():
-    """sql/ad4_20 grants should_run to anon on purpose, so an anon key sails
-    through the gate and only fails at the first write. Saying otherwise sends
-    the reader after the wrong thing."""
+def test_every_gate_reads_the_role_out_of_the_key_before_the_first_request():
+    """The gate used to be honest that it could not catch an anon key: ad4_20
+    grants should_run to anon on purpose, so an anon key sailed through and
+    only failed at the first write, several nodes and one full fetch later.
+
+    It no longer has to guess. A Supabase key STATES its role - in the prefix
+    for sb_secret_/sb_publishable_, in the JWT payload for the legacy format -
+    so the gate reads it and stops before any request at all."""
     import glob
 
     for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
@@ -901,7 +930,41 @@ def test_the_gate_does_not_claim_to_catch_what_it_cannot():
         if not gate:
             continue
         code = gate[0]["parameters"]["jsCode"]
-        assert "THIS IS NOT THE MAIN DEFENCE" in code, os.path.basename(path)
+        name = os.path.basename(path)
+        assert "AD4-KEY-CHECK" in code, name
+        assert "sb_publishable_" in code and "sb_secret_" in code, name
+        assert '"role"' in code, f"{name} does not read the JWT role claim"
+        # and it must not print the key it is inspecting
+        assert "console.log(key" not in code and "json: { key" not in code, name
+
+
+def test_the_anon_key_is_refused_before_anything_is_fetched():
+    r = run("P1.2_nws_monitor.template.json", "plan_gate_anon_key.json")
+    assert r["ok"] is False and r["node"] == "Run now?", r
+    assert 'holds the "anon" key' in r["error"], r["error"]
+    assert "Nothing was fetched and nothing was written" in r["error"], r["error"]
+
+
+def test_the_service_key_is_let_through():
+    """The check must not be so eager that a correct key cannot run."""
+    r = run("P1.2_nws_monitor.template.json", "plan_gate_run.json")
+    assert r["ok"], r
+
+
+def test_the_key_check_never_reaches_for_a_runtime_global_it_may_not_have():
+    """Buffer and atob are not guaranteed in every n8n Code-node runtime, and a
+    base64 decode that throws would turn a correct key into a failed run."""
+    import glob
+
+    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
+        gate = [n for n in json.load(open(path))["nodes"] if n["name"] == "Run now?"]
+        if not gate:
+            continue
+        block = gate[0]["parameters"]["jsCode"].split("// Ask the database")[0]
+        # comments may name them; the CODE must not call them
+        code = "\n".join(l for l in block.splitlines() if not l.strip().startswith("//"))
+        assert "Buffer" not in code, os.path.basename(path)
+        assert "atob" not in code, os.path.basename(path)
 
 
 def test_the_diagnostic_reports_who_can_write():
@@ -909,7 +972,12 @@ def test_the_diagnostic_reports_who_can_write():
     assert "6 WRITE ACCESS" in sql
     assert "has_table_privilege('anon'" in sql
     assert "has_table_privilege('service_role'" in sql
-    assert "by design" in sql, "should_run being anon-callable must not read as a fault"
+    # should_run used to be anon-callable on purpose, and the diagnostic said
+    # so. ad4_38 revokes it: the Workflows page reads v_execution_budget, so
+    # the grant only softened the schedule gate. The row now reads the other
+    # way round - anon holding it is the thing to fix.
+    assert "ad4_38_grants.sql" in sql, "the row must name the file that revokes it"
+    assert "second line of defence" in sql
 
 
 # --------------------------------------------------------------- run scope --
@@ -1058,3 +1126,243 @@ def test_a_successful_run_does_not_persist_the_whole_payload(workflow):
     s = d.get("settings", {})
     assert s.get("saveDataSuccessExecution") == "none", workflow
     assert s.get("saveDataErrorExecution") == "all", f"{workflow}: keep failures"
+
+
+# ---------------------------------------------------------------------------
+# ON CONFLICT TARGETS
+#
+# P1.5 upserted weather_forecast_features on (city_key, for_date, source,
+# lead_days). The table's only unique index is its primary key,
+# (city_key, for_date, run_at). Every write from that node failed with 42P10,
+# so no forecast feature was ever stored for a non-US city - and P1.5 is the
+# only workflow that covers cities outside the United States.
+#
+# It is invisible until the first write, and the first write is minutes into a
+# run. This reads the keys out of the SQL instead.
+# ---------------------------------------------------------------------------
+
+def _unique_keys_by_table():
+    """Every unique key the SQL declares, as {table: {frozenset(cols), ...}}."""
+    import glob
+
+    out = {}
+    src = " ".join(re.sub(r"--[^\n]*", " ", open(f).read())
+                   for f in sorted(glob.glob(os.path.join(ROOT, "sql", "*.sql"))))
+
+    def add(table, cols):
+        cols = frozenset(c.strip().strip('"') for c in cols.split(",") if c.strip())
+        if cols:
+            out.setdefault(table.lower(), set()).add(cols)
+
+    # create table x ( ... primary key (a,b) ... )   /  ... unique (a,b)
+    for m in re.finditer(r"create\s+table\s+(?:if\s+not\s+exists\s+)?([a-z0-9_]+)\s*\((.*?)\n\s*\);",
+                         src, re.S | re.I):
+        table, body = m.group(1), m.group(2)
+        for k in re.finditer(r"(?:primary\s+key|unique)\s*\(([^)]*)\)", body, re.I):
+            add(table, k.group(1))
+        # a single-column `col type primary key`
+        for k in re.finditer(r"^\s*([a-z0-9_]+)\s+[a-z][^,]*\bprimary\s+key\b", body, re.I | re.M):
+            add(table, k.group(1))
+    # create unique index ... on t (a,b)
+    for m in re.finditer(r"create\s+unique\s+index\s+(?:concurrently\s+)?(?:if\s+not\s+exists\s+)?"
+                         r"[a-z0-9_]*\s*on\s+(?:public\.)?([a-z0-9_]+)\s*\(([^)]*)\)", src, re.I):
+        add(m.group(1), m.group(2))
+    # alter table t add constraint c unique (a,b) / primary key (a,b)
+    for m in re.finditer(r"alter\s+table\s+(?:public\.)?([a-z0-9_]+)[^;]*?"
+                         r"(?:unique|primary\s+key)\s*\(([^)]*)\)", src, re.I | re.S):
+        add(m.group(1), m.group(2))
+    # ad4_ensure_natural_key('t', array['a','b'])
+    for m in re.finditer(r"ad4_ensure_natural_key\(\s*'([a-z0-9_]+)'\s*,\s*array\[([^\]]*)\]", src, re.I):
+        add(m.group(1), m.group(2).replace("'", ""))
+    return out
+
+
+@pytest.mark.parametrize("workflow", sorted(
+    [f for f in os.listdir(os.path.join(ROOT, "n8n")) if f.endswith(".json")]))
+def test_every_on_conflict_target_has_a_unique_key(workflow):
+    keys = _unique_keys_by_table()
+    blob = json.dumps(json.load(open(os.path.join(ROOT, "n8n", workflow))))
+    targets = re.findall(r"/rest/v1/([a-z0-9_]+)\?on_conflict=([a-z0-9_,]+)", blob)
+    for table, cols in targets:
+        want = frozenset(c for c in cols.split(",") if c)
+        have = keys.get(table, set())
+        assert have, f"{workflow}: {table} has no unique key declared in sql/ at all"
+        assert want in have, (
+            f"{workflow}: upserts {table} on ({cols}) but the only unique key(s) are "
+            f"{[sorted(h) for h in have]} - PostgREST answers this with 42P10 and writes nothing")
+
+
+# ---------------------------------------------------------------------------
+# THE BROWSER'S RPC SURFACE
+#
+# ad4_38 revokes EXECUTE on everything in public from anon and grants back a
+# named list, because the list had drifted: refresh_feature_cache (a full
+# archive scan), calc_recommendation (whose page was deleted), log_paper_trade
+# and close_position (which write the money tables and are called by nothing)
+# were all callable by anyone holding the public key.
+#
+# A blanket revoke is only safe if the grant-back list is complete. This is
+# what makes it complete.
+# ---------------------------------------------------------------------------
+
+def test_every_rpc_the_ui_calls_is_granted_back():
+    import glob
+
+    called = set()
+    for path in glob.glob(os.path.join(ROOT, "web", "**", "*.ts*"), recursive=True):
+        if "node_modules" in path:
+            continue
+        called |= set(re.findall(r'\.rpc\(\s*"([a-z0-9_]+)"', open(path).read()))
+    assert called, "no RPC calls found - the scan is broken, not the grants"
+
+    sql = open(os.path.join(ROOT, "sql", "ad4_38_grants.sql")).read()
+    block = sql[sql.index("-- 5b."):]
+    granted = set(re.findall(r"'([a-z0-9_]+)'", block[block.index("foreach f in array array[", block.index("grant back")) :]))
+
+    missing = sorted(called - granted)
+    assert not missing, (
+        f"the UI calls {missing} and ad4_38 does not grant them back to anon - "
+        "those buttons would fail with 42501 after running it")
+
+
+# ---------------------------------------------------------------------------
+# UPSERT IS NOT AN UPDATE
+#
+# Two workflows failed on a real desk within a minute of each other, and both
+# were the same mistake wearing different error codes:
+#
+#   23502  null value in column "display_name" of relation "cities"
+#          Postgres evaluates NOT NULL on the PROPOSED ROW of an
+#          INSERT ... ON CONFLICT DO UPDATE *before* it detects the conflict.
+#          A partial payload therefore fails even when the row already exists -
+#          and it always did exist; the workflow had loaded it two nodes
+#          earlier. Reproduced exactly: the upsert fails, the equivalent
+#          UPDATE succeeds.
+#
+#   PGRST102  All object keys must match
+#          A bulk POST array needs identical keys in every object. A supported
+#          city carried a station id and an unsupported one did not, so any run
+#          containing both was refused outright.
+#
+# A workflow that only ever ANNOTATES a row somebody else created must PATCH.
+# It cannot create the row it is annotating and should not be able to try.
+# ---------------------------------------------------------------------------
+
+# table -> the workflow that OWNS it (creates its rows). Everything else that
+# touches these tables is annotating and must use PATCH.
+OWNED_BY = {
+    "cities": None,                                    # hand-maintained, no workflow owns it
+    "markets": "P0.2_market_discovery.template.json",
+    "bands": "P0.2_market_discovery.template.json",
+}
+
+
+@pytest.mark.parametrize("workflow", sorted(
+    [f for f in os.listdir(os.path.join(ROOT, "n8n")) if f.endswith(".json")]))
+def test_a_workflow_only_upserts_a_table_it_owns(workflow):
+    d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
+    for n in d["nodes"]:
+        p = n.get("parameters", {}) or {}
+        if str(p.get("method", "")).upper() != "POST":
+            continue
+        m = re.search(r"/rest/v1/([a-z0-9_]+)\?on_conflict=", str(p.get("url", "")))
+        if not m:
+            continue
+        table = m.group(1)
+        if table not in OWNED_BY:
+            continue
+        owner = OWNED_BY[table]
+        assert owner == workflow, (
+            f"{workflow} / '{n['name']}' upserts {table}, which it does not own. "
+            f"An upsert with a partial payload fails with 23502 on any schema where {table} "
+            f"has a NOT NULL column the payload lacks - even when the row is already there. "
+            f"Annotating an existing row is a PATCH.")
+
+
+def test_nothing_upserts_cities():
+    """`cities` is the roster you maintain by hand. A weather workflow that can
+    create one creates a row with a key and nothing else."""
+    import glob
+
+    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
+        blob = json.dumps(json.load(open(path)))
+        assert "/rest/v1/cities?on_conflict=" not in blob, os.path.basename(path)
+
+
+# Fixtures that can drive a workflow's Code nodes end to end.
+SHAPE_CASES = [
+    ("P0.2_market_discovery.template.json", "plan_P0.2_market_discovery.json"),
+    ("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json"),
+    ("P1.3_nws_forecast.template.json", "plan_P1.3_nws_forecast.json"),
+    ("P1.4_nws_gridpoint.template.json", "plan_P1.4_gridpoint.json"),
+    ("P1.5_open_meteo.template.json", "plan_P1.5_open_meteo.json"),
+]
+
+
+@pytest.mark.parametrize("workflow,plan", SHAPE_CASES)
+def test_every_row_array_has_one_key_shape(workflow, plan):
+    """PGRST102. Reading the source cannot answer this - the two shapes come
+    from two branches of one loop - so the Code nodes are run and the rows
+    they actually produce are compared."""
+    import subprocess
+    import tempfile
+
+    script = os.path.join(ROOT, "tests", "n8n", "row_shapes.mjs")
+    r = subprocess.run([NODE, script, os.path.join(ROOT, "n8n", workflow),
+                        os.path.join(ROOT, "tests", "n8n", plan)],
+                       capture_output=True, text=True, timeout=120, cwd=ROOT)
+    assert r.returncode == 0, r.stderr
+    produced = json.loads(r.stdout)
+    for name, shapes in produced.items():
+        assert len(shapes) == 1, (
+            f"{workflow}: {name} produces {len(shapes)} different key sets, so a bulk POST of it "
+            f"is refused with PGRST102 the moment a run contains both:\n  "
+            + "\n  ".join(str(sorted(s)) for s in shapes))
+
+
+# ---------------------------------------------------------------------------
+# THE WRITE GUARD HAS TO RUN AFTER THE WRITE
+#
+# The Summary node checks each write node's result BY NAME to decide whether
+# the database refused it. Reading a node that has not executed yet returns
+# nothing, which the guard cannot tell from "no error" - so the run reports
+# success on a refused write, which is the exact failure the guard exists to
+# prevent.
+#
+# Putting a write on a parallel branch looked tidier and broke this: n8n
+# chooses the order of parallel branches itself, so Summary could go first.
+# Every guarded write must be UPSTREAM of Summary, on the one path.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("workflow", sorted(
+    [f for f in os.listdir(os.path.join(ROOT, "n8n")) if f.endswith(".template.json")]))
+def test_every_guarded_write_runs_before_the_summary(workflow):
+    d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
+    summary = [n for n in d["nodes"] if n["name"] == "Summary"]
+    if not summary:
+        pytest.skip("no Summary node")
+    code = summary[0]["parameters"]["jsCode"]
+    m = re.search(r"const AD4_WRITE_NODES = (\[[^\]]*\]);", code)
+    if not m:
+        pytest.skip("no write guard in this workflow")
+    guarded = json.loads(m.group(1))
+
+    # everything that can reach Summary, walking connections backwards
+    rev = {}
+    for src, outs in (d.get("connections") or {}).items():
+        for _, branches in outs.items():
+            for br in branches or []:
+                for c in br or []:
+                    rev.setdefault(c["node"], set()).add(src)
+    upstream, stack = set(), ["Summary"]
+    while stack:
+        for parent in rev.get(stack.pop(), ()):
+            if parent not in upstream:
+                upstream.add(parent)
+                stack.append(parent)
+
+    for name in guarded:
+        assert name in upstream, (
+            f"{workflow}: Summary guards '{name}' but '{name}' is not upstream of it. "
+            "n8n decides the order of parallel branches, so the guard can run first, find a "
+            "node that has not executed, and report success on a refused write.")

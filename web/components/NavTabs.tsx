@@ -15,10 +15,12 @@ const TABS = [
   { href: "/monitor", label: "City Monitor" },
   { href: "/analytics", label: "Analytics" },
   { href: "/databank", label: "Data Bank" },
+  { href: "/synthesis", label: "Synthesis" },
   { href: "/backtest", label: "Backtest" },
   { href: "/campaigns", label: "Campaigns" },
   { href: "/goals", label: "Goals" },
   { href: "/workflows", label: "Workflows" },
+  { href: "/docs", label: "How it works" },
 ];
 
 export default function NavTabs() {

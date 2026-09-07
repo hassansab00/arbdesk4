@@ -8,6 +8,7 @@ import { useCityStats } from "@/lib/useCityStats";
 import StatsNotice from "@/components/StatsNotice";
 import ModelAnalytics from "@/components/ModelAnalytics";
 import { DataState, InlineError } from "@/components/DataState";
+import { Freshness, FreshnessRow } from "@/components/Provenance";
 import { Empty, Histogram, LineChart, Scatter } from "@/components/charts";
 import { fmtCompactUsd, fmtInt, fmtPct, fmtPrice, fmtUsd, pnlColor } from "@/lib/format";
 import { fmtTemp, type Unit } from "@/lib/units";
@@ -124,6 +125,7 @@ export default function AnalyticsPage() {
         n={1}
         title="Is the forecast any good?"
         body="What the archive can say about itself, with no trade ever placed. If these are weak, nothing below them can be strong — every band probability is built on this."
+        reads={["derived_forecast_skill", "weather_forecasts", "weather_observations", "derived_city_day_features"]}
       />
 
       {/* ===================================== what the desk has learned ==
@@ -136,7 +138,10 @@ export default function AnalyticsPage() {
 
       {/* ============================================ forecast skill ===== */}
       <section>
-        <h2 className="text-sm font-semibold">Forecast skill by city (1-day lead)</h2>
+        <div className="flex flex-wrap items-baseline gap-2">
+          <h2 className="text-sm font-semibold">Forecast skill by city (1-day lead)</h2>
+          <Freshness relation="derived_forecast_skill" />
+        </div>
         <p className="mb-2 max-w-3xl text-[11px] leading-relaxed text-muted">
           Mean absolute error against what actually happened — the number sigma is built from, so a
           city high on this chart is one where every band probability is necessarily vague. This is
@@ -145,6 +150,7 @@ export default function AnalyticsPage() {
           when a city looks wrong here.
         </p>
         <DataState
+          relation="derived_forecast_skill"
           loading={skillQ.loading} error={skillQ.error} isEmpty={skill.length === 0}
           emptyTitle="No forecast skill measured yet"
           emptyBody={<>Run GitHub Actions → <b>Skill</b> (<code>scripts/measure_skill.py</code>). It needs both forecast and observation history before it can measure anything. See <code>docs/skill_baseline.md</code>.</>}
@@ -177,11 +183,15 @@ export default function AnalyticsPage() {
         n={2}
         title="Is the pricing any good?"
         body="The forecast turned into a probability, and the probability against what the market charges. Still no trades required — this is the model and the book disagreeing on paper."
+        reads={["band_probabilities", "edges", "book_snapshots"]}
       />
 
       {/* ============================================ model vs market ==== */}
       <section>
-        <h2 className="text-sm font-semibold">Model against market</h2>
+        <div className="flex flex-wrap items-baseline gap-2">
+          <h2 className="text-sm font-semibold">Model against market</h2>
+          <Freshness relation="v_opportunities" />
+        </div>
         <p className="mb-2 max-w-3xl text-[11px] leading-relaxed text-muted">
           Every tradeable YES band: what it costs against what the model thinks it is worth. The
           diagonal is agreement. <b>Above the line the model is more optimistic than the book</b> —
@@ -190,6 +200,7 @@ export default function AnalyticsPage() {
           against its own normal, so a cluster of buys on an unusually hot day is visible as one.
         </p>
         <DataState
+          relation="v_opportunities"
           loading={oppQ.loading} error={oppQ.error} isEmpty={yes.length === 0}
           emptyTitle="No priced bands yet"
           emptyBody={<>Needs both a book snapshot and a model probability — GitHub Actions → <b>Probabilities</b>, after P0.3 has written books.</>}
@@ -203,7 +214,10 @@ export default function AnalyticsPage() {
 
       {/* ============================================ cost of the book === */}
       <section>
-        <h2 className="text-sm font-semibold">What the book costs you, per city</h2>
+        <div className="flex flex-wrap items-baseline gap-2">
+          <h2 className="text-sm font-semibold">What the book costs you, per city</h2>
+          <Freshness relation="book_snapshots" />
+        </div>
         <p className="mb-2 max-w-3xl text-[11px] leading-relaxed text-muted">
           Exactly one bucket pays, so the YES prices across a city&apos;s ladder should sum to about
           $1. What they actually sum to is the <b>overround</b> — the house&apos;s margin, and the
@@ -213,6 +227,7 @@ export default function AnalyticsPage() {
           edge engine will actually let you trade.
         </p>
         <DataState
+          relation="v_opportunities"
           loading={oppQ.loading} error={oppQ.error} isEmpty={bookCost.length === 0}
           emptyTitle="No priced ladders yet"
           emptyBody={<>Needs a book snapshot — n8n <b>P0.3</b> — and a model probability from GitHub Actions → <b>Probabilities</b>.</>}
@@ -290,7 +305,10 @@ export default function AnalyticsPage() {
 
       {/* =============================================== monte carlo ===== */}
       <section>
-        <h2 className="text-sm font-semibold">Monte Carlo — what a position actually does</h2>
+        <div className="flex flex-wrap items-baseline gap-2">
+          <h2 className="text-sm font-semibold">Monte Carlo — what a position actually does</h2>
+          <Freshness relation="band_probabilities" />
+        </div>
         <p className="mb-2 max-w-3xl text-[11px] leading-relaxed text-muted">
           The engine already computes each band&apos;s probability analytically, so simulating the
           same normal would only reproduce it. What is <b>not</b> obvious is the shape of a
@@ -307,11 +325,15 @@ export default function AnalyticsPage() {
         n={3}
         title="Did it make money?"
         body="The first group where a trade has to have happened. On a desk with every strategy switched off these are empty, and that is early rather than broken - the Strategies page is where that changes."
+        reads={["paper_trades", "signals", "ledger"]}
       />
 
       {/* ================================================= P&L curve ===== */}
       <section>
-        <h2 className="text-sm font-semibold">Realised P&amp;L</h2>
+        <div className="flex flex-wrap items-baseline gap-2">
+          <h2 className="text-sm font-semibold">Realised P&amp;L</h2>
+          <Freshness relation="paper_trades" />
+        </div>
         <p className="mb-2 max-w-3xl text-[11px] leading-relaxed text-muted">
           Cumulative net profit from closed paper trades, in settlement order. Net means after fees
           and spread — the desk quotes nothing gross.
@@ -327,7 +349,10 @@ export default function AnalyticsPage() {
 
       {/* ======================================= strategy attribution ==== */}
       <section>
-        <h2 className="text-sm font-semibold">Strategy attribution</h2>
+        <div className="flex flex-wrap items-baseline gap-2">
+          <h2 className="text-sm font-semibold">Strategy attribution</h2>
+          <Freshness relation="paper_trades" />
+        </div>
         <StrategyAttribution
           trades={tradesQ.data ?? []}
           signals={signalsQ.data ?? []}
@@ -341,7 +366,10 @@ export default function AnalyticsPage() {
 
       {/* ============================================== the data bank ==== */}
       <section>
-        <h2 className="text-sm font-semibold">The desk&apos;s own record</h2>
+        <div className="flex flex-wrap items-baseline gap-2">
+          <h2 className="text-sm font-semibold">The desk&apos;s own record</h2>
+          <Freshness relation="fact_band_outcome" />
+        </div>
         <p className="mb-2 max-w-3xl text-[11px] leading-relaxed text-muted">
           Every other chart on this page reads live tables that are overwritten by their own next
           run. The frozen facts — what was predicted, what the market charged, what actually
@@ -360,11 +388,15 @@ export default function AnalyticsPage() {
         n={4}
         title="Can it take size?"
         body="An edge you cannot fill is not an edge. Needs book snapshots from P0.3 and traded volume from P0.4."
+        reads={["trades_observed", "book_snapshots", "derived_capacity"]}
       />
 
       {/* ================================================= liquidity ===== */}
       <section>
-        <h2 className="text-sm font-semibold">Liquidity: quoted against traded</h2>
+        <div className="flex flex-wrap items-baseline gap-2">
+          <h2 className="text-sm font-semibold">Liquidity: quoted against traded</h2>
+          <Freshness relation="trades_observed" />
+        </div>
         <p className="mb-2 max-w-3xl text-[11px] leading-relaxed text-muted">
           Two different facts, plotted rather than merged. <b>Depth</b> is what the current quotes can
           absorb inside 5¢; <b>volume</b> is what actually changed hands. Up and to the right is a
@@ -414,7 +446,19 @@ export default function AnalyticsPage() {
  * groups are a dependency order. If group 1 is weak, nothing in group 2 can
  * be strong, and money made in group 3 on a weak group 1 was luck.
  */
-function GroupHeading({ n, title, body }: { n: number; title: string; body: string }) {
+function GroupHeading({
+  n, title, body, reads = [],
+}: {
+  n: number;
+  title: string;
+  body: string;
+  /**
+   * The tables this whole group stands on. Shown as chips so a weak group can
+   * be told apart from an unfilled one at a glance - which is the difference
+   * between "the model is bad" and "the job that feeds it stopped".
+   */
+  reads?: string[];
+}) {
   return (
     <div className="border-t border-border pt-5">
       <div className="flex items-baseline gap-2">
@@ -422,6 +466,11 @@ function GroupHeading({ n, title, body }: { n: number; title: string; body: stri
         <h2 className="text-base font-semibold">{title}</h2>
       </div>
       <p className="mt-0.5 max-w-3xl text-xs leading-relaxed text-muted">{body}</p>
+      {reads.length > 0 && (
+        <div className="mt-1.5">
+          <FreshnessRow relations={reads} />
+        </div>
+      )}
     </div>
   );
 }

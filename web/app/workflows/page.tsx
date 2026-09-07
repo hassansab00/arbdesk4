@@ -6,6 +6,7 @@ import ScheduleControl from "@/components/ScheduleControl";
 import ScopeControl from "@/components/ScopeControl";
 import { useQuery } from "@/lib/useQuery";
 import { DataState, InlineError } from "@/components/DataState";
+import { FreshnessRow } from "@/components/Provenance";
 import { fmtAge, fmtInt } from "@/lib/format";
 
 /**
@@ -46,6 +47,15 @@ const CATALOGUE: Array<{
   variants?: Array<{ label: string; body: Record<string, unknown> }>;
   note?: string;
 }> = [
+  {
+    job: "P2.1_relearn",
+    label: "Relearn (the learning chain)",
+    schedule: "on demand only",
+    what:
+      "Asks GitHub to run the four learning Actions in order - freeze the settled days, measure how wrong each model was, refit the desk's own correction per city, then produce the corrected forward forecast. Each is queued a few minutes after the one before, because a stage reads what the one before it wrote.",
+    note:
+      "This is the only workflow that holds a GitHub token, and deliberately so: the Learn button on Synthesis calls this webhook rather than GitHub, because a page that could start a build would be a page carrying a credential. Put a fine-grained token scoped to this one repository, with Actions: Read and write, in its Config node - never in Vercel and never in a NEXT_PUBLIC_ variable.",
+  },
   {
     job: "P0.2_market_discovery",
     label: "Market Discovery",
@@ -256,6 +266,11 @@ export default function WorkflowsPage() {
             which is still useful — the schedules populate it on their own.
           </p>
         )}
+        {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
+            identical, and only one of them is worth investigating. */}
+        <div className="mt-2">
+          <FreshnessRow relations={["settings", "ingest_log"]} />
+        </div>
       </div>
 
       <ScheduleControl jobs={CATALOGUE.map((c) => ({ job: c.job, label: c.label }))} />
