@@ -1,0 +1,108 @@
+name: Daily Pipeline (forecasts, settlement, skill, databank, derived)
+
+# ONE RUNNER INSTEAD OF SIX.
+#
+# These ran as six workflows spread across the small hours - backtest 02:00,
+# settlement 04:00, derived recompute 05:00, forecast ingest 05:20, skill
+# 06:00, databank 07:30 - and the spacing was a guess that each had finished
+# before the next started. Six runs, six checkouts, six pip installs, six
+# billed minutes minimum, for work that is one dependency chain.
+#
+# THE ORDER IS THE POINT, and merging fixed one place it was wrong. capacity.py
+# says in its own comment that the calibration feedback "reads the frozen
+# evidence databank writes, and this job is what runs after it" - but derived
+# recompute fired at 05:00 and databank at 07:30, so it ran two and a half
+# hours BEFORE the evidence it was meant to read, measuring against a databank
+# a day old. Immaterial to a 30-day statistic, wrong as a design, and free to
+# fix once the two are steps in one job. Derived recompute now runs after the
+# databank freeze, which is what the code always said it did.
+#
+# Each step carries `if: !cancelled()` so a failure does not skip the rest -
+# that is what the six separate workflows gave you, and losing it would mean
+# one bad settlement run silently costing you a day of every downstream table.
+# The job still fails, and names the step.
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      databank_days:
+        description: 'How many days back to look for settled days'
+        required: false
+        default: '7'
+      skill_days:
+        description: 'How many days of history to measure skill over'
+        required: false
+        default: '400'
+
+concurrency:
+  group: pipeline-daily
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: scripts
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11', cache: 'pip' }
+      - run: pip install -r requirements.txt
+
+      # 1. Yesterday's Open-Meteo runs, so skill has something to score.
+      #    A BACKFILL over a date range is not this - it is forecasts.yml,
+      #    which stays a manual workflow because it can run for hours.
+      - name: Ingest forecasts (last 10 days)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 30
+        run: python scripts/ingest_forecasts.py
+
+      # 2. Settle what resolved. Everything below reads settled outcomes.
+      - name: Settlement sweep
+        if: ${{ !cancelled() }}
+        timeout-minutes: 20
+        run: python scripts/settlement.py
+
+      # 3. Measure forecast skill against those outcomes - this is where
+      #    mae_c comes from, and mae_c sets the width of every distribution.
+      - name: Measure forecast skill
+        if: ${{ !cancelled() }}
+        timeout-minutes: 30
+        run: python scripts/measure_skill.py ${{ github.event.inputs.skill_days || '400' }}
+
+      # 4. Freeze the desk's own record - what it predicted, what the market
+      #    said, what happened. These rows are never updated: a maximum frozen
+      #    too early is wrong forever, which is why it waits for settlement.
+      - name: Freeze settled city-days
+        if: ${{ !cancelled() }}
+        timeout-minutes: 20
+        run: python scripts/databank.py --days ${{ github.event.inputs.databank_days || '7' }}
+
+      # 5. Re-fit the calibration map on everything banked. Refuses to write a
+      #    map below its minimum sample count, so it is safe from day one.
+      - name: Re-fit calibration map
+        if: ${{ !cancelled() }}
+        timeout-minutes: 15
+        run: python scripts/calibration.py
+
+      # 6. Capacity, correlation, peak hour, climate cache, the day-feature
+      #    cache - and the calibration FEEDBACK, which measures whether the
+      #    sigma the desk quoted turned out honest. After the databank freeze,
+      #    which is the ordering the old schedule had backwards.
+      - name: Derived recompute
+        if: ${{ !cancelled() }}
+        timeout-minutes: 30
+        run: python scripts/capacity.py
+
+      # 7. Safety net: run anything left queued in backtest_runs. Usually a
+      #    no-op. An explicit backtest is backtest.yml, run by hand.
+      - name: Queued backtests
+        if: ${{ !cancelled() }}
+        timeout-minutes: 30
+        run: python scripts/backtest/runner.py

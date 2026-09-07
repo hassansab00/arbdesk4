@@ -103,11 +103,16 @@ def runs_per_30_days(expr):
 # runs - not their length - is what the schedules control, and it is the only
 # figure these files actually determine.
 #
-# Measured durations on this repo: observations ~2 min, everything else under
-# one. Budget at 2 billed minutes a run, and 700 scheduled runs is ~1,400
-# minutes, leaving ~600 for CI. That is the whole allowance, which is why
-# adding a schedule is a decision and not a detail.
-SCHEDULED_RUN_BUDGET = 700
+# The desk sat at 665 scheduled runs a month across twelve workflows, most of
+# them paying a full billed minute for 20 seconds of checkout, setup-python
+# and pip install before doing 16 to 41 seconds of work. Merging the two
+# dependency chains into one runner each - pipeline_intraday and
+# pipeline_daily - and halving the archive feed took it to 215.
+#
+# Budget 260: room to add something, not room to drift back. At ~2 billed
+# minutes a run that is ~520 of the 2,000, leaving the rest for CI and for a
+# manual backfill, which is the one job here that can run for hours.
+SCHEDULED_RUN_BUDGET = 260
 
 
 def test_the_scheduled_workflows_fit_in_the_minute_allowance():
@@ -230,3 +235,87 @@ def test_a_workflow_that_retriggers_itself_is_bounded():
             assert "depth" in cond, (
                 f"{name}: the re-trigger job does not check depth, so nothing "
                 f"stops the chain")
+
+
+def test_nothing_polls_on_a_cron():
+    """A cron that fires more often than hourly is a poll, and a poll bills a
+    full minute each time to discover there is nothing to do.
+
+    backtest.yml used to run every 10 minutes: 4,320 runs a month, ~6,500
+    billed minutes against a 2,000-minute allowance, almost all of it spent
+    finding an empty queue. Work that has to start promptly belongs on
+    repository_dispatch, which costs nothing until something asks."""
+    for name, doc in workflows():
+        for entry in (triggers(doc).get("schedule") or []):
+            expr = entry["cron"]
+            minute = expr.split()[0]
+            assert minute != "*" and "/" not in minute, (
+                f"{name} has cron {expr!r} - that fires within the hour, which "
+                f"is a poll. Use repository_dispatch for prompt work.")
+
+
+def test_the_pipelines_do_not_skip_a_step_after_a_failure():
+    """Merging six workflows into one job traded six independent runs for one
+    chain, and a chain stops at the first failure by default.
+
+    That would mean a broken settlement run silently costing a day of skill,
+    databank, calibration and every derived table - six things going stale
+    because one thing broke, which is worse than the bill the merge saved.
+    Every step carries `if: !cancelled()`, so a failure is reported and the
+    rest still runs."""
+    import glob
+
+    checked = 0
+    for path in sorted(glob.glob(os.path.join(WF_DIR, "pipeline_*.yml"))):
+        doc = yaml.safe_load(open(path))
+        name = os.path.basename(path)
+        for job_name, job in (doc.get("jobs") or {}).items():
+            for step in job["steps"]:
+                if "uses" in step or step.get("run", "").startswith("pip install"):
+                    continue          # setup: a failure here IS fatal
+                cond = str(step.get("if", ""))
+                assert "cancelled()" in cond, (
+                    f"{name} / {step.get('name', step.get('run'))!r} has no "
+                    f"`if: !cancelled()` - one failure upstream silently skips it")
+                assert step.get("timeout-minutes"), (
+                    f"{name} / {step.get('name')!r} has no step timeout, so one "
+                    f"hang burns the whole job's budget")
+                checked += 1
+    assert checked >= 10, f"expected the pipeline steps to be checked, saw {checked}"
+
+
+def test_n8n_only_dispatches_workflows_that_exist():
+    """P2.1 fires GitHub Actions by FILENAME, and nothing connected the two.
+
+    Merging nine workflows into two pipelines left P2.1 dispatching
+    databank.yml, skill.yml and model_forecast.yml - three files that no longer
+    exist. GitHub answers a dispatch to a missing workflow with a 404, so the
+    relearn chain would have reported failures for stages that were simply
+    pointed at the wrong name, days after the rename, with nothing tying the
+    cause to the effect.
+
+    A workflow file may be renamed. It may not be renamed without the thing
+    that fires it following."""
+    import glob
+    import json as _json
+    import re as _re
+
+    have = {os.path.basename(p) for p in glob.glob(os.path.join(WF_DIR, "*.yml"))}
+    n8n_dir = os.path.join(ROOT, "n8n")
+    seen = 0
+    for path in sorted(glob.glob(os.path.join(n8n_dir, "*.json"))):
+        doc = _json.load(open(path))
+        for node in doc.get("nodes", []):
+            code = node.get("parameters", {}).get("jsCode", "")
+            # only the stage table, not the prose around it: a comment may
+            # name an old file precisely to explain what it was renamed from
+            for line in code.splitlines():
+                if line.lstrip().startswith("//"):
+                    continue
+                for ref in _re.findall(r"'([A-Za-z0-9_]+\.yml)'", line):
+                    seen += 1
+                    assert ref in have, (
+                        f"{os.path.basename(path)} / {node['name']} dispatches "
+                        f"{ref}, which is not in .github/workflows/. Every "
+                        f"dispatch to it 404s.")
+    assert seen >= 3, f"expected to find the dispatch table, saw {seen} references"

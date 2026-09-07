@@ -40,14 +40,14 @@ shows is already tight. GitHub Actions has no per-run execution quota.
 | P1.2 NWS Monitor (observations, alerts, solar transit) | **n8n**, every 2h + on demand | `n8n/P1.2_nws_monitor.template.json` |
 | P1.3 NWS Forecast (second forecast model) | **n8n**, every 6h | `n8n/P1.3_nws_forecast.template.json` |
 | P1.4 NWS Gridpoint (forecast conditions) | **n8n**, every 6h | `n8n/P1.4_nws_gridpoint.template.json` |
-| P2.1 Probability + Edge Pipeline | GitHub Actions, 4x/day | `.github/workflows/probabilities.yml` -> `probability_engine.py` + `edge_engine.py` |
-| P2.2 Signal Engine | GitHub Actions, 4x/day | `.github/workflows/signals.yml` -> `scripts/signals.py` |
-| P2.3 Settlement Sweep | GitHub Actions, daily | `.github/workflows/settlement.yml` -> `scripts/settlement.py` |
-| P2.4 Derived Recompute | GitHub Actions, daily | `.github/workflows/derived_recompute.yml` -> `scripts/capacity.py` (+ SQL RPCs) |
+| P2.1 Probability + Edge Pipeline | GitHub Actions, 4x/day | `.github/workflows/pipeline_intraday.yml` -> `probability_engine.py` + `edge_engine.py` |
+| P2.2 Signal Engine | GitHub Actions, 4x/day | `.github/workflows/pipeline_intraday.yml` -> `scripts/signals.py` |
+| P2.3 Settlement Sweep | GitHub Actions, daily | `.github/workflows/pipeline_daily.yml` -> `scripts/settlement.py` |
+| P2.4 Derived Recompute | GitHub Actions, daily | `.github/workflows/pipeline_daily.yml` -> `scripts/capacity.py` (+ SQL RPCs) |
 | P3.1 Email Digests | **n8n** | `n8n/P3.1_email_digests.template.json` |
 | P4.1 Health Watchdog | **n8n** | `n8n/P4.1_health_watchdog.template.json` |
 | Weather Model fit | GitHub Actions, weekly | `.github/workflows/weather_model.yml` -> `scripts/weather_model.py` |
-| Model Forecast (AD4's own prediction) | GitHub Actions, 4x/day | `.github/workflows/model_forecast.yml` -> `scripts/weather_model.py --predict-only` |
+| Model Forecast (AD4's own prediction) | GitHub Actions, 4x/day | `.github/workflows/pipeline_intraday.yml` -> `scripts/weather_model.py --predict-only` |
 | Backtest runner | GitHub Actions, polls every 10 min | `.github/workflows/backtest.yml` -> `scripts/backtest/runner.py` |
 
 > **Which scheduler, and why:** `docs/compute_budget.md` sets out the split -

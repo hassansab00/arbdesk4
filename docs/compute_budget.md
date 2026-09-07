@@ -63,22 +63,63 @@ as the fallback for when n8n is down or not yet imported.
 
 ## What the schedules cost now
 
-Two workflows were 89% of the bill, and both were pollers:
+Three rounds of cutting, each finding a different kind of waste.
+
+**Round 1 — the pollers.** Two workflows were 89% of the bill and both were
+polling for work that usually was not there:
 
 | | before | after |
 |---|---|---|
-| `backtest.yml` | every 10 min — 4,320 runs, ~6,480 min | daily + on demand — 30 runs |
-| `live_weather.yml` | every 15 min — 2,880 runs, ~4,320 min | manual only — 0 |
-| `observations.yml` | every 2 h — 360 runs | every 6 h — 120 runs |
-| everything else | unchanged | unchanged, with pip cached |
-| **total** | **~12,100 min** | **~800 min** |
+| `backtest.yml` | every 10 min - 4,320 runs, ~6,480 min | on demand - 0 scheduled |
+| `live_weather.yml` | every 15 min - 2,880 runs, ~4,320 min | manual only - 0 |
+| `observations.yml` | every 2 h - 360 runs | every 6 h - 120 runs |
+| **total** | **~12,100 min** | **~970 min** |
 
-`pip install` now restores from cache on every workflow, which is worth about
-25 seconds a run — around 300 minutes a month on its own.
+**Round 2 — the setup tax.** ~970 minutes still ran out the 2,000-minute
+allowance in early September, because the remaining cost was not the work. A
+typical job here spends 20-30 seconds on checkout, `setup-python` and
+`pip install` and then 16-41 seconds doing anything - and GitHub bills each
+job rounded UP to a whole minute. **More than half of every billed minute was
+setup**, paid again for each workflow.
 
-A backtest is something you *ask for*, so it no longer polls for one. Queue it
-in AD4 → Backtest, then either press **Run workflow**, or fire it instantly from
-anything holding a token:
+Two chains were running as nine separate workflows:
+
+| chain | was | now |
+|---|---|---|
+| model forecast -> probabilities -> edges -> signals | 3 workflows, 15 min apart, 360 runs/mo | `pipeline_intraday.yml`, one runner, **120 runs/mo** |
+| forecasts -> settlement -> skill -> databank -> calibration -> derived -> backtest sweep | 6 workflows spread over 5 hours, 180 runs/mo | `pipeline_daily.yml`, one runner, **30 runs/mo** |
+
+The spacing between them was never a dependency - it was a guess that the
+previous one had finished. As steps in one job the order is real, and the
+setup is paid once instead of nine times.
+
+**Round 3 — the archive feed.** `observations.yml` re-fetches the **last two
+days** on every run, so a 6-hourly cadence covered every hour eight times
+over. At 12-hourly it still covers it four times over, and nothing reads that
+table for a live number - `live_weather` comes from n8n's P1.5 every 3 hours
+and P1.2's NWS observations every 2. 120 runs becomes 60.
+
+| | runs/mo |
+|---|---|
+| `pipeline_intraday.yml` | 120 |
+| `observations.yml` | 60 |
+| `pipeline_daily.yml` | 30 |
+| `weather_model.yml` | 4 |
+| `archive_observations.yml` | 1 |
+| **total** | **215** (from 665) |
+
+At ~2 billed minutes a run that is roughly **520 minutes a month**, from ~970.
+`tests/test_github_actions.py` fails if the count drifts past 260.
+
+**CI was the other half.** `tests.yml` ran on every push with no branch filter
+*and* on pull requests, so one commit was billed two or three times - the branch
+push, the pull request on that same sha, and the push to main on merge. Both CI
+workflows now run on pull requests and on main only, with a concurrency group
+that cancels a superseded run rather than paying for it.
+
+A backtest is something you *ask for*, so it no longer polls or runs on a cron
+of its own. Queue it in AD4 -> Backtest, then either press **Run workflow**, or
+fire it instantly from anything holding a token:
 
 ```bash
 curl -X POST -H "Authorization: Bearer $GH_PAT" \
@@ -87,42 +128,33 @@ curl -X POST -H "Authorization: Bearer $GH_PAT" \
      -d '{"event_type":"backtest-queued"}'
 ```
 
-A daily sweep still picks up anything left queued, so nothing is forgotten.
+The last step of the daily pipeline still sweeps anything left queued, on a
+runner that job has already paid for, so nothing is forgotten.
 
 ## Is every Action necessary? One line each
 
-Sixteen workflow files. Thirteen run on a schedule, three do not. Counts are
-runs per month; GitHub bills a **minimum of one minute per job**, rounded up, so
-runs and minutes are close to the same number for the short ones.
+Nine workflow files. Five run on a schedule, four do not. GitHub bills a
+**minimum of one minute per job**, rounded up, so for the short ones runs and
+minutes are close to the same number.
 
 | Action | Runs/mo | Necessary? |
 |---|---|---|
-| **Observations** (IEM METAR) | 120 | **Yes.** The second temperature source. Without it there is nothing to check the settlement source against, and `docs/settlement_verification.md` has no evidence base. |
-| **Forecasts** (Open-Meteo) | 30 | **Yes.** The second forecast model. Its disagreement with NWS is what widens sigma — with one model the spread is zero and the whole mechanism is dormant. |
-| **Measure Forecast Skill** | 30 | **Yes.** Scores every model against what happened. This is the number that decides whether AD4's forecast is worth trading on. |
-| **Probability + Edge Pipeline** | 120 | **Yes.** The model. Nothing downstream exists without it. |
-| **Signal Engine** | 120 | **Yes.** Turns edge into signals. Cheap while every strategy is disabled, and it is what you turn on first. |
-| **Settlement Sweep** | 30 | **Yes.** A day that never settles never enters the record, and the record is the only durable asset here. |
-| **Data Bank** | 30 | **Yes.** Freezes what was predicted against what happened. Every improvement is measured against it, and it cannot be reconstructed later. |
-| **Derived Recompute** | 30 | **Yes.** Refreshes the caches every page load reads. Skip it and the UI goes back to timing out. |
-| **Weather Model** | 4 | **Yes,** and weekly is right — a regression on 120+ days barely moves day to day. |
-| **Model Forecast** | 120 | **Yes.** Applies the fitted model forward. Separate from the fit because predicting is cheap and fitting is not. |
+| **Intraday Pipeline** | 120 | **Yes.** Model forecast, band probabilities, edges, signals - the whole pricing chain, four times a day. Nothing downstream exists without it. |
+| **Observations** (IEM METAR) | 60 | **Yes.** The second temperature source. Without it there is nothing to check the settlement source against, and `docs/settlement_verification.md` has no evidence base. |
+| **Daily Pipeline** | 30 | **Yes.** Forecast ingest, settlement, skill, databank, calibration, derived caches, queued backtests. Every one writes history that cannot be reconstructed later, or a cache the UI times out without. |
+| **Weather Model** | 4 | **Yes,** and weekly is right - a regression on 120+ days barely moves day to day. |
 | **Archive Observations** | 1 | **Yes, monthly.** This is what keeps the database inside the free tier. |
-| **Backtest** | 30 | **Kept, but it no longer polls.** It used to run every 10 minutes looking for queued work — 4,320 runs, and 54% of the entire bill. A backtest is something you ask for. |
-| **Live Weather Monitor** | 0 | **No — superseded, kept as a fallback.** n8n P1.2 does this better and far cheaper. Manual trigger only. Use it if n8n is down. |
-| **Tests** | on push | Not a data job. Free-ish and it is what stops a broken script reaching a schedule. |
-| **Web build** | on push | Not a data job. Vercel's build conditions. |
-| **Verify Resolution Source** | manual | An audit you run when you want it, not a schedule. |
+| **Forecasts** (backfill) | 0 | **On demand.** The daily ingest is step 1 of the daily pipeline; this file is the multi-hour backfill over a date range, which has no business on a cron. Bounded to 8 self-triggered links. |
+| **Backtest** | 0 | **On demand.** Repository dispatch or Run workflow. The daily sweep catches anything left queued. |
+| **Live Weather Monitor** | 0 | **Superseded, kept as a fallback.** n8n P1.2 does this better and far cheaper. Use it if n8n is down. |
+| **Verify Resolution Source** | 0 | An audit you run when you want it, not a schedule. |
+| **Tests** | PRs + main | Not a data job. What stops a broken script reaching a schedule. |
+| **Web build** | PRs + main, `web/**` only | Not a data job. Reproduces Vercel's build conditions. |
 
-So: **twelve are load-bearing, one is monthly, one is on demand, one is a
-fallback, three are not data jobs at all.** Nothing here is redundant with n8n —
-see "Not duplication, deliberate" above for the two pairs that look like they
-are.
-
-If you need to cut further, the honest order is: Signal Engine and Model
-Forecast from 4×/day to 2×/day (−120 runs), then Backtest to weekly (−26). Do
-not cut Observations, Settlement or Data Bank — those three write history that
-cannot be recovered afterwards.
+If you need to cut further, the honest order is: the intraday pipeline from
+4x/day to 3x (-30 runs) or 2x (-60), then observations to daily (-30). Do not
+cut settlement or the databank freeze - those write history that cannot be
+recovered afterwards, and a day missed is a day gone.
 
 ## The option that removes the limit entirely
 

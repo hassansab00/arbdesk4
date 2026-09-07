@@ -15,7 +15,7 @@ computed when city coverage was wildly uneven (10 days for some cities,
 This Claude Code session does not hold `SUPABASE_URL` /
 `SUPABASE_SERVICE_KEY`, and the GitHub App token available to it returned
 `403 Resource not accessible by integration` when it tried to dispatch
-`.github/workflows/skill.yml` via the Actions API. So the actual
+`.github/workflows/pipeline_daily.yml` via the Actions API. So the actual
 re-measurement has not happened yet from here — writing numbers into this
 file without running the job would be exactly the invented-empirical-claim
 mistake §0.3 rule 1 exists to prevent.

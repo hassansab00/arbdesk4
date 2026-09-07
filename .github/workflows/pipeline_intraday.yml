@@ -1,0 +1,82 @@
+name: Intraday Pipeline (model, probabilities, edges, signals)
+
+# ONE RUNNER INSTEAD OF THREE, four times a day.
+#
+# These were three separate workflows firing fifteen minutes apart -
+# model_forecast at :15, probabilities at :30, signals at :35 - which is a
+# chain pretending not to be one. Each paid its own checkout, its own
+# setup-python and its own pip install before doing 16 to 41 seconds of
+# actual work, and GitHub bills every run rounded UP to a whole minute. Three
+# runs of mostly-setup cost three billed minutes; one run doing all four
+# scripts costs two.
+#
+# It is also more correct. The gaps between them were a guess that the
+# previous stage had finished - nothing checked. Now signals genuinely runs
+# after the edges it reads, because it is the next step in the same job.
+#
+# Each step carries `if: !cancelled()` so a failure does NOT skip the rest:
+# that preserves exactly what the separate workflows gave you, where a broken
+# probability run did not stop signals from running on the previous one. The
+# job still fails, and the step that failed is named.
+
+on:
+  schedule:
+    # 15 min after each of P0.2's market-discovery cycles (1,7,13,19 UTC), so
+    # a fresh forecast and a fresh book have something current to price.
+    - cron: '15 1,7,13,19 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Model forecast: compute but do not write (true/false)'
+        required: false
+        default: 'false'
+
+concurrency:
+  # A cycle still running when the next one fires means the desk is behind,
+  # not that it needs two copies of itself competing for the same rows.
+  group: pipeline-intraday
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: scripts
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+jobs:
+  intraday:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11', cache: 'pip' }
+      - run: pip install -r requirements.txt
+
+      # 1. The model's own forecast, so probabilities have a second opinion
+      #    to price against rather than only the ingested one.
+      - name: Model forecast
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: python scripts/weather_model.py --predict-only ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
+
+      # 2. Band probabilities from forecast + measured skill + calibration.
+      - name: Band probabilities
+        if: ${{ !cancelled() }}
+        timeout-minutes: 15
+        run: python scripts/probability_engine.py
+
+      # 3. Edges. Python rather than the Postgres compute_edges RPC that the
+      #    n8n spec (§7.6) describes: the ladder-walk and fee-curve math
+      #    already lives in cost_model.py/edge_engine.py, and a second
+      #    implementation in PL/pgSQL would be two things to keep in sync.
+      #    See docs/architecture_deviations.md.
+      - name: Edges
+        if: ${{ !cancelled() }}
+        timeout-minutes: 15
+        run: python scripts/edge_engine.py
+
+      # 4. Signals, from the edges written one step above.
+      - name: Signals
+        if: ${{ !cancelled() }}
+        timeout-minutes: 15
+        run: python scripts/signals.py

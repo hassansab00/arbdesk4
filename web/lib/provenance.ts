@@ -22,37 +22,51 @@ export const FILLED_BY: Record<string, Filler[]> = {
   "anomalies": [
     {
       "cadence": "daily",
-      "file": "probabilities.yml",
+      "file": "pipeline_intraday.yml",
       "how": "scripts/edge_engine.py",
       "kind": "action",
-      "name": "Probability + Edge Pipeline"
+      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
     }
   ],
   "backtest_results": [
     {
-      "cadence": "daily",
+      "cadence": "only when you run it",
       "file": "backtest.yml",
       "how": "scripts/backtest/runner.py",
       "kind": "action",
       "name": "Backtest"
+    },
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/backtest/runner.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
   "backtest_trades": [
     {
-      "cadence": "daily",
+      "cadence": "only when you run it",
       "file": "backtest.yml",
       "how": "scripts/backtest/runner.py",
       "kind": "action",
       "name": "Backtest"
+    },
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/backtest/runner.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
   "band_probabilities": [
     {
       "cadence": "daily",
-      "file": "probabilities.yml",
+      "file": "pipeline_intraday.yml",
       "how": "scripts/probability_engine.py",
       "kind": "action",
-      "name": "Probability + Edge Pipeline"
+      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
     }
   ],
   "bands": [
@@ -101,37 +115,37 @@ export const FILLED_BY: Record<string, Filler[]> = {
   "derived_calibration_adjustment": [
     {
       "cadence": "daily",
-      "file": "derived_recompute.yml",
+      "file": "pipeline_daily.yml",
       "how": "scripts/capacity.py",
       "kind": "action",
-      "name": "Derived Recompute (capacity, correlation, peak hour, caches)"
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
   "derived_capacity": [
     {
       "cadence": "daily",
-      "file": "derived_recompute.yml",
+      "file": "pipeline_daily.yml",
       "how": "scripts/capacity.py",
       "kind": "action",
-      "name": "Derived Recompute (capacity, correlation, peak hour, caches)"
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
   "derived_city_climate": [
     {
       "cadence": "daily",
-      "file": "derived_recompute.yml",
+      "file": "pipeline_daily.yml",
       "how": "scripts/capacity.py",
       "kind": "action",
-      "name": "Derived Recompute (capacity, correlation, peak hour, caches)"
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
   "derived_city_correlation": [
     {
       "cadence": "daily",
-      "file": "derived_recompute.yml",
+      "file": "pipeline_daily.yml",
       "how": "scripts/capacity.py",
       "kind": "action",
-      "name": "Derived Recompute (capacity, correlation, peak hour, caches)"
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
   "derived_city_day_features": [
@@ -144,10 +158,10 @@ export const FILLED_BY: Record<string, Filler[]> = {
     },
     {
       "cadence": "daily",
-      "file": "derived_recompute.yml",
+      "file": "pipeline_daily.yml",
       "how": "scripts/capacity.py",
       "kind": "action",
-      "name": "Derived Recompute (capacity, correlation, peak hour, caches)"
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
   "derived_city_day_volume": [
@@ -169,28 +183,28 @@ export const FILLED_BY: Record<string, Filler[]> = {
     },
     {
       "cadence": "daily",
-      "file": "derived_recompute.yml",
+      "file": "pipeline_daily.yml",
       "how": "scripts/capacity.py",
       "kind": "action",
-      "name": "Derived Recompute (capacity, correlation, peak hour, caches)"
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
   "derived_forecast_skill": [
     {
       "cadence": "daily",
-      "file": "skill.yml",
+      "file": "pipeline_daily.yml",
       "how": "scripts/measure_skill.py",
       "kind": "action",
-      "name": "Measure Forecast Skill"
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
   "derived_model_forecast": [
     {
       "cadence": "daily",
-      "file": "model_forecast.yml",
+      "file": "pipeline_intraday.yml",
       "how": "scripts/weather_model.py",
       "kind": "action",
-      "name": "Model Forecast"
+      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
     },
     {
       "cadence": "weekly",
@@ -203,10 +217,10 @@ export const FILLED_BY: Record<string, Filler[]> = {
   "derived_weather_model": [
     {
       "cadence": "daily",
-      "file": "model_forecast.yml",
+      "file": "pipeline_intraday.yml",
       "how": "scripts/weather_model.py",
       "kind": "action",
-      "name": "Model Forecast"
+      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
     },
     {
       "cadence": "weekly",
@@ -219,62 +233,62 @@ export const FILLED_BY: Record<string, Filler[]> = {
   "derived_weather_peak": [
     {
       "cadence": "daily",
-      "file": "derived_recompute.yml",
+      "file": "pipeline_daily.yml",
       "how": "scripts/capacity.py",
       "kind": "action",
-      "name": "Derived Recompute (capacity, correlation, peak hour, caches)"
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
   "edges": [
     {
       "cadence": "daily",
-      "file": "probabilities.yml",
+      "file": "pipeline_intraday.yml",
       "how": "scripts/edge_engine.py",
       "kind": "action",
-      "name": "Probability + Edge Pipeline"
+      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
     }
   ],
   "fact_band_outcome": [
     {
       "cadence": "daily",
-      "file": "databank.yml",
+      "file": "pipeline_daily.yml",
       "how": "scripts/databank.py",
       "kind": "action",
-      "name": "Data Bank"
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
   "fact_forecast_outcome": [
     {
       "cadence": "daily",
-      "file": "databank.yml",
+      "file": "pipeline_daily.yml",
       "how": "scripts/databank.py",
       "kind": "action",
-      "name": "Data Bank"
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
   "fact_signal_outcome": [
     {
       "cadence": "daily",
-      "file": "databank.yml",
+      "file": "pipeline_daily.yml",
       "how": "scripts/databank.py",
       "kind": "action",
-      "name": "Data Bank"
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
   "ledger": [
     {
       "cadence": "daily",
-      "file": "settlement.yml",
+      "file": "pipeline_daily.yml",
       "how": "scripts/settlement.py",
       "kind": "action",
-      "name": "Settlement Sweep"
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     },
     {
       "cadence": "daily",
-      "file": "signals.yml",
+      "file": "pipeline_intraday.yml",
       "how": "scripts/signals.py",
       "kind": "action",
-      "name": "Signal Engine"
+      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
     },
     {
       "cadence": "only when you run it",
@@ -326,37 +340,37 @@ export const FILLED_BY: Record<string, Filler[]> = {
   "paper_trades": [
     {
       "cadence": "daily",
-      "file": "signals.yml",
+      "file": "pipeline_intraday.yml",
       "how": "scripts/signals.py",
       "kind": "action",
-      "name": "Signal Engine"
+      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
     }
   ],
   "settings": [
     {
       "cadence": "daily",
-      "file": "databank.yml",
+      "file": "pipeline_daily.yml",
       "how": "scripts/calibration.py",
       "kind": "action",
-      "name": "Data Bank"
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
   "signals": [
     {
       "cadence": "daily",
-      "file": "signals.yml",
+      "file": "pipeline_intraday.yml",
       "how": "scripts/signals.py",
       "kind": "action",
-      "name": "Signal Engine"
+      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
     }
   ],
   "strategy_conflicts": [
     {
       "cadence": "daily",
-      "file": "signals.yml",
+      "file": "pipeline_intraday.yml",
       "how": "scripts/signals.py",
       "kind": "action",
-      "name": "Signal Engine"
+      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
     }
   ],
   "trades_observed": [
@@ -409,11 +423,18 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "weather_forecasts": [
     {
-      "cadence": "daily",
+      "cadence": "only when you run it",
       "file": "forecasts.yml",
       "how": "scripts/ingest_forecasts.py",
       "kind": "action",
       "name": "Forecasts (Open-Meteo Previous Runs)"
+    },
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/ingest_forecasts.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     },
     {
       "cadence": "whenever its n8n schedule fires",

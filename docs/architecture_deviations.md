@@ -21,7 +21,7 @@ and not I/O bound" -> job runs as a GitHub Action, not inline SQL).
 **Edge computation (Task 6 / §7.6 P2.1).** The spec's n8n workflow calls
 `rpc/compute_edges` "runs entirely in Postgres, no external compute
 needed." This build instead runs `scripts/edge_engine.py` as a second step
-in `.github/workflows/probabilities.yml`, right after
+in `.github/workflows/pipeline_intraday.yml`, right after
 `probability_engine.py`. n8n's role (Task 15) is to fire that GitHub
 Actions run (or simply do nothing here, since the workflow is already on
 its own cron) and then poll `ingest_log` for the result, exactly as it

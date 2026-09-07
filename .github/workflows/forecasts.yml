@@ -1,8 +1,10 @@
 name: Forecasts (Open-Meteo Previous Runs)
 
+# NO SCHEDULE ANY MORE. The daily "last 10 days" ingest is step 1 of
+# pipeline_daily.yml, sharing that job's runner instead of paying for its own.
+# What is left here is the BACKFILL: a date range that can run for hours and
+# re-trigger itself, which has no business on a daily cron.
 on:
-  schedule:
-    - cron: '20 5 * * *'
   workflow_dispatch:
     inputs:
       start:

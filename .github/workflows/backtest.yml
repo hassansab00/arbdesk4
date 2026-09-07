@@ -13,12 +13,13 @@ name: Backtest
 #          -H "Accept: application/vnd.github+json" \
 #          https://api.github.com/repos/OWNER/REPO/dispatches \
 #          -d '{"event_type":"backtest-queued"}'
-#   the daily sweep        a safety net, so a queued run is never forgotten
+#   the daily sweep        a safety net, so a queued run is never forgotten -
+#                          now the last step of pipeline_daily.yml, on a runner
+#                          that job has already paid for, rather than its own
+#                          cron here
 #
-# 4,320 runs a month becomes 30.
+# 4,320 runs a month becomes 0 of its own.
 on:
-  schedule:
-    - cron: '0 2 * * *'          # daily safety net for anything left queued
   repository_dispatch:
     types: [backtest-queued]
   workflow_dispatch: {}

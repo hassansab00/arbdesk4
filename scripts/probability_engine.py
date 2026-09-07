@@ -26,7 +26,7 @@ does not exist yet.
     normalise         = the 11 bands sum to exactly 1.0.
 
 Run standalone (`python probability_engine.py`) or via
-.github/workflows/probabilities.yml, 4x/day aligned after model cycles.
+.github/workflows/pipeline_intraday.yml, 4x/day aligned after model cycles.
 """
 import datetime as dt
 import math

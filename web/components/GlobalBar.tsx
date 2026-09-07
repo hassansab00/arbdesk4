@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { fmtCompactUsd, fmtUsd, pnlColor } from "@/lib/format";
 
 // Model cycles run 4x/day at 01:30/07:30/13:30/19:30 UTC (30 min after
-// P0.2 market discovery, matching .github/workflows/probabilities.yml).
+// P0.2 market discovery, matching .github/workflows/pipeline_intraday.yml).
 const MODEL_CYCLE_HOURS_UTC = [1.5, 7.5, 13.5, 19.5];
 
 function nextModelCycle(now: Date): Date {
