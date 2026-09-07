@@ -87,3 +87,76 @@ def test_open_tail_gets_all_remaining_mass():
 def test_normal_cdf_symmetry():
     assert math.isclose(pe.normal_cdf(0.0, 0.0, 1.0), 0.5)
     assert pe.normal_cdf(-1.0, 0.0, 1.0) < 0.5 < pe.normal_cdf(1.0, 0.0, 1.0)
+
+
+# ---------------------------------------------------------------------------
+# THE LOOP THAT WAS LEFT OPEN
+#
+# mae_c makes the centre right and sets a starting width. Nothing measured
+# whether the resulting distribution turned out HONEST: a model can have
+# excellent mae_c and still be systematically overconfident - the centre right,
+# the spread too narrow - and every edge computed from a too-narrow
+# distribution is overstated, so the desk sizes UP on exactly the trades it
+# should size down. v_calibration measured it all along and nothing read it.
+#
+# sql/ad4_45 measures sd of (observed - forecast)/sigma over settled days,
+# which is 1 if and only if the stated sigma was honest, and the engine
+# multiplies by it.
+# ---------------------------------------------------------------------------
+
+def _engine():
+    import importlib
+    import probability_engine as pe
+    importlib.reload(pe)
+    return pe
+
+
+def test_an_overconfident_city_gets_a_wider_sigma():
+    pe = _engine()
+    pe._calibration_cache = {
+        "over": {"city_key": "over", "sigma_multiplier": 1.42, "applied": True,
+                 "n_days": 180, "z_sd": 1.42, "reason": "42% too narrow"},
+    }
+    mult, row = pe._calibration_for("over")
+    assert mult == 1.42 and row is not None
+
+
+def test_a_city_with_no_measurement_is_untouched():
+    """1.0 exactly, so behaviour is identical to before this existed."""
+    pe = _engine()
+    pe._calibration_cache = {}
+    assert pe._calibration_for("anything") == (1.0, None)
+
+
+def test_an_unapplied_row_changes_nothing():
+    """The guards live in SQL - under 30 days, inside the 0.9-1.1 noise band,
+    narrowing on thin evidence. The engine must honour `applied` rather than
+    reading the multiplier and deciding for itself."""
+    pe = _engine()
+    pe._calibration_cache = {
+        "thin": {"city_key": "thin", "sigma_multiplier": 2.77, "applied": False,
+                 "n_days": 10, "z_sd": 2.77, "reason": "10 days"},
+    }
+    assert pe._calibration_for("thin") == (1.0, None)
+
+
+def test_a_nonsense_multiplier_is_ignored():
+    pe = _engine()
+    for bad in (0, -1, None, "abc"):
+        pe._calibration_cache = {"c": {"city_key": "c", "sigma_multiplier": bad,
+                                       "applied": True, "n_days": 99}}
+        assert pe._calibration_for("c")[0] == 1.0, bad
+
+
+def test_widening_sigma_lowers_confidence():
+    """A distribution that had to be widened is one the desk was overconfident
+    about, and the confidence it reports has to say so - otherwise the sizing
+    layer reads a corrected number as if it had been right all along."""
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(root, "scripts", "probability_engine.py")).read()
+    block = src[src.index("cal_mult, cal_row = _calibration_for"):]
+    block = block[: block.index("probs = compute_band_probabilities")]
+    assert "sigma_historical * cal_mult" in block, "the multiplier is not applied to sigma"
+    assert "confidence *= min(1.0, 1.0 / cal_mult)" in block
+    assert 'reasons.append(' in block, "a price that moved must say why"

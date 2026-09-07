@@ -12,6 +12,9 @@ does not exist yet.
     centre_corrected  = centre - bias_c              (station bias correction,
                                                         derived_forecast_skill)
     sigma             = mae_c * 1.2533 * regime.sigma_multiplier
+                        * calibration.sigma_multiplier (ad4_45: measured from
+                          settled days - sd of (observed-forecast)/sigma is 1
+                          if and only if the stated sigma was honest)
     distribution      = Normal(centre_corrected, sigma), in Celsius always -
                          forecast_max_c is stored in Celsius regardless of
                          the city's settlement unit.
@@ -189,6 +192,52 @@ def _forecast_for(city_key, for_date):
 # skill says, never more. With one model, or with divergence disabled, it is
 # exactly 1.0 and behaviour is unchanged.
 # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# Calibration feedback - the loop that was left open.
+#
+# mae_c makes the CENTRE right and sets a starting width. Nothing measured
+# whether the resulting distribution turned out HONEST: a model can have
+# excellent mae_c and still be systematically overconfident, because the
+# centre is right and the spread is too narrow. Every edge computed from a
+# too-narrow distribution is overstated, so the desk sizes up on exactly the
+# trades it should be sizing down.
+#
+# sql/ad4_45 measures it from settled days - sd of (observed - forecast)/sigma
+# is 1 if and only if sigma was right - and stores one multiplier per city,
+# already guarded: 1.0 under 30 days, 1.0 inside a 0.9-1.1 noise band, never
+# narrowing on under 60 days, clamped to [0.75, 2.5].
+#
+# Read once per run. Absent table, absent row, or an unapplied row all mean
+# exactly 1.0, which is the behaviour before this existed.
+# --------------------------------------------------------------------------
+_calibration_cache = None
+
+
+def _calibration_for(city_key):
+    """(multiplier, row) for a city. 1.0 and None when there is nothing to apply."""
+    global _calibration_cache
+    if _calibration_cache is None:
+        _calibration_cache = {}
+        try:
+            for r in rest("derived_calibration_adjustment",
+                          [("select", "city_key,sigma_multiplier,applied,n_days,z_sd,reason")]):
+                _calibration_cache[r["city_key"]] = r
+        except Exception as e:
+            # Not installed is not a failure: it is a desk that has not run
+            # ad4_45 yet, and the engine priced fine before it existed.
+            print(f"  note: calibration feedback unavailable ({str(e)[:80]}) - "
+                  f"sigma is measured skill alone. Run sql/ad4_45_calibration_feedback.sql.",
+                  file=sys.stderr)
+    row = _calibration_cache.get(city_key)
+    if not row or not row.get("applied"):
+        return 1.0, None
+    try:
+        m = float(row.get("sigma_multiplier") or 1.0)
+    except (TypeError, ValueError):
+        return 1.0, None
+    return (m, row) if m > 0 else (1.0, None)
+
+
 _divergence_cache = None
 
 # The view carries one row per (city, date) that has ever had a forecast -
@@ -283,8 +332,18 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
     centre_corrected = centre - bias_c
 
     div_mult, div_row = _divergence_for(city_key, for_date)
+    cal_mult, cal_row = _calibration_for(city_key)
     sigma_historical = mae_c * MAE_TO_SIGMA * reg.sigma_multiplier
-    sigma = sigma_historical * div_mult
+    sigma = sigma_historical * cal_mult * div_mult
+    if cal_row is not None:
+        # Named in the reasons so a price that moved can be traced to the
+        # recompute that moved it, rather than looking like drift.
+        reasons.append(
+            f"calibration:{cal_mult:.2f}x_from_{cal_row.get('n_days')}d")
+        if cal_mult > 1.0:
+            # A distribution that had to be widened is one the desk was
+            # overconfident about. Saying so in confidence is the point.
+            confidence *= min(1.0, 1.0 / cal_mult)
     if div_row and div_mult > 1.0:
         reasons.append(
             f"models_disagree:{div_row.get('spread_c')}C_over_{div_row.get('n_models')}")

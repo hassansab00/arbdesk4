@@ -61,6 +61,28 @@ def main():
         print(f"  note: refresh_city_climate unavailable ({e}) - run sql/ad4_19_stats_cache.sql",
               file=sys.stderr)
 
+    # CALIBRATION FEEDBACK - the loop sql/ad4_45 closes.
+    #
+    # mae_c already makes the centre right and sets a starting width. Nothing
+    # measured whether the resulting distribution turned out HONEST: a model
+    # can have excellent mae_c and still be systematically overconfident,
+    # because the centre is right and the spread is too narrow. Every edge
+    # computed from a too-narrow distribution is overstated, so the desk sizes
+    # UP on exactly the trades it should size down.
+    #
+    # Here rather than in databank.py because it reads the frozen evidence
+    # databank writes, and this job is what runs after it. Optional in the
+    # same way as the two above: a desk that has not run ad4_45 prices exactly
+    # as it did before, and says so once rather than failing the run.
+    calibration = None
+    try:
+        calibration = _call_rpc("refresh_calibration_adjustment")
+        print(f"calibration feedback: {calibration}")
+    except Exception as e:
+        print(f"  note: refresh_calibration_adjustment unavailable ({e}) - "
+              f"run sql/ad4_45_calibration_feedback.sql. Sigma stays at measured skill alone.",
+              file=sys.stderr)
+
     # Same reasoning, same place: v_city_day_features and the climb profile are
     # passes over the whole archive for figures that change once a day. Left in
     # the browser they cost 1-3 seconds each and Supabase cancels the statement.
@@ -88,7 +110,7 @@ def main():
     log_run("capacity", "attention" if features_error else "ok",
             (capacity_rows or 0) + (correlation_rows or 0),
             {"capacity_rows": capacity_rows, "correlation_rows": correlation_rows,
-             "climate": climate, "features": features, "features_error": features_error})
+             "climate": climate, "calibration": calibration, "features": features, "features_error": features_error})
     if features_error:
         return 1
     return 0

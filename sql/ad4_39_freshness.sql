@@ -83,6 +83,7 @@ insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plai
   ('derived_weather_peak',      'computed_at',   200, 'model',     'What hour each city normally peaks, per month.'),
   ('derived_city_climate',      'computed_at',    30, 'model',     'Each city''s normal for the time of year.'),
   ('derived_forecast_skill',    'computed_at',   200, 'model',     'How accurate each model has been, per city, per lead day.'),
+  ('derived_calibration_adjustment', 'computed_at', 200, 'model',   'How wide the desk''s stated confidence actually turned out to be, per city.'),
   ('derived_weather_model',     'fitted_at',     400, 'model',     'The desk''s own fitted correction to the public forecast.'),
   ('derived_model_forecast',    'run_at',         30, 'model',     'The desk''s own forward prediction, after that correction.'),
   ('derived_capacity',          'computed_at',    30, 'model',     'How much money a market could absorb without moving.'),
