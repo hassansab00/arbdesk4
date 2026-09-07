@@ -81,10 +81,19 @@ declare
     -- the aggregate never touches the heap: an index-only scan of just the
     -- rows inside the lookback window. trades_observed is append-only, so the
     -- write cost is one leaf insert per trade.
-    ['trades_observed',       'ad4_ix_trades_seen_band',
-     '(observed_at desc, band_id) include (price, size)'],
-    ['trades_observed',       'ad4_ix_trades_seen_city',
-     '(observed_at desc, city_key) include (price, size)'],
+    -- ON THE EXPRESSION, because that is what the query filters on.
+    -- ad4_trades_ts_expr() resolves to COALESCE(traded_at, observed_at,
+    -- ingested_at) on a schema that has all three, and no index on a plain
+    -- COLUMN can serve a COALESCE over three of them. Measured on the real
+    -- desk before this existed:
+    --     Index Scan using ad4_ix_trades_band_time on trades_observed
+    --       Rows Removed by Filter: 127585
+    -- - every volume figure read all 127,585 trades and discarded all of
+    -- them. v_city_volume went 351 ms -> 4 ms on this index alone.
+    ['trades_observed',       'ad4_ix_trades_seen_expr_band',
+     '((coalesce(traded_at, observed_at, ingested_at)) desc, band_id) include (price, size)'],
+    ['trades_observed',       'ad4_ix_trades_seen_expr_city',
+     '((coalesce(traded_at, observed_at, ingested_at)) desc, city_key) include (price, size)'],
     ['band_probabilities',    'ad4_ix_prob_band_time',      '(band_id, computed_at desc)'],
     ['bands',                 'ad4_ix_bands_market',        '(market_id)'],
     ['markets',               'ad4_ix_markets_city_date',   '(city_key, resolution_date desc)'],
@@ -140,6 +149,59 @@ $ad4$;
 do $ad4$
 declare t text;
 begin
+-- --------------------------------------------------------------------------
+-- THE FRESHNESS TIMESTAMPS, which nothing indexed.
+--
+-- v_data_freshness renders on EVERY page and asks max(ts) of every table it
+-- tracks. A btree whose LEADING column is that timestamp makes each one a
+-- single-row backward index scan; without one it is a full scan.
+--
+-- weather_forecasts carried indexes CONTAINING run_at and none LEADING with
+-- it, so max(run_at) read all 329,553 rows - 1,399 ms, on every page load,
+-- for one value. Built from data_freshness_spec so it covers exactly what
+-- that view asks for, and only where the table is big enough to matter.
+-- --------------------------------------------------------------------------
+do $ad4$
+declare r record; idx text; made int := 0;
+begin
+  if to_regclass('public.data_freshness_spec') is null then
+    raise notice 'ad4_44: no data_freshness_spec yet - run sql/ad4_39_freshness.sql, then this again';
+  else
+    for r in
+      select spec.table_name, spec.ts_column,
+             coalesce((select greatest(c.reltuples, 0)::bigint from pg_class c
+                        join pg_namespace n on n.oid = c.relnamespace
+                       where n.nspname = 'public' and c.relname = spec.table_name), 0) as n
+        from data_freshness_spec spec
+       where spec.ts_column is not null and spec.ts_column <> '-'
+         and to_regclass('public.' || spec.table_name) is not null
+    loop
+      continue when r.n < 1000;
+      if exists (
+        select 1 from pg_index i
+        join pg_class ic on ic.oid = i.indexrelid
+        join pg_class tc on tc.oid = i.indrelid
+        join pg_namespace n on n.oid = tc.relnamespace
+        join pg_attribute a on a.attrelid = tc.oid and a.attnum = i.indkey[0]
+        where n.nspname = 'public' and tc.relname = r.table_name
+          and a.attname = r.ts_column
+      ) then continue; end if;
+      idx := format('ad4_ix_fresh_%s', r.table_name);
+      begin
+        execute format('create index if not exists %I on public.%I (%I desc nulls last)',
+                       idx, r.table_name, r.ts_column);
+        made := made + 1;
+        raise notice 'ad4_44: % on %(%) - max() was scanning % rows',
+                     idx, r.table_name, r.ts_column, r.n;
+      exception when others then
+        raise notice 'ad4_44: could not index %.% (%)', r.table_name, r.ts_column, sqlerrm;
+      end;
+    end loop;
+    raise notice 'ad4_44: % freshness index(es) created', made;
+  end if;
+end
+$ad4$;
+
   foreach t in array array['book_snapshots','trades_observed','band_probabilities','bands',
                            'markets','signals','paper_trades','ledger','edges','weather_events',
                            'live_weather','weather_observations','weather_forecasts',

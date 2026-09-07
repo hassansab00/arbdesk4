@@ -147,6 +147,50 @@ $ad4$;
 --    cannot be selected from by PostgREST with a filter, and the browser
 --    wants to filter.
 -- --------------------------------------------------------------------------
+-- --------------------------------------------------------------------------
+-- COUNTING WITHOUT SCANNING.
+--
+-- This view renders on EVERY page, and it was asking `count(*)` of every
+-- table it describes - which on this desk means a full scan of 507,610
+-- observations, 329,553 forecasts and 127,585 trades, every page load, for a
+-- number displayed as "507.6k". 1.3 seconds of the browser's few-second
+-- budget spent on a figure nobody reads to four significant digits.
+--
+-- Two changes, and neither loses anything the view actually decides:
+--
+--   THE VERDICT stays exact. It only ever needed to know whether the table is
+--   EMPTY, and `not exists (select 1 ...)` answers that by reading one row
+--   rather than all of them.
+--
+--   THE COUNT is exact where counting is cheap and an estimate where it is
+--   not. pg_class.reltuples is maintained by ANALYZE and is what the planner
+--   itself trusts; on a table of half a million rows it is the right answer
+--   to "how big is this". Anything under 50,000 rows is still counted
+--   exactly, which is most of the schema. rows_estimated says which you are
+--   looking at, so the UI can print the tilde rather than implying precision
+--   it does not have.
+-- --------------------------------------------------------------------------
+create or replace function ad4_rowcount_is_estimate(p_table text)
+returns text language sql stable as $ad4$
+  select case when coalesce((select c.reltuples from pg_class c
+                              join pg_namespace n on n.oid = c.relnamespace
+                             where n.nspname = 'public' and c.relname = p_table), -1) > 50000
+              then 'true' else 'false' end;
+$ad4$;
+
+create or replace function ad4_rowcount_expr(p_table text)
+returns text language sql stable as $ad4$
+  select case
+    when coalesce((select c.reltuples from pg_class c
+                    join pg_namespace n on n.oid = c.relnamespace
+                   where n.nspname = 'public' and c.relname = p_table), -1) > 50000
+      then format('(select greatest(c.reltuples, 0)::bigint from pg_class c '
+                  'join pg_namespace n on n.oid = c.relnamespace '
+                  'where n.nspname = ''public'' and c.relname = %L)', p_table)
+    else format('(select count(*) from public.%I)::bigint', p_table)
+  end;
+$ad4$;
+
 do $ad4$
 declare
   r     record;
@@ -165,26 +209,30 @@ begin
     elsif r.ts_column is null or r.ts_column = '-' then
       parts := parts || format(
         $q$select %L::text as table_name, %L::text as layer, %L::text as plain_english,
-                  (select count(*) from public.%I)::bigint as rows,
+                  %s as rows, %s as rows_estimated,
                   null::timestamptz as newest, null::numeric as age_hours,
                   %s::numeric as fresh_hours,
-                  (case when (select count(*) from public.%I) = 0 then 'empty' else 'ok' end)::text as state$q$,
-        r.table_name, r.layer, r.plain_english, r.table_name,
+                  (case when not exists (select 1 from public.%I) then 'empty' else 'ok' end)::text as state$q$,
+        r.table_name, r.layer, r.plain_english,
+        ad4_rowcount_expr(r.table_name), ad4_rowcount_is_estimate(r.table_name),
         coalesce(r.fresh_hours::text, 'null'), r.table_name);
     else
       parts := parts || format(
         $q$select %L::text as table_name, %L::text as layer, %L::text as plain_english,
-                  t.n as rows, t.newest,
+                  %s as rows, %s as rows_estimated,
+                  t.newest,
                   round(extract(epoch from (now() - t.newest)) / 3600.0, 1) as age_hours,
                   %s::numeric as fresh_hours,
-                  (case when t.n = 0 then 'empty'
+                  (case when not exists (select 1 from public.%I) then 'empty'
                         when t.newest is null then 'ok'
                         when %s is null then 'ok'
                         when extract(epoch from (now() - t.newest)) / 3600.0 > %s then 'stale'
                         else 'ok' end)::text as state
-             from (select count(*) n, max(%I) newest from public.%I) t$q$,
+             from (select max(%I) newest from public.%I) t$q$,
         r.table_name, r.layer, r.plain_english,
+        ad4_rowcount_expr(r.table_name), ad4_rowcount_is_estimate(r.table_name),
         coalesce(r.fresh_hours::text, 'null'),
+        r.table_name,
         coalesce(r.fresh_hours::text, 'null'),
         coalesce(r.fresh_hours::text, '1e9'),
         r.ts_column, r.table_name);

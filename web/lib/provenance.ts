@@ -675,12 +675,13 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_forecast_audit": [
     "cities",
-    "weather_observations",
-    "weather_forecasts"
+    "derived_city_climate",
+    "weather_forecasts",
+    "weather_observations"
   ],
   "v_forecast_candidates": [
     "cities",
-    "weather_observations",
+    "derived_city_climate",
     "weather_forecasts"
   ],
   "v_forecast_convergence": [

@@ -60,7 +60,13 @@ select
   round(extract(epoch from (now() - f.run_at)) / 3600.0, 1) as run_age_hours
 from weather_forecasts f
 join cities c        on c.city_key = f.city_key
-join v_city_climate cl on cl.city_key = f.city_key and f.for_date = cl.local_today
+-- THE CACHE, not the view. v_city_climate aggregates all 507,610
+-- observations TWICE - once for the seasonal normal and once for the
+-- trailing fallback - which is 3.9 seconds for 37 rows and a statement
+-- timeout on the browser's role. derived_city_climate is the same figures,
+-- computed once a day by Derived Recompute, which is what it exists for.
+-- Falls back to the view only where the cache has never been filled.
+join derived_city_climate cl on cl.city_key = f.city_key and f.for_date = cl.local_today
 where f.forecast_max_c is not null;
 
 comment on view v_forecast_candidates is
@@ -160,7 +166,7 @@ select
 from chosen ch
 left join spread sp    on sp.city_key = ch.city_key
 left join observed ob  on ob.city_key = ch.city_key
-left join v_city_climate cl on cl.city_key = ch.city_key;
+left join derived_city_climate cl on cl.city_key = ch.city_key;
 
 comment on view v_forecast_audit is
   'One row per city: the forecast the board is showing, which model and lead it came from, every other row available, what has actually been observed, what is normal, and a verdict naming the most likely cause when the number looks wrong. Read this the moment a forecast looks off.';
