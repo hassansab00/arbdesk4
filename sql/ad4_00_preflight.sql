@@ -148,6 +148,8 @@ begin
       ('derived_city_day_volume',    array['city_key','trade_date'],                   'computed_at'),
       ('derived_band_day_volume',    array['band_id','trade_date'],                    'computed_at'),
       ('derived_forecast_skill',     array['city_key','computed_at','lead_days'],      'computed_at'),
+      ('derived_forecast_skill_model',
+                                    array['city_key','model','computed_at','lead_days'], 'computed_at'),
       ('derived_weather_model',      array['city_key','target'],                       'computed_at'),
       ('derived_model_forecast',     array['city_key','for_date','run_at'],            'computed_at'),
       ('derived_city_day_features',  array['city_key','obs_date'],                     'computed_at'),

@@ -55,11 +55,58 @@ def daily_max_observed(city_key, start, end, timezone):
         offset += page
     return {k: v for k, v in out.items() if v is not None}
 
+MIN_SAMPLE = 10          # below this a mean absolute error is not a measurement
+
+def skill_stats(errs, band_c):
+    """The skill columns for one bag of signed errors, or None if too thin.
+
+    Extracted so the pooled number and the per-model number are computed by
+    the same arithmetic rather than by two copies of it that can drift.
+    """
+    n = len(errs)
+    if n < MIN_SAMPLE:
+        return None
+    mae = sum(abs(e) for e in errs) / n
+    bias = sum(errs) / n
+    srt = sorted(abs(e) for e in errs)
+    p90 = srt[int(0.9 * (n - 1))]
+    within1 = sum(1 for e in errs if abs(e) <= band_c) / n
+    return {
+        "n_days": n,
+        "mae_c": round(mae, 3),
+        "bias_c": round(bias, 3),
+        "p90_abs_err_c": round(p90, 3),
+        "mae_bands": round(mae / band_c, 3),
+        "pct_within_one_band": round(within1, 4),
+        "band_width_c": round(band_c, 3),
+    }
+
+
+def one_row_per_run_key(rows):
+    """Keep the NEWEST run for each (model, for_date, lead).
+
+    The intraday job re-fetches the same date every few hours, so one model
+    can hold four rows for one (date, lead) - 52% of open_meteo_forecast's
+    rows are re-runs of a key it already had. Scoring all of them counts the
+    same forecast day several times and silently weights the days the job
+    happened to run most often. The historical archive has no duplicates at
+    all, so this changes today's numbers by nothing; it stops them drifting
+    as the intraday job keeps writing.
+    """
+    best = {}
+    for r in rows:
+        k = (r.get("model"), r.get("for_date"), r.get("lead_days"))
+        cur = best.get(k)
+        if cur is None or (r.get("run_at") or "") > (cur.get("run_at") or ""):
+            best[k] = r
+    return list(best.values())
+
+
 def forecasts(city_key, start, end):
     rows, offset, page = [], 0, 10000
     while True:
         r = rest("weather_forecasts", [
-            ("select", "for_date,lead_days,forecast_max_c,model"),
+            ("select", "for_date,lead_days,forecast_max_c,model,run_at"),
             ("city_key", f"eq.{city_key}"),
             ("for_date", f"gte.{start.isoformat()}"),
             ("for_date", f"lte.{end.isoformat()}"),
@@ -84,7 +131,7 @@ def main():
     unit_of = {c["city_key"]: (c.get("unit") or "C") for c in cities}
     print(f"measuring {len(cities)} cities, {start} -> {end}\n")
 
-    out_rows, summary = [], []
+    out_rows, model_rows, summary = [], [], []
     for c in cities:
         ck = c["city_key"]
         obs = daily_max_observed(ck, start, end, c.get("timezone"))
@@ -97,34 +144,51 @@ def main():
         # band width expressed in degrees C
         band_c = 1.0 if unit_of[ck] == "C" else 2.0 * 5.0 / 9.0
 
+        fc = one_row_per_run_key(fc)
+
+        # Two grains, one pass. by_lead is the number the desk prices with;
+        # by_model_lead is the breakdown behind it, because error is generated
+        # per model - NWS and Open-Meteo miss in different directions, and an
+        # average over whichever models happened to write rows is not a
+        # property of either of them.
         by_lead = defaultdict(list)
+        by_model_lead = defaultdict(list)
         for f in fc:
             a = obs.get(f["for_date"])
             if a is None or f.get("forecast_max_c") is None:
                 continue
-            by_lead[f["lead_days"]].append(f["forecast_max_c"] - a)   # signed error
+            err = f["forecast_max_c"] - a                             # signed error
+            by_lead[f["lead_days"]].append(err)
+            if f.get("model"):
+                by_model_lead[(f["model"], f["lead_days"])].append(err)
 
         for lead, errs in sorted(by_lead.items()):
-            if len(errs) < 10:
+            stats = skill_stats(errs, band_c)
+            if stats is None:
                 continue
-            n = len(errs)
-            mae = sum(abs(e) for e in errs) / n
-            bias = sum(errs) / n
-            srt = sorted(abs(e) for e in errs)
-            p90 = srt[int(0.9 * (n - 1))]
-            within1 = sum(1 for e in errs if abs(e) <= band_c) / n
-            out_rows.append({
-                "city_key": ck, "computed_at": computed_at, "lead_days": lead,
-                "n_days": n,
-                "mae_c": round(mae, 3),
-                "bias_c": round(bias, 3),
-                "p90_abs_err_c": round(p90, 3),
-                "mae_bands": round(mae / band_c, 3),
-                "pct_within_one_band": round(within1, 4),
-                "band_width_c": round(band_c, 3),
-            })
+            out_rows.append({"city_key": ck, "computed_at": computed_at,
+                             "lead_days": lead, **stats})
             if lead == 1:
-                summary.append((ck, n, mae, bias, mae / band_c, within1))
+                summary.append((ck, stats["n_days"], stats["mae_c"],
+                                stats["bias_c"], stats["mae_bands"],
+                                stats["pct_within_one_band"]))
+
+        for (model, lead), errs in sorted(by_model_lead.items()):
+            stats = skill_stats(errs, band_c)
+            if stats is None:
+                continue
+            model_rows.append({"city_key": ck, "model": model,
+                               "computed_at": computed_at, "lead_days": lead,
+                               **stats})
+
+    if model_rows:
+        upsert("derived_forecast_skill_model", model_rows,
+               "city_key,model,computed_at,lead_days")
+        by_model = defaultdict(int)
+        for r in model_rows:
+            by_model[r["model"]] += 1
+        print("PER MODEL rows written: " +
+              ", ".join(f"{m}={n}" for m, n in sorted(by_model.items())) + "\n")
 
     if out_rows:
         upsert("derived_forecast_skill", out_rows, "city_key,computed_at,lead_days")
@@ -159,8 +223,10 @@ def main():
         else:
             print("  all cities >= 200 days sample")
 
-    log_run("measure_skill", "ok", len(out_rows),
-            {"cities": len(summary), "window_days": days})
+    log_run("measure_skill", "ok", len(out_rows) + len(model_rows),
+            {"cities": len(summary), "window_days": days,
+             "pooled_rows": len(out_rows), "model_rows": len(model_rows),
+             "models": sorted({r["model"] for r in model_rows})})
 
 if __name__ == "__main__":
     main()

@@ -61,6 +61,7 @@ ad4_45_calibration_feedback.sql
 ad4_46_jit.sql
 ad4_47_repair.sql
 ad4_48_trade_city_key.sql
+ad4_49_model_skill.sql
 
 # ad4_38 grants the write path to service_role and prints one row per ingest
 # table saying whether the service key can write it. It is last on purpose -

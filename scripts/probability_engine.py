@@ -166,15 +166,41 @@ def _bands_for_markets(market_ids):
     return out
 
 
-def _forecast_for(city_key, for_date):
-    """Row at the shortest available lead time for this city+for_date."""
-    rows = rest("weather_forecasts", [
+def _forecast_for(city_key, for_date, as_of=None):
+    """The shortest-lead forecast for this city+date, from its NEWEST run.
+
+    A forecast's identity is (city, model, run_at, for_date) - that is
+    weather_forecasts' own unique key. So several rows sharing a lead is the
+    normal state of this table, not a fault: the intraday job re-fetches the
+    same date every few hours and each fetch is a row.
+
+    This used to order by lead_days alone and take the first row, which left
+    the choice among those rows to whatever order PostgREST happened to
+    return. It was not academic. Denver for 2026-09-13, three runs at lead 7:
+
+        run 15:21   11.2 C   (max_at_local 00:00 - a truncated forecast day)
+        run 21:00   30.3 C
+        run 03:00   26.2 C
+
+    a 19.1 C spread, any of which could be priced. Ordering by run_at desc
+    settles it and retires the 11.2 without needing a rule about midnight
+    maxima, because it is simply the oldest of the three.
+
+    `as_of` restricts the pick to runs ISSUED BY a given moment. Live pricing
+    leaves it None and gets the newest run there is; a backtest passes the
+    decision timestamp so it cannot price against a forecast that did not
+    exist yet.
+    """
+    params = [
         ("select", "for_date,lead_days,forecast_max_c,model,run_at"),
         ("city_key", f"eq.{city_key}"),
         ("for_date", f"eq.{for_date}"),
-        ("order", "lead_days.asc"),
+        ("order", "lead_days.asc,run_at.desc"),
         ("limit", "1"),
-    ])
+    ]
+    if as_of is not None:
+        params.insert(3, ("run_at", f"lte.{as_of}"))
+    rows = rest("weather_forecasts", params)
     return rows[0] if rows else None
 
 
@@ -285,15 +311,71 @@ def _divergence_for(city_key, for_date):
     return max(1.0, mult), row
 
 
-def _skill_for(city_key, lead_days):
-    rows = rest("derived_forecast_skill", [
-        ("select", "city_key,lead_days,n_days,mae_c,bias_c,computed_at"),
-        ("city_key", f"eq.{city_key}"),
-        ("lead_days", f"eq.{lead_days}"),
-        ("order", "computed_at.desc"),
-        ("limit", "1"),
-    ])
-    return rows[0] if rows else None
+_skill_cache = {}
+
+def _pooled_skill(city_key, lead_days):
+    key = (city_key, lead_days)
+    if key not in _skill_cache:
+        rows = rest("derived_forecast_skill", [
+            ("select", "city_key,lead_days,n_days,mae_c,bias_c,computed_at"),
+            ("city_key", f"eq.{city_key}"),
+            ("lead_days", f"eq.{lead_days}"),
+            ("order", "computed_at.desc"),
+            ("limit", "1"),
+        ])
+        _skill_cache[key] = rows[0] if rows else None
+    return _skill_cache[key]
+
+
+def _model_skill(city_key, model, lead_days):
+    """Skill of ONE model, or None if it has not been scored at this lead."""
+    key = (city_key, model, lead_days)
+    if key not in _skill_cache:
+        try:
+            rows = rest("derived_forecast_skill_model", [
+                ("select", "city_key,model,lead_days,n_days,mae_c,bias_c,computed_at"),
+                ("city_key", f"eq.{city_key}"),
+                ("model", f"eq.{model}"),
+                ("lead_days", f"eq.{lead_days}"),
+                ("order", "computed_at.desc"),
+                ("limit", "1"),
+            ])
+        except Exception:
+            # Table not installed yet (sql/ad4_49). Pooled is the answer then,
+            # which is exactly the behaviour that existed before it.
+            rows = []
+        _skill_cache[key] = rows[0] if rows else None
+    return _skill_cache[key]
+
+
+def _skill_for(city_key, lead_days, model=None):
+    """Measured skill for the forecast being priced.
+
+    THE ENSEMBLE RULE, stated once and in one place:
+
+      Use the skill of the model that actually produced this forecast, but
+      only once that model has earned a trusted sample of its own
+      (UNTRUSTED_N_DAYS). Until then, use the pooled number.
+
+    Skill is generated per model - NWS and Open-Meteo miss in different
+    directions - so the per-model figure is the correct grain and the pooled
+    one is an average over whichever models happened to write rows. But the
+    correct grain is worthless without history behind it, and on this desk
+    only open_meteo_best_match has any: nws and open_meteo_forecast both
+    start 2026-09-06. Preferring a per-model row unconditionally would hand
+    the engine a row with a handful of days behind it, or no row at all, and
+    `no_skill_row` floors confidence at 0.1 - which would take the twelve NWS
+    cities dark to fix a problem they do not yet have.
+
+    So the fallback is not a hedge, it is the rule: the blend is what the
+    desk prices with until a model has proved itself separately, and then
+    the switch happens on its own, per city and per lead, with no migration.
+    """
+    if model:
+        m = _model_skill(city_key, model, lead_days)
+        if m and (m.get("n_days") or 0) >= UNTRUSTED_N_DAYS:
+            return m
+    return _pooled_skill(city_key, lead_days)
 
 
 def process_city_day(city_key, for_date, unit, bands, history_cache):
@@ -303,7 +385,7 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
         return None
     lead_days = forecast["lead_days"]
 
-    skill = _skill_for(city_key, lead_days)
+    skill = _skill_for(city_key, lead_days, forecast.get("model"))
     reg = regime.classify(city_key, for_date, history_cache)
     confidence = reg.confidence
 

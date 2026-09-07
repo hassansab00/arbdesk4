@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 115 of them - and for each MISSING one names the
+-- and function the app reads - 117 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -38,6 +38,7 @@ with expected(rel, owner, used_by) as (values
     ('derived_city_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_climb_profile', 'ad4_28_feature_cache.sql', ''),
     ('derived_forecast_skill', 'ad4_00_preflight.sql', '/analytics'),
+    ('derived_forecast_skill_model', 'ad4_49_model_skill.sql', ''),
     ('derived_market_peak', 'ad4_00_preflight.sql', ''),
     ('derived_model_forecast', 'ad4_25_model_forecast.sql', ''),
     ('derived_weather_model', 'ad4_21_weather_features.sql', ''),
@@ -99,6 +100,7 @@ with expected(rel, owner, used_by) as (values
     ('v_forecast_divergence', 'ad4_16_nws.sql', ''),
     ('v_forecast_divergence_current', 'ad4_19_stats_cache.sql', ''),
     ('v_forecast_features', 'ad4_24_nws_gridpoint.sql', ''),
+    ('v_forecast_model_skill', 'ad4_49_model_skill.sql', ''),
     ('v_jit_state', 'ad4_46_jit.sql', ''),
     ('v_latest_book', 'ad4_13_reconcile.sql', '/board, /goals, /opportunities'),
     ('v_latest_edge', 'ad4_phase2.sql', ''),
@@ -175,6 +177,7 @@ begin
     ('derived_city_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_climb_profile', 'ad4_28_feature_cache.sql', ''),
     ('derived_forecast_skill', 'ad4_00_preflight.sql', '/analytics'),
+    ('derived_forecast_skill_model', 'ad4_49_model_skill.sql', ''),
     ('derived_market_peak', 'ad4_00_preflight.sql', ''),
     ('derived_model_forecast', 'ad4_25_model_forecast.sql', ''),
     ('derived_weather_model', 'ad4_21_weather_features.sql', ''),
@@ -236,6 +239,7 @@ begin
     ('v_forecast_divergence', 'ad4_16_nws.sql', ''),
     ('v_forecast_divergence_current', 'ad4_19_stats_cache.sql', ''),
     ('v_forecast_features', 'ad4_24_nws_gridpoint.sql', ''),
+    ('v_forecast_model_skill', 'ad4_49_model_skill.sql', ''),
     ('v_jit_state', 'ad4_46_jit.sql', ''),
     ('v_latest_book', 'ad4_13_reconcile.sql', '/board, /goals, /opportunities'),
     ('v_latest_edge', 'ad4_phase2.sql', ''),
