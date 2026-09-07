@@ -173,6 +173,82 @@ def log_run(job, status, rows, detail):
     except Exception as e:
         print(f"  ! log_ingest failed: {e}", file=sys.stderr)
 
+# ===========================================================================
+# THE DAY A READING BELONGS TO.
+#
+# A daily maximum is a LOCAL-CALENDAR quantity. It is what the market settles
+# on, it is what Open-Meteo returns when asked with timezone=auto, and it is
+# what weather_forecasts.for_date holds.
+#
+# Three jobs did not agree with that. measure_skill.py, databank.py and the
+# backtest runner all took the day from `valid_at[:10]` - a slice of the UTC
+# string PostgREST returns - and then joined it against a forecast keyed by
+# the city's LOCAL date. For any city away from UTC that silently moves
+# readings into the wrong day:
+#
+#     23:00 UTC on 7 September   ->  Tokyo says 8 September
+#                                ->  New York says 7 September
+#
+# In Tokyo the late-evening readings of one local day were being scored
+# against the next day's forecast; in New York the early-morning ones against
+# the previous day's. The error is small, systematic, and lands in mae_c -
+# which sets sigma, which sets every band probability, which sets every edge.
+# It flatters or damns a city's measured skill for a reason that has nothing
+# to do with the forecast.
+#
+# One function, used by every job that turns a timestamp into a day.
+# ===========================================================================
+_ZONE_CACHE = {}
+_ZONE_WARNED = set()
+
+def city_local_date(valid_at, timezone):
+    """The calendar date `valid_at` falls on in `timezone`, as 'YYYY-MM-DD'.
+
+    valid_at may be a datetime or an ISO string (PostgREST returns strings).
+    A naive timestamp is treated as UTC, which is what PostgREST sends for a
+    timestamptz column. An unknown or missing timezone falls back to UTC and
+    says so once, rather than silently guessing - a city with no timezone is
+    a roster problem, not something to paper over per row.
+    """
+    import datetime as _dt
+    if valid_at is None:
+        return None
+    if isinstance(valid_at, str):
+        t = valid_at.replace("Z", "+00:00")
+        try:
+            ts = _dt.datetime.fromisoformat(t)
+        except ValueError:
+            # Not parseable: the old behaviour, so a malformed row degrades
+            # to what it did before rather than dropping out entirely.
+            return valid_at[:10]
+    else:
+        ts = valid_at
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=_dt.timezone.utc)
+
+    if not timezone:
+        return ts.astimezone(_dt.timezone.utc).date().isoformat()
+
+    zone = _ZONE_CACHE.get(timezone)
+    if zone is None:
+        try:
+            from zoneinfo import ZoneInfo
+            zone = ZoneInfo(timezone)
+        except Exception:
+            if timezone not in _ZONE_WARNED:
+                _ZONE_WARNED.add(timezone)
+                print(f"  ! unknown timezone {timezone!r} - using UTC for its days",
+                      file=sys.stderr)
+            zone = _dt.timezone.utc
+        _ZONE_CACHE[timezone] = zone
+    return ts.astimezone(zone).date().isoformat()
+
+
+def timezone_of(cities):
+    """city_key -> timezone, from whatever get_cities() returned."""
+    return {c["city_key"]: c.get("timezone") for c in cities}
+
+
 def get_cities(require_coords=True, require_icao=False):
     cols = "city_key,icao,unit,latitude,longitude,timezone,resolution_source,status"
     rows = rest("cities", {"select": cols, "status": "eq.active", "limit": "500"})

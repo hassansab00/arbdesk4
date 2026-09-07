@@ -33,7 +33,8 @@ import datetime as dt
 import sys
 from collections import defaultdict
 
-from common import rest, upsert, log_run
+from common import (rest, upsert, log_run, get_cities,
+                    city_local_date, timezone_of)
 
 # A day is only banked once the observations for it are in. Running too early
 # would freeze a partial maximum as if it were the settled one - and because
@@ -68,11 +69,16 @@ def _observed_max(days_back):
         ("valid_at", f"gte.{since}T00:00:00Z"),
         ("limit", "100000"),
     ])
-    agg = defaultdict(lambda: {"max_c": None, "n_obs": 0, "source": "utc_day"})
+    # THE CITY'S DAY, not UTC. This bucketed by `valid_at[:10]` and labelled
+    # the result "utc_day" - honest about what it was doing and wrong about
+    # what it should have been doing, because every forecast it is frozen
+    # against is keyed by the city's LOCAL date. See common.city_local_date.
+    tz = timezone_of(get_cities(require_coords=False))
+    agg = defaultdict(lambda: {"max_c": None, "n_obs": 0, "source": "local_day"})
     for r in rows:
         if r.get("temp_c") is None:
             continue
-        key = (r["city_key"], str(r["valid_at"])[:10])
+        key = (r["city_key"], city_local_date(r["valid_at"], tz.get(r["city_key"])))
         a = agg[key]
         a["n_obs"] += 1
         if a["max_c"] is None or r["temp_c"] > a["max_c"]:

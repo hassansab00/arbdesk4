@@ -17,7 +17,7 @@ queue_backtest - nothing here ever overwrites a prior run.
 import datetime as dt
 import sys
 
-from common import rest, insert, _cfg, _headers
+from common import rest, insert, _cfg, _headers, city_local_date
 import requests
 import paper_engine
 import regime
@@ -42,7 +42,7 @@ def _load_run(run_id):
     return rows[0]
 
 
-def _daily_max_observed(city_key, start, end):
+def _daily_max_observed(city_key, start, end, timezone=None):
     rows = rest("weather_observations", [
         ("select", "valid_at,temp_c"), ("city_key", f"eq.{city_key}"),
         ("valid_at", f"gte.{start.isoformat()}"), ("valid_at", f"lte.{end.isoformat()}"),
@@ -52,7 +52,8 @@ def _daily_max_observed(city_key, start, end):
     for r in rows:
         if r.get("temp_c") is None:
             continue
-        d = r["valid_at"][:10]
+        # the CITY's day, not UTC - see common.city_local_date
+        d = city_local_date(r["valid_at"], timezone)
         out[d] = max(out.get(d, r["temp_c"]), r["temp_c"])
     return out
 
@@ -83,7 +84,11 @@ def run(run_id):
     portfolio = paper_engine.Portfolio(bankroll=starting_budget, compounding=params.get("compounding", False))
 
     try:
-        cities_meta = {c["city_key"]: c for c in rest("cities", {"select": "city_key,unit,icao"})}
+        # timezone comes along too: a daily maximum belongs to the CITY's
+        # calendar day, and the backtest was bucketing observations by UTC.
+        cities_meta = {c["city_key"]: c
+                       for c in rest("cities", {"select": "city_key,unit,icao,timezone"})}
+        tz_of = {k: v.get("timezone") for k, v in cities_meta.items()}
         markets = rest("markets", [
             ("select", "market_id,city_key,resolution_date"),
             ("resolution_date", f"gte.{start.isoformat()}"), ("resolution_date", f"lte.{end.isoformat()}"),
@@ -107,7 +112,8 @@ def run(run_id):
 
             if city_key not in obs_cache:
                 obs_cache[city_key] = _daily_max_observed(
-                    city_key, start - dt.timedelta(days=1), end + dt.timedelta(days=1))
+                    city_key, start - dt.timedelta(days=1), end + dt.timedelta(days=1),
+                    tz_of.get(city_key))
             actual = obs_cache[city_key].get(m["resolution_date"])
             if actual is None:
                 continue  # TODO: unmeasured - no observation on record for this date, skip rather than guess

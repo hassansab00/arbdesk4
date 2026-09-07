@@ -16,10 +16,18 @@ so "bands of error" is computed per city in its own unit.
 """
 import sys, json, datetime as dt
 from collections import defaultdict
-from common import rest, upsert, log_run, get_cities
+from common import rest, upsert, log_run, get_cities, city_local_date
 
-def daily_max_observed(city_key, start, end):
-    """Highest observed temp per local-ish day, from our own archive."""
+def daily_max_observed(city_key, start, end, timezone):
+    """Highest observed temp per LOCAL day, from our own archive.
+
+    The day is the city's own calendar day, because that is the day
+    weather_forecasts.for_date holds and the day the market settles on. It
+    used to be `valid_at[:10]` - a slice of the UTC string - which for Tokyo
+    put every reading after 15:00 local into the next day's bucket and for
+    New York put every reading before 20:00 local into the previous one. The
+    resulting error went straight into mae_c, and mae_c sets sigma.
+    """
     out, offset, page = defaultdict(lambda: None), 0, 10000
     while True:
         rows = rest("weather_observations", [
@@ -38,7 +46,7 @@ def daily_max_observed(city_key, start, end):
         for r in rows:
             if r.get("temp_c") is None:
                 continue
-            d = r["valid_at"][:10]
+            d = city_local_date(r["valid_at"], timezone)
             cur = out[d]
             if cur is None or r["temp_c"] > cur:
                 out[d] = r["temp_c"]
@@ -79,7 +87,7 @@ def main():
     out_rows, summary = [], []
     for c in cities:
         ck = c["city_key"]
-        obs = daily_max_observed(ck, start, end)
+        obs = daily_max_observed(ck, start, end, c.get("timezone"))
         if not obs:
             continue
         fc = forecasts(ck, start, end)
