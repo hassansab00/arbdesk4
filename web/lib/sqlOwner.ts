@@ -5,6 +5,7 @@
 // wrong about the one you actually need: every Predictive panel failed on a
 // view created by ad4_31 and told the reader to run preflight.
 export const SQL_OWNER: Record<string, string> = {
+  "ad4_view_restore": "ad4_00_preflight.sql",
   "anomalies": "ad4_00_preflight.sql",
   "anomaly_rules": "ad4_phase2.sql",
   "backtest_results": "ad4_00_preflight.sql",
@@ -40,6 +41,7 @@ export const SQL_OWNER: Record<string, string> = {
   "markets": "ad4_00_preflight.sql",
   "model_versions": "ad4_00_preflight.sql",
   "paper_trades": "ad4_00_preflight.sql",
+  "public": "ad4_00_preflight.sql",
   "settings": "ad4_00_preflight.sql",
   "signals": "ad4_00_preflight.sql",
   "strategies": "ad4_00_preflight.sql",
@@ -86,6 +88,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_forecast_divergence": "ad4_16_nws.sql",
   "v_forecast_divergence_current": "ad4_19_stats_cache.sql",
   "v_forecast_features": "ad4_24_nws_gridpoint.sql",
+  "v_jit_state": "ad4_46_jit.sql",
   "v_latest_book": "ad4_13_reconcile.sql",
   "v_latest_edge": "ad4_phase2.sql",
   "v_latest_prob": "ad4_phase2.sql",

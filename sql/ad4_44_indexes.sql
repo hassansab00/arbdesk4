@@ -67,6 +67,24 @@ declare
     ['book_snapshots',        'ad4_ix_book_time',           '(observed_at desc)'],
     ['trades_observed',       'ad4_ix_trades_band_time',    '(band_id, traded_at desc)'],
     ['trades_observed',       'ad4_ix_trades_time',         '(traded_at desc)'],
+    -- AND THE TWO ABOVE ARE ON THE WRONG COLUMN FOR THE QUERY THAT MATTERS.
+    --
+    -- Every volume figure on the desk comes from v_band_volume and
+    -- v_city_volume, and both filter on `observed_at >= now() - lookback`,
+    -- not on traded_at. traded_at is when Polymarket says the trade printed;
+    -- observed_at is when this desk saw it, and it is the column the views
+    -- window on. So the indexes above were maintained on every insert and
+    -- used by neither, and v_opportunities kept a Seq Scan on all 170,940
+    -- rows - twice, once per volume view - which is ~1.4s of its ~1.8s.
+    --
+    -- INCLUDE carries price, size and band_id/city_key in the index leaf, so
+    -- the aggregate never touches the heap: an index-only scan of just the
+    -- rows inside the lookback window. trades_observed is append-only, so the
+    -- write cost is one leaf insert per trade.
+    ['trades_observed',       'ad4_ix_trades_seen_band',
+     '(observed_at desc, band_id) include (price, size)'],
+    ['trades_observed',       'ad4_ix_trades_seen_city',
+     '(observed_at desc, city_key) include (price, size)'],
     ['band_probabilities',    'ad4_ix_prob_band_time',      '(band_id, computed_at desc)'],
     ['bands',                 'ad4_ix_bands_market',        '(market_id)'],
     ['markets',               'ad4_ix_markets_city_date',   '(city_key, resolution_date desc)'],

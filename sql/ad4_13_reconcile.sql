@@ -344,12 +344,28 @@ begin
   v_asrc := v_asrc || 'else ''none'' end';
   v_bsrc := v_bsrc || 'else ''none'' end';
 
+  -- THIS IS THE VIEW THE WHOLE DESK SITS ON, and it was the slowest thing in
+  -- the database for the same reason v_latest_book was: `distinct on
+  -- (band_id) ... order by band_id, observed_at desc` reads EVERY row of
+  -- book_snapshots to emit one per band. Postgres has no loose index scan, so
+  -- the perfectly-ordered index is walked end to end.
+  --
+  -- P0.3 writes a snapshot per band every 15 minutes and never deletes one, so
+  -- that walk grows without limit while the answer stays 9,361 rows. It is the
+  -- shape of query that works for a month and then starts timing out, and
+  -- v_opportunities joins v_band_book TWICE, so it paid for the walk twice.
+  --
+  -- Driven from bands with a lateral it is one index probe per band on
+  -- ad4_ix_book_band_time, and it costs the same next year as it does today.
+  -- Measured on 179,487 snapshots over 9,361 bands.
+  --
+  -- The one behaviour that changes is a snapshot whose band_id is not in
+  -- bands. Nothing could render such a row anyway - it has no market, no city
+  -- and no ladder, and every consumer of this view joins through bands - so it
+  -- was already invisible everywhere it mattered. Verified zero on the desk.
   v_sql :=
     'create or replace view v_band_book as ' ||
-    'with latest as (' ||
-    '  select distinct on (band_id) * from book_snapshots' ||
-    '  where band_id is not null order by band_id, observed_at desc' ||
-    ') select ' ||
+    'select ' ||
     '  s.band_id, s.observed_at, s.best_bid, s.best_ask, ' ||
     case when v_has_sprd  then 's.spread'       else 'null::numeric' end || ' as spread, ' ||
     case when v_has_state then 's.market_state' else 'null::text'    end || ' as market_state, ' ||
@@ -362,7 +378,9 @@ begin
     'depth_usd(' || v_ask || ') as ask_depth_usd, ' ||
     case when v_has_v24 then 's.band_volume_24hr' else 'null::numeric' end || ' as band_volume_24h, ' ||
     case when v_has_vol then 's.band_volume'      else 'null::numeric' end || ' as band_volume_lifetime ' ||
-    'from latest s';
+    'from bands bd cross join lateral (' ||
+    '  select * from book_snapshots bs where bs.band_id = bd.band_id ' ||
+    '  order by bs.observed_at desc limit 1) s';
 
   execute v_sql;
 
@@ -434,6 +452,9 @@ declare
   v_from   text;
   v_cityex text;
   v_sql    text;
+  v_v24    boolean;
+  v_vlife  boolean;
+  v_bkcte  text;
 begin
   if to_regclass('public.trades_observed') is null then
     raise notice 'reconcile: trades_observed missing - volume views left alone';
@@ -452,6 +473,37 @@ begin
 
   raise notice 'reconcile: trades_observed timestamp = %s, city_key column = %', v_ts, v_city;
 
+  -- THE BOOK HALF OF VOLUME, WITHOUT BUILDING THE LADDERS TO GET IT.
+  --
+  -- This used to read the three figures below out of v_band_book. They are
+  -- plain columns of book_snapshots; v_band_book is where the bid/ask ladders
+  -- are normalised out of jsonb and depth_usd() is called over them. So asking
+  -- v_band_book for band_volume_24hr built the full ladder for every one of
+  -- the 9,361 bands to read one numeric off each - and v_opportunities joins
+  -- v_band_volume as well as v_band_book, so the desk paid for that twice on
+  -- every page load.
+  --
+  -- Same lateral as v_band_book uses, and the same three columns it would have
+  -- returned, straight off the newest snapshot per band.
+  select exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'book_snapshots'
+                    and column_name = 'band_volume_24hr') into v_v24;
+  select exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'book_snapshots'
+                    and column_name = 'band_volume') into v_vlife;
+  v_bkcte :=
+    'select bd.band_id, ' ||
+    case when v_v24   then 's.band_volume_24hr' else 'null::numeric' end || ' as band_volume_24h, ' ||
+    case when v_vlife then 's.band_volume'      else 'null::numeric' end || ' as band_volume_lifetime, ' ||
+    's.observed_at
+       from bands bd cross join lateral (
+         select ' ||
+    case when v_v24   then 'bs.band_volume_24hr' else 'null::numeric' end || ', ' ||
+    case when v_vlife then 'bs.band_volume'      else 'null::numeric' end || ', ' ||
+    'bs.observed_at
+            from book_snapshots bs where bs.band_id = bd.band_id
+           order by bs.observed_at desc limit 1) s(band_volume_24hr, band_volume, observed_at)';
+
   -- ---- v_band_volume ------------------------------------------------------
   v_sql :=
    'create or replace view v_band_volume as
@@ -465,8 +517,7 @@ begin
         and ' || v_ts || ' >= now() - make_interval(hours => ' || v_lb || ')
       group by t.band_id
     ), bk as (
-      select band_id, band_volume_24h, band_volume_lifetime, observed_at
-      from v_band_book
+      ' || v_bkcte || '
     )
     select
       coalesce(tv.band_id, bk.band_id) as band_id,
@@ -581,18 +632,57 @@ begin
     'bb.bid_levels_source, bb.ask_levels_source, ' ||
     'bb.bid_depth_usd, bb.ask_depth_usd';
 
+  -- CAPTURE FIRST. These two drops are CASCADE, and cascade here reaches
+  -- v_campaign_state, v_trade_plan, v_city_stats, v_city_reasoning and
+  -- v_city_day_plan - five views created by files that ran EARLIER, so
+  -- nothing re-created them and every page reading them went red with
+  -- `relation does not exist`. Re-running one SQL file to pick up a fix took
+  -- the platform apart, and the error pointed at the wrong file.
+  --
+  -- ad4_capture_dependents records them and their grants; the restore at the
+  -- end of this block puts back whatever the cascade actually removed. See
+  -- section 9 of ad4_00_preflight.sql. Optional by design: a database that
+  -- has not run the current preflight behaves exactly as before rather than
+  -- failing here.
+  begin
+    perform ad4_capture_dependents(array['v_opportunities', 'v_latest_book']);
+  exception when undefined_function then
+    raise notice 'reconcile: ad4_capture_dependents missing - re-run sql/ad4_00_preflight.sql, '
+                 'or re-run every file after this one by hand';
+  end;
+
   execute 'drop view if exists v_opportunities cascade';
   execute 'drop view if exists v_latest_book cascade';
 
+  -- A LATERAL, NOT A DISTINCT ON, and the difference is whether this view
+  -- gets slower every fifteen minutes for the rest of the desk's life.
+  --
+  -- `distinct on (band_id) ... order by band_id, observed_at desc` has to walk
+  -- EVERY row of book_snapshots to emit one row per band, because Postgres has
+  -- no loose index scan: the index is in the right order, and it still reads
+  -- all of it. P0.3 writes a snapshot per band every 15 minutes, so that walk
+  -- grows forever while the answer stays one row per band. Measured on a
+  -- 179,487-snapshot / 9,361-band database, which is this desk at 20 days of
+  -- history: the walk reads 179,487 rows to produce 9,361.
+  --
+  -- Driven from v_band_book instead, it is one index probe per band - 9,361
+  -- single-row lookups on ad4_ix_book_band_time - and it costs the same in a
+  -- year as it does today.
+  --
+  -- IDENTICAL OUTPUT, not merely similar. The old form INNER JOINed
+  -- v_band_book, which is exactly one row per band, so a snapshot whose band
+  -- no longer exists was already dropped and a band with no snapshot was
+  -- already absent. Verified on that database: same 9,361 rows, same columns.
   execute
     'create view v_latest_book as
-     with latest as (
-       select distinct on (band_id) * from book_snapshots
-       where band_id is not null order by band_id, observed_at desc
-     )
      select ' || v_cols || '
-     from latest s
-     join v_band_book bb on bb.band_id = s.band_id';
+     from v_band_book bb
+     cross join lateral (
+       select * from book_snapshots bs
+        where bs.band_id = bb.band_id
+        order by bs.observed_at desc
+        limit 1
+     ) s';
 
   -- v_opportunities, rebuilt in the same statement. Same leading columns as
   -- before, with the provenance of both the depth and the volume appended -
@@ -638,14 +728,25 @@ cross join (
     coalesce(((select value from settings where key = 'volume_thresholds')->>'liquidity_half_saturation_usd')::numeric, 1) as k,
     coalesce(((select value from settings where key = 'volume_thresholds')->>'thin_band_usd_24h')::numeric, 0) as thin_band_usd
 ) vt
-left join v_band_book   bk on bk.band_id = b.band_id
-left join v_band_volume bv on bv.band_id = b.band_id
-left join v_city_volume cv on cv.city_key = m.city_key
+-- LATERAL, so the ladders are built for the bands this view RETURNS and not
+-- for every band in the database. v_band_book normalises a jsonb order book
+-- and calls depth_usd() over it per band; joined plainly, the planner built
+-- all 9,361 of them and then threw away every one that had no live edge.
+-- There are 814 edges. Same rows out, an eleventh of the work.
+left join lateral (select * from v_band_book   x where x.band_id  = b.band_id)     bk on true
+left join lateral (select * from v_band_volume x where x.band_id  = b.band_id)     bv on true
+left join lateral (select * from v_city_volume x where x.city_key = m.city_key)    cv on true
 where m.resolution_date >= current_date
 order by score desc nulls last
   $v$;
 
   raise notice 'reconcile: v_latest_book + v_opportunities rebuilt';
+
+  -- Put back everything the cascade removed, shallowest first.
+  begin
+    perform ad4_restore_dependents();
+  exception when undefined_function then null;
+  end;
 end
 $ad4$;
 

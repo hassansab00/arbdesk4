@@ -1098,3 +1098,138 @@ begin
   raise notice 'Next: run ad4_phase1_tables.sql, then sql/ad4_phase2.sql, then the rest in README order.';
 end
 $ad4$;
+
+
+-- ===========================================================================
+-- 9. DROP CASCADE WITHOUT DESTROYING THE DESK.
+--
+-- `drop view v_opportunities cascade` is unavoidable in a few places: when a
+-- view's COLUMN LIST is built from what the database actually has, `create or
+-- replace view` refuses the change and only a drop will do.
+--
+-- What nobody had accounted for is what CASCADE means. Re-running
+-- ad4_13_reconcile.sql on a finished database silently deleted five views:
+--
+--     v_campaign_state   v_trade_plan   v_city_stats
+--     v_city_reasoning   v_city_day_plan
+--
+-- They are created by ad4_17, ad4_23, ad4_41 and others - files that ran
+-- BEFORE ad4_13 in nobody's plan, so nothing re-created them. The pages that
+-- read them then showed `relation "v_city_stats" does not exist`, which reads
+-- like a file that was never run rather than one that was run twice. Anyone
+-- re-running a single SQL file to pick up a fix took the platform apart.
+--
+-- These two functions make that impossible. Capture walks pg_depend
+-- recursively for everything that depends on the views about to be dropped,
+-- records each definition WITH ITS DEPTH and its grants, and restore rebuilds
+-- them shallowest-first afterwards. A view that the drop did not actually
+-- remove is skipped rather than replaced, so this is safe to call around a
+-- drop that turns out to be a no-op.
+--
+-- GRANTS ARE PART OF THE VIEW. Dropping one drops every grant on it, so a
+-- restore that rebuilt the view and not its grants would leave the browser
+-- with a relation it cannot select from - a 42501 where there had been data.
+-- ===========================================================================
+create table if not exists ad4_view_restore (
+  captured_at timestamptz not null default now(),
+  depth       int  not null,
+  view_name   text not null,
+  definition  text not null,
+  grants      text[] not null default '{}',
+  primary key (view_name)
+);
+comment on table ad4_view_restore is
+  'Scratch: view definitions captured by ad4_capture_dependents() before a drop cascade, restored by ad4_restore_dependents(). Empty except during a rebuild.';
+
+create or replace function ad4_capture_dependents(p_views text[])
+returns integer language plpgsql as $ad4$
+declare
+  v_n integer := 0;
+begin
+  delete from ad4_view_restore;
+
+  with recursive roots as (
+    select c.oid
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public' and c.relkind = 'v'
+       and c.relname = any (p_views)
+  ),
+  deps as (
+    select dep.oid as oid, 1 as depth
+      from roots r
+      join pg_depend d   on d.refobjid = r.oid
+      join pg_rewrite rw on rw.oid = d.objid
+      join pg_class dep  on dep.oid = rw.ev_class
+     where dep.oid <> r.oid and dep.relkind = 'v'
+    union
+    select dep.oid, deps.depth + 1
+      from deps
+      join pg_depend d   on d.refobjid = deps.oid
+      join pg_rewrite rw on rw.oid = d.objid
+      join pg_class dep  on dep.oid = rw.ev_class
+     where dep.oid <> deps.oid and dep.relkind = 'v' and deps.depth < 20
+  )
+  insert into ad4_view_restore (depth, view_name, definition, grants)
+  select max(d.depth),
+         c.relname,
+         pg_get_viewdef(c.oid, true),
+         coalesce(array_agg(distinct format('grant %s on public.%I to %I',
+                                            g.privilege_type, c.relname, g.grantee))
+                  filter (where g.grantee is not null), '{}')
+    from deps d
+    join pg_class c     on c.oid = d.oid
+    join pg_namespace n on n.oid = c.relnamespace
+    left join information_schema.role_table_grants g
+           on g.table_schema = 'public' and g.table_name = c.relname
+          and g.grantee in ('anon', 'authenticated', 'service_role')
+   where n.nspname = 'public'
+   group by c.relname, c.oid
+  on conflict (view_name) do nothing;
+
+  get diagnostics v_n = row_count;
+  if v_n > 0 then
+    raise notice 'preflight: captured % dependent view(s) before the drop - they will be rebuilt', v_n;
+  end if;
+  return v_n;
+end
+$ad4$;
+
+create or replace function ad4_restore_dependents()
+returns integer language plpgsql as $ad4$
+declare
+  r        record;
+  v_grant  text;
+  v_n      integer := 0;
+  v_failed text[] := '{}';
+begin
+  for r in select * from ad4_view_restore order by depth, view_name loop
+    -- Still there means the drop did not reach it. Leave it alone: the live
+    -- definition is never less current than a captured copy.
+    if to_regclass('public.' || quote_ident(r.view_name)) is not null then
+      continue;
+    end if;
+    begin
+      execute format('create view public.%I as %s', r.view_name, r.definition);
+      foreach v_grant in array r.grants loop
+        begin execute v_grant; exception when others then null; end;
+      end loop;
+      v_n := v_n + 1;
+    exception when others then
+      -- Named, never swallowed: a view that cannot be rebuilt is a page that
+      -- will be red, and the operator needs to know which file owns it.
+      v_failed := v_failed || format('%s (%s)', r.view_name, sqlerrm);
+    end;
+  end loop;
+
+  if v_n > 0 then
+    raise notice 'preflight: rebuilt % view(s) the drop cascade had removed', v_n;
+  end if;
+  if array_length(v_failed, 1) > 0 then
+    raise warning 'preflight: could NOT rebuild %: % - re-run the SQL file that creates them',
+      array_length(v_failed, 1), array_to_string(v_failed, '; ');
+  end if;
+  delete from ad4_view_restore;
+  return v_n;
+end
+$ad4$;

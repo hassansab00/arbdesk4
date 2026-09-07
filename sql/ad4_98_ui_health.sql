@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 112 of them - and for each MISSING one names the
+-- and function the app reads - 115 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -16,6 +16,7 @@
 -- ===========================================================================
 
 with expected(rel, owner, used_by) as (values
+    ('ad4_view_restore', 'ad4_00_preflight.sql', ''),
     ('anomalies', 'ad4_00_preflight.sql', ''),
     ('anomaly_rules', 'ad4_phase2.sql', ''),
     ('backtest_results', 'ad4_00_preflight.sql', '/backtest'),
@@ -51,6 +52,7 @@ with expected(rel, owner, used_by) as (values
     ('markets', 'ad4_00_preflight.sql', '(Header)'),
     ('model_versions', 'ad4_00_preflight.sql', ''),
     ('paper_trades', 'ad4_00_preflight.sql', '(GlobalBar), /, /analytics, /goals'),
+    ('public', 'ad4_00_preflight.sql', ''),
     ('settings', 'ad4_00_preflight.sql', '(GlobalBar), (ScheduleControl), /goals, /workflows'),
     ('signals', 'ad4_00_preflight.sql', '(SignalsPanel), /, /analytics'),
     ('strategies', 'ad4_00_preflight.sql', '(SignalsPanel), /campaigns'),
@@ -97,6 +99,7 @@ with expected(rel, owner, used_by) as (values
     ('v_forecast_divergence', 'ad4_16_nws.sql', ''),
     ('v_forecast_divergence_current', 'ad4_19_stats_cache.sql', ''),
     ('v_forecast_features', 'ad4_24_nws_gridpoint.sql', ''),
+    ('v_jit_state', 'ad4_46_jit.sql', ''),
     ('v_latest_book', 'ad4_13_reconcile.sql', '/board, /goals, /opportunities'),
     ('v_latest_edge', 'ad4_phase2.sql', ''),
     ('v_latest_prob', 'ad4_phase2.sql', ''),
@@ -150,6 +153,7 @@ declare v_missing int; v_files text; v_empty int; r record;
 begin
   create temp table _ad4_expected(rel text, owner text, used_by text) on commit drop;
   insert into _ad4_expected values
+    ('ad4_view_restore', 'ad4_00_preflight.sql', ''),
     ('anomalies', 'ad4_00_preflight.sql', ''),
     ('anomaly_rules', 'ad4_phase2.sql', ''),
     ('backtest_results', 'ad4_00_preflight.sql', '/backtest'),
@@ -185,6 +189,7 @@ begin
     ('markets', 'ad4_00_preflight.sql', '(Header)'),
     ('model_versions', 'ad4_00_preflight.sql', ''),
     ('paper_trades', 'ad4_00_preflight.sql', '(GlobalBar), /, /analytics, /goals'),
+    ('public', 'ad4_00_preflight.sql', ''),
     ('settings', 'ad4_00_preflight.sql', '(GlobalBar), (ScheduleControl), /goals, /workflows'),
     ('signals', 'ad4_00_preflight.sql', '(SignalsPanel), /, /analytics'),
     ('strategies', 'ad4_00_preflight.sql', '(SignalsPanel), /campaigns'),
@@ -231,6 +236,7 @@ begin
     ('v_forecast_divergence', 'ad4_16_nws.sql', ''),
     ('v_forecast_divergence_current', 'ad4_19_stats_cache.sql', ''),
     ('v_forecast_features', 'ad4_24_nws_gridpoint.sql', ''),
+    ('v_jit_state', 'ad4_46_jit.sql', ''),
     ('v_latest_book', 'ad4_13_reconcile.sql', '/board, /goals, /opportunities'),
     ('v_latest_edge', 'ad4_phase2.sql', ''),
     ('v_latest_prob', 'ad4_phase2.sql', ''),

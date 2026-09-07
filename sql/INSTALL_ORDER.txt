@@ -58,6 +58,7 @@ ad4_42_backtest.sql
 ad4_43_forecast_audit.sql
 ad4_44_indexes.sql
 ad4_45_calibration_feedback.sql
+ad4_46_jit.sql
 
 # ad4_38 grants the write path to service_role and prints one row per ingest
 # table saying whether the service key can write it. It is last on purpose -

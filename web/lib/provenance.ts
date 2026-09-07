@@ -515,6 +515,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_observations"
   ],
   "v_band_book": [
+    "bands",
     "book_snapshots"
   ],
   "v_band_ladder": [
@@ -537,13 +538,13 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_band_volume": [
     "bands",
     "markets",
-    "trades_observed",
-    "book_snapshots"
+    "trades_observed"
   ],
   "v_bankroll_curve": [
     "fact_signal_outcome"
   ],
   "v_book_ladder": [
+    "bands",
     "book_snapshots"
   ],
   "v_calibration": [
@@ -637,8 +638,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "markets",
     "trades_observed",
-    "book_snapshots",
     "weather_forecasts",
+    "book_snapshots",
     "paper_trades"
   ],
   "v_city_temp_trend": [
@@ -652,8 +653,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_city_volume": [
     "bands",
     "markets",
-    "trades_observed",
-    "book_snapshots"
+    "trades_observed"
   ],
   "v_condition_skill": [
     "derived_city_day_features",
@@ -705,7 +705,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_forecast_features"
   ],
   "v_latest_book": [
-    "book_snapshots"
+    "book_snapshots",
+    "bands"
   ],
   "v_latest_edge": [
     "edges"
