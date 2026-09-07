@@ -7,6 +7,7 @@ have happened, and both are silent until someone rebuilds the database.
 """
 
 import os
+import re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SQL = os.path.join(ROOT, "sql")
@@ -157,3 +158,79 @@ def test_the_workflows_point_at_the_file_that_fixes_it():
     assert "ad4_38_grants.sql" in named, "no workflow tells you how to fix a 42501"
     for token in named:
         assert os.path.exists(os.path.join(SQL, token)), f"workflows name a missing {token}"
+
+
+# ---------------------------------------------------------------------------
+# STATEMENT TIMEOUTS
+#
+#     canceling statement due to statement timeout  (57014)
+#
+# appeared in red boxes across the platform. Not a broken view: Supabase gives
+# the browser's role a few seconds per query, and four of the busiest tables
+# shipped with no index except a surrogate primary key nobody queries by, so
+# every lookup was a full table scan. Confirmed with EXPLAIN before fixing:
+# `Seq Scan on book_snapshots`, `Parallel Seq Scan on trades_observed`.
+#
+# A sequential scan of a small table is fast, so there is no moment at which a
+# page starts failing - it gets slower until the timeout catches it. These
+# tests keep the indexes present and keep the two views that recompute the
+# whole archive pointed at the cache.
+# ---------------------------------------------------------------------------
+
+HOT_TABLES = {
+    "book_snapshots": "band_id",       # every price the desk quotes
+    "trades_observed": "band_id",      # every volume figure
+    "band_probabilities": "band_id",   # every model probability
+    "bands": "market_id",              # every market -> bands join
+    "markets": "city_key",             # every city-day lookup
+}
+
+
+def test_the_hot_tables_are_indexed_on_what_they_are_queried_by():
+    sql = _sql("ad4_44_indexes.sql")
+    for table, col in HOT_TABLES.items():
+        assert re.search(rf"\['{table}',\s*'[a-z0-9_]+',\s*'\({col}\b", sql), (
+            f"{table} has no index on {col} - every lookup is a full table scan, "
+            "which is where a 57014 timeout comes from")
+
+
+def test_adding_an_index_is_followed_by_analyze():
+    """A table that has just gained an index still carries the statistics it
+    had before, and the planner keeps choosing the sequential scan it was told
+    was cheapest. This is the half people leave out."""
+    sql = _sql("ad4_44_indexes.sql")
+    assert "analyze public.%I" in sql
+
+
+def test_nothing_recomputes_the_archive_to_show_one_day():
+    """v_city_day_features carries a window function - prev_max_c needs lag()
+    across a city's days - and a window cannot be pushed past a WHERE. So
+    `where obs_date >= current_date - 1` still made Postgres compute EVERY day
+    in the archive first: 2.6 seconds for 37 rows on a 650k-row archive, which
+    is a timeout and a red box. derived_city_day_features is the same rows,
+    already computed and indexed."""
+    import glob
+
+    for path in sorted(glob.glob(os.path.join(SQL, "*.sql"))):
+        src = re.sub(r"--[^\n]*", " ", open(path).read())
+        base = os.path.basename(path)
+        if base == "ad4_21_weather_features.sql":
+            continue                       # the file that defines it
+        for m in re.finditer(r"\b(?:from|join)\s+v_city_day_features\b", src):
+            # Filling the cache is the one legitimate read: that is what the
+            # view is FOR. Anything else should be reading the cache.
+            before = src[max(0, m.start() - 1200): m.start()]
+            if "insert into derived_city_day_features" in before:
+                continue
+            raise AssertionError(
+                f"{base} reads v_city_day_features outside a cache refresh. It recomputes the "
+                "whole archive through a window function, which no WHERE can be pushed past. "
+                "Read derived_city_day_features instead - same columns, already computed.")
+
+
+def test_the_scan_risk_view_exists():
+    """So "which table is about to do this to me next" is a query, not a
+    guess."""
+    sql = _sql("ad4_44_indexes.sql")
+    assert "create or replace view v_table_scan_risk" in sql
+    assert "AT RISK" in sql

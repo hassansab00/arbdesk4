@@ -585,9 +585,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_weather_model",
     "live_weather",
     "markets",
-    "weather_observations",
     "weather_forecasts",
     "derived_city_climate",
+    "weather_observations",
     "bands",
     "book_snapshots",
     "paper_trades",
@@ -626,8 +626,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "book_snapshots"
   ],
   "v_condition_skill": [
-    "cities",
-    "weather_observations",
+    "derived_city_day_features",
     "weather_forecast_features"
   ],
   "v_databank_coverage": [
@@ -706,10 +705,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_model_forecast"
   ],
   "v_model_forecast_skill": [
+    "derived_city_day_features",
     "derived_model_forecast",
     "derived_weather_model",
-    "cities",
-    "weather_observations",
     "weather_forecast_features"
   ],
   "v_opportunities": [

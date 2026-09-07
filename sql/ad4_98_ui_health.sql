@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 109 of them - and for each MISSING one names the
+-- and function the app reads - 110 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -32,7 +32,7 @@ with expected(rel, owner, used_by) as (values
     ('derived_capacity', 'ad4_phase2.sql', ''),
     ('derived_city_climate', 'ad4_19_stats_cache.sql', ''),
     ('derived_city_correlation', 'ad4_phase2.sql', ''),
-    ('derived_city_day_features', 'ad4_28_feature_cache.sql', ''),
+    ('derived_city_day_features', 'ad4_00_preflight.sql', ''),
     ('derived_city_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_climb_profile', 'ad4_28_feature_cache.sql', ''),
     ('derived_forecast_skill', 'ad4_00_preflight.sql', '/analytics'),
@@ -116,6 +116,7 @@ with expected(rel, owner, used_by) as (values
     ('v_strategy_params', 'ad4_34_trade_plan.sql', ''),
     ('v_synthesis_findings', 'ad4_40_synthesis.sql', '/synthesis'),
     ('v_synthesis_inventory', 'ad4_35_databank_inventory.sql', '/databank'),
+    ('v_table_scan_risk', 'ad4_44_indexes.sql', ''),
     ('v_trade_plan', 'ad4_34_trade_plan.sql', '/goals, /opportunities, /strategies'),
     ('v_trade_timing', 'ad4_33_control.sql', '/goals'),
     ('v_weather_effects', 'ad4_21_weather_features.sql', '(ModelAnalytics)'),
@@ -163,7 +164,7 @@ begin
     ('derived_capacity', 'ad4_phase2.sql', ''),
     ('derived_city_climate', 'ad4_19_stats_cache.sql', ''),
     ('derived_city_correlation', 'ad4_phase2.sql', ''),
-    ('derived_city_day_features', 'ad4_28_feature_cache.sql', ''),
+    ('derived_city_day_features', 'ad4_00_preflight.sql', ''),
     ('derived_city_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_climb_profile', 'ad4_28_feature_cache.sql', ''),
     ('derived_forecast_skill', 'ad4_00_preflight.sql', '/analytics'),
@@ -247,6 +248,7 @@ begin
     ('v_strategy_params', 'ad4_34_trade_plan.sql', ''),
     ('v_synthesis_findings', 'ad4_40_synthesis.sql', '/synthesis'),
     ('v_synthesis_inventory', 'ad4_35_databank_inventory.sql', '/databank'),
+    ('v_table_scan_risk', 'ad4_44_indexes.sql', ''),
     ('v_trade_plan', 'ad4_34_trade_plan.sql', '/goals, /opportunities, /strategies'),
     ('v_trade_timing', 'ad4_33_control.sql', '/goals'),
     ('v_weather_effects', 'ad4_21_weather_features.sql', '(ModelAnalytics)'),

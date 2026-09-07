@@ -68,6 +68,12 @@ export function ErrorBox({
   const secretKey = /secret api key|SECRET Supabase key/i.test(message);
   const configIssue = /supabase is not configured/i.test(message);
   const missingRelation = /does not exist|schema cache|PGRST\d+/i.test(message);
+  // 57014 is Supabase cancelling a query that ran past the statement_timeout
+  // it sets for the browser's role - a few seconds. It is not a broken view
+  // and re-running does not help; it means the query is too slow for the
+  // budget. Shown as its own case because the remedy is nothing like the
+  // remedy for a missing relation, and the raw text says neither.
+  const timedOut = /57014|statement timeout|canceling statement/i.test(message);
 
   // The secret-key case is page-wide: ConfigBanner already states it in full
   // at the top. Repeating the whole remediation in every failed query - and
@@ -94,7 +100,26 @@ export function ErrorBox({
           Vercel → Settings → Environment Variables, then redeploy. See <code>web/README.md</code>.
         </p>
       )}
-      {missingRelation && !configIssue && (
+      {timedOut && (
+        <div className="mt-2 space-y-1 text-xs text-muted">
+          <p className="text-warn">
+            The database cancelled this query for taking too long — not because anything is
+            missing. Supabase gives the browser&apos;s key a few seconds per query, and this one
+            went past it.
+          </p>
+          <p>
+            Run <code className="rounded bg-panel2 px-1">sql/ad4_44_indexes.sql</code>. Four of the
+            busiest tables shipped with no index except a primary key nobody queries by, so every
+            lookup was a full table scan — which is fast while a table is small and becomes this
+            once it is not. It is safe to run at any time and changes no data.
+          </p>
+          <p>
+            Then <code className="rounded bg-panel2 px-1">select * from v_table_scan_risk</code>{" "}
+            lists any table still carrying nothing but its primary key.
+          </p>
+        </div>
+      )}
+      {missingRelation && !configIssue && !timedOut && (
         <p className="mt-2 text-xs text-muted">
           {(() => {
             // NAME THE FILE THAT CREATES IT. This used to say "run

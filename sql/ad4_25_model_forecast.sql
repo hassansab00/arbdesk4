@@ -139,9 +139,13 @@ where m.predicted_max_c is not null;
 -- must not abort the table, the two views the UI reads, or the grants.
 do $ad4$
 begin
-  if to_regclass('public.v_city_day_features') is null then
+  -- The CACHE, not the windowed view: v_city_day_features recomputes every
+  -- day in the archive through a window function before anything can be
+  -- filtered, and this view aggregates across all of it. Same rows, already
+  -- computed, indexed. See ad4_44 for the measurements.
+  if to_regclass('public.derived_city_day_features') is null then
     execute 'drop view if exists v_model_forecast_skill';
-    raise notice 'ad4_25: v_model_forecast_skill SKIPPED - v_city_day_features does not exist. Run sql/ad4_21_weather_features.sql, then re-run this file. Everything else in ad4_25 is installed.';
+    raise notice 'ad4_25: v_model_forecast_skill SKIPPED - derived_city_day_features does not exist. Run sql/ad4_28_feature_cache.sql, then re-run this file. Everything else in ad4_25 is installed.';
     return;
   end if;
 
@@ -158,7 +162,7 @@ begin
       (avg(abs(m.predicted_max_c - o.max_c)) < avg(abs(m.nws_max_c - o.max_c)))  as beat_nws,
       (avg(abs(m.predicted_max_c - o.max_c)) < avg(abs(m.prev_max_c - o.max_c))) as beat_persistence
     from derived_model_forecast m
-    join v_city_day_features o
+    join derived_city_day_features o
       on o.city_key = m.city_key and o.obs_date = m.for_date and o.n_obs >= 12
     where m.predicted_max_c is not null
     group by m.city_key, m.lead_days
