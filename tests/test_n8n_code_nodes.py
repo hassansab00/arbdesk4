@@ -960,6 +960,53 @@ def test_no_workflow_carries_a_key_at_all():
                 f"{name} / {n['name']}: sets an auth header the credential already sends")
 
 
+CRED_NAME = "AD4 Supabase"
+
+
+def test_every_supabase_node_is_bound_to_the_same_named_credential():
+    """One credential for the whole desk, pre-bound in the files.
+
+    n8n resolves a credential reference by id first and by NAME when the id is
+    unknown - which it always is on a fresh instance. So binding every node to
+    a credential called "AD4 Supabase" means a user who creates that credential
+    BEFORE importing gets all 57 nodes wired with no dropdowns at all, and a
+    user who imports first is no worse off than an unbound file: they pick it
+    node by node.
+
+    The name is therefore load-bearing. Change it in one file and that
+    workflow's nodes come in unbound while the other eleven are fine - which
+    fails as a single 401 on one workflow, days later."""
+    import glob
+
+    bound = 0
+    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
+        d = json.load(open(path))
+        name = os.path.basename(path)
+        for n in n8n_supabase_nodes(d):
+            cred = n.get("credentials", {}).get("supabaseApi")
+            assert cred, f"{name} / {n['name']}: no credential bound"
+            assert cred.get("name") == CRED_NAME, (
+                f"{name} / {n['name']}: bound to {cred.get('name')!r}, not {CRED_NAME!r}")
+            bound += 1
+    assert bound == 57, f"expected 57 Supabase nodes across the files, found {bound}"
+
+
+def test_the_preflight_names_the_credential_it_binds_to():
+    """The instruction in the file and the binding in the file must agree. If
+    the preflight tells you to name it one thing and the nodes are bound to
+    another, following the instructions exactly still leaves you unbound."""
+    import glob
+
+    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
+        d = json.load(open(path))
+        gate = [n for n in d["nodes"] if n["name"] == "Run now?"]
+        if not gate:
+            continue
+        assert CRED_NAME in gate[0]["parameters"]["jsCode"], (
+            f"{os.path.basename(path)}: preflight never names the credential "
+            f"its own nodes are bound to")
+
+
 def test_the_preflight_says_where_the_key_goes():
     """A node that cannot read the key still has to say where to put it -
     otherwise the first run fails on a credential nobody knew to create."""
@@ -979,11 +1026,39 @@ def test_the_preflight_says_where_the_key_goes():
 def test_a_refused_schedule_gate_stops_the_run():
     """With should_run revoked from anon (sql/ad4_38), a credential holding the
     publishable key is refused HERE - two nodes in, before a single row is
-    fetched. That is what replaced decoding the key out of the Config node."""
+    fetched. That is what replaced decoding the key out of the Config node.
+
+    And because the node can no longer READ the key, the message it throws has
+    to name both causes - a wrong key in the credential and a database missing
+    the grants - rather than confidently blaming one. A message that says "this
+    is the anon key" when the key is fine sends the reader to the wrong place."""
     r = run("P1.2_nws_monitor.template.json", "plan_gate_denied.json")
     assert r["ok"] is False and r["node"] == "Run now?", r
     assert "ad4_38_grants.sql" in r["error"], r["error"]
-    assert "Nothing was fetched and nothing was written" in r["error"], r["error"]
+    assert "nothing was fetched and nothing was written" in r["error"], r["error"]
+    assert "THE KEY" in r["error"] and "THE DATABASE" in r["error"], r["error"]
+    assert "Credentials" in r["error"], r["error"]
+
+
+def test_every_gate_throws_the_same_diagnostic():
+    """One 42501 branch per gate, and the same one in all of them. The
+    credential conversion left a second, unreachable branch behind in six
+    workflows that still blamed the anon key outright - dead code that would
+    have come back as gospel the next time someone read it."""
+    import glob
+    import re as _re
+    seen = {}
+    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.json"))):
+        code = "\n".join(
+            n.get("parameters", {}).get("jsCode", "")
+            for n in json.load(open(path)).get("nodes", []))
+        found = _re.findall(r"`Supabase refused should_run:.*?`\);", code, _re.S)
+        if not found and os.path.basename(path).startswith("P2.1"):
+            continue                      # webhook-driven, has no cadence gate
+        assert len(found) == 1, f"{path} has {len(found)} gate diagnostics"
+        seen.setdefault(found[0], []).append(os.path.basename(path))
+    assert len(seen) == 1, f"gates disagree: {[v for v in seen.values()]}"
+    assert len(next(iter(seen.values()))) == 12, seen
 
 
 def test_the_service_key_is_let_through():

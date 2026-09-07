@@ -1,15 +1,38 @@
 # n8n workflow files
 
-**11 workflow files, plus one snippet.** All run three ways — their own
+**12 workflow files, plus one snippet.** All run three ways — their own
 schedule, the Execute button in n8n, or the Run button on the AD4 Workflows
 page — and all write a row to `ingest_log` when they finish, so
 `v_workflow_runs` shows the last run of each however it was started.
 
 ## Building n8n from scratch: import in this order
 
-Fill **Config → `supabase_url`** and **`service_key`** in every one. The
-service key is Supabase → Project Settings → API → `service_role` (or a key
-beginning `sb_secret_`). Never put it anywhere starting `NEXT_PUBLIC_`.
+### First, make the credential — once, not twelve times
+
+The service key is **no longer in these files**. Every Supabase node
+authenticates with an n8n credential instead:
+
+**n8n → Credentials → New → Supabase API**
+
+| Field | Value |
+|---|---|
+| **Name** | **`AD4 Supabase`** — this name exactly |
+| Host | `https://<your-project-ref>.supabase.co` |
+| Service Role Secret | Supabase → Project Settings → API → `service_role` (or a key beginning `sb_secret_`) |
+
+**Do this before importing anything.** All 57 Supabase nodes across the twelve
+workflows are already bound to a credential named `AD4 Supabase`, and n8n links
+a reference by name when it does not recognise the id — which it never does on
+a fresh instance. Create it first and every node comes in wired. Import first
+and the nodes come in unbound; you then pick the credential on each one, which
+works but is 57 dropdowns.
+
+Then per workflow you fill **Config → `supabase_url`**
+(the same host; an expression has to build the request URL and cannot read the
+credential's host, so it stays) and, on P3.1/P4.1, `alert_email`.
+
+Never put the service key anywhere starting `NEXT_PUBLIC_` — that compiles it
+into the browser bundle.
 
 | # | File | What it does | Cadence | Needs |
 |---|---|---|---|---|
@@ -24,6 +47,7 @@ beginning `sb_secret_`). Never put it anywhere starting `NEXT_PUBLIC_`.
 | 9 | `P3.1_email_digests.template.json` | Morning brief and end-of-day report. Wants `alert_email`. | 2×/day | — |
 | 10 | `P1.1_live_weather_alerts.template.json` | Webhook → email when a weather event fires. | event | — |
 | 11 | `P0.5_refresh_rules_text.template.json` | Watches the settlement rules for a mid-market change. Least urgent. | 1 day | 1 |
+| 12 | `P2.1_relearn.template.json` | Fires the GitHub Actions relearn run — refits the model on the evidence collected since the last one. | 1 week | — |
 
 **Import 1–3 first and get them green before importing anything else.** Those
 three fill the tables every page reads; the rest add accuracy and alerting to a
@@ -70,66 +94,71 @@ re-parse a string body, so a build of n8n that ignores the option still works.
 | P3.1 Email Digests | `/webhook/ad4-email-digests` - body `{"digest":"morning"|"eod"}` |
 | P4.1 Health Watchdog | `/webhook/ad4-health-watchdog` |
 
-**Safe to commit**: every `Config` node ships with blank
-`supabase_url`/`service_key`/`alert_email`. Fill them in after import, inside
-n8n - never re-export and commit a filled-in copy (it would contain the
-service key). Use `python scripts/sanitise_n8n_export.py <export>.json n8n/`
-if you ever do need to capture one back.
+**Safe to commit**: no file here contains a key at all. Every `Config` node
+ships with blank `supabase_url`/`alert_email` and there is no `service_key`
+field to leave filled in - the key lives in the n8n credential, encrypted at
+rest, which an export cannot carry. Fill the Config values in after import,
+inside n8n. Use `python scripts/sanitise_n8n_export.py <export>.json n8n/` if
+you ever capture one back, and it still refuses to write a file with a
+secret-shaped string in it.
 
-## The ten AD4 workflows
+## The twelve AD4 workflows
 
-| # | Workflow | Trigger | File | Status |
-|---|---|---|---|---|
-| P0.2 | Market Discovery | schedule | `P0.2_market_discovery.scaffold.json` | **scaffold** |
-| P0.3 | Book + Volume Snapshot | schedule | `P0.3_book_volume_snapshot.scaffold.json` | **scaffold** |
-| P0.4 | Trade History | schedule | `P0.4_trade_history.scaffold.json` | **scaffold** |
-| P0.5 | Refresh Rules Text | schedule | `P0.5_refresh_rules_text.scaffold.json` | **scaffold** |
-| P1.1 | Live Weather Alerts (notify half) | webhook | `P1.1_live_weather_alerts.template.json` | template |
-| P1.2 | NWS Monitor | schedule 2h | `P1.2_nws_monitor.template.json` | template |
-| P1.3 | NWS Forecast | schedule 6h | `P1.3_nws_forecast.template.json` | template |
-| P1.4 | NWS Gridpoint | schedule 6h | `P1.4_nws_gridpoint.template.json` | template |
-| P3.1 | Email Digests | schedule ×2 | `P3.1_email_digests.template.json` | template |
-| P4.1 | Health Watchdog | schedule | `P4.1_health_watchdog.template.json` | template |
+| # | Workflow | Trigger | File |
+|---|---|---|---|
+| P0.2 | Market Discovery | schedule 1h | `P0.2_market_discovery.template.json` |
+| P0.3 | Book + Volume Snapshot | schedule 15m | `P0.3_book_volume_snapshot.template.json` |
+| P0.4 | Trade History | schedule 1h | `P0.4_trade_history.template.json` |
+| P0.5 | Refresh Rules Text | schedule 1d | `P0.5_refresh_rules_text.template.json` |
+| P1.1 | Live Weather Alerts (notify half) | webhook | `P1.1_live_weather_alerts.template.json` |
+| P1.2 | NWS Monitor | schedule 2h | `P1.2_nws_monitor.template.json` |
+| P1.3 | NWS Forecast | schedule 6h | `P1.3_nws_forecast.template.json` |
+| P1.4 | NWS Gridpoint | schedule 6h | `P1.4_nws_gridpoint.template.json` |
+| P1.5 | Open-Meteo | schedule 3h | `P1.5_open_meteo.template.json` |
+| P2.1 | Relearn trigger | schedule 1w | `P2.1_relearn.template.json` |
+| P3.1 | Email Digests | schedule x2/day | `P3.1_email_digests.template.json` |
+| P4.1 | Health Watchdog | schedule 6h | `P4.1_health_watchdog.template.json` |
 
-Everything else the spec names (P2.1 Probability + Edge, P2.2 Signals,
-P2.3 Settlement, P2.4 Derived Recompute, the backtest runner) runs as a
-GitHub Action, not in n8n — see `docs/n8n_workflows.md` for why.
+Everything else the spec names (P2.2 Signals, P2.3 Settlement, P2.4 Derived
+Recompute, the backtest runner) runs as a GitHub Action, not in n8n - see
+`docs/n8n_workflows.md` for why. P2.1 is the exception that spans both: the
+model refit itself is an Action, and this workflow is the schedule that
+fires it, so the cadence lives with every other cadence on the Workflows
+page rather than in a `cron:` line nobody looks at.
 
-### template vs scaffold
+### All twelve are templates now
 
-**`.template.json`** — built and checked against this repo's own schema and
-RPCs. Import, fill in Config, use.
+Every file here is built and checked against this repo's own schema and RPCs,
+and every one is exercised by the test suite in `tests/test_n8n_code_nodes.py`
+against a Node harness that runs the real Code nodes. Import, pick the
+credential, fill Config, use.
 
-**`.scaffold.json`** — the four P0.x workflows **already exist and run in
-Hassan's n8n**; they were never captured here. These are reconstructions:
-the Supabase half is grounded (table and column names come from
-`sql/ad4_00_preflight.sql`, verified against a real Postgres), but the
-Polymarket endpoint is **not** — this repo contains exactly one Polymarket
-URL, in `scripts/settlement.py`, itself flagged unverified. So each
-scaffold takes the endpoint as a **Config field** rather than asserting one.
+The P0.x four were once shipped as `.scaffold.json` reconstructions, because
+the Polymarket half could not be called from the machine that built them. That
+is still true of the endpoints - see **The Polymarket endpoints** above - but
+the workflows themselves are now complete, guarded and tested, so there is no
+longer a scaffold/template split and no second copy to avoid activating.
 
-> **Do not activate a scaffold alongside the P0.x workflow it reconstructs.**
-> Two copies writing the same tables is worse than one.
+### `schedule_gate.snippet.json` - the gate on its own
 
-Use a scaffold as a rebuild reference or to diff against the original.
-
-### `schedule_gate.snippet.json` - the gate, without the swap
-
-The four P0.x that really run in Hassan's n8n predate `should_run()`, so
-nothing in `settings.workflow_schedules` controls them. The obvious fix -
-import the scaffolds instead - trades a **working** ingest for a
-**reconstruction whose Polymarket endpoints were never verified against it**.
-That is a bad trade and this file is the alternative.
+For a workflow of your own that should honour the cadences set on the AD4
+Workflows page. Nothing here needs it; it exists so a workflow you wrote
+yourself can be brought under the same schedule control as these twelve.
 
 It is a fragment, not a workflow: four nodes (*Gate config → Check schedule →
 Run now? → Stop if skipped*) meant to be copied and pasted onto an existing
 canvas, then wired between that workflow's Schedule Trigger and its first
-working node. It carries its own two credential boxes rather than reading a
-`Config` node, because it cannot know what the host workflow named its own.
+working node. It carries its own `Gate config` node holding `supabase_url`
+rather than reading a `Config` node, because it cannot know what the host
+workflow named its own; its Supabase call uses the same credential as
+everything else.
 
 `docs/DO_THIS_NOW.md` section C2 has the five steps.
 
-### Better: capture the real four
+### Capturing a workflow back into the repo
+
+If you change one of these inside n8n and want the change kept, capture it
+rather than editing the file by hand:
 
 ```bash
 # n8n -> open the workflow -> ... menu -> Download
@@ -141,9 +170,6 @@ instance metadata, forces `active: false`, and redacts anything
 secret-shaped anywhere in the file — including a key hardcoded inside a
 Code node, which is the easiest one to miss. If a secret-shaped string
 survives, it **refuses to write** and tells you which node it is in.
-
-The real workflows beat the reconstructions. Once captured, delete the
-matching scaffold.
 
 ## Import
 
@@ -254,9 +280,13 @@ select coalesce(sum(volume_usd),0) as vol_24h from v_city_volume;
 
 ## After importing
 
-1. Fill in each workflow's `Config` node.
-2. Run once via the Manual Trigger to confirm the Supabase calls succeed
-   (401/403 usually means the service key wasn't pasted in, not a bug).
+1. Pick the Supabase credential on any node that shows a red "credential
+   required" flag, and fill in each workflow's `Config` node
+   (`supabase_url`, plus `alert_email` on P3.1/P4.1).
+2. Run once via the Manual Trigger to confirm the Supabase calls succeed.
+   A `42501` at the *Run now?* node means either the credential holds the
+   anon key or `sql/ad4_38_grants.sql` has not been run - the error names
+   both and ad4_38's output says which.
 3. Activate the workflow (top-right toggle) so its real trigger
    (Schedule/Webhook) takes over.
 

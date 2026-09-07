@@ -171,7 +171,13 @@
         "nodeCredentialType": "supabaseApi"
       },
       "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "supabaseApi": {
+          "id": "ad4-supabase",
+          "name": "AD4 Supabase"
+        }
+      }
     },
     {
       "id": "build-requests",
@@ -356,7 +362,13 @@
         "nodeCredentialType": "supabaseApi"
       },
       "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "supabaseApi": {
+          "id": "ad4-supabase",
+          "name": "AD4 Supabase"
+        }
+      }
     },
     {
       "id": "write-cities",
@@ -403,7 +415,13 @@
       "alwaysOutputData": true,
       "onError": "continueRegularOutput",
       "notes": "PATCH, not upsert. An upsert here fails with 23502 on any database whose cities.display_name is NOT NULL, because ON CONFLICT DO UPDATE checks NOT NULL on the proposed row before it finds the conflict - and it fails with PGRST102 whenever one run has both a supported and an unsupported city, because a bulk POST needs identical keys. This workflow annotates a city that already exists; it must never create one.",
-      "notesInFlow": false
+      "notesInFlow": false,
+      "credentials": {
+        "supabaseApi": {
+          "id": "ad4-supabase",
+          "name": "AD4 Supabase"
+        }
+      }
     },
     {
       "id": "summary",
@@ -450,7 +468,13 @@
         "nodeCredentialType": "supabaseApi"
       },
       "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "supabaseApi": {
+          "id": "ad4-supabase",
+          "name": "AD4 Supabase"
+        }
+      }
     },
     {
       "id": "respond",
@@ -506,6 +530,12 @@
         },
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi"
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "ad4-supabase",
+          "name": "AD4 Supabase"
+        }
       }
     },
     {
@@ -518,7 +548,7 @@
         -30
       ],
       "parameters": {
-        "jsCode": "// AD4-KEY-CHECK\n// THE KEY IS NOT IN THIS FILE ANY MORE, AND THAT IS THE POINT.\n//\n// Every Supabase node in this workflow authenticates with an n8n SUPABASE\n// CREDENTIAL rather than a key pasted into the Config node. That is one place\n// to set it instead of twelve, it is encrypted at rest in n8n, and exporting\n// this workflow can no longer leak it - the old shape had the service key\n// sitting in plain text inside a JSON file that gets emailed around.\n//\n// SET IT UP ONCE:\n//   n8n -> Credentials -> New -> Supabase API\n//     Host         https://<your-project-ref>.supabase.co\n//     Service Role the SERVICE ROLE key (Project Settings -> API keys)\n//   then pick that credential on any node that asks for one.\n//\n// The credential sends `apikey` and `Authorization: Bearer` itself, which is\n// exactly what these nodes used to set by hand.\n//\n// WHAT STILL CHECKS THE KEY. This node can no longer read it - a credential\n// is not visible to an expression, by design. Two things downstream do:\n//\n//   the schedule gate, immediately below. sql/ad4_38 revokes should_run from\n//   anon, so a credential holding the publishable key is refused HERE, two\n//   nodes in, before a single row is fetched.\n//\n//   the write guard in the Summary node, which names any refusal the\n//   database gives and refuses to report success on a run that wrote nothing.\n//\n// supabase_url stays in Config because an expression has to build the request\n// URL and cannot read the credential's host. It is not a secret.\n{\n  const cfg = $('Config').first().json ?? {};\n  const url = String(cfg.supabase_url ?? '').trim();\n  if (!url) {\n    throw new Error(\n      'Config -> supabase_url is empty. Set it to exactly ' +\n      'https://<your-project-ref>.supabase.co - no trailing slash and no /rest/v1, ' +\n      'which every node below appends itself. The KEY does not go here: it belongs in ' +\n      'the n8n Supabase credential (Credentials -> New -> Supabase API), which is ' +\n      'where the nodes now read it from.');\n  }\n  if (!/^https:\\/\\//.test(url) || /\\/rest\\b/.test(url) || /\\/$/.test(url)) {\n    throw new Error(\n      `Config -> supabase_url is \"${url}\", which is not the shape every node below ` +\n      'expects: https://<your-project-ref>.supabase.co, no trailing slash, no /rest/v1. ' +\n      'Nothing was fetched and nothing was written.');\n  }\n}\n\n// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A PERMISSION ERROR IS NOT AN UNAVAILABLE GATE. 42501 here means the key\n// cannot even call should_run, and a key that cannot do that cannot write\n// either - so stop, rather than failing open into a run that writes nothing.\n//\n// The key-format check above has already ruled out a key that STATES its\n// role. A refusal here is one of two things and both stop the run: the key is\n// in a format that check did not recognise and is not the service key, or\n// service_role has not been granted what it needs. Either way every write\n// below would be refused the same way, so there is nothing to gain by going on.\n//\n// ad4_38 revokes should_run from anon for this reason: it was granted so the\n// Workflows page could preview a cadence, that page reads v_execution_budget\n// instead, and the grant only let a bad key through the gate.\nif (decision && (String(decision.code) === '42501' ||\n                 /permission denied/i.test(String(decision.message || '')))) {\n  throw new Error(\n    `Supabase refused should_run: ${decision.message} (${decision.code}). The key format ` +\n    `checked out above, so this is the DATABASE side: service_role has not been granted ` +\n    `what it needs, and every write below would be refused the same way. Run ` +\n    `sql/ad4_38_grants.sql in the Supabase SQL editor - it grants the write path back and ` +\n    `then prints one row per ingest table saying whether the service key can write it. ` +\n    `Nothing was fetched and nothing was written.`);\n}\n\n// A PERMISSION ERROR IS NOT AN UNAVAILABLE GATE. 42501 here means the key\n// cannot call should_run, and a key that cannot do that cannot write either -\n// so stop, rather than failing open into a run that writes nothing.\n//\n// THIS IS NOT THE MAIN DEFENCE AND MUST NOT BE MISTAKEN FOR IT. sql/ad4_20\n// grants should_run to anon ON PURPOSE, so the Workflows page can preview a\n// schedule change before saving it. On a database with that grant - which is\n// every database that ran ad4_20 - an anon key sails straight through this\n// check and only fails at the first WRITE. The write guard in the Summary\n// node is what actually catches it; run section 6 of sql/ad4_diagnose.sql to\n// see which key can write what before spending a run finding out.\nif (decision && (String(decision.code) === '42501' ||\n                 /permission denied/i.test(String(decision.message || '')))) {\n  throw new Error(\n    `Supabase refused should_run: ${decision.message} (${decision.code}). This is the ANON ` +\n    `key in the Config node, not the service key - anon is granted SELECT and nothing else. ` +\n    `Every write in this workflow would be refused the same way. Open Config -> service_key ` +\n    `and paste the SERVICE ROLE key (Supabase -> Project Settings -> API -> service_role, or ` +\n    `a key beginning sb_secret_). NEVER put that key anywhere starting NEXT_PUBLIC_.`);\n}\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
+        "jsCode": "// AD4-KEY-CHECK\n// THE KEY IS NOT IN THIS FILE ANY MORE, AND THAT IS THE POINT.\n//\n// Every Supabase node in this workflow authenticates with an n8n SUPABASE\n// CREDENTIAL rather than a key pasted into the Config node. That is one place\n// to set it instead of twelve, it is encrypted at rest in n8n, and exporting\n// this workflow can no longer leak it - the old shape had the service key\n// sitting in plain text inside a JSON file that gets emailed around.\n//\n// SET IT UP ONCE, BEFORE IMPORTING ANYTHING:\n//   n8n -> Credentials -> New -> Supabase API\n//     Name         AD4 Supabase        <- this name exactly\n//     Host         https://<your-project-ref>.supabase.co\n//     Service Role the SERVICE ROLE key (Project Settings -> API keys)\n//\n// The name matters because every Supabase node in every AD4 workflow is\n// already bound to a credential called AD4 Supabase. Create it first and\n// n8n links all of them on import - nothing to pick node by node. Import\n// first and the nodes come in unbound, and you pick the credential on each\n// one by hand; it works, it is just ~57 dropdowns instead of zero.\n//\n// The credential sends `apikey` and `Authorization: Bearer` itself, which is\n// exactly what these nodes used to set by hand.\n//\n// WHAT STILL CHECKS THE KEY. This node can no longer read it - a credential\n// is not visible to an expression, by design. Two things downstream do:\n//\n//   the schedule gate, immediately below. sql/ad4_38 revokes should_run from\n//   anon, so a credential holding the publishable key is refused HERE, two\n//   nodes in, before a single row is fetched.\n//\n//   the write guard in the Summary node, which names any refusal the\n//   database gives and refuses to report success on a run that wrote nothing.\n//\n// supabase_url stays in Config because an expression has to build the request\n// URL and cannot read the credential's host. It is not a secret.\n{\n  const cfg = $('Config').first().json ?? {};\n  const url = String(cfg.supabase_url ?? '').trim();\n  if (!url) {\n    throw new Error(\n      'Config -> supabase_url is empty. Set it to exactly ' +\n      'https://<your-project-ref>.supabase.co - no trailing slash and no /rest/v1, ' +\n      'which every node below appends itself. The KEY does not go here: it belongs in ' +\n      'the n8n Supabase credential (Credentials -> New -> Supabase API), which is ' +\n      'where the nodes now read it from.');\n  }\n  if (!/^https:\\/\\//.test(url) || /\\/rest\\b/.test(url) || /\\/$/.test(url)) {\n    throw new Error(\n      `Config -> supabase_url is \"${url}\", which is not the shape every node below ` +\n      'expects: https://<your-project-ref>.supabase.co, no trailing slash, no /rest/v1. ' +\n      'Nothing was fetched and nothing was written.');\n  }\n}\n\n// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A PERMISSION ERROR IS NOT AN UNAVAILABLE GATE. 42501 here means the key\n// cannot even call should_run, and a key that cannot do that cannot write\n// either - so stop, rather than failing open into a run that writes nothing.\n//\n// THIS NODE CANNOT CHECK THE KEY ITSELF ANY MORE - it is in the credential,\n// which an expression cannot read. So a refusal here is one of two things and\n// both stop the run: the credential holds the anon/publishable key rather than\n// the service role key, or service_role has not been granted what it needs.\n// Either way every write below would be refused the same way, so there is\n// nothing to gain by going on. ad4_38's output tells you which it was.\n//\n// ad4_38 revokes should_run from anon for this reason: it was granted so the\n// Workflows page could preview a cadence, that page reads v_execution_budget\n// instead, and the grant only let a bad key through the gate.\nif (decision && (String(decision.code) === '42501' ||\n                 /permission denied/i.test(String(decision.message || '')))) {\n  throw new Error(\n    `Supabase refused should_run: ${decision.message} (${decision.code}). Every write below ` +\n    `would be refused the same way, so nothing was fetched and nothing was written. Two ` +\n    `things cause this and the workflow cannot tell them apart, because the key now lives ` +\n    `in the n8n credential where an expression cannot read it. (1) THE KEY: open n8n -> ` +\n    `Credentials -> the Supabase account these nodes use and check Service Role Secret ` +\n    `holds the SERVICE ROLE key (Supabase -> Project Settings -> API -> service_role, or a ` +\n    `key beginning sb_secret_) - an anon key gets exactly this error, because anon is ` +\n    `granted SELECT and nothing else. NEVER put the service key anywhere starting ` +\n    `NEXT_PUBLIC_. (2) THE DATABASE: service_role has not been granted what it needs. Run ` +\n    `sql/ad4_38_grants.sql in the Supabase SQL editor - it grants the write path back and ` +\n    `then prints one row per ingest table saying whether the service key can write it, ` +\n    `which also tells you which of the two it was.`);\n}\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
       }
     },
     {
