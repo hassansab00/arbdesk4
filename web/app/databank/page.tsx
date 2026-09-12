@@ -6,6 +6,7 @@ import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
 import { FreshnessRow } from "@/components/Provenance";
 import DataBank from "@/components/DataBank";
+import ProprietaryExport from "@/components/ProprietaryExport";
 import { fmtAge, fmtInt } from "@/lib/format";
 
 /**
@@ -285,6 +286,18 @@ export default function DataBankPage() {
         <div className="mt-2">
           <DataBank />
         </div>
+      </section>
+
+      <section className="border-t border-border pt-5">
+        <div className="flex items-baseline gap-2">
+          <span className="text-[10px] font-semibold text-accent">5</span>
+          <h2 className="text-base font-semibold">Export proprietary record</h2>
+        </div>
+        <p className="mt-0.5 max-w-3xl text-xs leading-relaxed text-muted">
+          Download a bounded, tamper-evident copy of the desk&apos;s accumulated research and source evidence.
+          This adds an exit path for your data without exposing the private research tables to the browser.
+        </p>
+        <ProprietaryExport />
       </section>
     </div>
   );
