@@ -42,3 +42,14 @@ Every repair follows this order:
 
 Retention is separate from repair. No retention job may delete source rows unless
 a recoverable external archive for the exact range has been created and verified.
+
+## Phase 1 quality checks
+
+`refresh_data_quality_flags()` records malformed non-tail bands, market/city unit
+conflicts, future source timestamps, and incomplete active-city metadata. The
+same detector version is idempotent. A later detector version may append a new
+finding; it never clears or rewrites an earlier one.
+
+The Data Bank's 90-day chart reads `archive_daily_rollup`, maintained by
+statement-level insert triggers. This is a derived performance cache only. The
+weather, forecast, book, and trade tables remain the authoritative record.
