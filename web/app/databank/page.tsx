@@ -294,7 +294,7 @@ export default function DataBankPage() {
           <h2 className="text-base font-semibold">Export proprietary record</h2>
         </div>
         <p className="mt-0.5 max-w-3xl text-xs leading-relaxed text-muted">
-          Download a bounded, tamper-evident copy of the desk&apos;s accumulated research and source evidence.
+          Download a bounded, integrity-verifiable copy of the desk&apos;s accumulated research and source evidence.
           This adds an exit path for your data without exposing the private research tables to the browser.
         </p>
         <ProprietaryExport />
