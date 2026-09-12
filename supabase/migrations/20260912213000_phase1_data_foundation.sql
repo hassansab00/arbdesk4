@@ -162,7 +162,7 @@ on conflict do nothing;
 create or replace view public.v_archive_daily
 with (security_invoker = true)
 as
-select r.dataset, r.day, r.rows, count(p.city_key)::int as cities
+select r.dataset, r.day, r.rows, count(p.city_key)::bigint as cities
   from public.archive_daily_rollup r
   left join public.archive_daily_city_presence p
     on p.dataset = r.dataset and p.day = r.day
