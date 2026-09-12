@@ -1697,3 +1697,44 @@ def test_every_guarded_write_runs_before_the_summary(workflow):
             f"{workflow}: Summary guards '{name}' but '{name}' is not upstream of it. "
             "n8n decides the order of parallel branches, so the guard can run first, find a "
             "node that has not executed, and report success on a refused write.")
+
+
+def test_a_busy_database_is_reported_as_a_timeout_not_as_the_one_odd_row():
+    """THE BUG THIS TEST EXISTS FOR.
+
+    On 2026-09-12 a P0.2 run sent 102 writes. Ninety of them came back
+    {"data":"upstream request timeout"} - the Supabase gateway giving up on an
+    overloaded database - and one came back PGRST102 "All object keys must
+    match". The guard scanned for the first item carrying a `code` or
+    `message`; a timeout body has neither, so it skipped all ninety and
+    reported the PGRST102. The run was declared a malformed-payload bug and
+    the real cause - the database was saturated - went unnamed for hours.
+
+    The dominant failure is the one that gets reported, and a timeout is
+    recognised as a timeout.
+    """
+    def m(plan):
+        plan["seed"]["Write observations"] = (
+            [{"data": "upstream request timeout"}] * 9 +
+            [{"code": "PGRST102", "message": "All object keys must match",
+              "details": None, "hint": None}]
+        )
+    r = run_with("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json", m)
+    assert r["ok"] is False and r["node"] == "Summary", r
+    first = r["error"].splitlines()[0]
+    assert "did not answer" in first, first
+    assert "9 of 10" in first, first
+    assert "too busy to reply" in first, first
+    assert "All object keys must match" not in first, first
+
+
+def test_a_single_odd_row_is_still_reported_when_it_is_the_only_failure():
+    """The counting must not bury a real one-off refusal: with no timeouts to
+    outvote it, the PGRST102 is still the thing that gets named."""
+    def m(plan):
+        plan["seed"]["Write observations"] = [
+            {"code": "PGRST102", "message": "All object keys must match",
+             "details": None, "hint": None}]
+    r = run_with("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json", m)
+    assert r["ok"] is False and r["node"] == "Summary", r
+    assert "All object keys must match" in r["error"], r["error"]
