@@ -15,7 +15,7 @@ Usage:
   python scripts/ingest_forecasts.py                          # last 10 days
   python scripts/ingest_forecasts.py 2024-01-01 2026-08-27    # backfill range
 """
-import sys, time, datetime as dt
+import sys, time, os, json, datetime as dt
 from collections import defaultdict
 import requests
 from common import get_cities, upsert, rest, log_run
@@ -28,7 +28,7 @@ CHUNK_DAYS = 60
 TIMEOUT    = 100
 PAUSE      = 0.2
 TRIES      = 2
-SOFT_DEADLINE_MIN = 330
+SOFT_DEADLINE_MIN = min(20, max(1, int(os.environ.get('FORECAST_DEADLINE_MINUTES', '20'))))
 
 def fetch(lat, lon, start, end, label):
     fields = ["temperature_2m"] + [f"temperature_2m_previous_day{d}" for d in LEADS]
@@ -111,42 +111,22 @@ def chunks(start, end, days):
         cur = stop + dt.timedelta(days=1)
     return out
 
-def coverage_count(city_key, start, end):
-    """How many distinct for_dates this city already has for lead_days=1
-    within [start, end]. Used only to ORDER cities, not to skip chunks -
-    keeps the logic simple and correct rather than cleverly wrong."""
-    rows, offset, page = [], 0, 10000
-    while True:
-        r = rest("weather_forecasts", {
-            "select": "for_date", "city_key": f"eq.{city_key}", "lead_days": "eq.1",
-            "for_date": f"gte.{start.isoformat()}",
-            "and": f"(for_date.lte.{end.isoformat()})",
-            "limit": str(page), "offset": str(offset),
-        })
-        if not r:
-            break
-        rows.extend(x["for_date"] for x in r)
-        if len(r) < page:
-            break
-        offset += page
-    return len(set(rows))
-
 def existing_dates(city_key, start, end):
-    out, offset, page = set(), 0, 10000
-    while True:
-        rows = rest("weather_forecasts", {
-            "select": "for_date", "city_key": f"eq.{city_key}",
-            "for_date": f"gte.{start.isoformat()}",
-            "and": f"(for_date.lte.{end.isoformat()})",
-            "limit": str(page), "offset": str(offset),
-        })
-        if not rows:
-            break
-        out.update(r["for_date"] for r in rows)
-        if len(rows) < page:
-            break
-        offset += page
-    return out
+    # A date is complete only when every requested lead is present for this
+    # specific source product. Other providers cannot satisfy this backfill.
+    from common import rest_all
+    rows = rest_all('weather_forecasts', [
+        ('select', 'for_date,lead_days'), ('city_key', f'eq.{city_key}'),
+        ('model', f'eq.{MODEL_LABEL}'), ('for_date', f'gte.{start.isoformat()}'),
+        ('for_date', f'lte.{end.isoformat()}')], order='for_date,lead_days,forecast_id')
+    leads = defaultdict(set)
+    for row in rows:
+        leads[row['for_date']].add(row['lead_days'])
+    return {date for date, present in leads.items() if set(LEADS).issubset(present)}
+
+
+def coverage_count(city_key, start, end):
+    return len(existing_dates(city_key, start, end))
 
 def chunk_is_covered(have, cs, ce):
     d = cs
@@ -165,6 +145,8 @@ def main():
         start = end - dt.timedelta(days=10)
 
     t0 = time.monotonic()
+    if start > end:
+        raise ValueError('start must be on or before end')
     all_cities = get_cities(require_coords=True)
     windows = chunks(start, end, CHUNK_DAYS)
     total_days = (end - start).days + 1
@@ -178,10 +160,10 @@ def main():
         ranked.append((n, c))
     ranked.sort(key=lambda x: x[0])   # LEAST covered first - always makes progress where it matters
 
-    done_ct = sum(1 for n, _ in ranked if n >= total_days - 5)
-    print(f"{done_ct}/{len(ranked)} cities already essentially complete (>= {total_days-5} days)\n")
+    done_ct = sum(1 for n, _ in ranked if n >= total_days)
+    print(f"{done_ct}/{len(ranked)} cities complete ({total_days} days, all requested leads)\n")
 
-    total, ran_out = 0, False
+    total, ran_out, missing_chunks, completed_dates = 0, False, 0, 0
     for i, (n_before, c) in enumerate(ranked, 1):
         elapsed_min = (time.monotonic() - t0) / 60
         if elapsed_min > SOFT_DEADLINE_MIN:
@@ -192,13 +174,16 @@ def main():
             ran_out = True
             break
 
-        if n_before >= total_days - 5:
+        if n_before >= total_days:
             print(f"  [{i}/{len(ranked)}] {c['city_key']:16s} already complete ({n_before}d), skipping")
             continue
 
         have = existing_dates(c["city_key"], start, end)
         got, skipped, misses = 0, 0, 0
         for (cs, ce) in windows:
+            if (time.monotonic()-t0)/60 > SOFT_DEADLINE_MIN:
+                ran_out = True
+                break
             if have and chunk_is_covered(have, cs, ce):
                 skipped += 1
                 continue
@@ -211,6 +196,8 @@ def main():
                 got += upsert("weather_forecasts", rows, "city_key,model,run_at,for_date")
             time.sleep(PAUSE)
         total += got
+        missing_chunks += misses
+        completed_dates += max(0, coverage_count(c["city_key"], start, end)-n_before)
         note = []
         if skipped: note.append(f"{skipped} chunks pre-existing")
         if misses:  note.append(f"{misses} chunks missed")
@@ -219,11 +206,17 @@ def main():
               f"(had {n_before}d){flag}", flush=True)
 
     print(f"\ntotal {total} forecast rows written this run")
-    if ran_out:
+    incomplete = ran_out or missing_chunks > 0 or not all_cities
+    if incomplete:
         print("INCOMPLETE - re-run the identical command to continue.")
     else:
         print("ALL CITIES COMPLETE.")
-    log_run("ingest_forecasts", "partial" if ran_out else "ok", total,
+    result = {'incomplete': incomplete, 'rows_offered': total, 'missing_chunks': missing_chunks, 'completed_dates': completed_dates}
+    result_path = os.environ.get('FORECAST_RESULT_PATH')
+    if result_path:
+        with open(result_path, 'w') as handle:
+            json.dump(result, handle)
+    log_run("ingest_forecasts", "partial" if incomplete else "ok", total,
             {"start": str(start), "end": str(end), "leads": LEADS,
              "chunk_days": CHUNK_DAYS, "ran_out": ran_out})
 

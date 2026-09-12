@@ -1,6 +1,6 @@
 name: Intraday Pipeline (model, probabilities, edges, signals)
 
-# ONE RUNNER INSTEAD OF THREE, four times a day.
+# ONE RUNNER INSTEAD OF THREE, six times a day.
 #
 # These were three separate workflows firing fifteen minutes apart -
 # model_forecast at :15, probabilities at :30, signals at :35 - which is a
@@ -55,8 +55,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11', cache: 'pip' }
-      - run: pip install -r requirements.txt
+        with: { python-version: '3.11', cache: 'pip', cache-dependency-path: 'requirements.runtime.txt' }
+      - run: pip install -r requirements.runtime.txt
 
       # 1. The model's own forecast, so probabilities have a second opinion
       #    to price against rather than only the ingested one.
@@ -86,3 +86,30 @@ jobs:
         if: ${{ !cancelled() }}
         timeout-minutes: 15
         run: python scripts/signals.py
+
+      - name: Preserve predictive and synthesis evidence
+        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED == 'true' }}
+        timeout-minutes: 3
+        run: python scripts/research_capture.py
+        env:
+          RESEARCH_CAPTURE_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Paper strategy proposals
+        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED == 'true' }}
+        timeout-minutes: 3
+        run: python scripts/paper_plans.py
+
+      - name: Venue-confirmed paper settlement
+        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED == 'true' }}
+        timeout-minutes: 2
+        run: python scripts/paper_settlement.py
+
+      - name: Paper exit policies
+        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED == 'true' }}
+        timeout-minutes: 2
+        run: python scripts/paper_exits.py
+
+      - name: Paper order recovery sweep
+        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED == 'true' }}
+        timeout-minutes: 3
+        run: python scripts/paper_worker.py

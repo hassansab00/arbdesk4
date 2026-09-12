@@ -145,6 +145,8 @@ class S8TwoBucketCover(Strategy):
 
             bucket = f"pair:{a.band_id}:{b2.band_id}"
             payload = {
+                "band_ids": [a.band_id, b2.band_id],
+                "basket_group": bucket,
                 "pair": [a.band_label, b2.band_label],
                 "pair_cost": round(cost, 4),
                 "pair_fee": round(fee, 4),

@@ -19,6 +19,7 @@ If a live schema check finds a genuine separate NO-token book, swap
 """
 import datetime as dt
 import sys
+import math
 from collections import defaultdict
 
 from common import rest, insert, get_cities
@@ -61,7 +62,9 @@ def _ladder(value):
         if price is None or size is None:
             continue
         try:
-            out.append({"price": float(price), "size": float(size)})
+            p, q = float(price), float(size)
+            if math.isfinite(p) and math.isfinite(q) and 0 < p < 1 and q > 0:
+                out.append({"price": p, "size": q})
         except (TypeError, ValueError):
             continue
     return out
@@ -69,8 +72,11 @@ def _ladder(value):
 
 def levels_for_side(snapshot, side):
     """Best-first {"price","size"} levels for the given side of one band."""
-    asks = _ladder(snapshot.get("ask_levels") or snapshot.get("asks"))
-    bids = _ladder(snapshot.get("bid_levels") or snapshot.get("bids"))
+    raw = snapshot.get("raw_book") or {}
+    asks = (_ladder(snapshot.get("ask_levels")) or _ladder(snapshot.get("asks"))
+            or _ladder(raw.get("asks")))
+    bids = (_ladder(snapshot.get("bid_levels")) or _ladder(snapshot.get("bids"))
+            or _ladder(raw.get("bids")))
     if side == "YES":
         return sorted(asks, key=lambda l: l["price"])
     derived = [{"price": 1.0 - lvl["price"], "size": lvl["size"]} for lvl in bids]

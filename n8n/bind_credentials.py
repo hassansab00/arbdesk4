@@ -42,6 +42,8 @@ import sys
 PLACEHOLDERS = {
     "supabaseApi": "ad4-supabase",
     "smtp": "ad4-smtp",
+    "worker": "ad4-paper-worker",
+    "paper_webhook": "ad4-paper-webhook",
 }
 
 # A credential id is a reference. If something that looks like a KEY is passed
@@ -62,7 +64,8 @@ def bind(paths, ids, out_suffix=".import.json"):
             for cred_type, ref in (node.get("credentials") or {}).items():
                 if not isinstance(ref, dict):
                     continue
-                new_id = ids.get(cred_type)
+                reference = {'AD4 Paper Worker':'worker', 'AD4 Paper Webhook':'paper_webhook'}.get(ref.get('name'),cred_type)
+                new_id = ids.get(reference)
                 if not new_id:
                     # No id supplied for this type. Drop the placeholder rather
                     # than leaving it: a MISSING id makes n8n fall back to
@@ -95,11 +98,13 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--supabase-id", help="id of the 'AD4 Supabase' credential in n8n")
     ap.add_argument("--smtp-id", help="id of the 'AD4 SMTP' credential in n8n")
+    ap.add_argument("--worker-id", help="id of the 'AD4 Paper Worker' HTTP Header Auth credential")
+    ap.add_argument("--paper-webhook-id", help="id of the separate 'AD4 Paper Webhook' HTTP Header Auth credential")
     ap.add_argument("--dir", default=os.path.dirname(os.path.abspath(__file__)))
     args = ap.parse_args()
 
     ids = {}
-    for flag, cred_type in (("supabase_id", "supabaseApi"), ("smtp_id", "smtp")):
+    for flag, cred_type in (("supabase_id", "supabaseApi"), ("smtp_id", "smtp"), ("worker_id","worker"), ("paper_webhook_id","paper_webhook")):
         val = getattr(args, flag)
         if not val:
             continue

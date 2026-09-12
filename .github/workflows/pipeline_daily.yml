@@ -52,8 +52,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11', cache: 'pip' }
-      - run: pip install -r requirements.txt
+        with: { python-version: '3.11', cache: 'pip', cache-dependency-path: 'requirements.runtime.txt' }
+      - run: pip install -r requirements.runtime.txt
 
       # 1. Yesterday's Open-Meteo runs, so skill has something to score.
       #    A BACKFILL over a date range is not this - it is forecasts.yml,

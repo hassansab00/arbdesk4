@@ -151,6 +151,21 @@ def test_new_routes_exist_and_are_in_the_nav():
         assert f'label: "{label}"' in nav
 
 
+def test_paper_commands_wake_a_server_side_worker_without_leaking_its_secret():
+    route = _read("web/app/api/paper-cycle/route.ts")
+    helper = _read("web/lib/paperSupabase.ts")
+    assert "process.env.PAPER_WORKER_TOKEN" in route
+    assert "NEXT_PUBLIC_PAPER" not in route + helper
+    assert "desk_members" in route and "auth.getUser" in route
+    assert "Authorization: `Bearer ${workerToken}`" in route
+    for path in (
+        "web/app/paper-trades/page.tsx",
+        "web/components/PaperAutomation.tsx",
+        "web/components/PaperExit.tsx",
+    ):
+        assert "runPaperWorker" in _read(path), f"{path} can leave a five-minute order asleep"
+
+
 def test_only_s7_claims_the_peak_window():
     """s7 is the only strategy whose entry test keys on the peak window.
 

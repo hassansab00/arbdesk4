@@ -104,6 +104,7 @@ class BandView:
     # so a strategy can ask "does this bucket contain where the day is going"
     # without a second lookup.
     forecast_max_c: Optional[float] = None
+    decision_evidence: dict = field(default_factory=dict)
 
 
 @dataclass

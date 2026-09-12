@@ -46,7 +46,16 @@ const CATALOGUE: Array<{
   what: string;
   variants?: Array<{ label: string; body: Record<string, unknown> }>;
   note?: string;
+  externalOnly?: boolean;
 }> = [
+  {
+    job: "P2.2_paper_trades",
+    label: "Paper Trades",
+    schedule: "after a data refresh, or manually in n8n",
+    what: "Builds account proposals and processes queued paper orders against current token books. Results appear in Paper Trades.",
+    note: "Run this authenticated workflow from n8n. Its credentials stay on the server.",
+    externalOnly: true,
+  },
   {
     job: "P2.1_relearn",
     label: "GitHub Actions (relearn, and every job by hand)",
@@ -282,9 +291,9 @@ export default function WorkflowsPage() {
         </div>
       </div>
 
-      <ScheduleControl jobs={CATALOGUE.map((c) => ({ job: c.job, label: c.label }))} />
+      <ScheduleControl jobs={CATALOGUE.filter(c=>!c.externalOnly).map((c) => ({ job: c.job, label: c.label }))} />
 
-      <ScopeControl jobs={CATALOGUE.map((c) => ({ job: c.job, label: c.label }))} />
+      <ScopeControl jobs={CATALOGUE.filter(c=>!c.externalOnly).map((c) => ({ job: c.job, label: c.label }))} />
 
       <DataState
         loading={settingsQ.loading || runsQ.loading}
@@ -314,7 +323,7 @@ export default function WorkflowsPage() {
                 const hook = webhooks[w.job];
                 const last = runByJob[w.job];
                 const st = runs[w.job];
-                const variants = w.variants ?? [{ label: "Run now", body: {} }];
+                const variants = w.externalOnly ? [] : w.variants ?? [{ label: "Run now", body: {} }];
                 return (
                   <tr key={w.job} className="border-t border-border align-top">
                     <td className="p-2">
@@ -389,7 +398,7 @@ export default function WorkflowsPage() {
                             {st?.busy ? "running…" : v.label}
                           </button>
                         ))}
-                        <button
+                        {!w.externalOnly&&<button
                           onClick={() => {
                             setEditing(editing === w.job ? null : w.job);
                             setDraftUrl(hook?.url ?? "");
@@ -398,7 +407,7 @@ export default function WorkflowsPage() {
                           className="whitespace-nowrap text-[11px] text-muted underline hover:text-text"
                         >
                           {hook?.url ? "change URL" : "set URL"}
-                        </button>
+                        </button>}
                       </div>
                       {editing === w.job && (
                         <div className="mt-2 w-64 space-y-1">
