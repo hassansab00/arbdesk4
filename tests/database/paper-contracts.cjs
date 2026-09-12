@@ -13,6 +13,11 @@ const assert = require('node:assert/strict');
     create table public.bands(band_id uuid primary key,market_id uuid,token_yes text,token_no text,condition_id text);
     create table public.markets(market_id uuid primary key,closed boolean,resolution_date date,city_key text);
     create table public.signals(signal_id bigint primary key,action text,strategy_id text,fired_at timestamptz,reason text);
+    create table public.band_probabilities(prob_id uuid primary key,band_id uuid,computed_at timestamptz default now());
+    create table public.model_versions(version_id uuid primary key,created_at timestamptz default now());
+    create table public.fact_forecast_outcome(city_key text,for_date date,model text,lead_days int,captured_at timestamptz default now(),primary key(city_key,for_date,model,lead_days));
+    create table public.fact_band_outcome(band_id uuid primary key,captured_at timestamptz default now());
+    create table public.fact_signal_outcome(signal_id bigint primary key,captured_at timestamptz default now());
     grant select on public.bands,public.markets,public.signals to service_role;
     create view public.v_synthesis_findings as select 'finding'::text as key;
     create view public.v_learning_state as select 'learning'::text as stage;
@@ -62,6 +67,16 @@ const assert = require('node:assert/strict');
   await assert.rejects(db.query("truncate research_captures"),/permission denied/);
   await db.exec('reset role;set role anon;');
   await assert.rejects(db.query('select * from research_captures'),/permission denied/);
+
+  // Settled research facts are evidence: retries may insert missing rows but
+  // even the worker role cannot rewrite, delete or truncate an existing fact.
+  await db.exec('reset role;');
+  await db.query("insert into fact_forecast_outcome(city_key,for_date,model,lead_days) values('london',current_date-1,'model',1)");
+  await db.exec('set role service_role;');
+  await assert.rejects(db.query("update fact_forecast_outcome set model='changed'"),/permission denied|Append-only/);
+  await assert.rejects(db.query('delete from fact_forecast_outcome'),/permission denied|Append-only/);
+  await assert.rejects(db.query('truncate fact_forecast_outcome'),/permission denied|Append-only/);
+  await db.query("insert into fact_forecast_outcome(city_key,for_date,model,lead_days) values('madrid',current_date-1,'model',1)");
 
   await db.exec(`reset role;insert into signals values(1,'ENTER','s1',now(),'test strategy');
     set role authenticated;set request.jwt.claim.sub='${uid}';`);
