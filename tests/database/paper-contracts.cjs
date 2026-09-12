@@ -13,17 +13,23 @@ const assert = require('node:assert/strict');
     create table public.bands(band_id uuid primary key,market_id uuid,band_index int,band_label text,
       band_lo numeric,band_hi numeric,open_low boolean,open_high boolean,token_yes text,token_no text,condition_id text);
     create table public.markets(market_id uuid primary key,closed boolean,resolution_date date,city_key text,
-      event_slug text,unit text,condition_id text);
+      event_slug text,unit text,condition_id text,last_seen_at timestamptz default now());
     create table public.cities(city_key text primary key,display_name text,unit text,status text,
       timezone text,latitude numeric,longitude numeric);
     create table public.weather_observations(obs_id bigint primary key,city_key text,valid_at timestamptz,
       observed_at timestamptz);
     create table public.weather_forecasts(forecast_id bigint primary key,city_key text,model text,run_at timestamptz,
       for_date date);
-    create table public.book_snapshots(snapshot_id bigint primary key,band_id uuid,observed_at timestamptz);
+    create table public.book_snapshots(snapshot_id bigint primary key,band_id uuid,observed_at timestamptz,
+      tradeable boolean default true);
     create table public.trades_observed(trade_id bigint primary key,city_key text,traded_at timestamptz);
     create table public.signals(signal_id bigint primary key,action text,strategy_id text,fired_at timestamptz,reason text);
     create table public.band_probabilities(prob_id uuid primary key,band_id uuid,computed_at timestamptz default now());
+    create table public.edges(edge_id bigint primary key,band_id uuid,computed_at timestamptz default now(),
+      side text,tradeable boolean default false);
+    create table public.live_weather(city_key text primary key,updated_at timestamptz,observed_at timestamptz);
+    create table public.ingest_log(log_id bigint primary key,job text,started_at timestamptz,finished_at timestamptz,
+      status text,rows_written integer,detail jsonb,rows integer,logged_at timestamptz default now());
     create table public.model_versions(version_id uuid primary key,created_at timestamptz default now());
     create table public.fact_forecast_outcome(city_key text,for_date date,model text,lead_days int,captured_at timestamptz default now(),primary key(city_key,for_date,model,lead_days));
     create table public.fact_band_outcome(band_id uuid primary key,captured_at timestamptz default now());
@@ -32,6 +38,14 @@ const assert = require('node:assert/strict');
     create view public.v_synthesis_findings as select 'finding'::text as key;
     create view public.v_learning_state as select 'learning'::text as stage;
     create view public.v_forecast_convergence as select 'city'::text as city_key;`);
+  await db.exec(`create view public.v_data_freshness as
+    select 'fixture'::text as table_name,'health'::text as layer,'fixture'::text as plain_english,
+      1::bigint as rows,false as rows_estimated,now() as newest,0::numeric as age_hours,
+      1::numeric as fresh_hours,'ok'::text as state;
+    create view public.v_data_health as select 0::bigint absent,0::bigint empty,0::bigint stale,1::bigint ok,
+      1::bigint tracked,now() newest_write,'healthy'::text verdict;
+    create view public.v_workflow_runs as select null::text job,null::text status,null::integer rows,
+      null::jsonb detail,null::timestamptz logged_at,null::text trigger,null::text summary where false;`);
   const historicBand='20000000-0000-0000-0000-000000000099';
   const historicMarket='30000000-0000-0000-0000-000000000099';
   const historicTailBand='20000000-0000-0000-0000-000000000098';
@@ -52,7 +66,8 @@ const assert = require('node:assert/strict');
   const band='20000000-0000-0000-0000-000000000001', market='30000000-0000-0000-0000-000000000001';
   const command='40000000-0000-0000-0000-000000000001';
   await db.exec(`insert into auth.users values('${uid}'),('${other}');insert into public.desk_members(user_id) values('${uid}');
-    insert into public.cities(city_key,display_name,unit,status,timezone) values('london','London','C','active','Europe/London');
+    insert into public.cities(city_key,display_name,unit,status,timezone,latitude,longitude)
+      values('london','London','C','active','Europe/London',51.47,-0.45);
     insert into public.markets(market_id,closed,resolution_date,city_key,event_slug,unit)
       values('${market}',false,current_date,'london','highest-temperature-in-london','F');
     insert into public.bands(band_id,market_id,band_index,band_label,band_lo,band_hi,open_low,open_high,token_yes,token_no,condition_id)
@@ -61,8 +76,29 @@ const assert = require('node:assert/strict');
       values(1,'london',now(),now()),(2,'london',now(),now());
     insert into public.weather_forecasts(forecast_id,city_key,model,run_at,for_date)
       values(1,'london','test',now(),current_date);
-    insert into public.book_snapshots(snapshot_id,band_id,observed_at) values(1,'${band}',now());
-    insert into public.trades_observed(trade_id,city_key,traded_at) values(1,'london',now());`);
+    insert into public.book_snapshots(snapshot_id,band_id,observed_at,tradeable) values(1,'${band}',now(),true);
+    insert into public.band_probabilities(prob_id,band_id,computed_at)
+      values('60000000-0000-0000-0000-000000000001','${band}',now());
+    insert into public.edges(edge_id,band_id,computed_at,side,tradeable) values(1,'${band}',now(),'YES',true);
+    insert into public.live_weather(city_key,updated_at,observed_at) values('london',now(),now());
+    insert into public.trades_observed(trade_id,city_key,traded_at) values(1,'london',now());
+    insert into public.ingest_log(log_id,job,status,rows_written,detail,logged_at)
+      values(1,'P0.3_book_volume_snapshot','ok',791,
+        '{"requested":1000,"failed":209,"summary":"791 written"}'::jsonb,now());`);
+
+  const ready=(await db.query("select * from v_city_day_readiness where city_key='london' and resolution_date=current_date")).rows[0];
+  assert.equal(ready.readiness_state,'ready','Complete current evidence makes a city-day ready');
+  assert.equal(Number(ready.book_coverage_pct),100);
+  assert.equal(Number(ready.probability_coverage_pct),100);
+  const nextDay=(await db.query("select * from v_city_day_readiness where city_key='london' and resolution_date=current_date+1")).rows[0];
+  assert.equal(nextDay.readiness_state,'no_market','A roster city without a contract is visible, not silently dropped');
+  const normalizedRun=(await db.query("select status,rows,requested,completed,failed from v_workflow_runs where job='P0.3_book_volume_snapshot'")).rows[0];
+  assert.deepEqual([normalizedRun.status,Number(normalizedRun.rows),Number(normalizedRun.requested),Number(normalizedRun.completed),Number(normalizedRun.failed)],
+    ['attention',791,1000,791,209],'Partial workflow success is visible and its useful work is counted');
+  await db.exec('set role anon;');
+  assert.equal((await db.query("select readiness_state from v_city_day_readiness where city_key='london' and resolution_date=current_date")).rows[0].readiness_state,'ready');
+  assert.equal((await db.query('select count(*)::int as n from v_operational_health')).rows[0].n,1);
+  await db.exec('reset role;');
 
   const daily=(await db.query("select dataset,rows,cities from v_archive_daily where day=current_date order by dataset")).rows;
   assert.deepEqual(daily.map(r=>[r.dataset,Number(r.rows),Number(r.cities)]),[
@@ -116,10 +152,11 @@ const assert = require('node:assert/strict');
   assert.equal(Number(balance.cash),94.57575);assert.equal(Number(balance.reserved_cash),0);
   assert.equal(Number((await db.query('select shares from paper_positions')).rows[0].shares),10);
   assert.equal((await db.query("select count(*)::int as n from paper_activity where event_type='execution_completed'")).rows[0].n,1);
+  const researchBefore=Number((await db.query('select count(*)::int as n from research_captures')).rows[0].n);
   await db.query("select capture_research_state('run1','commit1')");
   await db.query("select capture_research_state('run1','commit1')");
   await db.query("select capture_research_state('run2','commit1')");
-  assert.equal((await db.query('select count(*)::int as n from research_captures')).rows[0].n,3);
+  assert.equal((await db.query('select count(*)::int as n from research_captures')).rows[0].n,researchBefore+3);
   await assert.rejects(db.query("delete from research_captures"),/permission denied|Append-only/);
   await assert.rejects(db.query("truncate research_captures"),/permission denied/);
   await db.exec('reset role;set role anon;');
