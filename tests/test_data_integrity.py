@@ -44,6 +44,13 @@ def test_unknown_dataset_is_rejected():
         data_integrity.fingerprint_dataset("temporary_table", "2026-09-02T00:00:00Z")
 
 
+def test_paginated_orders_finish_with_a_unique_identity():
+    assert data_integrity.DATASETS["weather_observations"][1].endswith("obs_id.asc")
+    assert data_integrity.DATASETS["weather_forecasts"][1].endswith("forecast_id.asc")
+    assert data_integrity.DATASETS["book_snapshots"][1].endswith("snapshot_id.asc")
+    assert data_integrity.DATASETS["trades_observed"][1].endswith("trade_id.asc")
+
+
 def test_migration_never_rewrites_or_deletes_source_rows():
     migration = open(
         "supabase/migrations/20260912200000_proprietary_data_safeguards.sql"
