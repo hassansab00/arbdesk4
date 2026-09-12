@@ -162,7 +162,7 @@
       ],
       "parameters": {
         "method": "GET",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/bands?select=band_id,token_yes,token_no,condition_id,market_id,markets(city_key)&condition_id=not.is.null&limit=5000",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/bands?select=band_id,token_yes,token_no,condition_id,market_id,markets!inner(city_key,resolution_date)&markets.resolution_date=gte.{{ $now.minus({ days: 2 }).toFormat('yyyy-MM-dd') }}&condition_id=not.is.null&limit=5000",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

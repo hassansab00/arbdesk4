@@ -909,7 +909,14 @@ def test_a_missing_endpoint_still_stops_before_any_request(workflow):
     """Filling the default in must not remove the stop for an emptied field."""
     d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
     gate = [n for n in d["nodes"] if n["name"] == "Run now?"][0]["parameters"]["jsCode"]
-    assert "AN ENDPOINT THIS FILE CANNOT KNOW" in gate, workflow
+    # P0.2's gate was rewritten after n8n execution 7155: the old version
+    # required EVERY config key ending in `_url` to be non-empty, and
+    # example_event_url ends in _url while being optional by design - so a
+    # correctly configured workflow could not run at all. The replacement asks
+    # the question that matters (is there ANY way to build a request?) and
+    # carries a marker saying so. Both phrasings are a real endpoint stop.
+    assert ("AN ENDPOINT THIS FILE CANNOT KNOW" in gate
+            or "THE ENDPOINT THIS FILE CANNOT INVENT" in gate), workflow
     # and the gate really is node 2, before Load/Fetch
     after_cfg = [c["node"] for br in d["connections"]["Config"]["main"] for c in br]
     assert after_cfg == ["Check schedule"], workflow

@@ -150,7 +150,7 @@
       ],
       "parameters": {
         "method": "GET",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/bands?select=band_id,token_yes,token_no,condition_id,market_id&token_yes=not.is.null&limit=5000",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/bands?select=band_id,token_yes,token_no,condition_id,market_id,markets!inner(resolution_date)&markets.resolution_date=gte.{{ $now.minus({ days: 1 }).toFormat('yyyy-MM-dd') }}&token_yes=not.is.null&limit=5000",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
