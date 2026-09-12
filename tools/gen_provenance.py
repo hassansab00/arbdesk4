@@ -110,8 +110,9 @@ def _rpc_writes():
     """
     out = {}
     fn_re = re.compile(
-        r"create\s+(?:or\s+replace\s+)?function\s+(?:public\.)?([a-z0-9_]+)\s*\(", re.I)
-    for path in sorted(glob.glob(os.path.join(ROOT, "sql", "*.sql"))):
+        r"create\s+(?:or\s+replace\s+)?function\s+(?:(?:public|arbdesk_private)\.)?([a-z0-9_]+)\s*\(", re.I)
+    for path in sorted(glob.glob(os.path.join(ROOT, "sql", "*.sql"))
+                       + glob.glob(os.path.join(ROOT, "supabase", "migrations", "*.sql"))):
         src = open(path).read()
         marks = [(m.start(), m.end(), m.group(1).lower()) for m in fn_re.finditer(src)]
         for i, (pos, hdr_end, fn) in enumerate(marks):

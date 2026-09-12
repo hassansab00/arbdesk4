@@ -22,7 +22,11 @@ name: Backtest
 on:
   repository_dispatch:
     types: [backtest-queued]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Queued run UUID (blank processes the queue)'
+        required: false
 
 jobs:
   backtest:
@@ -31,9 +35,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11', cache: 'pip' }
-      - run: pip install -r requirements.txt
-      - run: PYTHONPATH=scripts python scripts/backtest/runner.py ${{ github.event.inputs.run_id }}
+        with: { python-version: '3.11', cache: 'pip', cache-dependency-path: 'requirements.runtime.txt' }
+      - run: pip install -r requirements.runtime.txt
+      - run: PYTHONPATH=scripts python scripts/backtest/runner.py "$RUN_ID"
         env:
+          RUN_ID: ${{ inputs.run_id || github.event.client_payload.run_id || '' }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

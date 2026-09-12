@@ -101,15 +101,32 @@ and P1.2's NWS observations every 2. 120 runs becomes 60.
 
 | | runs/mo |
 |---|---|
-| `pipeline_intraday.yml` | 120 |
-| `observations.yml` | 60 |
+| `pipeline_intraday.yml` | 180 |
+| `observations.yml` | 120 |
 | `pipeline_daily.yml` | 30 |
 | `weather_model.yml` | 4 |
 | `archive_observations.yml` | 1 |
-| **total** | **215** (from 665) |
+| **total** | **335** (from 665) |
 
-At ~2 billed minutes a run that is roughly **520 minutes a month**, from ~970.
-`tests/test_github_actions.py` fails if the count drifts past 260.
+The current schedule restores six intraday runs and four observation runs per day.
+The table counts scheduled starts in a 30-day month; it is not a bill estimate.
+Runtime, whole-minute rounding per job, retries, CI and manual runs also affect the bill.
+`tests/test_github_actions.py` fails if scheduled starts drift past **360**.
+
+The paper-trading changes add no scheduled Actions runs. Research captures,
+proposals and the recovery sweep share the intraday runner, gated by
+`PAPER_TRADES_ENABLED=true` after database setup. They can add runtime to that
+job. The n8n worker workflow is event/manual driven and ships inactive; monitor
+its executions separately. Do not add minute-by-minute Actions polling.
+
+Manual forecast backfills now run in 25-minute jobs, with a default 75-minute
+chain budget. Continuation requires new fully covered dates and no failed API
+chunks; a no-progress chain stops with a resumable failure instead of paying
+for repeated runner setup. Coverage requires all seven requested lead times.
+The web build also omits its unused Python setup step; CI test gates remain.
+Runtime jobs install `requirements.runtime.txt` (the tested requests version)
+instead of installing pytest and its development dependencies on every data
+run. Tests still install the full `requirements.txt`; their coverage is unchanged.
 
 **CI was the other half.** `tests.yml` ran on every push with no branch filter
 *and* on pull requests, so one commit was billed two or three times - the branch

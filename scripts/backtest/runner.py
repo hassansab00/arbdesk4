@@ -17,7 +17,7 @@ queue_backtest - nothing here ever overwrites a prior run.
 import datetime as dt
 import sys
 
-from common import rest, insert, _cfg, _headers, city_local_date
+from common import rest, rest_all, insert, _cfg, _headers, city_local_date
 import requests
 import paper_engine
 import regime
@@ -31,8 +31,9 @@ DATA_STARTS_2025 = "book depth history begins 2026-08-22 (Polymarket publishes n
 
 
 def _patch(table, match, values):
-    requests.patch(f"{_cfg()['url']}/rest/v1/{table}", headers=_headers(),
+    response = requests.patch(f"{_cfg()['url']}/rest/v1/{table}", headers=_headers(),
                    params=match, json=values, timeout=60)
+    response.raise_for_status()
 
 
 def _load_run(run_id):
@@ -43,11 +44,11 @@ def _load_run(run_id):
 
 
 def _daily_max_observed(city_key, start, end, timezone=None):
-    rows = rest("weather_observations", [
+    rows = rest_all("weather_observations", [
         ("select", "valid_at,temp_c"), ("city_key", f"eq.{city_key}"),
         ("valid_at", f"gte.{start.isoformat()}"), ("valid_at", f"lte.{end.isoformat()}"),
         ("order", "valid_at.asc"),
-    ])
+    ], order="valid_at.asc,source.asc")
     out = {}
     for r in rows:
         if r.get("temp_c") is None:
@@ -160,7 +161,8 @@ def run(run_id):
         }
         results["headline"]["data_limitation"] = DATA_STARTS_2025
 
-        result_rows = [{"run_id": run_id, "scope": scope, "data": data} for scope, data in results.items()]
+        result_rows = [{"run_id": run_id, "scope": scope, "data": data, "metrics": data}
+                       for scope, data in results.items()]
         insert("backtest_results", result_rows)
         if all_trades:
             insert("backtest_trades", [{**t, "run_id": run_id} for t in all_trades])
@@ -188,7 +190,7 @@ def poll_and_run_queued():
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 1 and sys.argv[1].strip():
         run(sys.argv[1])
     else:
         poll_and_run_queued()

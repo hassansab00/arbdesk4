@@ -2,8 +2,9 @@
 
 Next.js (App Router) frontend, per Revision A §6/§9: reads Supabase directly
 via `supabase-js` with the anon key, writes only through RPCs
-(`sql/ad4_rpc.sql`). **Zero Vercel serverless functions, two environment
-variables.**
+(`sql/ad4_rpc.sql`). Paper Trades uses one credential-free, paper-only desk and
+adds one narrow server route that wakes the paper worker after an action. The
+two Supabase variables remain browser-safe; the worker URL and token are server-only.
 
 ## Setup
 
@@ -108,9 +109,14 @@ or do the Next 16 upgrade as its own tested change.
 
 Vercel, from `main`, **Root Directory = `web`**, with
 `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` set as
-environment variables. No other config needed - there is no API layer to
-deploy alongside it, and `web/vercel.json` already sets the framework,
-build, dev and install commands for that root.
+environment variables. Credential-free Paper Trades uses the JWT-verified
+Supabase `paper-desk` Edge Function. A server-only `SUPABASE_SERVICE_KEY` is an
+optional direct-database fallback for self-hosted environments; the browser
+never receives it. `PAPER_WORKER_URL` and
+`PAPER_WORKER_TOKEN` let the server wake the worker after the single desk
+queues an order. Never prefix any of those three with `NEXT_PUBLIC_`.
+`web/vercel.json` already sets the framework, build, dev
+and install commands for that root.
 
 Use the **publishable** key — `sb_publishable_…` on newer Supabase
 projects, or the legacy `anon` JWT. Never a secret key: anything prefixed
@@ -118,7 +124,7 @@ projects, or the legacy `anon` JWT. Never a secret key: anything prefixed
 secret key set here is published the moment the page is served and must then
 be **rotated**, not just replaced. The secret key (`sb_secret_…` /
 `service_role`) belongs only in the GitHub Actions secret
-`SUPABASE_SERVICE_KEY` and in n8n Config nodes.
+`SUPABASE_SERVICE_KEY`, the Vercel server environment, and n8n Config nodes.
 
 `lib/keyGuard.ts` enforces this rather than trusting it: it classifies the
 configured key across both Supabase key generations, and `lib/supabase.ts`

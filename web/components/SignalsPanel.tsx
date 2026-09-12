@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from 'next/link';
 import { supabase } from "@/lib/supabase";
 import { ErrorBox, Loading } from "@/components/DataState";
 import { fmtAge, fmtPrice, fmtPct, fmtPp, severityColor } from "@/lib/format";
@@ -87,10 +88,13 @@ export default function SignalsPanel({
         if (missing.length) {
           const { data: raw } = await supabase
             .from("bands")
-            .select("band_id,band_lo,band_hi,open_low,open_high,band_label")
+            .select("band_id,band_lo,band_hi,open_low,open_high,band_label,markets!inner(city_key,unit,resolution_date)")
             .in("band_id", missing);
-          for (const b of (raw as Array<Omit<BandInfo, "city_key" | "unit" | "resolution_date">> ?? [])) {
-            map[b.band_id] = { ...b, city_key: "", unit: "C", resolution_date: "" } as BandInfo;
+          for (const row of raw ?? []) {
+            const market = Array.isArray(row.markets) ? row.markets[0] : row.markets;
+            if (market?.unit === "C" || market?.unit === "F") {
+              map[row.band_id] = { ...row, ...market } as BandInfo;
+            }
           }
         }
         setBands(map);
@@ -115,7 +119,7 @@ export default function SignalsPanel({
     try {
       channel = supabase
         .channel("signals-feed")
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "signals" }, () => load())
+        .on("postgres_changes", { event: "*", schema: "public", table: "signals" }, () => load())
         .subscribe();
     } catch (e) {
       const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : String(e);
@@ -130,14 +134,6 @@ export default function SignalsPanel({
       }
     };
   }, []);
-
-  async function approve(id?: number) {
-    if (!id) return;
-    const { error: e } = await supabase.rpc("approve_signal", { p_signal_id: id });
-    onChanged?.();
-    if (e) setError(e.message);
-    load();
-  }
 
   async function dismiss(id?: number) {
     if (!id) return;
@@ -317,7 +313,7 @@ export default function SignalsPanel({
                 <span className="text-[10px] text-muted">{fmtAge(s.fired_at)}</span>
                 {s.status === "pending_approval" && m.tradeable ? (
                   <span className="flex gap-1.5">
-                    <button onClick={() => approve(s.signal_id)} className="rounded bg-good/20 px-2 py-0.5 text-good hover:bg-good/30">Approve</button>
+                    <Link href="/paper-trades#automation" className="rounded bg-good/20 px-2 py-0.5 text-good hover:bg-good/30">Review paper plan</Link>
                     <button onClick={() => dismiss(s.signal_id)} className="rounded bg-bad/20 px-2 py-0.5 text-bad hover:bg-bad/30">Dismiss</button>
                   </span>
                 ) : s.status === "pending_approval" ? (

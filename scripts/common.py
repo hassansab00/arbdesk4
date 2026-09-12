@@ -32,6 +32,31 @@ def rest(path, params=None):
     r.raise_for_status()
     return r.json()
 
+def rest_all(path, params=None, *, order, page_size=500):
+    """Read a bounded scope completely, including under smaller server caps.
+
+    Callers supply a stable unique ordering (including a tie breaker). Offset
+    advances by rows actually received, never by the requested page size.
+    Do not use this for an unbounded live stream; capture a cutoff first.
+    """
+    if not order or page_size < 1:
+        raise ValueError("stable order and positive page_size required")
+    pairs = list((params or {}).items()) if isinstance(params, dict) else list(params or [])
+    pairs = [(k, v) for k, v in pairs if k not in ('limit', 'offset', 'order')]
+    out, offset = [], 0
+    previous = None
+    while True:
+        rows = rest(path, pairs + [('order', order), ('offset', str(offset)),
+                                   ('limit', str(page_size))])
+        if not rows:
+            return out
+        fingerprint = json.dumps(rows, sort_keys=True)
+        if fingerprint == previous:
+            raise RuntimeError(f"{path}: pagination did not advance")
+        previous = fingerprint
+        out.extend(rows)
+        offset += len(rows)
+
 def by_shape(rows):
     """Split rows into groups that all carry the SAME set of keys.
 
@@ -167,9 +192,10 @@ def refresh_feature_cache(days=None, quiet=False):
 
 def log_run(job, status, rows, detail):
     try:
-        requests.post(f"{_cfg()['url']}/rest/v1/rpc/log_ingest", headers=_headers(),
+        response = requests.post(f"{_cfg()['url']}/rest/v1/rpc/log_ingest", headers=_headers(),
                       data=json.dumps({"p_job": job, "p_status": status,
                                        "p_rows": rows, "p_detail": detail}), timeout=30)
+        response.raise_for_status()
     except Exception as e:
         print(f"  ! log_ingest failed: {e}", file=sys.stderr)
 

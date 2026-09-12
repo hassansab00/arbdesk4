@@ -1,114 +1,48 @@
 name: Forecasts (Open-Meteo Previous Runs)
-
-# NO SCHEDULE ANY MORE. The daily "last 10 days" ingest is step 1 of
-# pipeline_daily.yml, sharing that job's runner instead of paying for its own.
-# What is left here is the BACKFILL: a date range that can run for hours and
-# re-trigger itself, which has no business on a daily cron.
+# Each resumable link is bounded to 25 job minutes, including setup.
+# The wrapper invokes scripts/ingest_forecasts.py (provenance source).
 on:
   workflow_dispatch:
     inputs:
       start:
-        description: 'Backfill start date YYYY-MM-DD (blank = last 10 days)'
+        description: 'Start date YYYY-MM-DD (blank = last 10 days)'
         required: false
       end:
-        description: 'Backfill end date YYYY-MM-DD'
+        description: 'End date YYYY-MM-DD'
         required: false
       auto_continue:
-        description: 'Auto re-run if this run hits the time limit (true/false)'
-        required: false
+        description: 'Continue within the declared chain budget'
         default: 'true'
       depth:
-        # THE CHAIN HAS TO END SOMEWHERE. This job re-triggers itself while the
-        # backfill reports INCOMPLETE, and nothing bounded that: a backfill that
-        # can never finish - a date range with no data, an API that answers but
-        # returns nothing, a bug that always prints INCOMPLETE - re-triggers
-        # forever, at up to 330 minutes a link. A private repo has 2,000 Actions
-        # minutes a month, so six links of a runaway chain is the whole month.
-        description: 'Internal: how many times this run has already re-triggered'
-        required: false
+        description: 'Internal continuation depth'
         default: '0'
-
+      chain_budget_minutes:
+        description: 'Whole-chain job-minute ceiling, 25 to 300'
+        default: '75'
+permissions:
+  contents: read
+  actions: write
 concurrency:
-  # Two backfills at once fight over the same rows and bill twice for it.
-  # Queue rather than cancel: a half-finished backfill still wrote real rows,
-  # and killing it mid-city loses the run's whole soft-deadline budget.
   group: forecasts-backfill
   cancel-in-progress: false
-
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    # The daily scheduled run covers the last 10 days and finishes in ~25
-    # seconds. Only a manual backfill needs the long deadline, so only a manual
-    # backfill gets it - a scheduled run that hangs is capped at 30 minutes
-    # instead of burning 350 of the month's 2,000 on a socket nobody is reading.
-    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 350 || 30 }}
-    outputs:
-      incomplete: ${{ steps.run.outputs.incomplete }}
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11', cache: 'pip' }
-      - run: pip install -r requirements.txt
-      - name: Ingest
-        id: run
+        with: { python-version: '3.11', cache: 'pip', cache-dependency-path: 'requirements.runtime.txt' }
+      - run: pip install -r requirements.runtime.txt
+      - name: Bounded resumable backfill
+        run: python scripts/forecast_backfill_job.py
         env:
           PYTHONPATH: scripts
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: |
-          set +e
-          if [ -n "${{ github.event.inputs.start }}" ]; then
-            python scripts/ingest_forecasts.py "${{ github.event.inputs.start }}" "${{ github.event.inputs.end }}" 2>&1 | tee run.log
-          else
-            python scripts/ingest_forecasts.py 2>&1 | tee run.log
-          fi
-          if grep -q "INCOMPLETE" run.log; then
-            echo "incomplete=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "incomplete=false" >> "$GITHUB_OUTPUT"
-          fi
-
-  continue:
-    needs: ingest
-    # MAX_DEPTH is 8. Eight links at the 330-minute soft deadline is more than a
-    # month's allowance, so in practice the backfill finishes long before this -
-    # the point is that a chain which CANNOT finish stops on its own and says so,
-    # rather than draining the account until every workflow starts failing.
-    if: >-
-      needs.ingest.outputs.incomplete == 'true' &&
-      github.event.inputs.auto_continue != 'false' &&
-      fromJSON(github.event.inputs.depth || '0') < 8
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Re-trigger this workflow with the same inputs
-        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DEPTH: ${{ github.event.inputs.depth || '0' }}
-        run: |
-          next=$(( DEPTH + 1 ))
-          echo "Backfill incomplete; re-triggering (link $next of 8)."
-          gh workflow run forecasts.yml \
-            -f start="${{ github.event.inputs.start }}" \
-            -f end="${{ github.event.inputs.end }}" \
-            -f auto_continue="${{ github.event.inputs.auto_continue }}" \
-            -f depth="$next" \
-            --repo ${{ github.repository }}
-
-  stopped:
-    needs: ingest
-    if: >-
-      needs.ingest.outputs.incomplete == 'true' &&
-      github.event.inputs.auto_continue != 'false' &&
-      fromJSON(github.event.inputs.depth || '0') >= 8
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Say why the chain stopped
-        run: |
-          echo "::warning::Backfill still INCOMPLETE after 8 self-triggered runs."
-          echo "Stopping rather than re-triggering again - a chain this long means"
-          echo "the range is not progressing, not that it needs more time. Check"
-          echo "the Ingest log of this run for what it was still trying to fetch."
-          exit 1
+          BACKFILL_START: ${{ inputs.start }}
+          BACKFILL_END: ${{ inputs.end }}
+          BACKFILL_DEPTH: ${{ inputs.depth }}
+          BACKFILL_AUTO: ${{ inputs.auto_continue }}
+          BACKFILL_BUDGET: ${{ inputs.chain_budget_minutes }}

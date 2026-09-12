@@ -30,8 +30,6 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -42,7 +40,6 @@ jobs:
         run: |
           if env | grep -qi 'SUPABASE'; then
             echo "::error::A SUPABASE variable is set - this job must prove the build works without one."
-            env | grep -i SUPABASE
             exit 1
           fi
           echo "No SUPABASE variables in the environment. Good."

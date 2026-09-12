@@ -36,3 +36,10 @@ jobs:
         with: { python-version: '3.11', cache: 'pip' }
       - run: pip install -r requirements.txt
       - run: PYTHONPATH=scripts python -m pytest tests/ -q
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: tests/database/package-lock.json
+      - name: Paper database transaction contracts
+        run: npm ci --prefix tests/database --ignore-scripts && npm test --prefix tests/database
