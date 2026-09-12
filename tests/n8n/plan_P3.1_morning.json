@@ -1,0 +1,30 @@
+{
+ "seed": {
+  "Config": {
+   "supabase_url": "https://testproject.supabase.co",
+   "digest_kind": "morning",
+   "from_email": "ad4@example.invalid",
+   "digest_recipient": "",
+   "email_enabled": "true"
+  },
+  "build_morning_brief": {
+   "generated_at": "2026-09-12T06:00:00+00:00",
+   "regimes": {},
+   "top_opportunities": [
+    {"city_key": "nyc", "display_name": "New York", "band_label": "22-24C",
+     "side": "YES", "market_price": 0.41, "model_prob": 0.55, "edge_net_pp": 0.08,
+     "fillable_usd_5c": 1800, "volume_usd": 12400, "n_trades": 63,
+     "regime_label": "calm", "thin_market": false},
+    {"city_key": "london", "display_name": "London", "band_label": "16-18C",
+     "side": "NO", "market_price": 0.62, "model_prob": 0.48, "edge_net_pp": 0.11,
+     "fillable_usd_5c": 300, "volume_usd": 40, "n_trades": 1,
+     "regime_label": "volatile", "thin_market": true}
+   ]
+  },
+  "Get Recipient": [{"value": {"address": "desk@example.invalid"}}]
+ },
+ "run": [
+  {"node": "Render HTML", "input": "build_morning_brief"},
+  {"node": "Summary", "input": "Get Recipient"}
+ ]
+}

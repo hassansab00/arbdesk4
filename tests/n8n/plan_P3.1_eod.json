@@ -1,0 +1,44 @@
+{
+ "seed": {
+  "Config": {
+   "supabase_url": "https://testproject.supabase.co",
+   "digest_kind": "eod",
+   "from_email": "ad4@example.invalid",
+   "digest_recipient": "",
+   "email_enabled": "true"
+  },
+  "Get Recipient": [
+   {
+    "value": {
+     "address": "desk@example.invalid"
+    }
+   }
+  ],
+  "build_eod_report": {
+   "generated_at": "2026-09-12T22:00:00+00:00",
+   "net_pnl_by_strategy": {
+    "mean_reversion": 41.5,
+    "momentum": -12.25
+   },
+   "settled_today": [
+    {
+     "strategy_id": "mean_reversion",
+     "band_id": "b1",
+     "side": "YES",
+     "shares": 100,
+     "net_pnl": 41.5
+    }
+   ]
+  }
+ },
+ "run": [
+  {
+   "node": "Render HTML",
+   "input": "build_eod_report"
+  },
+  {
+   "node": "Summary",
+   "input": "Get Recipient"
+  }
+ ]
+}

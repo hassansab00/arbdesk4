@@ -697,6 +697,66 @@ def test_every_gate_carries_the_permission_check(workflow):
     assert "42501" in gate[0]["parameters"]["jsCode"], workflow
 
 
+# ------------------------------------------------------------- P3.1 --------
+
+
+def test_p31_routes_on_config_not_on_the_schedule_gate():
+    """The Switch's input is "Stop if skipped", whose items are the gate's own
+    {run, scope, reason} decision. Reading $json.digest_kind there gave
+    undefined, NEITHER branch matched, and the workflow built no digest at
+    all - on every scheduled run, silently."""
+    d = json.load(open(os.path.join(ROOT, "n8n", "P3.1_email_digests.template.json")))
+    sw = [n for n in d["nodes"] if n["name"] == "Which digest?"][0]
+    lefts = [c["leftValue"]
+             for r in sw["parameters"]["rules"]["values"]
+             for c in r["conditions"]["conditions"]]
+    assert lefts, sw
+    for left in lefts:
+        assert "$('Config')" in left, left
+        assert left != "={{ $json.digest_kind }}"
+
+
+def test_p31_morning_brief_renders_every_opportunity_with_its_volume():
+    r = run("P3.1_email_digests.template.json", "plan_P3.1_morning.json")
+    assert r["ok"], r
+    out = r["outputs"]["Render HTML"][0]
+    assert out["subject"] == "AD4 Morning Brief"
+    assert "New York" in out["html"] and "London" in out["html"]
+    assert "$12.4k" in out["html"]          # volume, not just depth
+    assert "1 on thin-volume bands" in out["html"]
+
+
+def test_p31_eod_report_renders_net_pnl_by_strategy():
+    r = run("P3.1_email_digests.template.json", "plan_P3.1_eod.json")
+    assert r["ok"], r
+    out = r["outputs"]["Render HTML"][0]
+    assert out["subject"] == "AD4 End of Day Report"
+    assert "mean_reversion" in out["html"] and "41.50" in out["html"]
+
+
+def test_p31_says_sent_only_when_it_really_could_send():
+    r = run("P3.1_email_digests.template.json", "plan_P3.1_morning.json")
+    s = r["outputs"]["Summary"][0]
+    assert s["status"] == "ok" and s["rows"] == 1
+    assert "sent to desk@example.invalid" in s["summary"], s["summary"]
+
+
+def test_p31_does_not_claim_delivery_with_email_disabled():
+    r = run("P3.1_email_digests.template.json", "plan_P3.1_email_off.json")
+    s = r["outputs"]["Summary"][0]
+    assert s["status"] == "attention" and s["rows"] == 0
+    assert "NOT sent" in s["summary"] and "email_enabled is off" in s["summary"]
+
+
+def test_p31_does_not_claim_delivery_with_no_recipient():
+    """settings has no email_recipient row on a fresh install, and the old
+    Send Email read $json[0].value.address - an index into a row object."""
+    r = run("P3.1_email_digests.template.json", "plan_P3.1_no_recipient.json")
+    s = r["outputs"]["Summary"][0]
+    assert s["status"] == "attention" and s["rows"] == 0
+    assert "no recipient" in s["summary"], s["summary"]
+
+
 # ------------------------------------------------------------- P1.1 --------
 # P1.1 used to read `$input.first().json.body` at Format Events. Its input is
 # the schedule gate, not the webhook, so `body.events` was undefined on every
