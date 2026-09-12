@@ -34,13 +34,17 @@ const assert = require('node:assert/strict');
     create view public.v_forecast_convergence as select 'city'::text as city_key;`);
   const historicBand='20000000-0000-0000-0000-000000000099';
   const historicMarket='30000000-0000-0000-0000-000000000099';
+  const historicTailBand='20000000-0000-0000-0000-000000000098';
+  const historicTailMarket='30000000-0000-0000-0000-000000000098';
   const directory = path.resolve(__dirname,'../../supabase/migrations');
   for (const file of fs.readdirSync(directory).filter(x=>x.endsWith('.sql')).sort()) {
     if (file==='20260912230000_phase1_canonical_contracts.sql') {
       await db.exec(`insert into public.markets(market_id,closed,resolution_date,city_key,event_slug,unit)
-        values('${historicMarket}',true,current_date-30,'london','historic-london-contract','F');
+        values('${historicMarket}',true,current_date-30,'london','historic-london-contract','F'),
+              ('${historicTailMarket}',true,current_date-31,'london','historic-symbolic-tail','F');
         insert into public.bands(band_id,market_id,band_index,band_label,band_lo,band_hi,open_low,open_high,token_yes,token_no,condition_id)
-        values('${historicBand}','${historicMarket}',1,'20C',20,20,false,false,'historic-yes','historic-no','historic-condition');`);
+        values('${historicBand}','${historicMarket}',1,'20C',20,20,false,false,'historic-yes','historic-no','historic-condition'),
+              ('${historicTailBand}','${historicTailMarket}',1,'<29°F',29,29,false,false,'tail-yes','tail-no','tail-condition');`);
     }
     await db.exec(fs.readFileSync(path.join(directory,file),'utf8'));
   }
@@ -67,7 +71,7 @@ const assert = require('node:assert/strict');
   assert.ok(Number((await db.query('select refresh_data_quality_flags() as n')).rows[0].n)>=3);
   assert.equal(Number((await db.query('select refresh_data_quality_flags() as n')).rows[0].n),0,
     'Quality detection is idempotent for one detector version');
-  assert.equal((await db.query("select count(*)::int as n from proprietary_data_quality_flags where issue_code='zero_width_non_tail_band'")).rows[0].n,2);
+  assert.equal((await db.query("select count(*)::int as n from proprietary_data_quality_flags where issue_code='zero_width_non_tail_band'")).rows[0].n,3);
 
   // Canonical contract corrections are additive: the collected source row
   // stays byte-for-byte unchanged while service-side consumers see the fix.
@@ -79,6 +83,9 @@ const assert = require('node:assert/strict');
   const canonicalBand=(await db.query('select band_lo,band_hi,label_unit from v_canonical_bands where band_id=$1',[historicBand])).rows[0];
   assert.deepEqual([Number(canonicalBand.band_lo),Number(canonicalBand.band_hi),canonicalBand.label_unit],[20,21,'C']);
   assert.equal((await db.query('select unit from v_canonical_markets where market_id=$1',[historicMarket])).rows[0].unit,'C');
+  const canonicalTail=(await db.query('select band_lo,band_hi,open_low,open_high,label_unit from v_canonical_bands where band_id=$1',[historicTailBand])).rows[0];
+  assert.equal(canonicalTail.band_lo,null);
+  assert.deepEqual([Number(canonicalTail.band_hi),canonicalTail.open_low,canonicalTail.open_high,canonicalTail.label_unit],[29,true,false,'F']);
   await db.exec('reset role;');
 
   await db.exec(`set role authenticated;set request.jwt.claim.sub='${uid}';`);
