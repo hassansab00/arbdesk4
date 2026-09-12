@@ -697,6 +697,58 @@ def test_every_gate_carries_the_permission_check(workflow):
     assert "42501" in gate[0]["parameters"]["jsCode"], workflow
 
 
+# ------------------------------------------------------------- P2.1 --------
+
+
+def test_p21_runs_the_whole_learning_chain_by_default():
+    r = run("P2.1_relearn.template.json", "plan_P2.1_chain.json")
+    assert r["ok"], r
+    out = r["outputs"]["Build dispatches"]
+    assert [o["stage"] for o in out] == ["evidence", "correction", "prediction"]
+    assert [o["file"] for o in out] == [
+        "pipeline_daily.yml", "weather_model.yml", "pipeline_intraday.yml"]
+    assert out[0]["url"] == (
+        "https://api.github.com/repos/hassansab00/arbdesk4/actions/workflows/"
+        "pipeline_daily.yml/dispatches")
+
+
+def test_p21_only_actually_reaches_the_webhook_body():
+    """`only` was read off $input, which is "Check config" passing Config
+    through - so it was undefined every time and the Workflows page's "run
+    this one Action" button silently ran the whole three-stage chain."""
+    r = run("P2.1_relearn.template.json", "plan_P2.1_only.json")
+    assert r["ok"], r
+    out = r["outputs"]["Build dispatches"]
+    assert [o["stage"] for o in out] == ["backtest"]
+    assert out[0]["file"] == "backtest.yml"
+
+
+def test_p21_names_what_it_can_start_when_only_is_wrong():
+    r = run("P2.1_relearn.template.json", "plan_P2.1_only_bad.json")
+    assert r["ok"] is False and r["node"] == "Build dispatches", r
+    assert "not_a_stage" in r["error"] and "evidence" in r["error"]
+
+
+def test_p21_refuses_to_dispatch_without_a_github_token():
+    r = run("P2.1_relearn.template.json", "plan_P2.1_no_token.json")
+    assert r["ok"] is False and r["node"] == "Check config", r
+    assert "Config.github_token is empty" in r["error"], r["error"]
+    assert "NOWHERE ELSE" in r["error"]
+
+
+def test_p21_waits_as_long_between_stages_as_config_says():
+    """The request node held a hardcoded 240000ms while Config said 420s and
+    the Summary reported 420s. Two of the three were wrong."""
+    d = json.load(open(os.path.join(ROOT, "n8n", "P2.1_relearn.template.json")))
+    by = {n["name"]: n for n in d["nodes"]}
+    interval = (by["Dispatch"]["parameters"]["options"]["batching"]["batch"]
+                ["batchInterval"])
+    assert "seconds_between_stages" in str(interval), interval
+
+    r = run("P2.1_relearn.template.json", "plan_P2.1_chain.json")
+    assert r["outputs"]["Build dispatches"][0]["wait_seconds"] == 420
+
+
 # ------------------------------------------------------------- P3.1 --------
 
 
