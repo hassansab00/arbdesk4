@@ -140,6 +140,12 @@ const CATALOGUE: Array<{
     ],
   },
   {
+    job: "P2.2_paper_maintenance",
+    label: "Paper Maintenance",
+    schedule: "hourly",
+    what: "Expires paper orders past their deadline and gives back the cash they had reserved, then reports what is still open. It does not fill or settle - the note on the workflow says exactly why.",
+  },
+  {
     job: "P4.1_health_watchdog",
     label: "Health Watchdog",
     schedule: "every 6 hours",

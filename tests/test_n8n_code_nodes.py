@@ -1183,7 +1183,7 @@ def test_every_supabase_node_is_bound_to_the_same_named_credential():
             assert cred.get("name") == CRED_NAME, (
                 f"{name} / {n['name']}: bound to {cred.get('name')!r}, not {CRED_NAME!r}")
             bound += 1
-    assert bound == 58, f"expected 58 Supabase nodes across the files, found {bound}"
+    assert bound == 63, f"expected 63 Supabase nodes across the files, found {bound}"
 
 
 def test_the_email_workflows_bind_smtp_and_a_real_sender():
@@ -1283,7 +1283,7 @@ def test_every_gate_throws_the_same_diagnostic():
         assert len(found) == 1, f"{path} has {len(found)} gate diagnostics"
         seen.setdefault(found[0], []).append(os.path.basename(path))
     assert len(seen) == 1, f"gates disagree: {[v for v in seen.values()]}"
-    assert len(next(iter(seen.values()))) == 12, seen
+    assert len(next(iter(seen.values()))) == 13, seen
 
 
 def test_the_service_key_is_let_through():

@@ -1,0 +1,475 @@
+{
+  "name": "AD4 P2.2 - Paper Maintenance",
+  "nodes": [
+    {
+      "name": "Note scope",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -120
+      ],
+      "parameters": {
+        "content": "## What this does, and what it deliberately does not\n\n**Runs today.** `expire_paper_commands()` walks every paper account, expires\norders past `expires_at`, releases the `cash_ceiling` each of them had\nreserved, and expires plans still sitting in `pending_approval`. Without it\nreserved cash is never returned and the desk slowly runs out of buying power\nagainst orders that can never fill.\n\n**Does not fill orders, on purpose.** `complete_paper_order` will only accept\na fill whose `snapshot_id` names a row in `paper_book_evidence` whose\n`token_id` equals the order's `token_id`. `book_snapshots` stores ONE\nunlabelled book per band and has no `token_id` column, so a NO-side order\ncannot be evidenced from it without asserting which of the two tokens the\nstored book belongs to. That assertion would be a guess written into the\nledger as proof. Add `token_id` to `book_snapshots` (P0.3 knows it at fetch\ntime) and the filler becomes buildable on real evidence.\n\n**Does not settle positions, on purpose.** `settle_paper_inventory` demands a\n`paper_resolution_evidence` row carrying BOTH a Gamma payload (`closed`,\n`umaResolutionStatus=resolved`) and a CLOB payload (`closed`,\n`accepting_orders=false`, exactly one winning token). The Gamma endpoint is\nthe one P0.5 uses and is known good; the CLOB market endpoint is not used\nanywhere in AD4 yet and has not been verified against the live venue. Adding\nit unverified would produce evidence rows that `settle_paper_inventory`\nrejects - or worse, accepts.",
+        "width": 520,
+        "height": 560
+      }
+    },
+    {
+      "name": "Schedule (hourly)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "7 * * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        160
+      ],
+      "parameters": {}
+    },
+    {
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        320
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ad4-paper-maintenance",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "ad4-paper-maintenance"
+    },
+    {
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        260,
+        160
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "supabase_url",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "sched-check",
+      "name": "Check schedule",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        450,
+        -30
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/should_run",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_job: \"P2.2_paper_maintenance\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi"
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "ad4-supabase",
+          "name": "AD4 Supabase"
+        }
+      }
+    },
+    {
+      "id": "sched-gate",
+      "name": "Run now?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        -30
+      ],
+      "parameters": {
+        "jsCode": "// AD4-KEY-CHECK\n// THE KEY IS NOT IN THIS FILE ANY MORE, AND THAT IS THE POINT.\n//\n// Every Supabase node in this workflow authenticates with an n8n SUPABASE\n// CREDENTIAL rather than a key pasted into the Config node. That is one place\n// to set it instead of twelve, it is encrypted at rest in n8n, and exporting\n// this workflow can no longer leak it - the old shape had the service key\n// sitting in plain text inside a JSON file that gets emailed around.\n//\n// SET IT UP ONCE, BEFORE IMPORTING ANYTHING:\n//   n8n -> Credentials -> New -> Supabase API\n//     Name         AD4 Supabase        <- this name exactly\n//     Host         https://<your-project-ref>.supabase.co\n//     Service Role the SERVICE ROLE key (Project Settings -> API keys)\n//\n// The name matters because every Supabase node in every AD4 workflow is\n// already bound to a credential called AD4 Supabase. Create it first and\n// n8n links all of them on import - nothing to pick node by node. Import\n// first and the nodes come in unbound, and you pick the credential on each\n// one by hand; it works, it is just ~57 dropdowns instead of zero.\n//\n// The credential sends `apikey` and `Authorization: Bearer` itself, which is\n// exactly what these nodes used to set by hand.\n//\n// WHAT STILL CHECKS THE KEY. This node can no longer read it - a credential\n// is not visible to an expression, by design. Two things downstream do:\n//\n//   the schedule gate, immediately below. sql/ad4_38 revokes should_run from\n//   anon, so a credential holding the publishable key is refused HERE, two\n//   nodes in, before a single row is fetched.\n//\n//   the write guard in the Summary node, which names any refusal the\n//   database gives and refuses to report success on a run that wrote nothing.\n//\n// supabase_url stays in Config because an expression has to build the request\n// URL and cannot read the credential's host. It is not a secret.\n{\n  const cfg = $('Config').first().json ?? {};\n  const url = String(cfg.supabase_url ?? '').trim();\n  if (!url) {\n    throw new Error(\n      'Config -> supabase_url is empty. Set it to exactly ' +\n      'https://<your-project-ref>.supabase.co - no trailing slash and no /rest/v1, ' +\n      'which every node below appends itself. The KEY does not go here: it belongs in ' +\n      'the n8n Supabase credential (Credentials -> New -> Supabase API), which is ' +\n      'where the nodes now read it from.');\n  }\n  if (!/^https:\\/\\//.test(url) || /\\/rest\\b/.test(url) || /\\/$/.test(url)) {\n    throw new Error(\n      `Config -> supabase_url is \"${url}\", which is not the shape every node below ` +\n      'expects: https://<your-project-ref>.supabase.co, no trailing slash, no /rest/v1. ' +\n      'Nothing was fetched and nothing was written.');\n  }\n}\n\n// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A PERMISSION ERROR IS NOT AN UNAVAILABLE GATE. 42501 here means the key\n// cannot even call should_run, and a key that cannot do that cannot write\n// either - so stop, rather than failing open into a run that writes nothing.\n//\n// THIS NODE CANNOT CHECK THE KEY ITSELF ANY MORE - it is in the credential,\n// which an expression cannot read. So a refusal here is one of two things and\n// both stop the run: the credential holds the anon/publishable key rather than\n// the service role key, or service_role has not been granted what it needs.\n// Either way every write below would be refused the same way, so there is\n// nothing to gain by going on. ad4_38's output tells you which it was.\n//\n// ad4_38 revokes should_run from anon for this reason: it was granted so the\n// Workflows page could preview a cadence, that page reads v_execution_budget\n// instead, and the grant only let a bad key through the gate.\nif (decision && (String(decision.code) === '42501' ||\n                 /permission denied/i.test(String(decision.message || '')))) {\n  throw new Error(\n    `Supabase refused should_run: ${decision.message} (${decision.code}). Every write below ` +\n    `would be refused the same way, so nothing was fetched and nothing was written. Two ` +\n    `things cause this and the workflow cannot tell them apart, because the key now lives ` +\n    `in the n8n credential where an expression cannot read it. (1) THE KEY: open n8n -> ` +\n    `Credentials -> the Supabase account these nodes use and check Service Role Secret ` +\n    `holds the SERVICE ROLE key (Supabase -> Project Settings -> API -> service_role, or a ` +\n    `key beginning sb_secret_) - an anon key gets exactly this error, because anon is ` +\n    `granted SELECT and nothing else. NEVER put the service key anywhere starting ` +\n    `NEXT_PUBLIC_. (2) THE DATABASE: service_role has not been granted what it needs. Run ` +\n    `sql/ad4_38_grants.sql in the Supabase SQL editor - it grants the write path back and ` +\n    `then prints one row per ingest table saying whether the service key can write it, ` +\n    `which also tells you which of the two it was.`);\n}\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
+      }
+    },
+    {
+      "id": "sched-stop",
+      "name": "Stop if skipped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        830,
+        -30
+      ],
+      "parameters": {
+        "jsCode": "// Returning [] stops the workflow here. Everything below this node\n// is skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
+      }
+    },
+    {
+      "name": "Expire commands",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        160
+      ],
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/expire_paper_commands",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi"
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "ad4-supabase",
+          "name": "AD4 Supabase"
+        }
+      }
+    },
+    {
+      "name": "Load desk state",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        160
+      ],
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/paper_orders?select=order_id,status,band_id,side,action,shares,expires_at&status=in.(queued,working)&order=requested_at.asc&limit=500",
+        "sendHeaders": false,
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi"
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "ad4-supabase",
+          "name": "AD4 Supabase"
+        }
+      }
+    },
+    {
+      "name": "Load open positions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        160
+      ],
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/paper_positions?select=account_id,band_id,side,shares,cost_basis&shares=gt.0&limit=500",
+        "sendHeaders": false,
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi"
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "ad4-supabase",
+          "name": "AD4 Supabase"
+        }
+      }
+    },
+    {
+      "name": "Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        160
+      ],
+      "parameters": {
+        "jsCode": "const AD4_WRITE_NODES = [\"Expire commands\"];\n// AD4-WRITE-GUARD\n// DID THE DATABASE ACTUALLY TAKE IT?\n//\n// Every write node in this workflow carries onError=continueRegularOutput so\n// that one bad row cannot kill a run. The cost of that is a REFUSED write\n// walks straight past it and arrives here looking healthy - which is how a\n// workflow reports \"ok, 0 rows\" for days while the data quietly stops moving.\n//\n// With neverError on, a refusal arrives as the PostgREST error body instead of\n// an exception, so it can be read and named. That is what this does.\nfunction ad4WriteError(node) {\n  let items;\n  try { items = $(node).all(); } catch (e) { return null; }\n  for (const it of items || []) {\n    const b = it && it.json;\n    if (!b || typeof b !== 'object') continue;\n    if (b.error && !b.code) return { node, code: null, message: String(b.error).slice(0, 300) };\n    if (b.code || b.message) {\n      return { node, code: b.code ?? null, message: b.message ?? '',\n               details: b.details ?? null, hint: b.hint ?? null };\n    }\n  }\n  return null;\n}\n\nfor (const node of AD4_WRITE_NODES) {\n  const e = ad4WriteError(node);\n  if (!e) continue;\n  if (String(e.code) === '42501' || /permission denied/i.test(e.message)) {\n    throw new Error(\n      `Supabase REFUSED the write at \"${e.node}\": ${e.message} (${e.code}). The key was ` +\n      `already checked at \"Run now?\" and claims to be the service key, so this is the ` +\n      `DATABASE side: service_role cannot execute that function. Run sql/ad4_38_grants.sql ` +\n      `in the Supabase SQL editor. Nothing was written.`);\n  }\n  if (String(e.code) === '42883' || /does not exist/i.test(e.message)) {\n    throw new Error(\n      `Supabase has no expire_paper_commands(): ${e.message}. The sql/ file that creates the ` +\n      `paper engine has not been run against this database. Nothing was written.`);\n  }\n  throw new Error(\n    `Supabase refused the write at \"${e.node}\": ${e.message}` +\n    (e.code ? ` (${e.code})` : '') + (e.details ? ` - ${e.details}` : '') +\n    (e.hint ? ` Hint: ${e.hint}` : '') + ' Nothing was written.');\n}\n\n// expire_paper_commands() returns a bare integer, which PostgREST delivers as\n// the whole body rather than a row object - so it can arrive as 0, as {\"0\":0},\n// or wrapped. Take the first thing that is actually a number.\nconst rowsOf = (name) => $(name).all()\n  .map(i => i.json)\n  .filter(r => r && typeof r === 'object' && Object.keys(r).length > 0);\n\nconst raw = $('Expire commands').first().json;\nconst expired = Number(\n  typeof raw === 'number' ? raw\n  : (raw?.expire_paper_commands ?? (Array.isArray(raw) ? raw[0] : NaN)));\nconst nExpired = Number.isFinite(expired) ? expired : 0;\n\nconst open = rowsOf('Load desk state');\nconst positions = rowsOf('Load open positions');\nconst openShares = positions.reduce((s, p) => s + Number(p.shares || 0), 0);\nconst atRisk = positions.reduce((s, p) => s + Number(p.cost_basis || 0), 0);\n\n// A maintenance run that expires nothing is the normal case, so it is not an\n// 'attention'. What IS worth saying out loud is a queue that never moves:\n// nothing in AD4 fills a paper order yet (see the sticky note), so orders\n// sitting queued are waiting on a filler that does not exist, not on this.\nconst stuck = open.filter(o => o.status === 'queued').length;\nconst summary =\n  `AD4 P2.2: ${nExpired} expired paper command(s) released. ` +\n  `${open.length} order(s) still open (${stuck} queued), ` +\n  `${positions.length} position(s) holding ${openShares.toFixed(0)} shares ` +\n  `at a $${atRisk.toFixed(2)} cost basis.` +\n  (stuck ? ' Queued orders do not fill: no filler exists yet - see the note on this workflow.' : '');\n\nconst status = stuck > 0 ? 'attention' : 'ok';\nreturn [{ json: {\n  summary, status, rows: nExpired,\n  log: {\n    p_job: 'P2.2_paper_maintenance',\n    p_status: status,\n    p_rows: nExpired,\n    p_detail: {\n      summary,\n      expired: nExpired,\n      open_orders: open.length,\n      queued_orders: stuck,\n      open_positions: positions.length,\n      open_shares: openShares,\n      cost_basis_usd: atRisk,\n      trigger: $execution.mode,\n      execution_id: $execution.id,\n    },\n  },\n} }];"
+      }
+    },
+    {
+      "name": "Log run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        160
+      ],
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.log) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi"
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "ad4-supabase",
+          "name": "AD4 Supabase"
+        }
+      }
+    },
+    {
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1820,
+        160
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
+      }
+    }
+  ],
+  "connections": {
+    "Schedule (hourly)": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Check schedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check schedule": {
+      "main": [
+        [
+          {
+            "node": "Run now?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now?": {
+      "main": [
+        [
+          {
+            "node": "Stop if skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stop if skipped": {
+      "main": [
+        [
+          {
+            "node": "Expire commands",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expire commands": {
+      "main": [
+        [
+          {
+            "node": "Load desk state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load desk state": {
+      "main": [
+        [
+          {
+            "node": "Load open positions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load open positions": {
+      "main": [
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary": {
+      "main": [
+        [
+          {
+            "node": "Log run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log run": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
