@@ -13,7 +13,7 @@ const assert = require('node:assert/strict');
     create table public.bands(band_id uuid primary key,market_id uuid,band_index int,band_label text,
       band_lo numeric,band_hi numeric,open_low boolean,open_high boolean,token_yes text,token_no text,condition_id text);
     create table public.markets(market_id uuid primary key,closed boolean,resolution_date date,city_key text,
-      event_slug text,unit text);
+      event_slug text,unit text,condition_id text);
     create table public.cities(city_key text primary key,display_name text,unit text,status text,
       timezone text,latitude numeric,longitude numeric);
     create table public.weather_observations(obs_id bigint primary key,city_key text,valid_at timestamptz,
@@ -32,8 +32,16 @@ const assert = require('node:assert/strict');
     create view public.v_synthesis_findings as select 'finding'::text as key;
     create view public.v_learning_state as select 'learning'::text as stage;
     create view public.v_forecast_convergence as select 'city'::text as city_key;`);
+  const historicBand='20000000-0000-0000-0000-000000000099';
+  const historicMarket='30000000-0000-0000-0000-000000000099';
   const directory = path.resolve(__dirname,'../../supabase/migrations');
   for (const file of fs.readdirSync(directory).filter(x=>x.endsWith('.sql')).sort()) {
+    if (file==='20260912230000_phase1_canonical_contracts.sql') {
+      await db.exec(`insert into public.markets(market_id,closed,resolution_date,city_key,event_slug,unit)
+        values('${historicMarket}',true,current_date-30,'london','historic-london-contract','F');
+        insert into public.bands(band_id,market_id,band_index,band_label,band_lo,band_hi,open_low,open_high,token_yes,token_no,condition_id)
+        values('${historicBand}','${historicMarket}',1,'20C',20,20,false,false,'historic-yes','historic-no','historic-condition');`);
+    }
     await db.exec(fs.readFileSync(path.join(directory,file),'utf8'));
   }
   const uid='10000000-0000-0000-0000-000000000001', other='10000000-0000-0000-0000-000000000002';
@@ -59,7 +67,19 @@ const assert = require('node:assert/strict');
   assert.ok(Number((await db.query('select refresh_data_quality_flags() as n')).rows[0].n)>=3);
   assert.equal(Number((await db.query('select refresh_data_quality_flags() as n')).rows[0].n),0,
     'Quality detection is idempotent for one detector version');
-  assert.equal((await db.query("select count(*)::int as n from proprietary_data_quality_flags where issue_code='zero_width_non_tail_band'")).rows[0].n,1);
+  assert.equal((await db.query("select count(*)::int as n from proprietary_data_quality_flags where issue_code='zero_width_non_tail_band'")).rows[0].n,2);
+
+  // Canonical contract corrections are additive: the collected source row
+  // stays byte-for-byte unchanged while service-side consumers see the fix.
+  assert.equal(Number((await db.query('select band_hi from bands where band_id=$1',[historicBand])).rows[0].band_hi),20,
+    'Canonical correction never rewrites source band evidence');
+  assert.equal((await db.query('select unit from markets where market_id=$1',[historicMarket])).rows[0].unit,'F',
+    'Canonical correction never rewrites source market evidence');
+  await db.exec('set role service_role;');
+  const canonicalBand=(await db.query('select band_lo,band_hi,label_unit from v_canonical_bands where band_id=$1',[historicBand])).rows[0];
+  assert.deepEqual([Number(canonicalBand.band_lo),Number(canonicalBand.band_hi),canonicalBand.label_unit],[20,21,'C']);
+  assert.equal((await db.query('select unit from v_canonical_markets where market_id=$1',[historicMarket])).rows[0].unit,'C');
+  await db.exec('reset role;');
 
   await db.exec(`set role authenticated;set request.jwt.claim.sub='${uid}';`);
   const account=(await db.query(`select create_paper_account('Test account',100) as id`)).rows[0].id;
