@@ -1,0 +1,13 @@
+{
+  "seed": {
+    "Config": {"worker_url":"https://worker.example.test"},
+    "Build proposals": {"proposals":1},
+    "Settle positions": {"positions_settled":1},
+    "Evaluate exits": {"exits_queued":1},
+    "Process paper queue": {"orders_completed":2}
+  },
+  "run": [
+    {"node":"Validate worker URL","input":"Config"},
+    {"node":"Summary","input":"Process paper queue"}
+  ]
+}

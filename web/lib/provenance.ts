@@ -346,11 +346,83 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "AD4 P0.5 - Refresh Rules Text"
     }
   ],
+  "paper_activity": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/paper_exits.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+    }
+  ],
+  "paper_book_evidence": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/paper_worker.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+    }
+  ],
+  "paper_orders": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/paper_exits.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+    }
+  ],
+  "paper_position_settlements": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/paper_settlement.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+    }
+  ],
+  "paper_positions": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/paper_worker.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+    }
+  ],
+  "paper_resolution_evidence": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/paper_settlement.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+    }
+  ],
+  "paper_trade_plans": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/paper_plans.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+    }
+  ],
   "paper_trades": [
     {
       "cadence": "daily",
       "file": "pipeline_intraday.yml",
       "how": "scripts/signals.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+    }
+  ],
+  "research_captures": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/research_capture.py",
       "kind": "action",
       "name": "Intraday Pipeline (model, probabilities, edges, signals)"
     }

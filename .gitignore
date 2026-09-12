@@ -11,3 +11,4 @@ web/out/
 *.log
 web/tsconfig.tsbuildinfo
 web/*.tsbuildinfo
+supabase/.temp/

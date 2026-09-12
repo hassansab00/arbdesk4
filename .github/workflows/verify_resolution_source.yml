@@ -26,8 +26,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11', cache: 'pip' }
-      - run: pip install -r requirements.txt
+        with: { python-version: '3.11', cache: 'pip', cache-dependency-path: 'requirements.runtime.txt' }
+      - run: pip install -r requirements.runtime.txt
       - name: Compare all three surfaces
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

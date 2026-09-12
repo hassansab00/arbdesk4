@@ -1,0 +1,304 @@
+{
+  "name": "AD4 P2.2 Paper Trades",
+  "active": false,
+  "nodes": [
+    {
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ad4-paper-cycle",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "webhookId": "ad4-paper-cycle",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ad4-paper-webhook",
+          "name": "AD4 Paper Webhook"
+        }
+      }
+    },
+    {
+      "id": "config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "worker",
+              "name": "worker_url",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "validate-worker-url",
+      "name": "Validate worker URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const url = String($json.worker_url || '').replace(/\\/$/, '');\nif (!/^https:\\/\\/[a-z0-9.-]+(?::[0-9]{1,5})?$/i.test(url)) throw new Error('Set Config.worker_url to the HTTPS hostname of your paper worker, with no credentials, path or query.');\nreturn [{json:{worker_url:url}}];"
+      }
+    },
+    {
+      "id": "build-proposals",
+      "name": "Build proposals",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Validate worker URL').first().json.worker_url }}/paper-proposals",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 150000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ad4-paper-worker",
+          "name": "AD4 Paper Worker"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "evaluate-exits",
+      "name": "Evaluate exits",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        820,
+        160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Validate worker URL').first().json.worker_url }}/paper-exits",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 150000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ad4-paper-worker",
+          "name": "AD4 Paper Worker"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "process-paper-queue",
+      "name": "Process paper queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        940,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Validate worker URL').first().json.worker_url }}/paper-cycle",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 150000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ad4-paper-worker",
+          "name": "AD4 Paper Worker"
+        }
+      }
+    },
+    {
+      "id": "summary",
+      "name": "Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const rows = Number($('Process paper queue').first().json.orders_completed);\nconst proposals = Number($('Build proposals').first().json.proposals);\nconst settled = Number($('Settle positions').first().json.positions_settled);\nconst exits = Number($('Evaluate exits').first().json.exits_queued);\nif (![rows,proposals,settled,exits].every(Number.isInteger)) throw new Error('Paper cycle partially failed. Check the proposal, settlement and exit responses; successful fills remain recorded.');\nreturn [{json:{status:'ok',rows,proposals,settled,exits,summary:`Paper cycle: ${proposals} proposals, ${rows} completed orders, ${settled} settlements. A 202 webhook response acknowledges receipt only.`}}];"
+      }
+    },
+    {
+      "id": "settle-positions",
+      "name": "Settle positions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        820,
+        -160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Validate worker URL').first().json.worker_url }}/paper-settlements",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 150000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ad4-paper-worker",
+          "name": "AD4 Paper Worker"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Validate worker URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate worker URL": {
+      "main": [
+        [
+          {
+            "node": "Build proposals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build proposals": {
+      "main": [
+        [
+          {
+            "node": "Settle positions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process paper queue": {
+      "main": [
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate exits": {
+      "main": [
+        [
+          {
+            "node": "Process paper queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settle positions": {
+      "main": [
+        [
+          {
+            "node": "Evaluate exits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false,
+    "executionTimeout": 1260
+  }
+}

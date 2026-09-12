@@ -1,0 +1,9 @@
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.runtime.txt ./
+RUN pip install --no-cache-dir -r requirements.runtime.txt && useradd --uid 10001 --create-home paper
+COPY scripts/ ./scripts/
+ENV PYTHONPATH=/app/scripts PYTHONUNBUFFERED=1 PORT=8080
+USER paper
+EXPOSE 8080
+CMD ["python", "scripts/paper_worker_server.py"]

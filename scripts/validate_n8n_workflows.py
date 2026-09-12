@@ -63,7 +63,8 @@ for path in sorted(glob.glob("n8n/*.json")):
     if d.get("active") is not False: bad(f, "ships Active - must be False")
     if "Config" not in real: bad(f, "no Config node")
     if "Summary" not in real: bad(f, "no Summary node")
-    if "Log run" not in real: bad(f, "no Log run node")
+    writes_supabase = any('supabase_url' in str(n.get('parameters',{}).get('url','')) for n in real.values())
+    if writes_supabase and "Log run" not in real: bad(f, "no Log run node")
     if "Webhook Trigger" not in real: bad(f, "no Webhook Trigger")
     if "Manual Trigger" not in real: bad(f, "no Manual Trigger")
 
@@ -126,8 +127,11 @@ for path in sorted(glob.glob("n8n/*.json")):
 
     # -- credentials --------------------------------------------------------
     for n in d["nodes"]:
-        if n.get("credentials"):
-            bad(f, f"{n['name']} binds a credential - AD4 uses the Config node only")
+        for kind, ref in (n.get('credentials') or {}).items():
+            if not isinstance(ref,dict) or not ref.get('name') or set(ref)-{'id','name'}:
+                bad(f, f"{n['name']}: credentials must contain named references only")
+            if kind=='supabaseApi' and 'supabase_url' not in str(n.get('parameters',{}).get('url','')):
+                bad(f, f"{n['name']}: Supabase credential bound to a non-Supabase URL")
     for a in nodes.get("Config", {}).get("parameters", {}).get("assignments", {}).get("assignments", []):
         if a["name"] in ("supabase_url", "service_key", "alert_email") and a["value"]:
             bad(f, f"Config.{a['name']} is filled in - must ship empty")
@@ -143,18 +147,18 @@ for path in sorted(glob.glob("n8n/*.json")):
 
     # -- Summary must emit the shape Log run posts --------------------------
     js = real.get("Summary", {}).get("parameters", {}).get("jsCode", "")
-    for token in ("summary", "status", "rows", "log:", "p_job", "p_status", "p_rows"):
+    for token in (("summary", "status", "rows", "log:", "p_job", "p_status", "p_rows") if writes_supabase else ("summary","status","rows")):
         if token not in js: bad(f, f"Summary does not emit {token!r}")
     job = re.search(r"p_job:\s*'([^']+)'", js)
-    if not job: bad(f, "Summary has no p_job")
-    elif not f.startswith(job.group(1).split("_")[0].replace("P", "P")):
+    if not job and writes_supabase: bad(f, "Summary has no p_job")
+    elif job and not f.startswith(job.group(1).split("_")[0].replace("P", "P")):
         pass  # name check is loose; the prefix match below is the real one
 
     # -- webhook path is stable and matches the file ------------------------
     wh = real.get("Webhook Trigger", {}).get("parameters", {})
     if wh.get("httpMethod") != "POST": bad(f, "webhook is not POST")
     if not wh.get("path"): bad(f, "webhook has no path")
-    if wh.get("options", {}).get("allowedOrigins") != "*":
+    if not wh.get('authentication') and wh.get("options", {}).get("allowedOrigins") != "*":
         bad(f, "webhook has no allowedOrigins - the browser cannot call it")
 
 print(f"checked {len(glob.glob('n8n/*.json'))} workflow files")

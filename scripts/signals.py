@@ -10,9 +10,11 @@ dedupe is enforced here by checking for an existing signals row with the
 same dedupe_key still inside its ttl before inserting a new one.
 """
 import datetime as dt
+import uuid
+from dataclasses import asdict
 from collections import defaultdict
 
-from common import rest, insert, get_cities
+from common import rest, rest_all, insert, get_cities
 import edge_engine
 import paper_engine
 import regime
@@ -163,17 +165,21 @@ def build_context():
     (those cover the pure detectors/run_strategies on fixtures instead).
     """
     cities = get_cities(require_coords=False)
-    unit_of = {c["city_key"]: (c.get("unit") or "C") for c in cities}
-
-    markets = rest("markets", [("select", "market_id,city_key,resolution_date"),
-                                ("resolution_date", f"gte.{dt.date.today().isoformat()}")])
+    now = dt.datetime.now(dt.timezone.utc)
+    since = (now-dt.timedelta(minutes=15)).isoformat()
+    markets = rest_all("markets", [("select", "market_id,city_key,resolution_date,unit"),
+        ("closed", "eq.false"), ("resolution_date", f"gte.{(now.date()-dt.timedelta(days=1)).isoformat()}")], order="market_id")
+    markets = [m for m in markets if m.get('unit') in ('C','F')]
+    unit_of = {m['market_id']:m['unit'] for m in markets}
     market_city = {m["market_id"]: m["city_key"] for m in markets}
     market_date = {m["market_id"]: m["resolution_date"] for m in markets}
 
-    bands = rest("bands", [("select", "band_id,market_id,band_lo,band_hi,open_low,open_high,band_label,token_yes,token_no")])
-    bands = [b for b in bands if b["market_id"] in market_city]
-
-    edges = rest("edges", [("select", "*"), ("order", "band_id,side,computed_at.desc")])
+    bands = []
+    market_ids = list(market_city)
+    for offset in range(0,len(market_ids),100):
+        bands.extend(rest_all("bands", {"select":"*", "market_id":"in.("+','.join(market_ids[offset:offset+100])+")"}, order="band_id"))
+    edges = rest_all("edges", [("select", "*"), ("computed_at", "gte."+since),
+        ("computed_at", "lte."+now.isoformat())], order="band_id,side,computed_at.desc")
     latest_edge = {}
     for e in edges:
         key = (e["band_id"], e["side"])
@@ -201,13 +207,11 @@ def build_context():
     # prefers a week-old seven-day-lead row over this morning's.
     forecast_max = {}
     try:
-        for r in rest("weather_forecasts", [
-            ("select", "city_key,forecast_max_c,for_date,lead_days,run_at"),
-            ("for_date", f"eq.{dt.date.today().isoformat()}"),
-            ("order", "lead_days.asc,run_at.desc"),
-            ("limit", "5000"),
-        ]):
-            forecast_max.setdefault(r["city_key"], r.get("forecast_max_c"))
+        for r in rest_all("weather_forecasts", [
+            ("select", "*"), ("for_date", f"gte.{(now.date()-dt.timedelta(days=1)).isoformat()}"),
+            ("run_at", "lte."+now.isoformat()),
+        ], order="lead_days.asc,run_at.desc,forecast_id"):
+            forecast_max.setdefault((r["city_key"],r["for_date"]), r)
     except Exception:
         pass
 
@@ -220,13 +224,21 @@ def build_context():
         no = latest_edge.get((b["band_id"], "NO"), {})
         lw = live_weather.get(city_key, {})
         ap = approach.get(city_key, {})
+        forecast = forecast_max.get((city_key,resolution_date),{})
+        try:
+            observed = dt.datetime.fromisoformat(lw.get('observed_at','').replace('Z','+00:00'))
+            weather_current = lw.get('local_date') == resolution_date and 0 <= (now-observed).total_seconds() <= 10800
+        except (ValueError,TypeError):
+            weather_current = False
+        if not weather_current:
+            lw, ap = {}, {}
         reg = regime.classify(city_key, resolution_date, history_cache)
 
         views.append(BandView(
             band_id=b["band_id"], city_key=city_key, resolution_date=resolution_date,
             band_lo=b.get("band_lo"), band_hi=b.get("band_hi"), open_low=bool(b.get("open_low")),
             open_high=bool(b.get("open_high")), band_label=b.get("band_label") or "",
-            unit=unit_of.get(city_key, "C"), model_prob_yes=yes.get("model_prob"),
+            unit=unit_of[b['market_id']], model_prob_yes=yes.get("model_prob"),
             yes_price=yes.get("market_price"), no_price=no.get("market_price"),
             yes_edge_net_pp=yes.get("edge_net_pp"), no_edge_net_pp=no.get("edge_net_pp"),
             yes_tradeable=bool(yes.get("tradeable")), yes_block_reason=yes.get("block_reason"),
@@ -246,7 +258,9 @@ def build_context():
             implied_max_low_c=ap.get("implied_max_low_c"),
             implied_max_high_c=ap.get("implied_max_high_c"),
             pct_already_peaked=ap.get("pct_already_peaked"),
-            forecast_max_c=forecast_max.get(city_key),
+            forecast_max_c=forecast.get('forecast_max_c'),
+            decision_evidence={'market':next(m for m in markets if m['market_id']==b['market_id']),
+                'band':b,'yes_edge':yes,'no_edge':no,'forecast':forecast,'weather':lw,'approach':ap},
         ))
 
     settings = {r["key"]: r["value"] for r in rest("settings", {"select": "key,value"})}
@@ -284,11 +298,16 @@ def main():
     band_city = {str(b.band_id): b.city_key for b in ctx.bands if getattr(b, "band_id", None)}
     n_fired, n_deduped, n_filled = 0, 0, 0
     signal_rows, conflict_log_rows = [], conflict_rows
+    cycle_id = str(uuid.uuid4())
+    decision_bands = {str(b.band_id):b for b in ctx.bands}
     for sig in fired:
         if _already_fired_recently(sig.dedupe_key):
             n_deduped += 1
             continue
         n_fired += 1
+        ids = (sig.payload or {}).get('band_ids') or [sig.band_id]
+        sig.payload = {**(sig.payload or {}), 'cycle_id':cycle_id,'decision_at':ctx.now.isoformat(),
+            'decision_inputs':{str(bid):asdict(decision_bands[str(bid)]) for bid in ids if str(bid) in decision_bands}}
         levels_by_side = {}
         if sig.action == "ENTER" and sig.band_id:
             try:

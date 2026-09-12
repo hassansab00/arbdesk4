@@ -2,8 +2,9 @@
 
 Next.js (App Router) frontend, per Revision A §6/§9: reads Supabase directly
 via `supabase-js` with the anon key, writes only through RPCs
-(`sql/ad4_rpc.sql`). **Zero Vercel serverless functions, two environment
-variables.**
+(`sql/ad4_rpc.sql`). Paper Trades adds one protected server route that wakes
+the paper worker after an authenticated desk member queues an action. The two
+Supabase variables remain browser-safe; the worker URL and token are server-only.
 
 ## Setup
 
@@ -108,9 +109,11 @@ or do the Next 16 upgrade as its own tested change.
 
 Vercel, from `main`, **Root Directory = `web`**, with
 `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` set as
-environment variables. No other config needed - there is no API layer to
-deploy alongside it, and `web/vercel.json` already sets the framework,
-build, dev and install commands for that root.
+environment variables. Paper Trades also requires server-only
+`PAPER_WORKER_URL` and `PAPER_WORKER_TOKEN`; the API route uses them to wake
+the worker after a signed-in owner queues an order. Never prefix either one
+with `NEXT_PUBLIC_`. `web/vercel.json` already sets the framework, build, dev
+and install commands for that root.
 
 Use the **publishable** key — `sb_publishable_…` on newer Supabase
 projects, or the legacy `anon` JWT. Never a secret key: anything prefixed

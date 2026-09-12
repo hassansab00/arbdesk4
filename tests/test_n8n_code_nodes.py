@@ -24,6 +24,24 @@ NODE = shutil.which("node")
 pytestmark = pytest.mark.skipif(NODE is None, reason="node is not installed")
 
 
+def test_paper_workflow_confirms_each_stage_not_only_webhook_receipt():
+    r=run('P2.2_paper_trades.template.json','plan_P2.2_paper_trades.json')
+    assert r['ok'],r
+    assert r['outputs']['Summary'][0]['rows']==2
+
+
+def test_paper_workflow_reports_a_failed_stage_even_if_orders_completed():
+    r=run_with('P2.2_paper_trades.template.json','plan_P2.2_paper_trades.json',
+        lambda p:p['seed'].update({'Settle positions':{'error':'Source unavailable'}}))
+    assert not r['ok'] and r['node']=='Summary'
+
+
+def test_paper_worker_url_cannot_carry_a_credential():
+    r=run_with('P2.2_paper_trades.template.json','plan_P2.2_paper_trades.json',
+        lambda p:p['seed']['Config'].update({'worker_url':'https://secret@worker.example.test'}))
+    assert not r['ok'] and r['node']=='Validate worker URL'
+
+
 def run(workflow, plan):
     out = subprocess.run(
         [NODE, HARNESS, os.path.join(ROOT, "n8n", workflow),
@@ -1083,7 +1101,7 @@ def test_every_gate_throws_the_same_diagnostic():
             n.get("parameters", {}).get("jsCode", "")
             for n in json.load(open(path)).get("nodes", []))
         found = _re.findall(r"`Supabase refused should_run:.*?`\);", code, _re.S)
-        if not found and os.path.basename(path).startswith("P2.1"):
+        if not found and not any(n['name']=='Run now?' for n in json.load(open(path))['nodes']):
             continue                      # webhook-driven, has no cadence gate
         assert len(found) == 1, f"{path} has {len(found)} gate diagnostics"
         seen.setdefault(found[0], []).append(os.path.basename(path))

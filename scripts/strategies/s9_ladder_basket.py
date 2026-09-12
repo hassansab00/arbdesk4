@@ -172,6 +172,8 @@ class S9LadderBasket(Strategy):
             _, win, m, anchored = best
             bucket = "basket:" + ":".join(b.band_id for b in win)
             payload = {
+                "band_ids": [b.band_id for b in win],
+                "basket_group": bucket,
                 "buckets": [b.band_label for b in win],
                 "n_buckets": len(win),
                 "cost": round(m["cost"], 4),

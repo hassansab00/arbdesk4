@@ -1,0 +1,1 @@
+{"name":"arbdesk-database-tests","private":true,"scripts":{"test":"node paper-contracts.cjs"},"devDependencies":{"@electric-sql/pglite":"0.3.14"}}
