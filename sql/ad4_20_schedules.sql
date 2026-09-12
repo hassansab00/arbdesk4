@@ -28,6 +28,7 @@ values ('workflow_schedules', '{
   "P1.2_nws_monitor":          {"mode": "auto",   "every_minutes": 120},
   "P1.3_nws_forecast":         {"mode": "auto",   "every_minutes": 360},
   "P3.1_email_digests":        {"mode": "auto",   "every_minutes": 720},
+  "P2.2_paper_maintenance":    {"mode": "auto",   "every_minutes": 60},
   "P4.1_health_watchdog":      {"mode": "auto",   "every_minutes": 360}
 }'::jsonb)
 on conflict (key) do nothing;

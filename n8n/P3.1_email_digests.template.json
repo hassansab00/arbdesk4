@@ -90,6 +90,18 @@
               "name": "from_email",
               "value": "",
               "type": "string"
+            },
+            {
+              "id": "cfg-digest-recipient",
+              "name": "digest_recipient",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "cfg-email-enabled",
+              "name": "email_enabled",
+              "value": "",
+              "type": "string"
             }
           ]
         }
@@ -156,14 +168,20 @@
               "conditions": {
                 "conditions": [
                   {
-                    "leftValue": "={{ $json.digest_kind }}",
+                    "leftValue": "={{ $('Config').first().json.digest_kind }}",
                     "rightValue": "morning",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
                     }
                   }
-                ]
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "combinator": "and"
               }
             },
             {
@@ -171,14 +189,20 @@
               "conditions": {
                 "conditions": [
                   {
-                    "leftValue": "={{ $json.digest_kind }}",
+                    "leftValue": "={{ $('Config').first().json.digest_kind }}",
                     "rightValue": "eod",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
                     }
                   }
-                ]
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "combinator": "and"
               }
             }
           ]
@@ -286,14 +310,22 @@
         "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/settings?key=eq.email_recipient&select=value",
         "sendHeaders": false,
         "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "supabaseApi"
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "credentials": {
         "supabaseApi": {
           "id": "ad4-supabase",
           "name": "AD4 Supabase"
         }
-      }
+      },
+      "executeOnce": true
     },
     {
       "id": "send-email",
@@ -306,7 +338,7 @@
       ],
       "parameters": {
         "fromEmail": "={{ $('Config').first().json.from_email }}",
-        "toEmail": "={{ $json[0].value.address }}",
+        "toEmail": "={{ $('Get Recipient').first().json?.value?.address ?? $('Get Recipient').first().json?.value ?? $('Config').first().json.digest_recipient }}",
         "subject": "={{ $('Render HTML').first().json.subject }}",
         "emailFormat": "html",
         "html": "={{ $('Render HTML').first().json.html }}"
@@ -328,7 +360,7 @@
         160
       ],
       "parameters": {
-        "jsCode": "const r = $('Render HTML').first().json;\nconst summary = `AD4 P3.1: ${r.subject} sent.`;\nreturn [{ json: {\n  summary,\n  status: 'ok',\n  rows: 1,\n  log: {\n    p_job: 'P3.1_email_digests',\n    p_status: 'ok',\n    p_rows: 1,\n    p_detail: {\n      summary,\n      subject: r.subject ?? null,\n      digest_kind: $('Config').first().json.digest_kind ?? null,\n      trigger: $execution.mode,\n      execution_id: $execution.id,\n    },\n  },\n} }];"
+        "jsCode": "const r = $('Render HTML').first().json;\nconst cfg = $('Config').first().json;\n\n// WHO IT WENT TO, OR WHY IT DID NOT.\n// This used to say \"sent.\" unconditionally - including on an install with no\n// SMTP credential (Send Email disabled, and a disabled n8n node passes its\n// input straight through) and on one where settings has no email_recipient\n// row, which is every fresh install. A digest that reports itself delivered\n// when nothing left the building is the one failure nobody goes looking for.\nconst rec = $('Get Recipient').isExecuted ? $('Get Recipient').first().json : null;\nconst to = rec?.value?.address ?? rec?.value ?? cfg.digest_recipient ?? '';\nconst emailEnabled = /^(1|true|yes|on)$/i.test(String(cfg.email_enabled ?? '').trim());\nconst sent = emailEnabled && !!to;\n\nconst summary = sent\n  ? `AD4 P3.1: ${r.subject} sent to ${to}.`\n  : `AD4 P3.1: ${r.subject} built but NOT sent - ` +\n    (!emailEnabled ? 'email_enabled is off in Config.'\n                   : 'no recipient (settings.email_recipient is missing and ' +\n                     'Config.digest_recipient is empty).');\n\nreturn [{ json: {\n  summary,\n  status: sent ? 'ok' : 'attention',\n  rows: sent ? 1 : 0,\n  log: {\n    p_job: 'P3.1_email_digests',\n    p_status: sent ? 'ok' : 'attention',\n    p_rows: sent ? 1 : 0,\n    p_detail: {\n      summary,\n      subject: r.subject ?? null,\n      sent,\n      recipient: to || null,\n      email_enabled: emailEnabled,\n      digest_kind: cfg.digest_kind ?? null,\n      trigger: $execution.mode,\n      execution_id: $execution.id,\n    },\n  },\n} }];"
       }
     },
     {
@@ -484,7 +516,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        640,
+        830,
         30
       ],
       "parameters": {

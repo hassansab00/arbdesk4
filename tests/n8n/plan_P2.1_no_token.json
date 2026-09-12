@@ -1,0 +1,18 @@
+{
+ "seed": {
+  "Config": {
+   "github_owner": "hassansab00",
+   "github_repo": "arbdesk4",
+   "github_ref": "main",
+   "github_token": "",
+   "seconds_between_stages": "420",
+   "supabase_url": "https://testproject.supabase.co"
+  }
+ },
+ "run": [
+  {
+   "node": "Check config",
+   "input": "Config"
+  }
+ ]
+}

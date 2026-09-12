@@ -98,7 +98,8 @@
           "id": "ad4-supabase",
           "name": "AD4 Supabase"
         }
-      }
+      },
+      "executeOnce": true
     },
     {
       "id": "check-forecast",
@@ -123,7 +124,8 @@
           "id": "ad4-supabase",
           "name": "AD4 Supabase"
         }
-      }
+      },
+      "executeOnce": true
     },
     {
       "id": "check-ingest",
@@ -138,7 +140,7 @@
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "GET",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/ingest_log?select=job,status,logged_at&status=eq.error&order=logged_at.desc&limit=20",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/ingest_log?select=job,status,logged_at&status=eq.error&job=neq.P4.1_health_watchdog&order=logged_at.desc&limit=20",
         "sendHeaders": false,
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi"
@@ -148,7 +150,8 @@
           "id": "ad4-supabase",
           "name": "AD4 Supabase"
         }
-      }
+      },
+      "executeOnce": true
     },
     {
       "id": "check-anomalies",
@@ -173,7 +176,8 @@
           "id": "ad4-supabase",
           "name": "AD4 Supabase"
         }
-      }
+      },
+      "executeOnce": true
     },
     {
       "id": "evaluate",
@@ -276,7 +280,10 @@
           "id": "ad4-supabase",
           "name": "AD4 Supabase"
         }
-      }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "executeOnce": true
     },
     {
       "id": "trigger-webhook",
@@ -418,7 +425,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        640,
+        830,
         -50
       ],
       "parameters": {

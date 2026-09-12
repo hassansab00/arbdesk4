@@ -353,6 +353,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/paper_exits.py",
       "kind": "action",
       "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+    },
+    {
+      "cadence": "whenever its n8n schedule fires",
+      "file": "P2.2_paper_maintenance.template.json",
+      "how": "n8n",
+      "kind": "n8n",
+      "name": "AD4 P2.2 - Paper Maintenance"
     }
   ],
   "paper_book_evidence": [

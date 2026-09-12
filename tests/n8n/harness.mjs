@@ -34,6 +34,12 @@ for (const step of PLAN.run) {
     $: (n) => ({
       all: () => outputs[n] || [],
       first: () => (outputs[n] || [{ json: {} }])[0],
+      // n8n's own flag for "did this node run on this execution". A workflow
+      // with two entry points has to be able to ask, and without it the only
+      // way to tell a webhook run from a schedule run is to guess from the
+      // shape of the data - which is how P1.1 ended up inventing a fake alert
+      // whenever the webhook body was absent.
+      isExecuted: Object.prototype.hasOwnProperty.call(outputs, n),
     }),
     $input: { all: () => inputItems, first: () => inputItems[0] },
     $json: (inputItems[0] || { json: {} }).json,

@@ -59,6 +59,7 @@ values ('n8n_webhooks', '{
   "P1.2_nws_monitor":          {"url": "", "path": "ad4-nws-monitor",      "label": "NWS Monitor"},
   "P1.3_nws_forecast":         {"url": "", "path": "ad4-nws-forecast",     "label": "NWS Forecast"},
   "P3.1_email_digests":        {"url": "", "path": "ad4-email-digests",     "label": "Email Digests"},
+  "P2.2_paper_maintenance":    {"url": "", "path": "ad4-paper-maintenance", "label": "Paper Maintenance"},
   "P4.1_health_watchdog":      {"url": "", "path": "ad4-health-watchdog",   "label": "Health Watchdog"}
 }'::jsonb)
 on conflict (key) do nothing;

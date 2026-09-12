@@ -1,0 +1,23 @@
+{
+ "seed": {
+  "Config": {
+   "supabase_url": "https://testproject.supabase.co",
+   "alert_email": "desk@example.invalid",
+   "from_email": "ad4@example.invalid",
+   "email_enabled": "true"
+  },
+  "Load unnotified events": [
+   {}
+  ]
+ },
+ "run": [
+  {
+   "node": "Format Events",
+   "input": "Load unnotified events"
+  },
+  {
+   "node": "Summary",
+   "input": "Format Events"
+  }
+ ]
+}

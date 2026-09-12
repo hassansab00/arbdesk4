@@ -715,6 +715,194 @@ def test_every_gate_carries_the_permission_check(workflow):
     assert "42501" in gate[0]["parameters"]["jsCode"], workflow
 
 
+# ------------------------------------------------------------- P2.1 --------
+
+
+def test_p21_runs_the_whole_learning_chain_by_default():
+    r = run("P2.1_relearn.template.json", "plan_P2.1_chain.json")
+    assert r["ok"], r
+    out = r["outputs"]["Build dispatches"]
+    assert [o["stage"] for o in out] == ["evidence", "correction", "prediction"]
+    assert [o["file"] for o in out] == [
+        "pipeline_daily.yml", "weather_model.yml", "pipeline_intraday.yml"]
+    assert out[0]["url"] == (
+        "https://api.github.com/repos/hassansab00/arbdesk4/actions/workflows/"
+        "pipeline_daily.yml/dispatches")
+
+
+def test_p21_only_actually_reaches_the_webhook_body():
+    """`only` was read off $input, which is "Check config" passing Config
+    through - so it was undefined every time and the Workflows page's "run
+    this one Action" button silently ran the whole three-stage chain."""
+    r = run("P2.1_relearn.template.json", "plan_P2.1_only.json")
+    assert r["ok"], r
+    out = r["outputs"]["Build dispatches"]
+    assert [o["stage"] for o in out] == ["backtest"]
+    assert out[0]["file"] == "backtest.yml"
+
+
+def test_p21_names_what_it_can_start_when_only_is_wrong():
+    r = run("P2.1_relearn.template.json", "plan_P2.1_only_bad.json")
+    assert r["ok"] is False and r["node"] == "Build dispatches", r
+    assert "not_a_stage" in r["error"] and "evidence" in r["error"]
+
+
+def test_p21_refuses_to_dispatch_without_a_github_token():
+    r = run("P2.1_relearn.template.json", "plan_P2.1_no_token.json")
+    assert r["ok"] is False and r["node"] == "Check config", r
+    assert "Config.github_token is empty" in r["error"], r["error"]
+    assert "NOWHERE ELSE" in r["error"]
+
+
+def test_p21_waits_as_long_between_stages_as_config_says():
+    """The request node held a hardcoded 240000ms while Config said 420s and
+    the Summary reported 420s. Two of the three were wrong."""
+    d = json.load(open(os.path.join(ROOT, "n8n", "P2.1_relearn.template.json")))
+    by = {n["name"]: n for n in d["nodes"]}
+    interval = (by["Dispatch"]["parameters"]["options"]["batching"]["batch"]
+                ["batchInterval"])
+    assert "seconds_between_stages" in str(interval), interval
+
+    r = run("P2.1_relearn.template.json", "plan_P2.1_chain.json")
+    assert r["outputs"]["Build dispatches"][0]["wait_seconds"] == 420
+
+
+# ------------------------------------------------------------- P3.1 --------
+
+
+def test_p31_routes_on_config_not_on_the_schedule_gate():
+    """The Switch's input is "Stop if skipped", whose items are the gate's own
+    {run, scope, reason} decision. Reading $json.digest_kind there gave
+    undefined, NEITHER branch matched, and the workflow built no digest at
+    all - on every scheduled run, silently."""
+    d = json.load(open(os.path.join(ROOT, "n8n", "P3.1_email_digests.template.json")))
+    sw = [n for n in d["nodes"] if n["name"] == "Which digest?"][0]
+    lefts = [c["leftValue"]
+             for r in sw["parameters"]["rules"]["values"]
+             for c in r["conditions"]["conditions"]]
+    assert lefts, sw
+    for left in lefts:
+        assert "$('Config')" in left, left
+        assert left != "={{ $json.digest_kind }}"
+
+
+def test_p31_morning_brief_renders_every_opportunity_with_its_volume():
+    r = run("P3.1_email_digests.template.json", "plan_P3.1_morning.json")
+    assert r["ok"], r
+    out = r["outputs"]["Render HTML"][0]
+    assert out["subject"] == "AD4 Morning Brief"
+    assert "New York" in out["html"] and "London" in out["html"]
+    assert "$12.4k" in out["html"]          # volume, not just depth
+    assert "1 on thin-volume bands" in out["html"]
+
+
+def test_p31_eod_report_renders_net_pnl_by_strategy():
+    r = run("P3.1_email_digests.template.json", "plan_P3.1_eod.json")
+    assert r["ok"], r
+    out = r["outputs"]["Render HTML"][0]
+    assert out["subject"] == "AD4 End of Day Report"
+    assert "mean_reversion" in out["html"] and "41.50" in out["html"]
+
+
+def test_p31_says_sent_only_when_it_really_could_send():
+    r = run("P3.1_email_digests.template.json", "plan_P3.1_morning.json")
+    s = r["outputs"]["Summary"][0]
+    assert s["status"] == "ok" and s["rows"] == 1
+    assert "sent to desk@example.invalid" in s["summary"], s["summary"]
+
+
+def test_p31_does_not_claim_delivery_with_email_disabled():
+    r = run("P3.1_email_digests.template.json", "plan_P3.1_email_off.json")
+    s = r["outputs"]["Summary"][0]
+    assert s["status"] == "attention" and s["rows"] == 0
+    assert "NOT sent" in s["summary"] and "email_enabled is off" in s["summary"]
+
+
+def test_p31_does_not_claim_delivery_with_no_recipient():
+    """settings has no email_recipient row on a fresh install, and the old
+    Send Email read $json[0].value.address - an index into a row object."""
+    r = run("P3.1_email_digests.template.json", "plan_P3.1_no_recipient.json")
+    s = r["outputs"]["Summary"][0]
+    assert s["status"] == "attention" and s["rows"] == 0
+    assert "no recipient" in s["summary"], s["summary"]
+
+
+# ------------------------------------------------------------- P1.1 --------
+# P1.1 used to read `$input.first().json.body` at Format Events. Its input is
+# the schedule gate, not the webhook, so `body.events` was undefined on every
+# run - and the fallback invented {city_key:'TEST', severity:'high'} and sent
+# it. Every single run raised a fake critical alert for a city that does not
+# exist, and then PATCHed `event_id=in.()`, which is a 400.
+
+
+def test_p11_reads_the_unnotified_events_out_of_the_database():
+    r = run("P1.1_live_weather_alerts.template.json", "plan_P1.1_database.json")
+    assert r["ok"], r
+    f = r["outputs"]["Format Events"][0]
+    assert f["source"] == "database"
+    assert f["considered"] == 3        # all three rows were looked at
+    assert f["count"] == 2             # only high and critical are alertable
+    assert f["ids"] == [41, 42]        # the low-severity london row is not
+    assert f["has_high"] is True
+
+
+def test_p11_never_invents_an_event_when_there_is_nothing_to_alert_on():
+    r = run("P1.1_live_weather_alerts.template.json", "plan_P1.1_quiet.json")
+    assert r["ok"], r
+    f = r["outputs"]["Format Events"][0]
+    assert f["count"] == 0, f
+    assert f["has_high"] is False, f
+    assert "TEST" not in json.dumps(f), f
+
+
+def test_p11_logs_the_quiet_run_instead_of_stopping_at_the_if():
+    """The IF's false branch went nowhere, so a night with no alerts left the
+    same trace as a workflow that had stopped working: nothing at all."""
+    d = json.load(open(os.path.join(ROOT, "n8n",
+                                    "P1.1_live_weather_alerts.template.json")))
+    false_branch = d["connections"]["Any high/critical?"]["main"][1]
+    assert [c["node"] for c in false_branch] == ["Summary"]
+
+    r = run("P1.1_live_weather_alerts.template.json", "plan_P1.1_quiet.json")
+    assert r["ok"], r
+    s = r["outputs"]["Summary"][0]
+    assert s["rows"] == 0
+    assert s["log"]["p_job"] == "P1.1_live_weather_alerts"
+    assert "nothing to alert on" in s["summary"], s["summary"]
+
+
+def test_p11_never_builds_an_empty_postgrest_in_list():
+    """`event_id=in.()` is a 400, so the PATCH has to stay well-formed even
+    when there is nothing to mark."""
+    r = run("P1.1_live_weather_alerts.template.json", "plan_P1.1_quiet.json")
+    assert r["outputs"]["Format Events"][0]["ids"] == [-1]
+
+
+def test_p11_does_not_mark_events_notified_when_no_email_can_go_out():
+    """Send Email is disabled on any install without an SMTP credential, and a
+    disabled n8n node passes its input straight through - so Mark Notified ran
+    anyway and emptied an alert queue nobody had read. The first live run did
+    exactly that to 50 events."""
+    r = run("P1.1_live_weather_alerts.template.json", "plan_P1.1_email_off.json")
+    assert r["ok"], r
+    f = r["outputs"]["Format Events"][0]
+    assert f["count"] == 2            # it still SEES the alertable events
+    assert f["has_high"] is False     # but does not send them down the PATCH
+    s = r["outputs"]["Summary"][0]
+    assert s["rows"] == 0
+    assert "email_enabled is off" in s["summary"], s["summary"]
+    assert "still there when SMTP is configured" in s["summary"]
+
+
+def test_p11_prefers_the_webhook_body_when_one_arrives():
+    r = run("P1.1_live_weather_alerts.template.json", "plan_P1.1_webhook.json")
+    assert r["ok"], r
+    f = r["outputs"]["Format Events"][0]
+    assert f["source"] == "webhook"
+    assert f["ids"] == [77], f          # the pushed event, not the stored one
+    assert r["outputs"]["Summary"][0]["rows"] == 1
+
+
 # ------------------------------------------------------------- P1.5 --------
 # api.weather.gov covers the United States and its territories. Warsaw,
 # Ankara, Moscow and Jinan get a 404 from it, so P1.2-P1.4 skip them - and
@@ -1013,7 +1201,7 @@ def test_every_supabase_node_is_bound_to_the_same_named_credential():
             assert cred.get("name") == CRED_NAME, (
                 f"{name} / {n['name']}: bound to {cred.get('name')!r}, not {CRED_NAME!r}")
             bound += 1
-    assert bound == 57, f"expected 57 Supabase nodes across the files, found {bound}"
+    assert bound == 63, f"expected 63 Supabase nodes across the files, found {bound}"
 
 
 def test_the_email_workflows_bind_smtp_and_a_real_sender():
@@ -1113,7 +1301,7 @@ def test_every_gate_throws_the_same_diagnostic():
         assert len(found) == 1, f"{path} has {len(found)} gate diagnostics"
         seen.setdefault(found[0], []).append(os.path.basename(path))
     assert len(seen) == 1, f"gates disagree: {[v for v in seen.values()]}"
-    assert len(next(iter(seen.values()))) == 12, seen
+    assert len(next(iter(seen.values()))) == 13, seen
 
 
 def test_the_service_key_is_let_through():
