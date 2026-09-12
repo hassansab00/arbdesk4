@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from 'react';
-import { paperClient, runPaperWorker } from '@/lib/paperSupabase';
+import { paperAction, paperRead, runPaperWorker } from '@/lib/paperSupabase';
 import { supabase } from '@/lib/supabase';
 import { useQuery } from '@/lib/useQuery';
 import PaperExitPolicy from '@/components/PaperExitPolicy';
@@ -19,7 +19,7 @@ export default function PaperAutomation({account,refresh}:{account:{account_id:s
   const [saved,setSaved]=useState(false);
   const strategies=useQuery<{strategy_id:string;name:string;enabled:boolean}[]>(()=>supabase.from('strategies').select('strategy_id,name,enabled').order('strategy_id'),[]);
   const cities=useQuery<{city_key:string}[]>(()=>supabase.from('cities').select('city_key').order('city_key'),[]);
-  const plans=useQuery<Plan[]>(()=>paperClient().from('paper_trade_plans').select('*').eq('account_id',account.account_id).order('created_at',{ascending:false}).limit(100),[account.account_id],15000,100);
+  const plans=useQuery<Plan[]>(()=>paperRead<Plan[]>('plans',account.account_id),[account.account_id],15000,100);
   async function act(fn:()=>PromiseLike<{error:unknown}>, wakeWorker=false) {
     setBusy(true);setError(null);setSaved(false);
     try {const r=await fn();if(r.error)throw r.error;if(wakeWorker)await runPaperWorker();plans.refresh();refresh();setSaved(true);}
@@ -32,7 +32,7 @@ export default function PaperAutomation({account,refresh}:{account:{account_id:s
     <p className="text-sm text-muted">Manual orders use your ticket. Assisted mode proposes trades for approval. Automatic mode queues eligible proposals within the limits below. Every proposal records its evidence and any reason it was blocked.</p>
     {(error||plans.error||strategies.error||cities.error)&&<p role="alert" className="text-sm text-bad">{error||plans.error||strategies.error||cities.error}</p>}
     {saved&&<p role="status" className="text-sm text-good">Saved.</p>}
-    <form onSubmit={e=>{e.preventDefault();act(()=>paperClient().rpc('set_paper_policy',{p_account:account.account_id,p_mode:mode,p_paused:paused,p_policy:policy}));}}>
+    <form onSubmit={e=>{e.preventDefault();act(()=>paperAction('set_policy',{p_account:account.account_id,p_mode:mode,p_paused:paused,p_policy:policy}));}}>
       <fieldset disabled={busy} className="space-y-3">
         <label className="block text-sm">Mode<select className="input mt-1" value={mode} onChange={e=>setMode(e.target.value)}><option value="manual">Manual</option><option value="assisted">Assisted — approve each plan</option><option value="automatic">Automatic — within policy limits</option></select></label>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={paused} onChange={e=>setPaused(e.target.checked)}/>Pause new automatic entries</label>
@@ -47,7 +47,7 @@ export default function PaperAutomation({account,refresh}:{account:{account_id:s
     <h3 className="border-t border-border pt-4 font-semibold">Strategy proposals</h3>
     {!plans.data?.length&&<p className="text-sm text-muted">No proposals yet. Proposals appear when an enabled strategy fires and your account is in assisted or automatic mode.</p>}
     {plans.data?.map(p=><div key={p.plan_id} className="space-y-2 border-b border-border pb-3 text-sm"><div>{p.strategy_id} · {p.status}</div><p className="text-muted">{p.reason}</p><p className="text-xs text-muted">Expires {new Date(p.expires_at).toLocaleString()}</p>
-      {p.status==='pending_approval'&&<div className="flex gap-2"><button disabled={busy||Date.parse(p.expires_at)<=Date.now()} className={button} onClick={()=>act(()=>paperClient().rpc('approve_paper_plan',{p_plan:p.plan_id,p_approve:true}),true)}>Approve paper plan</button><button disabled={busy} className={button} onClick={()=>act(()=>paperClient().rpc('approve_paper_plan',{p_plan:p.plan_id,p_approve:false}))}>Reject</button></div>}
+      {p.status==='pending_approval'&&<div className="flex gap-2"><button disabled={busy||Date.parse(p.expires_at)<=Date.now()} className={button} onClick={()=>act(()=>paperAction('approve_plan',{p_plan:p.plan_id,p_approve:true}),true)}>Approve paper plan</button><button disabled={busy} className={button} onClick={()=>act(()=>paperAction('approve_plan',{p_plan:p.plan_id,p_approve:false}))}>Reject</button></div>}
       <details><summary className="cursor-pointer text-muted">Legs and evidence</summary><pre className="overflow-auto text-xs">{JSON.stringify({legs:p.legs,evidence:p.evidence},null,2)}</pre></details></div>)}
     {plans.truncated&&<p className="text-xs text-warn">Showing the latest 100 proposals; older history is retained.</p>}
   </div>;

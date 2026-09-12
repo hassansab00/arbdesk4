@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import PaperAutomation from '@/components/PaperAutomation';
 import PaperExit from '@/components/PaperExit';
-import { paperClient, runPaperWorker } from '@/lib/paperSupabase';
+import { paperAction, paperRead, runPaperWorker } from '@/lib/paperSupabase';
 import { supabase } from '@/lib/supabase';
 import { useQuery } from '@/lib/useQuery';
 import { fmtUsd, fmtPrice } from '@/lib/format';
@@ -18,9 +18,6 @@ const button = 'rounded border border-border px-3 py-1 text-sm hover:bg-panel2 d
 const card = 'rounded border border-border bg-panel p-4';
 
 export default function PaperTradesPage() {
-  const [signedIn,setSignedIn] = useState(false);
-  const [email,setEmail] = useState('');
-  const [password,setPassword] = useState('');
   const [error,setError] = useState<string|null>(null);
   const [notice,setNotice] = useState<string|null>(null);
   const [noticeWarning,setNoticeWarning] = useState(false);
@@ -32,31 +29,22 @@ export default function PaperTradesPage() {
   // Stable across retry after an uncertain network response; reset only after success.
   const [command,setCommand] = useState<string|null>(null);
   useEffect(()=>{if(window.location.hash==='#automation')setTab('Automation');},[]);
-  useEffect(()=>{
-    try {
-      const c=paperClient();
-      c.auth.getSession().then(({data,error:e})=>{ if(e) setError(e.message); setSignedIn(!!data.session); });
-      const {data}=c.auth.onAuthStateChange((_event,session)=>setSignedIn(!!session));
-      return ()=>data.subscription.unsubscribe();
-    } catch(e) { setError(String(e)); }
-  },[]);
   const accounts=useQuery<Account[]>(async()=>{
-    if(!signedIn) return {data:[],error:null};
-    return paperClient().from('paper_accounts').select('*').order('created_at');
-  },[signedIn],15000);
+    return paperRead<Account[]>('accounts');
+  },[],15000);
   useEffect(()=>{ if(!account && accounts.data?.length) setAccount(accounts.data[0].account_id); },[accounts.data,account]);
   const orders=useQuery<Order[]>(async()=>{
-    if(!account||!signedIn) return {data:[],error:null};
-    return paperClient().from('paper_orders').select('*').eq('account_id',account).order('requested_at',{ascending:false}).limit(100);
-  },[account,signedIn],15000,100);
+    if(!account) return {data:[],error:null};
+    return paperRead<Order[]>('orders',account);
+  },[account],15000,100);
   const positions=useQuery<Position[]>(async()=>{
-    if(!account||!signedIn) return {data:[],error:null};
-    return paperClient().from('paper_positions').select('*').eq('account_id',account).order('band_id').limit(500);
-  },[account,signedIn],15000,500);
+    if(!account) return {data:[],error:null};
+    return paperRead<Position[]>('positions',account);
+  },[account],15000,500);
   const events=useQuery<Event[]>(async()=>{
-    if(!account||!signedIn) return {data:[],error:null};
-    return paperClient().from('paper_activity').select('*').eq('account_id',account).order('event_id',{ascending:false}).limit(100);
-  },[account,signedIn],15000,100);
+    if(!account) return {data:[],error:null};
+    return paperRead<Event[]>('activity',account);
+  },[account],15000,100);
   const bands=useQuery<Band[]>(async()=>{
     const result=await supabase.from('bands').select('band_id,band_label,markets!inner(city_key,resolution_date,unit)')
       .eq('markets.closed',false).gte('markets.resolution_date',new Date().toISOString().slice(0,10))
@@ -74,7 +62,7 @@ export default function PaperTradesPage() {
   }
   async function submit(){
     const id=command??crypto.randomUUID();setCommand(id);
-    const ok=await act(()=>paperClient().rpc('submit_paper_order',{p_account:account,p_command:id,p_band:ticket.band,
+    const ok=await act(()=>paperAction('submit_order',{p_account:account,p_command:id,p_band:ticket.band,
       p_side:ticket.side,p_shares:Number(ticket.shares),p_limit:Number(ticket.limit),p_cash_ceiling:Number(ticket.ceiling),p_reason:ticket.reason}));
     if(ok){
       setCommand(null);setTicket({...ticket,shares:'',ceiling:''});
@@ -101,16 +89,9 @@ export default function PaperTradesPage() {
       <button className={button} onClick={refresh}>Refresh</button></div>
     {issue&&<div role="alert" className="rounded border border-bad p-3 text-sm text-bad">{issue}</div>}
     {notice&&<div role="status" className={`text-sm ${noticeWarning?'text-warn':'text-good'}`}>{notice}</div>}
-    {!signedIn?<form className={`${card} max-w-lg space-y-3`} onSubmit={e=>{e.preventDefault();act(()=>paperClient().auth.signInWithPassword({email,password})).then(ok=>{if(ok)setPassword('');});}}>
-      <h2 className="font-semibold">Desk owner sign-in</h2><p className="text-sm text-muted">Your paper accounts and research history are private. Use the account authorized for this desk.</p>
-      <label className="block text-sm">Email<input required type="email" autoComplete="username" className="input mt-1" value={email} onChange={e=>setEmail(e.target.value)}/></label>
-      <label className="block text-sm">Password<input required type="password" autoComplete="current-password" className="input mt-1" value={password} onChange={e=>setPassword(e.target.value)}/></label>
-      <button disabled={busy} className={button}>Sign in</button>
-    </form>:<>
-      <div className="flex flex-wrap items-center gap-3"><select disabled={busy} aria-label="Paper account" className="input max-w-sm" value={account} onChange={e=>{setAccount(e.target.value);setCommand(null);}}>
-        <option value="">Choose account</option>{accounts.data?.map(a=><option key={a.account_id} value={a.account_id}>{a.name}</option>)}</select>
-        <button className={button} onClick={()=>act(()=>paperClient().auth.signOut()).then(()=>setAccount(''))}>Sign out</button></div>
-      {!accounts.loading&&!accounts.data?.length&&<form className={`${card} max-w-lg space-y-3`} onSubmit={e=>{e.preventDefault();act(()=>paperClient().rpc('create_paper_account',{p_name:'Main paper account',p_starting_cash:Number(starting)}));}}>
+    <div className="flex flex-wrap items-center gap-3"><select disabled={busy} aria-label="Paper account" className="input max-w-sm" value={account} onChange={e=>{setAccount(e.target.value);setCommand(null);}}>
+      <option value="">Paper desk</option>{accounts.data?.map(a=><option key={a.account_id} value={a.account_id}>{a.name}</option>)}</select></div>
+      {!accounts.loading&&!accounts.data?.length&&<form className={`${card} max-w-lg space-y-3`} onSubmit={e=>{e.preventDefault();act(()=>paperAction('create_account',{p_name:'Main paper account',p_starting_cash:Number(starting)}));}}>
         <h2 className="font-semibold">Create paper account</h2><label className="block text-sm">Starting paper cash (USD)<input required type="number" min="0.01" step="0.01" className="input mt-1" value={starting} onChange={e=>setStarting(e.target.value)}/></label>
         <button disabled={busy} className={button}>Create account</button></form>}
       {selected&&<>
@@ -126,12 +107,11 @@ export default function PaperTradesPage() {
           <button disabled={busy||!ticket.band} className={button}>Queue paper order</button></fieldset>
         </form>
         <nav aria-label="Paper trade views" className="flex flex-wrap gap-2">{['Orders','Positions','Activity','Automation'].map(t=><button key={t} className={`${button} ${tab===t?'text-accent border-accent':''}`} onClick={()=>setTab(t)}>{t}</button>)}</nav>
-        {tab==='Orders'&&<div className={`${card} overflow-x-auto`}><table className="w-full text-left text-sm"><thead className="text-muted"><tr>{['Contract','Order','Requested','Limit','Status',''].map((x,i)=><th className="p-2" key={i}>{x}</th>)}</tr></thead><tbody>{orders.data?.map(o=><tr key={o.order_id} className="border-t border-border"><td className="p-2">{name(o.band_id)}</td><td className="p-2">{o.origin} · {o.action} {o.side}</td><td className="p-2">{Number(o.shares).toLocaleString(undefined,{maximumFractionDigits:2})}</td><td className="p-2">{fmtPrice(Number(o.limit_price))}</td><td className="p-2"><div>{o.status}</div><div className="text-xs text-muted">{o.reason}</div></td><td className="p-2">{o.status==='queued'&&<button disabled={busy} className={button} onClick={()=>act(()=>paperClient().rpc('cancel_paper_order',{p_order:o.order_id}))}>Cancel</button>}<details><summary className="cursor-pointer text-muted">Evidence</summary><pre className="max-w-md overflow-auto text-xs">{JSON.stringify(o.result,null,2)}</pre></details></td></tr>)}</tbody></table>{!orders.data?.length&&<p className="py-4 text-sm text-muted">No paper orders yet. System alerts are not trades.</p>}{orders.truncated&&<p className="text-xs text-warn">Showing the latest 100 orders; older history is retained.</p>}</div>}
+        {tab==='Orders'&&<div className={`${card} overflow-x-auto`}><table className="w-full text-left text-sm"><thead className="text-muted"><tr>{['Contract','Order','Requested','Limit','Status',''].map((x,i)=><th className="p-2" key={i}>{x}</th>)}</tr></thead><tbody>{orders.data?.map(o=><tr key={o.order_id} className="border-t border-border"><td className="p-2">{name(o.band_id)}</td><td className="p-2">{o.origin} · {o.action} {o.side}</td><td className="p-2">{Number(o.shares).toLocaleString(undefined,{maximumFractionDigits:2})}</td><td className="p-2">{fmtPrice(Number(o.limit_price))}</td><td className="p-2"><div>{o.status}</div><div className="text-xs text-muted">{o.reason}</div></td><td className="p-2">{o.status==='queued'&&<button disabled={busy} className={button} onClick={()=>act(()=>paperAction('cancel_order',{p_order:o.order_id}))}>Cancel</button>}<details><summary className="cursor-pointer text-muted">Evidence</summary><pre className="max-w-md overflow-auto text-xs">{JSON.stringify(o.result,null,2)}</pre></details></td></tr>)}</tbody></table>{!orders.data?.length&&<p className="py-4 text-sm text-muted">No paper orders yet. System alerts are not trades.</p>}{orders.truncated&&<p className="text-xs text-warn">Showing the latest 100 orders; older history is retained.</p>}</div>}
         {tab==='Positions'&&<div className={`${card} space-y-3`}>{positions.data?.map(p=><div key={p.band_id+p.side} className="border-b border-border pb-2 text-sm"><div>{name(p.band_id)} · {p.side}</div><div className="font-mono">{Number(p.shares).toLocaleString(undefined,{maximumFractionDigits:2})} shares · Cost basis {fmtUsd(Number(p.cost_basis))} · Realized {fmtUsd(Number(p.realized_pnl))}</div>{Number(p.shares)>0&&<PaperExit key={account+p.band_id+p.side} account={account} band={p.band_id} side={p.side} available={Number(p.shares)} refresh={refresh}/>}</div>)}{!positions.data?.length&&<p className="text-sm text-muted">Positions appear after a recorded fill. Unrealized profit requires a fresh executable exit quote.</p>}</div>}
         {tab==='Activity'&&<div className={`${card} space-y-3`}>{events.data?.map(e=><details key={e.event_id} className="border-b border-border pb-2"><summary className="cursor-pointer text-sm">{new Date(e.occurred_at).toLocaleString()} · {e.event_type.replaceAll('_',' ')} · {fmtUsd(Number(e.cash_delta))}</summary><pre className="overflow-auto text-xs text-muted">{JSON.stringify(e.payload,null,2)}</pre></details>)}{events.truncated&&<p className="text-xs text-warn">Showing the latest 100 events; older history is retained.</p>}</div>}
         {tab==='Automation'&&<PaperAutomation key={selected.account_id+selected.policy_version} account={selected} refresh={refresh}/>}
       </>}
-    </>}
     <div className="flex flex-wrap gap-4 text-sm text-accent"><Link href="/board">Board</Link><Link href="/predictive">Predictive</Link><Link href="/databank">Data Bank</Link><Link href="/synthesis">Synthesis</Link></div>
   </div>;
 }
