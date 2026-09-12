@@ -165,7 +165,7 @@ def opportunity_score(edge_net_pp, confidence, fillable_usd_5c):
 # --------------------------------------------------------------------------
 
 def _upcoming_markets():
-    return rest("markets", [
+    return rest("v_canonical_markets", [
         ("select", "market_id,city_key,resolution_date"),
         ("resolution_date", f"gte.{dt.date.today().isoformat()}"),
     ])
@@ -176,7 +176,7 @@ def _bands_for_markets(market_ids):
     chunk = 100
     for i in range(0, len(market_ids), chunk):
         batch = market_ids[i:i + chunk]
-        rows = rest("bands", [
+        rows = rest("v_canonical_bands", [
             ("select", "band_id,market_id,band_lo,band_hi,open_low,open_high,band_label,token_yes,token_no"),
             ("market_id", f"in.({','.join(str(m) for m in batch)})"),
         ])
