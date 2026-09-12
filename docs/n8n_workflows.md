@@ -284,3 +284,22 @@ database, run P1.3 (or P1.2) once before P1.4, or P1.4 stops with
 Of 54 cities, 12 are inside the NWS coverage area; the other 25 checked so far
 are recorded as `nws_supported = false` and skipped on later runs. Those cities
 are covered by P1.5 (Open-Meteo), which is global.
+
+### The 17 cities that had no forecast at all
+
+`cities` holds 54 rows, all active, all with live markets — but only 37 had a
+latitude, and both forecast feeds filter on `latitude=not.is.null`. The other
+17 were not failing, they were filtered out before either workflow saw them,
+which is why it never appeared as an error anywhere. Fifteen of them were
+carrying 18–20 open markets apiece: Toronto, Paris, Seoul, Moscow, Hong Kong,
+Manila, Buenos Aires, Ankara, Kuala Lumpur, Shenzhen, Zhengzhou, Qingdao,
+Panama City, Helsinki, Jinan.
+
+`sql/ad4_55_city_coordinates.sql` fills them from the position of the station
+each city's market SETTLES on (`cities.icao`) — Paris is LFPB/Le Bourget, not
+Charles de Gaulle; Moscow is UUWW/Vnukovo, not Sheremetyevo. Hong Kong is the
+one exception and is commented as such: it has no `icao`, so it uses the Hong
+Kong Observatory, and the file says what to change if the market turns out to
+settle on the airport instead.
+
+Coverage went 37 → 54 cities, 296 → 432 forecast days, 37 → 54 live readings.

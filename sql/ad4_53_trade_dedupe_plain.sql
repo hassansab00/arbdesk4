@@ -1,4 +1,4 @@
--- AD4 52 - make the trades_observed dedupe key reachable from PostgREST.
+-- AD4 53 - make the trades_observed dedupe key reachable from PostgREST.
 --
 -- WHY THIS EXISTS
 --
