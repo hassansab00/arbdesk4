@@ -1,0 +1,26 @@
+{
+ "seed": {
+  "Config": {
+   "supabase_url": "https://testproject.supabase.co",
+   "alert_email": "desk@example.invalid",
+   "from_email": "ad4@example.invalid"
+  },
+  "Webhook Trigger": {
+   "headers": {},
+   "query": {},
+   "body": {"events": [
+    {"event_id": 77, "city_key": "tokyo", "kind": "SPIKE", "severity": "high",
+     "temp_c": 36.4, "change_c": 3.1}
+   ]}
+  },
+  "Load unnotified events": [
+   {"event_id": 41, "city_key": "phoenix", "kind": "SPIKE", "severity": "critical",
+    "temp_c": 46.1, "change_c": 4.2, "detected_at": "2026-09-12T16:00:00+00:00"}
+  ],
+  "Mark Notified": [{"event_id": 77}]
+ },
+ "run": [
+  {"node": "Format Events", "input": "Load unnotified events"},
+  {"node": "Summary", "input": "Mark Notified"}
+ ]
+}

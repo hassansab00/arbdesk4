@@ -697,6 +697,66 @@ def test_every_gate_carries_the_permission_check(workflow):
     assert "42501" in gate[0]["parameters"]["jsCode"], workflow
 
 
+# ------------------------------------------------------------- P1.1 --------
+# P1.1 used to read `$input.first().json.body` at Format Events. Its input is
+# the schedule gate, not the webhook, so `body.events` was undefined on every
+# run - and the fallback invented {city_key:'TEST', severity:'high'} and sent
+# it. Every single run raised a fake critical alert for a city that does not
+# exist, and then PATCHed `event_id=in.()`, which is a 400.
+
+
+def test_p11_reads_the_unnotified_events_out_of_the_database():
+    r = run("P1.1_live_weather_alerts.template.json", "plan_P1.1_database.json")
+    assert r["ok"], r
+    f = r["outputs"]["Format Events"][0]
+    assert f["source"] == "database"
+    assert f["considered"] == 3        # all three rows were looked at
+    assert f["count"] == 2             # only high and critical are alertable
+    assert f["ids"] == [41, 42]        # the low-severity london row is not
+    assert f["has_high"] is True
+
+
+def test_p11_never_invents_an_event_when_there_is_nothing_to_alert_on():
+    r = run("P1.1_live_weather_alerts.template.json", "plan_P1.1_quiet.json")
+    assert r["ok"], r
+    f = r["outputs"]["Format Events"][0]
+    assert f["count"] == 0, f
+    assert f["has_high"] is False, f
+    assert "TEST" not in json.dumps(f), f
+
+
+def test_p11_logs_the_quiet_run_instead_of_stopping_at_the_if():
+    """The IF's false branch went nowhere, so a night with no alerts left the
+    same trace as a workflow that had stopped working: nothing at all."""
+    d = json.load(open(os.path.join(ROOT, "n8n",
+                                    "P1.1_live_weather_alerts.template.json")))
+    false_branch = d["connections"]["Any high/critical?"]["main"][1]
+    assert [c["node"] for c in false_branch] == ["Summary"]
+
+    r = run("P1.1_live_weather_alerts.template.json", "plan_P1.1_quiet.json")
+    assert r["ok"], r
+    s = r["outputs"]["Summary"][0]
+    assert s["rows"] == 0
+    assert s["log"]["p_job"] == "P1.1_live_weather_alerts"
+    assert "nothing to alert on" in s["summary"], s["summary"]
+
+
+def test_p11_never_builds_an_empty_postgrest_in_list():
+    """`event_id=in.()` is a 400, so the PATCH has to stay well-formed even
+    when there is nothing to mark."""
+    r = run("P1.1_live_weather_alerts.template.json", "plan_P1.1_quiet.json")
+    assert r["outputs"]["Format Events"][0]["ids"] == [-1]
+
+
+def test_p11_prefers_the_webhook_body_when_one_arrives():
+    r = run("P1.1_live_weather_alerts.template.json", "plan_P1.1_webhook.json")
+    assert r["ok"], r
+    f = r["outputs"]["Format Events"][0]
+    assert f["source"] == "webhook"
+    assert f["ids"] == [77], f          # the pushed event, not the stored one
+    assert r["outputs"]["Summary"][0]["rows"] == 1
+
+
 # ------------------------------------------------------------- P1.5 --------
 # api.weather.gov covers the United States and its territories. Warsaw,
 # Ankara, Moscow and Jinan get a 404 from it, so P1.2-P1.4 skip them - and
@@ -995,7 +1055,7 @@ def test_every_supabase_node_is_bound_to_the_same_named_credential():
             assert cred.get("name") == CRED_NAME, (
                 f"{name} / {n['name']}: bound to {cred.get('name')!r}, not {CRED_NAME!r}")
             bound += 1
-    assert bound == 57, f"expected 57 Supabase nodes across the files, found {bound}"
+    assert bound == 58, f"expected 58 Supabase nodes across the files, found {bound}"
 
 
 def test_the_email_workflows_bind_smtp_and_a_real_sender():
