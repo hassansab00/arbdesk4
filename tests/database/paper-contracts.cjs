@@ -10,9 +10,24 @@ const assert = require('node:assert/strict');
     create schema auth; grant usage on schema auth to authenticated,service_role;
     create table auth.users(id uuid primary key);
     create function auth.uid() returns uuid language sql as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
-    create table public.bands(band_id uuid primary key,market_id uuid,token_yes text,token_no text,condition_id text);
-    create table public.markets(market_id uuid primary key,closed boolean,resolution_date date,city_key text);
+    create table public.bands(band_id uuid primary key,market_id uuid,band_index int,band_label text,
+      band_lo numeric,band_hi numeric,open_low boolean,open_high boolean,token_yes text,token_no text,condition_id text);
+    create table public.markets(market_id uuid primary key,closed boolean,resolution_date date,city_key text,
+      event_slug text,unit text);
+    create table public.cities(city_key text primary key,display_name text,unit text,status text,
+      timezone text,latitude numeric,longitude numeric);
+    create table public.weather_observations(obs_id bigint primary key,city_key text,valid_at timestamptz,
+      observed_at timestamptz);
+    create table public.weather_forecasts(forecast_id bigint primary key,city_key text,model text,run_at timestamptz,
+      for_date date);
+    create table public.book_snapshots(snapshot_id bigint primary key,band_id uuid,observed_at timestamptz);
+    create table public.trades_observed(trade_id bigint primary key,city_key text,traded_at timestamptz);
     create table public.signals(signal_id bigint primary key,action text,strategy_id text,fired_at timestamptz,reason text);
+    create table public.band_probabilities(prob_id uuid primary key,band_id uuid,computed_at timestamptz default now());
+    create table public.model_versions(version_id uuid primary key,created_at timestamptz default now());
+    create table public.fact_forecast_outcome(city_key text,for_date date,model text,lead_days int,captured_at timestamptz default now(),primary key(city_key,for_date,model,lead_days));
+    create table public.fact_band_outcome(band_id uuid primary key,captured_at timestamptz default now());
+    create table public.fact_signal_outcome(signal_id bigint primary key,captured_at timestamptz default now());
     grant select on public.bands,public.markets,public.signals to service_role;
     create view public.v_synthesis_findings as select 'finding'::text as key;
     create view public.v_learning_state as select 'learning'::text as stage;
@@ -25,8 +40,28 @@ const assert = require('node:assert/strict');
   const band='20000000-0000-0000-0000-000000000001', market='30000000-0000-0000-0000-000000000001';
   const command='40000000-0000-0000-0000-000000000001';
   await db.exec(`insert into auth.users values('${uid}'),('${other}');insert into public.desk_members(user_id) values('${uid}');
-    insert into public.markets values('${market}',false,current_date,'london');insert into public.bands values('${band}','${market}','yes','no','condition');
-    set role authenticated;set request.jwt.claim.sub='${uid}';`);
+    insert into public.cities(city_key,display_name,unit,status,timezone) values('london','London','C','active','Europe/London');
+    insert into public.markets(market_id,closed,resolution_date,city_key,event_slug,unit)
+      values('${market}',false,current_date,'london','highest-temperature-in-london','F');
+    insert into public.bands(band_id,market_id,band_index,band_label,band_lo,band_hi,open_low,open_high,token_yes,token_no,condition_id)
+      values('${band}','${market}',1,'20C',20,20,false,false,'yes','no','condition');
+    insert into public.weather_observations(obs_id,city_key,valid_at,observed_at)
+      values(1,'london',now(),now()),(2,'london',now(),now());
+    insert into public.weather_forecasts(forecast_id,city_key,model,run_at,for_date)
+      values(1,'london','test',now(),current_date);
+    insert into public.book_snapshots(snapshot_id,band_id,observed_at) values(1,'${band}',now());
+    insert into public.trades_observed(trade_id,city_key,traded_at) values(1,'london',now());`);
+
+  const daily=(await db.query("select dataset,rows,cities from v_archive_daily where day=current_date order by dataset")).rows;
+  assert.deepEqual(daily.map(r=>[r.dataset,Number(r.rows),Number(r.cities)]),[
+    ['Forecasts',1,1],['Order books',1,1],['Station observations',2,1],['Trades seen',1,1]
+  ],'Data Bank daily chart reads the maintained rollup');
+  assert.ok(Number((await db.query('select refresh_data_quality_flags() as n')).rows[0].n)>=3);
+  assert.equal(Number((await db.query('select refresh_data_quality_flags() as n')).rows[0].n),0,
+    'Quality detection is idempotent for one detector version');
+  assert.equal((await db.query("select count(*)::int as n from proprietary_data_quality_flags where issue_code='zero_width_non_tail_band'")).rows[0].n,1);
+
+  await db.exec(`set role authenticated;set request.jwt.claim.sub='${uid}';`);
   const account=(await db.query(`select create_paper_account('Test account',100) as id`)).rows[0].id;
   const submit=()=>db.query(`select submit_paper_order($1,$2,$3,'YES',10,0.55,6,'test') as id`,[account,command,band]);
   const order=(await submit()).rows[0].id;
@@ -62,6 +97,16 @@ const assert = require('node:assert/strict');
   await assert.rejects(db.query("truncate research_captures"),/permission denied/);
   await db.exec('reset role;set role anon;');
   await assert.rejects(db.query('select * from research_captures'),/permission denied/);
+
+  // Settled research facts are evidence: retries may insert missing rows but
+  // even the worker role cannot rewrite, delete or truncate an existing fact.
+  await db.exec('reset role;');
+  await db.query("insert into fact_forecast_outcome(city_key,for_date,model,lead_days) values('london',current_date-1,'model',1)");
+  await db.exec('set role service_role;');
+  await assert.rejects(db.query("update fact_forecast_outcome set model='changed'"),/permission denied|Append-only/);
+  await assert.rejects(db.query('delete from fact_forecast_outcome'),/permission denied|Append-only/);
+  await assert.rejects(db.query('truncate fact_forecast_outcome'),/permission denied|Append-only/);
+  await db.query("insert into fact_forecast_outcome(city_key,for_date,model,lead_days) values('madrid',current_date-1,'model',1)");
 
   await db.exec(`reset role;insert into signals values(1,'ENTER','s1',now(),'test strategy');
     set role authenticated;set request.jwt.claim.sub='${uid}';`);
