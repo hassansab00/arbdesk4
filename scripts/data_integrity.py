@@ -14,8 +14,10 @@ from common import log_run, rest, upsert
 
 
 DATASETS = {
-    "weather_observations": ("valid_at", "valid_at.asc,city_key.asc,source.asc"),
-    "weather_forecasts": ("run_at", "run_at.asc,city_key.asc,model.asc,for_date.asc"),
+    # Every order ends in a primary key. A timestamp/city/source tuple is not
+    # guaranteed unique, and tied rows can otherwise move between REST pages.
+    "weather_observations": ("valid_at", "valid_at.asc,obs_id.asc"),
+    "weather_forecasts": ("run_at", "run_at.asc,forecast_id.asc"),
     "book_snapshots": ("observed_at", "observed_at.asc,snapshot_id.asc"),
     "trades_observed": ("ingested_at", "ingested_at.asc,trade_id.asc"),
     "band_probabilities": ("computed_at", "computed_at.asc,prob_id.asc"),
