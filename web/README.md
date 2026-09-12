@@ -109,9 +109,10 @@ or do the Next 16 upgrade as its own tested change.
 
 Vercel, from `main`, **Root Directory = `web`**, with
 `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` set as
-environment variables. Credential-free Paper Trades additionally requires
-the server-only `SUPABASE_SERVICE_KEY`; only the narrow `/api/paper-desk`
-route uses it, and the browser never receives it. `PAPER_WORKER_URL` and
+environment variables. Credential-free Paper Trades uses the JWT-verified
+Supabase `paper-desk` Edge Function. A server-only `SUPABASE_SERVICE_KEY` is an
+optional direct-database fallback for self-hosted environments; the browser
+never receives it. `PAPER_WORKER_URL` and
 `PAPER_WORKER_TOKEN` let the server wake the worker after the single desk
 queues an order. Never prefix any of those three with `NEXT_PUBLIC_`.
 `web/vercel.json` already sets the framework, build, dev

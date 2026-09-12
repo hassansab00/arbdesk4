@@ -52,7 +52,8 @@ deployment and worker/n8n steps below are still required.
    baseline before using a blanket `supabase db push`.
 2. Apply `20260912151318_single_desk_paper_access.sql`. It creates one paper-only
    desk but grants its commands only to `service_role`. The web server exposes a
-   fixed, input-limited Paper Trades API; the browser gets no direct access to
+   fixed, input-limited Paper Trades API backed by the JWT-verified `paper-desk`
+   Edge Function; the browser gets no direct access to
    paper tables, RPCs, research captures, or worker evidence. The first visit
    creates the desk after you choose its starting paper cash.
 3. Deploy the Python worker on an existing approved host using
@@ -71,9 +72,10 @@ deployment and worker/n8n steps below are still required.
    workflow success and paper activity confirm completion. Connect it to the
    existing data-refresh flow using its authenticated webhook. No new recurring
    schedule is supplied; this avoids accidentally consuming n8n executions.
-6. Deploy the web branch through the repository's existing web deployment.
-   Set server-only `SUPABASE_SERVICE_KEY`, `PAPER_WORKER_URL` and
-   `PAPER_WORKER_TOKEN` there as well.
+6. Deploy the `paper-desk` Supabase Edge Function with JWT verification enabled,
+   then deploy the web branch through the existing web deployment. A server-only
+   `SUPABASE_SERVICE_KEY` in Vercel is optional; it bypasses the Edge hop when
+   present. Set `PAPER_WORKER_URL` and `PAPER_WORKER_TOKEN` there as well.
    The `/api/paper-cycle` route wakes the worker after a manual order, assisted
    approval, or exit. It accepts no payload and the worker token remains server-only.
    Neither value may use a `NEXT_PUBLIC_` prefix.
