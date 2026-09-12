@@ -90,8 +90,9 @@ steps below are still required; this document does not claim they are live.
 
 ## Remaining release gates
 
-- Visual browser review is outstanding: the approval system denied the local
-  preview request. Type-check/build success does not replace visual review.
+- Visual browser review is outstanding: the deployed branch preview is ready,
+  but it redirects unauthenticated visitors to Vercel login. Type-check/build
+  success does not replace an owner-authenticated visual review.
 - The legacy weather-source settlement parser is unverified and
   `settlement_verified` remains false. The new venue-confirmed binary adapter
   was checked against a real resolved London 2026-09-11 contract and has separate
@@ -134,7 +135,7 @@ Verification on 2026-09-12: 614 Python tests passed, 6 non-applicable workflow
 cases skipped; the database transaction suite, 14-workflow structural validator,
 and Next.js production build passed. Live venue reads confirmed the book/fee
 metadata and a matching resolved-market winner. Browser review remains blocked
-by the local-preview permission denial noted above.
+by the authenticated Vercel preview noted above.
 
 API references: [Polymarket fees](https://docs.polymarket.com/trading/fees),
 [market details](https://docs.polymarket.com/market-data/market-details),
