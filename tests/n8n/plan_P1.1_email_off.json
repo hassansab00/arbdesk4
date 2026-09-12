@@ -4,7 +4,7 @@
    "supabase_url": "https://testproject.supabase.co",
    "alert_email": "desk@example.invalid",
    "from_email": "ad4@example.invalid",
-   "email_enabled": "true"
+   "email_enabled": ""
   },
   "Load unnotified events": [
    {
@@ -34,14 +34,6 @@
     "change_c": 1.1,
     "detected_at": "2026-09-12T15:10:00+00:00"
    }
-  ],
-  "Mark Notified": [
-   {
-    "event_id": 41
-   },
-   {
-    "event_id": 42
-   }
   ]
  },
  "run": [
@@ -51,7 +43,7 @@
   },
   {
    "node": "Summary",
-   "input": "Mark Notified"
+   "input": "Format Events"
   }
  ]
 }

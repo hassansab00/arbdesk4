@@ -748,6 +748,22 @@ def test_p11_never_builds_an_empty_postgrest_in_list():
     assert r["outputs"]["Format Events"][0]["ids"] == [-1]
 
 
+def test_p11_does_not_mark_events_notified_when_no_email_can_go_out():
+    """Send Email is disabled on any install without an SMTP credential, and a
+    disabled n8n node passes its input straight through - so Mark Notified ran
+    anyway and emptied an alert queue nobody had read. The first live run did
+    exactly that to 50 events."""
+    r = run("P1.1_live_weather_alerts.template.json", "plan_P1.1_email_off.json")
+    assert r["ok"], r
+    f = r["outputs"]["Format Events"][0]
+    assert f["count"] == 2            # it still SEES the alertable events
+    assert f["has_high"] is False     # but does not send them down the PATCH
+    s = r["outputs"]["Summary"][0]
+    assert s["rows"] == 0
+    assert "email_enabled is off" in s["summary"], s["summary"]
+    assert "still there when SMTP is configured" in s["summary"]
+
+
 def test_p11_prefers_the_webhook_body_when_one_arrives():
     r = run("P1.1_live_weather_alerts.template.json", "plan_P1.1_webhook.json")
     assert r["ok"], r
