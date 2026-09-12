@@ -1,6 +1,6 @@
 "use client";
 import { useState } from 'react';
-import { paperClient, runPaperWorker } from '@/lib/paperSupabase';
+import { paperAction, runPaperWorker } from '@/lib/paperSupabase';
 
 export default function PaperExit({account,band,side,available,refresh}:{account:string;band:string;side:string;available:number;refresh:()=>void}) {
   const [shares,setShares]=useState('');const [limit,setLimit]=useState('');
@@ -9,7 +9,7 @@ export default function PaperExit({account,band,side,available,refresh}:{account
   return <form className="mt-2" onSubmit={async e=>{
     e.preventDefault();setBusy(true);setMessage('');setError(false);
     const id=command??crypto.randomUUID();setCommand(id);
-    try {const r=await paperClient().rpc('submit_paper_exit',{p_account:account,p_command:id,p_band:band,p_side:side,p_shares:Number(shares),p_limit:Number(limit)});
+    try {const r=await paperAction('submit_exit',{p_account:account,p_command:id,p_band:band,p_side:side,p_shares:Number(shares),p_limit:Number(limit)});
       if(r.error)throw r.error;setCommand(null);setShares('');
       try {await runPaperWorker();setMessage('Exit processed. See Orders for the verified fill result.');}
       catch(wake){setError(true);setMessage(wake&&typeof wake==='object'&&'message' in wake?String(wake.message):'Exit queued; worker wake-up failed.');}

@@ -1,22 +1,22 @@
 # Paper Trades rollout and implementation status
 
 This is an additive implementation on ArbDesk4, based on main
-`eafc0bc3e21bd2f84a2b9038d033105bc54e83f0`. The existing colour tokens,
+`2004dd2c6fd956798df6040f1456321ede0dd7ec`. The existing colour tokens,
 layout components, pages and strategy classes are retained. Paper Trades adds
-private accounts and a transactional execution path beside legacy trade history.
+a single credential-free paper account and a transactional execution path beside legacy trade history.
 
-The three migrations were applied to the existing Supabase project on
+The four migrations were applied to the existing Supabase project on
 2026-09-12. Their filenames match the server's recorded migration versions.
-Live checks confirmed RLS, denied anonymous account creation/research reads,
-denied worker truncation of research history, no exposed definer commands,
-and zero seeded accounts, members or orders. The web/worker/n8n deployment
-steps below are still required; this document does not claim they are live.
+Live checks confirmed RLS, private research history, denied worker truncation,
+zero seeded accounts or orders, and service-role-only single-desk commands.
+The browser anon role gets no paper-table or command access. The matching web
+deployment and worker/n8n steps below are still required.
 
 ## Implemented
 
 - Manual BUY tickets, cancellation, partial position exits, assisted plan
   approval/rejection, automatic account policies and optional take-profit/stop-loss exits.
-- Account locks, cash reservations, owner-only RPCs, stable command IDs,
+- Account locks, cash reservations, single-desk RPCs, stable command IDs,
   worker leases, expiry cleanup and append-only cash/activity records.
 - Direct YES/NO token books, token/outcome identity checks, timestamp rejection,
   limit/tick/minimum-size checks, fee-inclusive IOC depth walking and retained
@@ -43,17 +43,18 @@ steps below are still required; this document does not claim they are live.
 
 ## Installation sequence
 
-1. Review the branch and run the checks below. For another environment, apply the three SQL migrations in
+1. Review the branch and run the checks below. For another environment, apply the four SQL migrations in
    `supabase/migrations/` in filename order using Supabase's migration tooling.
    They add tables/functions/triggers and do not seed money, place orders,
-   authorize an owner, or enable automatic trading.
+   or enable automatic trading.
    Do not reapply these migrations to the existing project. Its older migration
    history also predates this repository's migrations folder; reconcile that
    baseline before using a blanket `supabase db push`.
-2. Create the desk owner's Auth user through Supabase's secure user-management
-   flow, then add that exact user's UUID to `public.desk_members`. There were
-   zero Auth users at the 2026-09-12 read-only check. The application does not
-   silently create or authorize an identity. Do not paste a password into chat.
+2. Apply `20260912151318_single_desk_paper_access.sql`. It creates one paper-only
+   desk but grants its commands only to `service_role`. The web server exposes a
+   fixed, input-limited Paper Trades API; the browser gets no direct access to
+   paper tables, RPCs, research captures, or worker evidence. The first visit
+   creates the desk after you choose its starting paper cash.
 3. Deploy the Python worker on an existing approved host using
    `Dockerfile.paper-worker`. Set server-only `SUPABASE_URL`,
    `SUPABASE_SERVICE_KEY`, `PAPER_WORKER_TOKEN` (random, at least 32 characters),
@@ -71,13 +72,13 @@ steps below are still required; this document does not claim they are live.
    existing data-refresh flow using its authenticated webhook. No new recurring
    schedule is supplied; this avoids accidentally consuming n8n executions.
 6. Deploy the web branch through the repository's existing web deployment.
-   Set server-only `PAPER_WORKER_URL` and `PAPER_WORKER_TOKEN` there as well.
-   The protected `/api/paper-cycle` route verifies the signed-in desk member,
-   then wakes the worker after a manual order, assisted approval, or exit.
+   Set server-only `SUPABASE_SERVICE_KEY`, `PAPER_WORKER_URL` and
+   `PAPER_WORKER_TOKEN` there as well.
+   The `/api/paper-cycle` route wakes the worker after a manual order, assisted
+   approval, or exit. It accepts no payload and the worker token remains server-only.
    Neither value may use a `NEXT_PUBLIC_` prefix.
-   Sign in at Paper Trades, choose starting **paper** cash, and test a small
-   manual order and an exit. Sign-in storage is isolated from legacy anonymous
-   page reads. No exchange signing key is used anywhere in this execution path.
+   Open Paper Trades, choose starting **paper** cash, and test a small manual
+   order and an exit. No exchange signing key is used anywhere in this path.
 7. After migrations and worker checks, set the GitHub repository variable
    `PAPER_TRADES_ENABLED=true` to enable the shared-runner research capture,
    proposal, exit-policy and queue-recovery steps. Keep legacy
@@ -90,9 +91,8 @@ steps below are still required; this document does not claim they are live.
 
 ## Remaining release gates
 
-- Visual browser review is outstanding: the deployed branch preview is ready,
-  but it redirects unauthenticated visitors to Vercel login. Type-check/build
-  success does not replace an owner-authenticated visual review.
+- Visual browser review is outstanding: branch previews redirect unauthenticated
+  visitors to Vercel login. Type-check/build success does not replace a visual review.
 - The legacy weather-source settlement parser is unverified and
   `settlement_verified` remains false. The new venue-confirmed binary adapter
   was checked against a real resolved London 2026-09-11 contract and has separate
@@ -109,7 +109,7 @@ steps below are still required; this document does not claim they are live.
 - Backtest claims/leases, point-in-time research manifests, calibrated
   out-of-sample evaluation, archive export/restore checks and the broader legacy
   anonymous-RPC/security audit remain on the improvement plan.
-- Live n8n import, worker hosting, owner authorization and end-to-end live-data
+- Live n8n import, worker hosting and end-to-end live-data
   paper operation must be verified before treating the system as operational.
 
 ## Verification
@@ -131,7 +131,7 @@ fee/cash arithmetic, cancellation, partial inventory sales, automatic exits
 while entries are paused, and idempotent expiry cleanup. It is not a substitute
 for the live project's permissions/configuration check.
 
-Verification on 2026-09-12: 614 Python tests passed, 6 non-applicable workflow
+Verification on 2026-09-12: 615 Python tests passed, 6 non-applicable workflow
 cases skipped; the database transaction suite, 14-workflow structural validator,
 and Next.js production build passed. Live venue reads confirmed the book/fee
 metadata and a matching resolved-market winner. Browser review remains blocked

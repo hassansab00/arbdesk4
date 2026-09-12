@@ -2,9 +2,9 @@
 
 Next.js (App Router) frontend, per Revision A §6/§9: reads Supabase directly
 via `supabase-js` with the anon key, writes only through RPCs
-(`sql/ad4_rpc.sql`). Paper Trades adds one protected server route that wakes
-the paper worker after an authenticated desk member queues an action. The two
-Supabase variables remain browser-safe; the worker URL and token are server-only.
+(`sql/ad4_rpc.sql`). Paper Trades uses one credential-free, paper-only desk and
+adds one narrow server route that wakes the paper worker after an action. The
+two Supabase variables remain browser-safe; the worker URL and token are server-only.
 
 ## Setup
 
@@ -109,10 +109,12 @@ or do the Next 16 upgrade as its own tested change.
 
 Vercel, from `main`, **Root Directory = `web`**, with
 `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` set as
-environment variables. Paper Trades also requires server-only
-`PAPER_WORKER_URL` and `PAPER_WORKER_TOKEN`; the API route uses them to wake
-the worker after a signed-in owner queues an order. Never prefix either one
-with `NEXT_PUBLIC_`. `web/vercel.json` already sets the framework, build, dev
+environment variables. Credential-free Paper Trades additionally requires
+the server-only `SUPABASE_SERVICE_KEY`; only the narrow `/api/paper-desk`
+route uses it, and the browser never receives it. `PAPER_WORKER_URL` and
+`PAPER_WORKER_TOKEN` let the server wake the worker after the single desk
+queues an order. Never prefix any of those three with `NEXT_PUBLIC_`.
+`web/vercel.json` already sets the framework, build, dev
 and install commands for that root.
 
 Use the **publishable** key — `sb_publishable_…` on newer Supabase
@@ -121,7 +123,7 @@ projects, or the legacy `anon` JWT. Never a secret key: anything prefixed
 secret key set here is published the moment the page is served and must then
 be **rotated**, not just replaced. The secret key (`sb_secret_…` /
 `service_role`) belongs only in the GitHub Actions secret
-`SUPABASE_SERVICE_KEY` and in n8n Config nodes.
+`SUPABASE_SERVICE_KEY`, the Vercel server environment, and n8n Config nodes.
 
 `lib/keyGuard.ts` enforces this rather than trusting it: it classifies the
 configured key across both Supabase key generations, and `lib/supabase.ts`

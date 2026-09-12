@@ -1,38 +1,17 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function bearer(request: Request) {
-  const header = request.headers.get('authorization') || '';
-  return header.startsWith('Bearer ') ? header.slice(7).trim() : '';
-}
-
 export async function POST(request: Request) {
-  const accessToken = bearer(request);
-  if (!accessToken) return NextResponse.json({ error: 'Desk owner sign-in required.' }, { status: 401 });
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const origin = request.headers.get('origin');
+  if (!origin || origin !== new URL(request.url).origin) {
+    return NextResponse.json({ error: 'Cross-origin worker request rejected.' }, { status: 403 });
+  }
   const workerUrl = process.env.PAPER_WORKER_URL?.replace(/\/$/, '');
   const workerToken = process.env.PAPER_WORKER_TOKEN;
-  if (!supabaseUrl || !publicKey || !workerUrl || !workerToken) {
+  if (!workerUrl || !workerToken) {
     return NextResponse.json({ error: 'Paper worker is not configured. The order remains queued.' }, { status: 503 });
-  }
-
-  const auth = createClient(supabaseUrl, publicKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    global: { headers: { Authorization: `Bearer ${accessToken}` } },
-  });
-  const { data: identity, error: identityError } = await auth.auth.getUser(accessToken);
-  if (identityError || !identity.user) {
-    return NextResponse.json({ error: 'Desk owner session is invalid or expired.' }, { status: 401 });
-  }
-  const { data: member, error: memberError } = await auth.from('desk_members')
-    .select('user_id').eq('user_id', identity.user.id).maybeSingle();
-  if (memberError || !member) {
-    return NextResponse.json({ error: 'This account is not authorized for the paper desk.' }, { status: 403 });
   }
 
   try {

@@ -1,6 +1,6 @@
 "use client";
 import { useState } from 'react';
-import { paperClient } from '@/lib/paperSupabase';
+import { paperAction } from '@/lib/paperSupabase';
 
 export default function PaperExitPolicy({account,policy,refresh}:{account:string;policy:{auto_exit_enabled?:boolean;take_profit_fraction?:number;stop_loss_fraction?:number};refresh:()=>void}) {
   const [enabled,setEnabled]=useState(policy.auto_exit_enabled??false);
@@ -9,7 +9,7 @@ export default function PaperExitPolicy({account,policy,refresh}:{account:string
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');
   return <form className="space-y-3 border-t border-border pt-4" onSubmit={async e=>{
     e.preventDefault();setBusy(true);setError('');
-    try {const r=await paperClient().rpc('set_paper_exit_policy',{p_account:account,p_enabled:enabled,p_take_profit:Number(profit)/100,p_stop_loss:Number(loss)/100});if(r.error)throw r.error;refresh();}
+    try {const r=await paperAction('set_exit_policy',{p_account:account,p_enabled:enabled,p_take_profit:Number(profit)/100,p_stop_loss:Number(loss)/100});if(r.error)throw r.error;refresh();}
     catch(e){setError(e&&typeof e==='object'&&'message' in e?String(e.message):String(e));}finally{setBusy(false);}
   }}><fieldset disabled={busy} className="space-y-3"><h3 className="font-semibold">Automatic exits</h3>
     <p className="text-sm text-muted">In automatic mode, evaluate profit and loss against a fresh sell quote after fees. This applies to every open position in this account, including individual basket legs. It can reduce a basket’s coverage. Entry pause does not pause these exits.</p>

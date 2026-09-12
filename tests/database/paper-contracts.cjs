@@ -134,6 +134,30 @@ const assert = require('node:assert/strict');
   assert.equal(Number((await db.query('select cash from paper_accounts')).rows[0].cash),beforeSettlement+2);
   assert.equal(Number((await db.query('select shares from paper_positions')).rows[0].shares),0);
   assert.equal((await db.query('select count(*)::int as n from paper_position_settlements')).rows[0].n,1);
+
+  // The optional single-desk mode removes application credentials without
+  // granting the browser role direct paper or research access.
+  await db.exec("reset role;reset request.jwt.claim.sub;set role anon;");
+  await assert.rejects(db.query("select create_single_paper_account('Blocked',250)"),/permission denied/);
+  await assert.rejects(db.query('select * from paper_accounts'),/permission denied/);
+  await assert.rejects(db.query('select * from research_captures'),/permission denied/);
+  await db.exec('reset role;set role service_role;');
+  const single=(await db.query("select create_single_paper_account('Single desk',250) as id")).rows[0].id;
+  assert.equal((await db.query("select create_single_paper_account('Ignored retry',999) as id")).rows[0].id,single);
+  const visibleAccounts=(await db.query('select account_id,access_mode from paper_accounts')).rows;
+  assert.ok(visibleAccounts.some(a=>a.account_id===single&&a.access_mode==='single_desk'));
+  const singleOrder=(await db.query("select submit_single_paper_order($1,$2,$3,'NO',2,.40,1,'single test') as id",
+    [single,'50000000-0000-0000-0000-000000000001',band])).rows[0].id;
+  assert.ok(singleOrder);
+  assert.equal((await db.query('select count(*)::int as n from paper_orders where account_id=$1',[single])).rows[0].n,1);
+  assert.equal((await db.query('select cancel_single_paper_order($1) as canceled',[singleOrder])).rows[0].canceled,true);
+  await db.query("select set_single_paper_policy($1,'assisted',true,$2)",[single,JSON.stringify(policy)]);
+  await db.query('select set_single_paper_exit_policy($1,true,.25,.15)',[single]);
+  await db.exec("reset role;insert into signals values(2,'ENTER','s1',now(),'single strategy');set role service_role;");
+  const singlePlan=(await db.query('select publish_paper_plan($1,$2,2,$3,$4) as id',
+    [single,'50000000-0000-0000-0000-000000000002',JSON.stringify(legs),JSON.stringify({net_edge_per_share:'.10'})])).rows[0].id;
+  await db.query('select approve_single_paper_plan($1)',[singlePlan]);
+  assert.equal((await db.query("select count(*)::int as n from paper_orders where plan_id=$1",[singlePlan])).rows[0].n,1);
   await db.close();
-  console.log('PASS: migrations, ownership, private research deduplication, leases, fills, approvals, cancellation and partial position exits');
+  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals and exits');
 })().catch(e=>{console.error(e);process.exit(1);});

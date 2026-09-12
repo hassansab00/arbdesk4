@@ -152,18 +152,42 @@ def test_new_routes_exist_and_are_in_the_nav():
 
 
 def test_paper_commands_wake_a_server_side_worker_without_leaking_its_secret():
-    route = _read("web/app/api/paper-cycle/route.ts")
+    worker_route = _read("web/app/api/paper-cycle/route.ts")
+    desk_route = _read("web/app/api/paper-desk/route.ts")
     helper = _read("web/lib/paperSupabase.ts")
-    assert "process.env.PAPER_WORKER_TOKEN" in route
-    assert "NEXT_PUBLIC_PAPER" not in route + helper
-    assert "desk_members" in route and "auth.getUser" in route
-    assert "Authorization: `Bearer ${workerToken}`" in route
+    clients = helper + "".join(_read(path) for path in (
+        "web/app/paper-trades/page.tsx",
+        "web/components/PaperAutomation.tsx",
+        "web/components/PaperExit.tsx",
+        "web/components/PaperExitPolicy.tsx",
+    ))
+    assert "process.env.PAPER_WORKER_TOKEN" in worker_route
+    assert "NEXT_PUBLIC_PAPER" not in worker_route + desk_route + clients
+    assert "auth.getUser" not in worker_route + desk_route and "signInWithPassword" not in clients
+    assert "process.env.SUPABASE_SERVICE_KEY" in desk_route
+    assert "SUPABASE_SERVICE_KEY" not in clients and "service_role" not in clients
+    assert "sameOrigin(request)" in desk_route
+    assert "Authorization: `Bearer ${workerToken}`" in worker_route
     for path in (
         "web/app/paper-trades/page.tsx",
         "web/components/PaperAutomation.tsx",
         "web/components/PaperExit.tsx",
     ):
         assert "runPaperWorker" in _read(path), f"{path} can leave a five-minute order asleep"
+
+
+def test_single_paper_desk_has_no_account_credentials_and_uses_scoped_rpcs():
+    page = _read("web/app/paper-trades/page.tsx")
+    route = _read("web/app/api/paper-desk/route.ts")
+    assert "Desk owner sign-in" not in page
+    assert "type=\"password\"" not in page
+    assert "paperAction('create_account'" in page
+    assert "paperAction('submit_order'" in page
+    assert "paperAction('cancel_order'" in page
+    assert "create_single_paper_account" in route
+    assert "submit_single_paper_order" in route
+    assert "cancel_single_paper_order" in route
+    assert "research_captures" not in page
 
 
 def test_only_s7_claims_the_peak_window():
