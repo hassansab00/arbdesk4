@@ -112,9 +112,20 @@ Vercel, from `main`, **Root Directory = `web`**, with
 environment variables. Credential-free Paper Trades uses the JWT-verified
 Supabase `paper-desk` Edge Function. A server-only `SUPABASE_SERVICE_KEY` is an
 optional direct-database fallback for self-hosted environments; the browser
-never receives it. `PAPER_WORKER_URL` and
-`PAPER_WORKER_TOKEN` let the server wake the worker after the single desk
-queues an order. Never prefix any of those three with `NEXT_PUBLIC_`.
+never receives it. `PAPER_WORKER_URL` lets the server wake the worker after the
+single desk queues an order. `PAPER_WORKER_TOKEN` is optional and can remain
+unset for the simple no-header deployment. Never prefix any of those values
+with `NEXT_PUBLIC_`.
+
+The Data Bank proprietary export is disabled by default. To enable its
+same-origin, bounded server route, set `ARBDESK_PRIVATE_EXPORT_ENABLED=true`
+and the server-only `SUPABASE_SERVICE_KEY` in Vercel, then redeploy. The route
+streams only allowlisted datasets, never returns the key, and caps each file at
+31 days and 50,000 rows. Keep the deployment itself private: credential-free
+single-desk mode means anyone who can open the deployed application can use its
+enabled controls. Verify a downloaded file with
+`python scripts/verify_proprietary_export.py <file.ndjson>` from the repository
+root.
 `web/vercel.json` already sets the framework, build, dev
 and install commands for that root.
 
