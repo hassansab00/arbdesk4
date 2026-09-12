@@ -147,8 +147,8 @@ def compute_band_probabilities(centre_c, sigma_c, unit, bands):
 # --------------------------------------------------------------------------
 
 def _upcoming_markets():
-    return rest("markets", [
-        ("select", "market_id,city_key,resolution_date"),
+    return rest("v_canonical_markets", [
+        ("select", "market_id,city_key,resolution_date,unit,correction_id"),
         ("resolution_date", f"gte.{dt.date.today().isoformat()}"),
     ])
 
@@ -158,8 +158,8 @@ def _bands_for_markets(market_ids):
     chunk = 100
     for i in range(0, len(market_ids), chunk):
         batch = market_ids[i:i + chunk]
-        rows = rest("bands", [
-            ("select", "band_id,market_id,band_lo,band_hi,open_low,open_high,band_label"),
+        rows = rest("v_canonical_bands", [
+            ("select", "band_id,market_id,band_lo,band_hi,open_low,open_high,band_label,correction_id"),
             ("market_id", f"in.({','.join(str(m) for m in batch)})"),
         ])
         out.extend(rows)
@@ -386,6 +386,25 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
     lead_days = forecast["lead_days"]
 
     skill = _skill_for(city_key, lead_days, forecast.get("model"))
+    skill_lead_days = lead_days
+    skill_proxy = False
+
+    # The skill archive is deliberately measured at leads 1-7.  Same-day
+    # forecasts have lead=0, and the old code therefore skipped every current
+    # market even when a well-measured lead-1 error distribution existed.  Use
+    # the nearest longer-horizon skill as a conservative width proxy while
+    # retaining the fresh lead-0 forecast as the centre.  Do not borrow its
+    # bias: lead-specific bias can change sign, so applying it would be an
+    # unsupported correction.  The row records the proxy and confidence is
+    # penalised until genuine lead-0 skill exists.
+    if skill is None or skill.get("mae_c") is None:
+        for candidate_lead in range(int(lead_days) + 1, 8):
+            candidate = _skill_for(city_key, candidate_lead, forecast.get("model"))
+            if candidate is not None and candidate.get("mae_c") is not None:
+                skill = candidate
+                skill_lead_days = candidate_lead
+                skill_proxy = True
+                break
     reg = regime.classify(city_key, for_date, history_cache)
     confidence = reg.confidence
 
@@ -395,10 +414,13 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
         confidence = min(confidence, 0.1)
         reasons = reg.reasons + ["no_skill_row"]
     else:
-        bias_c = skill.get("bias_c") or 0.0
+        bias_c = 0.0 if skill_proxy else (skill.get("bias_c") or 0.0)
         mae_c = skill.get("mae_c")
         n_days = skill.get("n_days") or 0
         reasons = list(reg.reasons)
+        if skill_proxy:
+            confidence *= UNTRUSTED_CONFIDENCE_PENALTY
+            reasons.append(f"skill_proxy:lead{lead_days}_to_lead{skill_lead_days}")
         if n_days < UNTRUSTED_N_DAYS:
             confidence *= UNTRUSTED_CONFIDENCE_PENALTY
             reasons.append(f"thin_sample:{n_days}d")
@@ -451,8 +473,10 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
 
     row = {
         "computed_at": computed_at,
+        "input_forecast_run": forecast.get("run_at"),
         "forecast_max_c": centre, "bias_applied_c": bias_c, "sigma_c": round(sigma, 4),
-        "lead_days": lead_days, "lattice_applied": True,
+        "lead_days": lead_days, "skill_lead_days": skill_lead_days,
+        "skill_proxy": skill_proxy, "lattice_applied": True,
         "confidence": round(confidence, 4), "regime_label": reg.label,
     }
     # A widened sigma must be explainable after the fact, not mysterious.
@@ -509,9 +533,10 @@ def main():
     history_cache = {}
     all_rows = []
     sample_prints = []
+    priced_city_days = 0
     for city_key, city_markets in by_city.items():
-        unit = unit_of.get(city_key, "C")
         for m in city_markets:
+            unit = m.get("unit") or unit_of.get(city_key, "C")
             band_rows = bands_by_market.get(m["market_id"], [])
             if not band_rows:
                 continue
@@ -520,6 +545,7 @@ def main():
                 continue
             rows, reg, reasons = result
             all_rows.extend(rows)
+            priced_city_days += 1
             if len(sample_prints) < 3:
                 sample_prints.append((city_key, m["resolution_date"], band_rows, rows, reg))
 
@@ -536,7 +562,12 @@ def main():
         total = sum(r["calibrated_prob"] for r in rows)
         print(f"  sum={total:.6f}")
 
-    log_run("probability_engine", "ok", len(all_rows), {"city_days": len(sample_prints)})
+    log_run(
+        "probability_engine",
+        "ok" if all_rows else "attention",
+        len(all_rows),
+        {"city_days": priced_city_days, "upcoming_markets": len(markets)},
+    )
     print(f"\nwrote {len(all_rows)} band_probabilities rows")
 
 
