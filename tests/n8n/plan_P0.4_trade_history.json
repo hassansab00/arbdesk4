@@ -1,0 +1,94 @@
+{
+  "seed": {
+    "Config": {
+      "supabase_url": "https://testproject.supabase.co",
+      "trades_url": "https://data-api.polymarket.com/trades?market={market}&limit={limit}",
+      "trades_per_band": "100",
+      "max_bands_per_run": "60",
+      "max_rows": "5000"
+    },
+    "Load bands": [
+      {
+        "band_id": "11111111-1111-4111-8111-111111111111",
+        "token_yes": "29639671180636475444119724496477203328883127615534651643029617588678995269086",
+        "token_no": "70360328819363524555880275503522796671116872384465348356970382411321004730913",
+        "condition_id": "0x54a1965382f326bec812baf4555ed0640bf639d1fc937c55e7c8b7e7a0b277f7",
+        "market_id": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+        "markets": {
+          "city_key": "helsinki",
+          "resolution_date": "2026-09-12"
+        }
+      },
+      {
+        "band_id": "22222222-2222-4222-8222-222222222222",
+        "token_yes": "62996468422765463957673998381034522894395278759807952977815846622523419217469",
+        "token_no": "37003531577234536042326001618965477105604721240192047022184153377476580782530",
+        "condition_id": "0xbb7d062e9b050595748c987c7f2ec9b0c9d929667eedb87962e07526516fb964",
+        "market_id": "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+        "markets": {
+          "city_key": "san_francisco",
+          "resolution_date": "2026-09-12"
+        }
+      }
+    ],
+    "Fetch trades": [
+      {
+        "proxyWallet": "0x01beaf66e13e4814c41f2151691703b9a8c6658f",
+        "side": "SELL",
+        "asset": "29639671180636475444119724496477203328883127615534651643029617588678995269086",
+        "conditionId": "0x54a1965382f326bec812baf4555ed0640bf639d1fc937c55e7c8b7e7a0b277f7",
+        "size": 30,
+        "price": 0.42,
+        "timestamp": 1789244998,
+        "title": "Will the highest temperature in Helsinki be 17C on September 12?",
+        "slug": "highest-temperature-in-helsinki-on-september-12-2026-17c"
+      },
+      {
+        "proxyWallet": "0x02beaf66e13e4814c41f2151691703b9a8c6658f",
+        "side": "BUY",
+        "asset": "70360328819363524555880275503522796671116872384465348356970382411321004730913",
+        "conditionId": "0x54a1965382f326bec812baf4555ed0640bf639d1fc937c55e7c8b7e7a0b277f7",
+        "size": 12.5,
+        "price": 0.58,
+        "timestamp": 1789245100,
+        "title": "Will the highest temperature in Helsinki be 17C on September 12?",
+        "slug": "highest-temperature-in-helsinki-on-september-12-2026-17c"
+      },
+      {
+        "proxyWallet": "0x03beaf66e13e4814c41f2151691703b9a8c6658f",
+        "side": "BUY",
+        "asset": "62996468422765463957673998381034522894395278759807952977815846622523419217469",
+        "conditionId": "0xbb7d062e9b050595748c987c7f2ec9b0c9d929667eedb87962e07526516fb964",
+        "size": 100,
+        "price": 0.07,
+        "timestamp": 1789245200,
+        "title": "Will the highest temperature in San Francisco be 21C on September 12?",
+        "slug": "highest-temperature-in-san-francisco-on-september-12-2026-21c"
+      }
+    ],
+    "Insert trades": [
+      {}
+    ],
+    "Refresh volume rollups": [
+      {}
+    ]
+  },
+  "run": [
+    {
+      "node": "Build request list",
+      "input": "Load bands"
+    },
+    {
+      "node": "Map trades to bands",
+      "input": "Fetch trades"
+    },
+    {
+      "node": "Guard: did anything parse?",
+      "input": "Map trades to bands"
+    },
+    {
+      "node": "Summary",
+      "input": "Refresh volume rollups"
+    }
+  ]
+}
