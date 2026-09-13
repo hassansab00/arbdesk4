@@ -324,6 +324,13 @@ def test_ladder_readers_use_the_view_not_the_raw_table(script):
         assert call not in src, f"{script} still fetches ladders from book_snapshots"
 
 
+def test_edge_engine_uses_latest_probability_view_and_logs_coverage():
+    src = (pathlib.Path(__file__).parent.parent / "scripts" / "edge_engine.py").read_text()
+    assert '_latest_by_band("v_latest_prob"' in src
+    assert 'log_run(' in src and '"stale_books"' in src
+    assert '"stale_book"' in src and "book_is_stale" in src
+
+
 # --------------------------------------------------------------------------
 # signals.city_key
 #

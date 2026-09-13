@@ -22,7 +22,7 @@ import sys
 import math
 from collections import defaultdict
 
-from common import rest, insert, get_cities
+from common import rest, rest_all, insert, get_cities, log_run
 import cost_model
 import market_state
 
@@ -37,6 +37,8 @@ DEFAULT_MIN_PRICE_YES = 0.07           # settings.tradeability_yes fallback
 DEFAULT_MAX_BANDS_FROM_CENTRE = 4      # settings.tradeability_yes fallback
 DEFAULT_IMPLAUSIBLE_EDGE = 0.40        # anomaly_rules.implausible_edge fallback
 UNLIMITED_BUDGET = 1e12
+MAX_BOOK_AGE = dt.timedelta(hours=2)
+MAX_PROBABILITY_AGE = dt.timedelta(hours=12)
 
 
 # --------------------------------------------------------------------------
@@ -176,10 +178,10 @@ def _bands_for_markets(market_ids):
     chunk = 100
     for i in range(0, len(market_ids), chunk):
         batch = market_ids[i:i + chunk]
-        rows = rest("v_canonical_bands", [
+        rows = rest_all("v_canonical_bands", [
             ("select", "band_id,market_id,band_lo,band_hi,open_low,open_high,band_label,token_yes,token_no"),
             ("market_id", f"in.({','.join(str(m) for m in batch)})"),
-        ])
+        ], order="band_id", page_size=500)
         out.extend(rows)
     return out
 
@@ -189,16 +191,30 @@ def _latest_by_band(table, select, band_ids, order_col):
     chunk = 100
     for i in range(0, len(band_ids), chunk):
         batch = band_ids[i:i + chunk]
-        rows = rest(table, [
+        rows = rest_all(table, [
             ("select", select),
             ("band_id", f"in.({','.join(str(b) for b in batch)})"),
-            ("order", f"band_id,{order_col}.desc"),
-        ])
+        ], order=f"band_id,{order_col}.desc", page_size=500)
         for r in rows:
             bid = r["band_id"]
             if bid not in latest:
                 latest[bid] = r
     return latest
+
+
+def _age_exceeds(value, maximum, now=None):
+    """True when a PostgREST timestamp is absent, invalid, future, or stale."""
+    if not value:
+        return True
+    try:
+        parsed = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=dt.timezone.utc)
+        current = now or dt.datetime.now(dt.timezone.utc)
+        age = current - parsed.astimezone(dt.timezone.utc)
+        return age < dt.timedelta(minutes=-5) or age > maximum
+    except (TypeError, ValueError):
+        return True
 
 
 def _settings():
@@ -245,8 +261,8 @@ def main():
         return
     band_ids = [b["band_id"] for b in bands]
 
-    probs = _latest_by_band("band_probabilities",
-                             "band_id,calibrated_prob,computed_at,confidence,regime_label,forecast_max_c,bias_applied_c,prob_id",
+    probs = _latest_by_band("v_latest_prob",
+                             "band_id,calibrated_prob,computed_at,confidence,regime_label,forecast_max_c,bias_applied_c,prob_id,pricing_eligible,pricing_block_reason,skill_source",
                              band_ids, "computed_at")
     # v_latest_book, NOT book_snapshots. On the real schema
     # book_snapshots.bid_levels / ask_levels are integer LEVEL COUNTS - the
@@ -264,14 +280,31 @@ def main():
     max_bands_from_centre = tradeability_yes.get("max_bands_from_centre", DEFAULT_MAX_BANDS_FROM_CENTRE)
     implausible_edge_threshold = _implausible_edge_threshold()
 
-    computed_at = dt.datetime.now(dt.timezone.utc).isoformat()
+    now = dt.datetime.now(dt.timezone.utc)
+    computed_at = now.isoformat()
     out_rows = []
     n_anomalies = 0
+    stale_books = 0
+    missing_books = 0
+    stale_probabilities = 0
+    blocked_probabilities = 0
 
     for b in bands:
         band_id = b["band_id"]
         prob_row = probs.get(band_id)
         book = books.get(band_id, {})
+        book_is_stale = _age_exceeds(book.get("observed_at"), MAX_BOOK_AGE, now) if book else True
+        probability_is_stale = _age_exceeds(
+            prob_row.get("computed_at"), MAX_PROBABILITY_AGE, now) if prob_row else True
+        probability_is_eligible = bool(prob_row and prob_row.get("pricing_eligible", True))
+        if not book:
+            missing_books += 1
+        elif book_is_stale:
+            stale_books += 1
+        if prob_row and probability_is_stale:
+            stale_probabilities += 1
+        if prob_row and not probability_is_eligible:
+            blocked_probabilities += 1
         best_bid, best_ask = book.get("best_bid"), book.get("best_ask")
         mstate = book.get("market_state") or market_state.classify(best_bid, best_ask)
 
@@ -320,6 +353,15 @@ def main():
             if model_prob is None:
                 tradeable = False
                 block_reason = block_reason or "stale_data"
+            elif probability_is_stale:
+                tradeable = False
+                block_reason = "stale_probability"
+            elif not probability_is_eligible:
+                tradeable = False
+                block_reason = prob_row.get("pricing_block_reason") or "unmeasured_probability"
+            if book_is_stale:
+                tradeable = False
+                block_reason = "no_book" if not book else "stale_book"
 
             out_rows.append({
                 "band_id": band_id, "computed_at": computed_at, "side": side,
@@ -337,6 +379,14 @@ def main():
         insert("edges", out_rows)
 
     tradeable_n = sum(1 for r in out_rows if r["tradeable"])
+    attention = missing_books + stale_books + stale_probabilities + blocked_probabilities
+    log_run(
+        "edge_engine", "attention" if attention else "ok", len(out_rows),
+        {"bands": len(bands), "tradeable": tradeable_n,
+         "missing_books": missing_books, "stale_books": stale_books,
+         "stale_probabilities": stale_probabilities,
+         "blocked_probabilities": blocked_probabilities},
+    )
     print(f"wrote {len(out_rows)} edge rows ({tradeable_n} tradeable, {n_anomalies} flagged anomalous)")
 
 

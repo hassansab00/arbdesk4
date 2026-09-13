@@ -33,7 +33,7 @@ import math
 import sys
 from collections import defaultdict
 
-from common import rest, insert, get_cities, log_run, model_version_id
+from common import rest, rest_all, insert, get_cities, log_run, model_version_id
 import regime
 
 MAE_TO_SIGMA = 1.2533          # sourced: sigma = MAE * sqrt(pi/2) for a normal distribution
@@ -86,6 +86,7 @@ def _calibrate(p):
 UNTRUSTED_N_DAYS = 200          # matches Task 1's "worst_sample should be 200+"
 BIAS_EXCEEDS_MAE_RATIO = 0.95   # matches anomaly_rules.bias_exceeds_mae threshold
 UNTRUSTED_CONFIDENCE_PENALTY = 0.5
+GLOBAL_SKILL_CONFIDENCE_PENALTY = 0.25
 
 
 # --------------------------------------------------------------------------
@@ -155,13 +156,18 @@ def _upcoming_markets():
 
 def _bands_for_markets(market_ids):
     out = []
+    # A normal market has 11 bands. One 100-market request therefore returns
+    # about 1,100 rows, beyond PostgREST's usual 1,000-row response cap. The
+    # old unpaginated read silently clipped the result and produced partial
+    # 8/11, 9/11 and 10/11 probability ladders. Page each bounded chunk with
+    # a stable unique order so every canonical band is priced exactly once.
     chunk = 100
     for i in range(0, len(market_ids), chunk):
         batch = market_ids[i:i + chunk]
-        rows = rest("v_canonical_bands", [
+        rows = rest_all("v_canonical_bands", [
             ("select", "band_id,market_id,band_lo,band_hi,open_low,open_high,band_label,correction_id"),
             ("market_id", f"in.({','.join(str(m) for m in batch)})"),
-        ])
+        ], order="band_id", page_size=500)
         out.extend(rows)
     return out
 
@@ -312,6 +318,55 @@ def _divergence_for(city_key, for_date):
 
 
 _skill_cache = {}
+_global_skill_cache = {}
+
+
+def _global_skill(lead_days):
+    """Conservative cross-city cold-start width for an unmeasured city.
+
+    This is not evidence that the new city itself is calibrated. It exists so
+    the UI can show a complete, explicitly low-confidence probability ladder
+    while the edge layer still blocks trading it. The 75th percentile of the
+    newest positive city MAEs at the same lead is deliberately wider than the
+    median and bias is always zero: another city's bias is not this city's
+    correction.
+    """
+    if lead_days in _global_skill_cache:
+        return _global_skill_cache[lead_days]
+    try:
+        rows = rest_all("derived_forecast_skill", [
+            ("select", "city_key,lead_days,n_days,mae_c,computed_at"),
+            ("lead_days", f"eq.{lead_days}"),
+        ], order="city_key,computed_at.desc", page_size=500)
+    except Exception as e:
+        print(f"  note: global skill fallback unavailable ({e})", file=sys.stderr)
+        rows = []
+
+    latest = {}
+    for row in rows:
+        latest.setdefault(row.get("city_key"), row)
+    maes = []
+    for row in latest.values():
+        try:
+            value = float(row.get("mae_c"))
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(value) and value > 0:
+            maes.append(value)
+    maes.sort()
+    if len(maes) < 5:
+        result = None
+    else:
+        index = max(0, math.ceil(0.75 * len(maes)) - 1)
+        result = {
+            "lead_days": lead_days,
+            "n_days": 0,
+            "mae_c": maes[index],
+            "bias_c": 0.0,
+            "global_n_cities": len(maes),
+        }
+    _global_skill_cache[lead_days] = result
+    return result
 
 def _pooled_skill(city_key, lead_days):
     key = (city_key, lead_days)
@@ -388,6 +443,9 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
     skill = _skill_for(city_key, lead_days, forecast.get("model"))
     skill_lead_days = lead_days
     skill_proxy = False
+    skill_source = "city_lead"
+    pricing_eligible = True
+    pricing_block_reason = None
 
     # The skill archive is deliberately measured at leads 1-7.  Same-day
     # forecasts have lead=0, and the old code therefore skipped every current
@@ -404,6 +462,22 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
                 skill = candidate
                 skill_lead_days = candidate_lead
                 skill_proxy = True
+                skill_source = "city_lead_proxy"
+                break
+    # A city with no local outcome history should not disappear from the
+    # probability surface: that made incomplete data look like a broken run.
+    # Borrow only a conservative cross-city WIDTH and mark the result
+    # ineligible for trading. Local evidence automatically replaces it later.
+    if skill is None or skill.get("mae_c") is None:
+        for candidate_lead in range(int(lead_days), 8):
+            candidate = _global_skill(candidate_lead)
+            if candidate is not None:
+                skill = candidate
+                skill_lead_days = candidate_lead
+                skill_proxy = True
+                skill_source = "global_lead_p75"
+                pricing_eligible = False
+                pricing_block_reason = "no_city_skill"
                 break
     reg = regime.classify(city_key, for_date, history_cache)
     confidence = reg.confidence
@@ -419,8 +493,14 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
         n_days = skill.get("n_days") or 0
         reasons = list(reg.reasons)
         if skill_proxy:
-            confidence *= UNTRUSTED_CONFIDENCE_PENALTY
-            reasons.append(f"skill_proxy:lead{lead_days}_to_lead{skill_lead_days}")
+            if skill_source == "global_lead_p75":
+                confidence *= GLOBAL_SKILL_CONFIDENCE_PENALTY
+                reasons.append(
+                    f"global_skill_proxy:lead{lead_days}_to_lead{skill_lead_days}:"
+                    f"{skill.get('global_n_cities')}cities")
+            else:
+                confidence *= UNTRUSTED_CONFIDENCE_PENALTY
+                reasons.append(f"skill_proxy:lead{lead_days}_to_lead{skill_lead_days}")
         if n_days < UNTRUSTED_N_DAYS:
             confidence *= UNTRUSTED_CONFIDENCE_PENALTY
             reasons.append(f"thin_sample:{n_days}d")
@@ -477,6 +557,8 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
         "forecast_max_c": centre, "bias_applied_c": bias_c, "sigma_c": round(sigma, 4),
         "lead_days": lead_days, "skill_lead_days": skill_lead_days,
         "skill_proxy": skill_proxy, "lattice_applied": True,
+        "skill_source": skill_source, "pricing_eligible": pricing_eligible,
+        "pricing_block_reason": pricing_block_reason,
         "confidence": round(confidence, 4), "regime_label": reg.label,
     }
     # A widened sigma must be explainable after the fact, not mysterious.
