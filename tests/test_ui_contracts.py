@@ -312,7 +312,8 @@ def test_a_view_resolves_to_the_tables_underneath_it():
     src = _read("web/lib/provenance.ts")
     views = json.loads(re.search(r"VIEW_TABLES: Record<string, string\[\]> = (\{.*?\});\n\n",
                                  src, re.S).group(1))
-    assert views.get("v_calibration") == ["fact_band_outcome"]
+    assert "fact_band_outcome" in views.get("v_calibration", [])
+    assert "paper_resolution_evidence" in views.get("v_calibration", [])
     assert "fact_forecast_outcome" in views.get("v_prediction_scorecard", [])
     assert "book_snapshots" in views.get("v_opportunities", [])
 

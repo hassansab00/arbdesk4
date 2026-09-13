@@ -19,7 +19,7 @@ const assert = require('node:assert/strict');
     create table public.weather_observations(obs_id bigint primary key,city_key text,valid_at timestamptz,
       observed_at timestamptz);
     create table public.weather_forecasts(forecast_id bigint primary key,city_key text,model text,run_at timestamptz,
-      for_date date);
+      for_date date,lead_days int default 0,forecast_max_c numeric default 0);
     create table public.book_snapshots(snapshot_id bigint primary key,band_id uuid,observed_at timestamptz,
       market_state text default 'LIVE',tradeable boolean default true);
     create table public.trades_observed(trade_id bigint primary key,city_key text,traded_at timestamptz);
@@ -31,8 +31,16 @@ const assert = require('node:assert/strict');
     create table public.ingest_log(log_id bigint primary key,job text,started_at timestamptz,finished_at timestamptz,
       status text,rows_written integer,detail jsonb,rows integer,logged_at timestamptz default now());
     create table public.model_versions(version_id uuid primary key,created_at timestamptz default now());
-    create table public.fact_forecast_outcome(city_key text,for_date date,model text,lead_days int,captured_at timestamptz default now(),primary key(city_key,for_date,model,lead_days));
-    create table public.fact_band_outcome(band_id uuid primary key,captured_at timestamptz default now());
+    create table public.fact_forecast_outcome(city_key text,for_date date,model text,lead_days int,
+      run_at timestamptz,forecast_max_c numeric default 0,observed_max_c numeric default 0,
+      error_c numeric generated always as (forecast_max_c-observed_max_c) stored,
+      abs_error_c numeric generated always as (abs(forecast_max_c-observed_max_c)) stored,
+      obs_source text,n_obs int,captured_at timestamptz default now(),primary key(city_key,for_date,model,lead_days));
+    create table public.fact_band_outcome(band_id uuid primary key,city_key text,for_date date,
+      band_lo numeric,band_hi numeric,open_low boolean,open_high boolean,model_prob numeric,
+      sigma_c numeric,confidence numeric,regime_label text,forecast_max_c numeric,market_price numeric,
+      edge_net_pp numeric,volume_usd numeric,depth_5c numeric,priced_at timestamptz,
+      observed_max_c numeric,settled_yes boolean default false,captured_at timestamptz default now());
     create table public.fact_signal_outcome(signal_id bigint primary key,captured_at timestamptz default now());
     grant select on public.bands,public.markets,public.signals to service_role;
     create view public.v_synthesis_findings as select 'finding'::text as key;
@@ -257,6 +265,28 @@ const assert = require('node:assert/strict');
   assert.equal(Number((await db.query('select cash from paper_accounts')).rows[0].cash),beforeSettlement+2);
   assert.equal(Number((await db.query('select shares from paper_positions')).rows[0].shares),0);
   assert.equal((await db.query('select count(*)::int as n from paper_position_settlements')).rows[0].n,1);
+
+  // Outcome truth is additive. The immutable legacy fact stays in place, but
+  // it reaches calibration only when a complete venue ladder independently
+  // confirms it. Raw station payloads remain hidden from the browser role.
+  await db.query(`insert into fact_band_outcome(band_id,city_key,for_date,model_prob,market_price,
+    edge_net_pp,settled_yes) values($1,'london',current_date-1,.30,.25,.05,true)`,[band]);
+  await db.query(`insert into weather_resolution_evidence(evidence_id,city_key,for_date,observed_max_c,
+    source_authority,station_id,source_url,record_status,parser_version,payload_sha256,raw_payload)
+    values('weather-proof','london',current_date-1,0,'test authority','station','https://example.invalid',
+      'verified','test-v1',$1,'{}')`,['0'.repeat(64)]);
+  const outcomeHealth=(await db.query('select * from v_outcome_evidence_health')).rows[0];
+  assert.deepEqual(
+    [Number(outcomeHealth.raw_band_facts),Number(outcomeHealth.verified_band_facts),
+     Number(outcomeHealth.raw_forecast_facts),Number(outcomeHealth.verified_forecast_facts)],
+    [1,1,2,1],
+    'Only facts matched to independent final evidence reach verified projections'
+  );
+  assert.equal((await db.query('select count(*)::int as n from v_calibration')).rows[0].n,1);
+  await assert.rejects(db.query("update weather_resolution_evidence set station_id='changed'"),/permission denied|Append-only/);
+  await db.exec('reset role;set role anon;');
+  assert.equal(Number((await db.query('select verified_band_facts from v_outcome_evidence_health')).rows[0].verified_band_facts),1);
+  await assert.rejects(db.query('select raw_payload from weather_resolution_evidence'),/permission denied/);
 
   // The optional single-desk mode removes application credentials without
   // granting the browser role direct paper or research access.

@@ -135,7 +135,8 @@ def test_a_map_the_fitter_rejected_is_not_applied(monkeypatch):
 
 
 def test_a_fitted_map_is_applied(monkeypatch):
-    _map(monkeypatch, {"method": "platt", "a": 0.7, "b": 0.0, "applies": True, "n": 900})
+    _map(monkeypatch, {"method": "platt", "a": 0.7, "b": 0.0, "applies": True,
+                       "n": 900, "evidence_scope": pe.VERIFIED_EVIDENCE_SCOPE})
     out = pe._calibrate(0.2)
     assert out != 0.2
     # a < 1 pulls toward 0.5, so a 20% band should come back higher
@@ -164,7 +165,8 @@ def test_the_map_is_read_once_per_run(monkeypatch):
 
 
 def test_calibrated_output_stays_a_probability(monkeypatch):
-    _map(monkeypatch, {"method": "platt", "a": 0.6, "b": -1.5, "applies": True})
+    _map(monkeypatch, {"method": "platt", "a": 0.6, "b": -1.5, "applies": True,
+                       "evidence_scope": pe.VERIFIED_EVIDENCE_SCOPE})
     for p in (0.0, 1e-9, 0.001, 0.5, 0.999, 1.0):
         q = pe._calibrate(p)
         assert 0.0 <= q <= 1.0, (p, q)

@@ -17,7 +17,7 @@ queue_backtest - nothing here ever overwrites a prior run.
 import datetime as dt
 import sys
 
-from common import rest, rest_all, insert, _cfg, _headers, city_local_date
+from common import rest, rest_all, insert, _cfg, _headers
 import requests
 import paper_engine
 import regime
@@ -44,18 +44,17 @@ def _load_run(run_id):
 
 
 def _daily_max_observed(city_key, start, end, timezone=None):
-    rows = rest_all("weather_observations", [
-        ("select", "valid_at,temp_c"), ("city_key", f"eq.{city_key}"),
-        ("valid_at", f"gte.{start.isoformat()}"), ("valid_at", f"lte.{end.isoformat()}"),
-        ("order", "valid_at.asc"),
-    ], order="valid_at.asc,source.asc")
+    """Venue-date outcomes backed by final station-authority evidence."""
+    rows = rest_all("v_verified_weather_outcomes", [
+        ("select", "for_date,observed_max_c"), ("city_key", f"eq.{city_key}"),
+        ("for_date", f"gte.{start.isoformat()}"), ("for_date", f"lte.{end.isoformat()}"),
+        ("order", "for_date.asc"),
+    ], order="for_date.asc")
     out = {}
     for r in rows:
-        if r.get("temp_c") is None:
+        if r.get("observed_max_c") is None:
             continue
-        # the CITY's day, not UTC - see common.city_local_date
-        d = city_local_date(r["valid_at"], timezone)
-        out[d] = max(out.get(d, r["temp_c"]), r["temp_c"])
+        out[str(r["for_date"])] = r["observed_max_c"]
     return out
 
 
@@ -124,8 +123,9 @@ def run(run_id):
                 continue
             lead_days = min(r["lead_days"] for r in forecast_rows)
             skill_rows = rest("derived_forecast_skill", [
-                ("select", "mae_c,bias_c,n_days,computed_at"), ("city_key", f"eq.{city_key}"),
+                ("select", "mae_c,bias_c,n_days,computed_at,evidence_scope"), ("city_key", f"eq.{city_key}"),
                 ("lead_days", f"eq.{lead_days}"), ("computed_at", f"lte.{as_of.isoformat()}"),
+                ("evidence_scope", "eq.verified_outcomes_v1"),
                 ("order", "computed_at.desc"), ("limit", "1"),
             ])
             skill_row = skill_rows[0] if skill_rows else None

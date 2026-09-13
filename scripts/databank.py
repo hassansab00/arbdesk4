@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Freeze the desk's own history: what it predicted, what the market said, and
-what actually happened.
+what independently verified outcome evidence says happened.
 
 WHY THIS EXISTS. Everything AD4 knows is either live or derived, and both are
 destroyed by their own next run. weather_forecasts keeps every run but never
@@ -17,7 +17,7 @@ until now AD4 was throwing it away every four hours.
 WHAT IT WRITES. Three immutable tables (sql/ad4_18_databank.sql), once per
 settled city-day, never updated:
 
-  fact_forecast_outcome  each model at each lead, against the observed max
+  fact_forecast_outcome  each model at each lead, against a verified station max
   fact_band_outcome      model probability and market price per band, against
                          whether that band settled yes
   fact_signal_outcome    every signal, and whether acting on it paid
@@ -36,9 +36,8 @@ from collections import defaultdict
 from common import (rest, upsert, log_run, get_cities,
                     city_local_date, timezone_of)
 
-# A day is only banked once the observations for it are in. Running too early
-# would freeze a partial maximum as if it were the settled one - and because
-# these rows are never updated, that error would be permanent.
+# Kept for observation-quality diagnostics. It is no longer sufficient to
+# declare a day settled: only v_verified_weather_outcomes may do that.
 MIN_OBS_FOR_A_DAY = 12
 
 
@@ -109,8 +108,36 @@ def _already_banked(table, since):
         return set()
 
 
+def _verified_weather(days_back):
+    """Return only versioned, authoritative station outcomes.
+
+    A running maximum with many readings is useful operational evidence, but
+    it is not final resolution evidence. The former collector treated twelve
+    readings as final and could freeze a partial maximum permanently.
+    """
+    since = (dt.date.today() - dt.timedelta(days=days_back)).isoformat()
+    try:
+        rows = rest("v_verified_weather_outcomes", [
+            ("select", "city_key,for_date,observed_max_c,source_authority,station_id,captured_at"),
+            ("for_date", f"gte.{since}"), ("limit", "20000"),
+        ])
+    except Exception as e:
+        print(f"  verified weather outcomes unavailable ({e}); no forecast outcomes will be frozen",
+              file=sys.stderr)
+        return {}
+    return {
+        (r["city_key"], str(r["for_date"])): {
+            "max_c": r["observed_max_c"],
+            "n_obs": None,
+            "source": f"{r.get('source_authority') or 'authority'}:{r.get('station_id') or 'station'}",
+            "evidence_at": r.get("captured_at"),
+        }
+        for r in rows
+    }
+
+
 def bank_forecasts(observed, days_back, force):
-    """One row per (city, date, model, lead) whose day has settled."""
+    """One row per forecast whose final station outcome is verified."""
     since = (dt.date.today() - dt.timedelta(days=days_back)).isoformat()
     until = dt.date.today().isoformat()          # today is not settled yet
     done = set() if force else _already_banked("fact_forecast_outcome", since)
@@ -133,15 +160,12 @@ def bank_forecasts(observed, days_back, force):
         if not cur or str(r.get("run_at") or "") > str(cur.get("run_at") or ""):
             best[k] = r
 
-    out, skipped_thin = [], 0
+    out = []
     for (city, date, model, lead), r in best.items():
         if (city, date, model, lead if lead is not None else -1) in done:
             continue
         obs = observed.get((city, date))
         if not obs or obs["max_c"] is None:
-            continue
-        if obs["n_obs"] < MIN_OBS_FOR_A_DAY:
-            skipped_thin += 1
             continue
         out.append({
             "city_key": city, "for_date": date, "model": model,
@@ -151,15 +175,15 @@ def bank_forecasts(observed, days_back, force):
             "observed_max_c": obs["max_c"],
             "obs_source": obs["source"], "n_obs": obs["n_obs"],
         })
-    if skipped_thin:
-        print(f"  {skipped_thin} city-day(s) skipped: fewer than {MIN_OBS_FOR_A_DAY} observations, "
-              f"so the maximum is not trustworthy yet")
     return out
 
 
 def bank_bands(observed, days_back, force):
-    """One row per band whose day has settled: what we thought, what the market
-    charged, and whether it landed there."""
+    """One row per band after its complete ladder is venue-confirmed.
+
+    `observed` contains verified weather evidence when available. It is useful
+    context but never decides YES/NO; the matching Gamma+CLOB winner does.
+    """
     since = (dt.date.today() - dt.timedelta(days=days_back)).isoformat()
     until = dt.date.today().isoformat()
     done = set()
@@ -177,6 +201,27 @@ def bank_bands(observed, days_back, force):
         return []
     by_market = {m["market_id"]: m for m in markets}
 
+    try:
+        market_filter = f"in.({','.join(str(x) for x in by_market)})"
+        market_resolution = {
+            r["market_id"]: r["resolution_state"]
+            for r in rest("v_venue_market_resolution", [
+                ("select", "market_id,resolution_state"),
+                ("market_id", market_filter), ("limit", "5000"),
+            ])
+        }
+        band_resolution = {
+            r["band_id"]: r
+            for r in rest("v_venue_band_resolution", [
+                ("select", "band_id,market_id,settled_yes,resolution_state,confirmed_at"),
+                ("market_id", market_filter), ("limit", "20000"),
+            ])
+        }
+    except Exception as e:
+        print(f"  verified venue outcomes unavailable ({e}); no band outcomes will be frozen",
+              file=sys.stderr)
+        return []
+
     bands = []
     ids = list(by_market)
     for i in range(0, len(ids), 100):
@@ -185,7 +230,10 @@ def bank_bands(observed, days_back, force):
             ("select", "band_id,market_id,band_lo,band_hi,open_low,open_high"),
             ("market_id", f"in.({','.join(str(x) for x in chunk)})"), ("limit", "20000"),
         ])
-    bands = [b for b in bands if b["band_id"] not in done]
+    bands = [b for b in bands
+             if b["band_id"] not in done
+             and market_resolution.get(b["market_id"]) == "confirmed"
+             and band_resolution.get(b["band_id"], {}).get("resolution_state") == "confirmed"]
     if not bands:
         return []
 
@@ -213,13 +261,9 @@ def bank_bands(observed, days_back, force):
         m = by_market[b["market_id"]]
         city, date = m["city_key"], str(m["resolution_date"])
         obs = observed.get((city, date))
-        if not obs or obs["max_c"] is None or obs["n_obs"] < MIN_OBS_FOR_A_DAY:
-            continue
-        mx = obs["max_c"]
+        mx = obs.get("max_c") if obs else None
         lo, hi = b.get("band_lo"), b.get("band_hi")
-        # Half-open [lo, hi), matching the probability lattice's own convention.
-        settled = ((lo is None or b.get("open_low") or mx >= lo)
-                   and (hi is None or b.get("open_high") or mx < hi))
+        settled = bool(band_resolution[b["band_id"]]["settled_yes"])
         p = probs.get(b["band_id"], {})
         e = edges.get(b["band_id"], {})
         out.append({
@@ -238,7 +282,7 @@ def bank_bands(observed, days_back, force):
 
 
 def bank_signals(days_back, force):
-    """Every signal, joined to the trade it produced and how that ended."""
+    """Settled filled signals only, joined to the final trade result."""
     since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days_back)).isoformat()
     done = set()
     if not force:
@@ -269,6 +313,8 @@ def bank_signals(days_back, force):
                 and str(t.get("opened_at") or "") >= str(s.get("fired_at") or "")]
         cand.sort(key=lambda t: str(t.get("opened_at") or ""))
         t = cand[0] if cand else None
+        if not t or not t.get("closed_at") or t.get("net_pnl") is None:
+            continue
         fill = (t or {}).get("avg_fill_price")
         fired = s.get("price_at_fire")
         out.append({
@@ -298,10 +344,12 @@ def main():
     args = ap.parse_args()
 
     observed = _observed_max(args.days)
-    print(f"observed maxima available for {len(observed)} city-day(s)")
+    verified = _verified_weather(args.days)
+    print(f"observed maxima available for {len(observed)} city-day(s); "
+          f"{len(verified)} have final authority evidence")
 
-    fc = bank_forecasts(observed, args.days, args.force)
-    bd = bank_bands(observed, args.days, args.force)
+    fc = bank_forecasts(verified, args.days, args.force)
+    bd = bank_bands(verified, args.days, args.force)
     sg = bank_signals(args.days, args.force)
 
     # upsert, not insert. These tables are immutable and primary-keyed, so a

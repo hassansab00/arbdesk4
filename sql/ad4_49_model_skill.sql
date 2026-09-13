@@ -78,8 +78,12 @@ create table if not exists derived_forecast_skill_model (
   mae_bands            numeric,
   pct_within_one_band  numeric,
   band_width_c         numeric,
+  evidence_scope       text,
   primary key (city_key, model, computed_at, lead_days)
 );
+
+alter table derived_forecast_skill_model
+  add column if not exists evidence_scope text;
 
 comment on table derived_forecast_skill_model is
   'Forecast skill scored per (city, model, lead), the grain at which error is actually generated. derived_forecast_skill holds the pooled number the desk prices with; this holds the breakdown behind it, and is what the probability engine reads when it knows which model produced the forecast it is pricing.';
@@ -130,12 +134,14 @@ with per_model as (
          city_key, model, lead_days, n_days, mae_c, bias_c,
          mae_bands, pct_within_one_band, computed_at
     from derived_forecast_skill_model
+   where evidence_scope = 'verified_outcomes_v1'
    order by city_key, model, lead_days, computed_at desc
 ),
 pooled as (
   select distinct on (city_key, lead_days)
          city_key, lead_days, mae_c as pooled_mae_c, n_days as pooled_n_days
     from derived_forecast_skill
+   where evidence_scope = 'verified_outcomes_v1'
    order by city_key, lead_days, computed_at desc
 )
 select m.city_key,
