@@ -69,6 +69,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_city_day_features": "ad4_21_weather_features.sql",
   "v_city_day_plan": "ad4_34_trade_plan.sql",
   "v_city_peak_approach": "ad4_26_temp_trend.sql",
+  "v_city_prediction_confidence": "ad4_58_city_prediction_confidence.sql",
   "v_city_reasoning": "ad4_23_reasoning.sql",
   "v_city_stats": "ad4_17_city_stats.sql",
   "v_city_temp_trend": "ad4_26_temp_trend.sql",

@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 118 of them - and for each MISSING one names the
+-- and function the app reads - 119 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -80,6 +80,7 @@ with expected(rel, owner, used_by) as (values
     ('v_city_day_features', 'ad4_21_weather_features.sql', ''),
     ('v_city_day_plan', 'ad4_34_trade_plan.sql', '/opportunities'),
     ('v_city_peak_approach', 'ad4_26_temp_trend.sql', '(RightRail), /live, /monitor'),
+    ('v_city_prediction_confidence', 'ad4_58_city_prediction_confidence.sql', ''),
     ('v_city_reasoning', 'ad4_23_reasoning.sql', '(Reasoning)'),
     ('v_city_stats', 'ad4_17_city_stats.sql', ''),
     ('v_city_temp_trend', 'ad4_26_temp_trend.sql', ''),
@@ -220,6 +221,7 @@ begin
     ('v_city_day_features', 'ad4_21_weather_features.sql', ''),
     ('v_city_day_plan', 'ad4_34_trade_plan.sql', '/opportunities'),
     ('v_city_peak_approach', 'ad4_26_temp_trend.sql', '(RightRail), /live, /monitor'),
+    ('v_city_prediction_confidence', 'ad4_58_city_prediction_confidence.sql', ''),
     ('v_city_reasoning', 'ad4_23_reasoning.sql', '(Reasoning)'),
     ('v_city_stats', 'ad4_17_city_stats.sql', ''),
     ('v_city_temp_trend', 'ad4_26_temp_trend.sql', ''),

@@ -664,6 +664,14 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "cities",
     "weather_observations"
   ],
+  "v_city_prediction_confidence": [
+    "cities",
+    "derived_forecast_skill",
+    "bands",
+    "markets",
+    "edges",
+    "band_probabilities"
+  ],
   "v_city_reasoning": [
     "cities",
     "derived_forecast_skill",
