@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 154 of them - and for each MISSING one names the
+-- and function the app reads - 155 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -142,6 +142,7 @@ with expected(rel, owner, used_by) as (values
     ('v_opportunities', 'ad4_13_reconcile.sql', '(Header), (ModelAnalytics), /, /analytics, /board, /globe, /goals, /live, /monitor'),
     ('v_opportunity_context', 'ad4_22_opportunity_context.sql', '/opportunities'),
     ('v_outcome_evidence_health', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', '(DataBank), /predictive, /synthesis'),
+    ('v_paper_desks', 'ad4_59_paper_desks.sql', ''),
     ('v_peak_hour_coverage', 'ad4_37_peak_hour.sql', '/globe'),
     ('v_persistence_skill', 'ad4_21_weather_features.sql', '(ModelAnalytics)'),
     ('v_prediction_ladder', 'ad4_31_predictive.sql', '/predictive'),
@@ -318,6 +319,7 @@ begin
     ('v_opportunities', 'ad4_13_reconcile.sql', '(Header), (ModelAnalytics), /, /analytics, /board, /globe, /goals, /live, /monitor'),
     ('v_opportunity_context', 'ad4_22_opportunity_context.sql', '/opportunities'),
     ('v_outcome_evidence_health', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', '(DataBank), /predictive, /synthesis'),
+    ('v_paper_desks', 'ad4_59_paper_desks.sql', ''),
     ('v_peak_hour_coverage', 'ad4_37_peak_hour.sql', '/globe'),
     ('v_persistence_skill', 'ad4_21_weather_features.sql', '(ModelAnalytics)'),
     ('v_prediction_ladder', 'ad4_31_predictive.sql', '/predictive'),

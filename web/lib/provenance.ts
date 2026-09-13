@@ -931,6 +931,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "markets",
     "weather_resolution_evidence"
   ],
+  "v_paper_desks": [
+    "paper_accounts",
+    "paper_orders",
+    "paper_positions"
+  ],
   "v_peak_hour_coverage": [
     "cities",
     "derived_weather_peak"

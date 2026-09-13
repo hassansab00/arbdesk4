@@ -131,6 +131,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_opportunities": "ad4_13_reconcile.sql",
   "v_opportunity_context": "ad4_22_opportunity_context.sql",
   "v_outcome_evidence_health": "supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql",
+  "v_paper_desks": "ad4_59_paper_desks.sql",
   "v_peak_hour_coverage": "ad4_37_peak_hour.sql",
   "v_persistence_skill": "ad4_21_weather_features.sql",
   "v_prediction_ladder": "ad4_31_predictive.sql",
