@@ -550,13 +550,19 @@ def test_a_database_without_the_p_city_signature_says_which_files_to_rerun(monke
 def test_a_refresh_failure_fails_the_job_rather_than_printing_a_note():
     """It used to be swallowed onto stderr while the job reported green - so
     the cache silently stopped being refreshed and every run said 'ok'. The UI,
-    the analytics views and the model all read that cache."""
+    the analytics views and the model all read that cache.
+
+    The rule now covers every derivation the job performs, not just the
+    feature cache: refresh_weather_peak failed the same silent way for seven
+    days afterwards. `failures` is the list, and tests/test_capacity_job.py
+    drives main() to prove each one sets the exit code.
+    """
     import inspect
 
     import capacity
     src = inspect.getsource(capacity.main)
     assert "features_error" in src
-    assert '"attention" if features_error else "ok"' in src
+    assert '"attention" if failures else "ok"' in src
     assert "return 1" in src
 
 
