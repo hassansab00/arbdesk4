@@ -184,7 +184,7 @@ export default function CampaignsPage() {
         {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
             identical, and only one of them is worth investigating. */}
         <div className="mt-2">
-          <FreshnessRow relations={["ledger", "cities", "fact_signal_outcome", "signals", "derived_forecast_skill", "bands", "book_snapshots", "markets"]} />
+          <FreshnessRow relations={["ledger", "cities", "derived_forecast_skill", "bands", "book_snapshots", "markets"]} />
         </div>
       </div>
 

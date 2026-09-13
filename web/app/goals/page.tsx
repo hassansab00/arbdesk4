@@ -468,7 +468,7 @@ export default function GoalsPage() {
           <>
             The Goals engine needs live YES prices from <code>v_opportunities</code> for at least one
             city. That view is empty until the probability and edge engines have run at least once:
-            GitHub Actions → <b>Probabilities</b>, then <b>Signals</b>. See{" "}
+            GitHub Actions → <b>Probabilities</b>, then <b>Edges</b>. See{" "}
             <code>docs/GO_LIVE.md</code> steps 2–3.
           </>
         }

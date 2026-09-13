@@ -39,7 +39,7 @@ import edge_engine
 import paper_engine
 import probability_engine as pe
 from settlement import find_winning_band
-from signals import run_strategies
+from strategy_rules import run_strategies
 from strategies.base import BandView, Context
 from strategies.conflicts import resolve_conflicts
 

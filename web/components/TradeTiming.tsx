@@ -148,7 +148,7 @@ export function StrategyMirror({ p }: { p: TradePlan }) {
               : "border-border bg-panel2 text-muted line-through decoration-warn/60"
           }`}
           title={on.has(s)
-            ? `${s} is switched on - this will reach Signals on the next engine run.`
+            ? `${s} is switched on - this will be proposed to the paper desk on the next run.`
             : `${s} passes its entry test on this row but is switched OFF, so nothing will be proposed.`}
         >
           {SHORT[s] ?? s}

@@ -130,14 +130,14 @@ export default function StrategiesPage() {
         <h1 className="text-lg font-semibold">Strategies</h1>
         <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted">
           Nothing here proposes a trade until it is switched on, and everything ships off. Turning
-          one on does not place an order — it lets that strategy write to <code>signals</code>, which
-          the paper engine and the Signals list read. The verdict beside each one distinguishes{" "}
+          one on does not place an order — it lets that strategy propose one to the paper desk.
+          The verdict beside each one distinguishes{" "}
           <b>has never fired</b> from <b>loses money</b>; a coloured toggle cannot.
         </p>
         {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
             identical, and only one of them is worth investigating. */}
         <div className="mt-2">
-          <FreshnessRow relations={["fact_signal_outcome", "signals", "derived_forecast_skill", "bands", "book_snapshots", "cities", "markets", "paper_trades"]} />
+          <FreshnessRow relations={["derived_forecast_skill", "bands", "book_snapshots", "cities", "markets", "paper_trades"]} />
         </div>
       </div>
 
@@ -147,7 +147,7 @@ export default function StrategiesPage() {
         </span>
         {onCount === 0 && (
           <span className="text-warn">
-            Nothing is running. That is why Signals is empty — it is a safety default, not a fault.
+            Nothing is running. That is why the paper desk is idle — it is a safety default, not a fault.
           </span>
         )}
         <Link href="/opportunities" className="ml-auto text-accent hover:underline">

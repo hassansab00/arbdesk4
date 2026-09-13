@@ -46,11 +46,6 @@ export default function AnalyticsPage() {
   const boardQ = useQuery<StrategyBoardRow[]>(
     () => supabase.from("v_strategy_board").select("*"), [], 60000
   );
-  const signalsQ = useQuery<Array<{ strategy_id: string }>>(
-    () => supabase.from("signals").select("strategy_id").gte("fired_at", new Date(Date.now() - 7 * 864e5).toISOString()),
-    []
-  );
-
   const skill = useMemo(() => {
     const latest = new Map<string, SkillRow>();
     for (const r of skillQ.data ?? []) if (!latest.has(r.city_key)) latest.set(r.city_key, r);
@@ -327,7 +322,7 @@ export default function AnalyticsPage() {
         n={3}
         title="Did it make money?"
         body="The first group where a trade has to have happened. On a desk with every strategy switched off these are empty, and that is early rather than broken - the Strategies page is where that changes."
-        reads={["paper_trades", "signals", "ledger"]}
+        reads={["paper_trades", "ledger"]}
       />
 
       {/* ================================================= P&L curve ===== */}
@@ -357,13 +352,11 @@ export default function AnalyticsPage() {
         </div>
         <StrategyAttribution
           trades={tradesQ.data ?? []}
-          signals={signalsQ.data ?? []}
           board={boardQ.data ?? []}
           loading={tradesQ.loading}
           error={tradesQ.error}
           onRetry={() => { tradesQ.refresh(); boardQ.refresh(); }}
         />
-        <InlineError message={signalsQ.error} />
       </section>
 
       {/* ============================================== the data bank ==== */}
@@ -833,8 +826,8 @@ function PnlCurve({ trades, enabledCount, loading, error, onRetry }: { trades: T
 
 /* -------------------------------------------------- strategy attribution -- */
 
-function StrategyAttribution({ trades, signals, board, loading, error, onRetry }: {
-  trades: TradeRow[]; signals: Array<{ strategy_id: string }>; board: StrategyBoardRow[];
+function StrategyAttribution({ trades, board, loading, error, onRetry }: {
+  trades: TradeRow[]; board: StrategyBoardRow[];
   loading: boolean; error: string | null; onRetry: () => void;
 }) {
   const byStrategy = useMemo(() => {
@@ -847,12 +840,6 @@ function StrategyAttribution({ trades, signals, board, loading, error, onRetry }
     }
     return Array.from(g.entries()).map(([id, v]) => ({ id, ...v, winRate: v.n ? v.wins / v.n : null }));
   }, [trades]);
-
-  const freq = useMemo(() => {
-    const f: Record<string, number> = {};
-    for (const s of signals) f[s.strategy_id] = (f[s.strategy_id] ?? 0) + 1;
-    return f;
-  }, [signals]);
 
   // NO TRADES IS NOT AN EMPTY BOX. It has a cause, and the cause decides what
   // to do about it: every strategy off is one click on the Strategies page,
@@ -887,9 +874,9 @@ function StrategyAttribution({ trades, signals, board, loading, error, onRetry }
             </>
           ) : (
             <>
-              <b className="text-warn">Signals are firing but nothing has settled.</b>{" "}
+              <b className="text-warn">Strategies are proposing but nothing has settled.</b>{" "}
               {waiting > 0 && <>{waiting} are waiting for approval. </>}
-              The gap is fills and settlement, not signal generation.
+              The gap is fills and settlement, not proposal generation.
             </>
           )}
         </p>
@@ -933,10 +920,8 @@ function StrategyAttribution({ trades, signals, board, loading, error, onRetry }
       emptyTitle="No settled trades yet"
       emptyBody={
         <>
-          Attribution needs closed paper trades.
-          {Object.keys(freq).length > 0 && (
-            <> Signals <b>are</b> firing ({fmtInt(Object.values(freq).reduce((a, b) => a + b, 0))} in the last 7 days), so the gap is settlement, not signal generation.</>
-          )}
+          Attribution needs closed paper trades. It stays empty until the paper
+          desk has opened and settled at least one.
         </>
       }
       onRetry={onRetry}
@@ -956,7 +941,7 @@ function StrategyAttribution({ trades, signals, board, loading, error, onRetry }
               </div>
               <div className={`font-mono text-lg ${pnlColor(s.net)}`}>{fmtUsd(s.net, { signed: true })}</div>
               <div className="text-xs text-muted">
-                {s.n} trades · win rate {fmtPct(s.winRate)} · {freq[s.id] ?? 0} signals in 7d
+                {s.n} trades · win rate {fmtPct(s.winRate)}
               </div>
               {s.n < MIN_TRADES_FOR_RATE && (
                 <div className="mt-1 text-[10px] text-warn">

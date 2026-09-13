@@ -308,7 +308,7 @@ def test_malformed_levels_are_dropped_not_fatal():
     assert edge_engine.levels_for_side(snap, "YES") == [{"price": 0.3, "size": 1.0}]
 
 
-@pytest.mark.parametrize("script", ["edge_engine.py", "signals.py"])
+@pytest.mark.parametrize("script", ["edge_engine.py"])
 def test_ladder_readers_use_the_view_not_the_raw_table(script):
     """Reading book_snapshots directly is the bug; guard against it returning.
 
@@ -322,42 +322,6 @@ def test_ladder_readers_use_the_view_not_the_raw_table(script):
     # _latest_by_band(table, ...) helper that wraps it
     for call in ('rest("book_snapshots"', '_latest_by_band("book_snapshots"'):
         assert call not in src, f"{script} still fetches ladders from book_snapshots"
-
-
-# --------------------------------------------------------------------------
-# signals.city_key
-#
-# The column has existed the whole time and nothing wrote it. A signal that
-# cannot name its city is the reason the UI's alert panel read
-#
-#     Desk / critical / implausible_edge_anomaly
-#
-# for the only signal type that was firing - no place, no trade, no action.
-# --------------------------------------------------------------------------
-def test_signal_rows_carry_the_city(monkeypatch):
-    import signals as sig_mod
-
-    class FakeBand:
-        def __init__(self, band_id, city_key):
-            self.band_id, self.city_key = band_id, city_key
-
-    bands = [FakeBand("b-1", "chicago"), FakeBand("b-2", "miami")]
-    band_city = {str(b.band_id): b.city_key for b in bands}
-
-    # the exact expression signals.py uses, on the exact row shape it builds
-    row = {"strategy_id": "system", "band_id": "b-1", "reason": "implausible_edge_anomaly"}
-    if not row.get("city_key") and row.get("band_id"):
-        row["city_key"] = band_city.get(str(row["band_id"]))
-    assert row["city_key"] == "chicago"
-
-    # a desk-level signal has no band, and must not invent a city
-    deskrow = {"strategy_id": "system", "band_id": None, "reason": "job_stale:x:9h"}
-    if not deskrow.get("city_key") and deskrow.get("band_id"):
-        deskrow["city_key"] = band_city.get(str(deskrow["band_id"]))
-    assert deskrow.get("city_key") is None
-
-    # and the map is built the way the module builds it
-    assert sig_mod is not None
 
 
 def test_band_city_map_skips_bands_without_an_id():
@@ -632,37 +596,6 @@ def test_the_features_cte_is_inlined_so_a_filter_can_reach_the_index():
     assert "with obs as not materialized (" in view
 
 
-def test_a_signal_row_has_the_same_keys_with_or_without_a_band():
-    """city_key used to be ADDED only when the signal had a band, so one batch
-    carried two key shapes and PostgREST refused the whole write. common.insert
-    groups by shape now, but the row should be uniform regardless."""
-    import inspect
-
-    import signals
-    src = inspect.getsource(signals.main)
-    assert 'row["city_key"] = row.get("city_key") or (' in src
-    assert 'if not row.get("city_key") and row.get("band_id"):' not in src, \
-        "the conditional add is what produced two shapes"
-
-
-# --------------------------------------------------------------------------
-# Archive Observations: OFFSET paging over a non-unique sort key
-#
-# cold_rows() paged with `order=valid_at.asc` + limit/offset. valid_at is
-# nowhere near unique - on a 710k-row archive there are 19,200 distinct
-# timestamps, so ~37 rows share each one - and Postgres guarantees no order
-# among ties. Two pages fetched under different plans return different rows:
-# measured on a shuffled copy of that archive, the SAME page (offset 50000)
-# differed by 18 rows between an index-scan plan and a seq-scan plan.
-#
-# A row missed that way is never written to the archive, and the prune deletes
-# by date, so it is deleted anyway. The round-trip check cannot catch it: it
-# compares the upload against the same short list. Silent, permanent loss, in
-# the one job that deletes - reintroduced by the paging written to prevent it.
-#
-# Keyset paging on obs_id (the primary key) is a total order: 0 rows differed
-# across the same two plans, and a full walk returned all 710,400 exactly once.
-# --------------------------------------------------------------------------
 def test_the_export_pages_on_the_primary_key_not_on_valid_at():
     import inspect
 

@@ -666,14 +666,14 @@ export default function PredictivePage() {
         <div className="space-y-2">
           <h2 className="text-sm font-semibold">Bankroll</h2>
           <p className="text-xs leading-relaxed text-muted">
-            Realised P&amp;L, cumulative, from filled signals only — a signal that never filled cost
-            nothing and proved nothing. The win rate beside it is running, not final.
+            Realised P&amp;L, cumulative, from filled paper trades only — a proposal that never
+            filled cost nothing and proved nothing. The win rate beside it is running, not final.
           </p>
           <DataState
           relation="v_bankroll_curve"
             loading={bankQ.loading} error={bankQ.error} isEmpty={bank.length === 0}
             emptyTitle="No filled trades yet"
-            emptyBody="Every strategy ships disabled. Turn one on, then Actions → Signal Engine."
+            emptyBody="Every strategy ships disabled, and the paper desk has filled nothing yet."
             onRetry={bankQ.refresh}
           >
             <>
