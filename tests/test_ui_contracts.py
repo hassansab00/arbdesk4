@@ -162,14 +162,13 @@ def test_paper_commands_wake_a_server_side_worker_without_leaking_its_secret():
         "web/components/PaperExitPolicy.tsx",
     ))
     assert "process.env.PAPER_WORKER_TOKEN" in worker_route
-    assert "if (!workerUrl || !workerToken)" not in worker_route
     assert "NEXT_PUBLIC_PAPER" not in worker_route + desk_route + clients
     assert "auth.getUser" not in worker_route + desk_route and "signInWithPassword" not in clients
     assert "process.env.SUPABASE_SERVICE_KEY" in desk_route
     assert "functions/v1/paper-desk" in desk_route
     assert "SUPABASE_SERVICE_KEY" not in clients and "service_role" not in clients
     assert "sameOrigin(request)" in desk_route
-    assert "workerToken ? { Authorization: `Bearer ${workerToken}` } : undefined" in worker_route
+    assert "Authorization: `Bearer ${workerToken}`" in worker_route
     for path in (
         "web/app/paper-trades/page.tsx",
         "web/components/PaperAutomation.tsx",
