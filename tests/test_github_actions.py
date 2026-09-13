@@ -119,7 +119,19 @@ def runs_per_30_days(expr):
 # Budget 360: room to add something, not room to drift back. At ~2 billed
 # minutes a run that is ~670 of the 2,000, leaving the rest for CI and for a
 # manual backfill, which is the one job here that can run for hours.
-SCHEDULED_RUN_BUDGET = 360
+#
+# 380 NOW, AND THE THIRTY IS forecasts.yml FINALLY HAVING A SCHEDULE.
+#
+# It was workflow_dispatch only, so the forecast archive was extended only
+# when somebody opened Actions and filled in a form - which is why it had not
+# been extended. Every input already defaults sensibly (blank start/end means
+# "the last ten days"), so a nightly run needs no parameters and simply closes
+# the recent gap before the 04:00 daily pipeline reads it.
+#
+# 365 of 380, ~730 of the 2,000 free minutes. This is the "room to add
+# something" being spent once, deliberately, on a feed that was not running at
+# all - not drift.
+SCHEDULED_RUN_BUDGET = 380
 
 
 def test_the_scheduled_workflows_fit_in_the_minute_allowance():

@@ -2,6 +2,20 @@ name: Forecasts (Open-Meteo Previous Runs)
 # Each resumable link is bounded to 25 job minutes, including setup.
 # The wrapper invokes scripts/ingest_forecasts.py (provenance source).
 on:
+  # IT RUNS ON ITS OWN NOW.
+  #
+  # This was workflow_dispatch only, so the forecast archive was never
+  # extended unless somebody opened Actions and filled in a form. Every input
+  # below already has a working default - blank start/end means "the last ten
+  # days" - so a scheduled run needs no parameters at all and simply catches
+  # up the recent gap.
+  #
+  # 03:10 UTC, ahead of the 04:00 daily pipeline, so the skill and outcome
+  # steps that read this archive see the newest rows rather than yesterday's.
+  # Deliberately not more often: this is a historical archive, and the FORWARD
+  # forecast the desk prices from comes from n8n's P1.5 every three hours.
+  schedule:
+    - cron: '10 3 * * *'
   workflow_dispatch:
     inputs:
       start:
@@ -41,8 +55,14 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # `inputs` is EMPTY on a schedule event - the defaults declared above
+          # apply to workflow_dispatch only, so a cron run would otherwise
+          # hand the script "" for depth, auto_continue and budget. These
+          # fallbacks are the same values, restated where cron can reach them.
+          # start/end stay blank on purpose: blank means "the last ten days",
+          # which is exactly what a nightly catch-up wants.
           BACKFILL_START: ${{ inputs.start }}
           BACKFILL_END: ${{ inputs.end }}
-          BACKFILL_DEPTH: ${{ inputs.depth }}
-          BACKFILL_AUTO: ${{ inputs.auto_continue }}
-          BACKFILL_BUDGET: ${{ inputs.chain_budget_minutes }}
+          BACKFILL_DEPTH: ${{ inputs.depth || '0' }}
+          BACKFILL_AUTO: ${{ inputs.auto_continue || 'true' }}
+          BACKFILL_BUDGET: ${{ inputs.chain_budget_minutes || '75' }}

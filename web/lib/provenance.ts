@@ -491,7 +491,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "weather_forecasts": [
     {
-      "cadence": "only when you run it",
+      "cadence": "daily",
       "file": "forecasts.yml",
       "how": "scripts/ingest_forecasts.py",
       "kind": "action",

@@ -148,15 +148,27 @@ export function ErrorBox({
             missing. Supabase gives the browser&apos;s key a few seconds per query, and this one
             went past it.
           </p>
+          {/*
+            This used to say "run ad4_44_indexes.sql" and nothing else, which
+            sent you to fix indexes that were already there. Measured as anon
+            against the live database, the views this fires on answer in
+            130-230ms at rest; they only pass the limit while a pipeline job
+            is writing hard. Contention and a missing index are different
+            problems with different fixes, so the panel now names both instead
+            of asserting the second one.
+          */}
           <p>
-            Run <code className="rounded bg-panel2 px-1">sql/ad4_44_indexes.sql</code>. Four of the
-            busiest tables shipped with no index except a primary key nobody queries by, so every
-            lookup was a full table scan — which is fast while a table is small and becomes this
-            once it is not. It is safe to run at any time and changes no data.
+            <strong className="text-text">Usually contention, not a missing index.</strong> A
+            pipeline job writing at the same time is the common cause — the query is normally well
+            inside the limit and only exceeds it while something heavy is running. Retry in a
+            moment.
           </p>
           <p>
-            Then <code className="rounded bg-panel2 px-1">select * from v_table_scan_risk</code>{" "}
-            lists any table still carrying nothing but its primary key.
+            If it fails repeatedly while nothing else is running, then it is the query:{" "}
+            <code className="rounded bg-panel2 px-1">sql/ad4_44_indexes.sql</code> is safe to re-run
+            at any time and changes no data, and{" "}
+            <code className="rounded bg-panel2 px-1">select * from v_table_scan_risk</code> lists
+            any table still carrying nothing but its primary key.
           </p>
         </div>
       )}
