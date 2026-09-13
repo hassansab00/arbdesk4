@@ -57,12 +57,31 @@ begin
     return;
   end if;
 
-  -- Read for the browser roles, exactly as ad4_rls does for the weather
-  -- tables. No insert, no update, no delete: the evidence table is written
-  -- by the service key and by nothing else.
+  -- THE VERDICT COLUMNS ONLY. THIS WAS A TABLE-WIDE GRANT AND THAT WAS WRONG.
+  --
+  -- The first version of this file did `grant select on
+  -- weather_resolution_evidence`, which covers every column - including
+  -- raw_payload and source_url. Those two are the proprietary half: the raw
+  -- station response and where it was fetched from.
+  --
+  -- supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql is
+  -- explicit about it - "Raw payloads and source URLs remain worker-only even
+  -- in the single-user/no-login deployment" - and grants exactly the thirteen
+  -- columns below. That migration had not been applied to the live database
+  -- when this file first ran, so nothing narrowed the grant back down and
+  -- anon could read both columns until this was corrected.
+  --
+  -- The list is copied from that migration verbatim and must stay equal to
+  -- it. This file exists to make the browser's queries work, not to widen
+  -- what the browser may see; if the two ever disagree, that one is right.
   foreach r in array array['anon', 'authenticated'] loop
     if exists (select 1 from pg_roles where rolname = r) then
-      execute format('grant select on public.weather_resolution_evidence to %I', r);
+      execute format('revoke select on public.weather_resolution_evidence from %I', r);
+      execute format($g$grant select (evidence_id, city_key, for_date, observed_max_c,
+                                      unit, source_authority, station_id, record_status,
+                                      observed_at, captured_at, parser_version,
+                                      payload_sha256, supersedes_evidence_id)
+                        on public.weather_resolution_evidence to %I$g$, r);
     end if;
   end loop;
 
