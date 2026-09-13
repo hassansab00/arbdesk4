@@ -100,6 +100,7 @@ insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plai
   ('paper_trade_plans',         'created_at',   null, 'trading',   'Strategy proposals and recorded approval decisions.'),
   ('paper_book_evidence',       'captured_at',  null, 'trading',   'Direct token books retained as fill evidence.'),
   ('paper_resolution_evidence', 'captured_at',  null, 'trading',   'Matching final Gamma and CLOB resolution evidence.'),
+  ('weather_resolution_evidence','captured_at', null, 'databank',  'Versioned final station-authority evidence for city-day maximums.'),
   ('paper_position_settlements','settled_at',    null, 'trading',   'Paper payouts and released cost basis at venue resolution.'),
   ('research_captures',         'captured_at',  null, 'databank',  'Private predictive and synthesis revisions; unchanged records are deduplicated.'),
   ('ledger',                    'recorded_at',  null, 'trading',   'Every cash movement. Accumulates; never stale.'),

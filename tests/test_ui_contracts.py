@@ -162,13 +162,14 @@ def test_paper_commands_wake_a_server_side_worker_without_leaking_its_secret():
         "web/components/PaperExitPolicy.tsx",
     ))
     assert "process.env.PAPER_WORKER_TOKEN" in worker_route
+    assert "if (!workerUrl || !workerToken)" not in worker_route
     assert "NEXT_PUBLIC_PAPER" not in worker_route + desk_route + clients
     assert "auth.getUser" not in worker_route + desk_route and "signInWithPassword" not in clients
     assert "process.env.SUPABASE_SERVICE_KEY" in desk_route
     assert "functions/v1/paper-desk" in desk_route
     assert "SUPABASE_SERVICE_KEY" not in clients and "service_role" not in clients
     assert "sameOrigin(request)" in desk_route
-    assert "Authorization: `Bearer ${workerToken}`" in worker_route
+    assert "workerToken ? { Authorization: `Bearer ${workerToken}` } : undefined" in worker_route
     for path in (
         "web/app/paper-trades/page.tsx",
         "web/components/PaperAutomation.tsx",
@@ -312,7 +313,8 @@ def test_a_view_resolves_to_the_tables_underneath_it():
     src = _read("web/lib/provenance.ts")
     views = json.loads(re.search(r"VIEW_TABLES: Record<string, string\[\]> = (\{.*?\});\n\n",
                                  src, re.S).group(1))
-    assert views.get("v_calibration") == ["fact_band_outcome"]
+    assert "fact_band_outcome" in views.get("v_calibration", [])
+    assert "paper_resolution_evidence" in views.get("v_calibration", [])
     assert "fact_forecast_outcome" in views.get("v_prediction_scorecard", [])
     assert "book_snapshots" in views.get("v_opportunities", [])
 

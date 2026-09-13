@@ -115,7 +115,8 @@ def test_an_overconfident_city_gets_a_wider_sigma():
     pe = _engine()
     pe._calibration_cache = {
         "over": {"city_key": "over", "sigma_multiplier": 1.42, "applied": True,
-                 "n_days": 180, "z_sd": 1.42, "reason": "42% too narrow"},
+                 "n_days": 180, "z_sd": 1.42, "reason": "42% too narrow",
+                 "evidence_scope": pe.VERIFIED_EVIDENCE_SCOPE},
     }
     mult, row = pe._calibration_for("over")
     assert mult == 1.42 and row is not None
@@ -135,7 +136,8 @@ def test_an_unapplied_row_changes_nothing():
     pe = _engine()
     pe._calibration_cache = {
         "thin": {"city_key": "thin", "sigma_multiplier": 2.77, "applied": False,
-                 "n_days": 10, "z_sd": 2.77, "reason": "10 days"},
+                 "n_days": 10, "z_sd": 2.77, "reason": "10 days",
+                 "evidence_scope": pe.VERIFIED_EVIDENCE_SCOPE},
     }
     assert pe._calibration_for("thin") == (1.0, None)
 
@@ -144,8 +146,37 @@ def test_a_nonsense_multiplier_is_ignored():
     pe = _engine()
     for bad in (0, -1, None, "abc"):
         pe._calibration_cache = {"c": {"city_key": "c", "sigma_multiplier": bad,
-                                       "applied": True, "n_days": 99}}
+                                       "applied": True, "n_days": 99,
+                                       "evidence_scope": pe.VERIFIED_EVIDENCE_SCOPE}}
         assert pe._calibration_for("c")[0] == 1.0, bad
+
+
+def test_legacy_calibration_adjustment_is_ignored():
+    pe = _engine()
+    pe._calibration_cache = {
+        "legacy": {"city_key": "legacy", "sigma_multiplier": 1.8,
+                   "applied": True, "n_days": 500, "evidence_scope": None},
+    }
+    assert pe._calibration_for("legacy") == (1.0, None)
+
+
+def test_legacy_platt_map_is_ignored(monkeypatch):
+    pe = _engine()
+    monkeypatch.setattr(pe, "rest", lambda *_: [{"value": {
+        "method": "platt", "a": 0.5, "b": 0.1, "n": 500, "applies": True,
+    }}])
+    pe._calibration = None
+    assert pe._calibration_map() is None
+
+
+def test_verified_platt_map_is_accepted(monkeypatch):
+    pe = _engine()
+    monkeypatch.setattr(pe, "rest", lambda *_: [{"value": {
+        "method": "platt", "a": 0.5, "b": 0.1, "n": 500, "applies": True,
+        "evidence_scope": pe.VERIFIED_EVIDENCE_SCOPE,
+    }}])
+    pe._calibration = None
+    assert pe._calibration_map()["a"] == 0.5
 
 
 def test_widening_sigma_lowers_confidence():

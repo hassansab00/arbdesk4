@@ -182,11 +182,13 @@ def _view_sources():
     out = {}
     hdr = re.compile(
         r"create\s+(?:or\s+replace\s+)?(?:materialized\s+)?view\s+(?:if\s+not\s+exists\s+)?"
-        r"(?:public\.)?([a-z0-9_]+)\s+as", re.I)
+        r"(?:public\.)?([a-z0-9_]+)\s+(?:with\s*\([^)]*\)\s*)?as", re.I)
     ref = re.compile(r"\b(?:from|join)\s+(?:public\.)?([a-z_][a-z0-9_]*)", re.I)
     noise = {"select", "lateral", "unnest", "generate_series", "jsonb_array_elements",
              "jsonb_each", "jsonb_to_recordset", "values", "only", "rows"}
-    for path in sorted(glob.glob(os.path.join(ROOT, "sql", "*.sql"))):
+    paths = (sorted(glob.glob(os.path.join(ROOT, "sql", "*.sql")))
+             + sorted(glob.glob(os.path.join(ROOT, "supabase", "migrations", "*.sql"))))
+    for path in paths:
         src = re.sub(r"--[^\n]*", " ", open(path).read())
         marks = [(m.start(), m.group(1).lower()) for m in hdr.finditer(src)]
         for i, (pos, name) in enumerate(marks):

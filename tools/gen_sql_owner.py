@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate web/lib/sqlOwner.ts AND sql/ad4_98_ui_health.sql from sql/*.sql.
+"""Regenerate ownership/health metadata from SQL files and migrations.
 
 A missing-relation error should name the file that creates it. Hand-listing
 that mapping guarantees it goes stale, so it is derived, and both consumers
@@ -30,11 +30,15 @@ def _strip_comments(src: str) -> str:
 
 def build() -> dict:
     owner = {}
-    for f in sorted(glob.glob(os.path.join(os.path.dirname(__file__), "..", "sql", "*.sql"))):
+    root = os.path.join(os.path.dirname(__file__), "..")
+    paths = (sorted(glob.glob(os.path.join(root, "sql", "*.sql")))
+             + sorted(glob.glob(os.path.join(root, "supabase", "migrations", "*.sql"))))
+    for f in paths:
         src = _strip_comments(open(f).read())
-        base = os.path.basename(f)
-        for pat in (r"create\s+(?:or\s+replace\s+)?(?:materialized\s+)?view\s+(?:if\s+not\s+exists\s+)?([a-z0-9_]+)",
-                    r"create\s+table\s+(?:if\s+not\s+exists\s+)?([a-z0-9_]+)"):
+        rel = os.path.relpath(f, root)
+        base = os.path.basename(f) if rel.startswith("sql" + os.sep) else rel
+        for pat in (r"create\s+(?:or\s+replace\s+)?(?:materialized\s+)?view\s+(?:if\s+not\s+exists\s+)?(?:public\.)?([a-z0-9_]+)",
+                    r"create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?([a-z0-9_]+)"):
             for m in re.finditer(pat, src, re.I):
                 name = m.group(1).lower()
                 if name in NOT_A_NAME:

@@ -63,14 +63,17 @@ jobs:
         timeout-minutes: 30
         run: python scripts/ingest_forecasts.py
 
-      # 2. Settle what resolved. Everything below reads settled outcomes.
-      - name: Settlement sweep
+      # 2. Capture final venue truth. Gamma and CLOB must agree on condition,
+      #    token identities and winner. This also settles matching paper
+      #    positions, but collects evidence even when no position existed.
+      - name: Venue-confirmed settlement sweep
         if: ${{ !cancelled() }}
         timeout-minutes: 20
-        run: python scripts/settlement.py
+        run: python scripts/paper_settlement.py
 
-      # 3. Measure forecast skill against those outcomes - this is where
-      #    mae_c comes from, and mae_c sets the width of every distribution.
+      # 3. Measure forecast skill only against final station-authority
+      #    evidence. Until that evidence exists, this writes nothing rather
+      #    than training sigma on an incomplete running maximum.
       - name: Measure forecast skill
         if: ${{ !cancelled() }}
         timeout-minutes: 30

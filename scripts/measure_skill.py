@@ -16,44 +16,39 @@ so "bands of error" is computed per city in its own unit.
 """
 import sys, json, datetime as dt
 from collections import defaultdict
-from common import rest, upsert, log_run, get_cities, city_local_date
+from common import rest, upsert, log_run, get_cities
+
+VERIFIED_EVIDENCE_SCOPE = "verified_outcomes_v1"
 
 def daily_max_observed(city_key, start, end, timezone):
-    """Highest observed temp per LOCAL day, from our own archive.
+    """Final maximums from versioned authority evidence only.
 
-    The day is the city's own calendar day, because that is the day
-    weather_forecasts.for_date holds and the day the market settles on. It
-    used to be `valid_at[:10]` - a slice of the UTC string - which for Tokyo
-    put every reading after 15:00 local into the next day's bucket and for
-    New York put every reading before 20:00 local into the previous one. The
-    resulting error went straight into mae_c, and mae_c sets sigma.
+    The raw observation archive still powers live-weather features. It cannot
+    set model skill: missing late readings would make an incomplete running
+    maximum look final and feed that error directly into sigma and sizing.
+    `timezone` stays in the signature for compatibility with older callers;
+    the evidence row is already keyed to the authority's local date.
     """
-    out, offset, page = defaultdict(lambda: None), 0, 10000
+    out, offset, page = {}, 0, 10000
     while True:
-        rows = rest("weather_observations", [
-            ("select", "valid_at,temp_c"),
+        rows = rest("v_verified_weather_outcomes", [
+            ("select", "for_date,observed_max_c"),
             ("city_key", f"eq.{city_key}"),
-            # PostgREST range syntax: repeat the column key for each bound
-            # of the range (documented pattern), rather than an ad-hoc
-            # "and" combinator wrapping a single condition.
-            ("valid_at", f"gte.{start.isoformat()}"),
-            ("valid_at", f"lte.{end.isoformat()}"),
-            ("order", "valid_at.asc"),
+            ("for_date", f"gte.{start.isoformat()}"),
+            ("for_date", f"lte.{end.isoformat()}"),
+            ("order", "for_date.asc"),
             ("limit", str(page)), ("offset", str(offset)),
         ])
         if not rows:
             break
         for r in rows:
-            if r.get("temp_c") is None:
+            if r.get("observed_max_c") is None:
                 continue
-            d = city_local_date(r["valid_at"], timezone)
-            cur = out[d]
-            if cur is None or r["temp_c"] > cur:
-                out[d] = r["temp_c"]
+            out[str(r["for_date"])] = r["observed_max_c"]
         if len(rows) < page:
             break
         offset += page
-    return {k: v for k, v in out.items() if v is not None}
+    return out
 
 MIN_SAMPLE = 10          # below this a mean absolute error is not a measurement
 
@@ -167,7 +162,8 @@ def main():
             if stats is None:
                 continue
             out_rows.append({"city_key": ck, "computed_at": computed_at,
-                             "lead_days": lead, **stats})
+                             "lead_days": lead,
+                             "evidence_scope": VERIFIED_EVIDENCE_SCOPE, **stats})
             if lead == 1:
                 summary.append((ck, stats["n_days"], stats["mae_c"],
                                 stats["bias_c"], stats["mae_bands"],
@@ -179,7 +175,7 @@ def main():
                 continue
             model_rows.append({"city_key": ck, "model": model,
                                "computed_at": computed_at, "lead_days": lead,
-                               **stats})
+                               "evidence_scope": VERIFIED_EVIDENCE_SCOPE, **stats})
 
     if model_rows:
         upsert("derived_forecast_skill_model", model_rows,

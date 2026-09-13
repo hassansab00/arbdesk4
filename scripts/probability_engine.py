@@ -38,6 +38,8 @@ import regime
 
 MAE_TO_SIGMA = 1.2533          # sourced: sigma = MAE * sqrt(pi/2) for a normal distribution
 CALIBRATION_VERSION = "v0_normal_lattice_no_calibration"
+VERIFIED_EVIDENCE_SCOPE = "verified_outcomes_v1"
+COLD_START_MAE_C = 4.0
 
 # --------------------------------------------------------------------------
 # Calibration.
@@ -67,7 +69,10 @@ def _calibration_map():
         try:
             rows = rest("settings", [("select", "value"), ("key", "eq.calibration_map")])
             v = rows[0]["value"] if rows else None
-            if isinstance(v, dict) and v.get("applies") and v.get("method") == "platt":
+            if (isinstance(v, dict)
+                    and v.get("applies")
+                    and v.get("method") == "platt"
+                    and v.get("evidence_scope") == VERIFIED_EVIDENCE_SCOPE):
                 a, b = float(v["a"]), float(v["b"])
                 _calibration = {"a": a, "b": b, "n": v.get("n"), "note": v.get("note")}
         except Exception as e:
@@ -251,8 +256,10 @@ def _calibration_for(city_key):
     if _calibration_cache is None:
         _calibration_cache = {}
         try:
-            for r in rest("derived_calibration_adjustment",
-                          [("select", "city_key,sigma_multiplier,applied,n_days,z_sd,reason")]):
+            for r in rest("derived_calibration_adjustment", [
+                    ("select", "city_key,sigma_multiplier,applied,n_days,z_sd,reason,evidence_scope"),
+                    ("evidence_scope", f"eq.{VERIFIED_EVIDENCE_SCOPE}"),
+            ]):
                 _calibration_cache[r["city_key"]] = r
         except Exception as e:
             # Not installed is not a failure: it is a desk that has not run
@@ -261,7 +268,8 @@ def _calibration_for(city_key):
                   f"sigma is measured skill alone. Run sql/ad4_45_calibration_feedback.sql.",
                   file=sys.stderr)
     row = _calibration_cache.get(city_key)
-    if not row or not row.get("applied"):
+    if (not row or not row.get("applied")
+            or row.get("evidence_scope") != VERIFIED_EVIDENCE_SCOPE):
         return 1.0, None
     try:
         m = float(row.get("sigma_multiplier") or 1.0)
@@ -335,8 +343,9 @@ def _global_skill(lead_days):
         return _global_skill_cache[lead_days]
     try:
         rows = rest_all("derived_forecast_skill", [
-            ("select", "city_key,lead_days,n_days,mae_c,computed_at"),
+            ("select", "city_key,lead_days,n_days,mae_c,computed_at,evidence_scope"),
             ("lead_days", f"eq.{lead_days}"),
+            ("evidence_scope", f"eq.{VERIFIED_EVIDENCE_SCOPE}"),
         ], order="city_key,computed_at.desc", page_size=500)
     except Exception as e:
         print(f"  note: global skill fallback unavailable ({e})", file=sys.stderr)
@@ -372,9 +381,10 @@ def _pooled_skill(city_key, lead_days):
     key = (city_key, lead_days)
     if key not in _skill_cache:
         rows = rest("derived_forecast_skill", [
-            ("select", "city_key,lead_days,n_days,mae_c,bias_c,computed_at"),
+            ("select", "city_key,lead_days,n_days,mae_c,bias_c,computed_at,evidence_scope"),
             ("city_key", f"eq.{city_key}"),
             ("lead_days", f"eq.{lead_days}"),
+            ("evidence_scope", f"eq.{VERIFIED_EVIDENCE_SCOPE}"),
             ("order", "computed_at.desc"),
             ("limit", "1"),
         ])
@@ -388,10 +398,11 @@ def _model_skill(city_key, model, lead_days):
     if key not in _skill_cache:
         try:
             rows = rest("derived_forecast_skill_model", [
-                ("select", "city_key,model,lead_days,n_days,mae_c,bias_c,computed_at"),
+                ("select", "city_key,model,lead_days,n_days,mae_c,bias_c,computed_at,evidence_scope"),
                 ("city_key", f"eq.{city_key}"),
                 ("model", f"eq.{model}"),
                 ("lead_days", f"eq.{lead_days}"),
+                ("evidence_scope", f"eq.{VERIFIED_EVIDENCE_SCOPE}"),
                 ("order", "computed_at.desc"),
                 ("limit", "1"),
             ])
@@ -479,34 +490,48 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
                 pricing_eligible = False
                 pricing_block_reason = "no_city_skill"
                 break
+    # A fresh installation has no verified outcome history at all. It should
+    # still render a complete probability surface, but a historical error
+    # estimate must not be invented from quarantined legacy facts. Use an
+    # explicitly conservative fixed width and make the result ineligible for
+    # trading until independent outcome evidence can replace it.
+    if skill is None or skill.get("mae_c") is None:
+        skill = {
+            "lead_days": lead_days,
+            "n_days": 0,
+            "mae_c": COLD_START_MAE_C,
+            "bias_c": 0.0,
+        }
+        skill_lead_days = lead_days
+        skill_proxy = True
+        skill_source = "fixed_cold_start"
+        pricing_eligible = False
+        pricing_block_reason = "no_verified_skill"
     reg = regime.classify(city_key, for_date, history_cache)
     confidence = reg.confidence
 
-    if skill is None:
-        print(f"  TODO: unmeasured - no derived_forecast_skill for {city_key} lead={lead_days}", file=sys.stderr)
-        bias_c, mae_c = 0.0, None
-        confidence = min(confidence, 0.1)
-        reasons = reg.reasons + ["no_skill_row"]
-    else:
-        bias_c = 0.0 if skill_proxy else (skill.get("bias_c") or 0.0)
-        mae_c = skill.get("mae_c")
-        n_days = skill.get("n_days") or 0
-        reasons = list(reg.reasons)
-        if skill_proxy:
-            if skill_source == "global_lead_p75":
-                confidence *= GLOBAL_SKILL_CONFIDENCE_PENALTY
-                reasons.append(
-                    f"global_skill_proxy:lead{lead_days}_to_lead{skill_lead_days}:"
-                    f"{skill.get('global_n_cities')}cities")
-            else:
-                confidence *= UNTRUSTED_CONFIDENCE_PENALTY
-                reasons.append(f"skill_proxy:lead{lead_days}_to_lead{skill_lead_days}")
-        if n_days < UNTRUSTED_N_DAYS:
+    bias_c = 0.0 if skill_proxy else (skill.get("bias_c") or 0.0)
+    mae_c = skill.get("mae_c")
+    n_days = skill.get("n_days") or 0
+    reasons = list(reg.reasons)
+    if skill_proxy:
+        if skill_source == "global_lead_p75":
+            confidence *= GLOBAL_SKILL_CONFIDENCE_PENALTY
+            reasons.append(
+                f"global_skill_proxy:lead{lead_days}_to_lead{skill_lead_days}:"
+                f"{skill.get('global_n_cities')}cities")
+        elif skill_source == "fixed_cold_start":
+            confidence = min(confidence, 0.1)
+            reasons.append(f"fixed_cold_start:{COLD_START_MAE_C:.1f}C_mae:no_verified_skill")
+        else:
             confidence *= UNTRUSTED_CONFIDENCE_PENALTY
-            reasons.append(f"thin_sample:{n_days}d")
-        if mae_c and mae_c > 0 and abs(bias_c) / mae_c >= BIAS_EXCEEDS_MAE_RATIO:
-            confidence *= UNTRUSTED_CONFIDENCE_PENALTY
-            reasons.append("bias_exceeds_mae")
+            reasons.append(f"skill_proxy:lead{lead_days}_to_lead{skill_lead_days}")
+    if n_days < UNTRUSTED_N_DAYS:
+        confidence *= UNTRUSTED_CONFIDENCE_PENALTY
+        reasons.append(f"thin_sample:{n_days}d")
+    if mae_c and mae_c > 0 and abs(bias_c) / mae_c >= BIAS_EXCEEDS_MAE_RATIO:
+        confidence *= UNTRUSTED_CONFIDENCE_PENALTY
+        reasons.append("bias_exceeds_mae")
 
     if mae_c is None:
         print(f"  TODO: unmeasured - no mae_c for {city_key} lead={lead_days}, skipping", file=sys.stderr)

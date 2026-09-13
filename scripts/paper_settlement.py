@@ -3,6 +3,7 @@
 Mirrors the venue's binary payout; does not claim a weather-station parser has
 been validated or change the legacy settlement_verified switch.
 """
+import datetime as dt
 import hashlib
 import json
 import time
@@ -39,37 +40,92 @@ def verify(band,gamma,clob):
     return gamma_winner
 
 
-def cycle(budget_seconds=60):
+def _candidate_bands(position_band_ids, days_back):
+    """Open positions first, then bands on recently closed markets.
+
+    Venue outcomes are valuable model evidence even when the paper desk held
+    no position. Limiting collection to holdings left calibration permanently
+    starved, so this bounded sweep fills the independent outcome archive too.
+    """
+    wanted = []
+    if position_band_ids:
+        for i in range(0, len(position_band_ids), 100):
+            chunk = position_band_ids[i:i + 100]
+            wanted += rest_all('bands', {
+                'band_id': 'in.(' + ','.join(chunk) + ')',
+                'select': 'band_id,market_id,condition_id,token_yes,token_no',
+            }, order='band_id.asc')
+
+    since = (dt.date.today() - dt.timedelta(days=days_back)).isoformat()
+    markets = rest_all('markets', {
+        'closed': 'eq.true', 'resolution_date': 'gte.' + since,
+        'select': 'market_id,resolution_date',
+    }, order='resolution_date.desc,market_id.asc')
+    market_ids = [str(m['market_id']) for m in markets]
+    for i in range(0, len(market_ids), 100):
+        chunk = market_ids[i:i + 100]
+        wanted += rest_all('bands', {
+            'market_id': 'in.(' + ','.join(chunk) + ')',
+            'select': 'band_id,market_id,condition_id,token_yes,token_no',
+        }, order='band_id.asc')
+
+    # Stable de-duplication; position bands were appended first and therefore
+    # remain first when they also appear in the closed-market sweep.
+    out, seen = [], set()
+    for band in wanted:
+        key = str(band['band_id'])
+        if key not in seen:
+            seen.add(key)
+            out.append(band)
+    return out
+
+
+def cycle(budget_seconds=60, days_back=180, max_new_evidence=100):
     from paper_worker import public_json
     started,settled,checked=time.monotonic(),0,set()
+    captured,failed,first_failure=0,0,None
     positions=rest_all('paper_positions',{'shares':'gt.0','select':'band_id,account_id,side'},order='band_id,account_id,side')
-    for pos in positions:
-        if time.monotonic()-started>budget_seconds:
+    position_band_ids=list(dict.fromkeys(str(p['band_id']) for p in positions))
+    existing={str(e['condition_id']) for e in rest_all(
+        'paper_resolution_evidence',{'select':'condition_id,proof_id'},order='condition_id.asc,proof_id.asc')}
+
+    for band in _candidate_bands(position_band_ids,days_back):
+        if time.monotonic()-started>budget_seconds or captured>=max_new_evidence:
             break
-        if pos['band_id'] in checked:
+        band_id=str(band['band_id'])
+        if band_id in checked or str(band.get('condition_id')) in existing:
             continue
-        checked.add(pos['band_id'])
-        rows=rest('bands',{'band_id':'eq.'+pos['band_id'],'select':'band_id,condition_id,token_yes,token_no'})
-        if not rows:
+        checked.add(band_id)
+        if not band.get('condition_id') or not band.get('token_yes') or not band.get('token_no'):
             continue
-        band=rows[0]
-        gamma_url='https://gamma-api.polymarket.com/markets'
-        markets=public_json(gamma_url,{'condition_ids':band['condition_id']})
-        gamma=next((m for m in markets if m.get('conditionId')==band['condition_id']),None)
-        if not gamma or gamma.get('closed') is not True or gamma.get('umaResolutionStatus')!='resolved':
-            continue
-        clob_url='https://clob.polymarket.com/markets/'+band['condition_id']
-        clob=public_json(clob_url,{})
-        winner=verify(band,gamma,clob)
-        if not winner:
-            continue
-        identity=hashlib.sha256(json.dumps({'gamma':gamma,'clob':clob},sort_keys=True,separators=(',',':')).encode()).hexdigest()
-        upsert('paper_resolution_evidence',[{'proof_id':identity,'condition_id':band['condition_id'],
-            'token_yes':band['token_yes'],'token_no':band['token_no'],'winning_token':winner,'gamma':gamma,'clob':clob,
-            'source_urls':[gamma_url+'?condition_ids='+band['condition_id'],clob_url]}],'proof_id')
-        settled+=rpc('settle_paper_inventory',{'p_band':band['band_id'],'p_proof':identity})
-    log_run('paper_settlement','ok',settled,{'positions_settled':settled,'bands_checked':len(checked)})
-    return {'positions_settled':settled}
+        try:
+            gamma_url='https://gamma-api.polymarket.com/markets'
+            markets=public_json(gamma_url,{'condition_ids':band['condition_id']})
+            gamma=next((m for m in markets if m.get('conditionId')==band['condition_id']),None)
+            if not gamma or gamma.get('closed') is not True or gamma.get('umaResolutionStatus')!='resolved':
+                continue
+            clob_url='https://clob.polymarket.com/markets/'+band['condition_id']
+            clob=public_json(clob_url,{})
+            winner=verify(band,gamma,clob)
+            if not winner:
+                continue
+            identity=hashlib.sha256(json.dumps({'gamma':gamma,'clob':clob},sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            upsert('paper_resolution_evidence',[{'proof_id':identity,'condition_id':band['condition_id'],
+                'token_yes':band['token_yes'],'token_no':band['token_no'],'winning_token':winner,'gamma':gamma,'clob':clob,
+                'source_urls':[gamma_url+'?condition_ids='+band['condition_id'],clob_url]}],'proof_id')
+            existing.add(str(band['condition_id']))
+            captured+=1
+            settled+=rpc('settle_paper_inventory',{'p_band':band['band_id'],'p_proof':identity})
+        except Exception as e:
+            failed+=1
+            if first_failure is None:
+                first_failure={'band_id':band_id,'error':str(e)[:300]}
+
+    status='attention' if failed else 'ok'
+    detail={'positions_settled':settled,'evidence_captured':captured,
+            'bands_checked':len(checked),'failed':failed,'first_failure':first_failure}
+    log_run('paper_settlement',status,settled+captured,detail)
+    return detail
 
 
 if __name__=='__main__':

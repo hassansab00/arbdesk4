@@ -20,6 +20,11 @@ import { fmtCompactUsd, fmtInt, fmtPct } from "@/lib/format";
 interface Coverage { dataset: string; rows: number; since: string | null; latest: string | null; cities: number }
 interface CalRow { bucket: number; predicted_mid: number; n: number; predicted: number; observed: number; gap: number; model_mae: number | null; market_mae: number | null }
 interface EdgeRow { edge_bucket: string; ord: number; n: number; claimed_pp: number; realised_pp: number; hit_rate: number; avg_price: number; volume_usd: number }
+interface OutcomeHealth {
+  raw_band_facts: number; verified_band_facts: number; mismatched_band_facts: number;
+  raw_forecast_facts: number; verified_forecast_facts: number;
+  venue_evidence_rows: number; weather_evidence_rows: number; confirmed_markets: number;
+}
 
 const MISSING = /does not exist|could not find|schema cache/i;
 const MIN_FOR_A_CURVE = 300;
@@ -28,10 +33,16 @@ export default function DataBank() {
   const covQ = useQuery<Coverage[]>(() => supabase.from("v_databank_coverage").select("*"), [], 300000);
   const calQ = useQuery<CalRow[]>(() => supabase.from("v_calibration").select("*"), [], 300000);
   const edgeQ = useQuery<EdgeRow[]>(() => supabase.from("v_edge_realisation").select("*"), [], 300000);
+  const evidenceQ = useQuery<OutcomeHealth[]>(
+    () => supabase.from("v_outcome_evidence_health").select("*"), [], 300000
+  );
 
   const notInstalled = MISSING.test(covQ.error ?? "");
   const total = (covQ.data ?? []).reduce((s, r) => s + Number(r.rows ?? 0), 0);
-  const banded = Number((covQ.data ?? []).find((r) => r.dataset === "band outcomes")?.rows ?? 0);
+  const evidence = evidenceQ.data?.[0];
+  const rawBanded = Number(evidence?.raw_band_facts ??
+    (covQ.data ?? []).find((r) => r.dataset === "band outcomes")?.rows ?? 0);
+  const banded = Number(evidence?.verified_band_facts ?? 0);
   const cal = (calQ.data ?? []).filter((r) => r.n >= 10);
 
   // Is the model beating the market on the bands we have settled? The only
@@ -71,20 +82,35 @@ export default function DataBank() {
         ))}
       </div>
 
+      {evidence && (evidence.raw_band_facts > evidence.verified_band_facts ||
+                    evidence.raw_forecast_facts > evidence.verified_forecast_facts) && (
+        <div className="rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn">
+          <b>Historical evidence is preserved, but not all of it is verified.</b>{" "}
+          {fmtInt(evidence.verified_band_facts)} of {fmtInt(evidence.raw_band_facts)} band outcomes
+          have a complete Gamma+CLOB-confirmed ladder; {fmtInt(evidence.verified_forecast_facts)} of{" "}
+          {fmtInt(evidence.raw_forecast_facts)} forecast outcomes have final station-authority evidence.
+          Unverified rows remain in the proprietary archive and exports, but are excluded from model
+          calibration, edge-realisation claims, and predictive accuracy.
+          {evidence.mismatched_band_facts > 0 ? (
+            <> {fmtInt(evidence.mismatched_band_facts)} band rows disagree with venue evidence and require review.</>
+          ) : null}
+        </div>
+      )}
+
       {total === 0 && (
         <div className="rounded border border-dashed border-border p-4 text-center text-xs leading-relaxed text-muted">
           <b className="text-text">Nothing banked yet.</b> The tables exist; the collector has not run.
-          <b> GitHub Actions → Data Bank</b> freezes settled city-days daily. It refuses to bank a day
-          with fewer than 12 observations, because a maximum frozen too early is wrong permanently.
+          <b> GitHub Actions → Data Bank</b> freezes only outcomes backed by final venue or
+          station-authority evidence. Running maxima stay provisional.
         </div>
       )}
 
       {/* ---- is the model telling the truth? ---------------------------- */}
-      {banded > 0 && (
+      {rawBanded > 0 && (
         <div className="rounded border border-border bg-panel p-3">
           <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
             <h3 className="text-sm font-semibold">Calibration — do the probabilities mean what they say?</h3>
-            <span className="font-mono text-[10px] text-muted">{fmtInt(banded)} settled bands</span>
+            <span className="font-mono text-[10px] text-muted">{fmtInt(banded)} venue-verified bands</span>
           </div>
           <p className="mb-2 max-w-3xl text-[11px] leading-relaxed text-muted">
             Of every band priced near <b>p</b>, how many settled yes? On the diagonal the model is
@@ -95,7 +121,7 @@ export default function DataBank() {
           </p>
           {banded < MIN_FOR_A_CURVE ? (
             <Empty height={120}>
-              {fmtInt(banded)} settled bands. The fitter needs {MIN_FOR_A_CURVE} before it will write
+              {fmtInt(banded)} venue-verified bands. The fitter needs {MIN_FOR_A_CURVE} before it will write
               a correction — a calibration map from this little data looks like knowledge and is not.
             </Empty>
           ) : cal.length === 0 ? (
