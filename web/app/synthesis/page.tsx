@@ -57,6 +57,11 @@ interface LearningStage {
   why: string;
 }
 
+interface OutcomeHealth {
+  raw_band_facts: number; verified_band_facts: number;
+  raw_forecast_facts: number; verified_forecast_facts: number;
+}
+
 function since(ts: string | null): string {
   if (!ts) return "never";
   const h = (Date.now() - new Date(ts).getTime()) / 3600000;
@@ -76,12 +81,20 @@ export default function SynthesisPage() {
     [],
     180000
   );
+  const evidenceQ = useQuery<OutcomeHealth[]>(
+    () => supabase.from("v_outcome_evidence_health").select("*"),
+    [],
+    180000
+  );
 
   const findings = findingsQ.data ?? [];
+  const evidence = evidenceQ.data?.[0];
   const backward = useMemo(
     () => findings.filter((f) => f.direction === "backward")
+                  .filter((f) => f.key !== "forecast_lean" || Number(evidence?.verified_forecast_facts ?? 0) > 0)
+                  .filter((f) => f.key !== "desk_vs_market" || Number(evidence?.verified_band_facts ?? 0) > 0)
                   .sort((a, b) => (a.status === b.status ? b.n - a.n : a.status === "established" ? -1 : 1)),
-    [findings]
+    [findings, evidence]
   );
   const forward = useMemo(() => findings.filter((f) => f.direction === "forward"), [findings]);
   const stages = learningQ.data ?? [];
@@ -110,6 +123,15 @@ export default function SynthesisPage() {
           <FreshnessRow relations={["bands", "derived_city_climate", "derived_city_day_features", "derived_weather_peak", "edges", "fact_band_outcome", "fact_forecast_outcome", "markets"]} />
         </div>
       </div>
+
+      {evidence && (evidence.raw_band_facts > evidence.verified_band_facts ||
+                    evidence.raw_forecast_facts > evidence.verified_forecast_facts) && (
+        <div className="rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn">
+          <b>Outcome-dependent findings are verification-gated.</b> Historical rows remain preserved,
+          but forecast-accuracy claims require final station evidence and model-vs-market claims require
+          a complete Gamma+CLOB-confirmed ladder. Unverified rows are not presented as established findings.
+        </div>
+      )}
 
       {/* ===================================================== LEARNING STATE */}
       <section className="space-y-3">

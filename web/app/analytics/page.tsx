@@ -29,7 +29,8 @@ export default function AnalyticsPage() {
     () =>
       supabase.from("derived_forecast_skill")
         .select("city_key,mae_c,bias_c,mae_bands,n_days,lead_days,computed_at")
-        .eq("lead_days", 1).order("computed_at", { ascending: false }).limit(500),
+        .eq("lead_days", 1).eq("evidence_scope", "verified_outcomes_v1")
+        .order("computed_at", { ascending: false }).limit(500),
     []
   );
   const oppQ = useQuery<Opportunity[]>(
@@ -148,7 +149,7 @@ export default function AnalyticsPage() {
           relation="derived_forecast_skill"
           loading={skillQ.loading} error={skillQ.error} isEmpty={skill.length === 0}
           emptyTitle="No forecast skill measured yet"
-          emptyBody={<>Run GitHub Actions → <b>Skill</b> (<code>scripts/measure_skill.py</code>). It needs both forecast and observation history before it can measure anything. See <code>docs/skill_baseline.md</code>.</>}
+          emptyBody={<>No independently verified station outcomes have produced a skill estimate yet. Collect final outcome evidence, then run GitHub Actions → <b>Skill</b> (<code>scripts/measure_skill.py</code>). Legacy rows remain preserved in the Data Bank but cannot price trades.</>}
           onRetry={skillQ.refresh}
         >
           <div className="rounded border border-border bg-panel p-3">

@@ -138,7 +138,7 @@ export default function ModelAnalytics() {
   const banked = useQuery<{ count: number }>(
     async () => {
       const { count, error } = await supabase
-        .from("fact_band_outcome")
+        .from("v_verified_fact_band_outcome")
         .select("*", { count: "exact", head: true });
       return { data: { count: count ?? 0 }, error };
     },
@@ -230,7 +230,7 @@ export default function ModelAnalytics() {
             </p>
           </>
         }
-        emptyBody={<>Needs settled bands in <code>fact_band_outcome</code>. The <b>Databank</b> action fills it daily once markets start resolving. Under {MIN_FOR_A_CURVE} outcomes the curve is noise dressed as evidence, so it is not drawn.</>}
+        emptyBody={<>Needs venue-verified bands. The settlement collector first requires Gamma and CLOB to agree on the complete ladder; the <b>Databank</b> action then freezes the result. Unverified history stays archived but cannot train this curve. Under {MIN_FOR_A_CURVE} outcomes the curve is noise dressed as evidence, so it is not drawn.</>}
         progress={settledProgress}
       >
         <CalibrationChart rows={calib.data ?? []} />

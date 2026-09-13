@@ -490,6 +490,7 @@ begin
     mae_bands            numeric,
     pct_within_one_band  numeric,
     band_width_c         numeric,
+    evidence_scope       text,
     primary key (city_key, computed_at, lead_days)
   );
   -- --------------------------------------------------------------------------
@@ -847,7 +848,8 @@ begin
         ('derived_forecast_skill','p90_abs_err_c','numeric'),
         ('derived_forecast_skill','mae_bands','numeric'),
         ('derived_forecast_skill','pct_within_one_band','numeric'),
-        ('derived_forecast_skill','band_width_c','numeric')
+        ('derived_forecast_skill','band_width_c','numeric'),
+        ('derived_forecast_skill','evidence_scope','text')
       ) as t(tbl, col, def)
     loop
       if to_regclass('public.' || quote_ident(r.tbl)) is null then

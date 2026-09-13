@@ -68,9 +68,13 @@ create table if not exists derived_calibration_adjustment (
   z_mean           numeric,             -- leftover bias, in sigmas
   sigma_multiplier numeric     not null default 1.0,   -- what is applied
   applied          boolean     not null default false, -- did it clear the bar
+  evidence_scope   text,
   reason           text        not null,
   computed_at      timestamptz not null default now()
 );
+
+alter table derived_calibration_adjustment
+  add column if not exists evidence_scope text;
 
 comment on table derived_calibration_adjustment is
   'Per city: how wide the desk''s stated sigma actually turned out to be, measured as the standard deviation of (observed - forecast)/sigma over settled days. 1.0 means honest. Above 1 means overconfident, and the multiplier corrects it.';
@@ -92,14 +96,16 @@ create or replace function refresh_calibration_adjustment(
   p_floor      numeric default 0.75,
   p_ceiling    numeric default 2.5
 ) returns jsonb
-language plpgsql security definer as $ad4$
+language plpgsql security definer
+set search_path = public, pg_temp
+as $ad4$
 declare
   v_rows int := 0;
   v_applied int := 0;
 begin
-  if to_regclass('public.fact_band_outcome') is null then
+  if to_regclass('public.v_verified_fact_band_outcome') is null then
     return jsonb_build_object('ok', false,
-      'error', 'fact_band_outcome does not exist - run sql/ad4_18_databank.sql');
+      'error', 'verified outcome projection does not exist - apply the Phase 2A outcome-truth migration');
   end if;
 
   with z as (
@@ -110,7 +116,7 @@ begin
       b.city_key,
       b.for_date,
       (b.observed_max_c - b.forecast_max_c) / nullif(b.sigma_c, 0) as z
-    from fact_band_outcome b
+    from v_verified_fact_band_outcome b
     where b.observed_max_c is not null
       and b.forecast_max_c is not null
       and b.sigma_c is not null and b.sigma_c > 0
@@ -165,17 +171,20 @@ begin
     from agg a
   )
   insert into derived_calibration_adjustment
-        (city_key, n_days, z_sd, z_mean, sigma_multiplier, applied, reason, computed_at)
+        (city_key, n_days, z_sd, z_mean, sigma_multiplier, applied, evidence_scope, reason, computed_at)
   select city_key, n_days, round(z_sd, 3), round(z_mean, 3),
-         round(mult, 3), (mult <> 1.0), why, now()
+         round(mult, 3), (mult <> 1.0), 'verified_outcomes_v1', why, now()
     from decided
   on conflict (city_key) do update set
     n_days = excluded.n_days, z_sd = excluded.z_sd, z_mean = excluded.z_mean,
     sigma_multiplier = excluded.sigma_multiplier, applied = excluded.applied,
+    evidence_scope = excluded.evidence_scope,
     reason = excluded.reason, computed_at = excluded.computed_at;
 
   get diagnostics v_rows = row_count;
-  select count(*) into v_applied from derived_calibration_adjustment where applied;
+  select count(*) into v_applied
+    from derived_calibration_adjustment
+   where applied and evidence_scope = 'verified_outcomes_v1';
 
   return jsonb_build_object('ok', true, 'cities', v_rows, 'applied', v_applied,
                             'min_days', p_min_days);
@@ -215,9 +224,12 @@ from cities c
 left join (
   select distinct on (city_key) city_key, mae_c, n_days
     from derived_forecast_skill
+   where evidence_scope = 'verified_outcomes_v1'
    order by city_key, computed_at desc
 ) sk on sk.city_key = c.city_key
-left join derived_calibration_adjustment ca on ca.city_key = c.city_key
+left join derived_calibration_adjustment ca
+  on ca.city_key = c.city_key
+ and ca.evidence_scope = 'verified_outcomes_v1'
 where coalesce(c.status, 'active') = 'active';
 
 comment on view v_sigma_inputs is

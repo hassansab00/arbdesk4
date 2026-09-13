@@ -5,8 +5,9 @@ Learn how wrong this desk's probabilities are, and correct the next ones.
 THE QUESTION. Of every band AD4 priced at 30%, how many settled yes? If the
 answer is 42%, the model is not merely imprecise - it is systematically
 underconfident at 30%, by 12 points, and every trade sized off that number was
-sized wrong. Until fact_band_outcome existed the desk could not ask this at
-all: band_probabilities was written and never compared to anything.
+sized wrong. Until independently verified outcome evidence existed the desk
+could not ask this safely: an observed running maximum is not a final venue
+resolution.
 
 THE METHOD. Platt scaling - a logistic regression on the log-odds of the
 stated probability:
@@ -36,6 +37,8 @@ import datetime as dt
 import json
 import math
 import sys
+
+VERIFIED_EVIDENCE_SCOPE = "verified_outcomes_v1"
 
 from common import rest, log_run, model_version_id, _cfg, _headers  # noqa: F401
 import requests
@@ -124,13 +127,13 @@ def main():
     args = ap.parse_args()
 
     try:
-        rows = rest("fact_band_outcome", [
+        rows = rest("v_verified_fact_band_outcome", [
             ("select", "model_prob,market_price,settled_yes,for_date,city_key"),
             ("model_prob", "not.is.null"), ("limit", "50000"),
         ])
     except Exception as e:
-        print(f"fact_band_outcome unavailable ({e}). Run sql/ad4_18_databank.sql, then "
-              f"scripts/databank.py.", file=sys.stderr)
+        print(f"verified band outcomes unavailable ({e}). Apply the Phase 2A outcome-truth "
+              f"migration, collect venue evidence, then run scripts/databank.py.", file=sys.stderr)
         log_run("calibration", "attention", 0, {"error": str(e)})
         return 1
 
@@ -174,6 +177,7 @@ def main():
 
     payload = {
         "method": "platt", "a": round(a, 6), "b": round(b, 6),
+        "evidence_scope": VERIFIED_EVIDENCE_SCOPE,
         "n": len(samples), "fitted_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "brier_before": round(before_br, 6), "brier_after": round(after_br, 6),
         "log_loss_before": round(before_ll, 6), "log_loss_after": round(after_ll, 6),

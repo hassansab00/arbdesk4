@@ -286,13 +286,6 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "ledger": [
     {
-      "cadence": "daily",
-      "file": "pipeline_daily.yml",
-      "how": "scripts/settlement.py",
-      "kind": "action",
-      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
-    },
-    {
       "cadence": "only when you run it",
       "file": "verify_resolution_source.yml",
       "how": "scripts/settlement.py",
@@ -342,6 +335,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
   "paper_activity": [
     {
       "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/paper_settlement.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
+    {
+      "cadence": "daily",
       "file": "pipeline_intraday.yml",
       "how": "scripts/paper_exits.py",
       "kind": "action",
@@ -376,6 +376,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
   "paper_position_settlements": [
     {
       "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/paper_settlement.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
+    {
+      "cadence": "daily",
       "file": "pipeline_intraday.yml",
       "how": "scripts/paper_settlement.py",
       "kind": "action",
@@ -392,6 +399,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
     }
   ],
   "paper_resolution_evidence": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/paper_settlement.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
     {
       "cadence": "daily",
       "file": "pipeline_intraday.yml",
@@ -546,7 +560,10 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_observations"
   ],
   "v_archive_daily": [
+    "bands",
     "book_snapshots",
+    "cities",
+    "markets",
     "trades_observed",
     "weather_forecasts",
     "weather_observations"
@@ -597,12 +614,25 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_bankroll_curve": [
     "fact_signal_outcome"
   ],
+  "v_book_capture_health": [
+    "bands",
+    "book_snapshots",
+    "markets"
+  ],
   "v_book_ladder": [
     "bands",
     "book_snapshots"
   ],
+  "v_book_target_health": [
+    "bands",
+    "book_snapshots",
+    "markets"
+  ],
   "v_calibration": [
-    "fact_band_outcome"
+    "fact_band_outcome",
+    "bands",
+    "paper_resolution_evidence",
+    "markets"
   ],
   "v_campaign_state": [
     "ledger",
@@ -624,6 +654,12 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_campaign_targets": [
     "cities"
   ],
+  "v_canonical_bands": [
+    "bands"
+  ],
+  "v_canonical_markets": [
+    "markets"
+  ],
   "v_city_climate": [
     "cities",
     "weather_observations"
@@ -640,6 +676,16 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_city_daily_max": [
     "cities",
     "weather_observations"
+  ],
+  "v_city_day_execution_readiness": [
+    "band_probabilities",
+    "bands",
+    "markets",
+    "book_snapshots",
+    "cities",
+    "edges",
+    "live_weather",
+    "weather_forecasts"
   ],
   "v_city_day_features": [
     "cities",
@@ -658,6 +704,22 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "live_weather",
     "derived_climb_profile",
     "weather_observations"
+  ],
+  "v_city_day_readiness": [
+    "band_probabilities",
+    "bands",
+    "book_snapshots",
+    "cities",
+    "edges",
+    "live_weather",
+    "markets",
+    "weather_forecasts"
+  ],
+  "v_city_metadata_health": [
+    "cities"
+  ],
+  "v_city_metadata_verification": [
+    "cities"
   ],
   "v_city_peak_approach": [
     "derived_climb_profile",
@@ -727,10 +789,26 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "fact_signal_outcome"
   ],
   "v_edge_realisation": [
-    "fact_band_outcome"
+    "fact_band_outcome",
+    "bands",
+    "paper_resolution_evidence",
+    "markets"
   ],
   "v_edge_scaling": [
-    "fact_band_outcome"
+    "fact_band_outcome",
+    "bands",
+    "paper_resolution_evidence",
+    "markets"
+  ],
+  "v_execution_health": [
+    "band_probabilities",
+    "bands",
+    "markets",
+    "book_snapshots",
+    "cities",
+    "edges",
+    "live_weather",
+    "weather_forecasts"
   ],
   "v_execution_limits": [
     "markets"
@@ -748,6 +826,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_forecast_convergence": [
     "fact_forecast_outcome",
+    "weather_resolution_evidence",
     "weather_forecasts"
   ],
   "v_forecast_coverage": [
@@ -819,6 +898,16 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_weather_model",
     "weather_forecast_features"
   ],
+  "v_operational_health": [
+    "band_probabilities",
+    "bands",
+    "book_snapshots",
+    "cities",
+    "edges",
+    "live_weather",
+    "markets",
+    "weather_forecasts"
+  ],
   "v_opportunities": [
     "bands",
     "book_snapshots",
@@ -833,6 +922,14 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "book_snapshots",
     "markets",
     "weather_forecasts"
+  ],
+  "v_outcome_evidence_health": [
+    "fact_band_outcome",
+    "fact_forecast_outcome",
+    "paper_resolution_evidence",
+    "bands",
+    "markets",
+    "weather_resolution_evidence"
   ],
   "v_peak_hour_coverage": [
     "cities",
@@ -850,7 +947,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "band_probabilities"
   ],
   "v_prediction_scorecard": [
-    "fact_forecast_outcome"
+    "fact_forecast_outcome",
+    "weather_resolution_evidence"
   ],
   "v_sigma_inputs": [
     "cities",
@@ -896,6 +994,28 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "live_weather",
     "derived_climb_profile",
     "weather_observations"
+  ],
+  "v_venue_band_resolution": [
+    "bands",
+    "paper_resolution_evidence"
+  ],
+  "v_venue_market_resolution": [
+    "bands",
+    "markets",
+    "paper_resolution_evidence"
+  ],
+  "v_verified_fact_band_outcome": [
+    "bands",
+    "fact_band_outcome",
+    "paper_resolution_evidence",
+    "markets"
+  ],
+  "v_verified_fact_forecast_outcome": [
+    "fact_forecast_outcome",
+    "weather_resolution_evidence"
+  ],
+  "v_verified_weather_outcomes": [
+    "weather_resolution_evidence"
   ],
   "v_weather_effects": [
     "derived_city_day_features",

@@ -197,6 +197,23 @@ def test_no_model_argument_reads_only_the_pooled_table(monkeypatch):
     assert touched == ["derived_forecast_skill"]
 
 
+def test_skill_queries_require_verified_evidence_scope(monkeypatch):
+    import probability_engine as pe
+
+    pe._skill_cache.clear()
+    seen = {}
+
+    def fake_rest(path, params):
+        seen[path] = dict(params)
+        return []
+
+    monkeypatch.setattr(pe, "rest", fake_rest)
+    pe._skill_for("nyc", 1, "nws")
+    expected = f"eq.{pe.VERIFIED_EVIDENCE_SCOPE}"
+    assert seen["derived_forecast_skill_model"]["evidence_scope"] == expected
+    assert seen["derived_forecast_skill"]["evidence_scope"] == expected
+
+
 # ---------------------------------------------------------------------------
 # Scoring: one row per run key, and per-model grain
 # ---------------------------------------------------------------------------
