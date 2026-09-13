@@ -21,7 +21,7 @@ const assert = require('node:assert/strict');
     create table public.weather_forecasts(forecast_id bigint primary key,city_key text,model text,run_at timestamptz,
       for_date date);
     create table public.book_snapshots(snapshot_id bigint primary key,band_id uuid,observed_at timestamptz,
-      tradeable boolean default true);
+      market_state text default 'LIVE',tradeable boolean default true);
     create table public.trades_observed(trade_id bigint primary key,city_key text,traded_at timestamptz);
     create table public.signals(signal_id bigint primary key,action text,strategy_id text,fired_at timestamptz,reason text);
     create table public.band_probabilities(prob_id uuid primary key,band_id uuid,computed_at timestamptz default now());
@@ -104,6 +104,20 @@ const assert = require('node:assert/strict');
   assert.deepEqual(daily.map(r=>[r.dataset,Number(r.rows),Number(r.cities)]),[
     ['Forecasts',1,1],['Order books',1,1],['Station observations',2,1],['Trades seen',1,1]
   ],'Data Bank daily chart reads the maintained rollup');
+  const archiveCity=(await db.query("select * from v_archive_by_city where city_key='london'")).rows[0];
+  assert.deepEqual(
+    [Number(archiveCity.observations),Number(archiveCity.forecasts),Number(archiveCity.book_snapshots)],
+    [2,1,1],
+    'Per-city Data Bank reads maintained counters instead of scanning the archive'
+  );
+  assert.equal((await db.query("select capture_state from v_book_target_health where band_id=$1",[band])).rows[0].capture_state,'captured');
+  assert.equal((await db.query("select execution_state from v_city_day_execution_readiness where city_key='london' and resolution_date=current_date")).rows[0].execution_state,'ready');
+  assert.equal((await db.query("select coordinate_state from v_city_metadata_verification where city_key='london'")).rows[0].coordinate_state,'legacy_present');
+  await db.exec('set role service_role;');
+  await db.query(`insert into book_capture_attempts(execution_id,band_id,token_id,status)
+    values('test-run',$1,'yes','written')`,[band]);
+  await assert.rejects(db.query("update book_capture_attempts set status='http_error'"),/permission denied|Append-only/);
+  await db.exec('reset role;');
   assert.ok(Number((await db.query('select refresh_data_quality_flags() as n')).rows[0].n)>=3);
   assert.equal(Number((await db.query('select refresh_data_quality_flags() as n')).rows[0].n),0,
     'Quality detection is idempotent for one detector version');

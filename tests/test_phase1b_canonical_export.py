@@ -58,6 +58,48 @@ def test_probability_engine_prices_lead_zero_with_explicit_conservative_proxy(mo
     assert "skill_proxy:lead0_to_lead1" in reasons
 
 
+def test_probability_band_scope_is_paginated(monkeypatch):
+    calls = []
+
+    def fake_rest_all(path, params, **kwargs):
+        calls.append((path, dict(params), kwargs))
+        return []
+
+    monkeypatch.setattr(pe, "rest_all", fake_rest_all)
+    pe._bands_for_markets([str(i) for i in range(101)])
+    assert len(calls) == 2
+    assert all(call[0] == "v_canonical_bands" for call in calls)
+    assert all(call[2] == {"order": "band_id", "page_size": 500} for call in calls)
+
+
+def test_unmeasured_city_gets_visible_but_nontradeable_cold_start_probabilities(monkeypatch):
+    monkeypatch.setattr(pe, "_forecast_for", lambda *_: {
+        "lead_days": 0, "forecast_max_c": 24.0, "model": "test-model",
+        "run_at": "2026-09-13T03:00:00+00:00",
+    })
+    monkeypatch.setattr(pe, "_skill_for", lambda *_: None)
+    monkeypatch.setattr(pe, "_global_skill", lambda lead: (
+        {"lead_days": lead, "mae_c": 2.5, "bias_c": 0.0,
+         "n_days": 0, "global_n_cities": 40} if lead == 1 else None
+    ))
+    monkeypatch.setattr(pe.regime, "classify", lambda *_args, **_kwargs: SimpleNamespace(
+        confidence=1.0, reasons=[], sigma_multiplier=1.0, label="NORMAL"))
+    monkeypatch.setattr(pe, "_divergence_for", lambda *_: (1.0, None))
+    monkeypatch.setattr(pe, "_calibration_for", lambda *_: (1.0, None))
+    monkeypatch.setattr(pe, "_calibration_map", lambda: None)
+    monkeypatch.setattr(pe, "model_version_id", lambda *_args, **_kwargs: None)
+    bands = [
+        {"band_id": "low", "band_lo": None, "band_hi": 24, "open_low": True, "open_high": False},
+        {"band_id": "high", "band_lo": 24, "band_hi": None, "open_low": False, "open_high": True},
+    ]
+    rows, _reg, reasons = pe.process_city_day("new_city", "2026-09-13", "C", bands, {})
+    assert len(rows) == 2 and abs(sum(r["calibrated_prob"] for r in rows) - 1) < 1e-5
+    assert all(r["skill_source"] == "global_lead_p75" for r in rows)
+    assert all(r["pricing_eligible"] is False for r in rows)
+    assert all(r["pricing_block_reason"] == "no_city_skill" for r in rows)
+    assert any(reason.startswith("global_skill_proxy:") for reason in reasons)
+
+
 def test_export_route_is_bounded_allowlisted_and_server_only():
     route = _read("web/app/api/proprietary-export/route.ts")
     client = _read("web/components/ProprietaryExport.tsx")

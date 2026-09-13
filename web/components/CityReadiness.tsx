@@ -18,8 +18,10 @@ interface ReadinessRow {
   fresh_probability_bands: number;
   fresh_edge_bands: number;
   fresh_tradeable_edge_bands: number;
-  readiness_state: "ready" | "attention" | "blocked" | "no_market";
-  issues: string[] | null;
+  execution_state: "ready" | "attention" | "blocked" | "no_market";
+  execution_issues: string[] | null;
+  pricing_eligible_bands: number;
+  cold_start_bands: number;
   forecast_at: string | null;
   book_at: string | null;
   probability_at: string | null;
@@ -35,7 +37,25 @@ interface OperationalHealth {
   verdict: string;
 }
 
-const stateTone: Record<ReadinessRow["readiness_state"], string> = {
+interface BookCaptureHealth {
+  resolution_date: string;
+  capture_state: string;
+  bands: number;
+  cities: number;
+  latest_at: string | null;
+}
+
+interface MetadataHealth {
+  cities: number;
+  coordinates_verified: number;
+  coordinates_to_verify: number;
+  coordinates_missing: number;
+  timezones_verified: number;
+  timezones_to_verify: number;
+  timezones_missing: number;
+}
+
+const stateTone: Record<ReadinessRow["execution_state"], string> = {
   ready: "text-good",
   attention: "text-warn",
   blocked: "text-bad",
@@ -45,22 +65,32 @@ const stateTone: Record<ReadinessRow["readiness_state"], string> = {
 export default function CityReadiness() {
   const [chosenDate, setChosenDate] = useState<string | null>(null);
   const healthQ = useQuery<OperationalHealth[]>(
-    () => supabase.from("v_operational_health").select("target_city_days,ready,attention,blocked,no_market,verdict"),
+    () => supabase.from("v_execution_health").select("target_city_days,ready,attention,blocked,no_market,verdict"),
     [],
     60000
   );
   const rowsQ = useQuery<ReadinessRow[]>(
     () =>
       supabase
-        .from("v_city_day_readiness")
+        .from("v_city_day_execution_readiness")
         .select(
-          "city_key,display_name,resolution_date,market_count,band_count,fresh_forecast_models,fresh_book_bands,executable_book_bands,fresh_probability_bands,fresh_edge_bands,fresh_tradeable_edge_bands,readiness_state,issues,forecast_at,book_at,probability_at,edge_at"
+          "city_key,display_name,resolution_date,market_count,band_count,fresh_forecast_models,fresh_book_bands,executable_book_bands,fresh_probability_bands,fresh_edge_bands,fresh_tradeable_edge_bands,pricing_eligible_bands,cold_start_bands,execution_state,execution_issues,forecast_at,book_at,probability_at,edge_at"
         )
         .order("resolution_date")
         .order("display_name"),
     [],
     60000,
     500
+  );
+  const booksQ = useQuery<BookCaptureHealth[]>(
+    () => supabase.from("v_book_capture_health").select("resolution_date,capture_state,bands,cities,latest_at").order("resolution_date"),
+    [],
+    60000
+  );
+  const metadataQ = useQuery<MetadataHealth[]>(
+    () => supabase.from("v_city_metadata_health").select("*"),
+    [],
+    300000
   );
 
   const dates = useMemo(
@@ -73,10 +103,14 @@ export default function CityReadiness() {
     [rowsQ.data, activeDate]
   );
   const health = healthQ.data?.[0];
+  const bookStates = (booksQ.data ?? []).filter((r) => r.resolution_date === activeDate);
+  const metadata = metadataQ.data?.[0];
 
   function refresh() {
     healthQ.refresh();
     rowsQ.refresh();
+    booksQ.refresh();
+    metadataQ.refresh();
   }
 
   return (
@@ -133,6 +167,24 @@ export default function CityReadiness() {
             </div>
           )}
 
+          {(bookStates.length > 0 || metadata) && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 rounded border border-border bg-panel2 px-2 py-1.5 text-[10px] text-muted">
+              {bookStates.length > 0 && (
+                <span>
+                  Book targets: {bookStates.map((r) => `${r.capture_state} ${fmtInt(r.bands)}`).join(" · ")}
+                </span>
+              )}
+              {metadata && (
+                <span>
+                  Metadata review: {fmtInt(metadata.coordinates_to_verify)} coordinate set(s),{" "}
+                  {fmtInt(metadata.timezones_to_verify)} timezone(s) awaiting authority evidence
+                  {(metadata.coordinates_missing || metadata.timezones_missing) ?
+                    ` · ${fmtInt(metadata.coordinates_missing + metadata.timezones_missing)} missing` : ""}
+                </span>
+              )}
+            </div>
+          )}
+
           <div className="max-h-[32rem] overflow-auto rounded border border-border">
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-panel2 text-muted">
@@ -151,8 +203,8 @@ export default function CityReadiness() {
                 {rows.map((r) => (
                   <tr key={`${r.city_key}:${r.resolution_date}`} className="border-t border-border align-top">
                     <td className="p-2 font-medium">{r.display_name}</td>
-                    <td className={`p-2 font-medium ${stateTone[r.readiness_state]}`}>
-                      {r.readiness_state.replace("_", " ")}
+                    <td className={`p-2 font-medium ${stateTone[r.execution_state]}`}>
+                      {r.execution_state.replace("_", " ")}
                     </td>
                     <td className="p-2 text-right font-mono">{fmtInt(r.band_count)}</td>
                     <td className="p-2 text-right font-mono" title={r.forecast_at ?? "No forecast"}>
@@ -165,6 +217,9 @@ export default function CityReadiness() {
                     </td>
                     <td className="p-2 text-right font-mono" title={r.probability_at ?? "No probability"}>
                       {r.fresh_probability_bands}/{r.band_count}
+                      {r.cold_start_bands > 0 && (
+                        <div className="text-[10px] text-warn">{r.cold_start_bands} cold-start</div>
+                      )}
                       <Age value={r.probability_at} />
                     </td>
                     <td className="p-2 text-right font-mono" title={r.edge_at ?? "No edge evaluation"}>
@@ -172,7 +227,7 @@ export default function CityReadiness() {
                       <div className="text-[10px] text-muted">{r.fresh_tradeable_edge_bands} tradeable</div>
                     </td>
                     <td className="max-w-sm p-2 text-[11px] leading-relaxed text-muted">
-                      {r.issues?.length ? r.issues.join("; ") : "All required evidence is current."}
+                      {r.execution_issues?.length ? r.execution_issues.join("; ") : "All required evidence is current."}
                     </td>
                   </tr>
                 ))}

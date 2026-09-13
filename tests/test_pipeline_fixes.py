@@ -324,6 +324,17 @@ def test_ladder_readers_use_the_view_not_the_raw_table(script):
         assert call not in src, f"{script} still fetches ladders from book_snapshots"
 
 
+def test_edge_engine_uses_latest_probability_view_and_logs_coverage():
+    src = (pathlib.Path(__file__).parent.parent / "scripts" / "edge_engine.py").read_text()
+    assert '_latest_by_band("v_latest_prob"' in src
+    assert 'log_run(' in src and '"stale_books"' in src
+    assert '"stale_book"' in src and "book_is_stale" in src
+
+
+# Phase 1D's test_signal_rows_carry_the_city lived here. It imported
+# scripts/signals.py, which this branch removed along with the rest of the
+# signals feature; the surviving half of what it checked - that a band with
+# no id cannot lend its city to anything - is the test directly below.
 def test_band_city_map_skips_bands_without_an_id():
     class B:
         def __init__(self, band_id, city_key):
