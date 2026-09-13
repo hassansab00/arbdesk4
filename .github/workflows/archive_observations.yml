@@ -17,9 +17,14 @@ on:
   workflow_dispatch:
     inputs:
       keep_days:
-        description: 'Days of raw observations to leave in Postgres'
+        description: 'Days of raw rows to leave in Postgres'
         required: false
         default: '180'
+      table:
+        description: 'Which archive to run'
+        type: choice
+        options: ['both', 'observations', 'forecasts']
+        default: 'both'
       commit:
         description: 'Actually upload and prune (unticked = dry run)'
         type: boolean
@@ -41,6 +46,7 @@ jobs:
       - run: |
           PYTHONPATH=scripts python scripts/archive_observations.py \
             --keep-days ${{ github.event.inputs.keep_days || '180' }} \
+            --table ${{ github.event.inputs.table || 'both' }} \
             ${{ github.event.inputs.commit == 'true' && '--commit' || '' }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

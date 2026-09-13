@@ -614,16 +614,39 @@ def test_the_features_cte_is_inlined_so_a_filter_can_reach_the_index():
 
 
 def test_the_export_pages_on_the_primary_key_not_on_valid_at():
+    """The paging column is now per table rather than hardcoded, because the
+    archive covers weather_forecasts as well. The property is unchanged: a
+    unique total order, advanced by keyset."""
     import inspect
 
     import archive_observations as ao
     src = inspect.getsource(ao.export_cold)
-    assert '("order", "obs_id.asc")' in src, "paging must use a unique total order"
+    assert '("order", f"{pk}.asc")' in src, "paging must use a unique total order"
     assert 'f"gt.{after}"' in src, "keyset, not offset"
     # only the request itself - the docstring explains the bug by name
     assert '("offset"' not in src, "OFFSET over a non-unique sort is the bug"
-    assert '("valid_at", f"lt.{cutoff.isoformat()}")' in src, \
+    assert '(cut_col, f"lt.{cutoff.isoformat()}")' in src, \
         "the window is still bounded by the cutoff, just not ordered by it"
+
+
+def test_every_archived_table_pages_on_its_real_primary_key():
+    """A spec naming a non-unique column would reintroduce the skipped-row bug
+    for that table silently."""
+    import archive_observations as ao
+    expected = {"weather_observations": "obs_id", "weather_forecasts": "forecast_id"}
+    for name, spec in ao.TABLES.items():
+        assert spec["pk"] == expected[spec["table"]], \
+            f"{name} must page on {spec['table']}'s primary key"
+        assert spec["pk"] not in spec["columns"], \
+            "the surrogate key is not exported - it means nothing outside its own database"
+
+
+def test_a_date_cutoff_is_not_compared_against_a_timestamp():
+    """weather_forecasts.for_date is a DATE. Sending a timestamp would move the
+    boundary by whatever time of day the job happened to run."""
+    import archive_observations as ao
+    assert ao.TABLES["forecasts"]["cutoff_is_date"] is True
+    assert ao.TABLES["observations"]["cutoff_is_date"] is False
 
 
 def test_the_export_does_not_hold_every_row_in_memory():
@@ -641,9 +664,9 @@ def test_the_archive_name_comes_from_the_min_and_max_seen():
 
     import archive_observations as ao
     assert "if lo is None or v < lo" in inspect.getsource(ao.export_cold)
-    main = inspect.getsource(ao.main)
-    assert "{lo[:10]}-to-{hi[:10]}" in main
-    assert "rows[0]['valid_at']" not in main
+    body = inspect.getsource(ao.run_one)
+    assert "{str(lo)[:10]}-to-{str(hi)[:10]}" in body
+    assert "rows[0]['valid_at']" not in body
 
 
 def test_row_counting_parses_the_csv_rather_than_counting_newlines():
@@ -674,17 +697,32 @@ def test_the_prune_is_given_the_exact_instant_that_was_exported():
     import inspect
 
     import archive_observations as ao
-    main = inspect.getsource(ao.main)
-    assert '"p_before": cutoff.isoformat()' in main
-    assert '{**prune_args, "p_dry_run": True}' in main
-    assert '{**prune_args, "p_dry_run": False}' in main
+    # main() dispatches per table; the four steps live in run_one().
+    body = inspect.getsource(ao.run_one)
+    assert '"p_before": cutoff.isoformat()' in body
+    assert '{**prune_args, "p_dry_run": True}' in body
+    assert '{**prune_args, "p_dry_run": False}' in body
 
 
 def test_a_refused_prune_fails_the_job():
     import inspect
 
     import archive_observations as ao
-    assert "PRUNE REFUSED" in inspect.getsource(ao.main)
+    assert "PRUNE REFUSED" in inspect.getsource(ao.run_one)
+
+
+def test_running_both_tables_reports_the_worst_exit_code():
+    """A clean observations archive must not hide a failed forecasts one."""
+    import inspect
+
+    main = inspect.getsource(ao_module().main)
+    assert "worst = max(worst, rc)" in main
+    assert "return worst" in main
+
+
+def ao_module():
+    import archive_observations
+    return archive_observations
 
 
 def test_the_sql_takes_p_before_and_deletes_on_the_instant():

@@ -499,7 +499,8 @@ def test_the_archive_round_trips_every_row():
 
     mod.rest = fake_rest
     import datetime as _dt
-    blob, n, lo, hi = mod.export_cold(_dt.datetime(2027, 1, 1, tzinfo=_dt.timezone.utc))
+    blob, n, lo, hi = mod.export_cold(mod.TABLES["observations"],
+                                      _dt.datetime(2027, 1, 1, tzinfo=_dt.timezone.utc))
     assert n == len(rows)
     assert mod.count_rows(blob) == len(rows), "the verify step would pass a short file"
     assert lo == "2026-01-01T12:00:00+00:00" and hi == "2026-01-01T13:00:00+00:00", (lo, hi)

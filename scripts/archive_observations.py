@@ -1,10 +1,23 @@
 """
-Move cold observations out of Postgres and into a GitHub Release.
+Move cold weather rows out of Postgres and into a GitHub Release.
 
-WHY. weather_observations is 98% of this database - 184 MB of a 500 MB free
-tier at 710k rows, or 272 bytes a row. A Postgres row carries a 24-byte header,
-per-column length bytes and index entries; the same data as gzipped CSV is
-3.6 MB. Fifty-one times smaller, for data nobody queries interactively.
+BOTH TABLES NOW, not observations alone. weather_forecasts overtook it:
+
+    weather_forecasts      124 MB   343,097 rows   269,744 older than 180 days
+    weather_observations   121 MB   519,649 rows   292,356 older than 180 days
+
+Between them that is 245 MB of a 500 MB free tier, and the database measured
+513 MB - over the limit - before the first REINDEX. Archiving only half of it
+left the bigger half behind.
+
+WHY IT SHRINKS SO FAR. A Postgres row carries a 24-byte header, per-column
+length bytes, and an entry in every index on the table. Indexes are 78 MB of
+weather_forecasts' 124 and 59 MB of weather_observations' 121, so removing 79%
+of the rows returns far more than the heap figure alone suggests. The same
+data as gzipped CSV is a few megabytes.
+
+  python scripts/archive_observations.py --keep-days 180 --dry-run
+  python scripts/archive_observations.py --keep-days 180 --table forecasts --commit
 
 WHERE IT GOES. A GitHub Release asset on this repo: free, 2 GB per asset,
 unlimited assets, durable, versioned, and already inside the pipeline that
@@ -28,8 +41,7 @@ truncated file would otherwise be discovered months later, by a model with a
 hole in it. prune_observations() independently refuses if step 1 did not cover
 the range, so the guard exists on both sides.
 
-  python scripts/archive_observations.py --keep-days 180 --dry-run
-  python scripts/archive_observations.py --keep-days 180 --commit
+Loading an archive back into local PostgreSQL: docs/local_archive.md.
 """
 import argparse
 import csv
@@ -44,13 +56,49 @@ import requests
 
 from common import rest, log_run, rpc, refresh_feature_cache, _cfg, _headers
 
-COLUMNS = ["city_key", "station", "valid_at", "temp_c", "temp_f", "dewpoint_c",
-           "humidity", "wind_speed", "wind_dir_deg", "precip", "cloud_cover",
-           "pressure_hpa", "source"]
-
 API = "https://api.github.com"
-TAG = "observations-archive"
 PAGE = 50000
+
+# --- WHAT CAN BE ARCHIVED, AND HOW EACH ONE IS PAGED ----------------------
+#
+# weather_forecasts is now the LARGER of the two - 124 MB against 121 MB, and
+# 79% of it is older than six months - so archiving only observations left the
+# bigger half behind. Both follow the identical four steps; only the key, the
+# cutoff column and the prune guard differ, so they are data rather than a
+# second copy of the script.
+#
+# `pk` must be the PRIMARY KEY. Keyset paging on it is what makes the export
+# safe: the cutoff columns are nowhere near unique (37 cities x 2 sources
+# share a timestamp), Postgres gives no order among ties, and OFFSET paging
+# over a non-unique order silently skips rows the prune then deletes anyway.
+TABLES = {
+    "observations": {
+        "table": "weather_observations",
+        "pk": "obs_id",
+        "cutoff_col": "valid_at",
+        "cutoff_is_date": False,
+        "prune_rpc": "prune_observations",
+        "tag": "observations-archive",
+        "columns": ["city_key", "station", "valid_at", "temp_c", "temp_f",
+                    "dewpoint_c", "humidity", "wind_speed", "wind_dir_deg",
+                    "precip", "cloud_cover", "pressure_hpa", "source"],
+        "bytes_per_row": 272,
+    },
+    "forecasts": {
+        "table": "weather_forecasts",
+        "pk": "forecast_id",
+        "cutoff_col": "for_date",
+        # for_date is a DATE, so the cutoff is sent as one. Passing a
+        # timestamp would compare a date to a timestamp and shift the boundary
+        # by the time of day the job happened to run.
+        "cutoff_is_date": True,
+        "prune_rpc": "prune_forecasts",
+        "tag": "forecasts-archive",
+        "columns": ["city_key", "model", "run_at", "observed_at", "for_date",
+                    "lead_days", "forecast_max_c", "variables", "source"],
+        "bytes_per_row": 140,
+    },
+}
 
 
 def _rpc(fn, params=None):
@@ -59,7 +107,7 @@ def _rpc(fn, params=None):
     return rpc(fn, params, timeout=600)
 
 
-def export_cold(cutoff):
+def export_cold(spec, cutoff):
     """Every observation strictly older than the cutoff, as a gzipped CSV.
 
     KEYSET PAGING ON THE PRIMARY KEY, and that is the whole point of this
@@ -86,33 +134,34 @@ def export_cold(cutoff):
 
     Returns (gzip blob, row count, earliest valid_at, latest valid_at).
     """
+    cols, pk, cut_col = spec["columns"], spec["pk"], spec["cutoff_col"]
     buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=COLUMNS, extrasaction="ignore")
+    w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
     w.writeheader()
 
     n, after, lo, hi = 0, None, None, None
     while True:
         params = [
-            ("select", ",".join(["obs_id"] + COLUMNS)),
-            ("valid_at", f"lt.{cutoff.isoformat()}"),
-            ("order", "obs_id.asc"),
+            ("select", ",".join([pk] + cols)),
+            (cut_col, f"lt.{cutoff.isoformat()}"),
+            ("order", f"{pk}.asc"),
             ("limit", str(PAGE)),
         ]
         if after is not None:
-            params.append(("obs_id", f"gt.{after}"))
-        rows = rest("weather_observations", params)
+            params.append((pk, f"gt.{after}"))
+        rows = rest(spec["table"], params)
         if not rows:
             break
         for r in rows:
             w.writerow(r)
-            v = r.get("valid_at")
+            v = r.get(cut_col)
             if v:
                 if lo is None or v < lo:
                     lo = v
                 if hi is None or v > hi:
                     hi = v
         n += len(rows)
-        after = rows[-1]["obs_id"]
+        after = rows[-1][pk]
         if len(rows) < PAGE:
             break
         print(f"  ... {n:,} rows")
@@ -139,15 +188,17 @@ def gh(repo, token, method, path, **kw):
     return r
 
 
-def ensure_release(repo, token):
-    r = gh(repo, token, "GET", f"/releases/tags/{TAG}")
+def ensure_release(repo, token, spec):
+    tag = spec["tag"]
+    r = gh(repo, token, "GET", f"/releases/tags/{tag}")
     if r.status_code == 200:
         return r.json()
     r = gh(repo, token, "POST", "/releases", json={
-        "tag_name": TAG, "name": "Observation archive",
-        "body": ("Cold weather observations, pruned from Supabase to stay inside the free tier.\n\n"
-                 "One gzipped CSV per archive run, named by the range it covers. "
-                 "Restore with scripts/archive_observations.py --restore <asset>."),
+        "tag_name": tag, "name": f"{spec['table']} archive",
+        "body": (f"Cold rows from {spec['table']}, pruned from Supabase to stay inside "
+                 "the free tier.\n\nOne gzipped CSV per archive run, named by the range "
+                 "it covers. The header is the column list, so it loads straight into "
+                 "PostgreSQL with \\copy - see docs/local_archive.md."),
         "prerelease": True,
     })
     r.raise_for_status()
@@ -187,13 +238,30 @@ def main():
     ap.add_argument("--commit", action="store_true",
                     help="actually upload and prune (default is a dry run)")
     ap.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
+    ap.add_argument("--table", choices=sorted(TABLES) + ["both"], default="both",
+                    help="which archive to run (default: both)")
     args = ap.parse_args()
 
     if args.keep_days < 30:
         print("--keep-days below 30 leaves nothing to model on", file=sys.stderr)
         return 1
 
-    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=args.keep_days)
+    names = sorted(TABLES) if args.table == "both" else [args.table]
+    worst = 0
+    for name in names:
+        print(f"\n=== {name} ===")
+        rc = run_one(TABLES[name], name, args)
+        worst = max(worst, rc)
+    return worst
+
+
+def run_one(spec, name, args):
+    """One table, the same four steps: cache, export, verify, prune."""
+    job = f"archive_{name}"
+    stamp = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=args.keep_days)
+    # A date column needs a date cutoff; comparing it to a timestamp shifts the
+    # boundary by whatever time of day this happened to run.
+    cutoff = stamp.date() if spec["cutoff_is_date"] else stamp
 
     # 1 - the cache must cover what is about to go
     try:
@@ -201,28 +269,28 @@ def main():
     except Exception as e:
         print(f"refresh_feature_cache failed ({e}). Not archiving - the derived "
               f"rows are what survives the prune.", file=sys.stderr)
-        log_run("archive_observations", "attention", 0, {"error": str(e)})
+        log_run(job, "attention", 0, {"error": str(e)})
         return 1
 
     # 2 - export
-    print(f"reading observations older than {cutoff.isoformat()} ...")
-    blob, n_rows, lo, hi = export_cold(cutoff)
+    print(f"reading {spec['table']} older than {cutoff.isoformat()} ...")
+    blob, n_rows, lo, hi = export_cold(spec, cutoff)
     if not n_rows:
-        print(f"nothing older than {cutoff.date()} - nothing to archive.")
-        log_run("archive_observations", "ok", 0, {"keep_days": args.keep_days})
+        print(f"nothing older than {cutoff} - nothing to archive.")
+        log_run(job, "ok", 0, {"keep_days": args.keep_days})
         return 0
     # From the min/max seen, not from the first and last row: the export is
     # ordered by obs_id now, which is not chronological.
-    name = f"observations-{lo[:10]}-to-{hi[:10]}.csv.gz"
-    print(f"{n_rows:,} rows -> {name}  ({len(blob) / 1e6:.1f} MB gzipped, "
-          f"~{n_rows * 272 / 1e6:.0f} MB in Postgres)")
+    asset_name = f"{name}-{str(lo)[:10]}-to-{str(hi)[:10]}.csv.gz"
+    print(f"{n_rows:,} rows -> {asset_name}  ({len(blob) / 1e6:.1f} MB gzipped, "
+          f"~{n_rows * spec['bytes_per_row'] / 1e6:.0f} MB in Postgres)")
 
     # THE SAME INSTANT, both times. Letting the database recompute its own
     # cutoff deletes the minutes that passed while this ran - unarchived.
     prune_args = {"p_keep_days": args.keep_days, "p_before": cutoff.isoformat()}
 
     if not args.commit:
-        prune = _rpc("prune_observations", {**prune_args, "p_dry_run": True})
+        prune = _rpc(spec["prune_rpc"], {**prune_args, "p_dry_run": True})
         print(f"\n--dry-run: nothing uploaded, nothing deleted.\nprune would say: {prune}")
         return 0
 
@@ -232,28 +300,28 @@ def main():
         return 1
 
     # 3 - upload, then read it back
-    rel = ensure_release(args.repo, token)
-    asset = upload(args.repo, token, rel, name, blob)
+    rel = ensure_release(args.repo, token, spec)
+    asset = upload(args.repo, token, rel, asset_name, blob)
     got, ok = verify(asset, n_rows, token)
     if not ok:
         print(f"VERIFY FAILED: uploaded {n_rows:,} rows, read back {got:,}. "
               f"Nothing pruned.", file=sys.stderr)
-        log_run("archive_observations", "attention", 0,
-                {"uploaded": n_rows, "read_back": got, "asset": name})
+        log_run(job, "attention", 0,
+                {"uploaded": n_rows, "read_back": got, "asset": asset_name})
         return 1
     print(f"verified: {got:,} rows read back from the release")
 
     # 4 - only now, and only as far back as what was actually archived
-    prune = _rpc("prune_observations", {**prune_args, "p_dry_run": False})
+    prune = _rpc(spec["prune_rpc"], {**prune_args, "p_dry_run": False})
     print(f"prune: {prune}")
     if not (prune or {}).get("ok"):
         print(f"PRUNE REFUSED: {prune}", file=sys.stderr)
-        log_run("archive_observations", "attention", n_rows,
-                {"asset": name, "rows": n_rows, "prune": prune})
+        log_run(job, "attention", n_rows,
+                {"asset": asset_name, "rows": n_rows, "prune": prune})
         return 1
 
-    log_run("archive_observations", "ok", n_rows, {
-        "asset": name, "rows": n_rows, "gzip_bytes": len(blob),
+    log_run(job, "ok", n_rows, {
+        "asset": asset_name, "rows": n_rows, "gzip_bytes": len(blob),
         "keep_days": args.keep_days, "archived_through": cutoff.isoformat(),
         "prune": prune,
     })
