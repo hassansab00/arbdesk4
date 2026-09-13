@@ -1697,3 +1697,110 @@ def test_every_guarded_write_runs_before_the_summary(workflow):
             f"{workflow}: Summary guards '{name}' but '{name}' is not upstream of it. "
             "n8n decides the order of parallel branches, so the guard can run first, find a "
             "node that has not executed, and report success on a refused write.")
+
+
+def test_a_busy_database_is_reported_as_a_timeout_not_as_the_one_odd_row():
+    """THE BUG THIS TEST EXISTS FOR.
+
+    On 2026-09-12 a P0.2 run sent 102 writes. Ninety of them came back
+    {"data":"upstream request timeout"} - the Supabase gateway giving up on an
+    overloaded database - and one came back PGRST102 "All object keys must
+    match". The guard scanned for the first item carrying a `code` or
+    `message`; a timeout body has neither, so it skipped all ninety and
+    reported the PGRST102. The run was declared a malformed-payload bug and
+    the real cause - the database was saturated - went unnamed for hours.
+
+    The dominant failure is the one that gets reported, and a timeout is
+    recognised as a timeout.
+    """
+    def m(plan):
+        plan["seed"]["Write observations"] = (
+            [{"data": "upstream request timeout"}] * 9 +
+            [{"code": "PGRST102", "message": "All object keys must match",
+              "details": None, "hint": None}]
+        )
+    r = run_with("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json", m)
+    assert r["ok"] is False and r["node"] == "Summary", r
+    first = r["error"].splitlines()[0]
+    assert "did not answer" in first, first
+    assert "9 of 10" in first, first
+    assert "too busy to reply" in first, first
+    assert "All object keys must match" not in first, first
+
+
+def test_a_single_odd_row_is_still_reported_when_it_is_the_only_failure():
+    """The counting must not bury a real one-off refusal: with no timeouts to
+    outvote it, the PGRST102 is still the thing that gets named."""
+    def m(plan):
+        plan["seed"]["Write observations"] = [
+            {"code": "PGRST102", "message": "All object keys must match",
+             "details": None, "hint": None}]
+    r = run_with("P1.2_nws_monitor.template.json", "plan_P1.2_nws_monitor.json", m)
+    assert r["ok"] is False and r["node"] == "Summary", r
+    assert "All object keys must match" in r["error"], r["error"]
+
+
+def test_p04_maps_the_flattened_trade_tape():
+    """THE BUG THIS TEST EXISTS FOR.
+
+    n8n's HTTP node splits a JSON ARRAY response into one item per element.
+    Polymarket's tape endpoint returns an array, so 120 requests arrive as a
+    flat run of trade objects - never as 120 arrays. `Map trades to bands`
+    read responses[i] as "the tape for request i", so responses[0] was a
+    single TRADE and `res.data || res.trades || res.history || []` fell
+    through to [] on every one. [] IS an array, so nothing counted as failed
+    and nothing counted as unmatched: the run reported "0 trades out of 120
+    requests (0 failed, 0 unmatched)", which is indistinguishable from a dead
+    market. Every band read $0 of traded volume.
+
+    Compounding it, the token field Polymarket sends is `asset`; the lookup
+    asked for asset_id / token_id / tokenId, so even with arrays handled
+    every trade would have missed byToken and been dropped as unmatched.
+    """
+    r = run_with("P0.4_trade_history.template.json",
+                 "plan_P0.4_trade_history.json", lambda p: None)
+    assert r["ok"] is True, r
+    m = r["outputs"]["Map trades to bands"][0]
+    assert m["n"] == 3, m
+    assert m["unmatched"] == 0 and m["failed"] == 0, m
+    # both legs attribute home: the YES and NO token of one band, plus another
+    assert {row["band_id"] for row in m["rows"]} == {
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222"}, m["rows"]
+
+
+def test_p04_writes_the_city_on_every_trade():
+    """city_key is on `markets`, not `bands`. When it came back undefined every
+    trade landed with a null city and v_city_volume - `where city_key is not
+    null` - returned zero rows, so the Board, the Globe and City Clusters all
+    read $0 and could not tell that apart from a quiet market."""
+    r = run_with("P0.4_trade_history.template.json",
+                 "plan_P0.4_trade_history.json", lambda p: None)
+    rows = r["outputs"]["Map trades to bands"][0]["rows"]
+    assert rows, r
+    assert all(row["city_key"] for row in rows), rows
+    assert {row["city_key"] for row in rows} == {"helsinki", "san_francisco"}
+
+
+def test_p04_counts_an_unknown_token_as_unmatched_rather_than_guessing():
+    """Crediting a trade to an arbitrary band of the same market would inflate
+    that band's volume with another's. An unrecognised token is dropped and
+    COUNTED, so the Summary can say so."""
+    def m(plan):
+        plan["seed"]["Fetch trades"][0]["asset"] = "999999999999999999999"
+    r = run_with("P0.4_trade_history.template.json",
+                 "plan_P0.4_trade_history.json", m)
+    out = r["outputs"]["Map trades to bands"][0]
+    assert out["n"] == 2 and out["unmatched"] == 1, out
+
+
+def test_p04_still_reads_a_tape_that_arrives_wrapped_in_an_array():
+    """Not every deployment splits the same way, and the endpoint may start
+    wrapping. One response holding the whole array must still map."""
+    def m(plan):
+        trades = plan["seed"]["Fetch trades"]
+        plan["seed"]["Fetch trades"] = [{"data": trades}]
+    r = run_with("P0.4_trade_history.template.json",
+                 "plan_P0.4_trade_history.json", m)
+    out = r["outputs"]["Map trades to bands"][0]
+    assert out["n"] == 3 and out["unmatched"] == 0, out

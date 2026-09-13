@@ -11,18 +11,104 @@ scheduling/logging wrapper so the job shows up in `ingest_log` next to
 every other daily job, consistent with how the rest of AD4 is run.
 """
 import sys
-from common import _cfg, _headers, log_run, refresh_feature_cache
-import requests
+from common import log_run, refresh_feature_cache, rest, rpc as _call_rpc
 
 
-def _call_rpc(fn, params=None):
-    r = requests.post(f"{_cfg()['url']}/rest/v1/rpc/{fn}", headers=_headers(),
-                      json=params or {}, timeout=120)
-    r.raise_for_status()
-    return r.json()
+def _absent(exc):
+    """Is this 'the database has not run that .sql file' rather than a failure?
+
+    PostgREST answers an unknown function with 404 / PGRST202. Everything else
+    - a timeout, a permission denial, a bug in the function - is the job's
+    problem and must not be filed under "optional".
+    """
+    resp = getattr(exc, "response", None)
+    if getattr(resp, "status_code", None) != 404:
+        return False
+    body = (getattr(resp, "text", "") or "")
+    return "PGRST202" in body or "Could not find the function" in body
+
+
+def optional_rpc(fn, hint, failures):
+    """Call an RPC that a database may legitimately not have yet.
+
+    A MISSING function is a note: a desk that has not run the .sql file simply
+    does without. A function that EXISTS AND FAILED is recorded in `failures`,
+    which fails the job.
+
+    This is the same rule the refresh_feature_cache block below already
+    follows, and it is here for the same reason it is there. Both of these
+    used to swallow every failure into one line on stderr and let the job
+    report green - so when refresh_weather_peak() started failing 42P10 on
+    2026-09-06 (sql/ad4_56 has the story), the daily pipeline passed for a
+    week while the table it was meant to write went untouched, and
+    live_weather.minutes_to_peak, v_city_stats, v_trade_timing and strategy s7
+    all read a stale copy without anything anywhere saying so.
+    """
+    try:
+        return _call_rpc(fn)
+    except Exception as e:
+        if _absent(e):
+            print(f"  note: {fn} unavailable - {hint}", file=sys.stderr)
+            return None
+        failures.append(f"{fn}: {e}")
+        print(f"{fn} FAILED: {e}", file=sys.stderr)
+        return None
+
+
+def refresh_peaks(failures):
+    """derived_weather_peak, ONE CITY AT A TIME.
+
+    Same reason as common.refresh_feature_cache, which says it at length:
+    statement_timeout runs from the start of the TOP-LEVEL statement and is
+    never reset by what a function does internally, so a slice has to be its
+    own call. Measured on the live archive, the whole-archive version sorts
+    519k rows and takes between 5.0s and 17.4s for the same 609 rows -
+    recompute_correlation was cancelled at about 15s, so that is a coin flip.
+    Per city the slowest call is 229ms, and the output is identical: all 636
+    rows compared, none changed.
+
+    Falls back to the whole-archive function on a database that has not run
+    sql/ad4_56 yet, so this script works either way.
+    """
+    try:
+        cities = [c["city_key"] for c in
+                  rest("cities", [("select", "city_key"), ("order", "city_key")])]
+    except Exception as e:
+        failures.append(f"cities: {e}")
+        print(f"cities FAILED: {e}", file=sys.stderr)
+        return None
+    if not cities:
+        return 0
+
+    try:
+        total = int(_call_rpc("refresh_weather_peak_city",
+                              {"p_city": cities[0]}) or 0)
+    except Exception as e:
+        if _absent(e):
+            return optional_rpc("refresh_weather_peak",
+                                "run sql/ad4_56 for the per-city version", failures)
+        failures.append(f"refresh_weather_peak_city[{cities[0]}]: {e}")
+        print(f"refresh_weather_peak_city FAILED on {cities[0]}: {e}", file=sys.stderr)
+        return None
+
+    for city in cities[1:]:
+        try:
+            total += int(_call_rpc("refresh_weather_peak_city", {"p_city": city}) or 0)
+        except Exception as e:
+            # One city failing is still a failure. It is not a reason to
+            # abandon the other fifty-three, which are independent.
+            failures.append(f"refresh_weather_peak_city[{city}]: {e}")
+            print(f"refresh_weather_peak_city FAILED on {city}: {e}", file=sys.stderr)
+    return total
 
 
 def main():
+    # common.rpc, not raise_for_status: the body is where Postgres puts the
+    # reason. Six consecutive daily runs died here reporting only
+    # "500 Server Error ... /rpc/recompute_correlation", while the Postgres
+    # log recorded "canceling statement due to statement timeout" at the very
+    # same second. One of those two messages says what to fix.
+    failures = []
     capacity_rows = _call_rpc("recompute_capacity")
     correlation_rows = _call_rpc("recompute_correlation")
     print(f"derived_capacity: {capacity_rows} rows")
@@ -45,21 +131,14 @@ def main():
     #
     # Optional in the same way refresh_city_climate is: a database without
     # ad4_37 has no such function, and nothing else in this job depends on it.
-    peaks = None
-    try:
-        peaks = _call_rpc("refresh_weather_peak")
+    peaks = refresh_peaks(failures)
+    if peaks is not None:
         print(f"derived_weather_peak: {peaks} city-month row(s)")
-    except Exception as e:
-        print(f"  note: refresh_weather_peak unavailable ({e}) - run sql/ad4_37_peak_hour.sql",
-              file=sys.stderr)
 
-    climate = None
-    try:
-        climate = _call_rpc("refresh_city_climate")
+    climate = optional_rpc("refresh_city_climate",
+                           "run sql/ad4_19_stats_cache.sql", failures)
+    if climate is not None:
         print(f"derived_city_climate: {climate}")
-    except Exception as e:
-        print(f"  note: refresh_city_climate unavailable ({e}) - run sql/ad4_19_stats_cache.sql",
-              file=sys.stderr)
 
     # CALIBRATION FEEDBACK - the loop sql/ad4_45 closes.
     #
@@ -74,14 +153,12 @@ def main():
     # databank writes, and this job is what runs after it. Optional in the
     # same way as the two above: a desk that has not run ad4_45 prices exactly
     # as it did before, and says so once rather than failing the run.
-    calibration = None
-    try:
-        calibration = _call_rpc("refresh_calibration_adjustment")
+    calibration = optional_rpc(
+        "refresh_calibration_adjustment",
+        "run sql/ad4_45_calibration_feedback.sql. Sigma stays at measured skill alone.",
+        failures)
+    if calibration is not None:
         print(f"calibration feedback: {calibration}")
-    except Exception as e:
-        print(f"  note: refresh_calibration_adjustment unavailable ({e}) - "
-              f"run sql/ad4_45_calibration_feedback.sql. Sigma stays at measured skill alone.",
-              file=sys.stderr)
 
     # Same reasoning, same place: v_city_day_features and the climb profile are
     # passes over the whole archive for figures that change once a day. Left in
@@ -105,13 +182,23 @@ def main():
         print(f"  note: {e}", file=sys.stderr)
     except Exception as e:
         features_error = str(e)
+        failures.append(f"refresh_feature_cache: {e}")
         print(f"refresh_feature_cache FAILED: {e}", file=sys.stderr)
 
-    log_run("capacity", "attention" if features_error else "ok",
+    # `peaks` was computed here and never logged, so the one table that WAS
+    # failing left no trace in ingest_log either. Every derivation this job
+    # performs now appears in the row it writes.
+    log_run("capacity", "attention" if failures else "ok",
             (capacity_rows or 0) + (correlation_rows or 0),
             {"capacity_rows": capacity_rows, "correlation_rows": correlation_rows,
-             "climate": climate, "calibration": calibration, "features": features, "features_error": features_error})
-    if features_error:
+             "peaks": peaks, "climate": climate, "calibration": calibration,
+             "features": features, "features_error": features_error,
+             "failures": failures or None})
+
+    if failures:
+        print(f"capacity: {len(failures)} derivation(s) failed:", file=sys.stderr)
+        for f in failures:
+            print(f"  - {f}", file=sys.stderr)
         return 1
     return 0
 

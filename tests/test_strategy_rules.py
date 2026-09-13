@@ -1,6 +1,6 @@
 import datetime as dt
 
-import signals as sg
+import strategy_rules as sg
 from strategies.base import BandView, Context, StrategyConfig
 
 

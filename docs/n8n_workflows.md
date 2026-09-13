@@ -40,6 +40,7 @@ shows is already tight. GitHub Actions has no per-run execution quota.
 | P1.2 NWS Monitor (observations, alerts, solar transit) | **n8n**, every 2h + on demand | `n8n/P1.2_nws_monitor.template.json` |
 | P1.3 NWS Forecast (second forecast model) | **n8n**, every 6h | `n8n/P1.3_nws_forecast.template.json` |
 | P1.4 NWS Gridpoint (forecast conditions) | **n8n**, every 6h | `n8n/P1.4_nws_gridpoint.template.json` |
+| P1.5 Open-Meteo Global (all 54 cities) | **n8n**, every 3h | `n8n/P1.5_open_meteo.template.json` |
 | P2.1 Probability + Edge Pipeline | GitHub Actions, 4x/day | `.github/workflows/pipeline_intraday.yml` -> `probability_engine.py` + `edge_engine.py` |
 | P2.2 Signal Engine | GitHub Actions, 4x/day | `.github/workflows/pipeline_intraday.yml` -> `scripts/signals.py` |
 | P2.3 Settlement Sweep | GitHub Actions, daily | `.github/workflows/pipeline_daily.yml` -> `scripts/settlement.py` |
@@ -227,3 +228,78 @@ execution each time, which is the shape the freshness requirement actually
 has. If continuous 30-minute NWS polling is ever genuinely wanted, its home
 is a GitHub Action beside `live_weather.yml` - no per-run quota - not a
 bigger n8n bill.
+
+---
+
+## Live workflow ids, as deployed
+
+Written down because three of these were rebuilt on 12 Sep 2026 and the old
+copies still exist in n8n under the same names. The ids below are the ones
+that are actually published and running; anything else with a matching name
+is the dead predecessor.
+
+| Workflow | n8n id | State |
+|---|---|---|
+| AD4 P0.2 - Market Discovery | `speyDmtDN01cEI5N` | active, every 6h |
+| AD4 P0.3 - Book + Volume Snapshot | `e0HiTavIzilGmBPo` | active, hourly |
+| AD4 P0.4 - Trade History | `SA3nGidtSpXOrz9g` | active, every 6h |
+| AD4 P0.5 - Refresh Rules Text | `F7UO2tcZQ6nThe0s` | active |
+| AD4 P1.1 - Live Weather Alerts | `5Lz8nIOQmu8lEgl1` | INACTIVE - email, off by request |
+| AD4 P1.2 - NWS Monitor | `tahTg5bLzFyeByqB` | active, every 2h — **rebuilt** |
+| AD4 P1.3 - NWS Forecast | `8BBQpbp7gOx0UDFM` | active, every 6h — **rebuilt** |
+| AD4 P1.4 - NWS Gridpoint | `FLNPloignHpFnOhp` | active, every 6h — **rebuilt** |
+| AD4 P1.5 - Open-Meteo Global | `afcFuaCyn09xUJcV` | active, every 3h |
+| AD4 P2.1 - Relearn | `vVxodQEVvw2nImGy` | active (needs a PAT in Config) |
+| AD4 P2.2 - Paper Maintenance | `hKHr9qdVjmzHgyaP` | active |
+| AD4 P3.1 - Email Digests | `9KKDvlBDYHxQMWzE` | INACTIVE - email, off by request |
+| AD4 P4.1 - Health Watchdog | `uGZ2deLMqYWAk6IH` | active |
+
+### Why P1.2, P1.3 and P1.4 were rebuilt rather than repaired
+
+Their original copies were created with **MCP access turned off**, which makes
+them invisible to every tool that could publish, edit or even deactivate them:
+
+    Workflow is not available in MCP. Enable MCP access from the workflow
+    card in the workflows list, or from the workflow settings.
+
+That is a per-workflow toggle in the n8n UI and there is no API for it, so the
+only way to get a working, publishable P1.2/P1.3/P1.4 was to create new ones
+from the templates in `n8n/`. The old three are inactive and harmless, but they
+hold the same webhook paths (`ad4-nws-monitor`, `ad4-nws-forecast`,
+`ad4-nws-gridpoint`) — **activating one would collide with its replacement**.
+Delete or rename them when convenient.
+
+P1.5 was NOT rebuilt: it is equally invisible to MCP, but it is active and
+working (7,992 forecast rows written 1.2h before this was written), and
+replacing a healthy feed to gain editability is not worth the outage.
+
+### Order matters on a cold start
+
+P1.4 reads `cities.nws_grid_wfo/x/y` and refuses to run when no city has one.
+P1.2 and P1.3 are what resolve `/points` and write those ids back. On a fresh
+database, run P1.3 (or P1.2) once before P1.4, or P1.4 stops with
+
+    No city has a cached NWS gridpoint. P1.2 or P1.3 must run first.
+
+Of 54 cities, 12 are inside the NWS coverage area; the other 25 checked so far
+are recorded as `nws_supported = false` and skipped on later runs. Those cities
+are covered by P1.5 (Open-Meteo), which is global.
+
+### The 17 cities that had no forecast at all
+
+`cities` holds 54 rows, all active, all with live markets — but only 37 had a
+latitude, and both forecast feeds filter on `latitude=not.is.null`. The other
+17 were not failing, they were filtered out before either workflow saw them,
+which is why it never appeared as an error anywhere. Fifteen of them were
+carrying 18–20 open markets apiece: Toronto, Paris, Seoul, Moscow, Hong Kong,
+Manila, Buenos Aires, Ankara, Kuala Lumpur, Shenzhen, Zhengzhou, Qingdao,
+Panama City, Helsinki, Jinan.
+
+`sql/ad4_55_city_coordinates.sql` fills them from the position of the station
+each city's market SETTLES on (`cities.icao`) — Paris is LFPB/Le Bourget, not
+Charles de Gaulle; Moscow is UUWW/Vnukovo, not Sheremetyevo. Hong Kong is the
+one exception and is commented as such: it has no `icao`, so it uses the Hong
+Kong Observatory, and the file says what to change if the market turns out to
+settle on the airport instead.
+
+Coverage went 37 → 54 cities, 296 → 432 forecast days, 37 → 54 live readings.

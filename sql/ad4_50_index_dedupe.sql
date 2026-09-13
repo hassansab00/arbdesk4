@@ -33,11 +33,51 @@
 --   2. Of two interchangeable indexes, drop the physically larger. They hold
 --      the same entries, so the difference is bloat.
 --   3. An index whose columns are a strict PREFIX of a longer index is
---      redundant - the longer one answers every query the shorter one does.
+--      redundant FOR LOOKUPS - the longer one answers every query the shorter
+--      one does. It is NOT redundant if it is UNIQUE. See below.
 --   4. DESC vs ASC does not make two indexes different: Postgres reads a
 --      btree in either direction.
---   5. Anything not covered by 1-4 is left alone. This file removes
+--   5. A UNIQUE index is never dropped, under any rule. See below.
+--   6. Anything not covered by 1-5 is left alone. This file removes
 --      duplicates, it does not decide which indexes the desk needs.
+--
+--
+-- RULE 5, AND WHY IT COST SEVEN DAYS OF PEAK-HOUR DATA
+--
+-- Rule 3 was written about lookup cost and applied to every index, and a
+-- UNIQUE index is not only a lookup structure. It is a CONSTRAINT, and it is
+-- the only thing that makes `on conflict (those columns)` plannable.
+--
+-- derived_weather_peak carries a primary key on
+--
+--     (city_key, month, computed_at)
+--
+-- and ad4_00_preflight builds a unique index on
+--
+--     (city_key, month)
+--
+-- because refresh_weather_peak() upserts with `on conflict (city_key, month)`.
+-- By rule 3 the short one is a strict prefix of the long one, so this file
+-- dropped it. Both statements are individually true and the conclusion is
+-- wrong: the three-column key permits two rows for the same city and month
+-- with different timestamps, which is exactly what the two-column key exists
+-- to forbid, and a prefix of a key is not a key.
+--
+-- What that produced was not a slow query. It was
+--
+--     42P10: there is no unique or exclusion constraint matching the
+--     ON CONFLICT specification
+--
+-- every time refresh_weather_peak() ran - and scripts/capacity.py caught it,
+-- printed one line to stderr and reported the job green. derived_weather_peak
+-- went unwritten for seven days while live_weather.minutes_to_peak,
+-- v_city_stats, v_trade_timing and strategy s7 all quietly read the stale
+-- copy. sql/ad4_56 puts the index back; this file is why it had to.
+--
+-- The same reasoning applies to rule 1's tie-break: given two indexes on
+-- IDENTICAL columns, one unique and one not, the unique one is the survivor
+-- even when it is the larger. Dropping it would remove a constraint, which
+-- this file promises never to do.
 -- ===========================================================================
 
 -- --------------------------------------------------------------------------
@@ -94,8 +134,13 @@ begin
       select ix.*,
              row_number() over (
                partition by tbl, keys
-               -- the survivor: a constraint or PK first, then the smallest
-               order by (indisprimary or is_constraint) desc, bytes asc, idx
+               -- The survivor, in order: a constraint or PK, then anything
+               -- UNIQUE, then the smallest. Unique outranks size because the
+               -- two are not interchangeable - one of them forbids duplicate
+               -- rows and the other only finds them faster.
+               order by (indisprimary or is_constraint) desc,
+                        indisunique desc,
+                        bytes asc, idx
              ) as rn,
              count(*) over (partition by tbl, keys) as copies
         from ix
@@ -103,6 +148,7 @@ begin
     select tbl, idx, bytes, keys from ranked
      where copies > 1 and rn > 1
        and not indisprimary and not is_constraint
+       and not indisunique          -- rule 5: a unique index is a constraint
      order by bytes desc
   loop
     execute format('drop index if exists public.%I', r.idx);
@@ -116,7 +162,7 @@ begin
   for r in
     with ix as (
       select c.relname as tbl, i.relname as idx, i.oid as idx_oid,
-             x.indisprimary, pg_relation_size(i.oid) as bytes,
+             x.indisprimary, x.indisunique, pg_relation_size(i.oid) as bytes,
              ad4_index_keys(pg_get_indexdef(i.oid)) as keys,
              exists (select 1 from pg_constraint con where con.conindid = i.oid)
                as is_constraint
@@ -133,6 +179,12 @@ begin
        and l.idx <> s.idx
        and l.keys like s.keys || ',%'      -- s's keys are a strict prefix
      where not s.indisprimary and not s.is_constraint
+       -- RULE 5. A prefix of a longer index answers the same LOOKUPS, and
+       -- enforces a STRICTLY STRONGER constraint: unique on (a,b) forbids
+       -- rows that unique on (a,b,c) allows. Dropping it silently deletes a
+       -- constraint and breaks `on conflict (a,b)`. This one line is the
+       -- whole of the derived_weather_peak outage described at the top.
+       and not s.indisunique
      order by s.bytes desc
   loop
     execute format('drop index if exists public.%I', r.idx);

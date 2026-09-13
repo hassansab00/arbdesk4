@@ -181,6 +181,8 @@ export default function GlobePage() {
       <DataState
         loading={stats.loading}
         error={stats.viewError}
+        truncated={oppQ.truncated}
+        relation="v_opportunities"
         isEmpty={withCoords.length === 0}
         emptyTitle="No cities with coordinates"
         emptyBody={

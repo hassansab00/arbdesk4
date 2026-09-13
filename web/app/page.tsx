@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
-import SignalsPanel from "@/components/SignalsPanel";
 import { DataState, InlineError } from "@/components/DataState";
 import { FreshnessRow } from "@/components/Provenance";
 import PipelineStatus from "@/components/PipelineStatus";
@@ -37,16 +36,6 @@ export default function OverviewPage() {
     []
   );
 
-  const signals = useQuery<Array<{ signal_id: number }>>(
-    () =>
-      supabase
-        .from("signals")
-        .select("signal_id")
-        .gte("fired_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString()),
-    [],
-    60000
-  );
-
   const volume = useQuery<Array<{ city_key: string; volume_usd: number }>>(
     () => supabase.from("v_city_volume").select("city_key,volume_usd"),
     [],
@@ -70,7 +59,6 @@ export default function OverviewPage() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Stat label="Cities live" value={cities.loading ? "…" : String((cities.data ?? []).length)} />
         <Stat label="Open positions" value={positions.loading ? "…" : String(openList.length)} />
-        <Stat label="Signals (24h)" value={signals.loading ? "…" : String((signals.data ?? []).length)} />
         <Stat label="Open P&L (net)" value={fmtUsd(openPnl, { signed: true })} color={pnlColor(openPnl)} />
         <Stat
           label="Market volume (24h)"
@@ -80,10 +68,10 @@ export default function OverviewPage() {
         {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
             identical, and only one of them is worth investigating. */}
         <div className="mt-2">
-          <FreshnessRow relations={["bands", "book_snapshots", "cities", "markets", "paper_trades", "trades_observed", "edges", "signals"]} />
+          <FreshnessRow relations={["bands", "book_snapshots", "cities", "markets", "paper_trades", "trades_observed", "edges"]} />
         </div>
       </div>
-      <InlineError message={cities.error ?? signals.error ?? volume.error} />
+      <InlineError message={cities.error ?? volume.error} />
 
       <section>
         <div className="mb-2 flex items-center justify-between">
@@ -100,7 +88,7 @@ export default function OverviewPage() {
             <>
               <code>v_opportunities</code> is empty or nothing is currently tradeable. Run the
               probability and edge engines to populate it: GitHub Actions →{" "}
-              <b>Probabilities</b>, then <b>Signals</b>. If you have not run the SQL yet, start with{" "}
+              <b>Probabilities</b>, then <b>Edges</b>. If you have not run the SQL yet, start with{" "}
               <code>sql/ad4_00_preflight.sql</code> — see <code>docs/GO_LIVE.md</code>.
             </>
           }
@@ -157,7 +145,7 @@ export default function OverviewPage() {
             <>
               All six strategies ship <code>enabled = false</code> and nothing trades until you turn
               one on. Enable one in Supabase (<code>update strategies set enabled = true where
-              strategy_id = &apos;…&apos;</code>), then let the Signals workflow run.
+              strategy_id = &apos;…&apos;</code>), then let the paper desk run.
             </>
           }
           onRetry={positions.refresh}
@@ -191,16 +179,6 @@ export default function OverviewPage() {
         </DataState>
       </section>
 
-      {/* SIGNALS LIVE HERE NOW, not in the right-hand rail.
-          A signal queue is something you sit down and work through - approve,
-          dismiss, read the reason - and that is a page, not a glance column.
-          Six versions in the rail proved the slot was wrong, not the panel. */}
-      <section>
-        <h2 className="mb-2 text-sm font-semibold">Signals awaiting you</h2>
-        <div className="rounded border border-border bg-panel">
-          <SignalsPanel />
-        </div>
-      </section>
     </div>
   );
 }

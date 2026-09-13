@@ -25,7 +25,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "file": "pipeline_intraday.yml",
       "how": "scripts/edge_engine.py",
       "kind": "action",
-      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "backtest_results": [
@@ -66,7 +66,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "file": "pipeline_intraday.yml",
       "how": "scripts/probability_engine.py",
       "kind": "action",
-      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "bands": [
@@ -213,7 +213,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "file": "pipeline_intraday.yml",
       "how": "scripts/weather_model.py",
       "kind": "action",
-      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     },
     {
       "cadence": "weekly",
@@ -229,7 +229,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "file": "pipeline_intraday.yml",
       "how": "scripts/weather_model.py",
       "kind": "action",
-      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     },
     {
       "cadence": "weekly",
@@ -254,7 +254,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "file": "pipeline_intraday.yml",
       "how": "scripts/edge_engine.py",
       "kind": "action",
-      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "fact_band_outcome": [
@@ -285,13 +285,6 @@ export const FILLED_BY: Record<string, Filler[]> = {
     }
   ],
   "ledger": [
-    {
-      "cadence": "daily",
-      "file": "pipeline_intraday.yml",
-      "how": "scripts/signals.py",
-      "kind": "action",
-      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
-    },
     {
       "cadence": "only when you run it",
       "file": "verify_resolution_source.yml",
@@ -352,7 +345,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "file": "pipeline_intraday.yml",
       "how": "scripts/paper_exits.py",
       "kind": "action",
-      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     },
     {
       "cadence": "whenever its n8n schedule fires",
@@ -368,7 +361,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "file": "pipeline_intraday.yml",
       "how": "scripts/paper_worker.py",
       "kind": "action",
-      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "paper_orders": [
@@ -377,7 +370,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "file": "pipeline_intraday.yml",
       "how": "scripts/paper_exits.py",
       "kind": "action",
-      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "paper_position_settlements": [
@@ -393,7 +386,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "file": "pipeline_intraday.yml",
       "how": "scripts/paper_settlement.py",
       "kind": "action",
-      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "paper_positions": [
@@ -402,7 +395,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "file": "pipeline_intraday.yml",
       "how": "scripts/paper_worker.py",
       "kind": "action",
-      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "paper_resolution_evidence": [
@@ -418,7 +411,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "file": "pipeline_intraday.yml",
       "how": "scripts/paper_settlement.py",
       "kind": "action",
-      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "paper_trade_plans": [
@@ -427,16 +420,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "file": "pipeline_intraday.yml",
       "how": "scripts/paper_plans.py",
       "kind": "action",
-      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
-    }
-  ],
-  "paper_trades": [
-    {
-      "cadence": "daily",
-      "file": "pipeline_intraday.yml",
-      "how": "scripts/signals.py",
-      "kind": "action",
-      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "research_captures": [
@@ -445,7 +429,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "file": "pipeline_intraday.yml",
       "how": "scripts/research_capture.py",
       "kind": "action",
-      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "settings": [
@@ -455,24 +439,6 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/calibration.py",
       "kind": "action",
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
-    }
-  ],
-  "signals": [
-    {
-      "cadence": "daily",
-      "file": "pipeline_intraday.yml",
-      "how": "scripts/signals.py",
-      "kind": "action",
-      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
-    }
-  ],
-  "strategy_conflicts": [
-    {
-      "cadence": "daily",
-      "file": "pipeline_intraday.yml",
-      "how": "scripts/signals.py",
-      "kind": "action",
-      "name": "Intraday Pipeline (model, probabilities, edges, signals)"
     }
   ],
   "trades_observed": [
@@ -760,6 +726,14 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "cities",
     "weather_observations"
   ],
+  "v_city_prediction_confidence": [
+    "cities",
+    "derived_forecast_skill",
+    "bands",
+    "markets",
+    "edges",
+    "band_probabilities"
+  ],
   "v_city_reasoning": [
     "cities",
     "derived_forecast_skill",
@@ -956,6 +930,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "markets",
     "weather_resolution_evidence"
+  ],
+  "v_paper_desks": [
+    "paper_accounts",
+    "paper_orders",
+    "paper_positions"
   ],
   "v_peak_hour_coverage": [
     "cities",

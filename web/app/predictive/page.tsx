@@ -53,6 +53,26 @@ interface ScalingRow {
   settled_yes_pct: number; mean_model_prob_pct: number;
 }
 interface CityRow { city_key: string; display_name: string | null; unit: string | null }
+/**
+ * How many settled outcomes exist, and how many have survived verification.
+ *
+ * The backward-looking half of this page reads v_prediction_scorecard and
+ * v_forecast_convergence, and both now go through a verification gate: an
+ * outcome counts only once weather_resolution_evidence independently
+ * corroborates the observed maximum for that city-day. That is a good rule
+ * and it is not what the panels SAID when it held everything back - they
+ * said "nothing has settled", with 2,268 settled days in the archive.
+ *
+ * An empty panel is allowed. An empty panel giving the wrong reason is not:
+ * "let a few days settle" sends you to wait for something that already
+ * happened, when the actual blocker is that the evidence capture has never
+ * run. These two counts are the difference, and they come from the database
+ * rather than from a sentence someone typed.
+ */
+interface EvidenceHealth {
+  raw_forecast_facts: number; verified_forecast_facts: number;
+  weather_evidence_rows: number; latest_weather_evidence_at: string | null;
+}
 
 const MISSING = (file: string, extra?: string) => (
   <>
@@ -65,8 +85,42 @@ export default function PredictivePage() {
   const citiesQ = useQuery<CityRow[]>(
     () => supabase.from("cities").select("city_key,display_name,unit").order("city_key"), []
   );
+  const evidenceQ = useQuery<EvidenceHealth[]>(
+    () => supabase.from("v_outcome_evidence_health")
+      .select("raw_forecast_facts,verified_forecast_facts,weather_evidence_rows,latest_weather_evidence_at"),
+    []
+  );
   const cities = citiesQ.data ?? [];
   const [city, setCity] = useState<string>("");
+  /**
+   * Why the backward-looking panels are empty, in the numbers themselves.
+   *
+   * Returns null when there is nothing unusual to explain, so the ordinary
+   * "no data yet" copy still applies to an ordinary empty desk.
+   */
+  const unverified = useMemo(() => {
+    const h = (evidenceQ.data ?? [])[0];
+    if (!h) return null;
+    if (h.verified_forecast_facts > 0) return null;
+    if (!h.raw_forecast_facts) return null;
+    return (
+      <>
+        <strong className="text-text">
+          {fmtInt(h.raw_forecast_facts)} settled outcomes are in the archive, and none has been
+          verified yet.
+        </strong>{" "}
+        These panels count an outcome only once{" "}
+        <code className="rounded bg-panel2 px-1">weather_resolution_evidence</code> independently
+        corroborates that day&rsquo;s observed maximum, and that table holds{" "}
+        {fmtInt(h.weather_evidence_rows)} rows
+        {h.latest_weather_evidence_at ? null : " - the capture has never run"}. Nothing is lost:
+        the outcomes are still in{" "}
+        <code className="rounded bg-panel2 px-1">fact_forecast_outcome</code>. They appear here the
+        moment the evidence lands.
+      </>
+    );
+  }, [evidenceQ.data]);
+
   // Declared HERE, above the queries, because the convergence and ladder
   // queries are now filtered by it rather than filtered in the browser.
   const active = city || cities[0]?.city_key || "";
@@ -468,8 +522,8 @@ export default function PredictivePage() {
           loading={settledQ.loading}
           error={settledQ.error}
           isEmpty={scatter.length === 0}
-          emptyTitle="No settled days yet"
-          emptyBody="Nothing has settled, so there is nothing to score. This fills in once a market resolves and the day is frozen."
+          emptyTitle={unverified ? "No verified days yet" : "No settled days yet"}
+          emptyBody={unverified ?? "Nothing has settled, so there is nothing to score. This fills in once a market resolves and the day is frozen."}
           onRetry={convQ.refresh}
         >
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
@@ -584,8 +638,8 @@ export default function PredictivePage() {
           loading={scoreQ.loading}
           error={scoreQ.error}
           isEmpty={errByLead.length === 0}
-          emptyTitle="No scorecard yet"
-          emptyBody={MISSING("sql/ad4_31_predictive.sql", "and let a few days settle so there is something to score.")}
+          emptyTitle={unverified ? "No verified days yet" : "No scorecard yet"}
+          emptyBody={unverified ?? MISSING("sql/ad4_31_predictive.sql", "and let a few days settle so there is something to score.")}
           onRetry={scoreQ.refresh}
         >
           <div className="rounded border border-border bg-panel/60 p-3">
@@ -616,8 +670,8 @@ export default function PredictivePage() {
         <DataState
           relation="v_prediction_scorecard"
           loading={scoreQ.loading} error={scoreQ.error} isEmpty={(scoreQ.data ?? []).length === 0}
-          emptyTitle="Nothing scored yet"
-          emptyBody="Needs at least 5 settled days per city, model and lead."
+          emptyTitle={unverified ? "No verified days yet" : "Nothing scored yet"}
+          emptyBody={unverified ?? "Needs at least 5 settled days per city, model and lead."}
           onRetry={scoreQ.refresh}
         >
           <div className="overflow-x-auto rounded border border-border">
@@ -666,14 +720,14 @@ export default function PredictivePage() {
         <div className="space-y-2">
           <h2 className="text-sm font-semibold">Bankroll</h2>
           <p className="text-xs leading-relaxed text-muted">
-            Realised P&amp;L, cumulative, from filled signals only — a signal that never filled cost
-            nothing and proved nothing. The win rate beside it is running, not final.
+            Realised P&amp;L, cumulative, from filled paper trades only — a proposal that never
+            filled cost nothing and proved nothing. The win rate beside it is running, not final.
           </p>
           <DataState
           relation="v_bankroll_curve"
             loading={bankQ.loading} error={bankQ.error} isEmpty={bank.length === 0}
             emptyTitle="No filled trades yet"
-            emptyBody="Every strategy ships disabled. Turn one on, then Actions → Signal Engine."
+            emptyBody="Every strategy ships disabled, and the paper desk has filled nothing yet."
             onRetry={bankQ.refresh}
           >
             <>

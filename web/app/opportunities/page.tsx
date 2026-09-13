@@ -270,8 +270,8 @@ export default function OpportunitiesPage() {
             <h2 className="text-sm font-semibold text-accent">A strategy would take these now</h2>
             <span className="text-[11px] text-muted">
               {actionable.filter((r) => (r.would_fire_enabled?.length ?? 0) > 0).length} of{" "}
-              {actionable.length} would reach Signals — the rest pass their entry test on a
-              strategy that is switched off.
+              {actionable.length} sit under a strategy that is switched on — the rest pass their
+              entry test on a strategy that is switched off.
             </span>
             <Link href="/strategies" className="ml-auto text-[11px] text-accent hover:underline">
               Strategies →

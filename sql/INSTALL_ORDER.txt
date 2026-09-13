@@ -65,6 +65,13 @@ ad4_49_model_skill.sql
 ad4_50_index_dedupe.sql
 ad4_51_inventory_fast.sql
 ad4_52_paper_workflow_catalogue.sql
+ad4_53_trade_dedupe_plain.sql
+ad4_54_city_day_volume_key.sql
+ad4_55_city_coordinates.sql
+ad4_56_correlation_speed_and_peak_key.sql
+ad4_57_resolution_evidence_read.sql
+ad4_58_city_prediction_confidence.sql
+ad4_59_paper_desks.sql
 
 # ad4_38 grants the write path to service_role and prints one row per ingest
 # table saying whether the service key can write it. It is last on purpose -

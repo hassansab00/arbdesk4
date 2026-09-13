@@ -262,6 +262,8 @@ export default function MonitorPage() {
       <DataState
         loading={stats.loading || approach.loading}
         error={stats.error}
+        truncated={readings.truncated}
+        relation="v_city_today_readings"
         isEmpty={cities.length === 0}
         emptyTitle="No cities selected"
         emptyBody={<>Press <b>Choose cities</b> above.</>}
@@ -408,6 +410,8 @@ function CityCard({
             <DataState
               loading={prices.loading}
               error={prices.error}
+              truncated={prices.truncated}
+              relation="book_snapshots"
               isEmpty={(prices.data?.length ?? 0) < 2}
               emptyTitle="No book history"
               emptyBody={<><b>n8n P0.3</b> writes it — without that job nothing here has a price at all.</>}

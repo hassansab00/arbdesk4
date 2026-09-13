@@ -1,9 +1,9 @@
-name: Intraday Pipeline (model, probabilities, edges, signals)
+name: Intraday Pipeline (model, probabilities, edges)
 
 # ONE RUNNER INSTEAD OF THREE, six times a day.
 #
 # These were three separate workflows firing fifteen minutes apart -
-# model_forecast at :15, probabilities at :30, signals at :35 - which is a
+# model_forecast at :15, probabilities at :30 - which is a
 # chain pretending not to be one. Each paid its own checkout, its own
 # setup-python and its own pip install before doing 16 to 41 seconds of
 # actual work, and GitHub bills every run rounded UP to a whole minute. Three
@@ -11,19 +11,19 @@ name: Intraday Pipeline (model, probabilities, edges, signals)
 # scripts costs two.
 #
 # It is also more correct. The gaps between them were a guess that the
-# previous stage had finished - nothing checked. Now signals genuinely runs
+# previous stage had finished - nothing checked. Now each stage genuinely runs
 # after the edges it reads, because it is the next step in the same job.
 #
 # Each step carries `if: !cancelled()` so a failure does NOT skip the rest:
 # that preserves exactly what the separate workflows gave you, where a broken
-# probability run did not stop signals from running on the previous one. The
+# probability run did not stop the next stage running on the previous one. The
 # job still fails, and the step that failed is named.
 
 on:
   schedule:
     # EVERY FOUR HOURS, up from every six. Merging three workflows into this
     # one freed enough of the monthly allowance to buy freshness with it
-    # rather than bank it: probabilities, edges and signals are now at most
+    # rather than bank it: probabilities and edges are now at most
     # four hours old instead of six, and the whole schedule still costs about
     # half what the nine separate workflows did.
     #
@@ -80,12 +80,6 @@ jobs:
         if: ${{ !cancelled() }}
         timeout-minutes: 15
         run: python scripts/edge_engine.py
-
-      # 4. Signals, from the edges written one step above.
-      - name: Signals
-        if: ${{ !cancelled() }}
-        timeout-minutes: 15
-        run: python scripts/signals.py
 
       - name: Preserve predictive and synthesis evidence
         if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED == 'true' }}

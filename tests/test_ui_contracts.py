@@ -49,10 +49,16 @@ def test_the_rail_shows_movement_events_and_freshness():
     assert "fmtAge" in src, "how stale"
 
 
-def test_signals_still_has_a_home():
-    """Removing it from the rail must not remove approve/dismiss from the app."""
+def test_the_signals_feature_is_gone():
+    """The signals FEATURE was removed: no panel, no Analytics attribution
+    counts, and no Intraday Pipeline step that writes a signal. A previous
+    version of this test asserted the opposite - it pinned SignalsPanel into
+    the Overview, which is how the panel survived a removal by being moved."""
     src = open(os.path.join(WEB, "app", "page.tsx")).read()
-    assert "SignalsPanel" in src
+    assert "SignalsPanel" not in src
+    assert not os.path.exists(os.path.join(WEB, "components", "SignalsPanel.tsx"))
+    wf = open(os.path.join(ROOT, ".github", "workflows", "pipeline_intraday.yml")).read()
+    assert "signals.py" not in wf
 
 
 # --------------------------------------------------------------------------
@@ -298,7 +304,11 @@ def test_every_ingest_table_names_the_job_that_fills_it():
                                   src, re.S).group(1))
     for table in ["markets", "bands", "book_snapshots", "trades_observed",
                   "weather_observations", "weather_forecasts", "live_weather",
-                  "band_probabilities", "edges", "signals",
+                  "band_probabilities", "edges",
+                  # `signals` is deliberately absent: the signals feature was
+                  # removed, so nothing fills that table any more and the UI no
+                  # longer shows it. A table nothing fills is only a fault when
+                  # a panel still reads it.
                   "fact_forecast_outcome", "fact_band_outcome", "fact_signal_outcome",
                   "derived_city_day_features", "derived_weather_peak",
                   "derived_forecast_skill", "derived_capacity"]:
