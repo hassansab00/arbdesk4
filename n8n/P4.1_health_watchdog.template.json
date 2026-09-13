@@ -70,6 +70,12 @@
               "name": "from_email",
               "value": "",
               "type": "string"
+            },
+            {
+              "id": "cfg-email-enabled",
+              "name": "email_enabled",
+              "type": "string",
+              "value": "false"
             }
           ]
         }
@@ -256,7 +262,7 @@
         200
       ],
       "parameters": {
-        "jsCode": "const r = $('Evaluate Thresholds').first().json;\nconst failures = r.failures || [];\nconst summary = r.has_failures\n  ? `AD4 P4.1: ${failures.length} check(s) FAILED - email sent.`\n  : 'AD4 P4.1: all clear.';\nreturn [{ json: {\n  summary,\n  status: r.has_failures ? 'error' : 'ok',\n  rows: failures.length,\n  log: {\n    p_job: 'P4.1_health_watchdog',\n    p_status: r.has_failures ? 'error' : 'ok',\n    p_rows: failures.length,\n    p_detail: {\n      summary,\n      failures,\n      checks: r.checks ?? null,\n      trigger: $execution.mode,\n      execution_id: $execution.id,\n    },\n  },\n} }];"
+        "jsCode": "const r = $('Evaluate Thresholds').first().json;\nconst failures = r.failures || [];\nconst cfg = $('Config').first().json || {};\n\n// DID AN EMAIL ACTUALLY GO OUT?\n//\n// This node used to end every failing run with \"- email sent.\" unconditionally.\n// The Send Email node is DISABLED and alert_email is empty, so no email has\n// ever been sent by this workflow - the one line a person reads to find out\n// whether they were told was itself the thing telling them they were told.\n//\n// The first attempt to fix it asked whether $('Send Email') produced any\n// items. That is ALSO wrong, and wrong in a way worth writing down: a DISABLED\n// node in n8n passes its input straight through to the next node, so it yields\n// items whether or not it did anything. The test reported \"Emailed the\n// configured recipient\" against an empty recipient.\n//\n// So it reads an explicit flag instead, which is what P3.1 already does\n// (\"built but NOT sent - email_enabled is off in Config\"). A flag cannot be\n// fooled by passthrough, and it is visible on the canvas rather than inferred.\nconst emailEnabled = String(cfg.email_enabled ?? '').trim().toLowerCase() === 'true';\nconst recipient = String(cfg.alert_email ?? '').trim();\nconst emailed = emailEnabled && Boolean(recipient) && r.has_failures;\n\nconst delivery = emailed\n  ? ` Emailed ${recipient}.`\n  : !emailEnabled\n    ? ' NOT emailed - email_enabled is off in Config.'\n    : ' NOT emailed - email_enabled is on but alert_email in Config is empty.';\n\nconst summary = r.has_failures\n  ? `AD4 P4.1: ${failures.length} check(s) failing: ${failures.join('; ')}.${delivery}`\n  : 'AD4 P4.1: all clear.';\n\n// A FAILED CHECK IS NOT A FAILED RUN.\n//\n// This logged p_status='error' whenever a check tripped - the same value a\n// crashed workflow writes. Two consequences, both bad: the Workflows page\n// showed the watchdog red while it was working perfectly and correctly\n// reporting a real finding, and \"is anything erroring?\" stopped being\n// answerable from ingest_log. 'attention' is what the other AD4 workflows use\n// for \"ran fine, something needs a human\" - P0.2 and P3.1 both do. error is\n// reserved for this workflow actually failing, which n8n records itself.\nconst status = r.has_failures ? 'attention' : 'ok';\n\nreturn [{ json: {\n  summary,\n  status,\n  rows: failures.length,\n  log: {\n    p_job: 'P4.1_health_watchdog',\n    p_status: status,\n    p_rows: failures.length,\n    p_detail: {\n      summary,\n      failures,\n      checks: r.checks ?? null,\n      context_notes: r.context_notes ?? [],\n      emailed,\n      email_enabled: emailEnabled,\n      recipient: recipient || null,\n      trigger: $execution.mode,\n      execution_id: $execution.id,\n    },\n  },\n} }];"
       }
     },
     {
