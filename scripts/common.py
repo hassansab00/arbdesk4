@@ -85,17 +85,76 @@ def by_shape(rows):
         groups[sig].append(r)
     return [groups[sig] for sig in order]
 
+# The statuses worth trying again. Everything else is the payload's fault and
+# will fail identically four more times: 400 PGRST102 (mismatched keys), 401,
+# 403 (42501 permission denied), 404 (no such table), 409 (a conflict with no
+# on_conflict target). Retrying those costs ~35s per batch and changes nothing.
+TRANSIENT_WRITE_STATUS = {429, 500, 502, 503, 504, 408, 522, 524}
+
+def _retry_after(resp):
+    try:
+        return float((getattr(resp, "headers", None) or {}).get("Retry-After", ""))
+    except (TypeError, ValueError):
+        return None
+
+def _post_batch(url, headers, params, batch, table, verb, tries=4):
+    """POST one batch, retrying transient failures. Raises if it never lands.
+
+    WHY THIS EXISTS. Supabase returns a 5xx on roughly 0.5-2% of writes in a
+    busy hour - measured over this project's own request log, most hours have
+    none and the worst had 2 in 241. That is harmless for a job that writes
+    once. It is not harmless for a job that writes once per city: at 53 cities
+    a single-batch failure rate of 1% means a ~40% chance that some batch
+    fails, and _post_rows used to call raise_for_status() on the first one.
+    The observations ingest died at `[11/53] KAUS` on one 504, throwing away
+    the ten cities it had written and never reaching the other forty-two.
+
+    Reads have had retry() since live_weather.py started hitting 429s. Writes
+    never did, which is why the action workflows looked unstable while the
+    code was in fact correct - they were writing real data right up until one
+    transient 5xx ended the run.
+
+    Giving up still raises. A write that silently returns after failing would
+    be a far worse bug than the one being fixed: the run would go green having
+    persisted nothing.
+    """
+    for attempt in range(tries):
+        last = attempt == tries - 1
+        try:
+            r = requests.post(url, headers=headers, params=params or {},
+                              data=json.dumps(batch), timeout=120)
+        except (requests.ConnectionError, requests.Timeout,
+                requests.exceptions.ChunkedEncodingError) as e:
+            if last:
+                print(f"  ! {table} {verb} gave up after {tries}: {e}", file=sys.stderr)
+                raise
+            print(f"  . {table} {verb} {type(e).__name__}, retrying "
+                  f"({attempt + 1}/{tries})", file=sys.stderr)
+            time.sleep(5 * (attempt + 1))
+            continue
+
+        if r.status_code < 400:
+            return
+
+        body = r.text[:300]
+        if r.status_code not in TRANSIENT_WRITE_STATUS or last:
+            print(f"  ! {table} {verb} failed {r.status_code}: {body}", file=sys.stderr)
+            r.raise_for_status()
+
+        delay = _retry_after(r) if r.status_code == 429 else None
+        if delay is None:
+            delay = 5 * (attempt + 1)
+        print(f"  . {table} {verb} {r.status_code}, retrying in {delay:.0f}s "
+              f"({attempt + 1}/{tries}): {body[:120]}", file=sys.stderr)
+        time.sleep(min(delay, 120))
+
 def _post_rows(table, rows, headers, params, chunk, verb):
     written = 0
+    url = f"{_cfg()['url']}/rest/v1/{table}"
     for group in by_shape(rows):
         for i in range(0, len(group), chunk):
             batch = group[i:i+chunk]
-            r = requests.post(f"{_cfg()['url']}/rest/v1/{table}",
-                              headers=headers, params=params or {},
-                              data=json.dumps(batch), timeout=120)
-            if r.status_code >= 400:
-                print(f"  ! {table} {verb} failed {r.status_code}: {r.text[:300]}", file=sys.stderr)
-                r.raise_for_status()
+            _post_batch(url, headers, params, batch, table, verb)
             written += len(batch)
     return written
 
