@@ -39,6 +39,35 @@
 -- prediction and no measured accuracy, and says exactly that instead of
 -- borrowing tomorrow's number. Four of the 54 cities have no skill rows at
 -- all yet; they come back with the prediction and a null skill.
+--
+--
+-- "MOST LIKELY" IS THE MODAL CLOSED BUCKET, NOT THE LARGEST NUMBER
+--
+-- The first version of this view took max(calibrated_prob) across every
+-- bucket, and the ladder's end buckets are OPEN-ENDED - "89F or below" runs
+-- to minus infinity, "108F or higher" to plus infinity. An infinitely wide
+-- bucket collects more mass than a 2F one without being more likely, so on
+-- Austin at lead 1 (centre 95.7F, sigma 4.2C) it reported
+--
+--     most likely: 89F or below, 21.3%
+--
+-- while every real bucket sat near 10% and the desk's own centre was six
+-- buckets higher. The bucket was not most likely, it was widest. Compare
+-- like for like: modal_band ignores open-ended buckets, and the open tails
+-- are still published as tail_low_pct / tail_high_pct because "21% chance
+-- this lands below the whole board" is worth knowing, just not as a mode.
+--
+-- centre_band is published beside it - the bucket the forecast itself falls
+-- in. When the two disagree the distribution is skewed, and that is a fact
+-- about the model worth seeing rather than a number to pick between.
+--
+--
+-- UNITS FOLLOW THE CITY, BECAUSE THE MARKET DOES
+--
+-- Twelve cities settle in Fahrenheit and their band labels are already in
+-- Fahrenheit. Publishing only expected_max_c put "34.4" next to "94-95F",
+-- which reads as a disagreement and is the same number. expected_max_display
+-- and display_unit carry the city's own scale.
 -- ===========================================================================
 
 do $ad4$
@@ -51,7 +80,13 @@ begin
   end if;
 end $ad4$;
 
-create or replace view v_city_prediction_confidence as
+-- Dropped rather than replaced: `create or replace view` cannot rename or
+-- reorder columns, and this view's shape changed once already (most_likely_*
+-- became modal_*). Re-running must not fail on a database carrying the older
+-- shape. Nothing else reads it, so the drop is safe.
+drop view if exists v_city_prediction_confidence;
+
+create view v_city_prediction_confidence as
 with skill as (
   -- derived_forecast_skill is a time series - one row per recompute. Only
   -- the newest measurement for each city and lead is the current answer.
@@ -81,20 +116,53 @@ top_band as (
    where calibrated_prob is not null
      and for_date >= current_date
      and side = 'YES'
-   order by city_key, for_date, calibrated_prob desc
+     -- closed buckets only: see "MOST LIKELY" above
+     and band_lo is not null and band_hi is not null
+   -- calibrated_prob desc alone is not deterministic - Austin's 98-99F and
+   -- 100-101F were both 15.7% and the "most likely" flipped between runs.
+   order by city_key, for_date, calibrated_prob desc, band_lo
 ),
 spread as (
   -- How concentrated the whole ladder is, not just its top rung. A 26% top
   -- bucket in a three-bucket market is a view; the same 26% spread over
   -- twelve buckets is noise wearing a number.
+  --
+  -- The open tails are counted here rather than dropped: "21% chance this
+  -- lands below the entire board" is a real statement about the day, it just
+  -- is not a mode.
   select city_key, for_date,
          count(*)::int                       as bands_priced,
          round(sum(calibrated_prob), 3)      as prob_mass,
-         count(*) filter (where tradeable)::int as tradeable_bands
+         count(*) filter (where tradeable)::int as tradeable_bands,
+         round(100 * sum(calibrated_prob) filter (where band_lo is null), 1)
+                                             as tail_low_pct,
+         round(100 * sum(calibrated_prob) filter (where band_hi is null), 1)
+                                             as tail_high_pct
     from v_prediction_ladder
    where calibrated_prob is not null and for_date >= current_date
      and side = 'YES'          -- as above: one row per band, not per ticket
    group by city_key, for_date
+),
+centre as (
+  -- The bucket the desk's own forecast lands in. Where this and the modal
+  -- bucket disagree, the distribution is skewed.
+  -- The band labels are already in the city's own scale, so the centre has
+  -- to be converted into that scale before it can be compared to band_lo /
+  -- band_hi. Comparing 34.4 (C) against a 94-96 (F) bucket is how the first
+  -- pass concluded the centre fell outside its own most likely band on 27 of
+  -- 55 rows - it did not; 34.4 C is 93.9 F.
+  select distinct on (l.city_key, l.for_date)
+         l.city_key, l.for_date, l.band_label as centre_band
+    from v_prediction_ladder l
+    join cities ct on ct.city_key = l.city_key
+   where l.for_date >= current_date and l.side = 'YES'
+     and l.band_lo is not null and l.band_hi is not null
+     and l.forecast_max_c is not null
+     and case when ct.unit = 'F' then l.forecast_max_c * 9.0 / 5.0 + 32
+              else l.forecast_max_c end >= l.band_lo
+     and case when ct.unit = 'F' then l.forecast_max_c * 9.0 / 5.0 + 32
+              else l.forecast_max_c end <  l.band_hi
+   order by l.city_key, l.for_date, l.band_lo
 )
 select
   t.city_key,
@@ -102,9 +170,17 @@ select
   t.for_date,
   (t.for_date - current_date)::int                     as lead_days,
   round(t.forecast_max_c, 1)                           as expected_max_c,
-  t.band_label                                         as most_likely_band,
+  -- In the city's own scale, which is the scale its bands and its market are
+  -- quoted in. A US city reading "34.4" beside "94-95F" looks wrong and is
+  -- the same temperature.
+  round(case when c.unit = 'F' then t.forecast_max_c * 9.0 / 5.0 + 32
+             else t.forecast_max_c end, 1)             as expected_max_display,
+  coalesce(c.unit, 'C')                                as display_unit,
+  t.band_label                                         as modal_band,
+  ce.centre_band,
+  (ce.centre_band is distinct from t.band_label)       as skewed,
   t.band_lo, t.band_hi,
-  round(100 * t.calibrated_prob, 1)                    as most_likely_pct,
+  round(100 * t.calibrated_prob, 1)                    as modal_pct,
   round(100 * t.market_price, 1)                       as market_pct,
   round(t.edge_net_pp, 1)                              as edge_net_pp,
   t.tradeable, t.block_reason,
@@ -116,6 +192,7 @@ select
   round(s.p90_abs_err_c, 2)                            as measured_p90_err_c,
   s.pct_within_one_band,
   sp.bands_priced, sp.tradeable_bands,
+  sp.tail_low_pct, sp.tail_high_pct,
   -- Stated versus measured, in a sentence. Nulls stay null rather than
   -- becoming a cheerful default.
   case
@@ -141,6 +218,8 @@ left join skill s
       and s.lead_days = (t.for_date - current_date)
 left join spread sp
        on sp.city_key = t.city_key and sp.for_date = t.for_date
+left join centre ce
+       on ce.city_key = t.city_key and ce.for_date = t.for_date
 left join cities c on c.city_key = t.city_key
 order by t.city_key, t.for_date;
 

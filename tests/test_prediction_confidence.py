@@ -44,13 +44,13 @@ def test_the_view_reads_the_ladder():
     assert LADDER_CTES, "no CTE reads v_prediction_ladder - did the view change shape?"
 
 
-@pytest.mark.parametrize("n", range(2))
-def test_every_ladder_read_picks_one_side(n):
-    """Both the top-band pick and the ladder-wide counts must filter a side."""
-    assert len(LADDER_CTES) > n, f"expected at least {n + 1} ladder CTEs"
-    assert re.search(r"side\s*=\s*'YES'", LADDER_CTES[n]), (
-        "this CTE reads both sides of every band - market_price and any "
-        "count of bands will be wrong")
+def test_every_ladder_read_picks_one_side():
+    """Every CTE touching the ladder must filter a side, however many there are."""
+    assert LADDER_CTES, "no CTE reads the ladder"
+    for i, body in enumerate(LADDER_CTES):
+        assert re.search(r"side\s*=\s*'YES'", body), (
+            f"ladder CTE {i} reads both sides of every band - market_price and "
+            "any count of bands will be wrong")
 
 
 def test_the_reason_is_recorded_where_the_next_person_will_look():
@@ -85,3 +85,56 @@ def test_the_skill_series_is_read_newest_first():
     body = skill.group(1)
     assert "distinct on (city_key, lead_days)" in body
     assert "computed_at desc" in body, "without this the view can read a stale measurement"
+
+
+# --------------------------------------------------------------------------
+# the open-ended buckets
+#
+# The ladder's end buckets run to infinity: "89F or below", "108F or higher".
+# An infinitely wide bucket collects more probability mass than a 2F one
+# without being more likely. Taking max(calibrated_prob) over all of them
+# reported Austin at lead 1 as "most likely 89F or below, 21.3%" while its own
+# centre was 95.7F and every real bucket sat near 10%.
+# --------------------------------------------------------------------------
+def test_the_modal_bucket_ignores_the_open_ended_ones():
+    top = next(b for b in LADDER_CTES if "calibrated_prob desc" in b)
+    assert "band_lo is not null" in top and "band_hi is not null" in top, (
+        "an open-ended bucket can win on width alone and be reported as the mode")
+
+
+def test_the_open_tails_are_still_published():
+    """Excluded from the mode, not from the answer: 21% below the whole board
+    is a real statement about the day."""
+    assert "tail_low_pct" in SRC and "tail_high_pct" in SRC
+
+
+def test_the_modal_pick_is_deterministic():
+    """Austin's 98-99F and 100-101F were both 15.7%; the winner flipped."""
+    top = next(b for b in LADDER_CTES if "calibrated_prob desc" in b)
+    assert re.search(r"calibrated_prob desc,\s*band_lo", top), (
+        "ties need a stable tie-break or 'most likely' changes between reads")
+
+
+# --------------------------------------------------------------------------
+# units
+#
+# Twelve cities settle in Fahrenheit and their band labels already are. A US
+# row reading "34.4" beside "94-95F" looks like a disagreement and is the same
+# temperature - which is also how the first pass wrongly concluded the centre
+# fell outside its own modal band on 27 of 55 rows.
+# --------------------------------------------------------------------------
+def test_the_expected_temperature_is_published_in_the_city_scale():
+    assert "expected_max_display" in SRC and "display_unit" in SRC
+    assert "expected_max_c" in SRC, "the Celsius value stays, for anything that computes"
+
+
+def test_the_centre_bucket_is_matched_in_the_band_scale():
+    centre = next(b for b in LADDER_CTES if "centre_band" in b)
+    assert "9.0/5.0 + 32" in centre.replace(" ", "") or "9.0 / 5.0 + 32" in centre, (
+        "band_lo/band_hi are in the city's unit - comparing a Celsius centre "
+        "to a Fahrenheit bucket is the bug this replaced")
+
+
+def test_the_view_can_be_reinstalled_after_a_shape_change():
+    """create or replace cannot rename columns; this file has renamed some."""
+    assert "drop view if exists v_city_prediction_confidence" in SRC
