@@ -1,4 +1,5 @@
 import math
+import datetime as dt
 
 import edge_engine as ee
 import market_state as ms
@@ -84,3 +85,26 @@ def test_opportunity_score_penalizes_unfillable_book():
     big_edge_thin_book = ee.opportunity_score(edge_net_pp=0.30, confidence=0.9, fillable_usd_5c=1.0)
     modest_edge_deep_book = ee.opportunity_score(edge_net_pp=0.05, confidence=0.9, fillable_usd_5c=50000.0)
     assert modest_edge_deep_book > big_edge_thin_book
+
+
+def test_stale_or_future_evidence_is_rejected():
+    now = dt.datetime(2026, 9, 13, 8, tzinfo=dt.timezone.utc)
+    assert ee._age_exceeds("2026-09-13T05:59:59+00:00", dt.timedelta(hours=2), now)
+    assert not ee._age_exceeds("2026-09-13T06:00:01+00:00", dt.timedelta(hours=2), now)
+    assert ee._age_exceeds("2026-09-13T08:06:00+00:00", dt.timedelta(hours=2), now)
+    assert ee._age_exceeds(None, dt.timedelta(hours=2), now)
+
+
+def test_edge_reads_complete_band_scope_and_latest_probability_view(monkeypatch):
+    calls = []
+
+    def fake_rest_all(path, params, **kwargs):
+        calls.append((path, dict(params), kwargs))
+        return []
+
+    monkeypatch.setattr(ee, "rest_all", fake_rest_all)
+    ee._bands_for_markets([str(i) for i in range(101)])
+    ee._latest_by_band("v_latest_prob", "*", [str(i) for i in range(101)], "computed_at")
+    assert sum(1 for call in calls if call[0] == "v_canonical_bands") == 2
+    assert sum(1 for call in calls if call[0] == "v_latest_prob") == 2
+    assert all(call[2].get("page_size") == 500 for call in calls)

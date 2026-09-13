@@ -38,7 +38,8 @@ def test_existing_workflows_page_adds_the_panel_without_replacing_its_controls()
     assert "<ScheduleControl" in page
     assert "<ScopeControl" in page
     assert "<CityReadiness />" in page
-    assert "v_city_day_readiness" in component
-    assert "v_operational_health" in component
+    assert "v_city_day_execution_readiness" in component
+    assert "v_execution_health" in component
+    assert "v_book_capture_health" in component
+    assert "v_city_metadata_health" in component
     assert "The workflow catalogue" in page
-
