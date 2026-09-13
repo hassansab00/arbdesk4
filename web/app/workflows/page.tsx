@@ -8,6 +8,7 @@ import { useQuery } from "@/lib/useQuery";
 import { DataState, InlineError } from "@/components/DataState";
 import { FreshnessRow } from "@/components/Provenance";
 import { fmtAge, fmtInt } from "@/lib/format";
+import CityReadiness from "@/components/CityReadiness";
 
 /**
  * Workflows — run the n8n jobs on demand and see how the last run went.
@@ -276,7 +277,7 @@ export default function WorkflowsPage() {
       <div>
         <h1 className="text-lg font-semibold">Workflows</h1>
         <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted">
-          The seven n8n jobs, and the state of their last run. Each one writes to{" "}
+          The workflow catalogue and the state of each last run. Each workflow writes to{" "}
           <code>ingest_log</code> when it finishes — whether it was fired from here, run by
           hand in n8n, or started by its own schedule — so &ldquo;Last run&rdquo; is the truth for all
           three. Running a job here POSTs to its n8n production webhook; the URLs are stored in{" "}
@@ -300,6 +301,8 @@ export default function WorkflowsPage() {
       <ScheduleControl jobs={CATALOGUE.filter(c=>!c.externalOnly).map((c) => ({ job: c.job, label: c.label }))} />
 
       <ScopeControl jobs={CATALOGUE.filter(c=>!c.externalOnly).map((c) => ({ job: c.job, label: c.label }))} />
+
+      <CityReadiness />
 
       <DataState
         loading={settingsQ.loading || runsQ.loading}

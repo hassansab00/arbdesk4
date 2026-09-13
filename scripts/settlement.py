@@ -35,8 +35,8 @@ GAMMA_MARKETS_URL = "https://gamma-api.polymarket.com/markets"
 
 def _upcoming_or_past_unclosed_markets():
     """Markets whose resolution_date has passed but aren't marked closed."""
-    return rest("markets", [
-        ("select", "market_id,city_key,resolution_date,event_slug,condition_id,closed"),
+    return rest("v_canonical_markets", [
+        ("select", "market_id,city_key,resolution_date,event_slug,condition_id,closed,unit"),
         ("closed", "eq.false"),
         ("resolution_date", f"lt.{dt.date.today().isoformat()}"),
     ])
@@ -147,7 +147,7 @@ def main():
     for m in markets:
         city = cities.get(m["city_key"], {})
         icao = city.get("icao")
-        unit = city.get("unit", "C")
+        unit = m.get("unit") or city.get("unit", "C")
 
         gamma = None
         try:
@@ -172,7 +172,7 @@ def main():
             n_flagged += 1
             continue
 
-        bands = rest("bands", [("select", "band_id,band_lo,band_hi,open_low,open_high"),
+        bands = rest("v_canonical_bands", [("select", "band_id,band_lo,band_hi,open_low,open_high"),
                                 ("market_id", f"eq.{m['market_id']}")])
         winning_band_id = find_winning_band(bands, settled_value, unit)
 

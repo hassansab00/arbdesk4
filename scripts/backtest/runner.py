@@ -90,8 +90,8 @@ def run(run_id):
         cities_meta = {c["city_key"]: c
                        for c in rest("cities", {"select": "city_key,unit,icao,timezone"})}
         tz_of = {k: v.get("timezone") for k, v in cities_meta.items()}
-        markets = rest("markets", [
-            ("select", "market_id,city_key,resolution_date"),
+        markets = rest("v_canonical_markets", [
+            ("select", "market_id,city_key,resolution_date,unit"),
             ("resolution_date", f"gte.{start.isoformat()}"), ("resolution_date", f"lte.{end.isoformat()}"),
         ])
         if cities:
@@ -101,10 +101,10 @@ def run(run_id):
         for m in markets:
             city_key = m["city_key"]
             resolution_date = dt.date.fromisoformat(m["resolution_date"])
-            unit = cities_meta.get(city_key, {}).get("unit", "C")
+            unit = m.get("unit") or cities_meta.get(city_key, {}).get("unit", "C")
             as_of = evaluation_instant(resolution_date, evaluation_lead_days)
 
-            bands = rest("bands", [
+            bands = rest("v_canonical_bands", [
                 ("select", "band_id,band_lo,band_hi,open_low,open_high,band_label"),
                 ("market_id", f"eq.{m['market_id']}"),
             ])
