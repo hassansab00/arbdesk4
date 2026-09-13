@@ -25,6 +25,8 @@ export default function PaperTradesPage() {
   const [account,setAccount] = useState('');
   const [tab,setTab] = useState('Orders');
   const [starting,setStarting] = useState('');
+  const [showNewDesk,setShowNewDesk] = useState(false);
+  const [newDesk,setNewDesk] = useState({name:'',cash:''});
   const [ticket,setTicket] = useState({band:'',side:'YES',shares:'',limit:'',ceiling:'',reason:''});
   // Stable across retry after an uncertain network response; reset only after success.
   const [command,setCommand] = useState<string|null>(null);
@@ -90,10 +92,30 @@ export default function PaperTradesPage() {
     {issue&&<div role="alert" className="rounded border border-bad p-3 text-sm text-bad">{issue}</div>}
     {notice&&<div role="status" className={`text-sm ${noticeWarning?'text-warn':'text-good'}`}>{notice}</div>}
     <div className="flex flex-wrap items-center gap-3"><select disabled={busy} aria-label="Paper account" className="input max-w-sm" value={account} onChange={e=>{setAccount(e.target.value);setCommand(null);}}>
-      <option value="">Paper desk</option>{accounts.data?.map(a=><option key={a.account_id} value={a.account_id}>{a.name}</option>)}</select></div>
+      <option value="">Paper desk</option>{accounts.data?.map(a=><option key={a.account_id} value={a.account_id}>{a.name}</option>)}</select>
+      {/* Several desks, so a setting can be tried without disturbing the one
+          already running. Each carries its own cash, strategies and cities -
+          the Automation tab edits them per desk. */}
+      {!!accounts.data?.length&&<button type="button" disabled={busy} className={button}
+        onClick={()=>{setShowNewDesk(v=>!v);setNewDesk({name:'',cash:''});}}>
+        {showNewDesk?'Cancel':'New desk'}</button>}
+      {accounts.data&&accounts.data.length>1&&<span className="text-xs text-muted">
+        {accounts.data.length} desks · each runs independently</span>}</div>
+
       {!accounts.loading&&!accounts.data?.length&&<form className={`${card} max-w-lg space-y-3`} onSubmit={e=>{e.preventDefault();act(()=>paperAction('create_account',{p_name:'Main paper account',p_starting_cash:Number(starting)}));}}>
         <h2 className="font-semibold">Create paper account</h2><label className="block text-sm">Starting paper cash (USD)<input required type="number" min="0.01" step="0.01" className="input mt-1" value={starting} onChange={e=>setStarting(e.target.value)}/></label>
         <button disabled={busy} className={button}>Create account</button></form>}
+
+      {showNewDesk&&<form className={`${card} max-w-lg space-y-3`} onSubmit={async e=>{
+        e.preventDefault();
+        const made=await act(()=>paperAction('create_desk',{p_name:newDesk.name.trim(),p_starting_cash:Number(newDesk.cash),p_mode:'manual'}));
+        if(made){setShowNewDesk(false);setNewDesk({name:'',cash:''});}
+      }}>
+        <h2 className="font-semibold">New paper desk</h2>
+        <p className="text-xs text-muted">Its own cash, strategies and cities. It starts <strong>paused</strong> and manual — set it up on the Automation tab, then unpause when you want it to act.</p>
+        <label className="block text-sm">Name<input required className="input mt-1" maxLength={100} placeholder="e.g. Austin only, tight edge" value={newDesk.name} onChange={e=>setNewDesk({...newDesk,name:e.target.value})}/></label>
+        <label className="block text-sm">Starting paper cash (USD)<input required type="number" min="1" step="0.01" className="input mt-1" value={newDesk.cash} onChange={e=>setNewDesk({...newDesk,cash:e.target.value})}/></label>
+        <button disabled={busy} className={button}>Create desk</button></form>}
       {selected&&<>
         <div className="grid gap-3 sm:grid-cols-3"><div className={card}><div className="text-xs text-muted" title="Cash remaining after committed fills and fees.">Cash</div><div className="font-mono text-xl">{fmtUsd(Number(selected.cash))}</div></div>
           <div className={card}><div className="text-xs text-muted" title="Cash held for queued orders; released on cancellation or execution.">Reserved</div><div className="font-mono text-xl">{fmtUsd(Number(selected.reserved_cash))}</div></div>

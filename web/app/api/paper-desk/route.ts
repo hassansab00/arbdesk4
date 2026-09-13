@@ -45,7 +45,11 @@ export async function GET(request:Request) {
     const url=new URL(request.url);const resource=url.searchParams.get('resource');
     const account=url.searchParams.get('account')||'';
     if(resource==='accounts') {
-      const result=await client.from('paper_accounts').select('*').eq('access_mode','single_desk').is('owner_id',null).order('created_at').limit(1);
+      // Every desk, not the first one. This page has always rendered a
+      // switcher over an array and auto-selected accounts.data[0]; .limit(1)
+      // was what kept that array one long. Archived desks are left out -
+      // they are kept for their history and cannot trade.
+      const result=await client.from('paper_accounts').select('*').eq('access_mode','single_desk').is('owner_id',null).is('archived_at',null).order('created_at').limit(50);
       return NextResponse.json(result,{headers:{'Cache-Control':'no-store'}});
     }
     if(!account||!await sharedAccount(client,account)) return NextResponse.json({data:null,error:{message:'Single paper desk unavailable.'}},{status:404});
@@ -69,7 +73,13 @@ export async function POST(request:Request) {
   try {
     const body=await request.json() as {action?:string;payload?:Record<string,unknown>};
     const commands:Record<string,string>={
-      create_account:'create_single_paper_account',submit_order:'submit_single_paper_order',
+      create_account:'create_single_paper_account',
+      // Managing desks, as opposed to trading one. create_account is the
+      // bootstrap and returns the OLDEST desk when one exists; create_desk
+      // makes an additional one.
+      create_desk:'paper_desk_create',update_desk:'paper_desk_update',
+      reset_desk:'paper_desk_reset',archive_desk:'paper_desk_archive',
+      submit_order:'submit_single_paper_order',
       cancel_order:'cancel_single_paper_order',set_policy:'set_single_paper_policy',
       approve_plan:'approve_single_paper_plan',submit_exit:'submit_single_paper_exit',
       set_exit_policy:'set_single_paper_exit_policy',
