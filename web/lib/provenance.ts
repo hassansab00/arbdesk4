@@ -829,6 +829,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_resolution_evidence",
     "weather_forecasts"
   ],
+  "v_forecast_convergence_all": [
+    "fact_forecast_outcome",
+    "weather_resolution_evidence",
+    "weather_forecasts"
+  ],
   "v_forecast_coverage": [
     "cities",
     "weather_forecasts"
@@ -952,6 +957,10 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "band_probabilities"
   ],
   "v_prediction_scorecard": [
+    "fact_forecast_outcome",
+    "weather_resolution_evidence"
+  ],
+  "v_prediction_scorecard_all": [
     "fact_forecast_outcome",
     "weather_resolution_evidence"
   ],

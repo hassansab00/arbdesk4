@@ -74,6 +74,7 @@ ad4_58_city_prediction_confidence.sql
 ad4_59_paper_desks.sql
 ad4_60_multiple_paper_desks.sql
 ad4_61_verified_outcome_view_access.sql
+ad4_62_settled_history_ungated.sql
 
 # ad4_38 grants the write path to service_role and prints one row per ingest
 # table saying whether the service key can write it. It is last on purpose -

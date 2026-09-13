@@ -98,6 +98,36 @@ export default function PredictivePage() {
    * Returns null when there is nothing unusual to explain, so the ordinary
    * "no data yet" copy still applies to an ordinary empty desk.
    */
+  /**
+   * A one-line banner, shown ABOVE the settled panels rather than instead of
+   * them.
+   *
+   * These panels read v_prediction_scorecard_all and
+   * v_forecast_convergence_all, which score every settled outcome in
+   * fact_forecast_outcome. The Phase 2A views score only outcomes a row in
+   * weather_resolution_evidence independently corroborates, and that table is
+   * empty - so they returned nothing at all, and the page showed no settled
+   * history despite 2,268 settled comparisons sitting in the archive.
+   *
+   * Hiding real evidence is the worse failure. Showing it unlabelled would be
+   * too, so the count of what is corroborated rides along with it.
+   */
+  const unverifiedNote = useMemo(() => {
+    const h = (evidenceQ.data ?? [])[0];
+    if (!h || !h.raw_forecast_facts) return null;
+    if (h.verified_forecast_facts >= h.raw_forecast_facts) return null;
+    return (
+      <p className="rounded border border-warn/40 bg-warn/10 px-3 py-2 text-[11px] leading-relaxed text-warn">
+        <strong className="font-semibold">Measured, not yet independently verified.</strong>{" "}
+        {fmtInt(h.verified_forecast_facts)} of {fmtInt(h.raw_forecast_facts)} settled outcomes have
+        a corroborating record in{" "}
+        <code className="rounded bg-panel2 px-1">weather_resolution_evidence</code>. These numbers
+        come from the desk&rsquo;s own observed maximum, which is the same figure it has always
+        scored against — treat them as the working record until that capture runs.
+      </p>
+    );
+  }, [evidenceQ.data]);
+
   const unverified = useMemo(() => {
     const h = (evidenceQ.data ?? [])[0];
     if (!h) return null;
@@ -150,12 +180,12 @@ export default function PredictivePage() {
     // One city over 62 days at three models and eight leads is ~1,500 rows -
     // still past Supabase's 1,000-row ceiling - so the order matters: the
     // chart draws the most recent days, and those are the ones that arrive.
-    () => supabase.from("v_forecast_convergence").select("*")
+    () => supabase.from("v_forecast_convergence_all").select("*")
             .eq("city_key", active).order("for_date", { ascending: false }).limit(1000),
     [active], 300000, 1000
   );
   const settledQ = useQuery<ConvRow[]>(
-    () => supabase.from("v_forecast_convergence").select("*")
+    () => supabase.from("v_forecast_convergence_all").select("*")
             .eq("is_settled", true).eq("lead_days", 1)
             .order("for_date", { ascending: false }).limit(1000),
     [], 300000, 1000
@@ -173,7 +203,7 @@ export default function PredictivePage() {
     [active], 120000, 1000
   );
   const scoreQ = useQuery<ScoreRow[]>(
-    () => supabase.from("v_prediction_scorecard").select("*").limit(4000), [], undefined, 4000
+    () => supabase.from("v_prediction_scorecard_all").select("*").limit(4000), [], undefined, 4000
   );
   const bankQ = useQuery<BankrollRow[]>(
     () => supabase.from("v_bankroll_curve").select("*").limit(2000), [], undefined, 2000
@@ -633,6 +663,7 @@ export default function PredictivePage() {
           shows. The practical use is picking the lead day at which to stop trusting it: where the
           line crosses one bucket wide, the forecast has stopped resolving which bucket wins.
         </p>
+        {unverifiedNote}
         <DataState
           relation="v_prediction_scorecard"
           loading={scoreQ.loading}
