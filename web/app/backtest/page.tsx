@@ -332,7 +332,29 @@ function RunDashboard({
         <HeadlineStat label="Net P&L" value={fmtUsd(headline.total_net_pnl, { signed: true })} color={pnlColor(headline.total_net_pnl)} />
         <HeadlineStat label="Gross P&L" value={fmtUsd(headline.total_gross_pnl, { signed: true })} />
       </div>
-      {headline.note && <div className="text-xs text-muted">{headline.note}</div>}
+      {/* ZERO TRADES IS A RESULT, AND IT NEEDS A REASON.
+          Four zeros and a grey footnote reads as a broken panel, which is
+          exactly how the first completed run was received: it had filtered to
+          a city that does not exist, because the run's label had been typed
+          into the Cities box, so it replayed nothing and said "0" four times.
+          A run that placed no trades now says so at the top, in the box, with
+          the reasons worth checking first. */}
+      {headline.n_trades === 0 ? (
+        <div className="rounded border border-warn/50 bg-warn/10 p-3 text-xs text-warn">
+          <div className="font-semibold">This run placed no trades.</div>
+          <div className="mt-1 opacity-90">
+            {headline.note ?? "The replay completed and found nothing to do."} Worth checking, in order:
+          </div>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 opacity-90">
+            <li><b>Cities</b> — a name that matches no city filters every market out. Leave it blank for all.</li>
+            <li><b>Dates</b> — a book price is needed to fill, and depth history starts 2026-08-22.</li>
+            <li><b>Strategies</b> — they may simply never have fired in this window, which is itself an answer.</li>
+          </ul>
+          <div className="mt-1 opacity-75">The readiness panel on the left counts what the window actually contains before you queue.</div>
+        </div>
+      ) : (
+        headline.note && <div className="text-xs text-muted">{headline.note}</div>
+      )}
 
       {compareHeadline && (
         <div className="rounded border border-border bg-panel p-3 text-sm">
