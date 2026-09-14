@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState, ErrorBox, Loading } from "@/components/DataState";
@@ -34,6 +34,11 @@ interface Readiness {
 
 export default function BacktestPage() {
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
+  // WHERE THE ANSWER APPEARS. The results render below BOTH columns, which on
+  // a normal screen puts them ~500px under the button that asked for them,
+  // behind the empty gap left by the tall queue form. Clicking "view" looked
+  // like it did nothing: it had worked, off-screen, every time.
+  const resultsRef = useRef<HTMLDivElement | null>(null);
   const [compareRun, setCompareRun] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, any>>({});
   const [compareResults, setCompareResults] = useState<Record<string, any>>({});
@@ -97,6 +102,13 @@ export default function BacktestPage() {
     }, 350);
     return () => { cancelled = true; clearTimeout(t); };
   }, [startDate, endDate, cities]);
+
+  useEffect(() => {
+    if (!selectedRun) return;
+    const t = setTimeout(                       // after the panel has mounted
+      () => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    return () => clearTimeout(t);
+  }, [selectedRun]);
 
   useEffect(() => {
     if (!selectedRun) { setResults({}); setResultsError(null); return; }
@@ -246,13 +258,34 @@ export default function BacktestPage() {
               <thead className="bg-panel2 text-muted"><tr><th className="p-2 text-left">Run</th><th className="p-2 text-left">Status</th><th className="p-2 text-left">Created</th><th className="p-2" /></tr></thead>
               <tbody>
                 {runs.map((r) => (
-                  <tr key={r.run_id} className="border-t border-border">
-                    <td className="p-2">{r.label || r.run_id.slice(0, 8)}</td>
+                  <tr key={r.run_id}
+                      className={`border-t border-border ${
+                        r.run_id === selectedRun ? "bg-accent/10"
+                        : r.run_id === compareRun ? "bg-panel2" : ""}`}>
+                    <td className="p-2">
+                      {r.label || r.run_id.slice(0, 8)}
+                      {r.run_id === selectedRun && <span className="ml-2 text-[10px] text-accent">viewing</span>}
+                      {r.run_id === compareRun && <span className="ml-2 text-[10px] text-muted">comparing</span>}
+                    </td>
                     <td className="p-2"><StatusBadge status={r.status} /></td>
                     <td className="p-2 text-xs text-muted">{new Date(r.created_at).toLocaleString()}</td>
                     <td className="p-2 space-x-2 text-xs">
-                      <button className="text-accent hover:underline" onClick={() => setSelectedRun(r.run_id)}>view</button>
-                      <button className="text-muted hover:underline" onClick={() => setCompareRun(r.run_id)}>compare</button>
+                      <button
+                        onClick={() => setSelectedRun(r.run_id)}
+                        className={`rounded border px-2 py-0.5 transition ${
+                          r.run_id === selectedRun
+                            ? "border-accent bg-accent/15 text-accent"
+                            : "border-border text-accent hover:bg-accent/10"}`}>
+                        {r.run_id === selectedRun ? "viewing" : "view"}
+                      </button>
+                      <button
+                        onClick={() => setCompareRun(r.run_id === compareRun ? null : r.run_id)}
+                        className={`rounded border px-2 py-0.5 transition ${
+                          r.run_id === compareRun
+                            ? "border-accent/60 bg-panel2 text-text"
+                            : "border-border text-muted hover:text-text"}`}>
+                        {r.run_id === compareRun ? "comparing" : "compare"}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -263,6 +296,7 @@ export default function BacktestPage() {
         </div>
       </div>
 
+      <div ref={resultsRef} />
       {selectedRun && resultsLoading && <Loading label="loading results…" />}
       {selectedRun && resultsError && <ErrorBox message={resultsError} />}
       {selectedRun && !resultsLoading && !resultsError && (
@@ -372,7 +406,7 @@ function RunDashboard({
 
       {results.equity_curve && <EquityCurve curve={results.equity_curve} />}
 
-      {results.strategy && (
+      {hasRows(results.strategy) && (
         <Section title="Strategy attribution (never merged)">
           {Object.entries(results.strategy).map(([id, s]: [string, any]) => (
             <div key={id} className="flex justify-between border-b border-border py-1 text-sm">
@@ -383,13 +417,13 @@ function RunDashboard({
         </Section>
       )}
 
-      {results.costs && (
+      {hasRows(results.costs) && (
         <Section title="Cost analysis (gross vs net)">
           <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
             <HeadlineStat label="Gross" value={fmtUsd(results.costs.total_gross_pnl)} />
             <HeadlineStat label="Net" value={fmtUsd(results.costs.total_net_pnl)} color={pnlColor(results.costs.total_net_pnl)} />
             <HeadlineStat label="Fees" value={fmtUsd(results.costs.total_fees)} />
-            <HeadlineStat label="Drag %" value={results.costs.cost_drag_pct !== null ? `${results.costs.cost_drag_pct?.toFixed(1)}%` : "—"} />
+            <HeadlineStat label="Drag %" value={results.costs.cost_drag_pct != null ? `${results.costs.cost_drag_pct.toFixed(1)}%` : "—"} />
           </div>
         </Section>
       )}
@@ -430,6 +464,14 @@ function EquityCurve({ curve }: { curve: Array<{ equity: number; drawdown: numbe
       </svg>
     </Section>
   );
+}
+
+/** A scope the backtest wrote but left empty is `{}` - which is truthy, so it
+ *  rendered a titled section containing nothing. An empty result is reported
+ *  by the headline callout, not by a row of blank panels. */
+function hasRows(scope: any): boolean {
+  if (!scope) return false;
+  return Array.isArray(scope) ? scope.length > 0 : Object.keys(scope).length > 0;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
