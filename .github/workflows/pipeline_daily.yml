@@ -35,6 +35,10 @@ on:
         description: 'How many days of history to measure skill over'
         required: false
         default: '400'
+      outcome_days:
+        description: 'How many recent city-days to check for final authority evidence'
+        required: false
+        default: '14'
 
 concurrency:
   group: pipeline-daily
@@ -63,7 +67,14 @@ jobs:
         timeout-minutes: 30
         run: python scripts/ingest_forecasts.py
 
-      # 2. Capture final venue truth. Gamma and CLOB must agree on condition,
+      # 2. Capture the exact final station evidence named in each market's
+      #    saved rules. No estimate or running maximum may cross this gate.
+      - name: Authoritative weather outcome evidence
+        if: ${{ !cancelled() }}
+        timeout-minutes: 20
+        run: python scripts/weather_outcomes.py --days ${{ github.event.inputs.outcome_days || '14' }}
+
+      # 3. Capture final venue truth. Gamma and CLOB must agree on condition,
       #    token identities and winner. This also settles matching paper
       #    positions, but collects evidence even when no position existed.
       - name: Venue-confirmed settlement sweep
@@ -71,7 +82,7 @@ jobs:
         timeout-minutes: 20
         run: python scripts/paper_settlement.py
 
-      # 3. Measure forecast skill only against final station-authority
+      # 4. Measure forecast skill only against final station-authority
       #    evidence. Until that evidence exists, this writes nothing rather
       #    than training sigma on an incomplete running maximum.
       - name: Measure forecast skill
@@ -79,7 +90,7 @@ jobs:
         timeout-minutes: 30
         run: python scripts/measure_skill.py ${{ github.event.inputs.skill_days || '400' }}
 
-      # 4. Freeze the desk's own record - what it predicted, what the market
+      # 5. Freeze the desk's own record - what it predicted, what the market
       #    said, what happened. These rows are never updated: a maximum frozen
       #    too early is wrong forever, which is why it waits for settlement.
       - name: Freeze settled city-days
@@ -87,14 +98,14 @@ jobs:
         timeout-minutes: 20
         run: python scripts/databank.py --days ${{ github.event.inputs.databank_days || '7' }}
 
-      # 5. Re-fit the calibration map on everything banked. Refuses to write a
+      # 6. Re-fit the calibration map on everything banked. Refuses to write a
       #    map below its minimum sample count, so it is safe from day one.
       - name: Re-fit calibration map
         if: ${{ !cancelled() }}
         timeout-minutes: 15
         run: python scripts/calibration.py
 
-      # 6. Capacity, correlation, peak hour, climate cache, the day-feature
+      # 7. Capacity, correlation, peak hour, climate cache, the day-feature
       #    cache - and the calibration FEEDBACK, which measures whether the
       #    sigma the desk quoted turned out honest. After the databank freeze,
       #    which is the ordering the old schedule had backwards.
@@ -103,7 +114,7 @@ jobs:
         timeout-minutes: 30
         run: python scripts/capacity.py
 
-      # 7. Safety net: run anything left queued in backtest_runs. Usually a
+      # 8. Safety net: run anything left queued in backtest_runs. Usually a
       #    no-op. An explicit backtest is backtest.yml, run by hand.
       - name: Queued backtests
         if: ${{ !cancelled() }}

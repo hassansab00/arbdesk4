@@ -266,27 +266,21 @@ const assert = require('node:assert/strict');
   assert.equal(Number((await db.query('select shares from paper_positions')).rows[0].shares),0);
   assert.equal((await db.query('select count(*)::int as n from paper_position_settlements')).rows[0].n,1);
 
-  // Outcome truth is additive. The immutable legacy fact stays in place, but
-  // it reaches calibration only when a complete venue ladder independently
-  // confirms it. Raw station payloads remain hidden from the browser role.
-  await db.query(`insert into fact_band_outcome(band_id,city_key,for_date,model_prob,market_price,
-    edge_net_pp,settled_yes) values($1,'london',current_date-1,.30,.25,.05,true)`,[band]);
-  await db.query(`insert into weather_resolution_evidence(evidence_id,city_key,for_date,observed_max_c,
-    source_authority,station_id,source_url,record_status,parser_version,payload_sha256,raw_payload)
-    values('weather-proof','london',current_date-1,0,'test authority','station','https://example.invalid',
-      'verified','test-v1',$1,'{}')`,['0'.repeat(64)]);
-  const outcomeHealth=(await db.query('select * from v_outcome_evidence_health')).rows[0];
-  assert.deepEqual(
-    [Number(outcomeHealth.raw_band_facts),Number(outcomeHealth.verified_band_facts),
-     Number(outcomeHealth.raw_forecast_facts),Number(outcomeHealth.verified_forecast_facts)],
-    [1,1,2,1],
-    'Only facts matched to independent final evidence reach verified projections'
-  );
-  assert.equal((await db.query('select count(*)::int as n from v_calibration')).rows[0].n,1);
-  await assert.rejects(db.query("update weather_resolution_evidence set station_id='changed'"),/permission denied|Append-only/);
+  // Outcome collection attempts are private, append-only evidence. A failed
+  // source read is retained for diagnosis but cannot be promoted into the
+  // verified weather view or rewritten after the fact.
+  await db.exec('reset role;set role service_role;');
+  await db.query(`insert into weather_resolution_attempts(
+    attempt_id,market_id,city_key,for_date,source_authority,station_id,source_url,
+    outcome_status,parser_version,detail)
+    values('attempt-1',$1,'london',current_date,'test authority','EGLL',
+      'https://example.invalid','not_final','test-v1','{"reason":"next day absent"}')`,[market]);
+  assert.equal(Number((await db.query('select attempts from v_weather_resolution_collection_health')).rows[0].attempts),1);
+  await assert.rejects(db.query("update weather_resolution_attempts set outcome_status='captured'"),/permission denied|Append-only/);
+  await assert.rejects(db.query('delete from weather_resolution_attempts'),/permission denied|Append-only/);
+  await assert.rejects(db.query('truncate weather_resolution_attempts'),/permission denied|Append-only/);
   await db.exec('reset role;set role anon;');
-  assert.equal(Number((await db.query('select verified_band_facts from v_outcome_evidence_health')).rows[0].verified_band_facts),1);
-  await assert.rejects(db.query('select raw_payload from weather_resolution_evidence'),/permission denied/);
+  await assert.rejects(db.query('select * from weather_resolution_attempts'),/permission denied/);
 
   // The optional single-desk mode removes application credentials without
   // granting the browser role direct paper or research access.
