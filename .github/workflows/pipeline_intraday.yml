@@ -88,6 +88,16 @@ jobs:
         env:
           RESEARCH_CAPTURE_ID: ${{ github.run_id }}-${{ github.run_attempt }}
 
+      # THE STEP THAT WAS MISSING. paper_plans.py below reads signals fired in
+      # the last fifteen minutes; nothing wrote them, so it proposed nothing
+      # and every assisted desk looked dead. This runs the enabled strategies
+      # against the board the edge engine just priced. It must come BEFORE the
+      # proposals step, which is the whole reason the chain is one job.
+      - name: Strategy signals
+        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED == 'true' }}
+        timeout-minutes: 3
+        run: python scripts/signal_engine.py
+
       - name: Paper strategy proposals
         if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED == 'true' }}
         timeout-minutes: 3

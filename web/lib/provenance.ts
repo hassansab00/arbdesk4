@@ -441,6 +441,24 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
+  "signals": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/signal_engine.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
+    }
+  ],
+  "strategy_conflicts": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/signal_engine.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
+    }
+  ],
   "trades_observed": [
     {
       "cadence": "whenever its n8n schedule fires",

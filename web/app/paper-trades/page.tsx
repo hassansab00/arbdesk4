@@ -92,7 +92,7 @@ export default function PaperTradesPage() {
     {issue&&<div role="alert" className="rounded border border-bad p-3 text-sm text-bad">{issue}</div>}
     {notice&&<div role="status" className={`text-sm ${noticeWarning?'text-warn':'text-good'}`}>{notice}</div>}
     <div className="flex flex-wrap items-center gap-3"><select disabled={busy} aria-label="Paper account" className="input max-w-sm" value={account} onChange={e=>{setAccount(e.target.value);setCommand(null);}}>
-      <option value="">Paper desk</option>{accounts.data?.map(a=><option key={a.account_id} value={a.account_id}>{a.name}</option>)}</select>
+      <option value="">Paper desk</option>{accounts.data?.map(a=><option key={a.account_id} value={a.account_id}>{a.name} — {a.mode}{a.entries_paused?' · paused':''}</option>)}</select>
       {/* Several desks, so a setting can be tried without disturbing the one
           already running. Each carries its own cash, strategies and cities -
           the Automation tab edits them per desk. */}
@@ -117,6 +117,26 @@ export default function PaperTradesPage() {
         <label className="block text-sm">Starting paper cash (USD)<input required type="number" min="1" step="0.01" className="input mt-1" value={newDesk.cash} onChange={e=>setNewDesk({...newDesk,cash:e.target.value})}/></label>
         <button disabled={busy} className={button}>Create desk</button></form>}
       {selected&&<>
+        {/* WHY THIS DESK IS DOING NOTHING, said once, at the top.
+            A desk that is paused, or one in assisted mode with no strategies
+            chosen, looks identical to a broken page: you select it, and
+            nothing ever appears. Both are ordinary states with a specific
+            remedy, so both are named here rather than left to be deduced. */}
+        {selected.entries_paused&&<div className="rounded border border-warn/50 bg-warn/10 p-3 text-sm text-warn">
+          <strong>This desk is paused.</strong> It will not open positions - queued orders stay queued.
+          Unpause it on the <strong>Automation</strong> tab when you want it to act.
+        </div>}
+        {selected.mode!=='manual'&&!selected.policy?.strategies?.length&&
+          <div className="rounded border border-warn/50 bg-warn/10 p-3 text-sm text-warn">
+            <strong>No strategies chosen for this {selected.mode} desk.</strong> It can only act on what a
+            strategy proposes, so until one is picked on the <strong>Automation</strong> tab it will stay empty
+            however long you leave it.
+          </div>}
+        {selected.mode==='manual'&&<div className="text-xs text-muted">
+          <strong className="text-text">Manual desk.</strong> It acts only on tickets you write below - one
+          contract at a time, no strategy involved. Switch it to <strong>assisted</strong> on the Automation
+          tab to have strategies propose instead.
+        </div>}
         <div className="grid gap-3 sm:grid-cols-3"><div className={card}><div className="text-xs text-muted" title="Cash remaining after committed fills and fees.">Cash</div><div className="font-mono text-xl">{fmtUsd(Number(selected.cash))}</div></div>
           <div className={card}><div className="text-xs text-muted" title="Cash held for queued orders; released on cancellation or execution.">Reserved</div><div className="font-mono text-xl">{fmtUsd(Number(selected.reserved_cash))}</div></div>
           <div className={card}><div className="text-xs text-muted">Available cash</div><div className="font-mono text-xl">{fmtUsd(Number(selected.cash)-Number(selected.reserved_cash))}</div></div></div>
