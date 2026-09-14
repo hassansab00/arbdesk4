@@ -193,6 +193,46 @@ def test_every_job_has_a_timeout():
                 f"the default 6 hours of the monthly allowance on one hang")
 
 
+# A JOB TIMEOUT CEILING, because "has a timeout" turned out to mean nothing.
+#
+# Measured over this repository's entire run history (694 runs, 2026-08-23 to
+# 2026-09-14, 2,445 billed minutes): FIVE runs account for 1,241 of those
+# minutes - 51% of everything the desk has ever spent on Actions. All five are
+# `forecasts.yml` started by hand, on 26, 27 and 28 August, at 341, 341, 332,
+# 121 and 106 minutes each.
+#
+# Every one of them had a timeout. The timeout was 350 minutes, which is not a
+# bound - it is 17% of the monthly allowance handed to ONE run of ONE job, and
+# three of them in a row is the account. `test_every_job_has_a_timeout` passed
+# throughout.
+#
+# The cadence was never the cause and cutting it would have saved almost
+# nothing; docs/compute_budget.md has the measurement. This is the guard that
+# was actually missing.
+MAX_JOB_MINUTES = 120
+
+
+def test_no_single_job_can_burn_a_fifth_of_the_month():
+    """120 minutes is the longest anything here legitimately needs - the
+    backtest, which replays months of book history and only runs on demand.
+    The daily pipeline sits at 90, the intraday at 30, and the backfill that
+    caused this is 25 per link with a bounded continuation chain.
+
+    Raising this ceiling is allowed. Raising it by accident is not."""
+    for name, doc in workflows():
+        for job_name, job in (doc.get("jobs") or {}).items():
+            declared = job.get("timeout-minutes")
+            if declared is None:
+                continue          # test_every_job_has_a_timeout owns that case
+            assert int(declared) <= MAX_JOB_MINUTES, (
+                f"{name} / job {job_name} may run for {declared} minutes - "
+                f"{int(declared) * 100 // 2000}% of the 2,000-minute monthly "
+                f"allowance on a single run. The ceiling is "
+                f"{MAX_JOB_MINUTES}. Split the work into resumable links, as "
+                f"forecasts.yml does, or raise MAX_JOB_MINUTES deliberately "
+                f"and say why.")
+
+
 def test_every_scheduled_workflow_can_be_started_by_hand():
     """When a schedule is missed - the account was out of minutes, GitHub had an
     incident, the runner queue was full - the data does not backfill itself.

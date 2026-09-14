@@ -11,9 +11,16 @@ import { fmtTemp, type Unit } from "@/lib/units";
  * chart that spends one for decoration is worse than a flat one. This has
  * three genuinely independent variables and the shape they make is the point:
  *
- *   depth   lead days, 7 at the back to 0 at the front
+ *   depth   lead days, counting DOWN left to right - a week out at the
+ *           back-left, zero (the day itself) at the front-right
  *   height  temperature
  *   width   the resolution day
+ *
+ * THE COUNTDOWN RUNS THE WAY YOU READ. Depth used to recede down-LEFT, so a
+ * ribbon walked right to left as its day approached, while the day axis under
+ * it ran left to right. Two time axes pointing opposite ways in one picture is
+ * a puzzle, not a chart. Both run left to right now: the lead counts 7, 6,
+ * 5 ... 1, 0, and what actually happened is drawn AT zero, the end of the line.
  *
  * One ribbon per day, each walking from what the model said a week out to
  * what it said the morning of. A good model's ribbons narrow toward the
@@ -26,8 +33,9 @@ import { fmtTemp, type Unit } from "@/lib/units";
  * bucket", and a 0.6 C error that crosses a line loses while a 0.9 C error
  * inside one wins.
  *
- * Drawn back-to-front so nearer days occlude farther ones, which is the only
- * depth cue an SVG gets.
+ * Drawn latest day first, so that where two ribbons overlap the nearer one -
+ * the lower lead - is painted on top. That is the only depth cue an SVG gets,
+ * and it reverses with the axis.
  */
 
 export interface ConvergencePoint {
@@ -64,7 +72,7 @@ export default function Convergence3D({
   height?: number;
 }) {
   // Depth drifts RIGHT as days do, so a large yaw makes the two axes read as
-  // one: day N at lead 7 lands under day N+4 at lead 0. Keep the horizontal
+  // one: day N at lead 0 lands over day N+4 at lead 7. Keep the horizontal
   // component small and spend the depth cue on the vertical instead.
   const [yaw, setYaw] = useState(0.3);
   const [tilt, setTilt] = useState(0.62);
@@ -114,21 +122,27 @@ export default function Convergence3D({
   const H = height;
   const PAD_L = 58, PAD_B = 56, PAD_T = 20;
 
-  // World -> screen. depth is lead (0 near, maxLead far), width is day index,
-  // height is temperature. A cabinet projection: cheap, honest, and it keeps
-  // vertical distances readable, which matters because the vertical axis is
-  // the one carrying degrees.
+  // World -> screen. Depth is the lead, and it is spent as a COUNTDOWN: the
+  // largest lead sits at the day's own slot, up and to the left, and each day
+  // closer steps right and down until lead 0 - the day itself - is the
+  // front-right end of the ribbon. Width is the day index, height is
+  // temperature. A cabinet projection: cheap, honest, and it keeps vertical
+  // distances readable, which matters because that axis carries the degrees.
   const spanX = W - PAD_L - 30;
   const spanY = H - PAD_T - PAD_B;
   const dayStep = days.length > 1 ? spanX / (days.length - 1 + maxLead * yaw * 0.9) : 0;
   const leadDX = dayStep * yaw * 0.9;
   const leadDY = spanY * tilt * 0.11;
 
-  const px = (dayIdx: number, lead: number) => PAD_L + dayIdx * dayStep + lead * leadDX;
+  // (maxLead - lead), not lead: that one term is the whole axis flip. The
+  // horizontal extent is unchanged - the drawing still ends at PAD_L + spanX -
+  // because the shear is re-anchored, not added.
+  const px = (dayIdx: number, lead: number) =>
+    PAD_L + dayIdx * dayStep + (maxLead - lead) * leadDX;
   const py = (temp: number, lead: number) =>
     H - PAD_B - ((temp - tLo) / (tHi - tLo)) * (spanY - maxLead * leadDY) - lead * leadDY;
 
-  // Back to front: the largest lead is farthest away.
+  // Largest lead first: it is both the farthest away and now the leftmost.
   const orderedLeads = [...leads].sort((a, b) => b - a);
 
   const byDayModel = new Map<string, ConvergencePoint[]>();
@@ -234,15 +248,17 @@ export default function Convergence3D({
         ))}
       </div>
       <p className="mb-2 max-w-3xl text-[11px] leading-relaxed text-muted">
-        <strong className="text-text">How to read it.</strong> Follow one coloured line from the
-        back (a week out) to the front (the morning of). It should walk toward the green bar,
-        which is what the day actually did — that is <em>converging</em>. A line that stays the
-        same distance from the bar the whole way is <em>parallel</em>: a bias, and a bias is a
-        correction you can apply. A line that jumps around while getting closer is{" "}
-        <em>wandering</em>: noise, and nothing to correct. The <strong className="text-text">ring
-        at the front</strong> is the only thing that got paid — filled and green if that model&apos;s
-        last call landed in the same bucket the day settled in, hollow and red if it missed by a
-        line. The grey planes are those bucket lines.
+        <strong className="text-text">How to read it.</strong> Follow one coloured line{" "}
+        <strong className="text-text">left to right</strong>. It starts a week out and counts
+        down — 7, 6, 5 … 1 — to <strong className="text-text">zero</strong>, the day itself, at
+        the right-hand end of the line. It should walk toward the green bar, which is what the
+        day actually did — that is <em>converging</em>. A line that stays the same distance from
+        the bar the whole way is <em>parallel</em>: a bias, and a bias is a correction you can
+        apply. A line that jumps around while getting closer is <em>wandering</em>: noise, and
+        nothing to correct. The <strong className="text-text">ring at zero</strong> is the only
+        thing that got paid — filled and green if that model&apos;s last call landed in the same
+        bucket the day settled in, hollow and red if it missed by a line. The grey planes are
+        those bucket lines.
       </p>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: H * 1.4 }} role="img"
            aria-label="Forecast convergence by lead day, temperature and resolution day">
@@ -264,28 +280,62 @@ export default function Convergence3D({
           />
         ))}
 
-        {/* temperature gridlines on the near face */}
+        {/* Temperature gridlines on the BACK face. The countdown ends at the
+            front, so the front face has moved right and taken its left edge
+            with it; the back face is the one whose edge is PAD_L now. The
+            bucket planes carry the same scale forward to the near face, which
+            is where the green bars are actually read. */}
         {tempTicks.map((v) => (
           <g key={`t${v}`}>
-            <line x1={px(0, 0)} y1={py(v, 0)} x2={px(days.length - 1, 0)} y2={py(v, 0)}
+            <line x1={px(0, maxLead)} y1={py(v, maxLead)}
+                  x2={px(days.length - 1, maxLead)} y2={py(v, maxLead)}
                   stroke="var(--chart-grid, #1a2030)" />
-            <text x={PAD_L - 8} y={py(v, 0) + 3} textAnchor="end" fontSize="9"
+            <text x={PAD_L - 8} y={py(v, maxLead) + 3} textAnchor="end" fontSize="9"
                   fill="var(--chart-axis, #8a93a6)">
               {fmtTemp(v, unit, 0)}
             </text>
           </g>
         ))}
 
-        {/* the depth axis, so "back" is legible as a lead and not just far away */}
-        {orderedLeads.map((lead) => (
-          <text key={`l${lead}`} x={px(days.length - 1, lead) + 6} y={py(tLo, lead) - 2}
-                fontSize="8" fill="var(--chart-axis, #8a93a6)">
-            {lead === 0 ? "same day" : `−${lead}d`}
+        {/* THE COUNTDOWN, drawn as an axis instead of left to be inferred from
+            where the lines happen to start. It runs along the bottom edge of
+            the FIRST day's ribbon - the one wedge of the picture nothing else
+            occupies - from the farthest lead at the left down to zero at the
+            right, where what actually happened is marked in the same green as
+            the bars. Labels thin out as the rotate slider squeezes the axis;
+            the far end and zero always survive, because those two are what
+            make it a countdown rather than a smear. */}
+        <g>
+          <line x1={px(0, maxLead)} y1={py(tLo, maxLead)} x2={px(0, 0)} y2={py(tLo, 0)}
+                stroke="var(--chart-axis, #8a93a6)" strokeOpacity={0.45} />
+          {orderedLeads.filter((lead) => lead > 0).map((lead) => (
+            <g key={`l${lead}`}>
+              <line x1={px(0, lead)} y1={py(tLo, lead)}
+                    x2={px(0, lead) - 3} y2={py(tLo, lead) + 3}
+                    stroke="var(--chart-axis, #8a93a6)" strokeOpacity={0.45} />
+              {(lead === maxLead || leadDX >= 14) && (
+                <text x={px(0, lead) + 2} y={py(tLo, lead) + 11} fontSize="8"
+                      fill="var(--chart-axis, #8a93a6)">
+                  {lead}
+                </text>
+              )}
+            </g>
+          ))}
+          {/* Zero. The only label on this axis naming a measurement rather
+              than a lead: at zero the forecasting stops and the day is simply
+              what it was. Drawn whether or not the data carries a lead-0 row,
+              because the green bars are plotted at zero either way. */}
+          <circle cx={px(0, 0)} cy={py(tLo, 0)} r={2.5} fill="var(--good, #7ee081)" />
+          <text x={px(0, 0) + 5} y={py(tLo, 0) - 3} fontSize="8.5" fontWeight="600"
+                fill="var(--good, #7ee081)">
+            0 · what happened
           </text>
-        ))}
+        </g>
 
-        {/* one ribbon per day per model, back to front */}
-        {days.map((day, di) => {
+        {/* One ribbon per day per model. Latest day FIRST, so the earliest -
+            whose near end now reaches furthest right, over the later days' far
+            ends - is painted last and therefore on top. Near occludes far. */}
+        {days.map((day, di) => ({ day, di })).reverse().map(({ day, di }) => {
           const actual = observedByDay.get(day);
           return (
             <g key={day}>
@@ -379,7 +429,7 @@ export default function Convergence3D({
           temperature
         </text>
         <text x={W - 30} y={H - 6} textAnchor="end" fontSize="9" fill="var(--chart-axis, #8a93a6)">
-          → the day the market resolves      ↘ depth = how many days ahead the call was made
+          → the day the market resolves      ↘ the countdown: days still to go, down to 0
         </text>
       </svg>
 

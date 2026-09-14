@@ -91,6 +91,10 @@ def _calibrate(p):
 UNTRUSTED_N_DAYS = 200          # matches Task 1's "worst_sample should be 200+"
 BIAS_EXCEEDS_MAE_RATIO = 0.95   # matches anomaly_rules.bias_exceeds_mae threshold
 UNTRUSTED_CONFIDENCE_PENALTY = 0.5
+# Measured on this city and lead, but the outcomes behind it are not yet
+# corroborated by weather_resolution_evidence. Halves confidence and blocks
+# the ticket; it does NOT throw the measurement away. See _newest_measured.
+UNVERIFIED_CONFIDENCE_PENALTY = 0.5
 GLOBAL_SKILL_CONFIDENCE_PENALTY = 0.25
 
 
@@ -342,11 +346,20 @@ def _global_skill(lead_days):
     if lead_days in _global_skill_cache:
         return _global_skill_cache[lead_days]
     try:
-        rows = rest_all("derived_forecast_skill", [
+        # Verified rows if any exist, otherwise every measured row at this
+        # lead. Same reasoning as _newest_measured: this path already refuses
+        # to trade (`no_city_skill`), so the only question it decides is the
+        # WIDTH, and a measured p75 across cities beats a constant.
+        base = [
             ("select", "city_key,lead_days,n_days,mae_c,computed_at,evidence_scope"),
             ("lead_days", f"eq.{lead_days}"),
-            ("evidence_scope", f"eq.{VERIFIED_EVIDENCE_SCOPE}"),
-        ], order="city_key,computed_at.desc", page_size=500)
+        ]
+        rows = rest_all("derived_forecast_skill",
+                        base + [("evidence_scope", f"eq.{VERIFIED_EVIDENCE_SCOPE}")],
+                        order="city_key,computed_at.desc", page_size=500)
+        if not rows:
+            rows = rest_all("derived_forecast_skill", base,
+                            order="city_key,computed_at.desc", page_size=500)
     except Exception as e:
         print(f"  note: global skill fallback unavailable ({e})", file=sys.stderr)
         rows = []
@@ -377,18 +390,54 @@ def _global_skill(lead_days):
     _global_skill_cache[lead_days] = result
     return result
 
+def _newest_measured(table, base_filters):
+    """The newest VERIFIED skill row; failing that, the newest measured row of
+    any scope, tagged `verified: False`.
+
+    WHY THE SECOND HALF EXISTS. Phase 2A stamps `evidence_scope` on skill it
+    can corroborate against `weather_resolution_evidence`. That table has zero
+    rows and its capture has never run, so `evidence_scope = verified_outcomes_v1`
+    matched NOTHING - and because `null = anything` is never true in SQL, all
+    5,187 measured rows (50 cities, leads 1-7) were discarded silently in
+    favour of COLD_START_MAE_C.
+
+    The desk was therefore pricing 48 cities at sigma 5.0-15.0 C while holding
+    a measured mean absolute error of 1.47 C at lead 1. London today: forecast
+    24.2 C, sigma 5.013, every closed bucket near 8% and 32% of the mass piled
+    into "27 C or higher" - against a market holding 46c and 45c on 24 and 25.
+    That is not caution, it is a fabricated number outvoting a measured one.
+
+    Corroboration decides whether a price may be TRADED. It was never meant to
+    decide how WIDE the distribution is. So it travels as a column here -
+    exactly as ad4_62 carries `verified` on the scorecard views instead of
+    filtering by it - and the caller below blocks trading on `verified: False`
+    while still pricing with the number the desk actually measured. When the
+    evidence capture runs, these rows gain their scope and the block lifts on
+    its own, with nothing to change here.
+    """
+    tail = [("order", "computed_at.desc"), ("limit", "1")]
+    try:
+        rows = rest(table, base_filters
+                    + [("evidence_scope", f"eq.{VERIFIED_EVIDENCE_SCOPE}")] + tail)
+        if rows:
+            return {**rows[0], "verified": True}
+        rows = rest(table, base_filters + tail)
+        if rows:
+            return {**rows[0], "verified": False}
+    except Exception:
+        # Table not installed yet. Same answer as before it existed: nothing.
+        return None
+    return None
+
+
 def _pooled_skill(city_key, lead_days):
     key = (city_key, lead_days)
     if key not in _skill_cache:
-        rows = rest("derived_forecast_skill", [
+        _skill_cache[key] = _newest_measured("derived_forecast_skill", [
             ("select", "city_key,lead_days,n_days,mae_c,bias_c,computed_at,evidence_scope"),
             ("city_key", f"eq.{city_key}"),
             ("lead_days", f"eq.{lead_days}"),
-            ("evidence_scope", f"eq.{VERIFIED_EVIDENCE_SCOPE}"),
-            ("order", "computed_at.desc"),
-            ("limit", "1"),
         ])
-        _skill_cache[key] = rows[0] if rows else None
     return _skill_cache[key]
 
 
@@ -396,21 +445,12 @@ def _model_skill(city_key, model, lead_days):
     """Skill of ONE model, or None if it has not been scored at this lead."""
     key = (city_key, model, lead_days)
     if key not in _skill_cache:
-        try:
-            rows = rest("derived_forecast_skill_model", [
-                ("select", "city_key,model,lead_days,n_days,mae_c,bias_c,computed_at,evidence_scope"),
-                ("city_key", f"eq.{city_key}"),
-                ("model", f"eq.{model}"),
-                ("lead_days", f"eq.{lead_days}"),
-                ("evidence_scope", f"eq.{VERIFIED_EVIDENCE_SCOPE}"),
-                ("order", "computed_at.desc"),
-                ("limit", "1"),
-            ])
-        except Exception:
-            # Table not installed yet (sql/ad4_49). Pooled is the answer then,
-            # which is exactly the behaviour that existed before it.
-            rows = []
-        _skill_cache[key] = rows[0] if rows else None
+        _skill_cache[key] = _newest_measured("derived_forecast_skill_model", [
+            ("select", "city_key,model,lead_days,n_days,mae_c,bias_c,computed_at,evidence_scope"),
+            ("city_key", f"eq.{city_key}"),
+            ("model", f"eq.{model}"),
+            ("lead_days", f"eq.{lead_days}"),
+        ])
     return _skill_cache[key]
 
 
@@ -507,10 +547,29 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
         skill_source = "fixed_cold_start"
         pricing_eligible = False
         pricing_block_reason = "no_verified_skill"
+
+    # MEASURED BUT NOT CORROBORATED: price with it, refuse to trade on it.
+    #
+    # This is the whole of Phase 2A's guarantee and none of its collateral
+    # damage. A width the desk has actually measured is strictly better
+    # information than COLD_START_MAE_C, which is a constant somebody chose;
+    # but until weather_resolution_evidence can corroborate the outcomes that
+    # width was measured against, no order may rest on it. So the number is
+    # used and the ticket stays blocked - the same verdict the desk reached
+    # before, arrived at with the real number instead of an invented one.
+    skill_verified = skill.get("verified")
+    if skill_verified is False and pricing_eligible:
+        pricing_eligible = False
+        pricing_block_reason = "no_verified_skill"
+
     reg = regime.classify(city_key, for_date, history_cache)
     confidence = reg.confidence
 
-    bias_c = 0.0 if skill_proxy else (skill.get("bias_c") or 0.0)
+    # Widening on an uncorroborated measurement is safe; MOVING THE CENTRE on
+    # one is not. If the outcomes behind it are wrong, a bias correction walks
+    # the forecast in a direction nobody can check, while an over-wide sigma
+    # only ever understates the edge. Same asymmetry the proxies get.
+    bias_c = 0.0 if (skill_proxy or skill_verified is False) else (skill.get("bias_c") or 0.0)
     mae_c = skill.get("mae_c")
     n_days = skill.get("n_days") or 0
     reasons = list(reg.reasons)
@@ -526,6 +585,9 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
         else:
             confidence *= UNTRUSTED_CONFIDENCE_PENALTY
             reasons.append(f"skill_proxy:lead{lead_days}_to_lead{skill_lead_days}")
+    if skill_verified is False:
+        confidence *= UNVERIFIED_CONFIDENCE_PENALTY
+        reasons.append(f"measured_unverified:mae{mae_c:.2f}C_n{n_days}:awaiting_evidence_capture")
     if n_days < UNTRUSTED_N_DAYS:
         confidence *= UNTRUSTED_CONFIDENCE_PENALTY
         reasons.append(f"thin_sample:{n_days}d")

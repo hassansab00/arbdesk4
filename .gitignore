@@ -12,3 +12,4 @@ web/out/
 web/tsconfig.tsbuildinfo
 web/*.tsbuildinfo
 supabase/.temp/
+.venv*/

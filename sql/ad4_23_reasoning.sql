@@ -176,6 +176,23 @@ $q$;
 
   if has_opp then
     sql := sql || $q$, top_band as (
+  -- "MOST LIKELY" IS THE MODAL *CLOSED* BUCKET.
+  --
+  -- The ladder's end buckets are open-ended: "27C or higher" runs to plus
+  -- infinity. Taking max(model_prob) over every bucket compares one of
+  -- infinite width against buckets 1C wide, so the widest always wins and it
+  -- is not the likeliest. London on 14 Sep, forecast 24.2C, read
+  --
+  --     Most likely bucket  27C or higher  at 32%      market 1c
+  --
+  -- while every closed bucket sat near 8% and the market held 46c and 45c on
+  -- 24 and 25. The open mass is real - it is just not a mode - so it is
+  -- carried out separately as tail_low_pct / tail_high_pct rather than
+  -- dropped. Same fix ad4_58 already applies to v_city_prediction_confidence;
+  -- this view never got it, and this view is what the board's Why panel reads.
+  --
+  -- Ties broke arbitrarily too, so the winner could change between reads:
+  -- ordered by band_lo after probability.
   select distinct on (o.city_key)
     o.city_key, o.band_id, o.band_label, o.band_lo, o.band_hi,
     o.open_low, o.open_high, o.model_prob, o.market_price, o.edge_net_pp,
@@ -183,7 +200,20 @@ $q$;
   from v_opportunities o
   join day d on d.city_key = o.city_key and d.resolution_date = o.resolution_date
   where o.side = 'YES' and o.model_prob is not null
-  order by o.city_key, o.model_prob desc
+    and not coalesce(o.open_low, false) and not coalesce(o.open_high, false)
+    and o.band_lo is not null and o.band_hi is not null
+  order by o.city_key, o.model_prob desc, o.band_lo
+), top_tails as (
+  -- What the mode deliberately leaves out: "32% chance the day lands above
+  -- the entire board" is a statement worth printing, it is just not a bucket
+  -- anyone can be most likely to be in.
+  select o.city_key,
+         round(100 * sum(o.model_prob) filter (where coalesce(o.open_low, false)), 1)  as tail_low_pct,
+         round(100 * sum(o.model_prob) filter (where coalesce(o.open_high, false)), 1) as tail_high_pct
+  from v_opportunities o
+  join day d on d.city_key = o.city_key and d.resolution_date = o.resolution_date
+  where o.side = 'YES' and o.model_prob is not null
+  group by o.city_key
 )$q$;
   else
     missing := array_append(missing, 'v_opportunities (Actions -> Probabilities)');
@@ -195,6 +225,10 @@ $q$;
          null::numeric as edge_net_pp, null::numeric as confidence,
          null::text as regime_label, null::boolean as tradeable,
          null::text as block_reason
+  where false
+), top_tails as (
+  select null::text as city_key, null::numeric as tail_low_pct,
+         null::numeric as tail_high_pct
   where false
 )$q$;
   end if;
@@ -246,6 +280,7 @@ select
   tb.model_prob as top_model_prob, tb.market_price as top_market_price,
   tb.edge_net_pp as top_edge_net_pp, tb.confidence, tb.regime_label,
   tb.tradeable as top_tradeable, tb.block_reason as top_block_reason,
+  tt.tail_low_pct, tt.tail_high_pct,
   oc.forecast_ahead_of_book, oc.forecast_move_c, oc.drift_24h, oc.hours_to_resolution
 from cities c
 join day d              on d.city_key = c.city_key
@@ -257,6 +292,7 @@ left join lw            on lw.city_key = c.city_key
 left join skill sk      on sk.city_key = c.city_key and sk.lead_days = coalesce(fc.lead_days, 1)
 left join div dv        on dv.city_key = c.city_key
 left join top_band tb   on tb.city_key = c.city_key
+left join top_tails tt  on tt.city_key = c.city_key
 left join ctx oc        on oc.band_id = tb.band_id
 $q$;
 
