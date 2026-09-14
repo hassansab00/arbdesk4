@@ -46,6 +46,16 @@ export const PROPRIETARY_EXPORT_DATASETS: ExportDataset[] = [
     ],
   },
   {
+    key: "outcome_evidence",
+    label: "Resolution evidence",
+    description: "Raw authoritative weather and venue payloads, hashes, parser versions, and collection attempts.",
+    sources: [
+      { relation: "weather_resolution_evidence", timeColumn: "captured_at", orderColumns: ["evidence_id"] },
+      { relation: "weather_resolution_attempts", timeColumn: "captured_at", orderColumns: ["attempt_id"] },
+      { relation: "paper_resolution_evidence", timeColumn: "captured_at", orderColumns: ["proof_id"] },
+    ],
+  },
+  {
     key: "forecasts",
     label: "Forecast archive",
     description: "Captured provider and proprietary forecasts.",
