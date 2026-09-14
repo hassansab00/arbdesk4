@@ -42,10 +42,14 @@ begin
   end if;
 end $ad4$;
 
+drop function if exists public.prune_forecasts(integer, boolean, date);
+drop function if exists public.prune_forecasts(integer, boolean, date, bigint);
+
 create or replace function public.prune_forecasts(
   p_keep_days integer,
   p_dry_run   boolean default true,
-  p_before    date default null
+  p_before    date default null,
+  p_expected_rows bigint default null
 ) returns jsonb
 language plpgsql security definer
 set search_path to 'public', 'pg_temp'
@@ -63,8 +67,27 @@ begin
       'error', 'keep_days must be at least 30 - skill is measured over months');
   end if;
 
+  if not p_dry_run and p_expected_rows is null then
+    return jsonb_build_object('ok', false,
+      'error', 'p_expected_rows is required for a committed prune');
+  end if;
+
+  -- Freeze writers while the committed count and delete run. A late historical
+  -- row must trigger a count mismatch, not slip into a verified archive window.
+  if not p_dry_run then
+    lock table weather_forecasts in share row exclusive mode;
+  end if;
+
   select count(*), max(for_date) into v_doomed, v_newest_doomed
     from weather_forecasts where for_date < v_before;
+
+  if p_expected_rows is not null and v_doomed <> p_expected_rows then
+    return jsonb_build_object('ok', false,
+      'error', format('archive row count mismatch: verified %s rows but prune would delete %s',
+                      p_expected_rows, v_doomed),
+      'expected_rows', p_expected_rows, 'would_delete', v_doomed);
+  end if;
+
   if v_doomed = 0 then
     return jsonb_build_object('ok', true, 'deleted', 0,
       'note', format('nothing older than %s', v_before));
@@ -91,6 +114,7 @@ begin
     return jsonb_build_object('ok', true, 'dry_run', true, 'would_delete', v_doomed,
       'would_keep', v_keep, 'older_than', v_before,
       'skill_rows', v_skill, 'skill_computed_at', v_skill_at,
+      'expected_rows', p_expected_rows,
       'note', 'call again with p_dry_run => false to actually delete');
   end if;
 
@@ -98,20 +122,21 @@ begin
   v_freed := pg_size_pretty(pg_total_relation_size('weather_forecasts'));
 
   return jsonb_build_object('ok', true, 'deleted', v_doomed, 'kept', v_keep,
-    'older_than', v_before, 'skill_rows', v_skill, 'table_now', v_freed,
+    'older_than', v_before, 'skill_rows', v_skill,
+    'expected_rows', p_expected_rows, 'table_now', v_freed,
     'note', 'run VACUUM FULL weather_forecasts to return the space to the OS');
 end;
 $ad4$;
 
-comment on function public.prune_forecasts(integer, boolean, date) is
-  'Delete forecasts older than a cutoff, once derived_forecast_skill proves they were scored. Dry run by default. Intended to be called only after scripts/archive_observations.py has uploaded and re-verified the matching archive file.';
+comment on function public.prune_forecasts(integer, boolean, date, bigint) is
+  'Delete forecasts older than a cutoff only when p_expected_rows equals the verified archive count and derived_forecast_skill proves the rows were scored. Committed calls require the expected count.';
 
 do $ad4$
 declare r text;
 begin
   foreach r in array array['service_role'] loop
     if exists (select 1 from pg_roles where rolname = r) then
-      execute format('grant execute on function public.prune_forecasts(integer, boolean, date) to %I', r);
+      execute format('grant execute on function public.prune_forecasts(integer, boolean, date, bigint) to %I', r);
     end if;
   end loop;
   -- anon and authenticated deliberately get nothing: this deletes rows.
