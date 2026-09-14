@@ -152,3 +152,81 @@ def test_phase2b_is_cost_neutral_private_and_exportable():
     assert "before truncate" in migration.lower()
     assert "weather_resolution_evidence" in export
     assert "weather_resolution_attempts" in export
+
+
+# --------------------------------------------------------------------------
+# BACKLOG TRAVERSAL
+#
+# The cap used to be applied to every city-day in the window, finished or
+# not, after sorting oldest-first. Every already-verified day consumed a
+# slot, so once the oldest `maximum` were done every later run reloaded that
+# same set, skipped all of it as already_final, and stopped. Widening --days
+# reached no further back: it re-read finished history and never arrived at
+# the part it had not done.
+#
+# Measured symptom: 49 cities sat at ~7 days of evidence each (average 6.9,
+# max 7) while the window nominally covered fourteen, and no city had the
+# 20+ days that skill measurement needs to stamp a row verified - so every
+# band stayed blocked from trading on `no_verified_skill`.
+# --------------------------------------------------------------------------
+@pytest.fixture
+def markets(monkeypatch):
+    """Scripted `markets` rows, one per city-day."""
+    def go(rows):
+        monkeypatch.setattr(outcomes, "rest_all",
+                            lambda path, params=None, **kw: list(rows))
+        return rows
+    return go
+
+
+def _market(city, date, market_id=None):
+    return {"market_id": market_id or f"{city}-{date}", "city_key": city,
+            "resolution_date": date, "unit": "C", "rules_text": "",
+            "last_seen_at": "2026-09-14T00:00:00Z"}
+
+
+def test_finalized_days_do_not_consume_the_budget(markets):
+    markets([_market("london", f"2026-09-{d:02d}") for d in range(1, 11)])
+    done = {("london", f"2026-09-{d:02d}") for d in range(1, 9)}   # 8 finished
+
+    picked = outcomes._load_targets(days=30, maximum=3, finalized=done)
+
+    assert [r["resolution_date"] for r in picked] == ["2026-09-09", "2026-09-10"], \
+        "the budget must be spent on days that still need collecting"
+
+
+def test_without_the_fix_the_same_input_would_return_only_finished_days(markets):
+    """The regression, stated as the contract it broke: with no finalized set
+    the oldest days win the cap - which is correct only because nothing is
+    done yet."""
+    markets([_market("london", f"2026-09-{d:02d}") for d in range(1, 11)])
+    picked = outcomes._load_targets(days=30, maximum=3, finalized=set())
+    assert [r["resolution_date"] for r in picked] == \
+        ["2026-09-01", "2026-09-02", "2026-09-03"]
+
+
+def test_an_unverified_prior_is_still_a_target(markets):
+    """not_final, a source revision and a parse error all leave a row behind
+    that is NOT frozen. Those days must still be retried - the skip rule is
+    record_status == 'verified', nothing looser."""
+    markets([_market("london", "2026-09-01"), _market("london", "2026-09-02")])
+    picked = outcomes._load_targets(days=30, maximum=10, finalized=set())
+    assert len(picked) == 2
+
+
+def test_the_walk_is_oldest_first_so_the_backlog_fills_backwards(markets):
+    markets([_market("b", "2026-09-05"), _market("a", "2026-09-01"),
+             _market("c", "2026-09-03")])
+    picked = outcomes._load_targets(days=30, maximum=10, finalized=set())
+    assert [r["resolution_date"] for r in picked] == \
+        ["2026-09-01", "2026-09-03", "2026-09-05"]
+
+
+def test_one_row_per_city_day_newest_market_wins(markets):
+    """Two market rows for one city-day (a re-listing) is one target."""
+    a = _market("london", "2026-09-01", "old")
+    b = _market("london", "2026-09-01", "new")
+    b["last_seen_at"] = "2026-09-14T12:00:00Z"
+    markets([a, b])
+    picked = outcomes._load_targets(days=30, maximum=10, finalized=set())
+    assert len(picked) == 1 and picked[0]["market_id"] == "new"

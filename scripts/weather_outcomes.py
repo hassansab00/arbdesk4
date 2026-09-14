@@ -409,7 +409,29 @@ def _safe_error(exc: Exception) -> str:
     return text[:500]
 
 
-def _load_targets(days: int, maximum: int) -> list[dict[str, Any]]:
+def _load_targets(days: int, maximum: int,
+                  finalized: set[tuple[str, str]] | None = None) -> list[dict[str, Any]]:
+    """The oldest city-days that still NEED collecting, capped at `maximum`.
+
+    THE BACKLOG COULD NOT TRAVERSE. The cap used to be applied to every
+    city-day in the window, finished or not, after sorting oldest-first:
+
+        return sorted(latest.values(), key=...)[:maximum]
+
+    Every already-verified day therefore consumed a slot. Once the oldest 250
+    were done, every subsequent run loaded those same 250, skipped all of them
+    as `already_final`, and stopped - so widening --days reached no further
+    back. It re-read history it had already finished and never arrived at the
+    part it had not. That is why 49 cities sat at ~7 days of evidence each
+    while the window nominally covered fourteen.
+
+    Skipping them HERE instead spends the whole budget on work that remains,
+    and the run walks steadily backwards through the backlog. The skip rule is
+    deliberately identical to run()'s own - record_status == 'verified', the
+    frozen first publication - so this only moves WHEN the decision is made,
+    never WHAT is decided. An unverified prior (not_final, a source revision,
+    a parse error) is still a target, exactly as before.
+    """
     cutoff = (dt.date.today() - dt.timedelta(days=days)).isoformat()
     today = dt.date.today().isoformat()
     rows = rest_all(
@@ -427,7 +449,10 @@ def _load_targets(days: int, maximum: int) -> list[dict[str, Any]]:
         key = (row["city_key"], row["resolution_date"])
         if key not in latest or str(row.get("last_seen_at") or "") > str(latest[key].get("last_seen_at") or ""):
             latest[key] = row
-    return sorted(latest.values(), key=lambda row: (row["resolution_date"], row["city_key"]))[:maximum]
+    done = finalized or set()
+    outstanding = [row for row in latest.values()
+                   if (row["city_key"], row["resolution_date"]) not in done]
+    return sorted(outstanding, key=lambda row: (row["resolution_date"], row["city_key"]))[:maximum]
 
 
 def _existing_evidence(days: int) -> dict[tuple[str, str], dict[str, Any]]:
@@ -448,13 +473,18 @@ def _existing_evidence(days: int) -> dict[tuple[str, str], dict[str, Any]]:
 def run(days: int = 14, maximum: int = 250, dry_run: bool = False) -> dict[str, int]:
     if days < 1 or maximum < 1:
         raise ValueError("days and max-city-days must be positive")
-    targets = _load_targets(days, maximum)
+    # Evidence first: the finalized set decides which city-days are still
+    # worth a slot, and the cap is applied to what remains rather than to the
+    # whole window. See _load_targets.
     existing = _existing_evidence(days)
+    finalized = {key for key, row in existing.items()
+                 if row.get("record_status") == "verified"}
+    targets = _load_targets(days, maximum, finalized)
     run_id = os.environ.get("GITHUB_RUN_ID", "local-" + uuid.uuid4().hex)
     run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
     session = requests.Session()
     counts = {
-        "targets": len(targets), "already_final": 0, "captured": 0,
+        "targets": len(targets), "backlog_done": len(finalized), "already_final": 0, "captured": 0,
         "not_final": 0, "unsupported": 0, "failures": 0,
         "needs_attention": 0, "dry_run": 0,
     }
