@@ -355,3 +355,62 @@ def test_engine_never_orders_forecasts_by_lead_alone(path):
                 f"{path}:{i} orders forecasts by lead_days alone; rows tied at "
                 "the shortest lead are then picked arbitrarily"
             )
+
+
+# ---------------------------------------------------------------------------
+# A MULTIPLIER SUBSTITUTES FOR A MEASUREMENT; IT DOES NOT SUPPLEMENT ONE.
+#
+# sigma was mae_c * 1.2533 * regime * calibration * divergence. Regime reaches
+# 2.00 (BLOCKED) and divergence reaches 2.00, so a city with measured skill had
+# its own measurement inflated up to fourfold:
+#
+#   milan    mae 0.75 -> 0.94 sigma, published 2.91   (3.10x)
+#   seattle  mae 2.39 -> 2.99 sigma, published 8.97   (3.00x)
+#   nyc      mae 1.28 -> 1.61 sigma, published 4.22   (2.63x)
+#
+# which put nyc's modal bucket at "65F or below" on a 23.2C (73.8F) forecast.
+# The tell was that TOMORROW read correctly everywhere - one model quoted, so
+# no divergence factor - while today, the better-informed day, did not.
+#
+# mae_c is the mean |forecast - actual| over this city's own settled days. Those
+# days already contain the uncertain regimes and the disagreements. Widening a
+# measurement because conditions are uncertain asserts it was taken elsewhere.
+# ---------------------------------------------------------------------------
+def _sigma_source():
+    import inspect
+    import probability_engine as pe
+    body = inspect.getsource(pe.process_city_day)
+    return "\n".join(l for l in body.splitlines() if not l.lstrip().startswith("#"))
+
+
+def test_measured_width_is_not_multiplied_by_regime_or_divergence():
+    src = _sigma_source()
+    assert 'width_is_measured = skill_source in ("city_lead", "city_lead_proxy")' in src
+    assert "regime_sigma_mult = 1.0 if width_is_measured else reg.sigma_multiplier" in src
+    assert "div_sigma_mult = 1.0 if width_is_measured else div_mult" in src
+
+
+def test_cold_start_still_widens_because_nothing_was_measured():
+    """The multipliers are correct where they came from: on a cold start mae_c
+    is COLD_START_MAE_C, a constant nobody measured, and regime is the only
+    information there is. Removing them THERE would be the opposite bug."""
+    src = _sigma_source()
+    assert "else reg.sigma_multiplier" in src and "else div_mult" in src, (
+        "global_lead_p75 and fixed_cold_start must keep their widening")
+
+
+def test_calibration_always_applies_measured_or_not():
+    """ad4_45 fits calibration FROM settled outcomes, by asking whether the
+    stated sigma matched reality. That corrects the measurement rather than
+    second-guessing it, so it is never switched off."""
+    src = _sigma_source()
+    assert "sigma = sigma_historical * cal_mult * div_sigma_mult" in src
+    assert "cal_mult = 1.0 if width_is_measured" not in src
+
+
+def test_todays_disagreement_still_lowers_confidence():
+    """The today-specific signal is moved, not discarded. 'The models disagree
+    unusually today' is a reason to trust the number less, not to publish a
+    different one."""
+    src = _sigma_source()
+    assert "confidence *= min(1.0, 1.0 / div_mult)" in src

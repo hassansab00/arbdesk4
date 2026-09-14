@@ -604,8 +604,48 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
 
     div_mult, div_row = _divergence_for(city_key, for_date)
     cal_mult, cal_row = _calibration_for(city_key)
-    sigma_historical = mae_c * MAE_TO_SIGMA * reg.sigma_multiplier
-    sigma = sigma_historical * cal_mult * div_mult
+    # A MULTIPLIER SUBSTITUTES FOR A MEASUREMENT. IT DOES NOT SUPPLEMENT ONE.
+    #
+    # sigma was mae_c * 1.2533 * regime * calibration * divergence, where the
+    # regime factor reaches 2.00 (BLOCKED) and divergence reaches 2.00. On a
+    # cold start that is right: mae_c is then COLD_START_MAE_C, a constant
+    # nobody measured, and the multipliers are the only information there is.
+    #
+    # Applied to a MEASURED mae_c they count the same uncertainty twice.
+    # mae_c is the mean |forecast - actual| over this city's own settled days,
+    # and those days already contain the uncertain regimes and the days the
+    # models disagreed. Widening a measurement because conditions are uncertain
+    # asserts that the measurement was taken in some other, calmer world.
+    #
+    # Measured on the live board, today, all on this city's own skill:
+    #
+    #   milan     mae 0.75 -> 0.94 sigma, published 2.91   (3.10x)
+    #   seattle   mae 2.39 -> 2.99 sigma, published 8.97   (3.00x)
+    #   nyc       mae 1.28 -> 1.61 sigma, published 4.22   (2.63x)
+    #   jeddah    mae 3.36 -> 4.20 sigma, published 10.09  (2.40x)
+    #
+    # That is what put nyc's modal bucket at "65F or below" on a 23.2C (73.8F)
+    # forecast, and chicago's at "82F or higher" on 23.7C (74.7F). The tell was
+    # that TOMORROW read correctly everywhere - one model quoted, no divergence
+    # factor, multiplier 1.00 - while today, the better-informed day, did not.
+    #
+    # Calibration still applies, always: ad4_45 fits it FROM settled outcomes
+    # by asking whether the stated sigma matched reality, so it corrects the
+    # measurement rather than second-guessing it, and it is self-limiting.
+    #
+    # The today-specific signal is not discarded, it is moved to where it
+    # belongs. "The models disagree unusually today" is a reason to TRUST the
+    # number less, not to publish a different one, so it keeps its effect on
+    # confidence below and loses its effect on the distribution.
+    width_is_measured = skill_source in ("city_lead", "city_lead_proxy")
+    regime_sigma_mult = 1.0 if width_is_measured else reg.sigma_multiplier
+    div_sigma_mult = 1.0 if width_is_measured else div_mult
+    sigma_historical = mae_c * MAE_TO_SIGMA * regime_sigma_mult
+    sigma = sigma_historical * cal_mult * div_sigma_mult
+    if width_is_measured and (reg.sigma_multiplier > 1.0 or div_mult > 1.0):
+        reasons.append(
+            f"measured_width_kept:regime{reg.sigma_multiplier:.2f}x_"
+            f"div{div_mult:.2f}x_not_applied_to_sigma")
     if cal_row is not None:
         # Named in the reasons so a price that moved can be traced to the
         # recompute that moved it, rather than looking like drift.
