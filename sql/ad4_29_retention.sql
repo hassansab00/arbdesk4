@@ -226,9 +226,15 @@ begin
   end if;
 
   -- Every city-day about to lose its raw rows must already be in the cache.
+  -- v_city_day_features groups observations by the city's LOCAL date, so this
+  -- guard must use that exact date basis too. Using UTC here falsely reports
+  -- uncovered days for sparse evening observations in east-of-UTC cities.
   select count(*) into v_uncovered from (
-    select distinct o.city_key, (o.valid_at at time zone 'UTC')::date as d
+    select distinct
+           o.city_key,
+           (o.valid_at at time zone coalesce(c.timezone, 'UTC'))::date as d
       from weather_observations o
+      join cities c on c.city_key = o.city_key
      where o.valid_at < v_before
   ) x
   where not exists (
