@@ -155,11 +155,13 @@ export const SQL_OWNER: Record<string, string> = {
   "v_verified_fact_forecast_outcome": "supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql",
   "v_verified_weather_outcomes": "supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql",
   "v_weather_effects": "ad4_21_weather_features.sql",
+  "v_weather_resolution_collection_health": "supabase/migrations/20260913230000_phase2b_weather_resolution_collection.sql",
   "v_workflow_runs": "ad4_14_workflows.sql",
   "v_write_access": "ad4_38_grants.sql",
   "weather_events": "ad4_live_weather.sql",
   "weather_forecast_features": "ad4_24_nws_gridpoint.sql",
   "weather_forecasts": "ad4_00_preflight.sql",
   "weather_observations": "ad4_00_preflight.sql",
+  "weather_resolution_attempts": "supabase/migrations/20260913230000_phase2b_weather_resolution_collection.sql",
   "weather_resolution_evidence": "supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql"
 };

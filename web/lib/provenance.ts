@@ -541,6 +541,24 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "kind": "n8n",
       "name": "AD4 P1.2 - NWS Monitor"
     }
+  ],
+  "weather_resolution_attempts": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/weather_outcomes.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    }
+  ],
+  "weather_resolution_evidence": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/weather_outcomes.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    }
   ]
 };
 
@@ -1035,6 +1053,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_city_day_features",
     "cities",
     "weather_observations"
+  ],
+  "v_weather_resolution_collection_health": [
+    "weather_resolution_attempts"
   ],
   "v_workflow_runs": [
     "ingest_log"

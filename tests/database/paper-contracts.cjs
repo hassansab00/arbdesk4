@@ -288,6 +288,21 @@ const assert = require('node:assert/strict');
   assert.equal(Number((await db.query('select verified_band_facts from v_outcome_evidence_health')).rows[0].verified_band_facts),1);
   await assert.rejects(db.query('select raw_payload from weather_resolution_evidence'),/permission denied/);
 
+  // Outcome collection attempts are private, append-only evidence. A failed
+  // source read is retained for diagnosis but cannot be promoted into the
+  // verified weather view or rewritten after the fact.
+  await db.query(`insert into weather_resolution_attempts(
+    attempt_id,market_id,city_key,for_date,source_authority,station_id,source_url,
+    outcome_status,parser_version,detail)
+    values('attempt-1',$1,'london',current_date,'test authority','EGLL',
+      'https://example.invalid','not_final','test-v1','{"reason":"next day absent"}')`,[market]);
+  assert.equal(Number((await db.query('select attempts from v_weather_resolution_collection_health')).rows[0].attempts),1);
+  await assert.rejects(db.query("update weather_resolution_attempts set outcome_status='captured'"),/permission denied|Append-only/);
+  await assert.rejects(db.query('delete from weather_resolution_attempts'),/permission denied|Append-only/);
+  await assert.rejects(db.query('truncate weather_resolution_attempts'),/permission denied|Append-only/);
+  await db.exec('reset role;set role anon;');
+  await assert.rejects(db.query('select * from weather_resolution_attempts'),/permission denied/);
+
   // The optional single-desk mode removes application credentials without
   // granting the browser role direct paper or research access.
   await db.exec("reset role;reset request.jwt.claim.sub;set role anon;");
