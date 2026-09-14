@@ -102,6 +102,59 @@ def refresh_peaks(failures):
     return total
 
 
+def recompute_capacity_per_city(failures):
+    """derived_capacity, ONE CITY AT A TIME.
+
+    Third time on this rake, same reasoning as refresh_peaks() above and
+    common.refresh_feature_cache: statement_timeout runs from the start of the
+    TOP-LEVEL statement, so the only way to buy budget is to make each unit of
+    work its own statement.
+
+    The whole-table recompute_capacity() calls capacity_side() eight times per
+    row across every band's newest book snapshot. Measured on the live
+    database, TWO of those eight calls over 9,012 rows already cost 8.1s of an
+    8.2s query - the time is inside a per-row function, so no index touches
+    it. The full eight lands near 30s against a ~15s timeout, which is how the
+    Daily Pipeline died on 2026-09-14:
+
+        recompute_capacity -> HTTP 500 {"code":"57014",
+          "message":"canceling statement due to statement timeout"}
+
+    Nothing in the aggregate crosses a city boundary - it groups by
+    (city_key, hour_utc) - so per-city calls produce identical rows. Falls
+    back to the whole-table function on a database that has not run
+    sql/ad4_64 yet, so this script works either way.
+    """
+    try:
+        cities = [c["city_key"] for c in
+                  rest("cities", [("select", "city_key"), ("order", "city_key")])]
+    except Exception as e:
+        failures.append(f"cities: {e}")
+        print(f"cities FAILED: {e}", file=sys.stderr)
+        return None
+    if not cities:
+        return 0
+
+    try:
+        total = int(_call_rpc("recompute_capacity_city",
+                              {"p_city": cities[0]}) or 0)
+    except Exception as e:
+        if _absent(e):
+            return optional_rpc("recompute_capacity",
+                                "run sql/ad4_64 for the per-city version", failures)
+        failures.append(f"recompute_capacity_city[{cities[0]}]: {e}")
+        print(f"recompute_capacity_city FAILED on {cities[0]}: {e}", file=sys.stderr)
+        total = 0
+
+    for city in cities[1:]:
+        try:
+            total += int(_call_rpc("recompute_capacity_city", {"p_city": city}) or 0)
+        except Exception as e:
+            failures.append(f"recompute_capacity_city[{city}]: {e}")
+            print(f"recompute_capacity_city FAILED on {city}: {e}", file=sys.stderr)
+    return total
+
+
 def main():
     # common.rpc, not raise_for_status: the body is where Postgres puts the
     # reason. Six consecutive daily runs died here reporting only
@@ -109,7 +162,7 @@ def main():
     # log recorded "canceling statement due to statement timeout" at the very
     # same second. One of those two messages says what to fix.
     failures = []
-    capacity_rows = _call_rpc("recompute_capacity")
+    capacity_rows = recompute_capacity_per_city(failures)
     correlation_rows = _call_rpc("recompute_correlation")
     print(f"derived_capacity: {capacity_rows} rows")
     print(f"derived_city_correlation: {correlation_rows} rows")

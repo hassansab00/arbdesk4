@@ -184,11 +184,15 @@ def run_main(monkeypatch):
     def go(rpcs, feature_cache=None):
         logged = {}
 
+        # Both of these are sliced one-city-per-call for statement_timeout
+        # reasons (ad4_56 for the peak, ad4_64 for capacity). Tests still
+        # script each as ONE entry: the slicing is a timeout strategy, not a
+        # behaviour the job's callers should have to know about.
+        PER_CITY = {"refresh_weather_peak_city": "refresh_weather_peak",
+                    "recompute_capacity_city": "recompute_capacity"}
+
         def fake_rpc(fn, params=None, timeout=120):
-            # main() reaches the peak refresh through refresh_peaks, which
-            # calls it once per city. Tests still script it as one entry.
-            outcome = rpcs["refresh_weather_peak"] if fn == "refresh_weather_peak_city" \
-                else rpcs[fn]
+            outcome = rpcs[PER_CITY.get(fn, fn)]
             if isinstance(outcome, Exception):
                 raise outcome
             return outcome
@@ -308,3 +312,77 @@ def test_capacity_reports_the_server_message_not_a_bare_status():
     assert not re.search(r"^\s*[\w.]*\.raise_for_status\(\)", src, re.M), \
         "use common.rpc, which keeps the server's message"
     assert re.search(r"from common import .*\brpc\b", src)
+
+
+# --------------------------------------------------------------------------
+# recompute_capacity, sliced (sql/ad4_64)
+#
+# The Daily Pipeline died at "Derived recompute" on 2026-09-14 with Postgres
+# naming the cause outright:
+#
+#   recompute_capacity -> HTTP 500 {"code":"57014",
+#     "message":"canceling statement due to statement timeout"}
+#
+# recompute_capacity() rebuilds the whole table in ONE statement and calls
+# capacity_side() eight times per row. Measured on the live database, two of
+# those eight calls over 9,012 rows already cost 8.1s of an 8.2s query - the
+# time is inside a per-row function, so no index touches it. Per city the
+# busiest (nyc, 452 bands) is 1.07s with all four sums.
+#
+# statement_timeout runs from the start of the TOP-LEVEL statement, so the
+# only way to buy budget is one statement per city. Same rake as ad4_56.
+# --------------------------------------------------------------------------
+@pytest.fixture
+def caps(monkeypatch):
+    def go(outcome_for):
+        calls = []
+
+        def fake_rpc(fn, params=None, timeout=120):
+            calls.append((fn, (params or {}).get("p_city")))
+            out = outcome_for(fn, (params or {}).get("p_city"))
+            if isinstance(out, Exception):
+                raise out
+            return out
+
+        monkeypatch.setattr(capacity, "rest", lambda path, params=None: [
+            {"city_key": "austin"}, {"city_key": "london"}, {"city_key": "nyc"}])
+        monkeypatch.setattr(capacity, "_call_rpc", fake_rpc)
+        return calls
+    return go
+
+
+def test_capacity_is_one_statement_per_city(caps):
+    calls = caps(lambda fn, city: 7)
+    failures = []
+    assert capacity.recompute_capacity_per_city(failures) == 21
+    assert [c[1] for c in calls] == ["austin", "london", "nyc"]
+    assert {c[0] for c in calls} == {"recompute_capacity_city"}
+    assert failures == []
+
+
+def test_capacity_falls_back_when_ad4_64_is_not_installed(caps):
+    """PGRST202 is 'that function does not exist yet', not a failure."""
+    def outcome(fn, city):
+        if fn == "recompute_capacity_city":
+            return http_error(404, '{"code":"PGRST202"}')
+        return 203
+    calls = caps(outcome)
+    failures = []
+    assert capacity.recompute_capacity_per_city(failures) == 203
+    assert calls[-1][0] == "recompute_capacity"
+    assert failures == [], "an older database is not a failure"
+
+
+def test_one_city_timing_out_does_not_hide_the_rest(caps):
+    """A 57014 on one city is a real failure and must be reported, but the
+    other cities still get their capacity written."""
+    def outcome(fn, city):
+        if city == "london":
+            return http_error(500, '{"code":"57014","message":"canceling statement due to statement timeout"}')
+        return 7
+    calls = caps(outcome)
+    failures = []
+    assert capacity.recompute_capacity_per_city(failures) == 14
+    assert [c[1] for c in calls] == ["austin", "london", "nyc"], \
+        "a real error on one city must not fall back to the slow whole-table version"
+    assert len(failures) == 1 and "london" in failures[0]
