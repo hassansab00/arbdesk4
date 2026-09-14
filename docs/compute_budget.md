@@ -104,14 +104,18 @@ and P1.2's NWS observations every 2. 120 runs becomes 60.
 | `pipeline_intraday.yml` | 180 |
 | `observations.yml` | 120 |
 | `pipeline_daily.yml` | 30 |
+| `forecasts.yml` | 30 |
 | `weather_model.yml` | 4 |
 | `archive_observations.yml` | 1 |
-| **total** | **335** (from 665) |
+| **total** | **365** (from 665) |
 
 The current schedule restores six intraday runs and four observation runs per day.
+The thirty against `forecasts.yml` is the archive feed finally having a cron of its
+own: it was dispatch-only, which is precisely why the forecast archive was never
+being extended.
 The table counts scheduled starts in a 30-day month; it is not a bill estimate.
 Runtime, whole-minute rounding per job, retries, CI and manual runs also affect the bill.
-`tests/test_github_actions.py` fails if scheduled starts drift past **360**.
+`tests/test_github_actions.py` fails if scheduled starts drift past **380**.
 
 The paper-trading changes add no scheduled Actions runs. Research captures,
 proposals and the recovery sweep share the intraday runner, gated by
@@ -150,18 +154,18 @@ runner that job has already paid for, so nothing is forgotten.
 
 ## Is every Action necessary? One line each
 
-Nine workflow files. Five run on a schedule, four do not. GitHub bills a
+Eleven workflow files. Six run on a schedule, five do not. GitHub bills a
 **minimum of one minute per job**, rounded up, so for the short ones runs and
 minutes are close to the same number.
 
 | Action | Runs/mo | Necessary? |
 |---|---|---|
-| **Intraday Pipeline** | 120 | **Yes.** Model forecast, band probabilities, edges, signals - the whole pricing chain, four times a day. Nothing downstream exists without it. |
-| **Observations** (IEM METAR) | 60 | **Yes.** The second temperature source. Without it there is nothing to check the settlement source against, and `docs/settlement_verification.md` has no evidence base. |
+| **Intraday Pipeline** | 180 | **Yes.** Model forecast, band probabilities, edges, signals - the whole pricing chain, six times a day. Nothing downstream exists without it. |
+| **Observations** (IEM METAR) | 120 | **Yes.** The second temperature source. Without it there is nothing to check the settlement source against, and `docs/settlement_verification.md` has no evidence base. |
 | **Daily Pipeline** | 30 | **Yes.** Forecast ingest, settlement, skill, databank, calibration, derived caches, queued backtests. Every one writes history that cannot be reconstructed later, or a cache the UI times out without. |
 | **Weather Model** | 4 | **Yes,** and weekly is right - a regression on 120+ days barely moves day to day. |
 | **Archive Observations** | 1 | **Yes, monthly.** This is what keeps the database inside the free tier. |
-| **Forecasts** (backfill) | 0 | **On demand.** The daily ingest is step 1 of the daily pipeline; this file is the multi-hour backfill over a date range, which has no business on a cron. Bounded to 8 self-triggered links. |
+| **Forecasts** (archive) | 30 | **Yes, nightly at 03:10 UTC** - ahead of the 04:00 daily pipeline, so the steps that read this archive see today's rows and not yesterday's. Blank dates mean "the last ten days", so the cron needs no parameters and simply closes the recent gap. Dispatched *with* a date range it is the multi-hour backfill instead: 25 minutes per link, bounded chain. **This file is the entire Actions bill - see the section below.** |
 | **Backtest** | 0 | **On demand.** Repository dispatch or Run workflow. The daily sweep catches anything left queued. |
 | **Live Weather Monitor** | 0 | **Superseded, kept as a fallback.** n8n P1.2 does this better and far cheaper. Use it if n8n is down. |
 | **Verify Resolution Source** | 0 | An audit you run when you want it, not a schedule. |
@@ -169,9 +173,78 @@ minutes are close to the same number.
 | **Web build** | PRs + main, `web/**` only | Not a data job. Reproduces Vercel's build conditions. |
 
 If you need to cut further, the honest order is: the intraday pipeline from
-4x/day to 3x (-30 runs) or 2x (-60), then observations to daily (-30). Do not
-cut settlement or the databank freeze - those write history that cannot be
-recovered afterwards, and a day missed is a day gone.
+6x/day to 4x (-60 runs) or 3x (-90), then observations from 6-hourly to
+12-hourly (-60). Do not cut settlement or the databank freeze - those write
+history that cannot be recovered afterwards, and a day missed is a day gone.
+
+**Measure before you cut, though.** The next section is what happened the one
+time this desk actually ran out of minutes, and cutting every cadence in the
+table above would not have prevented it.
+
+## What it actually cost, measured
+
+Everything above counts scheduled *starts*. This is the bill.
+
+Measured on 2026-09-14 across this repository's whole run history - all 694
+runs since it was created on 2026-08-23, every event type, billed the way
+GitHub bills: per job, rounded up to the whole minute.
+
+| | |
+|---|---|
+| Total billed | **2,445 minutes in 23 days** |
+| Scheduled runs | 356 |
+| Push (CI) runs | 289 |
+| Manual dispatches | 49 |
+
+**Five runs are 1,241 of those 2,445 minutes - 51% of everything this desk has
+ever spent on Actions.** All five are `forecasts.yml`, started by hand:
+
+| minutes | when | outcome |
+|---|---|---|
+| 341 | 2026-08-27 | success |
+| 341 | 2026-08-27 | success |
+| 332 | 2026-08-28 | failure |
+| 121 | 2026-08-26 | cancelled |
+| 106 | 2026-08-26 | cancelled |
+
+341 minutes is a job running until something else stops it. The
+`timeout-minutes` on that job was **350**. That is the whole story, and it is
+what `eb7b8d4` - "Actions: stop the minute burn that took the whole account
+down", 7 September - was written about.
+
+**The schedule was never the cause.** Excluding those five, the other 689 runs
+cost 1,204 minutes over the same 23 days. Measured over the week after the
+consolidation landed, on the cadence that is running now:
+
+| 7-13 September | measured | per 30 days |
+|---|---|---|
+| Scheduled only | 180 min / 7 days | **~770 min** |
+| Everything, CI included | 305 min / 7 days | **~1,300 min** |
+
+So 365 scheduled starts really do cost about 2.1 billed minutes each and about
+770 of the 2,000 - the estimate this document already carried was right. CI
+takes it to roughly 1,300 at a heavy development pace, and well below that when
+nobody is pushing. **Cutting a cadence would have saved tens of minutes against
+a 1,241-minute problem.** Do not trade freshness for it.
+
+Two guards now stand where that hole was:
+
+- `forecasts.yml` runs 25 minutes per link with a bounded continuation chain,
+  and a link that makes no progress stops with a resumable failure instead of
+  paying for another runner's setup.
+- `test_no_single_job_can_burn_a_fifth_of_the_month` caps every job at **120**
+  minutes. Note that `test_every_job_has_a_timeout` passed right through the
+  burn: a timeout that *exists* is not a timeout that *bounds*, and 350 was
+  not a bound.
+
+**What to watch instead of the cadence: the failures.** Over those same seven
+days, **40 of 66 scheduled runs failed**, and for the pipelines the failures
+are also the expensive ones - `pipeline_daily` has a median healthy run of 3.2
+minutes and a worst failure of 23.1; `pipeline_intraday` 0.8 against 19.6. A
+red pipeline costs several times what a green one costs and produces nothing.
+(`observations.yml` is the exception: its failures are fast and cheap.) That is
+a correctness bug first and a cost bug second, but it is the larger of the two
+remaining numbers.
 
 ## The option that removes the limit entirely
 
