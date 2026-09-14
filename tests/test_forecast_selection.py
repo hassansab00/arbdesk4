@@ -197,21 +197,73 @@ def test_no_model_argument_reads_only_the_pooled_table(monkeypatch):
     assert touched == ["derived_forecast_skill"]
 
 
-def test_skill_queries_require_verified_evidence_scope(monkeypatch):
+def test_skill_asks_for_verified_evidence_first(monkeypatch):
+    """Verified skill is the FIRST thing asked for, and when it exists it is
+    the only thing read - no second, looser query goes out behind it."""
     import probability_engine as pe
 
     pe._skill_cache.clear()
-    seen = {}
+    calls = []
 
     def fake_rest(path, params):
-        seen[path] = dict(params)
-        return []
+        calls.append((path, dict(params)))
+        return [{"lead_days": 1, "n_days": 900, "mae_c": 1.4, "bias_c": 0.2,
+                 "evidence_scope": pe.VERIFIED_EVIDENCE_SCOPE}]
 
     monkeypatch.setattr(pe, "rest", fake_rest)
-    pe._skill_for("nyc", 1, "nws")
+    row = pe._skill_for("nyc", 1, "nws")
     expected = f"eq.{pe.VERIFIED_EVIDENCE_SCOPE}"
-    assert seen["derived_forecast_skill_model"]["evidence_scope"] == expected
-    assert seen["derived_forecast_skill"]["evidence_scope"] == expected
+    assert calls[0][1]["evidence_scope"] == expected
+    assert row["verified"] is True
+    assert all(p.get("evidence_scope") == expected for _, p in calls), (
+        "a verified row was available; nothing should have queried without the scope")
+
+
+def test_measured_skill_is_used_when_nothing_is_verified_yet(monkeypatch):
+    """THE BUG THIS ENCODES.
+
+    Phase 2A filtered every skill read by `evidence_scope = verified_outcomes_v1`.
+    weather_resolution_evidence has never been captured, so that column is NULL
+    on all 5,187 measured rows - and `null = anything` is never true. Every
+    read returned nothing, every city fell through to COLD_START_MAE_C, and the
+    desk priced 48 cities at sigma 5.0-15.0 C while holding a measured 1.47 C.
+    London read "most likely 27C or higher at 32%" against a market at 1c.
+
+    A measurement the desk actually made must beat a constant somebody chose.
+    What verification gates is whether the price may be TRADED - which the
+    companion assertion below pins down - not how wide the distribution is.
+    """
+    import probability_engine as pe
+
+    pe._skill_cache.clear()
+    calls = []
+
+    def fake_rest(path, params):
+        calls.append((path, dict(params)))
+        if "evidence_scope" in dict(params):
+            return []                       # nothing corroborated yet
+        return [{"lead_days": 1, "n_days": 417, "mae_c": 1.47, "bias_c": 0.2,
+                 "evidence_scope": None}]
+
+    monkeypatch.setattr(pe, "rest", fake_rest)
+    row = pe._skill_for("nyc", 1, "nws")
+    assert row is not None, "measured skill was discarded in favour of a constant"
+    assert row["mae_c"] == 1.47
+    assert row["verified"] is False, "it must be marked so the ticket can be blocked"
+    assert row["mae_c"] < pe.COLD_START_MAE_C
+
+
+def test_unverified_skill_is_never_tradeable():
+    """The half of Phase 2A that must survive the fix above: an uncorroborated
+    width may price the board, and may never carry an order."""
+    import inspect
+    import probability_engine as pe
+
+    body = inspect.getsource(pe.process_city_day)
+    stripped = "\n".join(l for l in body.splitlines()
+                          if not l.lstrip().startswith("#"))
+    assert 'skill_verified is False' in stripped and 'pricing_eligible = False' in stripped, (
+        "process_city_day must block pricing when the skill it used is unverified")
 
 
 # ---------------------------------------------------------------------------

@@ -72,6 +72,9 @@ export interface Reasoning {
   regime_label: string | null;
   top_tradeable: boolean | null;
   top_block_reason: string | null;
+  /** Mass in the ladder's OPEN end buckets. Not a mode - see ad4_23. */
+  tail_low_pct: number | null;
+  tail_high_pct: number | null;
   forecast_ahead_of_book: boolean | null;
   forecast_move_c: number | null;
   hours_to_resolution: number | null;
@@ -439,6 +442,25 @@ export default function ReasoningPanel({ r }: { r: Reasoning }) {
                   <span className="text-muted">confidence {fmtPct(r.confidence, 0)}</span>
                 )}
               </div>
+
+              {/* The open ends of the ladder, which the mode deliberately
+                  excludes. "27C or higher" used to WIN this line purely for
+                  being unbounded - it is not a bucket anyone can be most
+                  likely to land in, but the mass is real and worth printing
+                  where it is large. Off the board is a way to lose. */}
+              {((r.tail_high_pct ?? 0) >= 10 || (r.tail_low_pct ?? 0) >= 10) && (
+                <div className="mt-1 text-muted">
+                  Off the board:{" "}
+                  {(r.tail_low_pct ?? 0) >= 10 && (
+                    <span>below the lowest bucket <b>{(r.tail_low_pct ?? 0).toFixed(0)}%</b></span>
+                  )}
+                  {(r.tail_low_pct ?? 0) >= 10 && (r.tail_high_pct ?? 0) >= 10 && " · "}
+                  {(r.tail_high_pct ?? 0) >= 10 && (
+                    <span>above the highest bucket <b>{(r.tail_high_pct ?? 0).toFixed(0)}%</b></span>
+                  )}
+                  . Open-ended buckets are unbounded, so they collect mass without being likely.
+                </div>
+              )}
 
               {r.forecast_ahead_of_book && (
                 <div className="mt-1 rounded bg-accent/10 px-2 py-1 text-accent">
