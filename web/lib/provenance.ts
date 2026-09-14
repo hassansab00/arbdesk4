@@ -988,6 +988,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_forecast_skill"
   ],
   "v_storage_report": [
+    "cities",
     "derived_city_day_features",
     "weather_observations"
   ],
