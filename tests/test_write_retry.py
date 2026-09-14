@@ -190,3 +190,85 @@ def test_nothing_is_posted_for_an_empty_write(poster, no_sleep):
     calls = poster([OK])
     assert common.insert("observations", []) == 0
     assert calls == []
+
+
+# --------------------------------------------------------------------------
+# READS, for exactly the same reason.
+#
+# The docstring at the top of this file said "Reads have had common.retry()
+# since live_weather.py started hitting 429s" - but that is a helper callers
+# have to remember to wrap themselves in, and most never did. rest() itself
+# retried nothing, so one blip killed a pipeline:
+#
+#   Intraday Pipeline, 2026-09-14 - all three stages dead in 30 seconds
+#   edge_engine.py:170  rest("v_canonical_markets", ...)
+#   502 Bad Gateway
+#
+# Nothing was wrong with the query; the same request returned 101 rows a few
+# minutes later. PostgREST had briefly gone away (it reloads its schema cache
+# when the schema changes, and a function had just been created).
+#
+# A read is safe to repeat - no idempotency to reason about - so this is
+# strictly easier than the write case it mirrors.
+# --------------------------------------------------------------------------
+@pytest.fixture
+def getter(monkeypatch):
+    """Replace requests.get with a scripted sequence of outcomes."""
+    def go(outcomes):
+        calls = []
+
+        def fake_get(url, headers=None, params=None, timeout=None):
+            calls.append(url)
+            out = outcomes[min(len(calls) - 1, len(outcomes) - 1)]
+            if isinstance(out, Exception):
+                raise out
+            return out
+
+        monkeypatch.setattr(common.requests, "get", fake_get)
+        return calls
+    return go
+
+
+class OkResponse(FakeResponse):
+    def __init__(self, rows):
+        super().__init__(200)
+        self._rows = rows
+
+    def json(self):
+        return self._rows
+
+
+def test_a_read_survives_a_transient_502(getter, no_sleep):
+    calls = getter([FakeResponse(502, "Bad Gateway"),
+                    FakeResponse(502, "Bad Gateway"),
+                    OkResponse([{"market_id": "m1"}])])
+    assert common.rest("v_canonical_markets") == [{"market_id": "m1"}]
+    assert len(calls) == 3
+    assert no_sleep == [5, 10], "linear backoff, same shape as writes"
+
+
+def test_a_read_gives_up_loudly_rather_than_returning_nothing(getter, no_sleep):
+    """A read that quietly returned [] would let a job compute over an empty
+    set and report success - a worse bug than the one being fixed."""
+    calls = getter([FakeResponse(503, "unavailable")])
+    with pytest.raises(requests.HTTPError):
+        common.rest("v_canonical_markets")
+    assert len(calls) == 4
+
+
+def test_a_read_does_not_retry_a_real_error(getter, no_sleep):
+    """403 is permission denied and 404 is no such relation. Both will fail
+    identically three more times."""
+    for status in (403, 404, 400):
+        calls = getter([FakeResponse(status, "nope")])
+        with pytest.raises(requests.HTTPError):
+            common.rest("v_canonical_markets")
+        assert len(calls) == 1, f"{status} must not be retried"
+    assert no_sleep == []
+
+
+def test_a_read_retries_a_dropped_connection(getter, no_sleep):
+    calls = getter([requests.ConnectionError("reset by peer"),
+                    OkResponse([{"ok": True}])])
+    assert common.rest("cities") == [{"ok": True}]
+    assert len(calls) == 2

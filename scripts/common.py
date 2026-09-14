@@ -25,12 +25,59 @@ def _headers():
         "Accept": "application/json",
     }
 
-def rest(path, params=None):
-    """GET from PostgREST."""
-    r = requests.get(f"{_cfg()['url']}/rest/v1/{path}", headers=_headers(),
-                     params=params or {}, timeout=90)
-    r.raise_for_status()
-    return r.json()
+def rest(path, params=None, tries=4):
+    """GET from PostgREST, retrying transient failures.
+
+    WHY THIS EXISTS, AND WHY IT IS THE SAME LIST AS WRITES.
+
+    _post_batch below has retried transient 5xx since the observations ingest
+    died at `[11/53] KAUS` on a single 504. Reads were left alone, on the
+    reasoning that individual callers could wrap themselves in retry(). Most
+    never did, and one 502 is all it takes:
+
+        Intraday Pipeline, 2026-09-14 - all three stages dead in 30s
+        edge_engine.py line 170 rest("v_canonical_markets", ...)
+        502 Bad Gateway
+
+    Nothing was wrong with the query. The same request returned 101 rows a
+    few minutes later. PostgREST had briefly gone away - it reloads its schema
+    cache whenever the schema changes, and a function had just been created -
+    and a read with no retry turned a two-second blip into a failed pipeline
+    and an empty board until somebody noticed and pressed the button again.
+
+    A read is SAFE to repeat, which is what makes this strictly easier than
+    the write case: no idempotency to reason about, no risk of double-writing.
+    Giving up still raises, for the same reason it does for writes - a read
+    that quietly returned nothing would let a job compute over an empty set
+    and report success.
+    """
+    url = f"{_cfg()['url']}/rest/v1/{path}"
+    for attempt in range(tries):
+        last = attempt == tries - 1
+        try:
+            r = requests.get(url, headers=_headers(), params=params or {}, timeout=90)
+        except (requests.ConnectionError, requests.Timeout,
+                requests.exceptions.ChunkedEncodingError) as e:
+            if last:
+                print(f"  ! GET {path} gave up after {tries}: {e}", file=sys.stderr)
+                raise
+            print(f"  . GET {path} {type(e).__name__}, retrying "
+                  f"({attempt + 1}/{tries})", file=sys.stderr)
+            time.sleep(5 * (attempt + 1))
+            continue
+
+        if r.status_code < 400:
+            return r.json()
+
+        if r.status_code not in TRANSIENT_WRITE_STATUS or last:
+            r.raise_for_status()
+
+        delay = _retry_after(r) if r.status_code == 429 else None
+        if delay is None:
+            delay = 5 * (attempt + 1)
+        print(f"  . GET {path} {r.status_code}, retrying in {delay:.0f}s "
+              f"({attempt + 1}/{tries}): {r.text[:120]}", file=sys.stderr)
+        time.sleep(min(delay, 120))
 
 def rest_all(path, params=None, *, order, page_size=500):
     """Read a bounded scope completely, including under smaller server caps.
