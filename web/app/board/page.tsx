@@ -54,6 +54,19 @@ interface LiveRow {
   trend: string | null;
 }
 
+/** The board's "today" is per city, not per server. */
+const LIVE = "__live__";
+
+/** A city's own calendar date right now. en-CA renders YYYY-MM-DD, which is
+ *  the shape resolution_date already uses, so the two compare directly. */
+function localToday(timezone: string | null): string {
+  try {
+    return new Date().toLocaleDateString("en-CA", { timeZone: timezone ?? "UTC" });
+  } catch {
+    return new Date().toISOString().slice(0, 10);   // an unknown zone is not a crash
+  }
+}
+
 export default function BoardPage() {
   // ?city=&date= so a card on Opportunities can open the ladder it is about.
   // Read from window rather than useSearchParams: this is a client page and
@@ -99,7 +112,21 @@ export default function BoardPage() {
 
   const rows = q.data ?? [];
   const days = useMemo(() => Array.from(new Set(rows.map((r) => r.resolution_date))).sort(), [rows]);
-  useEffect(() => { if (!day && days.length) setDay(days[0]); }, [days, day]);
+  // LIVE, not a date. One global day cannot be "today" in New York and in
+  // Tokyo at the same moment, and the board used to pick one and apply it to
+  // all 54 cities. At 16:00 UTC that showed every Asia-Pacific city YESTERDAY's
+  // market - already resolved, orders pulled - so its whole ladder read 0.00
+  // and summed to about two cents, while the live market it should have been
+  // showing sat one row further on, untouched. Measured at the time:
+  //
+  //   nyc        local 09-14 = UTC 09-14   ladder sums to 1.12  correct
+  //   hong_kong  local 09-15, UTC 09-14    ladder sums to 0.02  DEAD
+  //              ... and 1.32 on its own local day
+  //
+  // In LIVE the day is resolved per city from its own timezone, which the row
+  // already carries. The explicit date buttons still pin every city to one
+  // date, which is what you want when comparing them.
+  useEffect(() => { if (!day && days.length) setDay(LIVE); }, [days, day]);
 
   const liveByCity = useMemo(() => new Map((live.data ?? []).map((l) => [l.city_key, l])), [live.data]);
   const fcByCityDay = useMemo(() => {
@@ -113,7 +140,9 @@ export default function BoardPage() {
 
   // One entry per city on the chosen day, bands hottest-first, ALL of them.
   const cities = useMemo(() => {
-    const onDay = rows.filter((r) => r.resolution_date === day);
+    const onDay = day === LIVE
+      ? rows.filter((r) => r.resolution_date === localToday(r.timezone))
+      : rows.filter((r) => r.resolution_date === day);
     const byCity = new Map<string, Opportunity[]>();
     for (const r of onDay) {
       if (!byCity.has(r.city_key)) byCity.set(r.city_key, []);
@@ -273,6 +302,12 @@ export default function BoardPage() {
       {days.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted">Settles</span>
+          <button onClick={() => { setDay(LIVE); clearAll(); }}
+            title="Each city's own local today - the market actually trading there now"
+            className={`rounded border px-2.5 py-1 text-xs transition ${
+              day === LIVE ? "border-good bg-good/10 text-good" : "border-border text-muted hover:text-text"}`}>
+            Live<span className="ml-1.5 opacity-70">each city&apos;s today</span>
+          </button>
           {days.map((d) => (
             <button key={d} onClick={() => { setDay(d); clearAll(); }}
               className={`rounded border px-2.5 py-1 text-xs transition ${
