@@ -8,10 +8,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_forecasts_do_not_freeze_from_an_unverified_running_max(monkeypatch):
-    monkeypatch.setattr(databank,"rest",lambda path,*args,**kwargs:[{
-        "city_key":"london","model":"model","run_at":"2026-09-12T08:00:00Z",
-        "for_date":"2026-09-12","lead_days":1,"forecast_max_c":21,
-    }] if path=="weather_forecasts" else [])
+    # Both seams: bank_forecasts pages weather_forecasts through rest_all,
+    # while _already_banked is stubbed out the same way.
+    def _rows(path,*args,**kwargs):
+        return [{
+            "forecast_id":"f1",
+            "city_key":"london","model":"model","run_at":"2026-09-12T08:00:00Z",
+            "for_date":"2026-09-12","lead_days":1,"forecast_max_c":21,
+        }] if path=="weather_forecasts" else []
+    monkeypatch.setattr(databank,"rest",_rows)
+    monkeypatch.setattr(databank,"rest_all",_rows)
     assert databank.bank_forecasts({},7,False)==[]
 
 

@@ -33,7 +33,7 @@ import datetime as dt
 import sys
 from collections import defaultdict
 
-from common import (rest, upsert, log_run, get_cities,
+from common import (rest, rest_all, upsert, log_run, get_cities,
                     city_local_date, timezone_of)
 
 # Kept for observation-quality diagnostics. It is no longer sufficient to
@@ -100,8 +100,10 @@ def _already_banked(table, since):
     ignored by Postgres rather than raising 409 and killing the run.
     """
     try:
-        rows = rest(table, [("select", "city_key,for_date,model,lead_days"),
-                            ("for_date", f"gte.{since}"), ("limit", "50000")])
+        rows = rest_all(table, [("select", "city_key,for_date,model,lead_days"),
+                                ("for_date", f"gte.{since}")],
+                        order="city_key.asc,for_date.asc,model.asc,lead_days.asc",
+                        page_size=1000)
         return {(r["city_key"], str(r["for_date"]), r.get("model"), r.get("lead_days"))
                 for r in rows}
     except Exception:
@@ -117,10 +119,10 @@ def _verified_weather(days_back):
     """
     since = (dt.date.today() - dt.timedelta(days=days_back)).isoformat()
     try:
-        rows = rest("v_verified_weather_outcomes", [
+        rows = rest_all("v_verified_weather_outcomes", [
             ("select", "city_key,for_date,observed_max_c,source_authority,station_id,captured_at"),
-            ("for_date", f"gte.{since}"), ("limit", "20000"),
-        ])
+            ("for_date", f"gte.{since}"),
+        ], order="city_key.asc,for_date.asc", page_size=1000)
     except Exception as e:
         print(f"  verified weather outcomes unavailable ({e}); no forecast outcomes will be frozen",
               file=sys.stderr)
@@ -142,12 +144,17 @@ def bank_forecasts(observed, days_back, force):
     until = dt.date.today().isoformat()          # today is not settled yet
     done = set() if force else _already_banked("fact_forecast_outcome", since)
 
-    rows = rest("weather_forecasts", [
-        ("select", "city_key,model,run_at,for_date,lead_days,forecast_max_c"),
+    # rest_all, NOT rest. PostgREST caps a response at db-max-rows (1,000
+    # here) and ignores a larger ?limit=, silently. This window holds 7,766
+    # forecast rows, so the old read saw 13% of them in no particular order,
+    # found no verified outcome for most of what it did see, and banked
+    # nothing - while reporting "ok, banked 0". Five runs on 2026-09-14 alone
+    # said exactly that while 09-12 and 09-13 sat there fully joinable.
+    rows = rest_all("weather_forecasts", [
+        ("select", "forecast_id,city_key,model,run_at,for_date,lead_days,forecast_max_c"),
         ("for_date", f"gte.{since}"),
         ("for_date", f"lt.{until}"),
-        ("limit", "50000"),
-    ])
+    ], order="forecast_id.asc", page_size=1000)
 
     # Keep the LATEST run per (city, date, model, lead): that is the forecast
     # standing at the time, which is what was acted on.
@@ -189,7 +196,8 @@ def bank_bands(observed, days_back, force):
     done = set()
     if not force:
         try:
-            rows = rest("fact_band_outcome", [("select", "band_id"), ("limit", "50000")])
+            rows = rest_all("fact_band_outcome", [("select", "band_id")],
+                            order="band_id.asc", page_size=1000)
             done = {r["band_id"] for r in rows}
         except Exception:
             pass

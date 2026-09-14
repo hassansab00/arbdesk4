@@ -460,7 +460,9 @@ def test_the_skip_list_keys_on_the_whole_primary_key(monkeypatch):
 
     rows = [{"city_key": "warsaw", "for_date": "2026-08-26",
              "model": "open_meteo_best_match", "lead_days": 1}]
-    monkeypatch.setattr(databank, "rest", lambda *a, **k: rows)
+    # rest_all now, not rest: the read is paged because PostgREST silently
+    # caps a response at db-max-rows and ignores a larger ?limit=.
+    monkeypatch.setattr(databank, "rest_all", lambda *a, **k: rows)
     done = databank._already_banked("fact_forecast_outcome", "2026-08-20")
     assert ("warsaw", "2026-08-26", "open_meteo_best_match", 1) in done
     assert ("warsaw", "2026-08-26", "nws", 1) not in done, \
@@ -864,3 +866,41 @@ def test_the_two_copies_of_the_repair_are_identical():
     fb = b[b.index(marker):]
     fb = fb[:fb.index("$ad4$;") + 6]
     assert fa == fb, "ad4_00 and ad4_37 carry different versions of ad4_ensure_natural_key"
+
+
+# ---------------------------------------------------------------------------
+# THE FREEZE READ 13% OF ITS INPUT AND REPORTED "ok, banked 0".
+#
+# PostgREST caps a response at db-max-rows (1,000 here) and IGNORES a larger
+# ?limit= without saying so. bank_forecasts asked for 50,000 forecast rows
+# across a 7-day window that holds 7,766, got 1,000 of them in no particular
+# order, found no verified outcome for most of what it saw, and banked
+# nothing. On 2026-09-14 it ran five times, each reporting
+#
+#   {"forecasts": 0, "summary": "banked 0 forecast outcome(s)"}   status ok
+#
+# while 09-12 and 09-13 sat there with 46 and 49 verified outcomes and every
+# one of them joinable to a forecast. fact_forecast_outcome stopped at 09-07,
+# so /predictive had nothing settled to draw and skill had nothing new to
+# measure.
+#
+# rest_all exists for exactly this and says so in its own docstring. The rule
+# below is the one that was broken: a bounded scope is read completely, or it
+# is not read.
+# ---------------------------------------------------------------------------
+def test_the_freeze_pages_every_read_it_bounds():
+    """A plain rest() with a big ?limit= is the bug, not the fix."""
+    import inspect
+    import databank
+
+    for fn in (databank.bank_forecasts, databank._already_banked,
+               databank._verified_weather):
+        src = inspect.getsource(fn)
+        body = "\n".join(l for l in src.splitlines()
+                         if not l.lstrip().startswith("#"))
+        assert "rest_all(" in body, (
+            f"{fn.__name__} must page its read - PostgREST silently truncates "
+            f"at db-max-rows and a larger ?limit= changes nothing")
+        assert '("limit", "50000")' not in body and '("limit", "20000")' not in body, (
+            f"{fn.__name__} still carries a limit larger than the server cap, "
+            f"which reads as a bound and is not one")
