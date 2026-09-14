@@ -79,6 +79,12 @@ export default function Convergence3D({
   // A month of ribbons is not a chart, it is a hedge. Ten days is what fits
   // before the lines stop being separable, and the window is movable.
   const [daysBack, setDaysBack] = useState(10);
+  // WHICH LINE AM I LOOKING AT. Ten days x two models is twenty ribbons
+  // crossing each other in a sheared projection, and at rest they are all
+  // the same weight - which is correct for seeing the SHAPE and useless for
+  // reading one day. Hovering lifts a day out and pushes the rest back.
+  // Nothing moves and no colour changes; only contrast does.
+  const [focus, setFocus] = useState<string | null>(null);
 
   const model = useMemo(() => {
     if (!points.length) return null;
@@ -102,8 +108,16 @@ export default function Convergence3D({
     const pad = (tHi - tLo) * 0.12;
     tLo -= pad; tHi += pad;
 
+    // A past day with no actual is NOT a gap in the chart, it is a day the
+    // desk has not scored yet - the settlement and freeze run behind the
+    // forecast. Counting them separately is the difference between "this
+    // panel is broken" and "these four are still open".
+    const settledDays = new Set(
+      shown.filter((p) => p.observed_max_c !== null).map((p) => p.for_date));
+    const nSettled = past.filter((d) => settledDays.has(d)).length;
     return { days, models, leads, tLo, tHi, maxLead: Math.max(...leads, 1),
-             visible: shown, nPast: past.length, nFuture: future.length };
+             visible: shown, nPast: past.length, nFuture: future.length,
+             nSettled, nPendingPast: past.length - nSettled };
   }, [points, daysBack]);
 
   if (!points.length || !model) {
@@ -116,7 +130,8 @@ export default function Convergence3D({
     );
   }
 
-  const { days, models, leads, tLo, tHi, maxLead, visible, nPast, nFuture } = model;
+  const { days, models, leads, tLo, tHi, maxLead, visible, nPast, nFuture,
+          nSettled, nPendingPast } = model;
 
   const W = 760;
   const H = height;
@@ -337,8 +352,13 @@ export default function Convergence3D({
             ends - is painted last and therefore on top. Near occludes far. */}
         {days.map((day, di) => ({ day, di })).reverse().map(({ day, di }) => {
           const actual = observedByDay.get(day);
+          const dim = focus !== null && focus !== day;
           return (
-            <g key={day}>
+            <g key={day}
+               opacity={dim ? 0.13 : 1}
+               style={{ transition: "opacity 120ms" }}
+               onMouseEnter={() => setFocus(day)}
+               onMouseLeave={() => setFocus(null)}>
               {models.map((m) => {
                 const series = (byDayModel.get(`${day}|${m}`) ?? [])
                   .slice()
@@ -350,8 +370,15 @@ export default function Convergence3D({
                 const c = colorFor(m, models);
                 return (
                   <g key={m}>
-                    <path d={path} fill="none" stroke={c} strokeWidth={1.6}
-                          strokeOpacity={0.9} strokeLinejoin="round" />
+                    {/* A 1.6px line is a 1.6px hit target. This one is
+                        invisible, ten wide, and the only thing the pointer
+                        actually has to find. */}
+                    <path d={path} fill="none" stroke="transparent" strokeWidth={10}
+                          strokeLinejoin="round" style={{ pointerEvents: "stroke" }} />
+                    <path d={path} fill="none" stroke={c}
+                          strokeWidth={focus === day ? 2.6 : 1.6}
+                          strokeOpacity={0.9} strokeLinejoin="round"
+                          style={{ pointerEvents: "none" }} />
                     {series.map((p) => (
                       <circle key={`${p.lead_days}`} cx={px(di, p.lead_days)}
                               cy={py(p.forecast_max_c, p.lead_days)} r={p.lead_days === 0 ? 3 : 1.8}
@@ -467,6 +494,21 @@ export default function Convergence3D({
               · {nFuture} day{nFuture === 1 ? "" : "s"} ahead, not settled
             </span>
           )}
+        </span>
+        <span className="flex flex-wrap items-center gap-3">
+          {/* WHAT THE WINDOW ACTUALLY CONTAINS. A past day with no green bar
+              has not been scored yet; without this the reader cannot tell
+              that from a chart that is failing to draw one. */}
+          <span className={nSettled > 0 ? "text-good" : "text-warn"}>
+            {nSettled} of the {nPast} past day{nPast === 1 ? "" : "s"} scored
+          </span>
+          {nPendingPast > 0 && (
+            <span className="text-muted">
+              · {nPendingPast} still unscored — settlement and the data bank run
+              behind the forecast, so the newest days have no bar yet
+            </span>
+          )}
+          <span className="text-muted">· hover a line to isolate its day</span>
         </span>
       </div>
     </div>
