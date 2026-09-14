@@ -280,8 +280,12 @@ select
   tb.model_prob as top_model_prob, tb.market_price as top_market_price,
   tb.edge_net_pp as top_edge_net_pp, tb.confidence, tb.regime_label,
   tb.tradeable as top_tradeable, tb.block_reason as top_block_reason,
-  tt.tail_low_pct, tt.tail_high_pct,
-  oc.forecast_ahead_of_book, oc.forecast_move_c, oc.drift_24h, oc.hours_to_resolution
+  oc.forecast_ahead_of_book, oc.forecast_move_c, oc.drift_24h, oc.hours_to_resolution,
+  -- APPENDED, and it has to stay appended: `create or replace view` can only
+  -- add columns at the END. Slotting these in beside the other top_* columns
+  -- where they read better makes the file fail on any database that already
+  -- has the view, which is every database that matters.
+  tt.tail_low_pct, tt.tail_high_pct
 from cities c
 join day d              on d.city_key = c.city_key
 left join fc            on fc.city_key = c.city_key and fc.for_date = d.resolution_date
