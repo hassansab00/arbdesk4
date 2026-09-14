@@ -198,10 +198,13 @@ comment on view v_storage_report is
 -- strictly less than or equal to what was archived. p_keep_days stays, both
 -- for a hand-run and to keep the 30-day floor honest.
 drop function if exists prune_observations(int, boolean);
+drop function if exists prune_observations(int, boolean, timestamptz);
+drop function if exists prune_observations(int, boolean, timestamptz, bigint);
 
 create or replace function prune_observations(p_keep_days int,
                                               p_dry_run boolean default true,
-                                              p_before timestamptz default null)
+                                              p_before timestamptz default null,
+                                              p_expected_rows bigint default null)
 returns jsonb language plpgsql security definer as $ad4$
 declare
   -- p_before wins when the caller gives one: it is the instant actually
@@ -218,8 +221,28 @@ begin
       'error', 'keep_days must be at least 30 - the model needs months, not days');
   end if;
 
+  if not p_dry_run and p_expected_rows is null then
+    return jsonb_build_object('ok', false,
+      'error', 'p_expected_rows is required for a committed prune');
+  end if;
+
+  -- Keep the count and delete in one protected critical section. A late
+  -- arriving historical row must make the count mismatch, not slip into the
+  -- delete after the archive was verified.
+  if not p_dry_run then
+    lock table weather_observations in share row exclusive mode;
+  end if;
+
   select count(*) into v_doomed
     from weather_observations where valid_at < v_before;
+
+  if p_expected_rows is not null and v_doomed <> p_expected_rows then
+    return jsonb_build_object('ok', false,
+      'error', format('archive row count mismatch: verified %s rows but prune would delete %s',
+                      p_expected_rows, v_doomed),
+      'expected_rows', p_expected_rows, 'would_delete', v_doomed);
+  end if;
+
   if v_doomed = 0 then
     return jsonb_build_object('ok', true, 'deleted', 0,
       'note', format('nothing older than %s', v_before));
@@ -266,8 +289,8 @@ begin
 end;
 $ad4$;
 
-comment on function prune_observations(int, boolean, timestamptz) is
-  'Delete raw observations older than p_before (or p_keep_days if not given). Refuses unless every affected city-day is already in derived_city_day_features. Dry run by default. Pass p_before with the exact instant you exported to - the two cutoffs must be the same cutoff or the gap between them is deleted unarchived.';
+comment on function prune_observations(int, boolean, timestamptz, bigint) is
+  'Delete raw observations older than p_before (or p_keep_days if not given). A committed prune requires p_expected_rows to equal the verified archive count, and refuses unless every affected city-local day is cached. Dry run by default.';
 
 
 -- --------------------------------------------------------------------------
@@ -284,7 +307,7 @@ begin
   end loop;
   if exists (select 1 from pg_roles where rolname = 'service_role') then
     execute 'grant select on v_storage_report to service_role';
-    execute 'grant execute on function prune_observations(int, boolean, timestamptz) to service_role';
+    execute 'grant execute on function prune_observations(int, boolean, timestamptz, bigint) to service_role';
   end if;
   foreach r in array array['anon', 'authenticated', 'service_role'] loop
     if exists (select 1 from pg_roles where rolname = r) then

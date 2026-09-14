@@ -161,10 +161,16 @@ def export_cold(spec, cutoff):
                 if hi is None or v > hi:
                     hi = v
         n += len(rows)
-        after = rows[-1][pk]
-        if len(rows) < PAGE:
-            break
-        print(f"  ... {n:,} rows")
+        next_after = rows[-1][pk]
+        if next_after == after:
+            raise RuntimeError(
+                f"{spec['table']} archive pagination made no progress at {after}"
+            )
+        after = next_after
+        # PostgREST can silently cap a requested page below PAGE. Keep walking
+        # until an empty page proves the keyset is exhausted.
+        if n % 25000 < len(rows):
+            print(f"  ... {n:,} rows")
 
     return gzip.compress(buf.getvalue().encode(), 9), n, lo, hi
 
@@ -287,11 +293,36 @@ def run_one(spec, name, args):
 
     # THE SAME INSTANT, both times. Letting the database recompute its own
     # cutoff deletes the minutes that passed while this ran - unarchived.
-    prune_args = {"p_keep_days": args.keep_days, "p_before": cutoff.isoformat()}
+    prune_args = {
+        "p_keep_days": args.keep_days,
+        "p_before": cutoff.isoformat(),
+        "p_expected_rows": n_rows,
+    }
+
+    # The database must independently agree with the exported row count before
+    # we upload anything. This catches silent PostgREST page caps and makes a
+    # partial export impossible to turn into a wider delete.
+    preflight = _rpc(spec["prune_rpc"], {**prune_args, "p_dry_run": True})
+    if (
+        not (preflight or {}).get("ok")
+        or preflight.get("would_delete") != n_rows
+    ):
+        print(
+            f"ARCHIVE COUNT MISMATCH: exported {n_rows:,} rows but prune "
+            f"preflight returned {preflight}. Nothing uploaded or deleted.",
+            file=sys.stderr,
+        )
+        log_run(job, "attention", n_rows, {
+            "rows": n_rows, "preflight": preflight,
+            "cutoff": cutoff.isoformat(),
+        })
+        return 1
 
     if not args.commit:
-        prune = _rpc(spec["prune_rpc"], {**prune_args, "p_dry_run": True})
-        print(f"\n--dry-run: nothing uploaded, nothing deleted.\nprune would say: {prune}")
+        print(
+            "\n--dry-run: nothing uploaded, nothing deleted."
+            f"\nprune would say: {preflight}"
+        )
         return 0
 
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
@@ -314,8 +345,11 @@ def run_one(spec, name, args):
     # 4 - only now, and only as far back as what was actually archived
     prune = _rpc(spec["prune_rpc"], {**prune_args, "p_dry_run": False})
     print(f"prune: {prune}")
-    if not (prune or {}).get("ok"):
-        print(f"PRUNE REFUSED: {prune}", file=sys.stderr)
+    if (
+        not (prune or {}).get("ok")
+        or prune.get("deleted") != n_rows
+    ):
+        print(f"PRUNE REFUSED OR COUNT CHANGED: {prune}", file=sys.stderr)
         log_run(job, "attention", n_rows,
                 {"asset": asset_name, "rows": n_rows, "prune": prune})
         return 1
