@@ -202,29 +202,34 @@ def bank_bands(observed, days_back, force):
         except Exception:
             pass
 
-    markets = rest("markets", [("select", "market_id,city_key,resolution_date"),
-                                ("resolution_date", f"gte.{since}"),
-                                ("resolution_date", f"lt.{until}"), ("limit", "5000")])
+    markets = rest_all("markets", [("select", "market_id,city_key,resolution_date"),
+                                    ("resolution_date", f"gte.{since}"),
+                                    ("resolution_date", f"lt.{until}")],
+                       order="market_id.asc", page_size=1000)
     if not markets:
         return []
     by_market = {m["market_id"]: m for m in markets}
 
+    # CHUNKED. This used to put every market id of the window into ONE
+    # market_id=in.(...) filter - about 1,000 UUIDs, a 37 KB URL - and PostgREST
+    # answered 400. The except below then reported "no band outcomes will be
+    # frozen" on every run since 8 September, which is why fact_band_outcome
+    # stopped growing. The bands read further down already chunked by 100.
+    market_resolution, band_resolution = {}, {}
     try:
-        market_filter = f"in.({','.join(str(x) for x in by_market)})"
-        market_resolution = {
-            r["market_id"]: r["resolution_state"]
-            for r in rest("v_venue_market_resolution", [
-                ("select", "market_id,resolution_state"),
-                ("market_id", market_filter), ("limit", "5000"),
-            ])
-        }
-        band_resolution = {
-            r["band_id"]: r
-            for r in rest("v_venue_band_resolution", [
-                ("select", "band_id,market_id,settled_yes,resolution_state,confirmed_at"),
-                ("market_id", market_filter), ("limit", "20000"),
-            ])
-        }
+        all_ids = list(by_market)
+        for i in range(0, len(all_ids), 100):
+            market_filter = f"in.({','.join(str(x) for x in all_ids[i:i + 100])})"
+            for r in rest_all("v_venue_market_resolution", [
+                    ("select", "market_id,resolution_state"),
+                    ("market_id", market_filter)],
+                    order="market_id.asc", page_size=1000):
+                market_resolution[r["market_id"]] = r["resolution_state"]
+            for r in rest_all("v_venue_band_resolution", [
+                    ("select", "band_id,market_id,settled_yes,resolution_state,confirmed_at"),
+                    ("market_id", market_filter)],
+                    order="band_id.asc", page_size=1000):
+                band_resolution[r["band_id"]] = r
     except Exception as e:
         print(f"  verified venue outcomes unavailable ({e}); no band outcomes will be frozen",
               file=sys.stderr)
@@ -234,10 +239,9 @@ def bank_bands(observed, days_back, force):
     ids = list(by_market)
     for i in range(0, len(ids), 100):
         chunk = ids[i:i + 100]
-        bands += rest("bands", [
+        bands += rest_all("bands", [
             ("select", "band_id,market_id,band_lo,band_hi,open_low,open_high"),
-            ("market_id", f"in.({','.join(str(x) for x in chunk)})"), ("limit", "20000"),
-        ])
+            ("market_id", f"in.({','.join(str(x) for x in chunk)})"), ], order="band_id.asc", page_size=1000)
     bands = [b for b in bands
              if b["band_id"] not in done
              and market_resolution.get(b["market_id"]) == "confirmed"
@@ -251,18 +255,24 @@ def bank_bands(observed, days_back, force):
     for i in range(0, len(band_ids), 100):
         chunk = band_ids[i:i + 100]
         inlist = f"in.({','.join(chunk)})"
-        for r in rest("band_probabilities", [
+        for r in rest_all("band_probabilities", [
                 ("select", "band_id,calibrated_prob,raw_prob,sigma_c,confidence,regime_label,"
                            "forecast_max_c,computed_at"),
-                ("band_id", inlist), ("order", "computed_at.desc"), ("limit", "20000")]):
+                ("band_id", inlist)],
+                order="computed_at.desc,prob_id.desc", page_size=1000):
             probs.setdefault(r["band_id"], r)
+        # v_latest_edge, NOT v_opportunities: the opportunities view only holds
+        # markets whose resolution date is today or later, so by the time a
+        # band settles it has left the view and every frozen fact carried a
+        # null market price - the "did being right pay" views could never fill.
         try:
-            for r in rest("v_opportunities", [
-                    ("select", "band_id,side,market_price,edge_net_pp,volume_usd,fillable_usd_5c"),
-                    ("band_id", inlist), ("side", "eq.YES"), ("limit", "20000")]):
+            for r in rest_all("v_latest_edge", [
+                    ("select", "band_id,side,market_price,edge_net_pp,fillable_usd_5c"),
+                    ("band_id", inlist), ("side", "eq.YES")],
+                    order="band_id.asc", page_size=1000):
                 edges.setdefault(r["band_id"], r)
         except Exception as e:
-            print(f"  note: v_opportunities unavailable ({e})", file=sys.stderr)
+            print(f"  note: v_latest_edge unavailable ({e})", file=sys.stderr)
 
     out = []
     for b in bands:
@@ -278,7 +288,10 @@ def bank_bands(observed, days_back, force):
             "band_id": b["band_id"], "city_key": city, "for_date": date,
             "band_lo": lo, "band_hi": hi,
             "open_low": b.get("open_low"), "open_high": b.get("open_high"),
-            "model_prob": p.get("calibrated_prob") if p.get("calibrated_prob") is not None else p.get("raw_prob"),
+            # The RAW model probability, never the calibrated one: calibration.py
+            # fits its map on this column, and fitting a map on already-mapped
+            # numbers converges on nothing.
+            "model_prob": p.get("raw_prob") if p.get("raw_prob") is not None else p.get("calibrated_prob"),
             "sigma_c": p.get("sigma_c"), "confidence": p.get("confidence"),
             "regime_label": p.get("regime_label"), "forecast_max_c": p.get("forecast_max_c"),
             "market_price": e.get("market_price"), "edge_net_pp": e.get("edge_net_pp"),
@@ -296,16 +309,18 @@ def bank_signals(days_back, force):
     if not force:
         try:
             done = {r["signal_id"] for r in
-                    rest("fact_signal_outcome", [("select", "signal_id"), ("limit", "50000")])}
+                    rest_all("fact_signal_outcome", [("select", "signal_id")],
+                             order="signal_id.asc", page_size=1000)}
         except Exception:
             pass
 
-    sigs = rest("signals", [("select", "*"), ("fired_at", f"gte.{since}"), ("limit", "5000")])
+    sigs = rest_all("signals", [("select", "*"), ("fired_at", f"gte.{since}")],
+                    order="signal_id.asc", page_size=1000)
     sigs = [s for s in sigs if s.get("signal_id") not in done]
     if not sigs:
         return []
 
-    trades = rest("paper_trades", [("select", "*"), ("limit", "20000")])
+    trades = rest_all("paper_trades", [("select", "*")], order="trade_id.asc", page_size=1000)
     by_band = defaultdict(list)
     for t in trades:
         if t.get("band_id"):

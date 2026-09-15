@@ -34,9 +34,10 @@ def test_band_truth_comes_from_venue_not_temperature_math(monkeypatch):
                                     "open_low":False,"open_high":False}]
         if path=="band_probabilities": return [{"band_id":band,"raw_prob":.2,"calibrated_prob":None,
                                                   "computed_at":"now"}]
-        if path=="v_opportunities": return []
+        if path in ("v_opportunities","v_latest_edge"): return []
         raise AssertionError(path)
     monkeypatch.setattr(databank,"rest",rows)
+    monkeypatch.setattr(databank,"rest_all",lambda path,params=None,**kw: rows(path,params))
     # 35 C is outside the 20-21 C band. The venue-confirmed winner must still
     # be used, making any source disagreement visible rather than rewritten.
     verified_weather={("london","2026-09-12"):{"max_c":35,"source":"authority","n_obs":None}}
@@ -56,6 +57,7 @@ def test_partial_venue_ladder_is_not_banked(monkeypatch):
         if path=="bands": return []
         raise AssertionError(path)
     monkeypatch.setattr(databank,"rest",rows)
+    monkeypatch.setattr(databank,"rest_all",lambda path,params=None,**kw: rows(path,params))
     assert databank.bank_bands({},7,False)==[]
 
 

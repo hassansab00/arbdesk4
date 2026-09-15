@@ -16,7 +16,7 @@ so "bands of error" is computed per city in its own unit.
 """
 import sys, json, datetime as dt
 from collections import defaultdict
-from common import rest, upsert, log_run, get_cities
+from common import rest_all, upsert, log_run, get_cities
 
 VERIFIED_EVIDENCE_SCOPE = "verified_outcomes_v1"
 
@@ -29,26 +29,18 @@ def daily_max_observed(city_key, start, end, timezone):
     `timezone` stays in the signature for compatibility with older callers;
     the evidence row is already keyed to the authority's local date.
     """
-    out, offset, page = {}, 0, 10000
-    while True:
-        rows = rest("v_verified_weather_outcomes", [
-            ("select", "for_date,observed_max_c"),
-            ("city_key", f"eq.{city_key}"),
-            ("for_date", f"gte.{start.isoformat()}"),
-            ("for_date", f"lte.{end.isoformat()}"),
-            ("order", "for_date.asc"),
-            ("limit", str(page)), ("offset", str(offset)),
-        ])
-        if not rows:
-            break
-        for r in rows:
-            if r.get("observed_max_c") is None:
-                continue
-            out[str(r["for_date"])] = r["observed_max_c"]
-        if len(rows) < page:
-            break
-        offset += page
-    return out
+    # rest_all, not a bare rest() with a big limit: PostgREST caps every
+    # response at db-max-rows (1,000 here) and ignores a larger ?limit= without
+    # a word. The old paging loop asked for 10,000, received 1,000 and stopped
+    # because "fewer than asked" read as "the end".
+    rows = rest_all("v_verified_weather_outcomes", [
+        ("select", "for_date,observed_max_c"),
+        ("city_key", f"eq.{city_key}"),
+        ("for_date", f"gte.{start.isoformat()}"),
+        ("for_date", f"lte.{end.isoformat()}"),
+    ], order="for_date.asc", page_size=1000)
+    return {str(r["for_date"]): r["observed_max_c"]
+            for r in rows if r.get("observed_max_c") is not None}
 
 MIN_SAMPLE = 10          # below this a mean absolute error is not a measurement
 
@@ -98,23 +90,21 @@ def one_row_per_run_key(rows):
 
 
 def forecasts(city_key, start, end):
-    rows, offset, page = [], 0, 10000
-    while True:
-        r = rest("weather_forecasts", [
-            ("select", "for_date,lead_days,forecast_max_c,model,run_at"),
-            ("city_key", f"eq.{city_key}"),
-            ("for_date", f"gte.{start.isoformat()}"),
-            ("for_date", f"lte.{end.isoformat()}"),
-            ("order", "for_date.asc"),
-            ("limit", str(page)), ("offset", str(offset)),
-        ])
-        if not r:
-            break
-        rows.extend(r)
-        if len(r) < page:
-            break
-        offset += page
-    return rows
+    """Every forecast row for the city inside [start, end], completely.
+
+    THIS IS THE READ THAT MEASURED ONE CITY. It asked for 10,000 rows ordered
+    oldest-first, received the server's 1,000-row cap, and stopped. For a city
+    with a long archive the first 1,000 rows ended in early August - before the
+    first verified outcome on 24 August - so the join found nothing and no skill
+    row was written. New York's archive happened to be 1,099 rows, so its page
+    reached today, and it became the only city the desk could price.
+    """
+    return rest_all("weather_forecasts", [
+        ("select", "for_date,lead_days,forecast_max_c,model,run_at"),
+        ("city_key", f"eq.{city_key}"),
+        ("for_date", f"gte.{start.isoformat()}"),
+        ("for_date", f"lte.{end.isoformat()}"),
+    ], order="for_date.asc,lead_days.asc,model.asc,run_at.asc", page_size=1000)
 
 def main():
     days = int(sys.argv[1]) if len(sys.argv) > 1 else 400
@@ -132,7 +122,11 @@ def main():
         obs = daily_max_observed(ck, start, end, c.get("timezone"))
         if not obs:
             continue
-        fc = forecasts(ck, start, end)
+        # Only the days that can be scored: a forecast for a day with no
+        # verified outcome is discarded by the join below, so reading it is
+        # paid twice for nothing.
+        fc_start = max(start, dt.date.fromisoformat(min(obs)))
+        fc = forecasts(ck, fc_start, end)
         if not fc:
             continue
 

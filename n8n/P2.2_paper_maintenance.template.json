@@ -13,7 +13,8 @@
         "content": "## What this does, and what it deliberately does not\n\n**Runs today.** `expire_paper_commands()` walks every paper account, expires\norders past `expires_at`, releases the `cash_ceiling` each of them had\nreserved, and expires plans still sitting in `pending_approval`. Without it\nreserved cash is never returned and the desk slowly runs out of buying power\nagainst orders that can never fill.\n\n**Does not fill orders, on purpose.** `complete_paper_order` will only accept\na fill whose `snapshot_id` names a row in `paper_book_evidence` whose\n`token_id` equals the order's `token_id`. `book_snapshots` stores ONE\nunlabelled book per band and has no `token_id` column, so a NO-side order\ncannot be evidenced from it without asserting which of the two tokens the\nstored book belongs to. That assertion would be a guess written into the\nledger as proof. Add `token_id` to `book_snapshots` (P0.3 knows it at fetch\ntime) and the filler becomes buildable on real evidence.\n\n**Does not settle positions, on purpose.** `settle_paper_inventory` demands a\n`paper_resolution_evidence` row carrying BOTH a Gamma payload (`closed`,\n`umaResolutionStatus=resolved`) and a CLOB payload (`closed`,\n`accepting_orders=false`, exactly one winning token). The Gamma endpoint is\nthe one P0.5 uses and is known good; the CLOB market endpoint is not used\nanywhere in AD4 yet and has not been verified against the live venue. Adding\nit unverified would produce evidence rows that `settle_paper_inventory`\nrejects - or worse, accepts.",
         "width": 520,
         "height": 560
-      }
+      },
+      "id": "fb96b58d-c76e-5bf8-b88b-4e7f0070bd57"
     },
     {
       "name": "Schedule (hourly)",
@@ -32,7 +33,8 @@
             }
           ]
         }
-      }
+      },
+      "id": "52675cff-23af-56b8-81ce-0dc173124e8e"
     },
     {
       "name": "Manual Trigger",
@@ -42,7 +44,8 @@
         0,
         160
       ],
-      "parameters": {}
+      "parameters": {},
+      "id": "b9f0b5a7-0d79-5ee8-8e72-c34a054190f2"
     },
     {
       "name": "Webhook Trigger",
@@ -60,7 +63,8 @@
           "allowedOrigins": "*"
         }
       },
-      "webhookId": "ad4-paper-maintenance"
+      "webhookId": "ad4-paper-maintenance",
+      "id": "19774457-8784-5bc0-9fa4-cf3822c18ef6"
     },
     {
       "name": "Config",
@@ -81,7 +85,8 @@
             }
           ]
         }
-      }
+      },
+      "id": "69801ac1-8507-56ab-b9cd-07de23ea6982"
     },
     {
       "id": "sched-check",
@@ -203,7 +208,8 @@
           "id": "ad4-supabase",
           "name": "AD4 Supabase"
         }
-      }
+      },
+      "id": "fbca58e9-d3d8-5089-a8be-7f8dd9bc874f"
     },
     {
       "name": "Load desk state",
@@ -235,7 +241,8 @@
           "id": "ad4-supabase",
           "name": "AD4 Supabase"
         }
-      }
+      },
+      "id": "72244774-39f3-55cf-89a1-b5049617f2fd"
     },
     {
       "name": "Load open positions",
@@ -267,7 +274,8 @@
           "id": "ad4-supabase",
           "name": "AD4 Supabase"
         }
-      }
+      },
+      "id": "b353de99-ac14-5567-9cf5-13f5b57f04a7"
     },
     {
       "name": "Summary",
@@ -279,7 +287,8 @@
       ],
       "parameters": {
         "jsCode": "const AD4_WRITE_NODES = [\"Expire commands\"];\n// AD4-WRITE-GUARD\n// DID THE DATABASE ACTUALLY TAKE IT?\n//\n// Every write node in this workflow carries onError=continueRegularOutput so\n// that one bad row cannot kill a run. The cost of that is a REFUSED write\n// walks straight past it and arrives here looking healthy - which is how a\n// workflow reports \"ok, 0 rows\" for days while the data quietly stops moving.\n//\n// With neverError on, a refusal arrives as the PostgREST error body instead of\n// an exception, so it can be read and named. That is what this does.\nfunction ad4WriteError(node) {\n  // WHAT ACTUALLY WENT WRONG, NOT THE FIRST THING THAT LOOKED LIKE AN ERROR.\n  //\n  // This used to return the first item carrying a `code` or `message` and stop.\n  // A Supabase gateway timeout arrives as {\"data\":\"upstream request timeout\"} -\n  // no code, no message - so it was skipped ENTIRELY, and on a run where 90 of\n  // 102 writes timed out the guard reported the single PGRST102 it found\n  // instead. The message named a key mismatch; the cause was an overloaded\n  // database. That cost an evening.\n  //\n  // So: classify every item, count the kinds, and report the one that\n  // dominates, with the counts, so the next person reads the truth first.\n  let items;\n  try { items = $(node).all(); } catch (e) { return null; }\n  const kinds = {};\n  let first = null, n = 0;\n  for (const it of items || []) {\n    const b = it && it.json;\n    if (!b || typeof b !== 'object') continue;\n    n++;\n    let e = null;\n    if (typeof b.data === 'string' && /timeout|timed out|502|503|504/i.test(b.data)) {\n      e = { node, code: 'TIMEOUT', message: b.data.slice(0, 300) };\n    } else if (b.error && !b.code) {\n      e = { node, code: null, message: String(b.error).slice(0, 300) };\n    } else if (b.code || b.message) {\n      e = { node, code: b.code ?? null, message: b.message ?? '',\n            details: b.details ?? null, hint: b.hint ?? null };\n    }\n    if (!e) continue;\n    const key = String(e.code ?? e.message).slice(0, 60);\n    kinds[key] = (kinds[key] || 0) + 1;\n    if (!first || kinds[key] > kinds[String(first.code ?? first.message).slice(0, 60)]) first = e;\n  }\n  if (!first) return null;\n  const key = String(first.code ?? first.message).slice(0, 60);\n  first.count = kinds[key];\n  first.of = n;\n  first.kinds = kinds;\n  return first;\n}\n\nfor (const node of AD4_WRITE_NODES) {\n  const e = ad4WriteError(node);\n  if (!e) continue;\n  if (String(e.code) === 'TIMEOUT') {\n    throw new Error(\n      `Supabase did not answer ${e.count} of ${e.of} write(s) at \"${e.node}\": ${e.message}. ` +\n      `That is the DATABASE being too busy to reply, not a bad row - retrying the same run ` +\n      `harder will not help. Check whether several workflows are running at once, and look ` +\n      `at the Supabase project's load. Whatever did not time out was written; the rest was not.`);\n  }\n  if (String(e.code) === '42501' || /permission denied/i.test(e.message)) {\n    throw new Error(\n      `Supabase REFUSED the write at \"${e.node}\": ${e.message} (${e.code}). The key was ` +\n      `already checked at \"Run now?\" and claims to be the service key, so this is the ` +\n      `DATABASE side: service_role cannot execute that function. Run sql/ad4_38_grants.sql ` +\n      `in the Supabase SQL editor. Nothing was written.`);\n  }\n  if (String(e.code) === '42883' || /does not exist/i.test(e.message)) {\n    throw new Error(\n      `Supabase has no expire_paper_commands(): ${e.message}. The sql/ file that creates the ` +\n      `paper engine has not been run against this database. Nothing was written.`);\n  }\n  throw new Error(\n    `Supabase refused the write at \"${e.node}\": ${e.message}` +\n    (e.code ? ` (${e.code})` : '') + (e.details ? ` - ${e.details}` : '') +\n    (e.hint ? ` Hint: ${e.hint}` : '') + ' Nothing was written.');\n}\n\n// expire_paper_commands() returns a bare integer, which PostgREST delivers as\n// the whole body rather than a row object - so it can arrive as 0, as {\"0\":0},\n// or wrapped. Take the first thing that is actually a number.\nconst rowsOf = (name) => $(name).all()\n  .map(i => i.json)\n  .filter(r => r && typeof r === 'object' && Object.keys(r).length > 0);\n\nconst raw = $('Expire commands').first().json;\nconst expired = Number(\n  typeof raw === 'number' ? raw\n  : (raw?.expire_paper_commands ?? (Array.isArray(raw) ? raw[0] : NaN)));\nconst nExpired = Number.isFinite(expired) ? expired : 0;\n\nconst open = rowsOf('Load desk state');\nconst positions = rowsOf('Load open positions');\nconst openShares = positions.reduce((s, p) => s + Number(p.shares || 0), 0);\nconst atRisk = positions.reduce((s, p) => s + Number(p.cost_basis || 0), 0);\n\n// A maintenance run that expires nothing is the normal case, so it is not an\n// 'attention'. What IS worth saying out loud is a queue that never moves:\n// nothing in AD4 fills a paper order yet (see the sticky note), so orders\n// sitting queued are waiting on a filler that does not exist, not on this.\nconst stuck = open.filter(o => o.status === 'queued').length;\nconst summary =\n  `AD4 P2.2: ${nExpired} expired paper command(s) released. ` +\n  `${open.length} order(s) still open (${stuck} queued), ` +\n  `${positions.length} position(s) holding ${openShares.toFixed(0)} shares ` +\n  `at a $${atRisk.toFixed(2)} cost basis.` +\n  (stuck ? ' Queued orders do not fill: no filler exists yet - see the note on this workflow.' : '');\n\nconst status = stuck > 0 ? 'attention' : 'ok';\nreturn [{ json: {\n  summary, status, rows: nExpired,\n  log: {\n    p_job: 'P2.2_paper_maintenance',\n    p_status: status,\n    p_rows: nExpired,\n    p_detail: {\n      summary,\n      expired: nExpired,\n      open_orders: open.length,\n      queued_orders: stuck,\n      open_positions: positions.length,\n      open_shares: openShares,\n      cost_basis_usd: atRisk,\n      trigger: $execution.mode,\n      execution_id: $execution.id,\n    },\n  },\n} }];"
-      }
+      },
+      "id": "914e62f6-ece9-5815-9bdb-11b5f882210f"
     },
     {
       "name": "Log run",
@@ -319,7 +328,8 @@
           "id": "ad4-supabase",
           "name": "AD4 Supabase"
         }
-      }
+      },
+      "id": "ef242762-1ac8-56b2-a3e4-26e96eb2531a"
     },
     {
       "name": "Respond",
@@ -332,7 +342,8 @@
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
-      }
+      },
+      "id": "94987da7-eec5-5c73-894c-b72080ca5205"
     }
   ],
   "connections": {
@@ -471,5 +482,6 @@
   },
   "settings": {
     "executionOrder": "v1"
-  }
+  },
+  "active": false
 }

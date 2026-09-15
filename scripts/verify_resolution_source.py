@@ -42,6 +42,7 @@ import requests
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from common import rest  # noqa: E402
+from common import rest_all
 import settlement  # noqa: E402
 
 UA = {"User-Agent": "AD4-resolution-verification (github.com/hassansab00/arbdesk4)"}
@@ -73,13 +74,12 @@ def pick_city(city_key=None):
 
 def iem_max(city_key, for_date):
     """Our own archive's max for that UTC day."""
-    rows = rest("weather_observations", [
+    rows = rest_all("weather_observations", [
         ("select", "valid_at,temp_c,source"),
         ("city_key", f"eq.{city_key}"),
         ("valid_at", f"gte.{for_date}T00:00:00Z"),
         ("valid_at", f"lt.{for_date}T23:59:59Z"),
-        ("limit", "2000"),
-    ])
+    ], order="valid_at.asc,source.asc", page_size=1000)
     temps = [r["temp_c"] for r in rows if r.get("temp_c") is not None]
     return (max(temps) if temps else None), len(rows)
 

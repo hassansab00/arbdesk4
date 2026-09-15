@@ -1,7 +1,11 @@
 # The eight strategies
 
-All eight ship `enabled = false`. That is deliberate and it is the single most
-common cause of "the Signal Engine runs and nothing happens": with every
+All eight ship `enabled = false` in the seed file; the live database has had
+all nine switched on since 13 Sep 2026 (the Strategies page toggle). Until
+15 Sep that changed nothing, because the runner itself was gated behind an
+unset repository variable - see `docs/PLATFORM_AUDIT_2026-09-15.md` RC2.
+A disabled seed is still the single most common cause of "the Signal Engine
+runs and nothing happens": with every
 strategy off, `signals` stays empty however good the prices are. Section 5 of
 `sql/ad4_diagnose.sql` reports the count, and the enabling is one statement:
 

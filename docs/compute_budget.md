@@ -96,7 +96,8 @@ setup is paid once instead of nine times.
 **Round 3 — the archive feed.** `observations.yml` re-fetches the **last two
 days** on every run, so a 6-hourly cadence covered every hour eight times
 over. At 12-hourly it still covers it four times over, and nothing reads that
-table for a live number - `live_weather` comes from n8n's P1.5 every 3 hours
+table for a live number - `live_weather` comes from n8n's P1.5 (documented at 3 hours; the live trigger
+was 6 hours until the 15 Sep audit)
 and P1.2's NWS observations every 2. 120 runs becomes 60.
 
 | | runs/mo |

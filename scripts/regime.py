@@ -34,6 +34,7 @@ import sys
 from collections import defaultdict
 
 from common import rest, get_cities
+from common import rest_all
 
 STALE_FORECAST_HOURS = 12          # matches anomaly_rules.stale_forecast
 SEASONAL_WINDOW_GATE_HOURS = 12    # spec §0.4 / Task 5: "~12h" is given verbatim
@@ -111,11 +112,14 @@ def _history_disagreement(city_key, before_date, lookback_days=LOOKBACK_DAYS, as
         ("city_key", f"eq.{city_key}"),
         ("for_date", f"gte.{start}"),
         ("for_date", f"lte.{end}"),
-        ("order", "for_date.asc"),
     ]
     if as_of is not None:
         params.append(("run_at", f"lte.{as_of.isoformat()}"))
-    rows = rest("weather_forecasts", params)
+    # 120 days x several models x 8 leads is more than the 1,000-row cap a
+    # bare read returns; the percentile threshold was being built on a
+    # truncated history.
+    rows = rest_all("weather_forecasts", params,
+                    order="for_date.asc,lead_days.asc,model.asc,run_at.asc", page_size=1000)
     by_date = defaultdict(list)
     for r in rows:
         by_date[r["for_date"]].append(r)

@@ -132,13 +132,20 @@ def run(run_id):
 
             reg = regime.classify(city_key, m["resolution_date"], history_cache, as_of=as_of)
 
-            book_rows = rest("book_snapshots", [
-                ("select", "*"), ("band_id", f"in.({','.join(b['band_id'] for b in bands)})"),
-                ("observed_at", f"lte.{as_of.isoformat()}"), ("order", "band_id,observed_at.desc"),
-            ])
+            # One request per band for its newest snapshot as of the decision
+            # instant. The old single read pulled EVERY snapshot of every band
+            # up to as_of, hit the 1,000-row server cap, and the bands that
+            # sorted last never got a book - which is one reason a backtest
+            # over 739 city-days placed zero trades.
             book_by_band = {}
-            for r in book_rows:
-                book_by_band.setdefault(r["band_id"], r)
+            for b in bands:
+                book_rows = rest("book_snapshots", [
+                    ("select", "*"), ("band_id", f"eq.{b['band_id']}"),
+                    ("observed_at", f"lte.{as_of.isoformat()}"),
+                    ("order", "observed_at.desc"), ("limit", "1"),
+                ])
+                if book_rows:
+                    book_by_band[b["band_id"]] = book_rows[0]
 
             result = simulate_city_day(
                 city_key, resolution_date, unit, bands, forecast_rows, skill_row, reg,

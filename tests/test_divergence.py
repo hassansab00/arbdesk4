@@ -29,6 +29,7 @@ def load(monkeypatch, rows, count=None, seen=None):
             seen.append(dict(params or []))
         return rows
     monkeypatch.setattr(pe, "rest", fake_rest)
+    monkeypatch.setattr(pe, "rest_all", fake_rest)
 
 
 def row(**kw):
@@ -117,15 +118,20 @@ def test_only_dates_this_engine_prices_are_fetched(monkeypatch):
     pe._divergence()
     params = seen[0]
     assert params["for_date"] == f"gte.{dt.date.today().isoformat()}"
-    assert int(params["limit"]) == pe._DIVERGENCE_LIMIT
 
 
-def test_a_truncated_page_is_reported_not_swallowed(monkeypatch, capsys):
-    """Silently pricing half the cities at 1.0 would look like model agreement."""
-    monkeypatch.setattr(pe, "_DIVERGENCE_LIMIT", 3)
-    load(monkeypatch, [row(city_key=f"c{i}") for i in range(3)])
+def test_the_read_pages_the_whole_scope_instead_of_capping_it(monkeypatch):
+    """The read used to ask for _DIVERGENCE_LIMIT rows in one request and
+    warn when it got that many back. PostgREST caps a response at 1,000 and
+    never says so, so the warning could not fire and half the cities priced
+    at multiplier 1.0 - which looks exactly like model agreement. The read now
+    goes through rest_all, which pages with a stable order and must not be
+    handed a limit of its own."""
+    seen = []
+    load(monkeypatch, [row(city_key=f"c{i}") for i in range(3)], seen=seen)
     pe._divergence()
-    assert "hit the 3-row limit" in capsys.readouterr().err
+    assert "limit" not in seen[0]
+    assert len(pe._divergence_cache) == 3
 
 
 def test_a_full_page_under_the_limit_is_silent(monkeypatch, capsys):

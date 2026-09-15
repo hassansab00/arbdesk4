@@ -222,7 +222,7 @@ def test_the_chain_is_anchored_on_the_day_before_not_just_any_recent_day(monkeyp
     the row still has to be built from the nearest real maximum available,
     not the newest row in the table."""
     days = fc_days(2)                                  # 2026-09-05, 09-06
-    monkeypatch.setattr(wm, "rest", lambda *a, **k: days)
+    monkeypatch.setattr(wm, "rest_all", lambda *a, **k: days)
     observed = [
         {"obs_date": "2026-09-01", "max_c": 40.0, "n_obs": 24},   # too old to use
         {"obs_date": "2026-09-04", "max_c": 26.0, "n_obs": 24},   # the day before
@@ -234,7 +234,7 @@ def test_the_chain_is_anchored_on_the_day_before_not_just_any_recent_day(monkeyp
 
 
 def test_a_city_with_no_recent_observation_is_named_not_silently_dropped(monkeypatch):
-    monkeypatch.setattr(wm, "rest", lambda *a, **k: fc_days(2))
+    monkeypatch.setattr(wm, "rest_all", lambda *a, **k: fc_days(2))
     preds, note = wm.predict_forward(
         {"t": fitted()}, {"t": [{"obs_date": "2026-08-01", "max_c": 26.0, "n_obs": 24}]})
     assert preds == []
@@ -244,14 +244,14 @@ def test_a_city_with_no_recent_observation_is_named_not_silently_dropped(monkeyp
 def test_a_thin_observed_day_cannot_anchor_a_chain(monkeypatch):
     """n_obs < 12 means the day's maximum is understated - the same rule the
     fit uses. Anchoring on one would bias every day chained off it."""
-    monkeypatch.setattr(wm, "rest", lambda *a, **k: fc_days(2))
+    monkeypatch.setattr(wm, "rest_all", lambda *a, **k: fc_days(2))
     preds, _ = wm.predict_forward(
         {"t": fitted()}, {"t": [{"obs_date": "2026-09-04", "max_c": 26.0, "n_obs": 3}]})
     assert preds == []
 
 
 def test_no_forecast_rows_says_which_job_fills_them(monkeypatch):
-    monkeypatch.setattr(wm, "rest", lambda *a, **k: [])
+    monkeypatch.setattr(wm, "rest_all", lambda *a, **k: [])
     preds, note = wm.predict_forward({"t": fitted()}, {"t": []})
     assert preds == []
     assert "P1.4" in note
@@ -270,7 +270,7 @@ def test_a_stored_fit_uses_the_features_it_was_actually_fitted_with(monkeypatch)
                          "wind_mean": 0.0},
         "mae_c": 0.9, "persistence_mae_c": 1.6, "beats_persistence": True,
     }]
-    monkeypatch.setattr(wm, "rest", lambda *a, **k: stored)
+    monkeypatch.setattr(wm, "rest_all", lambda *a, **k: stored)
     fits = wm.stored_fits()
     assert "precip_total" not in fits["t"]["features"]
 
@@ -283,7 +283,7 @@ def test_a_stored_fit_uses_the_features_it_was_actually_fitted_with(monkeypatch)
 def test_a_stored_row_with_no_intercept_is_not_used(monkeypatch):
     """An empty or half-written coefficients blob would silently predict from
     a missing intercept, i.e. from zero."""
-    monkeypatch.setattr(wm, "rest", lambda *a, **k: [
+    monkeypatch.setattr(wm, "rest_all", lambda *a, **k: [
         {"city_key": "t", "target": "max_c", "coefficients": {"cloud_mean": -1.1}},
         {"city_key": "u", "target": "max_c", "coefficients": None},
     ])

@@ -202,9 +202,11 @@ settings row is the authority.
 | P1.2 NWS Monitor | every 2h | 360 |
 | P1.3 NWS Forecast | every 6h | 120 |
 | P1.4 NWS Gridpoint | every 6h | 120 |
+| P1.5 Open-Meteo | every 3h | 240 |
+| P2.2 Paper Maintenance | every 6h (was hourly = 720) | 120 |
 | P3.1 Email Digests | 2x/day | 60 |
 | P4.1 Watchdog | every 6h | 120 |
-| **TOTAL** | | **1,770 / 2,000** |
+| **TOTAL** | | **2,130 / 2,000 - over, and the gate must actually gate (audit RC4)** |
 
 P0.3 is 720 of that on its own, because a book snapshot is the one thing every
 price on the desk depends on and an hour-old book prices nothing well. It is

@@ -51,7 +51,7 @@ import datetime as dt
 import json
 import sys
 
-from common import rest, log_run, _cfg, _headers
+from common import rest, rest_all, log_run, _cfg, _headers
 import requests
 
 # Fewer than this and the fit is describing noise. Weather is seasonal: a few
@@ -528,13 +528,12 @@ def predict_forward(fits, by_city):
     "0 predictions" tells the operator none of them.
     """
     try:
-        fc = rest("v_forecast_features", [
+        fc = rest_all("v_forecast_features", [
             ("select", "city_key,for_date,run_at,lead_days,forecast_max_c,"
                        "morning_temp_c,dewpoint_depression_c,cloud_mean,"
                        "wind_mean,precip_total"),
             ("for_date", f"gte.{dt.date.today().isoformat()}"),
-            ("limit", "20000"),
-        ])
+        ], order="city_key.asc,for_date.asc,run_at.asc", page_size=1000)
     except Exception as e:
         return [], (f"No forward predictions: v_forecast_features unavailable ({e}). "
                     f"Run sql/ad4_24_nws_gridpoint.sql.")
@@ -595,11 +594,10 @@ def stored_fits():
     than the constant does, and using FEATURES here would look up a
     coefficient that was never fitted.
     """
-    rows = rest("derived_weather_model", [
+    rows = rest_all("derived_weather_model", [
         ("select", "city_key,target,coefficients,mae_c,persistence_mae_c,beats_persistence"),
         ("target", "eq.max_c"),
-        ("limit", "5000"),
-    ])
+    ], order="city_key.asc", page_size=1000)
     fits = {}
     for r in rows:
         coef = r.get("coefficients") or {}
@@ -623,11 +621,10 @@ def recent_days(days=10):
     expensive as the weekly one.
     """
     since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
-    rows = rest("v_city_day_features", [
+    rows = rest_all("v_city_day_features", [
         ("select", "city_key,obs_date,max_c,n_obs"),
         ("obs_date", f"gte.{since}"),
-        ("limit", "20000"),
-    ])
+    ], order="city_key.asc,obs_date.asc", page_size=1000)
     by_city = {}
     for r in rows:
         by_city.setdefault(r["city_key"], []).append(r)
@@ -649,11 +646,15 @@ def main():
         return predict_only(args)
 
     try:
-        rows = rest("v_city_day_features", [
+        # THE READ THAT KEPT THE MODEL FROM EVER FITTING. It asked for 200,000
+        # rows in one request and received the server's 1,000-row cap: 1,000
+        # rows across 54 cities is ~18 days each, under MIN_DAYS=120, so every
+        # city was skipped and every weekly run said "no fitted model" while
+        # 21,939 cached city-days sat in the table.
+        rows = rest_all("v_city_day_features", [
             ("select", "city_key,obs_date,max_c,n_obs,prev_max_c,morning_temp_c,"
                        "dewpoint_depression_c,cloud_mean,wind_mean,precip_total"),
-            ("limit", "200000"),
-        ])
+        ], order="city_key.asc,obs_date.asc", page_size=1000)
     except Exception as e:
         print(f"v_city_day_features unavailable ({e}). Run sql/ad4_21_weather_features.sql.",
               file=sys.stderr)

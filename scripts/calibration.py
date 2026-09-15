@@ -40,7 +40,7 @@ import sys
 
 VERIFIED_EVIDENCE_SCOPE = "verified_outcomes_v1"
 
-from common import rest, log_run, model_version_id, _cfg, _headers  # noqa: F401
+from common import rest, rest_all, log_run, model_version_id, _cfg, _headers  # noqa: F401
 import requests
 
 # Below this, the honest output is "not enough evidence". A two-parameter fit
@@ -127,10 +127,10 @@ def main():
     args = ap.parse_args()
 
     try:
-        rows = rest("v_verified_fact_band_outcome", [
-            ("select", "model_prob,market_price,settled_yes,for_date,city_key"),
-            ("model_prob", "not.is.null"), ("limit", "50000"),
-        ])
+        rows = rest_all("v_verified_fact_band_outcome", [
+            ("select", "band_id,model_prob,market_price,settled_yes,for_date,city_key"),
+            ("model_prob", "not.is.null"),
+        ], order="for_date.asc,band_id.asc", page_size=1000)
     except Exception as e:
         print(f"verified band outcomes unavailable ({e}). Apply the Phase 2A outcome-truth "
               f"migration, collect venue evidence, then run scripts/databank.py.", file=sys.stderr)

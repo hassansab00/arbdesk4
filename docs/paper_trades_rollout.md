@@ -133,7 +133,7 @@ fee/cash arithmetic, cancellation, partial inventory sales, automatic exits
 while entries are paused, and idempotent expiry cleanup. It is not a substitute
 for the live project's permissions/configuration check.
 
-Verification on 2026-09-12: 615 Python tests passed, 6 non-applicable workflow
+Verification on 2026-09-15: 798 Python tests passed (the 14-workflow validator crashed on two templates without node ids between 12 and 15 Sep; fixed). Verification on 2026-09-12: 615 Python tests passed, 6 non-applicable workflow
 cases skipped; the database transaction suite, 14-workflow structural validator,
 and Next.js production build passed. Live venue reads confirmed the book/fee
 metadata and a matching resolved-market winner. Browser review remains blocked
