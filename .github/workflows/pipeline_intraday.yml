@@ -103,6 +103,30 @@ jobs:
         timeout-minutes: 3
         run: python scripts/paper_plans.py
 
+      # IMMEDIATELY after the proposals, and that ordering is load-bearing.
+      #
+      # An automatic account's plan is queued as an order inside
+      # publish_paper_plan, and queue_plan gives that order the PLAN's
+      # expires_at - five minutes from creation, deliberately, because a price
+      # quoted five minutes ago is a lie. paper_worker.cycle() begins by
+      # calling expire_paper_commands(), which kills every order past its
+      # deadline before it claims any.
+      #
+      # This step used to run third of the three, behind settlement and exits
+      # at two minutes of timeout each, with paper_plans itself allowed 90
+      # seconds of proposal budget before that. Worst case the worker reached
+      # an order five and a half minutes old and expired the very order the
+      # run had just created - the automatic desk would queue, reserve the
+      # cash, release it, and report nothing filled.
+      #
+      # Neither settlement nor exits needs to precede a fill. Settlement pays
+      # out resolutions and exits act on positions that already exist, so both
+      # read a strictly better picture after this step than before it.
+      - name: Fill queued paper orders
+        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}
+        timeout-minutes: 3
+        run: python scripts/paper_worker.py
+
       - name: Venue-confirmed paper settlement
         if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}
         timeout-minutes: 2
@@ -112,8 +136,3 @@ jobs:
         if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}
         timeout-minutes: 2
         run: python scripts/paper_exits.py
-
-      - name: Paper order recovery sweep
-        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}
-        timeout-minutes: 3
-        run: python scripts/paper_worker.py
