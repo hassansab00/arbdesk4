@@ -14,6 +14,44 @@ from common import rest, rest_all, rpc, log_run
 from paper_execution import instant, number, simulate
 
 
+# Every way a venue outcome label states its temperature unit, in the same
+# forms P0.2's parser accepts when it INFERS markets.unit from those labels:
+# a degree sign, the single-character glyphs, the spelled-out word, or a bare
+# C/F immediately after the number ("85-86F", which is the shape the strategy
+# fixtures and the live Polymarket labels use).
+_LABEL_UNIT = re.compile(r'(?:°\s*([CF])|([℃℉])|\b(celsius|fahrenheit)\b|\d\s*([CF])\b)', re.I)
+_GLYPH = {'℃': 'C', '℉': 'F'}
+
+
+def label_unit_markers(label):
+    """The temperature units a contract label states, as a set.
+
+    AN ABSENT UNIT IS NOT A CONTRADICTION, and conflating the two is what this
+    exists to prevent. The check used to demand that every band's own label
+    carry `°C` or `°F` matching its market, and treated a label that simply
+    did not say as a disagreement - the same error as a label that said the
+    opposite. Those are different facts and only one of them is dangerous.
+
+    markets.unit is itself derived by P0.2 from the labels of the market as a
+    whole, so a single band whose label omits the unit is normal and carries
+    no contradiction: the market already answered, from the same source. A
+    label reading 20C under a market marked F is the real hazard - it would
+    size a trade against a band whose bounds mean something else - and that
+    still raises.
+
+    Returning a SET rather than a unit keeps the caller's two questions
+    separate: did the label say anything, and if so did it agree.
+    """
+    out = set()
+    for degree, glyph, word, bare in _LABEL_UNIT.findall(label or ''):
+        token = degree or glyph or word or bare
+        if not token:
+            continue
+        token = _GLYPH.get(token, token)
+        out.add(token[0].upper())
+    return out
+
+
 def command_key(account, signal):
     payload = signal.get('payload') or {}
     group = payload.get('basket_group')
@@ -41,9 +79,9 @@ def prepare(account, signal, capture, *, now=None):
         band, market, forecast = source.get('band') or {}, source.get('market') or {}, source.get('forecast') or {}
         if str(band.get('band_id'))!=str(bid) or market.get('unit') not in ('C','F') or view.get('unit')!=market.get('unit'):
             raise ValueError('Contract identity or temperature unit unverified')
-        label_units=set(re.findall(r'°\s*([CF])\b',band.get('band_label',''),re.I))
-        if {u.upper() for u in label_units}!={market['unit']}:
-            raise ValueError('Contract label and market temperature unit disagree or are unverified')
+        label_units=label_unit_markers(band.get('band_label',''))
+        if label_units and label_units!={market['unit']}:
+            raise ValueError('Contract label and market temperature unit disagree')
         if not band.get('open_low') and not band.get('open_high') and number(band['band_hi'])<=number(band['band_lo']):
             raise ValueError('Invalid contract bounds')
         contexts.append((market.get('city_key'),market.get('resolution_date'),market.get('unit')))

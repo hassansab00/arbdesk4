@@ -49,3 +49,59 @@ def test_no_complete_depth_never_presents_fully_executable_basket():
         book=capture(order);book['asks'][0]['size']='1';return book
     with pytest.raises(ValueError,match='not executable'):
         prepare(account,signal,thin,now=NOW)
+
+
+# ---------------------------------------------------------------------------
+# CONTRACT LABELS THAT DO NOT SPELL OUT THEIR UNIT
+#
+# The unit check demanded that every band's own label carry a degree sign and
+# a matching C or F, and treated a label that merely did not say as a
+# DISAGREEMENT - identical treatment to a label saying the opposite. Live
+# Polymarket labels are written "85-86F", which carries no degree sign, so on
+# 15 Sep every proposal for the three Texas desks would have been published
+# blocked with "unit unverified" while the board itself was healthy: 43 cities
+# priced, 405 bands with an edge.
+#
+# markets.unit is derived by P0.2 from those same labels market-wide, so a
+# single silent label contradicts nothing. A label that names the OTHER unit
+# still does, and still raises - that one would size a trade against bounds
+# meaning something else.
+
+@pytest.mark.parametrize('label', ['20C', '20°C', '25℃', '20 Celsius',
+                                   'Below 21C', '20-21', ''])
+def test_a_label_that_agrees_or_stays_silent_is_accepted(label):
+    account, signal, capture = fixture()
+    for leg in signal['payload']['decision_inputs'].values():
+        leg['decision_evidence']['band']['band_label'] = label
+    legs, _ = prepare(account, signal, capture, now=NOW)
+    assert len(legs) == 2
+
+
+@pytest.mark.parametrize('label', ['85-86F', '85-86°F', '86F or above', '85-86'])
+def test_the_fahrenheit_shape_the_texas_desks_actually_trade(label):
+    """The live shape. Austin, Dallas and Houston all settle in Fahrenheit and
+    their labels carry no degree sign, which is exactly the case the old check
+    rejected."""
+    account, signal, capture = fixture()
+    for leg in signal['payload']['decision_inputs'].values():
+        leg['unit'] = 'F'
+        leg['decision_evidence']['market']['unit'] = 'F'
+        leg['decision_evidence']['band']['band_label'] = label
+    legs, _ = prepare(account, signal, capture, now=NOW)
+    assert len(legs) == 2
+
+
+@pytest.mark.parametrize('label', ['85-86F', '20°F', '77℉', '20 Fahrenheit', '20°C to 21°F'])
+def test_a_label_naming_the_other_unit_still_blocks(label):
+    account, signal, capture = fixture()
+    signal['payload']['decision_inputs']['a']['decision_evidence']['band']['band_label'] = label
+    with pytest.raises(ValueError, match='temperature unit disagree'):
+        prepare(account, signal, capture, now=NOW)
+
+
+def test_the_market_unit_itself_is_still_required():
+    """Absence is tolerated on the LABEL, never on the market."""
+    account, signal, capture = fixture()
+    signal['payload']['decision_inputs']['a']['decision_evidence']['market']['unit'] = None
+    with pytest.raises(ValueError, match='unit unverified'):
+        prepare(account, signal, capture, now=NOW)
