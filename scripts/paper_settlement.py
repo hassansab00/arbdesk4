@@ -40,12 +40,50 @@ def verify(band,gamma,clob):
     return gamma_winner
 
 
-def _candidate_bands(position_band_ids, days_back):
-    """Open positions first, then bands on recently closed markets.
+# A market that closed an hour ago has not been through UMA yet. Days at or
+# past this age are the ones where asking the venue can actually produce an
+# answer, so the archive sweep starts there.
+SETTLE_LAG_DAYS = 1
+
+
+def _candidate_bands(position_band_ids, days_back, settled_conditions=frozenset()):
+    """Open positions first, then the unsettled archive OLDEST day first.
 
     Venue outcomes are valuable model evidence even when the paper desk held
     no position. Limiting collection to holdings left calibration permanently
     starved, so this bounded sweep fills the independent outcome archive too.
+
+    TWO THINGS DECIDE WHETHER THAT SWEEP EVER ARRIVES ANYWHERE.
+
+    ORDER. It used to walk resolution_date DESCENDING, and a run checks a few
+    hundred bands before its time budget stops it. One day of markets is 220
+    to 560 bands, so the walk never reached past the newest day or two - which
+    are precisely the days UMA has not resolved yet. Nothing resolved, so
+    nothing was captured; nothing captured meant `existing` stayed empty, so
+    the next run restarted at the identical head and re-asked the identical
+    unanswerable questions. paper_resolution_evidence held 0 rows against
+    12,868 identified bands, and v_venue_band_resolution - which every
+    verified outcome view is built on - was empty because of it.
+
+    Oldest-first spends the budget where an answer definitely exists, and each
+    answer is remembered, so the walk advances by everything it captured
+    instead of resetting. This is the same correction the weather backlog
+    needed: a cap over an unproductive head is a cap that never gets anywhere.
+
+    AUTHORITY. It also required markets.closed to be true. That column is
+    maintained by the ingest side and goes stale on days it did not run: 225
+    markets between 2026-05-20 and 09-14 - 2,431 bands - still read false long
+    after the venue had settled them, and were unreachable forever. The venue
+    is the authority on whether a market is resolved, and verify() already
+    refuses anything Gamma and the CLOB do not both call closed and resolved.
+    So age selects the candidates and the venue decides the outcome; the local
+    flag is neither consulted nor trusted.
+
+    KNOWN LIMIT: a band the venue will never resolve cleanly - a void or split
+    payout - is re-asked on every run, because only a capture is remembered.
+    That is bounded (a handful of bands against a per-run budget of a few
+    hundred) and it degrades throughput rather than stalling it, but the real
+    repair is an attempts table mirroring weather_resolution_attempts.
     """
     wanted = []
     if position_band_ids:
@@ -56,11 +94,14 @@ def _candidate_bands(position_band_ids, days_back):
                 'select': 'band_id,market_id,condition_id,token_yes,token_no',
             }, order='band_id.asc')
 
-    since = (dt.date.today() - dt.timedelta(days=days_back)).isoformat()
-    markets = rest_all('markets', {
-        'closed': 'eq.true', 'resolution_date': 'gte.' + since,
-        'select': 'market_id,resolution_date',
-    }, order='resolution_date.desc,market_id.asc')
+    today = dt.date.today()
+    since = (today - dt.timedelta(days=days_back)).isoformat()
+    until = (today - dt.timedelta(days=SETTLE_LAG_DAYS)).isoformat()
+    markets = rest_all('markets', [
+        ('select', 'market_id,resolution_date'),
+        ('resolution_date', 'gte.' + since),
+        ('resolution_date', 'lte.' + until),
+    ], order='resolution_date.asc,market_id.asc')
     market_ids = [str(m['market_id']) for m in markets]
     for i in range(0, len(market_ids), 100):
         chunk = market_ids[i:i + 100]
@@ -70,13 +111,16 @@ def _candidate_bands(position_band_ids, days_back):
         }, order='band_id.asc')
 
     # Stable de-duplication; position bands were appended first and therefore
-    # remain first when they also appear in the closed-market sweep.
+    # remain first when they also appear in the archive sweep. Bands whose
+    # condition is already proved drop out HERE, before the budget is counted
+    # against them - a settled day must not cost the run its remaining time.
     out, seen = [], set()
     for band in wanted:
         key = str(band['band_id'])
-        if key not in seen:
-            seen.add(key)
-            out.append(band)
+        if key in seen or str(band.get('condition_id')) in settled_conditions:
+            continue
+        seen.add(key)
+        out.append(band)
     return out
 
 
@@ -89,8 +133,11 @@ def cycle(budget_seconds=60, days_back=180, max_new_evidence=100):
     existing={str(e['condition_id']) for e in rest_all(
         'paper_resolution_evidence',{'select':'condition_id,proof_id'},order='condition_id.asc,proof_id.asc')}
 
-    for band in _candidate_bands(position_band_ids,days_back):
+    candidates=_candidate_bands(position_band_ids,days_back,existing)
+    unreached=0
+    for index,band in enumerate(candidates):
         if time.monotonic()-started>budget_seconds or captured>=max_new_evidence:
+            unreached=len(candidates)-index
             break
         band_id=str(band['band_id'])
         if band_id in checked or str(band.get('condition_id')) in existing:
@@ -122,11 +169,24 @@ def cycle(budget_seconds=60, days_back=180, max_new_evidence=100):
                 first_failure={'band_id':band_id,'error':str(e)[:300]}
 
     status='attention' if failed else 'ok'
+    # `unreached` is the difference between "there was nothing to collect" and
+    # "the budget ran out before I got to it". Reading 0 captured without it is
+    # what let an unreachable archive look healthy for days.
     detail={'positions_settled':settled,'evidence_captured':captured,
-            'bands_checked':len(checked),'failed':failed,'first_failure':first_failure}
+            'bands_checked':len(checked),'failed':failed,'first_failure':first_failure,
+            'candidates':len(candidates),'unreached':unreached}
     log_run('paper_settlement',status,settled+captured,detail)
     return detail
 
 
 if __name__=='__main__':
-    print(cycle())
+    import argparse
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--budget-seconds',type=int,default=60,
+                        help='wall clock the venue sweep may spend (default 60)')
+    parser.add_argument('--days-back',type=int,default=180)
+    parser.add_argument('--max-evidence',type=int,default=100,
+                        help='new proofs captured in one run (default 100)')
+    options=parser.parse_args()
+    print(cycle(budget_seconds=options.budget_seconds,days_back=options.days_back,
+                max_new_evidence=options.max_evidence))

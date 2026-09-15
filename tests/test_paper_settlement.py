@@ -62,3 +62,156 @@ def test_closed_markets_build_evidence_without_an_open_position(monkeypatch):
     assert writes[0]['winning_token']=='no'
     assert settles==[{'p_band':'band-1','p_proof':writes[0]['proof_id']}]
     assert logs[0][1]=='ok'
+
+
+# --------------------------------------------------------------------------
+# ARCHIVE TRAVERSAL
+#
+# The sweep walked resolution_date DESCENDING under a time budget that reaches
+# a few hundred bands. One day of markets is 220-560 bands, so it never got
+# past the newest day or two - exactly the days UMA has not resolved yet.
+# Nothing resolved, so nothing was captured; nothing captured left `existing`
+# empty, so the next run restarted at the identical head and re-asked the
+# identical unanswerable questions.
+#
+# Measured on the live database before the fix: paper_resolution_evidence 0
+# rows and v_venue_band_resolution 0 rows against 12,868 bands carrying a full
+# condition/token identity, with every run logging "ok, bands_checked 204-333,
+# evidence_captured 0, failed 0" - a healthy-looking log for a sweep that was
+# never arriving anywhere.
+# --------------------------------------------------------------------------
+def _band(band_id, market_id, condition=None):
+    return {'band_id': band_id, 'market_id': market_id,
+            'condition_id': condition or 'c-' + band_id,
+            'token_yes': 'y-' + band_id, 'token_no': 'n-' + band_id}
+
+
+@pytest.fixture
+def venue_tables(monkeypatch):
+    """Scripted reads that honour `order` and `in.()` the way PostgREST does.
+
+    Modelling the ordering matters here: bands are fetched in chunks of 100
+    MARKETS, so which bands a budget-limited run reaches is decided by the
+    order of the markets read, not by anything in the bands read.
+    """
+    calls = []
+
+    def go(markets, bands):
+        def all_rows(path, params=None, *, order, **kwargs):
+            calls.append((path, params, order))
+            if path == 'markets':
+                keys = [k.split('.')[0] for k in order.split(',')]
+                rows = [m for m in markets if _in_window(m, params)]
+                for key in reversed(keys):
+                    rows = sorted(rows, key=lambda m: m[key],
+                                  reverse=order.endswith('.desc'))
+                return rows
+            if path == 'bands':
+                lookup = dict(params.items() if isinstance(params, dict)
+                              else params)
+                field = 'market_id' if 'market_id' in lookup else 'band_id'
+                wanted = lookup[field][len('in.('):-1].split(',')
+                return sorted((b for b in bands if b[field] in wanted),
+                              key=lambda b: b['band_id'])
+            raise AssertionError(path)
+
+        monkeypatch.setattr(settlement, 'rest_all', all_rows)
+        return calls
+
+    def _in_window(market, params):
+        bounds = dict((v.split('.', 1)[0], v.split('.', 1)[1])
+                      for k, v in (params or []) if k == 'resolution_date')
+        return bounds['gte'] <= market['resolution_date'] <= bounds['lte']
+
+    return go
+
+
+def test_the_walk_is_oldest_first_so_the_budget_lands_where_answers_exist(monkeypatch):
+    """Bands are fetched in chunks of 100 MARKETS, so the order of the markets
+    read is what decides which bands a run that stops early ever sees."""
+    markets = [{'market_id': 'm%03d' % i,
+                'resolution_date': '2026-08-01' if i < 150 else '2026-09-01'}
+               for i in range(200)]
+    asked = []
+
+    def all_rows(path, params=None, *, order, **kwargs):
+        if path == 'markets':
+            return sorted(markets, key=lambda m: m['resolution_date'],
+                          reverse=order.startswith('resolution_date.desc'))
+        asked.append(params['market_id'])
+        return []
+
+    monkeypatch.setattr(settlement, 'rest_all', all_rows)
+    settlement._candidate_bands([], days_back=180)
+
+    assert 'm000' in asked[0], 'the oldest markets must be asked about first'
+    assert 'm199' not in asked[0], 'the newest day must not lead the walk'
+
+
+def test_the_markets_read_is_ordered_oldest_first(venue_tables):
+    calls = venue_tables([], [])
+    settlement._candidate_bands([], days_back=180)
+    order = next(order for path, _, order in calls if path == 'markets')
+    assert order.startswith('resolution_date.asc')
+
+
+def test_markets_are_selected_by_age_not_by_the_local_closed_flag(venue_tables):
+    """markets.closed is maintained by the ingest side and goes stale: 100
+    markets on 2026-09-04/05 still read false long after the venue had settled
+    them. verify() re-checks Gamma and the CLOB, so the stale local column must
+    not decide what is even asked about."""
+    calls = venue_tables([], [])
+    settlement._candidate_bands([], days_back=180)
+    params = next(p for path, p, _ in calls if path == 'markets')
+    assert not any(k == 'closed' for k, _ in params), \
+        'the venue is the authority, not our column'
+    bounds = sorted(v.split('.', 1)[0] for k, v in params
+                    if k == 'resolution_date')
+    assert bounds == ['gte', 'lte'], 'the window is bounded at both ends'
+
+
+def test_today_is_not_asked_about_because_uma_has_not_ruled_yet(venue_tables):
+    import datetime
+    calls = venue_tables([], [])
+    settlement._candidate_bands([], days_back=180)
+    params = next(p for path, p, _ in calls if path == 'markets')
+    newest = next(v[len('lte.'):] for k, v in params
+                  if k == 'resolution_date' and v.startswith('lte.'))
+    assert datetime.date.fromisoformat(newest) <= \
+        datetime.date.today() - datetime.timedelta(days=1)
+
+
+def test_a_proved_condition_never_costs_the_budget_again(venue_tables):
+    venue_tables([{'market_id': 'm', 'resolution_date': '2026-08-20'}],
+                 [_band('done', 'm', 'proved'), _band('todo', 'm', 'open')])
+    picked = settlement._candidate_bands([], days_back=180,
+                                         settled_conditions={'proved'})
+    assert [b['band_id'] for b in picked] == ['todo'], \
+        'a settled day must not consume the run it no longer needs'
+
+
+def test_open_positions_still_outrank_the_archive(venue_tables):
+    venue_tables([{'market_id': 'm', 'resolution_date': '2026-08-20'}],
+                 [_band('archive', 'm'), _band('held', 'other')])
+    picked = settlement._candidate_bands(['held'], days_back=180)
+    assert picked[0]['band_id'] == 'held'
+
+
+def test_a_budget_limited_run_says_what_it_did_not_reach(monkeypatch):
+    """"0 captured" read as "nothing to collect" for days while it actually
+    meant "the budget ran out first". The log must tell those apart."""
+    monkeypatch.setattr(settlement, 'rest_all',
+                        lambda path, params=None, **kw: [])
+    monkeypatch.setattr(settlement, '_candidate_bands',
+                        lambda *args, **kw: [_band('b%d' % i, 'm')
+                                             for i in range(50)])
+    logged = []
+    monkeypatch.setattr(settlement, 'log_run',
+                        lambda *args: logged.append(args))
+    monkeypatch.setattr(paper_worker, 'public_json',
+                        lambda url, params: [])
+
+    detail = settlement.cycle(budget_seconds=-1)
+    assert detail['candidates'] == 50
+    assert detail['unreached'] == 50
+    assert detail['evidence_captured'] == 0
