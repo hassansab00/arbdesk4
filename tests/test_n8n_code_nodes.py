@@ -1804,3 +1804,91 @@ def test_p04_still_reads_a_tape_that_arrives_wrapped_in_an_array():
                  "plan_P0.4_trade_history.json", m)
     out = r["outputs"]["Map trades to bands"][0]
     assert out["n"] == 3 and out["unmatched"] == 0, out
+
+
+# ---------------------------------------------------------------------------
+# P0.2 COULD NOT REACH A DAY IT MISSED.
+#
+# Build requests counted FORWARD from today only, so a day the workflow was
+# down for stayed missing forever: nothing ever asked Polymarket for it again.
+# Measured on the live database, `markets` has no rows AT ALL for 2026-09-06
+# through 09-11, and P0.2's own n8n history says why - it errored on 09-08 and
+# did not run again until 09-12 16:17. Every table keyed on a market inherits
+# that hole, including the verified outcomes that bound the backtest window.
+# ---------------------------------------------------------------------------
+def _p02_requests(**config):
+    """Drive Build requests with a Config that can actually reach Polymarket.
+
+    The shipped template leaves slug_template empty on purpose (the operator
+    fills it in), and an empty one makes Run now? refuse the whole run - so a
+    test of day selection has to supply it, exactly as the live workflow does.
+    """
+    def m(plan):
+        plan["seed"]["Check schedule"] = {"run": True, "reason": "manual"}
+        plan["seed"]["Config"] = {
+            **plan["seed"]["Config"],
+            "slug_template": "highest-temperature-in-{city}-on-{month}-{day}-{year}",
+            "event_url_template": "https://gamma-api.polymarket.com/events?slug={slug}",
+            "city_slug_overrides": "{}",
+            **config,
+        }
+        plan["run"] = [{"node": "Run now?", "input": "Load cities", "show": 300},
+                       {"node": "Stop if skipped", "input": "Run now?", "show": 300},
+                       {"node": "Build requests", "input": "Stop if skipped",
+                        "show": 4000}]
+    return run_with("P0.2_market_discovery.template.json",
+                    "plan_P0.2_market_discovery.json", m)
+
+
+def test_days_back_is_off_by_default_so_a_scheduled_run_is_unchanged():
+    d = json.load(open(os.path.join(ROOT, "n8n",
+                                    "P0.2_market_discovery.template.json")))
+    cfg = [n for n in d["nodes"] if n["name"] == "Config"][0]
+    rows = {r["name"]: r["value"]
+            for r in cfg["parameters"]["assignments"]["assignments"]}
+    assert rows["days_back"] == "0", \
+        "a backfill switch that is on by default is a cost nobody asked for"
+
+
+def test_the_forward_days_are_emitted_before_any_backfill():
+    """max_requests truncates the list, so whatever is emitted last is what
+    gets dropped. Today's market is what the desk trades; history is only what
+    it learns from. A backfill must never cost the board its live day."""
+    code = [n for n in json.load(open(os.path.join(
+        ROOT, "n8n", "P0.2_market_discovery.template.json")))["nodes"]
+        if n["name"] == "Build requests"][0]["parameters"]["jsCode"]
+    forward = code.index("for (let d = 0; d < days; d++) offsets.push(d);")
+    backward = code.index("for (let d = 1; d <= back; d++) offsets.push(-d);")
+    assert forward < backward, "the live day must be requested first"
+
+
+def test_a_backfill_run_asks_for_days_that_have_already_passed():
+    import datetime
+    r = _p02_requests(days_back="3", days_ahead="1", max_requests="500")
+    assert r["ok"], r
+    dates = sorted({i["for_date"] for i in r["outputs"]["Build requests"]})
+    today = datetime.date.today()
+    past = [d for d in dates
+            if datetime.date.fromisoformat(d) < today]
+    assert len(past) == 3, f"expected three past days, got {dates}"
+
+
+def test_without_days_back_nothing_before_today_is_ever_requested():
+    import datetime
+    r = _p02_requests(days_ahead="2", max_requests="500")
+    assert r["ok"], r
+    today = datetime.date.today()
+    assert all(datetime.date.fromisoformat(i["for_date"]) >= today
+               for i in r["outputs"]["Build requests"]), \
+        "the old behaviour is the default and must stay the default"
+
+
+def test_a_truncating_cap_drops_backfill_and_keeps_today():
+    """The ordering claim, enforced through the cap that actually does the
+    dropping: with room for only one day, that day must be TODAY."""
+    import datetime
+    r = _p02_requests(days_ahead="1", days_back="5", max_requests="3")
+    assert r["ok"], r
+    dates = {i["for_date"] for i in r["outputs"]["Build requests"]}
+    assert dates == {datetime.date.today().isoformat()}, \
+        f"the cap ate the live day: {sorted(dates)}"
