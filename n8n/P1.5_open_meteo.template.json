@@ -35,7 +35,7 @@
           "interval": [
             {
               "field": "hours",
-              "hoursInterval": 6
+              "hoursInterval": 3
             }
           ]
         }
@@ -89,7 +89,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_job: \"P1.5_open_meteo\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+        "jsonBody": "={{ JSON.stringify({ p_job: \"P1.5_open_meteo\", p_trigger: $('Schedule Trigger').isExecuted ? \"schedule\" : ($('Webhook Trigger').isExecuted ? \"webhook\" : \"manual\") }) }}",
         "options": {
           "timeout": 10000,
           "response": {
@@ -211,7 +211,7 @@
       ],
       "parameters": {
         "method": "GET",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/cities?select=city_key,display_name,latitude,longitude,timezone,unit,status&latitude=not.is.null&limit=200",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/cities?select=city_key,display_name,latitude,longitude,timezone,unit,status,nws_supported&latitude=not.is.null&limit=200",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -507,6 +507,19 @@
           "name": "AD4 Supabase"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "// The live reading, made honest before it lands. Two corrections from the\n// audit of 15 Sep 2026:\n//\n//  1. observed_at was written as Open-Meteo's `current.time`, which is LOCAL\n//     wall-clock (timezone=auto) with no zone suffix. Postgres read it as UTC,\n//     so 35 of 54 rows carried an observed_at in the future and every\n//     reading-age check was off by the city's UTC offset. Open-Meteo returns\n//     utc_offset_seconds per location; the true instant is local minus that.\n//\n//  2. Twelve cities have a real station feed (P1.2, api.weather.gov). A model\n//     reading interpolated to a coordinate must never overwrite an instrument\n//     reading at the ICAO the market settles on, so those cities are skipped\n//     here: their live row belongs to P1.2. Their forecasts still land.\nconst p = $('Guard: did anything parse?').first().json;\nconst cities = ($('Build requests').first().json.cities) || [];\nlet res = $('Fetch open-meteo').all().map(i => i.json);\nif (res.length === 1 && Array.isArray(res[0])) res = res[0];\nconst offsets = new Map();\nfor (let i = 0; i < cities.length; i++) {\n  const r = res[i] || {};\n  offsets.set(cities[i].city_key, Number(r.utc_offset_seconds));\n}\nconst station = new Set($('Load cities').all().map(i => i.json).flat()\n  .filter(c => c && c.nws_supported === true).map(c => c.city_key));\n\nfunction toUtc(t, offsetSec) {\n  if (!t) return null;\n  const s = String(t);\n  if (/Z$|[+-]\\d\\d:?\\d\\d$/.test(s)) {\n    const ms = Date.parse(s);\n    return Number.isFinite(ms) ? new Date(ms).toISOString() : null;\n  }\n  const ms = Date.parse(s.length <= 16 ? s + ':00Z' : s + 'Z');\n  if (!Number.isFinite(ms)) return null;\n  const off = Number.isFinite(offsetSec) ? offsetSec : 0;\n  return new Date(ms - off * 1000).toISOString();\n}\n\nconst now = new Date().toISOString();\nconst live = [];\nlet skippedStation = 0;\nfor (const row of (p.live || [])) {\n  if (station.has(row.city_key)) { skippedStation++; continue; }\n  const fixed = toUtc(row.observed_at, offsets.get(row.city_key));\n  // A model row is not a station row: clear the label an earlier P1.2 write\n  // may have left, or the station-only gate would trust a model reading.\n  live.push({ ...row, observed_at: fixed || row.updated_at || now, obs_source: null });\n}\nreturn [{ json: { ...p, live, n_live: live.length, n_live_station_skipped: skippedStation } }];\n"
+      },
+      "id": "93dfc13b-9b22-5587-a0a8-2a7eb712fd8e",
+      "name": "Fix live rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        950,
+        508
+      ]
     }
   ],
   "connections": {
@@ -635,7 +648,7 @@
       "main": [
         [
           {
-            "node": "Write live_weather",
+            "node": "Fix live rows",
             "type": "main",
             "index": 0
           }
@@ -691,6 +704,17 @@
         [
           {
             "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fix live rows": {
+      "main": [
+        [
+          {
+            "node": "Write live_weather",
             "type": "main",
             "index": 0
           }

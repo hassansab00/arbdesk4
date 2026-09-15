@@ -393,7 +393,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_job: \"P4.1_health_watchdog\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+        "jsonBody": "={{ JSON.stringify({ p_job: \"P4.1_health_watchdog\", p_trigger: $('Schedule (every 6h)').isExecuted ? \"schedule\" : ($('Webhook Trigger').isExecuted ? \"webhook\" : \"manual\") }) }}",
         "options": {
           "timeout": 10000,
           "response": {

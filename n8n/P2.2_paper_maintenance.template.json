@@ -29,7 +29,7 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "7 * * * *"
+              "expression": "7 */6 * * *"
             }
           ]
         }
@@ -117,7 +117,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_job: \"P2.2_paper_maintenance\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+        "jsonBody": "={{ JSON.stringify({ p_job: \"P2.2_paper_maintenance\", p_trigger: $('Schedule (hourly)').isExecuted ? \"schedule\" : ($('Webhook Trigger').isExecuted ? \"webhook\" : \"manual\") }) }}",
         "options": {
           "timeout": 10000,
           "response": {

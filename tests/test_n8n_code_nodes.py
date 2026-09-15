@@ -1430,20 +1430,26 @@ def test_p02_does_not_ask_gamma_for_a_parameter_it_ignores():
     )
 
 
-@pytest.mark.parametrize("workflow,field,cap", [
-    ("P0.3_book_volume_snapshot.template.json", "max_bands_per_run", 200),
-    ("P0.4_trade_history.template.json", "max_bands_per_run", 200),
-    ("P0.5_refresh_rules_text.template.json", "max_markets_per_run", 200),
+@pytest.mark.parametrize("workflow,field,low,high", [
+    # P0.3 must see EVERY open band. 54 cities carry 1,100-1,200 bands a day,
+    # and a cap under that truncated every hourly snapshot to the first 1,000
+    # for three days before anyone noticed (audit, 15 Sep 2026). Its Fetch
+    # node batches 20 requests per 250 ms, so 5,000 is still a bounded run,
+    # and 0 (unlimited) is still refused.
+    ("P0.3_book_volume_snapshot.template.json", "max_bands_per_run", 1200, 5000),
+    ("P0.4_trade_history.template.json", "max_bands_per_run", 1, 200),
+    ("P0.5_refresh_rules_text.template.json", "max_markets_per_run", 1, 200),
 ])
-def test_the_per_item_jobs_ship_with_a_cap(workflow, field, cap):
-    """0 means unlimited. P0.3 makes one request per band - about 800 across 37
-    cities - so a first Execute with no cap fires 800 sequential requests at
-    Polymarket and sits there for an hour, or falls over."""
+def test_the_per_item_jobs_ship_with_a_cap(workflow, field, low, high):
+    """0 means unlimited. P0.4 and P0.5 make one request per item and ship
+    small, so a first Execute cannot fire hundreds of sequential requests at
+    Polymarket and sit there for an hour. P0.3 ships sized for the live desk
+    instead - see the parameter note - but still finite."""
     d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
     cfg = [n for n in d["nodes"] if n["name"] == "Config"][0]
     val = int([a for a in cfg["parameters"]["assignments"]["assignments"]
                if a["name"] == field][0]["value"])
-    assert 0 < val <= cap, f"{workflow}: {field}={val} - must ship capped, raise it once it works"
+    assert low <= val <= high, f"{workflow}: {field}={val} - must be within [{low}, {high}]"
 
 
 @pytest.mark.parametrize("workflow", P0_TEMPLATES + [

@@ -303,7 +303,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_job: \"P1.1_live_weather_alerts\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+        "jsonBody": "={{ JSON.stringify({ p_job: \"P1.1_live_weather_alerts\", p_trigger: $('Webhook Trigger').isExecuted ? \"webhook\" : \"manual\" }) }}",
         "options": {
           "timeout": 10000,
           "response": {

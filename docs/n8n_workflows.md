@@ -305,3 +305,37 @@ Kong Observatory, and the file says what to change if the market turns out to
 settle on the airport instead.
 
 Coverage went 37 → 54 cities, 296 → 432 forecast days, 37 → 54 live readings.
+
+## 15 September 2026 — the schedule gate, the live rows, and the timing refresh
+
+Three things changed in the live instance and are mirrored in the templates:
+
+- **Schedule gate.** `$execution.mode` is `production` or `test`, never
+  `trigger`, so every scheduled run had told `should_run()` it was a manual
+  override and the cadence in `settings.workflow_schedules` was never
+  enforced. `Check schedule` now sends
+  `p_trigger: $('Schedule Trigger').isExecuted ? "schedule" : ($('Webhook Trigger').isExecuted ? "webhook" : "manual")`
+  (P3.1 ORs its two schedules; P2.2 and P4.1 use their own trigger names).
+  `settings.workflow_schedules` is in `auto` with a minimum interval per job,
+  so a second fire inside the interval is skipped.
+- **P1.5 live rows.** Open-Meteo's `current.time` is local wall-clock and was
+  written as UTC, so up to 35 of 54 `live_weather.observed_at` values sat in
+  the future. `Fix live rows` converts with `utc_offset_seconds`, drops the
+  live row for the 12 `nws_supported` cities (P1.2 owns those, as instrument
+  readings at the settling station) and clears `obs_source` on model rows.
+  P1.2's `Stamp live source` writes `source='NWS', source_kind='station'`, so
+  a row says what it is whichever writer touched it last.
+- **P0.3 pagination.** `Load live bands` pages in 1,000-row steps (up to
+  five), `max_bands_per_run` is 5,000; a run now requests every open band
+  (1,200 on 15 Sep) instead of the first 1,000 PostgREST returns.
+
+**Timing columns.** `live_weather.minutes_to_peak`, `peak_window_state`,
+`day_decided`, `running_max_c/at`, `running_min_c`, `temp_change_1h/3h`,
+`trend` and `local_date` are filled by `public.refresh_live_weather_timing()`
+(`sql/ad4_live_weather_timing.sql`). A statement trigger runs it after every
+`live_weather` write and the pg_cron job `ad4_refresh_live_weather_timing`
+runs it every 10 minutes, because `minutes_to_peak` moves with the clock.
+`day_decided` is true when the local clock is past 21:00, or when the peak
+window closed more than an hour ago and the reading is rolling over or at
+least 1 °C under the day's maximum; that is what opens the S5 gate.
+

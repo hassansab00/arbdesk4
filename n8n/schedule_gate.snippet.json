@@ -29,7 +29,7 @@
         0,
         0
       ],
-      "notes": "Self-contained on purpose. The gate does not read your workflow's existing credential node, because it cannot know what you called it. Fill in the two boxes, and set `job` to the key this workflow uses in settings.workflow_schedules: P0.2_market_discovery, P0.3_book_volume_snapshot, P0.4_trade_history or P0.5_refresh_rules_text."
+      "notes": "Self-contained on purpose. The gate does not read your workflow's existing credential node, because it cannot know what you called it. Fill in the two boxes, and set `job` to the key this workflow uses in settings.workflow_schedules: P0.2_market_discovery, P0.3_book_volume_snapshot, P0.4_trade_history or P0.5_refresh_rules_text. The Check schedule node names the trigger nodes as `Schedule Trigger` and `Webhook Trigger`; rename those references if your workflow calls them something else. ($execution.mode is 'production' or 'test', never 'trigger', so it cannot tell a schedule from a button.)"
     },
     {
       "parameters": {
@@ -50,7 +50,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_job: $('Gate config').first().json.job, p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+        "jsonBody": "={{ JSON.stringify({ p_job: $('Gate config').first().json.job, p_trigger: $('Schedule Trigger').isExecuted ? \"schedule\" : ($('Webhook Trigger').isExecuted ? \"webhook\" : \"manual\") }) }}",
         "options": {
           "timeout": 10000,
           "response": {

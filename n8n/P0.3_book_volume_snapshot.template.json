@@ -133,7 +133,7 @@
               "id": "4",
               "name": "max_bands_per_run",
               "type": "string",
-              "value": "60"
+              "value": "5000"
             }
           ]
         }
@@ -150,7 +150,7 @@
       ],
       "parameters": {
         "method": "GET",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/bands?select=band_id,token_yes,token_no,condition_id,market_id,markets!inner(resolution_date)&markets.resolution_date=gte.{{ $now.minus({ days: 1 }).toFormat('yyyy-MM-dd') }}&token_yes=not.is.null&limit=5000",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/bands?select=band_id,token_yes,token_no,condition_id,market_id,markets!inner(resolution_date)&markets.resolution_date=gte.{{ $now.minus({ hours: 8 }).toFormat('yyyy-MM-dd') }}&token_yes=not.is.null&order=market_id.asc,band_id.asc&limit=1000",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -165,7 +165,27 @@
           ]
         },
         "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "supabaseApi"
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "offset",
+                    "value": "={{ $pageCount * 1000 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !Array.isArray($response.body) || $response.body.length < 1000 }}",
+              "limitPagesFetched": true,
+              "maxRequests": 5
+            }
+          }
+        }
       },
       "alwaysOutputData": true,
       "onError": "continueRegularOutput",
@@ -396,7 +416,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_job: \"P0.3_book_volume_snapshot\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+        "jsonBody": "={{ JSON.stringify({ p_job: \"P0.3_book_volume_snapshot\", p_trigger: $('Schedule Trigger').isExecuted ? \"schedule\" : ($('Webhook Trigger').isExecuted ? \"webhook\" : \"manual\") }) }}",
         "options": {
           "timeout": 10000,
           "response": {
@@ -443,7 +463,7 @@
     },
     {
       "parameters": {
-        "content": "## Why this workflow is capped, and why it forgets\n\n**max_bands_per_run / max_markets_per_run ship with a small number.**\nThis job makes ONE REQUEST PER ITEM - roughly 800 across 37 cities. A first\nExecute with no cap fires 800 sequential requests at Polymarket and either sits\nthere for an hour or takes the instance down. Raise it once you have seen a run\nfinish.\n\n**A successful run does not keep its data.** n8n's execution store holds the\ninput AND output of every node, so a workflow whose job is to move a large\nthird-party payload into Supabase holds that payload twice and then writes it\ninto the executions database - on every run. That is what shows up as\n\"workspace offline, 503\".\n\nFailed runs are still saved in full, which is when the payload is worth having.\nThe Summary node's line is written to `ingest_log` either way, so\n`v_workflow_runs` and the AD4 Workflows page still show what happened.",
+        "content": "## Why this workflow is capped, and why it forgets\n\n**max_bands_per_run ships at 5000, which covers every open band; lower it on a first run if you want a small one.**\nThis job makes ONE REQUEST PER ITEM - roughly 800 across 37 cities. A first\nExecute with no cap fires 800 sequential requests at Polymarket and either sits\nthere for an hour or takes the instance down. Raise it once you have seen a run\nfinish.\n\n**A successful run does not keep its data.** n8n's execution store holds the\ninput AND output of every node, so a workflow whose job is to move a large\nthird-party payload into Supabase holds that payload twice and then writes it\ninto the executions database - on every run. That is what shows up as\n\"workspace offline, 503\".\n\nFailed runs are still saved in full, which is when the payload is worth having.\nThe Summary node's line is written to `ingest_log` either way, so\n`v_workflow_runs` and the AD4 Workflows page still show what happened.",
         "height": 420,
         "width": 460
       },

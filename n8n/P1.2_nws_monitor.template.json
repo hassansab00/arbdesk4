@@ -432,7 +432,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($('Guard: did anything parse?').first().json.liveRows) }}",
+        "jsonBody": "={{ JSON.stringify($json.liveRows) }}",
         "options": {
           "response": {
             "response": {
@@ -652,7 +652,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_job: \"P1.2_nws_monitor\", p_trigger: $execution.mode === \"trigger\" ? \"schedule\" : $execution.mode }) }}",
+        "jsonBody": "={{ JSON.stringify({ p_job: \"P1.2_nws_monitor\", p_trigger: $('Schedule Trigger').isExecuted ? \"schedule\" : ($('Webhook Trigger').isExecuted ? \"webhook\" : \"manual\") }) }}",
         "options": {
           "timeout": 10000,
           "response": {
@@ -708,6 +708,19 @@
       "position": [
         2300,
         320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// live_weather rows from this workflow are INSTRUMENT readings at the ICAO\n// the market settles on. Say so on the row: P1.5 writes source='open-meteo',\n// source_kind='model', and a merge upsert keeps whatever the other writer\n// left, so without this stamp a station reading sat under a 'model' label\n// and the desk's station-only gate (S5) could not trust the column it reads.\nconst p = $('Guard: did anything parse?').first().json;\nconst liveRows = (p.liveRows || []).map(r => ({ ...r, obs_source: 'NWS', source: 'NWS', source_kind: 'station' }));\nreturn [{ json: { ...p, liveRows } }];\n"
+      },
+      "id": "17d6b497-8556-508c-aa9d-af913c237c7c",
+      "name": "Stamp live source",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        300
       ]
     }
   ],
@@ -837,7 +850,7 @@
       "main": [
         [
           {
-            "node": "Write live_weather",
+            "node": "Stamp live source",
             "type": "main",
             "index": 0
           }
@@ -937,6 +950,17 @@
         [
           {
             "node": "Save NWS ids",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stamp live source": {
+      "main": [
+        [
+          {
+            "node": "Write live_weather",
             "type": "main",
             "index": 0
           }

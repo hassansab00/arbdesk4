@@ -8,6 +8,26 @@ database, the live n8n execution log, or the live Actions logs during this
 session unless it says otherwise. Nothing was changed: no SQL was applied, no
 workflow was edited, no job was dispatched.
 
+> **Update, 15 September 2026, 17:00–18:30 UTC — Phase 0 applied.** The
+> paragraph above describes the audit pass only. The same session then applied
+> Phase 0 against the live system; the plan below is unchanged and the table
+> says what is already done.
+>
+> | Item | Done | Evidence |
+> |---|---|---|
+> | PostgREST 1,000-row cap in every engine read | `rest_all` everywhere, guard test (commit `806a49a`) | `tests/test_pagination_guard.py` |
+> | Schedule gate (`$execution.mode` is never `trigger`) | 11 workflows republished with `$('Schedule Trigger').isExecuted`; `settings.workflow_schedules` in `auto` | `should_run()` now receives `schedule` |
+> | P0.3 truncated at 1,000 bands | `Load live bands` pages 5 × 1,000, cap 5,000 | `ingest_log` 18:01 UTC: `requested: 1200` |
+> | P1.5 `observed_at` written local-as-UTC; model rows overwrote station rows | `Fix live rows` node (UTC via `utc_offset_seconds`, station cities left to P1.2); P1.2 stamps `source_kind='station'` | `live_weather`: 0 rows in the future, 12 station rows |
+> | `live_weather` timing columns never written | `refresh_live_weather_timing()` + statement trigger + pg_cron every 10 min (`sql/ad4_live_weather_timing.sql`) | 54 rows filled; cron run 18:20 UTC succeeded |
+> | RC6 database at 517 MB | `VACUUM (FULL, ANALYZE)` on the four big tables; four duplicate unique constraints dropped | 397 MB after; `weather_forecasts` 125 → 30 MB |
+> | Venue evidence never captured | Root cause fixed on `main` (`50c7c8c`: Gamma omits closed markets unless `closed=true`), merged here | first daily run after the merge |
+> | Cadences | P1.5 every 3 h, P2.2 every 6 h | n8n schedules |
+>
+> Still with Hassan: merge this branch into `main` (Actions run from `main`),
+> set the repository variable `PAPER_TRADES_ENABLED=true`, enable Vercel
+> deployment protection, publish P3.1 once an SMTP credential exists.
+
 ---
 
 ## 0. Verdict in one page
