@@ -44,14 +44,30 @@ def _upcoming_or_past_unclosed_markets():
 
 def gamma_market_resolution(condition_id):
     """
-    Best-effort read of Gamma's resolution status for one market.
-    SCHEMA/API ASSUMPTION: gamma-api.polymarket.com/markets?condition_ids=
-    returns a list with `closed`/`umaResolutionStatus`/`outcomePrices` -
-    verify against a live response before trusting in production; this
-    session cannot reach gamma-api.polymarket.com to confirm the exact
-    shape (network egress blocked here, not in GitHub Actions).
+    Read Gamma's resolution status for one market.
+
+    THE ASSUMPTION THIS DOCSTRING USED TO CARRY IS NOW MEASURED, and it was
+    half wrong. The response shape was right - a list carrying `closed`,
+    `umaResolutionStatus` and `outcomePrices` - but the QUERY was not:
+
+        ?condition_ids=X                -> []
+        ?condition_ids=X&closed=true    -> the market, closed true,
+                                           umaResolutionStatus "resolved"
+        ?condition_ids=X&active=false   -> []
+
+    Gamma's /markets EXCLUDES CLOSED MARKETS BY DEFAULT, so asking about a
+    settled condition returned an empty list rather than an answer. This
+    function is only ever called about markets whose resolution date has
+    PASSED - that is, precisely the ones the default filter hides - so
+    without closed=true it could only ever report "no record".
+
+    paper_settlement.py carried the identical bug and it cost that job every
+    proof it had ever tried to collect. Verified against the live API on
+    tokyo 24C, 2026-09-13 (condition 0x0759c5a6...).
     """
-    r = requests.get(GAMMA_MARKETS_URL, params={"condition_ids": condition_id}, timeout=30)
+    r = requests.get(GAMMA_MARKETS_URL,
+                     params={"condition_ids": condition_id, "closed": "true"},
+                     timeout=30)
     r.raise_for_status()
     rows = r.json()
     return rows[0] if rows else None
@@ -178,9 +194,19 @@ def main():
 
         gamma_disputed = False
         if gamma is not None and gamma.get("closed") and winning_band_id:
-            gamma_disputed = True  # TODO: unmeasured - compare gamma's outcomePrices/winning
-            # token against winning_band_id's token_yes once the real Gamma response shape
-            # (see gamma_market_resolution docstring) is confirmed against a live call.
+            # REFUSES TO SETTLE, deliberately. The comparison this should make
+            # - gamma's winning token against winning_band_id's token_yes - is
+            # still unwritten, and a cross-check that has not been implemented
+            # must not be reported as one that passed.
+            #
+            # Until the closed=true fix in gamma_market_resolution(), `gamma`
+            # came back None for every market here (the query hid exactly the
+            # settled markets this walks), so this branch never ran and the
+            # code below auto-settled on the weather reading ALONE, with the
+            # venue cross-check silently absent. Finding Gamma again restores
+            # the gate; that it now refuses everything is the honest state of
+            # an unimplemented comparison, not a regression.
+            gamma_disputed = True
 
         if gamma_disputed:
             n_flagged += 1

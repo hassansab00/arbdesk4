@@ -126,11 +126,20 @@ def venue_tables(monkeypatch):
     return go
 
 
-def test_the_walk_is_oldest_first_so_the_budget_lands_where_answers_exist(monkeypatch):
+def test_the_walk_starts_at_the_newest_day_the_venue_can_still_answer(monkeypatch):
     """Bands are fetched in chunks of 100 MARKETS, so the order of the markets
-    read is what decides which bands a run that stops early ever sees."""
+    read decides which bands a budget-limited run ever sees - about one day's
+    worth per run.
+
+    SETTLE_LAG_DAYS drops the days UMA has not ruled on; the freshest day that
+    remains is both answerable and the most useful evidence, being what
+    advances fact_band_outcome's frontier.
+
+    (Neither ordering was why nothing was ever captured - the Gamma request
+    was filtering closed markets out. See the closed=true tests below.)
+    """
     markets = [{'market_id': 'm%03d' % i,
-                'resolution_date': '2026-08-01' if i < 150 else '2026-09-01'}
+                'resolution_date': '2026-04-01' if i < 150 else '2026-09-13'}
                for i in range(200)]
     asked = []
 
@@ -144,15 +153,28 @@ def test_the_walk_is_oldest_first_so_the_budget_lands_where_answers_exist(monkey
     monkeypatch.setattr(settlement, 'rest_all', all_rows)
     settlement._candidate_bands([], days_back=180)
 
-    assert 'm000' in asked[0], 'the oldest markets must be asked about first'
-    assert 'm199' not in asked[0], 'the newest day must not lead the walk'
+    # Chunks are 100 markets wide, so a small fixture puts both days in the
+    # first chunk; what matters is which comes FIRST, because that is the end
+    # the budget is spent from.
+    first = asked[0]
+    assert first.index('m199') < first.index('m000'), \
+        'the freshest answerable day must lead the walk, not April'
 
 
-def test_the_markets_read_is_ordered_oldest_first(venue_tables):
+def test_the_markets_read_is_ordered_newest_first(venue_tables):
     calls = venue_tables([], [])
     settlement._candidate_bands([], days_back=180)
     order = next(order for path, _, order in calls if path == 'markets')
-    assert order.startswith('resolution_date.asc')
+    assert order.startswith('resolution_date.desc')
+
+
+def test_each_candidate_carries_the_day_it_settles_on(venue_tables):
+    """Without the day attached, a skipped band cannot say WHICH end of the
+    window it failed at - which is the whole diagnosis."""
+    venue_tables([{'market_id': 'm', 'resolution_date': '2026-09-11'}],
+                 [_band('b', 'm')])
+    picked = settlement._candidate_bands([], days_back=180)
+    assert picked[0]['resolution_date'] == '2026-09-11'
 
 
 def test_markets_are_selected_by_age_not_by_the_local_closed_flag(venue_tables):
@@ -215,3 +237,103 @@ def test_a_budget_limited_run_says_what_it_did_not_reach(monkeypatch):
     assert detail['candidates'] == 50
     assert detail['unreached'] == 50
     assert detail['evidence_captured'] == 0
+
+
+def test_a_run_that_captures_nothing_names_the_reason(monkeypatch):
+    """Zero has now been misread twice: once as "nothing to collect" when the
+    budget had run out, and once as "the venue disagrees" when the venue had
+    simply forgotten the market. The log must distinguish them."""
+    bands = [dict(_band('b%d' % i, 'm'), resolution_date='2026-04-0%d' % (i + 1))
+             for i in range(3)]
+    monkeypatch.setattr(settlement, 'rest_all',
+                        lambda path, params=None, **kw: [])
+    monkeypatch.setattr(settlement, '_candidate_bands',
+                        lambda *args, **kw: bands)
+    monkeypatch.setattr(settlement, 'log_run', lambda *args: None)
+    # Gamma returns an empty list: the market is past the venue's retention.
+    monkeypatch.setattr(paper_worker, 'public_json', lambda url, params: [])
+
+    detail = settlement.cycle(budget_seconds=30)
+    assert detail['evidence_captured'] == 0
+    assert detail['skips'] == {'venue_has_no_record': 3}
+    assert detail['skip_day_spans']['venue_has_no_record'] == \
+        ['2026-04-01', '2026-04-03']
+    assert detail['checked_span'] == ['2026-04-01', '2026-04-03']
+
+
+def test_a_market_awaiting_uma_is_not_confused_with_a_forgotten_one(monkeypatch):
+    """Both produce no proof, and they mean opposite things: one is worth
+    asking again tomorrow, the other never is."""
+    band = dict(_band('b', 'm'), resolution_date='2026-09-14')
+    monkeypatch.setattr(settlement, 'rest_all',
+                        lambda path, params=None, **kw: [])
+    monkeypatch.setattr(settlement, '_candidate_bands',
+                        lambda *args, **kw: [band])
+    monkeypatch.setattr(settlement, 'log_run', lambda *args: None)
+    monkeypatch.setattr(paper_worker, 'public_json', lambda url, params: [
+        {'conditionId': band['condition_id'], 'closed': False,
+         'umaResolutionStatus': 'proposed'}])
+
+    detail = settlement.cycle(budget_seconds=30)
+    assert detail['skips'] == {'not_resolved_yet': 1}
+
+
+# --------------------------------------------------------------------------
+# WHY NO ORDERING COULD EVER HAVE WORKED.
+#
+# Gamma's /markets EXCLUDES CLOSED MARKETS BY DEFAULT. Asking for a settled
+# condition without closed=true returns [] - not an error, not a 404, an empty
+# list - so every band looked like one the venue had no record of. The single
+# thing this job exists to find was the thing the request filtered out.
+#
+# Measured against the live API on a real settled band (tokyo 24C, 09-13):
+#
+#   ?condition_ids=X               -> []
+#   ?condition_ids=X&closed=true   -> the market, closed true, uma resolved
+#   ?condition_ids=X&active=false  -> []
+# --------------------------------------------------------------------------
+def test_the_gamma_lookup_asks_for_closed_markets(monkeypatch):
+    band, gamma, clob = data()
+    band.update({'band_id': 'b', 'market_id': 'm', 'resolution_date': '2026-09-13'})
+    gamma['conditionId'] = band['condition_id']
+    asked = []
+
+    def venue(url, params):
+        asked.append((url, params))
+        return [gamma] if 'gamma-api' in url else clob
+
+    monkeypatch.setattr(settlement, 'rest_all', lambda path, params=None, **kw: [])
+    monkeypatch.setattr(settlement, '_candidate_bands', lambda *a, **k: [band])
+    monkeypatch.setattr(settlement, 'upsert', lambda t, rows, key: len(rows))
+    monkeypatch.setattr(settlement, 'rpc', lambda fn, args: 0)
+    monkeypatch.setattr(settlement, 'log_run', lambda *a: None)
+    monkeypatch.setattr(paper_worker, 'public_json', venue)
+
+    detail = settlement.cycle(budget_seconds=30)
+    assert detail['evidence_captured'] == 1
+
+    gamma_call = next(p for url, p in asked if 'gamma-api' in url)
+    assert gamma_call.get('closed') == 'true', \
+        'without this the venue never returns a settled market at all'
+
+
+def test_the_stored_source_url_reproduces_the_request_that_was_made(monkeypatch):
+    """The proof cites its sources. A citation that returns [] when replayed
+    is not a citation."""
+    band, gamma, clob = data()
+    band.update({'band_id': 'b', 'market_id': 'm'})
+    gamma['conditionId'] = band['condition_id']
+    writes = []
+
+    monkeypatch.setattr(settlement, 'rest_all', lambda path, params=None, **kw: [])
+    monkeypatch.setattr(settlement, '_candidate_bands', lambda *a, **k: [band])
+    monkeypatch.setattr(settlement, 'upsert',
+                        lambda t, rows, key: writes.extend(rows) or len(rows))
+    monkeypatch.setattr(settlement, 'rpc', lambda fn, args: 0)
+    monkeypatch.setattr(settlement, 'log_run', lambda *a: None)
+    monkeypatch.setattr(paper_worker, 'public_json',
+                        lambda url, params: [gamma] if 'gamma-api' in url else clob)
+
+    settlement.cycle(budget_seconds=30)
+    gamma_source = next(u for u in writes[0]['source_urls'] if 'gamma-api' in u)
+    assert 'closed=true' in gamma_source

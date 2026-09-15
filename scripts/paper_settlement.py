@@ -47,7 +47,7 @@ SETTLE_LAG_DAYS = 1
 
 
 def _candidate_bands(position_band_ids, days_back, settled_conditions=frozenset()):
-    """Open positions first, then the unsettled archive OLDEST day first.
+    """Open positions first, then the unsettled archive, newest answerable day first.
 
     Venue outcomes are valuable model evidence even when the paper desk held
     no position. Limiting collection to holdings left calibration permanently
@@ -55,20 +55,28 @@ def _candidate_bands(position_band_ids, days_back, settled_conditions=frozenset(
 
     TWO THINGS DECIDE WHETHER THAT SWEEP EVER ARRIVES ANYWHERE.
 
-    ORDER. It used to walk resolution_date DESCENDING, and a run checks a few
-    hundred bands before its time budget stops it. One day of markets is 220
-    to 560 bands, so the walk never reached past the newest day or two - which
-    are precisely the days UMA has not resolved yet. Nothing resolved, so
-    nothing was captured; nothing captured meant `existing` stayed empty, so
-    the next run restarted at the identical head and re-asked the identical
-    unanswerable questions. paper_resolution_evidence held 0 rows against
-    12,868 identified bands, and v_venue_band_resolution - which every
-    verified outcome view is built on - was empty because of it.
+    ORDER. A run checks a few hundred bands before its time budget stops it,
+    and one day of markets is 220 to 560 bands - so the walk covers roughly a
+    day per run and the end it starts from decides what it ever sees. The
+    original walked newest-first and spent every run on the day or two UMA had
+    not ruled on yet; a first repair walked oldest-first instead. Both
+    captured nothing, but NEITHER ordering was the reason - see the note on
+    closed=true at the Gamma request in cycle(), which is why no ordering
+    could have worked.
 
-    Oldest-first spends the budget where an answer definitely exists, and each
-    answer is remembered, so the walk advances by everything it captured
-    instead of resetting. This is the same correction the weather backlog
-    needed: a cap over an unproductive head is a cap that never gets anywhere.
+    Ordering still matters once that is fixed, and the right end is the
+    NEWEST day old enough to have been ruled on: SETTLE_LAG_DAYS drops the
+    too-new end, and the freshest remaining day is both answerable and the
+    most valuable, being what advances fact_band_outcome's frontier and widens
+    the backtest window. Each capture is remembered, so the walk marches
+    backwards day by day through history.
+
+    NOTHING HERE IS INFERRED ANY MORE. `skips` counts WHY each band produced
+    no proof and over which days, because a bare zero was read wrong three
+    times: as "nothing to collect" when the budget had run out, as "the venue
+    forgot it" when the request was filtering it out, and as a retention wall
+    that does not exist. The counters are what finally located the real
+    fault.
 
     AUTHORITY. It also required markets.closed to be true. That column is
     maintained by the ingest side and goes stale on days it did not run: 225
@@ -101,14 +109,17 @@ def _candidate_bands(position_band_ids, days_back, settled_conditions=frozenset(
         ('select', 'market_id,resolution_date'),
         ('resolution_date', 'gte.' + since),
         ('resolution_date', 'lte.' + until),
-    ], order='resolution_date.asc,market_id.asc')
-    market_ids = [str(m['market_id']) for m in markets]
+    ], order='resolution_date.desc,market_id.asc')
+    day_of = {str(m['market_id']): m.get('resolution_date') for m in markets}
+    market_ids = list(day_of)
     for i in range(0, len(market_ids), 100):
         chunk = market_ids[i:i + 100]
-        wanted += rest_all('bands', {
+        for band in rest_all('bands', {
             'market_id': 'in.(' + ','.join(chunk) + ')',
             'select': 'band_id,market_id,condition_id,token_yes,token_no',
-        }, order='band_id.asc')
+        }, order='band_id.asc'):
+            band['resolution_date'] = day_of.get(str(band['market_id']))
+            wanted.append(band)
 
     # Stable de-duplication; position bands were appended first and therefore
     # remain first when they also appear in the archive sweep. Bands whose
@@ -128,6 +139,7 @@ def cycle(budget_seconds=60, days_back=180, max_new_evidence=100):
     from paper_worker import public_json
     started,settled,checked=time.monotonic(),0,set()
     captured,failed,first_failure=0,0,None
+    days_checked=[]
     positions=rest_all('paper_positions',{'shares':'gt.0','select':'band_id,account_id,side'},order='band_id,account_id,side')
     position_band_ids=list(dict.fromkeys(str(p['band_id']) for p in positions))
     existing={str(e['condition_id']) for e in rest_all(
@@ -135,6 +147,20 @@ def cycle(budget_seconds=60, days_back=180, max_new_evidence=100):
 
     candidates=_candidate_bands(position_band_ids,days_back,existing)
     unreached=0
+    skips,spans={},{}
+
+    def skip(reason,band):
+        """Why this band produced no proof, and over which days.
+
+        A zero with no reason attached has now been misread twice: once as
+        "nothing to collect" when the budget had run out, and once as "the
+        venue disagrees" when the venue had simply forgotten the market.
+        """
+        skips[reason]=skips.get(reason,0)+1
+        day=band.get('resolution_date')
+        if day:
+            span=spans.setdefault(reason,[day,day])
+            span[0],span[1]=min(span[0],day),max(span[1],day)
     for index,band in enumerate(candidates):
         if time.monotonic()-started>budget_seconds or captured>=max_new_evidence:
             unreached=len(candidates)-index
@@ -143,23 +169,50 @@ def cycle(budget_seconds=60, days_back=180, max_new_evidence=100):
         if band_id in checked or str(band.get('condition_id')) in existing:
             continue
         checked.add(band_id)
+        if band.get('resolution_date'): days_checked.append(band['resolution_date'])
         if not band.get('condition_id') or not band.get('token_yes') or not band.get('token_no'):
+            skip('no_identity',band)
             continue
         try:
             gamma_url='https://gamma-api.polymarket.com/markets'
-            markets=public_json(gamma_url,{'condition_ids':band['condition_id']})
+            # closed=true IS LOAD-BEARING, and its absence is why this job had
+            # never once produced a proof.
+            #
+            # Gamma's /markets excludes closed markets BY DEFAULT. Asking for a
+            # settled condition without it returns [] - not an error, not a
+            # 404, an empty list - so every band looked like a market the venue
+            # had no record of. The one thing this job exists to find is the
+            # one thing the request was filtering out.
+            #
+            # Measured against the live API on a real settled band (tokyo
+            # 24C, 2026-09-13):
+            #
+            #   ?condition_ids=X                -> []
+            #   ?condition_ids=X&closed=true    -> the market, closed true,
+            #                                      umaResolutionStatus resolved
+            #   ?condition_ids=X&active=false   -> []
+            #
+            # verify() still re-checks closed and umaResolutionStatus itself,
+            # so this widens what can be SEEN without widening what is trusted.
+            gamma_params={'condition_ids':band['condition_id'],'closed':'true'}
+            markets=public_json(gamma_url,gamma_params)
             gamma=next((m for m in markets if m.get('conditionId')==band['condition_id']),None)
-            if not gamma or gamma.get('closed') is not True or gamma.get('umaResolutionStatus')!='resolved':
+            if not gamma:
+                skip('venue_has_no_record',band)  # past Polymarket's retention
+                continue
+            if gamma.get('closed') is not True or gamma.get('umaResolutionStatus')!='resolved':
+                skip('not_resolved_yet',band)
                 continue
             clob_url='https://clob.polymarket.com/markets/'+band['condition_id']
             clob=public_json(clob_url,{})
             winner=verify(band,gamma,clob)
             if not winner:
+                skip('void_or_split_payout',band)
                 continue
             identity=hashlib.sha256(json.dumps({'gamma':gamma,'clob':clob},sort_keys=True,separators=(',',':')).encode()).hexdigest()
             upsert('paper_resolution_evidence',[{'proof_id':identity,'condition_id':band['condition_id'],
                 'token_yes':band['token_yes'],'token_no':band['token_no'],'winning_token':winner,'gamma':gamma,'clob':clob,
-                'source_urls':[gamma_url+'?condition_ids='+band['condition_id'],clob_url]}],'proof_id')
+                'source_urls':[gamma_url+'?condition_ids='+band['condition_id']+'&closed=true',clob_url]}],'proof_id')
             existing.add(str(band['condition_id']))
             captured+=1
             settled+=rpc('settle_paper_inventory',{'p_band':band['band_id'],'p_proof':identity})
@@ -174,7 +227,9 @@ def cycle(budget_seconds=60, days_back=180, max_new_evidence=100):
     # what let an unreachable archive look healthy for days.
     detail={'positions_settled':settled,'evidence_captured':captured,
             'bands_checked':len(checked),'failed':failed,'first_failure':first_failure,
-            'candidates':len(candidates),'unreached':unreached}
+            'candidates':len(candidates),'unreached':unreached,
+            'skips':skips,'skip_day_spans':spans,
+            'checked_span':[min(days_checked),max(days_checked)] if days_checked else None}
     log_run('paper_settlement',status,settled+captured,detail)
     return detail
 
