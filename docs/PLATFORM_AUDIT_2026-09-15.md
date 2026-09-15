@@ -16,8 +16,8 @@ workflow was edited, no job was dispatched.
 > | Item | Done | Evidence |
 > |---|---|---|
 > | PostgREST 1,000-row cap in every engine read | `rest_all` everywhere, guard test (commit `806a49a`) | `tests/test_pagination_guard.py` |
-> | Schedule gate (`$execution.mode` is never `trigger`) | 11 workflows republished with `$('Schedule Trigger').isExecuted`; `settings.workflow_schedules` in `auto` | P0.3 run through its Schedule Trigger (execution 7627) was skipped: "ran 33 min ago; minimum interval is 50 min" |
-> | P0.3 truncated at 1,000 bands | `Load live bands` pages 5 × 1,000 over an 8-hour window, cap 5,000 | the window holds 1,122 bands on 15 Sep, above the cap; first scheduled run after publish at 19:00 UTC |
+> | Schedule gate (`$execution.mode` is never `trigger`) | 11 workflows republished with `$('Schedule Trigger').isExecuted`; `settings.workflow_schedules` in `auto` | P0.3's 19:00 UTC scheduled run (execution 7629) reached `should_run()` as `schedule`: "60 min since last run, interval 50 min"; a test run 27 minutes after the previous one was refused |
+> | P0.3 truncated at 1,000 bands | `Load live bands` pages 5 × 1,000 over an 8-hour window, cap 5,000 | 19:00 UTC scheduled run: `requested: 1122` (every band in the window), 924 books written |
 > | P1.5 `observed_at` written local-as-UTC; model rows overwrote station rows | `Fix live rows` node (UTC via `utc_offset_seconds`, station cities left to P1.2); P1.2 stamps `source_kind='station'` | `live_weather`: 0 rows in the future, 12 station rows |
 > | `live_weather` timing columns never written | `refresh_live_weather_timing()` + statement trigger + pg_cron every 10 min (`sql/ad4_live_weather_timing.sql`) | 54 rows filled; cron run 18:20 UTC succeeded |
 > | RC6 database at 517 MB | `VACUUM (FULL, ANALYZE)` on the four big tables; four duplicate unique constraints dropped | 397 MB after; `weather_forecasts` 125 → 30 MB |
