@@ -82,7 +82,7 @@ jobs:
         run: python scripts/edge_engine.py
 
       - name: Preserve predictive and synthesis evidence
-        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED == 'true' }}
+        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}
         timeout-minutes: 3
         run: python scripts/research_capture.py
         env:
@@ -94,26 +94,26 @@ jobs:
       # against the board the edge engine just priced. It must come BEFORE the
       # proposals step, which is the whole reason the chain is one job.
       - name: Strategy signals
-        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED == 'true' }}
+        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}
         timeout-minutes: 3
         run: python scripts/signal_engine.py
 
       - name: Paper strategy proposals
-        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED == 'true' }}
+        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}
         timeout-minutes: 3
         run: python scripts/paper_plans.py
 
       - name: Venue-confirmed paper settlement
-        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED == 'true' }}
+        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}
         timeout-minutes: 2
         run: python scripts/paper_settlement.py
 
       - name: Paper exit policies
-        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED == 'true' }}
+        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}
         timeout-minutes: 2
         run: python scripts/paper_exits.py
 
       - name: Paper order recovery sweep
-        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED == 'true' }}
+        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}
         timeout-minutes: 3
         run: python scripts/paper_worker.py

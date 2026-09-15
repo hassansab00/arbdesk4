@@ -77,10 +77,20 @@ jobs:
       # 3. Capture final venue truth. Gamma and CLOB must agree on condition,
       #    token identities and winner. This also settles matching paper
       #    positions, but collects evidence even when no position existed.
+      # The budget is passed explicitly because the script's own defaults are
+      # sized for the intraday chain, where this step shares a runner with
+      # five others and must not hold it. Here it has the job almost to
+      # itself. Until 15 Sep the sweep captured nothing at all (Gamma omits a
+      # settled market unless the request says so), so 60 seconds looked
+      # sufficient; the first run that worked captured 47 proofs in that
+      # minute and left 14,165 candidates unreached. A market is only
+      # confirmed once every one of its 220-560 bands is proved, which at 47
+      # a run is never. Fifteen minutes inside a twenty-minute timeout walks
+      # roughly 700 a run instead, and the walk remembers what it captured.
       - name: Venue-confirmed settlement sweep
         if: ${{ !cancelled() }}
         timeout-minutes: 20
-        run: python scripts/paper_settlement.py
+        run: python scripts/paper_settlement.py --budget-seconds 900 --max-evidence 2000
 
       # 4. Measure forecast skill only against final station-authority
       #    evidence. Until that evidence exists, this writes nothing rather
