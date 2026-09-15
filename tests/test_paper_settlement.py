@@ -131,16 +131,12 @@ def test_the_walk_starts_at_the_newest_day_the_venue_can_still_answer(monkeypatc
     read decides which bands a budget-limited run ever sees - about one day's
     worth per run.
 
-    Both ends of the range are unproductive, and BOTH have been measured:
+    SETTLE_LAG_DAYS drops the days UMA has not ruled on; the freshest day that
+    remains is both answerable and the most useful evidence, being what
+    advances fact_band_outcome's frontier.
 
-      too new   UMA has not ruled. The original walked newest-first into this
-                and captured nothing, ever.
-      too old   Polymarket no longer serves the event. The first repair walked
-                oldest-first into this: 14,212 candidates, 267 checked, 0
-                captured, 0 failed, spent on April markets.
-
-    SETTLE_LAG_DAYS removes the too-new end; the walk then takes the freshest
-    day that remains, which is both answerable and the most useful evidence.
+    (Neither ordering was why nothing was ever captured - the Gamma request
+    was filtering closed markets out. See the closed=true tests below.)
     """
     markets = [{'market_id': 'm%03d' % i,
                 'resolution_date': '2026-04-01' if i < 150 else '2026-09-13'}
@@ -280,3 +276,64 @@ def test_a_market_awaiting_uma_is_not_confused_with_a_forgotten_one(monkeypatch)
 
     detail = settlement.cycle(budget_seconds=30)
     assert detail['skips'] == {'not_resolved_yet': 1}
+
+
+# --------------------------------------------------------------------------
+# WHY NO ORDERING COULD EVER HAVE WORKED.
+#
+# Gamma's /markets EXCLUDES CLOSED MARKETS BY DEFAULT. Asking for a settled
+# condition without closed=true returns [] - not an error, not a 404, an empty
+# list - so every band looked like one the venue had no record of. The single
+# thing this job exists to find was the thing the request filtered out.
+#
+# Measured against the live API on a real settled band (tokyo 24C, 09-13):
+#
+#   ?condition_ids=X               -> []
+#   ?condition_ids=X&closed=true   -> the market, closed true, uma resolved
+#   ?condition_ids=X&active=false  -> []
+# --------------------------------------------------------------------------
+def test_the_gamma_lookup_asks_for_closed_markets(monkeypatch):
+    band, gamma, clob = data()
+    band.update({'band_id': 'b', 'market_id': 'm', 'resolution_date': '2026-09-13'})
+    gamma['conditionId'] = band['condition_id']
+    asked = []
+
+    def venue(url, params):
+        asked.append((url, params))
+        return [gamma] if 'gamma-api' in url else clob
+
+    monkeypatch.setattr(settlement, 'rest_all', lambda path, params=None, **kw: [])
+    monkeypatch.setattr(settlement, '_candidate_bands', lambda *a, **k: [band])
+    monkeypatch.setattr(settlement, 'upsert', lambda t, rows, key: len(rows))
+    monkeypatch.setattr(settlement, 'rpc', lambda fn, args: 0)
+    monkeypatch.setattr(settlement, 'log_run', lambda *a: None)
+    monkeypatch.setattr(paper_worker, 'public_json', venue)
+
+    detail = settlement.cycle(budget_seconds=30)
+    assert detail['evidence_captured'] == 1
+
+    gamma_call = next(p for url, p in asked if 'gamma-api' in url)
+    assert gamma_call.get('closed') == 'true', \
+        'without this the venue never returns a settled market at all'
+
+
+def test_the_stored_source_url_reproduces_the_request_that_was_made(monkeypatch):
+    """The proof cites its sources. A citation that returns [] when replayed
+    is not a citation."""
+    band, gamma, clob = data()
+    band.update({'band_id': 'b', 'market_id': 'm'})
+    gamma['conditionId'] = band['condition_id']
+    writes = []
+
+    monkeypatch.setattr(settlement, 'rest_all', lambda path, params=None, **kw: [])
+    monkeypatch.setattr(settlement, '_candidate_bands', lambda *a, **k: [band])
+    monkeypatch.setattr(settlement, 'upsert',
+                        lambda t, rows, key: writes.extend(rows) or len(rows))
+    monkeypatch.setattr(settlement, 'rpc', lambda fn, args: 0)
+    monkeypatch.setattr(settlement, 'log_run', lambda *a: None)
+    monkeypatch.setattr(paper_worker, 'public_json',
+                        lambda url, params: [gamma] if 'gamma-api' in url else clob)
+
+    settlement.cycle(budget_seconds=30)
+    gamma_source = next(u for u in writes[0]['source_urls'] if 'gamma-api' in u)
+    assert 'closed=true' in gamma_source

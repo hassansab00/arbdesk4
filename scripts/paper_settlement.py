@@ -55,37 +55,28 @@ def _candidate_bands(position_band_ids, days_back, settled_conditions=frozenset(
 
     TWO THINGS DECIDE WHETHER THAT SWEEP EVER ARRIVES ANYWHERE.
 
-    WHICH DAYS ARE ANSWERABLE AT ALL. A run checks a few hundred bands before
-    its time budget stops it, and one day of markets is 220 to 560 bands - so
-    the walk covers about one day per run and the starting end decides
-    everything. There is a window, bounded at BOTH ends:
+    ORDER. A run checks a few hundred bands before its time budget stops it,
+    and one day of markets is 220 to 560 bands - so the walk covers roughly a
+    day per run and the end it starts from decides what it ever sees. The
+    original walked newest-first and spent every run on the day or two UMA had
+    not ruled on yet; a first repair walked oldest-first instead. Both
+    captured nothing, but NEITHER ordering was the reason - see the note on
+    closed=true at the Gamma request in cycle(), which is why no ordering
+    could have worked.
 
-        too new   UMA has not ruled yet. Gamma answers, `closed` is false.
-        too old   Polymarket stops serving the event at all. Measured during
-                  the 09-15 market backfill: slugs resolved back to 09-06 and
-                  returned NOTHING from 09-04 - a retention wall about ten
-                  days back.
+    Ordering still matters once that is fixed, and the right end is the
+    NEWEST day old enough to have been ruled on: SETTLE_LAG_DAYS drops the
+    too-new end, and the freshest remaining day is both answerable and the
+    most valuable, being what advances fact_band_outcome's frontier and widens
+    the backtest window. Each capture is remembered, so the walk marches
+    backwards day by day through history.
 
-    The original walked newest-first and died against the first wall: it never
-    got past the day or two UMA had not ruled on, captured nothing, and so
-    never remembered anything, which meant the next run restarted at the same
-    head and re-asked the same unanswerable questions forever.
-
-    The first repair moved it to oldest-first and died against the SECOND
-    wall - 14,212 candidates, 267 checked, 0 captured, 0 failed, spent on
-    April markets the venue no longer serves. Both ends are unproductive; the
-    productive band is in between.
-
-    So: SETTLE_LAG_DAYS excludes the too-new end, and the walk then runs
-    NEWEST-FIRST within what remains - the freshest day the venue can still
-    answer about. That is also the most valuable evidence, since it is what
-    advances fact_band_outcome's frontier and widens the backtest window.
-    Each capture is remembered, so the walk marches backwards day by day
-    until it reaches the retention wall.
-
-    NOTHING HERE IS GUESSED ANY MORE. `skips` counts why each band produced
-    no proof, so the next zero says which wall it hit instead of leaving it to
-    be inferred - twice now the inference has been wrong.
+    NOTHING HERE IS INFERRED ANY MORE. `skips` counts WHY each band produced
+    no proof and over which days, because a bare zero was read wrong three
+    times: as "nothing to collect" when the budget had run out, as "the venue
+    forgot it" when the request was filtering it out, and as a retention wall
+    that does not exist. The counters are what finally located the real
+    fault.
 
     AUTHORITY. It also required markets.closed to be true. That column is
     maintained by the ingest side and goes stale on days it did not run: 225
@@ -184,7 +175,27 @@ def cycle(budget_seconds=60, days_back=180, max_new_evidence=100):
             continue
         try:
             gamma_url='https://gamma-api.polymarket.com/markets'
-            markets=public_json(gamma_url,{'condition_ids':band['condition_id']})
+            # closed=true IS LOAD-BEARING, and its absence is why this job had
+            # never once produced a proof.
+            #
+            # Gamma's /markets excludes closed markets BY DEFAULT. Asking for a
+            # settled condition without it returns [] - not an error, not a
+            # 404, an empty list - so every band looked like a market the venue
+            # had no record of. The one thing this job exists to find is the
+            # one thing the request was filtering out.
+            #
+            # Measured against the live API on a real settled band (tokyo
+            # 24C, 2026-09-13):
+            #
+            #   ?condition_ids=X                -> []
+            #   ?condition_ids=X&closed=true    -> the market, closed true,
+            #                                      umaResolutionStatus resolved
+            #   ?condition_ids=X&active=false   -> []
+            #
+            # verify() still re-checks closed and umaResolutionStatus itself,
+            # so this widens what can be SEEN without widening what is trusted.
+            gamma_params={'condition_ids':band['condition_id'],'closed':'true'}
+            markets=public_json(gamma_url,gamma_params)
             gamma=next((m for m in markets if m.get('conditionId')==band['condition_id']),None)
             if not gamma:
                 skip('venue_has_no_record',band)  # past Polymarket's retention
@@ -201,7 +212,7 @@ def cycle(budget_seconds=60, days_back=180, max_new_evidence=100):
             identity=hashlib.sha256(json.dumps({'gamma':gamma,'clob':clob},sort_keys=True,separators=(',',':')).encode()).hexdigest()
             upsert('paper_resolution_evidence',[{'proof_id':identity,'condition_id':band['condition_id'],
                 'token_yes':band['token_yes'],'token_no':band['token_no'],'winning_token':winner,'gamma':gamma,'clob':clob,
-                'source_urls':[gamma_url+'?condition_ids='+band['condition_id'],clob_url]}],'proof_id')
+                'source_urls':[gamma_url+'?condition_ids='+band['condition_id']+'&closed=true',clob_url]}],'proof_id')
             existing.add(str(band['condition_id']))
             captured+=1
             settled+=rpc('settle_paper_inventory',{'p_band':band['band_id'],'p_proof':identity})
