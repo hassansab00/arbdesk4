@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
+import PredictionHindsight from "@/components/PredictionHindsight";
 import { Freshness, FreshnessRow } from "@/components/Provenance";
 import { Empty, LineChart, Scatter } from "@/components/charts";
 import Convergence3D, { type ConvergencePoint } from "@/components/Convergence3D";
@@ -486,6 +487,14 @@ export default function PredictivePage() {
           </div>
         </DataState>
       </section>
+
+      {/* ==================================================== 1b. HINDSIGHT ==
+          The forward panel states a bucket and a confidence and then never
+          mentions either again. This grades them. It sits directly under it
+          rather than at the bottom of the page because a claim and its
+          track record are one thought, and separating them is how a desk
+          keeps believing a number nothing has checked. */}
+      <PredictionHindsight />
 
       {/* ==================================================== 2. THE FUNNEL == */}
       <section className="space-y-2">

@@ -766,9 +766,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "cities",
     "derived_forecast_skill",
     "bands",
+    "fact_band_outcome",
     "markets",
     "edges",
-    "band_probabilities"
+    "band_probabilities",
+    "paper_resolution_evidence"
   ],
   "v_city_reasoning": [
     "cities",
@@ -988,9 +990,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_prediction_ladder": [
     "bands",
+    "fact_band_outcome",
     "markets",
     "edges",
-    "band_probabilities"
+    "band_probabilities",
+    "paper_resolution_evidence"
   ],
   "v_prediction_scorecard": [
     "fact_forecast_outcome",
