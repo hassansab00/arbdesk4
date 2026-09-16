@@ -26,23 +26,44 @@ export const dynamic = 'force-dynamic';
 
 const WORKFLOW = 'pipeline_intraday.yml';
 
+/**
+ * THE REPOSITORY IS NOT SOMETHING ANYONE SHOULD HAVE TO TYPE.
+ *
+ * This first shipped requiring GITHUB_REPOSITORY alongside the token, and the
+ * button stayed disabled after the token was set - asking for a second
+ * variable to name the repository the site is literally deployed from.
+ *
+ * Vercel already sets VERCEL_GIT_REPO_OWNER and VERCEL_GIT_REPO_SLUG on every
+ * deployment connected to Git, so the answer is there for free. The explicit
+ * variable is kept as an override for a deployment that is not Git-connected,
+ * or one that should dispatch to a different repository, but nothing needs to
+ * be set for the ordinary case: one token, and the button works.
+ */
 function config() {
   const token = process.env.GITHUB_DISPATCH_TOKEN;
-  const repo = process.env.GITHUB_REPOSITORY;      // "owner/name"
+  const owner = process.env.VERCEL_GIT_REPO_OWNER;
+  const slug = process.env.VERCEL_GIT_REPO_SLUG;
+  const repo = process.env.GITHUB_REPOSITORY
+    || (owner && slug ? `${owner}/${slug}` : undefined);
   const ref = process.env.GITHUB_DEFAULT_BRANCH || 'main';
-  return { token, repo, ref };
+  return { token, repo, ref, inferred: !process.env.GITHUB_REPOSITORY && !!repo };
 }
 
 export async function GET() {
-  const { token, repo, ref } = config();
+  const { token, repo, ref, inferred } = config();
   return NextResponse.json({
     configured: !!token && !!repo,
     workflow: WORKFLOW,
     ref,
+    repo,
+    inferred,
     // Named exactly, so setting it up is a copy and paste rather than a search.
+    // The repository line only appears when it could not be inferred, which on
+    // a Git-connected Vercel project it always can.
     missing: [
       !token && 'GITHUB_DISPATCH_TOKEN (a fine-grained token with Actions: read and write on this repo)',
-      !repo && 'GITHUB_REPOSITORY (owner/name)',
+      !repo && 'GITHUB_REPOSITORY (owner/name) - normally inferred from Vercel, so this means the '
+        + 'deployment is not Git-connected or system environment variables are turned off',
     ].filter(Boolean),
   }, { headers: { 'Cache-Control': 'no-store' } });
 }
@@ -56,8 +77,9 @@ export async function POST(request: Request) {
   if (!token || !repo) {
     return NextResponse.json({
       error: 'Running the full cycle from here is not configured. Set '
-        + [!token && 'GITHUB_DISPATCH_TOKEN', !repo && 'GITHUB_REPOSITORY'].filter(Boolean).join(' and ')
-        + ' in the site environment, or start it from the repository’s Actions tab.',
+        + [!token && 'GITHUB_DISPATCH_TOKEN',
+           !repo && 'GITHUB_REPOSITORY (owner/name)'].filter(Boolean).join(' and ')
+        + ' in the site environment and redeploy, or start it from the repository’s Actions tab.',
     }, { status: 503 });
   }
 

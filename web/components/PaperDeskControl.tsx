@@ -173,7 +173,7 @@ export default function PaperDeskControl({ desk, exposure, openPositions, lastFi
         <button className={button} disabled={!!busy || !canRun?.configured}
                 title={canRun?.configured
                   ? "Starts the full chain in GitHub Actions: signals, proposals, fills, settlement, exits."
-                  : `Not configured. Set ${canRun?.missing.join(" and ") || "GITHUB_DISPATCH_TOKEN"} in the site environment, or start it from the repository's Actions tab.`}
+                  : `Not configured. Set ${canRun?.missing.join(" and ") || "GITHUB_DISPATCH_TOKEN"} in the site environment AND REDEPLOY - Vercel bakes environment variables in at build time, so a variable added after the last deploy is not in the running build. Or start the cycle from the repository's Actions tab.`}
                 onClick={runCycle}>
           {busy === "cycle" ? "Starting…" : "Run cycle now"}
         </button>

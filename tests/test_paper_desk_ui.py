@@ -221,3 +221,21 @@ def test_the_page_no_longer_points_at_a_tab_that_was_renamed():
     assert "Automation</strong> tab" not in src
     assert "on the Automation tab" not in src
     assert "'Settings'" in src
+
+
+def test_the_repository_is_inferred_rather_than_asked_for():
+    """This shipped requiring GITHUB_REPOSITORY next to the token, so the button
+    stayed disabled after the token was set - asking someone to type the name of
+    the repository the site is deployed from. Vercel sets VERCEL_GIT_REPO_OWNER
+    and VERCEL_GIT_REPO_SLUG on every Git-connected deployment, so it is free."""
+    src = RUN_ROUTE.read_text(encoding="utf-8")
+    assert "VERCEL_GIT_REPO_OWNER" in src and "VERCEL_GIT_REPO_SLUG" in src
+    assert "process.env.GITHUB_REPOSITORY\n    || (owner && slug" in src, (
+        "the explicit variable must still win as an override")
+
+
+def test_the_disabled_button_says_a_redeploy_is_needed():
+    """Vercel bakes environment variables in at build time. Setting one and
+    watching the button stay disabled is the exact trap this hit."""
+    src = CONTROL.read_text(encoding="utf-8")
+    assert "REDEPLOY" in src
