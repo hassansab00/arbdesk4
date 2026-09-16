@@ -79,6 +79,7 @@ ad4_63_prune_forecasts.sql
 ad4_64_capacity_per_city.sql
 ad4_live_weather_timing.sql
 ad4_book_no_side.sql
+ad4_prune_dead_book_detail.sql
 
 # ad4_38 grants the write path to service_role and prints one row per ingest
 # table saying whether the service key can write it. It is last on purpose -
