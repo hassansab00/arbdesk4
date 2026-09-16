@@ -260,3 +260,43 @@ def test_the_page_says_a_redeploy_is_needed():
     watching nothing change is the exact trap this hit, three times."""
     src = CONTROL.read_text(encoding="utf-8")
     assert "bakes them in at build time" in src
+
+
+# ---------------------------------------------------------------------------
+# THE PAGE OPENED ON AN EMPTY DESK
+#
+# It auto-selected accounts[0] over a list ordered by created_at. On 16 Sep
+# that was "Main paper account" - manual, paused, 0 trades, 0 positions - while
+# "Wide edge, all US" held 10 trades and 9 open positions. So opening Paper
+# Trades showed a dead desk with nothing on it, and nothing on the page hinted
+# that a live one existed two entries down a dropdown.
+
+def test_the_page_opens_on_the_desk_that_is_trading():
+    src = PAGE.read_text(encoding="utf-8")
+    assert "accounts.data[0].account_id" not in src, (
+        "creation order picked a paused manual desk over one holding 9 positions")
+    assert "(b.open_positions??0)-(a.open_positions??0)" in src
+    assert "(b.trade_count??0)-(a.trade_count??0)" in src
+
+
+def test_the_choice_degrades_when_the_counts_are_absent():
+    """The edge-gateway path returns plain accounts with no activity columns.
+    A selection that breaks without them would swap one empty page for another."""
+    src = PAGE.read_text(encoding="utf-8")
+    assert "open_positions?:number" in src and "trade_count?:number" in src
+    assert "??0" in src, "every count must have a fallback"
+
+
+def test_the_dropdown_says_which_desk_is_which():
+    """Picking the right desk should not require remembering which one trades."""
+    src = PAGE.read_text(encoding="utf-8")
+    assert "open`" in src and "trades`" in src
+
+
+def test_the_counts_come_through_the_service_key_not_the_browser():
+    """anon holds no grant on paper_positions, so the browser cannot count them
+    itself. The desk list is already a server route; the view goes there."""
+    route = (ROOT / "web" / "app" / "api" / "paper-desk" / "route.ts").read_text(encoding="utf-8")
+    assert "v_paper_desk_activity" in route
+    assert "from('paper_accounts')" not in route.split("resource==='accounts'")[1][:400], (
+        "the accounts resource must read the activity view")

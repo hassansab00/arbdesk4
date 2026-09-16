@@ -12,7 +12,10 @@ import { supabase } from '@/lib/supabase';
 import { useQuery } from '@/lib/useQuery';
 import { fmtUsd, fmtPrice } from '@/lib/format';
 
-type Account = { account_id:string; name:string; cash:number; reserved_cash:number; mode:string; entries_paused:boolean; policy:{strategies?:string[];cities?:string[];max_plan_usd?:number;max_exposure_usd?:number;min_edge?:number}; policy_version:number };
+type Account = { account_id:string; name:string; cash:number; reserved_cash:number; mode:string; entries_paused:boolean; policy:{strategies?:string[];cities?:string[];max_plan_usd?:number;max_exposure_usd?:number;min_edge?:number}; policy_version:number;
+  // From v_paper_desk_activity. Absent when the desk list comes back through
+  // the edge gateway rather than the service key, so every use tolerates it.
+  trade_count?:number; open_positions?:number; live?:boolean };
 type Order = { order_id:string; band_id:string; side:string; action:string; origin:string; shares:number; limit_price:number; status:string; reason:string|null; requested_at:string; result:Record<string,unknown>|null };
 type Position = { band_id:string; side:string; shares:number; cost_basis:number; realized_pnl:number };
 type Event = { event_id:number; event_type:string; occurred_at:string; cash_delta:number; payload:Record<string,unknown> };
@@ -37,7 +40,24 @@ export default function PaperTradesPage() {
   const accounts=useQuery<Account[]>(async()=>{
     return paperRead<Account[]>('accounts');
   },[],15000);
-  useEffect(()=>{ if(!account && accounts.data?.length) setAccount(accounts.data[0].account_id); },[accounts.data,account]);
+  // OPEN ON THE DESK THAT IS TRADING, not the one created first.
+  //
+  // This was `accounts.data[0]` over a list ordered by created_at. On 16 Sep
+  // that was "Main paper account" - manual, paused, no trades, no positions -
+  // while "Wide edge, all US" held 10 trades and 9 open positions. So the page
+  // opened on an empty desk every time, with nothing saying a live one existed.
+  //
+  // Most open positions first, then most trades, then a desk that CAN act, and
+  // creation order last. Every term degrades to the old behaviour when the
+  // counts are absent, which they are on the edge-gateway path.
+  useEffect(()=>{
+    if(account || !accounts.data?.length) return;
+    const best=[...accounts.data].sort((a,b)=>
+      (b.open_positions??0)-(a.open_positions??0)
+      || (b.trade_count??0)-(a.trade_count??0)
+      || Number(b.live??false)-Number(a.live??false));
+    setAccount(best[0].account_id);
+  },[accounts.data,account]);
   const orders=useQuery<Order[]>(async()=>{
     if(!account) return {data:[],error:null};
     return paperRead<Order[]>('orders',account);
@@ -95,7 +115,7 @@ export default function PaperTradesPage() {
     {issue&&<div role="alert" className="rounded border border-bad p-3 text-sm text-bad">{issue}</div>}
     {notice&&<div role="status" className={`text-sm ${noticeWarning?'text-warn':'text-good'}`}>{notice}</div>}
     <div className="flex flex-wrap items-center gap-3"><select disabled={busy} aria-label="Paper account" className="input max-w-sm" value={account} onChange={e=>{setAccount(e.target.value);setCommand(null);}}>
-      <option value="">Paper desk</option>{accounts.data?.map(a=><option key={a.account_id} value={a.account_id}>{a.name} — {a.mode}{a.entries_paused?' · paused':''}</option>)}</select>
+      <option value="">Paper desk</option>{accounts.data?.map(a=><option key={a.account_id} value={a.account_id}>{a.name} — {a.mode}{a.entries_paused?' · paused':''}{a.open_positions?` · ${a.open_positions} open`:''}{a.trade_count?` · ${a.trade_count} trades`:''}</option>)}</select>
       {/* Several desks, so a setting can be tried without disturbing the one
           already running. Each carries its own cash, strategies and cities -
           the Settings tab edits them per desk. */}
