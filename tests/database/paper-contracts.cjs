@@ -31,6 +31,26 @@ const assert = require('node:assert/strict');
     create table public.ingest_log(log_id bigint primary key,job text,started_at timestamptz,finished_at timestamptz,
       status text,rows_written integer,detail jsonb,rows integer,logged_at timestamptz default now());
     create table public.model_versions(version_id uuid primary key,created_at timestamptz default now());
+    -- paper_trades is created by sql/ad4_00_preflight.sql and widened by
+    -- ad4_13_reconcile.sql, neither of which is a supabase/ migration - so this
+    -- harness has to stand it up itself or every migration that touches it
+    -- fails on a table that exists in production. Column types and the four
+    -- NOT NULLs match the live table, or the contracts below would pass
+    -- against a shape the database does not have.
+    create table public.paper_trades(
+      trade_id uuid primary key default gen_random_uuid(),
+      signal_id bigint, strategy_id text, deployment_id uuid,
+      band_id uuid not null, side text not null,
+      opened_at timestamptz not null, shares numeric not null,
+      avg_fill_price numeric not null, quoted_price numeric,
+      slippage_paid numeric, fee_paid numeric, gas_paid numeric,
+      partial_fill boolean not null default false, requested_shares numeric,
+      closed_at timestamptz, close_price numeric, close_reason text,
+      gross_pnl numeric, net_pnl numeric,
+      cost_version uuid, forecast_version uuid, calibration_version uuid,
+      regime_label text, max_slippage_setting numeric, fill_quality numeric,
+      legs_requested integer, legs_filled integer,
+      approved_by_user boolean default true, action text, exit_price numeric);
     create table public.fact_forecast_outcome(city_key text,for_date date,model text,lead_days int,
       run_at timestamptz,forecast_max_c numeric default 0,observed_max_c numeric default 0,
       error_c numeric generated always as (forecast_max_c-observed_max_c) stored,
@@ -266,6 +286,34 @@ const assert = require('node:assert/strict');
   assert.equal(Number((await db.query('select shares from paper_positions')).rows[0].shares),0);
   assert.equal((await db.query('select count(*)::int as n from paper_position_settlements')).rows[0].n,1);
 
+  // THE FILL AND THE PAYOUT BOTH REACH paper_trades, which is the table every
+  // page that shows trading reads. Before 16 Sep only the approve-by-hand RPC
+  // wrote it, so an automatic desk could fill four orders and the dashboard
+  // would say it had never traded.
+  const settled=(await db.query(
+    'select * from paper_trades where band_id=$1 order by opened_at',[band])).rows;
+  assert.ok(settled.length>0,'a filled order must open a paper_trades row');
+  const paid=settled.find(t=>t.close_reason==='venue_resolution_won');
+  assert.ok(paid,'a position held to resolution must close - it never sees a SELL order, '
+    +'so without this net_pnl stays null for ever and analytics stays empty');
+  // 2 shares bought at .50 (notional 1, fee .025), paid out at 1.00 each.
+  assert.equal(Number(paid.shares),2);
+  assert.equal(Number(paid.close_price),1);
+  assert.equal(Number(paid.gross_pnl),1,'gross is proceeds minus entry notional, no fees');
+  assert.equal(Number(paid.net_pnl),0.975,'net also subtracts the entry fee');
+  assert.equal(paid.city_key,'london','the city is denormalised so the row survives a band prune');
+  assert.equal(paid.approved_by_user,false,'nobody approved this - it was automatic');
+
+  // A replayed completion must not record the trade twice. complete_paper_order
+  // returns early on an already-terminal order, and the unique index on
+  // order_id is the second guard.
+  const tradesBefore=(await db.query('select count(*)::int as n from paper_trades')).rows[0].n;
+  await db.query('select complete_paper_order($1,$2,$3)',[settleOrder,settleClaim.lease_token,
+    JSON.stringify({status:'filled',shares:'2',notional:'1',fee:'.025',snapshot_id:'snapshot',
+      fills:[{shares:'2',price:'.50',notional:'1',fee:'.025'}]})]);
+  assert.equal((await db.query('select count(*)::int as n from paper_trades')).rows[0].n,tradesBefore,
+    'a replayed fill recorded a second trade');
+
   // Outcome collection attempts are private, append-only evidence. A failed
   // source read is retained for diagnosis but cannot be promoted into the
   // verified weather view or rewritten after the fact.
@@ -306,5 +354,5 @@ const assert = require('node:assert/strict');
   await db.query('select approve_single_paper_plan($1)',[singlePlan]);
   assert.equal((await db.query("select count(*)::int as n from paper_orders where plan_id=$1",[singlePlan])).rows[0].n,1);
   await db.close();
-  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals and exits');
+  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits and the paper_trades bridge');
 })().catch(e=>{console.error(e);process.exit(1);});
