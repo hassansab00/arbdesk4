@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import PaperAutomation from '@/components/PaperAutomation';
 import PaperExit from '@/components/PaperExit';
+import PaperPipelineStatus from '@/components/PaperPipelineStatus';
+import PaperTradeHistory from '@/components/PaperTradeHistory';
 import { paperAction, paperRead, runPaperWorker } from '@/lib/paperSupabase';
 import { supabase } from '@/lib/supabase';
 import { useQuery } from '@/lib/useQuery';
@@ -23,7 +25,7 @@ export default function PaperTradesPage() {
   const [noticeWarning,setNoticeWarning] = useState(false);
   const [busy,setBusy] = useState(false);
   const [account,setAccount] = useState('');
-  const [tab,setTab] = useState('Orders');
+  const [tab,setTab] = useState('Trades');
   const [starting,setStarting] = useState('');
   const [showNewDesk,setShowNewDesk] = useState(false);
   const [newDesk,setNewDesk] = useState({name:'',cash:''});
@@ -140,6 +142,7 @@ export default function PaperTradesPage() {
         <div className="grid gap-3 sm:grid-cols-3"><div className={card}><div className="text-xs text-muted" title="Cash remaining after committed fills and fees.">Cash</div><div className="font-mono text-xl">{fmtUsd(Number(selected.cash))}</div></div>
           <div className={card}><div className="text-xs text-muted" title="Cash held for queued orders; released on cancellation or execution.">Reserved</div><div className="font-mono text-xl">{fmtUsd(Number(selected.reserved_cash))}</div></div>
           <div className={card}><div className="text-xs text-muted">Available cash</div><div className="font-mono text-xl">{fmtUsd(Number(selected.cash)-Number(selected.reserved_cash))}</div></div></div>
+        <PaperPipelineStatus refresh={refresh}/>
         <form className={`${card} space-y-3`} onSubmit={e=>{e.preventDefault();submit();}}><fieldset disabled={busy} className="space-y-3"><h2 className="font-semibold">Manual paper ticket</h2>
           <div className="grid gap-3 md:grid-cols-3"><label className="text-sm md:col-span-2">Market / band<select required className="input mt-1" value={ticket.band} onChange={e=>{setCommand(null);setTicket({...ticket,band:e.target.value});}}><option value="">Select a current contract</option>{bands.data?.map(b=><option key={b.band_id} value={b.band_id}>{name(b.band_id)}</option>)}</select></label>
             <label className="text-sm">Side<select className="input mt-1" value={ticket.side} onChange={e=>{setCommand(null);setTicket({...ticket,side:e.target.value});}}><option>YES</option><option>NO</option></select></label>
@@ -148,7 +151,8 @@ export default function PaperTradesPage() {
           <p className="text-xs text-muted">Immediate-or-cancel simulation: only available depth within your limit can fill. Market metadata, fees and book freshness are verified by the worker.</p>
           <button disabled={busy||!ticket.band} className={button}>Queue paper order</button></fieldset>
         </form>
-        <nav aria-label="Paper trade views" className="flex flex-wrap gap-2">{['Orders','Positions','Activity','Automation'].map(t=><button key={t} className={`${button} ${tab===t?'text-accent border-accent':''}`} onClick={()=>setTab(t)}>{t}</button>)}</nav>
+        <nav aria-label="Paper trade views" className="flex flex-wrap gap-2">{['Trades','Orders','Positions','Activity','Automation'].map(t=><button key={t} className={`${button} ${tab===t?'text-accent border-accent':''}`} onClick={()=>setTab(t)}>{t}</button>)}</nav>
+        {tab==='Trades'&&<PaperTradeHistory account={account} bandName={name}/>}
         {tab==='Orders'&&<div className={`${card} overflow-x-auto`}><table className="w-full text-left text-sm"><thead className="text-muted"><tr>{['Contract','Order','Requested','Limit','Status',''].map((x,i)=><th className="p-2" key={i}>{x}</th>)}</tr></thead><tbody>{orders.data?.map(o=><tr key={o.order_id} className="border-t border-border"><td className="p-2">{name(o.band_id)}</td><td className="p-2">{o.origin} · {o.action} {o.side}</td><td className="p-2">{Number(o.shares).toLocaleString(undefined,{maximumFractionDigits:2})}</td><td className="p-2">{fmtPrice(Number(o.limit_price))}</td><td className="p-2"><div>{o.status}</div><div className="text-xs text-muted">{o.reason}</div></td><td className="p-2">{o.status==='queued'&&<button disabled={busy} className={button} onClick={()=>act(()=>paperAction('cancel_order',{p_order:o.order_id}))}>Cancel</button>}<details><summary className="cursor-pointer text-muted">Evidence</summary><pre className="max-w-md overflow-auto text-xs">{JSON.stringify(o.result,null,2)}</pre></details></td></tr>)}</tbody></table>{!orders.data?.length&&<p className="py-4 text-sm text-muted">No paper orders yet. System alerts are not trades.</p>}{orders.truncated&&<p className="text-xs text-warn">Showing the latest 100 orders; older history is retained.</p>}</div>}
         {tab==='Positions'&&<div className={`${card} space-y-3`}>{positions.data?.map(p=><div key={p.band_id+p.side} className="border-b border-border pb-2 text-sm"><div>{name(p.band_id)} · {p.side}</div><div className="font-mono">{Number(p.shares).toLocaleString(undefined,{maximumFractionDigits:2})} shares · Cost basis {fmtUsd(Number(p.cost_basis))} · Realized {fmtUsd(Number(p.realized_pnl))}</div>{Number(p.shares)>0&&<PaperExit key={account+p.band_id+p.side} account={account} band={p.band_id} side={p.side} available={Number(p.shares)} refresh={refresh}/>}</div>)}{!positions.data?.length&&<p className="text-sm text-muted">Positions appear after a recorded fill. Unrealized profit requires a fresh executable exit quote.</p>}</div>}
         {tab==='Activity'&&<div className={`${card} space-y-3`}>{events.data?.map(e=><details key={e.event_id} className="border-b border-border pb-2"><summary className="cursor-pointer text-sm">{new Date(e.occurred_at).toLocaleString()} · {e.event_type.replaceAll('_',' ')} · {fmtUsd(Number(e.cash_delta))}</summary><pre className="overflow-auto text-xs text-muted">{JSON.stringify(e.payload,null,2)}</pre></details>)}{events.truncated&&<p className="text-xs text-warn">Showing the latest 100 events; older history is retained.</p>}</div>}
