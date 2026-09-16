@@ -42,7 +42,25 @@ Deno.serve(async (request) => {
     };
 
     if (body.method === 'read' && body.resource === 'accounts') {
-      const result = await database('paper_accounts?select=*&access_mode=eq.single_desk&owner_id=is.null&order=created_at.asc&limit=1');
+      // EVERY DESK, NOT THE FIRST ONE.
+      //
+      // This said limit=1 with order=created_at.asc, so it returned exactly one
+      // desk: the oldest. The Next.js route beside it was fixed to limit=50
+      // months ago, with a comment naming ".limit(1)" as the bug - but a
+      // deployment without SUPABASE_SERVICE_KEY never reaches that route, it
+      // comes here, and this copy was never updated. Version 1, 12 Sep,
+      // untouched since.
+      //
+      // The effect: three desks existed, one was returned - "Main paper
+      // account", manual, paused, no trades - while "Wide edge, all US" held
+      // 10 trades and 9 open positions and was invisible. The page rendered an
+      // empty desk correctly and looked broken, and every fix aimed at the
+      // page sorted an array with one item in it.
+      //
+      // archived_at is filtered here too. It was absent, so an archived desk
+      // could be the one returned - masked only by limit=1 happening to land
+      // on a live one.
+      const result = await database('paper_accounts?select=*&access_mode=eq.single_desk&owner_id=is.null&archived_at=is.null&order=created_at.asc&limit=50');
       return json({ data: result.data, error: result.error }, result.error ? 400 : 200);
     }
 
@@ -66,8 +84,16 @@ Deno.serve(async (request) => {
     }
 
     if (body.method === 'action') {
+      // The four desk-management commands were missing, so "New desk",
+      // rename, reset and archive all failed on a deployment that routes
+      // through here - with "Unknown paper command", which reads like a bug in
+      // the button rather than a gap in this list.
       const commands: Record<string, string> = {
         create_account: 'create_single_paper_account',
+        create_desk: 'paper_desk_create',
+        update_desk: 'paper_desk_update',
+        reset_desk: 'paper_desk_reset',
+        archive_desk: 'paper_desk_archive',
         submit_order: 'submit_single_paper_order',
         cancel_order: 'cancel_single_paper_order',
         set_policy: 'set_single_paper_policy',
