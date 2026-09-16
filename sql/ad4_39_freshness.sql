@@ -100,7 +100,17 @@ insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plai
   ('paper_trade_plans',         'created_at',   null, 'trading',   'Strategy proposals and recorded approval decisions.'),
   ('paper_book_evidence',       'captured_at',  null, 'trading',   'Direct token books retained as fill evidence.'),
   ('paper_resolution_evidence', 'captured_at',  null, 'trading',   'Matching final Gamma and CLOB resolution evidence.'),
-  ('weather_resolution_evidence','captured_at', null, 'databank',  'Versioned final station-authority evidence for city-day maximums.'),
+  -- 30, not null. This was the one table in the chain exempted from being
+  -- called stale, and it is the table the whole scoring chain hangs on: no
+  -- verified evidence, no fact_forecast_outcome, no fact_signal_outcome, and
+  -- nothing on the predictive page is scored against what happened. It sat 49
+  -- hours cold on 2026-09-16 - the collector's budget was being eaten by
+  -- city-days it could never verify - and reported ok the whole time, because
+  -- null here means 'age is reported, never judged'. An accumulating record
+  -- with no cadence deserves that exemption. This has a cadence: a daily job
+  -- across fifty-odd cities. 30 hours, the same as the attempts table beside
+  -- it, so a silent collector is visible the next morning.
+  ('weather_resolution_evidence','captured_at',   30, 'databank',  'Versioned final station-authority evidence for city-day maximums.'),
   ('weather_resolution_attempts','captured_at',  30, 'databank',  'Auditable attempts to collect final contract-authority weather outcomes.'),
   ('paper_position_settlements','settled_at',    null, 'trading',   'Paper payouts and released cost basis at venue resolution.'),
   ('research_captures',         'captured_at',  null, 'databank',  'Private predictive and synthesis revisions; unchanged records are deduplicated.'),

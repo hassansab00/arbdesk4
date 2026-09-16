@@ -29,6 +29,13 @@ from common import log_run, rest_all, upsert
 
 
 PARSER_VERSION = "weather-outcomes-v1"
+
+# How far back "recent" reaches. City-days inside this window are offered a
+# slot BEFORE the backlog, so yesterday is always attempted no matter how big
+# or how stuck the backlog behind it is. Three days, because a contract's
+# authority can take two days to publish a final figure and anything that has
+# not resolved by then is backlog, not news.
+RECENT_DAYS = 3
 USER_AGENT = "ArbDesk4/2.0 (+https://github.com/hassansab00/arbdesk4)"
 WRH_KEY_URL = "https://www.weather.gov/source/wrh/apiKey.js"
 WRH_API_URL = "https://api.synopticdata.com/v2/stations/timeseries"
@@ -409,9 +416,65 @@ def _safe_error(exc: Exception) -> str:
     return text[:500]
 
 
+def _rules_fingerprint(rules_text: str | None, unit: str | None) -> str:
+    """A hash of exactly what parse_rule_spec reads, and nothing else.
+
+    unsupported_source is a verdict on the market's saved rules, not on the
+    weather: the same text through the same parser fails the same way every
+    time. Recording this hash beside the verdict is what lets a later run tell
+    "we already know this cannot be parsed" from "this might work now" - the
+    hash moves the moment the venue republishes rules naming a source we do
+    support, and the city-day becomes a target again on its own.
+
+    market_unit is in here because parse_rule_spec reads it too: the same
+    rules text with the unit filled in is a different input.
+    """
+    h = hashlib.sha256()
+    h.update((rules_text or "").strip().encode("utf-8"))
+    h.update(b"\x00")
+    h.update((unit or "").encode("utf-8"))
+    return h.hexdigest()
+
+
+def _unparseable(days: int) -> dict[tuple[str, str], str]:
+    """City-days whose newest attempt says the saved rules cannot be parsed.
+
+    Maps (city, date) -> the rules fingerprint at the time of that verdict.
+    _load_targets skips one only if the market's CURRENT fingerprint still
+    matches, so this can never bury a city-day whose rules have since changed.
+
+    Attempts written before this hash existed carry no fingerprint and are
+    simply not returned: they get a slot, fail again, and record one.
+    """
+    cutoff = (dt.date.today() - dt.timedelta(days=days)).isoformat()
+    try:
+        rows = rest_all(
+            "weather_resolution_attempts",
+            [("select", "city_key,for_date,outcome_status,detail,captured_at"),
+             ("for_date", f"gte.{cutoff}")],
+            order="city_key.asc,for_date.asc,captured_at.asc",
+            page_size=1000,
+        )
+    except Exception:
+        return {}
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:                       # ascending, so the last write wins
+        latest[(row["city_key"], str(row["for_date"]))] = row
+    out: dict[tuple[str, str], str] = {}
+    for key, row in latest.items():
+        if row.get("outcome_status") != "unsupported_source":
+            continue
+        fingerprint = (row.get("detail") or {}).get("rules_sha256")
+        if fingerprint:
+            out[key] = fingerprint
+    return out
+
+
 def _load_targets(days: int, maximum: int,
-                  finalized: set[tuple[str, str]] | None = None) -> list[dict[str, Any]]:
-    """The oldest city-days that still NEED collecting, capped at `maximum`.
+                  finalized: set[tuple[str, str]] | None = None,
+                  unparseable: dict[tuple[str, str], str] | None = None,
+                  ) -> list[dict[str, Any]]:
+    """The city-days that still NEED collecting, recent first, capped at `maximum`.
 
     THE BACKLOG COULD NOT TRAVERSE. The cap used to be applied to every
     city-day in the window, finished or not, after sorting oldest-first:
@@ -431,9 +494,41 @@ def _load_targets(days: int, maximum: int,
     frozen first publication - so this only moves WHEN the decision is made,
     never WHAT is decided. An unverified prior (not_final, a source revision,
     a parse error) is still a target, exactly as before.
+
+    IT COULD NOT TRAVERSE AGAIN, for the mirror-image reason, and this is the
+    part that stopped the desk. Skipping the finished days left the budget to
+    the outstanding ones - but 259 of the 408 outstanding city-days in the
+    window were markets whose saved rules name a source with no machine
+    interface. unsupported_source is not a transient failure; it is the same
+    verdict on the same text every single run. 259 against a cap of 250, taken
+    oldest first, is the whole budget: every run spent all 250 slots
+    re-deriving verdicts it already had, reached 2026-09-14, and stopped.
+    Nothing was attempted for the 15th or the 16th at all. The last verified
+    outcome froze at 2026-09-14 16:54, fact_forecast_outcome and
+    fact_signal_outcome went stale behind it, and "what the desk expects"
+    stopped being scored - which is what a desk owner sees as the predictions
+    being out of date.
+
+    So two rules now, not one:
+
+      RECENT FIRST. City-days inside RECENT_DAYS are offered slots before the
+      backlog. Yesterday is attempted even if the backlog is enormous, stuck,
+      or stuck in a way nobody has thought of yet - which is the guarantee
+      worth having, because this is the second distinct cause of the same
+      outage and there is no reason to believe it is the last.
+
+      AND SKIP WHAT CANNOT SUCCEED. A city-day whose newest attempt is
+      unsupported_source, and whose rules fingerprint has not changed since,
+      is not retried. It is a verdict, not a failure, and re-deriving it costs
+      a slot that real work needs. It returns to the list by itself the moment
+      the venue republishes different rules.
+
+    Neither rule changes WHAT is decided or writes anything. They change only
+    which city-days get a slot, and in what order.
     """
     cutoff = (dt.date.today() - dt.timedelta(days=days)).isoformat()
     today = dt.date.today().isoformat()
+    recent_from = (dt.date.today() - dt.timedelta(days=RECENT_DAYS)).isoformat()
     rows = rest_all(
         "markets",
         [
@@ -450,9 +545,26 @@ def _load_targets(days: int, maximum: int,
         if key not in latest or str(row.get("last_seen_at") or "") > str(latest[key].get("last_seen_at") or ""):
             latest[key] = row
     done = finalized or set()
-    outstanding = [row for row in latest.values()
-                   if (row["city_key"], row["resolution_date"]) not in done]
-    return sorted(outstanding, key=lambda row: (row["resolution_date"], row["city_key"]))[:maximum]
+    stuck = unparseable or {}
+    outstanding = []
+    for row in latest.values():
+        key = (row["city_key"], row["resolution_date"])
+        if key in done:
+            continue
+        if stuck.get(key) == _rules_fingerprint(row.get("rules_text"), row.get("unit")):
+            continue
+        outstanding.append(row)
+
+    def oldest_first(row: dict[str, Any]) -> tuple[str, str]:
+        return (row["resolution_date"], row["city_key"])
+
+    recent = sorted([r for r in outstanding if r["resolution_date"] >= recent_from],
+                    key=oldest_first)
+    backlog = sorted([r for r in outstanding if r["resolution_date"] < recent_from],
+                     key=oldest_first)
+    # Oldest-first WITHIN the recent window as well: the 15th is likelier to
+    # have a final published figure than the 16th, which is still happening.
+    return (recent + backlog)[:maximum]
 
 
 def _existing_evidence(days: int) -> dict[tuple[str, str], dict[str, Any]]:
@@ -479,7 +591,10 @@ def run(days: int = 14, maximum: int = 250, dry_run: bool = False) -> dict[str, 
     existing = _existing_evidence(days)
     finalized = {key for key, row in existing.items()
                  if row.get("record_status") == "verified"}
-    targets = _load_targets(days, maximum, finalized)
+    # Verdicts already reached on rules that have not changed. Skipped rather
+    # than re-derived; see _load_targets.
+    unparseable = _unparseable(days)
+    targets = _load_targets(days, maximum, finalized, unparseable)
     run_id = os.environ.get("GITHUB_RUN_ID", "local-" + uuid.uuid4().hex)
     run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
     session = requests.Session()
@@ -487,6 +602,9 @@ def run(days: int = 14, maximum: int = 250, dry_run: bool = False) -> dict[str, 
         "targets": len(targets), "backlog_done": len(finalized), "already_final": 0, "captured": 0,
         "not_final": 0, "unsupported": 0, "failures": 0,
         "needs_attention": 0, "dry_run": 0,
+        # Visible in ingest_log, because a number that silently grows is how
+        # the budget got eaten in the first place.
+        "skipped_unparseable": len(unparseable),
     }
 
     for market in targets:
@@ -541,7 +659,15 @@ def run(days: int = 14, maximum: int = 250, dry_run: bool = False) -> dict[str, 
             "observed_max_c": str(outcome.observed_max_c) if outcome else None,
             "payload_sha256": outcome.payload_sha256 if outcome else None,
             "parser_version": PARSER_VERSION,
-            "detail": {**(outcome.detail if outcome else {}), **({"error": error} if error else {})},
+            "detail": {
+                **(outcome.detail if outcome else {}),
+                **({"error": error} if error else {}),
+                # The verdict is about this text, so the text is identified.
+                # Without it the next run cannot tell an answer it already has
+                # from a question worth asking again.
+                **({"rules_sha256": _rules_fingerprint(market.get("rules_text"), market.get("unit"))}
+                   if status == "unsupported_source" else {}),
+            },
         }
         upsert("weather_resolution_attempts", [attempt], "attempt_id")
 

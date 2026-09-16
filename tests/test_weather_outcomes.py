@@ -230,3 +230,140 @@ def test_one_row_per_city_day_newest_market_wins(markets):
     markets([a, b])
     picked = outcomes._load_targets(days=30, maximum=10, finalized=set())
     assert len(picked) == 1 and picked[0]["market_id"] == "new"
+
+
+# --------------------------------------------------------------------------
+# THE BACKLOG COULD NOT TRAVERSE AGAIN - and this time it stopped the desk.
+#
+# Skipping finished days left the whole budget to the outstanding ones. On
+# 2026-09-16 the 14-day window held 714 city-days, 408 of them outstanding,
+# and 259 of those were markets whose saved rules name a source with no
+# machine interface. unsupported_source is a verdict on text, not a transient
+# failure: the same rules through the same parser fail identically every run.
+#
+# 259 against a cap of 250, taken oldest first, is the entire budget. Every
+# run re-derived verdicts it already held, walked as far as 2026-09-14 and
+# stopped. The 15th and the 16th were never attempted at all - max(for_date)
+# across every attempt in 72 hours was 2026-09-14, and the newest verified
+# evidence in the database was frozen at 2026-09-14 16:54 while the collector
+# reported "ok" on every run.
+#
+# Downstream, scripts/databank.py banks a forecast outcome only where
+# verified evidence exists, so fact_forecast_outcome went 33 hours without a
+# row and fact_signal_outcome 81, and "what the desk expects" stopped being
+# scored against what happened.
+# --------------------------------------------------------------------------
+def _stuck(city, date, rules="", unit="C"):
+    """The (city, date) -> fingerprint entry a prior unsupported verdict leaves."""
+    return {(city, date): outcomes._rules_fingerprint(rules, unit)}
+
+
+def test_yesterday_is_attempted_even_when_the_backlog_exceeds_the_budget(markets):
+    """The guarantee, independent of WHY the backlog is stuck.
+
+    Three hundred backlog city-days and a budget of ten: without the recent
+    window the ten oldest win and the newest day is never reached, which is
+    exactly the outage. It is worth having as a rule of its own because this
+    was the second distinct cause of it, not the first.
+    """
+    today = dt.date.today()
+    rows = [_market("c%03d" % i, (today - dt.timedelta(days=9)).isoformat())
+            for i in range(300)]
+    rows.append(_market("london", (today - dt.timedelta(days=1)).isoformat()))
+    markets(rows)
+
+    picked = outcomes._load_targets(days=30, maximum=10, finalized=set())
+
+    assert (today - dt.timedelta(days=1)).isoformat() in \
+        [r["resolution_date"] for r in picked], "yesterday must always get a slot"
+
+
+def test_the_recent_window_takes_precedence_but_does_not_take_everything(markets):
+    """Backlog traversal survives: leftover slots still walk backwards."""
+    today = dt.date.today()
+    recent = (today - dt.timedelta(days=1)).isoformat()
+    old = (today - dt.timedelta(days=10)).isoformat()
+    markets([_market("a", old), _market("b", old), _market("london", recent)])
+
+    picked = [r["resolution_date"] for r in
+              outcomes._load_targets(days=30, maximum=3, finalized=set())]
+
+    assert picked[0] == recent, "the recent window is served first"
+    assert picked.count(old) == 2, "the rest of the budget still walks the backlog"
+
+
+def test_within_the_recent_window_the_older_day_goes_first(markets):
+    """The 15th has a published final figure; the 16th is still happening."""
+    today = dt.date.today()
+    y, d2 = (today - dt.timedelta(days=1)).isoformat(), (today - dt.timedelta(days=2)).isoformat()
+    markets([_market("london", y), _market("london", d2)])
+    picked = [r["resolution_date"] for r in
+              outcomes._load_targets(days=30, maximum=10, finalized=set())]
+    assert picked == [d2, y]
+
+
+def test_a_known_unparseable_city_day_does_not_consume_a_slot(markets):
+    """The verdict is kept, not re-derived. This is the 259 that ate the 250."""
+    today = dt.date.today()
+    old = (today - dt.timedelta(days=10)).isoformat()
+    older = (today - dt.timedelta(days=11)).isoformat()
+    markets([_market("stuck", older), _market("live", old)])
+
+    picked = outcomes._load_targets(days=30, maximum=1, finalized=set(),
+                                    unparseable=_stuck("stuck", older))
+
+    assert [r["city_key"] for r in picked] == ["live"], \
+        "a slot must not be spent re-deriving a verdict that cannot change"
+
+
+def test_changed_rules_make_an_unparseable_city_day_a_target_again(markets):
+    """Self-healing: the venue republishing rules is what un-blocks it.
+
+    The fingerprint covers exactly what parse_rule_spec reads, so a market
+    re-listed with a source we do support no longer matches and comes back
+    into the list without anyone clearing anything.
+    """
+    today = dt.date.today()
+    date = (today - dt.timedelta(days=10)).isoformat()
+    row = _market("stuck", date)
+    row["rules_text"] = "resolves to the NOAA weather.gov WRH time series, degrees celsius"
+    markets([row])
+
+    picked = outcomes._load_targets(days=30, maximum=10, finalized=set(),
+                                    unparseable=_stuck("stuck", date, rules=""))
+
+    assert len(picked) == 1, "a different fingerprint is a different question"
+
+
+def test_an_attempt_with_no_recorded_fingerprint_is_still_a_target(markets):
+    """Attempts written before the hash existed must not bury a city-day."""
+    today = dt.date.today()
+    date = (today - dt.timedelta(days=10)).isoformat()
+    markets([_market("stuck", date)])
+    picked = outcomes._load_targets(days=30, maximum=10, finalized=set(), unparseable={})
+    assert len(picked) == 1
+
+
+def test_the_fingerprint_reads_the_unit_as_well_as_the_text():
+    """parse_rule_spec reads market_unit too, so the same text with a unit
+    filled in is a different input and must hash differently."""
+    a = outcomes._rules_fingerprint("resolves per the station", "C")
+    b = outcomes._rules_fingerprint("resolves per the station", "F")
+    c = outcomes._rules_fingerprint("resolves per the station", None)
+    assert len({a, b, c}) == 3
+    assert outcomes._rules_fingerprint(" resolves per the station ", "C") == a, \
+        "surrounding whitespace is stripped by the parser, so it is stripped here"
+
+
+def test_unparseable_reads_only_the_newest_attempt_per_city_day(monkeypatch):
+    """A city-day that failed on Monday and captured on Tuesday is not stuck."""
+    rows = [
+        {"city_key": "london", "for_date": "2026-09-01", "outcome_status": "unsupported_source",
+         "detail": {"rules_sha256": "abc"}, "captured_at": "2026-09-01T00:00:00Z"},
+        {"city_key": "london", "for_date": "2026-09-01", "outcome_status": "captured",
+         "detail": {}, "captured_at": "2026-09-02T00:00:00Z"},
+        {"city_key": "paris", "for_date": "2026-09-01", "outcome_status": "unsupported_source",
+         "detail": {"rules_sha256": "def"}, "captured_at": "2026-09-02T00:00:00Z"},
+    ]
+    monkeypatch.setattr(outcomes, "rest_all", lambda path, params=None, **kw: list(rows))
+    assert outcomes._unparseable(30) == {("paris", "2026-09-01"): "def"}
