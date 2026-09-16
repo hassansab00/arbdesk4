@@ -258,12 +258,38 @@ def cycle(max_plans=10, budget_seconds=90):
         if time.monotonic()-started>budget_seconds:
             raise ValueError('Proposal cycle budget reached; await the next fresh decision')
         return capture_book(order)
-    for account in accounts:
-        for signal in signals:
-            if published>=max_plans:
-                return done(published, f'reached the {max_plans}-plan cap')
+    # THE CAP IS PER DESK, AND SIGNALS ARE THE OUTER LOOP. Both halves of that
+    # sentence are a bug fix, and it is the same bug twice.
+    #
+    # It was `for account: for signal:` against ONE global cap of ten. The
+    # first desk in account_id order that could act on the board consumed the
+    # whole budget and returned, so every desk after it got nothing - not
+    # fewer plans, none, on every cycle, for as long as the first desk kept
+    # finding signals. Measured on 16 Sep: 'Wide edge, all US' took 39 plans in
+    # three hours and 'All Cities', created eleven minutes before a run that
+    # published ten, got zero. A desk you have just switched on sits at zero
+    # positions looking exactly like a desk with nothing to trade.
+    #
+    # PER DESK, because ten plans a cycle is a statement about what a desk may
+    # propose - it is not what bounds this job. budget_seconds does that, and
+    # it is the guard that matters: the work here is venue calls, and those
+    # cost time, not plan slots.
+    #
+    # SIGNALS OUTSIDE, so time exhaustion cannot always fall on the same desk.
+    # Signals arrive fired_at.desc, freshest first, so every desk is offered
+    # the best signal on the board before any desk is offered the second-best.
+    # With the loops the other way round, the last desk in id order reaches the
+    # 90-second wall first, every single cycle - starvation again, wearing a
+    # different hat.
+    taken = {a['account_id']: 0 for a in accounts}
+    for signal in signals:
+        if all(n >= max_plans for n in taken.values()):
+            return done(published, f'every desk reached its {max_plans}-plan cap')
+        for account in accounts:
             if time.monotonic()-started>budget_seconds:
                 return done(published, f'reached the {budget_seconds}s budget')
+            if taken[account['account_id']] >= max_plans:
+                continue
             if signal['strategy_id'] not in enabled or signal['strategy_id'] not in account['policy'].get('strategies',[]):
                 continue
             # A CITY THE DESK CANNOT TRADE MUST NOT COST IT A PLAN SLOT.
@@ -297,6 +323,7 @@ def cycle(max_plans=10, budget_seconds=90):
             rpc('publish_paper_plan',{'p_account':account['account_id'],'p_command':command,'p_signal':signal['signal_id'],
                 'p_legs':legs,'p_evidence':evidence,'p_block_reason':reason})
             published+=1
+            taken[account['account_id']]+=1
     return done(published, 'considered every signal')
 
 

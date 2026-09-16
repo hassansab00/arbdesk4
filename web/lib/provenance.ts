@@ -334,6 +334,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "paper_activity": [
     {
+      "cadence": "only when you run it",
+      "file": "paper_fill.yml",
+      "how": "scripts/paper_worker.py",
+      "kind": "action",
+      "name": "Fill Queued Paper Orders"
+    },
+    {
       "cadence": "daily",
       "file": "pipeline_daily.yml",
       "how": "scripts/paper_settlement.py",
@@ -356,6 +363,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
     }
   ],
   "paper_book_evidence": [
+    {
+      "cadence": "only when you run it",
+      "file": "paper_fill.yml",
+      "how": "scripts/paper_worker.py",
+      "kind": "action",
+      "name": "Fill Queued Paper Orders"
+    },
     {
       "cadence": "daily",
       "file": "pipeline_intraday.yml",
@@ -390,6 +404,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
     }
   ],
   "paper_positions": [
+    {
+      "cadence": "only when you run it",
+      "file": "paper_fill.yml",
+      "how": "scripts/paper_worker.py",
+      "kind": "action",
+      "name": "Fill Queued Paper Orders"
+    },
     {
       "cadence": "daily",
       "file": "pipeline_intraday.yml",

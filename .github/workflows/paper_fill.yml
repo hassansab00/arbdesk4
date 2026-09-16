@@ -1,0 +1,62 @@
+name: Fill Queued Paper Orders
+
+# THE BUTTON THAT COULD NEVER WORK, and the ticket behind it.
+#
+# "Fill queued" in the UI, and every manual paper ticket, called
+# /api/paper-cycle, which forwarded to a standalone worker service at
+# PAPER_WORKER_URL with PAPER_WORKER_TOKEN. That service was never deployed.
+# The route answered "Paper worker is not configured. The order remains
+# queued." every time, for both.
+#
+# "Remains queued" was generous. submit_single_paper_order stamps a manual
+# order expires_at = now() + 5 minutes and reserves the cash against it; the
+# next worker to run calls expire_paper_commands() first, which kills anything
+# past its deadline. The only worker that runs is the step inside
+# pipeline_intraday.yml, at most every four hours and usually late. So a
+# manual ticket queued, held the cash for five minutes, expired unfilled, and
+# gave the money back - the entire feature, every time.
+#
+# It cannot be fixed in Postgres or in the browser. paper_worker.py fetches a
+# live book from clob.polymarket.com and the market's fee schedule from
+# gamma-api, verifies the token identity against both, and only then simulates
+# the fill. That needs outbound HTTP and the service key. GitHub Actions is
+# the one place this project has that already does it, so the button now wakes
+# the real worker instead of a service that does not exist.
+#
+# NO SCHEDULE, deliberately. The scheduled fill already happens in
+# pipeline_intraday.yml immediately after the proposals that create the
+# orders, which is the only ordering that beats a five-minute expiry. This
+# runs on demand and therefore costs nothing per month -
+# tests/test_github_actions.py budgets scheduled runs, and this adds none.
+
+on:
+  workflow_dispatch:
+
+# ITS OWN GROUP, not pipeline-intraday's. That group has
+# cancel-in-progress: false, so a fill dispatched while a cycle is running
+# would wait for the cycle to finish - several minutes against an order with
+# five to live, which is the failure this workflow exists to end. Two workers
+# at once is safe: paper_worker claims each order under a lease, and the lease
+# contracts are covered in tests/database/paper-contracts.cjs.
+concurrency:
+  group: paper-fill
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: scripts
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+jobs:
+  fill:
+    runs-on: ubuntu-latest
+    # A fill is one pass over the claimable orders. Five is generous and still
+    # bounds a hung venue call.
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11', cache: 'pip', cache-dependency-path: 'requirements.runtime.txt' }
+      - run: pip install -r requirements.runtime.txt
+      - name: Fill queued paper orders
+        run: python scripts/paper_worker.py

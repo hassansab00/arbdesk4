@@ -7,7 +7,7 @@ import PaperExit from '@/components/PaperExit';
 import PaperDeskControl from '@/components/PaperDeskControl';
 import PaperPipelineStatus from '@/components/PaperPipelineStatus';
 import PaperTradeHistory from '@/components/PaperTradeHistory';
-import { paperAction, paperRead, runPaperWorker } from '@/lib/paperSupabase';
+import { paperAction, paperRead, runPaperWorker, describeWorker } from '@/lib/paperSupabase';
 import { supabase } from '@/lib/supabase';
 import { useQuery } from '@/lib/useQuery';
 import { fmtUsd, fmtPrice } from '@/lib/format';
@@ -103,9 +103,14 @@ export default function PaperTradesPage() {
         const result=await runPaperWorker();
         refresh();
         setNoticeWarning(false);
+        // A ticket queued here expires in FIVE MINUTES and reserves the cash
+        // until it does. Until this route was pointed at GitHub Actions the
+        // wake-up always failed, so every manual ticket ever written expired
+        // unfilled - which is why this now says what is actually happening
+        // and when to look, instead of "refresh shortly".
         setNotice(result.orders_completed
           ? 'Order processed against a fresh verified book. See Orders for the fill result.'
-          : 'Order queued; the worker found no claimable order yet. Refresh shortly.');
+          : describeWorker(result));
       } catch(e) {
         setNoticeWarning(true);
         setNotice(e&&typeof e==='object'&&'message' in e?String(e.message):'Order queued; worker wake-up failed.');
