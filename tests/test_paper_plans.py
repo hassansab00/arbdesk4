@@ -275,3 +275,89 @@ def test_the_log_says_why_it_stopped():
     src = inspect.getsource(paper_plans.cycle)
     for note in ("plan cap", "budget", "considered every signal"):
         assert note in src, f"no exit reports {note!r}"
+
+
+# --------------------------------------------------------------------------
+# ONE DESK TOOK THE WHOLE BUDGET AND THE REST GOT NOTHING.
+#
+# cycle() ran `for account: for signal:` against a single global cap of ten.
+# The first desk in account_id order that could act on the board reached ten
+# and returned, so every desk behind it got zero - not fewer plans, none, on
+# every cycle, for as long as the first desk kept finding signals.
+#
+# Measured on 16 Sep: 'Wide edge, all US' took 39 plans in three hours while
+# 'All Cities', created eleven minutes before a run that published ten, got 0.
+# From the page that desk is indistinguishable from one with nothing to trade:
+# ACTIVE, funded, zero positions, for ever.
+# --------------------------------------------------------------------------
+def _cycle_with(monkeypatch, accounts, signals, **kw):
+    """Run cycle() against scripted desks and signals, returning the plans."""
+    import paper_plans
+
+    published = []
+
+    def rest_all(path, params=None, **rest):
+        if path == "paper_accounts":
+            return [dict(a) for a in accounts]
+        if path == "signals":
+            return [dict(s) for s in signals]
+        return []
+
+    def rest(path, params=None, **rest):
+        if path == "strategies":
+            return [{"strategy_id": "s1"}]
+        return []                                  # no plan exists for this key yet
+
+    monkeypatch.setattr(paper_plans, "rest_all", rest_all)
+    monkeypatch.setattr(paper_plans, "rest", rest)
+    monkeypatch.setattr(paper_plans, "prepare", lambda *a, **k: ([], {}))
+    monkeypatch.setattr(paper_plans, "rpc",
+                        lambda name, args: published.append(args["p_account"]))
+    monkeypatch.setattr(paper_plans, "log_run", lambda *a, **k: None)
+    monkeypatch.setattr("paper_worker.capture_book", lambda order: {})
+    paper_plans.cycle(**kw)
+    return published
+
+
+def _desk(account_id):
+    return {"account_id": account_id,
+            "policy": {"strategies": ["s1"], "cities": ["ALL"], "max_plan_usd": 10}}
+
+
+def _signal(n):
+    return {"signal_id": n, "band_id": "a", "side": "YES", "strategy_id": "s1",
+            "payload": {"cycle_id": f"c{n}", "basket_group": "a", "decision_inputs": {}}}
+
+
+def test_a_second_desk_is_not_starved_by_the_first(monkeypatch):
+    published = _cycle_with(monkeypatch, [_desk("aaa"), _desk("bbb")],
+                            [_signal(n) for n in range(20)], max_plans=3)
+    assert published.count("aaa") == 3
+    assert published.count("bbb") == 3, (
+        "the second desk got nothing: the cap is spent by whichever desk the "
+        "loop reaches first, which is the bug")
+
+
+def test_a_desk_created_today_gets_the_freshest_signals_not_the_leftovers(monkeypatch):
+    """Signals arrive fired_at.desc. Every desk must be offered the best signal
+    on the board before any desk is offered the second-best - otherwise the
+    90-second budget always runs out on the same desk, which is starvation
+    again wearing a different hat."""
+    published = _cycle_with(monkeypatch, [_desk("aaa"), _desk("bbb")],
+                            [_signal(n) for n in range(20)], max_plans=5)
+    assert published[:2] == ["aaa", "bbb"], \
+        "the freshest signal must reach every desk before the next one is tried"
+
+
+def test_the_cap_still_bounds_what_one_desk_proposes(monkeypatch):
+    published = _cycle_with(monkeypatch, [_desk("aaa")],
+                            [_signal(n) for n in range(50)], max_plans=4)
+    assert len(published) == 4
+
+
+def test_the_run_stops_once_every_desk_is_capped(monkeypatch):
+    """Walking the remaining signals after everyone is full costs venue calls
+    for plans that cannot be published."""
+    published = _cycle_with(monkeypatch, [_desk("aaa"), _desk("bbb")],
+                            [_signal(n) for n in range(40)], max_plans=2)
+    assert len(published) == 4
