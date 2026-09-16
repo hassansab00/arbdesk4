@@ -14,9 +14,11 @@
 --     weather_observations   57 MB   239,617 rows    114,283 older than 90d
 --     weather_forecasts      33 MB    81,693 rows     31,787 older than 90d
 --
--- 55 MB of that 91 is indexes, and the table has never been vacuumed - not
--- once, by hand or by autovacuum - so the heap still carries every row P0.4
--- has ever re-ingested and superseded.
+-- 55 MB of that 91 is indexes. The table has never been vacuumed, by hand or
+-- by autovacuum, and does not need to be: n_dead_tup is 0, because nothing
+-- ever updates or deletes a trade. All 91 MB is LIVE rows, 58% of which are
+-- older than ninety days. That is why pruning is the only thing that shrinks
+-- it - there is no bloat to reclaim, only rows nothing reads.
 --
 --
 -- WHAT SURVIVES THE PRUNE, which is the only question that matters

@@ -13,10 +13,12 @@ was not in the set at all.
     (at 180 days those same three give 0, 2,522 and 700 - which is why the
      default is ninety. The window has to be shorter than the history.)
 
-trades_observed is the one that matters most and was the last to be covered:
-55 of its 91 MB are indexes and it has never been vacuumed, while nothing
-live reads a trade older than a day - v_band_volume and v_city_volume both
-cut at settings.volume_thresholds.lookback_hours, which is 24.
+trades_observed is the one that matters most and was the last to be covered.
+All 91 MB of it is LIVE rows - n_dead_tup is 0, nothing ever updates or
+deletes a trade - and 55 MB of that is indexes. So there is no bloat to
+reclaim there, only rows nothing reads: v_band_volume and v_city_volume, its
+only two consumers, both cut at settings.volume_thresholds.lookback_hours,
+which is 24.
 
 WHY IT SHRINKS SO FAR. A Postgres row carries a 24-byte header, per-column
 length bytes, and an entry in every index on the table. Indexes are 78 MB of
