@@ -44,10 +44,15 @@ def test_stale_matching_forecast_cannot_authorize_new_entry():
         prepare(account,signal,capture,now=NOW)
 
 def test_no_complete_depth_never_presents_fully_executable_basket():
+    """One share at the touch cannot become a basket.
+
+    It used to reach simulate() and come back "not executable:
+    quantity_or_price_increment". The refusal now happens a step earlier and
+    says which side is short - the message changed, the guarantee did not."""
     account,signal,capture=fixture()
     def thin(order):
         book=capture(order);book['asks'][0]['size']='1';return book
-    with pytest.raises(ValueError,match='not executable'):
+    with pytest.raises(ValueError,match='venue minimum order size'):
         prepare(account,signal,thin,now=NOW)
 
 
@@ -156,3 +161,70 @@ def test_the_signals_own_city_is_readable_without_a_request():
     assert signal_cities({'payload': {'decision_inputs': {
         'a': {'decision_evidence': {'market': {'city_key': 'dallas'}}}}}}) == {'dallas'}
     assert signal_cities({'payload': {}}) == set(), 'absence is not a city, and must not drop the signal'
+
+
+# ---------------------------------------------------------------------------
+# A SIZE THE VENUE WILL NOT ACCEPT
+#
+# simulate() refuses anything under the market's orderMinSize with the code
+# "quantity_or_price_increment" - which also covers a bad tick and a bad share
+# step. Three unrelated causes, one string, and the plan row keeps no quotes
+# because prepare() raises before building them. All 19 plans blocked on
+# 16 Sep carried it and nothing said whether the touch was thin or the budget
+# was small, which are opposite fixes.
+
+def venue(minimum, size='100000', price='.30', unit='USDC'):
+    account, signal, _ = fixture()
+    def capture(order):
+        return {'token_id': order['token_id'], 'observed_at': NOW.isoformat(), 'tradeable': True,
+                'snapshot_id': order['token_id'], 'tick_size': '.01', 'fee_rate': '.05',
+                'min_order_size': minimum, 'min_order_size_unit': unit,
+                'asks': [{'price': price, 'size': size}], 'bids': [{'price': '.29', 'size': '1000'}]}
+    return account, signal, capture
+
+
+def test_a_touch_too_thin_for_the_venue_floor_names_the_depth():
+    # $5 floor at $0.30 needs 16.67 shares; the book holds 5.
+    account, signal, capture = venue('5', size='5')
+    with pytest.raises(ValueError, match='venue minimum'):
+        prepare(account, signal, capture, now=NOW)
+    try:
+        prepare(account, signal, capture, now=NOW)
+    except ValueError as exc:
+        assert 'book depth' in str(exc), str(exc)
+
+
+def test_a_budget_too_small_for_the_venue_floor_names_the_budget():
+    # Deep book, but max_plan_usd 10 across two legs buys ~16 shares against a
+    # $10-per-leg floor needing 33.34.
+    account, signal, capture = venue('10')
+    with pytest.raises(ValueError, match='venue minimum'):
+        prepare(account, signal, capture, now=NOW)
+    try:
+        prepare(account, signal, capture, now=NOW)
+    except ValueError as exc:
+        assert 'account budget' in str(exc), str(exc)
+
+
+def test_the_floor_is_the_leg_that_needs_the_most_shares():
+    """A basket buys equal shares, so a cheap leg sets the floor: the same
+    dollar minimum costs twenty times the shares at $0.05 as at $1.00."""
+    from paper_plans import venue_minimum_shares
+    book = lambda p: {'min_order_size': '5', 'min_order_size_unit': 'USDC',
+                      'asks': [{'price': p, 'size': '1'}]}
+    quoted = [('a', 't', Decimal('.50'), Decimal('.05'), book('.50')),
+              ('b', 't', Decimal('.05'), Decimal('.05'), book('.05'))]
+    assert venue_minimum_shares(quoted, Decimal('.01')) == Decimal('100')
+
+
+def test_a_share_denominated_minimum_is_not_divided_by_the_price():
+    from paper_plans import venue_minimum_shares
+    quoted = [('a', 't', Decimal('.05'), Decimal('.05'),
+               {'min_order_size': '7', 'min_order_size_unit': 'shares'})]
+    assert venue_minimum_shares(quoted, Decimal('.01')) == Decimal('7')
+
+
+def test_a_plan_that_clears_the_floor_is_still_published():
+    account, signal, capture = venue('1')
+    legs, _ = prepare(account, signal, capture, now=NOW)
+    assert len(legs) == 2 and Decimal(legs[0]['shares']) > 0

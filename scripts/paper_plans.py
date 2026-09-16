@@ -76,6 +76,27 @@ def basket_depth(quoted, step):
     return smallest if smallest is not None else Decimal(0)
 
 
+def venue_minimum_shares(quoted, step):
+    """The smallest share count EVERY leg's venue would accept, on the step.
+
+    Polymarket states a minimum per market as `orderMinSize`, quoted in USDC,
+    so the share count it implies is different on every leg: a leg at $0.05
+    needs twenty times the shares of a leg at $1.00 to clear the same dollar
+    floor. A basket buys equal shares on all legs, so the basket's floor is
+    the LARGEST of those - the leg that needs the most shares decides.
+
+    Rounded UP to the share step, because a quantity below the step is not an
+    order the venue can be sent.
+    """
+    floor = Decimal(0)
+    for _, _, price, _, book in quoted:
+        minimum = number(book['min_order_size'])
+        needed = minimum if book['min_order_size_unit'] == 'shares' else minimum / price
+        needed = (needed / step).to_integral_value(rounding=ROUND_UP) * step
+        floor = max(floor, needed)
+    return floor
+
+
 def signal_cities(signal):
     """Every city the signal's own decision covers, or an empty set if it did
     not carry one. Used to drop a proposal before it costs anything, so an
@@ -167,9 +188,30 @@ def prepare(account, signal, capture, *, now=None):
     # A basket fills equal shares on every leg, so the whole plan is bounded
     # by its THINNEST leg. Below the venue minimum there is no order to place
     # and the plan is genuinely refused, which is a different sentence.
-    quantity = min(quantity, basket_depth(quoted, DEFAULT_SHARE_STEP))
+    depth = basket_depth(quoted, DEFAULT_SHARE_STEP)
+    quantity = min(quantity, depth)
     if quantity<=0:
         raise ValueError('No depth at the quoted price on at least one leg')
+    # A SIZE THE VENUE WILL NOT ACCEPT IS NOT A PLAN, AND SAYING SO IN ITS OWN
+    # WORDS IS THE DIFFERENCE BETWEEN A FIXABLE BLOCK AND A MYSTERY.
+    #
+    # simulate() refuses below orderMinSize with the code
+    # "quantity_or_price_increment", which also covers a bad tick and a bad
+    # share step - three unrelated causes, one string. On 16 Sep every one of
+    # the 19 blocked plans carried it, and the plan row records no quotes
+    # (prepare raises before building them), so nothing on the desk said
+    # whether the touch was thin or the budget was small.
+    #
+    # Neither can be rescued by resizing. The budget quantity is the largest
+    # the cash allows and the depth is the largest the book allows, so if the
+    # smaller of the two is under the floor, raising it would break the other
+    # constraint. What CAN be fixed is which one to go and change.
+    floor = venue_minimum_shares(quoted, DEFAULT_SHARE_STEP)
+    if quantity < floor:
+        short = 'book depth' if depth < floor else 'account budget'
+        raise ValueError(
+            f'Below the venue minimum order size: {quantity} shares against a '
+            f'{floor}-share floor, limited by {short}')
     legs, quotes = [], []
     for bid,token,price,rate,book in quoted:
         order={'action':'BUY','token_id':token,'shares':str(quantity),'limit_price':str(price),'share_step':str(DEFAULT_SHARE_STEP),
