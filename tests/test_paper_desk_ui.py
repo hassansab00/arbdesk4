@@ -58,13 +58,20 @@ def test_the_page_does_not_promise_a_schedule_github_does_not_keep():
     assert "often late" in src
 
 
-def test_only_the_step_the_page_can_really_trigger_offers_a_button():
-    """Signals, proposals, settlement and exits run in GitHub Actions and the
-    browser cannot start them. A button that quietly did nothing would be worse
-    than no button."""
+def test_the_panel_says_which_button_does_which():
+    """It used to say Fill was "the only step this page can trigger", which
+    stopped being true when Run cycle now went in - and the fill itself only
+    began working when it was pointed at GitHub Actions instead of a worker
+    service nobody had deployed. Two buttons that do different things have to
+    be told apart on the page, not in a tooltip.
+
+    The exact prose is not the contract. The distinction is."""
     src = STATUS.read_text(encoding="utf-8")
     assert "runPaperWorker" in src
-    assert "The only step this page can trigger" in src
+    assert "Run cycle now" in src, "the wide action must be named beside the narrow one"
+    assert "The only step this page can trigger" not in src, (
+        "there are two triggers now; a page that claims otherwise teaches the "
+        "owner the wrong thing about which button to press")
 
 
 def test_the_archive_and_the_database_cannot_double_count():
@@ -193,7 +200,10 @@ def test_the_narrow_action_stays_narrow():
     settles what is already queued."""
     src = CONTROL.read_text(encoding="utf-8")
     assert "runPaperWorker" in src
-    assert "Does not look for new trades" in src
+    assert "does not look for new trades" in src.lower()
+    assert "five minutes" in src.lower(), (
+        "a queued order expires five minutes after its plan, so pressing this "
+        "hours after a cycle finds nothing - say so where the button is")
 
 
 def test_the_dispatch_route_takes_no_parameters_from_the_browser():

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
-import { runPaperWorker } from "@/lib/paperSupabase";
+import { runPaperWorker, describeWorker } from "@/lib/paperSupabase";
 import { fmtAge, fmtInt } from "@/lib/format";
 
 /**
@@ -99,10 +99,7 @@ export default function PaperPipelineStatus({ refresh }: { refresh: () => void }
   async function fillNow() {
     setBusy(true); setNotice(null); setFailed(false);
     try {
-      const result = await runPaperWorker();
-      setNotice(result.orders_completed
-        ? `Filled ${result.orders_completed} queued order(s).`
-        : "No order was claimable. Nothing is queued, or what was queued has expired.");
+      setNotice(describeWorker(await runPaperWorker()));
       runs.refresh(); refresh();
     } catch (e) {
       setFailed(true);
@@ -169,9 +166,14 @@ export default function PaperPipelineStatus({ refresh }: { refresh: () => void }
       <button className={button} disabled={busy} onClick={fillNow}>
         {busy ? "Filling…" : "Fill queued orders now"}
       </button>
+      {/* It was "the only step this page can trigger", which stopped being
+          true when Run cycle now went in - and the fill itself only started
+          working when it was pointed at GitHub Actions instead of a worker
+          service that was never deployed. */}
       <span className="text-xs text-muted">
-        The only step this page can trigger. Signals, proposals, settlement and exits run on the
-        schedule above — trigger them from the repository&apos;s Actions tab.
+        Runs the fill step on its own, in GitHub Actions, about a minute after you press it. Use{" "}
+        <strong>Run cycle now</strong> above for the whole chain — signals, proposals, fills,
+        settlement, exits.
       </span>
     </div>
     {notice && <div role="status" className={`text-sm ${failed ? "text-bad" : "text-good"}`}>{notice}</div>}

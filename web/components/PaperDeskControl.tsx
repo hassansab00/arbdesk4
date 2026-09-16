@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { paperAction, runPaperWorker } from "@/lib/paperSupabase";
+import { paperAction, runPaperWorker, describeWorker } from "@/lib/paperSupabase";
 import { fmtUsd, fmtAge } from "@/lib/format";
 import { nextCycle } from "@/components/PaperPipelineStatus";
 
@@ -142,12 +142,7 @@ export default function PaperDeskControl({ desk, exposure, openPositions, lastFi
     return body.note ?? "Cycle requested.";
   }, "cycle");
 
-  const fillNow = () => say(async () => {
-    const r = await runPaperWorker();
-    return r.orders_completed
-      ? `Filled ${r.orders_completed} queued order(s).`
-      : "Nothing was claimable — no order is queued, or what was has expired.";
-  }, "fill");
+  const fillNow = () => say(async () => describeWorker(await runPaperWorker()), "fill");
 
   const running = state.key === "ACTIVE" || state.key === "STALLED";
 
@@ -184,8 +179,13 @@ export default function PaperDeskControl({ desk, exposure, openPositions, lastFi
                 onClick={runCycle}>
           {busy === "cycle" ? "Starting…" : "Run cycle now"}
         </button>
+        {/* Fills what is ALREADY queued; it never looks for a new trade. An
+            order lives five minutes from the moment its plan is made, so this
+            is for a ticket you have just written by hand - not for catching up
+            on a cycle that ran hours ago, where there is nothing left alive to
+            claim. */}
         <button className={button} disabled={!!busy} onClick={fillNow}
-                title="Fills orders that are already queued. Does not look for new trades.">
+                title="Executes orders already queued, against a book fetched live from the venue. It does not look for new trades, and a queued order only lives five minutes.">
           {busy === "fill" ? "Filling…" : "Fill queued"}
         </button>
         <button className={button} onClick={openSettings}>Settings</button>
