@@ -124,3 +124,100 @@ def test_a_missing_archive_is_not_an_error():
     state of a new desk rather than a broken page."""
     src = HISTORY.read_text(encoding="utf-8")
     assert "if (!index.ok) return []" in src
+
+
+# ---------------------------------------------------------------------------
+# IS IT ON, AND HOW DO I TURN IT OFF
+#
+# The switch existed: a checkbox reading "Pause new automatic entries", inside
+# a policy form, on a tab, behind a Save button. Stopping the desk meant pick
+# desk, click Automation, scroll, tick, save - four steps and a guess about
+# which of them actually stopped it - while nothing on the page said whether it
+# was running in the first place.
+
+CONTROL = ROOT / "web" / "components" / "PaperDeskControl.tsx"
+RUN_ROUTE = ROOT / "web" / "app" / "api" / "paper-run" / "route.ts"
+
+
+def test_the_control_panel_is_the_first_thing_under_the_desk_picker():
+    src = PAGE.read_text(encoding="utf-8")
+    assert "<PaperDeskControl" in src
+    assert src.index("<PaperDeskControl") < src.index("<PaperPipelineStatus"), (
+        "status and the switch come before the telemetry")
+    assert src.index("<PaperDeskControl") < src.index("Manual paper ticket")
+
+
+def test_every_way_a_desk_can_be_idle_has_a_state():
+    """Four states, and the fourth is the point."""
+    src = CONTROL.read_text(encoding="utf-8")
+    for state in ("ACTIVE", "PAUSED", "MANUAL", "STALLED"):
+        assert f'key: "{state}"' in src, f"{state} is not a state the page can show"
+
+
+def test_a_desk_that_is_on_but_cannot_trade_is_not_shown_as_running():
+    """A desk with no strategies, no cities or no spare cash looks exactly like
+    a working desk that has not found a trade yet, and will sit there for ever.
+    That is the state the old page could not express."""
+    src = CONTROL.read_text(encoding="utf-8")
+    assert "No strategies chosen" in src
+    assert "No cities chosen" in src
+    assert "No available cash" in src
+    # ...and each names what to do about it rather than only what is wrong.
+    assert src.count("in Settings") >= 2
+
+
+def test_stopping_is_one_click_and_rewrites_nothing_else():
+    """set_policy takes mode and policy as well as the pause flag, so the
+    switch has to send them back untouched or flipping it quietly saves
+    whatever the form last held."""
+    src = CONTROL.read_text(encoding="utf-8")
+    assert "p_mode: desk.mode" in src and "p_policy: desk.policy" in src
+    assert "setPaused(true)" in src and "setPaused(false)" in src
+
+
+def test_the_run_button_says_why_it_is_disabled():
+    """A run button that silently fails is worse than a disabled one."""
+    src = CONTROL.read_text(encoding="utf-8")
+    assert "canRun?.configured" in src
+    assert "Not configured. Set ${canRun?.missing" in src
+
+
+def test_the_dispatch_route_takes_no_parameters_from_the_browser():
+    """The workflow, the ref and the repository are fixed on the server, so
+    there is nothing for a caller to inject."""
+    src = RUN_ROUTE.read_text(encoding="utf-8")
+    assert "const WORKFLOW = 'pipeline_intraday.yml'" in src
+    assert "request.json()" not in src, "the run route must not read a body"
+    assert "process.env.GITHUB_DISPATCH_TOKEN" in src
+    assert "sameOrigin" in src or "origin !== new URL(request.url).origin" in src
+
+
+def test_an_unconfigured_dispatch_names_the_variable_to_set():
+    src = RUN_ROUTE.read_text(encoding="utf-8")
+    assert "GITHUB_DISPATCH_TOKEN" in src and "GITHUB_REPOSITORY" in src
+    assert "Actions: read and write" in src, (
+        "say which permission the token needs, or setting it up is guesswork")
+    assert "status: 503" in src
+
+
+def test_a_started_cycle_does_not_pretend_to_be_a_finished_one():
+    """The dispatch returns immediately; the run takes minutes."""
+    src = RUN_ROUTE.read_text(encoding="utf-8")
+    assert "takes a few minutes" in src
+
+
+def test_the_manual_ticket_is_folded_away_unless_it_is_the_only_way_to_act():
+    """It bypasses strategies entirely. On an automatic desk it is noise."""
+    src = PAGE.read_text(encoding="utf-8")
+    assert "<details className={card} open={selected.mode==='manual'}>" in src
+    assert "bypassing strategies" in src, "say what it is for, next to its name"
+
+
+def test_the_page_no_longer_points_at_a_tab_that_was_renamed():
+    """Three places told the owner to go to the Automation tab. It is called
+    Settings now, and a page that sends you to a tab that does not exist is
+    worse than one that says nothing."""
+    src = PAGE.read_text(encoding="utf-8")
+    assert "Automation</strong> tab" not in src
+    assert "on the Automation tab" not in src
+    assert "'Settings'" in src

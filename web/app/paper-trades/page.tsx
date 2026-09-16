@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import PaperAutomation from '@/components/PaperAutomation';
 import PaperExit from '@/components/PaperExit';
+import PaperDeskControl from '@/components/PaperDeskControl';
 import PaperPipelineStatus from '@/components/PaperPipelineStatus';
 import PaperTradeHistory from '@/components/PaperTradeHistory';
 import { paperAction, paperRead, runPaperWorker } from '@/lib/paperSupabase';
@@ -32,7 +33,7 @@ export default function PaperTradesPage() {
   const [ticket,setTicket] = useState({band:'',side:'YES',shares:'',limit:'',ceiling:'',reason:''});
   // Stable across retry after an uncertain network response; reset only after success.
   const [command,setCommand] = useState<string|null>(null);
-  useEffect(()=>{if(window.location.hash==='#automation')setTab('Automation');},[]);
+  useEffect(()=>{if(window.location.hash==='#automation')setTab('Settings');},[]);
   const accounts=useQuery<Account[]>(async()=>{
     return paperRead<Account[]>('accounts');
   },[],15000);
@@ -97,7 +98,7 @@ export default function PaperTradesPage() {
       <option value="">Paper desk</option>{accounts.data?.map(a=><option key={a.account_id} value={a.account_id}>{a.name} — {a.mode}{a.entries_paused?' · paused':''}</option>)}</select>
       {/* Several desks, so a setting can be tried without disturbing the one
           already running. Each carries its own cash, strategies and cities -
-          the Automation tab edits them per desk. */}
+          the Settings tab edits them per desk. */}
       {!!accounts.data?.length&&<button type="button" disabled={busy} className={button}
         onClick={()=>{setShowNewDesk(v=>!v);setNewDesk({name:'',cash:''});}}>
         {showNewDesk?'Cancel':'New desk'}</button>}
@@ -114,36 +115,30 @@ export default function PaperTradesPage() {
         if(made){setShowNewDesk(false);setNewDesk({name:'',cash:''});}
       }}>
         <h2 className="font-semibold">New paper desk</h2>
-        <p className="text-xs text-muted">Its own cash, strategies and cities. It starts <strong>paused</strong> and manual — set it up on the Automation tab, then unpause when you want it to act.</p>
+        <p className="text-xs text-muted">Its own cash, strategies and cities. It starts <strong>paused</strong> and manual — set it up under Settings, then press Start when you want it to act.</p>
         <label className="block text-sm">Name<input required className="input mt-1" maxLength={100} placeholder="e.g. Austin only, tight edge" value={newDesk.name} onChange={e=>setNewDesk({...newDesk,name:e.target.value})}/></label>
         <label className="block text-sm">Starting paper cash (USD)<input required type="number" min="1" step="0.01" className="input mt-1" value={newDesk.cash} onChange={e=>setNewDesk({...newDesk,cash:e.target.value})}/></label>
         <button disabled={busy} className={button}>Create desk</button></form>}
       {selected&&<>
-        {/* WHY THIS DESK IS DOING NOTHING, said once, at the top.
-            A desk that is paused, or one in assisted mode with no strategies
-            chosen, looks identical to a broken page: you select it, and
-            nothing ever appears. Both are ordinary states with a specific
-            remedy, so both are named here rather than left to be deduced. */}
-        {selected.entries_paused&&<div className="rounded border border-warn/50 bg-warn/10 p-3 text-sm text-warn">
-          <strong>This desk is paused.</strong> It will not open positions - queued orders stay queued.
-          Unpause it on the <strong>Automation</strong> tab when you want it to act.
-        </div>}
-        {selected.mode!=='manual'&&!selected.policy?.strategies?.length&&
-          <div className="rounded border border-warn/50 bg-warn/10 p-3 text-sm text-warn">
-            <strong>No strategies chosen for this {selected.mode} desk.</strong> It can only act on what a
-            strategy proposes, so until one is picked on the <strong>Automation</strong> tab it will stay empty
-            however long you leave it.
-          </div>}
-        {selected.mode==='manual'&&<div className="text-xs text-muted">
-          <strong className="text-text">Manual desk.</strong> It acts only on tickets you write below - one
-          contract at a time, no strategy involved. Switch it to <strong>assisted</strong> on the Automation
-          tab to have strategies propose instead.
-        </div>}
-        <div className="grid gap-3 sm:grid-cols-3"><div className={card}><div className="text-xs text-muted" title="Cash remaining after committed fills and fees.">Cash</div><div className="font-mono text-xl">{fmtUsd(Number(selected.cash))}</div></div>
-          <div className={card}><div className="text-xs text-muted" title="Cash held for queued orders; released on cancellation or execution.">Reserved</div><div className="font-mono text-xl">{fmtUsd(Number(selected.reserved_cash))}</div></div>
-          <div className={card}><div className="text-xs text-muted">Available cash</div><div className="font-mono text-xl">{fmtUsd(Number(selected.cash)-Number(selected.reserved_cash))}</div></div></div>
+        {/* STATUS, THE SWITCH AND THE NUMBERS, before anything else.
+            This replaces three separate warning banners that each explained
+            one way a desk can be idle. They said the right things in the
+            wrong place: below the desk picker, above nothing, and only for
+            the two cases somebody had thought of. PaperDeskControl states
+            the case, names the remedy and carries the button that applies
+            it. */}
+        <PaperDeskControl
+          desk={selected}
+          exposure={positions.data?.reduce((t,p)=>t+Number(p.cost_basis||0),0) ?? 0}
+          openPositions={positions.data?.filter(p=>Number(p.shares)>0).length ?? 0}
+          lastFill={orders.data?.find(o=>o.status==='filled'||o.status==='partial')?.requested_at ?? null}
+          refresh={refresh}
+          openSettings={()=>setTab('Settings')}/>
         <PaperPipelineStatus refresh={refresh}/>
-        <form className={`${card} space-y-3`} onSubmit={e=>{e.preventDefault();submit();}}><fieldset disabled={busy} className="space-y-3"><h2 className="font-semibold">Manual paper ticket</h2>
+        <details className={card} open={selected.mode==='manual'}>
+          <summary className="cursor-pointer text-sm font-semibold">Manual paper ticket
+            <span className="ml-2 font-normal text-muted">— place one order by hand, bypassing strategies</span></summary>
+        <form className="mt-3 space-y-3" onSubmit={e=>{e.preventDefault();submit();}}><fieldset disabled={busy} className="space-y-3">
           <div className="grid gap-3 md:grid-cols-3"><label className="text-sm md:col-span-2">Market / band<select required className="input mt-1" value={ticket.band} onChange={e=>{setCommand(null);setTicket({...ticket,band:e.target.value});}}><option value="">Select a current contract</option>{bands.data?.map(b=><option key={b.band_id} value={b.band_id}>{name(b.band_id)}</option>)}</select></label>
             <label className="text-sm">Side<select className="input mt-1" value={ticket.side} onChange={e=>{setCommand(null);setTicket({...ticket,side:e.target.value});}}><option>YES</option><option>NO</option></select></label>
             {(['shares','limit','ceiling'] as const).map(field=><label key={field} className="text-sm">{{shares:'Shares',limit:'Maximum price (USD/share)',ceiling:'Maximum total including fees (USD)'}[field]}<input required type="number" min="0.01" max={field==='limit'?'0.99':undefined} step="0.01" className="input mt-1" value={ticket[field]} onChange={e=>{setCommand(null);setTicket({...ticket,[field]:e.target.value});}}/></label>)}
@@ -151,12 +146,13 @@ export default function PaperTradesPage() {
           <p className="text-xs text-muted">Immediate-or-cancel simulation: only available depth within your limit can fill. Market metadata, fees and book freshness are verified by the worker.</p>
           <button disabled={busy||!ticket.band} className={button}>Queue paper order</button></fieldset>
         </form>
-        <nav aria-label="Paper trade views" className="flex flex-wrap gap-2">{['Trades','Orders','Positions','Activity','Automation'].map(t=><button key={t} className={`${button} ${tab===t?'text-accent border-accent':''}`} onClick={()=>setTab(t)}>{t}</button>)}</nav>
+        </details>
+        <nav aria-label="Paper trade views" className="flex flex-wrap gap-2">{['Trades','Orders','Positions','Activity','Settings'].map(t=><button key={t} className={`${button} ${tab===t?'text-accent border-accent':''}`} onClick={()=>setTab(t)}>{t}</button>)}</nav>
         {tab==='Trades'&&<PaperTradeHistory account={account} bandName={name}/>}
         {tab==='Orders'&&<div className={`${card} overflow-x-auto`}><table className="w-full text-left text-sm"><thead className="text-muted"><tr>{['Contract','Order','Requested','Limit','Status',''].map((x,i)=><th className="p-2" key={i}>{x}</th>)}</tr></thead><tbody>{orders.data?.map(o=><tr key={o.order_id} className="border-t border-border"><td className="p-2">{name(o.band_id)}</td><td className="p-2">{o.origin} · {o.action} {o.side}</td><td className="p-2">{Number(o.shares).toLocaleString(undefined,{maximumFractionDigits:2})}</td><td className="p-2">{fmtPrice(Number(o.limit_price))}</td><td className="p-2"><div>{o.status}</div><div className="text-xs text-muted">{o.reason}</div></td><td className="p-2">{o.status==='queued'&&<button disabled={busy} className={button} onClick={()=>act(()=>paperAction('cancel_order',{p_order:o.order_id}))}>Cancel</button>}<details><summary className="cursor-pointer text-muted">Evidence</summary><pre className="max-w-md overflow-auto text-xs">{JSON.stringify(o.result,null,2)}</pre></details></td></tr>)}</tbody></table>{!orders.data?.length&&<p className="py-4 text-sm text-muted">No paper orders yet. System alerts are not trades.</p>}{orders.truncated&&<p className="text-xs text-warn">Showing the latest 100 orders; older history is retained.</p>}</div>}
         {tab==='Positions'&&<div className={`${card} space-y-3`}>{positions.data?.map(p=><div key={p.band_id+p.side} className="border-b border-border pb-2 text-sm"><div>{name(p.band_id)} · {p.side}</div><div className="font-mono">{Number(p.shares).toLocaleString(undefined,{maximumFractionDigits:2})} shares · Cost basis {fmtUsd(Number(p.cost_basis))} · Realized {fmtUsd(Number(p.realized_pnl))}</div>{Number(p.shares)>0&&<PaperExit key={account+p.band_id+p.side} account={account} band={p.band_id} side={p.side} available={Number(p.shares)} refresh={refresh}/>}</div>)}{!positions.data?.length&&<p className="text-sm text-muted">Positions appear after a recorded fill. Unrealized profit requires a fresh executable exit quote.</p>}</div>}
         {tab==='Activity'&&<div className={`${card} space-y-3`}>{events.data?.map(e=><details key={e.event_id} className="border-b border-border pb-2"><summary className="cursor-pointer text-sm">{new Date(e.occurred_at).toLocaleString()} · {e.event_type.replaceAll('_',' ')} · {fmtUsd(Number(e.cash_delta))}</summary><pre className="overflow-auto text-xs text-muted">{JSON.stringify(e.payload,null,2)}</pre></details>)}{events.truncated&&<p className="text-xs text-warn">Showing the latest 100 events; older history is retained.</p>}</div>}
-        {tab==='Automation'&&<PaperAutomation key={selected.account_id+selected.policy_version} account={selected} refresh={refresh}/>}
+        {tab==='Settings'&&<PaperAutomation key={selected.account_id+selected.policy_version} account={selected} refresh={refresh}/>}
       </>}
     <div className="flex flex-wrap gap-4 text-sm text-accent"><Link href="/board">Board</Link><Link href="/predictive">Predictive</Link><Link href="/databank">Data Bank</Link><Link href="/synthesis">Synthesis</Link></div>
   </div>;
