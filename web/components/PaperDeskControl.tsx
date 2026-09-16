@@ -104,11 +104,11 @@ export default function PaperDeskControl({ desk, exposure, openPositions, lastFi
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
-  const [canRun, setCanRun] = useState<{ configured: boolean; missing: string[] } | null>(null);
+  const [canRun, setCanRun] = useState<{ configured: boolean; missing: string[]; repo?: string } | null>(null);
 
   useEffect(() => {
     fetch("/api/paper-run").then(r => r.json())
-      .then(setCanRun).catch(() => setCanRun({ configured: false, missing: [] }));
+      .then(setCanRun).catch(() => setCanRun({ configured: false, missing: ["the status check itself failed"] }));
   }, []);
 
   const available = num(desk.cash) - num(desk.reserved_cash);
@@ -170,10 +170,17 @@ export default function PaperDeskControl({ desk, exposure, openPositions, lastFi
                 {busy === "start" ? "Starting…" : "Start"}
               </button>
             : null}
-        <button className={button} disabled={!!busy || !canRun?.configured}
-                title={canRun?.configured
-                  ? "Starts the full chain in GitHub Actions: signals, proposals, fills, settlement, exits."
-                  : "GITHUB_DISPATCH_TOKEN is not set on this deployment. Add it in the site environment, then REDEPLOY - Vercel bakes environment variables in at build time, so one added after the last deploy is not in the running build. Or start the cycle from the repository's Actions tab."}
+        {/* NEVER DISABLED, and that is deliberate.
+            This button was gated on a GET that reports whether the server has
+            a token. Three times it came back "not configured" for a different
+            reason, and each time the only way to see WHY was to hover a
+            tooltip - on a deployment nobody but its owner can reach. A control
+            that refuses to explain itself in place is worse than one that
+            fails loudly. Click it: it either starts the cycle or prints the
+            server's own sentence underneath, in red, where it can be read and
+            sent to someone. */}
+        <button className={button} disabled={!!busy}
+                title="Starts the full chain in GitHub Actions: signals, proposals, fills, settlement, exits."
                 onClick={runCycle}>
           {busy === "cycle" ? "Starting…" : "Run cycle now"}
         </button>
@@ -209,5 +216,18 @@ export default function PaperDeskControl({ desk, exposure, openPositions, lastFi
     </div>
 
     {notice && <p role="status" className={`px-4 pb-4 text-sm ${failed ? "text-bad" : "text-good"}`}>{notice}</p>}
+
+    {/* The state of the run wiring, visible rather than hidden in a tooltip.
+        "Run cycle: ready" or the exact thing that is missing. */}
+    <p className="px-4 pb-4 text-xs text-muted">
+      Run cycle:{" "}
+      {canRun === null ? "checking…"
+        : canRun.configured
+          ? <span className="text-good">ready{canRun.repo ? ` · ${canRun.repo}` : ""}</span>
+          : <span className="text-warn">
+              {canRun.missing?.join(", ") || "GITHUB_DISPATCH_TOKEN"} missing on this deployment.
+              Add it in the site environment and redeploy — Vercel bakes them in at build time.
+            </span>}
+    </p>
   </div>;
 }

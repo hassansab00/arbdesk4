@@ -175,12 +175,25 @@ def test_stopping_is_one_click_and_rewrites_nothing_else():
     assert "setPaused(true)" in src and "setPaused(false)" in src
 
 
-def test_the_run_button_says_why_it_is_disabled():
-    """A run button that silently fails is worse than a disabled one."""
+def test_the_run_button_is_never_disabled_and_explains_itself_in_place():
+    """It was gated on a server check that came back "not configured" three
+    times for three different reasons, and the only way to see why was to hover
+    a tooltip on a deployment nobody but its owner can reach. A control that
+    refuses to explain itself in place is worse than one that fails loudly."""
     src = CONTROL.read_text(encoding="utf-8")
-    assert "canRun?.configured" in src
-    assert "GITHUB_DISPATCH_TOKEN is not set on this deployment" in src
-    assert "REDEPLOY" in src, "setting it and not redeploying is the other half of the trap"
+    assert 'disabled={!!busy}\n                title="Starts the full chain' in src, (
+        "the run button must not be gated on the configuration check")
+    assert "Run cycle:{\" \"}" in src, "the wiring state must be on the page, not in a tooltip"
+    assert "canRun.missing?.join" in src
+
+
+def test_the_narrow_action_stays_narrow():
+    """Fill queued is not the same as running the cycle, and the panel has to
+    keep saying which is which - one looks for new trades, the other only
+    settles what is already queued."""
+    src = CONTROL.read_text(encoding="utf-8")
+    assert "runPaperWorker" in src
+    assert "Does not look for new trades" in src
 
 
 def test_the_dispatch_route_takes_no_parameters_from_the_browser():
@@ -242,8 +255,8 @@ def test_only_a_missing_token_can_disable_the_run_button():
     assert "missing: token ? [] : ['GITHUB_DISPATCH_TOKEN']" in src
 
 
-def test_the_disabled_button_says_a_redeploy_is_needed():
+def test_the_page_says_a_redeploy_is_needed():
     """Vercel bakes environment variables in at build time. Setting one and
-    watching the button stay disabled is the exact trap this hit."""
+    watching nothing change is the exact trap this hit, three times."""
     src = CONTROL.read_text(encoding="utf-8")
-    assert "REDEPLOY" in src
+    assert "bakes them in at build time" in src
