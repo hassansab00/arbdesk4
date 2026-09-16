@@ -150,7 +150,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "derived_city_day_features": [
     {
-      "cadence": "on a schedule (0 3 1 * *)",
+      "cadence": "weekly",
       "file": "archive_observations.yml",
       "how": "scripts/archive_observations.py",
       "kind": "action",
@@ -175,7 +175,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "derived_climb_profile": [
     {
-      "cadence": "on a schedule (0 3 1 * *)",
+      "cadence": "weekly",
       "file": "archive_observations.yml",
       "how": "scripts/archive_observations.py",
       "kind": "action",

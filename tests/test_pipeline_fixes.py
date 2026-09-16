@@ -633,12 +633,32 @@ def test_the_export_pages_on_the_primary_key_not_on_valid_at():
 
 def test_every_archived_table_pages_on_its_real_primary_key():
     """A spec naming a non-unique column would reintroduce the skipped-row bug
-    for that table silently."""
+    for that table silently.
+
+    Read out of the schema rather than listed here. A hard-coded map only
+    covers the tables somebody remembered to add to it, and the table most
+    worth archiving - trades_observed, the largest in the database - was added
+    to TABLES long after this test was written.
+    """
+    import os
+    import re
     import archive_observations as ao
-    expected = {"weather_observations": "obs_id", "weather_forecasts": "forecast_id"}
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    schema = open(os.path.join(root, "sql", "ad4_00_preflight.sql")).read()
+    declared = {}
+    for m in re.finditer(r"create table if not exists (?:public\.)?(\w+)\s*\((.*?)\n\s*\);",
+                         schema, re.S):
+        pk = re.search(r"^\s*(\w+)\s[^,\n]*\bprimary key\b", m.group(2), re.M)
+        if pk:
+            declared.setdefault(m.group(1), pk.group(1))
+
     for name, spec in ao.TABLES.items():
-        assert spec["pk"] == expected[spec["table"]], \
-            f"{name} must page on {spec['table']}'s primary key"
+        table = spec["table"]
+        assert table in declared, \
+            f"{table} is archived but sql/ad4_00_preflight.sql does not create it"
+        assert spec["pk"] == declared[table], \
+            f"{name} must page on {table}'s primary key ({declared[table]}), not {spec['pk']}"
         assert spec["pk"] not in spec["columns"], \
             "the surrogate key is not exported - it means nothing outside its own database"
 

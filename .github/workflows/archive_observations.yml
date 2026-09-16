@@ -1,35 +1,54 @@
 name: Archive Observations
 
-# Moves cold weather observations out of Postgres and into a GitHub Release,
-# then prunes them. weather_observations is ~98% of the database at 272 bytes a
-# row; the same data as gzipped CSV is about 50x smaller. That is the whole
-# difference between staying inside a free tier and paying for one.
-#
-# Monthly, not weekly: the point is to stay under a ceiling, not to keep the
-# table minimal, and every run rewrites a release asset.
+# Moves cold rows out of Postgres into a GitHub Release, then prunes them.
+# Three tables: trades_observed, weather_observations, weather_forecasts.
+# The same data as gzipped CSV is roughly fifty times smaller. That is the
+# whole difference between staying inside a free tier and paying for one.
 #
 # It refuses to prune unless the upload verifies by reading back the same row
-# count, and prune_observations() independently refuses unless the feature
-# cache already covers the range. Both guards have to pass.
+# count, and each prune_* function independently refuses unless the summary
+# that survives the delete already covers the range. Both guards have to pass.
+#
+#
+# THE SCHEDULED RUN COMMITS. IT DID NOT, AND THAT MADE THE WHOLE JOB A NO-OP.
+#
+# The flag used to be written `${{ github.event.inputs.commit == 'true' &&
+# '--commit' || '' }}`. On a `schedule` event github.event.inputs is null, so
+# that expression is empty every time and the monthly run was a permanent dry
+# run - it would print what it WOULD delete, delete nothing, and exit green.
+# Nobody would ever have seen it fail, because it never failed; it just never
+# did anything. (It had also never actually fired: all nine runs in its
+# history were workflow_dispatch, every one of them clicked by hand.)
+#
+# So the default is inverted. A cron fire commits. A manual run commits unless
+# the box is UNticked, which is the dry run you want when checking a change.
+# The prune is already bound to a verified row count on both sides, so an
+# automatic commit cannot delete more than was archived.
+#
+# WEEKLY, NOT MONTHLY. Monthly was for a database with room. This one runs at
+# 436 MB of 500 with research_captures adding ~15 MB a day, and a month is
+# long enough to cross the ceiling twice over. Each run rewrites one release
+# asset per table, so the cost of running it more often is a few megabytes of
+# release storage.
 on:
   schedule:
-    - cron: '0 3 1 * *'          # 03:00 UTC on the 1st
+    - cron: '0 3 * * 1'          # 03:00 UTC every Monday
   workflow_dispatch:
     inputs:
       keep_days:
         description: 'Days of raw rows to leave in Postgres'
         required: false
-        default: '180'
+        default: '90'
       table:
         description: 'Which archive to run'
         type: choice
-        options: ['both', 'observations', 'forecasts']
-        default: 'both'
+        options: ['all', 'observations', 'forecasts', 'trades']
+        default: 'all'
       commit:
-        description: 'Actually upload and prune (unticked = dry run)'
+        description: 'Upload and prune (UNtick for a dry run)'
         type: boolean
         required: false
-        default: false
+        default: true
 
 permissions:
   contents: write                # release assets
@@ -45,9 +64,9 @@ jobs:
       - run: pip install -r requirements.runtime.txt
       - run: |
           PYTHONPATH=scripts python scripts/archive_observations.py \
-            --keep-days ${{ github.event.inputs.keep_days || '180' }} \
-            --table ${{ github.event.inputs.table || 'both' }} \
-            ${{ github.event.inputs.commit == 'true' && '--commit' || '' }}
+            --keep-days ${{ github.event.inputs.keep_days || '90' }} \
+            --table ${{ github.event.inputs.table || 'all' }} \
+            ${{ (github.event_name != 'workflow_dispatch' || github.event.inputs.commit == 'true') && '--commit' || '' }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

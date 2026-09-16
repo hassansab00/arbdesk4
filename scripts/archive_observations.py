@@ -1,14 +1,22 @@
 """
-Move cold weather rows out of Postgres and into a GitHub Release.
+Move cold rows out of Postgres and into a GitHub Release.
 
-BOTH TABLES NOW, not observations alone. weather_forecasts overtook it:
+THREE TABLES NOW. The archive covered the two weather tables and grew stale
+against its own database: at 436 MB of a 500 MB tier, the 180-day window it
+defaulted to had nothing left to take, and the table that had overtaken both
+was not in the set at all.
 
-    weather_forecasts      124 MB   343,097 rows   269,744 older than 180 days
-    weather_observations   121 MB   519,649 rows   292,356 older than 180 days
+    trades_observed         91 MB   156,008 rows    90,640 older than 90 days
+    weather_observations    57 MB   239,617 rows   114,283 older than 90 days
+    weather_forecasts       33 MB    81,693 rows    31,787 older than 90 days
 
-Between them that is 245 MB of a 500 MB free tier, and the database measured
-513 MB - over the limit - before the first REINDEX. Archiving only half of it
-left the bigger half behind.
+    (at 180 days those same three give 0, 2,522 and 700 - which is why the
+     default is ninety. The window has to be shorter than the history.)
+
+trades_observed is the one that matters most and was the last to be covered:
+55 of its 91 MB are indexes and it has never been vacuumed, while nothing
+live reads a trade older than a day - v_band_volume and v_city_volume both
+cut at settings.volume_thresholds.lookback_hours, which is 24.
 
 WHY IT SHRINKS SO FAR. A Postgres row carries a 24-byte header, per-column
 length bytes, and an entry in every index on the table. Indexes are 78 MB of
@@ -16,8 +24,8 @@ weather_forecasts' 124 and 59 MB of weather_observations' 121, so removing 79%
 of the rows returns far more than the heap figure alone suggests. The same
 data as gzipped CSV is a few megabytes.
 
-  python scripts/archive_observations.py --keep-days 180 --dry-run
-  python scripts/archive_observations.py --keep-days 180 --table forecasts --commit
+  python scripts/archive_observations.py --keep-days 90 --dry-run
+  python scripts/archive_observations.py --keep-days 90 --table trades --commit
 
 WHERE IT GOES. A GitHub Release asset on this repo: free, 2 GB per asset,
 unlimited assets, durable, versioned, and already inside the pipeline that
@@ -97,6 +105,27 @@ TABLES = {
         "columns": ["city_key", "model", "run_at", "observed_at", "for_date",
                     "lead_days", "forecast_max_c", "variables", "source"],
         "bytes_per_row": 140,
+    },
+    # THE LARGEST TABLE IN THE DATABASE, and until now the archive did not
+    # know it existed. 91 MB of 436, 156,008 rows, 90,640 of them older than
+    # ninety days, and never vacuumed once - not by hand, not by autovacuum.
+    #
+    # Nothing live reads a trade older than a day. v_band_volume and
+    # v_city_volume both cut at settings.volume_thresholds.lookback_hours,
+    # which is 24. What is permanent is archive_daily_city_presence, written
+    # by a trigger on every insert, and prune_trades refuses unless it already
+    # covers every city-day being removed.
+    "trades": {
+        "table": "trades_observed",
+        "pk": "trade_id",
+        "cutoff_col": "traded_at",
+        "cutoff_is_date": False,
+        "prune_rpc": "prune_trades",
+        "tag": "trades-archive",
+        "columns": ["band_id", "condition_id", "traded_at", "price", "size",
+                    "side", "proxy_wallet", "ingested_at", "city_key",
+                    "token_id", "observed_at"],
+        "bytes_per_row": 583,
     },
 }
 
@@ -239,20 +268,22 @@ def verify(asset, expect_rows, token):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--keep-days", type=int, default=180,
-                    help="days of raw observations to leave in Postgres")
+    ap.add_argument("--keep-days", type=int, default=90,
+                    help="days of raw rows to leave in Postgres (default 90)")
     ap.add_argument("--commit", action="store_true",
                     help="actually upload and prune (default is a dry run)")
     ap.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
-    ap.add_argument("--table", choices=sorted(TABLES) + ["both"], default="both",
-                    help="which archive to run (default: both)")
+    # "both" predates trades_observed and still means every table, because a
+    # saved workflow_dispatch and anything scripted against it still send it.
+    ap.add_argument("--table", choices=sorted(TABLES) + ["all", "both"], default="all",
+                    help="which archive to run (default: all)")
     args = ap.parse_args()
 
     if args.keep_days < 30:
         print("--keep-days below 30 leaves nothing to model on", file=sys.stderr)
         return 1
 
-    names = sorted(TABLES) if args.table == "both" else [args.table]
+    names = sorted(TABLES) if args.table in ("all", "both") else [args.table]
     worst = 0
     for name in names:
         print(f"\n=== {name} ===")
