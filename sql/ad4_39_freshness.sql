@@ -212,9 +212,23 @@ begin
   for r in select * from data_freshness_spec order by table_name loop
     if to_regclass('public.' || r.table_name) is null then
       -- ABSENT is a real answer, and a more useful one than a missing row.
+      --
+      -- rows_estimated is null::boolean and sits between rows and newest
+      -- because UNION ALL matches by POSITION, not by name, and this branch
+      -- has to line up with the other two. It did not, and it took the whole
+      -- view down with it: one absent table out of forty-eight, and the
+      -- `create view` at the bottom of this block failed with "each UNION
+      -- query must have the same number of columns". No view, so the browser
+      -- got an error instead of freshness rows and every page printed
+      -- "Freshness tracking is not installed - run sql/ad4_39_freshness.sql"
+      -- - a file that could not, in fact, be run. This is the branch that
+      -- only fires on a database missing a table, so it survived every
+      -- install where nothing was missing, which is the only kind of install
+      -- that never needed it.
       parts := parts || format(
         $q$select %L::text as table_name, %L::text as layer, %L::text as plain_english,
-                  null::bigint as rows, null::timestamptz as newest,
+                  null::bigint as rows, null::boolean as rows_estimated,
+                  null::timestamptz as newest,
                   null::numeric as age_hours, %s::numeric as fresh_hours,
                   'absent'::text as state$q$,
         r.table_name, r.layer, r.plain_english, coalesce(r.fresh_hours::text, 'null'));
