@@ -228,3 +228,50 @@ def test_a_plan_that_clears_the_floor_is_still_published():
     account, signal, capture = venue('1')
     legs, _ = prepare(account, signal, capture, now=NOW)
     assert len(legs) == 2 and Decimal(legs[0]['shares']) > 0
+
+
+# ---------------------------------------------------------------------------
+# A RUN THAT STOPS EARLY IS STILL A RUN
+#
+# log_run sat below both loops, so the two ordinary early exits returned
+# without writing anything - and hitting the 10-plan cap is the NORMAL outcome
+# on a busy board, reached in seconds. ingest_log therefore held one
+# paper_plans row in twelve hours while the step ran every cycle and wrote
+# plans each time, and the desk page showed "Proposals: 0 proposed, 9h ago"
+# beside signals fired twenty minutes earlier. A dead-looking step that was
+# never dead.
+
+def test_every_exit_from_the_cycle_records_the_run():
+    import ast
+    import inspect
+    import textwrap
+    import paper_plans
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(paper_plans.cycle)))
+    outer = tree.body[0]
+
+    # cycle() nests two helpers - done() and capture() - and their own returns
+    # are not exits from cycle. Walking the source line by line counted both
+    # and made this test fail on correct code, so the nested bodies are
+    # excluded rather than matched around.
+    nested = {id(n) for fn in ast.walk(outer)
+              if isinstance(fn, ast.FunctionDef) and fn is not outer
+              for n in ast.walk(fn)}
+
+    bad = [ast.unparse(n) for n in ast.walk(outer)
+           if isinstance(n, ast.Return) and id(n) not in nested
+           and not (isinstance(n.value, ast.Call)
+                    and getattr(n.value.func, "id", None) == "done")]
+    assert not bad, (
+        "these paths leave cycle() without writing to ingest_log, so the desk "
+        f"page cannot tell the step ran: {bad}")
+
+
+def test_the_log_says_why_it_stopped():
+    """'0 proposals' means something different when the cap was hit than when
+    every signal was considered and none qualified."""
+    import inspect
+    import paper_plans
+    src = inspect.getsource(paper_plans.cycle)
+    for note in ("plan cap", "budget", "considered every signal"):
+        assert note in src, f"no exit reports {note!r}"

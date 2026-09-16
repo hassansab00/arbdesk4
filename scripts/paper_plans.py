@@ -231,9 +231,25 @@ def prepare(account, signal, capture, *, now=None):
 def cycle(max_plans=10, budget_seconds=90):
     from paper_worker import capture_book
     now, started, published = dt.datetime.now(dt.timezone.utc), time.monotonic(), 0
+    # A RUN THAT STOPS EARLY IS STILL A RUN, and has to say so.
+    #
+    # log_run sat at the bottom, after the loops, so the two ordinary early
+    # exits - no accounts, and the budget or plan cap being reached - returned
+    # without writing anything. Hitting the cap is the NORMAL outcome on a busy
+    # board: 10 plans is the default and the desk reaches it in seconds.
+    #
+    # So ingest_log held one paper_plans row in twelve hours while the step ran
+    # every cycle and wrote plans each time. The desk page reads that table for
+    # its step tiles and showed "Proposals: 0 proposed, 9h ago" beside signals
+    # fired twenty minutes earlier - which reads as a dead step, and sent me
+    # looking for a stopped pipeline that had never stopped.
+    def done(published, note):
+        log_run('paper_plans', 'ok', published, {'proposals': published, 'stopped': note})
+        return {'proposals': published}
+
     accounts = rest_all('paper_accounts',{'mode':'in.(assisted,automatic)'},order='account_id')
     if not accounts:
-        return {'proposals':0}
+        return done(0, 'no assisted or automatic account')
     signals = rest_all('signals',[('action','eq.ENTER'),('fired_at','gte.'+(now-dt.timedelta(minutes=15)).isoformat()),
         ('fired_at','lte.'+now.isoformat())],order='fired_at.desc,signal_id')
     enabled = {s['strategy_id'] for s in rest('strategies',{'enabled':'eq.true','select':'strategy_id'})}
@@ -244,8 +260,10 @@ def cycle(max_plans=10, budget_seconds=90):
         return capture_book(order)
     for account in accounts:
         for signal in signals:
-            if time.monotonic()-started>budget_seconds or published>=max_plans:
-                return {'proposals':published}
+            if published>=max_plans:
+                return done(published, f'reached the {max_plans}-plan cap')
+            if time.monotonic()-started>budget_seconds:
+                return done(published, f'reached the {budget_seconds}s budget')
             if signal['strategy_id'] not in enabled or signal['strategy_id'] not in account['policy'].get('strategies',[]):
                 continue
             # A CITY THE DESK CANNOT TRADE MUST NOT COST IT A PLAN SLOT.
@@ -279,8 +297,7 @@ def cycle(max_plans=10, budget_seconds=90):
             rpc('publish_paper_plan',{'p_account':account['account_id'],'p_command':command,'p_signal':signal['signal_id'],
                 'p_legs':legs,'p_evidence':evidence,'p_block_reason':reason})
             published+=1
-    log_run('paper_plans','ok',published,{'proposals':published})
-    return {'proposals':published}
+    return done(published, 'considered every signal')
 
 
 if __name__=='__main__':
