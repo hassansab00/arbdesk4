@@ -131,7 +131,31 @@ def runs_per_30_days(expr):
 # 365 of 380, ~730 of the 2,000 free minutes. This is the "room to add
 # something" being spent once, deliberately, on a feed that was not running at
 # all - not drift.
-SCHEDULED_RUN_BUDGET = 380
+#
+# 400 NOW. Two increments, both bought on purpose, both for something that was
+# not happening at all:
+#
+#   +3   archive_observations.yml monthly -> weekly. The database sits at
+#        436 MB of a 500 MB tier with research_captures adding ~15 MB a day. A
+#        month is long enough to cross the ceiling twice, and crossing it costs
+#        real money rather than billed minutes.
+#
+#   +30  paper_trade_log.yml, daily. Closed trades become a file in the repo -
+#        the permanent record of every decision the desk has made, and the data
+#        the paper desk page reads. Trades close when their market resolves,
+#        which on a daily temperature band is a daily event, so a daily run is
+#        the natural cadence rather than a chosen one.
+#
+# It was tempting to fold the export into pipeline_daily as a free extra step,
+# since that job already runs and already does the settlement sweep that closes
+# these trades. It stays separate because a git push that starts failing inside
+# a data pipeline is a red X on the wrong job, and the honest alternative -
+# continue-on-error - makes a permanently broken archive silent. That is the
+# exact failure this week was spent removing from archive_observations.
+#
+# 398 of 400, ~796 of the 2,000 free minutes, leaving ~1,200 for CI and for a
+# manual backfill. The next addition needs a cadence cut to pay for it.
+SCHEDULED_RUN_BUDGET = 400
 
 
 def test_the_scheduled_workflows_fit_in_the_minute_allowance():
