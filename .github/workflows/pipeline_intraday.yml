@@ -127,10 +127,22 @@ jobs:
         timeout-minutes: 3
         run: python scripts/paper_worker.py
 
+      # THE EVIDENCE CHAIN CANNOT DEPEND ON THE DAILY CRON, because that cron
+      # is not reliable. GitHub delays and drops scheduled workflows under
+      # load: the last SCHEDULED daily run was 15 Sep at 09:06 UTC, five hours
+      # after its 04:00 slot, and the 16 Sep one had still not fired by 07:50.
+      # The sweep only ever ran at full budget there, so the day the budget
+      # was raised to 900s was a day it never got to use.
+      #
+      # This job runs six times a day and has been reliable, so the sweep gets
+      # a real budget here too: ~240 bands a run against the ~1/second the two
+      # venue calls cost, six runs a day, instead of one daily run that may
+      # not happen. It sits after the fill step, so a longer sweep delays no
+      # order.
       - name: Venue-confirmed paper settlement
         if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}
-        timeout-minutes: 2
-        run: python scripts/paper_settlement.py
+        timeout-minutes: 6
+        run: python scripts/paper_settlement.py --budget-seconds 240 --max-evidence 600
 
       - name: Paper exit policies
         if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}

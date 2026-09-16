@@ -132,6 +132,31 @@ def _candidate_bands(position_band_ids, days_back, settled_conditions=frozenset(
             continue
         seen.add(key)
         out.append(band)
+
+    # ONE MARKET AT A TIME, because a HALF-PROVED MARKET IS WORTH NOTHING.
+    #
+    # v_venue_market_resolution calls a market 'confirmed' only when EVERY one
+    # of its bands is confirmed and exactly one of them settled yes - which is
+    # the right rule, since a market missing a band cannot say which band won.
+    # fact_band_outcome, calibration and every scorecard hang off that.
+    #
+    # Bands were fetched 100 market ids at a time and ordered by band_id, so a
+    # run's budget landed on ~50 bands spread across ~50 different markets. On
+    # 16 Sep that showed as 45 to 64 proofs a day against 561 bands, and
+    # confirmed_markets stuck at 0 for every day in the window: the sweep had
+    # captured 156 proofs and completed nothing.
+    #
+    # Sorting by (day desc, market, band) spends the same budget finishing
+    # markets. 11 bands proves one market and advances the outcome record;
+    # 11 bands spread over 11 markets advances nothing.
+    # Four stable passes, least significant first, which is the readable way
+    # to say: open positions, then newest answerable day, then market by
+    # market, then band by band inside each market.
+    held = {str(x) for x in position_band_ids}
+    out.sort(key=lambda b: str(b['band_id']))
+    out.sort(key=lambda b: str(b.get('market_id') or ''))
+    out.sort(key=lambda b: str(b.get('resolution_date') or ''), reverse=True)
+    out.sort(key=lambda b: str(b['band_id']) not in held)
     return out
 
 

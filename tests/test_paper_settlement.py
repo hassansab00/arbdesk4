@@ -337,3 +337,65 @@ def test_the_stored_source_url_reproduces_the_request_that_was_made(monkeypatch)
     settlement.cycle(budget_seconds=30)
     gamma_source = next(u for u in writes[0]['source_urls'] if 'gamma-api' in u)
     assert 'closed=true' in gamma_source
+
+
+# ---------------------------------------------------------------------------
+# A HALF-PROVED MARKET IS WORTH NOTHING
+#
+# v_venue_market_resolution calls a market 'confirmed' only when EVERY one of
+# its bands is confirmed and exactly one settled yes, which is the right rule:
+# a market missing a band cannot say which band won. fact_band_outcome and
+# every scorecard downstream hang off that.
+#
+# Bands were fetched 100 market ids at a time ordered by band_id, so a run's
+# budget landed on ~50 bands across ~50 different markets. Measured on 16 Sep:
+# 45 to 64 proofs a day against 561 bands, and confirmed_markets stuck at 0 on
+# every day in the window - 156 proofs captured, nothing completed.
+
+def _grouping_fixture(monkeypatch):
+    days = ['2026-09-15', '2026-09-14', '2026-09-13']
+    markets = [{'market_id': f'm{d}-{i}', 'resolution_date': day}
+               for d, day in enumerate(days) for i in range(3)]
+    bands = []
+    for n, m in enumerate(markets):
+        for k in range(3):
+            # band_ids deliberately interleaved across markets, which is what
+            # made a band_id ordering scatter the budget in the first place.
+            bands.append({'band_id': f'b{(k * 100 + n):04d}', 'market_id': m['market_id'],
+                          'condition_id': f'c{m["market_id"]}-{k}',
+                          'token_yes': 'y', 'token_no': 'n'})
+
+    def fake(path, params, order=None, **kw):
+        if path == 'markets':
+            return markets
+        if path == 'bands':
+            if 'band_id' in params:
+                return []
+            want = params.get('market_id', '').replace('in.(', '').rstrip(')').split(',')
+            return [b for b in bands if b['market_id'] in want]
+        return []
+
+    monkeypatch.setattr(settlement, "rest_all", fake)
+    return markets, bands
+
+
+def test_the_budget_finishes_markets_instead_of_scattering_across_them(monkeypatch):
+    _grouping_fixture(monkeypatch)
+    out = settlement._candidate_bands([], 180)
+    seq = [(b['resolution_date'], b['market_id']) for b in out]
+    switches = sum(1 for a, b in zip(seq, seq[1:]) if a != b)
+    assert switches == 8, 'nine markets grouped means eight switches, not one per band'
+
+
+def test_the_newest_answerable_day_is_still_walked_first(monkeypatch):
+    _grouping_fixture(monkeypatch)
+    out = settlement._candidate_bands([], 180)
+    days = list(dict.fromkeys(b['resolution_date'] for b in out))
+    assert days == ['2026-09-15', '2026-09-14', '2026-09-13']
+
+
+def test_a_held_position_is_settled_before_the_archive(monkeypatch):
+    _, bands = _grouping_fixture(monkeypatch)
+    held = bands[-1]['band_id']          # last band of the oldest market
+    out = settlement._candidate_bands([held], 180)
+    assert out[0]['band_id'] == held, 'money at risk outranks the archive sweep'
