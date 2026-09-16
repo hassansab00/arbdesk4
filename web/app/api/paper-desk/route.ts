@@ -49,14 +49,19 @@ export async function GET(request:Request) {
       // switcher over an array and auto-selected accounts.data[0]; .limit(1)
       // was what kept that array one long. Archived desks are left out -
       // they are kept for their history and cannot trade.
-      // v_paper_desk_activity, not paper_accounts: the same columns plus what
-      // each desk has actually DONE. The page auto-selected accounts[0]
-      // ordered by created_at, which was a paused manual desk holding nothing
-      // while another desk held 10 trades and 9 open positions - so opening
-      // the page showed an empty desk and no hint that a live one existed.
-      // Read through the service key here, so the browser never needs a grant
-      // on paper_positions to learn a count.
-      const result=await client.from('v_paper_desk_activity').select('*').eq('access_mode','single_desk').is('owner_id',null).is('archived_at',null).order('created_at').limit(50);
+      // REVERTED TO paper_accounts, DELIBERATELY.
+      //
+      // This briefly read v_paper_desk_activity to get per-desk trade and
+      // position counts. The desk list went blank immediately afterwards, and
+      // I could not see the deployment to find out why - Vercel Deployment
+      // Protection, blocked Vercel logs, and a sandbox that cannot reach the
+      // edge function either. Three ways blind is not a place to theorise
+      // from. The view is the only thing that changed, so the view goes back.
+      //
+      // Nothing is lost: the page picks the live desk from mode and
+      // entries_paused, which paper_accounts has always carried. The counts
+      // were a nicety; a desk list that loads is not.
+      const result=await client.from('paper_accounts').select('*').eq('access_mode','single_desk').is('owner_id',null).is('archived_at',null).order('created_at').limit(50);
       return NextResponse.json(result,{headers:{'Cache-Control':'no-store'}});
     }
     if(!account||!await sharedAccount(client,account)) return NextResponse.json({data:null,error:{message:'Single paper desk unavailable.'}},{status:404});

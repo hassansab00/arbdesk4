@@ -275,28 +275,42 @@ def test_the_page_opens_on_the_desk_that_is_trading():
     src = PAGE.read_text(encoding="utf-8")
     assert "accounts.data[0].account_id" not in src, (
         "creation order picked a paused manual desk over one holding 9 positions")
-    assert "(b.open_positions??0)-(a.open_positions??0)" in src
-    assert "(b.trade_count??0)-(a.trade_count??0)" in src
+    assert "Number(live(b))-Number(live(a))" in src, (
+        "a desk that can act must outrank one that cannot")
+    assert "(a.mode==='automatic'||a.mode==='assisted')&&!a.entries_paused" in src
 
 
-def test_the_choice_degrades_when_the_counts_are_absent():
-    """The edge-gateway path returns plain accounts with no activity columns.
-    A selection that breaks without them would swap one empty page for another."""
+def test_the_choice_uses_only_columns_paper_accounts_has():
+    """mode and entries_paused have been on that table since day one. Anything
+    read from a view is optional and must not decide the outcome on its own."""
     src = PAGE.read_text(encoding="utf-8")
-    assert "open_positions?:number" in src and "trade_count?:number" in src
-    assert "??0" in src, "every count must have a fallback"
+    assert "open_positions?:number" in src and "trade_count?:number" in src, (
+        "keep them optional so a richer source can be reinstated later")
+    assert "??0" in src, "every optional count must have a fallback"
 
 
 def test_the_dropdown_says_which_desk_is_which():
-    """Picking the right desk should not require remembering which one trades."""
+    """Picking the right desk should not require remembering which one trades.
+    The counts are optional and simply do not render when absent."""
     src = PAGE.read_text(encoding="utf-8")
-    assert "open`" in src and "trades`" in src
+    assert "a.entries_paused?' \u00b7 paused':''" in src
+    assert "a.mode" in src
 
 
-def test_the_counts_come_through_the_service_key_not_the_browser():
-    """anon holds no grant on paper_positions, so the browser cannot count them
-    itself. The desk list is already a server route; the view goes there."""
+def test_the_desk_list_reads_the_table_not_a_view():
+    """It briefly read v_paper_desk_activity for per-desk counts and the list
+    went blank. With Deployment Protection on, Vercel logs unauthorised and the
+    edge function unreachable from here, there was no way to see why - so the
+    one thing that changed was reverted rather than theorised about.
+
+    paper_accounts is what has always worked, and mode + entries_paused is
+    enough to pick the live desk."""
+    import re
     route = (ROOT / "web" / "app" / "api" / "paper-desk" / "route.ts").read_text(encoding="utf-8")
-    assert "v_paper_desk_activity" in route
-    assert "from('paper_accounts')" not in route.split("resource==='accounts'")[1][:400], (
-        "the accounts resource must read the activity view")
+    # Comments only, stripped: the revert is DOCUMENTED by naming the view it
+    # backed out of, and asserting against raw text matches the explanation
+    # rather than the query - which would pass while the view was still read.
+    code = re.sub(r"//[^\n]*", "", route)
+    accounts = code.split("resource==='accounts'")[1][:900]
+    assert "from('paper_accounts')" in accounts
+    assert "v_paper_desk_activity" not in accounts

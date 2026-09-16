@@ -52,10 +52,17 @@ export default function PaperTradesPage() {
   // counts are absent, which they are on the edge-gateway path.
   useEffect(()=>{
     if(account || !accounts.data?.length) return;
+    // mode and entries_paused only - both on paper_accounts since day one.
+    // The trade and position counts came from a view that is no longer in
+    // this request path, and a desk that CAN act is the distinction that
+    // actually mattered: it separates "Wide edge, all US" (automatic,
+    // running, 10 trades) from "Main paper account" (manual, paused, empty),
+    // which is the pair that made this page look broken.
+    const live=(a:Account)=>(a.mode==='automatic'||a.mode==='assisted')&&!a.entries_paused;
     const best=[...accounts.data].sort((a,b)=>
-      (b.open_positions??0)-(a.open_positions??0)
-      || (b.trade_count??0)-(a.trade_count??0)
-      || Number(b.live??false)-Number(a.live??false));
+      Number(live(b))-Number(live(a))
+      || (b.open_positions??0)-(a.open_positions??0)
+      || (b.trade_count??0)-(a.trade_count??0));
     setAccount(best[0].account_id);
   },[accounts.data,account]);
   const orders=useQuery<Order[]>(async()=>{
