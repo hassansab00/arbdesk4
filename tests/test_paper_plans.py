@@ -105,3 +105,54 @@ def test_the_market_unit_itself_is_still_required():
     signal['payload']['decision_inputs']['a']['decision_evidence']['market']['unit'] = None
     with pytest.raises(ValueError, match='unit unverified'):
         prepare(account, signal, capture, now=NOW)
+
+
+# ---------------------------------------------------------------------------
+# A THIN TOUCH IS A SMALLER TRADE, NOT A REFUSED ONE
+#
+# The limit on each leg is that leg's best ask, so only the touch level sits
+# inside it. Sizing purely off the budget and then demanding a complete fill
+# discarded the plan whenever the touch was thinner than the budget, which is
+# the ordinary case on a band trading a few hundred dollars. On 16 Sep both
+# in-policy proposals the Texas desks produced died exactly there, reason
+# "insufficient_depth_within_limit", while the edge behind them was sound.
+
+def thin(size):
+    account, signal, _ = fixture()
+    def capture(order):
+        return {'token_id': order['token_id'], 'observed_at': NOW.isoformat(), 'tradeable': True,
+                'snapshot_id': order['token_id'], 'tick_size': '.01', 'fee_rate': '.05',
+                'min_order_size': 1, 'min_order_size_unit': 'USDC',
+                'asks': [{'price': '.30', 'size': size}], 'bids': [{'price': '.29', 'size': '1000'}]}
+    return account, signal, capture
+
+
+def test_a_touch_thinner_than_the_budget_sizes_the_plan_down():
+    account, signal, capture = thin('5')
+    legs, evidence = prepare(account, signal, capture, now=NOW)
+    assert [leg['shares'] for leg in legs] == ['5', '5'], 'both legs take the thinnest leg'
+    assert all(q['preview']['status'] == 'filled' for q in evidence['quotes'])
+
+
+def test_the_budget_still_binds_when_the_book_is_deep():
+    account, signal, capture = thin('100000')
+    legs, _ = prepare(account, signal, capture, now=NOW)
+    assert Decimal(legs[0]['shares']) < Decimal('100000')
+    assert sum(Decimal(x['cash_ceiling']) for x in legs) <= 10
+
+
+def test_no_depth_at_the_quoted_price_is_still_refused():
+    account, signal, capture = thin('0.001')   # below one share step
+    with pytest.raises(ValueError, match='No depth at the quoted price'):
+        prepare(account, signal, capture, now=NOW)
+
+
+# ---------------------------------------------------------------------------
+# A CITY THE DESK CANNOT TRADE MUST NOT COST IT A PLAN SLOT
+
+def test_the_signals_own_city_is_readable_without_a_request():
+    from paper_plans import signal_cities
+    assert signal_cities({'payload': {'decision_inputs': {'a': {'city_key': 'austin'}}}}) == {'austin'}
+    assert signal_cities({'payload': {'decision_inputs': {
+        'a': {'decision_evidence': {'market': {'city_key': 'dallas'}}}}}}) == {'dallas'}
+    assert signal_cities({'payload': {}}) == set(), 'absence is not a city, and must not drop the signal'

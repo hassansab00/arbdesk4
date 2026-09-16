@@ -52,6 +52,48 @@ def label_unit_markers(label):
     return out
 
 
+# The share increment every paper order is quoted in. It lives here rather
+# than inline so the depth cap and the order it sizes cannot disagree.
+DEFAULT_SHARE_STEP = Decimal('.01')
+
+
+def basket_depth(quoted, step):
+    """Shares available on the THINNEST leg, at its own quoted limit.
+
+    Every leg of a basket takes the same share count, so the basket can only
+    be as large as its least liquid leg. The limit on each leg is that leg's
+    best ask, which means the depth inside the limit is the size resting at
+    the touch - not the whole ladder.
+    """
+    smallest = None
+    for _, _, price, _, book in quoted:
+        available = Decimal(0)
+        for level in (book.get('asks') or []):
+            if number(level['price']) <= price:
+                available += number(level['size'])
+        available = (available / step).to_integral_value(rounding=ROUND_DOWN) * step
+        smallest = available if smallest is None else min(smallest, available)
+    return smallest if smallest is not None else Decimal(0)
+
+
+def signal_cities(signal):
+    """Every city the signal's own decision covers, or an empty set if it did
+    not carry one. Used to drop a proposal before it costs anything, so an
+    out-of-policy city cannot spend a run's plan budget."""
+    payload = signal.get('payload') or {}
+    inputs = payload.get('decision_inputs') or {}
+    cities = set()
+    for view in inputs.values():
+        if not isinstance(view, dict):
+            continue
+        city = view.get('city_key')
+        if not city:
+            city = ((view.get('decision_evidence') or {}).get('market') or {}).get('city_key')
+        if city:
+            cities.add(str(city))
+    return cities
+
+
 def command_key(account, signal):
     payload = signal.get('payload') or {}
     group = payload.get('basket_group')
@@ -111,9 +153,26 @@ def prepare(account, signal, capture, *, now=None):
     quantity = ((budget-Decimal('.01')*len(quoted))/unit_cost).quantize(Decimal('.01'),rounding=ROUND_DOWN)
     if quantity<=0:
         raise ValueError('Insufficient available paper cash')
+    # BUY WHAT IS THERE, RATHER THAN REFUSING WHAT IS NOT.
+    #
+    # The size above is what the BUDGET affords. What the book offers at the
+    # limit is a separate quantity and is usually the smaller of the two: the
+    # limit is the best ask, so only the touch level is inside it. Sizing off
+    # the budget alone and then demanding a complete fill threw the whole plan
+    # away whenever the touch was thinner than the budget - which is the
+    # ordinary case on a band trading a few hundred dollars. Every proposal
+    # the Texas desks produced on 16 Sep died here as
+    # "insufficient_depth_within_limit" while the edge itself was sound.
+    #
+    # A basket fills equal shares on every leg, so the whole plan is bounded
+    # by its THINNEST leg. Below the venue minimum there is no order to place
+    # and the plan is genuinely refused, which is a different sentence.
+    quantity = min(quantity, basket_depth(quoted, DEFAULT_SHARE_STEP))
+    if quantity<=0:
+        raise ValueError('No depth at the quoted price on at least one leg')
     legs, quotes = [], []
     for bid,token,price,rate,book in quoted:
-        order={'action':'BUY','token_id':token,'shares':str(quantity),'limit_price':str(price),'share_step':'.01',
+        order={'action':'BUY','token_id':token,'shares':str(quantity),'limit_price':str(price),'share_step':str(DEFAULT_SHARE_STEP),
             'max_book_age_seconds':120,'expires_at':(now+dt.timedelta(minutes=5)).isoformat()}
         preview = simulate(order,book,now=fixed_now or dt.datetime.now(dt.timezone.utc))
         if preview['status']!='filled':
@@ -146,6 +205,23 @@ def cycle(max_plans=10, budget_seconds=90):
             if time.monotonic()-started>budget_seconds or published>=max_plans:
                 return {'proposals':published}
             if signal['strategy_id'] not in enabled or signal['strategy_id'] not in account['policy'].get('strategies',[]):
+                continue
+            # A CITY THE DESK CANNOT TRADE MUST NOT COST IT A PLAN SLOT.
+            #
+            # The signal runner prices every board it can see - 43 cities on
+            # 16 Sep - while a desk is scoped to three. prepare() rejects the
+            # rest with 'City outside account policy', but only AFTER the plan
+            # has been published as blocked and counted against max_plans. The
+            # first run to reach this point spent 18 of its 20 plans that way,
+            # and the two Texas proposals that survived were the last to be
+            # tried rather than the first.
+            #
+            # The city is already in the decision the signal carries, so this
+            # costs no request. A signal with no city recorded still goes
+            # through: absence is not grounds to drop a decision silently.
+            cities = signal_cities(signal)
+            allowed = account['policy'].get('cities') or []
+            if cities and 'ALL' not in allowed and not (cities & set(allowed)):
                 continue
             command = command_key(account,signal)
             if command in seen:
