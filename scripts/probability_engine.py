@@ -136,15 +136,73 @@ def band_mass(centre_c, sigma_c, unit, band_lo, band_hi, open_low, open_high):
     return max(0.0, normal_cdf(edge_hi, centre_c, sigma_c) - normal_cdf(edge_lo, centre_c, sigma_c))
 
 
-def compute_band_probabilities(centre_c, sigma_c, unit, bands):
+# A DAILY MAXIMUM CANNOT GO DOWN.
+#
+# The lattice prices every band off a forecast and a width, and then ignores
+# the fact that the day is half over and the thermometer has already been
+# somewhere. On 16 Sep at 16:00 UTC, across the 297 bands resolving that day in
+# 27 cities, 28 were already PHYSICALLY IMPOSSIBLE - their top was below the
+# temperature their own city had already recorded - and twelve of those were
+# still priced above 2%, the worst at 23.7%. Nearly a full unit of probability
+# mass sat on outcomes that could not happen, and the desk would have bought
+# them at a discount it had invented.
+#
+# This is not a model improvement. It is arithmetic: the maximum of a set does
+# not decrease when you add to it. Of everything the platform collects, it is
+# the cheapest and the most certain, and it was not being used.
+#
+# THE TOLERANCE IS THE WHOLE RISK. Our running max comes from the station
+# live_weather tracks; the venue settles on ITS chosen source, and the two can
+# disagree by a few tenths. Killing a band on a 0.1C edge would eventually zero
+# a band that settles right where we said it could not. So the floor is
+# discounted by OBSERVED_FLOOR_TOLERANCE_C before it is allowed to zero
+# anything: a band dies only when the observed maximum has cleared its top edge
+# by more than half a degree Celsius, which is under one degree Fahrenheit.
+OBSERVED_FLOOR_TOLERANCE_C = 0.5
+
+
+def band_is_impossible(floor_c, unit, band_lo, band_hi, open_low, open_high,
+                       tolerance_c=OBSERVED_FLOOR_TOLERANCE_C):
+    """True when today's already-observed maximum settles ABOVE this band.
+
+    A closed band [lo, hi) covers the integers lo..hi-1, so its upper split
+    point in Celsius is unit_edge_c(unit, band_hi) - the boundary between
+    settling as hi-1 and settling as hi. An observed maximum at or above that
+    point has already settled the day outside this band.
+
+    An open-high band is never impossible: there is no temperature the day can
+    reach that puts it out of range.
+    """
+    if floor_c is None or open_high:
+        return False
+    return (floor_c - tolerance_c) >= unit_edge_c(unit, band_hi)
+
+
+def compute_band_probabilities(centre_c, sigma_c, unit, bands, floor_c=None):
     """
     bands: list of dicts with band_id, band_lo, band_hi, open_low, open_high.
+    floor_c: the maximum already observed today, in Celsius, or None when the
+             market does not resolve today or no observation exists.
     Returns list of (band_id, prob) with prob summing to exactly 1.0.
     """
     raw = [(b["band_id"], band_mass(centre_c, sigma_c, unit,
                                      b["band_lo"], b["band_hi"],
                                      bool(b.get("open_low")), bool(b.get("open_high"))))
            for b in bands]
+
+    if floor_c is not None:
+        kept = [(bid, 0.0 if band_is_impossible(
+                     floor_c, unit, b["band_lo"], b["band_hi"],
+                     bool(b.get("open_low")), bool(b.get("open_high"))) else p)
+                for (bid, p), b in zip(raw, bands)]
+        # IF THE FLOOR KILLS EVERYTHING, DO NOT APPLY IT. A day that has already
+        # run past the entire ladder means the ladder is wrong, the station is
+        # wrong, or the city is mismatched - and none of those are improved by
+        # publishing a uniform distribution over impossibilities. Fall back to
+        # the unfloored lattice, which at least states the forecast's opinion.
+        if sum(p for _, p in kept) > 0:
+            raw = kept
+
     total = sum(p for _, p in raw)
     if total <= 0:
         n = len(raw)
@@ -155,6 +213,27 @@ def compute_band_probabilities(centre_c, sigma_c, unit, bands):
 # --------------------------------------------------------------------------
 # I/O
 # --------------------------------------------------------------------------
+
+def _observed_floors():
+    """{city_key: (local_date, running_max_c)} - today's maximum so far.
+
+    live_weather carries one row per city, refreshed by n8n P1.2 and by the
+    ad4_refresh_live_weather_timing pg_cron job. running_max_c is the highest
+    temperature that city has recorded on its own LOCAL date, which is the only
+    date a daily high market resolves against - a UTC date would put half the
+    world's cities on the wrong day.
+
+    One request for all 54 cities. A city with no row, or a null maximum, is
+    simply absent, and every caller treats absence as "no floor" rather than
+    as zero - which would make every band impossible.
+    """
+    floors = {}
+    for row in rest("live_weather", {"select": "city_key,local_date,running_max_c"}):
+        if row.get("running_max_c") is None or not row.get("local_date"):
+            continue
+        floors[row["city_key"]] = (str(row["local_date"]), float(row["running_max_c"]))
+    return floors
+
 
 def _upcoming_markets():
     return rest("v_canonical_markets", [
@@ -479,7 +558,7 @@ def _skill_for(city_key, lead_days, model=None):
     return _pooled_skill(city_key, lead_days)
 
 
-def process_city_day(city_key, for_date, unit, bands, history_cache):
+def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None):
     forecast = _forecast_for(city_key, for_date)
     if forecast is None or forecast.get("forecast_max_c") is None:
         print(f"  TODO: unmeasured - no forecast for {city_key} {for_date}", file=sys.stderr)
@@ -655,7 +734,23 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
             f"models_disagree:{div_row.get('spread_c')}C_over_{div_row.get('n_models')}")
         confidence *= min(1.0, 1.0 / div_mult)
 
-    probs = compute_band_probabilities(centre_corrected, sigma, unit, bands)
+    # THE DAY SO FAR, when this market resolves today. A maximum cannot go
+    # down, so anything the city has already recorded is a hard floor under the
+    # outcome - the one input here that is measured rather than predicted.
+    observed_floor_c = None
+    local_date, running_max = (floors or {}).get(city_key, (None, None))
+    if local_date is not None and str(for_date) == local_date:
+        observed_floor_c = running_max
+
+    probs = compute_band_probabilities(centre_corrected, sigma, unit, bands,
+                                       floor_c=observed_floor_c)
+    floored = [b["band_id"] for b in bands
+               if observed_floor_c is not None and band_is_impossible(
+                   observed_floor_c, unit, b["band_lo"], b["band_hi"],
+                   bool(b.get("open_low")), bool(b.get("open_high")))]
+    if floored and len(floored) < len(bands):
+        print(f"  {city_key} {for_date}: already {observed_floor_c:.1f}C today - "
+              f"{len(floored)} of {len(bands)} bands are out of reach")
     computed_at = dt.datetime.now(dt.timezone.utc).isoformat()
 
     # forecast_version / calibration_version are uuid columns referencing
@@ -682,6 +777,10 @@ def process_city_day(city_key, for_date, unit, bands, history_cache):
         "skill_source": skill_source, "pricing_eligible": pricing_eligible,
         "pricing_block_reason": pricing_block_reason,
         "confidence": round(confidence, 4), "regime_label": reg.label,
+        # Why this band is zero. Without it, a floored price is indistinguishable
+        # from a forecast that simply never reached here, and the calibration
+        # fitter would learn from an outcome arithmetic had already decided.
+        "observed_floor_c": observed_floor_c,
     }
     # A widened sigma must be explainable after the fact, not mysterious.
     if div_row and div_mult > 1.0:
@@ -734,6 +833,7 @@ def main():
     for b in bands:
         bands_by_market[b["market_id"]].append(b)
 
+    floors = _observed_floors()
     history_cache = {}
     all_rows = []
     sample_prints = []
@@ -744,7 +844,8 @@ def main():
             band_rows = bands_by_market.get(m["market_id"], [])
             if not band_rows:
                 continue
-            result = process_city_day(city_key, m["resolution_date"], unit, band_rows, history_cache)
+            result = process_city_day(city_key, m["resolution_date"], unit, band_rows,
+                                      history_cache, floors)
             if result is None:
                 continue
             rows, reg, reasons = result
@@ -770,7 +871,8 @@ def main():
         "probability_engine",
         "ok" if all_rows else "attention",
         len(all_rows),
-        {"city_days": priced_city_days, "upcoming_markets": len(markets)},
+        {"city_days": priced_city_days, "upcoming_markets": len(markets),
+         "cities_with_observed_floor": len(floors)},
     )
     print(f"\nwrote {len(all_rows)} band_probabilities rows")
 

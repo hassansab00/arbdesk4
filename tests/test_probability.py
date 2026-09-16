@@ -1,5 +1,7 @@
 import math
 
+import pytest
+
 import probability_engine as pe
 
 
@@ -191,3 +193,110 @@ def test_widening_sigma_lowers_confidence():
     assert "sigma_historical * cal_mult" in block, "the multiplier is not applied to sigma"
     assert "confidence *= min(1.0, 1.0 / cal_mult)" in block
     assert 'reasons.append(' in block, "a price that moved must say why"
+
+
+# ---------------------------------------------------------------------------
+# A DAILY MAXIMUM CANNOT GO DOWN
+#
+# The lattice priced every band off a forecast and a width and ignored the
+# thermometer. On 16 Sep at 16:00 UTC, of the 297 bands resolving that day
+# across 27 cities, 28 were already physically impossible - their top was below
+# the temperature their own city had recorded hours earlier - and twelve were
+# still priced above 2%, the worst at 23.7%. The desk would have bought them
+# at a discount it had invented.
+
+def floor_bands():
+    """Whole-degree Celsius bands 24 through 27, plus open tails.
+
+    A closed band [lo, hi) covers the integers lo..hi-1, so [26, 27) is the
+    single degree 26 and its upper split point is 26.5C.
+    """
+    return [
+        {"band_id": "below", "band_lo": None, "band_hi": 24, "open_low": True, "open_high": False},
+        {"band_id": "24", "band_lo": 24, "band_hi": 25, "open_low": False, "open_high": False},
+        {"band_id": "25", "band_lo": 25, "band_hi": 26, "open_low": False, "open_high": False},
+        {"band_id": "26", "band_lo": 26, "band_hi": 27, "open_low": False, "open_high": False},
+        {"band_id": "27", "band_lo": 27, "band_hi": 28, "open_low": False, "open_high": False},
+        {"band_id": "above", "band_lo": 28, "band_hi": None, "open_low": False, "open_high": True},
+    ]
+
+
+def test_a_band_the_day_has_already_passed_is_priced_at_zero():
+    """27.4C is already recorded, so 24, 25 and 26 cannot happen however the
+    afternoon goes."""
+    probs = dict(pe.compute_band_probabilities(25.5, 2.0, "C", floor_bands(), floor_c=27.4))
+    for dead in ("below", "24", "25", "26"):
+        assert probs[dead] == 0.0, f"{dead} survived a maximum that has already passed it"
+    assert probs["27"] > 0 and probs["above"] > 0
+    assert sum(probs.values()) == pytest.approx(1.0)
+
+
+def test_the_surviving_bands_still_sum_to_one():
+    """27.2C clears band 26's 26.5C top edge by more than the 0.5C tolerance.
+    (26.9 would NOT - see the tolerance test below. The margin is the point.)"""
+    probs = dict(pe.compute_band_probabilities(25.0, 1.5, "C", floor_bands(), floor_c=27.2))
+    assert sum(probs.values()) == pytest.approx(1.0)
+    assert probs["26"] == 0.0
+
+
+def test_no_floor_leaves_the_lattice_exactly_as_it_was():
+    plain = dict(pe.compute_band_probabilities(25.5, 2.0, "C", floor_bands()))
+    explicit = dict(pe.compute_band_probabilities(25.5, 2.0, "C", floor_bands(), floor_c=None))
+    assert plain == explicit
+
+
+def test_the_tolerance_protects_against_a_different_settlement_station():
+    """Our station and the venue's can disagree by tenths. A band is only
+    killed once the observed maximum has cleared its top edge by more than
+    half a degree C - 26.5 is band 26's edge, so 26.8 must NOT kill it."""
+    near = dict(pe.compute_band_probabilities(26.0, 1.5, "C", floor_bands(), floor_c=26.8))
+    assert near["26"] > 0, "a band was zeroed on a margin smaller than the tolerance"
+    clear = dict(pe.compute_band_probabilities(26.0, 1.5, "C", floor_bands(), floor_c=27.1))
+    assert clear["26"] == 0.0, "a band survived a maximum well past its top edge"
+
+
+def test_an_open_high_band_is_never_impossible():
+    """However hot it gets, 'above 28' remains reachable."""
+    probs = dict(pe.compute_band_probabilities(25.0, 1.5, "C", floor_bands(), floor_c=40.0))
+    assert probs["above"] == pytest.approx(1.0)
+
+
+def test_a_floor_past_the_whole_ladder_falls_back_rather_than_going_uniform():
+    """If every band is impossible the ladder is wrong, the station is wrong,
+    or the city is mismatched. None of those is improved by publishing a
+    uniform distribution over impossibilities."""
+    closed_only = [b for b in floor_bands() if not b["open_high"] and not b["open_low"]]
+    probs = dict(pe.compute_band_probabilities(25.0, 1.5, "C", closed_only, floor_c=99.0))
+    assert sum(probs.values()) == pytest.approx(1.0)
+    assert max(probs.values()) > 1.0 / len(closed_only), (
+        "it went uniform - the unfloored lattice's opinion was thrown away")
+
+
+def test_fahrenheit_bands_are_floored_on_the_celsius_edge_not_the_number():
+    """running_max_c is Celsius whatever the city settles in. 92-93F has its
+    top split point at 93.5F = 34.17C, so 35C kills it and 34C does not."""
+    bands = [{"band_id": "92-93", "band_lo": 92, "band_hi": 94, "open_low": False, "open_high": False},
+             {"band_id": "94-95", "band_lo": 94, "band_hi": 96, "open_low": False, "open_high": False},
+             {"band_id": "above", "band_lo": 96, "band_hi": None, "open_low": False, "open_high": True}]
+    hot = dict(pe.compute_band_probabilities(34.0, 1.0, "F", bands, floor_c=35.0))
+    assert hot["92-93"] == 0.0
+    mild = dict(pe.compute_band_probabilities(34.0, 1.0, "F", bands, floor_c=34.0))
+    assert mild["92-93"] > 0
+
+
+def test_the_floor_is_recorded_so_a_zero_can_be_explained_later():
+    """A band priced at zero by arithmetic and one the forecast never reached
+    look identical afterwards, and the calibration fitter would learn from the
+    difference."""
+    import inspect
+    src = inspect.getsource(pe.process_city_day)
+    assert '"observed_floor_c": observed_floor_c' in src
+
+
+def test_a_market_resolving_tomorrow_gets_no_floor_from_today():
+    """Today's maximum says nothing about tomorrow's."""
+    import inspect
+    src = inspect.getsource(pe.process_city_day)
+    assert "str(for_date) == local_date" in src, (
+        "the floor must only apply when the market resolves on the city's own "
+        "local date - a UTC date would put half the world on the wrong day")
