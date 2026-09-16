@@ -179,7 +179,8 @@ def test_the_run_button_says_why_it_is_disabled():
     """A run button that silently fails is worse than a disabled one."""
     src = CONTROL.read_text(encoding="utf-8")
     assert "canRun?.configured" in src
-    assert "Not configured. Set ${canRun?.missing" in src
+    assert "GITHUB_DISPATCH_TOKEN is not set on this deployment" in src
+    assert "REDEPLOY" in src, "setting it and not redeploying is the other half of the trap"
 
 
 def test_the_dispatch_route_takes_no_parameters_from_the_browser():
@@ -223,15 +224,22 @@ def test_the_page_no_longer_points_at_a_tab_that_was_renamed():
     assert "'Settings'" in src
 
 
-def test_the_repository_is_inferred_rather_than_asked_for():
-    """This shipped requiring GITHUB_REPOSITORY next to the token, so the button
-    stayed disabled after the token was set - asking someone to type the name of
-    the repository the site is deployed from. Vercel sets VERCEL_GIT_REPO_OWNER
-    and VERCEL_GIT_REPO_SLUG on every Git-connected deployment, so it is free."""
+def test_only_a_missing_token_can_disable_the_run_button():
+    """Two rounds of a button that would not turn on. First it required
+    GITHUB_REPOSITORY beside the token; then it inferred the repository from
+    Vercel's VERCEL_GIT_REPO_* variables, which only exist when the project is
+    Git-connected AND system environment variables are exposed - so it stayed
+    disabled again, for a reason invisible from the outside.
+
+    The repository is a constant that has never changed and is in every git
+    remote here. It is written down. The environment still overrides it, but
+    nothing needs configuring, and there is exactly ONE thing left to check."""
     src = RUN_ROUTE.read_text(encoding="utf-8")
-    assert "VERCEL_GIT_REPO_OWNER" in src and "VERCEL_GIT_REPO_SLUG" in src
-    assert "process.env.GITHUB_REPOSITORY\n    || (owner && slug" in src, (
-        "the explicit variable must still win as an override")
+    assert "const DEFAULT_REPO = 'hassansab00/arbdesk4'" in src
+    assert ": DEFAULT_REPO" in src, "the constant must be the final fallback"
+    assert "configured: !!token," in src, (
+        "the repository can no longer be missing, so it must not gate the button")
+    assert "missing: token ? [] : ['GITHUB_DISPATCH_TOKEN']" in src
 
 
 def test_the_disabled_button_says_a_redeploy_is_needed():
