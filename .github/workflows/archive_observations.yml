@@ -32,17 +32,23 @@ name: Archive Observations
 # release storage.
 on:
   schedule:
-    - cron: '0 3 * * 1'          # 03:00 UTC every Monday
+    # DAILY, not weekly. Weekly was right when the archive covered three
+    # tables with months of history and a ninety-day window. research_captures
+    # grows about 29 MB a day - 25,808 rows on 15 Sep, 24,510 on the 16th - on
+    # a 500 MB tier, so a week between runs is 200 MB, which is more headroom
+    # than the tier has. The other three find nothing most days and cost a
+    # query that returns zero rows.
+    - cron: '0 3 * * *'          # 03:00 UTC daily
   workflow_dispatch:
     inputs:
       keep_days:
-        description: 'Days of raw rows to leave in Postgres'
+        description: 'Override every table window (blank = each table keeps its own: 90 days, 2 for research)'
         required: false
-        default: '90'
+        default: ''
       table:
         description: 'Which archive to run'
         type: choice
-        options: ['all', 'observations', 'forecasts', 'trades']
+        options: ['all', 'observations', 'forecasts', 'trades', 'research']
         default: 'all'
       commit:
         description: 'Upload and prune (UNtick for a dry run)'
@@ -64,7 +70,7 @@ jobs:
       - run: pip install -r requirements.runtime.txt
       - run: |
           PYTHONPATH=scripts python scripts/archive_observations.py \
-            --keep-days ${{ github.event.inputs.keep_days || '90' }} \
+            ${{ github.event.inputs.keep_days && format('--keep-days {0}', github.event.inputs.keep_days) || '' }} \
             --table ${{ github.event.inputs.table || 'all' }} \
             ${{ (github.event_name != 'workflow_dispatch' || github.event.inputs.commit == 'true') && '--commit' || '' }}
         env:

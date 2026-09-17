@@ -517,13 +517,33 @@ def test_the_archive_round_trips_every_row():
 
 
 def test_the_archive_refuses_a_window_too_small_to_model_on():
+    """THE FLOOR MOVED, because one number could not serve four tables.
+
+    The script used to refuse any --keep-days under 30. That protected the
+    weather and trade archives, whose models need months, and made
+    research_captures impossible to archive at all: its entire history is five
+    days, so a 30-day floor meant the job ran, succeeded, and deleted nothing
+    while the table added ~29 MB a day.
+
+    Each prune RPC now carries its own floor - 30 for trades, 2 for research -
+    which is also the only place a typo cannot route around, since the script
+    is one caller of several and n8n or psql can call the RPC directly. The
+    script keeps the one check that is table-independent: a window below a day
+    is nonsense whatever the table.
+    """
     import subprocess
     import sys as _s
     r = subprocess.run([_s.executable, "scripts/archive_observations.py",
-                        "--keep-days", "7"], capture_output=True, text=True,
+                        "--keep-days", "0"], capture_output=True, text=True,
                        cwd=str(pathlib_root()), env={**os.environ, "PYTHONPATH": "scripts"})
     assert r.returncode == 1
-    assert "nothing to model on" in r.stderr
+    assert "at least 1" in r.stderr
+
+    root = pathlib_root()
+    trades = (root / "sql" / "ad4_65_prune_trades.sql").read_text(encoding="utf-8")
+    assert "p_keep_days < 30" in trades, (
+        "the 30-day floor must survive where it matters - the 24h volume "
+        "window needs room to be wrong")
 
 
 def pathlib_root():

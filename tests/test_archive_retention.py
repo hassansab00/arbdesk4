@@ -79,25 +79,51 @@ def test_it_is_scheduled_often_enough_to_matter():
 
 # --- the window has to be shorter than the history ------------------------
 
-def test_the_default_window_is_one_the_data_actually_reaches_past():
-    """At 180 days the job archives 3,222 rows out of 436 MB - it runs, it
-    succeeds, and the database does not move."""
+def test_every_table_carries_a_window_shorter_than_its_own_history():
+    """ONE WINDOW CANNOT FIT FOUR TABLES, and that is why it is per table now.
+
+    At 180 days the job archived 3,222 rows out of 436 MB - it ran, it
+    succeeded, and the database did not move. Ninety fixed that for the three
+    weather and trade tables, which hold months. research_captures holds five
+    days, so ninety archives nothing from it at all; two days archives 26,565
+    rows of 78,291. A single flag is either right for one group or the other,
+    never both.
+    """
+    from archive_observations import TABLES
+
+    limits = {"observations": 90, "forecasts": 90, "trades": 90, "research": 2}
+    for name, spec in TABLES.items():
+        window = spec.get("keep_days", 90)
+        assert window <= limits[name], (
+            f"{name} keeps {window} days; at that window the job succeeds and "
+            f"the database does not move")
+
+
+def test_the_workflow_does_not_override_every_table_with_one_number():
+    """The workflow used to pass `--keep-days ... || '90'`, so a scheduled run
+    always sent 90 - which would silently reimpose the single window these
+    per-table ones exist to replace, and archive nothing from research."""
     run = _run_step()
-    default = re.search(r"--keep-days \$\{\{[^}]*\|\|\s*'(\d+)'", run)
-    assert default, "no default keep-days in the workflow"
-    assert int(default.group(1)) <= 90
+    assert "|| '90'" not in run, (
+        "a hard-coded fallback here overrides every table's own window")
+    assert "--keep-days" in run and "github.event.inputs.keep_days" in run, (
+        "a manual run must still be able to override the window")
 
+
+def test_the_floor_is_enforced_by_the_function_that_deletes():
+    """The floor moved from the script to each prune RPC, which is the only
+    place a typo cannot route around: the script is one caller of several, and
+    n8n or a psql session can call the RPC directly."""
     src = SCRIPT.read_text(encoding="utf-8")
-    script_default = re.search(r'"--keep-days".*?default=(\d+)', src, re.S)
-    assert script_default and int(script_default.group(1)) <= 90
-    assert int(script_default.group(1)) == int(default.group(1)), (
-        "the workflow and the script disagree about the retention window")
+    assert "args.keep_days < 1" in src, "the script still rejects a nonsense window"
 
-
-def test_the_thirty_day_floor_survives():
-    """The one guard that stops a typo emptying the archive."""
-    src = SCRIPT.read_text(encoding="utf-8")
-    assert "args.keep_days < 30" in src
+    trades = Path(__file__).resolve().parents[1] / "sql" / "ad4_65_prune_trades.sql"
+    research = Path(__file__).resolve().parents[1] / "sql" / "ad4_69_prune_research_captures.sql"
+    assert "p_keep_days < 30" in trades.read_text(encoding="utf-8"), (
+        "trades needs 30 days - the 24h volume window needs room to be wrong")
+    assert "p_keep_days < 2" in research.read_text(encoding="utf-8"), (
+        "research needs a floor too, just a shorter one - its whole history is "
+        "five days, so a 30-day floor would make the function permanently refuse")
 
 
 # --- the biggest table is in the set --------------------------------------
@@ -177,3 +203,69 @@ def test_a_row_with_no_trade_time_is_kept_not_orphaned():
     assert "traded_at >= v_before or traded_at is null" in sql, (
         "the kept-count must include rows with no traded_at, matching the "
         "delete predicate that leaves them alone")
+
+
+# --- the fastest-growing table --------------------------------------------
+#
+# research_captures reached 92 MB in FIVE DAYS - 78,291 rows, ~29 MB a day on
+# the recent trend - while the database went back to 454 MB of a 500 MB tier.
+# At that rate it crosses the ceiling in about three days, and a full database
+# stops every job at once.
+#
+# It is not duplication: payload_hash already dedupes and all 78,291 payloads
+# are distinct. It is one capture per row of each source relation, six times a
+# day, with band_probabilities alone accounting for 30,914.
+
+def test_the_archive_covers_the_fastest_growing_table():
+    from archive_observations import TABLES
+
+    assert "research" in TABLES, (
+        "research_captures grows ~29 MB a day against 46 MB of headroom; an "
+        "archive that does not know it exists is not an archive")
+    spec = TABLES["research"]
+    assert spec["table"] == "research_captures"
+    assert spec["pk"] == "capture_id", (
+        "keyset paging needs the PRIMARY KEY; captured_at is not unique and "
+        "OFFSET paging over a non-unique order silently skips rows the prune "
+        "then deletes anyway")
+    assert spec["cutoff_col"] == "captured_at"
+    assert spec["cutoff_is_date"] is False
+
+
+def test_the_capture_payload_is_archived_not_just_its_metadata():
+    """An archive of research captures without the payload is a list of
+    filenames. payload and payload_hash are the evidence and its checksum."""
+    from archive_observations import TABLES
+
+    cols = TABLES["research"]["columns"]
+    for needed in ("payload", "payload_hash", "source_relation", "source_key"):
+        assert needed in cols, f"{needed} must survive the prune"
+
+
+def test_research_does_not_block_on_a_cache_that_protects_nothing():
+    """The other three archives refuse to run unless refresh_feature_cache
+    succeeds, because their derived rows are what survives the prune. A
+    research capture has no derived form - the capture IS the artefact, and
+    what survives is the Release asset - so requiring the cache there would
+    block the archive on a step that protects nothing."""
+    from archive_observations import TABLES
+
+    assert TABLES["research"].get("needs_feature_cache") is False
+    for name in ("observations", "forecasts", "trades"):
+        assert TABLES[name].get("needs_feature_cache", True) is True, (
+            f"{name} must still refuse to prune without a covering cache")
+
+
+def test_the_research_prune_refuses_to_break_a_published_hash():
+    """scripts/data_integrity.py fingerprints this table up to a cutoff and
+    stores the digest. Deleting a row inside a manifest's range leaves a
+    published sha256 nobody can ever reproduce - a broken evidence chain that
+    is only discovered by whoever tries to verify it."""
+    sql = (Path(__file__).resolve().parents[1]
+           / "sql" / "ad4_69_prune_research_captures.sql").read_text(encoding="utf-8")
+    body = "\n".join(l for l in sql.splitlines() if not l.strip().startswith("--"))
+    assert "proprietary_data_manifests" in body, (
+        "nothing stops this prune deleting rows a manifest has already hashed")
+    assert "p_expected_rows" in body, (
+        "a committed prune must be gated on the count verified by "
+        "re-downloading the uploaded archive")

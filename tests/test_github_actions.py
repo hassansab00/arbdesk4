@@ -155,7 +155,30 @@ def runs_per_30_days(expr):
 #
 # 398 of 400, ~796 of the 2,000 free minutes, leaving ~1,200 for CI and for a
 # manual backfill. The next addition needs a cadence cut to pay for it.
-SCHEDULED_RUN_BUDGET = 400
+#
+# 430 NOW, and this is the addition that was supposed to need a cut. It does
+# not, because the thing it buys is the database staying open at all.
+#
+#   +26  archive_observations.yml weekly -> daily. The weekly cadence above
+#        was costed against research_captures adding ~15 MB a day. It adds
+#        ~29 MB - 25,808 rows on 15 Sep, 24,510 on the 16th - and the table
+#        reached 92 MB in five days while the database went back to 454 MB of
+#        the 500 MB tier, 46 MB of headroom. A week between runs is ~200 MB,
+#        which is more than the tier has left, so the archive would arrive to
+#        find a database that had already stopped accepting writes.
+#
+# A cadence cut was the honest alternative and there is nothing to cut that is
+# not load-bearing: observations.yml at 4/day is already failing to keep 40 of
+# 52 cities inside twelve hours, and cutting it makes that worse rather than
+# cheaper. The minutes are also not the binding constraint here - 430 runs at
+# ~2 billed minutes is ~860 of 2,000, leaving ~1,140 for CI - whereas a full
+# database stops every job at once and costs real money to fix.
+#
+# 424 of 430, ~848 of the 2,000 free minutes. The next addition genuinely does
+# need a cut, and the first place to look is whether research_captures needs
+# to capture every band on every one of the six cycles a day - 30,914 of its
+# 78,291 rows are that one relation.
+SCHEDULED_RUN_BUDGET = 430
 
 
 def test_the_scheduled_workflows_fit_in_the_minute_allowance():
