@@ -332,7 +332,30 @@ select
        else round(extract(epoch from (now() - o.book_observed_at)) / 60.0)::int
   end                                                                    as book_age_min
 from v_opportunities o
+-- ON THE CITY AND ON THE DAY. The date half of this join is the fix.
+--
+-- v_trade_timing describes the day currently in progress in that city and
+-- nothing else. Joined on city_key alone, every market resolving on any other
+-- date was handed it anyway, and half this view is next-day markets. Measured
+-- on 2026-09-16: for every city the 09-16 and 09-17 rows carried an identical
+-- running_max_c, implied_max_c, day_decided and entry window. Tel Aviv read
+-- "Day decided - this band is settled, not traded" on tomorrow's market and
+-- flagged fourteen of tomorrow's twenty-two bands out_of_reach because TODAY
+-- topped out at 26C. That is a page telling its owner an opportunity has
+-- already passed when the day it belongs to has not begun.
+--
+-- With the date matched, a market for any other day gets NULL timing, and
+-- every derived column falls out correctly on its own: day_decided is null
+-- rather than false-but-really-yesterday's, out_of_reach is null rather than
+-- a verdict from the wrong day, and the s5 and s7 fire tests - both of which
+-- are same-day by definition - stop firing on days that have not started.
+-- s5 was firing on a 2026-09-17 band because TODAY's maximum landed in it.
+--
+-- Reachability for a future day is not lost, it moves to where it belongs:
+-- model_prob already prices the band from that day's forecast. What is gone
+-- is a claim derived from the wrong day's thermometer.
 left join v_trade_timing t on t.city_key = o.city_key
+                          and t.local_date = o.resolution_date
 left join lad l            on l.band_id  = o.band_id
 left join skill sk         on sk.city_key = o.city_key
 cross join p
@@ -347,6 +370,23 @@ select
   -- ---- THE SENTENCE ----------------------------------------------------
   case
     when not b.tradeable                     then coalesce(b.block_reason, 'not tradeable')
+    -- A DAY THAT HAS NOT STARTED IS NOT A DAY THAT IS OVER, and this line is
+    -- what stops the two being printed the same way.
+    --
+    -- Every timing column is null for a market that is not today's, now that
+    -- the join matches the date. Without this line the sentence fell through
+    -- to "No edge on this side", or to a window_state test on a null - both
+    -- of which read as a verdict on a day nobody has measured yet.
+    --
+    -- The test is the absent join rather than a column of its own, because
+    -- v_opportunities now admits only today's and future city-days, and the
+    -- timing joins only to today's: absent timing therefore means the day has
+    -- not started, or - rarely - that this city has no live reading at all.
+    -- The sentence covers both without claiming to know which, which is the
+    -- honest reading of a missing row.
+    when b.window_state is null              then format(
+      'Nothing about %s has been measured yet - no running maximum, no peak window, no timing case either way. The price is a forecast against a quote, and that is all it is.',
+      b.resolution_date)
     when coalesce(b.day_decided, false)
      and b.holds_running_max and b.side = 'YES'
                                              then 'The maximum is banked and this band holds it - s5 territory'
@@ -468,7 +508,9 @@ select
                 round(100 * (pr.prob_a + pr.prob_b)) || '%')
   end                                                            as pair_note
 from pair pr
+-- Same join, same reason: s8's cover is a statement about one city-day.
 left join v_trade_timing t on t.city_key = pr.city_key
+                          and t.local_date = pr.resolution_date
 cross join p;
 
 comment on view v_city_day_plan is

@@ -163,9 +163,45 @@ def _band_views():
         if base is None:
             continue
         city = base["city_key"]
-        lw = live.get(city) or {}
-        tm = timing.get(city) or {}
-        ap = approach.get(city) or {}
+        # TODAY'S THERMOMETER BELONGS TO TODAY'S MARKET, and to no other.
+        #
+        # live_weather and v_trade_timing each hold one row per city
+        # describing the day currently in progress there: the running maximum
+        # so far, how far it is from the peak, whether the day is effectively
+        # decided. Keyed by city alone, as they were, a band resolving
+        # TOMORROW was handed all of it.
+        #
+        # s5 is the clearest casualty - its entire premise is "the day is over
+        # and the maximum is locked in this band" - and it fired on a
+        # 2026-09-17 market because 2026-09-16's maximum landed there. s7's
+        # pre-peak window is the same mistake with a different sign: a
+        # countdown to today's peak, applied to a day that has not begun.
+        #
+        # v_trade_timing now carries local_date. When it does not match this
+        # market's resolution date the timing is simply absent, every gate
+        # below falls back to its "no evidence" branch, and the row is priced
+        # from its forecast alone - which is all that can honestly be said
+        # about a day nobody has measured yet.
+        def for_this_day(row):
+            """The row, unless it positively states it is about another day.
+
+            A MISSING local_date rides along; a DIFFERENT one is dropped. Only
+            a stated mismatch is evidence, and inventing one from an absence
+            would silently disable the running-max strategies on the degraded
+            path where these sources have no date at all. In production all 54
+            cities carry it, so the mismatch is always detectable where it
+            matters.
+            """
+            stated = row.get("local_date")
+            if stated and str(stated) != str(base["resolution_date"]):
+                return {}
+            return row
+
+        tm = for_this_day(timing.get(city) or {})
+        lw = for_this_day(live.get(city) or {})
+        # v_city_peak_approach has no date of its own: it is the six-reading
+        # slope through the day the timing row describes, so it rides with it.
+        ap = (approach.get(city) or {}) if tm else {}
         pr = probs.get(band_id) or {}
         meta = band_meta.get(band_id) or {}
         lead = pr.get("lead_days")

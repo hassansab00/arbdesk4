@@ -255,7 +255,25 @@ select
     when coalesce(a.slope_3_c_per_h, 0) <= 0.1       then 'flat - the maximum is not being made right now'
     else format('ENTER NOW - climbing %s C/h, peak in %s min',
                 round(a.slope_3_c_per_h, 2), round((w.peak_hour - w.local_hour_f) * 60))
-  end                                                                       as timing_note
+  end                                                                       as timing_note,
+
+  -- THE DAY THIS ROW IS ABOUT, stated rather than implied.
+  --
+  -- Every column above - running_max_c, implied_max_c, minutes_to_peak,
+  -- day_decided - describes ONE day: the one currently in progress in this
+  -- city. Nothing said so, and v_trade_plan joined this view on city_key
+  -- alone, so a market resolving tomorrow was handed today's running maximum
+  -- and today's verdict. Tel Aviv read "Day decided - this band is settled,
+  -- not traded" on a day that had not started; fourteen of tomorrow's
+  -- twenty-two bands were flagged unreachable because TODAY did not get that
+  -- warm; and s5 - whose whole premise is "the day is over and the maximum is
+  -- locked" - fired on a 2026-09-17 market. A consumer can now join on this
+  -- and get nothing for any other day, which is the correct answer.
+  --
+  -- Last in the select list on purpose: appending keeps `create or replace`
+  -- working in place, and v_campaign_state and v_city_day_plan both hang off
+  -- this chain - a cascade to add one column would take them with it.
+  (w.local_now)::date                                                       as local_date
 from win w
 left join v_city_peak_approach a on a.city_key = w.city_key
 left join live_weather lw        on lw.city_key = w.city_key;

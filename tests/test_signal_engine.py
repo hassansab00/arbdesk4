@@ -33,12 +33,14 @@ def _opp(band_id, side, **over):
 @pytest.fixture
 def board(monkeypatch):
     """Serve v_opportunities / live_weather / the derived tables from memory."""
-    def go(opps, live=None):
+    def go(opps, live=None, timing=None):
         def fake_rest_all(path, params=None, **kw):
             if path == "v_opportunities":
                 return opps
             if path == "live_weather":
                 return live or []
+            if path == "v_trade_timing":
+                return timing or []
             return []
         monkeypatch.setattr(se, "rest_all", fake_rest_all)
         monkeypatch.setattr(se, "rest", lambda path, params=None: [])
@@ -164,3 +166,69 @@ def test_the_runner_comes_before_the_proposals_it_feeds():
     assert "scripts/signal_engine.py" in wf, "the runner must be scheduled at all"
     assert wf.index("scripts/signal_engine.py") < wf.index("scripts/paper_plans.py"), \
         "signals must be written before the step that reads them"
+
+
+# ---------------------------------------------------------------------------
+# TODAY'S THERMOMETER BELONGS TO TODAY'S MARKET
+#
+# live_weather and v_trade_timing each hold ONE row per city, describing the
+# day currently in progress there: the running maximum so far, the countdown
+# to the peak, whether the day is effectively decided. Both were keyed by city
+# alone, so a band resolving TOMORROW was handed all of it.
+#
+# s5 is the clearest casualty - its entire premise is "the day is over and the
+# maximum is locked in this band" - and on 2026-09-16 it fired on a 2026-09-17
+# market because the 16th's maximum landed there. s7's pre-peak window is the
+# same error with the opposite sign: a countdown to today's peak applied to a
+# day that has not begun. Ninety-one signals in one 48-hour window fired on
+# city-days whose local date had already passed.
+# ---------------------------------------------------------------------------
+def _timing(local_date, **over):
+    row = {"city_key": "london", "local_date": local_date,
+           "running_max_c": 19.4, "day_decided": True, "window_state": "AFTER",
+           "minutes_to_peak": -120, "implied_max_c": 19.4, "reading_age_min": 10}
+    row.update(over)
+    return row
+
+
+def test_timing_for_another_day_is_not_applied(board):
+    """The market resolves on the 15th; the timing row describes the 16th."""
+    board([_opp("b1", "YES", resolution_date="2026-09-15")],
+          timing=[_timing("2026-09-16")])
+    v = se._band_views()[0]
+    assert v.running_max_c is None, (
+        "a running maximum from another day is not this day's evidence - s5 "
+        "fires on exactly this and would buy tomorrow's band because today "
+        "topped out in it")
+    assert v.day_decided is False
+    assert v.s5_allowed is False
+
+
+def test_timing_for_this_day_is_applied(board):
+    board([_opp("b1", "YES", resolution_date="2026-09-15")],
+          timing=[_timing("2026-09-15")])
+    v = se._band_views()[0]
+    assert v.running_max_c == 19.4 and v.day_decided is True
+
+
+def test_live_weather_is_judged_on_its_own_stated_day(board):
+    """live_weather carries local_date too, and all 54 cities populate it. It
+    is gated separately so a missing timing view cannot smuggle the reading
+    through, and a present one cannot veto a reading that agrees with it."""
+    board([_opp("b1", "YES", resolution_date="2026-09-15")],
+          live=[{"city_key": "london", "local_date": "2026-09-16",
+                 "running_max_c": 19.4, "day_decided": True}])
+    v = se._band_views()[0]
+    assert v.running_max_c is None and v.day_decided is False
+
+
+def test_a_source_that_states_no_day_still_rides_along(board):
+    """Only a STATED mismatch is evidence. Treating an absent local_date as a
+    mismatch would silently disable the running-max strategies on any path
+    where these sources carry no date - which is how a safety check becomes an
+    outage."""
+    board([_opp("b1", "YES", resolution_date="2026-09-15")],
+          live=[{"city_key": "london", "running_max_c": 19.4,
+                 "peak_window_state": "IN_WINDOW", "day_decided": False}])
+    v = se._band_views()[0]
+    assert v.running_max_c == 19.4

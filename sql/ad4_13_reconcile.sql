@@ -736,7 +736,20 @@ cross join (
 left join lateral (select * from v_band_book   x where x.band_id  = b.band_id)     bk on true
 left join lateral (select * from v_band_volume x where x.band_id  = b.band_id)     bv on true
 left join lateral (select * from v_city_volume x where x.city_key = m.city_key)    cv on true
-where m.resolution_date >= current_date
+-- THE CITY'S DATE, NOT THE SERVER'S. current_date here is UTC, and a
+-- maximum-temperature market resolves on the city's LOCAL day. Every city
+-- ahead of UTC therefore leaked: its local day could be over while the UTC
+-- date still made this test pass, so a settled city-day stayed on the board
+-- as an opportunity. Ninety-one signals fired that way in a single 48-hour
+-- window - s1, s3, s4 and s6 all proposing entries on days whose maximum was
+-- already in the books.
+--
+-- Today stays, including the case s5 is built for, where the local day is
+-- effectively over but the venue has not closed the market yet: that is
+-- resolution_date = local date with day_decided true, and it is a real trade
+-- against a known answer. What goes is the day BEFORE that, which is not a
+-- trade at all.
+where m.resolution_date >= (now() at time zone coalesce(c.timezone, 'UTC'))::date
 order by score desc nulls last
   $v$;
 

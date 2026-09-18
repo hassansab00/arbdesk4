@@ -644,14 +644,26 @@ def test_every_archived_table_pages_on_its_real_primary_key():
     import re
     import archive_observations as ao
 
+    import glob
+
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    schema = open(os.path.join(root, "sql", "ad4_00_preflight.sql")).read()
+    # EVERY PLACE A TABLE CAN BE DECLARED, not just the preflight file.
+    # research_captures is created by a migration, not by sql/, so reading one
+    # file made this test fail on a table whose primary key was correct - the
+    # same "only covers what somebody remembered to add" failure the docstring
+    # above warns about, one level up.
+    sources = ([os.path.join(root, "sql", "ad4_00_preflight.sql")]
+               + sorted(glob.glob(os.path.join(root, "sql", "*.sql")))
+               + sorted(glob.glob(os.path.join(root, "supabase", "migrations", "*.sql"))))
     declared = {}
-    for m in re.finditer(r"create table if not exists (?:public\.)?(\w+)\s*\((.*?)\n\s*\);",
-                         schema, re.S):
-        pk = re.search(r"^\s*(\w+)\s[^,\n]*\bprimary key\b", m.group(2), re.M)
-        if pk:
-            declared.setdefault(m.group(1), pk.group(1))
+    for path in sources:
+        schema = open(path, encoding="utf-8").read()
+        for m in re.finditer(
+                r"create table (?:if not exists )?(?:public\.)?(\w+)\s*\((.*?)\n\s*\);",
+                schema, re.S):
+            pk = re.search(r"^\s*(\w+)\s[^,\n]*\bprimary key\b", m.group(2), re.M)
+            if pk:
+                declared.setdefault(m.group(1), pk.group(1))
 
     for name, spec in ao.TABLES.items():
         table = spec["table"]
