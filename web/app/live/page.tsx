@@ -100,7 +100,12 @@ export default function LiveWeatherPage() {
         .order("run_at", { ascending: false })
         .limit(1000),
     [],
-    5 * 60000
+    5 * 60000,
+    // 54 cities x 3 models x 8 leads is about 1,300 rows for one day, past
+    // PostgREST's 1,000-row ceiling - so this can be cut short, and without
+    // the declaration it would be cut short SILENTLY and the page would show
+    // the alphabetically first cities as though that were all of them.
+    1000
   );
 
   // Supabase Realtime: new weather_events push straight in, no polling.

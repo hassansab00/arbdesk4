@@ -617,6 +617,10 @@ export const FILLED_BY: Record<string, Filler[]> = {
  * leaving the reader to work out which of the tables beneath it went quiet.
  */
 export const VIEW_TABLES: Record<string, string[]> = {
+  "mv_venue_band_resolution": [
+    "bands",
+    "paper_resolution_evidence"
+  ],
   "v_archive_by_city": [
     "bands",
     "book_snapshots",
@@ -803,9 +807,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "fact_band_outcome",
     "markets",
+    "paper_resolution_evidence",
     "edges",
-    "band_probabilities",
-    "paper_resolution_evidence"
+    "band_probabilities"
   ],
   "v_city_reasoning": [
     "cities",
@@ -1040,9 +1044,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "fact_band_outcome",
     "markets",
+    "paper_resolution_evidence",
     "edges",
-    "band_probabilities",
-    "paper_resolution_evidence"
+    "band_probabilities"
   ],
   "v_prediction_scorecard": [
     "fact_forecast_outcome",

@@ -63,14 +63,98 @@
 -- never touches settled_value or won, so it is unaffected either way.
 -- ===========================================================================
 
+-- ===========================================================================
+-- AND WHY THE PAGE TIMED OUT. Measured 2026-09-19 on the query the Predictive
+-- page actually sends - `where for_date >= current_date limit 1000`:
+--
+--   20,831 ms  before
+--      346 ms  after
+--
+-- Three separate causes, and none of them was a missing index on a table:
+--
+-- 1. THE PLANNER ESTIMATED v_venue_band_resolution AT ONE ROW. It returns
+--    11,122. It is a GroupAggregate over a subquery, and a view has no
+--    statistics, so Postgres believed a nested loop was free:
+--
+--      Nested Loop Left Join
+--        Join Filter: (vb.band_id = b.band_id)
+--        Rows Removed by Join Filter: 257,502,091   <- to return 1,000 rows
+--        ->  Materialize (actual rows=11122 loops=23154)
+--
+--    No index fixes a bad row estimate. Only real statistics do, so the
+--    resolution is MATERIALISED below, with a unique index on band_id.
+--
+-- 2. THE WINDOW FUNCTION BLOCKED THE DATE FILTER. band_index was computed as
+--    row_number() over (partition by market_id order by band_lo), and a
+--    window cannot be pushed past a WHERE - so asking for the next sixteen
+--    days still built all 23,154 rows of the last sixty-one and then threw
+--    10,483 of them away.
+--
+--    bands.band_index already holds exactly that number. Checked on all
+--    18,005 rows: 0 null, 0 disagreeing with the derived value. Reading the
+--    stored column lets the filter reach markets, which then returns 102 rows
+--    instead of 1,495.
+--
+-- 3. THE EDGE HISTORY WAS SORTED ON EVERY READ. v_latest_edge is
+--    `distinct on (band_id, side)`, and the only index was (band_id,
+--    computed_at), so every read incrementally sorted 122,764 rows to keep
+--    13,418. ad4_ix_edges_band_side_time serves the distinct directly.
+-- ===========================================================================
+
+-- The resolution, with statistics. The LIVE view is deliberately not
+-- replaced: scripts/databank.py freezes band outcomes from
+-- v_venue_band_resolution and must see a settlement the moment it is
+-- confirmed. A review page can be an hour behind and nothing is decided on
+-- it, so only v_prediction_ladder reads this copy.
+create materialized view if not exists mv_venue_band_resolution as
+  select * from v_venue_band_resolution;
+
+-- Not optional: refresh ... concurrently requires a unique index, and without
+-- concurrently a page reading mid-refresh blocks.
+create unique index if not exists mv_vbr_band on mv_venue_band_resolution (band_id);
+analyze mv_venue_band_resolution;
+
+create or replace function public.refresh_venue_band_resolution()
+returns integer
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare n integer;
+begin
+  refresh materialized view concurrently mv_venue_band_resolution;
+  analyze mv_venue_band_resolution;
+  select count(*) into n from mv_venue_band_resolution;
+  return n;
+end $$;
+
+comment on materialized view mv_venue_band_resolution is
+  'v_venue_band_resolution with statistics. The view is a GroupAggregate the planner estimates at one row when it returns eleven thousand, and that estimate turned the Predictive page into a 257-million-row nested loop. Refreshed hourly; the live view remains the source for anything that must see a settlement immediately.';
+
+revoke all on function public.refresh_venue_band_resolution() from public, anon, authenticated;
+grant execute on function public.refresh_venue_band_resolution() to service_role;
+grant select on mv_venue_band_resolution to anon, authenticated, service_role;
+
+-- pg_cron, not an Action: a matview refresh of eleven thousand rows costs the
+-- database about a second and costs the minute budget nothing.
+create extension if not exists pg_cron;
+select cron.schedule('ad4_refresh_venue_band_resolution', '7 * * * *',
+                     $$select public.refresh_venue_band_resolution()$$);
+
+-- The distinct-on index the edge history never had.
+create index if not exists ad4_ix_edges_band_side_time
+  on edges (band_id, side, computed_at desc);
+analyze edges;
+
+
 create or replace view public.v_prediction_ladder as
 select
   m.city_key,
   m.resolution_date as for_date,
   m.market_id,
   b.band_id,
-  (row_number() over (partition by m.market_id order by b.band_lo nulls first))::integer - 1
-    as band_index,
+  -- THE STORED COLUMN, not a window function over it. See cause 2 above.
+  b.band_index,
   b.band_label,
   b.band_lo,
   b.band_hi,
@@ -99,7 +183,6 @@ select
   e.tradeable,
   e.block_reason,
   e.computed_at as edge_at,
-  -- ---- appended; see the header on why these two are not optional ----------
   case
     when vb.resolution_state = 'confirmed' and vb.settled_yes is not null then 'venue'
     when fb.settled_yes is not null then 'weather'
@@ -112,7 +195,7 @@ from markets m
 join bands b on b.market_id = m.market_id
 left join v_latest_prob p on p.band_id = b.band_id
 left join v_latest_edge e on e.band_id = b.band_id
-left join v_venue_band_resolution vb on vb.band_id = b.band_id
+left join mv_venue_band_resolution vb on vb.band_id = b.band_id
 left join fact_band_outcome fb on fb.band_id = b.band_id
 where m.resolution_date >= (current_date - 45)
   and m.resolution_date <= (current_date + 16);

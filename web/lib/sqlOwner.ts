@@ -48,6 +48,7 @@ export const SQL_OWNER: Record<string, string> = {
   "live_weather": "ad4_live_weather.sql",
   "markets": "ad4_00_preflight.sql",
   "model_versions": "ad4_00_preflight.sql",
+  "mv_venue_band_resolution": "ad4_68_prediction_ladder_outcomes.sql",
   "paper_accounts": "supabase/migrations/20260912083705_paper_accounts_and_research_history.sql",
   "paper_activity": "supabase/migrations/20260912083705_paper_accounts_and_research_history.sql",
   "paper_book_evidence": "supabase/migrations/20260912083705_paper_accounts_and_research_history.sql",

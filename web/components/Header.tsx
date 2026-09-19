@@ -24,7 +24,9 @@ import { fmtAge } from "@/lib/format";
 type Feed = { label: string; at: string | null; staleAfterMin: number; what: string };
 
 /** What the desk is looking at right now, for the line under the wordmark. */
-interface Scope { cities: number; markets: number; days: number; edges: number }
+interface Scope { cities: number; markets: number; days: number;
+  /** the day count came off a read the server cut short, so it is a floor */
+  daysPartial: boolean; edges: number }
 
 export default function Header() {
   const [feeds, setFeeds] = useState<Feed[] | null>(null);
@@ -61,14 +63,22 @@ export default function Header() {
         const today = new Date().toISOString().slice(0, 10);
         const [{ count: cityCount }, mkt, { count: edgeCount }] = await Promise.all([
           supabase.from("cities").select("city_key", { count: "exact", head: true }),
-          supabase.from("markets").select("market_id,resolution_date").gte("resolution_date", today).limit(2000),
+          // COUNTED BY THE SERVER, not by the rows that came back. PostgREST
+          // caps a response at 1,000 however large the .limit(), so counting
+          // the array would silently understate the desk's own coverage the
+          // day there are more than a thousand forward markets. The rows are
+          // still read, for the distinct settlement days, and the masthead
+          // says "days+" when even that was cut short.
+          supabase.from("markets").select("resolution_date", { count: "exact" })
+            .gte("resolution_date", today).limit(2000),
           supabase.from("v_opportunities").select("edge_id", { count: "exact", head: true }).eq("tradeable", true),
         ]);
         const dates = new Set((mkt.data ?? []).map((m: { resolution_date: string }) => m.resolution_date));
         setScope({
           cities: cityCount ?? 0,
-          markets: (mkt.data ?? []).length,
+          markets: mkt.count ?? (mkt.data ?? []).length,
           days: dates.size,
+          daysPartial: (mkt.data ?? []).length >= 1000,
           edges: edgeCount ?? 0,
         });
       } catch {
@@ -99,7 +109,8 @@ export default function Header() {
         subtitle={
           scope
             ? `Polymarket daily-temperature markets · ${scope.cities} cities · ` +
-              `${scope.markets} live over ${scope.days} settlement day${scope.days === 1 ? "" : "s"} · ` +
+              `${scope.markets} live over ${scope.days}${scope.daysPartial ? "+" : ""} ` +
+              `settlement day${scope.days === 1 ? "" : "s"} · ` +
               `${scope.edges} tradeable edge${scope.edges === 1 ? "" : "s"}`
             : null
         }
