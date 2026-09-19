@@ -84,7 +84,10 @@ const MISSING = (file: string, extra?: string) => (
 
 export default function PredictivePage() {
   const citiesQ = useQuery<CityRow[]>(
-    () => supabase.from("cities").select("city_key,display_name,unit").order("city_key"), []
+    // Active only: a retired city keeps every row it ever wrote, so without
+    // this filter the desk would go on listing cities it has stopped trading.
+    () => supabase.from("cities").select("city_key,display_name,unit")
+      .eq("status", "active").order("city_key"), []
   );
   const evidenceQ = useQuery<EvidenceHealth[]>(
     () => supabase.from("v_outcome_evidence_health")

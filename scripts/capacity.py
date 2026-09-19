@@ -11,7 +11,8 @@ scheduling/logging wrapper so the job shows up in `ingest_log` next to
 every other daily job, consistent with how the rest of AD4 is run.
 """
 import sys
-from common import log_run, refresh_feature_cache, rest, rpc as _call_rpc
+from common import (log_run, refresh_feature_cache, rest, rpc as _call_rpc,
+                    active_city_keys)
 
 
 def _absent(exc):
@@ -71,8 +72,7 @@ def refresh_peaks(failures):
     sql/ad4_56 yet, so this script works either way.
     """
     try:
-        cities = [c["city_key"] for c in
-                  rest("cities", [("select", "city_key"), ("order", "city_key")])]
+        cities = sorted(active_city_keys())
     except Exception as e:
         failures.append(f"cities: {e}")
         print(f"cities FAILED: {e}", file=sys.stderr)
@@ -126,8 +126,7 @@ def recompute_capacity_per_city(failures):
     sql/ad4_64 yet, so this script works either way.
     """
     try:
-        cities = [c["city_key"] for c in
-                  rest("cities", [("select", "city_key"), ("order", "city_key")])]
+        cities = sorted(active_city_keys())
     except Exception as e:
         failures.append(f"cities: {e}")
         print(f"cities FAILED: {e}", file=sys.stderr)

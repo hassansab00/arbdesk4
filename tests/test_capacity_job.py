@@ -109,9 +109,8 @@ def peaks(monkeypatch):
     def go(per_city):
         calls = []
 
-        def fake_rest(path, params=None):
-            assert path == "cities"
-            return CITIES
+        def fake_active():
+            return {c["city_key"] for c in CITIES}
 
         def fake_rpc(fn, params=None, timeout=120):
             calls.append((fn, (params or {}).get("p_city")))
@@ -120,7 +119,7 @@ def peaks(monkeypatch):
                 raise outcome
             return outcome
 
-        monkeypatch.setattr(capacity, "rest", fake_rest)
+        monkeypatch.setattr(capacity, "active_city_keys", fake_active)
         monkeypatch.setattr(capacity, "_call_rpc", fake_rpc)
         return calls
     return go
@@ -169,7 +168,7 @@ def test_the_first_city_failing_for_a_real_reason_is_not_a_fallback(peaks):
 
 
 def test_no_cities_is_not_an_error(monkeypatch):
-    monkeypatch.setattr(capacity, "rest", lambda path, params=None: [])
+    monkeypatch.setattr(capacity, "active_city_keys", lambda: set())
     failures = []
     assert capacity.refresh_peaks(failures) == 0
     assert failures == []
@@ -205,7 +204,7 @@ def run_main(monkeypatch):
                 raise feature_cache
             return feature_cache
 
-        monkeypatch.setattr(capacity, "rest", lambda path, params=None: [{"city_key": "austin"}])
+        monkeypatch.setattr(capacity, "active_city_keys", lambda: {"austin"})
         monkeypatch.setattr(capacity, "_call_rpc", fake_rpc)
         monkeypatch.setattr(capacity, "log_run", fake_log_run)
         monkeypatch.setattr(capacity, "refresh_feature_cache", fake_features)
@@ -344,8 +343,8 @@ def caps(monkeypatch):
                 raise out
             return out
 
-        monkeypatch.setattr(capacity, "rest", lambda path, params=None: [
-            {"city_key": "austin"}, {"city_key": "london"}, {"city_key": "nyc"}])
+        monkeypatch.setattr(capacity, "active_city_keys",
+                            lambda: {"austin", "london", "nyc"})
         monkeypatch.setattr(capacity, "_call_rpc", fake_rpc)
         return calls
     return go

@@ -51,7 +51,8 @@ import datetime as dt
 import json
 import sys
 
-from common import rest, rest_all, log_run, _cfg, _headers
+from common import (rest, rest_all, log_run, _cfg, _headers,
+                    active_city_keys, drop_retired)
 import requests
 
 # Fewer than this and the fit is describing noise. Weather is seasonal: a few
@@ -871,6 +872,17 @@ def main():
               file=sys.stderr)
         log_run("weather_model", "attention", 0, {"error": str(e)})
         return 1
+
+    # A RETIRED CITY IS NOT FITTED. Its cached days are kept forever - nothing
+    # here deletes - so without this filter the fit would go on producing a
+    # model, and model_promotion would go on scoring it, for a city the desk
+    # has stopped trading. The dropped cities are NAMED rather than counted:
+    # a city list that quietly got shorter is the shape of the bug that left
+    # six cities unpredicted on 2026-09-19.
+    rows, retired = drop_retired(rows, active_city_keys())
+    if retired:
+        print(f"  {len(retired)} retired city/cities not fitted: "
+              + ", ".join(retired))
 
     by_city = {}
     for r in rows:

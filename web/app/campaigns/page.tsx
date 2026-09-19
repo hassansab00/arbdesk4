@@ -95,7 +95,9 @@ export default function CampaignsPage() {
     []
   );
   const citiesQ = useQuery<Array<{ city_key: string; display_name: string | null }>>(
-    () => supabase.from("cities").select("city_key,display_name").order("city_key"),
+    // Active only: a campaign must not be able to name a retired city.
+    () => supabase.from("cities").select("city_key,display_name")
+      .eq("status", "active").order("city_key"),
     []
   );
 

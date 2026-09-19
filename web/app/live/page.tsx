@@ -82,7 +82,10 @@ export default function LiveWeatherPage() {
       .select("city_key,slope_3_c_per_h,slope_6_c_per_h,direction,rolling_over,implied_max_c,typical_climb_left_c,reading_age_min,pct_already_peaked"),
     [], 60000
   );
-  const cities = useQuery<City[]>(() => supabase.from("cities").select("*"), []);
+  // Active only - see the retirement migration: retired cities keep their
+  // rows, so the filter is what removes them from the desk, not a delete.
+  const cities = useQuery<City[]>(
+    () => supabase.from("cities").select("*").eq("status", "active"), []);
   const events = useQuery<WeatherEvent[]>(
     () => supabase.from("weather_events").select("*").order("detected_at", { ascending: false }).limit(50),
     []
