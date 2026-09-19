@@ -29,7 +29,8 @@ import sys
 
 import requests
 
-from common import rest, insert, upsert, get_cities, log_run, normalize_sky_condition, retry
+from common import (rest, insert, upsert, get_cities, log_run, city_local_date,
+                    normalize_sky_condition, retry)
 from ingest_observations import fetch_station, parse as parse_iem
 
 COMPASS_16 = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
@@ -199,13 +200,29 @@ def main():
         sky = normalize_sky_condition(row.get("cloud_cover"))
         obs_rows.append({**row, "sky_condition": sky, "source": source})
 
-        today_start = dt.date.today().isoformat()
+        # THE CITY'S DAY, NOT THE SERVER'S. This read dt.date.today() - the
+        # runner's UTC date - for both the history window and the local_date it
+        # wrote. A daily-high market resolves on the city's own local day, so on
+        # a UTC date Tokyo's running maximum was assembled from the wrong
+        # fifteen hours and then stamped with the wrong day, and Los Angeles
+        # lost its whole evening every time the clock passed 17:00 local.
+        # common.city_local_date is the one function every other job turns a
+        # timestamp into a day with.
+        now_utc = dt.datetime.now(dt.timezone.utc)
+        local_date = city_local_date(now_utc, c.get("timezone"))
+        # The window still has to be given to PostgREST in UTC, and a local day
+        # can begin up to 14 hours before the UTC one - so ask for the last 48
+        # hours and keep the readings that fall on the city's date.
         history = rest("weather_observations", [
             ("select", "valid_at,temp_c"), ("city_key", f"eq.{city_key}"),
-            ("valid_at", f"gte.{today_start}"), ("order", "valid_at.asc"),
+            ("valid_at", f"gte.{(now_utc - dt.timedelta(hours=48)).isoformat()}"),
+            ("order", "valid_at.asc"),
         ])
-        obs_today = [(h["valid_at"], h["temp_c"]) for h in history if h.get("temp_c") is not None]
-        obs_today.append((row["valid_at"], row["temp_c"]))
+        obs_today = [(h["valid_at"], h["temp_c"]) for h in history
+                     if h.get("temp_c") is not None
+                     and city_local_date(h["valid_at"], c.get("timezone")) == local_date]
+        if city_local_date(row["valid_at"], c.get("timezone")) == local_date:
+            obs_today.append((row["valid_at"], row["temp_c"]))
 
         running_max_c, running_max_at, running_min_c = running_stats(obs_today)
 
@@ -240,7 +257,7 @@ def main():
             "sky_condition": sky, "precip_1h": row.get("precip"),
             "running_max_c": running_max_c, "running_max_at": running_max_at, "running_min_c": running_min_c,
             "temp_change_1h": change_1h, "trend": trend_from_change(change_1h),
-            "day_decided": day_decided, "local_date": today_start,
+            "day_decided": day_decided, "local_date": local_date,
         })
 
     if obs_rows:

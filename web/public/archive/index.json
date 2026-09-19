@@ -1,0 +1,21 @@
+{
+  "datasets": {
+    "research": {
+      "assets": [
+        {
+          "archived_at": "2026-09-19T07:46:19+00:00",
+          "archived_through": "2026-09-17T07:44:14+00:00",
+          "asset": "research-2026-09-12-to-2026-09-17.csv.gz",
+          "from": "2026-09-12",
+          "gzip_bytes": 11621351,
+          "rows": 78291,
+          "to": "2026-09-17"
+        }
+      ],
+      "release_tag": "research-archive",
+      "rows_archived": 78291,
+      "table": "research_captures"
+    }
+  },
+  "updated_at": "2026-09-19T07:46:19+00:00"
+}

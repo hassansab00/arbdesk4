@@ -100,6 +100,17 @@ jobs:
         timeout-minutes: 30
         run: python scripts/measure_skill.py ${{ github.event.inputs.skill_days || '400' }}
 
+      # 4b. Judge the desk's OWN model against the public forecast on forward
+      #     days. Beating persistence on held-out days of its own training
+      #     window is not the test a price has to pass; this is, and until a
+      #     city and lead pass it the model stays in shadow and cannot move a
+      #     number. Seconds of work on a few thousand rows, so it rides in the
+      #     daily job rather than paying for a schedule of its own.
+      - name: Promote or shadow the fitted models
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: python scripts/model_promotion.py
+
       # 5. Freeze the desk's own record - what it predicted, what the market
       #    said, what happened. These rows are never updated: a maximum frozen
       #    too early is wrong forever, which is why it waits for settlement.

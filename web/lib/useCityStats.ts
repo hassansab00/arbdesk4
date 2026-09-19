@@ -101,6 +101,21 @@ export function useCityStats(pollMs = 60000): CityStatsResult {
         ]);
         if (cities.error) throw cities.error;
 
+        // AND SAY SO IF THE SERVER CUT IT. This path is the fallback, so it
+        // cannot use useQuery's truncation flag, and PostgREST's ceiling is
+        // 1,000 rows however large a .limit() asks for. 54 cities x 3 models
+        // x 8 leads is about 1,300 forecast rows for one day, so the cut is
+        // reachable - and a page that quietly shows the alphabetically first
+        // cities is worse than one that errors.
+        if ((fc.data ?? []).length >= 2000 || (fc.data ?? []).length === 1000) {
+          if (!cancelled) {
+            setViewError((prev) => [prev, "Forecast rows were cut short by the "
+              + "server's 1,000-row ceiling, so some cities may be missing a "
+              + "forecast here. The city stats view does not have this limit - "
+              + "fix it and this fallback goes away."].filter(Boolean).join(" "));
+          }
+        }
+
         const liveBy = new Map((live.data ?? []).map((r: Record<string, unknown>) => [r.city_key as string, r]));
         const volBy = new Map((vol.data ?? []).map((r: Record<string, unknown>) => [r.city_key as string, r]));
         const fcBy = new Map<string, Record<string, unknown>>();

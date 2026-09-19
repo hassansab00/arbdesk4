@@ -46,7 +46,8 @@ def verify(band,gamma,clob):
 SETTLE_LAG_DAYS = 1
 
 
-def _candidate_bands(position_band_ids, days_back, settled_conditions=frozenset()):
+def _candidate_bands(position_band_ids, days_back, settled_conditions=frozenset(),
+                     holdings_only=False):
     """Open positions first, then the unsettled archive, newest answerable day first.
 
     Venue outcomes are valuable model evidence even when the paper desk held
@@ -101,6 +102,34 @@ def _candidate_bands(position_band_ids, days_back, settled_conditions=frozenset(
                 'band_id': 'in.(' + ','.join(chunk) + ')',
                 'select': 'band_id,market_id,condition_id,token_yes,token_no',
             }, order='band_id.asc')
+
+    # HOLDINGS ONLY, FOR THE INTRADAY CYCLE.
+    #
+    # The archive sweep below is the right thing and it does not need doing
+    # six times a day. Measured on a scheduled intraday run, 2026-09-19:
+    #
+    #   candidates 5,647 | unreached 5,322 | evidence captured 292
+    #   positions settled 0 | 4 minutes 1 second
+    #
+    # Four minutes per cycle, 180 cycles a month - about 720 billed minutes -
+    # walking a backlog at roughly one day of markets per run and settling no
+    # position at all, because the desk's own holdings were already checked in
+    # the first seconds and the rest is archive collection.
+    #
+    # So the intraday cycle now checks what the desk HOLDS, which takes
+    # seconds, and the daily run keeps the wide sweep with its 900-second
+    # budget. Positions settle just as promptly - sooner, if anything, because
+    # the cycle no longer spends its budget elsewhere - and the outcome
+    # archive still fills, once a day instead of six times.
+    if holdings_only:
+        out, seen = [], set()
+        for band in wanted:
+            key = str(band['band_id'])
+            if key in seen or str(band.get('condition_id')) in settled_conditions:
+                continue
+            seen.add(key)
+            out.append(band)
+        return out
 
     today = dt.date.today()
     since = (today - dt.timedelta(days=days_back)).isoformat()
@@ -160,7 +189,7 @@ def _candidate_bands(position_band_ids, days_back, settled_conditions=frozenset(
     return out
 
 
-def cycle(budget_seconds=60, days_back=180, max_new_evidence=100):
+def cycle(budget_seconds=60, days_back=180, max_new_evidence=100, holdings_only=False):
     from paper_worker import public_json
     started,settled,checked=time.monotonic(),0,set()
     captured,failed,first_failure=0,0,None
@@ -170,7 +199,7 @@ def cycle(budget_seconds=60, days_back=180, max_new_evidence=100):
     existing={str(e['condition_id']) for e in rest_all(
         'paper_resolution_evidence',{'select':'condition_id,proof_id'},order='condition_id.asc,proof_id.asc')}
 
-    candidates=_candidate_bands(position_band_ids,days_back,existing)
+    candidates=_candidate_bands(position_band_ids,days_back,existing,holdings_only)
     unreached=0
     skips,spans={},{}
 
@@ -253,6 +282,7 @@ def cycle(budget_seconds=60, days_back=180, max_new_evidence=100):
     detail={'positions_settled':settled,'evidence_captured':captured,
             'bands_checked':len(checked),'failed':failed,'first_failure':first_failure,
             'candidates':len(candidates),'unreached':unreached,
+            'scope':'holdings' if holdings_only else 'holdings+archive',
             'skips':skips,'skip_day_spans':spans,
             'checked_span':[min(days_checked),max(days_checked)] if days_checked else None}
     log_run('paper_settlement',status,settled+captured,detail)
@@ -267,6 +297,11 @@ if __name__=='__main__':
     parser.add_argument('--days-back',type=int,default=180)
     parser.add_argument('--max-evidence',type=int,default=100,
                         help='new proofs captured in one run (default 100)')
+    parser.add_argument('--holdings-only',action='store_true',
+                        help='check only bands the desk actually holds, and skip the '
+                             'archive sweep. Seconds rather than minutes; the daily run '
+                             'does the wide sweep')
     options=parser.parse_args()
     print(cycle(budget_seconds=options.budget_seconds,days_back=options.days_back,
-                max_new_evidence=options.max_evidence))
+                max_new_evidence=options.max_evidence,
+                holdings_only=options.holdings_only))

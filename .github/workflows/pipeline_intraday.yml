@@ -142,7 +142,7 @@ jobs:
       - name: Venue-confirmed paper settlement
         if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}
         timeout-minutes: 6
-        run: python scripts/paper_settlement.py --budget-seconds 240 --max-evidence 600
+        run: python scripts/paper_settlement.py --holdings-only --budget-seconds 60 --max-evidence 100
 
       - name: Paper exit policies
         if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}

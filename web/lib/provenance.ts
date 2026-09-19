@@ -223,6 +223,15 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Weather Model"
     }
   ],
+  "derived_model_promotion": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/model_promotion.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    }
+  ],
   "derived_weather_model": [
     {
       "cadence": "daily",
@@ -608,6 +617,10 @@ export const FILLED_BY: Record<string, Filler[]> = {
  * leaving the reader to work out which of the tables beneath it went quiet.
  */
 export const VIEW_TABLES: Record<string, string[]> = {
+  "mv_venue_band_resolution": [
+    "bands",
+    "paper_resolution_evidence"
+  ],
   "v_archive_by_city": [
     "bands",
     "book_snapshots",
@@ -778,6 +791,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_city_metadata_verification": [
     "cities"
   ],
+  "v_city_observation_health": [
+    "cities",
+    "live_weather",
+    "weather_observations"
+  ],
   "v_city_peak_approach": [
     "derived_climb_profile",
     "cities",
@@ -789,9 +807,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "fact_band_outcome",
     "markets",
+    "paper_resolution_evidence",
     "edges",
-    "band_probabilities",
-    "paper_resolution_evidence"
+    "band_probabilities"
   ],
   "v_city_reasoning": [
     "cities",
@@ -808,6 +826,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "trades_observed",
     "edges",
     "derived_city_day_features"
+  ],
+  "v_city_running_max": [
+    "cities",
+    "live_weather",
+    "weather_observations"
   ],
   "v_city_stats": [
     "cities",
@@ -951,6 +974,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_forecasts"
   ],
   "v_model_disagreement": [
+    "derived_model_promotion",
     "derived_model_forecast"
   ],
   "v_model_forecast_current": [
@@ -961,6 +985,13 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_model_forecast",
     "derived_weather_model",
     "weather_forecast_features"
+  ],
+  "v_model_promoted": [
+    "derived_model_promotion"
+  ],
+  "v_model_promotion": [
+    "cities",
+    "derived_model_promotion"
   ],
   "v_operational_health": [
     "band_probabilities",
@@ -1013,9 +1044,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "fact_band_outcome",
     "markets",
+    "paper_resolution_evidence",
     "edges",
-    "band_probabilities",
-    "paper_resolution_evidence"
+    "band_probabilities"
   ],
   "v_prediction_scorecard": [
     "fact_forecast_outcome",
@@ -1025,10 +1056,27 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "fact_forecast_outcome",
     "weather_resolution_evidence"
   ],
+  "v_prunable_resolution_evidence": [
+    "bands",
+    "fact_band_outcome",
+    "paper_resolution_evidence"
+  ],
   "v_sigma_inputs": [
     "cities",
     "derived_calibration_adjustment",
     "derived_forecast_skill"
+  ],
+  "v_signal_outcome": [
+    "fact_band_outcome",
+    "fact_signal_outcome"
+  ],
+  "v_signal_scorecard": [
+    "fact_band_outcome",
+    "fact_signal_outcome"
+  ],
+  "v_signal_scorecard_by_version": [
+    "fact_band_outcome",
+    "fact_signal_outcome"
   ],
   "v_storage_report": [
     "cities",

@@ -1,36 +1,59 @@
 #!/usr/bin/env python3
 """
-Learn how wrong this desk's probabilities are, and correct the next ones.
+Learn how wrong this desk's probabilities are, and correct the next ones -
+out of sample, at the level the probabilities actually live.
 
-THE QUESTION. Of every band AD4 priced at 30%, how many settled yes? If the
-answer is 42%, the model is not merely imprecise - it is systematically
-underconfident at 30%, by 12 points, and every trade sized off that number was
-sized wrong. Until independently verified outcome evidence existed the desk
-could not ask this safely: an observed running maximum is not a final venue
-resolution.
+WHAT THE PREVIOUS VERSION MEASURED, AND WHY IT WAS NOT A MEASUREMENT
+--------------------------------------------------------------------
+It fitted Platt scaling on every settled band and then scored the fit ON THE
+SAME ROWS. Brier 0.074160 -> 0.073713: an improvement of 0.00045, in sample,
+which is not evidence of anything. Adding parameters to a fit always lowers
+the error on the data it was fitted to, and `applies` rested on exactly that
+number.
 
-THE METHOD. Platt scaling - a logistic regression on the log-odds of the
-stated probability:
+Three deeper problems sat underneath it:
 
-    calibrated = sigmoid(a * logit(p) + b)
+  THE ROWS ARE NOT INDEPENDENT EVENTS. 3,702 "samples" are about eleven
+  MUTUALLY EXCLUSIVE bands from each of 340 city-days across 8 settlement
+  dates. Exactly one band in each ladder wins, by construction. Treating them
+  as 3,702 independent Bernoulli trials overstates the evidence by more than
+  an order of magnitude - and that is before the correlation between cities on
+  the same day, and between consecutive days.
 
-Two parameters, fitted by gradient descent on log loss. That choice is
-deliberate. Isotonic regression is more flexible and would fit the training
-data better, which is exactly the problem: with a few hundred settled bands it
-carves the curve into steps that describe this sample rather than the model's
-behaviour. Two parameters cannot overfit a few hundred points, and they have
-readable meanings:
+  PER-BAND CALIBRATION BREAKS THE LADDER. Platt scaling each band separately
+  and renormalising is not a calibration of the distribution; it is eleven
+  unrelated corrections that happen to be divided by their own sum afterwards.
 
-    a < 1  the model is OVERCONFIDENT - its probabilities are pushed too far
-           toward 0 and 1, and calibration pulls them back toward the middle
-    a > 1  underconfident, too timid, pushed toward 0.5
-    b != 0 a standing bias toward yes or no regardless of the probability
+  THE MARKET BRIER IS NOT A BENCHMARK, not as it was quoted. 0.003819 against
+  0.074 looks decisive and is not a like-for-like comparison: the two sides
+  were not frozen at the same cutoff timestamp, so the market number includes
+  information the model did not have. It is printed below as context and it
+  never decides anything.
 
-REFUSING TO FIT is a real outcome and the default one. Below MIN_SAMPLES the
-script writes nothing and says so: a calibration map fitted on eighty rows is
-more dangerous than none, because it looks like knowledge.
+WHAT THIS DOES INSTEAD
+----------------------
+LADDER-LEVEL TEMPERATURE SCALING. One parameter, over the whole ladder:
 
-    python scripts/calibration.py [--min-samples 300] [--dry-run]
+    q_i = p_i^(1/T) / SUM_j p_j^(1/T)
+
+T > 1 flattens an overconfident ladder toward uniform; T < 1 sharpens an
+underconfident one. The ladder still sums to one by construction, which is the
+property the desk prices against, and one parameter over a few hundred ladders
+cannot learn their noise.
+
+SPLIT BY SETTLEMENT DATE, IN TIME ORDER. The earlier 70% of DATES fit; the
+later 30% are never touched until the verdict. Not shuffled, and split by date
+rather than by row so no city-day can appear on both sides - the eleven bands
+of one ladder are one observation, and putting some of them in train and the
+rest in validation would be scoring the fit against itself.
+
+AND THE GATE COMES FIRST. Below MIN_SETTLEMENT_DATES distinct dates or
+MIN_COMPLETE_LADDERS complete ladders this writes an inactive map and says so.
+Measured 2026-09-19: 336 complete ladders - which clears that half - across 8
+settlement dates, which does not. A calibration fitted across eight days of
+weather describes those eight days.
+
+    python scripts/calibration.py [--dry-run] [--min-dates 30] [--min-ladders 300]
 """
 import argparse
 import datetime as dt
@@ -40,89 +63,159 @@ import sys
 
 VERIFIED_EVIDENCE_SCOPE = "verified_outcomes_v1"
 
-from common import rest, rest_all, log_run, model_version_id, _cfg, _headers  # noqa: F401
+from common import rest_all, log_run, model_version_id, _cfg, _headers  # noqa: F401
 import requests
 
-# Below this, the honest output is "not enough evidence". A two-parameter fit
-# needs a few hundred outcomes before its parameters mean anything.
-MIN_SAMPLES = 300
-EPS = 1e-6
+# THE GATE. Both, not either.
+#
+# 30 distinct settlement dates, because the unit of independent evidence here
+# is closer to a DAY than to a band: every city on one day shares the same
+# synoptic pattern, and consecutive days share most of it. Eight days of data
+# is one or two weather regimes.
+MIN_SETTLEMENT_DATES = 30
+# 300 complete ladders, because a ladder is the observation being calibrated
+# and a one-parameter fit needs a few hundred of them to mean anything.
+MIN_COMPLETE_LADDERS = 300
+# The validation improvement that counts as real. A Brier gain smaller than
+# this over a few hundred ladders is inside the noise of which days landed in
+# the validation slice.
+MIN_VALIDATION_BRIER_GAIN = 0.001
+TRAIN_FRACTION = 0.70
+# A ladder missing bands is not a ladder: the probabilities no longer describe
+# a partition of the outcome space, so normalising them means something else.
+MIN_BANDS_IN_LADDER = 8
+EPS = 1e-9
 
 
-def logit(p):
-    p = min(max(p, EPS), 1 - EPS)
-    return math.log(p / (1 - p))
+# --------------------------------------------------------------------------
+# Pure math. A ladder is [(p, y)] with exactly one y == 1.
+# --------------------------------------------------------------------------
+def temper(ps, T):
+    """q_i = p_i^(1/T) / SUM_j p_j^(1/T), computed in log space."""
+    u = 1.0 / T
+    logps = [math.log(max(p, EPS)) for p in ps]
+    m = max(u * lp for lp in logps)
+    ws = [math.exp(u * lp - m) for lp in logps]
+    z = sum(ws)
+    return [w / z for w in ws]
 
 
-def sigmoid(z):
-    if z >= 0:
-        return 1.0 / (1.0 + math.exp(-z))
-    e = math.exp(z)                      # avoid overflow for large negative z
-    return e / (1.0 + e)
+def fit_temperature(ladders, iters=400, lr=0.5):
+    """One parameter, by gradient descent on multiclass log loss.
 
-
-def fit_platt(samples, iters=4000, lr=0.05):
-    """samples: [(p_stated, outcome 0/1)] -> (a, b, log_loss).
-
-    Plain gradient descent on log loss. No scipy: two parameters over a few
-    thousand points converges in well under a second, and adding a numerical
-    dependency to a repo that has none would cost more than it buys.
+    Optimised over u = 1/T because the objective is a softmax over u*log(p),
+    whose gradient is the difference between the winner's log-probability and
+    the tempered expectation of it - two lines, no numerical dependency, and
+    the repo has none.
     """
-    xs = [logit(p) for p, _ in samples]
-    ys = [float(y) for _, y in samples]
-    n = len(xs)
-    a, b = 1.0, 0.0                       # start at the identity: no correction
+    if not ladders:
+        return 1.0
+    u = 1.0
     for _ in range(iters):
-        ga = gb = 0.0
-        for x, y in zip(xs, ys):
-            err = sigmoid(a * x + b) - y
-            ga += err * x
-            gb += err
-        a -= lr * ga / n
-        b -= lr * gb / n
-    loss = -sum(
-        y * math.log(max(sigmoid(a * x + b), EPS)) + (1 - y) * math.log(max(1 - sigmoid(a * x + b), EPS))
-        for x, y in zip(xs, ys)
-    ) / n
-    return a, b, loss
+        g = 0.0
+        for lad in ladders:
+            logps = [math.log(max(p, EPS)) for p, _ in lad]
+            win = next((i for i, (_, y) in enumerate(lad) if y), None)
+            if win is None:
+                continue
+            m = max(u * lp for lp in logps)
+            ws = [math.exp(u * lp - m) for lp in logps]
+            z = sum(ws)
+            q = [w / z for w in ws]
+            g += -(logps[win] - sum(qi * lp for qi, lp in zip(q, logps)))
+        u -= lr * g / len(ladders)
+        u = min(20.0, max(0.05, u))       # T between 0.05 and 20; beyond is noise
+    return 1.0 / u
 
 
-def apply_platt(p, a, b):
-    return sigmoid(a * logit(p) + b)
+def multiclass_brier(ladders, T=None):
+    """Mean over LADDERS of SUM_i (q_i - y_i)^2.
+
+    Per ladder, not per band. The per-band figure divides the same error by
+    eleven and makes every model look eleven times better calibrated than it
+    is.
+    """
+    if not ladders:
+        return None
+    total = 0.0
+    for lad in ladders:
+        qs = temper([p for p, _ in lad], T) if T else [p for p, _ in lad]
+        total += sum((q - y) ** 2 for q, (_, y) in zip(qs, lad))
+    return total / len(ladders)
 
 
-def log_loss(samples):
-    return -sum(
-        y * math.log(max(min(p, 1 - EPS), EPS)) + (1 - y) * math.log(max(1 - min(p, 1 - EPS), EPS))
-        for p, y in samples
-    ) / len(samples)
+def multiclass_log_loss(ladders, T=None):
+    """Mean over ladders of -log q(winner)."""
+    if not ladders:
+        return None
+    total = 0.0
+    for lad in ladders:
+        qs = temper([p for p, _ in lad], T) if T else [p for p, _ in lad]
+        z = sum(qs) or 1.0
+        win = next((i for i, (_, y) in enumerate(lad) if y), None)
+        if win is None:
+            continue
+        total += -math.log(max(qs[win] / z, EPS))
+    return total / len(ladders)
 
 
-def brier(samples):
-    return sum((p - y) ** 2 for p, y in samples) / len(samples)
+def describe(T):
+    """What the number means, because 'T=1.18' is not a finding."""
+    if T > 1.05:
+        return (f"OVERCONFIDENT (T={T:.3f}): the ladder is too peaked, and calibration "
+                f"flattens it toward uniform")
+    if T < 0.95:
+        return (f"UNDERCONFIDENT (T={T:.3f}): the ladder is too flat, and calibration "
+                f"sharpens it")
+    return f"well scaled (T={T:.3f}): the ladder's spread is about right"
 
 
-def describe(a, b):
-    """What the two numbers mean, in words, because 'a=0.78' is not a finding."""
-    bits = []
-    if a < 0.92:
-        bits.append(f"OVERCONFIDENT (a={a:.3f}): probabilities are pushed too far toward 0 and 1; "
-                    f"calibration pulls them back toward the middle")
-    elif a > 1.08:
-        bits.append(f"UNDERCONFIDENT (a={a:.3f}): probabilities are too timid, huddled near 0.5; "
-                    f"calibration pushes them out")
-    else:
-        bits.append(f"well scaled (a={a:.3f}): confidence is about right")
-    if abs(b) > 0.08:
-        bits.append(f"biased toward {'YES' if b > 0 else 'NO'} (b={b:+.3f}) regardless of the probability")
-    else:
-        bits.append(f"no standing directional bias (b={b:+.3f})")
-    return "; ".join(bits)
+# --------------------------------------------------------------------------
+# Shaping the evidence
+# --------------------------------------------------------------------------
+def build_ladders(rows, min_bands=MIN_BANDS_IN_LADDER):
+    """{(city, date): [(p, y)]} for the COMPLETE ladders only.
+
+    Complete means enough bands to be a partition and exactly one winner.
+    Anything else is a fragment, and normalising a fragment produces numbers
+    that do not describe the outcome space they are scored against.
+    """
+    by_day = {}
+    for r in rows:
+        if r.get("model_prob") is None:
+            continue
+        by_day.setdefault((r["city_key"], str(r["for_date"])), []).append(
+            (float(r["model_prob"]), 1 if r.get("settled_yes") else 0))
+    out, dropped = {}, 0
+    for key, lad in by_day.items():
+        if len(lad) >= min_bands and sum(y for _, y in lad) == 1:
+            out[key] = lad
+        else:
+            dropped += 1
+    return out, dropped
+
+
+def split_by_date(ladders, train_fraction=TRAIN_FRACTION):
+    """(train, validation, train_dates, val_dates), in time order.
+
+    Split on the DATE, never on the row. A ladder is one observation and its
+    eleven bands are not eleven; putting some of them in train and the rest in
+    validation would score the fit against itself.
+    """
+    dates = sorted({d for _, d in ladders})
+    if len(dates) < 2:
+        return [], [], [], dates
+    cut = max(1, min(len(dates) - 1, int(round(len(dates) * train_fraction))))
+    train_dates, val_dates = set(dates[:cut]), set(dates[cut:])
+    train = [lad for (_, d), lad in ladders.items() if d in train_dates]
+    val = [lad for (_, d), lad in ladders.items() if d in val_dates]
+    return train, val, sorted(train_dates), sorted(val_dates)
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--min-samples", type=int, default=MIN_SAMPLES)
+    ap.add_argument("--min-dates", type=int, default=MIN_SETTLEMENT_DATES)
+    ap.add_argument("--min-ladders", type=int, default=MIN_COMPLETE_LADDERS)
     ap.add_argument("--dry-run", action="store_true", help="fit and report, write nothing")
     args = ap.parse_args()
 
@@ -137,61 +230,106 @@ def main():
         log_run("calibration", "attention", 0, {"error": str(e)})
         return 1
 
-    samples = [(float(r["model_prob"]), 1 if r["settled_yes"] else 0)
-               for r in rows if r.get("model_prob") is not None]
-    if len(samples) < args.min_samples:
-        msg = (f"{len(samples)} settled bands banked, {args.min_samples} needed. "
-               f"Not fitting: a calibration map from this little data looks like knowledge "
-               f"and is not. Keep running scripts/databank.py daily.")
-        print(msg)
-        log_run("calibration", "attention", len(samples), {"summary": msg, "n": len(samples)})
-        return 0
+    ladders, dropped = build_ladders(rows)
+    dates = sorted({d for _, d in ladders})
+    cities = sorted({c for c, _ in ladders})
 
-    a, b, loss = fit_platt(samples)
-    before_ll, before_br = log_loss(samples), brier(samples)
-    cal = [(apply_platt(p, a, b), y) for p, y in samples]
-    after_ll, after_br = log_loss(cal), brier(cal)
+    # FOUR NUMBERS, NOT ONE. Reporting 3,702 "samples" is what made eight days
+    # of weather look like a large study.
+    print(f"{len(rows)} band rows  |  {len(ladders)} complete ladders  |  "
+          f"{len(dates)} settlement dates  |  {len(cities)} cities")
+    if dropped:
+        print(f"  {dropped} city-day(s) dropped: fewer than {MIN_BANDS_IN_LADDER} bands, "
+              f"or not exactly one winner")
+    print("  band rows are NOT independent events: about "
+          f"{len(rows) // max(1, len(ladders))} mutually exclusive bands share each ladder, "
+          "and exactly one of them wins by construction")
 
-    # The market's own score on the same bands, as the benchmark that matters:
-    # beating it is the entire proposition of the desk.
-    mkt = [(float(r["market_price"]), 1 if r["settled_yes"] else 0)
+    gate = []
+    if len(dates) < args.min_dates:
+        gate.append(f"{len(dates)} settlement dates, needs {args.min_dates}")
+    if len(ladders) < args.min_ladders:
+        gate.append(f"{len(ladders)} complete ladders, needs {args.min_ladders}")
+
+    train, val, train_dates, val_dates = split_by_date(ladders)
+    T = fit_temperature(train) if train else 1.0
+
+    before_br = multiclass_brier(val) if val else None
+    after_br = multiclass_brier(val, T) if val else None
+    before_ll = multiclass_log_loss(val) if val else None
+    after_ll = multiclass_log_loss(val, T) if val else None
+
+    if train and val:
+        print(f"\n  fitted on {len(train)} ladder(s) across {len(train_dates)} date(s) "
+              f"({train_dates[0]} to {train_dates[-1]})")
+        print(f"  scored on {len(val)} ladder(s) across {len(val_dates)} LATER date(s) "
+              f"({val_dates[0]} to {val_dates[-1]}), never seen by the fit")
+        print(f"  {describe(T)}")
+        print(f"  validation multiclass Brier  {before_br:.4f} -> {after_br:.4f}")
+        print(f"  validation log loss          {before_ll:.4f} -> {after_ll:.4f}")
+    else:
+        print("\n  not enough distinct dates to hold any of them back; nothing was fitted")
+
+    # THE MARKET, AS CONTEXT AND NEVER AS A VERDICT. The two sides were not
+    # frozen at the same cutoff, so the market's number includes information
+    # the model did not have when it priced.
+    mkt = [(float(r["market_price"]), 1 if r.get("settled_yes") else 0)
            for r in rows if r.get("market_price") is not None]
-    mkt_br = brier(mkt) if mkt else None
+    if mkt:
+        mkt_br = sum((p - y) ** 2 for p, y in mkt) / len(mkt)
+        print(f"\n  (market per-band Brier {mkt_br:.4f} - context only. It is not a "
+              f"benchmark until both sides are frozen at the same cutoff timestamp, and "
+              f"it is a per-BAND figure, which is not comparable to the per-ladder ones "
+              f"above.)")
+    else:
+        mkt_br = None
 
-    print(f"fitted on {len(samples)} settled bands across "
-          f"{len({r['city_key'] for r in rows})} cities")
-    print(f"  {describe(a, b)}")
-    print(f"  log loss  {before_ll:.4f} -> {after_ll:.4f}")
-    print(f"  Brier     {before_br:.4f} -> {after_br:.4f}"
-          + (f"   (market {mkt_br:.4f})" if mkt_br is not None else ""))
-    if mkt_br is not None:
-        verdict = ("the model beats the market on these bands"
-                   if after_br < mkt_br else
-                   "the MARKET is better calibrated than the model on these bands - "
-                   "an edge computed from these probabilities is not yet evidence of one")
-        print(f"  {verdict}")
+    brier_gain = (before_br - after_br) if (before_br is not None and after_br is not None) else None
+    ll_improved = (before_ll is not None and after_ll is not None and after_ll < before_ll)
+    validated = bool(brier_gain is not None
+                     and brier_gain >= MIN_VALIDATION_BRIER_GAIN
+                     and ll_improved)
+    applies = bool(not gate and validated)
 
-    improved = after_br < before_br - 1e-6
-    if not improved:
-        print("  calibration does not improve the score; leaving the model uncorrected")
+    if gate:
+        print("\nNOT APPLYING - " + "; ".join(gate) + ".")
+        print("  A calibration fitted across this little of the calendar describes these "
+              "days, not this model. The map is written INACTIVE so the number is visible "
+              "and nothing prices on it.")
+    elif not validated:
+        print("\nNOT APPLYING - the correction does not earn its place on days the fit "
+              f"never saw (Brier {brier_gain:+.4f}, needs {MIN_VALIDATION_BRIER_GAIN:+.4f}; "
+              f"log loss {'improved' if ll_improved else 'did not improve'}).")
+    else:
+        print(f"\nAPPLYING - validated on {len(val)} held-out ladder(s) across "
+              f"{len(val_dates)} later date(s).")
 
     payload = {
-        "method": "platt", "a": round(a, 6), "b": round(b, 6),
+        "method": "temperature",
+        "T": round(T, 6),
         "evidence_scope": VERIFIED_EVIDENCE_SCOPE,
-        "n": len(samples), "fitted_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-        "brier_before": round(before_br, 6), "brier_after": round(after_br, 6),
-        "log_loss_before": round(before_ll, 6), "log_loss_after": round(after_ll, 6),
-        "market_brier": round(mkt_br, 6) if mkt_br is not None else None,
-        "applies": bool(improved),
-        "note": describe(a, b),
+        "band_rows": len(rows),
+        "complete_ladders": len(ladders),
+        "settlement_dates": len(dates),
+        "cities": len(cities),
+        "train_ladders": len(train), "train_dates": len(train_dates),
+        "validation_ladders": len(val), "validation_dates": len(val_dates),
+        "first_validation_date": val_dates[0] if val_dates else None,
+        "validation_brier_before": round(before_br, 6) if before_br is not None else None,
+        "validation_brier_after": round(after_br, 6) if after_br is not None else None,
+        "validation_log_loss_before": round(before_ll, 6) if before_ll is not None else None,
+        "validation_log_loss_after": round(after_ll, 6) if after_ll is not None else None,
+        "market_band_brier_context_only": round(mkt_br, 6) if mkt_br is not None else None,
+        "gate_unmet": gate,
+        "applies": applies,
+        "fitted_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "note": describe(T),
     }
 
     if args.dry_run:
         print("\n--dry-run: nothing written\n" + json.dumps(payload, indent=2))
         return 0
 
-    # Stored in settings so the engine can read it without a schema change, and
-    # registered as a model_version so any row priced with it is traceable.
     r = requests.post(
         f"{_cfg()['url']}/rest/v1/rpc/update_setting",
         headers=_headers(),
@@ -199,8 +337,6 @@ def main():
         timeout=30,
     )
     if r.status_code >= 400 or (r.text and '"ok": false' in r.text.replace(" ", "")):
-        # update_setting refuses keys outside its whitelist; fall back to a
-        # direct upsert, which the service key is allowed to do.
         requests.post(
             f"{_cfg()['url']}/rest/v1/settings",
             headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
@@ -209,10 +345,12 @@ def main():
             timeout=30,
         ).raise_for_status()
 
-    model_version_id("calibration", f"platt:a={a:.4f}:b={b:.4f}:n={len(samples)}",
+    model_version_id("calibration", f"temperature:T={T:.4f}:ladders={len(ladders)}",
                      config=payload, structural=True)
-    log_run("calibration", "ok", len(samples), payload)
-    print("\nwritten to settings.calibration_map — probability_engine applies it on its next run")
+    log_run("calibration", "ok", len(ladders), payload)
+    print("\nwritten to settings.calibration_map"
+          + (" - probability_engine applies it on its next run" if applies
+             else " - inactive, so nothing prices on it"))
     return 0
 
 

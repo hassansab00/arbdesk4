@@ -62,29 +62,55 @@ COLD_START_MAE_C = 4.0
 _calibration = None
 
 def _calibration_map():
-    """{'a','b','applies'} or None. Read once per run."""
+    """The fitted map, or None. Read once per run.
+
+    TWO METHODS, and the newer one is the reason the older is still read.
+
+      temperature  q_i = p_i^(1/T), renormalised over the ladder. One
+                   parameter, fitted by scripts/calibration.py on the earlier
+                   70% of SETTLEMENT DATES and validated on the later 30% it
+                   never saw.
+      platt        the previous per-band map. Kept so a database still holding
+                   one keeps behaving as it did rather than silently losing
+                   its calibration on a deploy.
+
+    `applies` is the gate and it is set by out-of-sample performance alone: a
+    map that improved only the rows it was fitted to arrives here with
+    applies=false and is ignored.
+    """
     global _calibration
     if _calibration is None:
         _calibration = {}
         try:
             rows = rest("settings", [("select", "value"), ("key", "eq.calibration_map")])
             v = rows[0]["value"] if rows else None
-            if (isinstance(v, dict)
-                    and v.get("applies")
-                    and v.get("method") == "platt"
+            if (isinstance(v, dict) and v.get("applies")
                     and v.get("evidence_scope") == VERIFIED_EVIDENCE_SCOPE):
-                a, b = float(v["a"]), float(v["b"])
-                _calibration = {"a": a, "b": b, "n": v.get("n"), "note": v.get("note")}
+                if v.get("method") == "temperature" and v.get("T"):
+                    _calibration = {"method": "temperature", "T": float(v["T"]),
+                                    "n": v.get("complete_ladders"), "note": v.get("note")}
+                elif v.get("method") == "platt":
+                    _calibration = {"method": "platt", "a": float(v["a"]), "b": float(v["b"]),
+                                    "n": v.get("n"), "note": v.get("note")}
         except Exception as e:
             print(f"  note: no calibration map ({e})", file=sys.stderr)
     return _calibration or None
 
 
 def _calibrate(p):
-    """Apply the fitted map to one probability. Identity when none is fitted."""
+    """Apply the fitted map to one probability. Identity when none is fitted.
+
+    For temperature scaling this returns p^(1/T) UNNORMALISED, because the
+    normalisation is over the whole ladder and happens once, below, where the
+    ladder exists. That is not a shortcut: dividing by the sum is the second
+    half of q_i = p_i^(1/T) / SUM_j p_j^(1/T), and doing it per band would be
+    a different function.
+    """
     m = _calibration_map()
     if not m:
         return p
+    if m["method"] == "temperature":
+        return max(p, 1e-12) ** (1.0 / m["T"])
     q = min(max(p, 1e-6), 1 - 1e-6)
     z = m["a"] * math.log(q / (1 - q)) + m["b"]
     return 1.0 / (1.0 + math.exp(-z)) if z >= 0 else math.exp(z) / (1.0 + math.exp(z))
@@ -217,22 +243,104 @@ def compute_band_probabilities(centre_c, sigma_c, unit, bands, floor_c=None):
 def _observed_floors():
     """{city_key: (local_date, running_max_c)} - today's maximum so far.
 
-    live_weather carries one row per city, refreshed by n8n P1.2 and by the
-    ad4_refresh_live_weather_timing pg_cron job. running_max_c is the highest
-    temperature that city has recorded on its own LOCAL date, which is the only
-    date a daily high market resolves against - a UTC date would put half the
-    world's cities on the wrong day.
+    Read from v_city_running_max rather than live_weather directly, because
+    that view carries the invariant this number has to satisfy: A MAXIMUM IS
+    NEVER BELOW THE LATEST READING OF THE SAME DAY. live_weather.running_max_c
+    was, for 14 of 54 cities on 2026-09-19, BELOW the current temperature - by
+    up to 12.5 C - and 25 cities had no maximum at all, because the running
+    maximum was built only from the observation archive and that archive runs
+    about a day behind for 37 cities. A floor that is too low leaves
+    probability on buckets the day has already passed.
+
+    The view takes the greatest of today's observation series, the stored
+    maximum and the live thermometer - each one gated to the city's own LOCAL
+    date, which is the only date a daily high market resolves against. A UTC
+    date would put half the world's cities on the wrong day; so would a live
+    reading from 23:00 yesterday, which is what Shanghai has at 01:00.
+
+    A FLOOR MAY REST ON A SINGLE READING. That is the difference between this
+    caller and s5: "the day has already reached at least X" is true of one
+    reading, while "the day's maximum is X" needs a series. So
+    running_max_basis is not filtered here - only 'absent', which arrives as a
+    null maximum and is skipped.
 
     One request for all 54 cities. A city with no row, or a null maximum, is
     simply absent, and every caller treats absence as "no floor" rather than
     as zero - which would make every band impossible.
     """
     floors = {}
-    for row in rest("live_weather", {"select": "city_key,local_date,running_max_c"}):
+    for row in rest("v_city_running_max",
+                    {"select": "city_key,local_date,running_max_c,running_max_basis"}):
         if row.get("running_max_c") is None or not row.get("local_date"):
             continue
         floors[row["city_key"]] = (str(row["local_date"]), float(row["running_max_c"]))
     return floors
+
+
+def _promoted_models():
+    """{(city_key, lead_days): row} - the fits allowed to move a price.
+
+    A FIT IS A CHALLENGER UNTIL IT IS NOT. scripts/weather_model.py scores
+    each city's model against persistence on held-out days of its own
+    training window. That is not the test a price has to pass: the thing a
+    centre replaces is the PUBLIC FORECAST, and it has to beat it on FORWARD
+    days nobody had seen when the prediction was made, per city and per lead.
+    scripts/model_promotion.py runs that test and writes the verdict;
+    v_model_promoted shows only the ones that passed.
+
+    Reading the narrow view rather than derived_model_promotion is
+    deliberate. A shadow row is invisible here, so no caller can read one by
+    accident and price on it. An empty result - which is the state today - is
+    the correct default and leaves the engine behaving exactly as it did
+    before any model existed.
+    """
+    out = {}
+    try:
+        for r in rest("v_model_promoted",
+                      {"select": "city_key,lead_days,model_version,model_mae_c,"
+                                 "gain_vs_public_c,n_days",
+                       "target": "eq.max_c"}):
+            if r.get("lead_days") is None:
+                continue
+            out[(r["city_key"], int(r["lead_days"]))] = r
+    except Exception as e:
+        # A missing view means sql/ad4_72 has not been run, which is the same
+        # situation as nothing being promoted. It must never stop pricing.
+        print(f"  (v_model_promoted unavailable: {e} - no fitted model will be used)",
+              file=sys.stderr)
+    return out
+
+
+def _model_forecasts(promoted):
+    """{(city_key, for_date): row} - the newest model prediction per city-day.
+
+    Only for cities that have something promoted, because for every other
+    city these rows must not be read at all. derived_model_forecast holds one
+    row per NWS run, so several share a lead; the newest run wins for the
+    same reason _forecast_for orders by run_at desc - leaving the choice to
+    whatever order PostgREST returned would price against an arbitrary one.
+    """
+    if not promoted:
+        return {}
+    cities = sorted({c for c, _ in promoted})
+    out = {}
+    try:
+        rows = rest_all("derived_model_forecast", [
+            ("select", "city_key,for_date,run_at,lead_days,predicted_max_c,model_version"),
+            ("for_date", f"gte.{dt.date.today().isoformat()}"),
+            ("city_key", f"in.({','.join(cities)})"),
+        ], order="city_key.asc,for_date.asc,run_at.asc", page_size=1000)
+    except Exception as e:
+        print(f"  (derived_model_forecast unavailable: {e})", file=sys.stderr)
+        return {}
+    for r in rows:
+        if r.get("predicted_max_c") is None:
+            continue
+        key = (r["city_key"], str(r["for_date"]))
+        cur = out.get(key)
+        if cur is None or str(r["run_at"]) > str(cur["run_at"]):
+            out[key] = r
+    return out
 
 
 def _upcoming_markets():
@@ -558,7 +666,8 @@ def _skill_for(city_key, lead_days, model=None):
     return _pooled_skill(city_key, lead_days)
 
 
-def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None):
+def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None,
+                     promoted=None, model_forecasts=None):
     forecast = _forecast_for(city_key, for_date)
     if forecast is None or forecast.get("forecast_max_c") is None:
         print(f"  TODO: unmeasured - no forecast for {city_key} {for_date}", file=sys.stderr)
@@ -676,6 +785,37 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     centre = forecast["forecast_max_c"]
     centre_corrected = centre - bias_c
 
+    # ---- A PROMOTED MODEL REPLACES THE CENTRE. Nothing else does. ---------
+    #
+    # Three things change together or none of them do:
+    #
+    #   the centre      becomes the model's own prediction for this day
+    #   the bias        goes to zero. bias_c is measured on the PUBLIC
+    #                   forecast's errors; the model was fitted against
+    #                   observed maxima directly and is already de-biased, so
+    #                   subtracting it again would correct twice.
+    #   the width       becomes the model's measured FORWARD error, because
+    #                   sigma must describe the distribution actually being
+    #                   published - using the public forecast's mae_c around
+    #                   the model's centre would describe neither.
+    #
+    # The lead has to match. A promotion is per city AND per lead precisely
+    # because a model sharp today can be useless on Friday, so a lead-0
+    # promotion may not price a lead-4 prediction.
+    promo = (promoted or {}).get((city_key, int(lead_days))) if lead_days is not None else None
+    mrow = (model_forecasts or {}).get((city_key, str(for_date)))
+    if (promo and mrow and mrow.get("lead_days") is not None
+            and int(mrow["lead_days"]) == int(lead_days)):
+        centre = float(mrow["predicted_max_c"])
+        centre_corrected = centre
+        bias_c = 0.0
+        if promo.get("model_mae_c"):
+            mae_c = float(promo["model_mae_c"])
+        reasons.append(
+            f"promoted_model:{mrow.get('model_version') or promo.get('model_version')}"
+            f":lead{lead_days}:beat_public_by_{promo.get('gain_vs_public_c')}C"
+            f"_over_{promo.get('n_days')}d")
+
     div_mult, div_row = _divergence_for(city_key, for_date)
     cal_mult, cal_row = _calibration_for(city_key)
     # A MULTIPLIER SUBSTITUTES FOR A MEASUREMENT. IT DOES NOT SUPPLEMENT ONE.
@@ -756,15 +896,25 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     # forecast_version / calibration_version are uuid columns referencing
     # model_versions - not free text. Resolve the readable labels to their
     # ids (registering them on first use). See common.model_version_id.
-    forecast_label = f"{forecast.get('model')}:{forecast.get('run_at')}"
+    # WHICH forecast this price was built on. When a promoted model supplied
+    # the centre, the answer is that model and not the public run - otherwise
+    # every post-mortem on a model-priced trade would point at NWS.
+    if promo and mrow is not None and centre_corrected == float(mrow["predicted_max_c"]):
+        forecast_label = f"model:{mrow.get('model_version')}:{mrow.get('run_at')}"
+        forecast_config = {"model": "arbdesk_weather_model",
+                           "model_version": mrow.get("model_version"),
+                           "run_at": mrow.get("run_at"),
+                           "public_forecast_max_c": forecast.get("forecast_max_c")}
+    else:
+        forecast_label = f"{forecast.get('model')}:{forecast.get('run_at')}"
+        forecast_config = {"model": forecast.get("model"), "run_at": forecast.get("run_at")}
     forecast_version = model_version_id(
-        "forecast", forecast_label,
-        config={"model": forecast.get("model"), "run_at": forecast.get("run_at")},
-        structural=False)
+        "forecast", forecast_label, config=forecast_config, structural=False)
     _cal = _calibration_map()
     calibration_version = model_version_id(
         "calibration",
-        f"platt:a={_cal['a']:.4f}:b={_cal['b']:+.4f}" if _cal else CALIBRATION_VERSION,
+        (f"temperature:T={_cal['T']:.4f}" if _cal and _cal["method"] == "temperature"
+         else f"platt:a={_cal['a']:.4f}:b={_cal['b']:+.4f}") if _cal else CALIBRATION_VERSION,
         config=_cal or {"note": "no calibration applied; normal lattice only"},
         structural=True)
 
@@ -804,16 +954,23 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
         r["calibrated_prob"] = round(_calibrate(p), 6) if cal else round(p, 6)
         out.append(r)
 
-    # Calibration breaks the lattice's guarantee that the bands sum to 1, since
-    # each is mapped independently. Renormalise: exactly one band resolves yes,
-    # so the probabilities must still sum to one or every downstream figure -
-    # edge, EV, Kelly size - is built on a distribution that is not one.
+    # THE LADDER MUST SUM TO ONE. Exactly one band resolves yes, so anything
+    # else makes every downstream figure - edge, EV, Kelly size - a quantity
+    # built on a distribution that is not one.
+    #
+    # For temperature scaling this division is not a repair, it IS the second
+    # half of the formula: q_i = p_i^(1/T) / SUM_j p_j^(1/T). For the older
+    # per-band Platt map it genuinely is a repair, because eleven independent
+    # corrections have no reason to sum to anything.
     if cal:
         total = sum(r["calibrated_prob"] for r in out)
         if total > 0:
             for r in out:
                 r["calibrated_prob"] = round(r["calibrated_prob"] / total, 6)
-        reasons.append(f"calibrated:platt(a={cal['a']:.3f},b={cal['b']:+.3f},n={cal.get('n')})")
+        reasons.append(
+            f"calibrated:temperature(T={cal['T']:.3f},ladders={cal.get('n')})"
+            if cal["method"] == "temperature"
+            else f"calibrated:platt(a={cal['a']:.3f},b={cal['b']:+.3f},n={cal.get('n')})")
 
     return out, reg, reasons
 
@@ -834,6 +991,11 @@ def main():
         bands_by_market[b["market_id"]].append(b)
 
     floors = _observed_floors()
+    promoted = _promoted_models()
+    model_forecasts = _model_forecasts(promoted)
+    if promoted:
+        print(f"{len(promoted)} promoted city-lead pair(s) will price from the desk's own "
+              f"model; every other city prices from the public forecast.")
     history_cache = {}
     all_rows = []
     sample_prints = []
@@ -845,7 +1007,7 @@ def main():
             if not band_rows:
                 continue
             result = process_city_day(city_key, m["resolution_date"], unit, band_rows,
-                                      history_cache, floors)
+                                      history_cache, floors, promoted, model_forecasts)
             if result is None:
                 continue
             rows, reg, reasons = result

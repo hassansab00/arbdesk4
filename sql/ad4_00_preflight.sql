@@ -153,6 +153,7 @@ begin
       ('derived_weather_model',      array['city_key','target'],                       'computed_at'),
       ('derived_model_forecast',     array['city_key','for_date','run_at'],            'computed_at'),
       ('derived_city_day_features',  array['city_key','obs_date'],                     'computed_at'),
+      ('derived_model_promotion',    array['city_key','lead_days','target'],           'computed_at'),
       ('derived_climb_profile',      array['city_key','local_hour'],                   'computed_at'),
       ('derived_city_correlation',   array['city_a','city_b','computed_at'],           'computed_at'),
       ('derived_capacity',           array['city_key','computed_at','hour_utc'],       'computed_at'),
@@ -1055,6 +1056,58 @@ begin
     pressure_change_24h_hpa numeric,
     computed_at           timestamptz not null default now(),
     primary key (city_key, obs_date)
+  );
+
+  -- ==========================================================================
+  -- 7b. WHETHER A FITTED MODEL MAY MOVE A PRICE.
+  --
+  --     scripts/model_promotion.py owns FILLING this and
+  --     sql/ad4_72_model_promotion.sql owns the views over it. The table is
+  --     created here because ad4_25's v_model_disagreement reads it to decide
+  --     whether a disagreement is tradeable, and ad4_25 cannot move after
+  --     ad4_72.
+  --
+  --     A FIT IS A CHALLENGER. It has beaten persistence on held-out days of
+  --     its own training window, which is not the same as beating the public
+  --     forecast on days nobody had seen when the prediction was made. Until
+  --     it has done that, per city and per lead, on at least 30 settled
+  --     forward days, it is in SHADOW: written, scored, visible, and unable
+  --     to change a number anyone trades on.
+  --
+  --     Empty here, and an empty table means nothing is promoted - which is
+  --     the correct default, not a degraded one.
+  -- ==========================================================================
+  create table if not exists derived_model_promotion (
+    city_key              text not null,
+    lead_days             int  not null,
+    target                text not null default 'max_c',
+    -- shadow    evidence is still accumulating, or the rule is not met yet
+    -- promoted  every rule held; this city+lead may move a price
+    -- rejected  enough evidence, and it does not beat what it must beat
+    -- stale     the fit or its predictions stopped arriving; nothing to judge
+    state                 text not null,
+    n_days                int,
+    model_mae_c           numeric,
+    public_mae_c          numeric,
+    persistence_mae_c     numeric,
+    gain_vs_public_c      numeric,
+    gain_vs_persistence_c numeric,
+    -- 90% interval for the SMALLER of the two gains, from a paired moving
+    -- block bootstrap over dates. Weather is autocorrelated; resampling
+    -- single days would treat one warm spell as many independent wins.
+    boot_lo_c             numeric,
+    boot_hi_c             numeric,
+    boot_draws            int,
+    block_days            int,
+    model_version         text,
+    first_day             date,
+    last_day              date,
+    -- every rule and whether it held, so "shadow" is never a bare word
+    reasons               jsonb,
+    computed_at           timestamptz not null default now(),
+    primary key (city_key, lead_days, target),
+    constraint derived_model_promotion_state
+      check (state in ('shadow', 'promoted', 'rejected', 'stale'))
   );
 
   -- ==========================================================================

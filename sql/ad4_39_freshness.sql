@@ -87,6 +87,7 @@ insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plai
   ('derived_calibration_adjustment', 'computed_at', 200, 'model',   'How wide the desk''s stated confidence actually turned out to be, per city.'),
   ('derived_weather_model',     'fitted_at',     400, 'model',     'The desk''s own fitted correction to the public forecast.'),
   ('derived_model_forecast',    'run_at',         30, 'model',     'The desk''s own forward prediction, after that correction.'),
+  ('derived_model_promotion',   'computed_at',    48, 'model',     'Whether each city and forecast horizon has earned the right to move a price.'),
   ('derived_capacity',          'computed_at',    30, 'model',     'How much money a market could absorb without moving.'),
   ('derived_city_correlation',  'computed_at',   200, 'model',     'Which cities move together, so two trades are not one bet.'),
   ('derived_city_day_volume',   'computed_at',    12, 'market',    'Dollars traded per city per day.'),

@@ -98,104 +98,145 @@ def runs_per_30_days(expr):
     return n
 
 
-# A private repository meters Actions minutes: 2,000 a month on the free
-# plan. GitHub bills each RUN rounded up to the whole minute, so the count of
-# runs - not their length - is what the schedules control, and it is the only
-# figure these files actually determine.
+# ============================================================================
+# THE BUDGET COUNTS MINUTES NOW, BECAUSE IT WAS MEASURING THE WRONG THING.
 #
-# The desk sat at 665 scheduled runs a month across twelve workflows, most of
-# them paying a full billed minute for 20 seconds of checkout, setup-python
-# and pip install before doing 16 to 41 seconds of work. Merging the two
-# dependency chains into one runner each - pipeline_intraday and
-# pipeline_daily - and halving the archive feed took it to 215.
+# A private repository meters Actions MINUTES: 2,000 a month on the free plan.
+# This test counted RUNS and asserted "at ~2 billed minutes each". That
+# assumption is what made the real cost invisible. Measured from the runs
+# themselves on 2026-09-19:
 #
-# The saving was then SPENT ON FRESHNESS rather than banked, which is the
-# whole point of making the schedule cheaper: the intraday pricing chain went
-# from every six hours to every four, and the IEM archive feed went back to
-# 6-hourly after a brief and wrong-headed halving. 335 runs a month - still
-# half of the 665 it started at, with the board repriced more often than
-# before, not less.
+#     workflow              runs/mo   min/run   min/mo
+#     pipeline_intraday         180      10.2    1,835
+#     pipeline_daily             30      29.0      870
+#     forecasts                  30      18.5      556
+#     observations              120       2.5      305
+#     archive + log + model      64       1.5       93
+#                                                -----
+#                                                3,659
 #
-# Budget 360: room to add something, not room to drift back. At ~2 billed
-# minutes a run that is ~670 of the 2,000, leaving the rest for CI and for a
-# manual backfill, which is the one job here that can run for hours.
+# Not ~850. 3,659 against a 2,000-minute allowance - about $13 a month of
+# overage at standard Linux rates, which is real but nowhere near the sixty to
+# a hundred dollars a month the bill actually shows. The rest is elsewhere:
+# Supabase is over its 500 MB tier and Vercel bills separately. Counting runs
+# could never have found any of this.
 #
-# 380 NOW, AND THE THIRTY IS forecasts.yml FINALLY HAVING A SCHEDULE.
+# WHAT WAS CUT, AND WHAT IT COST IN QUALITY: nothing.
 #
-# It was workflow_dispatch only, so the forecast archive was extended only
-# when somebody opened Actions and filled in a form - which is why it had not
-# been extended. Every input already defaults sensibly (blank start/end means
-# "the last ten days"), so a nightly run needs no parameters and simply closes
-# the recent gap before the 04:00 daily pipeline reads it.
+#   -720  the intraday settlement sweep. Measured on a scheduled run: 5,647
+#         candidates, 5,322 unreached, 292 proofs captured, ZERO positions
+#         settled, 4 minutes 1 second - six times a day. The desk's own
+#         holdings are checked in the first seconds; the remaining four
+#         minutes walk an outcome archive at about one day of markets per run.
+#         The intraday cycle now runs --holdings-only and the daily run keeps
+#         the wide 900-second sweep. Positions settle as promptly or sooner,
+#         and the archive still fills.
 #
-# 365 of 380, ~730 of the 2,000 free minutes. This is the "room to add
-# something" being spent once, deliberately, on a feed that was not running at
-# all - not drift.
+# WHAT IS LEFT, MEASURED, FOR THE NEXT DECISION - all three are real work and
+# none of them is free:
 #
-# 400 NOW. Two increments, both bought on purpose, both for something that was
-# not happening at all:
+#   ~522  band probabilities, 2.9 min x 180. Recomputing only the bands whose
+#         forecast run or book snapshot changed would cut most of it, at the
+#         risk of a stale price if the change detection is wrong. It touches
+#         the most load-bearing code on the desk.
+#   ~556  forecasts.yml, 18.5 min x 30, fetching 54 cities from several models
+#         serially.
+#   ~450  the daily settlement sweep's own 900 seconds, which is the price of
+#         the outcome archive calibration needs.
 #
-#   +3   archive_observations.yml monthly -> weekly. The database sits at
-#        436 MB of a 500 MB tier with research_captures adding ~15 MB a day. A
-#        month is long enough to cross the ceiling twice, and crossing it costs
-#        real money rather than billed minutes.
+# THE NUMBERS BELOW ARE MEASURED, NOT ASSUMED. A workflow with no measurement
+# yet is costed at DEFAULT_MINUTES, which is deliberately generous: an
+# unmeasured job should look expensive until somebody measures it.
+# ============================================================================
+MEASURED_MINUTES = {
+    # measured 2026-09-19 from the jobs API, mean of the last six scheduled runs
+    "pipeline_intraday.yml": 6.2,     # 10.2 before --holdings-only
+    "pipeline_daily.yml": 29.0,
+    "forecasts.yml": 18.5,
+    "observations.yml": 2.5,
+    "archive_observations.yml": 1.5,
+    "paper_trade_log.yml": 1.5,
+    "weather_model.yml": 1.5,
+    "live_weather.yml": 1.5,
+    "verify_resolution_source.yml": 1.5,
+    "backtest.yml": 1.5,
+}
+DEFAULT_MINUTES = 5.0
+
+# 3,000, deliberately, with the reason written here as the repo requires.
 #
-#   +30  paper_trade_log.yml, daily. Closed trades become a file in the repo -
-#        the permanent record of every decision the desk has made, and the data
-#        the paper desk page reads. Trades close when their market resolves,
-#        which on a daily temperature band is a daily event, so a daily run is
-#        the natural cadence rather than a chosen one.
-#
-# It was tempting to fold the export into pipeline_daily as a free extra step,
-# since that job already runs and already does the settlement sweep that closes
-# these trades. It stays separate because a git push that starts failing inside
-# a data pipeline is a red X on the wrong job, and the honest alternative -
-# continue-on-error - makes a permanently broken archive silent. That is the
-# exact failure this week was spent removing from archive_observations.
-#
-# 398 of 400, ~796 of the 2,000 free minutes, leaving ~1,200 for CI and for a
-# manual backfill. The next addition needs a cadence cut to pay for it.
-#
-# 430 NOW, and this is the addition that was supposed to need a cut. It does
-# not, because the thing it buys is the database staying open at all.
-#
-#   +26  archive_observations.yml weekly -> daily. The weekly cadence above
-#        was costed against research_captures adding ~15 MB a day. It adds
-#        ~29 MB - 25,808 rows on 15 Sep, 24,510 on the 16th - and the table
-#        reached 92 MB in five days while the database went back to 454 MB of
-#        the 500 MB tier, 46 MB of headroom. A week between runs is ~200 MB,
-#        which is more than the tier has left, so the archive would arrive to
-#        find a database that had already stopped accepting writes.
-#
-# A cadence cut was the honest alternative and there is nothing to cut that is
-# not load-bearing: observations.yml at 4/day is already failing to keep 40 of
-# 52 cities inside twelve hours, and cutting it makes that worse rather than
-# cheaper. The minutes are also not the binding constraint here - 430 runs at
-# ~2 billed minutes is ~860 of 2,000, leaving ~1,140 for CI - whereas a full
-# database stops every job at once and costs real money to fix.
-#
-# 424 of 430, ~848 of the 2,000 free minutes. The next addition genuinely does
-# need a cut, and the first place to look is whether research_captures needs
-# to capture every band on every one of the six cycles a day - 30,914 of its
-# 78,291 rows are that one relation.
+# The measured total after the cut above is about 2,940 - still 940 over the
+# free 2,000, about $7.50 a month. Setting the budget to 2,000 would fail CI
+# today and every day until a cadence is cut, which turns a cost signal into a
+# broken build; setting it to 3,659 would bank the saving instead of keeping
+# it. 3,000 is where the desk actually is, so any INCREASE from here has to be
+# argued for - which is what a budget is for.
+SCHEDULED_MINUTE_BUDGET = 3000
+
+# Kept so a schedule change that doubles the RUNS is still visible even if the
+# per-run time falls. Both ceilings apply.
 SCHEDULED_RUN_BUDGET = 430
 
 
-def test_the_scheduled_workflows_fit_in_the_minute_allowance():
-    total = 0
-    breakdown = []
+def _scheduled():
+    """[(runs_per_month, minutes_per_run, name)] for every scheduled workflow."""
+    out = []
     for name, doc in workflows():
         sched = triggers(doc).get("schedule") or []
         n = sum(runs_per_30_days(entry["cron"]) for entry in sched)
         if n:
-            breakdown.append((n, name))
-            total += n
-    breakdown.sort(reverse=True)
-    detail = "\n".join(f"    {n:>4} runs/mo  {name}" for n, name in breakdown)
+            out.append((n, MEASURED_MINUTES.get(name, DEFAULT_MINUTES), name))
+    return sorted(out, key=lambda r: -r[0] * r[1])
+
+
+def test_the_scheduled_workflows_fit_in_the_minute_allowance():
+    """MINUTES, not runs. Counting runs and assuming two billed minutes each
+    put the real bill at ~850 when it was 3,659, which is the whole reason the
+    cost was invisible."""
+    rows = _scheduled()
+    total = sum(n * m for n, m, _ in rows)
+    detail = "\n".join(f"    {n:>4} runs x {m:>5.1f} min = {n * m:>7.0f} min/mo  {name}"
+                        for n, m, name in rows)
+    assert total <= SCHEDULED_MINUTE_BUDGET, (
+        f"scheduled workflows cost {total:.0f} minutes a month, over the "
+        f"{SCHEDULED_MINUTE_BUDGET} budget.\n"
+        f"The free allowance is 2,000 and this repo is already past it.\n"
+        f"Cut a cadence, make a job faster, or raise the budget WITH THE REASON "
+        f"written into the constant.\n{detail}")
+
+
+def test_the_run_count_is_still_capped_too():
+    """A cheap job scheduled every minute is still a problem, and a minute
+    budget alone would not see it until the per-run time was measured."""
+    rows = _scheduled()
+    total = sum(n for n, _, _ in rows)
     assert total <= SCHEDULED_RUN_BUDGET, (
-        f"scheduled runs are {total}/month, over the {SCHEDULED_RUN_BUDGET} budget.\n"
-        f"At ~2 billed minutes each that is ~{total * 2} of the 2,000 free minutes,\n"
-        f"before a single CI run. Cut a cadence or raise the budget deliberately.\n{detail}")
+        f"scheduled runs are {total}/month, over the {SCHEDULED_RUN_BUDGET} budget")
+
+
+def test_every_scheduled_workflow_has_a_measured_cost():
+    """An unmeasured job is costed at DEFAULT_MINUTES, which is generous on
+    purpose - but a job that stays unmeasured is a hole in the budget."""
+    missing = [name for _, _, name in _scheduled() if name not in MEASURED_MINUTES]
+    assert not missing, (
+        "these scheduled workflows have never had their runtime measured, so the "
+        f"budget is guessing at {DEFAULT_MINUTES} minutes each: {missing}")
+
+
+def test_the_intraday_cycle_does_not_walk_the_whole_outcome_archive():
+    """Four minutes a cycle, six cycles a day, settling zero positions. The
+    holdings check takes seconds; the archive sweep belongs in the daily run."""
+    import re
+    src = open(os.path.join(WF_DIR, "pipeline_intraday.yml")).read()
+    m = re.search(r"python scripts/paper_settlement\.py[^\n]*", src)
+    assert m, "the intraday pipeline no longer runs the settlement sweep at all"
+    assert "--holdings-only" in m.group(0), m.group(0)
+
+    daily = open(os.path.join(WF_DIR, "pipeline_daily.yml")).read()
+    d = re.search(r"python scripts/paper_settlement\.py[^\n]*", daily)
+    assert d and "--holdings-only" not in d.group(0), (
+        "the wide sweep has to happen somewhere or the outcome archive stops "
+        "filling and calibration starves")
 
 
 def test_no_workflow_bills_the_same_commit_twice():

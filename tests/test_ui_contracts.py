@@ -498,3 +498,33 @@ def test_a_daily_maximum_is_a_local_day():
     src = _read("scripts/ingest_forecasts.py")
     assert '"timezone": "UTC"' not in src
     assert '"timezone": "auto"' in src
+
+
+# --------------------------------------------------------------------------
+# FRESHNESS PER CITY, NOT PER TABLE.
+#
+# v_data_freshness reported weather_observations "ok at 2.1 h" on a day when
+# 40 of 52 cities had had no observation for over twelve hours. It takes
+# max(valid_at) across every city, and the seventeen American stations report
+# every five minutes, so a handful of fresh cities kept the whole table green
+# while forty starved. Amsterdam had two readings for an entire day - 00:55
+# and 01:55 local - so its "running maximum" was a number from just after
+# midnight, and nothing on any page said so.
+# --------------------------------------------------------------------------
+def test_the_weather_page_reports_freshness_per_city_not_only_per_feed():
+    page = _read("web/app/live/page.tsx")
+    assert "CityWeatherHealth" in page, (
+        "the Live Weather page reports only the newest reading ANYWHERE, which "
+        "is green whenever one American station is reporting")
+    panel = _read("web/components/CityWeatherHealth.tsx")
+    assert "v_city_observation_health" in panel
+
+
+def test_the_panel_distinguishes_a_floor_from_a_maximum():
+    """The whole point of the panel. One reading says the day reached AT LEAST
+    that; presenting it as the maximum is what makes a band look reachable when
+    it is not."""
+    panel = _read("web/components/CityWeatherHealth.tsx")
+    for state in ["series", "floor_only", "absent"]:
+        assert state in panel, f"the panel does not report the {state} case"
+    assert "floor" in panel.lower()

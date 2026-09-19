@@ -105,6 +105,18 @@ class BandView:
     # without a second lookup.
     forecast_max_c: Optional[float] = None
     decision_evidence: dict = field(default_factory=dict)
+    # THE DECISION SNAPSHOT: exactly what was believed at the moment a signal
+    # could fire, frozen so a post-mortem reads the inputs of the decision and
+    # not a reconstruction from numbers that have since been recomputed.
+    #
+    # Every one of these is a moving target. band_probabilities is rewritten
+    # every pricing run, calibration is refitted from settled outcomes, cost
+    # parameters change, and the book moves by the second - so by the time a
+    # trade settles, none of the rows that produced it still say what they
+    # said. All 65 fills on the live desk carried NULL for forecast_version,
+    # calibration_version and cost_version, which made every post-mortem
+    # guesswork.
+    decision_snapshot: dict = field(default_factory=dict)
 
 
 @dataclass

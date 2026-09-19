@@ -3,7 +3,18 @@
 A calibration map is the most dangerous thing on the desk if it is wrong: it
 silently rescales every probability, and a bad map looks exactly like a good
 one from the outside. So the tests here do not check that the code runs - they
-inject a KNOWN distortion and require the fit to recover it.
+inject a KNOWN distortion and require the fit to recover it, and they check
+the two things the previous version got wrong.
+
+IT WAS FITTED AND SCORED ON THE SAME ROWS. Brier 0.074160 -> 0.073713, in
+sample, and `applies` rested on that number. Adding a parameter always lowers
+the error on the data it was fitted to; there is a test below that this can no
+longer set applies.
+
+AND THE ROWS WERE NOT INDEPENDENT. 3,702 "samples" were about eleven mutually
+exclusive bands from each of 340 city-days across 8 settlement dates, with
+exactly one band winning per ladder by construction. The unit of evidence is
+the LADDER and the unit of independence is closer to the DATE.
 """
 import math
 import random
@@ -13,100 +24,173 @@ import pytest
 import calibration as cal
 
 
-def synth(n, distort, seed=7):
-    """n samples whose true probability is uniform, with the model's STATED
-    probability distorted by `distort`. Outcomes are drawn from the TRUE
-    probability, so a correct fit must undo the distortion."""
+def ladder(n_bands, winner, peak, seed=None):
+    """One ladder: n_bands probabilities summing to 1, with `peak` on the
+    highest and the rest spread evenly, and `winner` the band that settled."""
+    rest = (1.0 - peak) / (n_bands - 1)
+    ps = [peak] + [rest] * (n_bands - 1)
+    return [(p, 1 if i == winner else 0) for i, p in enumerate(ps)]
+
+
+def book(n, *, hit_rate, n_bands=11, peak=0.5, seed=3):
+    """n ladders whose top band carries `peak` probability and actually wins
+    `hit_rate` of the time. peak > hit_rate is an overconfident book."""
     rng = random.Random(seed)
     out = []
     for _ in range(n):
-        p_true = rng.uniform(0.02, 0.98)
-        out.append((distort(p_true), 1 if rng.random() < p_true else 0))
+        winner = 0 if rng.random() < hit_rate else rng.randrange(1, n_bands)
+        out.append(ladder(n_bands, winner, peak))
     return out
 
 
-def overconfident(p, k=1.4):
-    """Push away from 0.5 in log-odds: the classic overconfident model."""
-    return cal.sigmoid(k * cal.logit(p))
+# ---------------------------------------------------------------------------
+# the scaling itself
+# ---------------------------------------------------------------------------
+def test_tempering_keeps_the_ladder_a_distribution():
+    """The property the desk prices against. A ladder that does not sum to one
+    makes every edge, EV and Kelly size a quantity computed on something that
+    is not a distribution."""
+    ps = [0.5, 0.2, 0.15, 0.1, 0.05]
+    for T in (0.4, 1.0, 1.0, 3.0, 12.0):
+        assert sum(cal.temper(ps, T)) == pytest.approx(1.0)
 
 
-def underconfident(p, k=0.7):
-    return cal.sigmoid(k * cal.logit(p))
+def test_T_above_one_flattens_and_below_one_sharpens():
+    ps = [0.60, 0.25, 0.10, 0.05]
+    flat = cal.temper(ps, 3.0)
+    sharp = cal.temper(ps, 0.4)
+    assert flat[0] < ps[0] and flat[-1] > ps[-1], "T>1 must move mass toward uniform"
+    assert sharp[0] > ps[0] and sharp[-1] < ps[-1], "T<1 must concentrate it"
 
 
-def biased(p, shift=0.6):
-    return cal.sigmoid(cal.logit(p) + shift)
+def test_T_of_one_changes_nothing():
+    ps = [0.6, 0.25, 0.1, 0.05]
+    assert cal.temper(ps, 1.0) == pytest.approx(ps)
 
 
-def test_logit_and_sigmoid_round_trip():
-    for p in (0.01, 0.1, 0.5, 0.9, 0.99):
-        assert cal.sigmoid(cal.logit(p)) == pytest.approx(p, abs=1e-9)
+# ---------------------------------------------------------------------------
+# the fit recovers a known distortion
+# ---------------------------------------------------------------------------
+def test_the_fit_flattens_an_overconfident_book():
+    """Top band priced at 50% and winning 25% of the time."""
+    T = cal.fit_temperature(book(600, hit_rate=0.25, peak=0.50))
+    assert T > 1.05, f"T={T}: an overconfident ladder must be flattened"
 
 
-def test_sigmoid_is_stable_at_extremes():
-    # The naive 1/(1+exp(-z)) overflows for large negative z. It must not.
-    assert 0.0 <= cal.sigmoid(-800) < 1e-300
-    assert cal.sigmoid(800) == pytest.approx(1.0)
+def test_the_fit_sharpens_an_underconfident_book():
+    T = cal.fit_temperature(book(600, hit_rate=0.70, peak=0.30))
+    assert T < 0.95, f"T={T}: an underconfident ladder must be sharpened"
 
 
-def test_fit_recovers_overconfidence():
-    """A model distorted by k=1.4 must be corrected by a ~= 1/1.4 ~= 0.71."""
-    a, b, _ = cal.fit_platt(synth(1500, overconfident), iters=1200, lr=0.6)
-    assert a == pytest.approx(1 / 1.4, rel=0.25), f"a={a}"
-    assert abs(b) < 0.25, f"b={b} should be near zero - the distortion had no bias"
-
-
-def test_fit_recovers_underconfidence():
-    a, _, _ = cal.fit_platt(synth(1500, underconfident), iters=1200, lr=0.6)
-    assert a == pytest.approx(1 / 0.7, rel=0.3), f"a={a}"
-    assert a > 1.15, "an underconfident model must be pushed outward, not pulled in"
-
-
-def test_fit_finds_a_standing_bias():
-    a, b, _ = cal.fit_platt(synth(1500, biased), iters=1200, lr=0.6)
-    assert b < -0.3, f"a model biased toward YES must be corrected downward, got b={b}"
-
-
-def test_an_already_calibrated_model_is_left_alone():
-    a, b, _ = cal.fit_platt(synth(1500, lambda p: p), iters=1200, lr=0.6)
-    assert a == pytest.approx(1.0, abs=0.2), f"a={a}"
-    assert abs(b) < 0.2, f"b={b}"
-
-
-def test_calibration_improves_the_score_it_is_fitted_on():
-    s = synth(1500, overconfident)
-    a, b, _ = cal.fit_platt(s, iters=1200, lr=0.6)
-    after = [(cal.apply_platt(p, a, b), y) for p, y in s]
-    assert cal.brier(after) < cal.brier(s)
-    assert cal.log_loss(after) < cal.log_loss(s)
+def test_a_well_calibrated_book_is_left_alone():
+    T = cal.fit_temperature(book(600, hit_rate=0.50, peak=0.50))
+    assert 0.9 < T < 1.1, f"T={T}: nothing to correct here"
 
 
 def test_the_description_names_the_direction():
-    # The two numbers are useless to a reader; the words are the finding.
-    assert "OVERCONFIDENT" in cal.describe(0.7, 0.0)
-    assert "UNDERCONFIDENT" in cal.describe(1.4, 0.0)
-    assert "well scaled" in cal.describe(1.0, 0.0)
-    assert "YES" in cal.describe(1.0, 0.5)
-    assert "NO" in cal.describe(1.0, -0.5)
+    assert "OVERCONFIDENT" in cal.describe(1.6)
+    assert "UNDERCONFIDENT" in cal.describe(0.6)
+    assert "well scaled" in cal.describe(1.0)
 
 
-def test_apply_never_leaves_the_unit_interval():
-    for p in (1e-9, 0.001, 0.5, 0.999, 1 - 1e-9):
-        for a, b in ((0.5, -2.0), (2.0, 3.0), (1.0, 0.0)):
-            q = cal.apply_platt(p, a, b)
-            assert 0.0 <= q <= 1.0, f"p={p} a={a} b={b} -> {q}"
+# ---------------------------------------------------------------------------
+# the score is per LADDER, not per band
+# ---------------------------------------------------------------------------
+def test_the_brier_is_summed_over_the_ladder():
+    """Per band, the same error is divided by eleven and every model looks
+    eleven times better calibrated than it is."""
+    lad = ladder(11, winner=0, peak=0.5)
+    per_ladder = cal.multiclass_brier([lad])
+    per_band = sum((p - y) ** 2 for p, y in lad) / len(lad)
+    assert per_ladder == pytest.approx(per_band * len(lad))
 
 
-def test_brier_and_log_loss_agree_on_a_perfect_model():
-    perfect = [(1.0, 1), (0.0, 0)] * 50
-    assert cal.brier(perfect) == pytest.approx(0.0)
-    assert cal.log_loss(perfect) == pytest.approx(0.0, abs=1e-5)
+def test_a_perfect_ladder_scores_zero():
+    lad = [(1.0, 1)] + [(0.0, 0)] * 10
+    assert cal.multiclass_brier([lad]) == pytest.approx(0.0, abs=1e-6)
+    assert cal.multiclass_log_loss([lad]) == pytest.approx(0.0, abs=1e-6)
 
 
-# --------------------------------------------------------------------------
-# The engine's side of it. A calibration map rescales every probability the
-# desk produces, so the guards around applying one matter more than the fit.
-# --------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# what counts as a ladder, and what counts as evidence
+# ---------------------------------------------------------------------------
+def _rows(dates, cities, n_bands=11, winner=0):
+    out = []
+    for d in dates:
+        for c in cities:
+            for i in range(n_bands):
+                out.append({"city_key": c, "for_date": d, "band_id": f"{c}{d}{i}",
+                            "model_prob": 0.5 if i == 0 else 0.05,
+                            "settled_yes": i == winner})
+    return out
+
+
+def test_a_fragment_is_not_a_ladder():
+    """Normalising a partial ladder produces numbers that do not describe the
+    outcome space they are scored against."""
+    rows = _rows(["2026-09-01"], ["london"], n_bands=4)
+    ladders, dropped = cal.build_ladders(rows)
+    assert ladders == {} and dropped == 1
+
+
+def test_a_day_with_two_winners_is_not_a_ladder():
+    rows = _rows(["2026-09-01"], ["london"])
+    rows[1]["settled_yes"] = True
+    ladders, dropped = cal.build_ladders(rows)
+    assert ladders == {} and dropped == 1
+
+
+def test_the_split_is_by_date_in_time_order():
+    """No shuffle, and no city-day on both sides: a ladder is ONE observation
+    and its eleven bands are not eleven."""
+    dates = [f"2026-09-{d:02d}" for d in range(1, 11)]
+    ladders, _ = cal.build_ladders(_rows(dates, ["london", "paris"]))
+    train, val, train_dates, val_dates = cal.split_by_date(ladders)
+    assert train_dates == dates[:7] and val_dates == dates[7:]
+    assert not (set(train_dates) & set(val_dates))
+    assert len(train) == 14 and len(val) == 6
+
+
+def test_one_date_cannot_be_split_at_all():
+    ladders, _ = cal.build_ladders(_rows(["2026-09-01"], ["london", "paris"]))
+    train, val, _, _ = cal.split_by_date(ladders)
+    assert train == [] and val == []
+
+
+# ---------------------------------------------------------------------------
+# the gate
+# ---------------------------------------------------------------------------
+def test_an_in_sample_improvement_cannot_set_applies():
+    """THE BUG THIS PHASE EXISTS FOR. The previous version's `applies` rested
+    on the training score, which a fitted parameter always improves."""
+    src = open(cal.__file__).read()
+    body = src[src.index("    brier_gain ="):src.index("    payload = {")]
+    assert "before_br" in body and "after_br" in body
+    # both metrics in the verdict are computed on `val`, never on `train`
+    scoring = src[src.index("    before_br ="):src.index("    if train and val:")]
+    assert "multiclass_brier(val)" in scoring and "multiclass_brier(val, T)" in scoring
+    assert "multiclass_brier(train" not in src
+
+
+def test_the_gate_names_both_halves():
+    src = open(cal.__file__).read()
+    assert "MIN_SETTLEMENT_DATES = 30" in src
+    assert "MIN_COMPLETE_LADDERS = 300" in src
+
+
+def test_the_market_brier_is_context_and_never_a_verdict():
+    """0.003819 against 0.074 looks decisive and is not like-for-like: the two
+    sides were not frozen at the same cutoff, and one is per band while the
+    other is per ladder."""
+    src = open(cal.__file__).read()
+    assert "context only" in src
+    verdict = src[src.index("    validated = bool("):src.index("    if gate:")]
+    assert "mkt" not in verdict
+
+
+# ---------------------------------------------------------------------------
+# the engine side
+# ---------------------------------------------------------------------------
 import probability_engine as pe
 
 
@@ -170,3 +254,41 @@ def test_calibrated_output_stays_a_probability(monkeypatch):
     for p in (0.0, 1e-9, 0.001, 0.5, 0.999, 1.0):
         q = pe._calibrate(p)
         assert 0.0 <= q <= 1.0, (p, q)
+
+
+def test_a_temperature_map_is_applied(monkeypatch):
+    _map(monkeypatch, {"method": "temperature", "T": 2.0, "applies": True,
+                       "complete_ladders": 400,
+                       "evidence_scope": pe.VERIFIED_EVIDENCE_SCOPE})
+    # p^(1/T), unnormalised - the division by the ladder's sum is the second
+    # half of the formula and happens once, where the ladder exists.
+    assert pe._calibrate(0.25) == pytest.approx(0.25 ** 0.5)
+
+
+def test_a_temperature_map_below_the_gate_is_not_applied(monkeypatch):
+    """applies=false is what an unmet gate or a failed validation writes.
+    Honouring it is the difference between a correction and a superstition."""
+    _map(monkeypatch, {"method": "temperature", "T": 2.0, "applies": False,
+                       "evidence_scope": pe.VERIFIED_EVIDENCE_SCOPE})
+    assert pe._calibrate(0.25) == 0.25
+
+
+def test_tempering_a_whole_ladder_still_sums_to_one(monkeypatch):
+    """The engine divides by the ladder's sum after calibrating each band, and
+    for temperature scaling that division IS the formula rather than a repair."""
+    _map(monkeypatch, {"method": "temperature", "T": 2.5, "applies": True,
+                       "evidence_scope": pe.VERIFIED_EVIDENCE_SCOPE})
+    ps = [0.5, 0.2, 0.15, 0.1, 0.05]
+    qs = [pe._calibrate(p) for p in ps]
+    total = sum(qs)
+    assert sum(q / total for q in qs) == pytest.approx(1.0)
+    # ...and it matches what the fitter computed for the same T
+    assert [q / total for q in qs] == pytest.approx(cal.temper(ps, 2.5))
+
+
+def test_a_map_from_another_evidence_scope_is_ignored(monkeypatch):
+    """The scope names what the outcomes were verified against. A map fitted
+    on something else is a map of a different world."""
+    _map(monkeypatch, {"method": "temperature", "T": 2.0, "applies": True,
+                       "evidence_scope": "running_max_guess"})
+    assert pe._calibrate(0.25) == 0.25

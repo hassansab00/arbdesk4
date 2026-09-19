@@ -234,6 +234,14 @@ create table if not exists derived_weather_model (
 -- gains it without being dropped.
 alter table derived_weather_model add column if not exists selection jsonb;
 
+-- WHICH coefficients these are. sql/ad4_72_model_promotion.sql promotes a
+-- specific fit on forward days that fit predicted, and coefficients are
+-- refitted weekly - so a promotion without a version names no model at all.
+-- Derived from the coefficients themselves, so a refit landing on the same
+-- numbers keeps the same version and the evidence already gathered still
+-- counts.
+alter table derived_weather_model add column if not exists model_version text;
+
 comment on table derived_weather_model is
   'Per-city model of the daily maximum from morning conditions. beats_persistence is the only column that matters: a model that cannot beat yesterday-equals-today is not a model.';
 

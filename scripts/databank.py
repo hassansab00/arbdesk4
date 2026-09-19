@@ -302,8 +302,51 @@ def bank_bands(observed, days_back, force):
     return out
 
 
+def signal_correct(action, side, settled_yes):
+    """Was the CALL right? Not the same question as whether the band won.
+
+    A NO signal on a band that lost is correct, and its settled_yes is false.
+    Scoring the two with one column reads every NO signal backwards.
+
+    An EXIT is a different claim again - "get out of this now" - which the
+    band's result does not answer: a position exited at a profit before a band
+    that went on to win was still a good exit or a bad one depending on the
+    price, not on the outcome. It is left unscored rather than scored wrongly.
+    """
+    if settled_yes is None or action != "ENTER":
+        return None
+    if side == "YES":
+        return bool(settled_yes)
+    if side == "NO":
+        return not bool(settled_yes)
+    return None
+
+
 def bank_signals(days_back, force):
-    """Settled filled signals only, joined to the final trade result."""
+    """Every signal whose BAND has settled, with the call scored against it.
+
+    IT USED TO KEY OFF A CLOSED TRADE, and that is the wrong hinge. A signal is
+    a CALL - "this bucket wins" or "this bucket loses" - and whether the desk
+    happened to get filled is a separate fact about execution. Keying off the
+    fill meant:
+
+      a correct call that was never filled looked identical to no signal, so
+      nothing could measure whether a strategy was right, only whether it made
+      money, which is a much noisier question;
+
+      settled_yes was never written at all - 1,963 rows, none with it - so
+      "which forecast version made a correct call" had no answer;
+
+      and it banked the wrong rows. Measured 2026-09-19: 2,217 signals sat on
+      a band the venue had settled, 1,963 rows existed, and only 353 were in
+      both sets. 1,864 settled signals had never been banked.
+
+    Now the hinge is the band's outcome from fact_band_outcome, which is
+    venue-confirmed evidence - Gamma and CLOB agreeing on the winner, not a
+    partially observed running maximum, which is a number still moving. The
+    trade, when there is one, still supplies the fill, the slippage and the
+    P&L.
+    """
     since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days_back)).isoformat()
     done = set()
     if not force:
@@ -320,6 +363,13 @@ def bank_signals(days_back, force):
     if not sigs:
         return []
 
+    # THE BAND'S OUTCOME IS THE HINGE. Venue-confirmed, one row per band.
+    outcome = {}
+    for r in rest_all("fact_band_outcome",
+                      [("select", "band_id,settled_yes,captured_at,for_date")],
+                      order="band_id.asc", page_size=1000):
+        outcome[str(r["band_id"])] = r
+
     trades = rest_all("paper_trades", [("select", "*")], order="trade_id.asc", page_size=1000)
     by_band = defaultdict(list)
     for t in trades:
@@ -329,30 +379,52 @@ def bank_signals(days_back, force):
     out = []
     for s in sigs:
         band = str(s.get("band_id")) if s.get("band_id") else None
-        # The trade this signal produced: same band and strategy, opened at or
-        # after it fired. Nearest in time wins.
+        o = outcome.get(band or "")
+        if o is None or o.get("settled_yes") is None:
+            continue                       # nothing to score the call against yet
+
+        # The trade this signal produced, when there is one: same band and
+        # strategy, opened at or after it fired. Nearest in time wins. Absent
+        # is now a normal outcome rather than a reason to skip the row.
         cand = [t for t in by_band.get(band or "", [])
                 if t.get("strategy_id") == s.get("strategy_id")
                 and str(t.get("opened_at") or "") >= str(s.get("fired_at") or "")]
         cand.sort(key=lambda t: str(t.get("opened_at") or ""))
         t = cand[0] if cand else None
-        if not t or not t.get("closed_at") or t.get("net_pnl") is None:
-            continue
+        closed = bool(t and t.get("closed_at") and t.get("net_pnl") is not None)
+
         fill = (t or {}).get("avg_fill_price")
         fired = s.get("price_at_fire")
+        settled_yes = bool(o["settled_yes"])
+        snap = ((s.get("payload") or {}).get("decision_snapshot") or {}).get(band or "") or {}
+
         out.append({
             "signal_id": s["signal_id"], "strategy_id": s.get("strategy_id"),
             "band_id": s.get("band_id"), "city_key": s.get("city_key"),
+            "for_date": o.get("for_date"),
             "side": s.get("side"), "action": s.get("action"), "reason": s.get("reason"),
             "fired_at": s.get("fired_at"), "severity": s.get("severity"),
             "price_at_fire": fired, "prob_at_fire": s.get("prob_at_fire"),
             "edge_at_fire": s.get("edge_at_fire"), "status": s.get("status"),
             "filled": bool(t), "fill_price": fill, "shares": (t or {}).get("shares"),
-            "gross_pnl": (t or {}).get("gross_pnl"), "net_pnl": (t or {}).get("net_pnl"),
+            "gross_pnl": (t or {}).get("gross_pnl") if closed else None,
+            "net_pnl": (t or {}).get("net_pnl") if closed else None,
             # Where a correct call turns into a loss: the gap between the price
             # that justified the signal and the price actually paid.
             "slippage_c": (round((fill - fired) * 100, 4)
                            if fill is not None and fired is not None else None),
+            # THE BAND'S RESULT, and separately THE DESK'S CALL. A NO signal on
+            # a band that lost is a correct call whose settled_yes is false;
+            # one column could not say both.
+            "settled_yes": settled_yes,
+            "signal_correct": signal_correct(s.get("action"), s.get("side"), settled_yes),
+            "settled_at": o.get("captured_at"),
+            "outcome_source": "fact_band_outcome",
+            # What produced the call, so "which forecast version was right" has
+            # an answer. Absent on signals fired before the snapshot existed.
+            "forecast_version": snap.get("forecast_version"),
+            "calibration_version": snap.get("calibration_version"),
+            "cost_version": snap.get("cost_version"),
         })
     return out
 

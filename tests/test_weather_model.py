@@ -111,12 +111,40 @@ def test_too_few_days_is_no_model_at_all():
     assert wm.fit_city(synth(40), wm.FEATURES)[0] is None
 
 
-def test_rows_missing_a_feature_are_dropped_not_defaulted():
+def test_rows_missing_a_BASE_feature_are_dropped_not_defaulted():
+    """A base feature is mandatory: a day without one is not a usable day.
+
+    The thing that must never happen is a missing value becoming a zero - a
+    day with no wind reading is not a windless day, and fitting it as one puts
+    a coefficient on an invention.
+    """
+    rows = synth(300)
+    for r in rows[:100]:
+        r["wind_mean"] = None
+    fit, _ = wm.fit_city(rows, wm.FEATURES)
+    assert fit is None or fit["n_days"] == 200, "a null feature must not become a zero"
+
+
+def test_rows_missing_an_OPTIONAL_feature_keep_the_day_and_lose_the_feature():
+    """The other half, and the one that cost the platform every model it had.
+
+    cloud_mean was mandatory. Measured on the live cache: 0 of 53 cities had
+    120 cloud-complete days and 52 had them without it, so requiring cloud
+    meant fitting nothing at all - 959 usable city-days instead of 21,631. A
+    missing optional feature costs the city that feature, never the day.
+    """
     rows = synth(300)
     for r in rows[:100]:
         r["cloud_mean"] = None
     fit, _ = wm.fit_city(rows, wm.FEATURES)
-    assert fit is None or fit["n_days"] == 200, "a null feature must not become a zero"
+    assert fit is not None, "a city with cloud on two thirds of its days is fittable"
+    assert fit["n_days"] == 300, (
+        "a day is still a day without a cloud reading - the feature is optional")
+    assert "cloud_mean" not in fit["features"], (
+        "a feature absent from a third of the training days must not be fitted "
+        "on the rest and then applied to all of them")
+    verdicts = {v["feature"]: v["verdict"] for v in fit["selection"]}
+    assert "not present on every training day" in verdicts.get("cloud_mean", ""), verdicts
 
 
 def test_a_thin_day_is_excluded():
@@ -305,6 +333,13 @@ def test_every_key_written_is_a_column_that_exists():
         m.group(1) for line in body.splitlines()
         if (m := re.match(r"\s{2}([a-z_]+)\s+\S", line))
     }
+    # A column added later is still a column. The sibling test for
+    # derived_weather_model already collected these; this one did not, so
+    # model_version - added by an alter so an existing table gains it without
+    # being dropped - read as an unknown column.
+    columns |= set(re.findall(
+        r"alter table derived_model_forecast add column if not exists ([a-z_]+)",
+        ddl.read_text()))
     assert "predicted_max_c" in columns, "the DDL was not parsed"
 
     row = wm.forecast_city("t", fitted(), fc_days(1), 26.0)[0]
