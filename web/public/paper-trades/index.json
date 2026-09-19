@@ -1,28 +1,35 @@
 {
-  "generated_at": "2026-09-18T09:57:23.550535+00:00",
+  "generated_at": "2026-09-19T09:39:22.291440+00:00",
   "months": [
     "2026-09"
   ],
-  "trades": 22,
-  "net_pnl": -122.91021,
-  "gross_pnl": -106.3962,
-  "fees": 16.51401,
-  "wins": 6,
-  "losses": 16,
+  "trades": 36,
+  "net_pnl": -188.96437,
+  "gross_pnl": -164.9339,
+  "fees": 24.03047,
+  "wins": 8,
+  "losses": 28,
   "cities": [
+    "amsterdam",
+    "ankara",
     "atlanta",
+    "austin",
     "dallas",
     "houston",
     "jeddah",
+    "kuala_lumpur",
+    "london",
     "manila",
     "milan",
     "seattle",
-    "shanghai"
+    "shanghai",
+    "singapore",
+    "toronto"
   ],
   "strategies": [
     "s1_buy_low_sell_signal",
     "s4_tail_fade"
   ],
   "first_closed_at": "2026-09-16T23:00:46.118439+00:00",
-  "last_closed_at": "2026-09-18T08:25:28.197989+00:00"
+  "last_closed_at": "2026-09-19T08:47:53.193812+00:00"
 }
