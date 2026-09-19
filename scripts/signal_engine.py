@@ -135,7 +135,12 @@ def _band_views():
     for i in range(0, len(band_ids), 100):
         chunk = ",".join(band_ids[i:i + 100])
         for r in _optional("v_latest_prob", [
-                ("select", "band_id,forecast_max_c,lead_days,input_forecast_run,forecast_version,"
+                # Widened for the decision snapshot. Every one of these is
+                # rewritten by the next pricing run, so a trade that does not
+                # copy them keeps no record of what it was priced on.
+                ("select", "band_id,prob_id,computed_at,forecast_max_c,lead_days,"
+                           "input_forecast_run,forecast_version,calibration_version,"
+                           "raw_prob,calibrated_prob,sigma_c,confidence,"
                            "skill_lead_days,pricing_eligible,pricing_block_reason"),
                 ("band_id", f"in.({chunk})")], "band_id.asc", "forecast identity unavailable"):
             probs[r["band_id"]] = r
@@ -155,6 +160,11 @@ def _band_views():
             ("computed_at", f"gte.{(dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=14)).isoformat()}")],
             "computed_at.desc,city_key.asc,lead_days.asc", "S3 will not fire"):
         skill.setdefault((r["city_key"], int(r["lead_days"])), r)
+
+    # Once per run. It changes when someone edits the fee model, not between
+    # bands, and every snapshot below has to carry the same one or two trades
+    # from the same cycle would claim different cost assumptions.
+    cost_version = _cost_version()
 
     views = []
     for band_id, sides in by_band.items():
@@ -293,6 +303,8 @@ def _band_views():
             forecast_max_c=pr.get("forecast_max_c"),
             decision_evidence={"market": market, "band": band, "yes_edge": yes, "no_edge": no,
                                "forecast": forecast, "weather": lw, "approach": tm},
+            decision_snapshot=_snapshot(pr, (yes or {}).get("market_price"),
+                                        (no or {}).get("market_price"), cost_version),
         ))
     return views
 
@@ -367,6 +379,54 @@ def _recently_fired(now):
         return set()
 
 
+def _cost_version():
+    """The cost assumptions in force right now, as a uuid.
+
+    paper_trades.cost_version is a uuid into cost_params, not the readable
+    label - writing the label would fail with 22P02 the way the first
+    forecast_version did. Read once per run: it changes when someone edits the
+    fee model, not between bands.
+    """
+    try:
+        rows = rest("cost_params", {"select": "version_id,label,created_at",
+                                    "active": "is.true",
+                                    "order": "created_at.desc", "limit": "1"})
+        return rows[0]["version_id"] if rows else None
+    except Exception as e:
+        print(f"  (cost_params unavailable: {e} - trades will carry no cost version)",
+              file=sys.stderr)
+        return None
+
+
+def _snapshot(pr, yes_price, no_price, cost_version):
+    """What was believed, at the moment the decision could be made.
+
+    The plan's list, and nothing reconstructed: raw probability, calibrated
+    probability, the price actually reachable, the model centre, sigma,
+    confidence, and all four versions. prob_id names the exact
+    band_probabilities row, so the snapshot can be checked against it for as
+    long as that row survives - and remains readable after it does not.
+    """
+    return {
+        "prob_id": pr.get("prob_id"),
+        "priced_at": pr.get("computed_at"),
+        "raw_prob": pr.get("raw_prob"),
+        "calibrated_prob": pr.get("calibrated_prob"),
+        # The price an order could actually have reached, per side. A snapshot
+        # holding one number could not say which side it belonged to, and the
+        # two are not complements once the spread is real.
+        "executable_price": {"YES": yes_price, "NO": no_price},
+        "model_centre_c": pr.get("forecast_max_c"),
+        "sigma_c": pr.get("sigma_c"),
+        "confidence": pr.get("confidence"),
+        "lead_days": pr.get("lead_days"),
+        "forecast_version": pr.get("forecast_version"),
+        "calibration_version": pr.get("calibration_version"),
+        "cost_version": cost_version,
+        "input_forecast_run": pr.get("input_forecast_run"),
+    }
+
+
 def _row(sig, city_of, now):
     # No signal_id: the column is bigserial and the database assigns it. The
     # first restoration wrote a UUID string here, which Postgres rejects
@@ -391,8 +451,15 @@ def _enrich(sig, decision_bands, cycle_id, now):
     ids = (sig.payload or {}).get("band_ids") or [sig.band_id]
     inputs = {str(bid): asdict(decision_bands[str(bid)])
               for bid in ids if str(bid) in decision_bands}
+    # The snapshot also sits at a SHALLOW path, keyed by band. decision_inputs
+    # is the whole BandView and its shape changes every time a strategy needs
+    # a new field; the trigger that stamps a trade's lineage reads this one,
+    # which is a fixed contract of exactly the things a post-mortem needs.
+    snapshot = {str(bid): (decision_bands[str(bid)].decision_snapshot or {})
+                for bid in ids if str(bid) in decision_bands}
     sig.payload = {**(sig.payload or {}), "cycle_id": cycle_id,
-                   "decision_at": now.isoformat(), "decision_inputs": inputs}
+                   "decision_at": now.isoformat(), "decision_inputs": inputs,
+                   "decision_snapshot": snapshot}
     return sig
 
 

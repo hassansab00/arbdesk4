@@ -23,7 +23,19 @@ const assert = require('node:assert/strict');
     create table public.book_snapshots(snapshot_id bigint primary key,band_id uuid,observed_at timestamptz,
       market_state text default 'LIVE',tradeable boolean default true);
     create table public.trades_observed(trade_id bigint primary key,city_key text,traded_at timestamptz);
-    create table public.signals(signal_id bigint primary key,action text,strategy_id text,fired_at timestamptz,reason text);
+    -- signals.payload carries the decision snapshot that
+    -- 20260919180000_trade_decision_lineage.sql stamps onto every trade, so
+    -- the column has to exist here or that migration's backfill fails on a
+    -- table shape production does not have.
+    create table public.signals(signal_id bigint primary key,action text,strategy_id text,
+      fired_at timestamptz,reason text,payload jsonb);
+    -- ledger is created by sql/ad4_00_preflight.sql, which this harness never
+    -- applies. Column types and the two NOT NULLs match the live table.
+    create table public.ledger(entry_id bigserial primary key,
+      recorded_at timestamptz not null default now(),trade_id uuid,signal_id bigint,
+      event_type text not null,payload jsonb not null,stage text,strategy_id text,
+      deployment_id uuid,band_id uuid,regime_label text,forecast_version text,
+      calibration_version text,cost_version text,detail jsonb);
     create table public.band_probabilities(prob_id uuid primary key,band_id uuid,computed_at timestamptz default now());
     create table public.edges(edge_id bigint primary key,band_id uuid,computed_at timestamptz default now(),
       side text,tradeable boolean default false);
@@ -313,6 +325,67 @@ const assert = require('node:assert/strict');
       fills:[{shares:'2',price:'.50',notional:'1',fee:'.025'}]})]);
   assert.equal((await db.query('select count(*)::int as n from paper_trades')).rows[0].n,tradesBefore,
     'a replayed fill recorded a second trade');
+
+  // ---- THE DECISION THAT PRODUCED THE TRADE ------------------------------
+  //
+  // 65 fills on the live desk carried NULL forecast_version,
+  // calibration_version, cost_version and fill_quality, and the ledger had
+  // zero rows. Every one of those inputs is rewritten by the next pricing
+  // run, so a trade that does not copy them keeps no record of what it was
+  // priced on and every post-mortem is guesswork.
+
+  // fill_quality is the share of the request that filled, and both numbers
+  // were on the row the whole time.
+  assert.equal(Number(paid.fill_quality),1,
+    'a fully filled order must record fill_quality 1.0');
+
+  // The chain is written as the money moves, not maintained beside it.
+  const links=(await db.query(
+    'select event_type,payload from ledger where trade_id=$1 order by recorded_at',
+    [paid.trade_id])).rows;
+  assert.deepEqual(links.map(l=>l.event_type),['fill','close'],
+    'ledger has a column for every part of the chain and had zero rows in it - '
+    +'an empty table the schema advertises implies a record that does not exist');
+  assert.equal(Number(links[0].payload.filled_shares),2);
+  assert.equal(Number(links[1].payload.net_pnl),0.975);
+
+  // NO SIGNAL, NO INVENTED LINEAGE. These orders carry no signal_id, so there
+  // is nothing to copy and the columns stay null rather than being filled
+  // with whatever is current.
+  assert.equal(paid.forecast_version,null);
+
+  // ...and with a signal, the snapshot is found at the shallow path.
+  await db.query(`insert into public.signals(signal_id,action,strategy_id,payload)
+    values (901,'ENTER','s1',$1::jsonb),(902,'ENTER','s1',$2::jsonb)`,
+    [JSON.stringify({decision_snapshot:{[band]:{
+       forecast_version:'11111111-1111-1111-1111-111111111111',
+       calibration_version:'22222222-2222-2222-2222-222222222222',
+       cost_version:'33333333-3333-3333-3333-333333333333',
+       raw_prob:0.31,calibrated_prob:0.34,sigma_c:1.8}}}),
+     // the older shape: only the forecast identity survives, buried in the
+     // full BandView. Recovering it is what let the 65 existing fills get
+     // back what was recoverable instead of staying blank for ever.
+     JSON.stringify({decision_inputs:{[band]:{decision_evidence:{forecast:{
+       forecast_version:'44444444-4444-4444-4444-444444444444'}}}}})]);
+  const shallow=(await db.query(
+    'select arbdesk_private.decision_snapshot(901,$1) as s',[band])).rows[0].s;
+  assert.equal(shallow.forecast_version,'11111111-1111-1111-1111-111111111111');
+  assert.equal(Number(shallow.calibrated_prob),0.34);
+  const recovered=(await db.query(
+    'select arbdesk_private.decision_snapshot(902,$1) as s',[band])).rows[0].s;
+  assert.equal(recovered.forecast_version,'44444444-4444-4444-4444-444444444444');
+  assert.equal(recovered.recovered_from,'decision_inputs');
+
+  // WRITE-ONCE. A snapshot that can be edited afterwards is not evidence.
+  await db.query(`update paper_trades set forecast_version=$2 where trade_id=$1`,
+    [paid.trade_id,'11111111-1111-1111-1111-111111111111']);
+  await assert.rejects(
+    db.query(`update paper_trades set forecast_version=$2 where trade_id=$1`,
+      [paid.trade_id,'99999999-9999-9999-9999-999999999999']),
+    /forecast_version is the decision that produced this trade/,
+    'rebanking was able to rewrite what the desk believed at entry');
+  // ...while everything that is not lineage still moves freely.
+  await db.query('update paper_trades set close_price=1 where trade_id=$1',[paid.trade_id]);
 
   // Outcome collection attempts are private, append-only evidence. A failed
   // source read is retained for diagnosis but cannot be promoted into the
