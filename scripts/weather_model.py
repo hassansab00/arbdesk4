@@ -126,6 +126,28 @@ LEAKY_FEATURES = {
 # Kept for callers that want the starting set by its old name.
 FEATURES = BASE_FEATURES
 
+# The columns predict_forward asks v_forecast_features for.
+#
+# DERIVED FROM THE FEATURE LISTS, never hand-written. Any feature
+# select_features is allowed to KEEP has to be fetched forward too, or
+# forecast_city reads None for it on every row and skips the entire city -
+# silently, exit 0, no note, no error.
+#
+# That is not hypothetical. The 2026-09-19 fit kept wind_max for six cities
+# (tokyo, san_francisco, qingdao, los_angeles, beijing, busan). The
+# hand-written list here carried cloud_mean but not wind_max, cloud_max or
+# morning_humidity, so those six produced ZERO forward predictions while the
+# other forty-six were fine. Five of the six beat persistence, so five shadow
+# models could never accumulate the 30 forward days sql/ad4_72_model_promotion
+# requires - they would have sat in shadow forever with nothing saying why.
+#
+# prev_max_c is excluded deliberately: it is not a forecast column and
+# v_forecast_features does not have one. It comes from the observed anchor,
+# or from the chain - see forecast_city.
+FORECAST_COLUMNS = ["city_key", "for_date", "run_at", "lead_days", "forecast_max_c"] + [
+    f for f in list(BASE_FEATURES) + list(CANDIDATE_FEATURES) if f != "prev_max_c"
+]
+
 # What each coefficient means, so the output is a finding and not six numbers.
 MEANING = {
     "prev_max_c": "carry-over from yesterday's max (1.0 would be pure persistence)",
@@ -699,9 +721,7 @@ def predict_forward(fits, by_city):
     """
     try:
         fc = rest_all("v_forecast_features", [
-            ("select", "city_key,for_date,run_at,lead_days,forecast_max_c,"
-                       "morning_temp_c,dewpoint_depression_c,cloud_mean,"
-                       "wind_mean,precip_total"),
+            ("select", ",".join(FORECAST_COLUMNS)),
             ("for_date", f"gte.{dt.date.today().isoformat()}"),
         ], order="city_key.asc,for_date.asc,run_at.asc", page_size=1000)
     except Exception as e:
@@ -715,7 +735,7 @@ def predict_forward(fits, by_city):
     for r in fc:
         fc_by_city.setdefault(r["city_key"], []).append(r)
 
-    preds, no_anchor = [], []
+    preds, no_anchor, no_rows = [], [], []
     for city, fit in fits.items():
         rows = fc_by_city.get(city)
         if not rows:
@@ -737,18 +757,29 @@ def predict_forward(fits, by_city):
             no_anchor.append(city)
             continue
 
-        preds.extend(forecast_city(city, fit, rows, anchor))
+        got = forecast_city(city, fit, rows, anchor)
+        if not got:
+            # Had days and had an anchor, and still produced nothing. Every row
+            # was missing a feature this city's fit uses. Naming it is the
+            # whole point: this is the shape of failure that ran green.
+            no_rows.append(city)
+        preds.extend(got)
 
-    note = None
+    notes = []
     if no_anchor and not preds:
-        note = ("No forward predictions: no city has an observed maximum within "
-                f"{MAX_ANCHOR_AGE_DAYS} days of its first forecast day to start the "
-                "chain from. Run the observation ingest (n8n P1.2 or "
-                "scripts/ingest_observations.py) first.")
+        notes.append("No forward predictions: no city has an observed maximum within "
+                     f"{MAX_ANCHOR_AGE_DAYS} days of its first forecast day to start the "
+                     "chain from. Run the observation ingest (n8n P1.2 or "
+                     "scripts/ingest_observations.py) first.")
     elif no_anchor:
-        note = (f"{len(no_anchor)} city/cities skipped for no recent observed maximum "
-                f"to anchor the chain: " + ", ".join(sorted(no_anchor)[:8]))
-    return preds, note
+        notes.append(f"{len(no_anchor)} city/cities skipped for no recent observed maximum "
+                     f"to anchor the chain: " + ", ".join(sorted(no_anchor)[:8]))
+    if no_rows:
+        notes.append(f"{len(no_rows)} city/cities had forecast days and an anchor but "
+                     "produced no prediction - every row was missing a feature the fit "
+                     "uses, so the forecast read is not asking for everything the fit "
+                     "kept: " + ", ".join(sorted(no_rows)[:8]))
+    return preds, ("  ".join(notes) or None)
 
 
 def stored_fits():
