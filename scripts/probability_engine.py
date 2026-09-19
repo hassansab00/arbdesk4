@@ -62,29 +62,55 @@ COLD_START_MAE_C = 4.0
 _calibration = None
 
 def _calibration_map():
-    """{'a','b','applies'} or None. Read once per run."""
+    """The fitted map, or None. Read once per run.
+
+    TWO METHODS, and the newer one is the reason the older is still read.
+
+      temperature  q_i = p_i^(1/T), renormalised over the ladder. One
+                   parameter, fitted by scripts/calibration.py on the earlier
+                   70% of SETTLEMENT DATES and validated on the later 30% it
+                   never saw.
+      platt        the previous per-band map. Kept so a database still holding
+                   one keeps behaving as it did rather than silently losing
+                   its calibration on a deploy.
+
+    `applies` is the gate and it is set by out-of-sample performance alone: a
+    map that improved only the rows it was fitted to arrives here with
+    applies=false and is ignored.
+    """
     global _calibration
     if _calibration is None:
         _calibration = {}
         try:
             rows = rest("settings", [("select", "value"), ("key", "eq.calibration_map")])
             v = rows[0]["value"] if rows else None
-            if (isinstance(v, dict)
-                    and v.get("applies")
-                    and v.get("method") == "platt"
+            if (isinstance(v, dict) and v.get("applies")
                     and v.get("evidence_scope") == VERIFIED_EVIDENCE_SCOPE):
-                a, b = float(v["a"]), float(v["b"])
-                _calibration = {"a": a, "b": b, "n": v.get("n"), "note": v.get("note")}
+                if v.get("method") == "temperature" and v.get("T"):
+                    _calibration = {"method": "temperature", "T": float(v["T"]),
+                                    "n": v.get("complete_ladders"), "note": v.get("note")}
+                elif v.get("method") == "platt":
+                    _calibration = {"method": "platt", "a": float(v["a"]), "b": float(v["b"]),
+                                    "n": v.get("n"), "note": v.get("note")}
         except Exception as e:
             print(f"  note: no calibration map ({e})", file=sys.stderr)
     return _calibration or None
 
 
 def _calibrate(p):
-    """Apply the fitted map to one probability. Identity when none is fitted."""
+    """Apply the fitted map to one probability. Identity when none is fitted.
+
+    For temperature scaling this returns p^(1/T) UNNORMALISED, because the
+    normalisation is over the whole ladder and happens once, below, where the
+    ladder exists. That is not a shortcut: dividing by the sum is the second
+    half of q_i = p_i^(1/T) / SUM_j p_j^(1/T), and doing it per band would be
+    a different function.
+    """
     m = _calibration_map()
     if not m:
         return p
+    if m["method"] == "temperature":
+        return max(p, 1e-12) ** (1.0 / m["T"])
     q = min(max(p, 1e-6), 1 - 1e-6)
     z = m["a"] * math.log(q / (1 - q)) + m["b"]
     return 1.0 / (1.0 + math.exp(-z)) if z >= 0 else math.exp(z) / (1.0 + math.exp(z))
@@ -887,7 +913,8 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     _cal = _calibration_map()
     calibration_version = model_version_id(
         "calibration",
-        f"platt:a={_cal['a']:.4f}:b={_cal['b']:+.4f}" if _cal else CALIBRATION_VERSION,
+        (f"temperature:T={_cal['T']:.4f}" if _cal and _cal["method"] == "temperature"
+         else f"platt:a={_cal['a']:.4f}:b={_cal['b']:+.4f}") if _cal else CALIBRATION_VERSION,
         config=_cal or {"note": "no calibration applied; normal lattice only"},
         structural=True)
 
@@ -927,16 +954,23 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
         r["calibrated_prob"] = round(_calibrate(p), 6) if cal else round(p, 6)
         out.append(r)
 
-    # Calibration breaks the lattice's guarantee that the bands sum to 1, since
-    # each is mapped independently. Renormalise: exactly one band resolves yes,
-    # so the probabilities must still sum to one or every downstream figure -
-    # edge, EV, Kelly size - is built on a distribution that is not one.
+    # THE LADDER MUST SUM TO ONE. Exactly one band resolves yes, so anything
+    # else makes every downstream figure - edge, EV, Kelly size - a quantity
+    # built on a distribution that is not one.
+    #
+    # For temperature scaling this division is not a repair, it IS the second
+    # half of the formula: q_i = p_i^(1/T) / SUM_j p_j^(1/T). For the older
+    # per-band Platt map it genuinely is a repair, because eleven independent
+    # corrections have no reason to sum to anything.
     if cal:
         total = sum(r["calibrated_prob"] for r in out)
         if total > 0:
             for r in out:
                 r["calibrated_prob"] = round(r["calibrated_prob"] / total, 6)
-        reasons.append(f"calibrated:platt(a={cal['a']:.3f},b={cal['b']:+.3f},n={cal.get('n')})")
+        reasons.append(
+            f"calibrated:temperature(T={cal['T']:.3f},ladders={cal.get('n')})"
+            if cal["method"] == "temperature"
+            else f"calibrated:platt(a={cal['a']:.3f},b={cal['b']:+.3f},n={cal.get('n')})")
 
     return out, reg, reasons
 
