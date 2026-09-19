@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState, ErrorBox, InlineError, Loading } from "@/components/DataState";
 import WeatherIcon from "@/components/WeatherIcon";
+import CityWeatherHealth from "@/components/CityWeatherHealth";
 import { fmtAge, fmtCompactUsd, severityColor } from "@/lib/format";
 import { fmtTemp, fmtTempDelta, fmtBandRange, toDisplay, type Unit } from "@/lib/units";
 import { fmtTime, fmtCityHour, shortZone } from "@/lib/time";
@@ -294,6 +295,12 @@ export default function LiveWeatherPage() {
             )}
           </div>
         )}
+
+        {/* Per CITY, under the per-feed banner above. That banner reports the
+            newest reading ANYWHERE, which is green whenever one American
+            station is reporting - and says nothing about the forty cities
+            whose feed is a day behind. */}
+        <CityWeatherHealth />
 
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
           <input
@@ -612,7 +619,23 @@ function CityDetail({ row, onClose }: { row: LiveWeather & { city: City | undefi
 
       <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4 lg:grid-cols-6">
         <Field label="Now" value={fmtTemp(row.temp_c, dUnit)} />
-        <Field label="Running max" value={fmtTemp(row.running_max_c, dUnit)} />
+        {/* The number alone makes the same claim whether it rests on a
+            hundred readings or on one. For 37 of the 54 cities the archive
+            runs about a day behind, so "floor" is the common case, not the
+            edge case - and a floor is what s5 is refused on. */}
+        <Field
+          label={row.running_max_basis === "floor_only" ? "At least (floor)" : "Running max"}
+          value={fmtTemp(row.running_max_c, dUnit)}
+          hint={
+            row.running_max_basis === "series"
+              ? `A maximum: the highest of ${row.readings_today ?? 0} readings of this city's own day.`
+              : row.running_max_basis === "floor_only"
+              ? "One reading, so the day reached AT LEAST this and may have reached far more. A floor under the maximum, not the maximum - s5 will not lock a band on it."
+              : row.running_max_basis === "absent"
+              ? "Nothing has been measured on this city's current local day yet."
+              : undefined
+          }
+        />
         <Field label="Δ 1h" value={fmtTempDelta(row.temp_change_1h, dUnit)} />
         <Field label="Wind" value={`${row.wind_speed_kt ?? "—"}kt ${row.wind_dir_compass ?? ""}`} />
         <Field label="Humidity" value={`${row.humidity ?? "—"}%`} />

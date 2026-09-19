@@ -778,6 +778,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_city_metadata_verification": [
     "cities"
   ],
+  "v_city_observation_health": [
+    "cities",
+    "live_weather",
+    "weather_observations"
+  ],
   "v_city_peak_approach": [
     "derived_climb_profile",
     "cities",
@@ -808,6 +813,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "trades_observed",
     "edges",
     "derived_city_day_features"
+  ],
+  "v_city_running_max": [
+    "cities",
+    "live_weather",
+    "weather_observations"
   ],
   "v_city_stats": [
     "cities",

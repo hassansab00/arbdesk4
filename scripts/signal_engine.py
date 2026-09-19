@@ -262,9 +262,23 @@ def _band_views():
             peak_window_state=window_state,
             day_decided=day_decided,
             window_width_h=tm.get("window_width_h"),
-            # S5 may lock a running maximum only once the day is decided AND the
-            # reading behind it is a station's, not a model's interpolation.
-            s5_allowed=bool(day_decided and (lw.get("obs_source") or lw.get("source_kind") == "station")),
+            # S5 may lock a running maximum only once the day is decided, the
+            # reading behind it is a station's rather than a model's
+            # interpolation, AND that maximum rests on a SERIES of today's
+            # readings.
+            #
+            # The third gate is the one that was missing. A city whose
+            # observation feed runs a day behind still has a live thermometer,
+            # and one reading says the day reached AT LEAST that - a floor, not
+            # a maximum. s5's premise is "the day is over and the maximum is
+            # locked in this band", which a floor cannot support: the real
+            # maximum may be several degrees higher and in another band
+            # entirely. live_weather.running_max_basis is written beside the
+            # number by refresh_live_weather_timing(); see
+            # sql/ad4_71_observation_health.sql.
+            s5_allowed=bool(day_decided
+                            and (lw.get("obs_source") or lw.get("source_kind") == "station")
+                            and lw.get("running_max_basis") == "series"),
             slope_3_c_per_h=tm.get("slope_3_c_per_h"),
             slope_6_c_per_h=ap.get("slope_6_c_per_h"),
             trend_direction=tm.get("direction"),

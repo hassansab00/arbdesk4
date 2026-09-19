@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 159 of them - and for each MISSING one names the
+-- and function the app reads - 161 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -105,9 +105,11 @@ with expected(rel, owner, used_by) as (values
     ('v_city_day_readiness', 'supabase/migrations/20260912234500_phase1c_operational_readiness.sql', ''),
     ('v_city_metadata_health', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', '(CityReadiness)'),
     ('v_city_metadata_verification', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', ''),
+    ('v_city_observation_health', 'ad4_71_observation_health.sql', '(CityWeatherHealth)'),
     ('v_city_peak_approach', 'ad4_26_temp_trend.sql', '(RightRail), /live, /monitor'),
     ('v_city_prediction_confidence', 'ad4_58_city_prediction_confidence.sql', ''),
     ('v_city_reasoning', 'ad4_23_reasoning.sql', '(Reasoning)'),
+    ('v_city_running_max', 'ad4_71_observation_health.sql', ''),
     ('v_city_stats', 'ad4_17_city_stats.sql', ''),
     ('v_city_temp_trend', 'ad4_26_temp_trend.sql', ''),
     ('v_city_today_readings', 'ad4_26_temp_trend.sql', '/monitor'),
@@ -286,9 +288,11 @@ begin
     ('v_city_day_readiness', 'supabase/migrations/20260912234500_phase1c_operational_readiness.sql', ''),
     ('v_city_metadata_health', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', '(CityReadiness)'),
     ('v_city_metadata_verification', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', ''),
+    ('v_city_observation_health', 'ad4_71_observation_health.sql', '(CityWeatherHealth)'),
     ('v_city_peak_approach', 'ad4_26_temp_trend.sql', '(RightRail), /live, /monitor'),
     ('v_city_prediction_confidence', 'ad4_58_city_prediction_confidence.sql', ''),
     ('v_city_reasoning', 'ad4_23_reasoning.sql', '(Reasoning)'),
+    ('v_city_running_max', 'ad4_71_observation_health.sql', ''),
     ('v_city_stats', 'ad4_17_city_stats.sql', ''),
     ('v_city_temp_trend', 'ad4_26_temp_trend.sql', ''),
     ('v_city_today_readings', 'ad4_26_temp_trend.sql', '/monitor'),

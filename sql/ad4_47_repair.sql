@@ -79,7 +79,10 @@ begin
     -- ad4_plural: the view is readable, the function inside it is not, and
     -- the browser gets 42501 on select * while count(*) still works.
     'ad4_table_rows', 'ad4_table_rows_estimated',
-    'ad4_distinct_values', 'ad4_distinct_count'
+    'ad4_distinct_values', 'ad4_distinct_count',
+    -- sql/ad4_71: v_city_observation_health calls this to say whether a
+    -- running maximum rests on a series or a single reading. Same trap again.
+    'ad4_running_max_basis'
   ] loop
     if not exists (select 1 from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
                     where ns.nspname = 'public' and p.proname = f) then

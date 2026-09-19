@@ -150,6 +150,21 @@ export interface LiveWeather {
    * them apart is making a claim it cannot support.
    */
   source_kind: "station" | "model" | null;
+  /** How many of today's readings exist for this city's OWN local day. */
+  readings_today: number | null;
+  /**
+   * What running_max_c rests on (sql/ad4_71_observation_health.sql).
+   *
+   * `series` is a real maximum: two or more readings of this city's own day.
+   * `floor_only` is one reading, or only the live thermometer - the day
+   * reached AT LEAST that and may have reached far more, which is a floor
+   * under the maximum and not the maximum. `absent` is nothing measured today.
+   *
+   * A page that prints running_max_c without this is making the same claim for
+   * all three, and for 37 of the 54 cities the observation feed runs about a
+   * day behind, so the difference is not an edge case.
+   */
+  running_max_basis: "series" | "floor_only" | "absent" | null;
 }
 
 export interface WeatherEvent {

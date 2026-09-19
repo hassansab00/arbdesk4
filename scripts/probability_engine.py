@@ -217,18 +217,34 @@ def compute_band_probabilities(centre_c, sigma_c, unit, bands, floor_c=None):
 def _observed_floors():
     """{city_key: (local_date, running_max_c)} - today's maximum so far.
 
-    live_weather carries one row per city, refreshed by n8n P1.2 and by the
-    ad4_refresh_live_weather_timing pg_cron job. running_max_c is the highest
-    temperature that city has recorded on its own LOCAL date, which is the only
-    date a daily high market resolves against - a UTC date would put half the
-    world's cities on the wrong day.
+    Read from v_city_running_max rather than live_weather directly, because
+    that view carries the invariant this number has to satisfy: A MAXIMUM IS
+    NEVER BELOW THE LATEST READING OF THE SAME DAY. live_weather.running_max_c
+    was, for 14 of 54 cities on 2026-09-19, BELOW the current temperature - by
+    up to 12.5 C - and 25 cities had no maximum at all, because the running
+    maximum was built only from the observation archive and that archive runs
+    about a day behind for 37 cities. A floor that is too low leaves
+    probability on buckets the day has already passed.
+
+    The view takes the greatest of today's observation series, the stored
+    maximum and the live thermometer - each one gated to the city's own LOCAL
+    date, which is the only date a daily high market resolves against. A UTC
+    date would put half the world's cities on the wrong day; so would a live
+    reading from 23:00 yesterday, which is what Shanghai has at 01:00.
+
+    A FLOOR MAY REST ON A SINGLE READING. That is the difference between this
+    caller and s5: "the day has already reached at least X" is true of one
+    reading, while "the day's maximum is X" needs a series. So
+    running_max_basis is not filtered here - only 'absent', which arrives as a
+    null maximum and is skipped.
 
     One request for all 54 cities. A city with no row, or a null maximum, is
     simply absent, and every caller treats absence as "no floor" rather than
     as zero - which would make every band impossible.
     """
     floors = {}
-    for row in rest("live_weather", {"select": "city_key,local_date,running_max_c"}):
+    for row in rest("v_city_running_max",
+                    {"select": "city_key,local_date,running_max_c,running_max_basis"}):
         if row.get("running_max_c") is None or not row.get("local_date"):
             continue
         floors[row["city_key"]] = (str(row["local_date"]), float(row["running_max_c"]))
