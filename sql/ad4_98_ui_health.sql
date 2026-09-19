@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 161 of them - and for each MISSING one names the
+-- and function the app reads - 164 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -46,6 +46,7 @@ with expected(rel, owner, used_by) as (values
     ('derived_forecast_skill_model', 'ad4_49_model_skill.sql', ''),
     ('derived_market_peak', 'ad4_00_preflight.sql', ''),
     ('derived_model_forecast', 'ad4_25_model_forecast.sql', ''),
+    ('derived_model_promotion', 'ad4_00_preflight.sql', ''),
     ('derived_weather_model', 'ad4_21_weather_features.sql', ''),
     ('derived_weather_peak', 'ad4_00_preflight.sql', '/live'),
     ('desk_members', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),
@@ -141,6 +142,8 @@ with expected(rel, owner, used_by) as (values
     ('v_model_disagreement', 'ad4_25_model_forecast.sql', '(Reasoning)'),
     ('v_model_forecast_current', 'ad4_25_model_forecast.sql', ''),
     ('v_model_forecast_skill', 'ad4_25_model_forecast.sql', '(ModelAnalytics)'),
+    ('v_model_promoted', 'ad4_72_model_promotion.sql', ''),
+    ('v_model_promotion', 'ad4_72_model_promotion.sql', ''),
     ('v_operational_health', 'supabase/migrations/20260912234500_phase1c_operational_readiness.sql', ''),
     ('v_opportunities', 'ad4_13_reconcile.sql', '(Header), (ModelAnalytics), /, /analytics, /board, /globe, /goals, /live, /monitor'),
     ('v_opportunity_context', 'ad4_22_opportunity_context.sql', '/opportunities'),
@@ -229,6 +232,7 @@ begin
     ('derived_forecast_skill_model', 'ad4_49_model_skill.sql', ''),
     ('derived_market_peak', 'ad4_00_preflight.sql', ''),
     ('derived_model_forecast', 'ad4_25_model_forecast.sql', ''),
+    ('derived_model_promotion', 'ad4_00_preflight.sql', ''),
     ('derived_weather_model', 'ad4_21_weather_features.sql', ''),
     ('derived_weather_peak', 'ad4_00_preflight.sql', '/live'),
     ('desk_members', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),
@@ -324,6 +328,8 @@ begin
     ('v_model_disagreement', 'ad4_25_model_forecast.sql', '(Reasoning)'),
     ('v_model_forecast_current', 'ad4_25_model_forecast.sql', ''),
     ('v_model_forecast_skill', 'ad4_25_model_forecast.sql', '(ModelAnalytics)'),
+    ('v_model_promoted', 'ad4_72_model_promotion.sql', ''),
+    ('v_model_promotion', 'ad4_72_model_promotion.sql', ''),
     ('v_operational_health', 'supabase/migrations/20260912234500_phase1c_operational_readiness.sql', ''),
     ('v_opportunities', 'ad4_13_reconcile.sql', '(Header), (ModelAnalytics), /, /analytics, /board, /globe, /goals, /live, /monitor'),
     ('v_opportunity_context', 'ad4_22_opportunity_context.sql', '/opportunities'),

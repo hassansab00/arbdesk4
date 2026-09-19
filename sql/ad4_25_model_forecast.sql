@@ -82,7 +82,13 @@ create table if not exists derived_model_forecast (
 comment on table derived_model_forecast is
   'AD4''s own forward prediction of the daily maximum: ad4_21 coefficients applied to ad4_24 forecast conditions. Deliberately not in weather_forecasts - it is not independent of NWS and must not inflate v_forecast_divergence.';
 
+-- The fit this prediction was made by, copied at prediction time so a later
+-- refit cannot rewrite which coefficients produced a past number. Rule 5 of
+-- sql/ad4_72_model_promotion.sql cannot be checked without it.
+alter table derived_model_forecast add column if not exists model_version text;
+
 create index if not exists dmf_city_date on derived_model_forecast (city_key, for_date desc, run_at desc);
+create index if not exists dmf_version on derived_model_forecast (model_version);
 
 
 -- --------------------------------------------------------------------------
@@ -104,6 +110,18 @@ order by city_key, for_date, run_at desc;
 --    forecast. tradeable_view is the gate - a model that loses to persistence
 --    on held-out days has no business moving a price, however confident the
 --    arithmetic looks.
+--
+--    BEATING PERSISTENCE IS NOT ENOUGH, and that is what this gate used to
+--    ask. beats_persistence is measured on held-out days of the model's OWN
+--    TRAINING WINDOW, against yesterday-equals-today. The thing a price has
+--    to beat is the PUBLIC FORECAST, on forward days nobody had seen when the
+--    prediction was made. Those are different questions and a model can pass
+--    the first while losing the second.
+--
+--    So the gate now also requires that this city AND THIS LEAD have been
+--    promoted - see sql/ad4_72_model_promotion.sql. Leads are never averaged
+--    together: a model sharp at lead 0 and useless on Friday looks fine as
+--    one number and is not.
 -- --------------------------------------------------------------------------
 create or replace view v_model_disagreement as
 select
@@ -116,14 +134,24 @@ select
   m.beats_persistence,
   m.model_mae_c,
   m.persistence_mae_c,
-  -- a disagreement smaller than the model's own error is noise, not a view
+  -- a disagreement smaller than the model's own error is noise, not a view,
+  -- and a model nobody has promoted is not a view either
   (m.beats_persistence
      and m.model_mae_c is not null
-     and abs(m.predicted_max_c - m.nws_max_c) > m.model_mae_c) as tradeable_view,
+     and abs(m.predicted_max_c - m.nws_max_c) > m.model_mae_c
+     and p.state = 'promoted')                        as tradeable_view,
   m.prev_source,
   m.contributions,
-  m.inputs
+  m.inputs,
+  -- shadow | promoted | rejected | stale, or 'unjudged' where the promotion
+  -- job has not scored this city and lead yet. Appended rather than inserted:
+  -- create or replace can only add columns at the end.
+  coalesce(p.state, 'unjudged')                       as promotion_state
 from v_model_forecast_current m
+left join derived_model_promotion p
+       on p.city_key  = m.city_key
+      and p.lead_days = m.lead_days
+      and p.target    = 'max_c'
 where m.predicted_max_c is not null;
 
 

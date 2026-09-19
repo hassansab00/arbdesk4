@@ -333,6 +333,13 @@ def test_every_key_written_is_a_column_that_exists():
         m.group(1) for line in body.splitlines()
         if (m := re.match(r"\s{2}([a-z_]+)\s+\S", line))
     }
+    # A column added later is still a column. The sibling test for
+    # derived_weather_model already collected these; this one did not, so
+    # model_version - added by an alter so an existing table gains it without
+    # being dropped - read as an unknown column.
+    columns |= set(re.findall(
+        r"alter table derived_model_forecast add column if not exists ([a-z_]+)",
+        ddl.read_text()))
     assert "predicted_max_c" in columns, "the DDL was not parsed"
 
     row = wm.forecast_city("t", fitted(), fc_days(1), 26.0)[0]

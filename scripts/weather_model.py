@@ -561,6 +561,25 @@ def preflight(rows, features, target="max_c", min_days=None):
             "missing_per_feature": {f: n for f, n in missing.items() if n}}
 
 
+def model_version_label(city, fit):
+    """A name for THIS set of coefficients.
+
+    sql/ad4_72_model_promotion.sql promotes a specific fit, per city and per
+    lead, on forward days that fit predicted. Coefficients are refitted
+    weekly, so without a name on every prediction a promotion would be a
+    statement about "whichever model was running", which is not a statement.
+
+    Derived from the COEFFICIENTS, not from fitted_at, so a weekly refit that
+    lands on the same numbers keeps the same version and the forward evidence
+    already gathered against it still counts. A refit that changes them starts
+    a new one, which is exactly right: it is a different model.
+    """
+    import hashlib
+    body = json.dumps({"target": "max_c", "coefficients": fit["coefficients"]},
+                      sort_keys=True)
+    return f"{city}:max_c:{hashlib.sha256(body.encode()).hexdigest()[:12]}"
+
+
 def contributions(coef, row, features):
     """Each feature's share of the prediction, in degrees.
 
@@ -625,6 +644,9 @@ def forecast_city(city, fit, fc_rows, last_observed_max):
             "model_mae_c": fit["mae_c"],
             "persistence_mae_c": fit["persistence_mae_c"],
             "beats_persistence": fit["beats_persistence"],
+            # WHICH coefficients produced this number, copied at prediction
+            # time so a later refit cannot rewrite history.
+            "model_version": fit.get("model_version") or model_version_label(city, fit),
         })
         prev, prev_src = round(pred, 2), "chained"
 
@@ -875,9 +897,11 @@ def main():
             print(f"               · {v['feature']}: {v['verdict']}")
         if cloud["qualified"]:
             print(f"               · cloud challenger: {cloud['verdict']}")
+        fit["model_version"] = model_version_label(city, fit)
         out.append({
             "city_key": city, "target": "max_c", "n_days": fit["n_days"],
             "coefficients": fit["coefficients"], "mae_c": fit["mae_c"],
+            "model_version": fit["model_version"],
             # stored so the reason a variable is absent survives the run
             "selection": fit.get("selection"),
             "persistence_mae_c": fit["persistence_mae_c"],

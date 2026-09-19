@@ -223,6 +223,15 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Weather Model"
     }
   ],
+  "derived_model_promotion": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/model_promotion.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    }
+  ],
   "derived_weather_model": [
     {
       "cadence": "daily",
@@ -961,6 +970,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_forecasts"
   ],
   "v_model_disagreement": [
+    "derived_model_promotion",
     "derived_model_forecast"
   ],
   "v_model_forecast_current": [
@@ -971,6 +981,13 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_model_forecast",
     "derived_weather_model",
     "weather_forecast_features"
+  ],
+  "v_model_promoted": [
+    "derived_model_promotion"
+  ],
+  "v_model_promotion": [
+    "cities",
+    "derived_model_promotion"
   ],
   "v_operational_health": [
     "band_probabilities",

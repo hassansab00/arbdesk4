@@ -251,6 +251,72 @@ def _observed_floors():
     return floors
 
 
+def _promoted_models():
+    """{(city_key, lead_days): row} - the fits allowed to move a price.
+
+    A FIT IS A CHALLENGER UNTIL IT IS NOT. scripts/weather_model.py scores
+    each city's model against persistence on held-out days of its own
+    training window. That is not the test a price has to pass: the thing a
+    centre replaces is the PUBLIC FORECAST, and it has to beat it on FORWARD
+    days nobody had seen when the prediction was made, per city and per lead.
+    scripts/model_promotion.py runs that test and writes the verdict;
+    v_model_promoted shows only the ones that passed.
+
+    Reading the narrow view rather than derived_model_promotion is
+    deliberate. A shadow row is invisible here, so no caller can read one by
+    accident and price on it. An empty result - which is the state today - is
+    the correct default and leaves the engine behaving exactly as it did
+    before any model existed.
+    """
+    out = {}
+    try:
+        for r in rest("v_model_promoted",
+                      {"select": "city_key,lead_days,model_version,model_mae_c,"
+                                 "gain_vs_public_c,n_days",
+                       "target": "eq.max_c"}):
+            if r.get("lead_days") is None:
+                continue
+            out[(r["city_key"], int(r["lead_days"]))] = r
+    except Exception as e:
+        # A missing view means sql/ad4_72 has not been run, which is the same
+        # situation as nothing being promoted. It must never stop pricing.
+        print(f"  (v_model_promoted unavailable: {e} - no fitted model will be used)",
+              file=sys.stderr)
+    return out
+
+
+def _model_forecasts(promoted):
+    """{(city_key, for_date): row} - the newest model prediction per city-day.
+
+    Only for cities that have something promoted, because for every other
+    city these rows must not be read at all. derived_model_forecast holds one
+    row per NWS run, so several share a lead; the newest run wins for the
+    same reason _forecast_for orders by run_at desc - leaving the choice to
+    whatever order PostgREST returned would price against an arbitrary one.
+    """
+    if not promoted:
+        return {}
+    cities = sorted({c for c, _ in promoted})
+    out = {}
+    try:
+        rows = rest_all("derived_model_forecast", [
+            ("select", "city_key,for_date,run_at,lead_days,predicted_max_c,model_version"),
+            ("for_date", f"gte.{dt.date.today().isoformat()}"),
+            ("city_key", f"in.({','.join(cities)})"),
+        ], order="city_key.asc,for_date.asc,run_at.asc", page_size=1000)
+    except Exception as e:
+        print(f"  (derived_model_forecast unavailable: {e})", file=sys.stderr)
+        return {}
+    for r in rows:
+        if r.get("predicted_max_c") is None:
+            continue
+        key = (r["city_key"], str(r["for_date"]))
+        cur = out.get(key)
+        if cur is None or str(r["run_at"]) > str(cur["run_at"]):
+            out[key] = r
+    return out
+
+
 def _upcoming_markets():
     return rest("v_canonical_markets", [
         ("select", "market_id,city_key,resolution_date,unit,correction_id"),
@@ -574,7 +640,8 @@ def _skill_for(city_key, lead_days, model=None):
     return _pooled_skill(city_key, lead_days)
 
 
-def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None):
+def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None,
+                     promoted=None, model_forecasts=None):
     forecast = _forecast_for(city_key, for_date)
     if forecast is None or forecast.get("forecast_max_c") is None:
         print(f"  TODO: unmeasured - no forecast for {city_key} {for_date}", file=sys.stderr)
@@ -692,6 +759,37 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     centre = forecast["forecast_max_c"]
     centre_corrected = centre - bias_c
 
+    # ---- A PROMOTED MODEL REPLACES THE CENTRE. Nothing else does. ---------
+    #
+    # Three things change together or none of them do:
+    #
+    #   the centre      becomes the model's own prediction for this day
+    #   the bias        goes to zero. bias_c is measured on the PUBLIC
+    #                   forecast's errors; the model was fitted against
+    #                   observed maxima directly and is already de-biased, so
+    #                   subtracting it again would correct twice.
+    #   the width       becomes the model's measured FORWARD error, because
+    #                   sigma must describe the distribution actually being
+    #                   published - using the public forecast's mae_c around
+    #                   the model's centre would describe neither.
+    #
+    # The lead has to match. A promotion is per city AND per lead precisely
+    # because a model sharp today can be useless on Friday, so a lead-0
+    # promotion may not price a lead-4 prediction.
+    promo = (promoted or {}).get((city_key, int(lead_days))) if lead_days is not None else None
+    mrow = (model_forecasts or {}).get((city_key, str(for_date)))
+    if (promo and mrow and mrow.get("lead_days") is not None
+            and int(mrow["lead_days"]) == int(lead_days)):
+        centre = float(mrow["predicted_max_c"])
+        centre_corrected = centre
+        bias_c = 0.0
+        if promo.get("model_mae_c"):
+            mae_c = float(promo["model_mae_c"])
+        reasons.append(
+            f"promoted_model:{mrow.get('model_version') or promo.get('model_version')}"
+            f":lead{lead_days}:beat_public_by_{promo.get('gain_vs_public_c')}C"
+            f"_over_{promo.get('n_days')}d")
+
     div_mult, div_row = _divergence_for(city_key, for_date)
     cal_mult, cal_row = _calibration_for(city_key)
     # A MULTIPLIER SUBSTITUTES FOR A MEASUREMENT. IT DOES NOT SUPPLEMENT ONE.
@@ -772,11 +870,20 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     # forecast_version / calibration_version are uuid columns referencing
     # model_versions - not free text. Resolve the readable labels to their
     # ids (registering them on first use). See common.model_version_id.
-    forecast_label = f"{forecast.get('model')}:{forecast.get('run_at')}"
+    # WHICH forecast this price was built on. When a promoted model supplied
+    # the centre, the answer is that model and not the public run - otherwise
+    # every post-mortem on a model-priced trade would point at NWS.
+    if promo and mrow is not None and centre_corrected == float(mrow["predicted_max_c"]):
+        forecast_label = f"model:{mrow.get('model_version')}:{mrow.get('run_at')}"
+        forecast_config = {"model": "arbdesk_weather_model",
+                           "model_version": mrow.get("model_version"),
+                           "run_at": mrow.get("run_at"),
+                           "public_forecast_max_c": forecast.get("forecast_max_c")}
+    else:
+        forecast_label = f"{forecast.get('model')}:{forecast.get('run_at')}"
+        forecast_config = {"model": forecast.get("model"), "run_at": forecast.get("run_at")}
     forecast_version = model_version_id(
-        "forecast", forecast_label,
-        config={"model": forecast.get("model"), "run_at": forecast.get("run_at")},
-        structural=False)
+        "forecast", forecast_label, config=forecast_config, structural=False)
     _cal = _calibration_map()
     calibration_version = model_version_id(
         "calibration",
@@ -850,6 +957,11 @@ def main():
         bands_by_market[b["market_id"]].append(b)
 
     floors = _observed_floors()
+    promoted = _promoted_models()
+    model_forecasts = _model_forecasts(promoted)
+    if promoted:
+        print(f"{len(promoted)} promoted city-lead pair(s) will price from the desk's own "
+              f"model; every other city prices from the public forecast.")
     history_cache = {}
     all_rows = []
     sample_prints = []
@@ -861,7 +973,7 @@ def main():
             if not band_rows:
                 continue
             result = process_city_day(city_key, m["resolution_date"], unit, band_rows,
-                                      history_cache, floors)
+                                      history_cache, floors, promoted, model_forecasts)
             if result is None:
                 continue
             rows, reg, reasons = result
