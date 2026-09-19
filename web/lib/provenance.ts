@@ -1057,6 +1057,18 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_calibration_adjustment",
     "derived_forecast_skill"
   ],
+  "v_signal_outcome": [
+    "fact_band_outcome",
+    "fact_signal_outcome"
+  ],
+  "v_signal_scorecard": [
+    "fact_band_outcome",
+    "fact_signal_outcome"
+  ],
+  "v_signal_scorecard_by_version": [
+    "fact_band_outcome",
+    "fact_signal_outcome"
+  ],
   "v_storage_report": [
     "cities",
     "derived_city_day_features",

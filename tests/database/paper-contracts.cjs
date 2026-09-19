@@ -73,7 +73,15 @@ const assert = require('node:assert/strict');
       sigma_c numeric,confidence numeric,regime_label text,forecast_max_c numeric,market_price numeric,
       edge_net_pp numeric,volume_usd numeric,depth_5c numeric,priced_at timestamptz,
       observed_max_c numeric,settled_yes boolean default false,captured_at timestamptz default now());
-    create table public.fact_signal_outcome(signal_id bigint primary key,captured_at timestamptz default now());
+    -- Widened to the live shape: 20260919190000_signals_learn_from_settlement.sql
+    -- builds v_signal_outcome over these columns, and a view cannot be created
+    -- against a table that is missing half of them.
+    create table public.fact_signal_outcome(signal_id bigint primary key,strategy_id text,
+      band_id uuid,city_key text,for_date date,side text,action text,reason text,
+      fired_at timestamptz,severity text,price_at_fire numeric,prob_at_fire numeric,
+      edge_at_fire numeric,status text,filled boolean,fill_price numeric,shares numeric,
+      settled_yes boolean,gross_pnl numeric,net_pnl numeric,slippage_c numeric,
+      captured_at timestamptz default now());
     grant select on public.bands,public.markets,public.signals to service_role;
     create view public.v_synthesis_findings as select 'finding'::text as key;
     create view public.v_learning_state as select 'learning'::text as stage;
