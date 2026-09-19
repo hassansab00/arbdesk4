@@ -61,26 +61,56 @@ MIN_DAYS = 120
 HOLDOUT = 0.25
 
 # The features every fit starts from. Proven, and all of them exist on BOTH
-# sides - v_city_day_features for what happened, weather_forecast_features for
-# what is forecast. A feature present on only one side can be fitted and then
-# never applied, and the failure is silent: forecast_city skips any row with a
-# missing feature, so the model would just stop predicting.
+# sides - derived_city_day_features for what happened, weather_forecast_features
+# for what is forecast. A feature present on only one side can be fitted and
+# then never applied, and the failure is silent: forecast_city skips any row
+# with a missing feature, so the model would just stop predicting.
+#
+# A BASE FEATURE IS MANDATORY: usable() rejects any day missing one, for the
+# whole city. That is the right rule and it is why cloud_mean is no longer
+# here. Measured against the cache on 2026-09-19:
+#
+#     cities with 120 usable days INCLUDING cloud_mean     0
+#     cities with 120 usable days without it              52
+#     usable city-days with cloud                        959
+#     usable city-days without it                     21,631
+#
+# So cloud_mean, mandatory, meant zero models - and zero models is what the
+# platform had. The physics is not in doubt (a clear morning climbs about 8.6C
+# more than an overcast one from the same start, measured on this repo's own
+# feature view); the COVERAGE is. METAR reports cloud as a code that is absent
+# whenever the sky is clear at some stations and always absent at others, so
+# requiring it excludes whole cities rather than whole days.
+#
+# It is not imputed. A mean okta filled in for a missing one is an invention
+# with a coefficient on it. It moves to the candidate set, where it is offered
+# to every fit and kept only on cities that genuinely have it - and where a
+# city with enough cloud-complete days gets a challenger scored on the same
+# held-out days (see cloud_challenger).
 BASE_FEATURES = [
     "prev_max_c",
     "morning_temp_c",
     "dewpoint_depression_c",
-    "cloud_mean",
     "wind_mean",
     "precip_total",
 ]
 
-# Collected all along and never used. Each is offered to the fit and kept only
-# if it earns its place on data the fit has not seen - see select_features.
+# Offered to the fit and kept only if each earns its place on data the fit has
+# not seen - see select_features. Unlike a base feature, a day missing one of
+# these is still a usable day; the feature is simply not available to that
+# city's model.
 CANDIDATE_FEATURES = [
+    "cloud_mean",
     "morning_humidity",
     "cloud_max",
     "wind_max",
 ]
+
+# How many cloud-complete days a city needs before a cloud-enhanced model is
+# worth fitting at all. The same floor as MIN_DAYS, because it is the same
+# question - and stated separately so that raising one does not silently raise
+# the other.
+MIN_CLOUD_DAYS = MIN_DAYS
 
 # NEVER usable, whatever they look like in the table.
 #
@@ -406,11 +436,129 @@ def fit_city(rows, features=None, target="max_c"):
         "selection": [{"feature": f, "verdict": why} for f, why in selection],
         "added_features": [f for f in features if f not in BASE_FEATURES],
         "n_days": len(rows), "n_train": len(train), "n_test": len(test),
+        # WHICH days were held out, so a challenger can be scored on the same
+        # ones. Comparing two models on different days compares the days.
+        "holdout_dates": [str(r["obs_date"]) for r in test],
+        "holdout_first": str(test[0]["obs_date"]), "holdout_last": str(test[-1]["obs_date"]),
         "mae_c": round(mae, 4), "persistence_mae_c": round(pmae, 4),
         "beats_persistence": mae < pmae,
         "improvement_pct": round((pmae - mae) / pmae * 100, 1) if pmae > 0 else None,
         "r2": round(r2, 4) if r2 is not None else None,
     }, len(rows)
+
+
+def cloud_challenger(rows, base_fit, target="max_c"):
+    """Does cloud cover earn its place on a city that actually has it?
+
+    cloud_mean is no longer mandatory (see BASE_FEATURES) because requiring it
+    left zero cities fittable. That is a coverage decision, not a claim that
+    cloud does not matter - it matters more than anything except dryness. So
+    on a city with enough cloud-complete days, the cloud model is fitted as a
+    CHALLENGER and scored against the shipped one.
+
+    THE COMPARISON IS ON THE SAME DAYS. The challenger is fitted on days
+    before the base model's holdout and scored on the cloud-complete days
+    INSIDE it, and the base model is re-scored on exactly those same days.
+    Scoring a cloud model on the subset of days that happen to have cloud
+    readings, against a base model scored on all days, would compare the
+    weather on two different sets of afternoons and call the difference skill.
+
+    Returns a dict that always says what happened - qualified or not, better
+    or not - because "no cloud model" has three causes and silence covers all
+    three.
+    """
+    feats = [f for f in BASE_FEATURES] + ["cloud_mean"]
+    cloud_rows = sorted((r for r in rows if usable(r, feats, target)),
+                        key=lambda r: r["obs_date"])
+    if len(cloud_rows) < MIN_CLOUD_DAYS:
+        return {"qualified": False, "n_cloud_days": len(cloud_rows),
+                "needs": MIN_CLOUD_DAYS,
+                "verdict": f"{len(cloud_rows)} cloud-complete days, needs {MIN_CLOUD_DAYS}"}
+
+    holdout = set(base_fit["holdout_dates"])
+    train = [r for r in cloud_rows if str(r["obs_date"]) < base_fit["holdout_first"]]
+    test = [r for r in cloud_rows if str(r["obs_date"]) in holdout]
+    if len(train) < 40 or len(test) < 20:
+        return {"qualified": False, "n_cloud_days": len(cloud_rows),
+                "verdict": f"enough cloud days overall but only {len(train)} before the "
+                           f"holdout and {len(test)} inside it"}
+
+    use, _ = varying(train, feats)
+    if "cloud_mean" not in use:
+        return {"qualified": False, "n_cloud_days": len(cloud_rows),
+                "verdict": "cloud_mean is constant across the training window"}
+    coef = ols(train, use, target)
+    if coef is None:
+        return {"qualified": False, "n_cloud_days": len(cloud_rows),
+                "verdict": "the cloud fit is singular"}
+
+    # Both models, the same afternoons.
+    base_feats = base_fit["features"]
+    scorable = [r for r in test if all(r.get(f) is not None for f in base_feats)]
+    if len(scorable) < 20:
+        return {"qualified": False, "n_cloud_days": len(cloud_rows),
+                "verdict": "too few shared days to score both models on"}
+    cloud_mae = sum(abs(predict(coef, r, use) - float(r[target]))
+                    for r in scorable) / len(scorable)
+    base_mae = sum(abs(predict(base_fit["coefficients"], r, base_feats) - float(r[target]))
+                   for r in scorable) / len(scorable)
+    gain = base_mae - cloud_mae
+    better = gain >= MIN_MATERIAL_GAIN_C
+    return {
+        "qualified": True,
+        "n_cloud_days": len(cloud_rows), "n_train": len(train), "n_scored": len(scorable),
+        "cloud_mae_c": round(cloud_mae, 4), "base_mae_c": round(base_mae, 4),
+        "gain_c": round(gain, 4), "better": better,
+        "coefficients": {k: round(v, 5) for k, v in coef.items()},
+        "verdict": (f"cloud model {gain:+.3f}C on {len(scorable)} shared held-out days "
+                    f"- {'better' if better else 'not a material improvement'} "
+                    f"(floor {MIN_MATERIAL_GAIN_C}C)"),
+    }
+
+
+def preflight(rows, features, target="max_c", min_days=None):
+    """What was read, before anything is fitted.
+
+    A run that reads a populated table and fits nothing used to print one line
+    about skipped cities and exit 0. Green, weekly, for a week, with zero
+    models in the database. This prints the numbers that distinguish the four
+    causes - nothing read, wrong date range, a feature missing everywhere, or
+    genuinely too few days - and main() exits non-zero when the table had rows
+    and no city could be fitted.
+    """
+    min_days = MIN_DAYS if min_days is None else min_days
+    dates = sorted(str(r["obs_date"]) for r in rows if r.get("obs_date"))
+    cities = sorted({r["city_key"] for r in rows})
+    per_city = {}
+    for r in rows:
+        if usable(r, features, target):
+            per_city[r["city_key"]] = per_city.get(r["city_key"], 0) + 1
+    clearing = [c for c in cities if per_city.get(c, 0) >= min_days]
+
+    missing = {}
+    for f in list(features) + list(CANDIDATE_FEATURES):
+        missing[f] = sum(1 for r in rows if r.get(f) is None)
+
+    print(f"read {len(rows)} city-day(s) across {len(cities)} city/cities"
+          + (f", {dates[0]} to {dates[-1]}" if dates else ", no dates"))
+    if rows:
+        counts = sorted(per_city.get(c, 0) for c in cities)
+        mid = counts[len(counts) // 2] if counts else 0
+        print(f"  usable days per city: min {counts[0] if counts else 0}, "
+              f"median {mid}, max {counts[-1] if counts else 0} "
+              f"(usable = a maximum, >=12 observations, and every base feature)")
+        print(f"  {len(clearing)} of {len(cities)} city/cities clear MIN_DAYS={min_days}")
+        worst = [(f, n) for f, n in sorted(missing.items(), key=lambda kv: -kv[1]) if n]
+        if worst:
+            print("  missing per feature: " + ", ".join(
+                f"{f} {n} ({n * 100 // max(1, len(rows))}%)" for f, n in worst))
+        else:
+            print("  no feature is missing on any row")
+    return {"rows": len(rows), "cities": len(cities),
+            "first_date": dates[0] if dates else None,
+            "last_date": dates[-1] if dates else None,
+            "cities_clearing_min_days": len(clearing),
+            "missing_per_feature": {f: n for f, n in missing.items() if n}}
 
 
 def contributions(coef, row, features):
@@ -646,17 +794,27 @@ def main():
         return predict_only(args)
 
     try:
-        # THE READ THAT KEPT THE MODEL FROM EVER FITTING. It asked for 200,000
-        # rows in one request and received the server's 1,000-row cap: 1,000
-        # rows across 54 cities is ~18 days each, under MIN_DAYS=120, so every
-        # city was skipped and every weekly run said "no fitted model" while
-        # 21,939 cached city-days sat in the table.
-        rows = rest_all("v_city_day_features", [
+        # THE DURABLE CACHE, NOT THE LIVE VIEW.
+        #
+        # Two reads have kept this model from ever fitting. The first asked for
+        # 200,000 rows in one request and got the server's 1,000-row cap, which
+        # rest_all now pages past. The second is this one: v_city_day_features
+        # is computed from raw weather_observations, and sql/ad4_29_retention
+        # prunes those, so the view holds about 90 days - 4,745 rows across 53
+        # cities, ~89 days each, under MIN_DAYS=120. Every city was skipped,
+        # every weekly run said "no fitted model", and it was green.
+        #
+        # derived_city_day_features exists precisely to survive that pruning:
+        # 22,197 rows, 2025-07-21 to 2026-09-19, up to 421 days for a city.
+        # Measured 2026-09-19, the same moment the view held 4,745.
+        rows = rest_all("derived_city_day_features", [
             ("select", "city_key,obs_date,max_c,n_obs,prev_max_c,morning_temp_c,"
-                       "dewpoint_depression_c,cloud_mean,wind_mean,precip_total"),
+                       "dewpoint_depression_c,cloud_mean,cloud_max,morning_humidity,"
+                       "wind_mean,wind_max,precip_total"),
         ], order="city_key.asc,obs_date.asc", page_size=1000)
     except Exception as e:
-        print(f"v_city_day_features unavailable ({e}). Run sql/ad4_21_weather_features.sql.",
+        print(f"derived_city_day_features unavailable ({e}). Run "
+              f"sql/ad4_28_feature_cache.sql, then Actions -> Derived Recompute.",
               file=sys.stderr)
         log_run("weather_model", "attention", 0, {"error": str(e)})
         return 1
@@ -665,8 +823,28 @@ def main():
     for r in rows:
         by_city.setdefault(r["city_key"], []).append(r)
 
+    # THE ANCHOR HAS TO BE FRESH even though the history does not. The cache is
+    # refilled by a scheduled job; the fit does not care if that job is a day
+    # late, but predict_forward walks back at most MAX_ANCHOR_AGE_DAYS from the
+    # first forecast day looking for a real observed maximum, so a lagging
+    # cache would silently stop every forward prediction. The live view holds
+    # the recent days by definition, and these rows carry no features - they
+    # can anchor a chain and usable() keeps them out of the fit.
+    try:
+        for city, fresh in recent_days(MAX_ANCHOR_AGE_DAYS + 2).items():
+            seen = {str(r["obs_date"]) for r in by_city.get(city, [])}
+            for r in fresh:
+                if str(r["obs_date"]) not in seen:
+                    by_city.setdefault(city, []).append(r)
+    except Exception as e:
+        print(f"  ! could not top up the anchor days from v_city_day_features ({e}) - "
+              f"forward predictions will rely on the cache being current", file=sys.stderr)
+
+    pre = preflight(rows, FEATURES)
+
     out, skipped, beat = [], [], 0
     fits = {}
+    cloud_qualified, cloud_better = 0, 0
     for city, rs in sorted(by_city.items()):
         fit, n = fit_city(rs, FEATURES)
         if fit is None:
@@ -675,6 +853,15 @@ def main():
         fits[city] = fit
         if fit["beats_persistence"]:
             beat += 1
+        # Cloud is the strongest physical driver here and the one the data
+        # cannot support as a requirement. Where a city HAS it, say so with a
+        # number rather than leaving the reader to wonder what was lost.
+        cloud = cloud_challenger(rs, fit)
+        fit["cloud_challenger"] = cloud
+        if cloud["qualified"]:
+            cloud_qualified += 1
+            if cloud["better"]:
+                cloud_better += 1
         print(f"{city:<14} n={fit['n_days']:<5} model MAE {fit['mae_c']:.2f}°C  "
               f"persistence {fit['persistence_mae_c']:.2f}°C  "
               f"{'BEATS' if fit['beats_persistence'] else 'loses to'} persistence"
@@ -686,6 +873,8 @@ def main():
         # desk collects on every reading, does not move this city's afternoon.
         for v in fit.get("selection", []):
             print(f"               · {v['feature']}: {v['verdict']}")
+        if cloud["qualified"]:
+            print(f"               · cloud challenger: {cloud['verdict']}")
         out.append({
             "city_key": city, "target": "max_c", "n_days": fit["n_days"],
             "coefficients": fit["coefficients"], "mae_c": fit["mae_c"],
@@ -711,6 +900,13 @@ def main():
             print("\nNo city kept a variable beyond the base six. On this data the "
                   "extra measurements do not move the afternoon - a finding, not a gap.")
         print(f"\n{beat} of {len(out)} cities beat persistence on held-out days.")
+        if cloud_qualified:
+            print(f"{cloud_better} of {cloud_qualified} city/cities with "
+                  f"{MIN_CLOUD_DAYS}+ cloud-complete days are materially better WITH cloud.")
+        else:
+            print(f"No city has {MIN_CLOUD_DAYS} cloud-complete days, so no cloud-enhanced "
+                  f"challenger could be fitted. cloud_mean is collected on a minority of "
+                  f"readings; that is a coverage fact about the feed, not a verdict on cloud.")
         if beat == 0:
             print("  None of them beat it. That is a real result, not a bug: on this data the "
                   "morning conditions add nothing over yesterday's maximum, and no forecast "
@@ -730,11 +926,28 @@ def main():
                   f"{len({p['city_key'] for p in preds})} city/cities. "
                   f"{trade} differ from NWS by more than the model's own error.")
 
+    # BEFORE the dry-run check, deliberately. Fitting nothing is a verdict on
+    # the data and the code, not on whether this run intended to write, so a
+    # --dry-run reports it exactly as a real run does.
+    if not out:
+        # NON-ZERO. A populated cache that fits nothing is a broken run, and
+        # exiting 0 is how this stayed invisible for a week of green weekly
+        # runs with zero models in the database. An EMPTY cache is a different
+        # thing - the recompute job has not run yet - and says so.
+        log_run("weather_model", "attention", 0,
+                {"skipped": len(skipped), "min_days": MIN_DAYS, **pre})
+        if rows:
+            print(f"\nFITTED NOTHING from {len(rows)} city-day(s) across "
+                  f"{pre['cities']} city/cities. The cache is populated, so this is a "
+                  f"failure and not an empty table - see the preflight above for which "
+                  f"of the four causes it is.", file=sys.stderr)
+            return 1
+        print("\nderived_city_day_features is empty. Run Actions -> Derived Recompute "
+              "to fill it, then this again.", file=sys.stderr)
+        return 1
+
     if args.dry_run:
         print("\n--dry-run: nothing written")
-        return 0
-    if not out:
-        log_run("weather_model", "attention", 0, {"skipped": len(skipped), "min_days": MIN_DAYS})
         return 0
 
     write_rows("derived_weather_model", out, "city_key,target")
@@ -753,7 +966,9 @@ def main():
 
     log_run("weather_model", "ok", len(out),
             {"cities": len(out), "beat_persistence": beat, "skipped": len(skipped),
-             "forward_predictions": n_pred})
+             "forward_predictions": n_pred,
+             "cloud_qualified": cloud_qualified, "cloud_better": cloud_better,
+             **pre})
     print(f"\nwrote {len(out)} city model(s) to derived_weather_model")
     return 0
 
