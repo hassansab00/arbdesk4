@@ -188,6 +188,32 @@ def _rpc(fn, params=None):
     return rpc(fn, params, timeout=600)
 
 
+def _cell(value):
+    """A value as the archive should STORE it, not as Python happens to print it.
+
+    csv.DictWriter stringifies with str(), and rest() hands a jsonb column
+    back as a parsed dict - so every archived payload was written as a PYTHON
+    REPR rather than as JSON:
+
+        {'band_hi': 28, 'sigma_c': None, 'open_low': False}
+
+    Single quotes, None where JSON needs null, False where it needs false. It
+    still round-trips through ast.literal_eval so nothing was lost, but no
+    JSON parser will touch it - which makes it useless to /api/archive and to
+    the browser, and being readable is the entire reason the archive exists.
+    78,291 research captures were written that way before a test actually
+    tried to parse one back.
+
+    Only dicts and lists are touched. Everything else keeps exactly the
+    rendering it had, including None, which csv already writes as an empty
+    field rather than the string "None" - a distinction test_weather_model
+    pins deliberately.
+    """
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return value
+
+
 def export_cold(spec, cutoff):
     """Every observation strictly older than the cutoff, as a gzipped CSV.
 
@@ -234,7 +260,7 @@ def export_cold(spec, cutoff):
         if not rows:
             break
         for r in rows:
-            w.writerow(r)
+            w.writerow({k: _cell(v) for k, v in r.items()})
             v = r.get(cut_col)
             if v:
                 if lo is None or v < lo:
@@ -450,12 +476,78 @@ def run_one(spec, name, args):
                 {"asset": asset_name, "rows": n_rows, "prune": prune})
         return 1
 
+    # 5 - AND SAY, IN THE REPO, THAT IT EXISTS.
+    #
+    # Everything above is correct and invisible. The rows leave Postgres, the
+    # platform stops being able to show them, and nothing anywhere tells the
+    # platform where they went - so an archive is indistinguishable from a
+    # deletion from the outside, which is exactly how it felt.
+    #
+    # web/public/archive/index.json is that record, and it is committed to the
+    # repo like the paper-trade log: the browser can fetch it with no token,
+    # so every page can say "this range lives in the archive" and offer it,
+    # and /api/archive reads the same index server-side to fetch the rows
+    # themselves out of the Release.
+    record_manifest(name, spec, asset_name, n_rows, len(blob), lo, hi, cutoff)
+
     log_run(job, "ok", n_rows, {
         "asset": asset_name, "rows": n_rows, "gzip_bytes": len(blob),
         "keep_days": keep_days, "archived_through": cutoff.isoformat(),
         "prune": prune,
     })
     return 0
+
+
+MANIFEST = os.path.join("web", "public", "archive", "index.json")
+
+
+def record_manifest(name, spec, asset_name, rows, gzip_bytes, lo, hi, cutoff):
+    """Append this archive to the repo's public index, newest range last.
+
+    NO TOKEN TO READ IT. The index carries what a page needs to decide
+    whether to offer the archive at all - dataset, range, row count, size -
+    and the asset NAME rather than a signed URL, because a URL would expire
+    and a private repo's asset needs the server to fetch it anyway. The rows
+    come from /api/archive, which holds the token.
+
+    Re-archiving the same range replaces its entry rather than adding a
+    second: the asset is overwritten in the Release too, so two entries would
+    describe one file.
+    """
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), MANIFEST)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            index = json.load(fh)
+    except (OSError, ValueError):
+        index = {"datasets": {}}
+    index.setdefault("datasets", {})
+
+    entry = {
+        "asset": asset_name,
+        "rows": rows,
+        "gzip_bytes": gzip_bytes,
+        "from": str(lo)[:10],
+        "to": str(hi)[:10],
+        "archived_through": cutoff.isoformat(),
+        "archived_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+    }
+    ds = index["datasets"].setdefault(name, {"table": spec["table"],
+                                             "release_tag": spec["tag"],
+                                             "assets": []})
+    ds["table"] = spec["table"]
+    ds["release_tag"] = spec["tag"]
+    ds["assets"] = [a for a in ds.get("assets", []) if a.get("asset") != asset_name]
+    ds["assets"].append(entry)
+    ds["assets"].sort(key=lambda a: a.get("from", ""))
+    ds["rows_archived"] = sum(a.get("rows", 0) for a in ds["assets"])
+
+    index["updated_at"] = entry["archived_at"]
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(index, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    print(f"manifest: {MANIFEST} now lists {len(ds['assets'])} "
+          f"{name} asset(s), {ds['rows_archived']:,} rows archived")
 
 
 if __name__ == "__main__":

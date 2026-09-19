@@ -688,7 +688,13 @@ def test_the_export_does_not_hold_every_row_in_memory():
 
     import archive_observations as ao
     src = inspect.getsource(ao.export_cold)
-    assert "w.writerow(r)" in src and "out.extend" not in src
+    # The property is one row at a time, not one exact spelling. The call now
+    # normalises each value on the way out - a jsonb column was being written
+    # as a Python repr - and a test that pinned the literal text failed on a
+    # change that kept the streaming intact.
+    assert "w.writerow(" in src, "rows must still be written as they arrive"
+    assert "out.extend" not in src and "rows_all" not in src, (
+        "nothing may accumulate the full result set before writing")
 
 
 def test_the_archive_name_comes_from_the_min_and_max_seen():
