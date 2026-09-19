@@ -256,8 +256,9 @@ def refresh_feature_cache(days=None, quiet=False):
     Raises on the first city that fails. Callers that prune must not proceed on
     a partial cache - the cache is what survives the prune.
     """
-    cities = [c["city_key"] for c in
-              rest("cities", [("select", "city_key"), ("order", "city_key")])]
+    # Active only. A retired city's cached days are kept forever, but there is
+    # no reason to spend a per-city statement refreshing history nobody prices.
+    cities = sorted(active_city_keys())
     if not cities:
         return {"cities": 0, "city_days_total": 0}
 
@@ -392,6 +393,40 @@ def get_cities(require_coords=True, require_icao=False):
             continue
         out.append(c)
     return out
+
+
+def active_city_keys():
+    """The city keys that are still ours to work on.
+
+    ONE DEFINITION OF ACTIVE, because there were four. get_cities() gates on
+    status='active' and every ingest, pricing and settlement script goes
+    through it - but three paths read the cities table raw, and two more read
+    derived_city_day_features with no city filter at all. A city retired in the
+    cities table would go on being fitted from its cached days, go on having
+    its cache refreshed, and go on appearing in capacity, because none of those
+    five asked.
+
+    Retirement is not deletion here (see the 2026-09-19 migration): the rows
+    stay forever, so "is this city retired" can only ever be a question about
+    cities.status, never about whether data exists.
+    """
+    return {c["city_key"] for c in
+            rest("cities", {"select": "city_key", "status": "eq.active",
+                            "limit": "500"})}
+
+
+def drop_retired(rows, active=None, key="city_key"):
+    """Keep only rows belonging to an active city; say what went.
+
+    Returns (kept, dropped_city_keys). The second half is not optional: a
+    silently shorter city list is the exact shape of the bug that left six
+    cities unpredicted on 2026-09-19, and a caller that cannot say which
+    cities it dropped cannot tell a retirement from a defect.
+    """
+    active = active_city_keys() if active is None else active
+    kept = [r for r in rows if r.get(key) in active]
+    dropped = sorted({r.get(key) for r in rows if r.get(key) not in active})
+    return kept, dropped
 
 SKY_CONDITION_MAP = {
     "CLR": "CLEAR", "SKC": "CLEAR",

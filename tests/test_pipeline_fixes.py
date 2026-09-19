@@ -511,12 +511,16 @@ def rpc_calls(monkeypatch):
     monkeypatch.setattr(common.requests, "post", p)
     monkeypatch.setattr(common, "rest",
                         lambda *a, **k: [{"city_key": c} for c in ("nyc", "chicago", "austin")])
+    # The refresh now iterates common.active_city_keys(), a SET, so the order
+    # is the client's (sorted) rather than whatever the server happened to
+    # return. It was already alphabetical in production - the old read passed
+    # order=city_key - so this pins the guarantee instead of the accident.
     return p
 
 
 def test_the_cache_refresh_is_one_call_per_city(rpc_calls):
     out = common.refresh_feature_cache(quiet=True)
-    assert [c[1].get("p_city") for c in rpc_calls.calls] == ["nyc", "chicago", "austin"]
+    assert [c[1].get("p_city") for c in rpc_calls.calls] == ["austin", "chicago", "nyc"]
     assert out["cities"] == 3
     assert out["city_days_touched"] == 2400, "per-city counts are summed, not overwritten"
     assert out["city_hours"] == 72

@@ -54,7 +54,7 @@ import datetime as dt
 import random
 import sys
 
-from common import rest_all, upsert, log_run
+from common import rest_all, upsert, log_run, active_city_keys, drop_retired
 
 # ---------------------------------------------------------------------------
 # The rule, as constants, so changing the bar is a visible change.
@@ -211,6 +211,18 @@ def load():
         ("select", "city_key,target,fitted_at,model_version"),
         ("target", f"eq.{TARGET}"),
     ], order="city_key.asc", page_size=1000)
+
+    # Retired cities keep their history and their last fit; they must not keep
+    # earning a promotion off it. Filtering the OUTCOMES alone would be enough
+    # - a prediction with nothing to score against cannot clear the forward-day
+    # floor - but predictions and fits go too, so the report never names a city
+    # the desk has stopped trading.
+    active = active_city_keys()
+    preds, retired = drop_retired(preds, active)
+    obs, _ = drop_retired(obs, active)
+    fits, _ = drop_retired(fits, active)
+    if retired:
+        print(f"{len(retired)} retired city/cities excluded: " + ", ".join(retired))
     return preds, obs, fits
 
 

@@ -14,8 +14,15 @@ const assert = require('node:assert/strict');
       band_lo numeric,band_hi numeric,open_low boolean,open_high boolean,token_yes text,token_no text,condition_id text);
     create table public.markets(market_id uuid primary key,closed boolean,resolution_date date,city_key text,
       event_slug text,unit text,condition_id text,last_seen_at timestamptz default now());
+    -- created_at/updated_at are NOT NULL in production (both default now()).
+    -- A migration that stamps updated_at fails here without them, and the
+    -- 2026-09-19 retirement migration does exactly that. See CLAUDE.md: the
+    -- fixture has to match the live shape or the contracts pass against a
+    -- database that does not exist.
     create table public.cities(city_key text primary key,display_name text,unit text,status text,
-      timezone text,latitude numeric,longitude numeric);
+      timezone text,latitude numeric,longitude numeric,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now());
     create table public.weather_observations(obs_id bigint primary key,city_key text,valid_at timestamptz,
       observed_at timestamptz);
     create table public.weather_forecasts(forecast_id bigint primary key,city_key text,model text,run_at timestamptz,

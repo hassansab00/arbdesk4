@@ -83,6 +83,10 @@ def _run(monkeypatch, cache_rows, *, argv=("weather_model",), fresh=None):
         return []                                  # no forecast days
 
     monkeypatch.setattr(wm, "rest_all", fake_rest_all)
+    # Every city in the scripted cache is active. The retirement filter has its
+    # own tests; here it must not be what decides the outcome.
+    monkeypatch.setattr(wm, "active_city_keys",
+                        lambda: {r["city_key"] for r in cache_rows})
     monkeypatch.setattr(wm, "log_run",
                         lambda job, status, n, detail=None: logged.update(
                             status=status, n=n, detail=detail or {}))
