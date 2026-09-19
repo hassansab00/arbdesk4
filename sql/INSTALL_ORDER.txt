@@ -85,6 +85,7 @@ ad4_70_archive_exemption.sql
 ad4_68_prediction_ladder_outcomes.sql
 ad4_71_observation_health.sql
 ad4_72_model_promotion.sql
+ad4_74_prune_resolution_evidence.sql
 ad4_live_weather_timing.sql
 ad4_book_no_side.sql
 ad4_prune_dead_book_detail.sql

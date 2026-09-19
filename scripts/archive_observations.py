@@ -179,6 +179,44 @@ TABLES = {
         # precondition for it.
         "needs_feature_cache": False,
     },
+    # 31 MB TO 75 MB IN THREE DAYS. 11,123 rows at about 7 KB each, because
+    # every row carries the full Gamma and CLOB payloads that prove a band's
+    # winner. At ~2,200 rows a day that is 15 MB a day - enough on its own to
+    # fill a 500 MB tier inside a month.
+    #
+    # It is also the most valuable table here: those payloads are what make an
+    # outcome admissible, and the whole of Phase 2A was about a running
+    # maximum not being a settlement. So the read is from a VIEW, not the
+    # table. v_prunable_resolution_evidence is only the proofs whose band
+    # outcome is ALREADY FROZEN in fact_band_outcome - a proof for a band
+    # nobody has banked is the only copy of that answer and is never offered,
+    # at any age.
+    #
+    # Reading the same view the prune deletes from is what makes the count
+    # contract hold: the rows uploaded ARE the rows removed, by construction,
+    # rather than by two hand-written predicates that would drift apart.
+    "resolution": {
+        "table": "paper_resolution_evidence",
+        "read_from": "v_prunable_resolution_evidence",
+        "pk": "proof_id",
+        "cutoff_col": "captured_at",
+        "cutoff_is_date": False,
+        "prune_rpc": "prune_resolution_evidence",
+        "tag": "resolution-archive",
+        # proof_id pages the export and is deliberately NOT exported: a
+        # surrogate key means nothing outside the database that issued it. The
+        # row is identified by condition_id plus the two token ids, which are
+        # the venue's own identifiers and survive anywhere.
+        "columns": ["condition_id", "token_yes", "token_no",
+                    "winning_token", "captured_at", "gamma", "clob", "source_urls"],
+        "bytes_per_row": 7000,
+        # THREE DAYS, the floor prune_resolution_evidence allows: a settlement
+        # captured this morning is still being read by the next databank run,
+        # which is what turns it into the frozen outcome that makes the proof
+        # archivable in the first place.
+        "keep_days": 3,
+        "needs_feature_cache": False,
+    },
 }
 
 

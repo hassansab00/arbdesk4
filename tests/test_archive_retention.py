@@ -91,7 +91,12 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
     """
     from archive_observations import TABLES
 
-    limits = {"observations": 90, "forecasts": 90, "trades": 90, "research": 2}
+    # resolution: 3, the floor prune_resolution_evidence allows. A settlement
+    # captured this morning is still being read by the next databank run,
+    # which is what turns it into the frozen outcome that makes the proof
+    # archivable at all - so the window cannot be shorter than that loop.
+    limits = {"observations": 90, "forecasts": 90, "trades": 90, "research": 2,
+              "resolution": 3}
     for name, spec in TABLES.items():
         window = spec.get("keep_days", 90)
         assert window <= limits[name], (

@@ -26,8 +26,40 @@
 -- Applied live 2026-09-16: 44,788 rows pruned, book_snapshots 94 MB -> 52 MB,
 -- database 462 MB -> 436 MB after a VACUUM FULL. Re-runnable.
 
-create or replace function public.prune_dead_book_detail(p_older_than interval default interval '6 hours')
-returns integer
+-- AND THEN THE LIVE ONES CAME BACK. Measured 2026-09-19, three days after
+-- the run above:
+--
+--   market_state   rows      still carrying a ladder   older than 6h
+--   DEAD_LOSER   115,609                       3,400               0
+--   LIVE          59,915                      43,813          42,333
+--   ONE_SIDED      2,308                       1,704           1,648
+--   WIDE           2,176                       1,838           1,761
+--
+-- The dead half is working exactly as intended - 115,609 rows, 3,400 ladders,
+-- nothing left to prune. The table is back to 129 MB because a LIVE band's
+-- ladder is never pruned at all, and 42,333 of them are more than six hours
+-- old.
+--
+-- A FOUR-DAY-OLD LADDER IS NOT READ BY ANYTHING. v_latest_book takes the
+-- newest snapshot per band. v_band_price_history, which draws the monitor's
+-- chart, reads best_bid, best_ask and mid. The edge engine prices from the
+-- current book. Nothing walks a historical ladder level by level, and if
+-- anything ever needs to, ad4_synth_levels() rebuilds one from the cumulative
+-- USD tiers that survive here.
+--
+-- So the window is by STATE: six hours for a band the market has decided,
+-- forty-eight for one still trading - long enough that a whole weekend of
+-- intraday analysis still has its ladders, short enough that the table stops
+-- growing by tens of megabytes a week.
+--
+-- THE NEWEST SNAPSHOT PER BAND IS NEVER TOUCHED, whatever its age. The age
+-- windows almost guarantee that already on an hourly feed, but 'almost' is
+-- how v_latest_book would one day return a row with no ladder on a band the
+-- collector had stopped seeing.
+create or replace function public.prune_dead_book_detail(
+  p_older_than      interval default interval '6 hours',
+  p_live_older_than interval default interval '48 hours'
+) returns integer
 language plpgsql
 security definer
 set search_path = public, pg_temp
@@ -35,21 +67,30 @@ as $$
 declare
   n integer := 0;
 begin
-  update book_snapshots
+  with newest as (
+    select distinct on (band_id) snapshot_id
+      from book_snapshots
+     order by band_id, observed_at desc
+  )
+  update book_snapshots b
      set raw_book = null, no_book = null
-   where observed_at < now() - p_older_than
-     and market_state in ('DEAD_LOSER', 'DEAD_WINNER')
-     and (raw_book is not null or no_book is not null);
+   where (b.raw_book is not null or b.no_book is not null)
+     and b.snapshot_id not in (select snapshot_id from newest)
+     and b.observed_at < now() - case
+           when b.market_state in ('DEAD_LOSER', 'DEAD_WINNER') then p_older_than
+           else p_live_older_than
+         end;
   get diagnostics n = row_count;
   return n;
 end;
 $$;
 
-comment on function public.prune_dead_book_detail(interval) is
-  'Nulls raw_book and no_book on settled-in-practice bands (DEAD_LOSER/DEAD_WINNER) older than the given age. Keeps every numeric column, including the cumulative USD tiers ad4_synth_levels() rebuilds a ladder from. Never deletes a row.';
+comment on function public.prune_dead_book_detail(interval, interval) is
+  'Nulls raw_book and no_book on snapshots nobody reads: six hours for a band the market has decided, forty-eight for one still trading, and never the newest snapshot of any band. Keeps every numeric column, including the cumulative USD tiers ad4_synth_levels() rebuilds a ladder from. Never deletes a row.';
 
-revoke all on function public.prune_dead_book_detail(interval) from public, anon, authenticated;
-grant execute on function public.prune_dead_book_detail(interval) to service_role;
+drop function if exists public.prune_dead_book_detail(interval);
+revoke all on function public.prune_dead_book_detail(interval, interval) from public, anon, authenticated;
+grant execute on function public.prune_dead_book_detail(interval, interval) to service_role;
 
 create extension if not exists pg_cron;
 select cron.schedule('ad4_prune_dead_book_detail', '23 * * * *',
