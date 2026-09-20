@@ -20,26 +20,53 @@ import { fmtAge } from "@/lib/format";
 
 interface Row { job: string; status: string | null; logged_at: string | null; rows: number | null }
 
+/**
+ * THE JOB NAMES HERE HAVE TO BE THE ONES SOMETHING ACTUALLY WRITES.
+ *
+ * Four of these seven were names nobody logs. `observations`, `forecasts` and
+ * `probabilities` have never appeared in ingest_log in the history of this
+ * database - the scripts write `ingest_observations`, `ingest_forecasts`,
+ * `probability_engine` and `edge_engine` - and `live_weather` is real but is
+ * the MANUAL Actions fallback, last run 5 Sep, while the live path is n8n's
+ * P1.2. So the panel reported four feeds as "never run" on a desk where all
+ * four had written within the hour, and told Hassan to start fixing the one
+ * that was least broken.
+ *
+ * The three that were correct are the three n8n ones, whose names match their
+ * template filenames. The four that were wrong are the Python side, where the
+ * name was guessed. tests/test_the_pipeline_panel_names_real_jobs.py now
+ * checks every name against what the repo actually writes.
+ *
+ * A FEED CAN HAVE MORE THAN ONE WRITER, and the two shapes are different:
+ *
+ *   either  Actions OR n8n does the job - live weather and forecasts each
+ *           have a workflow and an n8n flow, and the NEWEST of them is the
+ *           truth. The old single name could only ever see one of the two.
+ *   both    the feed needs all of them - probabilities without edges leaves
+ *           the Opportunities list empty, so the OLDEST is the truth and a
+ *           half-running feed cannot read as healthy.
+ */
 const CHAIN: Array<{
-  job: string;
+  jobs: string[];
+  mode: "either" | "both";
   label: string;
   where: string;
   staleAfterH: number;
   feeds: string;
 }> = [
-  { job: "P0.2_market_discovery", label: "Markets & buckets", where: "n8n · P0.2",
-    staleAfterH: 12, feeds: "the buckets on the Board. Missing ones mean a ladder that cannot sum to 100¢." },
-  { job: "P0.3_book_volume_snapshot", label: "Order books", where: "n8n · P0.3",
+  { jobs: ["P0.2_market_discovery"], mode: "either", label: "Markets & buckets", where: "n8n · P0.2",
+    staleAfterH: 12, feeds: "the buckets on the Board. Missing ones mean a ladder that cannot sum to 100\u00a2." },
+  { jobs: ["P0.3_book_volume_snapshot"], mode: "either", label: "Order books", where: "n8n · P0.3",
     staleAfterH: 3, feeds: "every price. Without it each bucket is blocked, and Opportunities and Overview have nothing to rank." },
-  { job: "observations", label: "Station observations", where: "Actions · Station Observations",
+  { jobs: ["ingest_observations"], mode: "either", label: "Station observations", where: "Actions · Station Observations",
     staleAfterH: 6, feeds: "the running max, the climate baseline, hotness and the weather model." },
-  { job: "live_weather", label: "Live weather", where: "Actions · Live Weather / n8n · P1.2",
+  { jobs: ["P1.2_nws_monitor", "live_weather"], mode: "either", label: "Live weather", where: "Actions · Live Weather / n8n · P1.2",
     staleAfterH: 2, feeds: "the temperatures on the Board and City Watch." },
-  { job: "forecasts", label: "Forecasts", where: "Actions · Forecasts / n8n · P1.3",
+  { jobs: ["P1.5_open_meteo", "P1.3_nws_forecast", "ingest_forecasts"], mode: "either", label: "Forecasts", where: "Actions · Forecasts / n8n · P1.3",
     staleAfterH: 12, feeds: "the centre of every probability. Nothing prices without one." },
-  { job: "probabilities", label: "Probability + edge", where: "Actions · Probabilities",
+  { jobs: ["probability_engine", "edge_engine"], mode: "both", label: "Probability + edge", where: "Actions · Probabilities",
     staleAfterH: 8, feeds: "model probabilities and edges — the Opportunities list itself." },
-  { job: "P0.4_trade_history", label: "Trade history", where: "n8n · P0.4",
+  { jobs: ["P0.4_trade_history"], mode: "either", label: "Trade history", where: "n8n · P0.4",
     staleAfterH: 12, feeds: "all volume figures and the thin-market flags." },
 ];
 
@@ -54,11 +81,21 @@ export default function PipelineStatus({ compact }: { compact?: boolean }) {
   for (const r of q.data ?? []) if (!latest.has(r.job)) latest.set(r.job, r);
 
   const state = CHAIN.map((c) => {
-    const r = latest.get(c.job);
+    const rows = c.jobs.map((j) => latest.get(j)).filter((r): r is Row => !!r);
+    // "either" takes the newest writer, "both" the oldest - see the note on
+    // CHAIN. With one job name the two are the same thing.
+    const r = rows.length === 0 ? undefined
+      : rows.reduce((pick, row) => {
+          const a = new Date(row.logged_at ?? 0).getTime();
+          const b = new Date(pick.logged_at ?? 0).getTime();
+          return (c.mode === "either" ? a > b : a < b) ? row : pick;
+        });
+    // A "both" feed is only whole when every writer has reported at least once.
+    const complete = c.mode === "either" ? rows.length > 0 : rows.length === c.jobs.length;
     const ageH = r?.logged_at ? (Date.now() - new Date(r.logged_at).getTime()) / 3600_000 : null;
     return {
       ...c, row: r, ageH,
-      status: !r ? "never" : ageH !== null && ageH > c.staleAfterH ? "stale" : "ok",
+      status: !r || !complete ? "never" : ageH !== null && ageH > c.staleAfterH ? "stale" : "ok",
     };
   });
 
@@ -93,7 +130,7 @@ export default function PipelineStatus({ compact }: { compact?: boolean }) {
       {!compact && (
         <ul className="divide-y divide-border text-[11px]">
           {state.map((s) => (
-            <li key={s.job} className="flex flex-wrap items-baseline gap-x-2 px-3 py-1.5">
+            <li key={s.label} className="flex flex-wrap items-baseline gap-x-2 px-3 py-1.5">
               <span
                 className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
                   s.status === "ok" ? "bg-good" : s.status === "stale" ? "bg-warn" : "bg-bad"
