@@ -131,3 +131,71 @@ def test_alternative_writers_are_judged_on_the_newer_one():
             f"{label} has an Actions path and an n8n path; whichever ran most recently is "
             "the truth about the feed"
         )
+
+
+# --- and the label has to name something that actually runs ----------------
+#
+# The names above were only half of it. The panel also told Hassan WHERE to go
+# and fix each feed, and two of those were dead ends:
+#
+#   "Actions · Live Weather"   live_weather.yml has no schedule at all. 47
+#                              runs in its life, every one workflow_dispatch,
+#                              last on 5 Sep. It is the manual fallback for
+#                              when n8n is down, and pointing at it as the
+#                              feed's runner sends you to a button.
+#   "Actions · Probabilities"  no such workflow has ever existed. Probabilities
+#                              and edges run inside pipeline_intraday.
+#
+# So a label may name an Actions workflow only if that workflow is on a cron.
+# A manual one has to say so.
+
+import yaml
+
+
+def _scheduled_workflow_titles():
+    """The `name:` of every .github workflow that actually runs on a schedule."""
+    titles = {}
+    for path in (ROOT / ".github" / "workflows").glob("*.yml"):
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        # PyYAML reads a bare `on:` key as the boolean True.
+        triggers = doc.get("on", doc.get(True)) or {}
+        titles[doc.get("name", path.stem)] = bool(
+            isinstance(triggers, dict) and triggers.get("schedule")
+        )
+    return titles
+
+
+def _labels():
+    block = PANEL[PANEL.index("const CHAIN"): PANEL.index("export default")]
+    return re.findall(r'label:\s*"([^"]+)",\s*where:\s*"([^"]+)"', block)
+
+
+def test_a_label_naming_an_actions_workflow_means_one_that_is_scheduled():
+    scheduled = _scheduled_workflow_titles()
+    for label, where in _labels():
+        for named in re.findall(r"Actions · ([A-Za-z0-9 ()/]+?)(?: is manual only|\s*/|$)", where):
+            named = named.strip()
+            # Prefix, so "Actions · Observations" may stand for the workflow
+            # actually called "Observations (IEM METAR)" - short enough for the
+            # row, and still the name you will find in the Actions list.
+            matches = [w for w in scheduled if w.startswith(named)]
+            assert matches, (
+                f"'{label}' sends you to Actions · {named}, which is not the start of any "
+                f"workflow name in .github/workflows. Known: {sorted(scheduled)}"
+            )
+            assert any(scheduled[w] for w in matches) or "manual" in where, (
+                f"'{label}' points at Actions · {named} as its runner, but that workflow "
+                "has no schedule - it only runs when someone presses the button. Say so "
+                "in the label or point at whatever actually runs."
+            )
+
+
+def test_the_two_dead_ends_are_not_back():
+    wheres = " | ".join(w for _, w in _labels())
+    assert "Actions · Probabilities" not in wheres, (
+        "no such workflow has ever existed; probabilities run inside pipeline_intraday"
+    )
+    assert not re.search(r"Actions · Live Weather(?! is manual only)", wheres), (
+        "live_weather.yml has no cron - naming it as the feed's runner sends you to a "
+        "button that has not been pressed since 5 Sep"
+    )
