@@ -153,7 +153,7 @@
       ],
       "parameters": {
         "method": "GET",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/cities?select=city_key,icao,unit,latitude,longitude,nws_supported,prior_alert:live_weather(nws_alert)&icao=not.is.null&limit=200",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/cities?select=city_key,icao,unit,latitude,longitude,nws_supported,prior_alert:live_weather(nws_alert)&icao=not.is.null&status=eq.active&limit=200",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

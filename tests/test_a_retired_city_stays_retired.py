@@ -228,12 +228,25 @@ def test_history_is_deliberately_not_filtered():
     exists so that a later "filter it everywhere" sweep has to argue with
     something.
     """
-    kept = ["v_archive_by_city", "v_city_stats", "v_verified_fact_band_outcome",
-            "v_city_observation_health"]
+    kept = ["v_archive_by_city", "v_city_stats", "v_verified_fact_band_outcome"]
     for view in kept:
         assert view not in FILTERED_VIEWS, (
-            f"{view} is history or diagnosis, not a trading surface — a "
-            f"retired city has to stay visible in it")
+            f"{view} is the record, not a trading surface — a retired city has "
+            f"to stay visible in it")
+
+    # ONE VIEW IS ACTIVE-ONLY BY ITS OWN DESIGN, and it is worth saying so
+    # rather than letting a reader assume it covers everything.
+    # v_city_observation_health has filtered on status since it was written,
+    # months before any city was retired, because it answers "is the desk's
+    # data healthy", which is a question about the cities the desk is running.
+    # The consequence is real and accepted: you cannot use it to ask why jinan
+    # went quiet. weather_observations and derived_city_day_features still
+    # hold every reading those cities ever produced, which is where that
+    # question gets answered.
+    health = open("sql/ad4_71_observation_health.sql").read()
+    assert "coalesce(c.status, 'active') = 'active'" in health, (
+        "the observation health view is documented as active-only; if that "
+        "changed, this comment and the retirement notes need to change too")
 
 
 def test_stored_fits_cannot_resurrect_a_retired_city(monkeypatch):
@@ -249,6 +262,93 @@ def test_stored_fits_cannot_resurrect_a_retired_city(monkeypatch):
     monkeypatch.setattr(wm, "active_city_keys", lambda: {"nyc"})
     fits = wm.stored_fits()
     assert set(fits) == {"nyc"}, "a retired city's stored fit is not a licence to predict"
+
+
+# ---------------------------------------------------------------------------
+# every surface that decides WHICH CITIES, in one list
+# ---------------------------------------------------------------------------
+# Three passes were needed to finish this retirement, and each time the miss
+# was a surface nobody had enumerated:
+#
+#   pass 1  the cities table readers and the feature-cache readers
+#   pass 2  the views that build their city list from markets and bands, and
+#           stored_fits(), which let --predict-only resurrect a retired city
+#   pass 3  the four n8n collectors, which went on discovering markets and
+#           fetching forecasts for cities the desk had stopped trading, and
+#           the Live page, which renders from live_weather rather than cities
+#
+# So the list itself is the fix. Anything that turns rows into "the cities we
+# are working on" belongs here, and a new one cannot be added without being
+# listed, because the enumeration is what is asserted.
+
+
+def test_every_n8n_collector_asks_for_active_cities_only():
+    """A collector that ignores status keeps spending API calls, and keeps
+    writing rows, for a city nobody trades. Two spellings are accepted because
+    both are in use and both are correct: the PostgREST filter, and P1.5's
+    explicit skip in a Code node."""
+    import glob
+    offenders = []
+    for path in sorted(glob.glob("n8n/*.template.json")):
+        src = open(path).read()
+        if "rest/v1/cities?" not in src:
+            continue                      # does not build a city list at all
+        if "status=eq.active" in src or "!== 'active'" in src:
+            continue
+        offenders.append(path)
+    assert offenders == [], (
+        "these n8n workflows build a city list without filtering on status: "
+        + ", ".join(offenders))
+
+
+def test_every_page_that_reads_the_cities_table_filters_it():
+    """Four pages read it and only one filtered, so the desk offered cities it
+    had stopped trading."""
+    import glob
+    offenders = []
+    for path in sorted(glob.glob("web/app/**/page.tsx", recursive=True)):
+        src = open(path).read()
+        lines = src.splitlines()
+        for i, line in enumerate(lines):
+            if 'from("cities")' not in line:
+                continue
+            window = "\n".join(lines[i:i + 4])
+            if '"status", "active"' not in window:
+                offenders.append(f"{path}:{i + 1}")
+    assert offenders == [], (
+        "these read the cities table without filtering on status: "
+        + ", ".join(offenders))
+
+
+def test_a_page_rendering_from_live_weather_filters_to_the_roster():
+    """live_weather has a row per city forever, so a page that renders FROM it
+    shows retired cities even when its cities query is filtered. The Live page
+    did exactly that: 54 rows, five of them with no display name."""
+    src = open("web/app/live/page.tsx").read()
+    assert "cityByKey.has(l.city_key)" in src, (
+        "web/app/live/page.tsx renders from live_weather without filtering to "
+        "the active roster")
+
+
+def test_the_python_chokepoints_are_the_only_ones():
+    """Every script that needs a city list goes through common, and the two
+    helpers there are the only definitions of 'active'."""
+    import glob
+    offenders = []
+    for path in sorted(glob.glob("scripts/*.py")):
+        src = open(path).read()
+        for i, line in enumerate(src.splitlines()):
+            if 'rest("cities"' not in line and "rest('cities'" not in line:
+                continue
+            if path.endswith("common.py"):
+                continue                  # the definitions themselves
+            if path.endswith("verify_resolution_source.py"):
+                continue                  # a manual diagnostic: it SHOULD see
+                                          # a retired city, that is the point
+            offenders.append(f"{path}:{i + 1}")
+    assert offenders == [], (
+        "these read the cities table directly instead of going through "
+        "common.get_cities() / common.active_city_keys(): " + ", ".join(offenders))
 
 
 # ---------------------------------------------------------------------------
