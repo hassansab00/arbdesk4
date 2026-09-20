@@ -1094,6 +1094,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "fact_signal_outcome",
     "signals"
   ],
+  "v_strategy_desk_board": [
+    "paper_accounts",
+    "paper_orders",
+    "paper_trade_plans"
+  ],
   "v_synthesis_findings": [
     "bands",
     "derived_city_climate",

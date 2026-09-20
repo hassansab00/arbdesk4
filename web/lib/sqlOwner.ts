@@ -154,6 +154,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_signal_scorecard_by_version": "supabase/migrations/20260919190000_signals_learn_from_settlement.sql",
   "v_storage_report": "ad4_29_retention.sql",
   "v_strategy_board": "ad4_33_control.sql",
+  "v_strategy_desk_board": "ad4_76_strategy_desk_board.sql",
   "v_strategy_params": "ad4_34_trade_plan.sql",
   "v_synthesis_findings": "ad4_40_synthesis.sql",
   "v_synthesis_inventory": "ad4_35_databank_inventory.sql",

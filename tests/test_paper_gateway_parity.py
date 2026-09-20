@@ -65,7 +65,12 @@ def test_both_paths_offer_the_same_commands():
 
 
 def test_both_paths_read_the_same_resources():
-    edge = set(re.findall(r"^\s*(\w+):\s*`paper_\w+\?", code(EDGE), re.M))
+    # `paper_\w+` here used to be `paper_` exactly, which held only while every
+    # resource happened to be a paper_* TABLE. Per-desk strategy state is a
+    # view - the join across plans, orders and the policy belongs in the
+    # database - so the pattern now matches any relation. What is under test is
+    # that both paths expose the same resource KEYS, never how they are named.
+    edge = set(re.findall(r"^\s*(\w+):\s*`[\w]+\?select=", code(EDGE), re.M))
     route = set(re.findall(r"^\s*(\w+):\(\)=>client", code(ROUTE), re.M))
     missing = sorted(route - edge)
     assert not missing, f"the edge gateway cannot read: {missing}"
