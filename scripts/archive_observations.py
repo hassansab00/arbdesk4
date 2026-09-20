@@ -230,6 +230,30 @@ TABLES = {
     # their band's newest. Verified against the live table before anything was
     # removed - 40,986 rows prunable, band-days 26,513 before and after, and
     # min(observed_at) identical to the microsecond.
+    # edges is an append-only log: one row per band, per side, per intraday
+    # run, four times a day. 121,644 of its 136,184 rows have already been
+    # superseded, and nothing reads the table directly - every consumer goes
+    # through v_latest_edge, which takes the newest row per band and side.
+    # So what leaves is a pricing that a later pricing replaced.
+    "edges": {
+        "table": "edges",
+        "read_from": "v_prunable_edge_history",
+        "pk": "edge_id",
+        "cutoff_col": "computed_at",
+        "cutoff_is_date": False,
+        "prune_rpc": "prune_edge_history",
+        "tag": "edges-archive",
+        "columns": [
+            "band_id", "computed_at", "side", "model_prob", "market_price",
+            "quoted_price", "edge_pp", "edge_net_pp", "edge_per_dollar",
+            "fillable_usd_2c", "fillable_usd_5c", "fillable_usd_10c",
+            "est_fee", "est_slippage", "book_snapshot_id", "prob_id",
+            "confidence", "regime_label", "tradeable", "block_reason",
+        ],
+        "bytes_per_row": 290,
+        "keep_days": 14,
+        "needs_feature_cache": False,
+    },
     "books": {
         "table": "book_snapshots",
         "read_from": "v_prunable_book_redundancy",

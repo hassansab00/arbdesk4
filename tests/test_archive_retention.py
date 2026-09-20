@@ -100,8 +100,13 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
     # and the backtest window never move. What it bounds is how long the
     # intra-day snapshots survive, and v_band_price_history draws the
     # monitor's chart from those, so it cannot be shorter than the chart.
+    # edges: 14, and like books this window does not bound HISTORY - every band
+    # and side keeps its newest pricing at any age, which is the one row
+    # v_latest_edge reads and every page is built on. What it bounds is how long
+    # a SUPERSEDED pricing survives, and the longest window any live reader asks
+    # for is the twelve hours the readiness views and ad4_40 use.
     limits = {"observations": 90, "forecasts": 90, "trades": 90, "research": 2,
-              "resolution": 3, "books": 7}
+              "resolution": 3, "books": 7, "edges": 14}
     assert set(limits) == set(TABLES), (
         f"a dataset was added to the archive without a reasoned retention ceiling here: "
         f"{sorted(set(TABLES) ^ set(limits))}")

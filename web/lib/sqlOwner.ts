@@ -149,6 +149,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_probability_reliability": "ad4_75_probability_reliability.sql",
   "v_provisional_settings": "ad4_39_freshness.sql",
   "v_prunable_book_redundancy": "ad4_79_prune_book_redundancy.sql",
+  "v_prunable_edge_history": "ad4_80_prune_edge_history.sql",
   "v_prunable_resolution_evidence": "ad4_74_prune_resolution_evidence.sql",
   "v_run_scope": "ad4_32_run_scope.sql",
   "v_sigma_inputs": "ad4_45_calibration_feedback.sql",

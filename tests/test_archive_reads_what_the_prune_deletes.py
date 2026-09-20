@@ -80,17 +80,53 @@ def test_every_page_of_a_view_backed_export_stays_on_the_view(monkeypatch):
     assert set(seen) == {"v_prunable_resolution_evidence"}
 
 
-def test_a_dataset_without_a_view_still_reads_its_own_table(monkeypatch):
-    """`read_from` is an exception, not a rename. The three datasets whose
-    prune predicate PostgREST *can* express keep reading their tables."""
-    for name in ("observations", "forecasts", "trades", "research"):
-        spec = ao.TABLES[name]
-        assert "read_from" not in spec, (
-            f"{name} declares read_from; add it to the view-backed list here"
-        )
-        seen = _record_reads(monkeypatch)
-        ao.export_cold(spec, _cutoff())
-        assert seen[0] == spec["table"]
+# WHAT EACH DATASET MUST READ, all of them, named one by one.
+#
+# This started as a loop over four hardcoded names, and a mutation proved what
+# that costs: DELETING `read_from` from the edges spec left the whole suite
+# green, because only `resolution` was ever asserted to read its view and
+# `books` and `edges` were in neither list. That is the ORIGINAL BUG's mirror
+# image - a declared read_from that nothing read, and now a missing one that
+# nothing noticed - so the list is now every dataset, and a new one fails here
+# until someone says which relation it reads.
+#
+# A view is needed exactly when the prune's predicate is one PostgREST cannot
+# express: "and its band's outcome is already frozen", "and it is not the
+# closing book of its band-day", "and it is not the newest pricing of its band
+# and side". The other four prune on a plain timestamp, which a REST filter
+# says perfectly well.
+EXPORT_SOURCE = {
+    "observations": "weather_observations",
+    "forecasts":    "weather_forecasts",
+    "trades":       "trades_observed",
+    "research":     "research_captures",
+    "resolution":   "v_prunable_resolution_evidence",
+    "books":        "v_prunable_book_redundancy",
+    "edges":        "v_prunable_edge_history",
+}
+
+
+def test_every_dataset_is_named_here():
+    assert set(EXPORT_SOURCE) == set(ao.TABLES), (
+        f"a dataset was added to the archive without saying which relation it exports "
+        f"from: {sorted(set(ao.TABLES) ^ set(EXPORT_SOURCE))}"
+    )
+
+
+@pytest.mark.parametrize("name", sorted(EXPORT_SOURCE))
+def test_the_export_requests_the_relation_the_prune_deletes_from(monkeypatch, name):
+    """Called, not read off the spec. A test that reads `read_from` can only
+    prove `read_from` was written down."""
+    want = EXPORT_SOURCE[name]
+    seen = _record_reads(monkeypatch)
+    ao.export_cold(ao.TABLES[name], _cutoff())
+    assert seen and seen[0] == want, (
+        f"the {name} export read {seen[0] if seen else None!r}, not {want!r}. The prune "
+        "counts and deletes through that relation, so reading anything else exports rows "
+        "the prune will not remove and the count contract refuses the run."
+    )
+    if want != ao.TABLES[name]["table"]:
+        assert ao.TABLES[name]["table"] not in seen
 
 
 def test_read_source_is_the_single_place_that_decides():
@@ -120,6 +156,7 @@ def test_the_exported_columns_exist_on_whatever_is_read(name):
     defines = {
         "v_prunable_resolution_evidence": "ad4_74_prune_resolution_evidence.sql",
         "v_prunable_book_redundancy":     "ad4_79_prune_book_redundancy.sql",
+        "v_prunable_edge_history":        "ad4_80_prune_edge_history.sql",
     }
     assert source in defines, f"{source} has no SQL file registered here"
     sql = (Path(ao.__file__).resolve().parents[1]
@@ -217,4 +254,47 @@ def test_the_workflow_offers_every_dataset_the_script_knows():
         f"the Actions page offers {sorted(offered)} but the script archives "
         f"{sorted(ao.TABLES)}. A dataset that cannot be selected cannot be run on its own, "
         "which is exactly what you need when one of them is failing."
+    )
+
+
+def test_the_edge_view_protects_the_one_row_every_page_is_built_on():
+    """edges is the fourth-largest table and an append-only log: edge_engine
+    writes one row per band, per side, every intraday run. 121,644 of its
+    136,184 rows have already been superseded.
+
+    Nothing reads the table. Every consumer goes through v_latest_edge, which
+    is `distinct on (band_id, side) order by computed_at desc` - exactly one
+    row per band and side. So the prunable set is everything that is not that
+    row, and the single guard holding it is:
+
+        rn > 1   partitioned by band_id AND SIDE
+
+    THE SIDE IS NOT DECORATION. YES and NO are priced separately and
+    v_latest_edge keeps one of each; ranking by band alone would rank the two
+    sides against each other and offer up the newest NO row of every band,
+    which v_opportunities would then be missing a price for. That is the
+    mutation this test exists to catch, and it is invisible in a row count -
+    the prunable set barely changes size.
+
+    Structural, like the book guard above: the view lives in sql/ and the
+    PGlite harness applies only supabase/migrations.
+    """
+    sql = (ROOT_SQL / "ad4_80_prune_edge_history.sql").read_text(encoding="utf-8")
+    view = sql[sql.index("create or replace view v_prunable_edge_history"):
+               sql.index("comment on view")]
+
+    partition = re.search(r"partition by\s+([^\n]+)", view)
+    assert partition, "the view no longer ranks the rows at all"
+    assert "e.band_id" in partition.group(1) and "e.side" in partition.group(1), (
+        f"the ranking partitions by {partition.group(1).strip()!r}. Without the side, the "
+        "newest NO pricing of every band becomes prunable while v_latest_edge still "
+        "reads it."
+    )
+    assert re.search(r"order by\s+e\.computed_at\s+desc", view), (
+        "the ranking is no longer newest-first, so rn = 1 is not the current pricing"
+    )
+    predicate = view[view.rindex("where"):]
+    assert re.search(r"r\.rn\s*>\s*1", predicate), (
+        "the view no longer holds back the newest pricing of each band and side - the "
+        "first prune takes every price off the board"
     )
