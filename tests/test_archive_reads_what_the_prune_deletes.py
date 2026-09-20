@@ -31,6 +31,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import archive_observations as ao  # noqa: E402
 
+ROOT_SQL = Path(__file__).resolve().parents[1] / "sql"
+
 
 def _record_reads(monkeypatch, rows_by_call=None):
     """Capture the relation every export page is requested from."""
@@ -112,8 +114,74 @@ def test_the_exported_columns_exist_on_whatever_is_read(name):
     source = ao.read_source(spec)
     if source == spec["table"]:
         return
+    # Each view-backed dataset names the file that defines its view. A new one
+    # without an entry fails here rather than silently skipping the check.
+    defines = {
+        "v_prunable_resolution_evidence": "ad4_74_prune_resolution_evidence.sql",
+        "v_prunable_book_redundancy":     "ad4_79_prune_book_redundancy.sql",
+    }
+    assert source in defines, f"{source} has no SQL file registered here"
     sql = (Path(ao.__file__).resolve().parents[1]
-           / "sql" / "ad4_74_prune_resolution_evidence.sql").read_text(encoding="utf-8")
-    view = sql[sql.index("create or replace view"):sql.index("comment on view")]
+           / "sql" / defines[source]).read_text(encoding="utf-8")
+    view = sql[sql.index(f"create or replace view {source}"):sql.index("comment on view")]
+
+    # A view may take the columns one at a time or take them all. `select s.*`
+    # off the spec's own table carries every column by construction - there is
+    # nothing to check and pretending otherwise by scanning for names would
+    # just fail on a view that is correct. A view that projects a SUBSET must
+    # still name every exported column.
+    import re
+    star = re.search(r"select\s+(\w+)\.\*\s+from\s+(?:public\.)?(\w+)\s+\1\b", view)
+    if star:
+        assert star.group(2) == spec["table"], (
+            f"{source} selects * from {star.group(2)}, not from {spec['table']}, so the "
+            "exported columns are not the ones the prune deletes"
+        )
+        return
     for col in [spec["pk"]] + list(spec["columns"]):
         assert col in view, f"{source} does not select {col}, so the export would 400"
+
+
+def test_the_book_view_protects_both_rows_a_reader_would_ask_for():
+    """The invariant the whole design rests on, and the one a mutation walked
+    straight through until this existed.
+
+    book_snapshots could not be pruned by age: scripts/backtest/runner.py asks
+    for the newest book per band at an arbitrary as_of, and v_backtest_window
+    bounds every backtest by min(observed_at) - so an age window silently
+    shortens what can be backtested. What is safe to remove is the intra-day
+    redundancy, and only because TWO rows are held back:
+
+        rn_in_day  > 1    each band-day keeps its CLOSING book, so every
+                          band-day that ever existed still has a row and
+                          min(observed_at) cannot move
+        rn_in_band > 1    each band keeps its NEWEST book at any age, which
+                          is what v_latest_book reads
+
+    Drop either and the view starts offering rows a live reader needs. Verified
+    against the live table before anything was removed: 40,986 rows prunable,
+    band-days 26,513 before and after, min(observed_at) identical to the
+    microsecond.
+
+    This is a STRUCTURAL check - it reads the predicate rather than executing
+    it, because the view lives in sql/ and the PGlite harness applies only
+    supabase/migrations. It is enough to catch either guard being removed,
+    which is the failure that actually happened.
+    """
+    sql = (ROOT_SQL / "ad4_79_prune_book_redundancy.sql").read_text(encoding="utf-8")
+    view = sql[sql.index("create or replace view v_prunable_book_redundancy"):
+               sql.index("comment on view")]
+    predicate = view[view.rindex("where"):]
+
+    assert "rn_in_day" in predicate and "> 1" in predicate.split("rn_in_day")[1][:12], (
+        "the view no longer holds back each band-day's closing book - min(observed_at) "
+        "and the backtest window will move the first time this prunes"
+    )
+    assert "rn_in_band" in predicate and "> 1" in predicate.split("rn_in_band")[1][:12], (
+        "the view no longer holds back each band's newest snapshot, which v_latest_book "
+        "reads - a band whose collector stopped would lose its last known book"
+    )
+    assert " and " in predicate, (
+        "the two protections must BOTH apply; either one alone leaves a live reader's "
+        "row in the prunable set"
+    )

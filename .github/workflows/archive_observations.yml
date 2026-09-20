@@ -77,3 +77,37 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # AN ARCHIVE NOTHING CAN READ IS INDISTINGUISHABLE FROM A DELETION, and
+      # this step is the half of that sentence which never shipped.
+      #
+      # The script writes web/public/archive/index.json after every prune, and
+      # nothing committed it - so it was written onto the runner and destroyed
+      # with the runner, every single run. The only copy in the repository was
+      # one made by hand on 19 Sep listing research alone, while the Releases
+      # held 623,768 rows across four datasets. /api/archive reads that index
+      # to find an asset, so half a million archived rows were unreachable
+      # from the platform that archived them.
+      #
+      # `if: always()` because the datasets are archived in sequence and any
+      # one of them can refuse - on 20 Sep resolution failed its count check
+      # after forecasts, observations and research had already uploaded and
+      # pruned. Committing only on success would drop the index for exactly
+      # the runs that changed it.
+      - name: Commit the archive index
+        if: always()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web/public/archive/index.json
+          if git diff --staged --quiet; then
+            echo "index unchanged - nothing was archived this run"
+            exit 0
+          fi
+          ROWS=$(python3 -c "import json;d=json.load(open('web/public/archive/index.json'));print(sum(x['rows_archived'] for x in d['datasets'].values()))")
+          git commit -m "Archive index: ${ROWS} rows retrievable [skip ci]"
+          for i in 1 2 3 4; do
+            git push origin HEAD:${{ github.ref_name }} && break
+            echo "push failed, retrying"; sleep $((2 ** i))
+            git pull --rebase origin ${{ github.ref_name }}
+          done

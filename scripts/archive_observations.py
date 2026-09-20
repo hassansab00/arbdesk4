@@ -217,6 +217,42 @@ TABLES = {
         "keep_days": 3,
         "needs_feature_cache": False,
     },
+    # THE LARGEST TABLE ON THE DESK, and the only big one the archive never
+    # covered: 204,322 rows, 78 MB, growing 2.76 MB a day. It could not be
+    # pruned by AGE like the other five, because scripts/backtest/runner.py
+    # asks for the newest book per band at an arbitrary as_of and
+    # v_backtest_window bounds every backtest by min(observed_at) - so an age
+    # window would silently shorten what can be backtested.
+    #
+    # What IS redundant is intra-day. The collector writes ~7.7 snapshots per
+    # band-day; the backtest reads ONE. So the read is from a view of exactly
+    # the rows neither reader touches: not their band-day's closing book, not
+    # their band's newest. Verified against the live table before anything was
+    # removed - 40,986 rows prunable, band-days 26,513 before and after, and
+    # min(observed_at) identical to the microsecond.
+    "books": {
+        "table": "book_snapshots",
+        "read_from": "v_prunable_book_redundancy",
+        "pk": "snapshot_id",
+        "cutoff_col": "observed_at",
+        "cutoff_is_date": False,
+        "prune_rpc": "prune_book_redundancy",
+        "tag": "books-archive",
+        "columns": ["band_id", "observed_at", "snapshot_hour_utc", "market_state",
+                    "tradeable", "best_bid", "best_ask", "mid", "spread",
+                    "bid_levels", "ask_levels",
+                    "ask_usd_1c", "bid_usd_1c", "ask_usd_2c", "bid_usd_2c",
+                    "ask_usd_5c", "bid_usd_5c", "ask_usd_10c", "bid_usd_10c",
+                    "ask_usd_25c", "bid_usd_25c", "ask_total_usd", "bid_total_usd",
+                    "band_volume", "band_volume_24hr", "raw_book",
+                    "no_best_bid", "no_best_ask", "no_book"],
+        "bytes_per_row": 400,
+        # SEVEN DAYS AT FULL RESOLUTION, because v_band_price_history draws the
+        # monitor's chart from intra-day rows and a shorter window makes that
+        # chart sparse for storage not worth having.
+        "keep_days": 7,
+        "needs_feature_cache": False,
+    },
 }
 
 

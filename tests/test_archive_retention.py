@@ -95,8 +95,16 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
     # captured this morning is still being read by the next databank run,
     # which is what turns it into the frozen outcome that makes the proof
     # archivable at all - so the window cannot be shorter than that loop.
+    # books: 7, and unlike the others this window does not bound HISTORY -
+    # every band-day keeps its closing book at any age, so min(observed_at)
+    # and the backtest window never move. What it bounds is how long the
+    # intra-day snapshots survive, and v_band_price_history draws the
+    # monitor's chart from those, so it cannot be shorter than the chart.
     limits = {"observations": 90, "forecasts": 90, "trades": 90, "research": 2,
-              "resolution": 3}
+              "resolution": 3, "books": 7}
+    assert set(limits) == set(TABLES), (
+        f"a dataset was added to the archive without a reasoned retention ceiling here: "
+        f"{sorted(set(TABLES) ^ set(limits))}")
     for name, spec in TABLES.items():
         window = spec.get("keep_days", 90)
         assert window <= limits[name], (
