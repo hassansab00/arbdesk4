@@ -113,13 +113,29 @@ function Panel({
 export default function ModelAnalytics() {
   const [city, setCity] = useState<string>("");
 
+  // THE ROSTER, AND FOUR PANELS SCOPED TO IT. These four render one row per
+  // city - and line 180 builds the climb picker out of whatever city keys
+  // come back - so an unscoped read puts retired cities in a picker and in
+  // the skill tables. The underlying views are deliberately NOT filtered:
+  // they are the record of how the model did, and a retired city's history
+  // is still true. What changes is which of them this page offers.
+  //
+  // Found by running the city enumeration across the whole repo instead of
+  // just web/app: 22 relations the desk reads still contain retired cities,
+  // and these four were the ones consumed as a list rather than looked up
+  // per already-selected city.
+  const roster = useQuery<{city_key:string}[]>(
+    () => supabase.from("cities").select("city_key").eq("status", "active").order("city_key"), []);
+  const keys = useMemo(() => (roster.data ?? []).map((c) => c.city_key), [roster.data]);
+  const dep = keys.join(",");
+
   const calib = useQuery<Calib[]>(() => supabase.from("v_calibration").select("*"), [], 300000);
   const edge = useQuery<EdgeReal[]>(() => supabase.from("v_edge_realisation").select("*").order("ord"), [], 300000);
-  const fwd = useQuery<FwdSkill[]>(() => supabase.from("v_model_forecast_skill").select("*"), [], 300000);
-  const cond = useQuery<CondSkill[]>(() => supabase.from("v_condition_skill").select("*"), [], 300000);
+  const fwd = useQuery<FwdSkill[]>(() => supabase.from("v_model_forecast_skill").select("*").in("city_key", keys), [dep], 300000);
+  const cond = useQuery<CondSkill[]>(() => supabase.from("v_condition_skill").select("*").in("city_key", keys), [dep], 300000);
   const effects = useQuery<Effect[]>(() => supabase.from("v_weather_effects").select("*"), [], 300000);
-  const persist = useQuery<Persist[]>(() => supabase.from("v_persistence_skill").select("*"), [], 300000);
-  const climb = useQuery<Climb[]>(() => supabase.from("v_city_climb_profile").select("*"), [], 300000);
+  const persist = useQuery<Persist[]>(() => supabase.from("v_persistence_skill").select("*").in("city_key", keys), [dep], 300000);
+  const climb = useQuery<Climb[]>(() => supabase.from("v_city_climb_profile").select("*").in("city_key", keys), [dep], 300000);
   // WHAT IS KNOWN WHILE THE ANSWERS ARE STILL COMING. Every panel below that
   // needs settled outcomes can at least say how many exist, how many are on
   // their way, and when the next one lands.
