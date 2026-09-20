@@ -34,8 +34,12 @@ const assert = require('node:assert/strict');
     -- 20260919180000_trade_decision_lineage.sql stamps onto every trade, so
     -- the column has to exist here or that migration's backfill fails on a
     -- table shape production does not have.
+    -- regime_label is created by sql/ad4_rpc.sql, which this harness never
+    -- applies, and 20260920220000 stamps it onto the trade at fill. Nullable
+    -- text, matching the live column. Appended last so the positional inserts
+    -- below keep working.
     create table public.signals(signal_id bigint primary key,action text,strategy_id text,
-      fired_at timestamptz,reason text,payload jsonb);
+      fired_at timestamptz,reason text,payload jsonb,regime_label text);
     -- ledger is created by sql/ad4_00_preflight.sql, which this harness never
     -- applies. Column types and the two NOT NULLs match the live table.
     create table public.ledger(entry_id bigserial primary key,
@@ -378,8 +382,8 @@ const assert = require('node:assert/strict');
   assert.equal(paid.forecast_version,null);
 
   // ...and with a signal, the snapshot is found at the shallow path.
-  await db.query(`insert into public.signals(signal_id,action,strategy_id,payload)
-    values (901,'ENTER','s1',$1::jsonb),(902,'ENTER','s1',$2::jsonb)`,
+  await db.query(`insert into public.signals(signal_id,action,strategy_id,payload,regime_label)
+    values (901,'ENTER','s1',$1::jsonb,'SHARP'),(902,'ENTER','s1',$2::jsonb,null)`,
     [JSON.stringify({decision_snapshot:{[band]:{
        forecast_version:'11111111-1111-1111-1111-111111111111',
        calibration_version:'22222222-2222-2222-2222-222222222222',
@@ -399,6 +403,16 @@ const assert = require('node:assert/strict');
   assert.equal(recovered.forecast_version,'44444444-4444-4444-4444-444444444444');
   assert.equal(recovered.recovered_from,'decision_inputs');
 
+  // THE REGIME CAME LAST AND FROM SOMEWHERE ELSE. It is not in the per-band
+  // snapshot - signal_engine never froze it - it is a column on the signal,
+  // and every one of the 69 trades on the books was recoverable by a join
+  // right up until signals gets pruned. Stamping it is what makes that prune
+  // safe, which is the same argument the three versions already won.
+  assert.equal(shallow.regime_label,'SHARP',
+    'the regime is on the signal and nowhere else once signals is archived');
+  assert.ok(!('regime_label' in recovered),
+    'a signal with no regime must not acquire one - an invented regime is worse than a null');
+
   // WRITE-ONCE. A snapshot that can be edited afterwards is not evidence.
   await db.query(`update paper_trades set forecast_version=$2 where trade_id=$1`,
     [paid.trade_id,'11111111-1111-1111-1111-111111111111']);
@@ -407,6 +421,16 @@ const assert = require('node:assert/strict');
       [paid.trade_id,'99999999-9999-9999-9999-999999999999']),
     /forecast_version is the decision that produced this trade/,
     'rebanking was able to rewrite what the desk believed at entry');
+  // regime_label was the one lineage column the guard did not name, so the one
+  // field nothing ever wrote was also the one field anything could rewrite.
+  await db.query(`update paper_trades set regime_label='SHARP' where trade_id=$1`,
+    [paid.trade_id]);
+  await assert.rejects(
+    db.query(`update paper_trades set regime_label='NORMAL' where trade_id=$1`,
+      [paid.trade_id]),
+    /regime_label is the decision that produced this trade/,
+    'the regime the desk traded in was rewritable after the fact');
+
   // ...while everything that is not lineage still moves freely.
   await db.query('update paper_trades set close_price=1 where trade_id=$1',[paid.trade_id]);
 
