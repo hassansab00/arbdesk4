@@ -47,6 +47,14 @@ const assert = require('node:assert/strict');
       event_type text not null,payload jsonb not null,stage text,strategy_id text,
       deployment_id uuid,band_id uuid,regime_label text,forecast_version text,
       calibration_version text,cost_version text,detail jsonb);
+    -- strategies is created by sql/ad4_rpc.sql. Only v_paper_desks reads it,
+    -- and only to count the enabled ones, but the column types and NOT NULLs
+    -- match the live table so the view is built against the real shape.
+    create table public.strategies(strategy_id text primary key,name text not null,side text,
+      origin text,config jsonb not null default '{}'::jsonb,conflict_class text,
+      enabled boolean not null default true,created_at timestamptz not null default now(),
+      universe jsonb,regime_filter jsonb,capital_cap_pct numeric,max_concurrent integer,extra jsonb);
+    insert into public.strategies(strategy_id,name) values('s1','price entry');
     create table public.band_probabilities(prob_id uuid primary key,band_id uuid,computed_at timestamptz default now());
     create table public.edges(edge_id bigint primary key,band_id uuid,computed_at timestamptz default now(),
       side text,tradeable boolean default false);
@@ -121,6 +129,21 @@ const assert = require('node:assert/strict');
     }
     await db.exec(fs.readFileSync(path.join(directory,file),'utf8'));
   }
+  // DESK MANAGEMENT IS ENGINE CODE AND IT LIVES IN sql/.
+  //
+  // submit, claim, complete, approve, settle and expire are all defined in
+  // supabase/migrations, so this harness exercises them. paper_desk_create,
+  // _update, _reset and _archive are defined in sql/ad4_59_paper_desks.sql,
+  // which it never applied - so the half of the engine that makes, re-policies,
+  // wipes and retires a desk had no contract of any kind. That is how
+  // paper_desk_reset kept a `delete from` on four tables for as long as it did.
+  //
+  // Applying the real file rather than a copy is the point: a fixture
+  // definition would test a function the database does not have, which is the
+  // failure CLAUDE.md describes. Its only dependencies are the paper_* tables
+  // the migrations above create, plus strategies for v_paper_desks.
+  await db.exec(fs.readFileSync(
+    path.resolve(__dirname,'../../sql/ad4_59_paper_desks.sql'),'utf8'));
   const uid='10000000-0000-0000-0000-000000000001', other='10000000-0000-0000-0000-000000000002';
   const band='20000000-0000-0000-0000-000000000001', market='30000000-0000-0000-0000-000000000001';
   const command='40000000-0000-0000-0000-000000000001';
@@ -198,6 +221,72 @@ const assert = require('node:assert/strict');
   await db.exec('reset role;');
 
   await db.exec(`set role authenticated;set request.jwt.claim.sub='${uid}';`);
+  // ======================================================================
+  // THE BOOKS HAVE TO BALANCE, AFTER EVERY OPERATION, ON ANY DESK.
+  //
+  // A desk is configuration: created, re-policied, paused, archived, reset,
+  // replaced. Its P&L is data. What has to be true is the ENGINE - that for
+  // ANY desk, under any policy, after any sequence of operations, the money
+  // still adds up. Everything asserted below this line is about one desk's
+  // outcome; this is about the mechanism, and it is the only thing here that
+  // stays true when every desk in the database is thrown away and remade.
+  //
+  // FOUR IDENTITIES, none of which anything checked before:
+  //
+  //   1  cash is the sum of its own activity rows. Cash must never move
+  //      except through a logged event, or the ledger stops being the record
+  //      and becomes a commentary on it.
+  //   2  reserved_cash is exactly what live orders have claimed. A reserve
+  //      that outlives its order silently shrinks the desk; one that dies
+  //      early lets the same dollar be spent twice.
+  //   3  cash = starting_cash - open cost basis + realised P&L + every reset.
+  //      Submitting an order does NOT move cash - it raises the reserve - so
+  //      this holds at every instant, not just at rest. The reset term is not
+  //      a let-off: a reset deliberately re-bases cash to starting_cash while
+  //      the trades that earned the P&L stay on the books, and it records the
+  //      difference as an account_reset activity row. Carrying that row in the
+  //      identity is what makes the re-basing VISIBLE rather than an exception
+  //      the check quietly skips - and it is how this assertion caught its own
+  //      first draft the moment paper_desk_reset came under test.
+  //   4  nothing is negative, and available cash (cash - reserved) never goes
+  //      below zero. That last one is the over-commitment check: the engine
+  //      refuses an order whose ceiling exceeds cash - reserved, and this is
+  //      what proves the refusal is not bypassable by another route.
+  // ======================================================================
+  async function books(who, where) {
+    const r = (await db.query(`
+      select a.starting_cash, a.cash, a.reserved_cash,
+             coalesce((select sum(cash_delta) from public.paper_activity
+                        where account_id=a.account_id),0)                    as ledger,
+             coalesce((select sum(cash_ceiling) from public.paper_orders
+                        where account_id=a.account_id
+                          and status in ('queued','working')),0)             as live_ceilings,
+             coalesce((select sum(cost_basis) from public.paper_positions
+                        where account_id=a.account_id),0)                    as basis,
+             coalesce((select min(shares) from public.paper_positions
+                        where account_id=a.account_id),0)                    as thinnest,
+             coalesce((select sum(net_pnl) from public.paper_trades
+                        where account_id=a.account_id and closed_at is not null),0) as realized,
+             coalesce((select sum(cash_delta) from public.paper_activity
+                        where account_id=a.account_id
+                          and event_type='account_reset'),0)                    as rebased
+        from public.paper_accounts a where a.account_id=$1`, [who])).rows[0];
+    const n = x => Number(x);
+    const near = (got, want, what) => assert.ok(Math.abs(got - want) < 1e-6,
+      `${where}: ${what} - got ${got}, expected ${want}`);
+    near(n(r.cash), n(r.ledger),
+      'cash is not the sum of its activity rows, so money moved without an event');
+    near(n(r.reserved_cash), n(r.live_ceilings),
+      'reserved cash is not what live orders claimed');
+    near(n(r.cash), n(r.starting_cash) - n(r.basis) + n(r.realized) + n(r.rebased),
+      'cash != starting cash - open cost basis + realised P&L + resets');
+    assert.ok(n(r.cash) >= 0, `${where}: cash went negative`);
+    assert.ok(n(r.reserved_cash) >= 0, `${where}: reserved cash went negative`);
+    assert.ok(n(r.cash) - n(r.reserved_cash) >= -1e-9,
+      `${where}: the desk committed more than it holds (cash ${r.cash}, reserved ${r.reserved_cash})`);
+    assert.ok(n(r.thinnest) >= 0, `${where}: a position holds negative shares`);
+  }
+
   const account=(await db.query(`select create_paper_account('Test account',100) as id`)).rows[0].id;
   const submit=()=>db.query(`select submit_paper_order($1,$2,$3,'YES',10,0.55,6,'test') as id`,[account,command,band]);
   const order=(await submit()).rows[0].id;
@@ -210,6 +299,7 @@ const assert = require('node:assert/strict');
   await assert.rejects(db.query(`select create_paper_account('Unauthorized',100)`),/permission denied/);
   await db.exec('reset role;set role service_role;');
   const claimed=(await db.query('select claim_paper_order() as job')).rows[0].job;
+  await books(account,'after an order is submitted and claimed');
   assert.equal(claimed.order_id,order);
   assert.equal((await db.query('select claim_paper_order() as job')).rows[0].job,null,'Account lease excludes second worker');
   await db.query(`insert into paper_book_evidence(snapshot_id,token_id,observed_at,payload) values('snapshot','yes',now(),'{}')`);
@@ -221,6 +311,7 @@ const assert = require('node:assert/strict');
   await assert.rejects(finish({...result,fee:'Infinity'}),/Invalid amounts/);
   await assert.rejects(finish({...result,fills:[{shares:'10',price:'.50',notional:'5.30',fee:'.12425'}]}),/Invalid fill arithmetic/);
   await finish();await finish();
+  await books(account,'after a fill, and after the same fill is replayed');
   const balance=(await db.query('select cash,reserved_cash from paper_accounts')).rows[0];
   assert.equal(Number(balance.cash),94.57575);assert.equal(Number(balance.reserved_cash),0);
   assert.equal(Number((await db.query('select shares from paper_positions')).rows[0].shares),10);
@@ -270,6 +361,7 @@ const assert = require('node:assert/strict');
   const planStatus=async()=>(await db.query('select status from paper_trade_plans where plan_id=$1',[plan])).rows[0].status;
   assert.equal(await planStatus(),'queued','a live order is the one case where queued is true');
   await db.query('select cancel_paper_order($1)',[queued[0].order_id]);
+  await books(account,'after an order is cancelled and its reserve released');
   assert.equal(await planStatus(),'canceled','a canceled order must not leave its plan reading queued forever');
   assert.equal(Number((await db.query('select reserved_cash from paper_accounts')).rows[0].reserved_cash),0);
   const exitCommand='40000000-0000-0000-0000-000000000003';
@@ -288,6 +380,7 @@ const assert = require('node:assert/strict');
   await db.exec(`reset role;set role authenticated;set request.jwt.claim.sub='${uid}';`);
   await db.query("select set_paper_policy($1,'automatic',true,$2)",[account,JSON.stringify(policy)]);
   await db.query('select set_paper_exit_policy($1,true,.25,.15)',[account]);
+  await books(account,'after the exit policy changes');
   const version=(await db.query('select policy_version from paper_accounts')).rows[0].policy_version;
   await db.exec('reset role;set role service_role;');
   const preview={status:'filled',shares:'6',notional:'4.80',fee:'.048',snapshot_id:'snapshot',
@@ -298,6 +391,7 @@ const assert = require('node:assert/strict');
   const exitClaim=(await db.query('select claim_paper_order() as job')).rows[0].job;
   assert.equal(exitClaim.order_id,auto);
   await db.query('select complete_paper_order($1,$2,$3)',[auto,exitClaim.lease_token,JSON.stringify(preview)]);
+  await books(account,'after an automatic exit filled');
   assert.equal(Number((await db.query('select shares from paper_positions')).rows[0].shares),0);
   await db.exec(`reset role;set role authenticated;set request.jwt.claim.sub='${uid}';`);
   const expiring=(await db.query("select submit_paper_order($1,$2,$3,'YES',2,.50,1.10,'expiry test') as id",
@@ -305,6 +399,7 @@ const assert = require('node:assert/strict');
   await db.exec('reset role;set role service_role;');
   await db.query("update paper_orders set expires_at=now()-interval '1 second' where order_id=$1",[expiring]);
   await db.query('select expire_paper_commands()');await db.query('select expire_paper_commands()');
+  await books(account,'after the expiry sweep ran twice');
   assert.equal(Number((await db.query('select reserved_cash from paper_accounts')).rows[0].reserved_cash),0);
   assert.equal((await db.query("select count(*)::int as n from paper_activity where event_type='order_expired'")).rows[0].n,1);
   await db.exec(`reset role;set role authenticated;set request.jwt.claim.sub='${uid}';`);
@@ -321,6 +416,7 @@ const assert = require('node:assert/strict');
     ['resolution','condition','yes','no','yes',JSON.stringify(gamma),JSON.stringify(clob),'[]']);
   assert.equal((await db.query("select settle_paper_inventory($1,'resolution') as n",[band])).rows[0].n,1);
   assert.equal((await db.query("select settle_paper_inventory($1,'resolution') as n",[band])).rows[0].n,0);
+  await books(account,'after venue settlement, and after it was replayed');
   assert.equal(Number((await db.query('select cash from paper_accounts')).rows[0].cash),beforeSettlement+2);
   assert.equal(Number((await db.query('select shares from paper_positions')).rows[0].shares),0);
   assert.equal((await db.query('select count(*)::int as n from paper_position_settlements')).rows[0].n,1);
@@ -521,6 +617,80 @@ const assert = require('node:assert/strict');
       fills:[{shares:'2',price:'.50',notional:'1.00',fee:'.025'}]})]);
   assert.equal(await coverStatus(),'partial',
     'one leg filled and one canceled is a PARTIAL plan - calling it filled claims a position the desk does not hold');
+  // ======================================================================
+  // A RESET FLATTENS A DESK. IT DOES NOT ERASE ITS RECORD.
+  //
+  // paper_desk_reset had no contract at all, which is how it kept the one
+  // behaviour the desk is not allowed to have: it ran `delete from` on
+  // paper_position_settlements, paper_positions, paper_orders and
+  // paper_trade_plans, so pressing Reset destroyed every order the desk had
+  // placed, every proposal it made and every block reason that explained why.
+  //
+  // The line is between a RECORD and a DERIVED TOTAL. Orders, plans and
+  // settlements are records. paper_positions is a running total of them, and
+  // clearing it is only safe BECAUSE they survive to rebuild it - which was
+  // not true before, when the reset deleted its own sources.
+  //
+  // Run on the desk that has been trading for the whole file, so the rows
+  // being protected are real ones rather than a fixture made to pass.
+  // ======================================================================
+  const before = (await db.query(`
+    select (select count(*) from public.paper_orders      where account_id=$1) as orders,
+           (select count(*) from public.paper_trade_plans where account_id=$1) as plans,
+           (select count(*) from public.paper_position_settlements where account_id=$1) as settled,
+           (select count(*) from public.paper_trades      where account_id=$1) as trades`,
+    [account])).rows[0];
+  assert.ok(Number(before.orders) > 0 && Number(before.plans) > 0
+            && Number(before.settled) > 0,
+    'the reset contract is meaningless unless the desk actually has a record to lose');
+
+  // IT HAD TO BE UNPAUSED FIRST, or "still paused afterwards" proves nothing:
+  // the desk is already paused by the time this runs, so an assertion that it
+  // is paused would hold even if the reset stopped pausing it. A mutation
+  // removing entries_paused=true walked straight through the first version.
+  await db.query('update public.paper_accounts set entries_paused=false where account_id=$1',
+    [account]);
+
+  // AND THE RESET HAS TO COMPLETE AT ALL. The previous version opened with
+  // `delete from paper_position_settlements`, which carries an append-only
+  // trigger, so it raised "Append-only record; write a linked correction
+  // instead" and rolled back the whole function - and had it got past that,
+  // paper_activity.order_id references paper_orders with no ON DELETE action,
+  // so the next delete would have been refused too. Verified against the live
+  // database on the trading desk (78 orders, 83 activity rows referencing
+  // them) in a rolled-back transaction.
+  //
+  // So nothing was ever destroyed: the database refused. What was broken is
+  // that Reset silently did NOTHING on any desk that had settled a position.
+  // This call failing is the regression, and it is why the assertions below
+  // are reachable at all.
+  await db.query('select paper_desk_reset($1)', [account]);
+
+  const after = (await db.query(`
+    select (select count(*) from public.paper_orders      where account_id=$1) as orders,
+           (select count(*) from public.paper_trade_plans where account_id=$1) as plans,
+           (select count(*) from public.paper_position_settlements where account_id=$1) as settled,
+           (select count(*) from public.paper_trades      where account_id=$1) as trades,
+           (select count(*) from public.paper_positions   where account_id=$1) as positions,
+           (select count(*) from public.paper_orders where account_id=$1
+             and status in ('queued','working')) as still_live,
+           (select cash from public.paper_accounts where account_id=$1) as cash,
+           (select starting_cash from public.paper_accounts where account_id=$1) as start,
+           (select entries_paused from public.paper_accounts where account_id=$1) as paused`,
+    [account])).rows[0];
+
+  assert.equal(after.orders,  before.orders,  'a reset deleted orders - that is the desk\'s record of what it asked the venue for');
+  assert.equal(after.plans,   before.plans,   'a reset deleted trade plans, and with them every reason a trade was blocked');
+  assert.equal(after.settled, before.settled, 'a reset deleted settlements, each of which carries its own proof_id');
+  assert.equal(after.trades,  before.trades,  'a reset deleted trades');
+  assert.equal(Number(after.positions), 0, 'the running position total survived, so the desk still holds exposure its cash no longer covers');
+  assert.equal(Number(after.still_live), 0, 'an order was left live after a reset and can still fill against cash that was returned');
+  assert.equal(Number(after.cash), Number(after.start), 'cash did not go back to the starting balance');
+  assert.equal(after.paused, true, 'a reset desk must not resume entering on its own');
+
+  // And the books still balance afterwards, which is the point of resetting.
+  await books(account, 'after the desk was reset');
+
   await db.close();
   console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits and the paper_trades bridge');
 })().catch(e=>{console.error(e);process.exit(1);});
