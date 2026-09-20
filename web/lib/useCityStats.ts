@@ -85,7 +85,13 @@ export function useCityStats(pollMs = 60000): CityStatsResult {
 
         const today = new Date().toISOString().slice(0, 10);
         const [cities, live, fc, vol] = await Promise.all([
-          supabase.from("cities").select("city_key,display_name,icao,timezone,unit,latitude,longitude"),
+          // Active only. This is the FALLBACK that rebuilds the per-city list
+          // client-side when v_city_stats is unavailable, so an unfiltered
+          // read here puts retired cities back on the pages the view had
+          // already removed them from - the failure path quietly disagreeing
+          // with the happy path.
+          supabase.from("cities").select("city_key,display_name,icao,timezone,unit,latitude,longitude")
+            .eq("status", "active"),
           supabase.from("live_weather").select("city_key,temp_c,running_max_c,peak_window_state,day_decided,observed_at"),
           // Shortest lead first, THEN newest run. Ordering by run_at alone
           // picks a seven-day-lead guess issued a week ago over this

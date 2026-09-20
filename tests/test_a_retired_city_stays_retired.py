@@ -152,27 +152,6 @@ def test_capacity_walks_active_cities_only(monkeypatch):
     assert seen == ["nyc"]
 
 
-@pytest.mark.parametrize("page", [
-    "web/app/predictive/page.tsx",
-    "web/app/live/page.tsx",
-    "web/app/campaigns/page.tsx",
-    "web/app/page.tsx",
-])
-def test_no_desk_page_lists_a_retired_city(page):
-    """Every page that reads the cities table filters on status.
-
-    Four pages read it and only one filtered, so the desk would have gone on
-    offering cities it had stopped trading."""
-    src = open(page).read()
-    if 'from("cities")' not in src:
-        pytest.skip(f"{page} no longer reads cities directly")
-    for i, line in enumerate(src.splitlines()):
-        if 'from("cities")' in line:
-            window = "\n".join(src.splitlines()[i:i + 4])
-            assert '"status", "active"' in window, (
-                f"{page}:{i + 1} reads cities without filtering on status")
-
-
 # ---------------------------------------------------------------------------
 # the views - found leaking the day after the retirement
 # ---------------------------------------------------------------------------
@@ -282,72 +261,6 @@ def test_stored_fits_cannot_resurrect_a_retired_city(monkeypatch):
 # listed, because the enumeration is what is asserted.
 
 
-def test_every_n8n_collector_asks_for_active_cities_only():
-    """A collector that ignores status keeps spending API calls, and keeps
-    writing rows, for a city nobody trades. Two spellings are accepted because
-    both are in use and both are correct: the PostgREST filter, and P1.5's
-    explicit skip in a Code node."""
-    import glob
-    offenders = []
-    for path in sorted(glob.glob("n8n/*.template.json")):
-        src = open(path).read()
-        if "rest/v1/cities?" not in src:
-            continue                      # does not build a city list at all
-        if "status=eq.active" in src or "!== 'active'" in src:
-            continue
-        offenders.append(path)
-    assert offenders == [], (
-        "these n8n workflows build a city list without filtering on status: "
-        + ", ".join(offenders))
-
-
-def test_every_page_that_reads_the_cities_table_filters_it():
-    """Four pages read it and only one filtered, so the desk offered cities it
-    had stopped trading.
-
-    THE GLOB COVERS ALL OF web/, not just web/app/**/page.tsx. The narrower
-    version shipped as "airtight" and missed components/PaperAutomation.tsx,
-    which offers the city list a paper desk may trade - so a retired city was
-    still tickable as a desk's scope. A page is not the only thing that can
-    ask this question.
-    """
-    import glob
-
-    # A LOOKUP MAP IS NOT A LIST OF CHOICES. RightRail reads cities only to
-    # build city_key -> unit, which is then read for rows that came from
-    # somewhere else. Filtering it would not remove a retired city from
-    # anything; it would just make that city's unit missing and silently
-    # default to Celsius. So the exemption is named, with its reason, rather
-    # than the whole file being waved through.
-    LOOKUP_ONLY = {"web/components/RightRail.tsx"}
-
-    offenders = []
-    for path in sorted(glob.glob("web/**/*.tsx", recursive=True)):
-        if "/.next/" in path or "/node_modules/" in path or path in LOOKUP_ONLY:
-            continue
-        src = open(path).read()
-        lines = src.splitlines()
-        # Either spelling counts: the filter can be in the query, or in a
-        # client-side .filter() over the rows - ScopeControl does the latter,
-        # thirteen lines below its query, which a short window would call a
-        # leak. What matters is that the file does not offer a retired city,
-        # not where the test happens to find the proof.
-        filtered_in_file = ('(c.status ?? "active") === "active"' in src
-                            or "status === 'active'" in src)
-        for i, line in enumerate(lines):
-            if 'from("cities")' not in line and "from('cities')" not in line:
-                continue
-            window = "\n".join(lines[i:i + 5])
-            in_query = ('"status", "active"' in window
-                        or "'status','active'" in window
-                        or "'status', 'active'" in window)
-            if not in_query and not filtered_in_file:
-                offenders.append(f"{path}:{i + 1}")
-    assert offenders == [], (
-        "these read the cities table without filtering on status: "
-        + ", ".join(offenders))
-
-
 def test_a_page_rendering_from_live_weather_filters_to_the_roster():
     """live_weather has a row per city forever, so a page that renders FROM it
     shows retired cities even when its cities query is filtered. The Live page
@@ -356,27 +269,6 @@ def test_a_page_rendering_from_live_weather_filters_to_the_roster():
     assert "cityByKey.has(l.city_key)" in src, (
         "web/app/live/page.tsx renders from live_weather without filtering to "
         "the active roster")
-
-
-def test_the_python_chokepoints_are_the_only_ones():
-    """Every script that needs a city list goes through common, and the two
-    helpers there are the only definitions of 'active'."""
-    import glob
-    offenders = []
-    for path in sorted(glob.glob("scripts/*.py")):
-        src = open(path).read()
-        for i, line in enumerate(src.splitlines()):
-            if 'rest("cities"' not in line and "rest('cities'" not in line:
-                continue
-            if path.endswith("common.py"):
-                continue                  # the definitions themselves
-            if path.endswith("verify_resolution_source.py"):
-                continue                  # a manual diagnostic: it SHOULD see
-                                          # a retired city, that is the point
-            offenders.append(f"{path}:{i + 1}")
-    assert offenders == [], (
-        "these read the cities table directly instead of going through "
-        "common.get_cities() / common.active_city_keys(): " + ", ".join(offenders))
 
 
 # ---------------------------------------------------------------------------

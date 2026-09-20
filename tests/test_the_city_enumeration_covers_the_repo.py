@@ -1,0 +1,217 @@
+"""Which cities are we working on? Asked of the WHOLE repo, not one directory.
+
+This question has been answered wrongly four times, each time in a place the
+previous check did not look:
+
+  pass 1  the cities-table readers and the feature-cache readers
+  pass 2  the SQL views built from markets and bands, and stored_fits(), which
+          let --predict-only resurrect a retired city from a fit kept forever
+  pass 3  four n8n collectors and the Live page, which renders from
+          live_weather rather than from cities
+  pass 4  this one - the enumeration itself only globbed web/app/**/page.tsx,
+          so four components and four Analytics panels were never looked at
+
+The lesson is not "check harder". It is that a check which SAMPLES cannot
+prove a negative. This file enumerates every area of the repo that can decide
+which cities the desk works on, and fails when a file joins the cities table
+without being classified. Adding a surface now means classifying it.
+
+THREE CLASSES, because "filter everywhere" is wrong:
+
+  FILTERS   it offers cities to act on, or collects for them. Must exclude
+            retired cities.
+  RECORD    it is history, archive or diagnosis. Must NOT exclude them - a
+            retired city that vanishes from the record looks like one that
+            never existed, and those need different actions. The repo's rule
+            is that nothing is ever deleted; hiding history is deleting it
+            from the only place anyone would look.
+  LOOKUP    it reads cities to build a map keyed by city_key, consumed for
+            rows that came from somewhere else. Filtering would not remove a
+            city from anything - it would make that city's value missing and
+            silently default.
+
+Measured on the live database 2026-09-20: 22 relations the desk reads still
+contain retired cities, and that is correct for all but the four the Analytics
+page rendered as lists. The fix is at the consumer, not in the views.
+"""
+
+import glob
+import re
+
+import pytest
+
+# ---------------------------------------------------------------------------
+# WEB - every .tsx and .ts, not just pages
+# ---------------------------------------------------------------------------
+WEB_LOOKUP_ONLY = {
+    # city_key -> unit, read for rows sourced elsewhere.
+    "web/components/RightRail.tsx",
+}
+
+
+def web_files():
+    for path in sorted(glob.glob("web/**/*.tsx", recursive=True)
+                       + glob.glob("web/**/*.ts", recursive=True)):
+        if "/.next/" in path or "/node_modules/" in path:
+            continue
+        yield path
+
+
+def test_every_web_read_of_the_cities_table_is_filtered_or_named():
+    offenders = []
+    for path in web_files():
+        if path in WEB_LOOKUP_ONLY:
+            continue
+        src = open(path).read()
+        lines = src.splitlines()
+        filtered_in_file = ('(c.status ?? "active") === "active"' in src
+                            or "status === 'active'" in src)
+        for i, line in enumerate(lines):
+            if 'from("cities")' not in line and "from('cities')" not in line:
+                continue
+            window = "\n".join(lines[i:i + 5])
+            if ('"status", "active"' in window or "'status','active'" in window
+                    or "'status', 'active'" in window or filtered_in_file):
+                continue
+            offenders.append(f"{path}:{i + 1}")
+    assert offenders == [], (
+        "these read the cities table without filtering on status, and are not "
+        "named as lookup-only: " + ", ".join(offenders))
+
+
+def test_a_panel_that_renders_one_row_per_city_is_scoped_to_the_roster():
+    """The Analytics page built its city picker from whatever came back, so
+    four skill panels listed retired cities. The views stay unfiltered - they
+    are the record - and the PAGE asks for the roster."""
+    src = open("web/components/ModelAnalytics.tsx").read()
+    for view in ("v_model_forecast_skill", "v_condition_skill",
+                 "v_persistence_skill", "v_city_climb_profile"):
+        m = re.search(re.escape(view) + r'"\)([^;]*)', src)
+        assert m, f"{view} is no longer read here - reclassify it"
+        assert '.in("city_key", keys)' in m.group(1), (
+            f"{view} is rendered as a per-city list without being scoped to "
+            f"the active roster")
+
+
+# ---------------------------------------------------------------------------
+# PYTHON - one definition of active, and everything goes through it
+# ---------------------------------------------------------------------------
+PY_ALLOWED = {
+    "scripts/common.py",                    # the definitions themselves
+    "scripts/verify_resolution_source.py",  # a manual diagnostic: it SHOULD
+                                            # be able to name a retired city
+}
+
+
+def test_no_script_reads_the_cities_table_around_common():
+    offenders = []
+    for path in sorted(glob.glob("scripts/*.py")):
+        if path in PY_ALLOWED:
+            continue
+        for i, line in enumerate(open(path).read().splitlines()):
+            if 'rest("cities"' in line or "rest('cities'" in line:
+                offenders.append(f"{path}:{i + 1}")
+    assert offenders == [], (
+        "these bypass common.get_cities() / common.active_city_keys(): "
+        + ", ".join(offenders))
+
+
+def test_there_is_exactly_one_definition_of_active():
+    src = open("scripts/common.py").read()
+    assert src.count('"status": "eq.active"') == 2, (
+        "get_cities() and active_city_keys() are the two places that define "
+        "active; a third or a missing one means the definition has moved")
+
+
+# ---------------------------------------------------------------------------
+# N8N - the collection layer
+# ---------------------------------------------------------------------------
+def test_every_n8n_collector_asks_for_active_cities_only():
+    offenders = []
+    for path in sorted(glob.glob("n8n/*.template.json")):
+        src = open(path).read()
+        if "rest/v1/cities?" not in src:
+            continue
+        if "status=eq.active" in src or "!== 'active'" in src:
+            continue
+        offenders.append(path)
+    assert offenders == [], (
+        "these build a city list with no status filter, so they keep "
+        "collecting for retired cities: " + ", ".join(offenders))
+
+
+# ---------------------------------------------------------------------------
+# SQL - the classification, and the proof that it is complete
+# ---------------------------------------------------------------------------
+# Every .sql file that SELECTs FROM or JOINs the cities table. Classified, with
+# the reason, so that adding one forces a decision rather than a default.
+SQL_FILTERS = {
+    "sql/ad4_13_reconcile.sql":                 "v_opportunities - and through it v_band_ladder, v_trade_plan, v_city_day_plan",
+    "sql/ad4_22_opportunity_context.sql":       "v_opportunity_context - the movement panel behind each card",
+    "sql/ad4_68_prediction_ladder_outcomes.sql":"v_prediction_ladder - the Predictive page",
+    "sql/ad4_30_open_meteo.sql":                "the forecast collector's city list",
+    "sql/ad4_32_run_scope.sql":                 "v_run_scope - which cities a job runs over",
+    "sql/ad4_33_control.sql":                   "the control surface's city list",
+    "sql/ad4_71_observation_health.sql":        "is the DESK's data healthy - operational, not the record",
+    "sql/ad4_75_probability_reliability.sql":   "the measured haircut, applied to live prices",
+    "sql/ad4_live_weather_timing.sql":          "refresh_live_weather_timing - only worth computing for a live city",
+}
+SQL_RECORD = {
+    "sql/ad4_16_nws.sql", "sql/ad4_17_city_stats.sql", "sql/ad4_19_stats_cache.sql",
+    "sql/ad4_21_weather_features.sql", "sql/ad4_23_reasoning.sql",
+    "sql/ad4_26_temp_trend.sql", "sql/ad4_28_feature_cache.sql",
+    "sql/ad4_29_retention.sql", "sql/ad4_35_databank_inventory.sql",
+    "sql/ad4_37_peak_hour.sql", "sql/ad4_40_synthesis.sql",
+    "sql/ad4_41_campaigns.sql", "sql/ad4_43_forecast_audit.sql",
+    "sql/ad4_45_calibration_feedback.sql", "sql/ad4_55_city_coordinates.sql",
+    "sql/ad4_56_correlation_speed_and_peak_key.sql",
+    "sql/ad4_58_city_prediction_confidence.sql", "sql/ad4_72_model_promotion.sql",
+    "sql/ad4_diagnose.sql", "sql/ad4_phase2.sql", "sql/ad4_phase2_ranking.sql",
+}
+
+JOINS_CITIES = re.compile(r"(?:join|from)\s+(?:public\.)?cities(?:\s|$|,|\))", re.I)
+
+
+def sql_files_touching_cities():
+    out = []
+    for path in sorted(glob.glob("sql/*.sql")):
+        body = "\n".join(l for l in open(path).read().splitlines()
+                         if not l.strip().startswith("--"))
+        if JOINS_CITIES.search(body):
+            out.append(path)
+    return out
+
+
+def test_every_sql_file_that_builds_from_cities_is_classified():
+    """THE POINT OF THE WHOLE FILE. A new view over cities cannot be added
+    without deciding whether it offers something to act on or records what
+    happened."""
+    classified = set(SQL_FILTERS) | SQL_RECORD
+    unclassified = [p for p in sql_files_touching_cities() if p not in classified]
+    assert unclassified == [], (
+        "these SQL files build from the cities table and are in neither "
+        "FILTERS nor RECORD - decide which, and say why: "
+        + ", ".join(unclassified))
+
+
+@pytest.mark.parametrize("path,why", sorted(SQL_FILTERS.items()))
+def test_a_filtering_sql_file_actually_filters(path, why):
+    src = open(path).read()
+    assert re.search(r"status.{0,20}=.{0,4}'active'", src), (
+        f"{path} is classified as filtering ({why}) but does not test status")
+
+
+def test_the_classification_has_not_gone_stale():
+    """A file listed but no longer touching cities means the list is drifting
+    away from the code it describes."""
+    touching = set(sql_files_touching_cities())
+    stale = sorted((set(SQL_FILTERS) | SQL_RECORD) - touching)
+    assert stale == [], (
+        "these are classified but no longer build from cities: " + ", ".join(stale))
+
+
+def test_the_record_is_never_filtered():
+    """Stated as a rule so a later 'filter it everywhere' sweep has to argue
+    with something. History, archive and diagnosis keep every city."""
+    for path in sorted(SQL_RECORD):
+        assert path not in SQL_FILTERS, f"{path} cannot be both"
