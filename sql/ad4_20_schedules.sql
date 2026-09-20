@@ -1,7 +1,7 @@
 -- ===========================================================================
 -- ad4_20_schedules.sql - own your n8n execution budget from the UI.
 --
--- n8n bills by execution. AD4's nine workflows carry hard-coded schedules
+-- n8n bills by execution. AD4's twelve workflows carry hard-coded schedules
 -- inside their own JSON, so changing one means opening n8n, finding the
 -- Schedule Trigger, editing it, and saving - per workflow. In practice that
 -- means nobody changes them, and the plan is spent on jobs nobody needed that
@@ -19,17 +19,20 @@
 
 insert into settings (key, value)
 values ('workflow_schedules', '{
-  "note": "Per-workflow cadence, owned here rather than inside each n8n file. mode: auto | manual | off. every_minutes is what the workflow enforces when mode=auto; its own Schedule Trigger should fire at or below this and the workflow skips runs that arrive early. Set manual to run only from the Run buttons in the UI.",
-  "P0.2_market_discovery":     {"mode": "auto",   "every_minutes": 360},
-  "P0.3_book_volume_snapshot": {"mode": "auto",   "every_minutes": 60},
-  "P0.4_trade_history":        {"mode": "auto",   "every_minutes": 360},
-  "P0.5_refresh_rules_text":   {"mode": "auto",   "every_minutes": 1440},
-  "P1.1_live_weather_alerts":  {"mode": "auto",   "every_minutes": 0},
-  "P1.2_nws_monitor":          {"mode": "auto",   "every_minutes": 120},
-  "P1.3_nws_forecast":         {"mode": "auto",   "every_minutes": 360},
-  "P3.1_email_digests":        {"mode": "auto",   "every_minutes": 720},
-  "P2.2_paper_maintenance":    {"mode": "auto",   "every_minutes": 60},
-  "P4.1_health_watchdog":      {"mode": "auto",   "every_minutes": 360}
+  "note": "Per-workflow cadence, owned here rather than inside each n8n file. mode: auto | manual | off. every_minutes is the MINIMUM GAP the gate enforces when mode=auto, and it must sit a few minutes BELOW the workflow Schedule Trigger cadence: ingest_log.logged_at is stamped when a run finishes, so consecutive stamps are a cadence apart give or take the run length, and a gate set equal to the cadence skips every other run. Set manual to run only from the Run buttons in the UI.",
+  "P0.2_market_discovery":     {"mode": "auto",   "every_minutes": 300},
+  "P0.3_book_volume_snapshot": {"mode": "auto",   "every_minutes": 50},
+  "P0.4_trade_history":        {"mode": "auto",   "every_minutes": 300},
+  "P0.5_refresh_rules_text":   {"mode": "auto",   "every_minutes": 1200},
+  "P1.1_live_weather_alerts":  {"mode": "manual", "every_minutes": 0},
+  "P1.2_nws_monitor":          {"mode": "auto",   "every_minutes": 100},
+  "P1.3_nws_forecast":         {"mode": "auto",   "every_minutes": 300},
+  "P1.4_nws_gridpoint":        {"mode": "auto",   "every_minutes": 300},
+  "P1.5_open_meteo":           {"mode": "auto",   "every_minutes": 150},
+  "P2.1_relearn":              {"mode": "manual", "every_minutes": 0},
+  "P2.2_paper_maintenance":    {"mode": "auto",   "every_minutes": 300},
+  "P3.1_email_digests":        {"mode": "off",    "every_minutes": 400},
+  "P4.1_health_watchdog":      {"mode": "auto",   "every_minutes": 300}
 }'::jsonb)
 on conflict (key) do nothing;
 

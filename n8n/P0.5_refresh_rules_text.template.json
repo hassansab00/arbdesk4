@@ -80,7 +80,9 @@
           "interval": [
             {
               "field": "days",
-              "daysInterval": 1
+              "daysInterval": 1,
+              "triggerAtHour": 1,
+              "triggerAtMinute": 38
             }
           ]
         }

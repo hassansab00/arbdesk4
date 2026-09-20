@@ -65,7 +65,8 @@
           "interval": [
             {
               "field": "hours",
-              "hoursInterval": 2
+              "hoursInterval": 2,
+              "triggerAtMinute": 42
             }
           ]
         }
