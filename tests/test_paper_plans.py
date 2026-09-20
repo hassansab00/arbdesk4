@@ -361,3 +361,140 @@ def test_the_run_stops_once_every_desk_is_capped(monkeypatch):
     published = _cycle_with(monkeypatch, [_desk("aaa"), _desk("bbb")],
                             [_signal(n) for n in range(40)], max_plans=2)
     assert len(published) == 4
+
+
+# ---------------------------------------------------------------------------
+# THE TOUCH IS NOT THE BOOK
+#
+# 219 of this desk's 360 plans - 61% - were blocked "Below the venue minimum
+# order size", and every single one said "limited by book depth". Not one was
+# limited by budget. Measured on the live desk 2026-09-20, all inside a week.
+#
+# The reason is in basket_depth's own docstring: the limit on each leg is that
+# leg's best ask, "which means the depth inside the limit is the size resting
+# at the touch - not the whole ladder". A band trading a few hundred dollars
+# holds 5 or 10 shares at the touch. The venue wants $5 of notional, which at
+# 8c is 62.5 shares. The plan never had a chance, and the desk sat quiet while
+# its edges were sound.
+#
+# Everywhere else this system already refuses to price off the touch -
+# edges.market_price carries the comment "Depth-weighted executable price from
+# walking the ladder. NEVER top-of-book - that produces recommendations that
+# cannot be filled." The plan builder was the one place still doing it.
+#
+# So it now walks, and the desk's OWN min_edge decides whether the walk was
+# worth it. No new threshold: the walk stops at the venue floor, the smallest
+# order that can exist, so the slippage is bounded by how deep the book is in
+# its first $5.
+
+def ladder(levels, minimum='5', budget=20):
+    """A book with a thin touch and whatever sits above it."""
+    account, signal, _ = fixture()
+    account['policy']['max_plan_usd'] = budget
+    def capture(order):
+        return {'token_id': order['token_id'], 'observed_at': NOW.isoformat(), 'tradeable': True,
+                'snapshot_id': order['token_id'], 'tick_size': '.01', 'fee_rate': '.05',
+                'min_order_size': minimum, 'min_order_size_unit': 'USDC',
+                'asks': [{'price': p, 'size': s} for p, s in levels],
+                'bids': [{'price': '.29', 'size': '1000'}]}
+    return account, signal, capture
+
+
+def test_a_thin_touch_with_depth_above_it_now_produces_a_plan():
+    """The 219. Five shares at the touch against a 16.67-share floor, and a
+    hundred more one cent up."""
+    account, signal, capture = ladder([('.30', '5'), ('.31', '100')])
+    legs, evidence = prepare(account, signal, capture, now=NOW)
+    assert legs and legs[0]['shares'] == legs[1]['shares'] == '16.67', legs
+    assert Decimal(legs[0]['limit_price']) == Decimal('.31'), (
+        'the order is still being sent at the touch, so it can only take the 5 shares '
+        'resting there and the venue will refuse it'
+    )
+    # 5 @ .30 and 11.67 @ .31 averages .307, against .30 at the touch.
+    assert Decimal('.30') < Decimal(evidence['quoted_cost_per_basket']) / 2 < Decimal('.35')
+
+
+def test_the_walk_is_priced_into_the_edge_and_not_hidden_in_it():
+    """The plan's recorded cost has to be what the walk actually costs, or the
+    desk books an edge it did not get."""
+    at_touch = prepare(*ladder([('.30', '1000')]), now=NOW)[1]
+    walked = prepare(*ladder([('.30', '5'), ('.31', '100')]), now=NOW)[1]
+    assert Decimal(walked['quoted_cost_per_basket']) > Decimal(at_touch['quoted_cost_per_basket'])
+    assert Decimal(walked['net_edge_per_share']) < Decimal(at_touch['net_edge_per_share'])
+
+
+def test_an_edge_that_does_not_survive_the_walk_is_refused_in_those_words():
+    """The walk is not a licence to buy anything. If reaching the floor costs
+    more than the edge is worth, the refusal says so - and does NOT blame
+    depth, because the depth was there."""
+    account, signal, capture = ladder([('.30', '5'), ('.58', '100')])
+    with pytest.raises(ValueError, match='venue minimum') as exc:
+        prepare(account, signal, capture, now=NOW)
+    message = str(exc.value)
+    assert 'policy minimum' in message, message
+    assert 'book depth' not in message, (
+        'the book held the shares; what failed was the price, and saying "depth" sends '
+        'the operator to fix the wrong thing'
+    )
+
+
+def test_a_ladder_that_cannot_reach_the_floor_at_any_price_still_names_depth():
+    """The genuine case: there is no size anywhere on the ladder."""
+    account, signal, capture = ladder([('.30', '5')])
+    with pytest.raises(ValueError, match='venue minimum') as exc:
+        prepare(account, signal, capture, now=NOW)
+    assert 'book depth' in str(exc.value)
+    assert 'at any price' in str(exc.value)
+
+
+def test_a_touch_that_already_clears_the_floor_is_priced_exactly_as_before():
+    """The blast radius. 69 plans were getting through; this must not move any
+    of them. A deep touch is still bought at the touch, and the size is still
+    what the budget affords - not forced down to the venue floor."""
+    account, signal, capture = ladder([('.30', '1000'), ('.31', '1000')], minimum='1')
+    legs, evidence = prepare(account, signal, capture, now=NOW)
+    assert Decimal(legs[0]['limit_price']) == Decimal('.30'), (
+        'a plan that did not need the walk took it anyway')
+    assert Decimal(legs[0]['shares']) > Decimal('3.34'), (
+        'the size collapsed to the venue floor on a plan the budget could size properly'
+    )
+    assert Decimal(evidence['net_edge_per_share']) == Decimal('.279'), (
+        'the untouched path no longer prices the way it did before the walk existed'
+    )
+
+
+def test_ladder_cost_weights_by_size_and_stops_at_the_reachable_limit():
+    from paper_plans import ladder_cost
+    book = {'asks': [{'price': '.31', 'size': '100'}, {'price': '.30', 'size': '5'}]}
+    limit, average = ladder_cost(book, Decimal('16.67'))
+    assert limit == Decimal('.31'), 'the limit must be the last level the order reaches'
+    assert abs(average - Decimal('.307')) < Decimal('.001'), average
+    assert ladder_cost(book, Decimal('1000')) is None, 'a ladder that is short must say so'
+    assert ladder_cost({'asks': []}, Decimal('1')) is None
+
+
+def test_a_walk_the_budget_cannot_afford_is_refused_and_names_the_budget():
+    """The hole a mutation walked straight through. Removing the affordability
+    check at the walked price left every other test green, and a plan whose
+    legs cost more than max_plan_usd would have been published.
+
+    The touch price is what the budget was sized against; the walk costs more
+    per share, so a floor that was affordable at the touch need not be
+    affordable after it. 16.67 shares at the walked average is about $5.12 a
+    leg, $10.24 across two, against a $10 plan cap."""
+    account, signal, capture = ladder([('.30', '5'), ('.31', '100')], budget=10)
+    with pytest.raises(ValueError, match='venue minimum') as exc:
+        prepare(account, signal, capture, now=NOW)
+    message = str(exc.value)
+    assert 'account budget' in message, message
+    assert 'book depth' not in message, (
+        'the book held the shares and the price was fine; what ran out was cash'
+    )
+
+
+def test_a_walked_plan_still_reserves_inside_the_plan_cap():
+    """The guarantee the check exists to keep, asserted on the walked path the
+    way the opening test asserts it on the touch path."""
+    account, signal, capture = ladder([('.30', '5'), ('.31', '100')], budget=20)
+    legs, _ = prepare(account, signal, capture, now=NOW)
+    assert sum(Decimal(leg['cash_ceiling']) for leg in legs) <= 20, legs
