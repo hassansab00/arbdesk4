@@ -1015,6 +1015,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_opportunity_context": [
     "bands",
     "book_snapshots",
+    "cities",
     "markets",
     "weather_forecasts"
   ],
@@ -1042,6 +1043,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_prediction_ladder": [
     "bands",
+    "cities",
     "fact_band_outcome",
     "markets",
     "paper_resolution_evidence",

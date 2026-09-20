@@ -723,6 +723,13 @@ from v_latest_edge e
 join bands b   on b.band_id = e.band_id
 join markets m on m.market_id = b.market_id
 join cities c  on c.city_key = m.city_key
+               -- ACTIVE ONLY. A retired city keeps every row it ever wrote -
+               -- nothing here deletes - so this join is what stops the desk
+               -- proposing a trade in a city it has stopped trading.
+               -- v_band_ladder, v_trade_plan and v_city_day_plan are all built
+               -- on this view, so they inherit the filter rather than each
+               -- needing its own copy of the rule.
+               and coalesce(c.status, 'active') = 'active'
 cross join (
   select
     coalesce(((select value from settings where key = 'volume_thresholds')->>'liquidity_half_saturation_usd')::numeric, 1) as k,

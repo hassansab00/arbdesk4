@@ -192,6 +192,11 @@ select
     fb.captured_at
   ) as settled_at
 from markets m
+-- ACTIVE ONLY. The Predictive page is where a city is judged; a retired one
+-- has stopped being judged. Its settled history stays readable in
+-- fact_band_outcome and the archive views, which is where history belongs.
+join cities ct on ct.city_key = m.city_key
+              and coalesce(ct.status, 'active') = 'active'
 join bands b on b.market_id = m.market_id
 left join v_latest_prob p on p.band_id = b.band_id
 left join v_latest_edge e on e.band_id = b.band_id

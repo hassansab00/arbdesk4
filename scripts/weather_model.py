@@ -800,6 +800,17 @@ def stored_fits():
         ("select", "city_key,target,coefficients,mae_c,persistence_mae_c,beats_persistence"),
         ("target", "eq.max_c"),
     ], order="city_key.asc", page_size=1000)
+
+    # A RETIRED CITY'S STORED FIT IS NOT A LICENCE TO KEEP PREDICTING. The
+    # weekly fit filters retired cities, but --predict-only never refits: it
+    # reads the fits already in the table, which are kept forever because
+    # nothing here deletes. So on 2026-09-20, hours after dc was retired, the
+    # 04:15 intraday run wrote eleven fresh forward predictions for it. The
+    # filter belongs here, at the read, rather than at each caller.
+    rows, retired = drop_retired(rows, active_city_keys())
+    if retired:
+        print(f"{len(retired)} retired city/cities not predicted: " + ", ".join(retired))
+
     fits = {}
     for r in rows:
         coef = r.get("coefficients") or {}

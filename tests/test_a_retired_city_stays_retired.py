@@ -174,6 +174,84 @@ def test_no_desk_page_lists_a_retired_city(page):
 
 
 # ---------------------------------------------------------------------------
+# the views - found leaking the day after the retirement
+# ---------------------------------------------------------------------------
+# The first pass closed every path that READS THE CITIES TABLE and every Python
+# path that reads the feature cache. It did not close the views that build
+# their city list from markets and bands instead, so the morning after, the
+# desk was still showing 44 hong_kong and 22 jinan rows in v_trade_plan and 902
+# rows in v_prediction_ladder. No strategy would fire on any of them, so no
+# money was at risk - but "retired" meant two different things in two halves of
+# the same platform, which is the condition these tests exist to prevent.
+#
+# Three views carry the filter and six inherit it: v_band_ladder, v_trade_plan
+# and v_city_day_plan are all built on v_opportunities.
+FILTERED_VIEWS = {
+    "v_opportunities": "sql/ad4_13_reconcile.sql",
+    "v_prediction_ladder": "sql/ad4_68_prediction_ladder_outcomes.sql",
+    "v_opportunity_context": "sql/ad4_22_opportunity_context.sql",
+}
+
+
+@pytest.mark.parametrize("view,path", sorted(FILTERED_VIEWS.items()))
+def test_the_desk_views_filter_on_status(view, path):
+    """Each of these must join cities and test status, in the same file that
+    defines it - not in a later file that would silently be skipped by anyone
+    installing only part of the schema."""
+    src = open(path).read()
+    assert f"view {view}" in src or f"view public.{view}" in src, (
+        f"{path} no longer defines {view} — the filter has moved and this test "
+        f"is now pointing at nothing")
+    assert "coalesce(c.status, 'active') = 'active'" in src \
+        or "coalesce(ct.status, 'active') = 'active'" in src, (
+        f"{path} does not filter retired cities out of {view}")
+
+
+def test_the_inheriting_views_are_not_given_their_own_copy_of_the_rule():
+    """v_band_ladder, v_trade_plan and v_city_day_plan are built on
+    v_opportunities and inherit its filter. A second copy of the rule in
+    ad4_34 would be a second place for it to go stale - which is exactly how
+    the leak happened in the first place."""
+    src = open("sql/ad4_34_trade_plan.sql").read()
+    assert "from v_opportunities" in src, (
+        "v_band_ladder no longer reads v_opportunities, so it no longer "
+        "inherits the filter and needs its own")
+
+
+def test_history_is_deliberately_not_filtered():
+    """Retirement removes a city from the DESK, not from the record.
+
+    The rule this repo runs on is never to lose data, so the settled outcomes,
+    the archive rollups and the per-city stats keep every retired city and stay
+    readable. Filtering those would make a retired city look like one that
+    never existed, and the two need completely different actions. This test
+    exists so that a later "filter it everywhere" sweep has to argue with
+    something.
+    """
+    kept = ["v_archive_by_city", "v_city_stats", "v_verified_fact_band_outcome",
+            "v_city_observation_health"]
+    for view in kept:
+        assert view not in FILTERED_VIEWS, (
+            f"{view} is history or diagnosis, not a trading surface — a "
+            f"retired city has to stay visible in it")
+
+
+def test_stored_fits_cannot_resurrect_a_retired_city(monkeypatch):
+    """The leak that got through: the weekly fit filtered retired cities, but
+    --predict-only never refits - it reads the fits already in the table, which
+    are kept forever. Hours after dc was retired the 04:15 intraday run wrote
+    eleven fresh forward predictions for it."""
+    monkeypatch.setattr(wm, "rest_all", lambda *a, **k: [
+        {"city_key": c, "target": "max_c",
+         "coefficients": {"intercept": 1.0, "prev_max_c": 0.5},
+         "mae_c": 1.0, "persistence_mae_c": 2.0, "beats_persistence": True}
+        for c in ("nyc", "dc")])
+    monkeypatch.setattr(wm, "active_city_keys", lambda: {"nyc"})
+    fits = wm.stored_fits()
+    assert set(fits) == {"nyc"}, "a retired city's stored fit is not a licence to predict"
+
+
+# ---------------------------------------------------------------------------
 # the migration
 # ---------------------------------------------------------------------------
 def test_the_migration_retires_exactly_the_five():
