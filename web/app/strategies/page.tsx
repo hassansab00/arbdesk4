@@ -89,6 +89,40 @@ type DeskStrategy = {
 };
 type Desk = { account_id: string; name: string; mode: string; entries_paused: boolean };
 
+type BoardConditions = {
+  cities: number; day_decided: number; station_backed: number;
+  running_max_series: number; lock_eligible: number; inside_peak_window: number;
+};
+
+/**
+ * WHAT EACH ONE IS WAITING FOR, in one line.
+ *
+ * "nothing has met its conditions" names no condition, so there is nothing to
+ * do about it. These do. Like WHAT_IT_DOES this is documentation of the code
+ * and belongs beside it, not in the database - but where a condition is
+ * COUNTABLE the count comes from v_board_conditions, measured, not asserted.
+ *
+ * s5 and s7 are the two whose gate is a property of the board rather than of
+ * a price, and they are also two of the five that have never fired. s5 needs
+ * all three of: the day decided, a station reading rather than a model grid,
+ * and a running maximum resting on a series. On 20 Sep that was ONE city of
+ * 54 - not a misconfiguration, but worth knowing before waiting on it.
+ */
+const NEEDS: Record<string, { text: string; count?: keyof BoardConditions }> = {
+  s1_buy_low_sell_signal: { text: "a tradeable band priced under what the model says it is worth" },
+  s2_combination_arb: { text: "every band in one market priced at once — an incomplete basket is not an arb" },
+  s3_concentration: { text: "a band the model concentrates enough probability into" },
+  s4_tail_fade: { text: "an outer band the market is paying too much for" },
+  s5_running_max_lock: {
+    text: "the day decided, a station reading behind the maximum, and that maximum resting on a series",
+    count: "lock_eligible",
+  },
+  s6_anchor_insurance: { text: "an anchor band plus a cheap neighbour worth insuring it with" },
+  s7_pre_peak_gradient: { text: "a city inside its pre-peak entry window", count: "inside_peak_window" },
+  s8_two_bucket_cover: { text: "two buckets that together cover where the day is heading" },
+  s9_ladder_basket: { text: "a contiguous run of buckets clearing the floor together" },
+};
+
 export default function StrategiesPage() {
   const boardQ = useQuery<StrategyBoardRow[]>(
     () => supabase.from("v_strategy_board").select("*"),
@@ -125,6 +159,12 @@ export default function StrategiesPage() {
     () => new Map((deskQ.data ?? []).map((d) => [d.strategy_id, d])),
     [deskQ.data]
   );
+  const condQ = useQuery<BoardConditions[]>(
+    () => supabase.from("v_board_conditions").select("*"),
+    [],
+    60000
+  );
+  const cond = condQ.data?.[0];
   const selectedDesk = desksQ.data?.find((d) => d.account_id === desk);
 
   const rows = (boardQ.data ?? []).filter((r) => r.strategy_id !== "system");
@@ -238,6 +278,26 @@ export default function StrategiesPage() {
         </Link>
       </div>
 
+      {/* CONDITIONS ON THE BOARD, MEASURED. Five of the nine have never
+          proposed anything on any desk, and "nothing has met its conditions"
+          does not say whether that is the strategy, the settings or the
+          weather. These are the preconditions a strategy can depend on,
+          counted across the city-days actually on the board. */}
+      {cond && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded border border-border bg-panel px-3 py-2 text-xs">
+          <span className="text-muted">On the board now</span>
+          <span className="font-mono">{cond.cities} cities</span>
+          <span className="font-mono text-muted">{cond.day_decided} day decided</span>
+          <span className="font-mono text-muted">{cond.station_backed} station-backed</span>
+          <span className={`font-mono ${cond.inside_peak_window > 0 ? "text-good" : "text-muted"}`}>
+            {cond.inside_peak_window} inside a peak window
+          </span>
+          <span className={`font-mono ${cond.lock_eligible > 0 ? "text-good" : "text-warn"}`}>
+            {cond.lock_eligible} lockable
+          </span>
+        </div>
+      )}
+
       <DataState
           relation="v_strategy_board"
         loading={boardQ.loading}
@@ -336,6 +396,26 @@ export default function StrategiesPage() {
                           {d.took === 0 && d.last_block_reason && (
                             <div className="mt-0.5 text-muted">
                               last stopped by: <span className="font-mono">{d.last_block_reason}</span>
+                            </div>
+                          )}
+                          {/* When it has proposed nothing at all, the verdict
+                              above says so and stops. This says what it is
+                              waiting FOR, which is the part that can be acted
+                              on - and counts it where the board can be
+                              counted. */}
+                          {d.allowed_here && d.proposed === 0 && NEEDS[r.strategy_id] && (
+                            <div className="mt-0.5 text-muted">
+                              needs {NEEDS[r.strategy_id].text}
+                              {cond && NEEDS[r.strategy_id].count && (
+                                <span
+                                  className={
+                                    cond[NEEDS[r.strategy_id].count!] > 0 ? " text-good" : " text-warn"
+                                  }
+                                >
+                                  {" "}
+                                  — {cond[NEEDS[r.strategy_id].count!]} of {cond.cities} qualify right now
+                                </span>
+                              )}
                             </div>
                           )}
                         </div>

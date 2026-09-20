@@ -243,8 +243,25 @@ def test_nothing_defines_the_basis_a_second_time():
         # maximum"), so a naive scan matches the explanation and passes on code
         # that still carries a second CASE.
         src = re.sub(r"'(?:[^']|'')*'", "''", src)
-        for m in re.finditer(r"running_max_basis\s*=", src):
-            tail = src[m.end(): m.end() + 120]
+        # PRODUCING the value, not reading it. This matched `running_max_basis
+        # =` outright, which held only while nothing had ever COMPARED the
+        # column - and the first consumer that did (v_board_conditions, which
+        # counts how many cities clear s5's gate) tripped a guard about second
+        # definitions while containing none. Reading the stored column is the
+        # single definition working as intended; the thing to forbid is a
+        # second expression that computes it.
+        #
+        # `... as running_max_basis` puts that expression BEFORE the name and
+        # `set running_max_basis = ...` puts it after, so each is checked on
+        # the side the expression is actually on.
+        for m in re.finditer(r"\bas\s+running_max_basis\b", src):
+            head = src[max(0, m.start() - 400): m.start()]
+            assert "ad4_running_max_basis" in head, (
+                f"{path.name} produces a running_max_basis column without calling "
+                "ad4_running_max_basis() - that is a second definition of the "
+                f"same fact:\n  {head.splitlines()[-1] if head.splitlines() else head}")
+        for m in re.finditer(r"\bset\s+running_max_basis\s*=", src):
+            tail = src[m.end(): m.end() + 200]
             assert "ad4_running_max_basis" in tail, (
                 f"{path.name} assigns running_max_basis without calling "
                 "ad4_running_max_basis() - that is a second definition of the "

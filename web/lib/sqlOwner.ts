@@ -78,6 +78,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_band_price_history": "ad4_26_temp_trend.sql",
   "v_band_volume": "ad4_13_reconcile.sql",
   "v_bankroll_curve": "ad4_31_predictive.sql",
+  "v_board_conditions": "ad4_77_board_conditions.sql",
   "v_book_capture_health": "supabase/migrations/20260913090000_phase1d_probability_and_book_diagnostics.sql",
   "v_book_ladder": "ad4_13_reconcile.sql",
   "v_book_target_health": "supabase/migrations/20260913090000_phase1d_probability_and_book_diagnostics.sql",

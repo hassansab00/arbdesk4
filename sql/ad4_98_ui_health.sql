@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 171 of them - and for each MISSING one names the
+-- and function the app reads - 172 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -89,6 +89,7 @@ with expected(rel, owner, used_by) as (values
     ('v_band_price_history', 'ad4_26_temp_trend.sql', '/monitor'),
     ('v_band_volume', 'ad4_13_reconcile.sql', ''),
     ('v_bankroll_curve', 'ad4_31_predictive.sql', '/predictive'),
+    ('v_board_conditions', 'ad4_77_board_conditions.sql', '/strategies'),
     ('v_book_capture_health', 'supabase/migrations/20260913090000_phase1d_probability_and_book_diagnostics.sql', '(CityReadiness)'),
     ('v_book_ladder', 'ad4_13_reconcile.sql', ''),
     ('v_book_target_health', 'supabase/migrations/20260913090000_phase1d_probability_and_book_diagnostics.sql', ''),
@@ -282,6 +283,7 @@ begin
     ('v_band_price_history', 'ad4_26_temp_trend.sql', '/monitor'),
     ('v_band_volume', 'ad4_13_reconcile.sql', ''),
     ('v_bankroll_curve', 'ad4_31_predictive.sql', '/predictive'),
+    ('v_board_conditions', 'ad4_77_board_conditions.sql', '/strategies'),
     ('v_book_capture_health', 'supabase/migrations/20260913090000_phase1d_probability_and_book_diagnostics.sql', '(CityReadiness)'),
     ('v_book_ladder', 'ad4_13_reconcile.sql', ''),
     ('v_book_target_health', 'supabase/migrations/20260913090000_phase1d_probability_and_book_diagnostics.sql', ''),

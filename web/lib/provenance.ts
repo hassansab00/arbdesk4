@@ -684,6 +684,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_bankroll_curve": [
     "fact_signal_outcome"
   ],
+  "v_board_conditions": [
+    "live_weather"
+  ],
   "v_book_capture_health": [
     "bands",
     "book_snapshots",
