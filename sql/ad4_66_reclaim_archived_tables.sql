@@ -55,24 +55,88 @@
 -- so a slow or retried archive still finishes first. If the archive did not
 -- run, these are cheap no-ops - VACUUM FULL on a table with nothing dead in
 -- it rewrites the same rows and returns the same size.
+--
+-- WEEKLY RECLAIM AGAINST A DAILY PRUNE IS WHY THE TIER WAS BREACHED.
+--
+-- Everything above was true and stopped being sufficient. When it was
+-- written the archive ran WEEKLY over THREE tables, so one reclaim a week
+-- met one prune a week. Since then the archive went daily, and research
+-- (17 Sep) and resolution (19 Sep) were added to it. Neither ever got a
+-- reclaim job, and the weekly cadence stayed.
+--
+-- What that costs, measured: research sheds about 7,400 rows a day and
+-- resolution about 4,000 at ~7 KB each - roughly 40 MB of dead space per day
+-- against a 500 MB free tier. A week of that is 280 MB. The database was
+-- measured at 591 MB on 20 Sep, over a limit whose enforcement is read-only
+-- mode, and a one-off reclaim of the whole set brought it to 515 MB
+-- immediately - 76 MB that was dead pages and nothing else:
+--
+--     research_captures       68 -> 54 MB      bands            26 -> 10 MB
+--     book_snapshots         102 -> 76 MB      weather_obs      38 -> 32 MB
+--     trades_observed         60 -> 56 MB      edges            41 -> 38 MB
+--
+-- So the cadence now follows the prune that feeds it. The two tables the
+-- archive prunes EVERY DAY are reclaimed every day, half an hour behind it.
+-- The three that rarely shed anything stay weekly, and book_snapshots joins
+-- them: its ladders are stripped hourly by prune_dead_book_detail, which
+-- makes dead tuples continuously rather than in one daily lump.
+--
+-- AND OFF THE 04:00 COLLISION. The weekly jobs started at 04:00 Monday, which
+-- is exactly when pipeline_daily fires - and that pipeline runs
+-- ingest_forecasts.py, which writes weather_forecasts, the first table in the
+-- old sequence. An ACCESS EXCLUSIVE lock against a live writer is a stall
+-- waiting to happen. 06:20 onward on a Monday is genuinely clear: the 06:07
+-- observations collector has finished, the weather model is at 08:00 and the
+-- intraday pipeline at 08:15.
 -- ===========================================================================
 
+-- DAILY, because the archive prunes these daily. 03:00 archive, 03:30 here:
+-- the 20 Sep run took under two minutes, so half an hour is room to be wrong
+-- in, and both finish well before the 04:00 daily pipeline.
+select cron.schedule(
+  'ad4_reclaim_research_captures',
+  '30 3 * * *',
+  'VACUUM (FULL, ANALYZE) public.research_captures'
+);
+
+-- The heaviest of the lot and the reason the tier broke: 86 MB of which 75 is
+-- TOASTed Gamma and CLOB payloads. Those megabytes cannot come back until the
+-- rows are pruned, and cannot come back from a prune alone.
+select cron.schedule(
+  'ad4_reclaim_paper_resolution_evidence',
+  '35 3 * * *',
+  'VACUUM (FULL, ANALYZE) public.paper_resolution_evidence'
+);
+
+-- WEEKLY, smallest first, on tables that shed little. The order is the
+-- original one and for the original reason: VACUUM FULL holds both the old
+-- file and the new one while it rebuilds, so freeing the small tables first
+-- lowers the peak the big one has to fit inside.
 select cron.schedule(
   'ad4_reclaim_weather_forecasts',
-  '0 4 * * 1',
+  '20 6 * * 1',
   'VACUUM (FULL, ANALYZE) public.weather_forecasts'
 );
 
 select cron.schedule(
   'ad4_reclaim_weather_observations',
-  '20 4 * * 1',
+  '35 6 * * 1',
   'VACUUM (FULL, ANALYZE) public.weather_observations'
 );
 
 select cron.schedule(
   'ad4_reclaim_trades_observed',
-  '40 4 * * 1',
+  '50 6 * * 1',
   'VACUUM (FULL, ANALYZE) public.trades_observed'
+);
+
+-- Never reclaimed before, and the largest table on the desk at 102 MB.
+-- prune_dead_book_detail nulls a ladder every hour, which frees TOAST that
+-- only a rewrite returns - 26 MB of it on the first run.
+select cron.schedule(
+  'ad4_reclaim_book_snapshots',
+  '5 7 * * 1',
+  'VACUUM (FULL, ANALYZE) public.book_snapshots'
 );
 
 -- Did they take, and did the last run work?

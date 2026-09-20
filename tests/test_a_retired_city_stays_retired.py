@@ -13,6 +13,19 @@ the live database:
   2026-08-26, while beijing, shanghai and qingdao each hold 2,152 over the same
   window. Both are actively traded; neither can carry a model.
 
+AND THE TWO OBSERVABLE ONES ARE NOT PENDING ANYTHING. The retirement migration
+says hong_kong and jinan are retired "until a second source is wired up", which
+left them on the books as work waiting to happen - an HKO feed for one, a
+different station or Open-Meteo on the stored lat/long for the other. Asked on
+2026-09-20 whether to keep holding them open, Hassan: "as for on kon andjinan,
+remove entirely we dont ave to wait for tem." So they are out on the same
+footing as dc, lagos and jakarta: the roster is 49 cities, and nothing in the
+plan is waiting on a second weather source.
+
+That costs nothing and undoes nothing. Retirement is still one column, every
+row they ever wrote is still there, and if the decision ever reverses it is
+still one update - it is simply not queued work any more.
+
 NOTHING IS DELETED. That is not a detail, it is the rule this repo runs on:
 archive so the platform can still read it, never delete. Retirement moves one
 column, `cities.status`, and every row those cities ever wrote stays. So the

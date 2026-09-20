@@ -684,6 +684,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_bankroll_curve": [
     "fact_signal_outcome"
   ],
+  "v_board_conditions": [
+    "live_weather"
+  ],
   "v_book_capture_health": [
     "bands",
     "book_snapshots",
@@ -703,6 +706,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "paper_resolution_evidence",
     "markets"
+  ],
+  "v_calibration_status": [
+    "ingest_log"
   ],
   "v_campaign_state": [
     "ledger",
@@ -1093,6 +1099,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_strategy_board": [
     "fact_signal_outcome",
     "signals"
+  ],
+  "v_strategy_desk_board": [
+    "paper_accounts",
+    "paper_orders",
+    "paper_trade_plans"
   ],
   "v_synthesis_findings": [
     "bands",

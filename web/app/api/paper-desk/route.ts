@@ -70,6 +70,11 @@ export async function GET(request:Request) {
       positions:()=>client.from('paper_positions').select('*').eq('account_id',account).order('band_id').limit(500),
       activity:()=>client.from('paper_activity').select('*').eq('account_id',account).order('event_id',{ascending:false}).limit(100),
       plans:()=>client.from('paper_trade_plans').select('*').eq('account_id',account).order('created_at',{ascending:false}).limit(100),
+      // Per-desk strategy state. v_strategy_board answers "has this ever
+      // worked anywhere", which is the wrong grain when each desk runs its
+      // own policy - and it is served here rather than read from the browser
+      // because the view sits on paper_accounts and runs as its owner.
+      strategies:()=>client.from('v_strategy_desk_board').select('*').eq('account_id',account).order('strategy_id').limit(50),
     };
     if(!resource||!queries[resource]) return NextResponse.json({data:null,error:{message:'Unknown paper resource.'}},{status:400});
     return NextResponse.json(await queries[resource](),{headers:{'Cache-Control':'no-store'}});

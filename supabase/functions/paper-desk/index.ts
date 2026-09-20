@@ -76,6 +76,10 @@ Deno.serve(async (request) => {
         positions: `paper_positions?select=*&account_id=eq.${account}&order=band_id.asc&limit=500`,
         activity: `paper_activity?select=*&account_id=eq.${account}&order=event_id.desc&limit=100`,
         plans: `paper_trade_plans?select=*&account_id=eq.${account}&order=created_at.desc&limit=100`,
+        // The only resource here that is a view rather than a paper_* table:
+        // per-desk strategy state has to be joined across plans, orders and
+        // the policy, and that join belongs in the database.
+        strategies: `v_strategy_desk_board?select=*&account_id=eq.${account}&order=strategy_id.asc&limit=50`,
       };
       const path = body.resource && resources[body.resource];
       if (!path) return json({ data: null, error: { message: 'Unknown paper resource.' } }, 400);

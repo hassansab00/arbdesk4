@@ -258,7 +258,15 @@ const assert = require('node:assert/strict');
   assert.equal(Number((await db.query('select reserved_cash from paper_accounts')).rows[0].reserved_cash),2.10);
   const queued=(await db.query('select order_id from paper_orders where plan_id=$1',[plan])).rows;
   assert.equal(queued.length,1,'Repeated approval never duplicates legs');
+  // A PLAN MUST STOP READING "queued" ONCE ITS ORDER IS DONE. Measured on the
+  // live desk 20 Sep: 61 orders filled, 7 partial, 8 expired - and all 72
+  // plans still said queued, every one of them past its expiry, because
+  // nothing ever walked paper_orders.plan_id back to the plan. The desk was
+  // trading and the screen showed a graveyard.
+  const planStatus=async()=>(await db.query('select status from paper_trade_plans where plan_id=$1',[plan])).rows[0].status;
+  assert.equal(await planStatus(),'queued','a live order is the one case where queued is true');
   await db.query('select cancel_paper_order($1)',[queued[0].order_id]);
+  assert.equal(await planStatus(),'canceled','a canceled order must not leave its plan reading queued forever');
   assert.equal(Number((await db.query('select reserved_cash from paper_accounts')).rows[0].reserved_cash),0);
   const exitCommand='40000000-0000-0000-0000-000000000003';
   const exit=()=>db.query("select submit_paper_exit($1,$2,$3,'YES',4,.60) as id",[account,exitCommand,band]);
@@ -441,6 +449,54 @@ const assert = require('node:assert/strict');
     [single,'50000000-0000-0000-0000-000000000002',JSON.stringify(legs),JSON.stringify({net_edge_per_share:'.10'})])).rows[0].id;
   await db.query('select approve_single_paper_plan($1)',[singlePlan]);
   assert.equal((await db.query("select count(*)::int as n from paper_orders where plan_id=$1",[singlePlan])).rows[0].n,1);
+
+  // AND THE CASE THE WHOLE THING EXISTS FOR: the order fills, so the plan says
+  // filled. This is the assertion that was missing while 61 filled orders sat
+  // behind 0 filled plans.
+  const singlePlanOrder=(await db.query('select order_id from paper_orders where plan_id=$1',[singlePlan])).rows[0].order_id;
+  const singlePlanJob=(await db.query('select claim_paper_order() as job')).rows[0].job;
+  assert.equal(singlePlanJob.order_id,singlePlanOrder,'the claim took a different order than the one under test');
+  await db.query('select complete_paper_order($1,$2,$3)',[singlePlanOrder,singlePlanJob.lease_token,
+    JSON.stringify({status:'filled',shares:'4',notional:'2.00',fee:'.05',snapshot_id:'snapshot',
+      fills:[{shares:'4',price:'.50',notional:'2.00',fee:'.05'}]})]);
+  assert.equal((await db.query('select status from paper_trade_plans where plan_id=$1',[singlePlan])).rows[0].status,'filled',
+    'an order that filled must carry its plan with it');
+
+  // A TWO-LEG PLAN WITH ONE LEG ON IS NOT "filled". s8 covers two buckets and
+  // s9 builds a ladder, so this is their shape - carried here under s1, the
+  // strategy this desk's policy allows, because the rule under test is about
+  // legs and not about which strategy proposed them. Reporting the whole plan
+  // filled because one leg came back would claim a position the desk does not
+  // hold.
+  await db.exec("reset role;insert into signals values(3,'ENTER','s1',now(),'two legs');set role service_role;");
+  // Two sides of the one band the fixture carries: its inventory contracts
+  // are counted against exactly one band, and a second would move them.
+  const twoLegs=[{band_id:band,side:'YES',shares:'2',limit_price:'.50',cash_ceiling:'1.10'},
+                 {band_id:band,side:'NO', shares:'2',limit_price:'.40',cash_ceiling:'0.90'}];
+  const coverPlan=(await db.query('select publish_paper_plan($1,$2,3,$3,$4) as id',
+    [single,'50000000-0000-0000-0000-000000000003',JSON.stringify(twoLegs),JSON.stringify({net_edge_per_share:'.10'})])).rows[0].id;
+  await db.query('select approve_single_paper_plan($1)',[coverPlan]);
+  const coverOrders=(await db.query('select order_id,side from paper_orders where plan_id=$1',[coverPlan])).rows;
+  assert.equal(coverOrders.length,2,'a two-leg plan must place two orders');
+  const coverStatus=async()=>(await db.query('select status from paper_trade_plans where plan_id=$1',[coverPlan])).rows[0].status;
+  assert.equal(await coverStatus(),'queued');
+
+  // Cancel the NO leg first, deliberately: the book evidence in this fixture
+  // is the YES token's, so which leg gets filled has to be chosen here rather
+  // than left to whichever one claim_paper_order() happens to hand back.
+  const noLeg=coverOrders.find(o=>o.side==='NO').order_id;
+  const yesLeg=coverOrders.find(o=>o.side==='YES').order_id;
+  await db.query('select cancel_single_paper_order($1)',[noLeg]);
+  assert.equal(await coverStatus(),'queued',
+    'one leg canceled while the other is still working is not a finished plan');
+
+  const legJob=(await db.query('select claim_paper_order() as job')).rows[0].job;
+  assert.equal(legJob.order_id,yesLeg,'the only claimable leg left is the YES one');
+  await db.query('select complete_paper_order($1,$2,$3)',[yesLeg,legJob.lease_token,
+    JSON.stringify({status:'filled',shares:'2',notional:'1.00',fee:'.025',snapshot_id:'snapshot',
+      fills:[{shares:'2',price:'.50',notional:'1.00',fee:'.025'}]})]);
+  assert.equal(await coverStatus(),'partial',
+    'one leg filled and one canceled is a PARTIAL plan - calling it filled claims a position the desk does not hold');
   await db.close();
   console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits and the paper_trades bridge');
 })().catch(e=>{console.error(e);process.exit(1);});
