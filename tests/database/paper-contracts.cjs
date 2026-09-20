@@ -34,15 +34,35 @@ const assert = require('node:assert/strict');
     -- 20260919180000_trade_decision_lineage.sql stamps onto every trade, so
     -- the column has to exist here or that migration's backfill fails on a
     -- table shape production does not have.
+    -- regime_label is created by sql/ad4_rpc.sql, which this harness never
+    -- applies, and 20260920220000 stamps it onto the trade at fill. Nullable
+    -- text, matching the live column. Appended last so the positional inserts
+    -- below keep working.
     create table public.signals(signal_id bigint primary key,action text,strategy_id text,
-      fired_at timestamptz,reason text,payload jsonb);
+      fired_at timestamptz,reason text,payload jsonb,regime_label text);
     -- ledger is created by sql/ad4_00_preflight.sql, which this harness never
     -- applies. Column types and the two NOT NULLs match the live table.
+    --
+    -- ledger_trade_id_fkey IS PART OF THAT SHAPE AND WAS MISSING HERE, which
+    -- is how prune_exported_paper_trades passed a contract while being unable
+    -- to delete a single row in production: every paper trade has ledger rows
+    -- behind it, the live foreign key has no ON DELETE action, and the delete
+    -- raised 23503 every time. Without the constraint this harness modelled a
+    -- database where the delete simply worked. Declared below the paper_trades
+    -- table, since it references it.
     create table public.ledger(entry_id bigserial primary key,
       recorded_at timestamptz not null default now(),trade_id uuid,signal_id bigint,
       event_type text not null,payload jsonb not null,stage text,strategy_id text,
       deployment_id uuid,band_id uuid,regime_label text,forecast_version text,
       calibration_version text,cost_version text,detail jsonb);
+    -- strategies is created by sql/ad4_rpc.sql. Only v_paper_desks reads it,
+    -- and only to count the enabled ones, but the column types and NOT NULLs
+    -- match the live table so the view is built against the real shape.
+    create table public.strategies(strategy_id text primary key,name text not null,side text,
+      origin text,config jsonb not null default '{}'::jsonb,conflict_class text,
+      enabled boolean not null default true,created_at timestamptz not null default now(),
+      universe jsonb,regime_filter jsonb,capital_cap_pct numeric,max_concurrent integer,extra jsonb);
+    insert into public.strategies(strategy_id,name) values('s1','price entry');
     create table public.band_probabilities(prob_id uuid primary key,band_id uuid,computed_at timestamptz default now());
     create table public.edges(edge_id bigint primary key,band_id uuid,computed_at timestamptz default now(),
       side text,tradeable boolean default false);
@@ -50,6 +70,14 @@ const assert = require('node:assert/strict');
     create table public.ingest_log(log_id bigint primary key,job text,started_at timestamptz,finished_at timestamptz,
       status text,rows_written integer,detail jsonb,rows integer,logged_at timestamptz default now());
     create table public.model_versions(version_id uuid primary key,created_at timestamptz default now());
+    -- anomalies is created by sql/ad4_00_preflight.sql, which this harness
+    -- never applies. check_paper_desk_integrity() writes to it, so the table
+    -- has to stand here or the function is tested against a database shape
+    -- that does not exist. Column types and the one NOT NULL match live.
+    create table public.anomalies(anomaly_id bigserial primary key,
+      detected_at timestamptz not null default now(),kind text not null,
+      city_key text,band_id uuid,severity text,detail jsonb,side text,
+      value numeric,notified boolean default false);
     -- paper_trades is created by sql/ad4_00_preflight.sql and widened by
     -- ad4_13_reconcile.sql, neither of which is a supabase/ migration - so this
     -- harness has to stand it up itself or every migration that touches it
@@ -70,6 +98,8 @@ const assert = require('node:assert/strict');
       regime_label text, max_slippage_setting numeric, fill_quality numeric,
       legs_requested integer, legs_filled integer,
       approved_by_user boolean default true, action text, exit_price numeric);
+    alter table public.ledger add constraint ledger_trade_id_fkey
+      foreign key (trade_id) references public.paper_trades(trade_id);
     create table public.fact_forecast_outcome(city_key text,for_date date,model text,lead_days int,
       run_at timestamptz,forecast_max_c numeric default 0,observed_max_c numeric default 0,
       error_c numeric generated always as (forecast_max_c-observed_max_c) stored,
@@ -117,6 +147,38 @@ const assert = require('node:assert/strict');
     }
     await db.exec(fs.readFileSync(path.join(directory,file),'utf8'));
   }
+  // DESK MANAGEMENT IS ENGINE CODE AND IT LIVES IN sql/.
+  //
+  // submit, claim, complete, approve, settle and expire are all defined in
+  // supabase/migrations, so this harness exercises them. paper_desk_create,
+  // _update, _reset and _archive are defined in sql/ad4_59_paper_desks.sql,
+  // which it never applied - so the half of the engine that makes, re-policies,
+  // wipes and retires a desk had no contract of any kind. That is how
+  // paper_desk_reset kept a `delete from` on four tables for as long as it did.
+  //
+  // Applying the real file rather than a copy is the point: a fixture
+  // definition would test a function the database does not have, which is the
+  // failure CLAUDE.md describes. Its only dependencies are the paper_* tables
+  // the migrations above create, plus strategies for v_paper_desks.
+  await db.exec(fs.readFileSync(
+    path.resolve(__dirname,'../../sql/ad4_59_paper_desks.sql'),'utf8'));
+  // ...and ad4_60, because THIS deployment runs multi-desk. The migration
+  // above creates the unique index one_single_paper_desk, and ad4_60 drops it
+  // and redefines paper_desk_create and create_single_paper_account to suit.
+  // Production has four desks and no such index, so applying ad4_59 alone
+  // would model a single-operator deployment nobody runs - the same trap as a
+  // fixture that does not match the live shape, arriving from the other side.
+  await db.exec(fs.readFileSync(
+    path.resolve(__dirname,'../../sql/ad4_60_multiple_paper_desks.sql'),'utf8'));
+  // ad4_67 prunes closed trades into the repository export, and ad4_81 is the
+  // view that checks the books. They belong together: the prune is the one
+  // production operation that removes a number the identities depend on, and
+  // it is the reason the view cannot simply sum paper_trades. Testing either
+  // without the other tests a database where the money never leaves.
+  await db.exec(fs.readFileSync(
+    path.resolve(__dirname,'../../sql/ad4_67_prune_exported_paper_trades.sql'),'utf8'));
+  await db.exec(fs.readFileSync(
+    path.resolve(__dirname,'../../sql/ad4_81_paper_desk_integrity.sql'),'utf8'));
   const uid='10000000-0000-0000-0000-000000000001', other='10000000-0000-0000-0000-000000000002';
   const band='20000000-0000-0000-0000-000000000001', market='30000000-0000-0000-0000-000000000001';
   const command='40000000-0000-0000-0000-000000000001';
@@ -194,6 +256,118 @@ const assert = require('node:assert/strict');
   await db.exec('reset role;');
 
   await db.exec(`set role authenticated;set request.jwt.claim.sub='${uid}';`);
+  // ======================================================================
+  // THE BOOKS HAVE TO BALANCE, AFTER EVERY OPERATION, ON ANY DESK.
+  //
+  // A desk is configuration: created, re-policied, paused, archived, reset,
+  // replaced. Its P&L is data. What has to be true is the ENGINE - that for
+  // ANY desk, under any policy, after any sequence of operations, the money
+  // still adds up. Everything asserted below this line is about one desk's
+  // outcome; this is about the mechanism, and it is the only thing here that
+  // stays true when every desk in the database is thrown away and remade.
+  //
+  // FOUR IDENTITIES, none of which anything checked before:
+  //
+  //   1  cash is the sum of its own activity rows. Cash must never move
+  //      except through a logged event, or the ledger stops being the record
+  //      and becomes a commentary on it.
+  //   2  reserved_cash is exactly what live orders have claimed. A reserve
+  //      that outlives its order silently shrinks the desk; one that dies
+  //      early lets the same dollar be spent twice.
+  //   3  cash = starting_cash - open cost basis + realised P&L (including the
+  //      P&L of trades the daily export has archived to the repository and
+  //      deleted) + every reset - the cost basis those resets wrote off.
+  //      Submitting an order does NOT move cash - it raises the reserve - so
+  //      this holds at every instant, not just at rest. The reset term is not
+  //      a let-off: a reset deliberately re-bases cash to starting_cash while
+  //      the trades that earned the P&L stay on the books, and it records the
+  //      difference as an account_reset activity row. Carrying that row in the
+  //      identity is what makes the re-basing VISIBLE rather than an exception
+  //      the check quietly skips - and it is how this assertion caught its own
+  //      first draft the moment paper_desk_reset came under test.
+  //   4  nothing is negative, and available cash (cash - reserved) never goes
+  //      below zero. That last one is the over-commitment check: the engine
+  //      refuses an order whose ceiling exceeds cash - reserved, and this is
+  //      what proves the refusal is not bypassable by another route.
+  // ======================================================================
+  async function books(who, where) {
+    const r = (await db.query(`
+      select a.starting_cash, a.cash, a.reserved_cash,
+             coalesce((select sum(cash_delta) from public.paper_activity
+                        where account_id=a.account_id),0)                    as ledger,
+             coalesce((select sum(cash_ceiling) from public.paper_orders
+                        where account_id=a.account_id
+                          and status in ('queued','working')),0)             as live_ceilings,
+             coalesce((select sum(cost_basis) from public.paper_positions
+                        where account_id=a.account_id),0)                    as basis,
+             coalesce((select min(shares) from public.paper_positions
+                        where account_id=a.account_id),0)                    as thinnest,
+             coalesce((select sum(net_pnl) from public.paper_trades
+                        where account_id=a.account_id and closed_at is not null),0) as realized,
+             coalesce((select sum(cash_delta) from public.paper_activity
+                        where account_id=a.account_id
+                          and event_type='account_reset'),0)                    as rebased,
+             -- THE TWO TERMS PRODUCTION NEEDS AND A TEST DATABASE DOES NOT.
+             -- Both stand for rows that no longer exist: net_pnl on trades the
+             -- daily export moved to the repository, and cost basis a reset
+             -- deleted with the positions. Without them this identity is only
+             -- true of a database that never loses anything, which is not the
+             -- one the desk runs on.
+             coalesce((select sum((payload->>'realized_pnl')::numeric)
+                         from public.paper_activity
+                        where account_id=a.account_id
+                          and event_type='trades_archived'
+                          and payload ? 'realized_pnl'),0)                      as archived,
+             coalesce((select sum((payload->>'basis_written_off')::numeric)
+                         from public.paper_activity
+                        where account_id=a.account_id
+                          and event_type='account_reset'
+                          and payload ? 'basis_written_off'),0)                 as written_off
+        from public.paper_accounts a where a.account_id=$1`, [who])).rows[0];
+    const n = x => Number(x);
+    const near = (got, want, what) => assert.ok(Math.abs(got - want) < 1e-6,
+      `${where}: ${what} - got ${got}, expected ${want}`);
+    near(n(r.cash), n(r.ledger),
+      'cash is not the sum of its activity rows, so money moved without an event');
+    near(n(r.reserved_cash), n(r.live_ceilings),
+      'reserved cash is not what live orders claimed');
+    near(n(r.cash), n(r.starting_cash) - n(r.basis) + n(r.realized) + n(r.archived)
+                    + n(r.rebased) - n(r.written_off),
+      'cash != starting cash - open basis + realised + archived realised + resets - written-off basis');
+    assert.ok(n(r.cash) >= 0, `${where}: cash went negative`);
+    assert.ok(n(r.reserved_cash) >= 0, `${where}: reserved cash went negative`);
+    assert.ok(n(r.cash) - n(r.reserved_cash) >= -1e-9,
+      `${where}: the desk committed more than it holds (cash ${r.cash}, reserved ${r.reserved_cash})`);
+    assert.ok(n(r.thinnest) >= 0, `${where}: a position holds negative shares`);
+
+    // AND THE VIEW PRODUCTION READS HAS TO SAY THE SAME THING.
+    //
+    // Everything above is this harness's own arithmetic against a database it
+    // built thirty seconds ago. v_paper_desk_integrity is what runs hourly
+    // against desks nobody wrote a test for. If the two can disagree then one
+    // of them is decorative, so the view is checked on its inputs - the raw
+    // numbers, against the ones just read independently - and on its verdict.
+    //
+    // The verdict alone would not be enough: a view that stopped computing
+    // would return ok=true forever. That is what the DETECTOR HAS TO DETECT
+    // block at the end of this file is for.
+    const v = (await db.query(
+      'select * from public.v_paper_desk_integrity where account_id=$1', [who])).rows[0];
+    assert.ok(v, `${where}: the integrity view has no row for this desk`);
+    near(n(v.cash),          n(r.cash),          'the view reads a different cash');
+    near(n(v.reserved_cash), n(r.reserved_cash), 'the view reads a different reserved cash');
+    near(n(v.ledger_cash),   n(r.ledger),        'the view adds the activity ledger up differently');
+    near(n(v.live_ceilings), n(r.live_ceilings), 'the view counts different orders as live');
+    near(n(v.open_basis),    n(r.basis),         'the view reads a different open cost basis');
+    near(n(v.expected_cash),
+         n(r.starting_cash) - n(r.basis) + n(r.realized) + n(r.archived)
+         + n(r.rebased) - n(r.written_off),
+         'the view expects a different cash than the identity does');
+    near(n(v.realized), n(r.realized) + n(r.archived),
+         'the view and this harness count different trades as realised');
+    assert.ok(v.ok, `${where}: v_paper_desk_integrity reports [${v.breaches}] - ${v.note}`);
+  }
+
   const account=(await db.query(`select create_paper_account('Test account',100) as id`)).rows[0].id;
   const submit=()=>db.query(`select submit_paper_order($1,$2,$3,'YES',10,0.55,6,'test') as id`,[account,command,band]);
   const order=(await submit()).rows[0].id;
@@ -206,6 +380,7 @@ const assert = require('node:assert/strict');
   await assert.rejects(db.query(`select create_paper_account('Unauthorized',100)`),/permission denied/);
   await db.exec('reset role;set role service_role;');
   const claimed=(await db.query('select claim_paper_order() as job')).rows[0].job;
+  await books(account,'after an order is submitted and claimed');
   assert.equal(claimed.order_id,order);
   assert.equal((await db.query('select claim_paper_order() as job')).rows[0].job,null,'Account lease excludes second worker');
   await db.query(`insert into paper_book_evidence(snapshot_id,token_id,observed_at,payload) values('snapshot','yes',now(),'{}')`);
@@ -217,6 +392,7 @@ const assert = require('node:assert/strict');
   await assert.rejects(finish({...result,fee:'Infinity'}),/Invalid amounts/);
   await assert.rejects(finish({...result,fills:[{shares:'10',price:'.50',notional:'5.30',fee:'.12425'}]}),/Invalid fill arithmetic/);
   await finish();await finish();
+  await books(account,'after a fill, and after the same fill is replayed');
   const balance=(await db.query('select cash,reserved_cash from paper_accounts')).rows[0];
   assert.equal(Number(balance.cash),94.57575);assert.equal(Number(balance.reserved_cash),0);
   assert.equal(Number((await db.query('select shares from paper_positions')).rows[0].shares),10);
@@ -266,6 +442,7 @@ const assert = require('node:assert/strict');
   const planStatus=async()=>(await db.query('select status from paper_trade_plans where plan_id=$1',[plan])).rows[0].status;
   assert.equal(await planStatus(),'queued','a live order is the one case where queued is true');
   await db.query('select cancel_paper_order($1)',[queued[0].order_id]);
+  await books(account,'after an order is cancelled and its reserve released');
   assert.equal(await planStatus(),'canceled','a canceled order must not leave its plan reading queued forever');
   assert.equal(Number((await db.query('select reserved_cash from paper_accounts')).rows[0].reserved_cash),0);
   const exitCommand='40000000-0000-0000-0000-000000000003';
@@ -284,6 +461,7 @@ const assert = require('node:assert/strict');
   await db.exec(`reset role;set role authenticated;set request.jwt.claim.sub='${uid}';`);
   await db.query("select set_paper_policy($1,'automatic',true,$2)",[account,JSON.stringify(policy)]);
   await db.query('select set_paper_exit_policy($1,true,.25,.15)',[account]);
+  await books(account,'after the exit policy changes');
   const version=(await db.query('select policy_version from paper_accounts')).rows[0].policy_version;
   await db.exec('reset role;set role service_role;');
   const preview={status:'filled',shares:'6',notional:'4.80',fee:'.048',snapshot_id:'snapshot',
@@ -294,6 +472,7 @@ const assert = require('node:assert/strict');
   const exitClaim=(await db.query('select claim_paper_order() as job')).rows[0].job;
   assert.equal(exitClaim.order_id,auto);
   await db.query('select complete_paper_order($1,$2,$3)',[auto,exitClaim.lease_token,JSON.stringify(preview)]);
+  await books(account,'after an automatic exit filled');
   assert.equal(Number((await db.query('select shares from paper_positions')).rows[0].shares),0);
   await db.exec(`reset role;set role authenticated;set request.jwt.claim.sub='${uid}';`);
   const expiring=(await db.query("select submit_paper_order($1,$2,$3,'YES',2,.50,1.10,'expiry test') as id",
@@ -301,6 +480,7 @@ const assert = require('node:assert/strict');
   await db.exec('reset role;set role service_role;');
   await db.query("update paper_orders set expires_at=now()-interval '1 second' where order_id=$1",[expiring]);
   await db.query('select expire_paper_commands()');await db.query('select expire_paper_commands()');
+  await books(account,'after the expiry sweep ran twice');
   assert.equal(Number((await db.query('select reserved_cash from paper_accounts')).rows[0].reserved_cash),0);
   assert.equal((await db.query("select count(*)::int as n from paper_activity where event_type='order_expired'")).rows[0].n,1);
   await db.exec(`reset role;set role authenticated;set request.jwt.claim.sub='${uid}';`);
@@ -317,6 +497,7 @@ const assert = require('node:assert/strict');
     ['resolution','condition','yes','no','yes',JSON.stringify(gamma),JSON.stringify(clob),'[]']);
   assert.equal((await db.query("select settle_paper_inventory($1,'resolution') as n",[band])).rows[0].n,1);
   assert.equal((await db.query("select settle_paper_inventory($1,'resolution') as n",[band])).rows[0].n,0);
+  await books(account,'after venue settlement, and after it was replayed');
   assert.equal(Number((await db.query('select cash from paper_accounts')).rows[0].cash),beforeSettlement+2);
   assert.equal(Number((await db.query('select shares from paper_positions')).rows[0].shares),0);
   assert.equal((await db.query('select count(*)::int as n from paper_position_settlements')).rows[0].n,1);
@@ -378,8 +559,8 @@ const assert = require('node:assert/strict');
   assert.equal(paid.forecast_version,null);
 
   // ...and with a signal, the snapshot is found at the shallow path.
-  await db.query(`insert into public.signals(signal_id,action,strategy_id,payload)
-    values (901,'ENTER','s1',$1::jsonb),(902,'ENTER','s1',$2::jsonb)`,
+  await db.query(`insert into public.signals(signal_id,action,strategy_id,payload,regime_label)
+    values (901,'ENTER','s1',$1::jsonb,'SHARP'),(902,'ENTER','s1',$2::jsonb,null)`,
     [JSON.stringify({decision_snapshot:{[band]:{
        forecast_version:'11111111-1111-1111-1111-111111111111',
        calibration_version:'22222222-2222-2222-2222-222222222222',
@@ -399,6 +580,16 @@ const assert = require('node:assert/strict');
   assert.equal(recovered.forecast_version,'44444444-4444-4444-4444-444444444444');
   assert.equal(recovered.recovered_from,'decision_inputs');
 
+  // THE REGIME CAME LAST AND FROM SOMEWHERE ELSE. It is not in the per-band
+  // snapshot - signal_engine never froze it - it is a column on the signal,
+  // and every one of the 69 trades on the books was recoverable by a join
+  // right up until signals gets pruned. Stamping it is what makes that prune
+  // safe, which is the same argument the three versions already won.
+  assert.equal(shallow.regime_label,'SHARP',
+    'the regime is on the signal and nowhere else once signals is archived');
+  assert.ok(!('regime_label' in recovered),
+    'a signal with no regime must not acquire one - an invented regime is worse than a null');
+
   // WRITE-ONCE. A snapshot that can be edited afterwards is not evidence.
   await db.query(`update paper_trades set forecast_version=$2 where trade_id=$1`,
     [paid.trade_id,'11111111-1111-1111-1111-111111111111']);
@@ -407,6 +598,16 @@ const assert = require('node:assert/strict');
       [paid.trade_id,'99999999-9999-9999-9999-999999999999']),
     /forecast_version is the decision that produced this trade/,
     'rebanking was able to rewrite what the desk believed at entry');
+  // regime_label was the one lineage column the guard did not name, so the one
+  // field nothing ever wrote was also the one field anything could rewrite.
+  await db.query(`update paper_trades set regime_label='SHARP' where trade_id=$1`,
+    [paid.trade_id]);
+  await assert.rejects(
+    db.query(`update paper_trades set regime_label='NORMAL' where trade_id=$1`,
+      [paid.trade_id]),
+    /regime_label is the decision that produced this trade/,
+    'the regime the desk traded in was rewritable after the fact');
+
   // ...while everything that is not lineage still moves freely.
   await db.query('update paper_trades set close_price=1 where trade_id=$1',[paid.trade_id]);
 
@@ -497,6 +698,608 @@ const assert = require('node:assert/strict');
       fills:[{shares:'2',price:'.50',notional:'1.00',fee:'.025'}]})]);
   assert.equal(await coverStatus(),'partial',
     'one leg filled and one canceled is a PARTIAL plan - calling it filled claims a position the desk does not hold');
+  // ======================================================================
+  // A RESET FLATTENS A DESK. IT DOES NOT ERASE ITS RECORD.
+  //
+  // paper_desk_reset had no contract at all, which is how it kept the one
+  // behaviour the desk is not allowed to have: it ran `delete from` on
+  // paper_position_settlements, paper_positions, paper_orders and
+  // paper_trade_plans, so pressing Reset destroyed every order the desk had
+  // placed, every proposal it made and every block reason that explained why.
+  //
+  // The line is between a RECORD and a DERIVED TOTAL. Orders, plans and
+  // settlements are records. paper_positions is a running total of them, and
+  // clearing it is only safe BECAUSE they survive to rebuild it - which was
+  // not true before, when the reset deleted its own sources.
+  //
+  // Run on the desk that has been trading for the whole file, so the rows
+  // being protected are real ones rather than a fixture made to pass.
+  // ======================================================================
+  const before = (await db.query(`
+    select (select count(*) from public.paper_orders      where account_id=$1) as orders,
+           (select count(*) from public.paper_trade_plans where account_id=$1) as plans,
+           (select count(*) from public.paper_position_settlements where account_id=$1) as settled,
+           (select count(*) from public.paper_trades      where account_id=$1) as trades`,
+    [account])).rows[0];
+  assert.ok(Number(before.orders) > 0 && Number(before.plans) > 0
+            && Number(before.settled) > 0,
+    'the reset contract is meaningless unless the desk actually has a record to lose');
+
+  // IT HAD TO BE UNPAUSED FIRST, or "still paused afterwards" proves nothing:
+  // the desk is already paused by the time this runs, so an assertion that it
+  // is paused would hold even if the reset stopped pausing it. A mutation
+  // removing entries_paused=true walked straight through the first version.
+  await db.query('update public.paper_accounts set entries_paused=false where account_id=$1',
+    [account]);
+
+  // AND THE RESET HAS TO COMPLETE AT ALL. The previous version opened with
+  // `delete from paper_position_settlements`, which carries an append-only
+  // trigger, so it raised "Append-only record; write a linked correction
+  // instead" and rolled back the whole function - and had it got past that,
+  // paper_activity.order_id references paper_orders with no ON DELETE action,
+  // so the next delete would have been refused too. Verified against the live
+  // database on the trading desk (78 orders, 83 activity rows referencing
+  // them) in a rolled-back transaction.
+  //
+  // So nothing was ever destroyed: the database refused. What was broken is
+  // that Reset silently did NOTHING on any desk that had settled a position.
+  // This call failing is the regression, and it is why the assertions below
+  // are reachable at all.
+  await db.query('select paper_desk_reset($1)', [account]);
+
+  const after = (await db.query(`
+    select (select count(*) from public.paper_orders      where account_id=$1) as orders,
+           (select count(*) from public.paper_trade_plans where account_id=$1) as plans,
+           (select count(*) from public.paper_position_settlements where account_id=$1) as settled,
+           (select count(*) from public.paper_trades      where account_id=$1) as trades,
+           (select count(*) from public.paper_positions   where account_id=$1) as positions,
+           (select count(*) from public.paper_orders where account_id=$1
+             and status in ('queued','working')) as still_live,
+           (select cash from public.paper_accounts where account_id=$1) as cash,
+           (select starting_cash from public.paper_accounts where account_id=$1) as start,
+           (select entries_paused from public.paper_accounts where account_id=$1) as paused`,
+    [account])).rows[0];
+
+  assert.equal(after.orders,  before.orders,  'a reset deleted orders - that is the desk\'s record of what it asked the venue for');
+  assert.equal(after.plans,   before.plans,   'a reset deleted trade plans, and with them every reason a trade was blocked');
+  assert.equal(after.settled, before.settled, 'a reset deleted settlements, each of which carries its own proof_id');
+  assert.equal(after.trades,  before.trades,  'a reset deleted trades');
+  assert.equal(Number(after.positions), 0, 'the running position total survived, so the desk still holds exposure its cash no longer covers');
+  assert.equal(Number(after.still_live), 0, 'an order was left live after a reset and can still fill against cash that was returned');
+  assert.equal(Number(after.cash), Number(after.start), 'cash did not go back to the starting balance');
+  assert.equal(after.paused, true, 'a reset desk must not resume entering on its own');
+
+  // And the books still balance afterwards, which is the point of resetting.
+  await books(account, 'after the desk was reset');
+
+  // ======================================================================
+  // YOU CANNOT SELL MORE THAN YOU HOLD, INCLUDING WHAT IS ALREADY QUEUED.
+  //
+  // submit_single_paper_exit is not a thin wrapper - it carries the over-sell
+  // guard, and nothing exercised it. The guard that matters is the CUMULATIVE
+  // one: two exits that each fit the position but together exceed it. Without
+  // the `pending` term a desk could queue its whole position twice and fill
+  // both, ending short a contract it never owned.
+  // ======================================================================
+  await db.exec('reset role; set role service_role;');
+  const held=(await db.query(
+    `select band_id, side, shares from public.paper_positions
+      where account_id=$1 and shares > 0 order by shares desc limit 1`,[single])).rows[0];
+  assert.ok(held,'the exit contract needs the single desk to be holding something');
+  const have=Number(held.shares);
+
+  await assert.rejects(
+    db.query('select submit_single_paper_exit($1,$2,$3,$4,$5,0.10)',
+      [single,crypto.randomUUID(),held.band_id,held.side,have+1]),
+    /Shares already sold or reserved for exit/,
+    'an exit larger than the position was accepted');
+
+  await assert.rejects(
+    db.query('select submit_single_paper_exit($1,$2,$3,$4,$5,0.10)',
+      [single,crypto.randomUUID(),
+       '20000000-0000-0000-0000-0000000000ff',held.side,1]),
+    /No position/, 'an exit was accepted on a band the desk holds nothing in');
+
+  // Queue the whole position, then try to queue any part of it again.
+  const firstExit=crypto.randomUUID();
+  await db.query('select submit_single_paper_exit($1,$2,$3,$4,$5,0.10)',
+    [single,firstExit,held.band_id,held.side,have]);
+  await assert.rejects(
+    db.query('select submit_single_paper_exit($1,$2,$3,$4,0.01,0.10)',
+      [single,crypto.randomUUID(),held.band_id,held.side]),
+    /Shares already sold or reserved for exit/,
+    'the whole position was queued for exit twice - `pending` is not being counted');
+
+  // Idempotent on command_key: a retried request is the same order, not a
+  // second one, which is what makes an uncertain network response safe.
+  const again=(await db.query('select submit_single_paper_exit($1,$2,$3,$4,$5,0.10) as id',
+    [single,firstExit,held.band_id,held.side,have])).rows[0].id;
+  assert.equal(
+    (await db.query('select count(*)::int as n from public.paper_orders where command_key=$1',
+      [firstExit])).rows[0].n,1,
+    'a retried exit with the same command key created a second order');
+  assert.ok(again,'the retry did not return the original order id');
+
+  // A SELL reserves no cash - it returns some - so the books are unmoved.
+  await books(single,'after a full-position exit was queued');
+
+  // ======================================================================
+  // THE LEASE IS WHAT STOPS TWO WORKERS WRITING THE SAME FILL.
+  //
+  // claim_paper_order hands out a lease_token and a lease_until, and
+  // complete_paper_order refuses anything that does not match BOTH. One
+  // exclusion case was tested - a second worker getting null while a lease is
+  // live. Everything the completion side refuses was not, and each of those
+  // is a way for a worker to write money the desk did not spend:
+  //
+  //   a stale or wrong token   a worker whose lease expired writing over the
+  //                            one that replaced it
+  //   an expired lease_until   the same, from the clock rather than the token
+  //   more shares than asked   a fill larger than the order that authorised it
+  //   NaN / Infinity           arithmetic that poisons cash and cost basis
+  //   a non-terminal status    an order left neither open nor closed
+  // ======================================================================
+  await db.exec('reset role; set role service_role;');
+  for (const o of (await db.query(
+      `select order_id from public.paper_orders
+        where account_id=$1 and status in ('queued','working')`,[single])).rows) {
+    await db.query('select cancel_single_paper_order($1)',[o.order_id]);
+  }
+  const raceOrder=(await db.query(
+    "select submit_single_paper_order($1,$2,$3,'YES',2,.50,2,'lease contract') as id",
+    [single,crypto.randomUUID(),band])).rows[0].id;
+  const raceJob=(await db.query('select claim_paper_order() as job')).rows[0].job;
+  assert.equal(raceJob.order_id,raceOrder,'the claim did not hand back the order just queued');
+
+  const good={status:'filled',shares:'2',notional:'1.00',fee:'.025',snapshot_id:'snapshot',
+              fills:[{shares:'2',price:'.50',notional:'1.00',fee:'.025'}]};
+  const finishRace=(lease,result)=>db.query('select complete_paper_order($1,$2,$3::jsonb)',
+    [raceOrder,lease,JSON.stringify(result)]);
+
+  await assert.rejects(finishRace(crypto.randomUUID(),good),/Lease lost/,
+    'a worker holding the wrong lease token was able to complete the order');
+  await assert.rejects(finishRace(null,good),/Active lease required|Lease lost/,
+    'an order was completed with no lease at all');
+  await assert.rejects(finishRace(raceJob.lease_token,{...good,shares:'3'}),
+    undefined,'a fill larger than the order that authorised it was accepted');
+  for (const bad of ['NaN','Infinity','-Infinity']) {
+    await assert.rejects(finishRace(raceJob.lease_token,{...good,notional:bad}),
+      undefined,`a notional of ${bad} was accepted into the cash ledger`);
+  }
+  await assert.rejects(finishRace(raceJob.lease_token,{...good,status:'working'}),
+    /Invalid terminal status/,'an order was completed into a non-terminal status');
+
+  // The clock, not the token: a lease that simply ran out.
+  await db.query(`update public.paper_orders set lease_until=now()-interval '1 second'
+                   where order_id=$1`,[raceOrder]);
+  await assert.rejects(finishRace(raceJob.lease_token,good),/Lease lost/,
+    'a worker completed an order on a lease that had already expired');
+
+  // Put it back and finish honestly, so the desk is left consistent.
+  await db.query(`update public.paper_orders set lease_until=now()+interval '5 minutes'
+                   where order_id=$1`,[raceOrder]);
+  await finishRace(raceJob.lease_token,good);
+  assert.equal((await db.query(
+    'select status from public.paper_orders where order_id=$1',[raceOrder])).rows[0].status,'filled');
+  await books(single,'after a contested order was finally filled by its lease holder');
+
+  // ======================================================================
+  // MAKING, RE-POLICYING AND RETIRING A DESK.
+  //
+  // These three ran in production and were exercised by nothing. Every desk
+  // below is created here, so none of this depends on which desks happen to
+  // exist - which is the whole point: the engine has to be right for a desk
+  // that does not exist yet.
+  // ======================================================================
+  await db.exec('reset role; set role service_role;');
+
+  // A DESK STARTS PAUSED. "A desk that starts trading the moment it is named
+  // is not a thing anyone wants to discover afterwards" - and nothing checked
+  // it, on a function whose whole job is to make one.
+  const fresh=(await db.query(
+    "select paper_desk_create('Fresh desk',777,'automatic',null,$1::jsonb) as id",
+    [JSON.stringify({cities:['london'],strategies:['s1'],min_edge:.03,max_plan_usd:10})])).rows[0].id;
+  const f=(await db.query('select * from public.paper_accounts where account_id=$1',[fresh])).rows[0];
+  assert.equal(f.entries_paused,true,'a newly created desk was live the moment it was named');
+  assert.equal(Number(f.cash),777);
+  assert.equal(Number(f.starting_cash),777);
+  assert.equal(Number(f.reserved_cash),0);
+  assert.equal(Number(f.policy_version),1);
+  assert.equal(f.mode,'automatic');
+  assert.equal(f.archived_at,null);
+  // ...and it balances from its first instant, which is only true if creation
+  // wrote the opening activity row.
+  await books(fresh,'a desk that has just been created');
+
+  for (const [args,why] of [
+    ["'',100,'manual'",                   'a blank name'],
+    [`'${'x'.repeat(101)}',100,'manual'`, 'a name over 100 characters'],
+    ["'Zero cash',0,'manual'",            'zero starting cash'],
+    ["'Negative',-1,'manual'",            'negative starting cash'],
+    ["'Too rich',1000000000,'manual'",    'a billion in starting cash'],
+    ["'Bad mode',100,'sideways'",         'a mode that is not manual, assisted or automatic'],
+  ]) {
+    await assert.rejects(db.query(`select paper_desk_create(${args})`), undefined,
+      `paper_desk_create accepted ${why}`);
+  }
+
+  // Sub-accounts are one level deep, so a hierarchy cannot grow legs.
+  const childDesk=(await db.query(
+    "select paper_desk_create('Child',100,'manual',$1) as id",[fresh])).rows[0].id;
+  await assert.rejects(
+    db.query("select paper_desk_create('Grandchild',100,'manual',$1)",[childDesk]),
+    /one level deep/, 'a sub-account was allowed to have a sub-account of its own');
+
+  // RE-POLICYING. The policy version has to move, or a plan published against
+  // the old policy cannot be told from one published against the new.
+  await db.query("select paper_desk_update($1,null,null,null,null,$2::jsonb)",
+    [fresh,JSON.stringify({cities:['ALL'],strategies:['s1','s4'],min_edge:.05,max_plan_usd:25})]);
+  const repolicied=(await db.query(
+    'select policy_version,policy from public.paper_accounts where account_id=$1',[fresh])).rows[0];
+  assert.equal(Number(repolicied.policy_version),2,'the policy changed and its version did not');
+  assert.equal(Number(repolicied.policy.min_edge),.05);
+
+  await assert.rejects(
+    db.query("select paper_desk_update($1)",['00000000-0000-0000-0000-000000000000']),
+    /no such desk/, 'updating a desk that does not exist was allowed to pass silently');
+  await assert.rejects(db.query("select paper_desk_update($1,null,null,'sideways')",[fresh]),
+    /manual, assisted or automatic/);
+
+  // THE BUDGET MOVES ONLY BEFORE THE DESK HAS TRADED. Changing it afterwards
+  // makes the return meaningless, because return is measured against what the
+  // desk started with.
+  await db.query('select paper_desk_update($1,null,900)',[fresh]);
+  assert.equal(Number((await db.query(
+    'select starting_cash from public.paper_accounts where account_id=$1',[fresh])).rows[0].starting_cash),900);
+  await books(fresh,'after the starting cash was changed on a desk that had not traded');
+
+  await assert.rejects(db.query('select paper_desk_update($1,null,50)',[account]),
+    /reset it before changing its starting cash/,
+    'the budget of a desk that has already traded was rewritten under its own P&L');
+
+  // ARCHIVING IS REVERSIBLE AND DELETES NOTHING.
+  await db.query('select paper_desk_update($1,null,null,null,false)',[fresh]);
+  await db.query('select paper_desk_archive($1,true)',[fresh]);
+  const archived=(await db.query(
+    'select archived_at,entries_paused from public.paper_accounts where account_id=$1',[fresh])).rows[0];
+  assert.ok(archived.archived_at!==null,'archiving did not archive');
+  assert.equal(archived.entries_paused,true,
+    'an archived desk was left able to enter - archiving has to stop it on the way out');
+
+  await db.query('select paper_desk_archive($1,false)',[fresh]);
+  assert.equal((await db.query(
+    'select archived_at from public.paper_accounts where account_id=$1',[fresh])).rows[0].archived_at,null,
+    'an archived desk could not be brought back, which makes archiving a one-way door');
+  assert.equal(Number((await db.query(
+    'select count(*)::int as n from public.paper_accounts where account_id=$1',[fresh])).rows[0].n),1,
+    'the desk row did not survive being archived and restored');
+  await assert.rejects(
+    db.query("select paper_desk_archive($1)",['00000000-0000-0000-0000-000000000000']),
+    /no such desk/);
+
+  // THE BOOTSTRAP MUST STILL ANSWER THE SAME DESK once several exist.
+  // create_single_paper_account is what every caller without a desk id
+  // resolves to, and with more than one single_desk row an unordered `limit 1`
+  // answers arbitrarily - a different desk between two page loads. ad4_60
+  // added `order by created_at` for exactly this; nothing checked it.
+  //
+  // Stated as a property rather than trusted to a mutation: heap order can
+  // coincidentally return the right row, so removing the ORDER BY does not
+  // reliably fail. This asserts the contract itself.
+  const oldestDesk=(await db.query(
+    `select account_id from public.paper_accounts
+      where access_mode='single_desk' order by created_at limit 1`)).rows[0].account_id;
+  assert.equal(
+    (await db.query("select create_single_paper_account('ignored',1) as id")).rows[0].id,
+    oldestDesk,
+    'the bootstrap resolved to a desk other than the oldest, so which desk a caller '
+    +'gets depends on physical row order');
+
+  // ======================================================================
+  // THE SWITCHER'S "LIVE ORDERS" COUNTED A STATUS THAT CANNOT EXIST.
+  //
+  // v_paper_desks.live_orders counted paper_orders in 'pending' or 'leased'.
+  // paper_orders_status_check permits queued, working, filled, partial,
+  // rejected, expired and canceled - and nothing else - so the count was
+  // structurally zero on every desk, including one with an order working at
+  // that moment. It is the shape-versus-substance failure exactly: the column
+  // existed, the view built, the number was always the same lie.
+  //
+  // Asserted as a property of a live order rather than against a status list,
+  // so rewriting the vocabulary cannot make the test agree with itself.
+  // ======================================================================
+  await db.exec('reset role; set role service_role;');
+  const liveOf = async (who) => Number((await db.query(
+    'select live_orders from public.v_paper_desks where account_id=$1', [who])).rows[0].live_orders);
+  const beforeLive = await liveOf(single);
+  const countedOrder = (await db.query(
+    "select submit_single_paper_order($1,$2,$3,'YES',2,.50,2,'live order count') as id",
+    [single, crypto.randomUUID(), band])).rows[0].id;
+  assert.equal(await liveOf(single), beforeLive + 1,
+    'a desk with an order the engine will still act on reports no live orders');
+  await db.query('select cancel_single_paper_order($1)', [countedOrder]);
+  assert.equal(await liveOf(single), beforeLive,
+    'a canceled order is still counted as live, so the reserve it released looks committed');
+
+  // ======================================================================
+  // THE DETECTOR HAS TO DETECT.
+  //
+  // books() above asserts v_paper_desk_integrity agrees with this harness's
+  // own arithmetic after every operation. That catches a view that computes
+  // the WRONG thing. It cannot catch a view that computes NOTHING: one that
+  // returned ok=true unconditionally would sail through every assertion in
+  // this file and through every hourly run in production, and the first
+  // anyone would know of it is a desk quietly spending money it does not
+  // have.
+  //
+  // So each identity is broken on purpose, inside a transaction that is
+  // rolled back, and the view is required to name it. The breaches are the
+  // contract; the note is what a person reads.
+  // ======================================================================
+  await db.exec('reset role; set role service_role;');
+
+  const detects = async (what, sql, params, expected) => {
+    await db.exec('begin');
+    await db.query(sql, params);
+    const bad = (await db.query(
+      'select name, breaches, note from public.v_paper_desk_integrity where not ok')).rows;
+    const verdict = (await db.query('select check_paper_desk_integrity(false) as v')).rows[0].v;
+    await db.exec('rollback');
+    await db.exec('reset role; set role service_role;');
+    const named = new Set(bad.flatMap(r => r.breaches));
+    for (const e of expected) assert.ok(named.has(e),
+      `${what}: the view should have named ${e}; it named [${[...named].join(', ')}]`);
+    assert.equal(verdict.ok, false,
+      `${what}: check_paper_desk_integrity still reported every desk balanced`);
+    assert.ok(bad.every(r => r.note && r.note.length > 20),
+      `${what}: a breach was reported with no sentence explaining it`);
+  };
+
+  // Cash that moved with no event behind it. Both the ledger identity and the
+  // cross-store one have to see it - if only one did, the other is asleep.
+  await detects('cash moved without an activity row',
+    'update public.paper_accounts set cash=cash+1 where account_id=$1', [account],
+    ['cash_vs_ledger', 'cash_vs_expected']);
+
+  // Reserved cash no live order claims. This is the one that silently eats a
+  // desk's buying power, because nothing else in the engine ever recomputes it.
+  await detects('reserved cash no live order claims',
+    'update public.paper_accounts set reserved_cash=reserved_cash+5 where account_id=$1', [account],
+    ['reserved_vs_live_orders']);
+
+  // The open cost basis changing under the desk - a position edited by
+  // anything that is not a fill.
+  assert.ok(Number((await db.query(
+      'select coalesce(sum(cost_basis),0) as b from public.paper_positions where account_id=$1',
+      [single])).rows[0].b) > 0,
+    'this contract needs a desk that is actually holding cost basis');
+  await detects('open cost basis edited outside a fill',
+    'update public.paper_positions set cost_basis=cost_basis+1 where account_id=$1', [single],
+    ['cash_vs_expected']);
+
+  // The two realised-P&L stores disagreeing. This is the bridge between
+  // paper_positions and paper_trades dropping or double-counting a close, and
+  // it is invisible in cash - the money is right, the record of why is not.
+  await detects('the positions and the trades disagree about realised P&L',
+    'update public.paper_positions set realized_pnl=realized_pnl+10 where account_id=$1', [single],
+    ['realized_vs_positions']);
+
+  // WHAT THE DATABASE REFUSES OUTRIGHT, WHICH IS BETTER THAN DETECTING IT.
+  //
+  // Four of the things the view reports cannot be produced at all: CHECK
+  // constraints stop them at the write. The view keeps its columns for them
+  // anyway - as a second pair of eyes on a constraint, so a migration that
+  // drops one does not also remove the only thing that would notice. But the
+  // contract for those four is that the write is REFUSED, not that it is
+  // reported, and asserting the wrong one of those would quietly test nothing:
+  // `update ... set cash=-1` raises 23514 before the view is ever consulted.
+  for (const [what, sql, params] of [
+    ['cash went negative',
+     'update public.paper_accounts set cash=-1 where account_id=$1', [account]],
+    ['reserved cash went negative',
+     'update public.paper_accounts set reserved_cash=-1 where account_id=$1', [account]],
+    ['the desk committed more than it holds',
+     'update public.paper_accounts set reserved_cash=cash+100 where account_id=$1', [account]],
+    ['a position held negative shares',
+     'update public.paper_positions set shares=-1 where account_id=$1', [single]],
+  ]) {
+    await assert.rejects(db.query(sql, params), /violates check constraint/,
+      `${what} and the database accepted it`);
+  }
+
+  // And the one everything above rests on: if paper_activity could be edited,
+  // identity 1 would be unfalsifiable - cash could be made to match a ledger
+  // that had been rewritten to match it.
+  // And the one everything above rests on: if paper_activity could be edited,
+  // identity 1 would be unfalsifiable - cash could be made to match a ledger
+  // that had been rewritten to match it. TWO INDEPENDENT LOCKS, and both are
+  // asserted, because either one alone is one migration away from gone.
+  // Verified against production: service_role holds INSERT and SELECT on
+  // paper_activity and nothing else.
+  await assert.rejects(
+    db.query('delete from public.paper_activity where account_id=$1', [account]),
+    /permission denied/,
+    'the server-side role can delete activity rows, so the ledger is only as durable as the code');
+  await db.exec('reset role;');
+  await assert.rejects(
+    db.query('delete from public.paper_activity where account_id=$1', [account]),
+    /Append-only record/,
+    'the owner can delete activity rows - the grant is the only lock, and grants get re-run');
+  await db.exec('set role service_role;');
+
+  // A GAP IN THE RECORD IS NOT A BREACH.
+  //
+  // A desk reset before paper_desk_reset recorded the basis it wrote off is
+  // missing a term of identity 3 that nothing can reconstruct. Reporting that
+  // as unbalanced would put the desk permanently in the red for something
+  // that happened once, months ago - and a detector that is always red is a
+  // detector nobody reads. It has to say what it cannot answer and stay green
+  // on everything it can.
+  //
+  // Reconstructed faithfully rather than asserted on a stub: a desk that puts
+  // 20 into a position and is then reset the old way ends with cash back at
+  // its starting balance, an account_reset row re-basing it, and NOTHING
+  // saying where the 20 went. The identity is then genuinely out by 20 - so
+  // the mutation that removes the unverifiable branch has something to fail
+  // on, rather than this passing because the numbers happened to agree.
+  await db.exec('begin');
+  await db.query(`insert into public.paper_positions(account_id,band_id,side,shares,cost_basis)
+                  values($1,$2,'YES',5,20)`, [fresh, band]);
+  await db.query(`insert into public.paper_activity(account_id,event_type,payload,cash_delta)
+                  values($1,'execution_completed','{}'::jsonb,-20)`, [fresh]);
+  await db.query('update public.paper_accounts set cash=cash-20 where account_id=$1', [fresh]);
+  const beforeGap = (await db.query(
+    'select ok, cash from public.v_paper_desk_integrity where account_id=$1', [fresh])).rows[0];
+  assert.equal(beforeGap.ok, true, 'the reconstruction is wrong before the reset even happens');
+
+  await db.query('delete from public.paper_positions where account_id=$1', [fresh]);
+  await db.query(`insert into public.paper_activity(account_id,event_type,payload,cash_delta)
+                  values($1,'account_reset','{"positions_cleared":1}'::jsonb,20)`, [fresh]);
+  await db.query('update public.paper_accounts set cash=cash+20 where account_id=$1', [fresh]);
+  const gap = (await db.query(
+    'select ok, breaches, unverifiable, note, cash, expected_cash from public.v_paper_desk_integrity where account_id=$1',
+    [fresh])).rows[0];
+  await db.exec('rollback');
+  await db.exec('reset role; set role service_role;');
+  assert.ok(Math.abs(Number(gap.cash) - Number(gap.expected_cash) + 20) < 1e-6,
+    `the reconstruction should leave the identity out by exactly the 20 the reset swallowed, `
+    + `it is out by ${Number(gap.expected_cash) - Number(gap.cash)}`);
+  assert.equal(gap.ok, true,
+    'a reset recorded before the write-off existed was reported as a breach, which puts the desk '
+    + 'permanently in the red for a gap in the record');
+  assert.ok(gap.unverifiable.includes('cash_vs_expected'),
+    `the view did not say which identity it could no longer answer: [${gap.unverifiable}]`);
+  assert.match(gap.note, /cannot be answered/,
+    'the note did not tell the reader the number is missing rather than wrong');
+
+  // ======================================================================
+  // THE TWO THINGS PRODUCTION DOES THAT THE IDENTITY DID NOT SURVIVE.
+  //
+  // Everything above runs against a database that never loses a row. The real
+  // one loses rows on purpose, twice, and under the identity as the harness
+  // originally stated it BOTH of them put a desk permanently out of balance:
+  //
+  //   a reset deletes paper_positions, taking the open cost basis off the
+  //   left of `cash = starting - basis + realised` and off nothing on the right
+  //
+  //   the daily export deletes closed trades thirty days after they close,
+  //   taking their realised P&L off the right and off nothing on the left
+  //
+  // The first would have fired the moment anyone reset a desk holding
+  // anything. The second was on a timer: thirty days after the first trade
+  // closed, every desk would have gone red and stayed red.
+  // ======================================================================
+
+  // A trade that has been archived to the repository is still money the desk
+  // made. Pick a desk that actually has one to lose.
+  const victim = (await db.query(
+    `select t.trade_id, t.net_pnl, t.account_id,
+            (select count(*)::int from public.ledger l where l.trade_id=t.trade_id) as lineage
+       from public.paper_trades t
+      where t.account_id is not null and t.closed_at is not null
+      order by t.closed_at limit 1`)).rows[0];
+  assert.ok(victim, 'the archive contract needs a closed trade to archive');
+  // WITHOUT LINEAGE BEHIND IT THIS CONTRACT IS VACUOUS. ledger.trade_id
+  // references paper_trades with no ON DELETE action and every trade the
+  // engine writes has ledger rows, so a trade with none would be the one case
+  // the delete was always able to do - and the failure this asserts against
+  // would never fire.
+  assert.ok(Number(victim.lineage) > 0,
+    'the trade chosen to archive has no ledger rows, so this proves nothing about the '
+    + 'foreign key that stopped the prune deleting anything in production');
+  const ledgerBefore = Number((await db.query(
+    'select count(*)::int as n from public.ledger')).rows[0].n);
+  const realizedBefore = Number((await db.query(
+    'select realized from public.v_paper_desk_integrity where account_id=$1',
+    [victim.account_id])).rows[0].realized);
+
+  await db.query(
+    "update public.paper_trades set closed_at=now()-interval '40 days' where trade_id=$1",
+    [victim.trade_id]);
+  const pruned = (await db.query(
+    'select prune_exported_paper_trades(30, array[$1::uuid], false) as r',
+    [victim.trade_id])).rows[0].r;
+  assert.equal(Number(pruned.deleted), 1, 'the prune did not delete the trade it was given');
+  assert.equal(Number(pruned.desks_credited), 1,
+    'the prune deleted a desk\'s trade without writing the realised P&L anywhere');
+  assert.equal(Number(pruned.lineage_rows_detached), Number(victim.lineage),
+    'the prune did not release the ledger rows that reference this trade');
+  assert.equal(Number((await db.query(
+    'select count(*)::int as n from public.paper_trades where trade_id=$1',
+    [victim.trade_id])).rows[0].n), 0, 'the trade is still in Postgres');
+
+  // THE DECISION SURVIVES THE TRADE. Every ledger row is still there, and each
+  // one that pointed at the archived trade now carries its id as data - the
+  // same key the exported file is written under, so the join still exists.
+  assert.equal(Number((await db.query(
+    'select count(*)::int as n from public.ledger')).rows[0].n), ledgerBefore,
+    'archiving a trade destroyed ledger rows - that is the decision that produced it');
+  const detached = (await db.query(
+    `select count(*)::int as n from public.ledger
+      where trade_id is null and detail->>'archived_trade_id'=$1`,
+    [victim.trade_id])).rows[0].n;
+  assert.equal(Number(detached), Number(victim.lineage),
+    'the ledger rows were released without recording which trade they belong to, so the '
+    + 'lineage is now unjoinable to the exported file');
+
+  const afterPrune = (await db.query(
+    'select realized, realized_on_hand, realized_archived from public.v_paper_desk_integrity where account_id=$1',
+    [victim.account_id])).rows[0];
+  assert.ok(Math.abs(Number(afterPrune.realized_archived) - Number(victim.net_pnl)) < 1e-6,
+    `the archived realised P&L is ${afterPrune.realized_archived}, the trade's was ${victim.net_pnl}`);
+  assert.ok(Math.abs(Number(afterPrune.realized) - realizedBefore) < 1e-6,
+    'the desk\'s realised P&L changed when a trade was moved to the repository - the money did not move, '
+    + 'only the row did');
+  // The assertion the whole thing is for: under the old prune this fails by
+  // exactly the archived trade's net_pnl, for good.
+  await books(victim.account_id, 'after a closed trade was archived to the repository and deleted');
+
+  // ...and the same for a reset that flattens a desk still holding basis.
+  const basisAtReset = Number((await db.query(
+    'select coalesce(sum(cost_basis),0) as b from public.paper_positions where account_id=$1',
+    [single])).rows[0].b);
+  assert.ok(basisAtReset > 0,
+    'the write-off contract needs a desk holding open cost basis at the moment it is reset - '
+    + 'resetting an empty desk proves nothing, which is why the original reset contract passed');
+  await db.query('select paper_desk_reset($1)', [single]);
+  const wroteOff = (await db.query(
+    `select (payload->>'basis_written_off')::numeric as w
+       from public.paper_activity
+      where account_id=$1 and event_type='account_reset'
+      order by event_id desc limit 1`, [single])).rows[0];
+  assert.ok(wroteOff && Math.abs(Number(wroteOff.w) - basisAtReset) < 1e-6,
+    `the reset wrote off ${basisAtReset} of cost basis and recorded ${wroteOff && wroteOff.w}`);
+  await books(single, 'after a desk holding open cost basis was reset');
+
+  // ======================================================================
+  // THE RPC THAT MAKES IT AN ALARM RATHER THAN A QUERY.
+  // ======================================================================
+  const healthy = (await db.query('select check_paper_desk_integrity(true) as v')).rows[0].v;
+  assert.equal(healthy.ok, true, `every desk should balance here: ${JSON.stringify(healthy.detail)}`);
+  assert.equal(Number(healthy.anomalies_recorded), 0, 'a balanced database recorded an anomaly');
+  assert.equal(Number((await db.query(
+    "select count(*)::int as n from public.anomalies where kind='paper_books_unbalanced'")).rows[0].n),
+    0, 'a balanced database wrote a books anomaly');
+
+  // A breach that persists is ONE alarm, not one an hour.
+  await db.exec('begin');
+  await db.query('update public.paper_accounts set cash=cash+3 where account_id=$1', [account]);
+  const first  = (await db.query('select check_paper_desk_integrity(true) as v')).rows[0].v;
+  const second = (await db.query('select check_paper_desk_integrity(true) as v')).rows[0].v;
+  const recorded = (await db.query(
+    "select detail, value from public.anomalies where kind='paper_books_unbalanced'")).rows;
+  await db.exec('rollback');
+  await db.exec('reset role; set role service_role;');
+  assert.equal(first.ok, false);
+  assert.equal(Number(first.anomalies_recorded), 1, 'the first check did not record the breach');
+  assert.equal(Number(second.anomalies_recorded), 0,
+    'the same breach was recorded twice within the hour, so a standing fault becomes a flood');
+  assert.equal(recorded.length, 1);
+  assert.equal(recorded[0].detail.account_id, account,
+    'the anomaly did not name the desk it is about');
+  assert.ok(String(recorded[0].detail.breaches).includes('cash_vs_ledger'),
+    'the anomaly did not name what failed');
+
   await db.close();
   console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits and the paper_trades bridge');
 })().catch(e=>{console.error(e);process.exit(1);});

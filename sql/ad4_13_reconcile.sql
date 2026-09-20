@@ -959,40 +959,28 @@ begin
   execute 'drop function if exists close_position(bigint, numeric, text)';
   execute 'drop function if exists close_position(uuid, numeric, text)';
 
+  -- IT REFUSES, AND SAYS WHERE TO GO INSTEAD.
+  --
+  -- The body this rebuilt closed a trade and wrote a P&L without touching
+  -- paper_accounts.cash, paper_positions or paper_activity - so the desk's
+  -- balance never moved and the books stopped reconciling the moment it ran.
+  -- ad4_38_grants.sql already recorded that nothing calls it. A dead function
+  -- that corrupts the accounting is kept alive only by nobody finding it, and
+  -- service_role - which the API routes and the scripts hold - can still call
+  -- it. The signature is preserved so the reconcile check below and the grant
+  -- list in ad4_38 keep working; only the body changes.
   execute format($f$
     create function close_position(p_trade_id %1$s, p_exit_price numeric, p_reason text)
     returns jsonb language plpgsql security definer as $body$
-    declare
-      v_trade record;
-      v_gross numeric;
-      v_net   numeric;
     begin
-      select * into v_trade from paper_trades
-       where paper_trades.trade_id = p_trade_id and paper_trades.closed_at is null;
-      if not found then
-        return jsonb_build_object('ok', false, 'error', 'open trade not found');
-      end if;
-
-      v_gross := v_trade.shares * (p_exit_price - v_trade.avg_fill_price);
-      v_net   := v_gross - coalesce(v_trade.fee_paid, 0) - coalesce(v_trade.gas_paid, 0);
-
-      update paper_trades
-         set closed_at = now(), gross_pnl = v_gross, net_pnl = v_net %2$s
-       where paper_trades.trade_id = p_trade_id;
-
-      insert into ledger (stage, strategy_id, band_id, regime_label,
-                          forecast_version, calibration_version, cost_version,
-                          detail, recorded_at)
-      values ('exit', v_trade.strategy_id, v_trade.band_id, v_trade.regime_label,
-              %3$s,
-              jsonb_build_object('reason', p_reason, 'exit_price', p_exit_price,
-                                 'gross_pnl', v_gross, 'net_pnl', v_net),
-              now());
-
-      return jsonb_build_object('ok', true, 'gross_pnl', v_gross, 'net_pnl', v_net);
+      raise exception %2$s;
     end;
     $body$
-  $f$, v_id_type, v_sets, v_ledger);
+  $f$, v_id_type, quote_literal('close_position does not maintain cash, positions or the activity ledger: it '
+      'marks a trade closed and writes a P&L that the desk''s balance never '
+      'reflects. Close a position with submit_paper_exit (which places a real '
+      'exit order), or let venue settlement call close_paper_trades. Nothing '
+      'has ever called this - see sql/ad4_38_grants.sql.'));
 
   raise notice 'reconcile: close_position(%s, numeric, text) rebuilt', v_id_type;
 end
@@ -1017,53 +1005,19 @@ begin
     ad4_coltype('ledger', 'calibration_version'),
     ad4_coltype('ledger', 'cost_version'));
 
+  -- Same refusal, same reason: see close_position above.
   execute format($f$
     create or replace function log_paper_trade(p_trade jsonb) returns jsonb
     language plpgsql security definer as $body$
-    declare
-      v_id text;
     begin
-      insert into paper_trades (
-        strategy_id, band_id, side, action, shares, avg_fill_price, quoted_price,
-        slippage_paid, fee_paid, gas_paid, partial_fill, requested_shares,
-        legs_requested, legs_filled, fill_quality, max_slippage_setting,
-        cost_version, forecast_version, calibration_version, regime_label,
-        approved_by_user, opened_at
-      )
-      select
-        p_trade->>'strategy_id', nullif(p_trade->>'band_id','')::uuid,
-        p_trade->>'side', p_trade->>'action',
-        (p_trade->>'shares')::numeric, (p_trade->>'avg_fill_price')::numeric,
-        (p_trade->>'quoted_price')::numeric,
-        (p_trade->>'slippage_paid')::numeric, (p_trade->>'fee_paid')::numeric,
-        (p_trade->>'gas_paid')::numeric,
-        coalesce((p_trade->>'partial_fill')::boolean, false),
-        (p_trade->>'requested_shares')::numeric,
-        coalesce((p_trade->>'legs_requested')::int, 1),
-        coalesce((p_trade->>'legs_filled')::int, 1),
-        (p_trade->>'fill_quality')::numeric, (p_trade->>'max_slippage_setting')::numeric,
-        nullif(p_trade->>'cost_version','')::%1$s,
-        nullif(p_trade->>'forecast_version','')::%2$s,
-        nullif(p_trade->>'calibration_version','')::%3$s,
-        p_trade->>'regime_label', true, now()
-      returning trade_id::text into v_id;
-
-      insert into ledger (stage, strategy_id, band_id, regime_label,
-                          forecast_version, calibration_version, cost_version,
-                          detail, recorded_at)
-      values ('fill', p_trade->>'strategy_id', nullif(p_trade->>'band_id','')::uuid,
-              p_trade->>'regime_label',
-              %4$s,
-              jsonb_build_object('source', 'log_paper_trade_rpc'), now());
-
-      return jsonb_build_object('ok', true, 'trade_id', v_id);
+      raise exception %1$s;
     end;
     $body$
-  $f$,
-    ad4_coltype('paper_trades', 'cost_version'),
-    ad4_coltype('paper_trades', 'forecast_version'),
-    ad4_coltype('paper_trades', 'calibration_version'),
-    v_ledger);
+  $f$, quote_literal('log_paper_trade writes a paper_trades row with no account_id, bypassing the '
+      'order, the position and the cash ledger, so the trade belongs to no desk '
+      'and no balance moves. A trade is recorded by filling an order - '
+      'complete_paper_order, whose trigger writes paper_trades. Nothing has ever '
+      'called this - see sql/ad4_38_grants.sql.'));
 
   raise notice 'reconcile: log_paper_trade rebuilt (trade_id returned as text)';
 end

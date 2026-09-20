@@ -69,6 +69,21 @@ export default function PaperTradesPage() {
   const archived=useQuery<Array<{account_id:string;name:string;mode:string;archived_at:string|null}>>(
     ()=>supabase.from('v_paper_desks').select('account_id,name,mode,archived_at:created_at').eq('archived',true).order('name'),
     [],undefined);
+  // DO THIS DESK'S BOOKS BALANCE?
+  //
+  // v_paper_desk_integrity checks cash against the activity ledger, reserved
+  // cash against what live orders claimed, and cash against starting cash less
+  // open basis plus realised P&L - four tables written by four code paths. n8n
+  // P2.2 runs the same check hourly and records an anomaly, but the alarm a
+  // person actually sees is this line, on the page about the desk. `note` is
+  // the view's own sentence; it is not re-worded here, or the page and the
+  // database would be able to say different things about the same number.
+  const books=useQuery<Array<{ok:boolean;breaches:string[];unverifiable:string[];note:string}>>(
+    async()=>{
+      if(!account) return {data:[],error:null};
+      return supabase.from('v_paper_desk_integrity')
+        .select('ok,breaches,unverifiable,note').eq('account_id',account);
+    },[account],60000);
   const [ticket,setTicket] = useState({band:'',side:'YES',shares:'',limit:'',ceiling:'',reason:''});
   // Stable across retry after an uncertain network response; reset only after success.
   const [command,setCommand] = useState<string|null>(null);
@@ -172,6 +187,15 @@ export default function PaperTradesPage() {
         {showNewDesk?'Cancel':'New desk'}</button>}
       {accounts.data&&accounts.data.length>1&&<span className="text-xs text-muted">
         {accounts.data.length} desks · each runs independently</span>}</div>
+
+      {books.data?.[0]&&(books.data[0].ok
+        ? <p className={`text-xs ${books.data[0].unverifiable?.length?'text-warn':'text-muted'}`}>
+            Books balance{books.data[0].unverifiable?.length
+              ? ` · ${books.data[0].unverifiable.join(', ')} cannot be checked on this desk`
+              : ''}</p>
+        : <div role="alert" className="rounded border border-bad p-3 text-sm text-bad">
+            <strong>This desk&apos;s books do not balance</strong> ({books.data[0].breaches.join(', ')}).{' '}
+            {books.data[0].note}</div>)}
 
       {!accounts.loading&&!accounts.data?.length&&<form className={`${card} max-w-lg space-y-3`} onSubmit={e=>{e.preventDefault();act(()=>paperAction('create_account',{p_name:'Main paper account',p_starting_cash:Number(starting)}));}}>
         <h2 className="font-semibold">Create paper account</h2><label className="block text-sm">Starting paper cash (USD)<input required type="number" min="0.01" step="0.01" className="input mt-1" value={starting} onChange={e=>setStarting(e.target.value)}/></label>

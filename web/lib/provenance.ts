@@ -26,6 +26,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/edge_engine.py",
       "kind": "action",
       "name": "Intraday Pipeline (model, probabilities, edges)"
+    },
+    {
+      "cadence": "whenever its n8n schedule fires",
+      "file": "P2.2_paper_maintenance.template.json",
+      "how": "n8n",
+      "kind": "n8n",
+      "name": "AD4 P2.2 - Paper Maintenance"
     }
   ],
   "backtest_results": [
@@ -351,6 +358,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
     },
     {
       "cadence": "daily",
+      "file": "paper_trade_log.yml",
+      "how": "scripts/export_paper_trades.py",
+      "kind": "action",
+      "name": "Paper Trade Log"
+    },
+    {
+      "cadence": "daily",
       "file": "pipeline_daily.yml",
       "how": "scripts/paper_settlement.py",
       "kind": "action",
@@ -664,7 +678,6 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "book_snapshots",
     "cities",
     "markets",
-    "paper_trades",
     "trades_observed",
     "edges"
   ],
@@ -719,7 +732,6 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "book_snapshots",
     "markets",
-    "paper_trades",
     "trades_observed",
     "edges",
     "derived_weather_peak",
@@ -772,7 +784,6 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "book_snapshots",
     "cities",
     "markets",
-    "paper_trades",
     "trades_observed",
     "edges",
     "derived_forecast_skill",
@@ -828,7 +839,6 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_observations",
     "bands",
     "book_snapshots",
-    "paper_trades",
     "trades_observed",
     "edges",
     "derived_city_day_features"
@@ -851,8 +861,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "markets",
     "trades_observed",
     "weather_forecasts",
-    "book_snapshots",
-    "paper_trades"
+    "book_snapshots"
   ],
   "v_city_temp_trend": [
     "cities",
@@ -1014,7 +1023,6 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "book_snapshots",
     "cities",
     "markets",
-    "paper_trades",
     "trades_observed",
     "edges"
   ],
@@ -1032,6 +1040,14 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "markets",
     "weather_resolution_evidence"
+  ],
+  "v_paper_desk_integrity": [
+    "anomalies",
+    "paper_accounts",
+    "paper_activity",
+    "paper_orders",
+    "paper_positions",
+    "paper_trades"
   ],
   "v_paper_desks": [
     "paper_accounts",
@@ -1128,7 +1144,6 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "book_snapshots",
     "cities",
     "markets",
-    "paper_trades",
     "trades_observed",
     "edges",
     "derived_weather_peak",

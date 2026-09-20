@@ -51,10 +51,14 @@ jobs:
         with: { python-version: '3.11', cache: 'pip', cache-dependency-path: 'requirements.runtime.txt' }
       - run: pip install -r requirements.runtime.txt
 
+      # EXPORT, COMMIT, THEN PRUNE - in that order, and never fused.
+      #
+      # These used to be one step: the script wrote the files and deleted the
+      # rows they described, and the commit came afterwards. The runner's
+      # filesystem is not the archive; the repository is. A commit or a push
+      # that failed between them left those trades in no place at all.
       - name: Export closed trades
-        run: |
-          PYTHONPATH=scripts python scripts/export_paper_trades.py \
-            --prune-days ${{ github.event.inputs.prune_days || '30' }}
+        run: PYTHONPATH=scripts python scripts/export_paper_trades.py
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
@@ -78,8 +82,30 @@ jobs:
           PY
           )
           git commit -m "Paper trade log: $SUMMARY [skip ci]"
+          # A LOOP THAT RUNS OUT IS NOT A PUSH THAT WORKED. This used to end
+          # after four failures and exit with the status of the trailing
+          # `git pull --rebase` - so a total push failure reported success,
+          # and the prune below would then have deleted rows whose file never
+          # left the runner.
+          pushed=0
           for i in 1 2 3 4; do
-            git push origin HEAD:${{ github.ref_name }} && break
+            if git push origin HEAD:${{ github.ref_name }}; then pushed=1; break; fi
             echo "push failed, retrying"; sleep $((2 ** i))
-            git pull --rebase origin ${{ github.ref_name }}
+            git pull --rebase origin ${{ github.ref_name }} || true
           done
+          if [ "$pushed" != "1" ]; then
+            echo "::error::could not push the paper trade log after four attempts"
+            exit 1
+          fi
+
+      # Only now, with the files in the repository rather than on this runner.
+      # export_paper_trades.py refuses anyway if anything under
+      # web/public/paper-trades is uncommitted, so the guarantee does not rest
+      # on this step ordering alone.
+      - name: Prune exported trades from Postgres
+        run: |
+          PYTHONPATH=scripts python scripts/export_paper_trades.py --prune-only \
+            --prune-days ${{ github.event.inputs.prune_days || '30' }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

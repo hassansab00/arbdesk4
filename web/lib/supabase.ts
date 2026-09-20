@@ -3,9 +3,13 @@ import { classifyKey, SECRET_KEY_MESSAGE } from "./keyGuard";
 
 // Anon key only, never the service key (Revision A §6.3/§9). Every table
 // read through this client is behind an RLS policy from sql/ad4_rls.sql;
-// every write goes through an RPC (calc_recommendation, log_paper_trade,
-// approve_signal, close_position, queue_backtest, ...), never a direct
-// insert/update on a table from here.
+// every write goes through an RPC, never a direct insert/update on a table
+// from here. The examples this used to list had all gone: calc_recommendation
+// was removed with the Calculator section, and log_paper_trade and
+// close_position now refuse - neither maintained cash, positions or the
+// activity ledger. The paper writes are submit_single_paper_order,
+// submit_single_paper_exit, approve_single_paper_plan and
+// cancel_single_paper_order, and they go through /api/paper-desk.
 //
 // Lazily initialised: every page in web/app/ is a client component that
 // only touches `supabase` inside useEffect (i.e. in the browser, after
