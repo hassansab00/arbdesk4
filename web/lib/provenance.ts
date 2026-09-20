@@ -26,6 +26,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/edge_engine.py",
       "kind": "action",
       "name": "Intraday Pipeline (model, probabilities, edges)"
+    },
+    {
+      "cadence": "whenever its n8n schedule fires",
+      "file": "P2.2_paper_maintenance.template.json",
+      "how": "n8n",
+      "kind": "n8n",
+      "name": "AD4 P2.2 - Paper Maintenance"
     }
   ],
   "backtest_results": [
@@ -348,6 +355,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/paper_worker.py",
       "kind": "action",
       "name": "Fill Queued Paper Orders"
+    },
+    {
+      "cadence": "daily",
+      "file": "paper_trade_log.yml",
+      "how": "scripts/export_paper_trades.py",
+      "kind": "action",
+      "name": "Paper Trade Log"
     },
     {
       "cadence": "daily",
@@ -1026,6 +1040,14 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "markets",
     "weather_resolution_evidence"
+  ],
+  "v_paper_desk_integrity": [
+    "anomalies",
+    "paper_accounts",
+    "paper_activity",
+    "paper_orders",
+    "paper_positions",
+    "paper_trades"
   ],
   "v_paper_desks": [
     "paper_accounts",

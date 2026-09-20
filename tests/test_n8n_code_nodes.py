@@ -1201,7 +1201,13 @@ def test_every_supabase_node_is_bound_to_the_same_named_credential():
             assert cred.get("name") == CRED_NAME, (
                 f"{name} / {n['name']}: bound to {cred.get('name')!r}, not {CRED_NAME!r}")
             bound += 1
-    assert bound == 63, f"expected 63 Supabase nodes across the files, found {bound}"
+    # 64: the 63 that were here, plus "Check desk books" in P2.2, which
+    # calls check_paper_desk_integrity() every hour. The count is here so
+    # that a node ADDED without a credential cannot pass by being skipped
+    # - n8n_supabase_nodes() recognises a node by its credential type, so
+    # an unbound one is invisible to the loop above and only the total
+    # notices it.
+    assert bound == 64, f"expected 64 Supabase nodes across the files, found {bound}"
 
 
 def test_the_email_workflows_bind_smtp_and_a_real_sender():

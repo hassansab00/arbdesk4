@@ -256,7 +256,7 @@ $ad4$;
 create or replace function paper_desk_reset(p_account_id uuid)
 returns jsonb language plpgsql security definer
 set search_path = public as $ad4$
-declare v_start numeric; v_cash numeric;
+declare v_start numeric; v_cash numeric; v_basis numeric;
         v_stopped int; v_expired int; v_positions int;
         v_orders_kept int; v_plans_kept int; v_settled_kept int;
 begin
@@ -320,6 +320,18 @@ begin
   get diagnostics v_expired = row_count;
 
   -- 3. The running total, and only the running total.
+  --
+  --    WHAT THE DELETE TAKES OFF THE BOOKS HAS TO BE RECORDED SOMEWHERE.
+  --    cost_basis is cash the desk has already spent and has not got back,
+  --    so `cash = starting_cash - open basis + realised` holds only while the
+  --    basis exists to be subtracted. Deleting it moved the left of that
+  --    identity and nothing on the right: from the first reset of a desk that
+  --    held anything, the books were off by exactly this number, for good.
+  --    v_paper_desk_integrity subtracts it back out of the expected cash, and
+  --    a reset recorded before this line existed is reported as unverifiable
+  --    rather than as a breach - the number is simply not recoverable.
+  select coalesce(sum(cost_basis), 0) into v_basis
+    from paper_positions where account_id = p_account_id;
   delete from paper_positions where account_id = p_account_id;
   get diagnostics v_positions = row_count;
 
@@ -336,6 +348,7 @@ begin
   values (p_account_id, 'account_reset',
           jsonb_build_object('starting_cash', v_start, 'cash_before', v_cash,
                              'positions_cleared', v_positions,
+                             'basis_written_off', v_basis,
                              'orders_stopped', v_stopped,
                              'plans_expired', v_expired,
                              'orders_kept', v_orders_kept,
@@ -348,6 +361,7 @@ begin
    where account_id = p_account_id;
 
   return jsonb_build_object('account_id', p_account_id, 'cash', v_start,
+                            'basis_written_off', v_basis,
                             'orders_stopped', v_stopped,
                             'plans_expired', v_expired,
                             'positions_cleared', v_positions,
@@ -408,8 +422,12 @@ from paper_accounts a
 left join paper_accounts p on p.account_id = a.parent_account_id
 left join lateral (select count(*) n, sum(realized_pnl) realized
                      from paper_positions where account_id = a.account_id) pos on true
+-- 'queued' and 'working' are the live statuses. This counted 'pending' and
+-- 'leased', which paper_orders_status_check does not permit and no code path
+-- has ever written - so live_orders read 0 on every desk, including one with
+-- an order working at that moment.
 left join lateral (select count(*) n from paper_orders
-                    where account_id = a.account_id and status in ('pending','leased')) ord on true
+                    where account_id = a.account_id and status in ('queued','working')) ord on true
 left join lateral (select count(*) n from paper_accounts k
                     where k.parent_account_id = a.account_id) kid on true
 order by a.parent_account_id nulls first, a.created_at;
