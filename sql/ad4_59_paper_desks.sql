@@ -188,7 +188,7 @@ create or replace function paper_desk_update(
   p_policy         jsonb   default null
 ) returns void language plpgsql security definer
 set search_path = public as $ad4$
-declare v_has_activity boolean;
+declare v_has_activity boolean; v_cash_before numeric;
 begin
   if not exists (select 1 from paper_accounts where account_id = p_account_id) then
     raise exception 'no such desk: %', p_account_id;
@@ -214,9 +214,24 @@ begin
     if v_has_activity then
       raise exception 'this desk has traded - reset it before changing its starting cash, or its P&L stops meaning anything';
     end if;
+    -- THE LEDGER IS THE RECORD OF EVERY CASH MOVEMENT, AND THIS IS ONE.
+    --
+    -- This set cash directly and wrote nothing, so a desk's activity log
+    -- showed its balance changing with no event behind it - cash stops being
+    -- something the ledger explains and becomes something it comments on.
+    -- paper_desk_reset already records its own re-basing as account_reset;
+    -- this is the same movement for the same reason and was simply missed.
+    -- Caught by the books-balance assertion the first time the function was
+    -- put under contract: "cash is not the sum of its activity rows - got
+    -- 900, expected 777".
+    select cash into v_cash_before from paper_accounts where account_id = p_account_id;
     update paper_accounts
        set starting_cash = p_starting_cash, cash = p_starting_cash, reserved_cash = 0
      where account_id = p_account_id;
+    insert into paper_activity (account_id, event_type, payload, cash_delta)
+    values (p_account_id, 'starting_cash_changed',
+            jsonb_build_object('from', v_cash_before, 'to', p_starting_cash),
+            p_starting_cash - v_cash_before);
   end if;
 
   if p_mode is not null then

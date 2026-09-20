@@ -144,6 +144,14 @@ const assert = require('node:assert/strict');
   // the migrations above create, plus strategies for v_paper_desks.
   await db.exec(fs.readFileSync(
     path.resolve(__dirname,'../../sql/ad4_59_paper_desks.sql'),'utf8'));
+  // ...and ad4_60, because THIS deployment runs multi-desk. The migration
+  // above creates the unique index one_single_paper_desk, and ad4_60 drops it
+  // and redefines paper_desk_create and create_single_paper_account to suit.
+  // Production has four desks and no such index, so applying ad4_59 alone
+  // would model a single-operator deployment nobody runs - the same trap as a
+  // fixture that does not match the live shape, arriving from the other side.
+  await db.exec(fs.readFileSync(
+    path.resolve(__dirname,'../../sql/ad4_60_multiple_paper_desks.sql'),'utf8'));
   const uid='10000000-0000-0000-0000-000000000001', other='10000000-0000-0000-0000-000000000002';
   const band='20000000-0000-0000-0000-000000000001', market='30000000-0000-0000-0000-000000000001';
   const command='40000000-0000-0000-0000-000000000001';
@@ -690,6 +698,118 @@ const assert = require('node:assert/strict');
 
   // And the books still balance afterwards, which is the point of resetting.
   await books(account, 'after the desk was reset');
+
+  // ======================================================================
+  // MAKING, RE-POLICYING AND RETIRING A DESK.
+  //
+  // These three ran in production and were exercised by nothing. Every desk
+  // below is created here, so none of this depends on which desks happen to
+  // exist - which is the whole point: the engine has to be right for a desk
+  // that does not exist yet.
+  // ======================================================================
+  await db.exec('reset role; set role service_role;');
+
+  // A DESK STARTS PAUSED. "A desk that starts trading the moment it is named
+  // is not a thing anyone wants to discover afterwards" - and nothing checked
+  // it, on a function whose whole job is to make one.
+  const fresh=(await db.query(
+    "select paper_desk_create('Fresh desk',777,'automatic',null,$1::jsonb) as id",
+    [JSON.stringify({cities:['london'],strategies:['s1'],min_edge:.03,max_plan_usd:10})])).rows[0].id;
+  const f=(await db.query('select * from public.paper_accounts where account_id=$1',[fresh])).rows[0];
+  assert.equal(f.entries_paused,true,'a newly created desk was live the moment it was named');
+  assert.equal(Number(f.cash),777);
+  assert.equal(Number(f.starting_cash),777);
+  assert.equal(Number(f.reserved_cash),0);
+  assert.equal(Number(f.policy_version),1);
+  assert.equal(f.mode,'automatic');
+  assert.equal(f.archived_at,null);
+  // ...and it balances from its first instant, which is only true if creation
+  // wrote the opening activity row.
+  await books(fresh,'a desk that has just been created');
+
+  for (const [args,why] of [
+    ["'',100,'manual'",                   'a blank name'],
+    [`'${'x'.repeat(101)}',100,'manual'`, 'a name over 100 characters'],
+    ["'Zero cash',0,'manual'",            'zero starting cash'],
+    ["'Negative',-1,'manual'",            'negative starting cash'],
+    ["'Too rich',1000000000,'manual'",    'a billion in starting cash'],
+    ["'Bad mode',100,'sideways'",         'a mode that is not manual, assisted or automatic'],
+  ]) {
+    await assert.rejects(db.query(`select paper_desk_create(${args})`), undefined,
+      `paper_desk_create accepted ${why}`);
+  }
+
+  // Sub-accounts are one level deep, so a hierarchy cannot grow legs.
+  const childDesk=(await db.query(
+    "select paper_desk_create('Child',100,'manual',$1) as id",[fresh])).rows[0].id;
+  await assert.rejects(
+    db.query("select paper_desk_create('Grandchild',100,'manual',$1)",[childDesk]),
+    /one level deep/, 'a sub-account was allowed to have a sub-account of its own');
+
+  // RE-POLICYING. The policy version has to move, or a plan published against
+  // the old policy cannot be told from one published against the new.
+  await db.query("select paper_desk_update($1,null,null,null,null,$2::jsonb)",
+    [fresh,JSON.stringify({cities:['ALL'],strategies:['s1','s4'],min_edge:.05,max_plan_usd:25})]);
+  const repolicied=(await db.query(
+    'select policy_version,policy from public.paper_accounts where account_id=$1',[fresh])).rows[0];
+  assert.equal(Number(repolicied.policy_version),2,'the policy changed and its version did not');
+  assert.equal(Number(repolicied.policy.min_edge),.05);
+
+  await assert.rejects(
+    db.query("select paper_desk_update($1)",['00000000-0000-0000-0000-000000000000']),
+    /no such desk/, 'updating a desk that does not exist was allowed to pass silently');
+  await assert.rejects(db.query("select paper_desk_update($1,null,null,'sideways')",[fresh]),
+    /manual, assisted or automatic/);
+
+  // THE BUDGET MOVES ONLY BEFORE THE DESK HAS TRADED. Changing it afterwards
+  // makes the return meaningless, because return is measured against what the
+  // desk started with.
+  await db.query('select paper_desk_update($1,null,900)',[fresh]);
+  assert.equal(Number((await db.query(
+    'select starting_cash from public.paper_accounts where account_id=$1',[fresh])).rows[0].starting_cash),900);
+  await books(fresh,'after the starting cash was changed on a desk that had not traded');
+
+  await assert.rejects(db.query('select paper_desk_update($1,null,50)',[account]),
+    /reset it before changing its starting cash/,
+    'the budget of a desk that has already traded was rewritten under its own P&L');
+
+  // ARCHIVING IS REVERSIBLE AND DELETES NOTHING.
+  await db.query('select paper_desk_update($1,null,null,null,false)',[fresh]);
+  await db.query('select paper_desk_archive($1,true)',[fresh]);
+  const archived=(await db.query(
+    'select archived_at,entries_paused from public.paper_accounts where account_id=$1',[fresh])).rows[0];
+  assert.ok(archived.archived_at!==null,'archiving did not archive');
+  assert.equal(archived.entries_paused,true,
+    'an archived desk was left able to enter - archiving has to stop it on the way out');
+
+  await db.query('select paper_desk_archive($1,false)',[fresh]);
+  assert.equal((await db.query(
+    'select archived_at from public.paper_accounts where account_id=$1',[fresh])).rows[0].archived_at,null,
+    'an archived desk could not be brought back, which makes archiving a one-way door');
+  assert.equal(Number((await db.query(
+    'select count(*)::int as n from public.paper_accounts where account_id=$1',[fresh])).rows[0].n),1,
+    'the desk row did not survive being archived and restored');
+  await assert.rejects(
+    db.query("select paper_desk_archive($1)",['00000000-0000-0000-0000-000000000000']),
+    /no such desk/);
+
+  // THE BOOTSTRAP MUST STILL ANSWER THE SAME DESK once several exist.
+  // create_single_paper_account is what every caller without a desk id
+  // resolves to, and with more than one single_desk row an unordered `limit 1`
+  // answers arbitrarily - a different desk between two page loads. ad4_60
+  // added `order by created_at` for exactly this; nothing checked it.
+  //
+  // Stated as a property rather than trusted to a mutation: heap order can
+  // coincidentally return the right row, so removing the ORDER BY does not
+  // reliably fail. This asserts the contract itself.
+  const oldestDesk=(await db.query(
+    `select account_id from public.paper_accounts
+      where access_mode='single_desk' order by created_at limit 1`)).rows[0].account_id;
+  assert.equal(
+    (await db.query("select create_single_paper_account('ignored',1) as id")).rows[0].id,
+    oldestDesk,
+    'the bootstrap resolved to a desk other than the oldest, so which desk a caller '
+    +'gets depends on physical row order');
 
   await db.close();
   console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits and the paper_trades bridge');
