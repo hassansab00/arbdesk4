@@ -269,7 +269,14 @@ def prepare(account, signal, capture, *, now=None):
                 f'{(walked_cost-unit_cost).quantize(Decimal(".0001"))} per share more than '
                 f'the touch, leaving {walked_edge.quantize(Decimal(".0001"))} against a '
                 f'{number(policy["min_edge"])} policy minimum')
-        affordable = ((budget - Decimal('.01') * len(quoted)) / walked_cost).quantize(
+        # SIZE AGAINST WHAT IS RESERVED, NOT AGAINST WHAT IT IS EXPECTED TO
+        # COST. The reserve below covers the order filling entirely at its own
+        # limit, because that is what a limit order can do and what the
+        # database requires. Dividing the budget by the cheaper depth-weighted
+        # cost would pass a plan here whose legs the engine then refuses.
+        walked_reserve = sum((lim + rate * lim * (1 - lim)
+                              for _, _, lim, _, rate, _ in walked), Decimal(0))
+        affordable = ((budget - Decimal('.01') * len(quoted)) / walked_reserve).quantize(
             Decimal('.01'), rounding=ROUND_DOWN)
         if affordable < floor:
             raise ValueError(
@@ -289,7 +296,30 @@ def prepare(account, signal, capture, *, now=None):
         preview = simulate(order,book,now=fixed_now or dt.datetime.now(dt.timezone.utc))
         if preview['status']!='filled':
             raise ValueError('Full requested plan is not executable: '+str(preview['reason']))
-        ceiling=(number(preview['notional'])+number(preview['fee'])).quantize(Decimal('.01'),rounding=ROUND_UP)
+        # THE RESERVE IS THE WORST CASE, NOT THE QUOTE.
+        #
+        # This was the simulated fill - notional plus fee at today's book - and
+        # that was only ever safe by accident. Both queue_plan and
+        # submit_single_paper_order require
+        #
+        #     cash_ceiling >= shares * limit_price
+        #
+        # which is right: a limit order may fill anywhere up to its limit, so
+        # the reserve has to cover the limit. While the limit WAS the touch,
+        # the simulated fill was exactly shares * limit and the inequality held
+        # by coincidence. The ladder walk sets the limit to the worst level it
+        # reaches while the fill averages lower, so the quote fell BELOW the
+        # limit and the engine refused every walked plan with "Invalid leg cash
+        # reservation" - 8 of them in the first run after the walk went live,
+        # each one a trade the desk had already decided to take.
+        #
+        # The fee is taken at the limit as well, and never below what the quote
+        # says: rate*p*(1-p) rises with p up to a half, so the limit is the
+        # worst case on a cheap contract, and max() covers the other side.
+        worst_notional = quantity * price
+        worst_fee = max(quantity * rate * price * (1 - price), number(preview['fee']))
+        ceiling=max(number(preview['notional'])+number(preview['fee']),
+                    worst_notional+worst_fee).quantize(Decimal('.01'),rounding=ROUND_UP)
         legs.append({'band_id':bid,'side':side,'shares':str(quantity),'limit_price':str(price),'cash_ceiling':str(ceiling)})
         quotes.append({'snapshot_id':book['snapshot_id'],'preview':preview,'venue_metadata':book.get('market_metadata')})
     return legs, {'signal':signal,'quotes':quotes,'net_edge_per_share':str(net_edge),'expected_payout_per_basket':str(expected),

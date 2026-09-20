@@ -492,9 +492,100 @@ def test_a_walk_the_budget_cannot_afford_is_refused_and_names_the_budget():
     )
 
 
-def test_a_walked_plan_still_reserves_inside_the_plan_cap():
-    """The guarantee the check exists to keep, asserted on the walked path the
-    way the opening test asserts it on the touch path."""
-    account, signal, capture = ladder([('.30', '5'), ('.31', '100')], budget=20)
+def test_a_walked_plan_is_sized_by_what_it_reserves_not_by_what_it_expects():
+    """The boundary where the two differ, which is the only place it shows.
+
+    A walk to .20 off a .10 touch reserves .208 a share a leg - the limit plus
+    the fee at the limit - while it EXPECTS to cost about .19, because the
+    average fill is below the limit. Fifty shares across two legs is therefore
+    20.80 reserved against 19-ish expected.
+
+    With a $20 cap those are different answers. Sizing by the expectation
+    passes the floor and publishes a plan reserving 20.80, which queue_plan
+    then refuses as "Account or policy cash limit" - the builder proposing
+    something the engine will not take, which is the same fault as the leg
+    reservation, one level up. Sizing by the reserve refuses it here, in the
+    builder, with a sentence naming the budget.
+
+    The one-cent ladder this used to run on could not tell the two apart: the
+    limit and the average were three thousandths apart and every budget gave
+    the same answer either way."""
+    account, signal, capture = ladder([('.10', '5'), ('.20', '500')], budget=20)
+    with pytest.raises(ValueError, match='venue minimum') as exc:
+        prepare(account, signal, capture, now=NOW)
+    assert 'account budget' in str(exc.value), str(exc.value)
+
+    # ...and one dollar more is enough, which is what makes the refusal above a
+    # boundary rather than a wall.
+    account, signal, capture = ladder([('.10', '5'), ('.20', '500')], budget=21)
     legs, _ = prepare(account, signal, capture, now=NOW)
-    assert sum(Decimal(leg['cash_ceiling']) for leg in legs) <= 20, legs
+    reserved = sum(Decimal(leg['cash_ceiling']) for leg in legs)
+    assert reserved <= 21, legs
+    assert reserved > 20, (
+        'this fixture only discriminates while the reserve sits between the two caps; '
+        f'it reserves {reserved}'
+    )
+
+
+def test_every_leg_reserves_at_least_what_it_could_spend():
+    """The engine's own inequality, asserted on the builder that has to satisfy it.
+
+    arbdesk_private.queue_plan refuses a leg unless
+
+        cash_ceiling >= shares * limit_price
+
+    and submit_single_paper_order says the same thing. It is the right rule: a
+    limit order may fill anywhere up to its limit, so the reserve has to cover
+    the limit rather than the quote.
+
+    The builder reserved the SIMULATED FILL - notional plus fee at today's
+    book. While the limit was the touch those were the same number and the
+    inequality held by coincidence. The ladder walk sets the limit to the worst
+    level it reaches while the fill averages lower, so the reserve fell below
+    the limit and the database refused every walked plan:
+
+        2026-09-20 22:31 UTC, desk "Wide edge, all US"
+          35.72 shares, limit 0.18, ceiling 5.62   (35.72 * 0.18 = 6.43)
+          50    shares, limit 0.14, ceiling 6.04   (50    * 0.14 = 7.00)
+
+    Eight in the first run after the walk went live, every one of them a trade
+    the desk had already decided to take. Nothing caught it because the tests
+    asserted the ceilings summed UNDER a cap - the direction that protects the
+    budget - and never that each one was above what its own leg could spend.
+    """
+    # A ONE-CENT LADDER DOES NOT REPRODUCE IT. The reserve was short by the
+    # spread between the limit and the walked average, less the fee; on
+    # .30 -> .31 the fee covers that gap and the inequality survives by
+    # accident a second time. Production walked .12 -> .22, so that is what
+    # this walks - 41.67 shares at a 0.22 limit against a 9.01 quote, 0.16
+    # short, against the live 35.72 at 0.18 for 5.62, 0.81 short.
+    for book, budget, walked in [
+        ([('.12', '5'), ('.22', '500')], 20, True),     # needs the ladder
+        ([('.30', '500')], 20, False),                  # the touch serves it
+    ]:
+        account, signal, capture = ladder(book, budget=budget)
+        legs, _ = prepare(account, signal, capture, now=NOW)
+        for leg in legs:
+            spend = Decimal(leg['shares']) * Decimal(leg['limit_price'])
+            assert Decimal(leg['cash_ceiling']) >= spend, (
+                f"{'walked' if walked else 'touch'} leg reserves "
+                f"{leg['cash_ceiling']} against {leg['shares']} shares that may fill "
+                f"at {leg['limit_price']} - {spend}. queue_plan refuses this leg with "
+                "'Invalid leg cash reservation'")
+
+
+def test_the_reservation_rule_is_still_the_one_the_database_enforces():
+    """Read the inequality out of the migration rather than restating it here.
+
+    The test above is only worth anything while it is checking the same rule
+    the engine checks. If a migration widened or narrowed it, a test carrying
+    its own copy would go on passing against a database that had changed.
+    """
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    guard = (root / 'supabase' / 'migrations'
+             / '20260912083728_paper_approvals_exits_and_policies.sql').read_text()
+    assert "(leg->>'cash_ceiling')::numeric>=(leg->>'shares')::numeric*(leg->>'limit_price')::numeric" in guard, (
+        'queue_plan no longer requires cash_ceiling >= shares * limit_price. If the '
+        'rule moved or changed, update prepare() and the test above to match it - do '
+        'not leave them asserting a rule the database has stopped keeping')
