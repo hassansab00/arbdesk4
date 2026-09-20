@@ -241,37 +241,91 @@ $ad4$;
 create or replace function paper_desk_reset(p_account_id uuid)
 returns jsonb language plpgsql security definer
 set search_path = public as $ad4$
-declare v_start numeric; v_cash numeric; v_orders int; v_positions int;
-        v_plans int; v_settled int;
+declare v_start numeric; v_cash numeric;
+        v_stopped int; v_expired int; v_positions int;
+        v_orders_kept int; v_plans_kept int; v_settled_kept int;
 begin
   select starting_cash, cash into v_start, v_cash
     from paper_accounts where account_id = p_account_id;
   if not found then raise exception 'no such desk: %', p_account_id; end if;
 
+  -- A RESET FLATTENS THE DESK. IT DOES NOT ERASE ITS RECORD.
+  --
+  -- This used to DELETE paper_position_settlements, paper_positions,
+  -- paper_orders and paper_trade_plans for the account - and the comment two
+  -- paragraphs down already argued against itself: "the activity log is the
+  -- audit trail, and a reset is an event in the desk's history, not an
+  -- erasure of it". That was true of paper_activity, which is append-only and
+  -- physically refuses a delete, and false of everything beside it. Pressing
+  -- Reset destroyed every order the desk had ever placed, every proposal it
+  -- had ever made and every block reason that explained why - which is the
+  -- delete Hassan reported being able to perform, and the one thing this desk
+  -- is not allowed to do.
+  --
+  -- THE LINE IS BETWEEN A RECORD AND A DERIVED TOTAL.
+  --
+  --   paper_orders                what the desk asked the venue for - a record
+  --   paper_trade_plans           what it proposed and why it was stopped - a record
+  --   paper_position_settlements  a settlement with its own proof_id - a record
+  --   paper_positions             shares, cost basis and realised P&L per band
+  --                               and side, which is a RUNNING TOTAL of the
+  --                               three above
+  --
+  -- So the three records are kept and only the total is cleared. That is safe
+  -- precisely because the records survive: the aggregate can be rebuilt from
+  -- them, which was not true before, when the reset deleted its own sources.
+  --
   -- Children keep their own money. Resetting a parent does not reach into a
   -- sub-account, or comparing the two afterwards would be meaningless.
   -- GET DIAGNOSTICS takes a bare ROW_COUNT, never an expression, so each
-  -- delete gets its own counter rather than accumulating into one.
-  delete from paper_position_settlements where account_id = p_account_id;
-  get diagnostics v_settled = row_count;
-  delete from paper_positions   where account_id = p_account_id;
+  -- statement gets its own counter rather than accumulating into one.
+
+  -- 1. Orders still live are STOPPED where they stand. paper_orders carries an
+  --    AFTER UPDATE OF status trigger that recomputes each plan from all of
+  --    its orders, so this has to run before the plans are touched - the plans
+  --    that had orders follow them here rather than being set twice.
+  update paper_orders
+     set status = 'canceled',
+         reason = coalesce(reason || ' | ', '') || 'desk reset'
+   where account_id = p_account_id
+     and status in ('queued', 'working');
+  get diagnostics v_stopped = row_count;
+
+  -- 2. A plan that never produced an order has nothing to follow, so it is
+  --    expired here. A blocked plan is left exactly as it is: the reason it
+  --    was blocked is the most useful row on the desk.
+  update paper_trade_plans p
+     set status = 'expired',
+         reason = coalesce(p.reason || ' | ', '') || 'desk reset'
+   where p.account_id = p_account_id
+     and p.status in ('pending_approval', 'queued')
+     and not exists (select 1 from paper_orders o
+                      where o.plan_id = p.plan_id
+                        and o.status in ('queued', 'working'));
+  get diagnostics v_expired = row_count;
+
+  -- 3. The running total, and only the running total.
+  delete from paper_positions where account_id = p_account_id;
   get diagnostics v_positions = row_count;
-  delete from paper_orders      where account_id = p_account_id;
-  get diagnostics v_orders = row_count;
-  delete from paper_trade_plans where account_id = p_account_id;
-  get diagnostics v_plans = row_count;
+
+  select count(*) into v_orders_kept  from paper_orders      where account_id = p_account_id;
+  select count(*) into v_plans_kept   from paper_trade_plans where account_id = p_account_id;
+  select count(*) into v_settled_kept from paper_position_settlements
+   where account_id = p_account_id;
+
   -- paper_activity is APPEND-ONLY - arbdesk_private.immutable_record() raises
   -- "Append-only record; write a linked correction instead" on any delete.
-  -- That is the right design: the activity log is the audit trail, and a
-  -- reset is an event in the desk's history, not an erasure of it. So the
-  -- reset is RECORDED rather than hidden.
+  -- That is the right design, and it is now the design the rest of the reset
+  -- follows rather than the exception to it.
   insert into paper_activity (account_id, event_type, payload, cash_delta)
   values (p_account_id, 'account_reset',
           jsonb_build_object('starting_cash', v_start, 'cash_before', v_cash,
                              'positions_cleared', v_positions,
-                             'orders_cleared', v_orders,
-                             'plans_cleared', v_plans,
-                             'settlements_cleared', v_settled),
+                             'orders_stopped', v_stopped,
+                             'plans_expired', v_expired,
+                             'orders_kept', v_orders_kept,
+                             'plans_kept', v_plans_kept,
+                             'settlements_kept', v_settled_kept),
           v_start - v_cash);
 
   update paper_accounts
@@ -279,13 +333,17 @@ begin
    where account_id = p_account_id;
 
   return jsonb_build_object('account_id', p_account_id, 'cash', v_start,
-                            'orders_cleared', v_orders, 'positions_cleared', v_positions,
-                            'settlements_cleared', v_settled,
-                            'plans_cleared', v_plans,
-                            'activity', 'kept - append-only, a reset event was logged',
+                            'orders_stopped', v_stopped,
+                            'plans_expired', v_expired,
+                            'positions_cleared', v_positions,
+                            'orders_kept', v_orders_kept,
+                            'plans_kept', v_plans_kept,
+                            'settlements_kept', v_settled_kept,
+                            'deleted', 'nothing - orders, plans and settlements are the '
+                                       'record this desk is judged on; only the running '
+                                       'position total is cleared, and it rebuilds from them',
                             'entries_paused', true);
-end;
-$ad4$;
+end $ad4$;
 
 create or replace function paper_desk_archive(p_account_id uuid, p_archived boolean default true)
 returns void language plpgsql security definer
