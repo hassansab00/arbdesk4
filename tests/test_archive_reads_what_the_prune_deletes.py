@@ -22,6 +22,7 @@ A test that reads the spec can only prove the spec. These call the function and
 watch which relation the request goes to.
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -184,4 +185,36 @@ def test_the_book_view_protects_both_rows_a_reader_would_ask_for():
     assert " and " in predicate, (
         "the two protections must BOTH apply; either one alone leaves a live reader's "
         "row in the prunable set"
+    )
+
+
+# --- and the button that runs it has to offer every dataset ----------------
+#
+# `--table` on the script derives its choices from TABLES, so it is always
+# right. The workflow_dispatch `table:` input is a HAND-WRITTEN COPY of the same
+# list, and by 20 Sep it read
+#
+#     options: ['all', 'observations', 'forecasts', 'trades', 'research']
+#
+# while TABLES held six datasets. `resolution` joined on 19 Sep and `books` on
+# the 20th, and neither could be selected from the Actions page - so the one
+# dataset that had been failing for three days was also the one nobody could
+# run on its own to test the fix.
+#
+# This is the same failure as the reclaim jobs and the README cadences: a second
+# enumeration of a list, written by hand, with nothing holding it to the first.
+
+WORKFLOW = (Path(ao.__file__).resolve().parents[1]
+            / ".github" / "workflows" / "archive_observations.yml").read_text(encoding="utf-8")
+
+
+def test_the_workflow_offers_every_dataset_the_script_knows():
+    import ast
+    m = re.search(r"^\s*options:\s*(\[.*\])\s*$", WORKFLOW, re.M)
+    assert m, "archive_observations.yml has no table choice list any more"
+    offered = set(ast.literal_eval(m.group(1)))
+    assert offered == {"all"} | set(ao.TABLES), (
+        f"the Actions page offers {sorted(offered)} but the script archives "
+        f"{sorted(ao.TABLES)}. A dataset that cannot be selected cannot be run on its own, "
+        "which is exactly what you need when one of them is failing."
     )

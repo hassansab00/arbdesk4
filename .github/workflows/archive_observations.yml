@@ -48,7 +48,7 @@ on:
       table:
         description: 'Which archive to run'
         type: choice
-        options: ['all', 'observations', 'forecasts', 'trades', 'research']
+        options: ['all', 'books', 'forecasts', 'observations', 'research', 'resolution', 'trades']
         default: 'all'
       commit:
         description: 'Upload and prune (UNtick for a dry run)'

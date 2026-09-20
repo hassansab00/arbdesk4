@@ -189,15 +189,29 @@ cloudy as (
 
 -- 1f. WHEN THE DAY IS DECIDED.
 -- Every intraday entry rule depends on this and it was only ever a constant.
+--
+-- derived_weather_peak IS KEYED BY CITY AND MONTH, and `count(*)` here called
+-- that a count of cities: the page read "Across 636 cities measured" when the
+-- whole cities table has 54 rows. 636 is 53 cities x 12 months exactly. The
+-- sibling finding one CTE below already counts `distinct city_key`; this one
+-- did not, and nothing compared them.
+--
+-- The average is day-weighted for the same reason - the sentence offers
+-- "from 17,952 days of readings" as its basis, so the number in front of it
+-- has to be the average over those days and not over the month-buckets they
+-- fall in. Measured 2026-09-20 it moves the answer by four seconds
+-- (13.9856 -> 13.9844 local hours), because months here carry 20 to 42 days
+-- and no bucket is thin enough to distort it. Small, and now it matches the
+-- claim rather than happening to agree with it.
 peaking as (
   select
     'peak_hour'                                            as key,
     'backward'                                             as direction,
     'per_city'                                             as kind,
     null::int                                              as span_days,
-    count(*)::int                                          as n_cities,
+    count(distinct city_key)::int                          as n_cities,
     coalesce(sum(n_days), 0)::int                          as n,
-    avg(peak_hour_local)                                   as stat,
+    sum(peak_hour_local * n_days) / nullif(sum(n_days), 0)  as stat,
     null::numeric                                          as rate
   from derived_weather_peak
 ),
@@ -232,6 +246,21 @@ ahead as (
 -- 1h. WHAT IS ACTUALLY TAKEABLE RIGHT NOW.
 -- edges is keyed by band, not by city: the city is two joins away, which is
 -- exactly why a count of "cities with an edge" was never on any page.
+--
+-- AND "RIGHT NOW" HAS TO BE IN THE QUERY. This read `from edges` with no
+-- bound of any kind, so the headline "N buckets price below what the desk
+-- thinks they are worth" counted every edge row ever computed. Measured
+-- 2026-09-20: 8,308 rows back to 3 September, against 217 actually live - a
+-- 38x overstatement on a sentence whose first two words are "right now". It
+-- also reported 51 cities, two of which are retired, because a retired city's
+-- last edges never expire.
+--
+-- Two things fix it and both are needed. v_latest_edge takes the newest row
+-- per band and side, so three intraday runs inside one window cannot count the
+-- same bucket three times; and the twelve-hour bound is what makes it current.
+-- Twelve hours is not a new number here - it is the freshness window
+-- phase1c_operational_readiness and phase1d_execution_readiness already use
+-- for exactly this column.
 takeable as (
   select
     'live_edges'                                           as key,
@@ -242,11 +271,12 @@ takeable as (
     count(*)::int                                          as n,
     max(e.edge_net_pp)                                     as stat,
     null::numeric                                          as rate
-  from edges e
+  from v_latest_edge e
   join bands b   on b.band_id   = e.band_id
   join markets m on m.market_id = b.market_id
  where e.edge_net_pp is not null and e.edge_net_pp > 0
    and coalesce(e.tradeable, true)
+   and e.computed_at >= now() - interval '12 hours'
 ),
 
 all_findings as (
