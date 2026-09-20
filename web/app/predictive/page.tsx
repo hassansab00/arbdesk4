@@ -95,6 +95,12 @@ export default function PredictivePage() {
     []
   );
   const cities = citiesQ.data ?? [];
+  // THE TWO ALL-CITY PANELS ARE SCOPED SERVER-SIDE. citiesQ is active only, so
+  // this is the desk's current roster. It goes into the QUERY rather than a
+  // filter afterwards, because both panels run against a row cap: filtering
+  // after the cap would silently drop active rows to make room for retired
+  // ones, and the truncation warning would be measuring the wrong thing.
+  const activeKeys = useMemo(() => cities.map((c) => c.city_key), [cities]);
   const [city, setCity] = useState<string>("");
   /**
    * Why the backward-looking panels are empty, in the numbers themselves.
@@ -191,8 +197,9 @@ export default function PredictivePage() {
   const settledQ = useQuery<ConvRow[]>(
     () => supabase.from("v_forecast_convergence_all").select("*")
             .eq("is_settled", true).eq("lead_days", 1)
+            .in("city_key", activeKeys)
             .order("for_date", { ascending: false }).limit(1000),
-    [], 300000, 1000
+    [activeKeys.join(",")], 300000, 1000
   );
   // Forward only: the ladder is drawn for days that have not resolved, and
   // the whole table is one row per band per day for every city.
@@ -207,7 +214,9 @@ export default function PredictivePage() {
     [active], 120000, 1000
   );
   const scoreQ = useQuery<ScoreRow[]>(
-    () => supabase.from("v_prediction_scorecard_all").select("*").limit(4000), [], undefined, 4000
+    () => supabase.from("v_prediction_scorecard_all").select("*")
+            .in("city_key", activeKeys).limit(4000),
+    [activeKeys.join(",")], undefined, 4000
   );
   const bankQ = useQuery<BankrollRow[]>(
     () => supabase.from("v_bankroll_curve").select("*").limit(2000), [], undefined, 2000
@@ -561,7 +570,11 @@ export default function PredictivePage() {
         <DataState
           relation="v_forecast_convergence"
           truncated={settledQ.truncated}
-          loading={settledQ.loading}
+          // The roster gates the query, so "roster not loaded yet" has to read
+          // as loading and not as "nothing has settled" - that exact
+          // confusion is what made this page claim an empty archive while
+          // 2,268 settled comparisons sat in it.
+          loading={settledQ.loading || citiesQ.loading || activeKeys.length === 0}
           error={settledQ.error}
           isEmpty={scatter.length === 0}
           emptyTitle={unverified ? "No verified days yet" : "No settled days yet"}
@@ -678,7 +691,7 @@ export default function PredictivePage() {
         {unverifiedNote}
         <DataState
           relation="v_prediction_scorecard"
-          loading={scoreQ.loading}
+          loading={scoreQ.loading || citiesQ.loading || activeKeys.length === 0}
           error={scoreQ.error}
           isEmpty={errByLead.length === 0}
           emptyTitle={unverified ? "No verified days yet" : "No scorecard yet"}
@@ -712,7 +725,8 @@ export default function PredictivePage() {
         </p>
         <DataState
           relation="v_prediction_scorecard"
-          loading={scoreQ.loading} error={scoreQ.error} isEmpty={(scoreQ.data ?? []).length === 0}
+          loading={scoreQ.loading || citiesQ.loading || activeKeys.length === 0}
+          error={scoreQ.error} isEmpty={(scoreQ.data ?? []).length === 0}
           emptyTitle={unverified ? "No verified days yet" : "Nothing scored yet"}
           emptyBody={unverified ?? "Needs at least 5 settled days per city, model and lead."}
           onRetry={scoreQ.refresh}

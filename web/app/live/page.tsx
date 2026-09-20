@@ -173,7 +173,14 @@ export default function LiveWeatherPage() {
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    let merged = (live.data ?? []).map((l) => ({
+    // ACTIVE ONLY, AND IT HAS TO BE FILTERED HERE. This page renders from
+    // live_weather, not from cities - cityByKey is only a lookup for the
+    // display name - so filtering the cities query alone left all 54 rows on
+    // screen with five of them missing their name. A retired city keeps its
+    // live_weather row forever, because nothing here deletes.
+    let merged = (live.data ?? [])
+      .filter((l) => cityByKey.has(l.city_key))
+      .map((l) => ({
       ...l,
       city: cityByKey.get(l.city_key),
       // NOT `trend` - LiveWeather already has one (RISING/FALLING/FLAT,

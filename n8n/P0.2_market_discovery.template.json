@@ -195,7 +195,7 @@
       ],
       "parameters": {
         "method": "GET",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/cities?select=city_key,unit,icao&limit=500",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/cities?select=city_key,unit,icao&status=eq.active&limit=500",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
