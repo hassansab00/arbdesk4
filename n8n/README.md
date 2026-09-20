@@ -72,6 +72,15 @@ is the allocation that fixed it; `tests/test_the_schedules_do_not_all_fire_at_on
 holds it, including the part that matters most — P0.3 runs for over two minutes,
 so nothing may start inside its window even on a different minute.
 
+**Editing a workflow through the API leaves it a DRAFT. Publish it or nothing
+changes.** `update_workflow` saves a new version and returns success, the
+version history shows it, and a version diff confirms the edit — and the
+workflow goes on running the old one, because `activeVersionId` still points
+there. The schedule allocation above was applied to all twelve workflows at
+17:12 UTC on 20 Sep and P0.3 went on firing at `:00:51` for three more hours
+until they were published. Check it with `get_workflow_details`: if `versionId`
+and `activeVersionId` differ, the change is not live.
+
 **Import 1–3 first and get them green before importing anything else.** Those
 three fill the tables every page reads; the rest add accuracy and alerting to a
 desk that is already working.
