@@ -139,6 +139,18 @@ select cron.schedule(
   'VACUUM (FULL, ANALYZE) public.book_snapshots'
 );
 
+-- Also never reclaimed, and the fourth-largest table at 38 MB growing 2.36 MB
+-- a day. Like book_snapshots its dead rows arrive steadily rather than in a
+-- daily lump - edge_engine writes one row per band per side every four hours
+-- and 121,644 of 136,184 are already superseded - so it joins the weekly set
+-- rather than the nightly one. 07:20 keeps it clear of the 08:00 Monday
+-- weather model, which is the next thing to touch the database.
+select cron.schedule(
+  'ad4_reclaim_edges',
+  '20 7 * * 1',
+  'VACUUM (FULL, ANALYZE) public.edges'
+);
+
 -- Did they take, and did the last run work?
 --   select jobname, schedule, active from cron.job where jobname like 'ad4_reclaim%';
 --   select j.jobname, d.status, d.start_time, d.return_message

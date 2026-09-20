@@ -974,9 +974,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_city_climate",
     "derived_city_day_features",
     "derived_weather_peak",
-    "edges",
     "fact_band_outcome",
     "markets",
+    "edges",
     "weather_forecasts"
   ],
   "v_model_disagreement": [
@@ -1072,6 +1072,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_prunable_book_redundancy": [
     "book_snapshots"
   ],
+  "v_prunable_edge_history": [
+    "edges"
+  ],
   "v_prunable_resolution_evidence": [
     "bands",
     "fact_band_outcome",
@@ -1113,10 +1116,10 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_city_climate",
     "derived_city_day_features",
     "derived_weather_peak",
-    "edges",
     "fact_band_outcome",
     "fact_forecast_outcome",
     "markets",
+    "edges",
     "weather_forecasts"
   ],
   "v_trade_plan": [

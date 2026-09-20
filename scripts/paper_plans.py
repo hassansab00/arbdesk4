@@ -76,6 +76,29 @@ def basket_depth(quoted, step):
     return smallest if smallest is not None else Decimal(0)
 
 
+def ladder_cost(book, shares):
+    """What it costs to take `shares` off this leg's ask ladder.
+
+    Returns (limit_price, depth_weighted_price), or None when the whole ladder
+    does not hold that many. The limit is the last level the order reaches, so
+    an order sent at it fills the whole quantity; the depth-weighted price is
+    what those shares actually average, which is the number the edge has to be
+    measured against. Top-of-book is neither, and edges.market_price already
+    says why in its own comment: "NEVER top-of-book - that produces
+    recommendations that cannot be filled."
+    """
+    taken, spend, limit = Decimal(0), Decimal(0), None
+    for level in sorted((book.get('asks') or []), key=lambda x: number(x['price'])):
+        price, size = number(level['price']), number(level['size'])
+        take = min(size, shares - taken)
+        if take <= 0:
+            break
+        taken, spend, limit = taken + take, spend + take * price, price
+    if taken < shares or limit is None:
+        return None
+    return limit, spend / shares
+
+
 def venue_minimum_shares(quoted, step):
     """The smallest share count EVERY leg's venue would accept, on the step.
 
@@ -207,11 +230,58 @@ def prepare(account, signal, capture, *, now=None):
     # smaller of the two is under the floor, raising it would break the other
     # constraint. What CAN be fixed is which one to go and change.
     floor = venue_minimum_shares(quoted, DEFAULT_SHARE_STEP)
-    if quantity < floor:
-        short = 'book depth' if depth < floor else 'account budget'
+    if quantity < floor and depth < floor:
+        # THE TOUCH IS NOT THE BOOK, and treating it as one threw away 219 of
+        # the desk's 360 plans - 61% - every one of them "limited by book
+        # depth" and not one by budget. The touch on a band trading a few
+        # hundred dollars holds 5 or 10 shares; the venue wants $5 of notional,
+        # which at 8c is 62.5 shares. There is usually size for it one or two
+        # levels up.
+        #
+        # So pay for it, and let the desk's OWN min_edge decide whether it is
+        # worth paying. No new threshold is introduced here on purpose: the
+        # walk stops at the venue floor, which is the smallest order that can
+        # exist, so the slippage is bounded by how deep the book is in its
+        # first $5 - and if the edge does not survive even that, the refusal
+        # below says so in those words instead of blaming depth.
+        #
+        # Only the case the touch cannot serve goes through here. A plan whose
+        # touch already clears the floor is priced and sized exactly as before,
+        # so this cannot change a trade that was already working.
+        walked = []
+        for bid, token, price, rate, book in quoted:
+            reached = ladder_cost(book, floor)
+            if reached is None:
+                walked = None
+                break
+            limit, average = reached
+            walked.append((bid, token, limit, average, rate, book))
+        if walked is None:
+            raise ValueError(
+                f'Below the venue minimum order size: the whole book holds {depth} '
+                f'shares against a {floor}-share floor at any price, limited by book depth')
+        walked_cost = sum((avg + rate * avg * (1 - avg) for _, _, _, avg, rate, _ in walked),
+                          Decimal(0))
+        walked_edge = expected - walked_cost
+        if walked_edge < number(policy['min_edge']):
+            raise ValueError(
+                f'Reaching the {floor}-share venue minimum costs '
+                f'{(walked_cost-unit_cost).quantize(Decimal(".0001"))} per share more than '
+                f'the touch, leaving {walked_edge.quantize(Decimal(".0001"))} against a '
+                f'{number(policy["min_edge"])} policy minimum')
+        affordable = ((budget - Decimal('.01') * len(quoted)) / walked_cost).quantize(
+            Decimal('.01'), rounding=ROUND_DOWN)
+        if affordable < floor:
+            raise ValueError(
+                f'Below the venue minimum order size: {affordable} shares affordable at '
+                f'the depth-weighted price against a {floor}-share floor, limited by '
+                'account budget')
+        quoted = [(bid, token, limit, rate, book) for bid, token, limit, _, rate, book in walked]
+        quantity, unit_cost, net_edge = floor, walked_cost, walked_edge
+    elif quantity < floor:
         raise ValueError(
             f'Below the venue minimum order size: {quantity} shares against a '
-            f'{floor}-share floor, limited by {short}')
+            f'{floor}-share floor, limited by account budget')
     legs, quotes = [], []
     for bid,token,price,rate,book in quoted:
         order={'action':'BUY','token_id':token,'shares':str(quantity),'limit_price':str(price),'share_step':str(DEFAULT_SHARE_STEP),
