@@ -36,6 +36,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import subprocess
 import sys
 from collections import defaultdict
 
@@ -171,18 +172,53 @@ def _total(rows, key):
     return round(sum(_num(r.get(key)) for r in rows), 6)
 
 
-def prune(keep_days):
-    """Delete closed trades older than keep_days - but only ones the files on
-    disk actually contain, matched by id.
+def uncommitted(path="web/public/paper-trades"):
+    """What is in `path` on disk but not in git, as a list of porcelain lines.
 
-    The ids come from re-reading what was just written, not from what was just
-    sent, and the database intersects that list with its own cutoff. A file
-    that failed to write therefore cannot become a delete. That is the same
-    two-sided contract the observations archive uses, and it is the reason
-    this is an RPC rather than a DELETE from here: common.rest is GET-only on
-    purpose, and giving every script in scripts/ the ability to delete rows to
-    save one function is a bad trade.
+    THE RUNNER'S FILESYSTEM IS NOT THE ARCHIVE. read_existing() below reads
+    what was just written to a container that is destroyed at the end of the
+    job; the archive is the repository. Between the two sits a commit and a
+    push, and either can fail - that is not hypothetical, it is the exact
+    failure that left the observations index written and never committed for
+    every run since the archive began.
+
+    Here the consequence is worse than a lost index: these ids become a
+    DELETE. A file that is written, counted, used to delete rows, and then
+    fails to commit leaves those trades in no place at all.
+
+    So the prune asks git, not the filesystem.
     """
+    out = subprocess.run(["git", "status", "--porcelain", "--", path],
+                         capture_output=True, text=True, check=False)
+    if out.returncode != 0:
+        return [f"git status failed: {out.stderr.strip()}"]
+    return [line for line in out.stdout.splitlines() if line.strip()]
+
+
+def prune(keep_days):
+    """Delete closed trades older than keep_days - but only ones the files
+    COMMITTED TO THIS REPOSITORY contain, matched by id.
+
+    The ids come from re-reading what was written, not from what was sent, and
+    the database intersects that list with its own cutoff. A file that failed
+    to write cannot become a delete. That is the same two-sided contract the
+    observations archive uses, and it is the reason this is an RPC rather than
+    a DELETE from here: common.rest is GET-only on purpose, and giving every
+    script in scripts/ the ability to delete rows to save one function is a
+    bad trade.
+
+    What that contract did NOT cover is the gap between writing the file and
+    committing it - see uncommitted() above. It does now.
+    """
+    dirty = uncommitted()
+    if dirty:
+        print("REFUSING TO PRUNE: the exported files are not committed yet, so "
+              "deleting the rows they describe would leave those trades nowhere.",
+              file=sys.stderr)
+        for line in dirty[:10]:
+            print(f"  {line}", file=sys.stderr)
+        return -1
+
     on_disk = sorted(read_existing())
     if not on_disk:
         print("nothing exported yet; not pruning", file=sys.stderr)
@@ -210,8 +246,24 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--prune-days", type=int, default=None,
                     help="also delete Postgres rows closed longer ago than this "
-                         "(only ones already in the files)")
+                         "(only ones already in the COMMITTED files)")
+    ap.add_argument("--prune-only", action="store_true",
+                    help="skip the export and only prune. The workflow runs this "
+                         "AFTER the commit step, so the files the ids come from are "
+                         "in the repository rather than only on the runner.")
     args = ap.parse_args()
+
+    if args.prune_only:
+        if args.prune_days is None:
+            print("--prune-only needs --prune-days", file=sys.stderr)
+            return 2
+        pruned = prune(args.prune_days)
+        if pruned < 0:
+            log_run("export_paper_trades", "attention", 0, {"prune": "refused"})
+            return 1
+        print(f"pruned {pruned} row(s) closed more than {args.prune_days} days ago")
+        log_run("export_paper_trades", "ok", 0, {"pruned": pruned, "phase": "prune-only"})
+        return 0
 
     rows = fetch_closed()
     existing = read_existing()
