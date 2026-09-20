@@ -12,7 +12,9 @@ import { fmtAge, fmtCompactUsd, fmtPct, fmtPp, fmtPrice, fmtUsd, regimeColor } f
 import { fmtBandRange, fmtTemp, fmtTempDelta, type Unit } from "@/lib/units";
 import { fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
 import { feeRateAt } from "@/lib/costs";
-import { fill, ladderFor, maxCleanStake, parseLevels, type BookRow, type Limits } from "@/lib/execution";
+import { type BookRow, type Limits } from "@/lib/execution";
+import { priceRow, byExpectedValue, type PricedRow } from "@/lib/opportunity";
+import type { ReliabilityBucket } from "@/lib/calibration";
 import { useExecutionLimits } from "@/lib/useExecutionLimits";
 import { DayPath, LivePrices, StrategyMirror, WindowPill } from "@/components/TradeTiming";
 import type { CityDayPlan, OpportunityContext, TradePlan } from "@/lib/types";
@@ -110,6 +112,16 @@ export default function OpportunitiesPage() {
     [],
     30000
   );
+  // WHAT THE MODEL'S PROBABILITIES HAVE ACTUALLY MEANT. Nine rows, one per
+  // decile, measured on settled bands. The desk prices with whatever this
+  // supports and nothing more - see lib/calibration.ts for why the rule has no
+  // tuning constant in it.
+  const relQ = useQuery<ReliabilityBucket[]>(
+    () => supabase.from("v_probability_reliability").select("*").order("bucket"),
+    [],
+    300000
+  );
+  const curve = relQ.data ?? null;
   const allRows = q.data ?? [];
   // The rows a strategy would actually take, right now. This is the answer to
   // "what do I do in the next hour", and it is a different question from
@@ -168,6 +180,27 @@ export default function OpportunitiesPage() {
       (!onlyUnrepriced || ctxByBand.get(r.band_id)?.forecast_ahead_of_book === true)
   );
 
+  // PRICED ONCE, SORTED AND RENDERED FROM THE SAME OBJECT. The list used to be
+  // ordered by the server's `score` while each card computed its own money
+  // independently, so the first card was the best-LOOKING trade rather than the
+  // best one: a large edge on a book that cannot absorb the stake outranked a
+  // smaller edge that fills. Ranking on the EV of the fill puts that right, and
+  // because the card renders this same object the two can no longer disagree.
+  const ranked = useMemo(
+    () =>
+      filtered
+        .map((o) => ({ o, p: priceRow(o, bookByBand.get(o.band_id), limits, stake, curve) }))
+        .sort((x, y) => byExpectedValue(
+          { ev: x.p.ev, score: x.o.score ?? null },
+          { ev: y.p.ev, score: y.o.score ?? null }))
+        .map((x, i) => ({ ...x, rank: i + 1 })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filtered.map((r) => `${r.band_id}:${r.side}`).join(","), bookByBand, limits, stake, curve]
+  );
+  // How many cards the haircut is actually moving, for the header line. Zero is
+  // a fact worth printing, not a blank.
+  const adjusted = useMemo(() => ranked.filter((r) => r.p.cal.applied).length, [ranked]);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -178,10 +211,18 @@ export default function OpportunitiesPage() {
             best first. Every money figure on a card is the <strong className="text-text">fill you
             would actually get</strong>: the stake is walked through the real ask ladder, the
             venue&apos;s order minimum is applied, and what the book cannot absorb is not counted.
-            Rank is{" "}
-            <code>edge × confidence × ln(1 + depth) × volume/(volume + k)</code> — a large edge on a
-            book you cannot fill ranks below a modest edge you can. The volume term only ever
-            discounts; it never inflates a rank.
+            <strong className="text-text">Ranked by expected value on that fill</strong>, not by a
+            score: <code>p × (if right) − (1 − p) × (if wrong)</code>, at the stake you chose, after
+            the ladder walk. A row the book cannot absorb has no EV and sorts last however large its
+            edge looks. The server&apos;s{" "}
+            <code>edge × confidence × ln(1 + depth)</code> score still answers &ldquo;what is most
+            mispriced&rdquo; and is still shown on each card — it just no longer decides the order,
+            because it does not know your stake.{" "}
+            {curve
+              ? adjusted > 0
+                ? `The measured calibration haircut is moving ${adjusted} of ${ranked.length} cards.`
+                : `The calibration haircut is measured and applies to none of these yet — no decile's realised rate is far enough from its stated one to clear its own 95% interval.`
+              : "Calibration reliability has not loaded."}
           </p>
         {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
             identical, and only one of them is worth investigating. */}
@@ -354,16 +395,16 @@ export default function OpportunitiesPage() {
           </div>
         ) : (
           <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-            {filtered.map((o, i) => (
+            {ranked.map(({ o, p, rank }) => (
               <Card
                 key={`${o.band_id}-${o.side}`}
                 o={o}
-                rank={i + 1}
+                p={p}
+                rank={rank}
                 stake={stake}
                 lw={liveByCity.get(o.city_key)}
                 ctx={ctxByBand.get(o.band_id)}
-                book={bookByBand.get(o.band_id)}
-                limits={limits}
+                minOrderUsd={limits.minOrderUsd}
                 onOpen={() => router.push(`/board?city=${encodeURIComponent(o.city_key)}&date=${o.resolution_date}`)}
               />
             ))}
@@ -402,15 +443,19 @@ function Drift({ label, v, side }: { label: string; v: number; side: string }) {
 }
 
 function Card({
-  o, rank, stake, lw, ctx, book, limits, onOpen,
+  // No `book` and no `Limits`: the card is handed its PRICED row and does not
+  // recompute it. Leaving the pricing inputs on the signature would invite the
+  // second, disagreeing calculation this refactor removed. minOrderUsd comes
+  // through as a bare number because the card only ever prints it.
+  o, p, rank, stake, lw, ctx, minOrderUsd, onOpen,
 }: {
   o: TradePlan;
+  p: PricedRow;
   rank: number;
   stake: number;
   lw: LiveRow | undefined;
   ctx: OpportunityContext | undefined;
-  book: BookRow | undefined;
-  limits: Limits;
+  minOrderUsd: number;
   onOpen: () => void;
 }) {
   const unit = o.unit as Unit;
@@ -423,15 +468,11 @@ function Card({
   // $120 book returns what $120 of shares return, not what $500 does. The
   // ladder walk lives in lib/execution.ts and is unit-tested against the same
   // fee model the paper engine settles with.
-  const side = o.side === "YES" ? "ask" : "bid";
-  const rawLevels = parseLevels(side === "ask" ? book?.ask_levels : book?.bid_levels, o.side);
-  const quoted = o.side === "YES" ? o.best_ask : (o.best_bid != null ? 1 - o.best_bid : null);
-  const depthUsd = o.side === "YES" ? (book?.ask_depth_usd ?? o.fillable_usd_5c) : (book?.bid_depth_usd ?? o.fillable_usd_5c);
-  const { levels, known: bookKnown } = ladderFor(rawLevels, quoted, depthUsd, limits);
-  const pos = fill(stake, levels, bookKnown, o.model_prob, limits);
-  const profit = pos.shares > 0 ? pos.profit : null;
-  const ev = pos.ev;
-  const cleanMax = levels.length ? maxCleanStake(levels, limits) : 0;
+  //
+  // It is computed in lib/opportunity.ts and handed in, NOT recomputed here:
+  // the list is ranked on this object, and a card that recomputed its own
+  // money could quietly disagree with the order it was placed in.
+  const { pos, cleanMax, ifRight: profit, ifWrong, ev, edge, cal, levels, bookKnown } = p;
 
   // Can this stake even fill? Depth is the binding constraint far more often
   // than edge is, and it was previously just another number in a grid.
@@ -447,7 +488,7 @@ function Card({
   const doubts = [
     o.thin_market && "barely trades — the fill will move the price further than the ladder implies",
     overDepth && `only ${fmtUsd(pos.spent)} of this ${fmtUsd(stake)} stake actually fills — the book runs out`,
-    pos.problems.includes("below_minimum") && `under the venue's ${fmtUsd(limits.minOrderUsd)} order minimum — this would be rejected, not filled small`,
+    pos.problems.includes("below_minimum") && `under the venue's ${fmtUsd(minOrderUsd)} order minimum — this would be rejected, not filled small`,
     pos.problems.includes("no_book") && "no stored ladder for this side, so the fill above is priced off top-of-book and a depth total",
     pos.slippage != null && pos.slippage > 0.01 && `walking the book costs ${(pos.slippage * 100).toFixed(1)}¢ a share on top of the quote`,
     o.ask_levels_source === "synthetic_tiers" && "book ladder reconstructed from depth totals, not the raw book",
@@ -540,16 +581,23 @@ function Card({
           <div className="text-[9px] uppercase tracking-wide text-muted">Model says worth</div>
           <div className="font-mono text-lg text-accent">{fmtPct(o.model_prob, 0)}</div>
         </div>
-        <div className="ml-auto text-right">
-          <div className="text-[9px] uppercase tracking-wide text-muted">Net edge</div>
-          <div className={`font-mono text-lg ${(o.edge_net_pp ?? 0) > 0 ? "text-good" : "text-bad"}`}>
-            {fmtPp(o.edge_net_pp)}
+        <div className="ml-auto text-right" title={cal.reason}>
+          <div className="text-[9px] uppercase tracking-wide text-muted">
+            Net edge{cal.applied && <span className="ml-1 text-warn">adj</span>}
           </div>
+          <div className={`font-mono text-lg ${(edge ?? 0) > 0 ? "text-good" : "text-bad"}`}>
+            {fmtPp(edge)}
+          </div>
+          {cal.applied && (
+            <div className="text-[9px] text-warn">
+              was {fmtPp(o.edge_net_pp)}
+            </div>
+          )}
         </div>
       </div>
 
       {/* ---- the same thing in money, at the fill you would actually get -- */}
-      <div className="mt-2 grid grid-cols-3 gap-2 font-mono text-xs">
+      <div className="mt-2 grid grid-cols-4 gap-2 font-mono text-xs">
         <div title={`Requested ${fmtUsd(stake)}. This is what actually leaves the account once the order is walked through the real book and the venue's minimum is applied.`}>
           <div className="text-[9px] uppercase tracking-wide text-muted">Risk</div>
           <span className={pos.spent > 0 && pos.spent < stake - 0.02 ? "text-warn" : ""}>
@@ -564,11 +612,29 @@ function Card({
           <span className="text-good">{profit === null ? "—" : fmtUsd(profit, { signed: true })}</span>
           {pos.shares > 0 && <div className="text-[9px] text-muted">{pos.shares.toFixed(0)} sh</div>}
         </div>
-        <div title={`Expected value at the model's own probability, on the fill: p x profit - (1 - p) x spent. Taker fee on this fill: ${fmtUsd(pos.fee)}, ${fmtPct(pos.avgPrice ? feeRateAt(pos.avgPrice) : 0, 2)} of notional.`}>
-          <div className="text-[9px] uppercase tracking-wide text-muted">EV</div>
+        {/* THE OTHER HALF OF THE BET. A binary that loses settles at zero, so
+            the downside is the whole fill - fee included, because the fee comes
+            out of the money committed. Showing only "if right" beside a
+            positive EV reads like a one-sided proposition, and at these prices
+            it is the losing case that happens most of the time: a band the
+            model calls 30% loses seven times in ten. */}
+        <div title={`The band does not happen: a losing share settles at zero, so this is the entire fill including the ${fmtUsd(pos.fee)} fee. At the model's ${fmtPct(cal.p, 0)} this is the outcome ${fmtPct(1 - cal.p, 0)} of the time.`}>
+          <div className="text-[9px] uppercase tracking-wide text-muted">If wrong</div>
+          <span className="text-bad">{ifWrong === null ? "—" : fmtUsd(ifWrong, { signed: true })}</span>
+          {pos.shares > 0 && (
+            <div className="text-[9px] text-muted">{fmtPct(1 - cal.p, 0)} of the time</div>
+          )}
+        </div>
+        <div title={`Expected value on the fill: p x (if right) - (1 - p) x (if wrong), at p = ${fmtPct(cal.p, 1)}. ${cal.reason}. Taker fee on this fill: ${fmtUsd(pos.fee)}, ${fmtPct(pos.avgPrice ? feeRateAt(pos.avgPrice) : 0, 2)} of notional. The list is ranked on this number.`}>
+          <div className="text-[9px] uppercase tracking-wide text-muted">
+            EV{cal.applied && <span className="ml-1 text-warn">adj</span>}
+          </div>
           <span className={ev !== null && ev > 0 ? "text-good" : "text-bad"}>
             {ev === null ? "—" : fmtUsd(ev, { signed: true })}
           </span>
+          {cal.applied && p.evRaw !== null && (
+            <div className="text-[9px] text-warn">was {fmtUsd(p.evRaw, { signed: true })}</div>
+          )}
         </div>
       </div>
 

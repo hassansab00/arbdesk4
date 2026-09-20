@@ -123,6 +123,36 @@ def test_execution_layer():
     assert result["passed"] >= 13, "assertions went missing from the harness"
 
 
+def test_the_haircut_and_the_ranking():
+    """web/lib/calibration.ts and web/lib/opportunity.ts.
+
+    Two wrong things were on screen. The opportunity list was ordered by a
+    server-side score - edge x confidence x ln(1 + depth) - which does not know
+    the stake, so a large edge on a book that could not absorb $100 outranked a
+    smaller edge that filled completely: the top card was the best-LOOKING
+    trade, not the best one. And every card showed "If right" with no "If wrong"
+    beside it, next to a positive EV, which reads like a one-sided proposition
+    when losing is what happens most of the time - a band the model calls 30%
+    loses seven times in ten.
+
+    The haircut assertions pin the rule that decides whether a measured
+    reliability gap is allowed to move a price: the stated probability moves
+    only as far as the nearest bound of its decile's Wilson interval, and not
+    at all when it already sits inside one. That rule has no tuning constant,
+    so there is nothing here to fit to a desired answer.
+    """
+    script = os.path.join(ROOT, "tests", "web", "check_calibration.mjs")
+    r = subprocess.run([NODE, "--experimental-strip-types", script],
+                       capture_output=True, text=True, timeout=60, cwd=ROOT)
+    assert r.returncode == 0, r.stderr
+    lines = [l for l in r.stdout.strip().splitlines() if l.startswith("{")]
+    assert lines, r.stdout + r.stderr
+    result = json.loads(lines[-1])
+    detail = "\n".join(l for l in r.stdout.splitlines() if "FAIL" in l)
+    assert result["ok"], f"{result['failed']} assertion(s) failed:\n{detail}"
+    assert result["passed"] >= 15, "assertions went missing from the harness"
+
+
 def test_a_big_row_limit_reports_when_it_truncates():
     """A query that asks for N rows and gets exactly N has almost certainly
     lost rows, and PostgREST does not say so.

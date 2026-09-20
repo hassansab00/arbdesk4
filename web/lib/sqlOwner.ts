@@ -144,6 +144,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_prediction_ladder": "ad4_31_predictive.sql",
   "v_prediction_scorecard": "ad4_31_predictive.sql",
   "v_prediction_scorecard_all": "ad4_62_settled_history_ungated.sql",
+  "v_probability_reliability": "ad4_75_probability_reliability.sql",
   "v_provisional_settings": "ad4_39_freshness.sql",
   "v_prunable_resolution_evidence": "ad4_74_prune_resolution_evidence.sql",
   "v_run_scope": "ad4_32_run_scope.sql",
