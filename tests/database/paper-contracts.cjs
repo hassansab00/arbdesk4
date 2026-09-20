@@ -751,6 +751,66 @@ const assert = require('node:assert/strict');
   await books(single,'after a full-position exit was queued');
 
   // ======================================================================
+  // THE LEASE IS WHAT STOPS TWO WORKERS WRITING THE SAME FILL.
+  //
+  // claim_paper_order hands out a lease_token and a lease_until, and
+  // complete_paper_order refuses anything that does not match BOTH. One
+  // exclusion case was tested - a second worker getting null while a lease is
+  // live. Everything the completion side refuses was not, and each of those
+  // is a way for a worker to write money the desk did not spend:
+  //
+  //   a stale or wrong token   a worker whose lease expired writing over the
+  //                            one that replaced it
+  //   an expired lease_until   the same, from the clock rather than the token
+  //   more shares than asked   a fill larger than the order that authorised it
+  //   NaN / Infinity           arithmetic that poisons cash and cost basis
+  //   a non-terminal status    an order left neither open nor closed
+  // ======================================================================
+  await db.exec('reset role; set role service_role;');
+  for (const o of (await db.query(
+      `select order_id from public.paper_orders
+        where account_id=$1 and status in ('queued','working')`,[single])).rows) {
+    await db.query('select cancel_single_paper_order($1)',[o.order_id]);
+  }
+  const raceOrder=(await db.query(
+    "select submit_single_paper_order($1,$2,$3,'YES',2,.50,2,'lease contract') as id",
+    [single,crypto.randomUUID(),band])).rows[0].id;
+  const raceJob=(await db.query('select claim_paper_order() as job')).rows[0].job;
+  assert.equal(raceJob.order_id,raceOrder,'the claim did not hand back the order just queued');
+
+  const good={status:'filled',shares:'2',notional:'1.00',fee:'.025',snapshot_id:'snapshot',
+              fills:[{shares:'2',price:'.50',notional:'1.00',fee:'.025'}]};
+  const finishRace=(lease,result)=>db.query('select complete_paper_order($1,$2,$3::jsonb)',
+    [raceOrder,lease,JSON.stringify(result)]);
+
+  await assert.rejects(finishRace(crypto.randomUUID(),good),/Lease lost/,
+    'a worker holding the wrong lease token was able to complete the order');
+  await assert.rejects(finishRace(null,good),/Active lease required|Lease lost/,
+    'an order was completed with no lease at all');
+  await assert.rejects(finishRace(raceJob.lease_token,{...good,shares:'3'}),
+    undefined,'a fill larger than the order that authorised it was accepted');
+  for (const bad of ['NaN','Infinity','-Infinity']) {
+    await assert.rejects(finishRace(raceJob.lease_token,{...good,notional:bad}),
+      undefined,`a notional of ${bad} was accepted into the cash ledger`);
+  }
+  await assert.rejects(finishRace(raceJob.lease_token,{...good,status:'working'}),
+    /Invalid terminal status/,'an order was completed into a non-terminal status');
+
+  // The clock, not the token: a lease that simply ran out.
+  await db.query(`update public.paper_orders set lease_until=now()-interval '1 second'
+                   where order_id=$1`,[raceOrder]);
+  await assert.rejects(finishRace(raceJob.lease_token,good),/Lease lost/,
+    'a worker completed an order on a lease that had already expired');
+
+  // Put it back and finish honestly, so the desk is left consistent.
+  await db.query(`update public.paper_orders set lease_until=now()+interval '5 minutes'
+                   where order_id=$1`,[raceOrder]);
+  await finishRace(raceJob.lease_token,good);
+  assert.equal((await db.query(
+    'select status from public.paper_orders where order_id=$1',[raceOrder])).rows[0].status,'filled');
+  await books(single,'after a contested order was finally filled by its lease holder');
+
+  // ======================================================================
   // MAKING, RE-POLICYING AND RETIRING A DESK.
   //
   // These three ran in production and were exercised by nothing. Every desk
