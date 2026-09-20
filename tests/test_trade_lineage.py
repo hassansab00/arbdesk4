@@ -84,15 +84,57 @@ def test_an_unpriced_band_produces_an_empty_snapshot_not_invented_numbers():
 # ---------------------------------------------------------------------------
 # the cost version
 # ---------------------------------------------------------------------------
-def test_the_cost_version_is_the_uuid_not_the_label(monkeypatch):
-    """paper_trades.cost_version is a uuid into cost_params. Writing the
-    readable label there fails with 22P02, which is exactly how the first
-    forecast_version went out."""
+def test_the_cost_version_is_an_id_model_versions_actually_has(monkeypatch):
+    """THIS TEST USED TO PASS WHILE THE COLUMN WAS UNWRITEABLE.
+
+    It asserted _cost_version() returned the cost_params uuid rather than the
+    readable label, and it did - but paper_trades.cost_version is a foreign key
+    into MODEL_VERSIONS, not cost_params. A uuid from the wrong table is still
+    a uuid, so "is it a uuid and not a label" was satisfied by a value the
+    database would reject. Every fill died in complete_paper_order with
+
+        23503  Key (cost_version)=(68bdc8a9-...) is not present in table
+               "model_versions"
+
+    and nothing was recorded for seventeen hours.
+
+    The property that matters is not the SHAPE of the identifier, it is which
+    table it points into. So this now checks the resolution path: the active
+    cost_params LABEL goes through model_version_id(kind='cost'), which is what
+    registers it in the table the foreign key names, and the cost_params row id
+    is kept in the version's config so the trail is not lost.
+    """
+    asked = {}
+
+    def fake_model_version_id(kind, label, config=None, **kw):
+        asked.update(kind=kind, label=label, config=config or {})
+        return "99999999-9999-9999-9999-999999999999"
+
     monkeypatch.setattr(se, "rest", lambda *a, **k: [
         {"version_id": "68bdc8a9-88ec-43a3-8b47-1dd1b64e3132",
          "label": "polymarket_weather_2026_03"}])
+    monkeypatch.setattr(se, "model_version_id", fake_model_version_id)
+
     v = se._cost_version()
-    assert v == "68bdc8a9-88ec-43a3-8b47-1dd1b64e3132"
+    assert asked["kind"] == "cost", "it must register under the cost kind"
+    assert asked["label"] == "polymarket_weather_2026_03"
+    assert asked["config"]["cost_params_version"] == "68bdc8a9-88ec-43a3-8b47-1dd1b64e3132", (
+        "the cost_params row id has to survive somewhere or the trail from a "
+        "trade back to the exact fee row is gone")
+    assert v == "99999999-9999-9999-9999-999999999999", (
+        "the stamped value must be the model_versions id, not the cost_params one")
+
+
+def test_a_label_is_never_used_as_a_fallback_for_a_uuid_column():
+    """paper_engine used the readable cost model name as the default for
+    cost_version. That column is a uuid, so the label fails with 22P02 before
+    the foreign key can even fail with 23503. No version recorded is the
+    honest value; an unstorable one is not."""
+    import paper_engine as pe
+    src = open("scripts/paper_engine.py").read()
+    assert 'versions.get("cost_version", PAPER_ENGINE_COST_VERSION)' not in src, (
+        "the label is back as a fallback for a uuid column")
+    assert isinstance(pe.PAPER_ENGINE_COST_VERSION, str)
 
 
 def test_missing_cost_params_leaves_the_field_empty_rather_than_failing(monkeypatch):
@@ -129,8 +171,15 @@ def board(monkeypatch):
                 return probs
             return []
         monkeypatch.setattr(se, "rest_all", fake_rest_all)
+        # cost_params now has to carry a LABEL, because that is what gets
+        # resolved into model_versions - the id in this table is not the one
+        # the foreign key accepts. model_version_id is stubbed to the uuid the
+        # assertions use, standing in for the registered cost version.
         monkeypatch.setattr(se, "rest", lambda *a, **k: [
-            {"version_id": "33333333-3333-3333-3333-333333333333"}])
+            {"version_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+             "label": "polymarket_weather_2026_03"}])
+        monkeypatch.setattr(se, "model_version_id",
+                            lambda *a, **k: "33333333-3333-3333-3333-333333333333")
         return se._band_views()
     return go
 
