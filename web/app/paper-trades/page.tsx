@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import PaperAutomation from '@/components/PaperAutomation';
+import Hint, { PAPER_HINTS as H } from '@/components/Hint';
 import PaperExit from '@/components/PaperExit';
 import PaperDeskControl from '@/components/PaperDeskControl';
 import PaperPipelineStatus from '@/components/PaperPipelineStatus';
@@ -23,6 +24,21 @@ type Band = { band_id:string; band_label:string; markets:{ city_key:string; reso
 const button = 'rounded border border-border px-3 py-1 text-sm hover:bg-panel2 disabled:opacity-40';
 const card = 'rounded border border-border bg-panel p-4';
 
+type NewDesk = {
+  name:string; cash:string; mode:string;
+  max_plan_usd:string; max_exposure_usd:string; min_edge:string;
+  strategies:string[]; cities:string[];
+};
+
+// Deliberately empty rather than opinionated: an unticked strategy list means
+// "nothing may fire here yet", which is the safe reading for a desk that is
+// about to be created paused anyway.
+const BLANK_DESK:NewDesk = {
+  name:'', cash:'', mode:'manual',
+  max_plan_usd:'25', max_exposure_usd:'250', min_edge:'0.03',
+  strategies:[], cities:[],
+};
+
 export default function PaperTradesPage() {
   const [error,setError] = useState<string|null>(null);
   const [notice,setNotice] = useState<string|null>(null);
@@ -32,7 +48,27 @@ export default function PaperTradesPage() {
   const [tab,setTab] = useState('Trades');
   const [starting,setStarting] = useState('');
   const [showNewDesk,setShowNewDesk] = useState(false);
-  const [newDesk,setNewDesk] = useState({name:'',cash:''});
+  // A NEW DESK IS A NEW SET OF SETTINGS, not just a new name. The form used
+  // to send name and cash and hard-code mode:'manual' with no policy, so
+  // every desk arrived identical and had to be configured afterwards under
+  // Settings - which is the opposite of "try a setting without disturbing the
+  // one already running". paper_desk_create has always taken a mode and a
+  // policy; this just stops throwing them away.
+  const [newDesk,setNewDesk] = useState<NewDesk>(BLANK_DESK);
+  const [showArchived,setShowArchived] = useState(false);
+  // The same two lists the Settings tab uses, so a desk can be given its
+  // scope at creation instead of afterwards. Cities are ACTIVE ONLY - a
+  // retired city must not be offerable as a new desk's scope.
+  const strategyList=useQuery<{strategy_id:string;name:string;enabled:boolean}[]>(
+    ()=>supabase.from('strategies').select('strategy_id,name,enabled').order('strategy_id'),[]);
+  const cityList=useQuery<{city_key:string}[]>(
+    ()=>supabase.from('cities').select('city_key').eq('status','active').order('city_key'),[]);
+  // Archived desks are excluded from the switcher by the route, so without
+  // this they would be unreachable - "remove" that cannot be undone from the
+  // UI is a delete however it is spelled in the database.
+  const archived=useQuery<Array<{account_id:string;name:string;mode:string;archived_at:string|null}>>(
+    ()=>supabase.from('v_paper_desks').select('account_id,name,mode,archived_at:created_at').eq('archived',true).order('name'),
+    [],undefined);
   const [ticket,setTicket] = useState({band:'',side:'YES',shares:'',limit:'',ceiling:'',reason:''});
   // Stable across retry after an uncertain network response; reset only after success.
   const [command,setCommand] = useState<string|null>(null);
@@ -132,7 +168,7 @@ export default function PaperTradesPage() {
           already running. Each carries its own cash, strategies and cities -
           the Settings tab edits them per desk. */}
       {!!accounts.data?.length&&<button type="button" disabled={busy} className={button}
-        onClick={()=>{setShowNewDesk(v=>!v);setNewDesk({name:'',cash:''});}}>
+        onClick={()=>{setShowNewDesk(v=>!v);setNewDesk(BLANK_DESK);}}>
         {showNewDesk?'Cancel':'New desk'}</button>}
       {accounts.data&&accounts.data.length>1&&<span className="text-xs text-muted">
         {accounts.data.length} desks · each runs independently</span>}</div>
@@ -141,15 +177,70 @@ export default function PaperTradesPage() {
         <h2 className="font-semibold">Create paper account</h2><label className="block text-sm">Starting paper cash (USD)<input required type="number" min="0.01" step="0.01" className="input mt-1" value={starting} onChange={e=>setStarting(e.target.value)}/></label>
         <button disabled={busy} className={button}>Create account</button></form>}
 
-      {showNewDesk&&<form className={`${card} max-w-lg space-y-3`} onSubmit={async e=>{
+      {showNewDesk&&<form className={`${card} max-w-2xl space-y-3`} onSubmit={async e=>{
         e.preventDefault();
-        const made=await act(()=>paperAction('create_desk',{p_name:newDesk.name.trim(),p_starting_cash:Number(newDesk.cash),p_mode:'manual'}));
-        if(made){setShowNewDesk(false);setNewDesk({name:'',cash:''});}
+        // Mode and policy go in AT CREATION. paper_desk_create validates all
+        // of it server-side and always creates the desk paused, so a wrong
+        // number here costs an edit, never a trade.
+        const made=await act(()=>paperAction('create_desk',{
+          p_name:newDesk.name.trim(),
+          p_starting_cash:Number(newDesk.cash),
+          p_mode:newDesk.mode,
+          p_policy:{
+            strategies:newDesk.strategies,
+            cities:newDesk.cities,
+            max_plan_usd:Number(newDesk.max_plan_usd),
+            max_exposure_usd:Number(newDesk.max_exposure_usd),
+            min_edge:Number(newDesk.min_edge),
+          },
+        }));
+        if(made){setShowNewDesk(false);setNewDesk(BLANK_DESK);}
       }}>
         <h2 className="font-semibold">New paper desk</h2>
-        <p className="text-xs text-muted">Its own cash, strategies and cities. It starts <strong>paused</strong> and manual — set it up under Settings, then press Start when you want it to act.</p>
-        <label className="block text-sm">Name<input required className="input mt-1" maxLength={100} placeholder="e.g. Austin only, tight edge" value={newDesk.name} onChange={e=>setNewDesk({...newDesk,name:e.target.value})}/></label>
-        <label className="block text-sm">Starting paper cash (USD)<input required type="number" min="1" step="0.01" className="input mt-1" value={newDesk.cash} onChange={e=>setNewDesk({...newDesk,cash:e.target.value})}/></label>
+        <p className="text-xs text-muted">Its own cash, strategies, cities and limits — nothing is shared with the desk already running. It is created <strong>paused</strong> whatever you choose below, so it will not act until you press Start.</p>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-sm">Name<Hint text={H.name}/>
+            <input required className="input mt-1" maxLength={100} placeholder="e.g. Austin only, tight edge" value={newDesk.name} onChange={e=>setNewDesk({...newDesk,name:e.target.value})}/></label>
+          <label className="block text-sm">Starting paper cash (USD)<Hint text={H.starting_cash}/>
+            <input required type="number" min="1" step="0.01" className="input mt-1" value={newDesk.cash} onChange={e=>setNewDesk({...newDesk,cash:e.target.value})}/></label>
+        </div>
+
+        <label className="block text-sm">Mode<Hint text={H.mode}/>
+          <select className="input mt-1" value={newDesk.mode} onChange={e=>setNewDesk({...newDesk,mode:e.target.value})}>
+            <option value="manual">Manual — only your own tickets</option>
+            <option value="assisted">Assisted — propose, you approve each one</option>
+            <option value="automatic">Automatic — place them within the limits below</option>
+          </select></label>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          {([['max_plan_usd','Max per trade (USD)',H.max_plan_usd],
+             ['max_exposure_usd','Max at risk at once (USD)',H.max_exposure_usd],
+             ['min_edge','Min edge per share (USD)',H.min_edge]] as const).map(([f,label,hint])=>
+            <label key={f} className="text-sm">{label}<Hint text={hint}/>
+              <input required type="number" className="input mt-1"
+                min={f==='min_edge'?0:1} max={f==='min_edge'?1:1000000} step="0.01"
+                value={newDesk[f]} onChange={e=>setNewDesk({...newDesk,[f]:e.target.value})}/></label>)}
+        </div>
+
+        <div><p className="mb-1 text-sm">Allowed strategies<Hint text={H.strategies}/></p>
+          <div className="grid gap-2 md:grid-cols-2">{strategyList.data?.map(st=>
+            <label className="flex gap-2 text-sm" key={st.strategy_id}>
+              <input type="checkbox" checked={newDesk.strategies.includes(st.strategy_id)}
+                onChange={()=>setNewDesk({...newDesk,strategies:newDesk.strategies.includes(st.strategy_id)
+                  ?newDesk.strategies.filter(x=>x!==st.strategy_id)
+                  :[...newDesk.strategies,st.strategy_id]})}/>
+              {st.name}{!st.enabled&&<span className="text-muted">(disabled globally)</span>}</label>)}</div>
+          {!newDesk.strategies.length&&<p className="mt-1 text-xs text-muted">None ticked — this desk will not open anything automatically until one is.</p>}</div>
+
+        <div><p className="mb-1 text-sm">Allowed cities<Hint text={H.cities}/></p>
+          <div className="flex max-h-40 flex-wrap gap-3 overflow-auto">{['ALL',...(cityList.data||[]).map(c=>c.city_key)].map(c=>
+            <label className="flex gap-2 text-sm" key={c}>
+              <input type="checkbox" checked={newDesk.cities.includes(c)}
+                onChange={()=>setNewDesk({...newDesk,cities:newDesk.cities.includes(c)
+                  ?newDesk.cities.filter(x=>x!==c):[...newDesk.cities,c]})}/>
+              {c==='ALL'?'All cities':c}</label>)}</div></div>
+
         <button disabled={busy} className={button}>Create desk</button></form>}
       {selected&&<>
         {/* STATUS, THE SWITCH AND THE NUMBERS, before anything else.
@@ -167,14 +258,35 @@ export default function PaperTradesPage() {
           refresh={refresh}
           openSettings={()=>setTab('Settings')}/>
         <PaperPipelineStatus refresh={refresh}/>
+
+        {/* REMOVE A DESK WITHOUT LOSING IT. The switcher gets unreadable
+            quickly when a setting is tried and abandoned, which is exactly
+            what several desks are for - but a desk's trades are evidence
+            about a strategy and outlive any interest in the desk. So this
+            ARCHIVES: off the list, stopped, every row kept, and reversible
+            from the section below. paper_desk_archive force-pauses on the way
+            out, so an archived desk cannot act even if something later flips
+            its mode. */}
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <button type="button" disabled={busy} className={button}
+            onClick={async()=>{
+              const open=positions.data?.filter(x=>Number(x.shares)>0).length??0;
+              const warn=open?`\n\n${open} position${open===1?' is':'s are'} still open. Archiving does not close ${open===1?'it':'them'} — ${open===1?'it':'they'} will settle as normal and stay on the record.`:'';
+              if(!confirm(`Archive "${selected.name}"?\n\nIt comes off the desk list and stops trading. Nothing is deleted: every trade, order and activity row stays, and you can restore it below.${warn}`))return;
+              const done=await act(()=>paperAction('archive_desk',{p_account_id:selected.account_id,p_archived:true}));
+              if(done){setAccount('');archived.refresh();}
+            }}>Archive desk</button>
+          <Hint text={H.archive}/>
+          <span className="text-xs text-muted">Off the list, stopped, nothing deleted.</span>
+        </div>
         <details className={card} open={selected.mode==='manual'}>
           <summary className="cursor-pointer text-sm font-semibold">Manual paper ticket
             <span className="ml-2 font-normal text-muted">— place one order by hand, bypassing strategies</span></summary>
         <form className="mt-3 space-y-3" onSubmit={e=>{e.preventDefault();submit();}}><fieldset disabled={busy} className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-3"><label className="text-sm md:col-span-2">Market / band<select required className="input mt-1" value={ticket.band} onChange={e=>{setCommand(null);setTicket({...ticket,band:e.target.value});}}><option value="">Select a current contract</option>{bands.data?.map(b=><option key={b.band_id} value={b.band_id}>{name(b.band_id)}</option>)}</select></label>
-            <label className="text-sm">Side<select className="input mt-1" value={ticket.side} onChange={e=>{setCommand(null);setTicket({...ticket,side:e.target.value});}}><option>YES</option><option>NO</option></select></label>
-            {(['shares','limit','ceiling'] as const).map(field=><label key={field} className="text-sm">{{shares:'Shares',limit:'Maximum price (USD/share)',ceiling:'Maximum total including fees (USD)'}[field]}<input required type="number" min="0.01" max={field==='limit'?'0.99':undefined} step="0.01" className="input mt-1" value={ticket[field]} onChange={e=>{setCommand(null);setTicket({...ticket,[field]:e.target.value});}}/></label>)}
-          </div><label className="block text-sm">Reason / thesis<input className="input mt-1" value={ticket.reason} onChange={e=>{setCommand(null);setTicket({...ticket,reason:e.target.value});}}/></label>
+          <div className="grid gap-3 md:grid-cols-3"><label className="text-sm md:col-span-2">Market / band<Hint text={H.band}/><select required className="input mt-1" value={ticket.band} onChange={e=>{setCommand(null);setTicket({...ticket,band:e.target.value});}}><option value="">Select a current contract</option>{bands.data?.map(b=><option key={b.band_id} value={b.band_id}>{name(b.band_id)}</option>)}</select></label>
+            <label className="text-sm">Side<Hint text={H.side}/><select className="input mt-1" value={ticket.side} onChange={e=>{setCommand(null);setTicket({...ticket,side:e.target.value});}}><option>YES</option><option>NO</option></select></label>
+            {(['shares','limit','ceiling'] as const).map(field=><label key={field} className="text-sm">{{shares:'Shares',limit:'Maximum price (USD/share)',ceiling:'Maximum total including fees (USD)'}[field]}<Hint text={H[field]}/><input required type="number" min="0.01" max={field==='limit'?'0.99':undefined} step="0.01" className="input mt-1" value={ticket[field]} onChange={e=>{setCommand(null);setTicket({...ticket,[field]:e.target.value});}}/></label>)}
+          </div><label className="block text-sm">Reason / thesis<Hint text={H.reason}/><input className="input mt-1" value={ticket.reason} onChange={e=>{setCommand(null);setTicket({...ticket,reason:e.target.value});}}/></label>
           <p className="text-xs text-muted">Immediate-or-cancel simulation: only available depth within your limit can fill. Market metadata, fees and book freshness are verified by the worker.</p>
           <button disabled={busy||!ticket.band} className={button}>Queue paper order</button></fieldset>
         </form>
@@ -186,6 +298,33 @@ export default function PaperTradesPage() {
         {tab==='Activity'&&<div className={`${card} space-y-3`}>{events.data?.map(e=><details key={e.event_id} className="border-b border-border pb-2"><summary className="cursor-pointer text-sm">{new Date(e.occurred_at).toLocaleString()} · {e.event_type.replaceAll('_',' ')} · {fmtUsd(Number(e.cash_delta))}</summary><pre className="overflow-auto text-xs text-muted">{JSON.stringify(e.payload,null,2)}</pre></details>)}{events.truncated&&<p className="text-xs text-warn">Showing the latest 100 events; older history is retained.</p>}</div>}
         {tab==='Settings'&&<PaperAutomation key={selected.account_id+selected.policy_version} account={selected} refresh={refresh}/>}
       </>}
+
+    {/* WHERE AN ARCHIVED DESK GOES, so archiving is a move and not a
+        disappearance. Without this the route's archived_at filter would make
+        "Archive" irreversible from the UI, which is a delete wearing a softer
+        word - and this desk's rule is that nothing is ever deleted. */}
+    {!!archived.data?.length&&<div className={`${card} space-y-2`}>
+      <button type="button" className="flex w-full items-center justify-between text-left text-sm font-semibold"
+        onClick={()=>setShowArchived(v=>!v)}>
+        <span>Archived desks ({archived.data.length})</span>
+        <span className="text-xs font-normal text-muted">{showArchived?'Hide':'Show'}</span>
+      </button>
+      {showArchived&&<>
+        <p className="text-xs text-muted">Off the switcher and stopped. Every trade, order and activity row is still there — restoring brings all of it back, still paused.</p>
+        {archived.data.map(d=><div key={d.account_id} className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2 text-sm">
+          <span>{d.name} <span className="text-muted">— {d.mode}</span></span>
+          <span className="flex items-center gap-1">
+            <button type="button" disabled={busy} className={button}
+              onClick={async()=>{
+                const done=await act(()=>paperAction('archive_desk',{p_account_id:d.account_id,p_archived:false}));
+                if(done){archived.refresh();}
+              }}>Restore</button>
+            <Hint text={H.restore}/>
+          </span>
+        </div>)}
+      </>}
+    </div>}
+
     <div className="flex flex-wrap gap-4 text-sm text-accent"><Link href="/board">Board</Link><Link href="/predictive">Predictive</Link><Link href="/databank">Data Bank</Link><Link href="/synthesis">Synthesis</Link></div>
   </div>;
 }
