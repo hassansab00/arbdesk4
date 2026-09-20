@@ -121,3 +121,55 @@ def test_the_prune_still_happens_only_after_a_verified_read_back():
         "the committed prune now runs before the uploaded asset is read back and counted"
     )
     assert "VERIFY FAILED" in body and "Nothing pruned." in body
+
+
+# --- and a page has to offer it ------------------------------------------
+#
+# /api/archive worked for days and NOTHING CALLED IT. Every page, component
+# and lib was searched: the only references anywhere were the route file and
+# comments about it. So 623,768 rows sat in four Releases, retrievable by
+# anyone who knew the endpoint and invisible to everyone else - which is the
+# same condition the archive exists to prevent.
+#
+# An endpoint with no caller is not a feature. These hold the other end.
+
+WEB = ROOT / "web"
+
+
+def _web_sources():
+    for sub in ("app", "components", "lib"):
+        for path in (WEB / sub).rglob("*.ts*"):
+            if "node_modules" in str(path) or ".next" in str(path):
+                continue
+            yield path
+
+
+def test_something_in_the_ui_actually_calls_the_archive():
+    callers = [p.name for p in _web_sources()
+               if "/api/archive" in p.read_text(encoding="utf-8")
+               and "api/archive/route" not in str(p)]
+    assert callers, (
+        "no page or component fetches /api/archive. The route can serve 623,768 rows and "
+        "nothing asks it to, which is an archive nobody can read."
+    )
+
+
+def test_the_browser_is_rendered_on_a_page():
+    """A component nobody renders is the same as no component - the lesson
+    from the calibration indicator earlier today."""
+    rendered = [p.name for p in _web_sources()
+                if "<ArchiveBrowser" in p.read_text(encoding="utf-8")]
+    assert rendered, "ArchiveBrowser exists but no page renders it"
+
+
+def test_it_distinguishes_unreachable_from_deleted():
+    """The assets are on a private repo, so a deployment without a token can
+    list ranges but not fetch rows. Showing an empty table there would read as
+    'the data is gone', which is the exact misreading this all guards against."""
+    src = (WEB / "components" / "ArchiveBrowser.tsx").read_text(encoding="utf-8")
+    assert "can_fetch_rows" in src, (
+        "the browser does not check whether this deployment can reach the assets"
+    )
+    assert "not lost" in src or "not deleted" in src, (
+        "when rows cannot be fetched the page must say the data still exists"
+    )

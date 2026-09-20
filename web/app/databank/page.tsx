@@ -7,6 +7,7 @@ import { DataState } from "@/components/DataState";
 import { FreshnessRow } from "@/components/Provenance";
 import DataBank from "@/components/DataBank";
 import ProprietaryExport from "@/components/ProprietaryExport";
+import ArchiveBrowser from "@/components/ArchiveBrowser";
 import { fmtAge, fmtInt } from "@/lib/format";
 
 /**
@@ -86,6 +87,24 @@ export default function DataBankPage() {
           <FreshnessRow relations={["bands", "book_snapshots", "markets", "trades_observed", "weather_events", "weather_forecasts", "weather_observations", "cities"]} />
         </div>
       </div>
+
+      {/* WHERE THE PRUNED ROWS WENT. The row counts above are what is in
+          Postgres; this is what left it. /api/archive has worked for days and
+          nothing called it, so 623,768 rows were retrievable only by someone
+          who knew the endpoint - which is the condition the archive exists to
+          prevent. The Data Bank is the page that claims to hold everything
+          the desk has collected, so it is the page that has to say this. */}
+      <section>
+        <div className="flex items-baseline gap-2">
+          <span className="text-[10px] font-semibold text-accent">0</span>
+          <h2 className="text-base font-semibold">Archived out of Postgres</h2>
+        </div>
+        <p className="mb-2 mt-1 max-w-3xl text-xs text-muted">
+          Cold rows moved to GitHub Releases to stay inside the database tier. Still here, still
+          readable, still yours — this is the other half of the counts below.
+        </p>
+        <ArchiveBrowser />
+      </section>
 
       {/* ---------------------------------------------------- collected ---- */}
       <section>
