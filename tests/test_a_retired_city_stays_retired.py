@@ -303,17 +303,45 @@ def test_every_n8n_collector_asks_for_active_cities_only():
 
 def test_every_page_that_reads_the_cities_table_filters_it():
     """Four pages read it and only one filtered, so the desk offered cities it
-    had stopped trading."""
+    had stopped trading.
+
+    THE GLOB COVERS ALL OF web/, not just web/app/**/page.tsx. The narrower
+    version shipped as "airtight" and missed components/PaperAutomation.tsx,
+    which offers the city list a paper desk may trade - so a retired city was
+    still tickable as a desk's scope. A page is not the only thing that can
+    ask this question.
+    """
     import glob
+
+    # A LOOKUP MAP IS NOT A LIST OF CHOICES. RightRail reads cities only to
+    # build city_key -> unit, which is then read for rows that came from
+    # somewhere else. Filtering it would not remove a retired city from
+    # anything; it would just make that city's unit missing and silently
+    # default to Celsius. So the exemption is named, with its reason, rather
+    # than the whole file being waved through.
+    LOOKUP_ONLY = {"web/components/RightRail.tsx"}
+
     offenders = []
-    for path in sorted(glob.glob("web/app/**/page.tsx", recursive=True)):
+    for path in sorted(glob.glob("web/**/*.tsx", recursive=True)):
+        if "/.next/" in path or "/node_modules/" in path or path in LOOKUP_ONLY:
+            continue
         src = open(path).read()
         lines = src.splitlines()
+        # Either spelling counts: the filter can be in the query, or in a
+        # client-side .filter() over the rows - ScopeControl does the latter,
+        # thirteen lines below its query, which a short window would call a
+        # leak. What matters is that the file does not offer a retired city,
+        # not where the test happens to find the proof.
+        filtered_in_file = ('(c.status ?? "active") === "active"' in src
+                            or "status === 'active'" in src)
         for i, line in enumerate(lines):
-            if 'from("cities")' not in line:
+            if 'from("cities")' not in line and "from('cities')" not in line:
                 continue
-            window = "\n".join(lines[i:i + 4])
-            if '"status", "active"' not in window:
+            window = "\n".join(lines[i:i + 5])
+            in_query = ('"status", "active"' in window
+                        or "'status','active'" in window
+                        or "'status', 'active'" in window)
+            if not in_query and not filtered_in_file:
                 offenders.append(f"{path}:{i + 1}")
     assert offenders == [], (
         "these read the cities table without filtering on status: "

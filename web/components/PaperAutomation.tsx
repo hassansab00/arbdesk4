@@ -5,6 +5,7 @@ import { paperAction, paperRead, runPaperWorker } from '@/lib/paperSupabase';
 import { supabase } from '@/lib/supabase';
 import { useQuery } from '@/lib/useQuery';
 import PaperExitPolicy from '@/components/PaperExitPolicy';
+import Hint, { PAPER_HINTS as H } from '@/components/Hint';
 
 type Policy = {strategies?:string[];cities?:string[];max_plan_usd?:number;max_exposure_usd?:number;min_edge?:number;auto_exit_enabled?:boolean;take_profit_fraction?:number;stop_loss_fraction?:number};
 type Plan = {plan_id:string;strategy_id:string;status:string;reason:string;expires_at:string;legs:unknown;evidence:unknown};
@@ -18,7 +19,10 @@ export default function PaperAutomation({account,refresh}:{account:{account_id:s
   const [error,setError]=useState<string|null>(null);
   const [saved,setSaved]=useState(false);
   const strategies=useQuery<{strategy_id:string;name:string;enabled:boolean}[]>(()=>supabase.from('strategies').select('strategy_id,name,enabled').order('strategy_id'),[]);
-  const cities=useQuery<{city_key:string}[]>(()=>supabase.from('cities').select('city_key').order('city_key'),[]);
+  // Active only. A retired city must not be offerable as a desk's scope -
+  // this is the fifth place that decided 'which cities' and the first one
+  // outside web/app, which is why the enumeration test now scans all of web/.
+  const cities=useQuery<{city_key:string}[]>(()=>supabase.from('cities').select('city_key').eq('status','active').order('city_key'),[]);
   const plans=useQuery<Plan[]>(()=>paperRead<Plan[]>('plans',account.account_id),[account.account_id],15000,100);
   async function act(fn:()=>PromiseLike<{error:unknown}>, wakeWorker=false) {
     setBusy(true);setError(null);setSaved(false);
@@ -34,12 +38,12 @@ export default function PaperAutomation({account,refresh}:{account:{account_id:s
     {saved&&<p role="status" className="text-sm text-good">Saved.</p>}
     <form onSubmit={e=>{e.preventDefault();act(()=>paperAction('set_policy',{p_account:account.account_id,p_mode:mode,p_paused:paused,p_policy:policy}));}}>
       <fieldset disabled={busy} className="space-y-3">
-        <label className="block text-sm">Mode<select className="input mt-1" value={mode} onChange={e=>setMode(e.target.value)}><option value="manual">Manual</option><option value="assisted">Assisted — approve each plan</option><option value="automatic">Automatic — within policy limits</option></select></label>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={paused} onChange={e=>setPaused(e.target.checked)}/>Pause new automatic entries</label>
+        <label className="block text-sm">Mode<Hint text={H.mode}/><select className="input mt-1" value={mode} onChange={e=>setMode(e.target.value)}><option value="manual">Manual</option><option value="assisted">Assisted — approve each plan</option><option value="automatic">Automatic — within policy limits</option></select></label>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={paused} onChange={e=>setPaused(e.target.checked)}/>Pause new automatic entries<Hint text={H.paused}/></label>
         <p className="text-xs text-muted">Pausing prevents new automatic plans. Already queued orders can be canceled in Orders; exits remain available.</p>
-        <div className="grid gap-3 sm:grid-cols-3">{(['max_plan_usd','max_exposure_usd','min_edge'] as const).map(field=><label key={field} className="text-sm">{{max_plan_usd:'Maximum plan cost (USD)',max_exposure_usd:'Maximum open cost + reservations (USD)',min_edge:'Minimum net edge per share (USD)'}[field]}<input required className="input mt-1" type="number" min={field==='min_edge'?0:1} max={field==='min_edge'?1:1000000} step="0.01" value={policy[field]??''} onChange={e=>setPolicy({...policy,[field]:Number(e.target.value)})}/></label>)}</div>
-        <div><p className="mb-2 text-sm">Allowed strategies</p><div className="grid gap-2 md:grid-cols-2">{strategies.data?.map(s=><label className="flex gap-2 text-sm" key={s.strategy_id}><input type="checkbox" checked={policy.strategies?.includes(s.strategy_id)||false} onChange={()=>toggle('strategies',s.strategy_id)}/>{s.name}{!s.enabled&&<span className="text-muted">(disabled globally)</span>}</label>)}</div></div>
-        <div><p className="mb-2 text-sm">Allowed cities</p><div className="flex max-h-40 flex-wrap gap-3 overflow-auto">{['ALL',...(cities.data||[]).map(c=>c.city_key)].map(c=><label className="flex gap-2 text-sm" key={c}><input type="checkbox" checked={policy.cities?.includes(c)||false} onChange={()=>toggle('cities',c)}/>{c==='ALL'?'All cities':c}</label>)}</div></div>
+        <div className="grid gap-3 sm:grid-cols-3">{(['max_plan_usd','max_exposure_usd','min_edge'] as const).map(field=><label key={field} className="text-sm">{{max_plan_usd:'Maximum plan cost (USD)',max_exposure_usd:'Maximum open cost + reservations (USD)',min_edge:'Minimum net edge per share (USD)'}[field]}<Hint text={H[field]}/><input required className="input mt-1" type="number" min={field==='min_edge'?0:1} max={field==='min_edge'?1:1000000} step="0.01" value={policy[field]??''} onChange={e=>setPolicy({...policy,[field]:Number(e.target.value)})}/></label>)}</div>
+        <div><p className="mb-2 text-sm">Allowed strategies<Hint text={H.strategies}/></p><div className="grid gap-2 md:grid-cols-2">{strategies.data?.map(s=><label className="flex gap-2 text-sm" key={s.strategy_id}><input type="checkbox" checked={policy.strategies?.includes(s.strategy_id)||false} onChange={()=>toggle('strategies',s.strategy_id)}/>{s.name}{!s.enabled&&<span className="text-muted">(disabled globally)</span>}</label>)}</div></div>
+        <div><p className="mb-2 text-sm">Allowed cities<Hint text={H.cities}/></p><div className="flex max-h-40 flex-wrap gap-3 overflow-auto">{['ALL',...(cities.data||[]).map(c=>c.city_key)].map(c=><label className="flex gap-2 text-sm" key={c}><input type="checkbox" checked={policy.cities?.includes(c)||false} onChange={()=>toggle('cities',c)}/>{c==='ALL'?'All cities':c}</label>)}</div></div>
         <button className={button}>Save policy</button>
       </fieldset>
     </form>

@@ -62,7 +62,10 @@ export default function Header() {
       try {
         const today = new Date().toISOString().slice(0, 10);
         const [{ count: cityCount }, mkt, { count: edgeCount }] = await Promise.all([
-          supabase.from("cities").select("city_key", { count: "exact", head: true }),
+          // Active only: this is the headline count of the desk's cities, and
+          // counting retired ones overstates what it is actually working on.
+          supabase.from("cities").select("city_key", { count: "exact", head: true })
+            .eq("status", "active"),
           // COUNTED BY THE SERVER, not by the rows that came back. PostgREST
           // caps a response at 1,000 however large the .limit(), so counting
           // the array would silently understate the desk's own coverage the
