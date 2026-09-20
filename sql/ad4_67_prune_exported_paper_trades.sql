@@ -19,6 +19,15 @@
 --
 -- An open trade is never eligible, at any age. closed_at is null while a
 -- position is live and that row is still changing.
+--
+-- NOTHING THE TRADE LEAVES BEHIND IS DELETED WITH IT. Two things point at a
+-- closed trade and both survive the row going to the repository:
+--
+--   paper_activity  gets a trades_archived row carrying the realised P&L, so
+--                   the desk's books still balance once the trades are gone
+--   ledger          keeps every decision row; only the foreign key is
+--                   released, and the trade id it pointed at is written into
+--                   detail first, so the link survives as data
 -- ===========================================================================
 
 create or replace function public.prune_exported_paper_trades(
@@ -39,6 +48,7 @@ declare
   v_deleted bigint;
   v_orphans bigint;
   v_desks   bigint;
+  v_lineage bigint;
 begin
   if p_keep_days < 1 then
     return jsonb_build_object(
@@ -116,6 +126,42 @@ begin
      and trade_id = any(p_trade_ids)
      and account_id is null;
 
+  -- AND THE LINEAGE STAYS TOO - WHICH IS WHY THIS FUNCTION COULD NOT DELETE
+  -- ANYTHING AT ALL.
+  --
+  -- ledger.trade_id references paper_trades with no ON DELETE action, and
+  -- every paper trade the engine has ever written has ledger rows behind it -
+  -- signal, decision, order, fill, exit. So the delete below raised
+  --
+  --   23503: update or delete on table "paper_trades" violates foreign key
+  --   constraint "ledger_trade_id_fkey" on table "ledger"
+  --
+  -- for every trade, always. Verified against the live database in a
+  -- rolled-back transaction on 2026-09-20: 70 of 70 trades referenced by 135
+  -- ledger rows, 0 deletable. The function has never had an eligible row to
+  -- delete - it keeps thirty days and the desk is younger than that - so the
+  -- first time it mattered would have been the first time it ran for real.
+  --
+  -- ON DELETE CASCADE WOULD BE THE WRONG FIX: the ledger is the decision that
+  -- produced the trade, and it is the thing the desk is judged on. So the
+  -- LINK is moved into data and only the constraint is released. The ledger
+  -- row keeps everything it had, plus the id of the trade it belongs to,
+  -- which is the key the exported file is written under - so the join still
+  -- exists, it just goes through web/public/paper-trades instead of a foreign
+  -- key. Nothing is deleted from the ledger and nothing about the decision
+  -- changes; ledger has no append-only trigger and trade_id is nullable, so
+  -- this needs no schema change at all.
+  update public.ledger
+     set detail = coalesce(detail, '{}'::jsonb)
+                  || jsonb_build_object('archived_trade_id', trade_id,
+                                        'archived_to', 'web/public/paper-trades',
+                                        'archived_at', now()),
+         trade_id = null
+   where trade_id in (select t.trade_id from public.paper_trades t
+                       where t.closed_at is not null and t.closed_at < v_before
+                         and t.trade_id = any(p_trade_ids));
+  get diagnostics v_lineage = row_count;
+
   delete from public.paper_trades
    where closed_at is not null and closed_at < v_before
      and trade_id = any(p_trade_ids);
@@ -129,7 +175,8 @@ begin
     'offered', v_offered,
     'unexported', v_eligible - v_deleted,
     'desks_credited', v_desks,
-    'orphans_deleted', v_orphans
+    'orphans_deleted', v_orphans,
+    'lineage_rows_detached', v_lineage
   );
 end;
 $function$;

@@ -51,14 +51,22 @@ CARRIES_MONEY = ("paper_positions", "paper_trades")
 # file and proves the money was recorded.
 ACCOUNTED_FOR = {
     ("sql/ad4_59_paper_desks.sql", "paper_positions"):
-        "'basis_written_off', v_basis",
-    ("sql/ad4_67_prune_exported_paper_trades.sql", "paper_trades"):
+        ["'basis_written_off', v_basis"],
+    ("sql/ad4_67_prune_exported_paper_trades.sql", "paper_trades"): [
+        # the money
         "'trades_archived'",
+        # ...and the decision behind it. ledger.trade_id references
+        # paper_trades with no ON DELETE action, so this delete was refused
+        # outright until the link was moved into data. A future edit that
+        # drops the detach brings back a prune that cannot delete anything;
+        # one that turns it into a cascade destroys the lineage instead.
+        "'archived_trade_id', trade_id",
+    ],
     # The contract harness deletes inside a transaction it rolls back, to
     # reconstruct a reset recorded before the write-off existed. Nothing it
     # does survives the rollback.
     ("tests/database/paper-contracts.cjs", "paper_positions"):
-        "await db.exec('rollback')",
+        ["await db.exec('rollback')"],
 }
 
 DELETE = re.compile(
@@ -107,13 +115,14 @@ def test_every_delete_of_a_money_bearing_row_is_listed_here():
 def test_each_listed_delete_still_records_what_it_took():
     """The allow-list is not a licence: the recording has to still be there."""
     sites = _sites()
-    for (path, table), proof in ACCOUNTED_FOR.items():
+    for (path, table), proofs in ACCOUNTED_FOR.items():
         assert (path, table) in sites, (
             f"{path} no longer deletes {table}; drop it from ACCOUNTED_FOR "
             "rather than leaving an entry that guards nothing")
-        assert proof in sites[(path, table)], (
-            f"{path} deletes {table} and no longer contains {proof!r}, so the "
-            f"money that left with those rows is not recorded anywhere")
+        for proof in proofs:
+            assert proof in sites[(path, table)], (
+                f"{path} deletes {table} and no longer contains {proof!r}, so "
+                f"something that left with those rows is not recorded anywhere")
 
 
 def test_the_identity_terms_the_recordings_feed_are_read_by_the_view():

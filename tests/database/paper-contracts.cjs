@@ -42,6 +42,14 @@ const assert = require('node:assert/strict');
       fired_at timestamptz,reason text,payload jsonb,regime_label text);
     -- ledger is created by sql/ad4_00_preflight.sql, which this harness never
     -- applies. Column types and the two NOT NULLs match the live table.
+    --
+    -- ledger_trade_id_fkey IS PART OF THAT SHAPE AND WAS MISSING HERE, which
+    -- is how prune_exported_paper_trades passed a contract while being unable
+    -- to delete a single row in production: every paper trade has ledger rows
+    -- behind it, the live foreign key has no ON DELETE action, and the delete
+    -- raised 23503 every time. Without the constraint this harness modelled a
+    -- database where the delete simply worked. Declared below the paper_trades
+    -- table, since it references it.
     create table public.ledger(entry_id bigserial primary key,
       recorded_at timestamptz not null default now(),trade_id uuid,signal_id bigint,
       event_type text not null,payload jsonb not null,stage text,strategy_id text,
@@ -90,6 +98,8 @@ const assert = require('node:assert/strict');
       regime_label text, max_slippage_setting numeric, fill_quality numeric,
       legs_requested integer, legs_filled integer,
       approved_by_user boolean default true, action text, exit_price numeric);
+    alter table public.ledger add constraint ledger_trade_id_fkey
+      foreign key (trade_id) references public.paper_trades(trade_id);
     create table public.fact_forecast_outcome(city_key text,for_date date,model text,lead_days int,
       run_at timestamptz,forecast_max_c numeric default 0,observed_max_c numeric default 0,
       error_c numeric generated always as (forecast_max_c-observed_max_c) stored,
@@ -1183,11 +1193,22 @@ const assert = require('node:assert/strict');
   // A trade that has been archived to the repository is still money the desk
   // made. Pick a desk that actually has one to lose.
   const victim = (await db.query(
-    `select t.trade_id, t.net_pnl, t.account_id
+    `select t.trade_id, t.net_pnl, t.account_id,
+            (select count(*)::int from public.ledger l where l.trade_id=t.trade_id) as lineage
        from public.paper_trades t
       where t.account_id is not null and t.closed_at is not null
       order by t.closed_at limit 1`)).rows[0];
   assert.ok(victim, 'the archive contract needs a closed trade to archive');
+  // WITHOUT LINEAGE BEHIND IT THIS CONTRACT IS VACUOUS. ledger.trade_id
+  // references paper_trades with no ON DELETE action and every trade the
+  // engine writes has ledger rows, so a trade with none would be the one case
+  // the delete was always able to do - and the failure this asserts against
+  // would never fire.
+  assert.ok(Number(victim.lineage) > 0,
+    'the trade chosen to archive has no ledger rows, so this proves nothing about the '
+    + 'foreign key that stopped the prune deleting anything in production');
+  const ledgerBefore = Number((await db.query(
+    'select count(*)::int as n from public.ledger')).rows[0].n);
   const realizedBefore = Number((await db.query(
     'select realized from public.v_paper_desk_integrity where account_id=$1',
     [victim.account_id])).rows[0].realized);
@@ -1201,9 +1222,25 @@ const assert = require('node:assert/strict');
   assert.equal(Number(pruned.deleted), 1, 'the prune did not delete the trade it was given');
   assert.equal(Number(pruned.desks_credited), 1,
     'the prune deleted a desk\'s trade without writing the realised P&L anywhere');
+  assert.equal(Number(pruned.lineage_rows_detached), Number(victim.lineage),
+    'the prune did not release the ledger rows that reference this trade');
   assert.equal(Number((await db.query(
     'select count(*)::int as n from public.paper_trades where trade_id=$1',
     [victim.trade_id])).rows[0].n), 0, 'the trade is still in Postgres');
+
+  // THE DECISION SURVIVES THE TRADE. Every ledger row is still there, and each
+  // one that pointed at the archived trade now carries its id as data - the
+  // same key the exported file is written under, so the join still exists.
+  assert.equal(Number((await db.query(
+    'select count(*)::int as n from public.ledger')).rows[0].n), ledgerBefore,
+    'archiving a trade destroyed ledger rows - that is the decision that produced it');
+  const detached = (await db.query(
+    `select count(*)::int as n from public.ledger
+      where trade_id is null and detail->>'archived_trade_id'=$1`,
+    [victim.trade_id])).rows[0].n;
+  assert.equal(Number(detached), Number(victim.lineage),
+    'the ledger rows were released without recording which trade they belong to, so the '
+    + 'lineage is now unjoinable to the exported file');
 
   const afterPrune = (await db.query(
     'select realized, realized_on_hand, realized_archived from public.v_paper_desk_integrity where account_id=$1',
