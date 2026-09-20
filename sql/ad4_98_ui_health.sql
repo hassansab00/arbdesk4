@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 172 of them - and for each MISSING one names the
+-- and function the app reads - 173 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -94,6 +94,7 @@ with expected(rel, owner, used_by) as (values
     ('v_book_ladder', 'ad4_13_reconcile.sql', ''),
     ('v_book_target_health', 'supabase/migrations/20260913090000_phase1d_probability_and_book_diagnostics.sql', ''),
     ('v_calibration', 'ad4_18_databank.sql', '(DataBank), (ModelAnalytics)'),
+    ('v_calibration_status', 'ad4_78_calibration_status.sql', '(CalibrationStatus)'),
     ('v_campaign_state', 'ad4_41_campaigns.sql', '/campaigns'),
     ('v_campaign_targets', 'ad4_41_campaigns.sql', ''),
     ('v_canonical_bands', 'supabase/migrations/20260912230000_phase1_canonical_contracts.sql', ''),
@@ -288,6 +289,7 @@ begin
     ('v_book_ladder', 'ad4_13_reconcile.sql', ''),
     ('v_book_target_health', 'supabase/migrations/20260913090000_phase1d_probability_and_book_diagnostics.sql', ''),
     ('v_calibration', 'ad4_18_databank.sql', '(DataBank), (ModelAnalytics)'),
+    ('v_calibration_status', 'ad4_78_calibration_status.sql', '(CalibrationStatus)'),
     ('v_campaign_state', 'ad4_41_campaigns.sql', '/campaigns'),
     ('v_campaign_targets', 'ad4_41_campaigns.sql', ''),
     ('v_canonical_bands', 'supabase/migrations/20260912230000_phase1_canonical_contracts.sql', ''),

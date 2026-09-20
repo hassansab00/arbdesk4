@@ -83,6 +83,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_book_ladder": "ad4_13_reconcile.sql",
   "v_book_target_health": "supabase/migrations/20260913090000_phase1d_probability_and_book_diagnostics.sql",
   "v_calibration": "ad4_18_databank.sql",
+  "v_calibration_status": "ad4_78_calibration_status.sql",
   "v_campaign_state": "ad4_41_campaigns.sql",
   "v_campaign_targets": "ad4_41_campaigns.sql",
   "v_canonical_bands": "supabase/migrations/20260912230000_phase1_canonical_contracts.sql",

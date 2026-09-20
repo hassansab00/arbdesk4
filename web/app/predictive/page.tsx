@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
 import PredictionHindsight from "@/components/PredictionHindsight";
+import CalibrationStatus from "@/components/CalibrationStatus";
 import { Freshness, FreshnessRow } from "@/components/Provenance";
 import { Empty, LineChart, Scatter } from "@/components/charts";
 import Convergence3D, { type ConvergencePoint } from "@/components/Convergence3D";
@@ -437,6 +438,13 @@ export default function PredictivePage() {
             identical, and only one of them is worth investigating. */}
         <div className="mt-2">
           <FreshnessRow relations={["cities", "fact_forecast_outcome", "weather_forecasts", "bands", "markets", "edges", "band_probabilities", "fact_signal_outcome"]} />
+        </div>
+        {/* WHETHER THE NUMBERS BELOW ARE CALIBRATED AT ALL. They are not, and
+            nothing on this page said so: a map has been fitted every day since
+            16 Sep and withheld every time, because the gate wants 30 distinct
+            settlement dates and the desk has 8. */}
+        <div className="mt-3">
+          <CalibrationStatus />
         </div>
       </div>
 

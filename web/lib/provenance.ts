@@ -707,6 +707,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "paper_resolution_evidence",
     "markets"
   ],
+  "v_calibration_status": [
+    "ingest_log"
+  ],
   "v_campaign_state": [
     "ledger",
     "cities",
