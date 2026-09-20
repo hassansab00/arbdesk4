@@ -700,6 +700,57 @@ const assert = require('node:assert/strict');
   await books(account, 'after the desk was reset');
 
   // ======================================================================
+  // YOU CANNOT SELL MORE THAN YOU HOLD, INCLUDING WHAT IS ALREADY QUEUED.
+  //
+  // submit_single_paper_exit is not a thin wrapper - it carries the over-sell
+  // guard, and nothing exercised it. The guard that matters is the CUMULATIVE
+  // one: two exits that each fit the position but together exceed it. Without
+  // the `pending` term a desk could queue its whole position twice and fill
+  // both, ending short a contract it never owned.
+  // ======================================================================
+  await db.exec('reset role; set role service_role;');
+  const held=(await db.query(
+    `select band_id, side, shares from public.paper_positions
+      where account_id=$1 and shares > 0 order by shares desc limit 1`,[single])).rows[0];
+  assert.ok(held,'the exit contract needs the single desk to be holding something');
+  const have=Number(held.shares);
+
+  await assert.rejects(
+    db.query('select submit_single_paper_exit($1,$2,$3,$4,$5,0.10)',
+      [single,crypto.randomUUID(),held.band_id,held.side,have+1]),
+    /Shares already sold or reserved for exit/,
+    'an exit larger than the position was accepted');
+
+  await assert.rejects(
+    db.query('select submit_single_paper_exit($1,$2,$3,$4,$5,0.10)',
+      [single,crypto.randomUUID(),
+       '20000000-0000-0000-0000-0000000000ff',held.side,1]),
+    /No position/, 'an exit was accepted on a band the desk holds nothing in');
+
+  // Queue the whole position, then try to queue any part of it again.
+  const firstExit=crypto.randomUUID();
+  await db.query('select submit_single_paper_exit($1,$2,$3,$4,$5,0.10)',
+    [single,firstExit,held.band_id,held.side,have]);
+  await assert.rejects(
+    db.query('select submit_single_paper_exit($1,$2,$3,$4,0.01,0.10)',
+      [single,crypto.randomUUID(),held.band_id,held.side]),
+    /Shares already sold or reserved for exit/,
+    'the whole position was queued for exit twice - `pending` is not being counted');
+
+  // Idempotent on command_key: a retried request is the same order, not a
+  // second one, which is what makes an uncertain network response safe.
+  const again=(await db.query('select submit_single_paper_exit($1,$2,$3,$4,$5,0.10) as id',
+    [single,firstExit,held.band_id,held.side,have])).rows[0].id;
+  assert.equal(
+    (await db.query('select count(*)::int as n from public.paper_orders where command_key=$1',
+      [firstExit])).rows[0].n,1,
+    'a retried exit with the same command key created a second order');
+  assert.ok(again,'the retry did not return the original order id');
+
+  // A SELL reserves no cash - it returns some - so the books are unmoved.
+  await books(single,'after a full-position exit was queued');
+
+  // ======================================================================
   // MAKING, RE-POLICYING AND RETIRING A DESK.
   //
   // These three ran in production and were exercised by nothing. Every desk
