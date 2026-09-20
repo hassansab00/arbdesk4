@@ -220,6 +220,15 @@ TABLES = {
 }
 
 
+def read_source(spec):
+    """The relation the export reads - the view when one is declared.
+
+    A dataset whose prune cannot be written as a PostgREST filter declares
+    `read_from`. Anything else reads its own table.
+    """
+    return spec.get("read_from") or spec["table"]
+
+
 def _rpc(fn, params=None):
     # common.rpc, so a Postgres error reaches the log instead of being replaced
     # by "500 Server Error for url: ...".
@@ -277,8 +286,22 @@ def export_cold(spec, cutoff):
     export held ~600 MB of Python objects before being copied into a string and
     then gzipped.
 
+    READS `read_from` WHEN THE SPEC DECLARES ONE, and that is not a detail.
+    A dataset whose prune carries a predicate PostgREST cannot express names
+    the view that carries it, and the count contract downstream only holds if
+    the rows uploaded ARE the rows removed. Reading the base table instead
+    exports a WIDER set than the prune would delete, and the preflight then
+    refuses every night - which is what happened to `resolution` from 19 Sep:
+    4,540 rows exported against 3,853 prunable, nothing uploaded, nothing
+    deleted, and the fastest-growing table on the desk left to grow.
+
+    The 687-row difference was old proofs whose band outcome is not yet frozen
+    in fact_band_outcome. Those are the only copy of their own answer, which
+    is exactly why the view excludes them and exactly why the guard held.
+
     Returns (gzip blob, row count, earliest valid_at, latest valid_at).
     """
+    source = read_source(spec)
     cols, pk, cut_col = spec["columns"], spec["pk"], spec["cutoff_col"]
     buf = io.StringIO()
     w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
@@ -294,7 +317,7 @@ def export_cold(spec, cutoff):
         ]
         if after is not None:
             params.append((pk, f"gt.{after}"))
-        rows = rest(spec["table"], params)
+        rows = rest(source, params)
         if not rows:
             break
         for r in rows:
@@ -309,7 +332,7 @@ def export_cold(spec, cutoff):
         next_after = rows[-1][pk]
         if next_after == after:
             raise RuntimeError(
-                f"{spec['table']} archive pagination made no progress at {after}"
+                f"{source} archive pagination made no progress at {after}"
             )
         after = next_after
         # PostgREST can silently cap a requested page below PAGE. Keep walking
@@ -439,7 +462,7 @@ def run_one(spec, name, args):
             return 1
 
     # 2 - export
-    print(f"reading {spec['table']} older than {cutoff.isoformat()} ...")
+    print(f"reading {read_source(spec)} older than {cutoff.isoformat()} ...")
     blob, n_rows, lo, hi = export_cold(spec, cutoff)
     if not n_rows:
         print(f"nothing older than {cutoff} - nothing to archive.")

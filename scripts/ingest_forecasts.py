@@ -47,20 +47,39 @@ def fetch(lat, lon, start, end, label):
         # so it fed straight into every sigma and every band probability.
         "timezone": "auto", "temperature_unit": "celsius",
     }
+    # TWO WAYS TO COME BACK EMPTY, AND THEY ARE NOT THE SAME THING.
+    #
+    # This used to return None for both, and the caller counted both as a
+    # "missing chunk" - which the job then reported as "the gap is real and
+    # will not close by retrying blindly". For a read timeout that sentence is
+    # simply false: it is precisely what closes by retrying. Measured on the
+    # 20 Sep run, 47 of 49 cities got all 77 rows for the same date window and
+    # two timed out, so the source was answering fine; the workflow went red
+    # anyway, and had done every day since 16 Sep.
+    #
+    # REFUSED is the source answering and declining - a 400 carrying its own
+    # explanation of why that window cannot be served. Asking again gets the
+    # same 400, so that is a gap worth failing on.
+    #
+    # UNREACHED is a request that never completed: a read timeout, a reset, a
+    # 5xx. Nothing was learned about the data, so nothing is proven about a
+    # gap. The chunk stays uncovered, the next run sorts least-covered cities
+    # first and asks again, and a source that is genuinely down still fails
+    # the job through "zero dates completed" rather than through this count.
     for attempt in range(TRIES):
         try:
             r = requests.get(API, params=p, timeout=TIMEOUT)
             if r.status_code == 400:
                 print(f"  ! {label} 400: {r.text[:200]}", file=sys.stderr)
-                return None
+                return None, "refused"
             r.raise_for_status()
-            return r.json()
+            return r.json(), "ok"
         except Exception as e:
             if attempt == TRIES - 1:
-                print(f"  ! {label} gave up: {str(e)[:100]}", file=sys.stderr)
-                return None
+                print(f"  ! {label} unreached: {str(e)[:100]}", file=sys.stderr)
+                return None, "unreached"
             time.sleep(4)
-    return None
+    return None, "unreached"
 
 def build_rows(city_key, js):
     hourly = (js or {}).get("hourly") or {}
@@ -163,7 +182,7 @@ def main():
     done_ct = sum(1 for n, _ in ranked if n >= total_days)
     print(f"{done_ct}/{len(ranked)} cities complete ({total_days} days, all requested leads)\n")
 
-    total, ran_out, missing_chunks, completed_dates = 0, False, 0, 0
+    total, ran_out, missing_chunks, unreached_chunks, completed_dates = 0, False, 0, 0, 0
     for i, (n_before, c) in enumerate(ranked, 1):
         elapsed_min = (time.monotonic() - t0) / 60
         if elapsed_min > SOFT_DEADLINE_MIN:
@@ -179,7 +198,7 @@ def main():
             continue
 
         have = existing_dates(c["city_key"], start, end)
-        got, skipped, misses = 0, 0, 0
+        got, skipped, refused, unreached = 0, 0, 0, 0
         for (cs, ce) in windows:
             if (time.monotonic()-t0)/60 > SOFT_DEADLINE_MIN:
                 ran_out = True
@@ -187,38 +206,47 @@ def main():
             if have and chunk_is_covered(have, cs, ce):
                 skipped += 1
                 continue
-            js = fetch(c["latitude"], c["longitude"], cs, ce, f"{c['city_key']} {cs}")
-            if not js:
-                misses += 1
+            js, outcome = fetch(c["latitude"], c["longitude"], cs, ce, f"{c['city_key']} {cs}")
+            if outcome == "refused":
+                refused += 1
+                continue
+            if outcome != "ok":
+                unreached += 1
                 continue
             rows = build_rows(c["city_key"], js)
             if rows:
                 got += upsert("weather_forecasts", rows, "city_key,model,run_at,for_date")
             time.sleep(PAUSE)
         total += got
-        missing_chunks += misses
+        missing_chunks += refused
+        unreached_chunks += unreached
         completed_dates += max(0, coverage_count(c["city_key"], start, end)-n_before)
         note = []
-        if skipped: note.append(f"{skipped} chunks pre-existing")
-        if misses:  note.append(f"{misses} chunks missed")
+        if skipped:  note.append(f"{skipped} chunks pre-existing")
+        if refused:  note.append(f"{refused} chunks refused")
+        if unreached: note.append(f"{unreached} chunks unreached")
         flag = "  (" + ", ".join(note) + ")" if note else ""
         print(f"  [{i}/{len(ranked)}] {c['city_key']:16s} +{got:6d} rows "
               f"(had {n_before}d){flag}", flush=True)
 
     print(f"\ntotal {total} forecast rows written this run")
-    incomplete = ran_out or missing_chunks > 0 or not all_cities
+    incomplete = ran_out or missing_chunks > 0 or unreached_chunks > 0 or not all_cities
     if incomplete:
         print("INCOMPLETE - re-run the identical command to continue.")
     else:
         print("ALL CITIES COMPLETE.")
-    result = {'incomplete': incomplete, 'rows_offered': total, 'missing_chunks': missing_chunks, 'completed_dates': completed_dates}
+    # missing_chunks is refusals ONLY. An unreached chunk leaves the run
+    # incomplete so it is asked for again, but it is not evidence of a gap.
+    result = {'incomplete': incomplete, 'rows_offered': total, 'missing_chunks': missing_chunks,
+              'unreached_chunks': unreached_chunks, 'completed_dates': completed_dates}
     result_path = os.environ.get('FORECAST_RESULT_PATH')
     if result_path:
         with open(result_path, 'w') as handle:
             json.dump(result, handle)
     log_run("ingest_forecasts", "partial" if incomplete else "ok", total,
             {"start": str(start), "end": str(end), "leads": LEADS,
-             "chunk_days": CHUNK_DAYS, "ran_out": ran_out})
+             "chunk_days": CHUNK_DAYS, "ran_out": ran_out,
+             "refused_chunks": missing_chunks, "unreached_chunks": unreached_chunks})
 
 if __name__ == "__main__":
     main()
