@@ -32,6 +32,10 @@ with live_bands as (
   select b.band_id, m.city_key, m.resolution_date
   from bands b
   join markets m using (market_id)
+  -- Active only: this feeds the opportunity cards, and a card that cannot be
+  -- traded does not need to know how its price moved.
+  join cities c on c.city_key = m.city_key
+               and coalesce(c.status, 'active') = 'active'
   where m.resolution_date >= current_date
 ),
 snaps as (

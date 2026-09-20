@@ -299,6 +299,11 @@ def test_a_stored_fit_uses_the_features_it_was_actually_fitted_with(monkeypatch)
         "mae_c": 0.9, "persistence_mae_c": 1.6, "beats_persistence": True,
     }]
     monkeypatch.setattr(wm, "rest_all", lambda *a, **k: stored)
+    # stored_fits now drops retired cities at the read - see the 2026-09-20
+    # leak, where --predict-only kept predicting dc from its stored fit hours
+    # after it was retired. This test is about the FEATURE list, so the city
+    # is active here.
+    monkeypatch.setattr(wm, "active_city_keys", lambda: {"t"})
     fits = wm.stored_fits()
     assert "precip_total" not in fits["t"]["features"]
 
@@ -315,6 +320,7 @@ def test_a_stored_row_with_no_intercept_is_not_used(monkeypatch):
         {"city_key": "t", "target": "max_c", "coefficients": {"cloud_mean": -1.1}},
         {"city_key": "u", "target": "max_c", "coefficients": None},
     ])
+    monkeypatch.setattr(wm, "active_city_keys", lambda: {"t", "u"})
     assert wm.stored_fits() == {}
 
 
