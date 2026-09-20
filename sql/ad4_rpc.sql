@@ -510,36 +510,25 @@ $$;
 -- --------------------------------------------------------------------------
 -- log_paper_trade / approve_signal / close_position
 -- --------------------------------------------------------------------------
+-- IT REFUSES, AND SAYS WHERE TO GO INSTEAD.
+--
+-- This inserted straight into paper_trades with NO account_id, bypassing the
+-- order, the position and the cash ledger - so the trade belonged to no desk
+-- and no balance moved. ad4_38_grants.sql already recorded that nothing calls
+-- it, and revoked it from anon and authenticated; service_role, which the API
+-- routes and the scripts hold, could still reach it. A dead function that
+-- corrupts the accounting is kept alive only by nobody finding it.
+--
+-- The signature is preserved, because ad4_13_reconcile checks it and ad4_38
+-- lists it. Only the body changes. ad4_13 rebuilds this same refusal.
 create or replace function log_paper_trade(p_trade jsonb) returns jsonb
 language plpgsql security definer as $$
-declare
-  v_id bigint;
 begin
-  insert into paper_trades (
-    strategy_id, band_id, side, action, shares, avg_fill_price, quoted_price,
-    slippage_paid, fee_paid, gas_paid, partial_fill, requested_shares,
-    legs_requested, legs_filled, fill_quality, max_slippage_setting,
-    cost_version, forecast_version, calibration_version, regime_label,
-    approved_by_user, opened_at
-  )
-  select
-    p_trade->>'strategy_id', (p_trade->>'band_id')::uuid, p_trade->>'side', p_trade->>'action',
-    (p_trade->>'shares')::numeric, (p_trade->>'avg_fill_price')::numeric, (p_trade->>'quoted_price')::numeric,
-    (p_trade->>'slippage_paid')::numeric, (p_trade->>'fee_paid')::numeric, (p_trade->>'gas_paid')::numeric,
-    coalesce((p_trade->>'partial_fill')::boolean, false), (p_trade->>'requested_shares')::numeric,
-    coalesce((p_trade->>'legs_requested')::int, 1), coalesce((p_trade->>'legs_filled')::int, 1),
-    (p_trade->>'fill_quality')::numeric, (p_trade->>'max_slippage_setting')::numeric,
-    p_trade->>'cost_version', p_trade->>'forecast_version', p_trade->>'calibration_version',
-    p_trade->>'regime_label', true, now()
-  returning trade_id into v_id;
-
-  insert into ledger (stage, strategy_id, band_id, regime_label, forecast_version, calibration_version,
-                       cost_version, detail, recorded_at)
-  values ('fill', p_trade->>'strategy_id', (p_trade->>'band_id')::uuid, p_trade->>'regime_label',
-          p_trade->>'forecast_version', p_trade->>'calibration_version', p_trade->>'cost_version',
-          jsonb_build_object('source', 'log_paper_trade_rpc'), now());
-
-  return jsonb_build_object('ok', true, 'trade_id', v_id);
+  raise exception 'log_paper_trade writes a paper_trades row with no account_id, bypassing the '
+    'order, the position and the cash ledger, so the trade belongs to no desk and no '
+    'balance moves. A trade is recorded by filling an order - complete_paper_order, '
+    'whose trigger writes paper_trades. Nothing has ever called this - see '
+    'sql/ad4_38_grants.sql.';
 end;
 $$;
 
