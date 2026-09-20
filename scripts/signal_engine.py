@@ -43,7 +43,7 @@ import uuid
 from collections import defaultdict
 from dataclasses import asdict
 
-from common import rest, rest_all, insert, log_run
+from common import rest, rest_all, insert, log_run, model_version_id
 from paper_engine import Portfolio
 from strategies import StrategyConfig
 from strategies.base import BandView, Context
@@ -380,18 +380,36 @@ def _recently_fired(now):
 
 
 def _cost_version():
-    """The cost assumptions in force right now, as a uuid.
+    """The cost assumptions in force right now, as a uuid MODEL_VERSIONS knows.
 
-    paper_trades.cost_version is a uuid into cost_params, not the readable
-    label - writing the label would fail with 22P02 the way the first
-    forecast_version did. Read once per run: it changes when someone edits the
-    fee model, not between bands.
+    THE COMMENT THIS REPLACES WAS THE BUG. It said "a uuid into cost_params",
+    and that is exactly what it returned - but paper_trades.cost_version is a
+    foreign key into MODEL_VERSIONS, beside forecast_version and
+    calibration_version. Two tables, two id spaces, and cost_params ids are
+    not in the other one. So every fill since the lineage columns started
+    being stamped died in complete_paper_order with
+
+        23503  Key (cost_version)=(68bdc8a9-...) is not present in table
+               "model_versions"
+
+    and no paper trade was recorded for seventeen hours while the rest of the
+    pipeline reported success. It is the same mistake the first forecast_version
+    made - putting the wrong kind of identifier in a uuid column - which is
+    why the fix is the same helper that fixed that one.
+
+    model_version_id registers (kind='cost', label) on first use and returns
+    an id the foreign key accepts. The cost_params row id goes into the
+    version's config, so the trail from a trade back to the exact fee row is
+    still there; it just runs through the table the column actually references.
     """
     try:
         rows = rest("cost_params", {"select": "version_id,label,created_at",
                                     "active": "is.true",
                                     "order": "created_at.desc", "limit": "1"})
-        return rows[0]["version_id"] if rows else None
+        if not rows:
+            return None
+        return model_version_id("cost", rows[0]["label"],
+                                config={"cost_params_version": rows[0]["version_id"]})
     except Exception as e:
         print(f"  (cost_params unavailable: {e} - trades will carry no cost version)",
               file=sys.stderr)

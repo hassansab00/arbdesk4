@@ -169,12 +169,46 @@ SQL_RECORD = {
     "sql/ad4_diagnose.sql", "sql/ad4_phase2.sql", "sql/ad4_phase2_ranking.sql",
 }
 
+# MIGRATIONS COUNT TOO. The first version of this file globbed sql/*.sql and
+# nothing else, so seven migrations that build from the cities table were never
+# looked at - and four of them define relations that exist ONLY there
+# (v_city_day_readiness, v_operational_health, v_city_metadata_health,
+# v_city_metadata_verification), with no sql/*.sql file superseding them.
+#
+# Measured on the live database 2026-09-20 there was no leak: readiness, the
+# sigma inputs and the model-skill view hold zero retired cities, and the one
+# that does - v_city_metadata_verification, 5 of 54 - is a diagnostic asking
+# whether each city's resolution source matches what the desk believes, which
+# is a question you ask ABOUT a retired city. So this closes a blind spot
+# rather than a bug. It is here because a blind spot is how the last four got
+# in.
+MIGRATION_RECORD = {
+    "supabase/migrations/20260912213000_phase1_data_foundation.sql":
+        "v_archive_daily and the data-quality flags - the record",
+    "supabase/migrations/20260912234500_phase1c_operational_readiness.sql":
+        "v_city_day_readiness / v_operational_health - derived from markets, so "
+        "already carries no retired city; diagnosis either way",
+    "supabase/migrations/20260913091000_phase1d_databank_city_rollup.sql":
+        "v_archive_by_city - the archive rollup",
+    "supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql":
+        "v_city_metadata_health / _verification - does each city's resolution "
+        "source match what we believe? asked ABOUT a retired city too",
+    "supabase/migrations/20260913102000_phase2a_artifact_provenance.sql":
+        "provenance and the sigma inputs - the record",
+    "supabase/migrations/20260914100000_observation_prune_local_day_guard.sql":
+        "prune_observations - pruning must walk every city or a retired one's "
+        "rows would never be aged out",
+    "supabase/migrations/20260914110000_archive_prune_count_contract.sql":
+        "prune_forecasts / prune_observations - same",
+}
+
 JOINS_CITIES = re.compile(r"(?:join|from)\s+(?:public\.)?cities(?:\s|$|,|\))", re.I)
 
 
 def sql_files_touching_cities():
     out = []
-    for path in sorted(glob.glob("sql/*.sql")):
+    for path in sorted(glob.glob("sql/*.sql")
+                       + glob.glob("supabase/migrations/*.sql")):
         body = "\n".join(l for l in open(path).read().splitlines()
                          if not l.strip().startswith("--"))
         if JOINS_CITIES.search(body):
@@ -185,8 +219,9 @@ def sql_files_touching_cities():
 def test_every_sql_file_that_builds_from_cities_is_classified():
     """THE POINT OF THE WHOLE FILE. A new view over cities cannot be added
     without deciding whether it offers something to act on or records what
-    happened."""
-    classified = set(SQL_FILTERS) | SQL_RECORD
+    happened - and that now includes a migration, which is where four
+    relations live that no sql/*.sql file supersedes."""
+    classified = set(SQL_FILTERS) | SQL_RECORD | set(MIGRATION_RECORD)
     unclassified = [p for p in sql_files_touching_cities() if p not in classified]
     assert unclassified == [], (
         "these SQL files build from the cities table and are in neither "
@@ -205,7 +240,7 @@ def test_the_classification_has_not_gone_stale():
     """A file listed but no longer touching cities means the list is drifting
     away from the code it describes."""
     touching = set(sql_files_touching_cities())
-    stale = sorted((set(SQL_FILTERS) | SQL_RECORD) - touching)
+    stale = sorted((set(SQL_FILTERS) | SQL_RECORD | set(MIGRATION_RECORD)) - touching)
     assert stale == [], (
         "these are classified but no longer build from cities: " + ", ".join(stale))
 

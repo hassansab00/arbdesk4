@@ -25,6 +25,12 @@ from dataclasses import dataclass, field
 import cost_model
 from strategies.conflicts import city_day_exposure
 
+# The readable name of the cost model, for messages and tests. It is NOT a
+# fallback for paper_trades.cost_version: that column is a uuid referencing
+# model_versions, so putting a label in it fails with 22P02 before the foreign
+# key even gets a chance to fail with 23503. When the caller has no resolved
+# version the honest value is None - "we did not record which cost model this
+# was" - not a string that cannot be stored.
 PAPER_ENGINE_COST_VERSION = "polymarket_weather_2026_03"   # matches cost_params.label
 
 
@@ -138,7 +144,7 @@ def build_paper_trade_row(signal, fill, portfolio, versions, approved_by_user=Tr
         "partial_fill": not fill["fully_filled"], "requested_shares": fill["requested_shares"],
         "legs_requested": legs_requested, "legs_filled": legs_filled,
         "fill_quality": fill["fill_quality"], "max_slippage_setting": fill.get("max_slippage_setting"),
-        "cost_version": versions.get("cost_version", PAPER_ENGINE_COST_VERSION),
+        "cost_version": versions.get("cost_version"),
         "forecast_version": versions.get("forecast_version"),
         "calibration_version": versions.get("calibration_version"),
         "regime_label": signal.regime_label, "approved_by_user": approved_by_user,
