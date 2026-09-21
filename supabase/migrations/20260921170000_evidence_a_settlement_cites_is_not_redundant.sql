@@ -1,0 +1,27 @@
+-- ===========================================================================
+-- THE LAST OF THE SEVEN, AND THE SAME BUG AS THE BOOK PRUNE.
+--
+-- With the timeout raised and the edge/signal keys indexed, six of the seven
+-- archive datasets went green on 21 Sep - books pruned 51,504 rows, its first
+-- successful run ever. resolution still failed, and not on time any more:
+--
+--     HTTP 409 {"code":"23503","details":"Key (proof_id)=(e20e8ae1...) is
+--       still referenced from table \"paper_position_settlements\"."}
+--
+-- paper_position_settlements.proof_id is a foreign key into
+-- paper_resolution_evidence, ON DELETE NO ACTION, and unindexed - the third
+-- unindexed inbound key found on this desk today, after edges and signals.
+--
+-- The fix is the rule the book prune already follows: a row something points
+-- at is evidence, not redundancy. A proof a settlement cites is what that
+-- settlement PAID OUT ON - the venue's own answer at the moment the desk
+-- banked money against it. v_prunable_resolution_evidence now excludes them,
+-- 46 proofs are held back today, and the prune goes from failing outright to
+-- removing 11,519 rows in 5.2 seconds.
+--
+-- The index is what keeps the delete from scanning the settlements table once
+-- per removed proof, which is how the book prune went from not finishing in
+-- sixty seconds to 2.6.
+-- ===========================================================================
+create index if not exists ad4_ix_settlements_proof
+  on public.paper_position_settlements (proof_id) where proof_id is not null;

@@ -69,10 +69,26 @@ where exists (
     join fact_band_outcome f on f.band_id = b.band_id
    where b.condition_id = e.condition_id
      and b.token_yes    = e.token_yes
-     and b.token_no     = e.token_no);
+     and b.token_no     = e.token_no)
+  -- AND NOTHING HAS SETTLED ON IT.
+  --
+  -- paper_position_settlements.proof_id is a foreign key into this table,
+  -- ON DELETE NO ACTION, and it was not indexed either. A proof a settlement
+  -- cites is what that settlement PAID OUT ON - the venue's own answer, at
+  -- the moment the desk banked money against it - so deleting it raises 23503
+  -- and fails the whole prune. It failed exactly that way on 21 Sep:
+  --
+  --     Key (proof_id)=(e20e8ae1...) is still referenced from table
+  --     "paper_position_settlements"
+  --
+  -- The same rule as the book prune, for the same reason: evidence something
+  -- points at is not redundancy. 46 proofs are held back by this today, and
+  -- the prune goes from failing outright to removing 11,519.
+  and not exists (
+  select 1 from public.paper_position_settlements s where s.proof_id = e.proof_id);
 
 comment on view v_prunable_resolution_evidence is
-  'Resolution proofs whose band outcome is already frozen in fact_band_outcome, and therefore archivable. A proof for a band nobody has banked is the only copy of that answer and is not here at any age.';
+  'Resolution proofs whose band outcome is already frozen in fact_band_outcome AND that no settlement cites, and therefore archivable. A proof for a band nobody has banked is the only copy of that answer; a proof a settlement points at is the evidence that settlement paid out on. Neither is here at any age.';
 
 grant select on v_prunable_resolution_evidence to service_role;
 

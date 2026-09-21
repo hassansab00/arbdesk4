@@ -1096,6 +1096,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_prunable_resolution_evidence": [
     "bands",
     "fact_band_outcome",
+    "paper_position_settlements",
     "paper_resolution_evidence"
   ],
   "v_sigma_inputs": [
