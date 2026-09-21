@@ -24,7 +24,13 @@ def test_archive_does_not_trust_a_short_postgrest_page():
 
 def test_archive_binds_prune_to_the_verified_row_count():
     source = SCRIPT.read_text(encoding="utf-8")
-    assert '"p_expected_rows": n_rows' in source
+    # The count handed to the prune is now the one read back out of the
+    # COMMITTED FILE (`got`), not the exporter's memory of what it wrote.
+    # Strictly stronger: the exporter's number cannot authorise a delete that
+    # the file in the repository does not back.
+    assert '"p_expected_rows": got' in source
+    assert "verify_repo_archive(path, entry[" in source, (
+        "the prune no longer re-reads the archive file before deleting")
     assert "ARCHIVE COUNT MISMATCH" in source
 
 

@@ -13,3 +13,4 @@ web/tsconfig.tsbuildinfo
 web/*.tsbuildinfo
 supabase/.temp/
 .venv*/
+data/archive/.pending.json

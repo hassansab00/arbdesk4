@@ -37,9 +37,22 @@ def test_the_archive_writes_a_public_manifest():
     code = _code(SCRIPT)
     assert "def record_manifest(" in code
     assert "web" in code and "archive" in code and "index.json" in code
-    # written only after the prune is confirmed, so a manifest never claims a
-    # range that is still live in Postgres
-    assert code.index("record_manifest(name, spec") > code.index('prune.get("deleted")')
+    # WRITTEN BEFORE THE PRUNE NOW, AND THAT IS THE POINT.
+    #
+    # It used to be written only after the delete was confirmed, so that a
+    # manifest could never claim a range still live in Postgres. The cost of
+    # that ordering was the failure it was guarding against, inverted: the
+    # index was produced after the rows were gone and committed after that,
+    # if at all - so six runs deleted rows and lost the only record of where
+    # they went when the runner was destroyed.
+    #
+    # The index and the data file are now written together by --export-only,
+    # committed together, and only then does --prune-only delete anything. A
+    # manifest entry therefore means "this range is in the repository", which
+    # is the claim worth making; that Postgres may still hold the rows as
+    # well is not a lie about anything.
+    assert code.index("record_manifest(name, spec") < code.index('prune.get("deleted")')
+    assert "def export_one(" in code and "def prune_one(" in code
 
 
 def test_the_manifest_exists_and_names_what_was_archived():

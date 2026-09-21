@@ -51,11 +51,21 @@ def _index():
 def test_the_workflow_commits_the_index_it_writes():
     """The root cause. Without this the script's own record is thrown away
     with the runner, every single run."""
-    assert "git add web/public/archive/index.json" in WORKFLOW, (
+    assert "git add data/archive web/public/archive/index.json" in WORKFLOW, (
         "archive_observations.yml prunes rows out of Postgres and does not commit the "
-        "index that says where they went - the file dies with the runner"
+        "data and the index that say where they went - they die with the runner"
     )
     assert "git push origin HEAD:" in WORKFLOW
+
+    # AND IT COMMITS BEFORE IT PRUNES. The question in this file's header -
+    # "did you delete my data" - took a download to answer because the only
+    # copy was in a Release. Now the delete is on the far side of a commit of
+    # the data itself, so the answer is a glance at the tree.
+    assert (WORKFLOW.index("--export-only")
+            < WORKFLOW.index("Commit the data BEFORE anything is deleted")
+            < WORKFLOW.index("--prune-only")), (
+        "the workflow deletes rows before committing the files that hold them"
+    )
 
 
 def test_the_commit_step_runs_even_when_a_dataset_refuses():
@@ -97,30 +107,71 @@ def test_every_entry_carries_what_a_reader_needs_to_fetch_it(dataset):
 
 
 def test_the_recorded_totals_are_the_ones_measured_from_the_files():
-    """These counts came from downloading each asset and parsing it, not from
-    what an earlier run claimed it wrote. If they drift, the index is
-    asserting something nobody checked."""
+    """The index must not claim a number no file backs.
+
+    THIS USED TO BE FOUR HARD-CODED TOTALS, measured by hand on the day it was
+    written, with a message telling the next person to update them. That made
+    it a test of whether someone had remembered to edit a constant - and it
+    went red the first time the archive ran daily, which is the one thing it
+    should have been relaxed about.
+
+    Now that the archive files live in data/archive it can do what its name
+    says: decompress each one that is present and count. Files not yet pulled
+    out of the old Releases are skipped rather than failed, so the migration
+    can land incrementally.
+    """
     idx = _index()
-    expected = {"observations": 413_257, "forecasts": 34_180,
-                "trades": 90_640, "research": 85_691}
-    for name, rows in expected.items():
-        assert name in idx["datasets"], f"{name} has dropped out of the index"
-        assert idx["datasets"][name]["rows_archived"] == rows, (
-            f"{name} now claims {idx['datasets'][name]['rows_archived']:,} rows, measured "
-            f"{rows:,}. Either an asset was added - update this - or one went missing."
+    root = ROOT / "data" / "archive"
+
+    for name, ds in idx["datasets"].items():
+        assert ds["rows_archived"] == sum(a.get("rows", 0) for a in ds["assets"]), (
+            f"{name}: rows_archived disagrees with the assets it lists, so the "
+            "total was written rather than counted"
         )
+
+    checked = 0
+    for name, ds in idx["datasets"].items():
+        for asset in ds["assets"]:
+            path = root / name / asset["asset"]
+            if not path.exists():
+                continue            # still only in the Release; --pull-releases brings it in
+            import gzip as _gz
+            import csv as _csv
+            import io as _sio
+            text = _gz.decompress(path.read_bytes()).decode()
+            rows = max(0, sum(1 for _ in _csv.reader(_sio.StringIO(text))) - 1)
+            assert rows == asset["rows"], (
+                f"{name}/{asset['asset']} holds {rows:,} rows, the index claims "
+                f"{asset['rows']:,}"
+            )
+            checked += 1
+    print(f"verified {checked} archive file(s) against the index")
 
 
 def test_the_prune_still_happens_only_after_a_verified_read_back():
-    """The reason no data was lost. The upload is re-downloaded and counted
-    before anything is deleted, and that order is the whole safety property."""
-    body = SCRIPT[SCRIPT.index("# 3 - upload"):]
-    verify_at = body.index("verify(")
-    prune_at = body.index('"p_dry_run": False')
-    assert verify_at < prune_at, (
-        "the committed prune now runs before the uploaded asset is read back and counted"
+    """The reason no data was lost, now with the repository in the middle.
+
+    It used to be: upload to a Release, download it back, count, delete. The
+    read-back is still there and still before the delete - but the thing read
+    back is the file in data/archive, and between writing it and deleting
+    anything the workflow commits and pushes it. So the delete is not merely
+    after a verified copy exists; it is after that copy is in git.
+    """
+    prune = SCRIPT[SCRIPT.index("def prune_one("):SCRIPT.index("def is_committed(")]
+    read_at = prune.index("verify_repo_archive(")
+    commit_at = prune.index("is_committed(")
+    delete_at = prune.index('"p_dry_run": False')
+    assert read_at < delete_at, (
+        "the committed prune now runs before the archive file is read back and counted"
     )
-    assert "VERIFY FAILED" in body and "Nothing pruned." in body
+    assert commit_at < delete_at, (
+        "the prune no longer confirms the file is in HEAD before deleting the rows"
+    )
+    assert "REFUSING TO PRUNE" in prune and "not committed" in prune
+
+    export = SCRIPT[SCRIPT.index("def export_one("):SCRIPT.index("def prune_one(")]
+    assert "VERIFY FAILED" in export and "Nothing will be pruned." in export
+    assert '"p_dry_run": False' not in export, "the export phase can delete rows"
 
 
 # --- and a page has to offer it ------------------------------------------
