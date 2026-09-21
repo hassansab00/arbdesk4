@@ -58,6 +58,13 @@ create table if not exists weather_forecast_features (
   morning_dewpoint_c      numeric,
   dewpoint_depression_c   numeric,
   morning_humidity        numeric,
+  -- MEAN SEA LEVEL, matching what IEM's `mslp` puts on the observed side.
+  -- Station pressure is mostly altitude - Mexico City reads ~770 hPa on its
+  -- calmest day - and this model trains on observed rows and predicts on
+  -- these, so the two sides being different quantities would feed the fit a
+  -- number 240 hPa out for some cities and correct for others.
+  morning_pressure_hpa    numeric,
+  pressure_change_24h_hpa numeric,   -- vs the previous forecast day in the same run
   cloud_mean              numeric,   -- OKTAS 0-8, converted from NWS percent
   cloud_max               numeric,
   wind_mean               numeric,

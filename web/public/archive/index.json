@@ -7,8 +7,8 @@
           "archived_through": "2026-09-14T16:12:54.936205+00:00",
           "asset": "books-2026-08-23-to-2026-09-14.csv.gz",
           "from": "2026-08-23",
-          "gzip_bytes": 3463670,
-          "rows": 51504,
+          "gzip_bytes": 3712512,
+          "rows": 55203,
           "to": "2026-09-14"
         },
         {
@@ -22,7 +22,7 @@
         }
       ],
       "release_tag": "books-archive",
-      "rows_archived": 51817,
+      "rows_archived": 55516,
       "table": "book_snapshots"
     },
     "edges": {

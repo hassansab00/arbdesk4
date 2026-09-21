@@ -450,8 +450,12 @@ def test_the_new_features_exist_on_both_sides_of_the_join():
     root = pathlib.Path(__file__).resolve().parents[1] / "sql"
     fc = re.search(r"create table if not exists weather_forecast_features \((.*?)\n\);",
                    (root / "ad4_24_nws_gridpoint.sql").read_text(), re.S).group(1)
+    # [a-z0-9_]+, not [a-z_]+. The narrower class cannot see a column whose
+    # name contains a digit, so pressure_change_24h_hpa read as absent from a
+    # DDL that declares it - this guard reporting a missing column that was
+    # right there, which is a worse failure than the one it exists to catch.
     forecast_cols = {m.group(1) for line in fc.splitlines()
-                     if (m := re.match(r"\s{2}([a-z_]+)\s+\S", line))}
+                     if (m := re.match(r"\s{2}([a-z0-9_]+)\s+\S", line))}
     observed = (root / "ad4_21_weather_features.sql").read_text()
 
     for f in wm.CANDIDATE_FEATURES:
@@ -590,3 +594,48 @@ def test_the_archive_refuses_a_window_too_small_to_model_on():
 def pathlib_root():
     import pathlib
     return pathlib.Path(__file__).resolve().parents[1]
+
+
+def test_every_forward_feature_survives_the_view_not_just_the_table():
+    """A column on the table that the VIEW does not select is still invisible.
+
+    predict_forward reads v_forecast_features, never weather_forecast_features,
+    and that view names its columns explicitly. So there are two places a
+    feature can be fitted and then never applied, and the guard above only
+    covers the first: adding morning_pressure_hpa to the table while leaving
+    the view's SELECT list alone compiles, migrates, passes the DDL check, and
+    silences every city whose fit keeps it.
+
+    That is the wind_max regression one level deeper - same silence, same exit
+    0, same shadow models producing no forward evidence for ever. Checked
+    against the LAST definition of the view in migration order, because a
+    migration that redefines it is what the database actually ends up with.
+    """
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    # sql/ first, migrations after, because that is the order the database
+    # sees them - a migration that redefines the view is what production ends
+    # up with. Reversed, this test reads the oldest definition and reports
+    # columns missing that the live view has selected for weeks.
+    sources = [root / "sql" / "ad4_24_nws_gridpoint.sql"] + \
+        sorted((root / "supabase" / "migrations").glob("*.sql"))
+
+    latest = None
+    for path in sources:
+        text = path.read_text(encoding="utf-8")
+        for m in re.finditer(
+                r"create (?:or replace )?view v_forecast_features as(.*?);", text, re.S):
+            latest = (path.name, m.group(1))
+
+    assert latest, "no definition of v_forecast_features found in sql/ or migrations"
+    where, body = latest
+    selected = set(re.findall(r"[a-z][a-z0-9_]*", body))
+
+    for f in list(wm.CANDIDATE_FEATURES) + [b for b in wm.BASE_FEATURES if b != "prev_max_c"]:
+        assert f in selected, (
+            f"{f} is not selected by v_forecast_features (defined in {where}). "
+            "predict_forward reads the view, so a fit that keeps this feature "
+            "produces no forward rows at all and says nothing about it."
+        )

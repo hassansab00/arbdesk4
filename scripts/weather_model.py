@@ -105,6 +105,27 @@ CANDIDATE_FEATURES = [
     "morning_humidity",
     "cloud_max",
     "wind_max",
+    # PRESSURE, FINALLY OFFERED TO A FIT.
+    #
+    # Both columns have existed since ad4_00/ad4_21 and neither had ever held
+    # a value: 0 of 142,529 observations and 0 of 22,294 city-days, because
+    # the IEM request never asked for a pressure field and P1.5 dropped the
+    # one it already fetched. Both are fixed; `ingest_observations.py 365`
+    # backfills the history, since mslp is a station-reported field IEM
+    # serves for the whole archive.
+    #
+    # THE CHANGE, NOT THE LEVEL, is what ad4_21 already argued for in its own
+    # comment: a city's morning pressure is near-constant and the intercept
+    # absorbs it, while a FALL is an approaching front - which is precisely
+    # when a persistence-style forecast breaks, and this model's largest term
+    # is carry-over from yesterday's max. The level is offered too because
+    # the cost of offering is one held-out comparison and select_features
+    # throws away what does not earn its place.
+    #
+    # Candidates, not base features: a day without a pressure is still a
+    # usable day, and until the backfill runs that is every day.
+    "pressure_change_24h_hpa",
+    "morning_pressure_hpa",
 ]
 
 # How many cloud-complete days a city needs before a cloud-enhanced model is
@@ -154,6 +175,8 @@ MEANING = {
     "prev_max_c": "carry-over from yesterday's max (1.0 would be pure persistence)",
     "morning_temp_c": "per °C the morning starts warmer",
     "dewpoint_depression_c": "per °C of dryness at 08:00 — dry air heats faster",
+    "pressure_change_24h_hpa": "per hPa the morning pressure moved in 24h — a fall is a front arriving",
+    "morning_pressure_hpa": "per hPa of mean-sea-level pressure at 08:00",
     "cloud_mean": "per okta of daytime cloud — sunlight that never lands",
     "wind_mean": "per unit of daytime wind — mixing flattens the peak",
     "precip_total": "per unit of rain — a wet surface evaporates instead of warming",

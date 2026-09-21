@@ -618,6 +618,57 @@ def main():
     return worst
 
 
+def reconcile_index(name=None):
+    """Make the index say what the FILES say, and report what it changed.
+
+    THE INDEX IS A CLAIM AND THE FILE IS THE EVIDENCE. Every row count in
+    web/public/archive/index.json is written by the export that produced the
+    file - so any path where a file can be replaced without the index being
+    rewritten is a path where the two drift, and a reader is told a number
+    no file backs.
+
+    That happened: --pull-releases overwrote a 51,504-row export with a
+    55,203-row Release asset and left the index on the old number. This runs
+    after every pull and re-counts what is actually on disk, so the drift
+    cannot survive a single run whatever caused it.
+
+    Files the index does not mention are left alone - pulling an asset for a
+    dataset the index has never recorded is a separate question from keeping
+    an existing entry honest.
+    """
+    path = os.path.join(_root(), MANIFEST)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            index = json.load(fh)
+    except (OSError, ValueError):
+        return []
+
+    changed = []
+    for ds_name, ds in (index.get("datasets") or {}).items():
+        if name and ds_name != name:
+            continue
+        for entry in ds.get("assets", []):
+            f = repo_archive_path(ds_name, entry.get("asset", ""))
+            if not os.path.exists(f):
+                continue
+            try:
+                with open(f, "rb") as fh:
+                    blob = fh.read()
+                rows = count_rows(blob)
+            except (OSError, ValueError, EOFError):
+                continue
+            if rows != entry.get("rows") or len(blob) != entry.get("gzip_bytes"):
+                changed.append((entry["asset"], entry.get("rows", 0), rows))
+                entry["rows"] = rows
+                entry["gzip_bytes"] = len(blob)
+        ds["rows_archived"] = sum(a.get("rows", 0) for a in ds.get("assets", []))
+
+    if changed:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(index, fh, indent=2, sort_keys=True)
+    return changed
+
+
 def pull_releases(args):
     """Copy every asset already in a Release into data/archive. Run once.
 
@@ -654,7 +705,24 @@ def pull_releases(args):
         rel = r.json()
         for asset in rel.get("assets", []):
             path = repo_archive_path(name, asset["name"])
-            if os.path.exists(path) and os.path.getsize(path) == asset.get("size"):
+            # THE REPOSITORY WINS, ALWAYS.
+            #
+            # This used to re-download whenever the sizes differed, treating
+            # the Release as the authority. It is not: the export phase wrote
+            # the repo copy, read it back off disk, counted it, and the prune
+            # deleted exactly those rows from Postgres against it. A Release
+            # asset of the same name is whatever an older run happened to
+            # upload.
+            #
+            # On 21 Sep that ordering silently replaced a verified 51,504-row
+            # books export with a 55,203-row Release asset, and the index -
+            # written by the export - no longer described the file sitting
+            # next to it. Nothing was lost, because the replacement was the
+            # larger set, but "nothing was lost" was luck rather than design.
+            #
+            # So this fills in history the repository does not have, and
+            # never overwrites history it does.
+            if os.path.exists(path):
                 skipped += 1
                 continue
             r = requests.get(asset["url"],
@@ -671,11 +739,16 @@ def pull_releases(args):
             print(f"  {name}/{asset['name']}  {rows:,} rows  {len(r.content)/1e6:.2f} MB")
             pulled += 1
 
+    drifted = reconcile_index()
     print(f"\npulled {pulled} asset(s) into {REPO_ARCHIVE}, {skipped} already present")
+    if drifted:
+        print(f"index corrected to match {len(drifted)} file(s): "
+              + ", ".join(f"{a} {was:,}->{now:,}" for a, was, now in drifted))
     if missing:
         print("no release yet for:", ", ".join(missing))
     log_run("archive_pull_releases", "ok", pulled,
-            {"pulled": pulled, "skipped": skipped, "no_release": missing})
+            {"pulled": pulled, "skipped": skipped, "no_release": missing,
+             "index_corrected": [a for a, _w, _n in drifted]})
     return 0
 
 

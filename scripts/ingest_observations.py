@@ -17,7 +17,12 @@ IEM = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
 
 def fetch_station(icao, start, end):
     p = {
-        "station": icao, "data": "tmpf,dwpf,relh,drct,sknt,p01i,skyc1",
+        # mslp, NOT alti or a raw station pressure. Sea-level pressure is the
+        # only one comparable across a board that runs from Singapore at 5 m
+        # to Mexico City at 2,240 m: station pressure there is ~770 hPa on the
+        # calmest day of the year, so a single coefficient fitted across
+        # cities would be reading altitude, not weather.
+        "station": icao, "data": "tmpf,dwpf,relh,drct,sknt,p01i,skyc1,mslp",
         "year1": start.year, "month1": start.month, "day1": start.day,
         "year2": end.year,   "month2": end.month,   "day2": end.day,
         "tz": "Etc/UTC", "format": "onlycomma", "latlon": "no",
@@ -92,6 +97,23 @@ def parse(text, city_key):
             "wind_dir_deg": num(rec.get("drct")),
             "precip": num(rec.get("p01i")),
             "cloud_cover": sky_oktas(rec.get("skyc1")),
+            # PRESSURE WAS NEVER COLLECTED. weather_observations.pressure_hpa
+            # has existed since ad4_00 and derived_city_day_features has
+            # carried morning_pressure_hpa and pressure_change_24h_hpa the
+            # whole time; ad4_28 even buckets the 24h change into "falling
+            # hard / falling / steady / rising" for the reasoning panel.
+            #
+            # All of it read a column nothing wrote. Measured before this
+            # line existed: 0 of 142,529 observations had a pressure, from
+            # either source, and so 0 of 22,294 city-days had a morning
+            # pressure. The schema said the desk understood pressure. The
+            # data said it had never seen one.
+            #
+            # `mslp` is a station-reported field like the rest, so IEM serves
+            # it for the whole archive - one backfill puts pressure on the
+            # history the model trains against, rather than starting a
+            # 120-day wait for the first usable day.
+            "pressure_hpa": num(rec.get("mslp")),
             "source": "IEM",
         })
     return rows
