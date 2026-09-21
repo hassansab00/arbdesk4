@@ -161,6 +161,7 @@ scored as (
          count(f.signal_correct)::int                         as n_scored,
          count(*) filter (where f.signal_correct)::int         as n_correct,
          count(m.signal_id)::int                              as n_marked,
+         count(*) filter (where m.mark_won)::int              as n_mark_won,
          round(sum(m.price_at_fire), 4)                       as stake,
          round(sum(m.mark_net_per_share), 4)                  as mark_net,
          -- One strategy uses one convention, so max() names it without
@@ -218,7 +219,15 @@ select
   -- number a hit rate cannot give you: 16% right at 10c beats 78% right at 95c.
   case when coalesce(sc.stake, 0) > 0
        then round(100.0 * sc.mark_net / sc.stake, 1) end     as return_on_stake_pct,
-  sc.mark_basis
+  sc.mark_basis,
+  -- THE HIT RATE THAT IS TRUE OF A BASKET. hit_rate_pct above comes from
+  -- signal_correct, which scores a signal against ITS OWN band - right for a
+  -- single leg, and for s6 a five-band cover judged by one of its five. Live:
+  -- s6 reads 8.8% there and wins 54% of the time here, and neither number is a
+  -- typo. Both are kept because signal_correct is what the fitter was trained
+  -- against and rewriting it would silently change that history.
+  case when coalesce(sc.n_marked, 0) > 0
+       then round(100.0 * sc.n_mark_won / sc.n_marked, 1) end as mark_win_rate_pct
 from strategies s
 left join fired  f  on f.strategy_id  = s.strategy_id
 left join paid   p  on p.strategy_id  = s.strategy_id
