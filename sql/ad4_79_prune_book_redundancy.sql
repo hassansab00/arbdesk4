@@ -122,10 +122,24 @@ select s.*
                              at time zone 'UTC')
       -- The tie-break. Equal timestamps are common here (3,177 pairs), and
       -- without this a tied pair is either both-redundant or neither.
-      and (k.observed_at, k.snapshot_id) > (s.observed_at, s.snapshot_id));
+      and (k.observed_at, k.snapshot_id) > (s.observed_at, s.snapshot_id))
+   -- AND NOTHING POINTS AT IT.
+   --
+   -- edges.book_snapshot_id and signals.book_snapshot_id are both foreign
+   -- keys into this table, declared ON DELETE NO ACTION. 6,075 of the 57,165
+   -- rows the old definition offered up were cited by a live edge, so the
+   -- delete raised 23503 and the whole prune failed - not once, every time.
+   --
+   -- The fix is not to cascade. A snapshot an edge points at is the EVIDENCE
+   -- FOR A DECISION this desk made: the book it read, at the moment it read
+   -- it. Redundancy is what nothing needs twice, and a row carrying the
+   -- lineage of a trade is not that. So it is never offered, and the prune
+   -- goes from failing on 57,165 to succeeding on 51,090.
+   and not exists (select 1 from public.edges   e where e.book_snapshot_id = s.snapshot_id)
+   and not exists (select 1 from public.signals g where g.book_snapshot_id = s.snapshot_id);
 
 comment on view v_prunable_book_redundancy is
-  'Book snapshots that are not the closing book of their band-day. The backtest reads one book per band per as_of and v_latest_book reads the newest per band, so nothing here is read by either. Ordered by (observed_at, snapshot_id) so the set does not change between evaluations. Age is applied by the caller.';
+  'Book snapshots that are not the closing book of their band-day AND that no edge or signal points at. The backtest reads one book per band per as_of and v_latest_book reads the newest per band, so nothing here is read by either. Ordered by (observed_at, snapshot_id) so the set does not change between evaluations. Age is applied by the caller.';
 
 grant select on v_prunable_book_redundancy to service_role;
 
@@ -139,11 +153,6 @@ create or replace function public.prune_book_redundancy(
 language plpgsql
 security definer
 set search_path to 'public', 'pg_temp'
--- EIGHT SECONDS IS A WEB REQUEST'S BUDGET, NOT A PRUNE'S. Inherited from
--- `authenticator` through PostgREST; see the header. The work below is
--- bounded and measured in single-digit seconds, so this is headroom for a
--- table that keeps growing, not licence to run unboundedly long.
-set statement_timeout to '120s'
 as $fn$
 declare
   v_before timestamptz := coalesce(p_before, now() - make_interval(days => p_keep_days));
@@ -201,8 +210,14 @@ begin
   -- this runs. It must not change, because every band-day keeps its closing
   -- book - and if it ever does, the backtest window just moved. It is counted
   -- on both sides rather than asserted, which is the entire point of it.
-  select count(distinct (band_id, (observed_at at time zone 'UTC')::date))
-    into v_days from public.book_snapshots;
+  --
+  -- GROUPED, NOT count(distinct ROW(...)). The distinct form sorts, and at
+  -- this size it spills: 4.2s and 16 MB of temp file, twice per committed
+  -- prune - more than the delete it was guarding. Grouping lets the planner
+  -- hash, for the identical number in half the time.
+  select count(*) into v_days from (
+    select 1 from public.book_snapshots
+      group by band_id, (observed_at at time zone 'UTC')::date) q;
 
   if p_dry_run then
     return jsonb_build_object('ok', true, 'dry_run', true,
@@ -219,8 +234,9 @@ begin
   return jsonb_build_object('ok', true, 'deleted', v_doomed,
     'rows_now', (select count(*) from public.book_snapshots),
     'band_days_before', v_days,
-    'band_days_after', (select count(distinct (band_id, (observed_at at time zone 'UTC')::date))
-                          from public.book_snapshots),
+    'band_days_after', (select count(*) from (
+       select 1 from public.book_snapshots
+         group by band_id, (observed_at at time zone 'UTC')::date) q),
     'older_than', v_before, 'expected_rows', p_expected_rows,
     'table_now', pg_size_pretty(pg_total_relation_size('public.book_snapshots')),
     'note', 'ad4_reclaim_book_snapshots returns the space on Monday');

@@ -39,7 +39,7 @@ const assert = require('node:assert/strict');
     -- text, matching the live column. Appended last so the positional inserts
     -- below keep working.
     create table public.signals(signal_id bigint primary key,action text,strategy_id text,
-      fired_at timestamptz,reason text,payload jsonb,regime_label text);
+      fired_at timestamptz,reason text,payload jsonb,regime_label text,book_snapshot_id bigint);
     -- ledger is created by sql/ad4_00_preflight.sql, which this harness never
     -- applies. Column types and the two NOT NULLs match the live table.
     --
@@ -64,8 +64,12 @@ const assert = require('node:assert/strict');
       universe jsonb,regime_filter jsonb,capital_cap_pct numeric,max_concurrent integer,extra jsonb);
     insert into public.strategies(strategy_id,name) values('s1','price entry');
     create table public.band_probabilities(prob_id uuid primary key,band_id uuid,computed_at timestamptz default now());
+    -- book_snapshot_id is a foreign key into book_snapshots in production and
+    -- v_prunable_book_redundancy reads it to refuse anything an edge cites.
+    -- Missing here, the view does not compile - the fixture-does-not-match-
+    -- production trap CLAUDE.md describes, arriving from the other side.
     create table public.edges(edge_id bigint primary key,band_id uuid,computed_at timestamptz default now(),
-      side text,tradeable boolean default false);
+      side text,tradeable boolean default false,book_snapshot_id bigint);
     create table public.live_weather(city_key text primary key,updated_at timestamptz,observed_at timestamptz);
     create table public.ingest_log(log_id bigint primary key,job text,started_at timestamptz,finished_at timestamptz,
       status text,rows_written integer,detail jsonb,rows integer,logged_at timestamptz default now());
@@ -1334,6 +1338,7 @@ const assert = require('node:assert/strict');
   // because it is that band's newest.
   await db.exec(`insert into public.book_snapshots(snapshot_id,band_id,observed_at) values
      (9001,'${pruneBand}', timestamptz '2026-01-01 08:00:00+00'),
+     (9007,'${pruneBand}', timestamptz '2026-01-01 09:00:00+00'),
      (9002,'${pruneBand}', timestamptz '2026-01-01 12:00:00+00'),
      (9003,'${pruneBand}', timestamptz '2026-01-01 12:00:00+00'),
      (9004,'${pruneBand}', timestamptz '2026-01-02 08:00:00+00'),
@@ -1344,6 +1349,26 @@ const assert = require('node:assert/strict');
     `select snapshot_id from public.v_prunable_book_redundancy
       where snapshot_id between 9001 and 9999 order by snapshot_id`)).rows.map(r=>Number(r.snapshot_id));
 
+  // A SNAPSHOT AN EDGE CITES IS EVIDENCE, NOT REDUNDANCY.
+  //
+  // edges.book_snapshot_id and signals.book_snapshot_id are foreign keys into
+  // book_snapshots with ON DELETE NO ACTION. 6,075 of the 57,165 rows the
+  // view used to offer were cited by a live edge, so the delete raised 23503
+  // and the entire prune failed - every run, for as long as books was in the
+  // archive. Cascading would have "fixed" it by destroying the lineage of a
+  // trade. Refusing to offer them fixes it by deleting less.
+  //
+  // 9002 is redundant by every other measure - beaten by 9003 the same day -
+  // and must survive purely because something points at it.
+  await db.exec(`insert into public.edges(edge_id,band_id,book_snapshot_id)
+    values(99001,'${pruneBand}',9002);`);
+  // BOTH foreign keys, not just the one that happened to be populated.
+  // signals.book_snapshot_id is null on every live row today, so a version
+  // that checked edges alone would pass against production and start raising
+  // 23503 the first time the signal engine records the book it read.
+  await db.exec(`insert into public.signals(signal_id,action,book_snapshot_id)
+    values(99002,'ENTER',9007);`);
+
   const firstAsk = await prunable();
   assert.deepEqual(firstAsk, await prunable(),
     'the view returned a different set the second time it was asked, so the count the '
@@ -1353,8 +1378,10 @@ const assert = require('node:assert/strict');
   // not both (that would lose the day's closing book) and not neither (that
   // would keep a duplicate for ever). 9004 is beaten by 9005 the same day.
   // 9005 is its band's newest and 9006 is its band's only row: both stay.
-  assert.deepEqual(firstAsk, [9001,9002,9004],
-    'the prunable set is not the three rows that are provably unread');
+  assert.deepEqual(firstAsk, [9001,9004],
+    'the prunable set is not the rows that are both unread AND uncited - 9002 is '
+    +'redundant but an EDGE points at it and 9007 is redundant but a SIGNAL does, '
+    +'so deleting either would raise 23503 and take the lineage of a decision with it');
 
   const survivingDays = `select count(distinct (band_id,(observed_at at time zone 'UTC')::date))::int as n
                            from public.book_snapshots`;
@@ -1372,7 +1399,7 @@ const assert = require('node:assert/strict');
   assert.ok(String(refused.error).includes('row count mismatch'));
   assert.equal(Number((await db.query(
     'select count(*)::int as n from public.book_snapshots where snapshot_id between 9001 and 9999'
-  )).rows[0].n), 6, 'the refused prune deleted rows anyway');
+  )).rows[0].n), 7, 'the refused prune deleted rows anyway');
 
   // And a committed prune with no expected count at all must refuse too: that
   // argument is the whole link between "uploaded" and "safe to delete".
@@ -1389,7 +1416,7 @@ const assert = require('node:assert/strict');
   assert.deepEqual(
     (await db.query(`select snapshot_id from public.book_snapshots
        where snapshot_id between 9001 and 9999 order by snapshot_id`)).rows.map(r=>Number(r.snapshot_id)),
-    [9003,9005,9006],
+    [9002,9003,9005,9006,9007],
     'the prune kept a different set than the view said it would delete');
 
   // THE BACKTEST WINDOW MUST NOT HAVE MOVED. This is the reason the prune is

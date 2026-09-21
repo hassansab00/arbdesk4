@@ -1086,7 +1086,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "fact_band_outcome"
   ],
   "v_prunable_book_redundancy": [
-    "book_snapshots"
+    "book_snapshots",
+    "edges",
+    "signals"
   ],
   "v_prunable_edge_history": [
     "edges"
