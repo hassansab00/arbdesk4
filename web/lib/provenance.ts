@@ -602,6 +602,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "n8n",
       "kind": "n8n",
       "name": "AD4 P1.2 - NWS Monitor"
+    },
+    {
+      "cadence": "whenever its n8n schedule fires",
+      "file": "P1.6_iem_observations.template.json",
+      "how": "n8n",
+      "kind": "n8n",
+      "name": "AD4 P1.6 - Station Observations (IEM METAR)"
     }
   ],
   "weather_resolution_attempts": [
@@ -728,6 +735,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "cities",
     "fact_signal_outcome",
     "signals",
+    "fact_band_outcome",
     "derived_forecast_skill",
     "bands",
     "book_snapshots",
@@ -1104,6 +1112,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_calibration_adjustment",
     "derived_forecast_skill"
   ],
+  "v_signal_mark": [
+    "fact_band_outcome",
+    "fact_signal_outcome",
+    "signals"
+  ],
   "v_signal_outcome": [
     "fact_band_outcome",
     "fact_signal_outcome"
@@ -1123,7 +1136,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_strategy_board": [
     "fact_signal_outcome",
-    "signals"
+    "signals",
+    "fact_band_outcome"
   ],
   "v_strategy_desk_board": [
     "paper_accounts",

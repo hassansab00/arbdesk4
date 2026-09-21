@@ -1,0 +1,580 @@
+{
+  "name": "AD4 P1.6 - Station Observations (IEM METAR)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## P1.6 - Station observations (IEM METAR)\n\nBUILT, DEPLOYED, RUN AGAINST THE LIVE SERVICE, AND NOT SCHEDULED. Read this\nbefore adding a Schedule Trigger.\n\nThe feed it would replace ran as a GitHub Actions cron (`7 */6 * * *`) and\narrived between 4h45m and 8h24m apart, because GitHub schedules workflows\nbest-effort and drops them under load. Every other weather feed - P1.2, P1.3,\nP1.4, P1.5 - is already here and fresh to the hour, so moving this one looked\nobvious.\n\nIEM RATE-LIMITS BY IP, and n8n Cloud's egress is shared. Measured here on\n21 Sep, three runs against the real service:\n\n    12 concurrent   44 of 48 stations returned nothing     182 rows\n     4 concurrent   42 of 48                               273 rows\n     1 at a time    34 of 48                               620 rows\n\n    every failure body: \"Too many requests from your IP address, slow down.\"\n\nThe same 48 stations on an Actions runner take ~115 s and lose none, because\nthat job gets its own egress. So this workflow is correct and it is here - the\nparser, the window and the guards are tested in\ntests/test_observations_moved_to_n8n.py - but it runs on demand only, and\n`.github/workflows/observations.yml` keeps the schedule until something proves\nn8n can hold the whole board.\n\nTHE CADENCE PROBLEM IS STILL REAL AND IS A DIFFERENT PROBLEM. The fix that does\nnot fight the rate limit is to let n8n OWN THE TIMING and Actions own the run:\na repository_dispatch from here on a reliable schedule, which is the pattern\nP2.1 - Relearn already uses. That needs a fine-grained PAT in Config, and it\ndoes not cost an extra Actions run - the allowance is at 424 of 430.",
+        "height": 480,
+        "width": 520
+      },
+      "id": "note-why",
+      "name": "Note why",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -720,
+        -240
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Writes\n\n    weather_observations   upsert on (city_key, valid_at, source), source='IEM'\n    ingest_log             via rpc/log_ingest, job='ingest_observations'\n\nTHE JOB NAME IS DELIBERATELY THE ONE THE PYTHON SCRIPT USED. PipelineStatus\nreads it, and `should_run` measures the interval from\n`ingest_log where job = p_job` - so a new name would have left the gate unable\nto find a previous run and the cadence unenforced, while the UI showed the feed\nas missing.",
+        "height": 260,
+        "width": 460
+      },
+      "id": "note-writes",
+      "name": "Note writes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -720,
+        280
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "trig-man",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ad4-iem-observations",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "trig-web",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "supabase_url",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "2",
+              "name": "job",
+              "type": "string",
+              "value": "P1.6_iem_observations"
+            },
+            {
+              "id": "3",
+              "name": "days_back",
+              "type": "string",
+              "value": "1"
+            },
+            {
+              "id": "4",
+              "name": "max_cities_per_run",
+              "type": "string",
+              "value": "0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cfg",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        60,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/should_run",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_job: $('Config').first().json.job, p_trigger: $('Schedule Trigger').isExecuted ? \"schedule\" : ($('Webhook Trigger').isExecuted ? \"webhook\" : \"manual\") }) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi"
+      },
+      "id": "gate-ask",
+      "name": "Check schedule",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        20
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "ad4-supabase",
+          "name": "AD4 Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// AD4-KEY-CHECK\n// THE KEY IS NOT IN THIS FILE ANY MORE, AND THAT IS THE POINT.\n//\n// Every Supabase node in this workflow authenticates with an n8n SUPABASE\n// CREDENTIAL rather than a key pasted into the Config node. That is one place\n// to set it instead of twelve, it is encrypted at rest in n8n, and exporting\n// this workflow can no longer leak it - the old shape had the service key\n// sitting in plain text inside a JSON file that gets emailed around.\n//\n// SET IT UP ONCE, BEFORE IMPORTING ANYTHING:\n//   n8n -> Credentials -> New -> Supabase API\n//     Name         AD4 Supabase        <- this name exactly\n//     Host         https://<your-project-ref>.supabase.co\n//     Service Role the SERVICE ROLE key (Project Settings -> API keys)\n//\n// The name matters because every Supabase node in every AD4 workflow is\n// already bound to a credential called AD4 Supabase. Create it first and\n// n8n links all of them on import - nothing to pick node by node. Import\n// first and the nodes come in unbound, and you pick the credential on each\n// one by hand; it works, it is just ~57 dropdowns instead of zero.\n//\n// The credential sends `apikey` and `Authorization: Bearer` itself, which is\n// exactly what these nodes used to set by hand.\n//\n// WHAT STILL CHECKS THE KEY. This node can no longer read it - a credential\n// is not visible to an expression, by design. Two things downstream do:\n//\n//   the schedule gate, immediately below. sql/ad4_38 revokes should_run from\n//   anon, so a credential holding the publishable key is refused HERE, two\n//   nodes in, before a single row is fetched.\n//\n//   the write guard in the Summary node, which names any refusal the\n//   database gives and refuses to report success on a run that wrote nothing.\n//\n// supabase_url stays in Config because an expression has to build the request\n// URL and cannot read the credential's host. It is not a secret.\n{\n  const cfg = $('Config').first().json ?? {};\n  const url = String(cfg.supabase_url ?? '').trim();\n  if (!url) {\n    throw new Error(\n      'Config -> supabase_url is empty. Set it to exactly ' +\n      'https://<your-project-ref>.supabase.co - no trailing slash and no /rest/v1, ' +\n      'which every node below appends itself. The KEY does not go here: it belongs in ' +\n      'the n8n Supabase credential (Credentials -> New -> Supabase API), which is ' +\n      'where the nodes now read it from.');\n  }\n  if (!/^https:\\/\\//.test(url) || /\\/rest\\b/.test(url) || /\\/$/.test(url)) {\n    throw new Error(\n      `Config -> supabase_url is \"${url}\", which is not the shape every node below ` +\n      'expects: https://<your-project-ref>.supabase.co, no trailing slash, no /rest/v1. ' +\n      'Nothing was fetched and nothing was written.');\n  }\n}\n\n// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A PERMISSION ERROR IS NOT AN UNAVAILABLE GATE. 42501 here means the key\n// cannot even call should_run, and a key that cannot do that cannot write\n// either - so stop, rather than failing open into a run that writes nothing.\n//\n// THIS NODE CANNOT CHECK THE KEY ITSELF ANY MORE - it is in the credential,\n// which an expression cannot read. So a refusal here is one of two things and\n// both stop the run: the credential holds the anon/publishable key rather than\n// the service role key, or service_role has not been granted what it needs.\n// Either way every write below would be refused the same way, so there is\n// nothing to gain by going on. ad4_38's output tells you which it was.\n//\n// ad4_38 revokes should_run from anon for this reason: it was granted so the\n// Workflows page could preview a cadence, that page reads v_execution_budget\n// instead, and the grant only let a bad key through the gate.\nif (decision && (String(decision.code) === '42501' ||\n                 /permission denied/i.test(String(decision.message || '')))) {\n  throw new Error(\n    `Supabase refused should_run: ${decision.message} (${decision.code}). Every write below ` +\n    `would be refused the same way, so nothing was fetched and nothing was written. Two ` +\n    `things cause this and the workflow cannot tell them apart, because the key now lives ` +\n    `in the n8n credential where an expression cannot read it. (1) THE KEY: open n8n -> ` +\n    `Credentials -> the Supabase account these nodes use and check Service Role Secret ` +\n    `holds the SERVICE ROLE key (Supabase -> Project Settings -> API -> service_role, or a ` +\n    `key beginning sb_secret_) - an anon key gets exactly this error, because anon is ` +\n    `granted SELECT and nothing else. NEVER put the service key anywhere starting ` +\n    `NEXT_PUBLIC_. (2) THE DATABASE: service_role has not been granted what it needs. Run ` +\n    `sql/ad4_38_grants.sql in the Supabase SQL editor - it grants the write path back and ` +\n    `then prints one row per ingest table saying whether the service key can write it, ` +\n    `which also tells you which of the two it was.`);\n}\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
+      },
+      "id": "gate-run",
+      "name": "Run now?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Returning [] stops the workflow here. Everything below this node\n// is skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
+      },
+      "id": "gate-stop",
+      "name": "Stop if skipped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/cities?select=city_key,icao&icao=not.is.null&status=eq.active&limit=200",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi"
+      },
+      "id": "load-cities",
+      "name": "Load cities",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        860,
+        20
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "ad4-supabase",
+          "name": "AD4 Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ONE ITEM PER STATION, each carrying the IEM URL it needs.\n//\n// THE WINDOW IS THE WHOLE REASON THIS WORKFLOW EXISTS IN N8N AT ALL, so it is\n// copied from scripts/ingest_observations.window() exactly, including the part\n// that was wrong for three weeks: `day2` ON THE ASOS SERVICE IS EXCLUSIVE, so\n// asking for [start, today) returns every day but the one being traded. The\n// damage self-heals overnight, which is why it survived every check made of it.\n// end = today + 1 day.\nconst cfg = $('Config').first().json;\nconst cities = $('Load cities').all().map(i => i.json).flat();\nconst daysBack = Number(cfg.days_back || 1);\nconst cap = Number(cfg.max_cities_per_run || 0) || 0;\n\nconst today = new Date();\nconst start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(),\n                                today.getUTCDate() - daysBack));\nconst end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(),\n                              today.getUTCDate() + 1));\n\n// Same scope contract every other AD4 workflow honours: absent, \"all\", or a\n// selection matching nothing all mean every active city, because a scope that\n// silently reduces a run to zero is indistinguishable from a broken job.\nconst _scope = (($('Check schedule').first().json ?? {}).scope) ?? {};\nconst _only = Array.isArray(_scope.cities) && _scope.cities.length\n  ? new Set(_scope.cities) : null;\n\nconst out = [];\nfor (const c of cities) {\n  if (!c || !c.city_key || !c.icao) continue;\n  if (_only && !_only.has(c.city_key)) continue;\n  // mslp, NOT alti or a raw station pressure. Sea-level pressure is the only\n  // one comparable across a board running from Singapore at 5 m to Mexico City\n  // at 2,240 m, where station pressure is ~770 hPa on the calmest day.\n  // BUILT BY HAND, NOT WITH URLSearchParams. n8n's Code node sandbox does not\n  // expose it, and a plain `node` does - so this ran green in the repo's test\n  // harness and died on the first real execution with\n  // `URLSearchParams is not defined [line 34]`. The harness now deletes the\n  // same globals n8n withholds, so that gap cannot reopen.\n  const q = [\n    ['station', c.icao],\n    ['data', 'tmpf,dwpf,relh,drct,sknt,p01i,skyc1,mslp'],\n    ['year1', start.getUTCFullYear()], ['month1', start.getUTCMonth() + 1],\n    ['day1', start.getUTCDate()],\n    ['year2', end.getUTCFullYear()], ['month2', end.getUTCMonth() + 1],\n    ['day2', end.getUTCDate()],\n    ['tz', 'Etc/UTC'], ['format', 'onlycomma'], ['latlon', 'no'],\n    ['missing', 'empty'], ['trace', 'empty'], ['direct', 'no'], ['report_type', '3'],\n  ];\n  let qs = '';\n  for (const pair of q) qs += (qs ? '&' : '') + pair[0] + '=' + encodeURIComponent(String(pair[1]));\n  out.push({ json: {\n    city_key: c.city_key, icao: c.icao,\n    url: 'https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?' + qs,\n  }});\n  if (cap && out.length >= cap) break;\n}\nif (!out.length) throw new Error('no active city has an ICAO station - nothing to fetch');\nreturn out;"
+      },
+      "id": "build-req",
+      "name": "Build requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1060,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "text/plain"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 400
+            }
+          },
+          "timeout": 90000,
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text",
+              "outputPropertyName": "csv"
+            }
+          }
+        },
+        "notes": "ONE AT A TIME. IEM rate-limits by IP and answers a burst with 'Too many requests from your IP address, slow down.' - measured here at 12 concurrent (44 of 48 stations lost) and again at 4 (42 of 48). The Python job it replaces is sequential for the same reason, and the whole board takes it about 115 s, which fits this instance's 300 s cap."
+      },
+      "id": "fetch-iem",
+      "name": "Fetch observations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1260,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse IEM's CSV into weather_observations rows. Ported from\n// scripts/ingest_observations.parse(), which stays the backfill path.\nconst reqs = $('Build requests').all().map(i => i.json);\nconst resp = $('Fetch observations').all();\n\n// n8n preserves item order, but a silent misalignment here would file one\n// city's readings under another's name, which is worse than failing.\nif (resp.length !== reqs.length) {\n  throw new Error(`IEM returned ${resp.length} responses for ${reqs.length} requests - ` +\n                  `refusing to pair them by index and mislabel a city`);\n}\n\nconst num = (x) => {\n  if (x === undefined || x === null || x === '') return null;\n  const v = Number(x);\n  return Number.isFinite(v) ? v : null;\n};\nconst fToC = (v) => v === null ? null : Math.round((v - 32) * 5 / 9 * 100) / 100;\n\n// METAR sky-cover is a CODE, not a number, and weather_observations.cloud_cover\n// is numeric - writing the raw code through is what made every observations run\n// die with `invalid input syntax for type numeric: \"FEW\"`. Oktas is the standard\n// numeric form of this measurement, so the conversion loses nothing.\nconst SKY = { SKC:0, CLR:0, NSC:0, NCD:0, CAVOK:0, FEW:2, SCT:4, BKN:6, OVC:8, VV:8 };\nconst oktas = (codeRaw) => {\n  const c = String(codeRaw || '').trim().toUpperCase();\n  if (!c) return null;\n  if (c in SKY) return SKY[c];\n  for (const k of Object.keys(SKY)) if (c.startsWith(k)) return SKY[k];  // e.g. BKN035\n  return null;\n};\n\nconst rows = [];\nconst failed = [];\n// WHAT IEM ACTUALLY SAID when a station came back with nothing. Without this a\n// rate-limit, an outage and a station with no reports are the same number in\n// the log, and the first run here reported 44 of 48 \"failed\" with no way to\n// tell which.\nlet firstFailureBody = null;\nfor (let i = 0; i < reqs.length; i++) {\n  const meta = reqs[i];\n  const body = resp[i] && resp[i].json ? (resp[i].json.csv ?? resp[i].json.data ?? '') : '';\n  const text = typeof body === 'string' ? body : '';\n  const lines = text.split('\\n').filter(l => l && !l.startsWith('#'));\n  if (lines.length < 2) {\n    failed.push(meta.icao);\n    if (firstFailureBody === null) firstFailureBody = text.slice(0, 300);\n    continue;\n  }\n  const head = lines[0].split(',').map(h => h.trim());\n  const idx = Object.fromEntries(head.map((h, n) => [h, n]));\n  let got = 0;\n  for (const line of lines.slice(1)) {\n    const f = line.split(',');\n    if (f.length < head.length) continue;\n    const ts = String(f[idx['valid']] || '').trim();\n    if (!ts) continue;\n    const tmpf = num(f[idx['tmpf']]);\n    if (tmpf === null) continue;                 // a reading with no temperature is not one\n    rows.push({\n      city_key: meta.city_key,\n      station: String(f[idx['station']] || '').trim() || null,\n      valid_at: ts.slice(0, 16).replace(' ', 'T') + ':00Z',\n      temp_f: tmpf,\n      temp_c: fToC(tmpf),\n      dewpoint_c: fToC(num(f[idx['dwpf']])),\n      humidity: num(f[idx['relh']]),\n      wind_speed: num(f[idx['sknt']]),\n      wind_dir_deg: num(f[idx['drct']]),\n      precip: num(f[idx['p01i']]),\n      cloud_cover: oktas(f[idx['skyc1']]),\n      pressure_hpa: num(f[idx['mslp']]),\n      source: 'IEM',\n    });\n    got++;\n  }\n  if (!got) {\n    failed.push(meta.icao);\n    if (firstFailureBody === null) firstFailureBody = text.slice(0, 300);\n  }\n}\n\n// CHUNKED, because one POST of every station's two days is a body large enough\n// for Supabase to refuse outright, and a refused write walks past the\n// continue-on-error write node looking healthy.\nconst CHUNK = 500;\nconst totals = { requested: reqs.length, failed: failed.length,\n                 failed_stations: failed.slice(0, 12), n_obs: rows.length,\n                 first_failure_body: firstFailureBody };\nif (!rows.length) return [{ json: { ...totals, observations: [] } }];\nconst out = [];\nfor (let i = 0; i < rows.length; i += CHUNK) {\n  out.push({ json: { ...totals, observations: rows.slice(i, i + CHUNK) } });\n}\nreturn out;"
+      },
+      "id": "build-rows",
+      "name": "Build rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1460,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// A run that parsed nothing must be loud. Every station failing at once is an\n// IEM outage or a changed response shape, and \"ok, 0 rows\" for a week is how\n// that gets missed - which is exactly what a six-hourly Actions cron did here.\nconst p = $input.first().json;\nif (!p.observations || !p.observations.length) {\n  throw new Error(`IEM returned nothing usable for any of ${p.requested} station(s)` +\n    (p.failed_stations && p.failed_stations.length\n      ? ` (first failures: ${p.failed_stations.join(', ')})` : '') +\n    '. Nothing was written.');\n}\nreturn $input.all();"
+      },
+      "id": "guard",
+      "name": "Guard: did anything parse?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1660,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/weather_observations?on_conflict=city_key,valid_at,source",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.observations) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi"
+      },
+      "id": "write-obs",
+      "name": "Write observations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1860,
+        20
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "ad4-supabase",
+          "name": "AD4 Supabase"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// DID THE DATABASE ACTUALLY TAKE IT?\n//\n// \"Write observations\" carries neverError so a refusal arrives as the PostgREST\n// body instead of an exception - readable, and therefore nameable. The cost of\n// that is a refused write walks past it looking healthy, which is how a job\n// reports \"ok, 0 rows\" for a week while the data quietly stops moving.\n//\n// P1.2 reconstructs this across four write nodes and needs a hundred lines to\n// do it. There is ONE write here, so the error is simply read off it.\nlet refusal = null;\nfor (const item of $('Write observations').all()) {\n  const j = item.json || {};\n  if (j.code || j.message) { refusal = j; break; }\n  // A Supabase gateway timeout arrives as {\"data\":\"upstream request timeout\"}\n  // with no code and no message, and was skipped entirely when this only\n  // looked for those two keys.\n  if (typeof j.data === 'string' && /timeout/i.test(j.data)) {\n    refusal = { message: j.data, code: '504' }; break;\n  }\n}\nif (refusal) {\n  const code = String(refusal.code ?? '');\n  if (code === '42501' || /permission denied/i.test(refusal.message || '')) {\n    throw new Error(\n      `Supabase REFUSED the write: ${refusal.message} (${code}). The key was already ` +\n      `checked at \"Run now?\", so this is the database side: service_role has no INSERT ` +\n      `on weather_observations. Run sql/ad4_38_grants.sql. Nothing was written.`);\n  }\n  if (code === '42P01') {\n    throw new Error(\n      `Supabase has no weather_observations table: ${refusal.message}. The sql/ files ` +\n      `that create it have not been run. Nothing was written.`);\n  }\n  throw new Error(\n    `Supabase refused the write: ${refusal.message}` + (code ? ` (${code})` : '') +\n    (refusal.details ? ` - ${refusal.details}` : '') +\n    (refusal.hint ? ` Hint: ${refusal.hint}` : '') + ' Nothing was written.');\n}\n\nconst p = $('Build rows').first().json;\nconst rows = p.n_obs || 0;\nconst summary =\n  `AD4 P1.6: ${rows} IEM observations from ${p.requested} station(s)` +\n  (p.failed ? `, ${p.failed} failed` : '') + '.';\n// Partial, not ok: a station that stopped reporting is a city the desk is\n// trading blind, and it must not read as a clean run.\nconst status = rows > 0 ? (p.failed ? 'partial' : 'ok') : 'attention';\nconst detail = { stations: p.requested, failed: p.failed,\n                 failed_stations: p.failed_stations,\n                 first_failure_body: p.first_failure_body };\nreturn [{ json: {\n  summary, status, rows,\n  log: { p_job: 'P1.6_iem_observations', p_status: status, p_rows: rows,\n         p_detail: { ...detail, summary, trigger: $execution.mode, execution_id: $execution.id } },\n} }];"
+      },
+      "id": "summary",
+      "name": "Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2060,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.log) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi"
+      },
+      "id": "log-run",
+      "name": "Log run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2260,
+        20
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "ad4-supabase",
+          "name": "AD4 Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Summary').first().json) }}"
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2460,
+        20
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Check schedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check schedule": {
+      "main": [
+        [
+          {
+            "node": "Run now?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now?": {
+      "main": [
+        [
+          {
+            "node": "Stop if skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stop if skipped": {
+      "main": [
+        [
+          {
+            "node": "Load cities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load cities": {
+      "main": [
+        [
+          {
+            "node": "Build requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build requests": {
+      "main": [
+        [
+          {
+            "node": "Fetch observations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch observations": {
+      "main": [
+        [
+          {
+            "node": "Build rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build rows": {
+      "main": [
+        [
+          {
+            "node": "Guard: did anything parse?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard: did anything parse?": {
+      "main": [
+        [
+          {
+            "node": "Write observations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write observations": {
+      "main": [
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary": {
+      "main": [
+        [
+          {
+            "node": "Log run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log run": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

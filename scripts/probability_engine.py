@@ -41,6 +41,33 @@ CALIBRATION_VERSION = "v0_normal_lattice_no_calibration"
 VERIFIED_EVIDENCE_SCOPE = "verified_outcomes_v1"
 COLD_START_MAE_C = 4.0
 
+# A PROBABILITY OF EXACTLY ZERO IS A ROUNDING ARTEFACT, NOT A FORECAST.
+#
+# round(p, 6) sends anything below 5e-7 to 0.0, and a band four sigma from the
+# forecast is genuinely down there. The edge engine then reads the NO side as
+# `1.0 - calibrated_prob`, so that band arrives at the desk as a CERTAINTY -
+# model_prob exactly 1.0 - and its only guard is a magnitude rule that blocks
+# an edge over 40 points. A certainty against a market quoting 0.727 is a
+# 25-point edge, which is under the rule, so it shipped tradeable.
+#
+# Measured on 21 Sep over 24 hours: 827 of 5,500 calibrated probabilities were
+# exactly 0 (15.0%), and 23 edges built on one reached the desk marked
+# tradeable with no block reason, on bands carrying $59 and $151 of fillable
+# depth, at a model confidence of 0.008.
+#
+# The floor is the resolution this column already commits to by storing 6
+# decimal places. Below one in a million the lattice cannot tell 3e-7 from
+# 3e-9, and "impossible" is a stronger claim than a normal fitted to 120 days
+# of station error can carry. Clamping says "at or below what I can resolve",
+# which is the true statement, and it costs the ladder about 1e-5 of mass
+# before the normalisation below divides it straight back out.
+PROB_FLOOR = 1e-6
+
+
+def clamp_prob(p):
+    """Keep a probability strictly inside (0, 1) at the stored resolution."""
+    return min(1.0 - PROB_FLOOR, max(PROB_FLOOR, p))
+
 # --------------------------------------------------------------------------
 # Calibration.
 #
@@ -950,8 +977,9 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     cal = _calibration_map()
     out = []
     for band_id, p in probs:
-        r = dict(row, band_id=band_id, raw_prob=round(p, 6))
-        r["calibrated_prob"] = round(_calibrate(p), 6) if cal else round(p, 6)
+        r = dict(row, band_id=band_id, raw_prob=round(clamp_prob(p), 6))
+        r["calibrated_prob"] = (round(clamp_prob(_calibrate(p)), 6) if cal
+                                else round(clamp_prob(p), 6))
         out.append(r)
 
     # THE LADDER MUST SUM TO ONE. Exactly one band resolves yes, so anything
@@ -966,7 +994,7 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
         total = sum(r["calibrated_prob"] for r in out)
         if total > 0:
             for r in out:
-                r["calibrated_prob"] = round(r["calibrated_prob"] / total, 6)
+                r["calibrated_prob"] = round(clamp_prob(r["calibrated_prob"] / total), 6)
         reasons.append(
             f"calibrated:temperature(T={cal['T']:.3f},ladders={cal.get('n')})"
             if cal["method"] == "temperature"

@@ -1,21 +1,43 @@
 name: Observations (IEM METAR)
 
+# THE SCHEDULE STAYS HERE UNTIL n8n IS PROVEN ON THIS FEED, and it is not yet.
+#
+# WHAT IS WRONG WITH IT. GitHub delivers this best-effort and drops it under
+# load. Measured over the six scheduled runs before 21 Sep:
+#
+#     11:11 -> 15:57   4h46m
+#     15:57 -> 20:43   8h01m is not a typo further down
+#     20:43 -> 04:44   8h01m
+#     04:44 -> 12:39   7h55m
+#     12:39 -> (none)  8h24m and counting
+#
+# Not one run failed. A six-hour cron delivered between 4h45m and 8h24m, on the
+# feed a DAILY HIGH is settled against.
+#
+# WHY IT IS STILL HERE ANYWAY. The obvious fix - move it to n8n beside P1.2,
+# P1.3, P1.4 and P1.5 - was built (n8n/P1.6_iem_observations.template.json) and
+# run against the live service three times. IEM RATE-LIMITS BY IP:
+#
+#     12 concurrent   44 of 48 stations returned nothing
+#      4 concurrent   42 of 48
+#      1 at a time    34 of 48, and 48 requests finished in 26 s because most
+#                     were rejected before they were served
+#
+#     every failure body: "Too many requests from your IP address, slow down."
+#
+# This runner does the same 48 stations in ~115 s and loses none, because an
+# Actions job gets its own egress rather than n8n Cloud's shared one.
+#
+# So the cadence problem and the residency problem are separate, and removing
+# this schedule before the replacement holds the board would trade a feed that
+# is late for one that is missing two thirds of its cities.
 on:
   schedule:
-    # Every 6 hours, not every 2. These feed a DAILY maximum and the
-    # settlement comparison against NWS, neither of which is finer-grained
-    # than a day; three extra runs an hour bought nothing and cost 360
-    # minutes a month.
-    # BACK TO SIX HOURS. This was briefly halved to save Actions minutes and
-    # that was the wrong trade: the archive is the evidence base the settlement
-    # source is checked against, and a feed you thinned to save money is a feed
-    # you cannot argue from. Consolidating the two pipelines paid for it - see
-    # docs/compute_budget.md - so the cadence stays where the data wants it.
     - cron: '7 */6 * * *'
   workflow_dispatch:
     inputs:
       days:
-        description: 'Days to backfill (2 for normal runs, 365+ for archive build)'
+        description: 'Days to backfill (2 for normal runs, 365+ for an archive rebuild)'
         required: false
         default: '2'
 

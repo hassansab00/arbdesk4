@@ -1201,13 +1201,14 @@ def test_every_supabase_node_is_bound_to_the_same_named_credential():
             assert cred.get("name") == CRED_NAME, (
                 f"{name} / {n['name']}: bound to {cred.get('name')!r}, not {CRED_NAME!r}")
             bound += 1
-    # 64: the 63 that were here, plus "Check desk books" in P2.2, which
-    # calls check_paper_desk_integrity() every hour. The count is here so
+    # 68: the 64 that were here, plus P1.6's four - Check schedule, Load
+    # cities, Write observations and Log run. ("Fetch observations" goes to
+    # IEM, so it carries no credential and must not.) The count is here so
     # that a node ADDED without a credential cannot pass by being skipped
     # - n8n_supabase_nodes() recognises a node by its credential type, so
     # an unbound one is invisible to the loop above and only the total
     # notices it.
-    assert bound == 64, f"expected 64 Supabase nodes across the files, found {bound}"
+    assert bound == 68, f"expected 68 Supabase nodes across the files, found {bound}"
 
 
 def test_the_email_workflows_bind_smtp_and_a_real_sender():
@@ -1307,7 +1308,9 @@ def test_every_gate_throws_the_same_diagnostic():
         assert len(found) == 1, f"{path} has {len(found)} gate diagnostics"
         seen.setdefault(found[0], []).append(os.path.basename(path))
     assert len(seen) == 1, f"gates disagree: {[v for v in seen.values()]}"
-    assert len(next(iter(seen.values()))) == 13, seen
+    # 14: the 13 that were here, plus P1.6, whose gate is the same code
+    # copied rather than a second version of it.
+    assert len(next(iter(seen.values()))) == 14, seen
 
 
 def test_the_service_key_is_let_through():
