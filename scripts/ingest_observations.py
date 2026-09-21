@@ -96,13 +96,46 @@ def parse(text, city_key):
         })
     return rows
 
+def window(days, today=None):
+    """The dates to ask IEM for, INCLUDING today.
+
+    `day2` ON THE ASOS SERVICE IS EXCLUSIVE, and for three weeks this asked
+    for `end = today`, which means [start, today) - every day but the one
+    being traded.
+
+    The damage was invisible because it self-heals overnight: tomorrow's run
+    asks for a window that ends after today, so today's readings do arrive -
+    just never while they matter. Every history you look at afterwards is
+    complete, which is why this survived every check anyone made of it.
+
+    Measured on 21 Sep before the fix, over 7 days of rows:
+
+        IEM   7,830 rows, EVERY ONE written the day after it describes
+        NWS  22,482 rows written the same day (+1,217 across midnight)
+
+    Not one IEM row at a lag of zero, ever. A publishing delay upstream would
+    have produced a spread; a window that stops at midnight produces exactly
+    this. And the two runs on 21 Sep prove it was not latency: the 04:45 run
+    came back with readings from 23:58 the previous night - 4.8 hours behind
+    real time - while the 12:40 run, eight hours later, still stopped at that
+    same wall. IEM had the data both times. It was never asked.
+
+    What it cost: the 37 cities with no api.weather.gov feed ran on
+    observations averaging 14.7 hours old and up to 25.7, at 10 readings a
+    day against 291 for the 11 NWS cities. These are DAILY HIGH markets, so
+    for most of the board the desk could not see the day's peak until the day
+    was over.
+    """
+    today = today or dt.datetime.now(dt.timezone.utc).date()
+    return today - dt.timedelta(days=days), today + dt.timedelta(days=1)
+
+
 def main():
     days = int(sys.argv[1]) if len(sys.argv) > 1 else 2
-    end = dt.datetime.now(dt.timezone.utc).date()
-    start = end - dt.timedelta(days=days)
+    start, end = window(days)
 
     cities = get_cities(require_coords=False, require_icao=True)
-    print(f"stations: {len(cities)}  window: {start} -> {end} ({days}d)")
+    print(f"stations: {len(cities)}  window: {start} -> {end} exclusive ({days}d + today)")
 
     total, failed = 0, []
     for i, c in enumerate(cities, 1):
