@@ -20,6 +20,11 @@ cost_model.taker_fee per leg, not raw prices. NO_BOOK bands (no price at
 any level - critical note #3, distinct from a DEAD_LOSER band which IS
 buyable near zero) make a basket incomplete and are excluded from being
 called riskless, since the guarantee depends on holding every leg.
+
+WHAT COUNTS AS A COMPLETE BASKET is the whole strategy: see BOOK_UNAVAILABLE
+below. Testing `tradeable` instead of testing the BOOK excluded every dead
+band - the ones this docstring says are buyable near zero - and so this
+strategy never completed a single basket in its life.
 """
 from collections import defaultdict
 
@@ -29,6 +34,39 @@ from strategies.base import Strategy, Signal, dedupe_key
 
 def _leg_cost_and_fee(price):
     return price, cost_model.taker_fee(1.0, price)
+
+
+# THE ONLY TWO REASONS A LEG CANNOT BE BOUGHT.
+#
+# Every other block reason on an edge - dead_band, below_7c_yes,
+# no_verified_skill, anomaly, far_from_forecast - is a statement about the
+# FORECAST or about whether the edge is worth taking. This strategy has no
+# forecast (the docstring above: "Requires no forecast - pure arithmetic") and
+# is not looking for an edge; it is looking for a set of prices that add up to
+# less than a guaranteed payout. Those gates are about a different question and
+# must not close a basket.
+#
+# A DEAD BAND IS THE CLEAREST CASE AND WAS THE ONE THAT BROKE IT. The docstring
+# already said so - "distinct from a DEAD_LOSER band which IS buyable near
+# zero" - and the code then tested `tradeable`, which is false for exactly
+# those bands. On 21 Sep, of 11 bands in a market, 10 carried a YES price and
+# only 2.9 were `tradeable`; 510 of the 1,021 edges in six hours were blocked
+# `dead_band`. So the completeness test could never pass, and this strategy
+# returned an empty list on every run since it was written - not "no arb
+# found" but "never looked".
+#
+# Gating on the book instead: 71 of 99 city-days form a complete basket, the
+# cheapest costs 1.0628 against a $1.00 payout and the average 1.2581, so the
+# answer is still no arbitrage - but it is now an answer rather than a silence,
+# and a mispricing would be seen.
+BOOK_UNAVAILABLE = frozenset({"no_book", "stale_book"})
+
+
+def _buyable(price, tradeable, block_reason):
+    """Can this leg actually be bought right now, at this price?"""
+    if price is None:
+        return False
+    return bool(tradeable) or block_reason not in BOOK_UNAVAILABLE
 
 
 class S2CombinationArb(Strategy):
@@ -49,9 +87,11 @@ class S2CombinationArb(Strategy):
     def _scan_basket(self, bands, side, target_payout):
         prices = []
         for b in bands:
-            price = b.yes_price if side == "YES" else b.no_price
-            tradeable = b.yes_tradeable if side == "YES" else b.no_tradeable
-            if price is None or not tradeable:
+            if side == "YES":
+                price, tradeable, reason = b.yes_price, b.yes_tradeable, b.yes_block_reason
+            else:
+                price, tradeable, reason = b.no_price, b.no_tradeable, b.no_block_reason
+            if not _buyable(price, tradeable, reason):
                 return []  # incomplete basket - cannot be guaranteed, not an arb
             prices.append((b, price))
 
