@@ -36,6 +36,30 @@ DEFAULT_MAX_SLIPPAGE_C = 0.05          # settings.max_slippage_cents fallback
 DEFAULT_MIN_PRICE_YES = 0.07           # settings.tradeability_yes fallback
 DEFAULT_MAX_BANDS_FROM_CENTRE = 4      # settings.tradeability_yes fallback
 DEFAULT_IMPLAUSIBLE_EDGE = 0.40        # anomaly_rules.implausible_edge fallback
+
+# THE IMPLAUSIBILITY RULE ABOVE IS A MAGNITUDE RULE, AND THAT IS NOT ENOUGH.
+# It blocks any edge over 40 points whatever produced it, so an edge of 25
+# points built out of a model probability of exactly 1.0 passes - the number
+# is small, the claim behind it is not. See probability_engine.PROB_FLOOR for
+# how a far-out band became a certainty in the first place, and for the 23
+# such edges a day that reached the desk tradeable with no block reason.
+#
+# Matching the producer's floor rather than picking a threshold here: a
+# probability that has arrived at the boundary is the model out of resolution,
+# not the model confident. Bands it genuinely has an opinion about - 0.95,
+# 0.99, 0.999 - are untouched, which is why this is not a confidence gate.
+PROB_FLOOR = 1e-6
+
+
+def prob_is_at_floor(model_prob):
+    """True when a probability has reached the resolution the column stores.
+
+    Both ends: the NO side of a floored band is `1.0 - p`, so the certainty
+    shows up as a ceiling, and that is the side the 23 tradeable ones were on.
+    """
+    if model_prob is None:
+        return False
+    return model_prob <= PROB_FLOOR or model_prob >= 1.0 - PROB_FLOOR
 UNLIMITED_BUDGET = 1e12
 MAX_BOOK_AGE = dt.timedelta(hours=2)
 MAX_PROBABILITY_AGE = dt.timedelta(hours=12)
@@ -353,6 +377,12 @@ def main():
             if model_prob is None:
                 tradeable = False
                 block_reason = block_reason or "stale_data"
+            elif prob_is_at_floor(model_prob):
+                # Checked before staleness because this is a statement about
+                # the value itself, not about its age: a fresh certainty is
+                # exactly as untradeable as a stale one.
+                tradeable = False
+                block_reason = "prob_at_floor"
             elif probability_is_stale:
                 tradeable = False
                 block_reason = "stale_probability"

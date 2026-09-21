@@ -38,8 +38,12 @@ const assert = require('node:assert/strict');
     -- applies, and 20260920220000 stamps it onto the trade at fill. Nullable
     -- text, matching the live column. Appended last so the positional inserts
     -- below keep working.
+    -- side, price_at_fire, band_id, city_key and status are on the live table
+    -- and v_strategy_board reads status to count what is waiting. Appended
+    -- last so the positional inserts below keep working.
     create table public.signals(signal_id bigint primary key,action text,strategy_id text,
-      fired_at timestamptz,reason text,payload jsonb,regime_label text,book_snapshot_id bigint);
+      fired_at timestamptz,reason text,payload jsonb,regime_label text,book_snapshot_id bigint,
+      band_id uuid,city_key text,side text,price_at_fire numeric,status text);
     -- ledger is created by sql/ad4_00_preflight.sql, which this harness never
     -- applies. Column types and the two NOT NULLs match the live table.
     --
@@ -1471,6 +1475,135 @@ const assert = require('node:assert/strict');
     'the same pair was not prunable once outside the window either, so the previous '
     +'assertion proved nothing about what the window protects');
 
+  // ==========================================================================
+  // A STRATEGY'S RECORD MUST NOT DEPEND ON WHICH DESK SUBSCRIBED TO IT.
+  //
+  // mark_signals_to_settlement scores every settled ENTER signal at the price
+  // that justified IT - no account, no cash, no approval. The two conventions
+  // are the whole reason this needs contracts: price_at_fire means a single
+  // band's ask for s1/s3/s4/s5/s7 and for each LEG of s8/s9, but a
+  // fee-inclusive SUM across legs for s2 and s6. One formula over both would
+  // charge a five-band basket the outcome of one of its bands.
+  // ==========================================================================
+  const yesBand = '11111111-0000-4000-8000-000000000001';
+  const noBand  = '11111111-0000-4000-8000-000000000002';
+  const legHit  = '11111111-0000-4000-8000-000000000003';
+  const legMiss = '11111111-0000-4000-8000-000000000004';
+  const legOpen = '11111111-0000-4000-8000-000000000005';
+
+  await db.exec(`
+    insert into public.fact_band_outcome(band_id,settled_yes) values
+      ('${yesBand}',true),('${noBand}',true),
+      ('${legHit}',true),('${legMiss}',false);
+    insert into public.strategies(strategy_id,name) values
+      ('s_single','single leg'),('s_basket','summed basket'),('s_group','per-leg basket');
+
+    -- 1 single leg, YES, band landed.      2 single leg, NO, band landed (lost).
+    -- 3 summed basket, one leg landed.     4 summed basket, nothing landed.
+    -- 5 summed basket with a leg that has not settled - unmarkable.
+    -- 6 s8/s9 shape: band_ids AND basket_group, so it is a real single leg.
+    insert into public.signals(signal_id,action,strategy_id,fired_at,payload,side,price_at_fire,status)
+    values
+      (7001,'ENTER','s_single',now(),'{}'::jsonb,'YES',0.30,'pending_approval'),
+      (7002,'ENTER','s_single',now(),'{}'::jsonb,'NO' ,0.20,'pending_approval'),
+      (7003,'ENTER','s_basket',now(),'{"band_ids":["${legHit}","${legMiss}"]}'::jsonb,'YES',0.62,'pending_approval'),
+      (7004,'ENTER','s_basket',now(),'{"band_ids":["${legMiss}"]}'::jsonb,'YES',0.55,'pending_approval'),
+      (7005,'ENTER','s_basket',now(),'{"band_ids":["${legHit}","${legOpen}"]}'::jsonb,'YES',0.40,'pending_approval'),
+      (7006,'ENTER','s_group' ,now(),'{"band_ids":["${legHit}","${legMiss}"],"basket_group":"pair:x"}'::jsonb,'YES',0.35,'pending_approval');
+
+    insert into public.fact_signal_outcome(signal_id,strategy_id,band_id,side,action,price_at_fire,settled_yes,signal_correct,filled)
+    values
+      (7001,'s_single','${yesBand}','YES','ENTER',0.30,true ,true ,false),
+      (7002,'s_single','${noBand}' ,'NO' ,'ENTER',0.20,true ,false,false),
+      (7003,'s_basket','${legHit}' ,'YES','ENTER',0.62,true ,true ,false),
+      (7004,'s_basket','${legMiss}','YES','ENTER',0.55,false,false,false),
+      (7005,'s_basket','${legHit}' ,'YES','ENTER',0.40,true ,true ,false),
+      (7006,'s_group' ,'${legHit}' ,'YES','ENTER',0.35,true ,true ,false);
+  `);
+
+  // A VIEW, so there is nothing to backfill and nothing frozen: ad4_70 makes
+  // these tables append-only and refused the UPDATE the first cut of this did.
+  const marked = Number((await db.query(
+    `select count(*) as n from public.v_signal_mark where strategy_id in ('s_single','s_basket','s_group')`
+  )).rows[0].n);
+  const mark = async id => (await db.query(
+    'select * from public.v_signal_mark where signal_id=$1',[id])).rows[0] || {};
+
+  // NOT ONE OF THESE SIX WAS FILLED. If the mark needed a desk, every
+  // assertion below would be null and this contract would be vacuous.
+  assert.equal(marked, 5, 'expected five markable signals - the sixth has an unsettled leg');
+
+  const one = await mark(7001);
+  assert.equal(one.mark_basis,'single_leg');
+  assert.equal(one.mark_won,true);
+  // 1 - 0.30 - (0.05 * 0.30 * 0.70)
+  assert.equal(Number(one.mark_fee_per_share),0.0105,'the venue fee is shares x 0.05 x p x (1-p)');
+  assert.equal(Number(one.mark_net_per_share),0.6895);
+
+  const two = await mark(7002);
+  assert.equal(two.mark_won,false,'a NO signal on a band that settled yes has lost');
+  assert.equal(Number(two.mark_net_per_share),-0.208,'0 - 0.20 - (0.05 * 0.20 * 0.80)');
+
+  // A COVER PAYS IF ANY LEG LANDS. Scored against its anchor band alone this
+  // would read as one win and one loss; it is one win.
+  const three = await mark(7003);
+  assert.equal(three.mark_basis,'basket_fee_inclusive');
+  assert.equal(three.mark_legs,2);
+  assert.equal(three.mark_won,true,'a two-leg cover with one leg landing has won');
+  assert.equal(Number(three.mark_fee_per_share),0,
+    's2/s6 price_at_fire is already fee-inclusive, so charging the fee again double-counts it');
+  assert.equal(Number(three.mark_net_per_share),0.38,'1 - 0.62, no second fee');
+
+  const four = await mark(7004);
+  assert.equal(four.mark_won,false);
+  assert.equal(Number(four.mark_net_per_share),-0.55,'a basket where nothing landed loses its whole stake');
+
+  assert.equal((await mark(7005)).mark_basis,undefined,
+    'a basket with a leg that has not settled was marked anyway - its outcome is not known yet');
+
+  // s8 and s9 emit one signal PER LEG at that leg's own ask, tied together by
+  // basket_group. Treating those as a summed basket would drop the fee and
+  // credit one leg with the pair's payout.
+  const six = await mark(7006);
+  assert.equal(six.mark_basis,'single_leg',
+    'a per-leg signal carrying basket_group was treated as a summed basket');
+  assert.equal(six.mark_legs,1);
+  assert.equal(Number(six.mark_fee_per_share),0.011375,'0.05 * 0.35 * 0.65');
+
+  // THE RECORD STAYS APPEND-ONLY. ad4_70 guards these tables and the mark must
+  // not need an exemption: reading it writes nothing at all.
+  // THE MARK MUST STAY OUT OF THE IMMUTABLE RECORD. ad4_70 makes these fact
+  // tables append-only, and the first cut of this froze mark_* columns onto
+  // fact_signal_outcome and backfilled them - the trigger refused the UPDATE,
+  // correctly. Derived on read it cannot drift from its formula, it needs no
+  // backfill, and correcting the formula corrects the history.
+  assert.equal(Number((await db.query(
+    `select count(*) as n from information_schema.views
+      where table_schema='public' and table_name='v_signal_mark'`)).rows[0].n), 1,
+    'v_signal_mark is not a view, so the mark is stored state that can go stale');
+  assert.equal(Number((await db.query(
+    `select count(*) as n from information_schema.columns
+      where table_schema='public' and table_name='fact_signal_outcome'
+        and column_name like 'mark\\_%'`)).rows[0].n), 0,
+    'a derived mark was frozen into the append-only record');
+
+  // AND THE BOARD REPORTS IT WITHOUT A SINGLE FILL.
+  const board = (await db.query(
+    `select strategy_id,settled_signals,correct_signals,hit_rate_pct,
+            marked_signals,return_on_stake_pct,verdict,filled_all_time
+       from v_strategy_board where strategy_id in ('s_single','s_basket','s_group')
+      order by strategy_id`)).rows;
+  const bySid = Object.fromEntries(board.map(r=>[r.strategy_id,r]));
+  assert.equal(Number(bySid.s_single.filled_all_time),0,
+    'the fixture filled one of these, so the next assertion would not prove desk-independence');
+  assert.equal(Number(bySid.s_single.settled_signals),2,'the board cannot see signals no desk filled');
+  assert.equal(Number(bySid.s_single.hit_rate_pct),50.0);
+  // stake 0.30 + 0.20 = 0.50, net 0.6895 - 0.208 = 0.4815 -> 96.3%
+  assert.equal(Number(bySid.s_single.return_on_stake_pct),96.3,
+    'return on stake is what a hit rate cannot tell you');
+  assert.match(bySid.s_single.verdict,/too few settled signals to judge/,
+    'two signals is not a record, and the verdict must say so rather than quoting a rate');
+
   await db.close();
-  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge and the book-redundancy prune');
+  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune and the desk-independent strategy mark');
 })().catch(e=>{console.error(e);process.exit(1);});

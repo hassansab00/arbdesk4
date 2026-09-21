@@ -728,6 +728,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "cities",
     "fact_signal_outcome",
     "signals",
+    "fact_band_outcome",
     "derived_forecast_skill",
     "bands",
     "book_snapshots",
@@ -1104,6 +1105,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_calibration_adjustment",
     "derived_forecast_skill"
   ],
+  "v_signal_mark": [
+    "fact_band_outcome",
+    "fact_signal_outcome",
+    "signals"
+  ],
   "v_signal_outcome": [
     "fact_band_outcome",
     "fact_signal_outcome"
@@ -1123,7 +1129,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_strategy_board": [
     "fact_signal_outcome",
-    "signals"
+    "signals",
+    "fact_band_outcome"
   ],
   "v_strategy_desk_board": [
     "paper_accounts",
