@@ -71,6 +71,23 @@ const assert = require('node:assert/strict');
     create table public.edges(edge_id bigint primary key,band_id uuid,computed_at timestamptz default now(),
       side text,tradeable boolean default false,book_snapshot_id bigint);
     create table public.live_weather(city_key text primary key,updated_at timestamptz,observed_at timestamptz);
+    -- weather_forecast_features is created by sql/ad4_24_nws_gridpoint.sql,
+    -- which this harness never applies - so a migration doing an ALTER TABLE
+    -- on it works in production and dies here. (No backticks in this block:
+    -- the whole fixture is a JS template literal, and one ends the string.)
+    -- Declared WITHOUT the two pressure columns, at the shape production had
+    -- before 20260921180000, so that migration's ALTER does real work rather
+    -- than finding them already present and proving nothing.
+    create table public.weather_forecast_features(
+      city_key text not null, for_date date not null, run_at timestamptz not null,
+      source text not null default 'api.weather.gov', lead_days int,
+      forecast_max_c numeric, forecast_min_c numeric, apparent_max_c numeric,
+      morning_temp_c numeric, morning_dewpoint_c numeric,
+      dewpoint_depression_c numeric, morning_humidity numeric,
+      cloud_mean numeric, cloud_max numeric, wind_mean numeric, wind_max numeric,
+      precip_total numeric, precip_probability numeric,
+      n_hours int, captured_at timestamptz not null default now(),
+      primary key (city_key, for_date, run_at, source));
     create table public.ingest_log(log_id bigint primary key,job text,started_at timestamptz,finished_at timestamptz,
       status text,rows_written integer,detail jsonb,rows integer,logged_at timestamptz default now());
     create table public.model_versions(version_id uuid primary key,created_at timestamptz default now());
