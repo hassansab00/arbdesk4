@@ -10,10 +10,19 @@
           "gzip_bytes": 3463670,
           "rows": 51504,
           "to": "2026-09-14"
+        },
+        {
+          "archived_at": "2026-09-21T16:32:40+00:00",
+          "archived_through": "2026-09-14T16:32:28.774965+00:00",
+          "asset": "books-2026-09-14-to-2026-09-14.csv.gz",
+          "from": "2026-09-14",
+          "gzip_bytes": 19783,
+          "rows": 313,
+          "to": "2026-09-14"
         }
       ],
       "release_tag": "books-archive",
-      "rows_archived": 51504,
+      "rows_archived": 51817,
       "table": "book_snapshots"
     },
     "edges": {
@@ -202,17 +211,17 @@
     "resolution": {
       "assets": [
         {
-          "archived_at": "2026-09-21T16:15:57+00:00",
-          "archived_through": "2026-09-18T16:14:51.142251+00:00",
+          "archived_at": "2026-09-21T16:35:05+00:00",
+          "archived_through": "2026-09-18T16:33:15.447027+00:00",
           "asset": "resolution-2026-09-15-to-2026-09-18.csv.gz",
           "from": "2026-09-15",
-          "gzip_bytes": 6301278,
-          "rows": 7247,
+          "gzip_bytes": 6399724,
+          "rows": 7355,
           "to": "2026-09-18"
         }
       ],
       "release_tag": "resolution-archive",
-      "rows_archived": 7247,
+      "rows_archived": 7355,
       "table": "paper_resolution_evidence"
     },
     "trades": {
@@ -234,5 +243,5 @@
     }
   },
   "rebuilt_from": "release assets, row counts parsed from the files themselves",
-  "updated_at": "2026-09-21T16:15:57+00:00"
+  "updated_at": "2026-09-21T16:35:05+00:00"
 }
