@@ -324,3 +324,86 @@ def test_the_desk_list_reads_the_table_not_a_view():
     accounts = code.split("resource==='accounts'")[1][:900]
     assert "from('paper_accounts')" in accounts
     assert "v_paper_desk_activity" not in accounts
+
+
+# --------------------------------------------------------------------------
+# ONE DESK'S NUMBERS ARE ONE DESK'S NUMBERS.
+# --------------------------------------------------------------------------
+
+def test_the_archive_half_of_the_history_is_scoped_to_the_selected_desk():
+    """The bug: only half the panel knew which desk it was looking at.
+
+    This component merges two sources - the repository archive and Postgres -
+    and the Postgres query has carried `.eq("account_id", account)` since the
+    day it was written. fetchArchive() read every line of every month with no
+    filter at all, and mergeTrades folded the lot in.
+
+    So every tile above the table (net P&L, gross, fees, win rate, at risk),
+    the table itself, and the city and strategy menus under it were computed
+    over EVERY desk's trades at once.
+
+    On 21 Sep 2026 all 63 archived trades belonged to "Wide edge, all US".
+    Selecting any of the other three desks therefore showed that desk's 63
+    closed trades and its -$493 as the selected desk's own record - three
+    desks that had never placed an order, each displaying a full trading
+    history.
+    """
+    src = HISTORY.read_text(encoding="utf-8")
+    assert "account_id: string | null;" in src, (
+        "the Trade type does not carry account_id, so the archive cannot be "
+        "filtered by desk even if something tried"
+    )
+    assert "t.account_id === account" in src, (
+        "the archive is merged unfiltered. Every desk's trades land in every "
+        "desk's tiles."
+    )
+    merged = src.split("mergeTrades(")[-1].split(")")[0]
+    assert "archive" not in merged, (
+        f"mergeTrades is still called on the raw archive ({merged!r}). Filter "
+        "before the merge, or the counts printed above the tiles are the whole "
+        "file's counts rather than this desk's."
+    )
+
+
+def test_the_outcome_tiles_say_which_desk_they_are_for():
+    """Four desks and one set of tiles is how the numbers got read as the
+    platform's rather than this desk's. The heading names it."""
+    assert "deskName" in HISTORY.read_text(encoding="utf-8"), (
+        "the panel does not take the desk's name, so nothing on it says whose "
+        "record is on screen"
+    )
+    assert "deskName={selected.name}" in PAGE.read_text(encoding="utf-8"), (
+        "the page knows which desk is selected and does not pass it"
+    )
+
+
+def test_archiving_a_desk_is_offered_beside_the_desk_switcher():
+    """"the archive button to hide the desks is still not present."
+
+    It was present - rendered between the pipeline status block and the manual
+    ticket form, in a row of grey helper text, after the desk controls and
+    before the tabs. For a control, being unfindable is the same as being
+    absent. The pair a person looks for is "make a desk / put this one away",
+    so they sit together.
+    """
+    src = PAGE.read_text(encoding="utf-8")
+    assert "Archive this desk" in src, "no control archives the selected desk"
+    new_desk = src.index("'New desk'")
+    archive = src.index("Archive this desk")
+    tabs = src.index("aria-label=\"Paper trade views\"")
+    assert archive < tabs, (
+        "the archive control is below the tab bar again, which is where nobody "
+        "found it"
+    )
+    assert abs(archive - new_desk) < 1400, (
+        "the archive control has drifted away from the New desk button it is "
+        "paired with"
+    )
+
+
+def test_archiving_is_reversible_from_the_page_that_offers_it():
+    """Archive that cannot be undone from the UI is a delete wearing a softer
+    word, and the standing rule on this desk is that nothing is deleted."""
+    src = PAGE.read_text(encoding="utf-8")
+    assert "p_archived:false" in src, "nothing restores an archived desk"
+    assert "Archived desks (" in src, "the restore list has no heading to find it by"
