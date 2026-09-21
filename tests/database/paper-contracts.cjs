@@ -179,6 +179,12 @@ const assert = require('node:assert/strict');
     path.resolve(__dirname,'../../sql/ad4_67_prune_exported_paper_trades.sql'),'utf8'));
   await db.exec(fs.readFileSync(
     path.resolve(__dirname,'../../sql/ad4_81_paper_desk_integrity.sql'),'utf8'));
+  // ad4_79 is the archive's half of the same bargain: the one prune that
+  // removes rows the BACKTEST reads. It went to production untested against
+  // real Postgres and could not run there at all - see the block at the end
+  // of this file.
+  await db.exec(fs.readFileSync(
+    path.resolve(__dirname,'../../sql/ad4_79_prune_book_redundancy.sql'),'utf8'));
   const uid='10000000-0000-0000-0000-000000000001', other='10000000-0000-0000-0000-000000000002';
   const band='20000000-0000-0000-0000-000000000001', market='30000000-0000-0000-0000-000000000001';
   const command='40000000-0000-0000-0000-000000000001';
@@ -1300,6 +1306,127 @@ const assert = require('node:assert/strict');
   assert.ok(String(recorded[0].detail.breaches).includes('cash_vs_ledger'),
     'the anomaly did not name what failed');
 
+  // ======================================================================
+  // THE BOOK PRUNE DECIDED TIES BY COIN FLIP.
+  //
+  // v_prunable_book_redundancy ranked with `order by observed_at desc` and
+  // nothing else. book_snapshots has 3,177 pairs of rows sharing a band_id
+  // AND an observed_at to the microsecond, so row_number() chose between
+  // them arbitrarily - differently in its two window functions, and
+  // differently again on each evaluation. The old view returned 53,915 rows
+  // where a deterministic one returns 54,222.
+  //
+  // That is not a rounding difference. The archive EXPORTS this view over
+  // many paginated requests and the prune COUNTS it again afterwards, and
+  // the whole safety of the thing rests on those two numbers matching. A set
+  // that answers differently each time it is asked is the "verified N rows
+  // but prune would delete M" failure, built in.
+  //
+  // Ties are constructed here rather than hoped for.
+  // ======================================================================
+  const pruneBand='20000000-0000-0000-0000-0000000000f1';
+  const otherBand='20000000-0000-0000-0000-0000000000f2';
+  await db.exec(`insert into public.bands(band_id,market_id,band_index,band_label,band_lo,band_hi,open_low,open_high,token_yes,token_no,condition_id)
+    values('${pruneBand}','${market}',91,'P1',1,1,false,false,'p1-yes','p1-no','p1-cond'),
+          ('${otherBand}','${market}',92,'P2',2,2,false,false,'p2-yes','p2-no','p2-cond');`);
+  // Day one: three snapshots, the last two TIED to the microsecond. Day two:
+  // two snapshots. A second band with a single old row that must survive
+  // because it is that band's newest.
+  await db.exec(`insert into public.book_snapshots(snapshot_id,band_id,observed_at) values
+     (9001,'${pruneBand}', timestamptz '2026-01-01 08:00:00+00'),
+     (9002,'${pruneBand}', timestamptz '2026-01-01 12:00:00+00'),
+     (9003,'${pruneBand}', timestamptz '2026-01-01 12:00:00+00'),
+     (9004,'${pruneBand}', timestamptz '2026-01-02 08:00:00+00'),
+     (9005,'${pruneBand}', timestamptz '2026-01-02 09:00:00+00'),
+     (9006,'${otherBand}', timestamptz '2026-01-01 08:00:00+00');`);
+
+  const prunable = async () => (await db.query(
+    `select snapshot_id from public.v_prunable_book_redundancy
+      where snapshot_id between 9001 and 9999 order by snapshot_id`)).rows.map(r=>Number(r.snapshot_id));
+
+  const firstAsk = await prunable();
+  assert.deepEqual(firstAsk, await prunable(),
+    'the view returned a different set the second time it was asked, so the count the '
+    +'archive verifies and the count the prune checks can never be relied on to agree');
+
+  // 9001 is beaten by 12:00 the same day. Exactly ONE of the tied pair goes -
+  // not both (that would lose the day's closing book) and not neither (that
+  // would keep a duplicate for ever). 9004 is beaten by 9005 the same day.
+  // 9005 is its band's newest and 9006 is its band's only row: both stay.
+  assert.deepEqual(firstAsk, [9001,9002,9004],
+    'the prunable set is not the three rows that are provably unread');
+
+  const survivingDays = `select count(distinct (band_id,(observed_at at time zone 'UTC')::date))::int as n
+                           from public.book_snapshots`;
+  const daysBefore = Number((await db.query(survivingDays)).rows[0].n);
+  const floorBefore = (await db.query(
+    'select min(observed_at) as m from public.book_snapshots')).rows[0].m;
+
+  // THE COUNT CONTRACT. A committed prune whose expected count does not match
+  // what it is about to delete must refuse, because that number is the one
+  // read back out of the uploaded archive.
+  const refused = (await db.query(
+    'select prune_book_redundancy(3,false,$1,$2) as v',
+    ['2026-06-01T00:00:00Z', 999])).rows[0].v;
+  assert.equal(refused.ok, false, 'a prune with the wrong verified count went ahead anyway');
+  assert.ok(String(refused.error).includes('row count mismatch'));
+  assert.equal(Number((await db.query(
+    'select count(*)::int as n from public.book_snapshots where snapshot_id between 9001 and 9999'
+  )).rows[0].n), 6, 'the refused prune deleted rows anyway');
+
+  // And a committed prune with no expected count at all must refuse too: that
+  // argument is the whole link between "uploaded" and "safe to delete".
+  assert.equal((await db.query(
+    'select prune_book_redundancy(3,false,$1,null) as v',['2026-06-01T00:00:00Z']
+  )).rows[0].v.ok, false, 'a committed prune ran without a verified row count');
+
+  const done = (await db.query(
+    'select prune_book_redundancy(3,false,$1,$2) as v',
+    ['2026-06-01T00:00:00Z', firstAsk.length])).rows[0].v;
+  assert.equal(done.ok, true, 'the prune refused a count it had just produced itself');
+  assert.equal(Number(done.deleted), firstAsk.length);
+
+  assert.deepEqual(
+    (await db.query(`select snapshot_id from public.book_snapshots
+       where snapshot_id between 9001 and 9999 order by snapshot_id`)).rows.map(r=>Number(r.snapshot_id)),
+    [9003,9005,9006],
+    'the prune kept a different set than the view said it would delete');
+
+  // THE BACKTEST WINDOW MUST NOT HAVE MOVED. This is the reason the prune is
+  // written this way rather than by age, and the only way to see it is to
+  // count both sides.
+  assert.equal(Number((await db.query(survivingDays)).rows[0].n), daysBefore,
+    'a band-day lost its last row, so min(observed_at) and the backtest window moved');
+  assert.deepEqual((await db.query(
+    'select min(observed_at) as m from public.book_snapshots')).rows[0].m, floorBefore,
+    'the oldest snapshot on the desk was pruned, which shortens every backtest');
+  assert.equal(Number(done.band_days_after), Number(done.band_days_before),
+    'the function reported losing band-days and committed anyway');
+
+  // Running it again finds nothing: what survives is not redundant.
+  assert.equal(Number((await db.query(
+    'select prune_book_redundancy(3,false,$1,0) as v',['2026-06-01T00:00:00Z']
+  )).rows[0].v.deleted), 0, 'a second prune of the same window still found rows to delete');
+
+  // AND IT KEEPS THE FULL-RESOLUTION WINDOW. p_before is what protects the
+  // monitor's chart, so the same redundant pair must be untouchable inside
+  // the window and prunable outside it. Asserting only the first half would
+  // pass just as well if the pair were not redundant at all.
+  await db.exec(`insert into public.book_snapshots(snapshot_id,band_id,observed_at) values
+     (9101,'${pruneBand}', timestamptz '2026-08-01 08:00:00+00'),
+     (9102,'${pruneBand}', timestamptz '2026-08-01 09:00:00+00');`);
+  const offered = async (before) => {
+    const v = (await db.query('select prune_book_redundancy(3,true,$1,null) as v',[before])).rows[0].v;
+    // The zero case returns early and says `deleted`; the dry run says
+    // `would_delete`. Both mean "this many rows would go".
+    return Number(v.would_delete ?? v.deleted);
+  };
+  assert.equal(await offered('2026-06-01T00:00:00Z'), 0,
+    'a row inside the full-resolution window was offered up for deletion');
+  assert.equal(await offered('2026-09-01T00:00:00Z'), 1,
+    'the same pair was not prunable once outside the window either, so the previous '
+    +'assertion proved nothing about what the window protects');
+
   await db.close();
-  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits and the paper_trades bridge');
+  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge and the book-redundancy prune');
 })().catch(e=>{console.error(e);process.exit(1);});

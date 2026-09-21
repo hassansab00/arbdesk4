@@ -61,6 +61,7 @@ import io
 import json
 import os
 import sys
+import traceback
 
 import requests
 
@@ -490,10 +491,41 @@ def main():
 
     names = sorted(TABLES) if args.table in ("all", "both") else [args.table]
     worst = 0
+    failed = []
     for name in names:
         print(f"\n=== {name} ===")
-        rc = run_one(TABLES[name], name, args)
+        # ONE TABLE MUST NOT COST THE OTHER SIX THEIR RUN.
+        #
+        # run_one returns an rc for every refusal it anticipates - a failed
+        # verify, a count mismatch, a stale feature cache - and main took
+        # max() of those, so a refusal on one table never stopped the rest.
+        # An EXCEPTION was a different story: it unwound straight through
+        # this loop to sys.exit, and whatever had not run yet did not run.
+        #
+        # On 21 Sep prune_book_redundancy raised HTTP 500 (statement timeout)
+        # and `books` sorts first of seven, so forecasts, observations,
+        # research, resolution and trades were never attempted - on a
+        # database already at 111% of its tier. The run before that had
+        # archived five tables; this one archived none, and the only
+        # difference was which table happened to fail.
+        #
+        # An archive is seven independent jobs that share a script. They fail
+        # independently now, and the exit code still carries the worst of
+        # them, so CI stays red until the broken one is fixed.
+        try:
+            rc = run_one(TABLES[name], name, args)
+        except Exception as e:                       # noqa: BLE001 - see above
+            traceback.print_exc()
+            print(f"{name}: FAILED with {type(e).__name__}: {e}. "
+                  f"Continuing with the remaining tables.", file=sys.stderr)
+            log_run(f"archive_{name}", "attention", 0,
+                    {"error": f"{type(e).__name__}: {e}"[:500]})
+            failed.append(name)
+            rc = 1
         worst = max(worst, rc)
+
+    if failed:
+        print(f"\ntables that failed: {', '.join(failed)}", file=sys.stderr)
     return worst
 
 

@@ -180,48 +180,61 @@ def test_the_exported_columns_exist_on_whatever_is_read(name):
         assert col in view, f"{source} does not select {col}, so the export would 400"
 
 
-def test_the_book_view_protects_both_rows_a_reader_would_ask_for():
-    """The invariant the whole design rests on, and the one a mutation walked
-    straight through until this existed.
+def test_the_book_view_is_executed_as_a_contract_not_grepped_as_a_string():
+    """The invariant the whole design rests on, and where it is now proven.
 
     book_snapshots could not be pruned by age: scripts/backtest/runner.py asks
     for the newest book per band at an arbitrary as_of, and v_backtest_window
     bounds every backtest by min(observed_at) - so an age window silently
     shortens what can be backtested. What is safe to remove is the intra-day
-    redundancy, and only because TWO rows are held back:
+    redundancy, and only because each band-day keeps its CLOSING book.
 
-        rn_in_day  > 1    each band-day keeps its CLOSING book, so every
-                          band-day that ever existed still has a row and
-                          min(observed_at) cannot move
-        rn_in_band > 1    each band keeps its NEWEST book at any age, which
-                          is what v_latest_book reads
+    THIS TEST USED TO READ THE PREDICATE AS TEXT. It asserted the string
+    "rn_in_day" appeared with "> 1" after it, and said so in its own docstring:
+    a structural check, because "the view lives in sql/ and the PGlite harness
+    applies only supabase/migrations".
 
-    Drop either and the view starts offering rows a live reader needs. Verified
-    against the live table before anything was removed: 40,986 rows prunable,
-    band-days 26,513 before and after, min(observed_at) identical to the
-    microsecond.
+    That was true of the harness and is no longer. ad4_79 is applied there now
+    and the protection is asserted by running it against real Postgres, on
+    constructed data including the tied timestamps this table actually
+    contains - every band-day still represented, min(observed_at) unmoved, the
+    prune deleting exactly the set the view offered.
 
-    This is a STRUCTURAL check - it reads the predicate rather than executing
-    it, because the view lives in sql/ and the PGlite harness applies only
-    supabase/migrations. It is enough to catch either guard being removed,
-    which is the failure that actually happened.
+    Which is the point: the string check would have passed happily on the
+    version of this view that could not run in production at all, and on the
+    version whose two window functions disagreed with each other about 307
+    tied rows. It tested that the author had typed a word.
+
+    What is left here is the thing this FILE is about - that the dataset reads
+    from the relation the prune deletes from - asserted by calling the export
+    rather than by reading the spec.
     """
-    sql = (ROOT_SQL / "ad4_79_prune_book_redundancy.sql").read_text(encoding="utf-8")
-    view = sql[sql.index("create or replace view v_prunable_book_redundancy"):
-               sql.index("comment on view")]
-    predicate = view[view.rindex("where"):]
+    assert ao.TABLES["books"]["read_from"] == "v_prunable_book_redundancy"
 
-    assert "rn_in_day" in predicate and "> 1" in predicate.split("rn_in_day")[1][:12], (
-        "the view no longer holds back each band-day's closing book - min(observed_at) "
-        "and the backtest window will move the first time this prunes"
+    harness = (Path(__file__).resolve().parents[1]
+               / "tests" / "database" / "paper-contracts.cjs").read_text(encoding="utf-8")
+    assert "ad4_79_prune_book_redundancy.sql" in harness, (
+        "the book prune is no longer applied in the database harness, so nothing "
+        "executes it - put the structural check back if this is deliberate"
     )
-    assert "rn_in_band" in predicate and "> 1" in predicate.split("rn_in_band")[1][:12], (
-        "the view no longer holds back each band's newest snapshot, which v_latest_book "
-        "reads - a band whose collector stopped would lose its last known book"
+    assert "prune_book_redundancy(" in harness, (
+        "the harness applies ad4_79 but never calls it, which tests that a file parses"
     )
-    assert " and " in predicate, (
-        "the two protections must BOTH apply; either one alone leaves a live reader's "
-        "row in the prunable set"
+
+
+def test_the_book_export_and_the_book_prune_touch_the_same_relation(monkeypatch):
+    """Both halves of the count contract, watched rather than declared."""
+    seen = _record_reads(monkeypatch)
+    ao.export_cold(ao.TABLES["books"], _cutoff())
+    assert set(seen) == {"v_prunable_book_redundancy"}, (
+        f"the export read {set(seen)}, so the rows uploaded are not the rows "
+        "prune_book_redundancy counts - which is how the resolution archive broke"
+    )
+
+    sql = (ROOT_SQL / "ad4_79_prune_book_redundancy.sql").read_text(encoding="utf-8")
+    body = sql[sql.index("create or replace function public.prune_book_redundancy"):]
+    assert "v_prunable_book_redundancy" in body, (
+        "the prune no longer reads the view the archive exports"
     )
 
 
