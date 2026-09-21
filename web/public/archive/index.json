@@ -1,5 +1,21 @@
 {
   "datasets": {
+    "books": {
+      "assets": [
+        {
+          "archived_at": "2026-09-21T15:13:56+00:00",
+          "archived_through": "2026-09-14T15:12:52.744595+00:00",
+          "asset": "books-2026-08-23-to-2026-09-14.csv.gz",
+          "from": "2026-08-23",
+          "gzip_bytes": 3900262,
+          "rows": 58073,
+          "to": "2026-09-14"
+        }
+      ],
+      "release_tag": "books-archive",
+      "rows_archived": 58073,
+      "table": "book_snapshots"
+    },
     "edges": {
       "assets": [
         {
@@ -132,10 +148,19 @@
           "gzip_bytes": 14775,
           "rows": 1496,
           "to": "2026-06-23"
+        },
+        {
+          "archived_at": "2026-09-21T15:14:49+00:00",
+          "archived_through": "2026-06-23T15:14:23.150155+00:00",
+          "asset": "observations-2026-06-23-to-2026-06-23.csv.gz",
+          "from": "2026-06-23",
+          "gzip_bytes": 2064,
+          "rows": 102,
+          "to": "2026-06-23"
         }
       ],
       "release_tag": "observations-archive",
-      "rows_archived": 414753,
+      "rows_archived": 414855,
       "table": "weather_observations"
     },
     "research": {
@@ -174,6 +199,22 @@
       "rows_archived": 103836,
       "table": "research_captures"
     },
+    "resolution": {
+      "assets": [
+        {
+          "archived_at": "2026-09-21T15:16:21+00:00",
+          "archived_through": "2026-09-18T15:14:52.674245+00:00",
+          "asset": "resolution-2026-09-15-to-2026-09-18.csv.gz",
+          "from": "2026-09-15",
+          "gzip_bytes": 5997367,
+          "rows": 6894,
+          "to": "2026-09-18"
+        }
+      ],
+      "release_tag": "resolution-archive",
+      "rows_archived": 6894,
+      "table": "paper_resolution_evidence"
+    },
     "trades": {
       "assets": [
         {
@@ -193,5 +234,5 @@
     }
   },
   "rebuilt_from": "release assets, row counts parsed from the files themselves",
-  "updated_at": "2026-09-21T13:17:00+00:00"
+  "updated_at": "2026-09-21T15:16:21+00:00"
 }
