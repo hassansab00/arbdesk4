@@ -112,6 +112,18 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # `git add <dir>` is FATAL under `bash -e` when the directory does
+          # not exist - `fatal: pathspec 'data/archive' did not match any
+          # files`, exit 128 - and data/archive does not exist until something
+          # writes into it. Run 15 died there before the prune, on a step whose
+          # whole job is "commit whatever was produced".
+          #
+          # mkdir -p, not a git flag: `git add --ignore-unmatch` is not a
+          # thing (that is `git rm`), and it exits 129 telling you so. An
+          # existing empty directory adds nothing and exits 0, which is the
+          # behaviour wanted on a run that produced no files. Checked both
+          # ways against a real repository rather than assumed.
+          mkdir -p data/archive
           git add data/archive web/public/archive/index.json
           if git diff --staged --quiet; then
             echo "nothing exported this run"
@@ -159,6 +171,18 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # `git add <dir>` is FATAL under `bash -e` when the directory does
+          # not exist - `fatal: pathspec 'data/archive' did not match any
+          # files`, exit 128 - and data/archive does not exist until something
+          # writes into it. Run 15 died there before the prune, on a step whose
+          # whole job is "commit whatever was produced".
+          #
+          # mkdir -p, not a git flag: `git add --ignore-unmatch` is not a
+          # thing (that is `git rm`), and it exits 129 telling you so. An
+          # existing empty directory adds nothing and exits 0, which is the
+          # behaviour wanted on a run that produced no files. Checked both
+          # ways against a real repository rather than assumed.
+          mkdir -p data/archive
           git add data/archive web/public/archive/index.json
           if git diff --staged --quiet; then
             echo "index unchanged - nothing was archived this run"
