@@ -640,12 +640,18 @@ def pull_releases(args):
     pulled, skipped, missing = 0, 0, []
     for name in sorted(TABLES):
         spec = TABLES[name]
-        try:
-            rel = gh(args.repo, token, "GET", f"/releases/tags/{spec['tag']}")
-        except Exception as e:                       # noqa: BLE001
-            print(f"{name}: no release {spec['tag']} ({e})")
+        # gh() HANDS BACK A RAW Response, NOT PARSED JSON - ensure_release
+        # checks .status_code and calls .json(), and the first draft of this
+        # function did neither. A missing release came back as a 404 Response
+        # rather than an exception, the try/except never fired, and the run
+        # died on `'Response' object has no attribute 'get'` before a single
+        # byte was pulled.
+        r = gh(args.repo, token, "GET", f"/releases/tags/{spec['tag']}")
+        if r.status_code != 200:
+            print(f"{name}: no release {spec['tag']} (HTTP {r.status_code})")
             missing.append(name)
             continue
+        rel = r.json()
         for asset in rel.get("assets", []):
             path = repo_archive_path(name, asset["name"])
             if os.path.exists(path) and os.path.getsize(path) == asset.get("size"):
