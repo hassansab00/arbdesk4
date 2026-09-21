@@ -33,38 +33,63 @@ def _workflow():
     return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
 
 
-def _run_step():
+def _archive_steps():
+    """The archive runs in TWO steps now, with a commit between them.
+
+    Export writes data/archive and deletes nothing; the commit pushes it; the
+    prune then deletes only what is already in HEAD. So "does a cron run
+    actually prune" is no longer a flag on one command - it is whether the
+    prune step runs at all.
+    """
     job = _workflow()["jobs"]["archive"]
     steps = [s for s in job["steps"] if "archive_observations.py" in str(s.get("run", ""))]
-    assert len(steps) == 1, "expected exactly one step that runs the archive"
-    return steps[0]["run"]
+    assert len(steps) == 2, f"expected an export step and a prune step, got {len(steps)}"
+    export = next(s for s in steps if "--export-only" in s["run"])
+    prune = next(s for s in steps if "--prune-only" in s["run"])
+    return export, prune
+
+
+def _run_step():
+    """Everything the archive script is invoked with, both phases."""
+    export, prune = _archive_steps()
+    return export["run"] + "\n" + prune["run"]
+
+
+def _prune_gate():
+    _export, prune = _archive_steps()
+    gate = str(prune.get("if", ""))
+    assert gate, "the prune step is unconditional, so a manual dry run would delete rows"
+    return gate
 
 
 # --- the fault that made the whole job a no-op -----------------------------
 
-def test_a_scheduled_run_passes_commit():
+def test_a_scheduled_run_actually_prunes():
     """`github.event.inputs.commit == 'true'` is FALSE on a cron event, because
-    the inputs object does not exist there. Gating --commit on it alone means
-    the scheduled run archives nothing, for ever, silently."""
-    run = _run_step()
-    assert "--commit" in run
-    flag = re.search(r"\$\{\{[^}]*--commit[^}]*\}\}", run)
-    assert flag, "--commit must be inside the conditional expression"
-    expr = flag.group(0)
-    assert "github.event.inputs.commit == 'true'" not in expr or "event_name" in expr, (
-        "the commit flag is gated only on a dispatch input, so a scheduled run "
-        "can never prune - the whole job becomes a green no-op")
-    assert "github.event_name" in expr, (
-        "nothing in the flag distinguishes a cron fire from a manual dry run")
+    the inputs object does not exist there. Gating the prune on that alone
+    means the scheduled run archives nothing, for ever, silently - which is
+    what it did for its first nine runs."""
+    gate = _prune_gate()
+    assert "github.event_name" in gate, (
+        "nothing in the prune's condition distinguishes a cron fire from a manual "
+        "dry run, so it is gated on an input that does not exist on a schedule")
+    assert "workflow_dispatch" in gate
 
 
 def test_a_manual_run_can_still_be_a_dry_run():
     """Inverting the default must not remove the safe way to try a change."""
     inputs = _workflow()[True]["workflow_dispatch"]["inputs"]
     assert inputs["commit"]["type"] == "boolean"
-    expr = re.search(r"\$\{\{[^}]*--commit[^}]*\}\}", _run_step()).group(0)
-    assert "github.event.inputs.commit == 'true'" in expr, (
-        "unticking the box must still produce a dry run")
+    assert "github.event.inputs.commit == 'true'" in _prune_gate(), (
+        "unticking the box must still skip the prune")
+
+
+def test_the_export_is_never_gated_off():
+    """Writing files into the repository is not the destructive half, and a
+    dry run that skips it cannot show you what WOULD be archived."""
+    export, _prune = _archive_steps()
+    assert not str(export.get("if", "")), (
+        "the export is conditional, so a dry run produces no files to inspect")
 
 
 def test_it_is_scheduled_often_enough_to_matter():

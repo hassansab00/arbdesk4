@@ -708,7 +708,7 @@ def test_the_archive_name_comes_from_the_min_and_max_seen():
 
     import archive_observations as ao
     assert "if lo is None or v < lo" in inspect.getsource(ao.export_cold)
-    body = inspect.getsource(ao.run_one)
+    body = inspect.getsource(ao.export_one)
     assert "{str(lo)[:10]}-to-{str(hi)[:10]}" in body
     assert "rows[0]['valid_at']" not in body
 
@@ -741,8 +741,11 @@ def test_the_prune_is_given_the_exact_instant_that_was_exported():
     import inspect
 
     import archive_observations as ao
-    # main() dispatches per table; the four steps live in run_one().
-    body = inspect.getsource(ao.run_one)
+    # main() dispatches per table; export_one exports and prune_one deletes,
+    # and the cutoff has to survive the gap between them - it is carried in
+    # the pending record rather than recomputed, which is the same bug the
+    # original ordering had, now with a commit in the middle of it.
+    body = inspect.getsource(ao.export_one) + inspect.getsource(ao.prune_one)
     assert '"p_before": cutoff.isoformat()' in body
     assert '{**prune_args, "p_dry_run": True}' in body
     assert '{**prune_args, "p_dry_run": False}' in body
@@ -752,7 +755,7 @@ def test_a_refused_prune_fails_the_job():
     import inspect
 
     import archive_observations as ao
-    assert "PRUNE REFUSED" in inspect.getsource(ao.run_one)
+    assert "PRUNE REFUSED" in inspect.getsource(ao.prune_one)
 
 
 def test_running_both_tables_reports_the_worst_exit_code():

@@ -404,6 +404,70 @@ def export_cold(spec, cutoff):
     return gzip.compress(buf.getvalue().encode(), 9), n, lo, hi
 
 
+REPO_ARCHIVE = "data/archive"
+PENDING = os.path.join(REPO_ARCHIVE, ".pending.json")
+
+
+def _root():
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def repo_archive_path(name, asset_name):
+    """Where a dataset's archive file lives IN THE REPOSITORY.
+
+    data/archive/<dataset>/<range>.csv.gz - committed, pushed, clonable, and
+    visible on GitHub without a token or an API call.
+
+    A GitHub Release is attached to a repository; it is not IN it. You cannot
+    clone it, grep it, or see it in the tree, and reading one back needs the
+    API and a token. Every row this desk has ever archived went there and
+    nowhere else, so the only copy of thirteen months of observations lived
+    somewhere the repository could not see. That is the difference between
+    data you own and data you have to ask for.
+    """
+    return os.path.join(_root(), REPO_ARCHIVE, name, asset_name)
+
+
+def write_repo_archive(name, asset_name, blob):
+    path = repo_archive_path(name, asset_name)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as fh:
+        fh.write(blob)
+    return path
+
+
+def verify_repo_archive(path, expect_rows):
+    """Read the file back OFF DISK and count what is in it.
+
+    This is the gate the prune opens on, and it is deliberately not the blob
+    still in memory: the question is whether the bytes that reached the
+    filesystem - and by the time the prune runs, the bytes that reached the
+    repository - decompress and parse into the rows we are about to delete.
+    """
+    try:
+        with open(path, "rb") as fh:
+            got = count_rows(fh.read())
+    except (OSError, ValueError, EOFError) as e:
+        print(f"cannot read back {path}: {e}", file=sys.stderr)
+        return 0, False
+    return got, got == expect_rows
+
+
+def load_pending():
+    try:
+        with open(os.path.join(_root(), PENDING), encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_pending(pending):
+    path = os.path.join(_root(), PENDING)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(pending, fh, indent=2, sort_keys=True)
+
+
 def count_rows(blob):
     """Rows in a gzipped CSV, header excluded. Used to verify a round trip.
 
@@ -483,7 +547,27 @@ def main():
     # saved workflow_dispatch and anything scripted against it still send it.
     ap.add_argument("--table", choices=sorted(TABLES) + ["all", "both"], default="all",
                     help="which archive to run (default: all)")
+    # THE TWO PHASES, AND WHY THEY ARE TWO.
+    #
+    # Between them the workflow commits and pushes data/archive, so the rows
+    # are in the repository before the database is told to drop them. Run as
+    # one step, a job that dies after the delete and before the commit loses
+    # the only copy - which is not hypothetical: the index was written onto
+    # the runner and destroyed with it six runs in a row.
+    ap.add_argument("--export-only", action="store_true",
+                    help="write the archive files into the repo and stop (no delete)")
+    ap.add_argument("--prune-only", action="store_true",
+                    help="delete only rows whose archive file is already committed")
+    ap.add_argument("--pull-releases", action="store_true",
+                    help="one-time: copy existing Release assets into data/archive")
     args = ap.parse_args()
+
+    if args.export_only and args.prune_only:
+        print("--export-only and --prune-only are the two halves; pass one", file=sys.stderr)
+        return 1
+
+    if args.pull_releases:
+        return pull_releases(args)
 
     if args.keep_days is not None and args.keep_days < 1:
         print("--keep-days must be at least 1", file=sys.stderr)
@@ -513,7 +597,12 @@ def main():
         # independently now, and the exit code still carries the worst of
         # them, so CI stays red until the broken one is fixed.
         try:
-            rc = run_one(TABLES[name], name, args)
+            if args.export_only:
+                rc = export_one(TABLES[name], name, args)
+            elif args.prune_only:
+                rc = prune_one(TABLES[name], name, args)
+            else:
+                rc = run_one(TABLES[name], name, args)
         except Exception as e:                       # noqa: BLE001 - see above
             traceback.print_exc()
             print(f"{name}: FAILED with {type(e).__name__}: {e}. "
@@ -529,8 +618,75 @@ def main():
     return worst
 
 
-def run_one(spec, name, args):
-    """One table, the same four steps: cache, export, verify, prune."""
+def pull_releases(args):
+    """Copy every asset already in a Release into data/archive. Run once.
+
+    658,993 rows were archived before the repository held any of them. They
+    are not lost - each one is a Release asset with a recorded sha256 - but
+    they are reachable only through the API, with a token, which is not what
+    owning your data looks like. This walks the Releases and writes the files
+    into the tree so the back-history sits beside everything written from now
+    on.
+
+    Idempotent: an asset already on disk with the right byte count is skipped,
+    so it can be re-run after a partial download without re-fetching 3 MB of
+    observations.
+    """
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if not token or not args.repo:
+        print("GITHUB_TOKEN and GITHUB_REPOSITORY are required.", file=sys.stderr)
+        return 1
+
+    pulled, skipped, missing = 0, 0, []
+    for name in sorted(TABLES):
+        spec = TABLES[name]
+        try:
+            rel = gh(args.repo, token, "GET", f"/releases/tags/{spec['tag']}")
+        except Exception as e:                       # noqa: BLE001
+            print(f"{name}: no release {spec['tag']} ({e})")
+            missing.append(name)
+            continue
+        for asset in rel.get("assets", []):
+            path = repo_archive_path(name, asset["name"])
+            if os.path.exists(path) and os.path.getsize(path) == asset.get("size"):
+                skipped += 1
+                continue
+            r = requests.get(asset["url"],
+                             headers={"Authorization": f"Bearer {token}",
+                                      "Accept": "application/octet-stream"},
+                             timeout=600)
+            r.raise_for_status()
+            # Count before writing: a truncated download must not land in the
+            # repository looking like an archive.
+            rows = count_rows(r.content)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as fh:
+                fh.write(r.content)
+            print(f"  {name}/{asset['name']}  {rows:,} rows  {len(r.content)/1e6:.2f} MB")
+            pulled += 1
+
+    print(f"\npulled {pulled} asset(s) into {REPO_ARCHIVE}, {skipped} already present")
+    if missing:
+        print("no release yet for:", ", ".join(missing))
+    log_run("archive_pull_releases", "ok", pulled,
+            {"pulled": pulled, "skipped": skipped, "no_release": missing})
+    return 0
+
+
+def export_one(spec, name, args):
+    """Export this table's cold rows to a FILE IN THE REPOSITORY. Delete nothing.
+
+    Phase one of two. The prune is a separate call, and between them the
+    workflow commits and pushes what this wrote - so by the time anything is
+    removed from Postgres the rows are in git, on GitHub, in the clone on
+    your laptop the next time you pull.
+
+    That ordering is the whole point. Before this, one process exported,
+    uploaded and deleted inside a single job: if the job died between the
+    upload and the commit, the rows were gone from the database and the only
+    record of where they went died with the runner. Which is exactly what
+    happened to the index for six consecutive runs.
+    """
     job = f"archive_{name}"
     keep_days = args.keep_days if args.keep_days is not None else spec.get("keep_days", 90)
     stamp = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=keep_days)
@@ -539,11 +695,6 @@ def run_one(spec, name, args):
     cutoff = stamp.date() if spec["cutoff_is_date"] else stamp
 
     # 1 - the cache must cover what is about to go
-    #
-    # Only for the tables whose derived rows are what survives the prune.
-    # research_captures has no derived form - the capture IS the artefact, and
-    # what survives is the Release asset - so demanding a cache refresh there
-    # would block the archive on a step that protects nothing.
     if spec.get("needs_feature_cache", True):
         try:
             refresh_feature_cache()
@@ -560,95 +711,143 @@ def run_one(spec, name, args):
         print(f"nothing older than {cutoff} - nothing to archive.")
         log_run(job, "ok", 0, {"keep_days": keep_days})
         return 0
-    # From the min/max seen, not from the first and last row: the export is
-    # ordered by obs_id now, which is not chronological.
-    asset_name = f"{name}-{str(lo)[:10]}-to-{str(hi)[:10]}.csv.gz"
-    print(f"{n_rows:,} rows -> {asset_name}  ({len(blob) / 1e6:.1f} MB gzipped, "
-          f"~{n_rows * spec['bytes_per_row'] / 1e6:.0f} MB in Postgres)")
 
-    # THE SAME INSTANT, both times. Letting the database recompute its own
-    # cutoff deletes the minutes that passed while this ran - unarchived.
+    asset_name = f"{name}-{str(lo)[:10]}-to-{str(hi)[:10]}.csv.gz"
+
+    # 3 - THE SAME INSTANT, both phases. Letting the database recompute its own
+    # cutoff deletes the minutes that passed while this ran - unarchived. The
+    # cutoff is carried to the prune in the pending record rather than
+    # recomputed there, which matters more now that a commit and a push happen
+    # in between.
     prune_args = {
         "p_keep_days": keep_days,
         "p_before": cutoff.isoformat(),
         "p_expected_rows": n_rows,
     }
 
-    # The database must independently agree with the exported row count before
-    # we upload anything. This catches silent PostgREST page caps and makes a
-    # partial export impossible to turn into a wider delete.
+    # The database must independently agree with the exported row count BEFORE
+    # a file claiming that range lands in the repository. This catches silent
+    # PostgREST page caps, and it is the check that stopped the resolution
+    # archive from turning a 4,540-row export into a 3,853-row delete.
     preflight = _rpc(spec["prune_rpc"], {**prune_args, "p_dry_run": True})
-    if (
-        not (preflight or {}).get("ok")
-        or preflight.get("would_delete") != n_rows
-    ):
-        print(
-            f"ARCHIVE COUNT MISMATCH: exported {n_rows:,} rows but prune "
-            f"preflight returned {preflight}. Nothing uploaded or deleted.",
-            file=sys.stderr,
-        )
-        log_run(job, "attention", n_rows, {
-            "rows": n_rows, "preflight": preflight,
-            "cutoff": cutoff.isoformat(),
-        })
-        return 1
-
-    if not args.commit:
-        print(
-            "\n--dry-run: nothing uploaded, nothing deleted."
-            f"\nprune would say: {preflight}"
-        )
-        return 0
-
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-    if not token or not args.repo:
-        print("GITHUB_TOKEN and GITHUB_REPOSITORY are required to upload.", file=sys.stderr)
-        return 1
-
-    # 3 - upload, then read it back
-    rel = ensure_release(args.repo, token, spec)
-    asset = upload(args.repo, token, rel, asset_name, blob)
-    got, ok = verify(asset, n_rows, token)
-    if not ok:
-        print(f"VERIFY FAILED: uploaded {n_rows:,} rows, read back {got:,}. "
-              f"Nothing pruned.", file=sys.stderr)
-        log_run(job, "attention", 0,
-                {"uploaded": n_rows, "read_back": got, "asset": asset_name})
-        return 1
-    print(f"verified: {got:,} rows read back from the release")
-
-    # 4 - only now, and only as far back as what was actually archived
-    prune = _rpc(spec["prune_rpc"], {**prune_args, "p_dry_run": False})
-    print(f"prune: {prune}")
-    if (
-        not (prune or {}).get("ok")
-        or prune.get("deleted") != n_rows
-    ):
-        print(f"PRUNE REFUSED OR COUNT CHANGED: {prune}", file=sys.stderr)
+    if not (preflight or {}).get("ok") or preflight.get("would_delete") != n_rows:
+        print(f"ARCHIVE COUNT MISMATCH: exported {n_rows:,} rows but prune "
+              f"preflight returned {preflight}. Nothing written or deleted.",
+              file=sys.stderr)
         log_run(job, "attention", n_rows,
-                {"asset": asset_name, "rows": n_rows, "prune": prune})
+                {"rows": n_rows, "preflight": preflight, "cutoff": cutoff.isoformat()})
         return 1
 
-    # 5 - AND SAY, IN THE REPO, THAT IT EXISTS.
-    #
-    # Everything above is correct and invisible. The rows leave Postgres, the
-    # platform stops being able to show them, and nothing anywhere tells the
-    # platform where they went - so an archive is indistinguishable from a
-    # deletion from the outside, which is exactly how it felt.
-    #
-    # web/public/archive/index.json is that record, and it is committed to the
-    # repo like the paper-trade log: the browser can fetch it with no token,
-    # so every page can say "this range lives in the archive" and offer it,
-    # and /api/archive reads the same index server-side to fetch the rows
-    # themselves out of the Release.
+    # 4 - write it into the repository, then READ IT BACK OFF DISK
+    path = write_repo_archive(name, asset_name, blob)
+    got, ok = verify_repo_archive(path, n_rows)
+    rel = os.path.relpath(path, _root())
+    if not ok:
+        print(f"VERIFY FAILED: wrote {n_rows:,} rows to {rel}, read back {got:,}. "
+              f"Nothing will be pruned.", file=sys.stderr)
+        log_run(job, "attention", 0, {"file": rel, "rows": n_rows, "read_back": got})
+        return 1
+    print(f"{n_rows:,} rows -> {rel}  ({len(blob)/1e6:.1f} MB gzipped), verified on disk")
+
     record_manifest(name, spec, asset_name, n_rows, len(blob), lo, hi, cutoff)
 
-    log_run(job, "ok", n_rows, {
-        "asset": asset_name, "rows": n_rows, "gzip_bytes": len(blob),
-        "keep_days": keep_days, "archived_through": cutoff.isoformat(),
-        "prune": prune,
-    })
+    pending = load_pending()
+    pending[name] = {
+        "file": rel, "asset": asset_name, "rows": n_rows,
+        "cutoff": prune_args["p_before"], "keep_days": keep_days,
+        "exported_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+    }
+    save_pending(pending)
     return 0
+
+
+def prune_one(spec, name, args):
+    """Delete only what is already committed, and only as much of it.
+
+    Phase two. It re-reads the archive file from the working tree - which the
+    commit step has by now pushed - and counts the rows in it. That count,
+    not the exporter's memory of it, is what the database is told to delete.
+    If the file is missing or short, nothing is deleted.
+    """
+    job = f"archive_{name}"
+    entry = load_pending().get(name)
+    if not entry:
+        print(f"no export pending for {name} - nothing to prune.")
+        return 0
+
+    path = os.path.join(_root(), entry["file"])
+    got, ok = verify_repo_archive(path, entry["rows"])
+    if not ok:
+        print(f"REFUSING TO PRUNE {name}: {entry['file']} holds {got:,} rows, "
+              f"the export recorded {entry['rows']:,}.", file=sys.stderr)
+        log_run(job, "attention", 0,
+                {"file": entry["file"], "expected": entry["rows"], "found": got})
+        return 1
+
+    committed, why = is_committed(entry["file"])
+    if not committed:
+        print(f"REFUSING TO PRUNE {name}: {entry['file']} is not committed ({why}). "
+              f"The rows would leave the database with no copy in the repository.",
+              file=sys.stderr)
+        log_run(job, "attention", 0, {"file": entry["file"], "not_committed": why})
+        return 1
+
+    cutoff = entry["cutoff"]
+    prune_args = {"p_keep_days": entry["keep_days"], "p_before": cutoff,
+                  "p_expected_rows": got}
+    prune = _rpc(spec["prune_rpc"], {**prune_args, "p_dry_run": False})
+    print(f"prune: {prune}")
+    if not (prune or {}).get("ok") or prune.get("deleted") != got:
+        print(f"PRUNE REFUSED OR COUNT CHANGED: {prune}", file=sys.stderr)
+        log_run(job, "attention", got,
+                {"file": entry["file"], "rows": got, "prune": prune})
+        return 1
+
+    log_run(job, "ok", got, {
+        "file": entry["file"], "asset": entry["asset"], "rows": got,
+        "keep_days": entry["keep_days"], "archived_through": cutoff, "prune": prune,
+    })
+    pending = load_pending()
+    pending.pop(name, None)
+    save_pending(pending)
+    return 0
+
+
+def is_committed(rel_path):
+    """Is this file in HEAD, with no unstaged change?
+
+    The prune asks git rather than trusting the phase order, because a commit
+    step that silently did nothing - a push that failed, a path that was not
+    added - looks exactly like a successful one from here.
+    """
+    import subprocess
+    try:
+        r = subprocess.run(["git", "cat-file", "-e", f"HEAD:{rel_path}"],
+                           cwd=_root(), capture_output=True)
+        if r.returncode != 0:
+            return False, "not in HEAD"
+        d = subprocess.run(["git", "diff", "--quiet", "HEAD", "--", rel_path],
+                           cwd=_root(), capture_output=True)
+        if d.returncode != 0:
+            return False, "differs from HEAD"
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, f"git unavailable: {e}"
+    return True, "in HEAD"
+
+
+def run_one(spec, name, args):
+    """Export and prune in one call - the local and manual path.
+
+    The workflow does NOT use this: it runs --export-only, commits and pushes
+    the files, then runs --prune-only, so a failure between the two leaves the
+    rows in the database rather than in neither place.
+    """
+    rc = export_one(spec, name, args)
+    if rc or not args.commit:
+        if not args.commit:
+            print("\n--dry-run: exported to the repository, nothing deleted.")
+        return rc
+    return prune_one(spec, name, args)
 
 
 MANIFEST = os.path.join("web", "public", "archive", "index.json")
@@ -667,7 +866,7 @@ def record_manifest(name, spec, asset_name, rows, gzip_bytes, lo, hi, cutoff):
     second: the asset is overwritten in the Release too, so two entries would
     describe one file.
     """
-    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), MANIFEST)
+    path = os.path.join(_root(), MANIFEST)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     try:
         with open(path, encoding="utf-8") as fh:
