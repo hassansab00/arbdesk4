@@ -76,6 +76,24 @@ def basket_depth(quoted, step):
     return smallest if smallest is not None else Decimal(0)
 
 
+def plain(value):
+    """A Decimal as a person reads it, never in scientific notation.
+
+    Decimal keeps the exponent arithmetic gave it, and an f-string prints it:
+    $5 divided by a $0.001 band is Decimal('5E+3'), so the desk told Hassan
+
+        "Reaching the 5E+3-share venue minimum costs 0.4429 per share more
+         than the touch"
+        "Below the venue minimum order size: 15.39 shares against a
+         1E+2-share floor"
+
+    in the one sentence whose entire job is explaining why it would not
+    trade. `{d:f}` is fixed-point and leaves 41.67 alone; Decimal.normalize()
+    is the opposite of what is wanted here - it turns 100 INTO 1E+2.
+    """
+    return f"{value:f}" if isinstance(value, Decimal) else str(value)
+
+
 def ladder_cost(book, shares):
     """What it costs to take `shares` off this leg's ask ladder.
 
@@ -258,17 +276,17 @@ def prepare(account, signal, capture, *, now=None):
             walked.append((bid, token, limit, average, rate, book))
         if walked is None:
             raise ValueError(
-                f'Below the venue minimum order size: the whole book holds {depth} '
-                f'shares against a {floor}-share floor at any price, limited by book depth')
+                f'Below the venue minimum order size: the whole book holds {plain(depth)} '
+                f'shares against a {plain(floor)}-share floor at any price, limited by book depth')
         walked_cost = sum((avg + rate * avg * (1 - avg) for _, _, _, avg, rate, _ in walked),
                           Decimal(0))
         walked_edge = expected - walked_cost
         if walked_edge < number(policy['min_edge']):
             raise ValueError(
-                f'Reaching the {floor}-share venue minimum costs '
-                f'{(walked_cost-unit_cost).quantize(Decimal(".0001"))} per share more than '
-                f'the touch, leaving {walked_edge.quantize(Decimal(".0001"))} against a '
-                f'{number(policy["min_edge"])} policy minimum')
+                f'Reaching the {plain(floor)}-share venue minimum costs '
+                f'{plain((walked_cost-unit_cost).quantize(Decimal(".0001")))} per share more than '
+                f'the touch, leaving {plain(walked_edge.quantize(Decimal(".0001")))} against a '
+                f'{plain(number(policy["min_edge"]))} policy minimum')
         # SIZE AGAINST WHAT IS RESERVED, NOT AGAINST WHAT IT IS EXPECTED TO
         # COST. The reserve below covers the order filling entirely at its own
         # limit, because that is what a limit order can do and what the
@@ -280,15 +298,15 @@ def prepare(account, signal, capture, *, now=None):
             Decimal('.01'), rounding=ROUND_DOWN)
         if affordable < floor:
             raise ValueError(
-                f'Below the venue minimum order size: {affordable} shares affordable at '
-                f'the depth-weighted price against a {floor}-share floor, limited by '
+                f'Below the venue minimum order size: {plain(affordable)} shares affordable at '
+                f'the depth-weighted price against a {plain(floor)}-share floor, limited by '
                 'account budget')
         quoted = [(bid, token, limit, rate, book) for bid, token, limit, _, rate, book in walked]
         quantity, unit_cost, net_edge = floor, walked_cost, walked_edge
     elif quantity < floor:
         raise ValueError(
-            f'Below the venue minimum order size: {quantity} shares against a '
-            f'{floor}-share floor, limited by account budget')
+            f'Below the venue minimum order size: {plain(quantity)} shares against a '
+            f'{plain(floor)}-share floor, limited by account budget')
     legs, quotes = [], []
     for bid,token,price,rate,book in quoted:
         order={'action':'BUY','token_id':token,'shares':str(quantity),'limit_price':str(price),'share_step':str(DEFAULT_SHARE_STEP),
@@ -328,6 +346,64 @@ def prepare(account, signal, capture, *, now=None):
         'engine_version':os.environ.get('GITHUB_SHA') or os.environ.get('ARBDESK_ENGINE_VERSION','unversioned')}
 
 
+def interleave_by_strategy(signals):
+    """Round-robin across strategies inside each fired_at batch.
+
+    THE SAME STARVATION AS THE DESK LOOP, ONE LEVEL DOWN. The comment in
+    cycle() describes how one desk used to eat a global plan budget and leave
+    every later desk with nothing. That was fixed. The identical thing was
+    still happening to STRATEGIES, and it is worse because it is invisible:
+    the desk that starved looked switched off, but a starved strategy looks
+    like a strategy whose conditions are never met.
+
+    signal_engine writes every strategy in ONE batch with ONE fired_at, so
+    `order by fired_at desc, signal_id` is really `order by whatever order the
+    engine inserted them`. Measured on the 15:09:53.937872 batch - a single
+    microsecond shared by four strategies:
+
+        s1_buy_low_sell_signal   27 signals, ids 6308-6334   offered 1st
+        s3_concentration         31 signals, ids 6335-6365   offered 2nd
+        s4_tail_fade              7 signals, ids 6366-6372   offered 3rd
+        s6_anchor_insurance      29 signals, ids 6373-6401   offered 4th
+
+    The cap is ten plans per desk per cycle. s1 has twenty-seven signals ahead
+    of s3's first one, so s1 takes the whole budget before s3 is looked at -
+    every cycle, for as long as s1 keeps firing. Over thirty days:
+
+        s1   912 signals -> 395 plans
+        s3   978 signals ->   1 plan
+        s6 1,338 signals ->   1 plan
+        s5    37 signals ->   0 plans
+
+    Not because those strategies are worse. Because they are written second.
+
+    So each strategy is offered its best signal before any strategy is offered
+    its second - the same rule the desk loop already follows, for the same
+    reason. Order ACROSS batches is untouched: fresher decisions still come
+    first, because staleness is a real disqualifier and insert order is not.
+    """
+    out, batch, key = [], [], object()
+    def flush(rows):
+        queues, order = {}, []
+        for row in rows:
+            sid = row.get('strategy_id')
+            if sid not in queues:
+                queues[sid] = []
+                order.append(sid)
+            queues[sid].append(row)
+        while any(queues[s] for s in order):
+            for sid in order:
+                if queues[sid]:
+                    out.append(queues[sid].pop(0))
+    for row in signals:
+        if row.get('fired_at') != key:
+            flush(batch)
+            batch, key = [], row.get('fired_at')
+        batch.append(row)
+    flush(batch)
+    return out
+
+
 def cycle(max_plans=10, budget_seconds=90):
     from paper_worker import capture_book
     now, started, published = dt.datetime.now(dt.timezone.utc), time.monotonic(), 0
@@ -350,8 +426,9 @@ def cycle(max_plans=10, budget_seconds=90):
     accounts = rest_all('paper_accounts',{'mode':'in.(assisted,automatic)'},order='account_id')
     if not accounts:
         return done(0, 'no assisted or automatic account')
-    signals = rest_all('signals',[('action','eq.ENTER'),('fired_at','gte.'+(now-dt.timedelta(minutes=15)).isoformat()),
-        ('fired_at','lte.'+now.isoformat())],order='fired_at.desc,signal_id')
+    signals = interleave_by_strategy(rest_all('signals',
+        [('action','eq.ENTER'),('fired_at','gte.'+(now-dt.timedelta(minutes=15)).isoformat()),
+         ('fired_at','lte.'+now.isoformat())],order='fired_at.desc,signal_id'))
     enabled = {s['strategy_id'] for s in rest('strategies',{'enabled':'eq.true','select':'strategy_id'})}
     seen = set()
     def capture(order):
