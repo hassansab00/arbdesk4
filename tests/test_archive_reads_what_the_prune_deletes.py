@@ -311,3 +311,58 @@ def test_the_edge_view_protects_the_one_row_every_page_is_built_on():
         "the view no longer holds back the newest pricing of each band and side - the "
         "first prune takes every price off the board"
     )
+
+
+# --- evidence something points at is never redundancy ----------------------
+#
+# Three unindexed inbound foreign keys were found on this desk in one day, and
+# each one failed its prune the same way - 23503, the whole dataset red:
+#
+#     edges.book_snapshot_id      -> book_snapshots      (6,075 rows blocked)
+#     signals.book_snapshot_id    -> book_snapshots      (0 today, will not stay 0)
+#     paper_position_settlements  -> paper_resolution_evidence (46 blocked)
+#
+# Cascading would "fix" all three by deleting the lineage of a decision. The
+# rule instead is that a row something cites is evidence: the book a trade was
+# priced from, the proof a settlement paid out on. It is never offered.
+#
+# These read the views rather than the prune functions, because the view is
+# the half BOTH sides share - the archive exports it and the prune deletes
+# through it - so a proof excluded here cannot be exported and then orphaned.
+
+
+def _view_body(path, name):
+    sql = (ROOT_SQL / path).read_text(encoding="utf-8")
+    start = sql.index(f"create or replace view {name}")
+    return sql[start:sql.index("comment on view", start)]
+
+
+def test_the_book_view_refuses_anything_an_edge_or_signal_cites():
+    body = _view_body("ad4_79_prune_book_redundancy.sql", "v_prunable_book_redundancy")
+    for child in ("public.edges", "public.signals"):
+        assert f"from {child}" in body and "not exists" in body, (
+            f"{child} references book_snapshots with ON DELETE NO ACTION; a prune that "
+            f"does not exclude its rows raises 23503 and fails the whole dataset"
+        )
+
+
+def test_the_resolution_view_refuses_anything_a_settlement_cites():
+    body = _view_body("ad4_74_prune_resolution_evidence.sql",
+                      "v_prunable_resolution_evidence")
+    assert "paper_position_settlements" in body and "not exists" in body, (
+        "a proof a settlement paid out on would be exported and then fail to delete"
+    )
+
+
+def test_every_inbound_key_named_here_has_a_covering_index():
+    """The exclusion stops the 23503; the index stops the delete being
+    quadratic. Both are needed and they live in different files, so a prune
+    that is merely correct can still not finish."""
+    migrations = ROOT_SQL.parent / "supabase" / "migrations"
+    applied = "\n".join(p.read_text(encoding="utf-8") for p in migrations.glob("*.sql"))
+    for column in ("edges (book_snapshot_id)", "signals (book_snapshot_id)",
+                   "paper_position_settlements (proof_id)"):
+        assert column in applied, (
+            f"no index on {column} - each deleted parent row scans that table once, "
+            "which is how the book prune failed to finish inside sixty seconds"
+        )
