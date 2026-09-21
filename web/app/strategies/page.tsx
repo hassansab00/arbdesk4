@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { paperRead } from "@/lib/paperSupabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
+import { StrategyExplainer } from "@/components/StrategyExplainer";
 import { FreshnessRow } from "@/components/Provenance";
 import { fmtAge, fmtUsd } from "@/lib/format";
 import type { StrategyBoardRow, TradePlan } from "@/lib/types";
@@ -466,11 +467,21 @@ export default function StrategiesPage() {
                   )}
                   <button
                     onClick={() => setExpanded(open ? null : r.strategy_id)}
-                    className="ml-auto text-muted hover:text-text"
+                    aria-expanded={open}
+                    className={`ml-auto rounded border px-2 py-0.5 transition ${
+                      open ? "border-accent/60 text-accent" : "border-border text-muted hover:border-accent/40 hover:text-text"
+                    }`}
                   >
-                    {open ? "hide limits" : "limits"}
+                    {open ? "hide" : "how it works"}
                   </button>
                 </div>
+
+                {/* THE STRATEGY ITSELF, not its record. One worked market,
+                    eleven buckets, shared by all nine so they can be compared
+                    - and clickable, so "what happens if the day lands there"
+                    is answered by settling the position rather than by a
+                    sentence about it. */}
+                {open && <StrategyExplainer strategyId={r.strategy_id} />}
 
                 {open && (
                   <div className="grid gap-x-6 gap-y-1 border-t border-border px-3 py-2 text-[11px] sm:grid-cols-2 lg:grid-cols-4">

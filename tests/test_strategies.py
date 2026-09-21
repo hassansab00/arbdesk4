@@ -124,6 +124,78 @@ def test_s2_incomplete_basket_is_not_an_arb():
     assert [s for s in signals if s.side == "YES"] == []
 
 
+def test_s2_counts_a_dead_band_as_part_of_the_basket():
+    """The bug that stopped this strategy ever completing a basket.
+
+    A dead band is one the day has walked away from. It is priced near zero
+    and it is BUYABLE - this strategy's own docstring says so in those words:
+    "distinct from a DEAD_LOSER band which IS buyable near zero". It is also
+    `tradeable = False`, because tradeable is a statement about whether the
+    EDGE is worth taking, and the edge on a band that cannot win is not.
+
+    The code tested `tradeable`, so every basket containing a dead band was
+    declared incomplete and the scan returned nothing. On 21 Sep that was
+    every basket in the database: of 11 bands per market, 10 carried a YES
+    price and 2.9 were tradeable, and 510 of 1,021 edges in six hours were
+    blocked `dead_band`. Zero signals since it was written - not "no arb
+    found", but "never looked".
+
+    A cheap dead leg is not an obstacle to an arbitrage. It is the part that
+    makes it cheap.
+    """
+    bands = [
+        make_band("b0", yes_price=0.20),
+        make_band("b1", yes_price=0.20),
+        make_band("b2", yes_price=0.02, yes_tradeable=False, yes_block_reason="dead_band"),
+    ]
+    signals = S2CombinationArb(enabled_config("s2_combination_arb")).entry_signals(make_ctx(bands))
+    yes = [s for s in signals if s.side == "YES"]
+    assert len(yes) == 1, (
+        "a basket whose cheapest leg is a dead band was refused as incomplete, which is "
+        "every basket this venue lists"
+    )
+    assert "b2" in yes[0].payload["band_ids"], "the dead leg was dropped rather than bought"
+
+
+def test_s2_still_refuses_a_basket_whose_book_is_absent_or_stale():
+    """The other direction, so the fix is not just a looser gate.
+
+    no_book and stale_book are the only two reasons that mean the leg cannot
+    be bought at all. The guarantee rests on holding EVERY leg, so a basket
+    missing one is not riskless at any price - and unlike a dead band, there
+    is no price at which to take it.
+    """
+    for reason in ("no_book", "stale_book"):
+        bands = [
+            make_band("b0", yes_price=0.20),
+            make_band("b1", yes_price=0.20),
+            make_band("b2", yes_price=0.02, yes_tradeable=False, yes_block_reason=reason),
+        ]
+        signals = S2CombinationArb(enabled_config("s2_combination_arb")).entry_signals(make_ctx(bands))
+        assert [s for s in signals if s.side == "YES"] == [], (
+            f"a leg blocked {reason} cannot be bought, so the basket is not guaranteed"
+        )
+
+
+def test_s2_does_not_need_a_forecast_to_find_an_arb():
+    """It is the lowest-dependency strategy in the set and the gate must keep
+    it that way. A band with no model probability, no verified skill and an
+    edge flagged far_from_forecast is still a PRICE, and a price is all this
+    strategy reads."""
+    bands = [
+        make_band("b0", yes_price=0.20, model_prob_yes=None, yes_edge_net_pp=None,
+                  yes_tradeable=False, yes_block_reason="no_verified_skill"),
+        make_band("b1", yes_price=0.20, model_prob_yes=None, yes_edge_net_pp=None,
+                  yes_tradeable=False, yes_block_reason="far_from_forecast"),
+        make_band("b2", yes_price=0.20, model_prob_yes=None, yes_edge_net_pp=None,
+                  yes_tradeable=False, yes_block_reason="below_7c_yes"),
+    ]
+    signals = S2CombinationArb(enabled_config("s2_combination_arb")).entry_signals(make_ctx(bands))
+    assert len([s for s in signals if s.side == "YES"]) == 1, (
+        "forecast-quality gates closed an arbitrage that needs no forecast"
+    )
+
+
 # --------------------------------------------------------------------------
 # S3
 # --------------------------------------------------------------------------

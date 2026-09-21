@@ -160,3 +160,40 @@ def test_calibration_flags_overconfidence():
     assert math.isclose(row["avg_predicted_prob"], 0.9)
     assert row["actual_win_rate"] == 0.5
     assert row["overconfidence"] > 0.3
+
+
+def test_a_strategy_row_with_null_limits_still_builds_a_runnable_config():
+    """The strategies table is nullable and mostly null.
+
+    On 21 Sep six of the nine trading strategies carried NULL capital_cap_pct
+    and NULL max_concurrent - seeded before those columns existed and never set
+    since. dict.get(key, default) hands back the NULL rather than the default,
+    so the config arrived with capital_cap_pct None and Strategy.size() divided
+    None by 100 the first time a backtest sized anything.
+
+    signal_engine.py reads the same rows correctly, which is why the live desk
+    never saw it. The backtest is a second door onto one table and has to read
+    it the same way.
+    """
+    from backtest.runner import strategy_configs_from_rows
+    from strategies.s3_concentration import S3Concentration
+    from strategies.base import Signal
+
+    cfg = strategy_configs_from_rows([{
+        "strategy_id": "s3_concentration", "name": None, "side": None,
+        "universe": None, "regime_filter": None, "conflict_class": None,
+        "capital_cap_pct": None, "max_concurrent": None, "extra": None,
+    }])[0]
+    assert cfg.capital_cap_pct == 5.0
+    assert cfg.max_concurrent == 10
+    assert cfg.universe == ["ALL"] and cfg.regime_filter == []
+    assert cfg.name == "s3_concentration" and cfg.side == "BOTH"
+
+    # ...and the config is RUNNABLE, which is the part the None broke.
+    class Portfolio:
+        bankroll = 1000.0
+    signal = Signal(strategy_id="s3_concentration", band_id="b", side="YES", action="ENTER",
+                    reason="t", price_at_fire=0.25, prob_at_fire=0.5, edge_at_fire=0.1,
+                    suggested_shares=0.0, confidence=0.8, regime_label="SHARP",
+                    severity="high", dedupe_key="k")
+    assert S3Concentration(cfg).size(signal, Portfolio()) == 1000.0 * 0.05 / 0.25

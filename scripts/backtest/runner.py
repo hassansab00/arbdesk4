@@ -58,6 +58,35 @@ def _daily_max_observed(city_key, start, end, timezone=None):
     return out
 
 
+def strategy_configs_from_rows(rows):
+    """Turn `strategies` table rows into runnable configs.
+
+    A PRESENT KEY HOLDING NULL IS NOT A MISSING KEY, and this table is full of
+    them: capital_cap_pct, max_concurrent, regime_filter and universe are all
+    nullable, and on 21 Sep six of the nine trading strategies carried NULL for
+    the first two - seeded before the columns existed, never set since.
+
+    dict.get(key, default) returns the NULL rather than the default, so a
+    config built that way arrived with capital_cap_pct None and
+    Strategy.size() divided None by 100 the first time a backtest sized
+    anything. signal_engine.py reads the same rows as `float(r.get(...) or 5.0)`
+    and is fine, which is why only this door was broken.
+    """
+    def _or(row, key, default):
+        value = row.get(key)
+        return default if value is None else value
+
+    return [StrategyConfig(
+        strategy_id=r["strategy_id"], name=_or(r, "name", r["strategy_id"]),
+        side=_or(r, "side", "BOTH"), universe=_or(r, "universe", ["ALL"]),
+        regime_filter=_or(r, "regime_filter", []),
+        conflict_class=_or(r, "conflict_class", "default"),
+        capital_cap_pct=float(_or(r, "capital_cap_pct", 5.0)),
+        max_concurrent=int(_or(r, "max_concurrent", 10)),
+        enabled=True, extra=_or(r, "extra", {}),
+    ) for r in rows]
+
+
 def run(run_id):
     run_row = _load_run(run_id)
     params = run_row.get("params") or {}
@@ -71,13 +100,7 @@ def run(run_id):
     evaluation_lead_days = params.get("evaluation_lead_days", 1)
     max_slippage = ((params.get("cost_params") or {}).get("max_slippage_c")) or 0.05
 
-    strategy_rows = params.get("strategies") or []
-    strategy_configs = [StrategyConfig(
-        strategy_id=s["strategy_id"], name=s.get("name", s["strategy_id"]), side=s.get("side", "BOTH"),
-        universe=s.get("universe", ["ALL"]), regime_filter=s.get("regime_filter", []),
-        conflict_class=s.get("conflict_class", "default"), capital_cap_pct=s.get("capital_cap_pct", 5.0),
-        max_concurrent=s.get("max_concurrent", 10), enabled=True, extra=s.get("extra", {}),
-    ) for s in strategy_rows]
+    strategy_configs = strategy_configs_from_rows(params.get("strategies") or [])
 
     all_trades, all_signals, all_conflicts = [], [], []
     history_cache = {}
