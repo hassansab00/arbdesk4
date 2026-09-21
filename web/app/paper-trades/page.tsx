@@ -185,6 +185,22 @@ export default function PaperTradesPage() {
       {!!accounts.data?.length&&<button type="button" disabled={busy} className={button}
         onClick={()=>{setShowNewDesk(v=>!v);setNewDesk(BLANK_DESK);}}>
         {showNewDesk?'Cancel':'New desk'}</button>}
+      {/* ARCHIVE BELONGS BESIDE THE SWITCHER, NOT HALFWAY DOWN THE PAGE.
+          It was rendered between the pipeline status block and the manual
+          ticket form - after the desk controls, before the tabs, in a row of
+          grey helper text. It works; nobody could find it, which for a
+          control is the same thing as it not being there. The pair a person
+          is looking for is "make a desk / put this one away", so they sit
+          together. */}
+      {selected&&<button type="button" disabled={busy} className={button}
+        title={`Archive "${selected.name}" — off the list, stopped, nothing deleted`}
+        onClick={async()=>{
+          const open=positions.data?.filter(x=>Number(x.shares)>0).length??0;
+          const warn=open?`\n\n${open} position${open===1?' is':'s are'} still open. Archiving does not close ${open===1?'it':'them'} — ${open===1?'it':'they'} will settle as normal and stay on the record.`:'';
+          if(!confirm(`Archive "${selected.name}"?\n\nIt comes off the desk list and stops trading. Nothing is deleted: every trade, order and activity row stays, and you can restore it below.${warn}`))return;
+          const done=await act(()=>paperAction('archive_desk',{p_account_id:selected.account_id,p_archived:true}));
+          if(done){setAccount('');archived.refresh();}
+        }}>Archive this desk</button>}
       {accounts.data&&accounts.data.length>1&&<span className="text-xs text-muted">
         {accounts.data.length} desks · each runs independently</span>}</div>
 
@@ -283,26 +299,6 @@ export default function PaperTradesPage() {
           openSettings={()=>setTab('Settings')}/>
         <PaperPipelineStatus refresh={refresh}/>
 
-        {/* REMOVE A DESK WITHOUT LOSING IT. The switcher gets unreadable
-            quickly when a setting is tried and abandoned, which is exactly
-            what several desks are for - but a desk's trades are evidence
-            about a strategy and outlive any interest in the desk. So this
-            ARCHIVES: off the list, stopped, every row kept, and reversible
-            from the section below. paper_desk_archive force-pauses on the way
-            out, so an archived desk cannot act even if something later flips
-            its mode. */}
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <button type="button" disabled={busy} className={button}
-            onClick={async()=>{
-              const open=positions.data?.filter(x=>Number(x.shares)>0).length??0;
-              const warn=open?`\n\n${open} position${open===1?' is':'s are'} still open. Archiving does not close ${open===1?'it':'them'} — ${open===1?'it':'they'} will settle as normal and stay on the record.`:'';
-              if(!confirm(`Archive "${selected.name}"?\n\nIt comes off the desk list and stops trading. Nothing is deleted: every trade, order and activity row stays, and you can restore it below.${warn}`))return;
-              const done=await act(()=>paperAction('archive_desk',{p_account_id:selected.account_id,p_archived:true}));
-              if(done){setAccount('');archived.refresh();}
-            }}>Archive desk</button>
-          <Hint text={H.archive}/>
-          <span className="text-xs text-muted">Off the list, stopped, nothing deleted.</span>
-        </div>
         <details className={card} open={selected.mode==='manual'}>
           <summary className="cursor-pointer text-sm font-semibold">Manual paper ticket
             <span className="ml-2 font-normal text-muted">— place one order by hand, bypassing strategies</span></summary>
@@ -316,7 +312,7 @@ export default function PaperTradesPage() {
         </form>
         </details>
         <nav aria-label="Paper trade views" className="flex flex-wrap gap-2">{['Trades','Orders','Positions','Activity','Settings'].map(t=><button key={t} className={`${button} ${tab===t?'text-accent border-accent':''}`} onClick={()=>setTab(t)}>{t}</button>)}</nav>
-        {tab==='Trades'&&<PaperTradeHistory account={account} bandName={name}/>}
+        {tab==='Trades'&&<PaperTradeHistory account={account} deskName={selected.name} bandName={name}/>}
         {tab==='Orders'&&<div className={`${card} overflow-x-auto`}><table className="w-full text-left text-sm"><thead className="text-muted"><tr>{['Contract','Order','Requested','Limit','Status',''].map((x,i)=><th className="p-2" key={i}>{x}</th>)}</tr></thead><tbody>{orders.data?.map(o=><tr key={o.order_id} className="border-t border-border"><td className="p-2">{name(o.band_id)}</td><td className="p-2">{o.origin} · {o.action} {o.side}</td><td className="p-2">{Number(o.shares).toLocaleString(undefined,{maximumFractionDigits:2})}</td><td className="p-2">{fmtPrice(Number(o.limit_price))}</td><td className="p-2"><div>{o.status}</div><div className="text-xs text-muted">{o.reason}</div></td><td className="p-2">{o.status==='queued'&&<button disabled={busy} className={button} onClick={()=>act(()=>paperAction('cancel_order',{p_order:o.order_id}))}>Cancel</button>}<details><summary className="cursor-pointer text-muted">Evidence</summary><pre className="max-w-md overflow-auto text-xs">{JSON.stringify(o.result,null,2)}</pre></details></td></tr>)}</tbody></table>{!orders.data?.length&&<p className="py-4 text-sm text-muted">No paper orders yet. System alerts are not trades.</p>}{orders.truncated&&<p className="text-xs text-warn">Showing the latest 100 orders; older history is retained.</p>}</div>}
         {tab==='Positions'&&<div className={`${card} space-y-3`}>{positions.data?.map(p=><div key={p.band_id+p.side} className="border-b border-border pb-2 text-sm"><div>{name(p.band_id)} · {p.side}</div><div className="font-mono">{Number(p.shares).toLocaleString(undefined,{maximumFractionDigits:2})} shares · Cost basis {fmtUsd(Number(p.cost_basis))} · Realized {fmtUsd(Number(p.realized_pnl))}</div>{Number(p.shares)>0&&<PaperExit key={account+p.band_id+p.side} account={account} band={p.band_id} side={p.side} available={Number(p.shares)} refresh={refresh}/>}</div>)}{!positions.data?.length&&<p className="text-sm text-muted">Positions appear after a recorded fill. Unrealized profit requires a fresh executable exit quote.</p>}</div>}
         {tab==='Activity'&&<div className={`${card} space-y-3`}>{events.data?.map(e=><details key={e.event_id} className="border-b border-border pb-2"><summary className="cursor-pointer text-sm">{new Date(e.occurred_at).toLocaleString()} · {e.event_type.replaceAll('_',' ')} · {fmtUsd(Number(e.cash_delta))}</summary><pre className="overflow-auto text-xs text-muted">{JSON.stringify(e.payload,null,2)}</pre></details>)}{events.truncated&&<p className="text-xs text-warn">Showing the latest 100 events; older history is retained.</p>}</div>}

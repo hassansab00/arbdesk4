@@ -26,10 +26,28 @@ import { fmtUsd, fmtPrice, fmtPct, pnlColor } from "@/lib/format";
  *
  * The archive is fetched, not imported, so a page already open picks up a new
  * deploy's trades on refresh rather than at build time.
+ *
+ * BOTH HALVES ARE SCOPED TO ONE DESK, and only one of them used to be.
+ *
+ * The Postgres query carried `.eq("account_id", account)` from the day it was
+ * written. The archive did not: fetchArchive() read every line of every month
+ * and mergeTrades() folded the lot in. Every tile on this panel - net P&L,
+ * gross, fees, win rate, at risk - and the table and both filter menus under
+ * them were therefore computed over EVERY desk's trades at once.
+ *
+ * On 21 Sep that was not a subtle error. All 63 archived trades belonged to
+ * "Wide edge, all US", so selecting any of the other three desks showed that
+ * desk's 63 closed trades and its -$493 as the selected desk's own record.
+ * Three desks that have never placed an order each displayed a full trading
+ * history. "i cant differentiate what data is for what desk" is exactly what
+ * the code was doing.
  */
 
 export type Trade = {
   trade_id: string;
+  /** WHICH DESK. Null on rows log_paper_trade wrote before the multi-desk
+      engine existed; those belong to no desk and are shown on none. */
+  account_id: string | null;
   strategy_id: string | null;
   city_key: string | null;
   band_id: string | null;
@@ -105,8 +123,11 @@ function Tile({ label, value, tone, hint }: {
   </div>;
 }
 
-export default function PaperTradeHistory({ account, bandName }: {
+export default function PaperTradeHistory({ account, deskName, bandName }: {
   account: string;
+  /** Named on the panel. Four desks and one set of tiles is how the numbers
+      got read as the platform's rather than this desk's. */
+  deskName?: string;
   bandName: (id: string) => string;
 }) {
   const [archive, setArchive] = useState<Trade[] | null>(null);
@@ -135,9 +156,15 @@ export default function PaperTradeHistory({ account, bandName }: {
     return { data: r.data as Trade[] | null, error: r.error };
   }, [account], 20000, 500);
 
-  const all = useMemo(
-    () => mergeTrades(archive ?? [], db.data ?? []),
-    [archive, db.data]);
+  // ONE DESK, BOTH HALVES. The archive is every desk's trades in one file -
+  // account_id is on every row, it was simply never read. Filtering before
+  // the merge rather than after keeps mergeTrades a pure two-list merge and
+  // means the counts printed above ("N archived in the repository") are the
+  // counts for THIS desk, not the whole file.
+  const mine = useMemo(
+    () => (account ? (archive ?? []).filter(t => t.account_id === account) : (archive ?? [])),
+    [archive, account]);
+  const all = useMemo(() => mergeTrades(mine, db.data ?? []), [mine, db.data]);
 
   const cities = useMemo(
     () => [...new Set(all.map(t => t.city_key).filter(Boolean))].sort() as string[], [all]);
@@ -157,10 +184,13 @@ export default function PaperTradeHistory({ account, bandName }: {
   return <div className="space-y-3">
     <div className={`${card} space-y-3`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-semibold">Outcomes</h2>
+        <h2 className="font-semibold">
+          Outcomes
+          {deskName && <span className="ml-2 font-normal text-muted">— {deskName}</span>}
+        </h2>
         <div className="text-xs text-muted">
           {archive === null ? "loading archive…"
-            : `${archive.length} archived in the repository · ${db.data?.length ?? 0} live in Postgres`}
+            : `${mine.length} archived in the repository · ${db.data?.length ?? 0} live in Postgres`}
         </div>
       </div>
 
