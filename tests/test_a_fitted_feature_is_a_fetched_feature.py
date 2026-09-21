@@ -93,9 +93,47 @@ def test_every_feature_a_fit_may_keep_is_fetched_forward():
     """The invariant, stated once. select_features may keep any base or
     candidate feature; each one must be in the forecast read."""
     keepable = [f for f in list(wm.BASE_FEATURES) + list(wm.CANDIDATE_FEATURES)
-                if f != "prev_max_c"]
+                if f != "prev_max_c" and f not in wm.DATE_DERIVED_FEATURES]
     missing = [f for f in keepable if f not in wm.FORECAST_COLUMNS]
     assert missing == [], f"fitted but never fetched: {missing}"
+
+
+def test_the_derived_features_are_computed_not_fetched():
+    """The one exemption, stated so it cannot quietly widen.
+
+    A DATE_DERIVED_FEATURE has no column on either side - with_seasonal builds
+    it from the row's own date - so asking the view for it would 400 the read
+    and take every city down. The exemption is exactly that set and nothing
+    else, and predict_forward must still put the values on the rows."""
+    for f in wm.DATE_DERIVED_FEATURES:
+        assert f in wm.CANDIDATE_FEATURES, f"{f} is exempt from a list it is not on"
+        assert f not in wm.FORECAST_COLUMNS, f"{f} has no column to select"
+        assert f not in wm.FIT_COLUMNS, f"{f} has no column to select"
+
+
+def test_every_feature_a_fit_may_keep_is_read_from_the_cache():
+    """The mirror of the test above, on the side that was left hand-written.
+
+    FORECAST_COLUMNS was derived from the feature lists after a hand-written
+    list silenced six cities. The fit's own read was not, and it drifted:
+    the pressure candidates were added to CANDIDATE_FEATURES and never added
+    to the select, so select_features was offered two variables that arrived
+    None on every row of every city, and reported them as absent from the
+    data when they were absent from the request."""
+    keepable = [f for f in list(wm.BASE_FEATURES) + list(wm.CANDIDATE_FEATURES)
+                if f not in wm.DATE_DERIVED_FEATURES]
+    missing = [f for f in keepable if f not in wm.FIT_COLUMNS]
+    assert missing == [], f"offered to the fit and never read: {missing}"
+    for required in ("city_key", "obs_date", "max_c", "n_obs"):
+        assert required in wm.FIT_COLUMNS, f"{required} is not read"
+
+
+def test_the_fit_reads_the_derived_list_not_a_copy_of_it(monkeypatch):
+    """Pins the wiring on the fit side, as the forecast side is pinned."""
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parents[1]
+           / "scripts" / "weather_model.py").read_text(encoding="utf-8")
+    assert '(",".join(FIT_COLUMNS))' in src.replace('", ".join', '",".join') or            '",".join(FIT_COLUMNS)' in src,         "the derived_city_day_features read must ask for FIT_COLUMNS"
 
 
 def test_prev_max_c_is_not_asked_of_the_forecast_table():

@@ -458,7 +458,14 @@ def test_the_new_features_exist_on_both_sides_of_the_join():
                      if (m := re.match(r"\s{2}([a-z0-9_]+)\s+\S", line))}
     observed = (root / "ad4_21_weather_features.sql").read_text()
 
+    # DATE_DERIVED_FEATURES are exempt because they are not columns anywhere -
+    # with_seasonal computes them from the row's own date on both sides. That
+    # they reach both sides is held by
+    # tests/test_a_season_is_not_a_column.py, which checks the computation
+    # rather than a DDL.
     for f in wm.CANDIDATE_FEATURES:
+        if f in wm.DATE_DERIVED_FEATURES:
+            continue
         assert f in forecast_cols, f"{f} is not in weather_forecast_features"
         assert f in observed, f"{f} is not in v_city_day_features"
 
@@ -634,6 +641,8 @@ def test_every_forward_feature_survives_the_view_not_just_the_table():
     selected = set(re.findall(r"[a-z][a-z0-9_]*", body))
 
     for f in list(wm.CANDIDATE_FEATURES) + [b for b in wm.BASE_FEATURES if b != "prev_max_c"]:
+        if f in wm.DATE_DERIVED_FEATURES:
+            continue        # computed from for_date, never selected from the view
         assert f in selected, (
             f"{f} is not selected by v_forecast_features (defined in {where}). "
             "predict_forward reads the view, so a fit that keeps this feature "

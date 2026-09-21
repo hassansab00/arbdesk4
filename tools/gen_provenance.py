@@ -65,7 +65,12 @@ def _script_writes():
         # write_rows() is weather_model.py's own POST helper, and capacity.py
         # calls its RPCs through _call_rpc - neither is reached by a pattern
         # anchored on a word boundary before the name.
-        for pat in (r"upsert\(\s*[\"']([a-z0-9_]+)[\"']",
+        # upsert AND upsert_replace: the second is still a write, and when
+        # model_promotion.py moved to it the map silently lost its only filler
+        # for derived_model_promotion - the table went from "written daily by
+        # the Daily Pipeline" to "nothing fills this", which is the opposite
+        # of what the change did.
+        for pat in (r"upsert(?:_replace)?\(\s*[\"']([a-z0-9_]+)[\"']",
                     r"(?<!_)insert\(\s*[\"']([a-z0-9_]+)[\"']",
                     r"write_rows\(\s*[\"']([a-z0-9_]+)[\"']",
                     r"rest/v1/([a-z0-9_]+)[\"'?]"):
