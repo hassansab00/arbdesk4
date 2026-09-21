@@ -124,7 +124,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_job: $('Config').first().json.job, p_trigger: $('Schedule Trigger').isExecuted ? \"schedule\" : ($('Webhook Trigger').isExecuted ? \"webhook\" : \"manual\") }) }}",
+        "jsonBody": "={{ JSON.stringify({ p_job: $('Config').first().json.job, p_trigger: $('Webhook Trigger').isExecuted ? \"webhook\" : \"manual\" }) }}",
         "options": {
           "timeout": 10000,
           "response": {
