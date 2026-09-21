@@ -68,6 +68,25 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.11', cache: 'pip', cache-dependency-path: 'requirements.runtime.txt' }
       - run: pip install -r requirements.runtime.txt
+
+      # THE BACK-HISTORY, BROUGHT HOME.
+      #
+      # 658,993 rows were archived before the repository held any of them -
+      # they went to Releases, which are attached to a repo and not in it, so
+      # the only copy of thirteen months of observations needed the API and a
+      # token to read. This copies every existing asset into data/archive so
+      # it sits in the tree beside everything written from now on.
+      #
+      # It runs EVERY time rather than behind a flag: it is idempotent, it
+      # skips any asset already on disk at the right size, and running it
+      # unconditionally means the repo heals itself if a file is ever removed
+      # or a run dies half way. The cost is seven release lookups.
+      - name: Pull existing Release archives into the repository
+        run: PYTHONPATH=scripts python scripts/archive_observations.py --pull-releases
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # THE ORDER IS THE SAFETY. Export writes files into data/archive and
       # deletes nothing; the commit pushes them; only then does the prune run,
       # and it re-reads each committed file and asks git whether it is in HEAD

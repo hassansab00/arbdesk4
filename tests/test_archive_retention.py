@@ -43,10 +43,17 @@ def _archive_steps():
     """
     job = _workflow()["jobs"]["archive"]
     steps = [s for s in job["steps"] if "archive_observations.py" in str(s.get("run", ""))]
-    assert len(steps) == 2, f"expected an export step and a prune step, got {len(steps)}"
-    export = next(s for s in steps if "--export-only" in s["run"])
-    prune = next(s for s in steps if "--prune-only" in s["run"])
-    return export, prune
+    by_flag = {flag: [s for s in steps if flag in s["run"]]
+               for flag in ("--pull-releases", "--export-only", "--prune-only")}
+    for flag, found in by_flag.items():
+        assert len(found) == 1, f"expected exactly one {flag} step, got {len(found)}"
+    assert len(steps) == 3, f"an archive step runs with none of the phase flags: {len(steps)}"
+    return by_flag["--export-only"][0], by_flag["--prune-only"][0]
+
+
+def _pull_step():
+    job = _workflow()["jobs"]["archive"]
+    return next(s for s in job["steps"] if "--pull-releases" in str(s.get("run", "")))
 
 
 def _run_step():
@@ -82,6 +89,23 @@ def test_a_manual_run_can_still_be_a_dry_run():
     assert inputs["commit"]["type"] == "boolean"
     assert "github.event.inputs.commit == 'true'" in _prune_gate(), (
         "unticking the box must still skip the prune")
+
+
+def test_the_back_history_is_pulled_in_unconditionally():
+    """--pull-releases copies assets that only exist in a Release into
+    data/archive. It is idempotent and skips what is already on disk, so
+    running it every time is what makes the repo heal itself if a file is
+    removed or a run dies half way - behind a flag it would run once and the
+    gap would come back silently."""
+    pull = _pull_step()
+    assert not str(pull.get("if", "")), (
+        "the back-history pull is conditional, so the repo stops healing itself"
+    )
+    steps = [s.get("name", "") for s in _workflow()["jobs"]["archive"]["steps"]]
+    assert steps.index("Pull existing Release archives into the repository") < \
+        steps.index("Commit the data BEFORE anything is deleted"), (
+        "the pulled files are not committed by the run that fetched them"
+    )
 
 
 def test_the_export_is_never_gated_off():
