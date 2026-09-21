@@ -124,6 +124,15 @@ const CATALOGUE: Array<{
     note: "A day whose hourly series misses the 12:00\u201318:00 peak window is skipped rather than written low: an understated max would invent disagreement that is not there.",
   },
   {
+    job: "P1.6_iem_observations",
+    label: "Station Observations (IEM METAR)",
+    schedule: "on demand",
+    what:
+      "Station readings for every city with an ICAO \u2014 the instrument record a daily high is SETTLED against, and the running maximum intraday logic reads. It is the only weather feed whose rows are evidence rather than a model's opinion, which is why settlement and the fitted model both use it and nothing else.",
+    note:
+      "It ran as a GitHub Actions cron (`7 */6 * * *`) until 21 Sep and arrived between 4h45m and 8h24m apart, because GitHub schedules workflows best-effort and drops them under load. Not one run failed; they simply did not happen on time. Hourly here matches the resolution METAR itself publishes at. `.github/workflows/observations.yml` is kept for the archive rebuild only \u2014 `ingest_observations.py 365` \u2014 and logs under its own job name.",
+  },
+  {
     job: "P1.5_open_meteo",
     label: "Open-Meteo Global",
     schedule: "every 3 hours",

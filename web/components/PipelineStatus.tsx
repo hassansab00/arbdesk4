@@ -58,7 +58,7 @@ const CHAIN: Array<{
     staleAfterH: 12, feeds: "the buckets on the Board. Missing ones mean a ladder that cannot sum to 100\u00a2." },
   { jobs: ["P0.3_book_volume_snapshot"], mode: "either", label: "Order books", where: "n8n · P0.3",
     staleAfterH: 3, feeds: "every price. Without it each bucket is blocked, and Opportunities and Overview have nothing to rank." },
-  { jobs: ["ingest_observations"], mode: "either", label: "Station observations", where: "Actions · Observations",
+  { jobs: ["ingest_observations", "P1.6_iem_observations"], mode: "either", label: "Station observations", where: "Actions · Observations",
     staleAfterH: 6, feeds: "the running max, the climate baseline, hotness and the weather model." },
   { jobs: ["P1.2_nws_monitor", "live_weather"], mode: "either", label: "Live weather", where: "n8n · P1.2 — Actions · Live Weather is manual only",
     staleAfterH: 2, feeds: "the temperatures on the Board and City Watch." },

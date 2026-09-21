@@ -602,6 +602,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "n8n",
       "kind": "n8n",
       "name": "AD4 P1.2 - NWS Monitor"
+    },
+    {
+      "cadence": "whenever its n8n schedule fires",
+      "file": "P1.6_iem_observations.template.json",
+      "how": "n8n",
+      "kind": "n8n",
+      "name": "AD4 P1.6 - Station Observations (IEM METAR)"
     }
   ],
   "weather_resolution_attempts": [

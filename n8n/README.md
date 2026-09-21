@@ -50,18 +50,19 @@ into the browser bundle.
 |---|---|---|---|---|---|
 | 1 | `P0.2_market_discovery.template.json` | Polymarket events → `markets` + `bands`. **Everything else is empty without this.** | 6 h | :20 | — |
 | 2 | `P0.3_book_volume_snapshot.template.json` | One order book per band → `book_snapshots`. Prices, depth, the fill model. | 1 h | :24 | 1 |
-| 3 | `P1.5_open_meteo.template.json` | Live reading + 7-day forecast for **every** city, in one request. | 3 h | :54 | — |
-| 4 | `P0.4_trade_history.template.json` | Trade tape per band → `trades_observed`. Volume, thin-market flags. | 6 h | :34 | 1 |
-| 5 | `P1.2_nws_monitor.template.json` | api.weather.gov observations + alerts. **US only.** | 2 h | :42 | — |
-| 6 | `P1.3_nws_forecast.template.json` | api.weather.gov hourly forecast → daily max. **US only.** | 6 h | :46 | — |
-| 7 | `P1.4_nws_gridpoint.template.json` | api.weather.gov gridpoint → cloud, dewpoint, wind, rain. **US only.** | 6 h | :50 | — |
-| 8 | `P2.2_paper_maintenance.template.json` | Expires paper orders past their deadline and releases the cash they reserved. | 6 h | :31 | — |
-| 9 | `P4.1_health_watchdog.template.json` | Is anything stale or failing. Runs last, after the feeds it judges. Also wants `alert_email`. | 6 h | :58 | — |
-| 10 | `P3.1_email_digests.template.json` | Morning brief and end-of-day report. Wants `alert_email`. | 2×/day | 04:02, 21:04 | — |
-| 11 | `P1.1_live_weather_alerts.template.json` | Webhook → email when a weather event fires. | event | — | — |
-| 12 | `P0.5_refresh_rules_text.template.json` | Watches the settlement rules for a mid-market change. Least urgent. | 1 day | 01:38 | 1 |
-| 13 | `P2.1_relearn.template.json` | Fires the GitHub Actions relearn run — refits the model on the evidence collected since the last one. | manual | — | — |
-| 14 | `P2.2_paper_trades.template.json` | Drives the paper cycle through the paper worker — leases, fills and settles. Needs `PAPER_WORKER_URL`/`PAPER_WORKER_TOKEN` and a deployed worker, so it is not part of the import sequence above. | manual | — | — |
+| 3 | `P1.6_iem_observations.template.json` | IEM METAR station readings → `weather_observations`. On demand only — IEM rate-limits by IP and n8n Cloud's egress is shared; the schedule stays on Actions. | event | — | — |
+| 4 | `P1.5_open_meteo.template.json` | Live reading + 7-day forecast for **every** city, in one request. | 3 h | :54 | — |
+| 5 | `P0.4_trade_history.template.json` | Trade tape per band → `trades_observed`. Volume, thin-market flags. | 6 h | :34 | 1 |
+| 6 | `P1.2_nws_monitor.template.json` | api.weather.gov observations + alerts. **US only.** | 2 h | :42 | — |
+| 7 | `P1.3_nws_forecast.template.json` | api.weather.gov hourly forecast → daily max. **US only.** | 6 h | :46 | — |
+| 8 | `P1.4_nws_gridpoint.template.json` | api.weather.gov gridpoint → cloud, dewpoint, wind, rain. **US only.** | 6 h | :50 | — |
+| 9 | `P2.2_paper_maintenance.template.json` | Expires paper orders past their deadline and releases the cash they reserved. | 6 h | :31 | — |
+| 10 | `P4.1_health_watchdog.template.json` | Is anything stale or failing. Runs last, after the feeds it judges. Also wants `alert_email`. | 6 h | :58 | — |
+| 11 | `P3.1_email_digests.template.json` | Morning brief and end-of-day report. Wants `alert_email`. | 2×/day | 04:02, 21:04 | — |
+| 12 | `P1.1_live_weather_alerts.template.json` | Webhook → email when a weather event fires. | event | — | — |
+| 13 | `P0.5_refresh_rules_text.template.json` | Watches the settlement rules for a mid-market change. Least urgent. | 1 day | 01:38 | 1 |
+| 14 | `P2.1_relearn.template.json` | Fires the GitHub Actions relearn run — refits the model on the evidence collected since the last one. | manual | — | — |
+| 15 | `P2.2_paper_trades.template.json` | Drives the paper cycle through the paper worker — leases, fills and settles. Needs `PAPER_WORKER_URL`/`PAPER_WORKER_TOKEN` and a deployed worker, so it is not part of the import sequence above. | manual | — | — |
 
 **Every workflow starts at its own minute past the hour, and that is not
 cosmetic.** All of these were written with a Schedule Trigger that fires at
@@ -147,6 +148,7 @@ secret-shaped string in it.
 | P1.3 | NWS Forecast | schedule 6h | `P1.3_nws_forecast.template.json` |
 | P1.4 | NWS Gridpoint | schedule 6h | `P1.4_nws_gridpoint.template.json` |
 | P1.5 | Open-Meteo | schedule 3h | `P1.5_open_meteo.template.json` |
+| P1.6 | IEM observations | manual / webhook | `P1.6_iem_observations.template.json` |
 | P2.1 | Relearn trigger | schedule 1w | `P2.1_relearn.template.json` |
 | P3.1 | Email Digests | schedule x2/day | `P3.1_email_digests.template.json` |
 | P4.1 | Health Watchdog | schedule 6h | `P4.1_health_watchdog.template.json` |

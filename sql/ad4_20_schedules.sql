@@ -29,7 +29,7 @@ values ('workflow_schedules', '{
   "P1.3_nws_forecast":         {"mode": "auto",   "every_minutes": 300},
   "P1.4_nws_gridpoint":        {"mode": "auto",   "every_minutes": 300},
   "P1.5_open_meteo":           {"mode": "auto",   "every_minutes": 150},
-  "P1.6_iem_observations":     {"mode": "auto",   "every_minutes": 50},
+  "P1.6_iem_observations":     {"mode": "manual", "every_minutes": 0},
   "P2.1_relearn":              {"mode": "manual", "every_minutes": 0},
   "P2.2_paper_maintenance":    {"mode": "auto",   "every_minutes": 300},
   "P3.1_email_digests":        {"mode": "off",    "every_minutes": 400},
