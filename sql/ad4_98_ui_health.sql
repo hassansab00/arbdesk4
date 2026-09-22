@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 191 of them - and for each MISSING one names the
+-- and function the app reads - 196 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -48,6 +48,7 @@ with expected(rel, owner, used_by) as (values
     ('derived_market_peak', 'ad4_00_preflight.sql', ''),
     ('derived_model_forecast', 'ad4_25_model_forecast.sql', ''),
     ('derived_model_promotion', 'ad4_00_preflight.sql', ''),
+    ('derived_trajectory', 'ad4_86_trajectory.sql', ''),
     ('derived_weather_model', 'ad4_21_weather_features.sql', ''),
     ('derived_weather_peak', 'ad4_00_preflight.sql', '/live'),
     ('desk_members', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),
@@ -122,6 +123,7 @@ with expected(rel, owner, used_by) as (values
     ('v_city_stats', 'ad4_17_city_stats.sql', ''),
     ('v_city_temp_trend', 'ad4_26_temp_trend.sql', ''),
     ('v_city_today_readings', 'ad4_26_temp_trend.sql', '/monitor'),
+    ('v_city_trajectory_now', 'ad4_86_trajectory.sql', ''),
     ('v_city_volume', 'ad4_13_reconcile.sql', '(GlobalBar), /, /live'),
     ('v_coherent_band_outcome', 'supabase/migrations/20260922120000_a_ladder_cannot_resolve_to_nothing.sql', ''),
     ('v_condition_skill', 'ad4_24_nws_gridpoint.sql', '(ModelAnalytics)'),
@@ -191,6 +193,9 @@ with expected(rel, owner, used_by) as (values
     ('v_table_scan_risk', 'ad4_44_indexes.sql', ''),
     ('v_trade_plan', 'ad4_34_trade_plan.sql', '/goals, /opportunities, /strategies'),
     ('v_trade_timing', 'ad4_33_control.sql', '/goals'),
+    ('v_trajectory_applied', 'ad4_86_trajectory.sql', ''),
+    ('v_trajectory_evidence', 'ad4_86_trajectory.sql', ''),
+    ('v_trajectory_health', 'ad4_86_trajectory.sql', ''),
     ('v_venue_band_resolution', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', ''),
     ('v_venue_market_resolution', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', ''),
     ('v_verified_fact_band_outcome', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', '(ModelAnalytics)'),
@@ -261,6 +266,7 @@ begin
     ('derived_market_peak', 'ad4_00_preflight.sql', ''),
     ('derived_model_forecast', 'ad4_25_model_forecast.sql', ''),
     ('derived_model_promotion', 'ad4_00_preflight.sql', ''),
+    ('derived_trajectory', 'ad4_86_trajectory.sql', ''),
     ('derived_weather_model', 'ad4_21_weather_features.sql', ''),
     ('derived_weather_peak', 'ad4_00_preflight.sql', '/live'),
     ('desk_members', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),
@@ -335,6 +341,7 @@ begin
     ('v_city_stats', 'ad4_17_city_stats.sql', ''),
     ('v_city_temp_trend', 'ad4_26_temp_trend.sql', ''),
     ('v_city_today_readings', 'ad4_26_temp_trend.sql', '/monitor'),
+    ('v_city_trajectory_now', 'ad4_86_trajectory.sql', ''),
     ('v_city_volume', 'ad4_13_reconcile.sql', '(GlobalBar), /, /live'),
     ('v_coherent_band_outcome', 'supabase/migrations/20260922120000_a_ladder_cannot_resolve_to_nothing.sql', ''),
     ('v_condition_skill', 'ad4_24_nws_gridpoint.sql', '(ModelAnalytics)'),
@@ -404,6 +411,9 @@ begin
     ('v_table_scan_risk', 'ad4_44_indexes.sql', ''),
     ('v_trade_plan', 'ad4_34_trade_plan.sql', '/goals, /opportunities, /strategies'),
     ('v_trade_timing', 'ad4_33_control.sql', '/goals'),
+    ('v_trajectory_applied', 'ad4_86_trajectory.sql', ''),
+    ('v_trajectory_evidence', 'ad4_86_trajectory.sql', ''),
+    ('v_trajectory_health', 'ad4_86_trajectory.sql', ''),
     ('v_venue_band_resolution', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', ''),
     ('v_venue_market_resolution', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', ''),
     ('v_verified_fact_band_outcome', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', '(ModelAnalytics)'),

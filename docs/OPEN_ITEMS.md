@@ -226,8 +226,8 @@ It is paused, so nothing acts on that yet.
 **Done means:** a `pipeline_intraday` run printing the three `risk:` lines,
 and at least one ladder visibly cut by a cap rather than by depth.
 
-## 12. THE DAY'S TRAJECTORY IS NOT IN THE PRICE — the biggest one left
-**Status: MEASURED, NOT BUILT. Hassan's call.**
+## 12. THE DAY'S TRAJECTORY IS NOT IN THE PRICE
+**Status: BUILT 2026-09-22. Unproven until the first live fit.**
 
 This is where the market's advantage actually comes from, and the input to
 fix it is already computed nightly and **read by nothing**.
@@ -272,8 +272,47 @@ should be **fitted and gated the same way the post-processing layer is** -
 shadow, score against the published distribution by CRPS on settled days,
 apply per city-hour only where it wins. Not a blend weight someone picked.
 
-**Not built, because it was not asked for and it is a fourth item the size of
-the other three.** The measurement above is complete enough to decide on.
+**Built on Hassan's instruction**, as `scripts/trajectory.py` + `sql/ad4_86`,
+running as step 6c of `pipeline_daily`. Two things went in, and only one of
+them is a model:
+
+- **The atom** (identity, not gated). The floor was applied as
+  zero-and-renormalise, which hands the sub-floor mass to every band ABOVE
+  the floor in proportion. Under `max(a, X)` it belongs on the band holding
+  the floor. Measured on a 25.0 C centre, sigma 1.5, day at 26.3: the old
+  rule gave **43.0%** to "27 or higher"; the atom gives **15.9%**.
+- **The trajectory centre and width** (a model, gated per city-hour by
+  held-out CRPS against the FLOORED forecast - a harder bar than a bare one).
+
+Previewed in SQL on 12,147 evidence rows over 49 cities, 94% of them against
+a verified station maximum. Mean absolute error, trajectory against floored
+forecast, with a clean crossover at 13:00 local:
+
+| local hour | trajectory | floored forecast | gain |
+| --- | --- | --- | --- |
+| 06 | 2.309 | 0.963 | **-1.346** |
+| 09 | 1.406 | 0.960 | -0.446 |
+| 12 | 0.810 | 0.791 | -0.019 |
+| **13** | 0.640 | 0.663 | **+0.023** |
+| 15 | 0.316 | 0.477 | +0.161 |
+| 17 | 0.122 | 0.419 | +0.297 |
+| 20 | 0.088 | 0.415 | +0.327 |
+
+So the gate is doing real work rather than rubber-stamping: mornings keep the
+forecast, afternoons go to the day itself.
+
+**AND A FINDING THAT CHANGES THE STORY.** Once the floor is an atom, a day
+that is ALREADY OVER is priced almost perfectly by the forecast alone - 84%
+of a 24.5 +/- 1.5 forecast lands on the atom at a 26.0 reading, which is the
+answer. Measured: floored forecast 0.0109 against the trajectory's 0.0175, so
+that hour correctly stays in shadow. Much of what this item promised was the
+FLOOR being applied wrongly, not the absence of a trajectory. The trajectory
+earns its place in the middle of the day, where the forecast is off and the
+day disagrees with it - there it is 15x better (0.0869 against 1.2795).
+
+**Done means:** `derived_trajectory` has rows after the next daily run,
+`v_trajectory_health` shows applied hours clustered in the afternoon, and a
+`pipeline_intraday` run prints a `trajectory:` reason on an afternoon city.
 
 **Done means:** the published sigma at 16:00 local reflects 0.44 C rather
 than 1.50 C where the evidence supports it, and the settled-day Brier moves
