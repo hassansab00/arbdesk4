@@ -103,6 +103,7 @@ without the measurement saying so first.
 """
 
 import argparse
+import datetime as dt
 import math
 import os
 import sys
@@ -428,7 +429,6 @@ def load_evidence(lookback_days=365, verified_only=True):
     makes. A correction is only ever as good as the outcome behind it.
     """
     from common import rest_all
-    import datetime as dt
     since = (dt.date.today() - dt.timedelta(days=lookback_days)).isoformat()
     params = [
         ("select", "city_key,for_date,lead_days,model,run_at,"
@@ -526,7 +526,7 @@ def main():
                     help="fit and report, write nothing")
     args = ap.parse_args()
 
-    from common import upsert, log_run
+    from common import upsert_replace, log_run
 
     by_cell = load_evidence(args.lookback)
     if not by_cell:
@@ -562,7 +562,27 @@ def main():
                   f"bias {r['bias_c']:+.3f}  ratio {r['sigma_ratio']:.3f}  "
                   f"{'APPLIED' if r['applied'] else 'shadow '}  {r['reason']}")
         return 0
-    upsert("derived_forecast_postprocess", rows, on_conflict="city_key,lead_days")
+    # REPLACE, NOT IGNORE, AND STAMP THE HOUR IT WAS DECIDED.
+    #
+    # This is a verdict table - one row per (city, lead) saying what to
+    # subtract and how much to narrow - and upsert() is ignore-duplicates, so
+    # every run after the first computed 399 correct rows and the database
+    # threw all of them away. MEASURED, 2026-09-22: the 17:27 run wrote the
+    # table, the 17:50 run recomputed it against a day more settled evidence
+    # and `computed_at` never moved off 17:27:16. That is the identical
+    # failure upsert_replace()'s own docstring records for
+    # derived_model_promotion the day before, and a bias that cannot be
+    # re-fitted is not a fitted layer.
+    #
+    # computed_at travels on the row because merge-duplicates updates only the
+    # columns the payload carries - a default of now() fires on INSERT and
+    # never again - and ad4_39_freshness reads that column to decide whether
+    # this layer is still current.
+    computed_at = dt.datetime.now(dt.timezone.utc).isoformat()
+    for r in rows:
+        r["computed_at"] = computed_at
+    upsert_replace("derived_forecast_postprocess", rows,
+                   on_conflict="city_key,lead_days")
     log_run("forecast_postprocess", "ok", len(rows),
             f"{n_applied} applied, k_cell={best['k_cell']}, k_city={best['k_city']}, "
             f"CRPS {best['crps']:.5f} vs {best['crps_baseline']:.5f}")
