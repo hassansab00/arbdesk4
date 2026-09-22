@@ -112,7 +112,17 @@ select
   coalesce((select enabled from strategies where strategy_id = 's3_concentration'),       false) as s3_enabled,
   coalesce((select enabled from strategies where strategy_id = 's4_tail_fade'),           false) as s4_enabled,
   coalesce((select enabled from strategies where strategy_id = 's5_running_max_lock'),    false) as s5_enabled,
-  coalesce((select enabled from strategies where strategy_id = 's7_pre_peak_gradient'),   false) as s7_enabled;
+  coalesce((select enabled from strategies where strategy_id = 's7_pre_peak_gradient'),   false) as s7_enabled,
+
+  -- HOW RIGHT THIS CITY'S THERMOMETER HAS TO BE before a rule that reads it
+  -- may fire there. s5 and s7 are the two whose premise IS the observation;
+  -- measured 2026-09-22 the roster runs from 9 in 10 down to 2 in 3, and
+  -- until now they fired on identical terms everywhere. Default 0 leaves a
+  -- strategy that has not set one behaving exactly as before.
+  coalesce((select (e ->> 'min_observation_trust')::numeric from x
+             where strategy_id = 's5_running_max_lock'), 0)                            as s5_min_trust,
+  coalesce((select (e ->> 'min_observation_trust')::numeric from x
+             where strategy_id = 's7_pre_peak_gradient'), 0)                           as s7_min_trust;
 
 comment on view v_strategy_params is
   'Every threshold the mirror uses, read from strategies.extra - the same jsonb the Python engine reads - with the same fallbacks the Python files define - plus whether each strategy is switched on at all. A retired strategy must stop firing in the mirror too.';
@@ -313,6 +323,10 @@ select
 
       -- s5: the day is over, this band holds the locked maximum, still cheap.
       case when o.side = 'YES' and o.tradeable and coalesce(t.day_decided, false) and p.s5_enabled
+            -- coalesce to 1, not 0: a city with under ten settled ladders is
+            -- unmeasured, not untrustworthy, and reading null as zero would
+            -- silently stop every new city trading.
+            and coalesce(ct.observation_trust, 1) >= p.s5_min_trust
             and band_contains(o.band_lo, o.band_hi, o.open_low, o.open_high,
                               band_local_value(t.running_max_c, o.unit))
             and o.market_price is not null and o.market_price < p.s5_max_entry_price
@@ -321,6 +335,7 @@ select
       -- s7 YES: inside the window, still climbing, this band holds where the
       -- day is heading, and the pessimistic case reaches it too.
       case when o.side = 'YES' and o.tradeable and p.s7_enabled
+            and coalesce(ct.observation_trust, 1) >= p.s7_min_trust
             and coalesce(t.minutes_to_peak, -1) between 0 and p.s7_entry_window_min
             and coalesce(t.reading_age_min, 999) <= p.s7_max_reading_age_min
             and coalesce(t.slope_3_c_per_h, 0) > p.s7_min_slope_c_per_h
@@ -333,6 +348,7 @@ select
       -- s7 NO: the mirror. Rolled over inside the window, so sell the bands
       -- the day can no longer reach.
       case when o.side = 'NO' and o.tradeable and p.s7_enabled
+            and coalesce(ct.observation_trust, 1) >= p.s7_min_trust
             and coalesce(t.minutes_to_peak, -1) between 0 and p.s7_entry_window_min
             and coalesce(t.reading_age_min, 999) <= p.s7_max_reading_age_min
             and coalesce(t.rolling_over, false)
@@ -376,6 +392,19 @@ left join v_trade_timing t on t.city_key = o.city_key
                           and t.local_date = o.resolution_date
 left join lad l            on l.band_id  = o.band_id
 left join skill sk         on sk.city_key = o.city_key
+-- THE TRUST COMES FROM THE COLUMN, not from v_trade_timing, and not from
+-- v_settlement_agreement. That view needs band_contains() which this very
+-- file creates, so it installs after this one and cannot be joined here;
+-- refresh_observation_trust() copies its answer onto cities, which every
+-- file can read at any point in the install.
+--
+-- THE STATUS FILTER IS EXPLICIT even though it cannot matter: every row here
+-- comes from v_opportunities, which already admits only the active roster, so
+-- this left join can attach a trust score to a row but never add one. It is
+-- written out anyway because a file that FILTERS should be readable as one
+-- without having to go and check what its source promised.
+left join cities ct        on ct.city_key = o.city_key
+                          and coalesce(ct.status, 'active') = 'active'
 cross join p
 )
 select
@@ -426,8 +455,18 @@ select
                                              then format('Watch - the peak window opens in %s min', greatest(b.minutes_to_peak, 0))
     when coalesce(b.edge_net_pp, 0) > 0      then 'An edge, but nothing about the day says act on it now'
     else                                          'No edge on this side'
-  end                                                                    as action
-from base b;
+  end                                                                    as action,
+  ctb.observation_trust                                                  as observation_trust
+from base b
+-- APPENDED, and the join is here rather than inside `base` for one reason:
+-- create or replace view can only ADD columns at the END. Placing
+-- observation_trust beside reading_age_min, where it belongs to a reader,
+-- makes it an INSERT into the column list and Postgres refuses with 42P16 -
+-- the same trap v_peak_hour_coverage hit. The gates inside `base` read it
+-- from their own join to cities; this one exists so the board can show why a
+-- row that looks like s5 territory did not fire.
+left join cities ctb on ctb.city_key = b.city_key
+                    and coalesce(ctb.status, 'active') = 'active';
 
 comment on view v_trade_plan is
   'Every edge with WHEN and WHO attached: which strategies would take it right now, what the entry actually costs, and where the day is heading relative to this band. Thresholds come from strategies.extra, the same jsonb the Python engine reads.';

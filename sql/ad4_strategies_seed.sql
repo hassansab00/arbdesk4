@@ -105,7 +105,8 @@ values
 
   ('s5_running_max_lock', 'Running-max lock', 'YES', '["ALL"]'::jsonb,
    '["SHARP","NORMAL"]'::jsonb, 'directional', 5.0, 10, false,
-   '{"max_entry_price":0.90,"origin":"candidate","note":"seasonal gate mandatory - see derived_weather_peak.window_width_h"}'::jsonb),
+   '{"max_entry_price":0.90,"min_observation_trust":0.80,"origin":"candidate",
+     "note":"seasonal gate mandatory - see derived_weather_peak.window_width_h. min_observation_trust: this rule IS the thermometer, and the roster runs from 9-in-10 down to 2-in-3 (v_settlement_agreement)"}'::jsonb),
 
   ('s6_anchor_insurance', 'Anchor + insurance', 'BOTH', '["ALL"]'::jsonb,
    '["SHARP","NORMAL"]'::jsonb, 'basket', 8.0, 10, false,
@@ -118,7 +119,7 @@ values
   ('s7_pre_peak_gradient', 'Pre-peak gradient entry', 'BOTH', '["ALL"]'::jsonb,
    '["SHARP","NORMAL"]'::jsonb, 'directional', 5.0, 10, false,
    '{"entry_window_min":60,"max_reading_age_min":90,"min_slope_c_per_h":0.10,
-     "max_entry_price":0.85,"origin":"hassan",
+     "max_entry_price":0.85,"min_observation_trust":0.80,"origin":"hassan",
      "note":"enter under an hour before peak on the direction of travel, not the level. Mirror side sells bands a rolled-over day can no longer reach."}'::jsonb),
 
   ('s8_two_bucket_cover', 'Two-bucket cover', 'YES', '["ALL"]'::jsonb,

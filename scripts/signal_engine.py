@@ -132,6 +132,18 @@ def _band_views():
     approach = {r["city_key"]: r for r in
                 _optional("v_city_peak_approach", [("select", "city_key,slope_6_c_per_h")],
                           "city_key.asc", "six-reading slope unavailable")}
+    # HOW OFTEN THIS CITY'S THERMOMETER NAMES THE BAND THE VENUE SETTLED ON.
+    #
+    # Read from the column rather than from v_settlement_agreement, for the
+    # same reason v_trade_plan does: the view needs band_contains() out of
+    # ad4_34 and installs after it, while both engines need the number.
+    # refresh_observation_trust() moves it across, nightly.
+    #
+    # An absent city is absent from the dict, so BandView.observation_trust is
+    # None, which every gate reads as "unmeasured, let it through".
+    trust = {r["city_key"]: r.get("observation_trust") for r in
+             _optional("cities", [("select", "city_key,observation_trust")],
+                       "city_key.asc", "observation-trust gates will not bind")}
     # The forecast each band was priced from, and whether pricing is eligible.
     probs = {}
     band_ids = sorted(by_band)
@@ -268,6 +280,10 @@ def _band_views():
             lead_days=int(lead) if lead is not None else None,
             spread=base.get("spread"),
             mae_bands=(sk or {}).get("mae_bands"),
+            # Per city, from v_trade_timing, which reads the column
+            # refresh_observation_trust() writes. None where fewer than ten
+            # ladders have settled, and None means "no opinion" downstream.
+            observation_trust=trust.get(city),
             running_max_c=_first(tm, "running_max_c") if tm.get("running_max_c") is not None
                           else lw.get("running_max_c"),
             minutes_to_peak=_first(tm, "minutes_to_peak") if tm.get("minutes_to_peak") is not None

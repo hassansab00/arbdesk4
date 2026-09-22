@@ -135,6 +135,20 @@ jobs:
         timeout-minutes: 30
         run: python scripts/capacity.py
 
+      # 7b. How right each city's thermometer has been, copied onto cities so
+      #     both engines can read it. AFTER "Freeze settled city-days", because
+      #     v_settlement_agreement judges against ladders that have settled -
+      #     running it earlier measures yesterday.
+      - name: Refresh observation trust
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: |
+          python - <<'PY'
+          from common import rpc
+          out = rpc("refresh_observation_trust")
+          print("observation trust:", out)
+          PY
+
       # 8. Safety net: run anything left queued in backtest_runs. Usually a
       #    no-op. An explicit backtest is backtest.yml, run by hand.
       - name: Queued backtests

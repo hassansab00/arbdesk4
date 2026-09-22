@@ -155,6 +155,12 @@ SQL_FILTERS = {
     "sql/ad4_71_observation_health.sql":        "is the DESK's data healthy - operational, not the record",
     "sql/ad4_75_probability_reliability.sql":   "the measured haircut, applied to live prices",
     "sql/ad4_live_weather_timing.sql":          "refresh_live_weather_timing - only worth computing for a live city",
+    # v_trade_plan joins cities for observation_trust, the gate that decides
+    # whether s5 and s7 may fire in a city at all. FILTERS, and it already is:
+    # every row comes from v_opportunities, which admits only the active
+    # roster, and the join is a LEFT join off that - it can attach a trust
+    # score to a row, never add a retired city's row.
+    "sql/ad4_34_trade_plan.sql":                "v_trade_plan - the board, and the s5/s7 trust gate",
 }
 SQL_RECORD = {
     "sql/ad4_16_nws.sql", "sql/ad4_17_city_stats.sql", "sql/ad4_19_stats_cache.sql",
@@ -193,6 +199,12 @@ SQL_RECORD = {
 # rather than a bug. It is here because a blind spot is how the last four got
 # in.
 MIGRATION_RECORD = {
+    "supabase/migrations/20260922230000_a_rule_is_only_as_good_as_the_thermometer_under_it.sql":
+        "cities.observation_trust and refresh_observation_trust() - the RECORD "
+        "of how often a city's thermometer named the band the venue settled on. "
+        "Deliberately unfiltered: a retired city's measured trust is history "
+        "worth keeping, and putting it back is the same one word as the roster. "
+        "The GATE that reads it is in ad4_34, and that one is filtered.",
     "supabase/migrations/20260912213000_phase1_data_foundation.sql":
         "v_archive_daily and the data-quality flags - the record",
     "supabase/migrations/20260912234500_phase1c_operational_readiness.sql":

@@ -1180,10 +1180,10 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_forecasts"
   ],
   "v_trade_plan": [
+    "cities",
     "derived_forecast_skill",
     "bands",
     "book_snapshots",
-    "cities",
     "markets",
     "trades_observed",
     "edges",

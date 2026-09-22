@@ -76,6 +76,10 @@ class BandView:
     lead_days: Optional[int] = None
     spread: Optional[float] = None
     mae_bands: Optional[float] = None    # derived_forecast_skill.mae_bands for this city/lead
+    # How often this city's station maximum falls inside the band the venue
+    # settled on, 0-1. None means UNMEASURED - under ten settled ladders there
+    # is no opinion to have - and every gate below treats it as "let through".
+    observation_trust: Optional[float] = None
     # Live-weather fields (Task 13d), needed by S5/S10 running-max logic.
     running_max_c: Optional[float] = None
     minutes_to_peak: Optional[int] = None
@@ -150,7 +154,32 @@ class Strategy(ABC):
             return False
         if self.config.regime_filter and band.regime_label not in self.config.regime_filter:
             return False
+        if not self._city_thermometer_is_good_enough(band):
+            return False
         return True
+
+    def _city_thermometer_is_good_enough(self, band: BandView) -> bool:
+        """A strategy that reads the observation may say how right it has to be.
+
+        s5_running_max_lock and s7_pre_peak_gradient are built entirely on the
+        station feed - the maximum is banked and this band holds it, the slope
+        says the day is still climbing. Measured 2026-09-22 against the venue's
+        own declared winners, that feed names the winning band 9 times in 10
+        across 29 cities and about 2 in 3 across three of them, and both
+        strategies were firing in all of them on identical terms.
+
+        NONE IS UNMEASURED, NOT UNTRUSTWORTHY. Under ten settled ladders
+        v_settlement_agreement has no opinion, and a new city has not failed -
+        it has not been judged. Treating None as zero would stop every city
+        trading the day this shipped.
+
+        A strategy that sets no floor is unaffected, which is why this belongs
+        in the base class rather than in two overrides that drift apart.
+        """
+        floor = (self.config.extra or {}).get("min_observation_trust")
+        if floor is None or band.observation_trust is None:
+            return True
+        return float(band.observation_trust) >= float(floor)
 
     @abstractmethod
     def entry_signals(self, ctx: Context) -> list:
