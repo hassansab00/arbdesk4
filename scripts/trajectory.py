@@ -84,6 +84,7 @@ first thing the tests check.
 """
 
 import argparse
+import datetime as dt
 import math
 import os
 import sys
@@ -271,7 +272,6 @@ def load_evidence(lookback_days=120):
     and is dropped rather than defaulted.
     """
     from common import rest_all
-    import datetime as dt
     since = (dt.date.today() - dt.timedelta(days=lookback_days)).isoformat()
     rows = rest_all("v_trajectory_evidence", [
         ("select", "city_key,local_date,local_hour,temp_c,running_max_c,"
@@ -326,7 +326,7 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    from common import upsert, log_run
+    from common import upsert_replace, log_run
 
     by_cell, n_rows, n_verified = load_evidence(args.lookback)
     if not by_cell:
@@ -357,7 +357,15 @@ def main():
                   f"{'APPLIED' if r['applied'] else 'shadow '}  {r['reason']}")
         return 0
 
-    upsert("derived_trajectory", rows, on_conflict="city_key,local_hour")
+    # REPLACE, NOT IGNORE. Same reasoning as forecast_postprocess.py, and the
+    # stakes are higher here: whether an hour may price from the day so far is
+    # a verdict that must be able to change as hours settle. Written with
+    # upsert() it would have frozen on its first fit - 406 applied city-hours
+    # decided on 2026-09-22 and never revisited, however many days arrived.
+    computed_at = dt.datetime.now(dt.timezone.utc).isoformat()
+    for r in rows:
+        r["computed_at"] = computed_at
+    upsert_replace("derived_trajectory", rows, on_conflict="city_key,local_hour")
     log_run("trajectory", "ok", len(rows),
             f"{len(applied)} of {len(rows)} city-hours applied")
     return 0
