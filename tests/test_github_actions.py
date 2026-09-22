@@ -183,6 +183,54 @@ SCHEDULED_MINUTE_BUDGET = 3000
 SCHEDULED_RUN_BUDGET = 430
 
 
+class _StrictLoader(yaml.SafeLoader):
+    """A loader that REFUSES a duplicate key instead of quietly picking one."""
+
+
+def _no_duplicate_keys(loader, node, deep=False):
+    mapping = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in mapping:
+            raise yaml.constructor.ConstructorError(
+                None, None, f"duplicate key {key!r}", key_node.start_mark)
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+_StrictLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _no_duplicate_keys)
+
+
+def test_no_workflow_file_declares_the_same_key_twice():
+    """THE FAILURE MODE IS SILENT LOCALLY AND TOTAL ON GITHUB.
+
+    A step may carry one `env:` block. Give it two and yaml.safe_load - which
+    is what every other test in this file uses, and what a local check uses -
+    keeps the LAST and discards the first without a word. GitHub's parser is
+    stricter: it rejects the whole file, so the workflow never starts. The run
+    that appears has zero jobs, zero seconds, a conclusion of failure, and a
+    name that has fallen back to the file path because GitHub could not read
+    the `name:` key either.
+
+    Measured: eighteen consecutive Backtest runs failed that way, from the
+    commit that added a second `env:` to backtest.yml's last step onward, and
+    every local check passed throughout - including the test that asserts the
+    budget is declared, because it reads the raw text with a regex and the
+    string was there. The string being present and the file being valid are
+    different claims, and only one of them was being tested.
+    """
+    for name, _doc in workflows():
+        path = os.path.join(WF_DIR, name)
+        try:
+            yaml.load(open(path), Loader=_StrictLoader)
+        except yaml.YAMLError as e:
+            raise AssertionError(
+                f"{name} declares the same key twice, so GitHub will refuse "
+                f"the whole file and the workflow will never start: {e}"
+            ) from None
+
+
 def _scheduled():
     """[(runs_per_month, minutes_per_run, name)] for every scheduled workflow."""
     out = []

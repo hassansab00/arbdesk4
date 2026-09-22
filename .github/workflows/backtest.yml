@@ -40,10 +40,11 @@ jobs:
       # This job owns its whole 120 minutes, unlike pipeline_daily's 30-minute
       # step, so the runner gets a budget to match. An explicit backtest is
       # something somebody asked for and it should be allowed to finish.
-      - env:
-          BACKTEST_BUDGET_MINUTES: '115'
-        run: PYTHONPATH=scripts python scripts/backtest/runner.py "$RUN_ID"
+      - run: PYTHONPATH=scripts python scripts/backtest/runner.py "$RUN_ID"
         env:
+          # ONE env BLOCK. A step may only have one, and a second silently
+          # replaced the first for PyYAML while GitHub refused the whole file.
+          BACKTEST_BUDGET_MINUTES: '115'
           RUN_ID: ${{ inputs.run_id || github.event.client_payload.run_id || '' }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
