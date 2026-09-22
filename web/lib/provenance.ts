@@ -700,9 +700,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "book_snapshots",
     "cities",
+    "edges",
     "markets",
-    "trades_observed",
-    "edges"
+    "trades_observed"
   ],
   "v_band_outcome_coherence": [
     "fact_band_outcome"
@@ -733,7 +733,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_book_ladder": [
     "bands",
-    "book_snapshots"
+    "book_snapshots",
+    "markets"
   ],
   "v_book_target_health": [
     "bands",
@@ -758,9 +759,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_forecast_skill",
     "bands",
     "book_snapshots",
+    "edges",
     "markets",
     "trades_observed",
-    "edges",
     "derived_weather_peak",
     "live_weather",
     "derived_climb_profile",
@@ -813,9 +814,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "book_snapshots",
     "cities",
+    "edges",
     "markets",
     "trades_observed",
-    "edges",
     "derived_forecast_skill",
     "derived_weather_peak",
     "live_weather",
@@ -869,8 +870,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_observations",
     "bands",
     "book_snapshots",
-    "trades_observed",
     "edges",
+    "trades_observed",
     "derived_city_day_features"
   ],
   "v_city_running_max": [
@@ -1069,9 +1070,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "book_snapshots",
     "cities",
+    "edges",
     "markets",
-    "trades_observed",
-    "edges"
+    "trades_observed"
   ],
   "v_opportunity_context": [
     "bands",
@@ -1214,9 +1215,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_forecast_skill",
     "bands",
     "book_snapshots",
+    "edges",
     "markets",
     "trades_observed",
-    "edges",
     "derived_weather_peak",
     "live_weather",
     "derived_climb_profile",

@@ -74,6 +74,11 @@ begin
     'band_contains', 'band_local_value', 'capacity_side', 'depth_usd',
     'ad4_num', 'ad4_plural', 'ad4_region', 'ad4_norm_levels',
     'ad4_synth_levels', 'ad4_raw_book_side', 'ad4_trades_ts_expr',
+    -- the four ladder functions sql/ad4_13 compiles the normalisers into.
+    -- v_band_book and v_opportunities are both built on them, so without
+    -- EXECUTE here every page that reads either is refused outright.
+    'ad4_ladder_ask', 'ad4_ladder_bid',
+    'ad4_ladder_src_ask', 'ad4_ladder_src_bid',
     -- the Data Bank inventory (sql/ad4_51) counts rows and distinct cities
     -- through these rather than scanning the whole archive. Same trap as
     -- ad4_plural: the view is readable, the function inside it is not, and
