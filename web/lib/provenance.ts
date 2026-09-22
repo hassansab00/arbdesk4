@@ -203,6 +203,15 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
+  "derived_forecast_postprocess": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/forecast_postprocess.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    }
+  ],
   "derived_forecast_skill": [
     {
       "cadence": "daily",
@@ -691,9 +700,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "book_snapshots",
     "cities",
+    "edges",
     "markets",
-    "trades_observed",
-    "edges"
+    "trades_observed"
   ],
   "v_band_outcome_coherence": [
     "fact_band_outcome"
@@ -724,7 +733,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_book_ladder": [
     "bands",
-    "book_snapshots"
+    "book_snapshots",
+    "markets"
   ],
   "v_book_target_health": [
     "bands",
@@ -749,9 +759,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_forecast_skill",
     "bands",
     "book_snapshots",
+    "edges",
     "markets",
     "trades_observed",
-    "edges",
     "derived_weather_peak",
     "live_weather",
     "derived_climb_profile",
@@ -793,6 +803,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "live_weather",
     "weather_forecasts"
   ],
+  "v_city_day_exposure": [
+    "paper_trades"
+  ],
   "v_city_day_features": [
     "cities",
     "weather_observations"
@@ -801,9 +814,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "book_snapshots",
     "cities",
+    "edges",
     "markets",
     "trades_observed",
-    "edges",
     "derived_forecast_skill",
     "derived_weather_peak",
     "live_weather",
@@ -819,6 +832,14 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "live_weather",
     "markets",
     "weather_forecasts"
+  ],
+  "v_city_hit_history": [
+    "cities",
+    "fact_band_outcome"
+  ],
+  "v_city_hit_summary": [
+    "cities",
+    "fact_band_outcome"
   ],
   "v_city_metadata_health": [
     "cities"
@@ -857,8 +878,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_observations",
     "bands",
     "book_snapshots",
-    "trades_observed",
     "edges",
+    "trades_observed",
     "derived_city_day_features"
   ],
   "v_city_running_max": [
@@ -905,6 +926,14 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "fact_band_outcome",
     "fact_forecast_outcome",
     "fact_signal_outcome"
+  ],
+  "v_desk_equity_curve": [
+    "paper_accounts",
+    "paper_trades"
+  ],
+  "v_desk_risk_state": [
+    "paper_accounts",
+    "paper_trades"
   ],
   "v_edge_realisation": [
     "fact_band_outcome",
@@ -973,6 +1002,12 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_forecast_skill",
     "derived_forecast_skill_model",
     "weather_forecasts"
+  ],
+  "v_forecast_postprocess_applied": [
+    "derived_forecast_postprocess"
+  ],
+  "v_forecast_postprocess_health": [
+    "derived_forecast_postprocess"
   ],
   "v_index_never_used": [
     "bands",
@@ -1043,9 +1078,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "book_snapshots",
     "cities",
+    "edges",
     "markets",
-    "trades_observed",
-    "edges"
+    "trades_observed"
   ],
   "v_opportunity_context": [
     "bands",
@@ -1120,6 +1155,10 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "paper_position_settlements",
     "paper_resolution_evidence"
   ],
+  "v_risk_budget_health": [
+    "paper_trades",
+    "paper_accounts"
+  ],
   "v_settlement_agreement": [
     "bands",
     "markets",
@@ -1184,9 +1223,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_forecast_skill",
     "bands",
     "book_snapshots",
+    "edges",
     "markets",
     "trades_observed",
-    "edges",
     "derived_weather_peak",
     "live_weather",
     "derived_climb_profile",

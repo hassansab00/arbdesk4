@@ -244,3 +244,90 @@ def test_two_strategies_on_one_band_stake_it_once():
     se._allocate_ladders(fired, views, _P(), earned)
     sized = [s for s in fired if s.suggested_shares > 0]
     assert len(sized) == 1 and sized[0].strategy_id == "sHigh"
+
+
+# ---------------------------------------------------------------------------
+# The three risk limits, in the path that actually runs.
+#
+# scripts/risk_budget.py is the arithmetic and has its own tests. These are
+# about the wiring: a perfect budget module that _allocate_ladders never calls
+# would leave the desk sizing forty-eight independent quarter-Kelly ladders
+# with nothing above them, and not one test in that file would fail.
+# ---------------------------------------------------------------------------
+def _no_risk():
+    """The state before any of this existed: no history, nothing spent."""
+    return (None, None, 0.0)
+
+
+def test_one_weather_event_cannot_take_more_than_its_cap():
+    import risk_budget as rb
+    sigs = [_sig("b1", 0.40, 0.20)]
+    se._allocate_ladders(sigs, [_view("b1")], _P(), {}, _no_risk(), {})
+    usd = sigs[0].suggested_shares * 0.20
+    assert usd <= 100_000.0 * rb.PER_CITY_DAY_CAP_PCT / 100.0 + 1e-6
+
+
+def test_a_drawn_down_desk_stakes_less_on_the_same_ladder():
+    healthy = [_sig("b1", 0.40, 0.20)]
+    hurt = [_sig("b1", 0.40, 0.20)]
+    se._allocate_ladders(healthy, [_view("b1")], _P(), {}, (100_000.0, 100_000.0, 0.0), {})
+    se._allocate_ladders(hurt, [_view("b1")], _P(), {}, (80_000.0, 100_000.0, 0.0), {})
+    assert hurt[0].suggested_shares < healthy[0].suggested_shares
+
+
+def test_at_the_drawdown_floor_nothing_is_funded_but_the_signal_still_fires():
+    """A stop, not a silence. The day goes on the record as one the desk
+    declined to fund rather than one it never looked at."""
+    sigs = [_sig("b1", 0.40, 0.20)]
+    se._allocate_ladders(sigs, [_view("b1")], _P(), {}, (70_000.0, 100_000.0, 0.0), {})
+    assert sigs[0].suggested_shares == 0.0
+
+
+def test_a_spent_day_budget_stops_further_entries():
+    import risk_budget as rb
+    full = 100_000.0 * rb.DAILY_ENTRY_BUDGET_PCT / 100.0
+    sigs = [_sig("b1", 0.40, 0.20)]
+    se._allocate_ladders(sigs, [_view("b1")], _P(), {}, (None, None, full), {})
+    assert sigs[0].suggested_shares == 0.0
+
+
+def test_correlated_cities_are_funded_less_than_independent_ones():
+    """Two ladders, two cities. The only difference is whether their forecast
+    errors move together, and that has to change the money."""
+    views = [_view("b1", city="chicago"), _view("b2", city="toronto")]
+
+    def _run(corr):
+        sigs = [_sig("b1", 0.40, 0.20), _sig("b2", 0.40, 0.20)]
+        se._allocate_ladders(sigs, views, _P(bankroll=20_000.0), {}, _no_risk(), corr)
+        return sum(s.suggested_shares * 0.20 for s in sigs)
+
+    together = _run({("chicago", "toronto"): 1.0})
+    apart = _run({("chicago", "toronto"): 0.0})
+    assert together < apart, (together, apart)
+
+
+def test_the_cap_is_applied_before_the_earned_weight():
+    """Order matters and it is not interchangeable.
+
+    Weighting first and capping second lets the cap swallow the weight: a
+    half-trusted strategy and a fully trusted one both land on the same cap
+    and are funded identically, which makes the weight mean nothing exactly
+    where the money is largest. This is the regression that caught it.
+    """
+    class _W:
+        weight = 0.5
+
+    full = [_sig("b1", 0.40, 0.20, strategy="sA")]
+    half = [_sig("b1", 0.40, 0.20, strategy="sA")]
+    se._allocate_ladders(full, [_view("b1")], _P(), {}, _no_risk(), {})
+    se._allocate_ladders(half, [_view("b1")], _P(), {"sA": _W()}, _no_risk(), {})
+    assert full[0].suggested_shares > 0
+    assert half[0].suggested_shares == pytest.approx(0.5 * full[0].suggested_shares)
+
+
+def test_a_missing_risk_view_does_not_stop_the_desk():
+    """_risk_state returns (None, None, 0) when the view is absent, and that
+    has to mean "behave as before", not "size nothing"."""
+    sigs = [_sig("b1", 0.40, 0.20)]
+    se._allocate_ladders(sigs, [_view("b1")], _P(), {}, _no_risk(), None)
+    assert sigs[0].suggested_shares > 0

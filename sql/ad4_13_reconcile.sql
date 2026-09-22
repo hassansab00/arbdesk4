@@ -319,24 +319,24 @@ begin
                     and column_name = 'band_volume_24hr') into v_has_v24;
 
   if v_has_raw then
-    v_ask  := v_ask  || 'nullif(ad4_raw_book_side(s.raw_book, true), ''[]''::jsonb), ';
-    v_bid  := v_bid  || 'nullif(ad4_raw_book_side(s.raw_book, false), ''[]''::jsonb), ';
-    v_asrc := v_asrc || 'when jsonb_array_length(ad4_raw_book_side(s.raw_book, true)) > 0 then ''raw_book'' ';
-    v_bsrc := v_bsrc || 'when jsonb_array_length(ad4_raw_book_side(s.raw_book, false)) > 0 then ''raw_book'' ';
+    v_ask  := v_ask  || 'nullif(ad4_raw_book_side(p.raw_book, true), ''[]''::jsonb), ';
+    v_bid  := v_bid  || 'nullif(ad4_raw_book_side(p.raw_book, false), ''[]''::jsonb), ';
+    v_asrc := v_asrc || 'when jsonb_array_length(ad4_raw_book_side(p.raw_book, true)) > 0 then ''raw_book'' ';
+    v_bsrc := v_bsrc || 'when jsonb_array_length(ad4_raw_book_side(p.raw_book, false)) > 0 then ''raw_book'' ';
   end if;
 
   if v_lv_jsonb then
-    v_ask  := v_ask  || 'nullif(ad4_norm_levels(s.ask_levels, true), ''[]''::jsonb), ';
-    v_bid  := v_bid  || 'nullif(ad4_norm_levels(s.bid_levels, false), ''[]''::jsonb), ';
-    v_asrc := v_asrc || 'when jsonb_array_length(ad4_norm_levels(s.ask_levels, true)) > 0 then ''levels_jsonb'' ';
-    v_bsrc := v_bsrc || 'when jsonb_array_length(ad4_norm_levels(s.bid_levels, false)) > 0 then ''levels_jsonb'' ';
+    v_ask  := v_ask  || 'nullif(ad4_norm_levels(p.ask_levels, true), ''[]''::jsonb), ';
+    v_bid  := v_bid  || 'nullif(ad4_norm_levels(p.bid_levels, false), ''[]''::jsonb), ';
+    v_asrc := v_asrc || 'when jsonb_array_length(ad4_norm_levels(p.ask_levels, true)) > 0 then ''levels_jsonb'' ';
+    v_bsrc := v_bsrc || 'when jsonb_array_length(ad4_norm_levels(p.bid_levels, false)) > 0 then ''levels_jsonb'' ';
   end if;
 
   if v_has_tiers then
-    v_ask  := v_ask  || 'nullif(ad4_synth_levels(s.best_ask, s.ask_usd_1c, s.ask_usd_2c, s.ask_usd_5c, s.ask_usd_10c, s.ask_usd_25c, s.ask_total_usd, true), ''[]''::jsonb), ';
-    v_bid  := v_bid  || 'nullif(ad4_synth_levels(s.best_bid, s.bid_usd_1c, s.bid_usd_2c, s.bid_usd_5c, s.bid_usd_10c, s.bid_usd_25c, s.bid_total_usd, false), ''[]''::jsonb), ';
-    v_asrc := v_asrc || 'when jsonb_array_length(ad4_synth_levels(s.best_ask, s.ask_usd_1c, s.ask_usd_2c, s.ask_usd_5c, s.ask_usd_10c, s.ask_usd_25c, s.ask_total_usd, true)) > 0 then ''synthetic_tiers'' ';
-    v_bsrc := v_bsrc || 'when jsonb_array_length(ad4_synth_levels(s.best_bid, s.bid_usd_1c, s.bid_usd_2c, s.bid_usd_5c, s.bid_usd_10c, s.bid_usd_25c, s.bid_total_usd, false)) > 0 then ''synthetic_tiers'' ';
+    v_ask  := v_ask  || 'nullif(ad4_synth_levels(p.best_ask, p.ask_usd_1c, p.ask_usd_2c, p.ask_usd_5c, p.ask_usd_10c, p.ask_usd_25c, p.ask_total_usd, true), ''[]''::jsonb), ';
+    v_bid  := v_bid  || 'nullif(ad4_synth_levels(p.best_bid, p.bid_usd_1c, p.bid_usd_2c, p.bid_usd_5c, p.bid_usd_10c, p.bid_usd_25c, p.bid_total_usd, false), ''[]''::jsonb), ';
+    v_asrc := v_asrc || 'when jsonb_array_length(ad4_synth_levels(p.best_ask, p.ask_usd_1c, p.ask_usd_2c, p.ask_usd_5c, p.ask_usd_10c, p.ask_usd_25c, p.ask_total_usd, true)) > 0 then ''synthetic_tiers'' ';
+    v_bsrc := v_bsrc || 'when jsonb_array_length(ad4_synth_levels(p.best_bid, p.bid_usd_1c, p.bid_usd_2c, p.bid_usd_5c, p.bid_usd_10c, p.bid_usd_25c, p.bid_total_usd, false)) > 0 then ''synthetic_tiers'' ';
   end if;
 
   v_ask  := v_ask  || '''[]''::jsonb)';
@@ -344,45 +344,67 @@ begin
   v_asrc := v_asrc || 'else ''none'' end';
   v_bsrc := v_bsrc || 'else ''none'' end';
 
-  -- THIS IS THE VIEW THE WHOLE DESK SITS ON, and it was the slowest thing in
-  -- the database for the same reason v_latest_book was: `distinct on
-  -- (band_id) ... order by band_id, observed_at desc` reads EVERY row of
-  -- book_snapshots to emit one per band. Postgres has no loose index scan, so
-  -- the perfectly-ordered index is walked end to end.
+  -- THE LADDER, AS FOUR FUNCTIONS, AND THE VIEWS OVER THEM.
   --
-  -- P0.3 writes a snapshot per band every 15 minutes and never deletes one, so
-  -- that walk grows without limit while the answer stays 9,361 rows. It is the
-  -- shape of query that works for a month and then starts timing out, and
-  -- v_opportunities joins v_band_book TWICE, so it paid for the walk twice.
+  -- The four strings above are the only definition of how a raw book becomes
+  -- a normalised ladder and where that ladder came from. They are compiled
+  -- into functions so that EVERY caller shares one definition, whether it
+  -- wants all 19,633 bands or the 880 that are actually tradeable today.
   --
-  -- Driven from bands with a lateral it is one index probe per band on
-  -- ad4_ix_book_band_time, and it costs the same next year as it does today.
-  -- Measured on 179,487 snapshots over 9,361 bands.
+  -- WHY THIS MATTERS, measured. v_opportunities is read by five pages and by
+  -- signal_engine. It returns 1,760 rows for 80 upcoming markets, and it took
+  -- 29.6 SECONDS against a browser key that is given a few - which is why the
+  -- Analytics panels only ever rendered 57014. The cost was never the index:
+  -- it was building this ladder, and calling depth_usd() over it, for all
+  -- 13,545 bands that carry a snapshot in order to keep 880.
   --
-  -- The one behaviour that changes is a snapshot whose band_id is not in
-  -- bands. Nothing could render such a row anyway - it has no market, no city
-  -- and no ladder, and every consumer of this view joins through bands - so it
-  -- was already invisible everywhere it mattered. Verified zero on the desk.
-  v_sql :=
-    'create or replace view v_band_book as ' ||
-    'select ' ||
+  -- The obvious fix does not work. `select * from v_band_book where band_id =
+  -- $1` is NOT an index probe: the planner will not push a predicate through
+  -- a view whose target list calls depth_usd() over a three-way coalesce of
+  -- normalisers, so it rebuilds every row and filters. Wrapping the lateral
+  -- in `limit 1` makes it worse - per-row evaluation of a view that cannot be
+  -- parameterised is the whole walk, once per row. A set-returning function
+  -- per band was worse again: ~4.5 ms of call overhead each, which turned
+  -- v_band_book itself from 8 seconds into 21.
+  --
+  -- Four SCALAR functions are what works. They are immutable and inlinable,
+  -- so a caller that already holds one snapshot row pays for one ladder, and
+  -- a caller that wants the whole table pays exactly what it paid before.
+  -- Verified against the inline expressions on all 13,545 bands: zero
+  -- differences in the ask ladder, the bid ladder or the source label.
+  execute 'create or replace function ad4_ladder_ask(p book_snapshots) returns jsonb'
+       || ' language sql immutable parallel safe set search_path = public, extensions'
+       || ' as $bb$ select ' || v_ask || ' $bb$';
+  execute 'create or replace function ad4_ladder_bid(p book_snapshots) returns jsonb'
+       || ' language sql immutable parallel safe set search_path = public, extensions'
+       || ' as $bb$ select ' || v_bid || ' $bb$';
+  execute 'create or replace function ad4_ladder_src_ask(p book_snapshots) returns text'
+       || ' language sql immutable parallel safe set search_path = public, extensions'
+       || ' as $bb$ select ' || v_asrc || ' $bb$';
+  execute 'create or replace function ad4_ladder_src_bid(p book_snapshots) returns text'
+       || ' language sql immutable parallel safe set search_path = public, extensions'
+       || ' as $bb$ select ' || v_bsrc || ' $bb$';
+
+  -- Same rows, same columns, same cost as before for whole-table callers:
+  -- one index probe per band. recompute_capacity_city() reads this over a
+  -- city's whole snapshot history and is unaffected.
+  execute
+    'create or replace view v_band_book as select ' ||
     '  s.band_id, s.observed_at, s.best_bid, s.best_ask, ' ||
     case when v_has_sprd  then 's.spread'       else 'null::numeric' end || ' as spread, ' ||
     case when v_has_state then 's.market_state' else 'null::text'    end || ' as market_state, ' ||
     case when v_has_trade then 's.tradeable'    else 'null::boolean' end || ' as tradeable, ' ||
-    v_bid  || ' as bid_levels, ' ||
-    v_ask  || ' as ask_levels, ' ||
-    v_bsrc || ' as bid_levels_source, ' ||
-    v_asrc || ' as ask_levels_source, ' ||
-    'depth_usd(' || v_bid || ') as bid_depth_usd, ' ||
-    'depth_usd(' || v_ask || ') as ask_depth_usd, ' ||
+    '  ad4_ladder_bid(s)            as bid_levels,
+       ad4_ladder_ask(s)            as ask_levels,
+       ad4_ladder_src_bid(s)        as bid_levels_source,
+       ad4_ladder_src_ask(s)        as ask_levels_source,
+       depth_usd(ad4_ladder_bid(s)) as bid_depth_usd,
+       depth_usd(ad4_ladder_ask(s)) as ask_depth_usd, ' ||
     case when v_has_v24 then 's.band_volume_24hr' else 'null::numeric' end || ' as band_volume_24h, ' ||
     case when v_has_vol then 's.band_volume'      else 'null::numeric' end || ' as band_volume_lifetime ' ||
     'from bands bd cross join lateral (' ||
     '  select * from book_snapshots bs where bs.band_id = bd.band_id ' ||
     '  order by bs.observed_at desc limit 1) s';
-
-  execute v_sql;
 
   raise notice 'v_band_book built: raw_book=%  jsonb_levels=%  usd_tiers=%',
                v_has_raw, v_lv_jsonb, v_has_tiers;
@@ -496,7 +518,24 @@ begin
     case when v_v24   then 's.band_volume_24hr' else 'null::numeric' end || ' as band_volume_24h, ' ||
     case when v_vlife then 's.band_volume'      else 'null::numeric' end || ' as band_volume_lifetime, ' ||
     's.observed_at
-       from bands bd cross join lateral (
+       from bands bd
+       -- A TWENTY-FOUR HOUR FIGURE FOR A MARKET THAT CLOSED LAST WEEK IS NOT
+       -- A VOLUME, IT IS A FOSSIL. band_volume_24hr is copied off the newest
+       -- snapshot, and once the market is over that snapshot stops moving
+       -- while the real 24-hour volume goes to zero. Restricting this half to
+       -- bands whose market has not already resolved keeps the walk to the
+       -- ~1,600 bands that can still trade instead of all 19,633, and it is
+       -- what v_city_volume already does one level up, so that view is
+       -- unchanged by it.
+       --
+       -- THE TRADE HALF IS NOT RESTRICTED, which is what makes this safe: a
+       -- real trade observed in the last 24 hours still appears through the
+       -- FULL JOIN whatever its band\'s date. Only the stale book-reported
+       -- copy goes.
+       join markets mkv on mkv.market_id = bd.market_id
+                       and (mkv.resolution_date is null
+                            or mkv.resolution_date >= current_date - 1)
+       cross join lateral (
          select ' ||
     case when v_v24   then 'bs.band_volume_24hr' else 'null::numeric' end || ', ' ||
     case when v_vlife then 'bs.band_volume'      else 'null::numeric' end || ', ' ||
@@ -689,14 +728,75 @@ begin
   -- never show a number without saying where it came from.
   execute $v$
 create view v_opportunities as
+-- THE ELIGIBLE BANDS FIRST, AND EVERYTHING EXPENSIVE AFTER THEM.
+--
+-- This view returns 1,760 rows for 80 upcoming markets. It used to compute
+-- the answer for the whole database and throw almost all of it away:
+-- v_latest_edge walked 136,196 edges to emit 16,674, and the book and the two
+-- volume views each walked all 19,633 bands taking one index probe per band.
+-- Three full walks and an edge scan, per page load, on five pages and in
+-- signal_engine. Measured: 29.6 seconds against a browser key that is given
+-- a few seconds, which is why the Analytics panels only ever showed 57014.
+--
+-- `as materialized` is doing real work and is not decoration. Without it the
+-- CTE is inlined, the planner loses the 880-row estimate, and it goes back to
+-- hashing the whole-table side. With it, 880 rows drive everything below.
+with eligible as materialized (
+  select b.band_id, b.band_label, b.band_lo, b.band_hi, b.open_low, b.open_high,
+         b.token_yes, b.token_no,
+         m.city_key, m.resolution_date, m.unit,
+         c.display_name, c.icao, c.station_name, c.timezone, c.band_width
+  from bands b
+  join markets m on m.market_id = b.market_id
+  -- ACTIVE ONLY. A retired city keeps every row it ever wrote - nothing here
+  -- deletes - so this join is what stops the desk proposing a trade in a city
+  -- it has stopped trading. v_band_ladder, v_trade_plan and v_city_day_plan
+  -- are all built on this view, so they inherit the filter rather than each
+  -- needing its own copy of the rule.
+  join cities c  on c.city_key = m.city_key
+                and coalesce(c.status, 'active') = 'active'
+  -- THE CITY'S DATE, NOT THE SERVER'S. current_date here is UTC, and a
+  -- maximum-temperature market resolves on the city's LOCAL day. Every city
+  -- ahead of UTC therefore leaked: its local day could be over while the UTC
+  -- date still made this test pass, so a settled city-day stayed on the board
+  -- as an opportunity. Ninety-one signals fired that way in a single 48-hour
+  -- window - s1, s3, s4 and s6 all proposing entries on days whose maximum
+  -- was already in the books.
+  --
+  -- Today stays, including the case s5 is built for, where the local day is
+  -- effectively over but the venue has not closed the market yet: that is
+  -- resolution_date = local date with day_decided true, and it is a real
+  -- trade against a known answer. What goes is the day BEFORE that, which is
+  -- not a trade at all.
+  where m.resolution_date >= (now() at time zone coalesce(c.timezone, 'UTC'))::date
+),
+-- THE BOOK, ONCE PER BAND, NOT ONCE PER BAND-SIDE.
+--
+-- Materialised deliberately. Left to the outer query this runs for each of
+-- the 1,760 output rows instead of each of the 880 bands, and the ladder work
+-- is the expensive half. ad4_ladder_* are the same four expressions
+-- v_band_book is built from, so a ladder here and a ladder there can never
+-- disagree.
+book as materialized (
+  select e.band_id,
+         s.observed_at, s.best_bid, s.best_ask, s.spread, s.market_state,
+         ad4_ladder_src_bid(s)        as bid_levels_source,
+         ad4_ladder_src_ask(s)        as ask_levels_source,
+         depth_usd(ad4_ladder_bid(s)) as bid_depth_usd,
+         depth_usd(ad4_ladder_ask(s)) as ask_depth_usd
+  from eligible e
+  left join lateral (select * from book_snapshots bs
+                      where bs.band_id = e.band_id
+                      order by bs.observed_at desc limit 1) s on true
+)
 select
   e.edge_id, e.side, e.model_prob, e.market_price, e.edge_net_pp,
   e.edge_per_dollar, e.fillable_usd_5c, e.confidence, e.regime_label,
   e.tradeable, e.block_reason,
   b.band_id, b.band_label, b.band_lo, b.band_hi, b.open_low, b.open_high,
   b.token_yes, b.token_no,
-  m.city_key, m.resolution_date, m.unit,
-  c.display_name, c.icao, c.station_name, c.timezone, c.band_width,
+  b.city_key, b.resolution_date, b.unit,
+  b.display_name, b.icao, b.station_name, b.timezone, b.band_width,
   bk.best_bid, bk.best_ask, bk.spread, bk.market_state,
   coalesce(bv.volume_usd, 0) as volume_usd,
   coalesce(bv.n_trades, 0)   as n_trades,
@@ -719,44 +819,33 @@ select
   coalesce(bk.ask_depth_usd, 0)           as ask_depth_usd,
   coalesce(bk.bid_depth_usd, 0)           as bid_depth_usd,
   bk.observed_at                          as book_observed_at
-from v_latest_edge e
-join bands b   on b.band_id = e.band_id
-join markets m on m.market_id = b.market_id
-join cities c  on c.city_key = m.city_key
-               -- ACTIVE ONLY. A retired city keeps every row it ever wrote -
-               -- nothing here deletes - so this join is what stops the desk
-               -- proposing a trade in a city it has stopped trading.
-               -- v_band_ladder, v_trade_plan and v_city_day_plan are all built
-               -- on this view, so they inherit the filter rather than each
-               -- needing its own copy of the rule.
-               and coalesce(c.status, 'active') = 'active'
+from eligible b
 cross join (
   select
     coalesce(((select value from settings where key = 'volume_thresholds')->>'liquidity_half_saturation_usd')::numeric, 1) as k,
     coalesce(((select value from settings where key = 'volume_thresholds')->>'thin_band_usd_24h')::numeric, 0) as thin_band_usd
 ) vt
--- LATERAL, so the ladders are built for the bands this view RETURNS and not
--- for every band in the database. v_band_book normalises a jsonb order book
--- and calls depth_usd() over it per band; joined plainly, the planner built
--- all 9,361 of them and then threw away every one that had no live edge.
--- There are 814 edges. Same rows out, an eleventh of the work.
-left join lateral (select * from v_band_book   x where x.band_id  = b.band_id)     bk on true
-left join lateral (select * from v_band_volume x where x.band_id  = b.band_id)     bv on true
-left join lateral (select * from v_city_volume x where x.city_key = m.city_key)    cv on true
--- THE CITY'S DATE, NOT THE SERVER'S. current_date here is UTC, and a
--- maximum-temperature market resolves on the city's LOCAL day. Every city
--- ahead of UTC therefore leaked: its local day could be over while the UTC
--- date still made this test pass, so a settled city-day stayed on the board
--- as an opportunity. Ninety-one signals fired that way in a single 48-hour
--- window - s1, s3, s4 and s6 all proposing entries on days whose maximum was
--- already in the books.
---
--- Today stays, including the case s5 is built for, where the local day is
--- effectively over but the venue has not closed the market yet: that is
--- resolution_date = local date with day_decided true, and it is a real trade
--- against a known answer. What goes is the day BEFORE that, which is not a
--- trade at all.
-where m.resolution_date >= (now() at time zone coalesce(c.timezone, 'UTC'))::date
+-- THE LATEST EDGE PER SIDE, FOR THIS BAND. v_latest_edge is
+-- `distinct on (band_id, side)` over the whole edges table, which is a
+-- 136,196-row walk to answer a question about 880 bands. Driven from the band
+-- it is one probe on ad4_ix_edges_band_side_time, and the planner memoises
+-- it. Identical rows: the same distinct, over the same ordering, restricted
+-- to bands this view was going to keep anyway.
+join lateral (
+  select distinct on (x.side) x.*
+    from edges x
+   where x.band_id = b.band_id
+   order by x.side, x.computed_at desc
+) e on true
+left join book bk on bk.band_id = b.band_id
+-- These two stay plain joins. Both are whole-relation derivations rather than
+-- per-band probes, so they are cheapest evaluated ONCE and hashed: forcing
+-- per-row evaluation of v_band_volume rebuilds its full join per row, which
+-- is slower than the walk it was meant to avoid. v_band_volume's book half is
+-- now restricted to unresolved markets, so that one pass is ~1,600 bands
+-- rather than 19,633.
+left join v_band_volume bv on bv.band_id  = b.band_id
+left join v_city_volume cv on cv.city_key = b.city_key
 order by score desc nulls last
   $v$;
 

@@ -126,6 +126,19 @@ jobs:
         timeout-minutes: 15
         run: python scripts/calibration.py
 
+      # 6b. Fit the distributional post-processing: per city and lead, the
+      #     station bias to subtract and the factor the published width was
+      #     missing. Reads fact_forecast_outcome, so it goes AFTER the databank
+      #     freeze, and it reads only station-authority rows - fitting on the
+      #     pre-repair reader would teach it that reader's over- and under-read.
+      #     A cross-validated fit over ~400 cells and a 25-point shrinkage grid
+      #     is seconds of arithmetic on a few thousand rows, so it rides here
+      #     rather than paying for a schedule of its own.
+      - name: Fit forecast post-processing
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: python scripts/forecast_postprocess.py
+
       # 7. Capacity, correlation, peak hour, climate cache, the day-feature
       #    cache - and the calibration FEEDBACK, which measures whether the
       #    sigma the desk quoted turned out honest. After the databank freeze,
