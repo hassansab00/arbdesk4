@@ -203,6 +203,15 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
+  "derived_forecast_postprocess": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/forecast_postprocess.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    }
+  ],
   "derived_forecast_skill": [
     {
       "cadence": "daily",
@@ -973,6 +982,12 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_forecast_skill",
     "derived_forecast_skill_model",
     "weather_forecasts"
+  ],
+  "v_forecast_postprocess_applied": [
+    "derived_forecast_postprocess"
+  ],
+  "v_forecast_postprocess_health": [
+    "derived_forecast_postprocess"
   ],
   "v_index_never_used": [
     "bands",

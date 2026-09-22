@@ -85,6 +85,7 @@ insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plai
   ('derived_forecast_skill',    'computed_at',   200, 'model',     'How accurate the forecast has been, per city, per lead day. This is the number sigma is built from.'),
   ('derived_forecast_skill_model', 'computed_at', 200, 'model',    'The same measurement split out per model, so the blend cannot hide a bad one.'),
   ('derived_calibration_adjustment', 'computed_at', 200, 'model',   'How wide the desk''s stated confidence actually turned out to be, per city.'),
+  ('derived_forecast_postprocess', 'computed_at', 200, 'model',     'The station bias to subtract from each city''s public forecast and the factor its published width was missing, fitted per lead and kept only when it beats the raw forecast out of sample.'),
   ('derived_weather_model',     'fitted_at',     400, 'model',     'The desk''s own fitted correction to the public forecast.'),
   ('derived_model_forecast',    'run_at',         30, 'model',     'The desk''s own forward prediction, after that correction.'),
   ('derived_model_promotion',   'computed_at',    48, 'model',     'Whether each city and forecast horizon has earned the right to move a price.'),
