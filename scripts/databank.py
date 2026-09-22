@@ -242,10 +242,57 @@ def bank_bands(observed, days_back, force):
         bands += rest_all("bands", [
             ("select", "band_id,market_id,band_lo,band_hi,open_low,open_high"),
             ("market_id", f"in.({','.join(str(x) for x in chunk)})"), ], order="band_id.asc", page_size=1000)
-    bands = [b for b in bands
-             if b["band_id"] not in done
-             and market_resolution.get(b["market_id"]) == "confirmed"
-             and band_resolution.get(b["band_id"], {}).get("resolution_state") == "confirmed"]
+    # A LADDER FREEZES WHOLE, OR NOT AT ALL.
+    #
+    # This used to freeze each band the moment the venue confirmed it, and
+    # upsert() is ignore-duplicates, so whatever was written first is written
+    # for ever. The venue confirms a band that CANNOT win before it confirms
+    # the one that did - a band strictly below the running maximum is
+    # decidable hours before the day ends - so a run landing in that gap froze
+    # the losers, marked them done, and never came back for the winner.
+    #
+    # Measured 2026-09-22: 410 of 1,106 market-days, every one of them
+    # 2026-08-26 to 09-05 and captured 09-04 to 09-08, carry ELEVEN bands all
+    # settled_yes = false. A mutually exclusive ladder cannot resolve that way.
+    # Those days average 10.49 frozen bands against a full ladder of 11.00 -
+    # the winner is simply missing - and nothing downstream could tell the
+    # difference between "nothing won" and "we did not look again".
+    #
+    # What it cost: 37% of the settlement evidence calibration, forecast skill
+    # and every backtest read. It did NOT corrupt the strategy verdicts - zero
+    # settled signals fall on such a day - but it is 37% of the sample gone.
+    #
+    # So the unit of freezing is the MARKET-DAY. Every band in the ladder must
+    # be confirmed, and exactly one of them must have won. Anything else is
+    # left alone and tried again on the next run, which is what "not yet" is
+    # supposed to look like.
+    by_market_bands = {}
+    for b in bands:
+        by_market_bands.setdefault(b["market_id"], []).append(b)
+
+    coherent, incoherent = [], {}
+    for market_id, ladder in by_market_bands.items():
+        if market_resolution.get(market_id) != "confirmed":
+            continue
+        states = [band_resolution.get(b["band_id"], {}) for b in ladder]
+        if any(r.get("resolution_state") != "confirmed" for r in states):
+            incoherent[market_id] = "not every band is confirmed yet"
+            continue
+        winners = sum(1 for r in states if r.get("settled_yes"))
+        if winners != 1:
+            incoherent[market_id] = f"{winners} winners in a ladder of {len(ladder)}"
+            continue
+        coherent.extend(ladder)
+
+    if incoherent:
+        print(f"  {len(incoherent)} market-day(s) not frozen - the ladder has not "
+              f"resolved coherently yet: "
+              + "; ".join(f"{by_market[m]['city_key']} {by_market[m]['resolution_date']} "
+                          f"({why})" for m, why in list(incoherent.items())[:5]))
+
+    # `done` is applied AFTER coherence, not before: a ladder is judged on the
+    # whole of itself, including the bands already banked.
+    bands = [b for b in coherent if b["band_id"] not in done]
     if not bands:
         return []
 

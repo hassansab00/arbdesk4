@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 177 of them - and for each MISSING one names the
+-- and function the app reads - 179 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -86,6 +86,7 @@ with expected(rel, owner, used_by) as (values
     ('v_backtest_window', 'ad4_42_backtest.sql', '/backtest'),
     ('v_band_book', 'ad4_13_reconcile.sql', ''),
     ('v_band_ladder', 'ad4_34_trade_plan.sql', ''),
+    ('v_band_outcome_coherence', 'supabase/migrations/20260922120000_a_ladder_cannot_resolve_to_nothing.sql', ''),
     ('v_band_price_history', 'ad4_26_temp_trend.sql', '/monitor'),
     ('v_band_volume', 'ad4_13_reconcile.sql', ''),
     ('v_bankroll_curve', 'ad4_31_predictive.sql', '/predictive'),
@@ -118,6 +119,7 @@ with expected(rel, owner, used_by) as (values
     ('v_city_temp_trend', 'ad4_26_temp_trend.sql', ''),
     ('v_city_today_readings', 'ad4_26_temp_trend.sql', '/monitor'),
     ('v_city_volume', 'ad4_13_reconcile.sql', '(GlobalBar), /, /live'),
+    ('v_coherent_band_outcome', 'supabase/migrations/20260922120000_a_ladder_cannot_resolve_to_nothing.sql', ''),
     ('v_condition_skill', 'ad4_24_nws_gridpoint.sql', '(ModelAnalytics)'),
     ('v_data_freshness', 'ad4_39_freshness.sql', ''),
     ('v_data_health', 'ad4_39_freshness.sql', ''),
@@ -285,6 +287,7 @@ begin
     ('v_backtest_window', 'ad4_42_backtest.sql', '/backtest'),
     ('v_band_book', 'ad4_13_reconcile.sql', ''),
     ('v_band_ladder', 'ad4_34_trade_plan.sql', ''),
+    ('v_band_outcome_coherence', 'supabase/migrations/20260922120000_a_ladder_cannot_resolve_to_nothing.sql', ''),
     ('v_band_price_history', 'ad4_26_temp_trend.sql', '/monitor'),
     ('v_band_volume', 'ad4_13_reconcile.sql', ''),
     ('v_bankroll_curve', 'ad4_31_predictive.sql', '/predictive'),
@@ -317,6 +320,7 @@ begin
     ('v_city_temp_trend', 'ad4_26_temp_trend.sql', ''),
     ('v_city_today_readings', 'ad4_26_temp_trend.sql', '/monitor'),
     ('v_city_volume', 'ad4_13_reconcile.sql', '(GlobalBar), /, /live'),
+    ('v_coherent_band_outcome', 'supabase/migrations/20260922120000_a_ladder_cannot_resolve_to_nothing.sql', ''),
     ('v_condition_skill', 'ad4_24_nws_gridpoint.sql', '(ModelAnalytics)'),
     ('v_data_freshness', 'ad4_39_freshness.sql', ''),
     ('v_data_health', 'ad4_39_freshness.sql', ''),

@@ -94,10 +94,28 @@ select
   -- s8_two_bucket_cover
   coalesce((select (e ->> 'max_pair_cost')::numeric     from x where strategy_id = 's8_two_bucket_cover'), 0.70)    as s8_max_pair_cost,
   coalesce((select (e ->> 'min_pair_prob')::numeric     from x where strategy_id = 's8_two_bucket_cover'), 0.72)    as s8_min_pair_prob,
-  coalesce((select (e ->> 'min_liquidity_usd')::numeric from x where strategy_id = 's8_two_bucket_cover'), 100)     as s8_min_liquidity_usd;
+  coalesce((select (e ->> 'min_liquidity_usd')::numeric from x where strategy_id = 's8_two_bucket_cover'), 100)     as s8_min_liquidity_usd,
+
+  -- WHETHER THE STRATEGY IS SWITCHED ON, which this mirror did not ask.
+  --
+  -- Every arm of would_fire below reimplements a Python strategy's entry test
+  -- in SQL, and not one of them read strategies.enabled - so the board went on
+  -- labelling a row "s1 would fire here" after s1 was retired, and the
+  -- thresholds fell back to the Python DEFAULTS of a file that was no longer
+  -- running. Deleting a seed row made it worse rather than better: the
+  -- coalesce above then pinned the mirror to a hard-coded constant with
+  -- nothing left to change it.
+  --
+  -- Retiring a strategy has to mean one thing in both places or it does not
+  -- mean anything.
+  coalesce((select enabled from strategies where strategy_id = 's1_buy_low_sell_signal'), false) as s1_enabled,
+  coalesce((select enabled from strategies where strategy_id = 's3_concentration'),       false) as s3_enabled,
+  coalesce((select enabled from strategies where strategy_id = 's4_tail_fade'),           false) as s4_enabled,
+  coalesce((select enabled from strategies where strategy_id = 's5_running_max_lock'),    false) as s5_enabled,
+  coalesce((select enabled from strategies where strategy_id = 's7_pre_peak_gradient'),   false) as s7_enabled;
 
 comment on view v_strategy_params is
-  'Every threshold the mirror uses, read from strategies.extra - the same jsonb the Python engine reads - with the same fallbacks the Python files define.';
+  'Every threshold the mirror uses, read from strategies.extra - the same jsonb the Python engine reads - with the same fallbacks the Python files define - plus whether each strategy is switched on at all. A retired strategy must stop firing in the mirror too.';
 
 
 -- --------------------------------------------------------------------------
@@ -265,7 +283,7 @@ select
   (
     array_remove(array[
       -- s1: cheap enough, and the edge clears a full round trip.
-      case when o.side in ('YES','NO') and o.tradeable
+      case when o.side in ('YES','NO') and o.tradeable and p.s1_enabled
             and o.market_price is not null and o.market_price <= p.s1_price_threshold
             and coalesce(o.fillable_usd_5c, 0) >= p.s1_min_liquidity_usd
             and o.edge_net_pp is not null
@@ -275,7 +293,7 @@ select
 
       -- s3: a closed band within width_bands of the model's peak bucket, on a
       -- city whose forecast is measurably accurate to under a band.
-      case when o.side = 'YES' and o.tradeable and coalesce(o.edge_net_pp, 0) > 0
+      case when o.side = 'YES' and o.tradeable and coalesce(o.edge_net_pp, 0) > 0 and p.s3_enabled
             and not coalesce(o.open_low, false) and not coalesce(o.open_high, false)
             and sk.mae_bands is not null and sk.mae_bands < p.s3_max_mae_bands
             and l.prob_rank is not null
@@ -286,7 +304,7 @@ select
            then 's3_concentration' end,
 
       -- s4: the outer closed bands, sold, away from an uncertain regime.
-      case when o.side = 'NO' and o.tradeable and coalesce(o.edge_net_pp, 0) > 0
+      case when o.side = 'NO' and o.tradeable and coalesce(o.edge_net_pp, 0) > 0 and p.s4_enabled
             and coalesce(o.regime_label, '') not in ('UNCERTAIN', 'BLOCKED')
             and l.closed_pos is not null
             and (l.closed_pos <= p.s4_tail_bands
@@ -294,7 +312,7 @@ select
            then 's4_tail_fade' end,
 
       -- s5: the day is over, this band holds the locked maximum, still cheap.
-      case when o.side = 'YES' and o.tradeable and coalesce(t.day_decided, false)
+      case when o.side = 'YES' and o.tradeable and coalesce(t.day_decided, false) and p.s5_enabled
             and band_contains(o.band_lo, o.band_hi, o.open_low, o.open_high,
                               band_local_value(t.running_max_c, o.unit))
             and o.market_price is not null and o.market_price < p.s5_max_entry_price
@@ -302,7 +320,7 @@ select
 
       -- s7 YES: inside the window, still climbing, this band holds where the
       -- day is heading, and the pessimistic case reaches it too.
-      case when o.side = 'YES' and o.tradeable
+      case when o.side = 'YES' and o.tradeable and p.s7_enabled
             and coalesce(t.minutes_to_peak, -1) between 0 and p.s7_entry_window_min
             and coalesce(t.reading_age_min, 999) <= p.s7_max_reading_age_min
             and coalesce(t.slope_3_c_per_h, 0) > p.s7_min_slope_c_per_h
@@ -314,7 +332,7 @@ select
 
       -- s7 NO: the mirror. Rolled over inside the window, so sell the bands
       -- the day can no longer reach.
-      case when o.side = 'NO' and o.tradeable
+      case when o.side = 'NO' and o.tradeable and p.s7_enabled
             and coalesce(t.minutes_to_peak, -1) between 0 and p.s7_entry_window_min
             and coalesce(t.reading_age_min, 999) <= p.s7_max_reading_age_min
             and coalesce(t.rolling_over, false)

@@ -695,6 +695,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "trades_observed",
     "edges"
   ],
+  "v_band_outcome_coherence": [
+    "fact_band_outcome"
+  ],
   "v_band_price_history": [
     "bands",
     "book_snapshots",
@@ -890,6 +893,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "markets",
     "trades_observed"
+  ],
+  "v_coherent_band_outcome": [
+    "fact_band_outcome"
   ],
   "v_condition_skill": [
     "derived_city_day_features",
