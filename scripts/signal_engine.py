@@ -40,6 +40,9 @@ claiming the day is decided.
 import datetime as dt
 import sys
 import uuid
+
+import allocator
+import strategy_gate
 from collections import defaultdict
 from dataclasses import asdict
 
@@ -481,6 +484,119 @@ def _enrich(sig, decision_bands, cycle_id, now):
     return sig
 
 
+def _earned_weights(days=45):
+    """What each strategy's own settled record says it should be given.
+
+    Reads one return per settled signal from v_signal_mark and hands them to
+    strategy_gate, which shrinks the mean toward a zero-centred prior and
+    turns the result into a share of bankroll. A strategy that has never
+    settled anything, or whose record is under water, earns nothing and its
+    proposals are sized to zero - which is what should have happened to s1
+    for the three weeks it spent losing 17.8c on the dollar before anybody
+    measured it.
+
+    A FAILURE HERE MUST NOT SIZE EVERYTHING TO ZERO. If the view is missing
+    or the read fails, every strategy gets weight 1.0 and sizing falls back
+    to the per-signal Kelly in base.size(). The gate is there to hold money
+    back from strategies that have earned nothing, not to become a single
+    point of failure that stops the desk.
+    """
+    since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).date().isoformat()
+    try:
+        rows = rest_all("v_signal_mark", [
+            ("select", "strategy_id,price_at_fire,mark_net_per_share"),
+            ("fired_at", f"gte.{since}"),
+        ], order="signal_id.asc", page_size=1000)
+    except Exception as e:
+        print(f"  note: no signal marks ({e}); every strategy keeps full weight",
+              file=sys.stderr)
+        return {}
+
+    by_strategy = {}
+    for r in rows:
+        stake = r.get("price_at_fire")
+        net = r.get("mark_net_per_share")
+        if not stake or net is None:
+            continue
+        by_strategy.setdefault(r["strategy_id"], []).append(float(net) / float(stake))
+    return {sid: v for sid, v in strategy_gate.weights(by_strategy).items()}
+
+
+def _allocate_ladders(fired, views, portfolio, earned):
+    """Re-size the day's entries across each ladder instead of one at a time.
+
+    base.size() already sizes each signal on its own edge, but the bands of
+    one market-day are MUTUALLY EXCLUSIVE - exactly one wins - so they are a
+    single allocation problem, not N of them. allocator.allocate() solves it
+    (see scripts/allocator.py), and the part that matters on this venue is
+    the term per-band sizing has nowhere to put: the venue quotes a median
+    5.7 of ~11 bands, so the chance that NONE of the quoted bands wins is
+    large and real.
+
+    ENTRIES ONLY, AND YES ONLY. An exit is not a stake, and it keeps the size
+    the strategy asked for. A NO leg is a bet on the complement of one band
+    rather than on one outcome of the ladder, so it is not one of the
+    mutually exclusive alternatives this formula is about - those keep their
+    per-signal size too. Widening it to NO means modelling the ladder as
+    2N outcomes with constraints between them, which is a different problem
+    and not one to guess at.
+
+    Returns how many signals were re-sized, for the run's own log.
+    """
+    by_band = {str(v.band_id): v for v in views}
+    ladders = {}
+    for sig in fired:
+        if sig.action != "ENTER" or sig.side != "YES":
+            continue
+        v = by_band.get(str(sig.band_id))
+        if v is None or sig.prob_at_fire is None or not sig.price_at_fire:
+            continue
+        ladders.setdefault((v.city_key, str(v.resolution_date)), []).append((sig, v))
+
+    bankroll = getattr(portfolio, "bankroll", 0.0) or 0.0
+    if bankroll <= 0:
+        return 0
+
+    resized = 0
+    for key, members in ladders.items():
+        # One signal per band: if two strategies both want the same band, the
+        # ladder is still one allocation and the band is still one position.
+        # The other claims must be zeroed, not left alone - a rejected claim
+        # that keeps its per-signal size is the band staked twice.
+        best, all_claims = {}, {}
+        for sig, v in members:
+            bid = str(sig.band_id)
+            w = earned[sig.strategy_id].weight if sig.strategy_id in earned else 1.0
+            all_claims.setdefault(bid, []).append(sig)
+            prev = best.get(bid)
+            if prev is None or w > prev[2]:
+                best[bid] = (sig, v, w)
+
+        legs = [allocator.Leg(band_id=bid, prob=float(sig.prob_at_fire),
+                              price=float(sig.price_at_fire),
+                              depth_usd=getattr(v, "fillable_usd_5c_yes", None),
+                              label=f"{v.city_key} {v.band_label}")
+                for bid, (sig, v, _) in best.items()]
+        stakes, _detail = allocator.allocate(legs, bankroll)
+        staked = {s.band_id: s for s in stakes}
+
+        for bid, (sig, v, weight) in best.items():
+            st = staked.get(bid)
+            for other in all_claims.get(bid, []):
+                if other is not sig:
+                    other.suggested_shares = 0.0     # the band is one position
+                    resized += 1
+            if st is None:
+                sig.suggested_shares = 0.0
+            else:
+                # The strategy's earned weight scales what the ladder solved
+                # for. A strategy with no record still fires and is still
+                # marked; it is simply not given money.
+                sig.suggested_shares = (st.usd * weight) / float(sig.price_at_fire)
+            resized += 1
+    return resized
+
+
 def main():
     now = dt.datetime.now(dt.timezone.utc)
     configs = _enabled_strategies()
@@ -503,9 +619,16 @@ def main():
         return 0
 
     ctx = _context(views)
-    fired, blocked, conflict_rows = run_strategies(ctx, configs, _open_positions(), _portfolio())
+    portfolio = _portfolio()
+    fired, blocked, conflict_rows = run_strategies(ctx, configs, _open_positions(), portfolio)
     counts["fired"], counts["blocked"] = len(fired), len(blocked)
     counts["conflicts"] = len(conflict_rows)
+
+    earned = _earned_weights()
+    counts["resized"] = _allocate_ladders(fired, views, portfolio, earned)
+    counts["strategies_funded"] = sum(1 for v in earned.values() if v.weight > 0)
+    for sid, v in sorted(earned.items()):
+        print(f"  weight {v.weight:.2f}  {sid}: {v.reason}")
 
     recent = _recently_fired(now)
     cycle_id = str(uuid.uuid4())
