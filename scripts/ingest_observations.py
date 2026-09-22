@@ -15,22 +15,104 @@ from common import get_cities, upsert, log_run, retry
 
 IEM = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
 
-def fetch_station(icao, start, end):
+# How much calendar time one request may cover. 48 stations over 2 days came
+# back as 2,239 rows in 138 KB; a year in one request would be ~420,000 rows
+# and ~25 MB, which is not a request, it is an outage waiting for a timeout.
+MAX_DAYS_PER_REQUEST = 30
+
+
+def fetch_station(station, start, end, since=None, until=None):
+    """One request. `station` is an ICAO string OR a list of them.
+
+    THE PER-IP RATE LIMIT WAS AN ARTEFACT OF ASKING 48 TIMES.
+
+    This job sent one request per station, and moving it to n8n - where the
+    whole board shares one egress IP with every other tenant - lost most of
+    the board every run. Measured against the live service:
+
+        12 concurrent   44 of 48 stations returned nothing
+         4 concurrent   42 of 48
+         1 at a time    34 of 48, in 26 s, because most were rejected
+                        before they were served
+        every failure body: "Too many requests from your IP address, slow down."
+
+    Serialising did not help, which is the tell: the limiter counts REQUESTS
+    per IP, not connections. So the fix is not to go slower, it is to stop
+    making 48 requests. The ASOS service accepts REPEATED station= parameters,
+    and `requests` serialises a list into exactly that. Measured from the same
+    n8n egress that had been losing two thirds of the board:
+
+        one request, all 48 stations   48 of 48 returned, 2,239 rows,
+                                       138 KB, ~4 s, no rate limit at all
+
+    sts/ets bound the window to an INSTANT rather than a day, which is what
+    makes an hourly cadence cheap: the same 48 stations over the last 4 hours
+    came back as 168 rows in 10 KB. They override the day parameters, which
+    are still sent so that a caller reading year1/day2 off the query (and the
+    test that pins the day2-is-exclusive fix) still sees them.
+    """
     p = {
         # mslp, NOT alti or a raw station pressure. Sea-level pressure is the
         # only one comparable across a board that runs from Singapore at 5 m
         # to Mexico City at 2,240 m: station pressure there is ~770 hPa on the
         # calmest day of the year, so a single coefficient fitted across
         # cities would be reading altitude, not weather.
-        "station": icao, "data": "tmpf,dwpf,relh,drct,sknt,p01i,skyc1,mslp",
+        "station": station, "data": "tmpf,dwpf,relh,drct,sknt,p01i,skyc1,mslp",
         "year1": start.year, "month1": start.month, "day1": start.day,
         "year2": end.year,   "month2": end.month,   "day2": end.day,
         "tz": "Etc/UTC", "format": "onlycomma", "latlon": "no",
         "missing": "empty", "trace": "empty", "direct": "no", "report_type": "3",
     }
+    if since is not None:
+        p["sts"] = since.strftime("%Y-%m-%dT%H:%MZ")
+        p["ets"] = (until or dt.datetime.now(dt.timezone.utc)).strftime("%Y-%m-%dT%H:%MZ")
     r = requests.get(IEM, params=p, timeout=300)
     r.raise_for_status()
     return r.text
+
+
+def station_map(cities):
+    """station id as IEM REPORTS it -> city_key.
+
+    IEM ANSWERS A US STATION UNDER ITS THREE-LETTER ID. Asking for KAUS
+    returns rows labelled AUS; asking for EGLC returns EGLC. That is invisible
+    while each request carries one station, because the caller already knows
+    which city it asked about - and it is fatal the moment one response
+    carries all of them. A map keyed on cities.icao alone silently drops every
+    US city: measured on this board, 11 of 48, including New York, Chicago,
+    Los Angeles and Miami. The whole test suite passes while it happens,
+    because the only fixture uses KAUS where production sends AUS.
+
+    Both spellings are mapped. A collision is refused rather than resolved:
+    two cities answering to one id would attribute somebody else's weather to
+    a market, which is worse than a station nobody claims.
+    """
+    out, clash = {}, []
+    for c in cities:
+        icao = (c.get("icao") or "").strip().upper()
+        if not icao:
+            continue
+        for key in (icao, icao[1:] if len(icao) == 4 and icao.startswith("K") else None):
+            if not key:
+                continue
+            if out.get(key, c["city_key"]) != c["city_key"]:
+                clash.append((key, out[key], c["city_key"]))
+                continue
+            out[key] = c["city_key"]
+    if clash:
+        raise ValueError("two cities answer to the same IEM station id: " +
+                         "; ".join(f"{k}: {a} and {b}" for k, a, b in clash))
+    return out
+
+
+def day_chunks(start, end, max_days=MAX_DAYS_PER_REQUEST):
+    """[start, end) split so no request covers more than max_days."""
+    out, a = [], start
+    while a < end:
+        b = min(a + dt.timedelta(days=max_days), end)
+        out.append((a, b))
+        a = b
+    return out or [(start, end)]
 
 def f_to_c(v):
     return None if v is None else round((v - 32.0) * 5.0 / 9.0, 2)
@@ -72,8 +154,21 @@ def sky_oktas(code):
             return oktas
     return None
 
-def parse(text, city_key):
+def parse(text, city_key=None, by_station=None):
+    """Rows from one CSV response.
+
+    city_key stays the second positional argument: scripts/live_weather.py and
+    the older tests call parse(text, "nyc") and must go on working.
+
+    by_station turns on the BATCHED form - one response carrying many
+    stations, each row attributed by its own station column. A row whose
+    station is not in the map is DROPPED, never guessed: an unrecognised id is
+    either a city we did not ask for or the K-prefix trap in station_map(),
+    and attributing it to whichever city was last seen would put one city's
+    afternoon on another city's market.
+    """
     rows, rdr = [], csv.DictReader(io.StringIO(text))
+    unknown = set()
     for rec in rdr:
         ts = (rec.get("valid") or "").strip()
         if not ts:
@@ -85,8 +180,15 @@ def parse(text, city_key):
         tmpf = num(rec.get("tmpf"))
         if tmpf is None:
             continue
+        station = (rec.get("station") or "").strip().upper()
+        row_city = city_key
+        if by_station is not None:
+            row_city = by_station.get(station)
+            if row_city is None:
+                unknown.add(station)
+                continue
         rows.append({
-            "city_key": city_key,
+            "city_key": row_city,
             "station": (rec.get("station") or "").strip() or None,
             "valid_at": valid.isoformat(),
             "temp_f": tmpf,
@@ -116,6 +218,9 @@ def parse(text, city_key):
             "pressure_hpa": num(rec.get("mslp")),
             "source": "IEM",
         })
+    if unknown:
+        print(f"  ! {len(unknown)} unrecognised station id(s) dropped: "
+              + ", ".join(sorted(unknown)[:10]), file=sys.stderr)
     return rows
 
 def window(days, today=None):
@@ -157,26 +262,46 @@ def main():
     start, end = window(days)
 
     cities = get_cities(require_coords=False, require_icao=True)
-    print(f"stations: {len(cities)}  window: {start} -> {end} exclusive ({days}d + today)")
+    by_station = station_map(cities)
+    icaos = sorted({(c.get("icao") or "").strip().upper() for c in cities if c.get("icao")})
+    chunks = day_chunks(start, end)
+    print(f"stations: {len(icaos)}  window: {start} -> {end} exclusive ({days}d + today)"
+          f"  requests: {len(chunks)}")
 
-    total, failed = 0, []
-    for i, c in enumerate(cities, 1):
-        icao = c["icao"]
-        txt = retry(lambda: fetch_station(icao, start, end), label=icao)
+    total, empty_chunks, seen = 0, 0, {}
+    for i, (a, b) in enumerate(chunks, 1):
+        # ONE REQUEST FOR THE WHOLE BOARD. See fetch_station: the per-IP rate
+        # limit that kept this job off n8n counts requests, so 48 of them is
+        # the defect and 1 of them is the fix.
+        txt = retry(lambda: fetch_station(icaos, a, b),
+                    label=f"{len(icaos)} stations {a}..{b}")
         if not txt:
-            failed.append(icao); continue
-        rows = parse(txt, c["city_key"])
+            empty_chunks += 1
+            continue
+        rows = parse(txt, by_station=by_station)
         if not rows:
-            failed.append(icao); continue
+            empty_chunks += 1
+            continue
+        for r in rows:
+            seen[r["city_key"]] = seen.get(r["city_key"], 0) + 1
         n = upsert("weather_observations", rows, "city_key,valid_at,source")
         total += n
-        print(f"  [{i}/{len(cities)}] {icao:6s} {n:6d} obs")
+        print(f"  [{i}/{len(chunks)}] {a} -> {b}  {n:6d} obs across "
+              f"{len({r['city_key'] for r in rows})} city/cities")
 
-    print(f"\ntotal {total} observations, {len(failed)} stations failed")
-    if failed:
-        print("failed:", ", ".join(failed))
-    log_run("ingest_observations", "ok" if not failed else "partial", total,
-            {"days": days, "stations": len(cities), "failed": failed})
+    # A CITY THAT CAME BACK WITH NOTHING IS NAMED. The old loop reported a
+    # failed STATION, which a batched request cannot have - the request either
+    # lands or it does not. What can still go wrong is a station the service
+    # has no data for, and that has to be visible per city or it is invisible.
+    silent = sorted(c["city_key"] for c in cities if c["city_key"] not in seen)
+    print(f"\ntotal {total} observations across {len(seen)} of {len(cities)} city/cities")
+    if silent:
+        print(f"{len(silent)} city/cities returned nothing: " + ", ".join(silent[:12]))
+    status = "ok" if not silent and not empty_chunks else "partial"
+    log_run("ingest_observations", status, total,
+            {"days": days, "stations": len(icaos), "requests": len(chunks),
+             "cities_with_rows": len(seen), "silent_cities": silent,
+             "empty_chunks": empty_chunks})
 
 if __name__ == "__main__":
     main()

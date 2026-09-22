@@ -93,16 +93,27 @@ def _fetch(csv_text):
     return [{"csv": csv_text}]
 
 
-def _req(city="austin", icao="KAUS"):
-    return [{"city_key": city, "icao": icao, "url": "https://example.invalid/x"}]
+def _req(stations=("KAUS",), by_station=None):
+    """The single item Build requests now emits for the WHOLE board."""
+    if by_station is None:
+        by_station = {}
+        for s in stations:
+            by_station[s] = {"KAUS": "austin", "KDAL": "dallas"}.get(s, s.lower())
+            if len(s) == 4 and s.startswith("K"):
+                by_station[s[1:]] = by_station[s]
+    return [{"url": "https://example.invalid/x", "stations": list(stations),
+             "by_station": by_station, "requested": len(stations),
+             "hours_back": 6, "since": "2026-09-20T00:00Z",
+             "until": "2026-09-20T06:00Z"}]
 
 
 # ---------------------------------------------------------------- the window
 
-def _requests(days_back="1", now="2026-09-21T13:00:00Z"):
+def _requests(hours_back="6", now="2026-09-21T13:00:00Z", cities=None):
     return _run("Build requests", {
-        "Config": [{"supabase_url": "", "days_back": days_back, "max_cities_per_run": "0"}],
-        "Load cities": [{"city_key": "austin", "icao": "KAUS"}],
+        "Config": [{"supabase_url": "", "hours_back": hours_back,
+                    "max_cities_per_run": "0"}],
+        "Load cities": cities or [{"city_key": "austin", "icao": "KAUS"}],
         "Check schedule": [{"run": True}],
     }, now_iso=now)
 
@@ -114,15 +125,20 @@ def test_the_window_includes_today_because_day2_is_exclusive():
     assert "year2=2026" in url and "month2=9" in url and "day2=22" in url, url
 
 
-def test_the_window_starts_days_back_from_today():
-    url = _requests(days_back="2")[0]["url"]
-    assert "day1=19" in url and "month1=9" in url, url
+def test_the_window_starts_hours_back_from_now():
+    """Hourly, over hours. A day-granular window means an hourly run refetches
+    two whole days to gain 48 readings; sts/ets bound it to an instant, which
+    is 10 KB against 138 KB - measured on the live service."""
+    url = _requests(hours_back="6", now="2026-09-21T13:00:00Z")[0]["url"]
+    assert "sts=2026-09-21T07%3A00Z" in url, url
+    assert "ets=2026-09-21T13%3A00Z" in url, url
 
 
 def test_the_window_crosses_a_month_boundary():
-    url = _requests(days_back="1", now="2026-10-01T02:00:00Z")[0]["url"]
+    url = _requests(hours_back="6", now="2026-10-01T02:00:00Z")[0]["url"]
     assert "month1=9" in url and "day1=30" in url, url
     assert "month2=10" in url and "day2=2" in url, url
+    assert "sts=2026-09-30T20%3A00Z" in url, url
 
 
 def test_it_asks_iem_for_pressure():
@@ -134,13 +150,39 @@ def test_it_asks_iem_for_pressure():
 
 
 def test_a_city_without_a_station_is_not_requested():
-    out = _run("Build requests", {
-        "Config": [{"supabase_url": "", "days_back": "1", "max_cities_per_run": "0"}],
-        "Load cities": [{"city_key": "austin", "icao": "KAUS"},
-                        {"city_key": "nowhere", "icao": None}],
-        "Check schedule": [{"run": True}],
-    }, now_iso="2026-09-21T13:00:00Z")
-    assert [o["city_key"] for o in out] == ["austin"]
+    out = _requests(cities=[{"city_key": "austin", "icao": "KAUS"},
+                            {"city_key": "nowhere", "icao": None}])
+    assert out[0]["stations"] == ["KAUS"]
+    assert "nowhere" not in out[0]["by_station"].values()
+
+
+def test_the_whole_board_goes_out_in_one_request():
+    """THE FIX, STATED AS AN INVARIANT. IEM rate-limits by REQUEST per IP:
+    48 requests lost 34 to 44 of 48 stations from n8n's shared egress even at
+    one at a time, and one request carrying all 48 lost none."""
+    out = _requests(cities=[{"city_key": "austin", "icao": "KAUS"},
+                            {"city_key": "london", "icao": "EGLC"},
+                            {"city_key": "beijing", "icao": "ZBAA"}])
+    assert len(out) == 1, "one item, or the Fetch node makes one request per item again"
+    assert out[0]["stations"] == ["KAUS", "EGLC", "ZBAA"]
+    url = out[0]["url"]
+    assert url.count("station=") == 3, url
+
+
+def test_a_us_station_is_mapped_under_both_spellings():
+    """IEM answers KAUS as AUS. A map keyed on cities.icao alone drops every
+    US city - 11 of 48 on this board, New York and Chicago among them - and
+    every test passes while it happens."""
+    m = _requests(cities=[{"city_key": "austin", "icao": "KAUS"},
+                          {"city_key": "london", "icao": "EGLC"}])[0]["by_station"]
+    assert m["KAUS"] == "austin" and m["AUS"] == "austin"
+    assert m["EGLC"] == "london" and "GLC" not in m
+
+
+def test_two_cities_on_one_station_id_stop_the_run():
+    with pytest.raises(RuntimeError, match="same IEM station id"):
+        _requests(cities=[{"city_key": "a", "icao": "KAUS"},
+                          {"city_key": "b", "icao": "AUS"}])
 
 
 # ----------------------------------------------------------------- the parse
@@ -155,7 +197,7 @@ def _rows(csv_text=None, reqs=None, fetched=None):
 
 def test_it_parses_a_real_shaped_response():
     rows, totals = _rows()
-    assert totals["requested"] == 1 and totals["failed"] == 0
+    assert totals["requested"] == 1 and totals["silent_stations"] == []
     assert len(rows) == 4, [r["valid_at"] for r in rows]
     assert all(r["source"] == "IEM" for r in rows)
     assert all(r["city_key"] == "austin" for r in rows)
@@ -195,17 +237,48 @@ def test_empty_fields_become_null_not_zero():
     assert third["dewpoint_c"] is None and third["precip"] is None
 
 
-def test_a_station_that_returned_nothing_is_counted_as_failed():
+def test_a_station_that_returned_nothing_is_named():
     rows, totals = _rows(csv_text="station,valid,tmpf\n")
-    assert rows == [] and totals["failed"] == 1
-    assert totals["failed_stations"] == ["KAUS"]
+    assert rows == [] and totals["silent_stations"] == ["KAUS"]
+    assert totals["n_obs"] == 0
 
 
-def test_responses_are_never_paired_with_the_wrong_city():
-    # n8n preserves item order, but a silent misalignment would file one city's
-    # readings under another's name - worse than failing.
-    with pytest.raises(RuntimeError, match="refusing to pair them by index"):
-        _rows(reqs=_req() + _req("dallas", "KDAL"), fetched=_fetch(CSV()))
+def test_a_quiet_station_in_a_batch_is_named_not_counted_as_the_whole_run():
+    """Hourly over a few hours, some stations report and some do not. The
+    quiet ones travel in the log; they are not a failed run."""
+    rows, totals = _rows(reqs=_req(("KAUS", "KDAL")))
+    assert {r["city_key"] for r in rows} == {"austin"}
+    assert totals["silent_stations"] == ["KDAL"]
+    assert totals["cities_with_rows"] == 1 and totals["requested"] == 2
+
+
+def test_a_row_is_attributed_by_its_own_station_never_by_position():
+    """One response now carries every city. Pairing by index - which is what
+    the per-station shape did - would file one city's afternoon under
+    another city's market the moment a station went quiet."""
+    csv = ("station,valid,tmpf,dwpf,relh,drct,sknt,p01i,skyc1,mslp\n"
+           "DAL,2026-09-20 01:53,80.0,60.0,50.0,180,6,0.00,FEW,1010.0\n"
+           "AUS,2026-09-20 01:53,91.0,64.0,41.0,140,5,0.00,FEW,1010.9\n")
+    rows, _ = _rows(csv_text=csv, reqs=_req(("KAUS", "KDAL")))
+    by_city = {r["city_key"]: r for r in rows}
+    assert by_city["dallas"]["temp_f"] == 80.0
+    assert by_city["austin"]["temp_f"] == 91.0
+
+
+def test_a_station_nobody_asked_for_is_dropped_and_named():
+    csv = ("station,valid,tmpf,dwpf,relh,drct,sknt,p01i,skyc1,mslp\n"
+           "ZZZZ,2026-09-20 01:53,80.0,60.0,50.0,180,6,0.00,FEW,1010.0\n"
+           "AUS,2026-09-20 01:53,91.0,64.0,41.0,140,5,0.00,FEW,1010.9\n")
+    rows, totals = _rows(csv_text=csv)
+    assert {r["city_key"] for r in rows} == {"austin"}
+    assert totals["unknown_stations"] == ["ZZZZ"]
+
+
+def test_a_rate_limited_body_is_named_as_such():
+    """A rate limit, an outage and a quiet hour were the same number in the
+    log. The body is what tells them apart."""
+    rows, totals = _rows(csv_text="Too many requests from your IP address, slow down.")
+    assert rows == [] and totals["rate_limited"] is True
 
 
 def test_the_write_is_chunked():
@@ -230,31 +303,44 @@ def _fetch_node():
     raise AssertionError("Fetch observations is gone")
 
 
-def test_stations_are_fetched_one_at_a_time():
-    """IEM RATE-LIMITS BY IP, and answers a burst in plain words:
+def test_the_board_goes_out_in_one_request_not_forty_eight():
+    """IEM RATE-LIMITS BY REQUEST PER IP, and answers a burst in plain words:
 
         Too many requests from your IP address, slow down.
 
     Measured against the live service while porting this:
 
         12 concurrent   44 of 48 stations returned nothing
-         4 concurrent   42 of 48 returned nothing
-         1 at a time    the whole board
+         4 concurrent   42 of 48
+         1 at a time    34 of 48, in 26 s, because most were rejected
+                        before they were served
 
-    Both bursts "succeeded" - they wrote the handful that got through and
-    logged partial - so the damage is a board that silently loses most of its
-    cities, which is exactly the failure this move was meant to end. The
-    Python job is sequential for the same reason and covers 48 stations in
-    about 115 seconds, inside n8n's 300 second execution cap, so there is
-    nothing to buy by widening it.
+    SERIALISING DID NOT HELP, which is the diagnosis this file previously got
+    wrong: it recorded "1 at a time - the whole board", and the workflow's own
+    sticky note and ingest_log execution 8284 both say 34 of 48. A concurrency
+    cap is cleared by going one at a time; this one was not, so the limiter
+    counts requests.
+
+    So the fix is not a longer interval - it is one request. The ASOS service
+    accepts repeated station= parameters. Measured from the same egress,
+    2026-09-22: 48 of 48 stations, 2,239 rows, 138 KB, ~4 s, no rate limit;
+    and over a four-hour window, 168 rows in 10 KB.
+
+    Batching options are therefore absent, and must stay absent: a batchSize
+    on a single item does nothing, and reintroducing one item per station is
+    what this guards against.
     """
-    batch = _fetch_node()["parameters"]["options"]["batching"]["batch"]
-    assert batch["batchSize"] == 1, (
-        f"stations are fetched {batch['batchSize']} at a time; IEM answers that with "
-        "'Too many requests from your IP address, slow down.' and the board loses cities"
+    node = _fetch_node()
+    reqs = _requests(cities=[{"city_key": "austin", "icao": "KAUS"},
+                             {"city_key": "london", "icao": "EGLC"}])
+    assert len(reqs) == 1, (
+        f"Build requests emitted {len(reqs)} items; the Fetch node makes one "
+        "request per item, and 48 of them is the defect this replaced"
     )
-    assert batch["batchInterval"] >= 200, (
-        "no gap between requests is the same burst with extra steps"
+    assert reqs[0]["url"].count("station=") == 2
+    assert "batching" not in (node["parameters"].get("options") or {}), (
+        "batching is for many items; there is one, and its presence means the "
+        "per-station shape has come back"
     )
 
 

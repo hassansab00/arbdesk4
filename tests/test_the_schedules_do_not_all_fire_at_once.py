@@ -80,6 +80,11 @@ RUNTIME_SECONDS = {
     "AD4 P1.3 - NWS Forecast":           7,    # 2.2-6.5 s
     "AD4 P1.4 - NWS Gridpoint":          4,    # 2.7-3.7 s
     "AD4 P1.5 - Open-Meteo Global":      13,   # 2.8-12.8 s
+    # One batched IEM request for the whole board, not 48. Measured on the
+    # live service from this instance: 48 of 48 stations in ~4 s over a
+    # two-day window, and 10 KB over a four-hour one. Held at 20 s to cover
+    # the Supabase read and write either side of it.
+    "AD4 P1.6 - Station Observations (IEM METAR)": 20,
     "AD4 P2.2 - Paper Maintenance":      4,    # 2.6-3.8 s
     "AD4 - P4.1 Health Watchdog":        13,   # 3.5-12.8 s
     # Inactive (no SMTP credential), so it has no scheduled runs to measure.
