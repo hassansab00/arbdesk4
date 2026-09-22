@@ -395,3 +395,103 @@ def test_the_floor_still_applies_on_top_of_the_trajectory(monkeypatch):
     # clamp_prob floors a published probability at 1e-6 rather than zero, so a
     # dead band reads as that rather than as nothing at all.
     assert by_id["a"] <= 1e-6 and by_id["b"] <= 1e-6, "the floor still kills passed bands"
+
+
+# ===========================================================================
+# THE ROW HAS TO SAY WHICH DISTRIBUTION IT PUBLISHED.
+#
+# MEASURED, 2026-09-22 18:09. The first intraday run to price from the
+# trajectory wrote 16 city-days where sigma_c was the trajectory's width and
+# forecast_max_c - bias_applied_c was still the forecast's centre. Nothing on
+# the row said so, and two fitters read that pair as one distribution:
+#
+#   v_trajectory_evidence took it as the FORECAST baseline the trajectory is
+#   scored against - a baseline wearing the trajectory's own narrow spread,
+#   which loses by construction. More hours get applied, more rows are written
+#   that way, and the layer proves itself.
+#
+#   ad4_45 fits the calibration multiplier on
+#   z = (observed_max_c - forecast_max_c) / sigma_c. A forecast-sized error
+#   over a trajectory-sized width reports an overconfidence the forecast never
+#   had, and the multiplier widens every price on every city to correct it.
+#
+# One missing pair of columns, two fitted layers learning from a distribution
+# that was never quoted.
+# ===========================================================================
+def test_the_row_records_the_centre_the_bands_were_integrated_against(monkeypatch):
+    """Without the trajectory, centre_c is the bias-corrected forecast."""
+    rows, _reg, _why = _price(monkeypatch, traj=None)
+    r = rows[0]
+    assert r["centre_c"] == pytest.approx(
+        r["forecast_max_c"] - (r["bias_applied_c"] or 0.0))
+    assert r["centre_c"] == pytest.approx(20.0)
+
+
+def test_where_the_trajectory_fires_centre_c_is_the_only_record_of_the_centre(monkeypatch):
+    """forecast_max_c - bias_applied_c is NOT what the bands were priced from."""
+    rows, _reg, _why = _price(monkeypatch, traj=_traj_row())
+    r = rows[0]
+    assert r["centre_c"] == pytest.approx(24.8), "this hour's reading plus the climb"
+    assert r["forecast_max_c"] - (r["bias_applied_c"] or 0.0) == pytest.approx(20.0)
+    assert abs(r["centre_c"] - r["forecast_max_c"]) > 4.0, (
+        "the two differ by 4.8 C here - a row that records only the forecast "
+        "centre describes a distribution nobody published")
+
+
+def test_the_forecast_width_survives_the_trajectory_replacing_it(monkeypatch):
+    """The baseline v_trajectory_evidence scores against must still be readable."""
+    rows, _reg, _why = _price(monkeypatch, traj=_traj_row())
+    r = rows[0]
+    assert r["sigma_c"] == pytest.approx(0.45), "published width is the trajectory's"
+    assert r["forecast_sigma_c"] == pytest.approx(2.0 * pe.MAE_TO_SIGMA), (
+        "forecast_sigma_c must be what the forecast path produced BEFORE the "
+        "trajectory replaced it, or the trajectory is graded against itself")
+    assert r["forecast_sigma_c"] > r["sigma_c"] * 5
+
+
+def test_on_the_forecast_path_the_two_widths_are_the_same_number(monkeypatch):
+    rows, _reg, _why = _price(monkeypatch, traj=None)
+    r = rows[0]
+    assert r["forecast_sigma_c"] == pytest.approx(r["sigma_c"])
+
+
+def test_the_evidence_view_never_takes_its_baseline_from_the_published_width():
+    """A source assertion, because this cannot be exercised without Postgres.
+
+    tests/database/paper-contracts.cjs builds its fixture from
+    supabase/migrations and never applies sql/*.sql, so band_probabilities does
+    not exist there. What is checkable here is that the view asks for the
+    recorded forecast width and refuses a row that has none, rather than
+    falling back to sigma_c - which on a trajectory row is the very number the
+    baseline must not contain.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    body = open(os.path.join(root, "sql", "ad4_86_trajectory.sql"),
+                encoding="utf-8").read()
+    view = body[body.index("create or replace view v_trajectory_evidence"):
+                body.index("create or replace view v_trajectory_applied")]
+    published = view[view.index("published as ("):]
+    assert "q.forecast_sigma_c" in published and "as sigma_c" in published
+    assert "coalesce(q.forecast_sigma_c" not in published, (
+        "coalescing to sigma_c puts the trajectory's own width back into the "
+        "baseline for exactly the rows where it must not be")
+    assert "bp.forecast_sigma_c is not null" in published, (
+        "a row whose forecast width was never recorded is not evidence about "
+        "the forecast")
+
+
+def test_the_databank_freezes_the_width_that_belongs_beside_the_forecast_centre():
+    """fact_band_outcome.forecast_max_c and .sigma_c are read as ONE model.
+
+    ad4_45 divides by that sigma and ad4_58 asks whether it matched the
+    realised error. Both are statements about the forecast path - the
+    calibration multiplier is applied before the trajectory can replace sigma -
+    so the published width must not be what lands here.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(root, "scripts", "databank.py"), encoding="utf-8").read()
+    assert "forecast_sigma_c" in src, "databank never asks for the forecast width"
+    frozen = src[src.index('"sigma_c": p.get('):]
+    assert frozen.startswith('"sigma_c": p.get("forecast_sigma_c")'), (
+        "fact_band_outcome.sigma_c must take the forecast path's width, not "
+        "whatever the trajectory replaced it with")
