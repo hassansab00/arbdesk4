@@ -17,7 +17,7 @@ queue_backtest - nothing here ever overwrites a prior run.
 import datetime as dt
 import sys
 
-from common import rest, rest_all, insert, _cfg, _headers
+from common import rest, rest_all, insert, rpc, _cfg, _headers
 import requests
 import paper_engine
 import regime
@@ -28,6 +28,23 @@ from backtest import metrics
 DATA_STARTS_2025 = "book depth history begins 2026-08-22 (Polymarket publishes no depth history) - " \
                     "forecast accuracy can be backtested against ~2.5 years, strategy profitability cannot " \
                     "until AD4's own market data accumulates. This is a property of the data, not the harness."
+
+
+# THE STEP BUDGET, AND WHY THE RUNNER HAS TO KNOW IT.
+#
+# pipeline_daily gives this step 30 minutes. When it overran, GitHub killed
+# the process where it stood - so the `running` row it had already written was
+# never updated, and poll_and_run_queued() only ever selects status='queued'.
+# The result is a run that says it is running for ever and that nothing will
+# reclaim: 5f7bc321 sat that way from 2026-09-22 09:26 with no finished_at.
+#
+# A budget a couple of minutes under the step's own lets the runner stop
+# itself and record WHY, which is the difference between a failure and a
+# mystery. STALE_AFTER is the other half: a row still `running` long past any
+# plausible budget was killed, and the next run says so instead of stepping
+# around it.
+BUDGET_MINUTES = 26
+STALE_AFTER_MINUTES = 90
 
 
 def _patch(table, match, values):
@@ -87,7 +104,7 @@ def strategy_configs_from_rows(rows):
     ) for r in rows]
 
 
-def run(run_id):
+def run(run_id, deadline=None):
     run_row = _load_run(run_id)
     params = run_row.get("params") or {}
     _patch("backtest_runs", {"run_id": f"eq.{run_id}"},
@@ -155,20 +172,33 @@ def run(run_id):
 
             reg = regime.classify(city_key, m["resolution_date"], history_cache, as_of=as_of)
 
-            # One request per band for its newest snapshot as of the decision
-            # instant. The old single read pulled EVERY snapshot of every band
-            # up to as_of, hit the 1,000-row server cap, and the bands that
-            # sorted last never got a book - which is one reason a backtest
-            # over 739 city-days placed zero trades.
+            # ONE REQUEST FOR THE WHOLE LADDER, not one per band.
+            #
+            # This loop used to run `rest("book_snapshots", band_id=eq.<one>,
+            # limit 1)` once per band - about 15,800 sequential round-trips
+            # for a 30-day, 48-city, 9-strategy run, which at ~100ms each is
+            # 26 minutes before a single trade is simulated. It is what made
+            # pipeline_daily's step time out every night.
+            #
+            # It was not careless: it replaced a single read that pulled EVERY
+            # snapshot up to as_of, hit PostgREST's 1,000-row cap, and left
+            # the bands that sorted last with no book at all - one reason a
+            # backtest over 739 city-days once placed zero trades. book_as_of
+            # does `distinct on (band_id)` in the database, which is both
+            # complete and bounded, and PostgREST cannot express it.
             book_by_band = {}
-            for b in bands:
-                book_rows = rest("book_snapshots", [
-                    ("select", "*"), ("band_id", f"eq.{b['band_id']}"),
-                    ("observed_at", f"lte.{as_of.isoformat()}"),
-                    ("order", "observed_at.desc"), ("limit", "1"),
-                ])
-                if book_rows:
-                    book_by_band[b["band_id"]] = book_rows[0]
+            for row in rpc("book_as_of", {
+                "p_band_ids": [b["band_id"] for b in bands],
+                "p_as_of": as_of.isoformat(),
+            }) or []:
+                book_by_band[row["band_id"]] = row
+
+            if deadline and dt.datetime.now(dt.timezone.utc) >= deadline:
+                raise TimeoutError(
+                    f"ran out of time after {len(book_by_band)} ladders - the step "
+                    f"budget is {BUDGET_MINUTES} min. Narrow the run's dates, cities "
+                    f"or strategies, or raise timeout-minutes on the workflow step."
+                )
 
             result = simulate_city_day(
                 city_key, resolution_date, unit, bands, forecast_rows, skill_row, reg,
@@ -209,12 +239,46 @@ def run(run_id):
         raise
 
 
-def poll_and_run_queued():
+def reclaim_stalled(stale_after_minutes=STALE_AFTER_MINUTES):
+    """Fail runs that say `running` and are not.
+
+    A killed process leaves its row mid-flight. Nothing selects `running`, so
+    the row is neither retried nor visible as a failure - it just sits there
+    claiming to be working. This marks it failed with the reason, which both
+    tells the truth and lets somebody re-queue it deliberately.
+
+    It does NOT re-queue automatically. The run that stalled is the run that
+    would stall again, and a queue that retries the same oversized job every
+    night is how a 30-minute step becomes a permanent 30-minute step.
+    """
+    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=stale_after_minutes)
+    stalled = rest("backtest_runs", [
+        ("select", "run_id,started_at"), ("status", "eq.running"),
+        ("started_at", f"lt.{cutoff.isoformat()}"),
+    ])
+    for row in stalled:
+        print(f"  reclaiming stalled run {row['run_id']} (started {row.get('started_at')})")
+        _patch("backtest_runs", {"run_id": f"eq.{row['run_id']}"}, {
+            "status": "failed",
+            "error": (f"no progress for over {stale_after_minutes} min - the process was "
+                      f"killed, most likely by the workflow step timeout. Re-queue it "
+                      f"with a narrower date range, city list or strategy set."),
+            "finished_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        })
+    return len(stalled)
+
+
+def poll_and_run_queued(budget_minutes=BUDGET_MINUTES):
+    reclaim_stalled()
+    deadline = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=budget_minutes)
     queued = rest("backtest_runs", [("select", "run_id"), ("status", "eq.queued"), ("order", "created_at.asc")])
     for row in queued:
+        if dt.datetime.now(dt.timezone.utc) >= deadline:
+            print(f"  budget spent - {row['run_id']} stays queued for the next run")
+            break
         print(f"running queued backtest {row['run_id']}")
         try:
-            run(row["run_id"])
+            run(row["run_id"], deadline=deadline)
         except Exception as e:
             print(f"  ! run {row['run_id']} failed: {e}", file=sys.stderr)
 
