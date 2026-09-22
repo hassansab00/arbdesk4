@@ -164,3 +164,71 @@ select cron.schedule(
 --   select j.jobname, d.status, d.start_time, d.return_message
 --     from cron.job_run_details d join cron.job j using (jobid)
 --    where j.jobname like 'ad4_reclaim%' order by d.start_time desc limit 10;
+
+
+-- ===========================================================================
+-- THE RECLAIM FOLLOWS THE PRUNE BY CONSTRUCTION, NOT BY CLOCK.
+--
+-- Every schedule above assumes the archive has already pruned by the time it
+-- fires: "03:00 archive, 03:30 here". That assumption is about GitHub's clock,
+-- and GitHub does not keep it. Measured 2026-09-22: the 03:00 archive cron
+-- fired at 08:14. The 03:30 reclaim of research_captures ran first, rewrote a
+-- table nothing had been pruned from, and returned nothing - and the 26,734
+-- rows the archive did prune at 08:14 sat as dead pages until 03:30 the next
+-- day. Two jobs that must run in order were scheduled on two clocks, and only
+-- one of the clocks is reliable.
+--
+-- So the archive now asks for its own reclaim, the moment its prune commits.
+-- VACUUM cannot run inside a transaction, and every RPC is one - which is why
+-- this does not vacuum. It schedules: cron.schedule is an ordinary function
+-- call that inserts a row into cron.job, and pg_cron executes the VACUUM
+-- outside any transaction a couple of minutes later.
+--
+-- The job is named per table and REPLACED by name each time, so there is at
+-- most one per table. Its expression pins a minute of a day of a month, which
+-- means that if the archive ever stops, the job fires once a year on that
+-- date - a VACUUM FULL of a table with nothing dead in it, which rewrites the
+-- same rows and changes nothing. The daily schedules above stay as the
+-- backstop for a day the archive does not run at all.
+--
+-- ALLOW-LISTED, because this is a SECURITY DEFINER function that builds a
+-- statement from its argument. Only the seven tables the archive prunes can
+-- be named, and the name is quoted with %I regardless.
+-- ===========================================================================
+create or replace function public.request_reclaim(p_table text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_allowed constant text[] := array[
+    'research_captures', 'paper_resolution_evidence', 'book_snapshots', 'edges',
+    'weather_observations', 'weather_forecasts', 'trades_observed'];
+  v_at    timestamptz := now() + interval '2 minutes';
+  v_utc   timestamp   := v_at at time zone 'UTC';
+  v_job   text;
+  v_expr  text;
+begin
+  if p_table is null or not (p_table = any (v_allowed)) then
+    raise exception 'request_reclaim: % is not a table the archive prunes', p_table
+      using errcode = '22023';
+  end if;
+
+  v_job  := 'ad4_reclaim_after_archive_' || p_table;
+  v_expr := format('%s %s %s %s *',
+                   extract(minute from v_utc)::int, extract(hour  from v_utc)::int,
+                   extract(day    from v_utc)::int, extract(month from v_utc)::int);
+
+  perform cron.schedule(v_job, v_expr,
+                        format('VACUUM (FULL, ANALYZE) public.%I', p_table));
+
+  return jsonb_build_object('ok', true, 'job', v_job, 'cron', v_expr,
+                            'fires_at', v_at);
+end $$;
+
+comment on function public.request_reclaim(text) is
+  'Schedules a VACUUM FULL of one archive-pruned table for two minutes from now, so the space a prune frees is returned to the tier behind that prune rather than whenever the next fixed cron happens to fire. Called by scripts/archive_observations.py after each committed prune.';
+
+revoke all on function public.request_reclaim(text) from public, anon, authenticated;
+grant execute on function public.request_reclaim(text) to service_role;

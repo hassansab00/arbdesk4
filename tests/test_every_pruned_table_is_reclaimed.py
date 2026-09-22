@@ -179,3 +179,75 @@ def test_the_reclaims_finish_before_the_daily_pipeline():
         assert int(hour) < 4 or (int(hour) == 3), (
             f"{jobname} at {hour}:{minute} does not clear pipeline_daily's 04:00"
         )
+
+
+# ---------------------------------------------------------------------------
+# THE RECLAIM FOLLOWS THE PRUNE BY CONSTRUCTION.
+#
+# Every fixed schedule above assumed the archive had already run - "03:00
+# archive, 03:30 here". GitHub fired the 03:00 archive at 08:14 on
+# 2026-09-22, so the 03:30 reclaim rewrote an unpruned table and the day's
+# freed space sat as dead pages until the next morning. The archive now asks
+# for its own reclaim the moment a prune commits.
+# ---------------------------------------------------------------------------
+import archive_observations as ao                      # noqa: E402
+
+
+def _reclaim_fn_sql():
+    text = RECLAIM_SQL.read_text(encoding="utf-8")
+    start = text.index("create or replace function public.request_reclaim")
+    return text[start:text.index("$$;", start)]
+
+
+def test_every_archived_table_can_request_its_own_reclaim():
+    """The allow-list and the archive's table list must be the same set.
+
+    A table the archive prunes but request_reclaim refuses would fall back to
+    the fixed schedule silently - which is the gap this exists to close.
+    """
+    body = _reclaim_fn_sql()
+    allowed = set(re.findall(r"'([a-z_]+)'", body[body.index("array["):body.index("];")]))
+    archived = {spec["table"] for spec in ao.TABLES.values()}
+    assert archived <= allowed, f"not allow-listed: {sorted(archived - allowed)}"
+    assert allowed <= archived, (
+        f"allow-listed but never archived: {sorted(allowed - archived)} - a "
+        "SECURITY DEFINER function should not be able to rewrite tables nothing prunes")
+
+
+def test_the_reclaim_function_quotes_the_name_it_builds_a_statement_from():
+    body = _reclaim_fn_sql()
+    assert "security definer" in body
+    assert "VACUUM (FULL, ANALYZE) public.%I" in body, (
+        "a definer function that splices its argument into SQL unquoted is an "
+        "injection, allow-list or not")
+    assert "raise exception" in body and "not a table the archive prunes" in body
+
+
+def test_only_the_service_role_may_request_a_reclaim():
+    text = RECLAIM_SQL.read_text(encoding="utf-8")
+    assert re.search(r"revoke all on function public\.request_reclaim\(text\)\s+"
+                     r"from public, anon, authenticated", text)
+    assert "grant execute on function public.request_reclaim(text) to service_role" in text
+
+
+def test_a_failed_reclaim_request_does_not_fail_the_archive(monkeypatch):
+    """The rows are already in the repository and out of the database.
+
+    What is late is only the megabytes, and the daily schedule is still the
+    backstop, so this is recorded rather than raised.
+    """
+    def boom(fn, params=None):
+        raise RuntimeError("cron is down")
+
+    monkeypatch.setattr(ao, "_rpc", boom)
+    result = ao.request_reclaim("research_captures")
+    assert result["ok"] is False and "cron is down" in result["error"]
+
+
+def test_the_reclaim_request_is_recorded_on_the_archive_log():
+    code = (ROOT / "scripts" / "archive_observations.py").read_text(encoding="utf-8")
+    prune = code[code.index("def prune_one("):code.index("def request_reclaim(")]
+    assert "reclaim = request_reclaim(spec[\"table\"])" in prune
+    assert '"reclaim": reclaim' in prune, (
+        "an archive log that does not say whether the space was asked for back "
+        "cannot explain a database that stayed over the tier")
