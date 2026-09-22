@@ -67,6 +67,7 @@ def forecast_rows(n=3):
         "morning_pressure_hpa": 1014.2, "pressure_change_24h_hpa": -2.4,
         "cloud_mean": 4.0, "cloud_max": 8.0,
         "wind_mean": 5.0, "wind_max": 11.0, "precip_total": 0.0,
+        "wind_u_mean": -0.62, "wind_v_mean": 0.31,
     } for i in range(n)]
 
 

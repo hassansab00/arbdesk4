@@ -35,6 +35,30 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.11', cache: 'pip', cache-dependency-path: 'requirements.runtime.txt' }
       - run: pip install -r requirements.runtime.txt
+      # WIND DIRECTION, BEFORE THE FIT THAT NEEDS IT.
+      #
+      # refresh_feature_cache can only see what weather_observations still
+      # holds - the prune keeps about 90 days - while derived_city_day_features
+      # goes back to 2025-07-21 because surviving that prune is the whole
+      # reason it exists. So a refresh alone fills the wind vector on ~4,800
+      # recent city-days and leaves ~17,000 permanently null: most of the
+      # history the fit trains on, and every season it has to generalise
+      # across.
+      #
+      # The hourly series those days were built from is in this repository, at
+      # data/archive/observations/*.csv.gz, and it carries wind_dir_deg - the
+      # column was written from the start, it was simply never aggregated.
+      #
+      # HERE, AND NOT AS ITS OWN CADENCE, for two reasons. It belongs
+      # immediately before the fit that consumes it, and it costs nothing once
+      # the history is filled: it reads the cache, finds no nulls it can reach
+      # and writes zero rows. A separate schedule would spend a monthly run
+      # allowance on a job that is a no-op fifty-one weeks out of fifty-two.
+      - run: python scripts/backfill_wind_direction.py
+        env:
+          PYTHONPATH: scripts
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       - run: python scripts/weather_model.py --min-days ${{ github.event.inputs.min_days || '120' }} ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
         env:
           PYTHONPATH: scripts
