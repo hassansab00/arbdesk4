@@ -359,6 +359,32 @@ def test_the_pre_repair_reader_is_excluded_from_the_fit():
     assert ("obs_source", "not.is.null") in captured["params"]
 
 
+def test_the_paging_order_is_unique_or_it_loses_rows():
+    """fact_forecast_outcome is keyed on four columns, so three will not do.
+
+    rest_all pages by offset. An order that ties leaves the server free to
+    break those ties differently between pages, which silently drops and
+    duplicates rows - and a bias fitted on a sample with holes in it is wrong
+    in a way nothing downstream can see.
+    """
+    captured = {}
+
+    class _FakeCommon:
+        @staticmethod
+        def rest_all(table, params, order=None, page_size=None):
+            captured["order"] = order
+            return []
+
+    sys.modules["common"] = _FakeCommon
+    try:
+        fp.load_evidence(lookback_days=30)
+    finally:
+        sys.modules.pop("common", None)
+
+    cols = {part.split(".")[0] for part in captured["order"].split(",")}
+    assert {"city_key", "for_date", "lead_days", "model"} <= cols, captured["order"]
+
+
 def test_the_city_pool_gathers_every_lead():
     a0 = _days([(20.0, 20.0)] * 3)
     a1 = _days([(21.0, 20.0)] * 4, start=10)

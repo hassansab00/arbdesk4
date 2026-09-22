@@ -383,13 +383,19 @@ def choose_shrinkage(cells, k_cell_grid=K_CELL_GRID, k_city_grid=K_CITY_GRID,
 # Evidence.
 # ---------------------------------------------------------------------------
 def _newest_per_run_key(rows):
-    """One row per (city, for_date, lead): the newest run.
+    """One row per (city, for_date, lead): the newest run, whichever model.
 
     fact_forecast_outcome holds a row per MODEL, and the intraday job re-fetches
     the same date, so a city-day-lead can carry several. Counting them all
     would multiply a ten-day sample by the number of models and make thin
     evidence look decisive - the same trap ad4_45 avoids by taking one row per
     city-day.
+
+    NEWEST RUN REGARDLESS OF MODEL is not a shortcut, it is the alignment that
+    makes the fit apply. probability_engine._forecast_for orders by
+    `lead_days.asc, run_at.desc` and takes one row, so the number being priced
+    is the newest run whichever model produced it. Fitting on a per-model
+    average would correct a forecast the desk never quotes.
     """
     best, spread = {}, defaultdict(list)
     for r in rows:
@@ -436,8 +442,12 @@ def load_evidence(lookback_days=365, verified_only=True):
     if verified_only:
         params.append(("obs_source", f"neq.{FALLBACK_OBS_SOURCE}"))
         params.append(("obs_source", "not.is.null"))
+    # The order has to be UNIQUE or pagination skips rows: the primary key is
+    # (city_key, for_date, model, lead_days), and leaving `model` out of the
+    # sort leaves ties for the server to break however it likes between pages.
     rows = rest_all("fact_forecast_outcome", params,
-                    order="city_key.asc,for_date.asc,lead_days.asc", page_size=1000)
+                    order="city_key.asc,for_date.asc,lead_days.asc,model.asc",
+                    page_size=1000)
     by_cell = defaultdict(list)
     for (city, _date, lead), day in _newest_per_run_key(rows).items():
         by_cell[(city, lead)].append(day)
