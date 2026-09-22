@@ -833,6 +833,14 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "markets",
     "weather_forecasts"
   ],
+  "v_city_hit_history": [
+    "cities",
+    "fact_band_outcome"
+  ],
+  "v_city_hit_summary": [
+    "cities",
+    "fact_band_outcome"
+  ],
   "v_city_metadata_health": [
     "cities"
   ],

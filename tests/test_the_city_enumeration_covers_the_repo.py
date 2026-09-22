@@ -183,6 +183,14 @@ SQL_RECORD = {
     # roster filter belongs at the consumer, the way v_trade_plan applies it,
     # not in a table of what happened.
     "sql/ad4_82_settlement_agreement.sql",
+    # v_city_hit_history and v_city_hit_summary. RECORD, and for the same
+    # reason: "on the days that settled, did the band we called turn out to be
+    # the band that paid" is a question about the past, asked of frozen
+    # evidence. It joins cities only to print a display_name and a unit. A
+    # retired city's hit record is the most useful thing there is to read
+    # BEFORE deciding whether to bring it back, so filtering it out here would
+    # destroy the one answer somebody would come looking for.
+    "sql/ad4_85_city_hit_history.sql",
 }
 
 # MIGRATIONS COUNT TOO. The first version of this file globbed sql/*.sql and

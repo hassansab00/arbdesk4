@@ -31,6 +31,26 @@ interface ConvRow {
   forecast_max_c: number; observed_max_c: number | null;
   error_c: number | null; is_past: boolean; is_settled: boolean;
 }
+interface HitRow {
+  city_key: string; display_name: string | null; unit: string | null;
+  for_date: string; bands_scored: number;
+  observed_max_c: number | null; forecast_max_c: number | null; error_c: number | null;
+  sigma_c: number | null; confidence: number | null; regime_label: string | null;
+  winner: string | null;
+  model_call: string | null; model_call_prob: number | null; model_prob_on_winner: number | null;
+  market_call: string | null; market_call_price: number | null; market_prob_on_winner: number | null;
+  model_hit: boolean | null; market_hit: boolean | null;
+  brier_model: number | null; brier_market: number | null; brier_uniform: number | null;
+}
+interface HitSummaryRow {
+  city_key: string; display_name: string | null; days: number;
+  model_hits: number; market_hits: number;
+  model_hit_rate: number | null; market_hit_rate: number | null;
+  avg_model_prob_on_winner: number | null; avg_market_prob_on_winner: number | null;
+  brier_model: number | null; brier_market: number | null; brier_uniform: number | null;
+  mae_c: number | null; bias_c: number | null; days_we_beat_the_market: number;
+  first_day: string | null; last_day: string | null; verdict: string;
+}
 interface LadderRow {
   city_key: string; for_date: string; band_id: string; band_index: number | null;
   band_label: string | null; band_lo: number | null; band_hi: number | null;
@@ -222,12 +242,27 @@ export default function PredictivePage() {
   const bankQ = useQuery<BankrollRow[]>(
     () => supabase.from("v_bankroll_curve").select("*").limit(2000), [], undefined, 2000
   );
+  // HIT AND MISS, FOR ONE CITY. Both views are built on fact_band_outcome,
+  // which databank.py freezes only after a day has settled against final
+  // station authority and never updates - so nothing here can re-score
+  // yesterday with today's knowledge.
+  const hitQ = useQuery<HitRow[]>(
+    () => supabase.from("v_city_hit_history").select("*")
+            .eq("city_key", active).order("for_date", { ascending: false }).limit(400),
+    [active], 300000, 400
+  );
+  const hitSumQ = useQuery<HitSummaryRow[]>(
+    () => supabase.from("v_city_hit_summary").select("*").limit(200), [], 300000, 200
+  );
   const scaleQ = useQuery<ScalingRow[]>(
     () => supabase.from("v_edge_scaling").select("*"), []
   );
 
   const conv = convQ.data ?? [];
   const unit = (cities.find((c) => c.city_key === active)?.unit ?? "C") as Unit;
+
+  const hits = hitQ.data ?? [];
+  const hitSum = (hitSumQ.data ?? []).find((r) => r.city_key === active) ?? null;
 
   /* ------------------------------------------------- the convergence funnel */
   const funnel = useMemo<ConvergencePoint[]>(
@@ -548,6 +583,131 @@ export default function PredictivePage() {
           onRetry={convQ.refresh}
         >
           <Convergence3D points={funnel} bands={bandEdges} unit={unit} />
+        </DataState>
+      </section>
+
+      {/* ===================================== HIT AND MISS, ONE CITY AT A TIME
+          Mean error in degrees is the wrong unit for this question. On a 1 C
+          ladder a 1 C miss is a different bucket, which is a total loss on
+          the band that was called - so skill has to be read in buckets,
+          against what settled, beside what the market said on the same day. */}
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold">Hit and miss, day by day</h2>
+          <select
+            value={active} onChange={(e) => setCity(e.target.value)}
+            className="rounded border border-border bg-panel2 px-2 py-1 text-xs"
+          >
+            {cities.map((c) => (
+              <option key={c.city_key} value={c.city_key}>
+                {c.display_name ?? c.city_key}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="max-w-3xl text-xs leading-relaxed text-muted">
+          Every settled day for this city: the bucket the desk called, the bucket the market
+          called, and the bucket that actually paid. <b>Both sides are scored on the same
+          bands</b> — only the ones both of them priced, each renormalised over that set. That
+          matters: the venue quotes a median 6.8 of 11 buckets, so scoring each side over
+          whatever it happened to price flatters the market by selection. Brier is the
+          multiclass score over those shared bands, lower is better, and a uniform guess is
+          shown beside it so &quot;better than nothing&quot; is visible rather than assumed.
+        </p>
+        <DataState
+          relation="v_city_hit_history"
+          truncated={hitQ.truncated}
+          loading={hitQ.loading} error={hitQ.error} isEmpty={hits.length === 0}
+          emptyTitle="No settled days for this city yet"
+          emptyBody={MISSING("sql/ad4_85_city_hit_history.sql", "and remember a day only appears here once it has settled against final station authority AND both sides priced the winning band.")}
+          onRetry={hitQ.refresh}
+        >
+          <div className="space-y-3">
+            {hitSum && (
+              <div className="rounded border border-border bg-panel p-3">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                  <Stat label="settled days" value={fmtInt(hitSum.days)} />
+                  <Stat
+                    label="we called it"
+                    value={fmtPct(hitSum.model_hit_rate ?? 0)}
+                    tone={(hitSum.model_hit_rate ?? 0) >= (hitSum.market_hit_rate ?? 0)
+                      ? "var(--c-good)" : "var(--c-bad)"}
+                  />
+                  <Stat label="market called it" value={fmtPct(hitSum.market_hit_rate ?? 0)} />
+                  <Stat
+                    label="our Brier"
+                    value={(hitSum.brier_model ?? 0).toFixed(3)}
+                    tone={(hitSum.brier_model ?? 1) <= (hitSum.brier_market ?? 1)
+                      ? "var(--c-good)" : "var(--c-bad)"}
+                  />
+                  <Stat label="market Brier" value={(hitSum.brier_market ?? 0).toFixed(3)} />
+                  <Stat label="uniform guess" value={(hitSum.brier_uniform ?? 0).toFixed(3)} />
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <Stat label="mean |error|" value={`${(hitSum.mae_c ?? 0).toFixed(2)} °C`} />
+                  <Stat
+                    label="bias (forecast − actual)"
+                    value={`${(hitSum.bias_c ?? 0) > 0 ? "+" : ""}${(hitSum.bias_c ?? 0).toFixed(2)} °C`}
+                  />
+                  <Stat
+                    label="days we beat the market"
+                    value={`${fmtInt(hitSum.days_we_beat_the_market)} of ${fmtInt(hitSum.days)}`}
+                  />
+                  <Stat label="measured over" value={`${hitSum.first_day ?? "—"} → ${hitSum.last_day ?? "—"}`} />
+                </div>
+                <p className="mt-3 text-[11px] text-muted">
+                  <b>Verdict:</b> {hitSum.verdict}
+                </p>
+              </div>
+            )}
+
+            <div className="overflow-x-auto rounded border border-border bg-panel">
+              <table className="w-full text-[11px]">
+                <thead className="text-muted">
+                  <tr className="border-b border-border">
+                    <th className="p-2 text-left">day</th>
+                    <th className="p-2 text-right">actual</th>
+                    <th className="p-2 text-right">forecast</th>
+                    <th className="p-2 text-right">error</th>
+                    <th className="p-2 text-left">paid</th>
+                    <th className="p-2 text-left">we called</th>
+                    <th className="p-2 text-right">our p on winner</th>
+                    <th className="p-2 text-left">market called</th>
+                    <th className="p-2 text-right">its p on winner</th>
+                    <th className="p-2 text-right">Brier us / market</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hits.map((r) => (
+                    <tr key={`${r.city_key}:${r.for_date}`} className="border-b border-border/40">
+                      <td className="p-2">{fmtResolutionDate(r.for_date)}</td>
+                      <td className="p-2 text-right">{fmtTemp(r.observed_max_c, unit)}</td>
+                      <td className="p-2 text-right">{fmtTemp(r.forecast_max_c, unit)}</td>
+                      <td className="p-2 text-right" style={{ color: Math.abs(r.error_c ?? 0) > 1 ? "var(--c-bad)" : undefined }}>
+                        {r.error_c === null ? "—" : `${r.error_c > 0 ? "+" : ""}${r.error_c.toFixed(1)}`}
+                      </td>
+                      <td className="p-2 font-medium">{r.winner ?? "—"}</td>
+                      <td className="p-2" style={{ color: r.model_hit ? "var(--c-good)" : "var(--c-bad)" }}>
+                        {r.model_hit ? "✓ " : "✗ "}{r.model_call ?? "—"}
+                      </td>
+                      <td className="p-2 text-right">{fmtPct(r.model_prob_on_winner ?? 0)}</td>
+                      <td className="p-2" style={{ color: r.market_hit ? "var(--c-good)" : "var(--c-bad)" }}>
+                        {r.market_hit ? "✓ " : "✗ "}{r.market_call ?? "—"}
+                      </td>
+                      <td className="p-2 text-right">{fmtPct(r.market_prob_on_winner ?? 0)}</td>
+                      <td className="p-2 text-right">
+                        <span style={{ color: (r.brier_model ?? 1) <= (r.brier_market ?? 1) ? "var(--c-good)" : "var(--c-bad)" }}>
+                          {(r.brier_model ?? 0).toFixed(2)}
+                        </span>
+                        {" / "}
+                        {(r.brier_market ?? 0).toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </DataState>
       </section>
 
