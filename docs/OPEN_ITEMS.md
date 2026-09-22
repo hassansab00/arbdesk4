@@ -176,3 +176,105 @@ the coverage means moving the evaluation to n8n - a SECOND SIGNAL WRITER,
 which is a design change with dedupe and conflict implications. Build that
 cadence for a strategy that has earned it. s7 has never fired a signal.
 **Revisit once it has a record on those 15.**
+
+---
+
+# Round two — measured 2026-09-22 (afternoon)
+
+Hassan asked for three things in this order: forecast post-processing, the
+three risk controls, then the probability / station-bias / spread fix. All
+three are built, tested and pushed. Two need a live run to be called proven,
+and the work turned up one finding larger than any of them.
+
+## 10. Forecast post-processing
+**Status: BUILT AND SCHEDULED. Unproven until the first live fit.**
+
+`scripts/forecast_postprocess.py` + `sql/ad4_83`, running as step 6b of
+`pipeline_daily` (04:00 UTC). What it is correcting, measured on 294 settled
+city-days, 16-21 Sep:
+
+- **6,666 of 8,118 lead-0 rows carried `bias_applied_c` = 0.0000.** A lead-0
+  market whose city has no lead-0 skill row borrows lead-1 skill, and a
+  borrowed row forced the bias to zero - while the same cities measured a
+  mean |bias| of 0.696 C at lead 0. Two thirds of a 1 C bucket, discarded
+  every day, on the most-traded day of the ladder.
+- **sd((observed - centre)/sigma) = 0.873.** Per city over >= 5 settled days
+  the median is 0.542; of 49 cities, 35 read below 0.7 and **none above 1.3**.
+- `derived_calibration_adjustment` holds exactly this number per city and
+  every row reads `applied = false`, `n_days` 4 or 5, "needs 30".
+
+Reproduced in SQL on the live evidence at a mid-grid shrinkage, so the shape
+of what the fitter will write is known: **399 cells, mean |bias| 0.871 C
+(max 3.038), mean sigma ratio 0.815**, baseline 2.029 -> 1.603 C, with
+shrinkage pulling the raw cell bias back 0.102 C on average.
+
+**Done means:** `derived_forecast_postprocess` has rows after the 04:00 run,
+`v_forecast_postprocess_health` shows applied cells with positive
+`crps_gain`, and `band_probabilities.bias_applied_c` is non-zero on lead-0
+proxy rows. **This session could not force it: workflow dispatch is denied to
+it.** Run `pipeline_daily` by hand from the Actions tab to see it sooner.
+
+## 11. The three risk controls
+**Status: BUILT. Live only when a desk is entering.**
+
+`scripts/risk_budget.py` + `sql/ad4_84`, wired into
+`signal_engine._allocate_ladders`. The drawdown control already has something
+to say: the **"Wide edge, all US"** desk sits at equity 4,470 against a
+high-water 5,087 - a **12.1% drawdown**, which scales its risk to **0.74x**.
+It is paused, so nothing acts on that yet.
+
+**Done means:** a `pipeline_intraday` run printing the three `risk:` lines,
+and at least one ladder visibly cut by a cap rather than by depth.
+
+## 12. THE DAY'S TRAJECTORY IS NOT IN THE PRICE — the biggest one left
+**Status: MEASURED, NOT BUILT. Hassan's call.**
+
+This is where the market's advantage actually comes from, and the input to
+fix it is already computed nightly and **read by nothing**.
+
+`derived_climb_profile` holds, per city and local hour, how much the day
+still has to climb and how uncertain that is - 1,248 rows, 52 cities, 24
+hours, a mean 89 days behind each, refreshed 2026-09-22 09:26. Averaged over
+the roster:
+
+| local hour | still to climb | sd | already peaked |
+| --- | --- | --- | --- |
+| 09 | 4.59 C | 1.74 | 1.9% |
+| 12 | 1.64 C | 1.10 | 22.5% |
+| 14 | 0.66 C | 0.80 | 54.1% |
+| **15** | **0.37 C** | **0.63** | **71.2%** |
+| **16** | **0.19 C** | **0.44** | **83.9%** |
+| **18** | **0.06 C** | **0.25** | **94.4%** |
+
+The desk publishes **sigma ~1.50 C all day**. At 15:00 local the measured
+uncertainty about the rest of the day is **0.63 C** - 2.4x narrower. At 16:00,
+3.4x. At 18:00, 6x. And on 71-94% of those days the running maximum already
+IS the answer.
+
+Today the engine uses the day's observations for exactly one thing: a floor.
+`observed_floor_c` zeroes the bands the day has already passed and
+renormalises the rest of a morning distribution across them. It never
+narrows, and it never moves the centre.
+
+That is the measured explanation for the Brier gap in
+`docs/STRATEGY_EVIDENCE_2026-09-22.md` - our 0.7913 against the market's
+0.1505. The market is trading the trajectory; we are quoting a morning
+forecast's width at four in the afternoon.
+
+**What it would take.** The identity is not a model:
+
+    final max = max(running max so far, max over the rest of the day)
+
+and the second term is what `derived_climb_profile` measures:
+`N(temp_now + typical_climb_left_c, climb_left_sd_c)`. The only modelling
+choice is how to combine that with the forecast distribution, and that choice
+should be **fitted and gated the same way the post-processing layer is** -
+shadow, score against the published distribution by CRPS on settled days,
+apply per city-hour only where it wins. Not a blend weight someone picked.
+
+**Not built, because it was not asked for and it is a fourth item the size of
+the other three.** The measurement above is complete enough to decide on.
+
+**Done means:** the published sigma at 16:00 local reflects 0.44 C rather
+than 1.50 C where the evidence supports it, and the settled-day Brier moves
+toward the market's.
