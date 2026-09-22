@@ -139,3 +139,104 @@ begin
   end if;
 end
 $ad4$;
+
+
+-- --------------------------------------------------------------------------
+-- 6. THE WORKFLOW THAT FIRES ON TIME AND DOES NOTHING.
+--
+--    Every n8n workflow's first node calls should_run(job, 'schedule'), and a
+--    refusal is not a failure: the execution logs `skipped` and finishes
+--    green. That is correct behaviour and it is also a perfect hiding place.
+--
+--    Found on 2026-09-22. P1.6_iem_observations had been moved to an hourly
+--    Schedule Trigger and activated, and its n8n executions read `success`
+--    every hour at :10 - two seconds each, because the gate still said
+--    {"mode": "manual"} and every run stopped at node four. The observation
+--    feed sat 104 minutes stale with 45 of 48 cities last seen four hours
+--    ago, while every dashboard that asks "did it run" said yes.
+--
+--    Nothing in the stack could see it. v_workflow_runs shows the LATEST run
+--    per job, and one skipped run is ordinary. What is not ordinary is a job
+--    skipping every scheduled attempt for hours: that means the trigger and
+--    the gate disagree about whether this workflow exists.
+--
+--    THE TWO HALVES HAVE DIFFERENT OWNERS, which is why they drift. The
+--    cadence lives in n8n (a Schedule Trigger inside a workflow file); the
+--    permission lives here (settings.workflow_schedules, editable from the
+--    UI). Changing one is not changing the other, and no error is raised
+--    when they contradict - so the contradiction has to be a row somebody
+--    can read.
+--
+--    Idempotent: one view, no writes.
+-- --------------------------------------------------------------------------
+create or replace view v_workflow_gate_health as
+with spec as (
+  select e.key                                                as job,
+         coalesce(e.value ->> 'mode', 'auto')                 as mode,
+         coalesce((e.value ->> 'every_minutes')::int, 0)      as every_minutes
+    from settings s
+    cross join lateral jsonb_each(s.value) e
+   where s.key = 'workflow_schedules'
+     and jsonb_typeof(e.value) = 'object'
+),
+runs as (
+  select job,
+         max(logged_at)                                       as last_attempt,
+         max(logged_at) filter (where status <> 'skipped')    as last_real_run,
+         count(*) filter (where status = 'skipped'
+                            and logged_at > now() - interval '24 hours') as skipped_24h,
+         count(*) filter (where status <> 'skipped'
+                            and logged_at > now() - interval '24 hours') as ran_24h
+    from ingest_log
+   where job is not null
+     and logged_at > now() - interval '7 days'
+   group by job
+)
+select
+  sp.job,
+  sp.mode,
+  sp.every_minutes,
+  r.last_attempt,
+  r.last_real_run,
+  coalesce(r.skipped_24h, 0)                                  as skipped_24h,
+  coalesce(r.ran_24h, 0)                                      as ran_24h,
+  case when r.last_real_run is null then null
+       else round(extract(epoch from (now() - r.last_real_run)) / 60.0)::int
+  end                                                         as minutes_since_real_run,
+  -- THE ONE THAT MATTERS is the second arm. Three or more scheduled attempts
+  -- refused in a day is a Schedule Trigger firing into a closed gate - the
+  -- workflow is on in n8n and off here, and it reports success either way.
+  case
+    when sp.mode = 'off'                                      then 'switched off deliberately'
+    when sp.mode = 'manual' and coalesce(r.skipped_24h, 0) >= 3
+         then format('GATED: its schedule fired %s times in 24h and the gate refused every one - '
+                     || 'n8n thinks this workflow is on, settings.workflow_schedules says manual',
+                     r.skipped_24h)
+    when sp.mode = 'manual'                                   then 'manual-only, and nothing is trying to run it'
+    when r.last_real_run is null                              then 'auto, but it has never completed a run'
+    when sp.every_minutes > 0
+     and extract(epoch from (now() - r.last_real_run)) / 60.0 > 3 * sp.every_minutes
+         then format('STALLED: auto every %s min, last completed run was %s min ago',
+                     sp.every_minutes,
+                     round(extract(epoch from (now() - r.last_real_run)) / 60.0))
+    else                                                           'running'
+  end                                                         as verdict,
+  (sp.mode = 'manual' and coalesce(r.skipped_24h, 0) >= 3)    as gate_contradicts_trigger
+from spec sp
+left join runs r on r.job = sp.job
+order by (sp.mode = 'manual' and coalesce(r.skipped_24h, 0) >= 3) desc,
+         sp.job;
+
+comment on view v_workflow_gate_health is
+  'Whether each n8n workflow''s Schedule Trigger and its should_run() gate agree. A refused scheduled run logs `skipped` and finishes green, so a workflow can fire on time for days and do nothing - which is how P1.6 left the observation feed 104 minutes stale while every execution read success.';
+
+do $ad4$
+declare r text;
+begin
+  foreach r in array array['anon','authenticated','service_role'] loop
+    if exists (select 1 from pg_roles where rolname = r) then
+      execute format('grant select on v_workflow_gate_health to %I', r);
+    end if;
+  end loop;
+end
+$ad4$;

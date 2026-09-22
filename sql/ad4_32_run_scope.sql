@@ -123,6 +123,7 @@ declare
   v_every   int;
   v_last    timestamptz;
   v_mins    numeric;
+  v_reason  text;
   v_scope   jsonb := run_scope(p_job);
 begin
   select value -> p_job into v_cfg from settings where key = 'workflow_schedules';
@@ -143,13 +144,36 @@ begin
                               'reason', 'manual trigger: ' || p_trigger);
   end if;
 
-  if v_mode = 'off' then
-    return jsonb_build_object('run', false, 'scope', v_scope,
-                              'reason', p_job || ' is switched off');
-  end if;
-  if v_mode = 'manual' then
-    return jsonb_build_object('run', false, 'scope', v_scope,
-      'reason', p_job || ' is manual-only - use the Run button');
+  -- A MODE REFUSAL LEAVES A TRACE NOW, because it did not and that is how
+  -- P1.6 hid. The workflow's Schedule Trigger fired hourly, this function
+  -- said manual-only, and the run stopped four nodes before the "Log run"
+  -- node - so n8n showed `success` every hour, ingest_log showed nothing at
+  -- all, and the observation feed went 104 minutes stale with every
+  -- dashboard reporting the job healthy. The refusal is the only moment that
+  -- knows the trigger and the gate disagree; if it writes nothing, nothing
+  -- downstream can ever find out. v_workflow_gate_health reads these rows.
+  --
+  -- ONLY mode refusals, and only from a schedule. An interval refusal ("ran
+  -- 46 min ago, minimum is 50") is a trigger arriving early and is ordinary,
+  -- so it stays silent; a manual trigger has already returned above. On a
+  -- healthy system this inserts nothing.
+  if v_mode in ('off', 'manual') then
+    v_reason := case v_mode
+                  when 'off' then p_job || ' is switched off'
+                  else            p_job || ' is manual-only - use the Run button'
+                end;
+    begin
+      insert into ingest_log (job, status, "rows", detail)
+      values (p_job, 'skipped', 0,
+              jsonb_build_object('trigger', p_trigger, 'gate', v_mode,
+                                 'summary', v_reason));
+    exception when others then
+      -- A gate that cannot write its log is still a gate. Refusing to run a
+      -- workflow because the bookkeeping failed would turn a reporting gap
+      -- into an outage.
+      null;
+    end;
+    return jsonb_build_object('run', false, 'scope', v_scope, 'reason', v_reason);
   end if;
   if v_every <= 0 then
     return jsonb_build_object('run', true, 'scope', v_scope,

@@ -1218,6 +1218,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_weather_resolution_collection_health": [
     "weather_resolution_attempts"
   ],
+  "v_workflow_gate_health": [
+    "ingest_log"
+  ],
   "v_workflow_runs": [
     "ingest_log"
   ]
