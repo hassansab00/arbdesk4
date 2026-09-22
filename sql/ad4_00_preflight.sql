@@ -653,6 +653,14 @@ begin
         ('deployments','condition','text'),
         ('deployments','created_at','timestamptz default now()'),
 
+        -- backtest_runs -------------------------------------------------------
+        -- progress is the resume cursor: the last resolution date fully
+        -- simulated, the portfolio as it stood, and the signal counts banked
+        -- so far. Without it a run bigger than one step's budget restarts at
+        -- the first market every night and can never finish - measured, and
+        -- the reason nothing reached `complete` between 14 and 22 September.
+        ('backtest_runs','progress','jsonb'),
+
         -- signals -------------------------------------------------------------
         ('signals','strategy_id','text'),
         ('signals','band_id','uuid'),

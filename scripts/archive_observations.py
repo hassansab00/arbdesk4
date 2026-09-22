@@ -940,14 +940,44 @@ def prune_one(spec, name, args):
                 {"file": entry["file"], "rows": got, "prune": prune})
         return 1
 
+    reclaim = request_reclaim(spec["table"])
     log_run(job, "ok", got, {
         "file": entry["file"], "asset": entry["asset"], "rows": got,
         "keep_days": entry["keep_days"], "archived_through": cutoff, "prune": prune,
+        "reclaim": reclaim,
     })
     pending = load_pending()
     pending.pop(name, None)
     save_pending(pending)
     return 0
+
+
+def request_reclaim(table):
+    """Ask pg_cron to VACUUM FULL this table now that its prune has committed.
+
+    A PRUNE DOES NOT SHRINK THE DATABASE - it leaves dead pages that only a
+    VACUUM FULL hands back, and pg_database_size is what the tier measures.
+    Those reclaims ran on fixed pg_cron times that assumed this archive had
+    already run; GitHub fired the 03:00 archive at 08:14 on 2026-09-22, so the
+    03:30 reclaim rewrote an unpruned table and the day's freed space waited
+    until 03:30 the next morning. See request_reclaim() in
+    sql/ad4_66_reclaim_archived_tables.sql.
+
+    A FAILURE HERE DOES NOT FAIL THE ARCHIVE. The rows are already in the
+    repository and out of the database; what is late is only the megabytes,
+    and the daily schedule is still there as the backstop. It is recorded,
+    not swallowed.
+    """
+    try:
+        result = _rpc("request_reclaim", {"p_table": table})
+        if isinstance(result, list):
+            result = result[0] if result else {}
+        print(f"reclaim requested for {table}: {result}")
+        return result
+    except Exception as e:
+        print(f"  ! could not request a reclaim of {table} ({e}); the daily "
+              f"schedule will return the space instead", file=sys.stderr)
+        return {"ok": False, "error": str(e)[:300]}
 
 
 def is_committed(rel_path):

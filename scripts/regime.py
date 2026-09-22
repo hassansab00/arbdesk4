@@ -189,7 +189,8 @@ class RegimeResult:
         }
 
 
-def classify(city_key, for_date, history_cache=None, as_of=None):
+def classify(city_key, for_date, history_cache=None, as_of=None,
+             forecast_rows=None):
     """
     Classify one city-day. `for_date` is an ISO date string.
     `history_cache`: optional dict shared across calls in one run, keyed by
@@ -198,13 +199,22 @@ def classify(city_key, for_date, history_cache=None, as_of=None):
     doesn't reuse a later date's cache entry for an earlier one.
     `as_of`: point-in-time evaluation instant (backtest, Task 12). None
     (default, live use) means "now".
+    `forecast_rows`: the rows _forecasts_for_date would return, when the
+    caller already has them.
+
+    THE LAST ARGUMENT IS NOT A MICRO-OPTIMISATION. The backtest runner fetches
+    this city-day's forecasts to pick its lead, then calls classify(), which
+    fetched the identical rows a second time - two requests per city-day for
+    one answer, and two answers that a write landing between them could make
+    disagree. The runner now passes what it read.
     """
     reasons = []
     diagnostics = {}
     for_date_obj = dt.date.fromisoformat(for_date)
     reference = as_of or _now()
 
-    rows = _forecasts_for_date(city_key, for_date, as_of=as_of)
+    rows = (_forecasts_for_date(city_key, for_date, as_of=as_of)
+            if forecast_rows is None else forecast_rows)
     if not rows:
         return RegimeResult(city_key, for_date, "BLOCKED", 0.0,
                              SIGMA_MULTIPLIER["BLOCKED"], SIZE_MULTIPLIER["BLOCKED"],

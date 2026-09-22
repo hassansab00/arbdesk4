@@ -31,10 +31,10 @@ So the runner now carries a budget a little under the step's, stops itself,
 and records the reason - and any row still `running` long past any plausible
 budget is reclaimed by the next run.
 
-WHY IT IS NOT RE-QUEUED AUTOMATICALLY. The run that stalled is the run that
-would stall again. A queue that retries the same oversized job every night is
-how a 30-minute step becomes a permanent 30-minute step. Reclaiming tells the
-truth; re-queueing is a decision with a narrower scope attached.
+WHY A RUN WITH NOTHING BANKED IS NOT RE-QUEUED. Its very first date did not
+fit the budget, and nothing about tomorrow changes that. (A run that DID bank
+dates is re-queued now, because the runner resumes from its cursor instead of
+restarting - see tests/test_a_backtest_that_can_be_continued.py.)
 """
 
 import datetime as dt
@@ -170,15 +170,15 @@ def test_it_asks_only_for_runs_that_have_been_running_a_while(monkeypatch):
     assert 85 < age < 95
 
 
-def test_reclaiming_does_not_requeue(monkeypatch):
+def test_a_run_that_banked_nothing_is_not_requeued(monkeypatch):
     patched = []
     rest_fn, _ = _fake_rest([{"run_id": "abc", "started_at": "2026-09-22T09:26:00Z"}])
     monkeypatch.setattr(runner, "rest", rest_fn)
     monkeypatch.setattr(runner, "_patch", lambda t, m, v: patched.append(v))
     runner.reclaim_stalled()
     assert all(v["status"] != "queued" for v in patched), (
-        "the run that stalled is the run that would stall again - retrying it "
-        "nightly is how a 30-minute step becomes permanent"
+        "with no date banked the retry would start exactly where this one "
+        "died - retrying it nightly is how a 30-minute step becomes permanent"
     )
 
 

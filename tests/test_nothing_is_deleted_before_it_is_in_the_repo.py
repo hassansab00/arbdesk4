@@ -72,9 +72,14 @@ def _commit_all(root, msg="archive"):
 
 def _prune_calls(monkeypatch):
     calls = []
-    monkeypatch.setattr(ao, "_rpc",
-                        lambda fn, params=None: calls.append((fn, params)) or
-                        {"ok": True, "deleted": params["p_expected_rows"]})
+
+    def fake(fn, params=None):
+        calls.append((fn, params))
+        if fn == "request_reclaim":
+            return {"ok": True, "job": f"ad4_reclaim_after_archive_{params['p_table']}"}
+        return {"ok": True, "deleted": params["p_expected_rows"]}
+
+    monkeypatch.setattr(ao, "_rpc", fake)
     monkeypatch.setattr(ao, "log_run", lambda *a, **k: None)
     return calls
 
@@ -109,11 +114,14 @@ def test_a_committed_file_lets_the_prune_through(desk, monkeypatch):
     rc = ao.prune_one(ao.TABLES["observations"], "observations", object())
 
     assert rc == 0
-    assert len(calls) == 1
     fn, params = calls[0]
     assert fn == "prune_observations"
     assert params["p_expected_rows"] == 100
     assert params["p_dry_run"] is False
+    # THEN, and only then, the reclaim that returns the freed pages to the
+    # tier - scheduled behind the prune rather than on a clock that assumed
+    # the prune had already happened.
+    assert calls[1:] == [("request_reclaim", {"p_table": "weather_observations"})]
 
 
 def test_a_file_edited_after_the_commit_stops_the_prune(desk, monkeypatch):
