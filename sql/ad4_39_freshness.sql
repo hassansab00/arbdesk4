@@ -125,6 +125,29 @@ insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plai
   ('strategy_conflicts',        'detected_at',  null, 'trading',   'Where two strategies wanted opposite sides of the same bucket.'),
   ('anomalies',                 'detected_at',  null, 'health',    'Things the desk flagged as odd. Empty is good news.'),
   ('ingest_log',                'logged_at',       3, 'health',    'Every job run, with what it wrote.')
+-- ensemble_forecasts AND regimes ARE DELIBERATELY NOT HERE, and this is the
+-- note that stops someone adding them as a tidy-up.
+--
+-- Both arrived with the Phase 0 base schema, which was applied straight to
+-- Supabase before this repo existed (see sql/ad4_00_preflight.sql, "The base
+-- Phase 0 schema ... is not in the repo"). Measured 2026-09-22: both hold 0
+-- rows, nothing in sql/, scripts/, n8n/, web/, tools/ or tests/ reads or
+-- writes either one, no view depends on them, and ensemble_forecasts is 24 KB
+-- - 0.005% of the tier. They are not costing anything and they are not lying
+-- to anyone.
+--
+-- Adding them here would not report a cadence, it would report a standing
+-- fault. Both live branches below test `not exists (select 1 from ...)` BEFORE
+-- fresh_hours is read, so an empty table is state 'empty' even with
+-- fresh_hours null - a permanent red row for a table whose collector has not
+-- been written yet. ensemble_forecasts is the target of the ensemble-member
+-- capture in docs/PLATFORM_AUDIT_2026-09-15.md section 6.2; its row belongs
+-- in the same change that adds the workflow, not before it.
+--
+-- One thing IS wrong with ensemble_forecasts and is worth knowing before that
+-- day: RLS is on with zero policies, so the browser would read 0 rows through
+-- the anon key for ever and the panel would look like a dead feed rather than
+-- a permissions bug.
 on conflict (table_name) do update set
   ts_column     = excluded.ts_column,
   fresh_hours   = excluded.fresh_hours,

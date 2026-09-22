@@ -161,7 +161,33 @@ def main():
         end   = dt.date.fromisoformat(sys.argv[2])
     else:
         end   = dt.datetime.now(dt.timezone.utc).date()
-        start = end - dt.timedelta(days=10)
+        # THE CATCH-UP WINDOW, AND WHY IT IS NOT TEN DAYS.
+        #
+        # A chunk that times out is reported as `unreached` and the night's
+        # run logs 'partial'. That part works - the continuation picks the
+        # city up 45 seconds later, and the 2026-09-11..09-21 window has no
+        # gap at all. What did NOT work is the case where a city loses its
+        # whole window and the window then rolls past it: measured on the
+        # live table, 13 of the 48 active cities are missing 278 city-days
+        # (1,946 rows, every one of them all seven leads) between 2026-06-23
+        # and 2026-09-03, and four nightly runs after the hole opened
+        # reported status 'ok' having written 0 rows, because a ten-day
+        # window can no longer see an eleven-day-old gap.
+        #
+        # The cost is not cosmetic: at lead 1 those 13 cities carry 18-24
+        # scored days against 31 for the rest of the board, so their sigma is
+        # fitted from a quarter to a third less evidence with nothing saying
+        # so, and qingdao, ankara and paris are within three days of
+        # measure_skill's MIN_SAMPLE at lead 7, below which a band loses its
+        # price basis entirely.
+        #
+        # 35 days is still ONE request per city - CHUNK_DAYS is 60 - so the
+        # cost of the wider window is zero on a night with nothing to catch
+        # up, and a hole now has five weeks to be noticed instead of ten
+        # days. upsert() ignores duplicates, so the days already present are
+        # offered and dropped rather than rewritten.
+        start = end - dt.timedelta(
+            days=int(os.environ.get("FORECAST_CATCHUP_DAYS", "35")))
 
     t0 = time.monotonic()
     if start > end:

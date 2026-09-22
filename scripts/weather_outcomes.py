@@ -416,6 +416,36 @@ def _safe_error(exc: Exception) -> str:
     return text[:500]
 
 
+# An EMPTY rules_text is not a verdict about anything.
+#
+# parse_rule_spec raises unsupported_source for it (line ~79), and the attempt
+# row then records a fingerprint of the empty string - which never moves while
+# the column stays empty, so _load_targets skips that city-day for ever.
+# Measured 2026-09-21: of 253 permanently-skipped city-days, 233 were markets
+# whose rules_text was blank, all of them resolution_date 2026-09-06..09-12,
+# all backfilled into `markets` on 09-15 already closed, and every one of them
+# with rules_fetched_at NULL because P0.5 (Refresh Rules Text) did not exist
+# until 09-12. Nothing was ever going to refresh them, and nothing was ever
+# going to re-ask.
+#
+# The cost is not settlement - the venue settles YES/NO and every trading day
+# from 09-13 has its 48-49 verified evidence rows. The cost is forecast-skill
+# scoring: weather_resolution_evidence has ZERO rows for 09-06..09-11, which
+# is about 3,000 unbanked fact_forecast_outcome rows, roughly a fifth of the
+# month's calibration sample, and invisible.
+#
+# So: an absent input gets no fingerprint. The verdict is still recorded - the
+# attempt row is written either way - but without a hash it is a question the
+# next run asks again rather than an answer it already has. The bound matters
+# and is deliberate: NOT fingerprinting every unsupported_source would recreate
+# the 2026-09-15 outage verbatim, where 250 of 250 city-day slots were spent
+# re-deciding the same unparseable markets and `captured` came back 0. A
+# Weather Underground market with real rules naming a source with no machine
+# interface is a genuine, stable verdict; a blank column is not.
+def rules_are_absent(rules_text: str | None) -> bool:
+    return not (rules_text or "").strip()
+
+
 def _rules_fingerprint(rules_text: str | None, unit: str | None) -> str:
     """A hash of exactly what parse_rule_spec reads, and nothing else.
 
@@ -666,7 +696,13 @@ def run(days: int = 14, maximum: int = 250, dry_run: bool = False) -> dict[str, 
                 # Without it the next run cannot tell an answer it already has
                 # from a question worth asking again.
                 **({"rules_sha256": _rules_fingerprint(market.get("rules_text"), market.get("unit"))}
-                   if status == "unsupported_source" else {}),
+                   if status == "unsupported_source"
+                   and not rules_are_absent(market.get("rules_text")) else {}),
+                # Said out loud, because "no rules_sha256" is otherwise just an
+                # absence and absences do not get investigated.
+                **({"rules_missing": True}
+                   if status == "unsupported_source"
+                   and rules_are_absent(market.get("rules_text")) else {}),
             },
         }
         upsert("weather_resolution_attempts", [attempt], "attempt_id")
