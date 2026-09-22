@@ -10,10 +10,15 @@ worked now, 4-9 are the checklist to revisit once they land.
 
 ---
 
-## In progress
+## Done 2026-09-22
 
 ### 1. `pipeline_daily` fails every day on the backtest step
-**Status: IN PROGRESS (2026-09-22)**
+**Status: FIXED 2026-09-22** - book read batched to one request per ladder
+(`book_as_of`), a 26-minute budget under the step's 30 with each workflow
+passing its own, stalled runs reclaimed after 90 minutes, and 5f7bc321
+reclaimed by hand with a replacement queued over the four enabled
+strategies. Proven by the next pipeline_daily run, or by Run workflow on
+Backtest.
 
 Run 26 died on `The action 'Queued backtests' has timed out after 30 minutes`.
 Three faults, not one:
@@ -33,7 +38,11 @@ It also burns 30 metered Actions minutes a day.
 abandoned, and the work fits the step or checkpoints across runs.
 
 ### 2. Storage is over the free tier and climbing
-**Status: IN PROGRESS (2026-09-22)**
+**Status: FIXED 2026-09-22** - 529.4 MB -> 493.6 MB live. The prune was not
+broken; the steady state had no headroom. Every dataset now declares a floor
+as well as a window and drops to it above 92% of the tier (`storage_pressure()`,
+hysteresis to 85%). book_snapshots and edges moved from weekly to daily
+reclaim - six days had left 22,737 and 15,234 dead rows, worth 30 MB.
 
 522 MB / **104.5%** of the 500 MB tier, up from 508 MB / 101.6% the same
 morning - roughly 14 MB a day. Largest tables:
@@ -51,7 +60,13 @@ the now-hourly observation feed writes.
 there is automatic rather than a one-off sweep.
 
 ### 3. Supabase security advisors: 83 at ERROR
-**Status: IN PROGRESS (2026-09-22)**
+**Status: RESOLVED 2026-09-22, one fixed and 82 accepted with a precondition.**
+derived_model_promotion has RLS on with anon_read; 32 functions had their
+search_path pinned; two same-day helpers stopped granting anon. The 82
+`security_definer_view` findings are how a single-operator anon-key app reads
+its own per-user tables - switching them blanks the desk pages. That holds
+only while the app has no sign-in, and
+`tests/test_the_definer_views_are_a_decision.py` fails the day it gains one.
 
     ERROR  82  security_definer_view          incl. v_paper_desks, v_city_stats
     ERROR   1  rls_disabled_in_public         derived_model_promotion
@@ -70,7 +85,7 @@ reason for existing.
 
 ---
 
-## The checklist — revisit once 1-3 are done
+## The checklist — 1-3 are done, these are next
 
 ### 4. The international under-read
 27 of 30 remaining settlement misses are hourly-only cities, where the day's

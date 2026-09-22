@@ -56,7 +56,11 @@ comment on function public.book_as_of(uuid[], timestamptz) is
 do $ad4$
 declare r text;
 begin
-  foreach r in array array['anon','authenticated','service_role'] loop
+  -- service_role ONLY. Nothing in web/ calls this; the backtest runner and
+  -- the archive job reach it with the service key. A SECURITY DEFINER function
+  -- that anon can reach is a Supabase advisor finding and, here, a pointless
+  -- one to add - so it is never granted rather than granted and revoked.
+  foreach r in array array['service_role'] loop
     if exists (select 1 from pg_roles where rolname = r) then
       execute format('grant execute on function public.book_as_of(uuid[], timestamptz) to %I', r);
     end if;
