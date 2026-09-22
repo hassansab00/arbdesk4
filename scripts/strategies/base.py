@@ -5,6 +5,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional
 
+import allocator
+
 
 @dataclass
 class StrategyConfig:
@@ -160,16 +162,52 @@ class Strategy(ABC):
 
     def size(self, signal: Signal, portfolio) -> float:
         """
-        Default sizing: a flat fraction of current bankroll, per the spec's
-        "all limits expressed as fractions of current bankroll, never
-        hardcoded dollars" rule. Strategies with more specific sizing logic
-        (S6's target-profit N, S2's arb sizing) override this.
+        Fractional Kelly on the signal's own edge, capped by capital_cap_pct.
+
+        WHAT THIS USED TO BE: `cap_usd / price`, the same fraction of bankroll
+        on every signal a strategy ever fired. A band at 5c with a twenty-point
+        edge and a band at 60c with a two-point edge got identical money. The
+        cap was doing all the work and the edge none of it, which is the
+        difference between a position size and a constant.
+
+        WHAT IT IS NOW. A dollar of payout costs price + the venue's
+        0.05 * q * (1-q) fee, so the growth-optimal fraction of bankroll is
+        (p - c) / (1 - c), scaled by allocator.DEFAULT_KELLY_FRACTION because
+        our p is not good enough for full Kelly - the market's top two bands
+        hold the winner 26.1% of the time against the model's 15.3%.
+
+        capital_cap_pct STILL BINDS, as a ceiling rather than the answer.
+        Hassan's number is a risk limit and a risk limit that the maths can
+        talk its way past is not one. Kelly sizes down from it, never up.
+
+        NO PROBABILITY, NO KELLY. s2_combination_arb has no model probability
+        - its whole premise is arithmetic on the prices - and neither does any
+        signal fired before the fitter has a view. Those keep the flat cap,
+        which is the honest behaviour for a bet whose edge is not expressed as
+        a probability, rather than a Kelly fraction computed from a guess.
+
+        THE LADDER IS NOT VISIBLE FROM HERE. This sizes one signal against one
+        price. Bands of the same market-day are mutually exclusive and should
+        be solved together - allocator.allocate() does that, and the caller
+        that holds the whole ladder is where it belongs. This is the floor
+        under that, not a replacement for it.
         """
         bankroll = portfolio.bankroll if portfolio else 0.0
         if not bankroll or not signal.price_at_fire:
             return 0.0
+
         cap_usd = bankroll * (self.config.capital_cap_pct / 100.0)
-        return cap_usd / signal.price_at_fire
+
+        p = signal.prob_at_fire
+        cost = allocator.effective_cost(signal.price_at_fire)
+        if p is None or cost is None:
+            return cap_usd / signal.price_at_fire
+
+        full = (float(p) - cost) / (1.0 - cost)
+        if full <= 0:
+            return 0.0
+        kelly_usd = bankroll * full * allocator.DEFAULT_KELLY_FRACTION
+        return min(kelly_usd, cap_usd) / signal.price_at_fire
 
 
 def dedupe_key(strategy_id, band_id, side, action, bucket):
