@@ -59,6 +59,18 @@ const assert = require('node:assert/strict');
       event_type text not null,payload jsonb not null,stage text,strategy_id text,
       deployment_id uuid,band_id uuid,regime_label text,forecast_version text,
       calibration_version text,cost_version text,detail jsonb);
+    -- settings is created by sql/ad4_00_preflight.sql, which this harness
+    -- never applies - so a migration seeding a settings row works in
+    -- production and dies here with: relation "settings" does not exist.
+    -- (No backticks anywhere in this block - the whole fixture is one JS
+    -- template literal and a single backtick ends the string.)
+    -- That is the trap CLAUDE.md describes, and it caught
+    -- 20260922210000_retention_that_answers_to_the_tier.sql.
+    --
+    -- Both columns are NOT NULL on the live table. Declaring them nullable
+    -- here would let a migration seed a null value and pass.
+    create table public.settings(key text primary key, value jsonb not null,
+      updated_at timestamptz not null default now());
     -- strategies is created by sql/ad4_rpc.sql. Only v_paper_desks reads it,
     -- and only to count the enabled ones, but the column types and NOT NULLs
     -- match the live table so the view is built against the real shape.

@@ -123,3 +123,59 @@ def test_the_daily_reclaims_run_after_the_archive_that_feeds_them():
             f"{table} reclaims at {schedule!r}, at or before the {m.group(2)}:{m.group(1)} "
             "archive that creates the dead rows it is meant to return"
         )
+
+
+# --------------------------------------------------------------------------
+# THE CADENCE, not just the existence of a job.
+#
+# Measured 2026-09-22 with the last weekly run six days old: 22,737 dead rows
+# on book_snapshots and 15,234 on edges, and reclaiming just those two took
+# the database from 529.4 MB to 499.4 MB - thirty megabytes of a five hundred
+# megabyte plan sitting in files nothing could read. The jobs existed; their
+# cadence was the defect.
+# --------------------------------------------------------------------------
+
+import pathlib as _pathlib
+import re as _re
+
+_RECLAIM = (_pathlib.Path(__file__).resolve().parents[1]
+            / "sql/ad4_66_reclaim_archived_tables.sql")
+
+
+def _schedule_of(jobname):
+    sql = _RECLAIM.read_text()
+    m = _re.search(rf"'{_re.escape(jobname)}',\s*\n\s*'([^']+)'", sql)
+    return m.group(1) if m else None
+
+
+@pytest.mark.parametrize("jobname", [
+    "ad4_reclaim_book_snapshots",
+    "ad4_reclaim_edges",
+])
+def test_the_tables_that_shed_most_are_reclaimed_daily(jobname):
+    sched = _schedule_of(jobname)
+    assert sched, f"{jobname} is not scheduled at all"
+    minute, hour, dom, month, dow = sched.split()
+    assert (dom, dow) == ("*", "*"), (
+        f"{jobname} runs on '{sched}' - pinning day-of-month or day-of-week "
+        "makes it weekly, and a week of these two is thirty megabytes of a "
+        "five hundred megabyte tier"
+    )
+
+
+def test_the_two_daily_rewrites_do_not_overlap():
+    # VACUUM FULL holds the old file and the new one at once. Two large
+    # rewrites at the same minute need both peaks at the same time.
+    a = _schedule_of("ad4_reclaim_book_snapshots").split()
+    b = _schedule_of("ad4_reclaim_edges").split()
+    assert (a[1], a[0]) != (b[1], b[0]), "both large rewrites start at the same minute"
+
+
+def test_the_reclaims_finish_before_the_daily_pipeline():
+    # pipeline_daily's cron is 0 4 * * *. A rewrite still holding an ACCESS
+    # EXCLUSIVE lock when it starts stalls the whole run.
+    for jobname in ("ad4_reclaim_book_snapshots", "ad4_reclaim_edges"):
+        minute, hour = _schedule_of(jobname).split()[:2]
+        assert int(hour) < 4 or (int(hour) == 3), (
+            f"{jobname} at {hour}:{minute} does not clear pipeline_daily's 04:00"
+        )

@@ -130,24 +130,32 @@ select cron.schedule(
   'VACUUM (FULL, ANALYZE) public.trades_observed'
 );
 
--- Never reclaimed before, and the largest table on the desk at 102 MB.
--- prune_dead_book_detail nulls a ladder every hour, which frees TOAST that
--- only a rewrite returns - 26 MB of it on the first run.
+-- DAILY NOW, NOT WEEKLY, and the weekly cadence is what put the tier over.
+-- Measured 2026-09-22 with the last run six days old: 22,737 dead rows on
+-- book_snapshots and 15,234 on edges, and reclaiming the two of them took the
+-- database from 529.4 MB to 499.4 MB - thirty megabytes of a five hundred
+-- megabyte plan, sitting in files nothing could read.
+--
+-- The original comment said their dead rows arrive steadily rather than in a
+-- daily lump, and that is still true; what changed is the rate. The
+-- observation feed went hourly and the desk now prices 48 cities, so "steady"
+-- is five megabytes a day, and a week of steady is a tier.
+--
+-- 03:45, after the 03:00 archive and the two nightly reclaims that follow it,
+-- and well before the 04:00 daily pipeline.
 select cron.schedule(
   'ad4_reclaim_book_snapshots',
-  '5 7 * * 1',
+  '45 3 * * *',
   'VACUUM (FULL, ANALYZE) public.book_snapshots'
 );
 
--- Also never reclaimed, and the fourth-largest table at 38 MB growing 2.36 MB
--- a day. Like book_snapshots its dead rows arrive steadily rather than in a
--- daily lump - edge_engine writes one row per band per side every four hours
--- and 121,644 of 136,184 are already superseded - so it joins the weekly set
--- rather than the nightly one. 07:20 keeps it clear of the 08:00 Monday
--- weather model, which is the next thing to touch the database.
+-- Daily for the same reason and on the same evidence: 15,234 dead rows in six
+-- days. edge_engine writes one row per band per side every four hours and
+-- most are superseded within the day. 03:50 keeps it behind book_snapshots so
+-- the two rewrites never hold their old and new files at the same time.
 select cron.schedule(
   'ad4_reclaim_edges',
-  '20 7 * * 1',
+  '50 3 * * *',
   'VACUUM (FULL, ANALYZE) public.edges'
 );
 

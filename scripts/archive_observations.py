@@ -89,6 +89,7 @@ TABLES = {
         "cutoff_col": "valid_at",
         "cutoff_is_date": False,
         "prune_rpc": "prune_observations",
+        "min_keep_days": 60,   # prune_observations refuses under 30; the fit trains on months
         "tag": "observations-archive",
         "columns": ["city_key", "station", "valid_at", "temp_c", "temp_f",
                     "dewpoint_c", "humidity", "wind_speed", "wind_dir_deg",
@@ -104,6 +105,7 @@ TABLES = {
         # by the time of day the job happened to run.
         "cutoff_is_date": True,
         "prune_rpc": "prune_forecasts",
+        "min_keep_days": 60,   # same shape, same fitter
         "tag": "forecasts-archive",
         "columns": ["city_key", "model", "run_at", "observed_at", "for_date",
                     "lead_days", "forecast_max_c", "variables", "source"],
@@ -124,6 +126,7 @@ TABLES = {
         "cutoff_col": "traded_at",
         "cutoff_is_date": False,
         "prune_rpc": "prune_trades",
+        "min_keep_days": 14,   # v_band_volume and v_city_volume both cut at lookback_hours = 24
         "tag": "trades-archive",
         "columns": ["band_id", "condition_id", "traded_at", "price", "size",
                     "side", "proxy_wallet", "ingested_at", "city_key",
@@ -174,6 +177,7 @@ TABLES = {
         # because every band is captured on every one of the six cycles a day,
         # and that is the number to change.
         "keep_days": 2,
+        "min_keep_days": 1,
         # The other three exist so a model has history to train on, and
         # refresh_feature_cache is what preserves it. This one has no derived
         # form - the capture IS the artefact - so the cache step is not a
@@ -216,6 +220,7 @@ TABLES = {
         # which is what turns it into the frozen outcome that makes the proof
         # archivable in the first place.
         "keep_days": 3,
+        "min_keep_days": 1,   # nothing reads settlement evidence once the settlement is frozen
         "needs_feature_cache": False,
     },
     # THE LARGEST TABLE ON THE DESK, and the only big one the archive never
@@ -253,6 +258,7 @@ TABLES = {
         ],
         "bytes_per_row": 290,
         "keep_days": 14,
+        "min_keep_days": 7,   # halves the window AND unpins 11,726 book snapshots held only by an edge older than a week
         "needs_feature_cache": False,
     },
     "books": {
@@ -276,9 +282,61 @@ TABLES = {
         # monitor's chart from intra-day rows and a shorter window makes that
         # chart sparse for storage not worth having.
         "keep_days": 7,
+        # The floor costs that chart some resolution, which is exactly why it
+        # is a floor and not the default: it applies only while the database
+        # is over its high-water mark.
+        "min_keep_days": 4,
         "needs_feature_cache": False,
     },
 }
+
+
+def effective_keep_days(spec, override=None):
+    """The window this run uses, and why.
+
+    Each dataset declares the window it WANTS and the shortest one it can
+    survive on. While the database is under its high-water mark every dataset
+    gets what it wants; over it, every dataset drops to its floor until the
+    size comes back down.
+
+    THE PROBLEM THIS SOLVES IS NOT A BROKEN PRUNE. Measured 2026-09-22 the
+    archive cycle was working and caught up - everything eligible came out on
+    the next run, about 25 MB, and two days later the database was back over
+    the tier. Seven datasets each held a window chosen on its own merits, and
+    the sum of seven reasonable local decisions was a database slightly larger
+    than the plan it runs on. Nobody decided that, so nobody was going to
+    notice it either.
+
+    An explicit --keep-days always wins. An operator who names a number is
+    answering a question this function is guessing at.
+
+    A FAILURE TO READ THE PRESSURE KEEPS THE FULL WINDOW, never the floor.
+    Shortening retention because a health check was unreachable is how you
+    lose history to a network blip.
+    """
+    want = spec.get("keep_days", 90)
+    if override is not None:
+        return override, {"source": "--keep-days", "over": None}
+
+    floor = spec.get("min_keep_days")
+    if not floor or floor >= want:
+        return want, {"source": "declared", "over": None}
+
+    try:
+        p = _rpc("storage_pressure") or {}
+    except Exception as e:
+        print(f"  storage_pressure unavailable ({e}); keeping the full {want}-day window",
+              file=sys.stderr)
+        return want, {"source": "declared (pressure unreadable)", "over": None}
+
+    if isinstance(p, list):
+        p = p[0] if p else {}
+    if p.get("over"):
+        print(f"  {p.get('verdict')} - {want}d -> {floor}d for this dataset")
+        return floor, {"source": "floor", "over": True,
+                       "pct_of_tier": p.get("pct_of_tier"), "db_mb": p.get("db_mb")}
+    return want, {"source": "declared", "over": False,
+                  "pct_of_tier": p.get("pct_of_tier"), "db_mb": p.get("db_mb")}
 
 
 def read_source(spec):
@@ -767,7 +825,7 @@ def export_one(spec, name, args):
     happened to the index for six consecutive runs.
     """
     job = f"archive_{name}"
-    keep_days = args.keep_days if args.keep_days is not None else spec.get("keep_days", 90)
+    keep_days, pressure = effective_keep_days(spec, args.keep_days)
     stamp = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=keep_days)
     # A date column needs a date cutoff; comparing it to a timestamp shifts the
     # boundary by whatever time of day this happened to run.
@@ -788,7 +846,7 @@ def export_one(spec, name, args):
     blob, n_rows, lo, hi = export_cold(spec, cutoff)
     if not n_rows:
         print(f"nothing older than {cutoff} - nothing to archive.")
-        log_run(job, "ok", 0, {"keep_days": keep_days})
+        log_run(job, "ok", 0, {"keep_days": keep_days, "storage": pressure})
         return 0
 
     asset_name = f"{name}-{str(lo)[:10]}-to-{str(hi)[:10]}.csv.gz"
@@ -833,7 +891,7 @@ def export_one(spec, name, args):
     pending = load_pending()
     pending[name] = {
         "file": rel, "asset": asset_name, "rows": n_rows,
-        "cutoff": prune_args["p_before"], "keep_days": keep_days,
+        "cutoff": prune_args["p_before"], "keep_days": keep_days, "storage": pressure,
         "exported_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
     }
     save_pending(pending)
