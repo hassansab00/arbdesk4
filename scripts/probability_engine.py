@@ -512,6 +512,52 @@ def _calibration_for(city_key):
     return (m, row) if m > 0 else (1.0, None)
 
 
+_postprocess_cache = None
+
+
+def _postprocess_for(city_key, lead_days):
+    """The fitted correction for one (city, lead), or None.
+
+    v_forecast_postprocess_applied holds only the cells that BEAT the
+    uncorrected forecast on held-out day blocks by CRPS. A cell that failed,
+    or one that has never been fitted, is simply absent - so `None` is both
+    the safe default and the most common answer on a young desk, and it leaves
+    the arithmetic below exactly as it was before this table existed.
+
+    Read once per run, like the calibration and divergence caches: the answer
+    must not change silently between two city-days of the same run.
+    """
+    global _postprocess_cache
+    if _postprocess_cache is None:
+        _postprocess_cache = {}
+        try:
+            for r in rest("v_forecast_postprocess_applied", [
+                    ("select", "city_key,lead_days,bias_c,sigma_ratio,"
+                               "baseline_sigma_c,n_days,n_city_days,crps_gain"),
+            ]):
+                if r.get("lead_days") is None:
+                    continue
+                _postprocess_cache[(r["city_key"], int(r["lead_days"]))] = r
+        except Exception as e:
+            # Not installed is not a failure. It is a desk that has not run
+            # sql/ad4_83 or scripts/forecast_postprocess.py yet, and the engine
+            # priced before either existed.
+            print(f"  note: forecast post-processing unavailable ({str(e)[:80]}) - "
+                  f"pricing from measured skill alone. "
+                  f"Run sql/ad4_83_forecast_postprocess.sql.", file=sys.stderr)
+    if lead_days is None:
+        return None
+    row = _postprocess_cache.get((city_key, int(lead_days)))
+    if not row or row.get("baseline_sigma_c") is None:
+        return None
+    try:
+        if float(row["baseline_sigma_c"]) <= 0 or float(row["sigma_ratio"]) <= 0:
+            return None
+    except (TypeError, ValueError):
+        return None
+    return row
+
+
 _divergence_cache = None
 
 # The view carries one row per (city, date) that has ever had a forecast -
@@ -847,8 +893,10 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     # promotion may not price a lead-4 prediction.
     promo = (promoted or {}).get((city_key, int(lead_days))) if lead_days is not None else None
     mrow = (model_forecasts or {}).get((city_key, str(for_date)))
+    model_priced = False
     if (promo and mrow and mrow.get("lead_days") is not None
             and int(mrow["lead_days"]) == int(lead_days)):
+        model_priced = True
         centre = float(mrow["predicted_max_c"])
         centre_corrected = centre
         bias_c = 0.0
@@ -894,24 +942,69 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     # belongs. "The models disagree unusually today" is a reason to TRUST the
     # number less, not to publish a different one, so it keeps its effect on
     # confidence below and loses its effect on the distribution.
-    width_is_measured = skill_source in ("city_lead", "city_lead_proxy")
-    regime_sigma_mult = 1.0 if width_is_measured else reg.sigma_multiplier
-    div_sigma_mult = 1.0 if width_is_measured else div_mult
-    sigma_historical = mae_c * MAE_TO_SIGMA * regime_sigma_mult
-    sigma = sigma_historical * cal_mult * div_sigma_mult
-    if width_is_measured and (reg.sigma_multiplier > 1.0 or div_mult > 1.0):
+    # ---- A FITTED CORRECTION REPLACES THE CENTRE OFFSET AND THE WIDTH ----
+    #
+    # derived_forecast_postprocess is the same two decisions the lines below
+    # make - how far to move the centre and how wide to make it - except fitted
+    # together, per city AND lead, and kept only where the pair BEAT the
+    # uncorrected forecast on held-out day blocks by CRPS. Where such a row
+    # exists it supersedes both, because they are answers to the same question
+    # and stacking them would apply two corrections for one error.
+    #
+    # THE THREE MULTIPLIERS DO NOT RIDE ALONG. regime and divergence are
+    # already excluded from a measured width for the reason set out above.
+    # ad4_45's calibration multiplier is excluded here too, and this is the
+    # one that needs saying: it measures the SAME over-dispersion from the
+    # other end - sd of (observed - centre)/sigma against the sigma the desk
+    # published - so applying it to a width already fitted to those residuals
+    # narrows twice for one measurement. The fit is refreshed by the daily
+    # pipeline, so it tracks changing skill by being re-fitted rather than by
+    # carrying a live multiplier.
+    #
+    # A PROMOTED MODEL STILL WINS. This correction is fitted on the errors of
+    # the PUBLIC forecast. A centre that came from the desk's own model is a
+    # different number with different errors, and subtracting the public
+    # forecast's station bias from it would be correcting the wrong thing.
+    #
+    # THE BASELINE TRAVELS WITH THE RATIO. sigma is the fit's own
+    # baseline_sigma_c times its ratio, not the live mae_c times that ratio:
+    # the held-out gain was demonstrated for that product and no other, and a
+    # ratio measured against one baseline applied to another is not the
+    # correction that was tested.
+    pp = None if model_priced else _postprocess_for(city_key, lead_days)
+    if pp is not None:
+        bias_c = float(pp["bias_c"])
+        centre_corrected = centre - bias_c
+        sigma_historical = float(pp["baseline_sigma_c"])
+        sigma = sigma_historical * float(pp["sigma_ratio"])
         reasons.append(
-            f"measured_width_kept:regime{reg.sigma_multiplier:.2f}x_"
-            f"div{div_mult:.2f}x_not_applied_to_sigma")
-    if cal_row is not None:
-        # Named in the reasons so a price that moved can be traced to the
-        # recompute that moved it, rather than looking like drift.
-        reasons.append(
-            f"calibration:{cal_mult:.2f}x_from_{cal_row.get('n_days')}d")
-        if cal_mult > 1.0:
-            # A distribution that had to be widened is one the desk was
-            # overconfident about. Saying so in confidence is the point.
-            confidence *= min(1.0, 1.0 / cal_mult)
+            f"postprocessed:bias{bias_c:+.2f}C_width{float(pp['sigma_ratio']):.2f}x"
+            f":lead{lead_days}:{pp.get('n_days')}d_cell_{pp.get('n_city_days')}d_city"
+            f":crps_gain_{pp.get('crps_gain')}")
+    else:
+        width_is_measured = skill_source in ("city_lead", "city_lead_proxy")
+        regime_sigma_mult = 1.0 if width_is_measured else reg.sigma_multiplier
+        div_sigma_mult = 1.0 if width_is_measured else div_mult
+        sigma_historical = mae_c * MAE_TO_SIGMA * regime_sigma_mult
+        sigma = sigma_historical * cal_mult * div_sigma_mult
+        if width_is_measured and (reg.sigma_multiplier > 1.0 or div_mult > 1.0):
+            reasons.append(
+                f"measured_width_kept:regime{reg.sigma_multiplier:.2f}x_"
+                f"div{div_mult:.2f}x_not_applied_to_sigma")
+        if cal_row is not None:
+            # Named in the reasons so a price that moved can be traced to the
+            # recompute that moved it, rather than looking like drift.
+            reasons.append(
+                f"calibration:{cal_mult:.2f}x_from_{cal_row.get('n_days')}d")
+            if cal_mult > 1.0:
+                # A distribution that had to be widened is one the desk was
+                # overconfident about. Saying so in confidence is the point.
+                confidence *= min(1.0, 1.0 / cal_mult)
+
+    # BOTH PATHS. The divergence signal never touches the width - it is
+    # today-specific and the width is measured - but "the models disagree
+    # unusually today" is a reason to trust the number less whichever way the
+    # number was reached.
     if div_row and div_mult > 1.0:
         reasons.append(
             f"models_disagree:{div_row.get('spread_c')}C_over_{div_row.get('n_models')}")
