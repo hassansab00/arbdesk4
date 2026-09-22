@@ -140,4 +140,9 @@ jobs:
       - name: Queued backtests
         if: ${{ !cancelled() }}
         timeout-minutes: 30
+        # The runner stops itself four minutes before this axe falls and
+        # records why. A process killed here cannot update its own row, which
+        # is how run 5f7bc321 spent a day claiming to be running.
+        env:
+          BACKTEST_BUDGET_MINUTES: '26'
         run: python scripts/backtest/runner.py

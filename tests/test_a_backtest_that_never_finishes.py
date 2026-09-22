@@ -52,10 +52,21 @@ MIG = (ROOT / "supabase/migrations"
             / "20260922200000_one_request_per_ladder_not_one_per_band.sql")
 
 
+BACKTEST_WF = ROOT / ".github/workflows/backtest.yml"
+
+
 def _step_timeout_minutes():
     y = DAILY.read_text()
     block = y[y.index("name: Queued backtests"):]
     m = re.search(r"timeout-minutes:\s*(\d+)", block)
+    return int(m.group(1)) if m else None
+
+
+def _declared_budget(path, after=None):
+    y = path.read_text()
+    if after:
+        y = y[y.index(after):]
+    m = re.search(r"BACKTEST_BUDGET_MINUTES:\s*'(\d+)'", y)
     return int(m.group(1)) if m else None
 
 
@@ -70,15 +81,45 @@ def test_the_step_still_has_a_timeout():
     )
 
 
-def test_the_runners_budget_is_under_the_steps():
-    step = _step_timeout_minutes()
-    assert runner.BUDGET_MINUTES < step, (
-        f"budget {runner.BUDGET_MINUTES} >= step {step}: the runner would be "
-        "killed before it could record why, which is the whole defect"
+@pytest.mark.parametrize("path,after,limit_pattern", [
+    (DAILY, "name: Queued backtests", r"timeout-minutes:\s*(\d+)"),
+    (BACKTEST_WF, "jobs:", r"timeout-minutes:\s*(\d+)"),
+])
+def test_each_workflow_budgets_under_its_own_axe(path, after, limit_pattern):
+    """The budget belongs to the CALLER, not to the runner.
+
+    pipeline_daily gives this a 30-minute STEP inside a shared job;
+    backtest.yml gives it a 120-minute JOB of its own. A single hard-coded
+    number cuts a deliberate two-hour backtest off at twenty-six minutes and
+    files it as out of time, which is a worse failure than the one this
+    replaced. So each workflow passes BACKTEST_BUDGET_MINUTES and each must
+    sit under its own limit.
+    """
+    text = path.read_text()
+    tail = text[text.index(after):]
+    limit = int(re.search(limit_pattern, tail).group(1))
+    budget = _declared_budget(path, after)
+    assert budget, f"{path.name} does not declare BACKTEST_BUDGET_MINUTES"
+    assert budget < limit, (
+        f"{path.name}: budget {budget} >= limit {limit}, so the runner is "
+        "killed before it can record why - which is the whole defect"
     )
-    assert step - runner.BUDGET_MINUTES >= 2, (
-        "leave room to write the failure row and finish the request"
-    )
+    assert limit - budget >= 2, "leave room to write the failure row"
+
+
+def test_the_default_budget_is_safe_for_the_tighter_caller():
+    # Nothing should depend on the default, but if a third caller appears it
+    # must not inherit a number that only fits the roomier workflow.
+    assert runner.BUDGET_MINUTES <= _step_timeout_minutes() - 2
+
+
+def test_the_budget_is_overridable_without_editing_code(monkeypatch):
+    import importlib
+    monkeypatch.setenv("BACKTEST_BUDGET_MINUTES", "7")
+    reloaded = importlib.reload(runner)
+    assert reloaded.BUDGET_MINUTES == 7
+    monkeypatch.delenv("BACKTEST_BUDGET_MINUTES")
+    importlib.reload(reloaded)
 
 
 def test_a_stalled_run_is_older_than_any_real_one():

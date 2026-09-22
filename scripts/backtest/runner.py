@@ -15,6 +15,7 @@ params from the UI creates a NEW backtest_runs row (a new run_id) via
 queue_backtest - nothing here ever overwrites a prior run.
 """
 import datetime as dt
+import os
 import sys
 
 from common import rest, rest_all, insert, rpc, _cfg, _headers
@@ -43,8 +44,18 @@ DATA_STARTS_2025 = "book depth history begins 2026-08-22 (Polymarket publishes n
 # mystery. STALE_AFTER is the other half: a row still `running` long past any
 # plausible budget was killed, and the next run says so instead of stepping
 # around it.
-BUDGET_MINUTES = 26
-STALE_AFTER_MINUTES = 90
+#
+# THE BUDGET IS NOT A PROPERTY OF THE RUNNER, it is a property of whoever
+# invoked it, and the two workflows are not the same:
+#
+#     pipeline_daily.yml   a 30-minute STEP inside a shared job - the sweep
+#     backtest.yml         a 120-minute JOB of its own - an explicit ask
+#
+# Hard-coding 26 would cut a deliberate two-hour backtest off at twenty-six
+# minutes and record it as out of time, which is a worse failure than the one
+# this replaced. Each workflow passes its own.
+BUDGET_MINUTES = int(os.environ.get("BACKTEST_BUDGET_MINUTES") or 26)
+STALE_AFTER_MINUTES = int(os.environ.get("BACKTEST_STALE_AFTER_MINUTES") or 90)
 
 
 def _patch(table, match, values):
