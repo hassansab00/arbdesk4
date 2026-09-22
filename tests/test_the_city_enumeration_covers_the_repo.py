@@ -167,6 +167,16 @@ SQL_RECORD = {
     "sql/ad4_56_correlation_speed_and_peak_key.sql",
     "sql/ad4_58_city_prediction_confidence.sql", "sql/ad4_72_model_promotion.sql",
     "sql/ad4_diagnose.sql", "sql/ad4_phase2.sql", "sql/ad4_phase2_ranking.sql",
+    # v_station_day_max and v_settlement_agreement. RECORD, and the call is
+    # not obvious, so: observation_trust is plainly something to act on - it
+    # is the weight a running-max strategy should carry in that city - which
+    # argues FILTERS. It is still the record. The question it answers is "how
+    # often did our thermometer name the band the venue settled on", asked of
+    # days that are already settled, and a city retired last week has a
+    # history worth reading precisely BECAUSE somebody may want it back. The
+    # roster filter belongs at the consumer, the way v_trade_plan applies it,
+    # not in a table of what happened.
+    "sql/ad4_82_settlement_agreement.sql",
 }
 
 # MIGRATIONS COUNT TOO. The first version of this file globbed sql/*.sql and

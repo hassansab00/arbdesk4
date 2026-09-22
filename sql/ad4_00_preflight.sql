@@ -505,6 +505,7 @@ begin
         -- cities ------------------------------------------------------------
         ('cities','display_name','text'),
         ('cities','icao','text'),
+        ('cities','report_minute','smallint'),
         ('cities','station_name','text'),
         ('cities','timezone','text'),
         ('cities','unit','text'),

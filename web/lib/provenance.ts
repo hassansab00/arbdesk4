@@ -1120,6 +1120,13 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "paper_position_settlements",
     "paper_resolution_evidence"
   ],
+  "v_settlement_agreement": [
+    "bands",
+    "markets",
+    "fact_band_outcome",
+    "cities",
+    "weather_observations"
+  ],
   "v_sigma_inputs": [
     "cities",
     "derived_calibration_adjustment",
@@ -1141,6 +1148,10 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_signal_scorecard_by_version": [
     "fact_band_outcome",
     "fact_signal_outcome"
+  ],
+  "v_station_day_max": [
+    "cities",
+    "weather_observations"
   ],
   "v_storage_report": [
     "cities",

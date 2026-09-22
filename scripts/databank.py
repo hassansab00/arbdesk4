@@ -138,6 +138,57 @@ def _verified_weather(days_back):
     }
 
 
+def _station_day_max(days_back):
+    """The station feed's own daily maximum, for the days the authority missed.
+
+    THIS IS A FALLBACK AND IT SAYS SO IN THE ROW. _verified_weather() reads
+    the exact NOAA page each market's rules name, with a payload hash, and it
+    is the right answer whenever it exists - but it covers about four days in
+    five. Banking nothing for the rest is what took the banked record to 52.1%
+    agreement with the venue's own declared winners while the same reader
+    scored 76.2%: most of the gap was rows with no observed maximum at all,
+    not rows with a wrong one.
+
+    The station feed agrees 90.6% across the roster on its own (see
+    sql/ad4_82_settlement_agreement.sql), so it beats a null by a wide margin.
+    What it must never do is pretend to be the authority, which is why
+    obs_source carries which one answered.
+
+    max_c_hourly, NOT max_c. The venue settles on the station's routine hourly
+    report and IEM hands us the five-minute feed between them; taking the
+    maximum over everything reads the US cities a band high.
+    """
+    since = (dt.date.today() - dt.timedelta(days=days_back)).isoformat()
+    try:
+        rows = rest_all("v_station_day_max", [
+            ("select", "city_key,for_date,max_c_hourly,n_hourly,station"),
+            ("for_date", f"gte.{since}"),
+        ], order="city_key.asc,for_date.asc", page_size=1000)
+    except Exception as e:
+        print(f"  station day maxima unavailable ({e}); the authority is the only source",
+              file=sys.stderr)
+        return {}
+    return {
+        (r["city_key"], str(r["for_date"])): {
+            "max_c": r["max_c_hourly"],
+            "n_obs": r.get("n_hourly"),
+            "source": f"station:{r.get('station') or 'unknown'}",
+            "evidence_at": None,
+        }
+        for r in rows
+        if r.get("max_c_hourly") is not None
+    }
+
+
+def observed_with_fallback(days_back):
+    """The authority where it exists, the station's routine report elsewhere."""
+    verified = _verified_weather(days_back)
+    station = _station_day_max(days_back)
+    merged = dict(station)
+    merged.update(verified)          # the authority always wins the key
+    return merged
+
+
 def bank_forecasts(observed, days_back, force):
     """One row per forecast whose final station outcome is verified."""
     since = (dt.date.today() - dt.timedelta(days=days_back)).isoformat()
@@ -344,7 +395,13 @@ def bank_bands(observed, days_back, force):
             "market_price": e.get("market_price"), "edge_net_pp": e.get("edge_net_pp"),
             "volume_usd": e.get("volume_usd"), "depth_5c": e.get("fillable_usd_5c"),
             "priced_at": p.get("computed_at"),
-            "observed_max_c": mx, "settled_yes": bool(settled),
+            "observed_max_c": mx,
+            # WHICH THERMOMETER. "authority:<station>" is the page the rules
+            # name; "station:<icao>" is our own routine-report maximum. A row
+            # that does not say cannot be audited, and these two do not agree
+            # often enough to be treated as one number.
+            "obs_source": (obs or {}).get("source"),
+            "settled_yes": bool(settled),
         })
     return out
 
@@ -487,11 +544,26 @@ def main():
 
     observed = _observed_max(args.days)
     verified = _verified_weather(args.days)
+    banded = observed_with_fallback(args.days)
     print(f"observed maxima available for {len(observed)} city-day(s); "
-          f"{len(verified)} have final authority evidence")
+          f"{len(verified)} have final authority evidence; "
+          f"{len(banded)} city-day(s) have one or the other for the band record")
 
+    # TWO TABLES, TWO STANDARDS, ON PURPOSE.
+    #
+    # fact_forecast_outcome is what the fitter trains against: its error_c and
+    # abs_error_c columns are the target. A forecast must be scored against
+    # ONE thermometer or the column stops meaning anything, so this stays on
+    # the authority alone and a day without authority evidence is simply not
+    # banked. Fewer rows, all of them comparable.
+    #
+    # fact_band_outcome is different. settled_yes there comes from the venue's
+    # own resolution and owes nothing to either thermometer; observed_max_c
+    # beside it is context - what the day actually did - and for that, a
+    # station reading that agrees with the venue 90.6% of the time is far
+    # better than the null that was being written for one day in five.
     fc = bank_forecasts(verified, args.days, args.force)
-    bd = bank_bands(verified, args.days, args.force)
+    bd = bank_bands(banded, args.days, args.force)
     sg = bank_signals(args.days, args.force)
 
     # upsert, not insert. These tables are immutable and primary-keyed, so a
