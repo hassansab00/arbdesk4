@@ -42,6 +42,7 @@ import sys
 import uuid
 
 import allocator
+import risk_budget
 import strategy_gate
 from collections import defaultdict
 from dataclasses import asdict
@@ -385,6 +386,75 @@ def _portfolio():
     return Portfolio(bankroll=max(bankroll, 0.0))
 
 
+def _risk_state():
+    """(equity, high_water, spent_today_usd) across the desks that can act.
+
+    SUMMING HIGH-WATER MARKS IS DELIBERATE AND IT IS THE SAFE DIRECTION. The
+    sum of each desk's peak is at least the peak of their sum, because no desk
+    is below its own maximum at the moment the combined book peaked. So the
+    drawdown computed here is never smaller than the true combined drawdown,
+    and a control that errs is erring toward taking risk off.
+
+    A missing view is not a reason to stop trading. Returning (None, None, 0)
+    leaves risk_budget.drawdown_scale at 1.0, which is exactly how the desk
+    behaved before this existed.
+    """
+    try:
+        rows = rest("v_desk_risk_state",
+                    [("select", "equity,high_water,spent_today_usd,mode,entries_paused"),
+                     ("mode", "in.(assisted,automatic)"),
+                     ("entries_paused", "is.false"), ("limit", "100")])
+    except Exception as e:
+        print(f"  note: v_desk_risk_state unavailable ({e}); "
+              f"no drawdown scaling this run", file=sys.stderr)
+        return None, None, 0.0
+    if not rows:
+        return None, None, 0.0
+    equity = sum(float(r.get("equity") or 0) for r in rows)
+    high_water = sum(float(r.get("high_water") or 0) for r in rows)
+    spent = sum(float(r.get("spent_today_usd") or 0) for r in rows)
+    return equity, high_water, spent
+
+
+def _correlations(cities):
+    """{(city_a, city_b): err_corr} for the cities being sized today.
+
+    Only the newest row per pair: derived_city_correlation is keyed on
+    (city_a, city_b, computed_at), so every recompute leaves the old row
+    behind and reading them all would average this month's correlation with
+    one measured in another season.
+
+    Pairs with no row are NOT added as zero. risk_budget.correlation_of falls
+    back to DEFAULT_CORRELATION for anything absent, because "unmeasured" and
+    "independent" are different statements.
+    """
+    if len(cities) < 2:
+        return {}
+    keys = sorted(cities)
+    out, seen_at = {}, {}
+    try:
+        rows = rest_all("derived_city_correlation",
+                        [("select", "city_a,city_b,err_corr,n_days,computed_at"),
+                         ("city_a", f"in.({','.join(keys)})"),
+                         ("city_b", f"in.({','.join(keys)})")],
+                        order="city_a.asc,city_b.asc,computed_at.asc", page_size=1000)
+    except Exception as e:
+        print(f"  note: derived_city_correlation unavailable ({e}); "
+              f"every pair assumed correlated at "
+              f"{risk_budget.DEFAULT_CORRELATION}", file=sys.stderr)
+        return {}
+    for r in rows:
+        if r.get("err_corr") is None:
+            continue
+        key = (r["city_a"], r["city_b"])
+        at = str(r.get("computed_at") or "")
+        if key in seen_at and at < seen_at[key]:
+            continue
+        seen_at[key] = at
+        out[key] = float(r["err_corr"])
+    return out
+
+
 def _recently_fired(now):
     """dedupe_keys that fired inside the TTL - the same condition must not
     re-fire every cycle and pile identical proposals on the desk."""
@@ -538,8 +608,9 @@ def _earned_weights(days=45):
     return {sid: v for sid, v in strategy_gate.weights(by_strategy).items()}
 
 
-def _allocate_ladders(fired, views, portfolio, earned):
-    """Re-size the day's entries across each ladder instead of one at a time.
+def _allocate_ladders(fired, views, portfolio, earned,
+                      risk=(None, None, 0.0), corr=None):
+    """Re-size the day's entries across each ladder, then across the book.
 
     base.size() already sizes each signal on its own edge, but the bands of
     one market-day are MUTUALLY EXCLUSIVE - exactly one wins - so they are a
@@ -548,6 +619,22 @@ def _allocate_ladders(fired, views, portfolio, earned):
     the term per-band sizing has nowhere to put: the venue quotes a median
     5.7 of ~11 bands, so the chance that NONE of the quoted bands wins is
     large and real.
+
+    AND THEN THERE IS THE SECOND LADDER. Solving each one correctly at a
+    quarter of full Kelly does not make the desk a quarter-Kelly desk; it
+    makes it forty-eight of them. scripts/risk_budget.py adds the three limits
+    that only exist above a single ladder, and they enter here in two places
+    because they are two different kinds of thing:
+
+      THE DRAWDOWN SCALE GOES INTO THE KELLY FRACTION, before the ladders are
+      solved. It is a preference about how much of an edge to take, so it
+      belongs where the edge is turned into money - and changing it can change
+      WHICH bands are worth holding, not just how much of them.
+
+      THE CAPS ARE APPLIED AFTER, to the solved ladders. A per-city-day cap, a
+      correlation-adjusted gross cap and what is left of today's entry budget
+      are limits, not preferences: they cut what the solve produced rather
+      than changing what it was solving.
 
     ENTRIES ONLY, AND YES ONLY. An exit is not a stake, and it keeps the size
     the strategy asked for. A NO leg is a bet on the complement of one band
@@ -573,42 +660,101 @@ def _allocate_ladders(fired, views, portfolio, earned):
     if bankroll <= 0:
         return 0
 
-    resized = 0
+    equity, high_water, spent_today = risk
+    base_lambda = allocator.DEFAULT_KELLY_FRACTION
+    scale, why = risk_budget.drawdown_scale(equity, high_water, base_lambda)
+    print(f"  risk: {why}")
+    if scale <= 0:
+        # The floor is a stop, not a shrink. Every entry is zeroed and the
+        # signals still fire and are still written, so the day is on the
+        # record as one the desk declined to fund rather than one it never saw.
+        zeroed = 0
+        for members in ladders.values():
+            for sig, _v in members:
+                sig.suggested_shares = 0.0
+                zeroed += 1
+        return zeroed
+
+    # ---- 1. Solve each ladder at the allowed fraction. --------------------
+    solved = {}          # (city, date) -> {band_id: (sig, v, weight, usd)}
+    all_claims = {}      # (city, date) -> {band_id: [sig, ...]}
     for key, members in ladders.items():
         # One signal per band: if two strategies both want the same band, the
         # ladder is still one allocation and the band is still one position.
         # The other claims must be zeroed, not left alone - a rejected claim
         # that keeps its per-signal size is the band staked twice.
-        best, all_claims = {}, {}
+        best, claims = {}, {}
         for sig, v in members:
             bid = str(sig.band_id)
             w = earned[sig.strategy_id].weight if sig.strategy_id in earned else 1.0
-            all_claims.setdefault(bid, []).append(sig)
+            claims.setdefault(bid, []).append(sig)
             prev = best.get(bid)
             if prev is None or w > prev[2]:
                 best[bid] = (sig, v, w)
+        all_claims[key] = claims
 
         legs = [allocator.Leg(band_id=bid, prob=float(sig.prob_at_fire),
                               price=float(sig.price_at_fire),
                               depth_usd=getattr(v, "fillable_usd_5c_yes", None),
                               label=f"{v.city_key} {v.band_label}")
                 for bid, (sig, v, _) in best.items()]
-        stakes, _detail = allocator.allocate(legs, bankroll)
+        stakes, _detail = allocator.allocate(
+            legs, bankroll, kelly_fraction=base_lambda * scale)
         staked = {s.band_id: s for s in stakes}
+        # UNWEIGHTED. The earned weight is applied at the very end, AFTER the
+        # caps - see the ordering note in step 3.
+        solved[key] = {bid: (sig, v, w,
+                             staked[bid].usd if bid in staked else 0.0)
+                       for bid, (sig, v, w) in best.items()}
 
-        for bid, (sig, v, weight) in best.items():
-            st = staked.get(bid)
-            for other in all_claims.get(bid, []):
+    # ---- 2. The book-wide limits. -----------------------------------------
+    # N_eff is counted by CITY, not by city-day: two ladders for the same city
+    # on different dates share a station and a season, so they are one bet for
+    # the purpose of asking how many independent ones the book holds.
+    proposed_city_day = {k: sum(u for *_r, u in v.values()) for k, v in solved.items()}
+    proposed_city = defaultdict(float)
+    for (city, _date), usd in proposed_city_day.items():
+        proposed_city[city] += usd
+
+    limits = risk_budget.budget(
+        bankroll=bankroll, equity=equity, high_water=high_water,
+        proposed_by_city=dict(proposed_city), corr=corr or {},
+        lambda_base=base_lambda, spent_today_usd=spent_today)
+    for r in limits.reasons[1:]:          # [0] is the drawdown line, printed above
+        print(f"  risk: {r}")
+
+    final, detail = risk_budget.apply_budget(proposed_city_day, limits)
+    if detail["per_city_cut"] or detail["gross_scale"] < 1.0 or detail["dropped_min"]:
+        print(f"  risk: ${detail['before_usd']:,.0f} proposed -> "
+              f"${detail['after_usd']:,.0f} allowed "
+              f"({detail['per_city_cut']} city-day(s) at the cap, "
+              f"gross x{detail['gross_scale']:.2f}, "
+              f"{detail['dropped_min']} under the venue minimum)")
+
+    # ---- 3. Carry the cut back to the signals, then apply earned trust. ---
+    #
+    # THE CAP COMES BEFORE THE WEIGHT AND THE ORDER IS NOT INTERCHANGEABLE.
+    # Weighting first and capping second lets the cap swallow the weight: a
+    # half-trusted strategy proposing $3,030 and a fully trusted one proposing
+    # $6,061 both land on a $3,000 cap and are funded identically, which makes
+    # the earned weight mean nothing exactly where the money is largest.
+    #
+    # Capping the UNWEIGHTED ladder and then applying the weight keeps both
+    # statements intact: the cap is the most any one weather event may carry,
+    # and the weight is how much of that a strategy has earned. Every weight is
+    # at most 1, so the weighted total can only be smaller - the cap still
+    # binds as a ceiling.
+    resized = 0
+    for key, members in solved.items():
+        want = proposed_city_day.get(key, 0.0)
+        got = final.get(key, 0.0)
+        ratio = (got / want) if want > 0 else 0.0
+        for bid, (sig, _v, weight, usd) in members.items():
+            for other in all_claims[key].get(bid, []):
                 if other is not sig:
                     other.suggested_shares = 0.0     # the band is one position
                     resized += 1
-            if st is None:
-                sig.suggested_shares = 0.0
-            else:
-                # The strategy's earned weight scales what the ladder solved
-                # for. A strategy with no record still fires and is still
-                # marked; it is simply not given money.
-                sig.suggested_shares = (st.usd * weight) / float(sig.price_at_fire)
+            sig.suggested_shares = (usd * ratio * weight) / float(sig.price_at_fire)
             resized += 1
     return resized
 
@@ -641,7 +787,9 @@ def main():
     counts["conflicts"] = len(conflict_rows)
 
     earned = _earned_weights()
-    counts["resized"] = _allocate_ladders(fired, views, portfolio, earned)
+    risk = _risk_state()
+    corr = _correlations({v.city_key for v in views if v.city_key})
+    counts["resized"] = _allocate_ladders(fired, views, portfolio, earned, risk, corr)
     counts["strategies_funded"] = sum(1 for v in earned.values() if v.weight > 0)
     for sid, v in sorted(earned.items()):
         print(f"  weight {v.weight:.2f}  {sid}: {v.reason}")

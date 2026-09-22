@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 185 of them - and for each MISSING one names the
+-- and function the app reads - 189 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -106,6 +106,7 @@ with expected(rel, owner, used_by) as (values
     ('v_city_climb_profile_live', 'ad4_26_temp_trend.sql', ''),
     ('v_city_daily_max', 'ad4_17_city_stats.sql', ''),
     ('v_city_day_execution_readiness', 'supabase/migrations/20260913093000_phase1d_execution_readiness.sql', '(CityReadiness)'),
+    ('v_city_day_exposure', 'ad4_84_risk_budget.sql', ''),
     ('v_city_day_features', 'ad4_21_weather_features.sql', ''),
     ('v_city_day_plan', 'ad4_34_trade_plan.sql', '/opportunities'),
     ('v_city_day_readiness', 'supabase/migrations/20260912234500_phase1c_operational_readiness.sql', ''),
@@ -125,6 +126,8 @@ with expected(rel, owner, used_by) as (values
     ('v_data_freshness', 'ad4_39_freshness.sql', ''),
     ('v_data_health', 'ad4_39_freshness.sql', ''),
     ('v_databank_coverage', 'ad4_18_databank.sql', '(DataBank)'),
+    ('v_desk_equity_curve', 'ad4_84_risk_budget.sql', ''),
+    ('v_desk_risk_state', 'ad4_84_risk_budget.sql', ''),
     ('v_edge_realisation', 'ad4_18_databank.sql', '(DataBank), (ModelAnalytics)'),
     ('v_edge_scaling', 'ad4_31_predictive.sql', '/predictive'),
     ('v_execution_budget', 'ad4_20_schedules.sql', '(ScheduleControl)'),
@@ -168,6 +171,7 @@ with expected(rel, owner, used_by) as (values
     ('v_prunable_book_redundancy', 'ad4_79_prune_book_redundancy.sql', ''),
     ('v_prunable_edge_history', 'ad4_80_prune_edge_history.sql', ''),
     ('v_prunable_resolution_evidence', 'ad4_74_prune_resolution_evidence.sql', ''),
+    ('v_risk_budget_health', 'ad4_84_risk_budget.sql', ''),
     ('v_run_scope', 'ad4_32_run_scope.sql', '(ScopeControl)'),
     ('v_settlement_agreement', 'ad4_82_settlement_agreement.sql', ''),
     ('v_sigma_inputs', 'ad4_45_calibration_feedback.sql', ''),
@@ -313,6 +317,7 @@ begin
     ('v_city_climb_profile_live', 'ad4_26_temp_trend.sql', ''),
     ('v_city_daily_max', 'ad4_17_city_stats.sql', ''),
     ('v_city_day_execution_readiness', 'supabase/migrations/20260913093000_phase1d_execution_readiness.sql', '(CityReadiness)'),
+    ('v_city_day_exposure', 'ad4_84_risk_budget.sql', ''),
     ('v_city_day_features', 'ad4_21_weather_features.sql', ''),
     ('v_city_day_plan', 'ad4_34_trade_plan.sql', '/opportunities'),
     ('v_city_day_readiness', 'supabase/migrations/20260912234500_phase1c_operational_readiness.sql', ''),
@@ -332,6 +337,8 @@ begin
     ('v_data_freshness', 'ad4_39_freshness.sql', ''),
     ('v_data_health', 'ad4_39_freshness.sql', ''),
     ('v_databank_coverage', 'ad4_18_databank.sql', '(DataBank)'),
+    ('v_desk_equity_curve', 'ad4_84_risk_budget.sql', ''),
+    ('v_desk_risk_state', 'ad4_84_risk_budget.sql', ''),
     ('v_edge_realisation', 'ad4_18_databank.sql', '(DataBank), (ModelAnalytics)'),
     ('v_edge_scaling', 'ad4_31_predictive.sql', '/predictive'),
     ('v_execution_budget', 'ad4_20_schedules.sql', '(ScheduleControl)'),
@@ -375,6 +382,7 @@ begin
     ('v_prunable_book_redundancy', 'ad4_79_prune_book_redundancy.sql', ''),
     ('v_prunable_edge_history', 'ad4_80_prune_edge_history.sql', ''),
     ('v_prunable_resolution_evidence', 'ad4_74_prune_resolution_evidence.sql', ''),
+    ('v_risk_budget_health', 'ad4_84_risk_budget.sql', ''),
     ('v_run_scope', 'ad4_32_run_scope.sql', '(ScopeControl)'),
     ('v_settlement_agreement', 'ad4_82_settlement_agreement.sql', ''),
     ('v_sigma_inputs', 'ad4_45_calibration_feedback.sql', ''),

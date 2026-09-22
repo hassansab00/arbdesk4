@@ -802,6 +802,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "live_weather",
     "weather_forecasts"
   ],
+  "v_city_day_exposure": [
+    "paper_trades"
+  ],
   "v_city_day_features": [
     "cities",
     "weather_observations"
@@ -914,6 +917,14 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "fact_band_outcome",
     "fact_forecast_outcome",
     "fact_signal_outcome"
+  ],
+  "v_desk_equity_curve": [
+    "paper_accounts",
+    "paper_trades"
+  ],
+  "v_desk_risk_state": [
+    "paper_accounts",
+    "paper_trades"
   ],
   "v_edge_realisation": [
     "fact_band_outcome",
@@ -1134,6 +1145,10 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "fact_band_outcome",
     "paper_position_settlements",
     "paper_resolution_evidence"
+  ],
+  "v_risk_budget_health": [
+    "paper_trades",
+    "paper_accounts"
   ],
   "v_settlement_agreement": [
     "bands",
