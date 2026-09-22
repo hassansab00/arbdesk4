@@ -1128,6 +1128,19 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     # trajectory says where the rest of the day is going, the floor says the
     # maximum cannot go down - and the second is an identity that holds
     # whichever centre and width the first produces.
+    #
+    # WHAT THE FORECAST PATH ALONE SAID IS KEPT, and it is not bookkeeping.
+    # Replacing the centre and the width here without recording what they were
+    # leaves a row describing a distribution nobody published: forecast_max_c
+    # and bias_applied_c still say "the public forecast, bias corrected" while
+    # sigma_c says "the trajectory". Two views read that pair as one model and
+    # both are wrong on exactly the rows the trajectory touched -
+    # v_trajectory_evidence would score the trajectory against a baseline
+    # carrying the trajectory's own narrow sigma, which is the layer grading
+    # its own homework, and ad4_45's z = (observed - forecast_max_c)/sigma_c
+    # would divide a forecast-sized error by a trajectory-sized width and tell
+    # the calibration map the desk is far more overconfident than it is.
+    forecast_sigma_c = sigma
     traj_centre, traj_sigma, traj_row = _trajectory_for(city_key, for_date)
     if traj_centre is not None:
         reasons.append(
@@ -1180,6 +1193,12 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
         "computed_at": computed_at,
         "input_forecast_run": forecast.get("run_at"),
         "forecast_max_c": centre, "bias_applied_c": bias_c, "sigma_c": round(sigma, 4),
+        # The centre the bands were actually integrated against, and the width
+        # the forecast path alone produced. On the forecast path centre_c is
+        # just forecast_max_c - bias_applied_c; where the trajectory fired it
+        # is the only record of what the desk priced.
+        "centre_c": round(centre_corrected, 4),
+        "forecast_sigma_c": round(forecast_sigma_c, 4),
         "lead_days": lead_days, "skill_lead_days": skill_lead_days,
         "skill_proxy": skill_proxy, "lattice_applied": True,
         "skill_source": skill_source, "pricing_eligible": pricing_eligible,

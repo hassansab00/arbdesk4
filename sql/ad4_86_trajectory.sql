@@ -88,15 +88,37 @@ published as (
   select distinct on (q.city_key, q.for_date)
          q.city_key, q.for_date,
          q.forecast_max_c - coalesce(q.bias_applied_c, 0) as centre_c,
-         q.sigma_c,
+         -- THE BASELINE IS THE FORECAST'S OWN WIDTH, NEVER THE PUBLISHED ONE.
+         -- Where the trajectory fired, sigma_c IS the trajectory's sigma while
+         -- forecast_max_c - bias_applied_c is still the forecast's centre.
+         -- Pairing those two scores the trajectory against a baseline wearing
+         -- the trajectory's own narrow spread: the baseline loses by
+         -- construction, more hours get applied, more rows are written that
+         -- way, and the layer ends up proving itself.
+         --
+         -- NULL forecast_sigma_c IS NOT COALESCED TO sigma_c, and the reason
+         -- is that the two mean different things at different times. Every row
+         -- written before derived_trajectory first existed (2026-09-22
+         -- 17:50:46) has forecast_sigma_c = sigma_c as a matter of fact -
+         -- nothing could have replaced it - and those 66,345 rows were
+         -- stamped. The 1,056 rows written by the one intraday run between
+         -- that fit and this column existing are the only rows where the
+         -- forecast's width is genuinely unrecoverable, and guessing it from a
+         -- neighbouring run would be inventing the number this view exists to
+         -- report. They are dropped; those city-days fall back to the
+         -- preceding run of the same day, which is a real published
+         -- forecast-path row.
+         q.forecast_sigma_c                                 as sigma_c,
          q.computed_at
   from (
     select m.city_key, m.resolution_date as for_date,
-           bp.forecast_max_c, bp.bias_applied_c, bp.sigma_c, bp.computed_at
+           bp.forecast_max_c, bp.bias_applied_c, bp.sigma_c,
+           bp.forecast_sigma_c, bp.computed_at
     from band_probabilities bp
     join bands b   on b.band_id = bp.band_id
     join markets m on m.market_id = b.market_id
     where bp.sigma_c is not null and bp.sigma_c > 0
+      and bp.forecast_sigma_c is not null and bp.forecast_sigma_c > 0
       and bp.forecast_max_c is not null
   ) q
   order by q.city_key, q.for_date, q.computed_at desc

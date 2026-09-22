@@ -614,6 +614,17 @@ begin
         ('band_probabilities','lattice_applied','boolean default false'),
         ('band_probabilities','confidence','numeric'),
         ('band_probabilities','regime_label','text'),
+        -- observed_floor_c has been written by probability_engine.py since the
+        -- floor landed and was never declared anywhere: it exists in this
+        -- database because it was added by hand, so a fresh install would have
+        -- had every probability write rejected. Exactly the class of gap this
+        -- list exists to close.
+        ('band_probabilities','observed_floor_c','numeric'),
+        -- The centre the bands were integrated against and the width the
+        -- forecast path alone produced. Without them a row where the intraday
+        -- trajectory replaced both describes a distribution nobody published.
+        ('band_probabilities','centre_c','numeric'),
+        ('band_probabilities','forecast_sigma_c','numeric'),
 
         -- strategies ----------------------------------------------------------
         -- The two columns that actually failed in production, plus the three

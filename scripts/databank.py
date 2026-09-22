@@ -355,7 +355,7 @@ def bank_bands(observed, days_back, force):
         inlist = f"in.({','.join(chunk)})"
         for r in rest_all("band_probabilities", [
                 ("select", "band_id,calibrated_prob,raw_prob,sigma_c,confidence,regime_label,"
-                           "forecast_max_c,computed_at"),
+                           "forecast_max_c,forecast_sigma_c,computed_at"),
                 ("band_id", inlist)],
                 order="computed_at.desc,prob_id.desc", page_size=1000):
             probs.setdefault(r["band_id"], r)
@@ -390,7 +390,25 @@ def bank_bands(observed, days_back, force):
             # fits its map on this column, and fitting a map on already-mapped
             # numbers converges on nothing.
             "model_prob": p.get("raw_prob") if p.get("raw_prob") is not None else p.get("calibrated_prob"),
-            "sigma_c": p.get("sigma_c"), "confidence": p.get("confidence"),
+            # THE WIDTH THAT BELONGS BESIDE forecast_max_c, which is the
+            # forecast path's - not whatever the intraday trajectory replaced
+            # it with. Everything downstream reads these two as ONE
+            # distribution: ad4_45 fits the calibration multiplier on
+            # z = (observed_max_c - forecast_max_c) / sigma_c, and ad4_58 asks
+            # whether that claimed width matched the realised error. On a row
+            # the trajectory priced, sigma_c is a spread around a DIFFERENT
+            # centre - typically half as wide - so the pair would report an
+            # overconfidence the forecast never had, and the multiplier would
+            # widen every price on every city to correct for it.
+            #
+            # Calibration is a statement about the forecast path and nothing
+            # else: the multiplier is applied before the trajectory can replace
+            # sigma, so a trajectory-priced day is not evidence about it.
+            # coalesce covers rows written before the column existed, where
+            # sigma_c is the forecast's because nothing had replaced it.
+            "sigma_c": p.get("forecast_sigma_c") if p.get("forecast_sigma_c") is not None
+                       else p.get("sigma_c"),
+            "confidence": p.get("confidence"),
             "regime_label": p.get("regime_label"), "forecast_max_c": p.get("forecast_max_c"),
             "market_price": e.get("market_price"), "edge_net_pp": e.get("edge_net_pp"),
             "volume_usd": e.get("volume_usd"), "depth_5c": e.get("fillable_usd_5c"),
