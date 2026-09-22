@@ -202,6 +202,20 @@ select
   -- settled signals of theirs sat in this same table.
   case
     when s.strategy_id = 'system'          then 'not a trading strategy'
+    -- A RETIREMENT THAT ERASES ITS OWN REASON. Every arm below reads the
+    -- record; `not s.enabled` used to short-circuit past all of them, so the
+    -- moment a measured verdict was ACTED on - s1 at -7.6c on the dollar over
+    -- 615 marked signals - the board stopped saying it and said "off"
+    -- instead. The number stayed in return_on_stake_pct beside it; the
+    -- sentence a reader actually reads did not. So a strategy carrying a
+    -- retirement stamp states the stamp, which is the reason recorded at the
+    -- time rather than one re-derived now from whatever has settled since.
+    when not s.enabled
+     and coalesce(s.extra, '{}'::jsonb) ? 'retired_on'
+                                           then format('retired %s - %s',
+                                                  s.extra ->> 'retired_on',
+                                                  coalesce(s.extra ->> 'retired_record',
+                                                           s.extra ->> 'retired_because'))
     when not s.enabled                     then 'off - it cannot propose anything'
     when coalesce(f.n_fired, 0) = 0        then 'on, but nothing has met its conditions in 30 days'
     when coalesce(sc.n_scored, 0) = 0      then 'firing, but nothing it fired has settled yet'
