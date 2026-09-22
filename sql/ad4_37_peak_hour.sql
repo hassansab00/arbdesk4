@@ -275,13 +275,44 @@ select
   (select count(*) from derived_weather_peak d where d.city_key = m.city_key)::int as months_measured,
   case
     when p.peak_hour_local is null then 'ASSUMED - no measured peak for this month'
-    when p.n_days < 40            then format('measured on %s day(s) - thin', p.n_days)
+    -- FORTY DAYS WAS UNREACHABLE, so this said "thin" about almost every
+    -- city almost always. The peak is computed from raw weather_observations
+    -- and prune_observations keeps 90 days, so a single calendar month can
+    -- contribute at most 31 days - and 38 of 48 active cities carried the
+    -- word on 2026-09-21 while the 10 that did not were simply rows nobody
+    -- had recomputed since the prune caught up with them.
+    --
+    -- It also was not describing a problem. Measured by splitting each
+    -- city's 90-day window into three interleaved ~29-day subsets, a 29-day
+    -- peak lands a mean 0.230 h (median 0.000 h) from the 87-day estimate,
+    -- against a declared window_width_h averaging 3.77 h. The bar is now
+    -- what the retention window can actually supply.
+    when p.computed_at < now() - interval '35 days'
+                                  then format('measured on %s day(s), but not recomputed since %s - the observations behind it have been pruned',
+                                              p.n_days, p.computed_at::date)
+    when p.n_days < greatest(10, least(28, p.days_available - 3))
+                                  then format('measured on %s of the %s day(s) this month can supply - thin',
+                                              p.n_days, p.days_available)
     when p.window_width_h > 4     then format('measured, but the peak moves %s hours - timing tells you little here', p.window_width_h)
     else                               format('measured on %s days, window %s hours', p.n_days, p.window_width_h)
-  end                                                                              as verdict
+  end                                                                              as verdict,
+  -- APPENDED, not slotted in where it reads best. `create or replace view`
+  -- keeps existing columns by POSITION, so inserting this next to n_days
+  -- renames verdict and Postgres refuses the whole statement.
+  p.days_available
 from months m
-left join derived_weather_peak p
-       on p.city_key = m.city_key and p.month = m.this_month
+left join (
+  -- How many days of THIS month the 90-day retention window can still offer.
+  -- Comparing n_days to a fixed 40 compares it to days that were deleted.
+  select d.*,
+         (select count(*) from generate_series(
+                 greatest(date_trunc('month', current_date)::date,
+                          (current_date - interval '90 days')::date),
+                 least(current_date, (date_trunc('month', current_date)
+                                      + interval '1 month - 1 day')::date),
+                 interval '1 day'))::int as days_available
+    from derived_weather_peak d
+) p on p.city_key = m.city_key and p.month = m.this_month
 order by p.peak_hour_local nulls last, m.city_key;
 
 comment on view v_peak_hour_coverage is

@@ -50,7 +50,7 @@ into the browser bundle.
 |---|---|---|---|---|---|
 | 1 | `P0.2_market_discovery.template.json` | Polymarket events → `markets` + `bands`. **Everything else is empty without this.** | 6 h | :20 | — |
 | 2 | `P0.3_book_volume_snapshot.template.json` | One order book per band → `book_snapshots`. Prices, depth, the fill model. | 1 h | :24 | 1 |
-| 3 | `P1.6_iem_observations.template.json` | IEM METAR station readings → `weather_observations`. On demand only — IEM rate-limits by IP and n8n Cloud's egress is shared; the schedule stays on Actions. | event | — | — |
+| 3 | `P1.6_iem_observations.template.json` | IEM METAR station readings → `weather_observations`. **One request for the whole board**: IEM rate-limits by REQUEST per IP, so 48 requests lost two thirds of the stations from n8n's shared egress and one request loses none. | 1 h | :10 | — |
 | 4 | `P1.5_open_meteo.template.json` | Live reading + 7-day forecast for **every** city, in one request. | 3 h | :54 | — |
 | 5 | `P0.4_trade_history.template.json` | Trade tape per band → `trades_observed`. Volume, thin-market flags. | 6 h | :34 | 1 |
 | 6 | `P1.2_nws_monitor.template.json` | api.weather.gov observations + alerts. **US only.** | 2 h | :42 | — |
@@ -148,7 +148,7 @@ secret-shaped string in it.
 | P1.3 | NWS Forecast | schedule 6h | `P1.3_nws_forecast.template.json` |
 | P1.4 | NWS Gridpoint | schedule 6h | `P1.4_nws_gridpoint.template.json` |
 | P1.5 | Open-Meteo | schedule 3h | `P1.5_open_meteo.template.json` |
-| P1.6 | IEM observations | manual / webhook | `P1.6_iem_observations.template.json` |
+| P1.6 | IEM observations | schedule 1h | `P1.6_iem_observations.template.json` |
 | P2.1 | Relearn trigger | schedule 1w | `P2.1_relearn.template.json` |
 | P3.1 | Email Digests | schedule x2/day | `P3.1_email_digests.template.json` |
 | P4.1 | Health Watchdog | schedule 6h | `P4.1_health_watchdog.template.json` |

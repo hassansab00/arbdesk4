@@ -151,7 +151,7 @@
       ],
       "parameters": {
         "method": "GET",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/bands?select=band_id,token_yes,token_no,condition_id,market_id,markets!inner(resolution_date)&markets.resolution_date=gte.{{ $now.minus({ hours: 8 }).toFormat('yyyy-MM-dd') }}&token_yes=not.is.null&order=market_id.asc,band_id.asc&limit=1000",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/bands?select=band_id,token_yes,token_no,condition_id,market_id,markets!inner(resolution_date,closed)&markets.closed=eq.false&markets.resolution_date=gte.{{ $now.minus({ hours: 8 }).toFormat('yyyy-MM-dd') }}&token_yes=not.is.null&order=market_id.asc,band_id.asc&limit=1000",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -195,7 +195,8 @@
           "id": "ad4-supabase",
           "name": "AD4 Supabase"
         }
-      }
+      },
+      "notes": "CLOSED MARKETS ARE SKIPPED. A city's market closes when its local day ends, and the venue stops quoting it - so asking for its book is a request that cannot succeed. This job reported 218-306 of 1,100 bands 'failed' on every run while logging ok, and those failures were almost entirely these. Hourly, that was ~6,000 futile calls to Polymarket a day."
     },
     {
       "id": "build-requests",

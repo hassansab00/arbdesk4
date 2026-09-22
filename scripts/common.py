@@ -217,12 +217,61 @@ def insert(table, rows, chunk=500):
     return _post_rows(table, rows, h, None, chunk, "insert")
 
 def upsert(table, rows, on_conflict, chunk=500):
-    """Insert rows, ignoring duplicates on the given unique key."""
+    """Insert rows, ignoring duplicates on the given unique key.
+
+    THE RIGHT DEFAULT FOR A FACT. An observation, a book snapshot, a filled
+    order: the row records something that happened, and a second run that sees
+    the same event must not be able to rewrite the first record of it. See
+    databank.py - ignore-duplicates is what keeps that guarantee.
+
+    IT IS THE WRONG CALL FOR A VERDICT. Where the row is not an event but the
+    CURRENT ANSWER to a standing question - is this model promoted, is this
+    city fresh - ignoring the duplicate freezes the first answer forever and
+    every later run computes a correct row and throws it away. Use
+    upsert_replace() for those; the two are one word apart and the difference
+    is the whole meaning of the table.
+    """
     if not rows:
         return 0
     h = _headers()
     h["Prefer"] = "resolution=ignore-duplicates,return=minimal"
     return _post_rows(table, rows, h, {"on_conflict": on_conflict}, chunk, "write")
+
+def upsert_replace(table, rows, on_conflict, chunk=500):
+    """Insert rows, OVERWRITING the existing row on the given unique key.
+
+    WHAT THIS IS FOR, and what it must never be used for.
+
+    A derived verdict table holds one row per question, and the row is the
+    answer as of the last run. derived_model_promotion is the case this was
+    written for: one row per (city, lead, target) saying whether that model
+    may move a price. It is recomputed from scratch on every run, from
+    predictions and outcomes that are themselves append-only - so nothing is
+    lost by overwriting it, and everything is lost by not.
+
+    MEASURED, 2026-09-21. derived_model_promotion was written with upsert(),
+    which is ignore-duplicates. The first run wrote 392 rows at 09-20 09:18.
+    Every run since recomputed them and the database discarded all of it:
+
+        rows in the table                                          392
+        distinct computed_at dates                                   1  (09-20)
+        rows the 09-21 run computed and the database ignored       384
+
+    So leads 1 to 7 read `stale` on all 49 cities, permanently, no matter how
+    many days settled - not because the evidence was missing but because the
+    verdict could not be rewritten. A promotion gate that cannot change its
+    mind is not a gate.
+
+    NOT FOR FACT TABLES. weather_observations, book_snapshots, paper_trades,
+    fact_* - all append-only, several with a database trigger that refuses an
+    UPDATE outright (sql/ad4_70_archive_exemption.sql). Reach for upsert()
+    there and let the duplicate be ignored.
+    """
+    if not rows:
+        return 0
+    h = _headers()
+    h["Prefer"] = "resolution=merge-duplicates,return=minimal"
+    return _post_rows(table, rows, h, {"on_conflict": on_conflict}, chunk, "replace")
 
 def rpc(fn, params=None, timeout=120):
     """POST to a PostgREST RPC, putting the SERVER's message in the exception.

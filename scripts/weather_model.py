@@ -47,8 +47,10 @@ only reproduce.
   python scripts/weather_model.py --predict-only [--dry-run]
 """
 import argparse
+import calendar
 import datetime as dt
 import json
+import math
 import sys
 
 from common import (rest, rest_all, log_run, _cfg, _headers,
@@ -126,7 +128,43 @@ CANDIDATE_FEATURES = [
     # usable day, and until the backfill runs that is every day.
     "pressure_change_24h_hpa",
     "morning_pressure_hpa",
+    # WHERE THE DAY SITS IN THE YEAR, which is the one thing on this list that
+    # needs no measurement at all.
+    #
+    # The model's largest term is carry-over from yesterday's maximum, and a
+    # carry-over term is a persistence forecast with the edges filed off: it
+    # inherits persistence's one systematic error, which is that it does not
+    # know the season is moving. Through September a day is on average cooler
+    # than the day before it; through March, warmer. Yesterday's number cannot
+    # express that, and neither can this morning's temperature - the drift is
+    # a property of the DATE.
+    #
+    # A sine and a cosine of the day-of-year angle are the standard way to
+    # give a linear model an annual cycle. One term alone would pin the phase
+    # to the solstices; the pair lets the fit put the peak where the city
+    # actually has it, which on a maritime west coast is weeks after the
+    # solstice and inland is closer to it.
+    #
+    # They are derived from the row's own date, not read from a column, so
+    # they exist on both sides by construction and for the whole 14-month
+    # history - unlike pressure and cloud, which have to accumulate. See
+    # DATE_DERIVED_FEATURES.
+    #
+    # Candidates, not base features, and the test is deliberately hard: the
+    # held-out slice select_features judges on is the LAST quarter of the
+    # training window in time order, so a seasonal term has to extrapolate
+    # into a part of the year the inner fit saw once. A term that survives
+    # that is carrying real signal.
+    "doy_sin",
+    "doy_cos",
 ]
+
+# Features computed from the row's DATE rather than read from a column.
+#
+# They must be excluded from both read lists - there is no doy_sin column on
+# derived_city_day_features or v_forecast_features, and asking PostgREST for
+# one 400s the entire read, which takes every city down rather than one.
+DATE_DERIVED_FEATURES = ("doy_sin", "doy_cos")
 
 # How many cloud-complete days a city needs before a cloud-enhanced model is
 # worth fitting at all. The same floor as MIN_DAYS, because it is the same
@@ -167,7 +205,35 @@ FEATURES = BASE_FEATURES
 # v_forecast_features does not have one. It comes from the observed anchor,
 # or from the chain - see forecast_city.
 FORECAST_COLUMNS = ["city_key", "for_date", "run_at", "lead_days", "forecast_max_c"] + [
-    f for f in list(BASE_FEATURES) + list(CANDIDATE_FEATURES) if f != "prev_max_c"
+    f for f in list(BASE_FEATURES) + list(CANDIDATE_FEATURES)
+    if f != "prev_max_c" and f not in DATE_DERIVED_FEATURES
+]
+
+# The columns the FIT asks derived_city_day_features for.
+#
+# DERIVED, for the same reason and after the same failure - one side of which
+# had already been fixed. FORECAST_COLUMNS was made derived in September after
+# a hand-written list silenced six cities; the read on THIS side was left
+# hand-written, and it drifted the moment the pressure candidates were added:
+#
+#     CANDIDATE_FEATURES on 2026-09-21    cloud_mean, morning_humidity,
+#                                         cloud_max, wind_max,
+#                                         pressure_change_24h_hpa,
+#                                         morning_pressure_hpa
+#     the read asked for                  cloud_mean, morning_humidity,
+#                                         cloud_max, wind_max
+#
+# So both pressure candidates were offered to select_features and arrived None
+# on every single row, every run, for every city. select_features filed them
+# under "not present on every training day" - which was true of the read, not
+# of the table - and the desk went on reporting that pressure had been
+# considered and had not earned its place. It had never been looked at.
+#
+# The list is the feature lists plus the keys and the target. A new candidate
+# cannot now be added without being read.
+FIT_COLUMNS = ["city_key", "obs_date", "max_c", "n_obs"] + [
+    f for f in list(BASE_FEATURES) + list(CANDIDATE_FEATURES)
+    if f not in DATE_DERIVED_FEATURES
 ]
 
 # What each coefficient means, so the output is a finding and not six numbers.
@@ -183,6 +249,8 @@ MEANING = {
     "morning_humidity": "per % of morning relative humidity — moisture the sun must boil off first",
     "cloud_max": "per okta of the cloudiest daytime hour — one overcast hour at the peak costs the whole day",
     "wind_max": "per unit of the windiest daytime hour — a gust front ends the climb",
+    "doy_sin": "the seasonal cycle's east-west component — with doy_cos, where the day sits in the year",
+    "doy_cos": "the seasonal cycle's north-south component — with doy_sin, where the day sits in the year",
 }
 
 # Two features are collinear when one is nearly a linear function of the other.
@@ -207,6 +275,50 @@ MAX_ABS_CORRELATION = 0.95
 # change which bucket a day lands in - and a feature that cannot change the
 # answer has no business being in the model, however real its effect.
 MIN_MATERIAL_GAIN_C = 0.05
+
+
+def seasonal_terms(day):
+    """The day of the year as a point on a circle.
+
+    A day number is not a number a linear model can use: 31 December and 1
+    January are one day apart and 364 units apart, so a coefficient on the
+    raw day-of-year would fit a ramp that falls off a cliff at New Year.
+    Projecting the day onto a unit circle removes the discontinuity - the two
+    days land next to each other, as they should - and gives the fit two
+    ordinary columns whose combination is an annual cycle with a free phase
+    and a free amplitude.
+
+    The denominator is the year's real length, so 1 March sits at the same
+    angle in a leap year as in a common one.
+
+    Returns {} for anything that is not a date, rather than raising: a row
+    with an unreadable date must lose the seasonal terms, not the run.
+    """
+    try:
+        d = dt.date.fromisoformat(str(day)[:10])
+    except (TypeError, ValueError):
+        return {}
+    year_days = 366 if calendar.isleap(d.year) else 365
+    angle = 2.0 * math.pi * (d.timetuple().tm_yday - 1) / year_days
+    return {"doy_sin": round(math.sin(angle), 6),
+            "doy_cos": round(math.cos(angle), 6)}
+
+
+def with_seasonal(rows, date_key):
+    """Attach the seasonal terms to every row, in place, and return the rows.
+
+    Called on BOTH sides - the observed cache the fit trains on and the
+    forecast rows it is applied to - because a feature present on one side
+    only can be fitted and never applied, silently. That is the failure
+    BASE_FEATURES' comment describes and tests/test_a_fitted_feature_is_a_
+    fetched_feature.py holds shut; these columns come from the date, so the
+    only way to break the symmetry is to forget one of these two calls.
+    """
+    for r in rows:
+        terms = seasonal_terms(r.get(date_key))
+        if terms:
+            r.update(terms)
+    return rows
 
 
 def solve(a, b):
@@ -755,6 +867,11 @@ def predict_forward(fits, by_city):
         return [], ("No forward predictions: weather_forecast_features has no days "
                     "from today on. Run n8n P1.4 (NWS Gridpoint).")
 
+    # The seasonal terms are not columns; they come from for_date. Without
+    # this, a fit that kept doy_sin would read None on every forecast row and
+    # forecast_city would skip the whole city - silently, exit 0.
+    with_seasonal(fc, "for_date")
+
     fc_by_city = {}
     for r in fc:
         fc_by_city.setdefault(r["city_key"], []).append(r)
@@ -896,9 +1013,7 @@ def main():
         # 22,197 rows, 2025-07-21 to 2026-09-19, up to 421 days for a city.
         # Measured 2026-09-19, the same moment the view held 4,745.
         rows = rest_all("derived_city_day_features", [
-            ("select", "city_key,obs_date,max_c,n_obs,prev_max_c,morning_temp_c,"
-                       "dewpoint_depression_c,cloud_mean,cloud_max,morning_humidity,"
-                       "wind_mean,wind_max,precip_total"),
+            ("select", ",".join(FIT_COLUMNS)),
         ], order="city_key.asc,obs_date.asc", page_size=1000)
     except Exception as e:
         print(f"derived_city_day_features unavailable ({e}). Run "
@@ -917,6 +1032,9 @@ def main():
     if retired:
         print(f"  {len(retired)} retired city/cities not fitted: "
               + ", ".join(retired))
+
+    # Same terms, same function, the other side. See with_seasonal.
+    with_seasonal(rows, "obs_date")
 
     by_city = {}
     for r in rows:

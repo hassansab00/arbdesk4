@@ -44,8 +44,19 @@ consecutive dates keep the runs intact. PAIRED, because both models are scored
 on the same day: what is resampled is the per-day DIFFERENCE, which takes the
 day's own difficulty out of the comparison.
 
-Writes one row per (city, lead) to derived_model_promotion. Only 'promoted'
-reaches scripts/probability_engine.py, through v_model_promoted.
+Writes one row per (ACTIVE city, lead) to derived_model_promotion, including
+the leads the forward job has written nothing for - an absent row cannot be
+told apart from a city nobody looked at. Only 'promoted' reaches
+scripts/probability_engine.py, through v_model_promoted.
+
+THE ROW IS THE CURRENT ANSWER, NOT A RECORD OF ONE, so it is written with
+common.upsert_replace. Written with the ordinary ignore-duplicates upsert - as
+it was until 2026-09-21 - the first run's verdict becomes permanent and every
+corrected one after it is discarded by the database. See upsert_replace.
+
+And a lead whose oldest prediction has not happened yet is in SHADOW, not
+stale: `stale` means the fit or its predictions stopped arriving, and a lead
+three days old has not stopped at anything. See decide().
 
   python scripts/model_promotion.py [--dry-run] [--min-days 30] [--draws 2000]
 """
@@ -54,7 +65,7 @@ import datetime as dt
 import random
 import sys
 
-from common import rest_all, upsert, log_run, active_city_keys, drop_retired
+from common import rest_all, upsert_replace, log_run, active_city_keys, drop_retired
 
 # ---------------------------------------------------------------------------
 # The rule, as constants, so changing the bar is a visible change.
@@ -72,6 +83,16 @@ FIT_MAX_AGE_DAYS = 21
 PREDICTION_MAX_AGE_DAYS = 3
 
 TARGET = "max_c"
+
+# The horizon the forward job publishes, so a lead with NO prediction at all
+# is a visible row rather than an absent one.
+#
+# Leads 1 to 7 read `stale` on all 49 cities for two days and the table gave
+# no way to tell the two possible reasons apart: predictions had been written
+# and nothing had settled yet, or no prediction existed at that lead. Those
+# want opposite responses - wait, versus go and find out why the forecast job
+# is not writing that lead - and both arrived as the same word.
+EXPECTED_LEADS = tuple(range(0, 8))
 
 
 def block_len(n):
@@ -169,12 +190,58 @@ def score(rows, min_days=MIN_FORWARD_DAYS, draws=BOOT_DRAWS, seed=0):
     }
 
 
-def decide(scored, stale_reasons, dropped, min_days=MIN_FORWARD_DAYS):
+def waiting_detail(pending, min_days=MIN_FORWARD_DAYS):
+    """The sentence for a lead that has predictions and no settled day yet.
+
+    It names the DATE. "no settled forward day" is true of a lead whose
+    forecast job died three weeks ago and of a lead published for the first
+    time this morning, and an operator has to do opposite things about them.
+    """
+    n = (pending or {}).get("unsettled", 0)
+    first = (pending or {}).get("first_pending")
+    if not first:
+        return f"{n} prediction(s) outstanding and none carries a date"
+    first_day = dt.date.fromisoformat(str(first))
+    # A prediction for day D can first be scored on D+1, once the day has run
+    # its course and the observation cache carries its maximum.
+    scorable_on = first_day + dt.timedelta(days=1)
+    # One settled day per calendar date at a given lead, so the floor cannot
+    # be reached before this. Later if a day is missed; never earlier.
+    floor_on = first_day + dt.timedelta(days=min_days)
+    return (f"{n} prediction(s) outstanding at this lead, the oldest for {first_day}; "
+            f"the first can be scored on {scorable_on} and the {min_days}-day floor "
+            f"cannot be reached before {floor_on}")
+
+
+def decide(scored, stale_reasons, dropped, min_days=MIN_FORWARD_DAYS, pending=None):
     """shadow | promoted | rejected | stale, and every rule beside it.
 
     STALE BEATS EVERYTHING, because a stale model has not been beaten - it has
     not been judged, and reporting "rejected" for something nobody measured is
     a claim about evidence that does not exist.
+
+    A YOUNG HORIZON IS NOT A STALE ONE. This returned "stale" whenever nothing
+    was scorable, and `stale` in this module means one specific thing: the fit
+    or its forward predictions STOPPED ARRIVING. A lead whose predictions are
+    arriving on time and whose oldest one is still in the future has not
+    stopped at anything - it has not come due.
+
+    The distinction is not cosmetic. Measured 2026-09-21, the forward job's
+    first run was 09-19, so the oldest prediction at each lead was:
+
+        lead 0  2026-09-19    98 settled city-days
+        lead 1  2026-09-20    24 settled city-days
+        lead 2  2026-09-21     0 - settles 09-22
+        lead 7  2026-09-26     0 - settles 09-27
+
+    Every one of leads 2 to 7 was reported `stale` on all 49 cities, and the
+    board's own text for stale reads "either the fit or its forward
+    predictions stopped arriving". Nothing had stopped. The horizon was three
+    days old and the longest lead had not yet had a day to be wrong about.
+
+    So: nothing to score AND the inputs are current -> shadow, with the date
+    it can first be judged. Nothing to score AND no prediction at this lead at
+    all -> stale, which is the honest word for it.
     """
     reasons = [{"rule": r, "held": False, "detail": d} for r, d in stale_reasons]
     for rule, count, detail in dropped:
@@ -183,9 +250,15 @@ def decide(scored, stale_reasons, dropped, min_days=MIN_FORWARD_DAYS):
     if stale_reasons:
         return "stale", reasons
     if scored is None:
+        outstanding = (pending or {}).get("unsettled", 0)
+        if outstanding > 0:
+            return "shadow", reasons + [
+                {"rule": "the_horizon_has_settled", "held": False,
+                 "detail": waiting_detail(pending, min_days)}]
         return "stale", reasons + [
             {"rule": "anything_to_score", "held": False,
-             "detail": "no settled forward day survived the drops above"}]
+             "detail": "no forward prediction at this lead survived the drops above, "
+                       "and none is outstanding - the forecast job is not writing it"}]
 
     reasons += [{"rule": r, "held": bool(ok), "detail": d} for r, ok, d in scored["checks"]]
     if scored["n_days"] < min_days:
@@ -251,9 +324,18 @@ def assemble(preds, obs, fits, today=None):
     for (city, lead, day), p in newest.items():
         g = groups.setdefault((city, lead), [])
         d = drops.setdefault((city, lead), {"unsettled": 0, "no_public": 0,
-                                            "no_anchor": 0, "no_version": 0})
+                                            "no_anchor": 0, "no_version": 0,
+                                            "first_pending": None, "last_pending": None})
         if str(day) >= str(today) or (city, str(day)) not in observed:
             d["unsettled"] += 1
+            # WHICH day is outstanding, not just how many. A lead reporting
+            # nothing to score is waiting on a specific date, and that date is
+            # the difference between "come back tomorrow" and "the forecast
+            # job stopped writing this lead three weeks ago".
+            if d["first_pending"] is None or str(day) < d["first_pending"]:
+                d["first_pending"] = str(day)
+            if d["last_pending"] is None or str(day) > d["last_pending"]:
+                d["last_pending"] = str(day)
             continue
         # Persistence is the observed maximum of the day before, from the same
         # cache the outcome comes from - not the prev_max_c the prediction
@@ -327,6 +409,53 @@ def _ts(value):
     return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
 
 
+SCORE_COLUMNS = ("n_days", "model_mae_c", "public_mae_c", "persistence_mae_c",
+                 "gain_vs_public_c", "gain_vs_persistence_c", "boot_lo_c",
+                 "boot_hi_c", "boot_draws", "block_days")
+
+
+def retired_rows(active, computed_at):
+    """Correction rows for city-leads that hold a verdict and are no longer ours.
+
+    load() drops retired cities before anything is scored, which is right: a
+    city the desk has stopped trading must not go on earning a promotion. The
+    consequence nobody looked at is that its rows are then never written
+    again. They keep the state and the computed_at they last had, forever,
+    and per-city freshness goes on reporting the table overdue on account of a
+    city that is not being traded.
+
+    NOTHING IS DELETED. The row is rewritten to say what is actually true
+    about it: this city is retired, so this verdict is not being maintained.
+    """
+    try:
+        existing = rest_all("derived_model_promotion",
+                            [("select", "city_key,lead_days,target")],
+                            order="city_key.asc,lead_days.asc,target.asc",
+                            page_size=1000)
+    except Exception as e:
+        print(f"  ! could not read derived_model_promotion to mark retired cities "
+              f"({e}) - their rows keep their old timestamp", file=sys.stderr)
+        return []
+
+    out = []
+    for r in existing:
+        if r["city_key"] in active:
+            continue
+        row = {
+            "city_key": r["city_key"], "lead_days": r["lead_days"],
+            "target": r.get("target") or TARGET, "state": "stale",
+            "model_version": None, "first_day": None, "last_day": None,
+            "reasons": [{"rule": "city_is_active", "held": False,
+                         "detail": f"{r['city_key']} is retired from the board, so its "
+                                   f"fit is no longer scored and this verdict is no "
+                                   f"longer maintained"}],
+            "computed_at": computed_at,
+        }
+        row.update({k: None for k in SCORE_COLUMNS})
+        out.append(row)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true")
@@ -342,6 +471,16 @@ def main():
               "so nothing can be promoted. Run Actions -> Weather Model, then Model Forecast.")
         log_run("model_promotion", "ok", 0, {"predictions": 0, "promoted": 0})
         return 0
+
+    # EVERY ACTIVE CITY AT EVERY LEAD GETS A ROW, including the ones the
+    # forecast job wrote nothing for. A (city, lead) absent from `groups` used
+    # to be absent from the table, and an absent row is indistinguishable from
+    # a city nobody has looked at. The verdict for "no prediction at this lead"
+    # is `stale`, which is correct and, crucially, visible.
+    active = active_city_keys()
+    for city in sorted(active):
+        for lead in EXPECTED_LEADS:
+            groups.setdefault((city, lead), [])
 
     rows_out, tally = [], {"promoted": 0, "shadow": 0, "rejected": 0, "stale": 0}
     for (city, lead), rows in sorted(groups.items()):
@@ -359,7 +498,7 @@ def main():
         ]
         scored = score(rows, args.min_days, args.draws) if rows else None
         state, reasons = decide(scored, stale_checks(city, rows, fit), dropped,
-                                args.min_days)
+                                args.min_days, pending=d)
         tally[state] = tally.get(state, 0) + 1
         row = {
             "city_key": city, "lead_days": lead, "target": TARGET, "state": state,
@@ -369,9 +508,7 @@ def main():
             "reasons": reasons,
             "computed_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         }
-        for k in ("n_days", "model_mae_c", "public_mae_c", "persistence_mae_c",
-                  "gain_vs_public_c", "gain_vs_persistence_c", "boot_lo_c",
-                  "boot_hi_c", "boot_draws", "block_days"):
+        for k in SCORE_COLUMNS:
             row[k] = (scored or {}).get(k)
         rows_out.append(row)
 
@@ -394,11 +531,32 @@ def main():
         print("Nothing is promoted, so no fitted model is moving a price. That is the "
               "correct default, not a failure.")
 
+    # COVERAGE, PER LEAD, OVER THE ACTIVE BOARD. The tally above counts states;
+    # it cannot tell you that lead 5 was scored on zero cities, because zero
+    # scored cities and forty-eight waiting ones both land in `stale`/`shadow`.
+    print(f"\ncoverage across {len(active)} active city/cities:")
+    for lead in sorted({lead for _, lead in groups}):
+        at_lead = [r for r in rows_out if r["lead_days"] == lead
+                   and r["city_key"] in active]
+        scored_at = [r for r in at_lead if (r.get("n_days") or 0) > 0]
+        days = max((r.get("n_days") or 0) for r in at_lead) if at_lead else 0
+        print(f"  lead {lead}: {len(at_lead)} city/cities with a verdict, "
+              f"{len(scored_at)} with a settled day, most days on any city {days}")
+    uncovered = sorted(active - {r["city_key"] for r in rows_out})
+    if uncovered:
+        print("  ! no verdict at any lead for: " + ", ".join(uncovered))
+
+    rows_out += retired_rows(active, dt.datetime.now(dt.timezone.utc).isoformat())
+
     if args.dry_run:
         print("--dry-run: nothing written")
         return 0
     if rows_out:
-        upsert("derived_model_promotion", rows_out, "city_key,lead_days,target")
+        # REPLACE, not ignore-duplicates. This table holds one row per standing
+        # question and the row is the answer as of this run; a write that
+        # ignores the duplicate freezes the first answer and discards every
+        # correct one after it. See common.upsert_replace for the measurement.
+        upsert_replace("derived_model_promotion", rows_out, "city_key,lead_days,target")
     log_run("model_promotion", "ok", len(rows_out), tally)
     return 0
 

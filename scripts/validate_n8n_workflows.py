@@ -106,6 +106,31 @@ for path in sorted(glob.glob("n8n/*.json")):
                 conns[n["name"]]["main"], list):
             bad(f, f"{n['name']}: connections.main must be a list of lists")
 
+    # -- every $('Node') an EXPRESSION names must exist too ------------------
+    #
+    # A connection to a missing node is caught below; a REFERENCE to one is not,
+    # and n8n only discovers it at runtime. P1.6 shipped with its Schedule
+    # Trigger removed and `$('Schedule Trigger').isExecuted` left behind in the
+    # gate's body, and the next execution died in 0.13 s - after the file had
+    # passed every check here and been merged.
+    def _live_text(params):
+        """Parameter text with JS comments removed.
+
+        P4.1's Summary explains the PostgREST item shape with `$('Node').all()`
+        in a comment; scanning raw JSON reports that as a missing node. Only
+        code that RUNS can hold a dangling reference.
+        """
+        params = dict(params or {})
+        js = params.pop("jsCode", "")
+        js = re.sub(r"/\*.*?\*/", "", js, flags=re.S)
+        js = "\n".join(re.sub(r"//.*$", "", line) for line in js.split("\n"))
+        return json.dumps(params) + js
+
+    for n in d["nodes"]:
+        for ref in set(re.findall(r"\$\('([^']+)'\)", _live_text(n.get("parameters")))):
+            if ref not in nodes:
+                bad(f, f"{n['name']} references $('{ref}'), which is not a node in this file")
+
     # -- every connection points at a node that exists ----------------------
     for src, v in conns.items():
         if src not in nodes: bad(f, f"connection from unknown node {src!r}")
