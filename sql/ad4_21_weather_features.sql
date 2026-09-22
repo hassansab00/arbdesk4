@@ -68,7 +68,7 @@ with obs as not materialized (
     (o.valid_at at time zone coalesce(c.timezone, 'UTC'))::date            as obs_date,
     extract(hour from (o.valid_at at time zone coalesce(c.timezone, 'UTC'))) as local_hour,
     o.temp_c, o.dewpoint_c, o.humidity, o.wind_speed, o.precip,
-    o.cloud_cover, o.pressure_hpa
+    o.cloud_cover, o.pressure_hpa, o.wind_dir_deg
   from weather_observations o
   left join cities c on c.city_key = o.city_key
   where o.temp_c is not null
@@ -88,7 +88,31 @@ daily as (
     -- applied. The two column sets have to match or the forward model dies
     -- silently, one skipped row at a time.
     max(wind_speed)  filter (where local_hour between 9 and 17)   as wind_max,
-    sum(coalesce(precip, 0))                                      as precip_total
+    sum(coalesce(precip, 0))                                      as precip_total,
+    -- WIND DIRECTION, AS A VECTOR. It was collected on 130,572 of 144,601
+    -- observations - 90.3% - and aggregated nowhere: the only consumer was
+    -- live_weather.py turning it into a compass glyph for the UI.
+    --
+    -- A MEAN OF DEGREES IS NOT A MEAN WIND. 350 and 10 average to 180, which
+    -- is the opposite direction, so the bearing has to be resolved into
+    -- components before anything is summed. These four sums are the pieces of
+    -- the speed-weighted resultant; the view divides them, because dividing
+    -- inside an aggregate cannot carry the weighting.
+    --
+    -- Meteorological convention: the bearing is where the wind comes FROM, so
+    -- the vector it blows TOWARD is (-sin, -cos).
+    sum(-wind_speed * sin(radians(wind_dir_deg)))
+      filter (where local_hour between 9 and 17
+                and wind_dir_deg is not null and wind_speed is not null)  as wd_su,
+    sum(-wind_speed * cos(radians(wind_dir_deg)))
+      filter (where local_hour between 9 and 17
+                and wind_dir_deg is not null and wind_speed is not null)  as wd_sv,
+    sum(wind_speed)
+      filter (where local_hour between 9 and 17
+                and wind_dir_deg is not null and wind_speed is not null)  as wd_scalar,
+    count(*)
+      filter (where local_hour between 9 and 17
+                and wind_dir_deg is not null and wind_speed is not null)  as wd_n
   from obs group by city_key, obs_date
 ),
 morning as (
@@ -139,7 +163,22 @@ select
   -- front, and a front is exactly when a persistence-style forecast fails.
   round(m.morning_pressure_hpa
         - lag(m.morning_pressure_hpa) over (partition by d.city_key order by d.obs_date), 2)
-                                             as pressure_change_24h_hpa
+                                             as pressure_change_24h_hpa,
+
+  -- The speed-weighted resultant, divided by the scalar wind run. That makes
+  -- each component the direction's east/north share TIMES the day's
+  -- directional constancy: 1.0 is a steady wind from one quarter, 0.0 is a
+  -- day that boxed the compass. Both are dimensionless and bounded by [-1, 1],
+  -- which is what lets one coefficient mean the same thing in Denver and
+  -- Singapore - a raw u in knots would make the term a proxy for how windy
+  -- the city is rather than for where its wind comes from.
+  --
+  -- THREE READINGS, because two points make a resultant out of nothing much
+  -- and the daytime window is nine hours; 96.9% of city-days clear it.
+  case when d.wd_n >= 3 and d.wd_scalar > 0
+       then round((d.wd_su / d.wd_scalar)::numeric, 4) end   as wind_u_mean,
+  case when d.wd_n >= 3 and d.wd_scalar > 0
+       then round((d.wd_sv / d.wd_scalar)::numeric, 4) end   as wind_v_mean
 from daily d
 left join morning m on m.city_key = d.city_key and m.obs_date = d.obs_date;
 

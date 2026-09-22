@@ -772,6 +772,15 @@ begin
         ('weather_observations','sky_raw','text'),
         ('weather_observations','visibility_m','numeric'),
         ('weather_observations','pressure_hpa','numeric'),
+        -- WIND DIRECTION AS A VECTOR, 2026-09-22. `create table if not
+        -- exists` never widens a table that already exists, so a column added
+        -- to the DDL alone reaches a fresh install and nothing else - which is
+        -- how the live cache would have kept two permanent nulls. This
+        -- registry is the mechanism that actually adds them.
+        ('derived_city_day_features','wind_u_mean','numeric'),
+        ('derived_city_day_features','wind_v_mean','numeric'),
+        ('weather_forecast_features','wind_u_mean','numeric'),
+        ('weather_forecast_features','wind_v_mean','numeric'),
         ('weather_forecasts','model','text'),
         ('weather_forecasts','run_at','timestamptz'),
         ('weather_forecasts','for_date','date'),
@@ -1054,6 +1063,9 @@ begin
     wind_max              numeric,
     precip_total          numeric,
     pressure_change_24h_hpa numeric,
+    -- see sql/ad4_21_weather_features.sql: components, not a bearing
+    wind_u_mean           numeric,
+    wind_v_mean           numeric,
     computed_at           timestamptz not null default now(),
     primary key (city_key, obs_date)
   );

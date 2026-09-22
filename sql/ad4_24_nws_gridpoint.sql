@@ -65,6 +65,14 @@ create table if not exists weather_forecast_features (
   -- number 240 hPa out for some cities and correct for others.
   morning_pressure_hpa    numeric,
   pressure_change_24h_hpa numeric,   -- vs the previous forecast day in the same run
+  -- The speed-weighted daytime resultant, divided by the scalar wind run:
+  -- each is the direction's east/north share times the day's directional
+  -- constancy. A mean of bearings is not a mean wind - 350 and 10 average
+  -- to 180, the opposite direction. Matches sql/ad4_21_weather_features.sql
+  -- exactly; a feature that means two things on the two sides is worse than
+  -- one that is missing on one of them.
+  wind_u_mean             numeric,
+  wind_v_mean             numeric,
   cloud_mean              numeric,   -- OKTAS 0-8, converted from NWS percent
   cloud_max               numeric,
   wind_mean               numeric,

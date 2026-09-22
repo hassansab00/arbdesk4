@@ -169,6 +169,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/capacity.py",
       "kind": "action",
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
+    {
+      "cadence": "weekly",
+      "file": "weather_model.yml",
+      "how": "scripts/backfill_wind_direction.py",
+      "kind": "action",
+      "name": "Weather Model"
     }
   ],
   "derived_city_day_volume": [

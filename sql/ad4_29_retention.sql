@@ -100,13 +100,13 @@ begin
       delta_max_c, morning_temp_c, morning_dewpoint_c, dewpoint_depression_c,
       morning_humidity, morning_pressure_hpa, morning_to_max_c, cloud_mean,
       cloud_max, wind_mean, wind_max, precip_total, pressure_change_24h_hpa,
-      computed_at)
+      wind_u_mean, wind_v_mean, computed_at)
     select
       city_key, obs_date, max_c, min_c, diurnal_range_c, n_obs, prev_max_c,
       delta_max_c, morning_temp_c, morning_dewpoint_c, dewpoint_depression_c,
       morning_humidity, morning_pressure_hpa, morning_to_max_c, cloud_mean,
       cloud_max, wind_mean, wind_max, precip_total, pressure_change_24h_hpa,
-      now()
+      wind_u_mean, wind_v_mean, now()
     from v_city_day_features
     where city_key = v_city and obs_date >= v_from
     on conflict (city_key, obs_date) do update set
@@ -123,6 +123,13 @@ begin
       wind_mean = excluded.wind_mean, wind_max = excluded.wind_max,
       precip_total = excluded.precip_total,
       pressure_change_24h_hpa = excluded.pressure_change_24h_hpa,
+      -- COALESCE, NOT OVERWRITE. refresh_feature_cache can only see
+      -- what weather_observations still holds - about 90 days - while
+      -- the cache goes back 14 months. A plain assignment would blank
+      -- every backfilled wind vector outside the retention window the
+      -- first time this ran, which is the whole history the fit needs.
+      wind_u_mean = coalesce(excluded.wind_u_mean, derived_city_day_features.wind_u_mean),
+      wind_v_mean = coalesce(excluded.wind_v_mean, derived_city_day_features.wind_v_mean),
       computed_at = now();
     get diagnostics v_n = row_count;
     v_days := v_days + v_n;

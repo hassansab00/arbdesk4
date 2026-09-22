@@ -157,6 +157,35 @@ CANDIDATE_FEATURES = [
     # that is carrying real signal.
     "doy_sin",
     "doy_cos",
+    # WIND DIRECTION, AS A VECTOR AND NOT A BEARING.
+    #
+    # wind_dir_deg was collected on 130,572 of 144,601 observations - 90.3% -
+    # and aggregated nowhere: the only consumer in the repo was live_weather.py
+    # turning it into a compass glyph for the UI. It is a first-order control
+    # on a daily maximum at a good number of these stations, because downslope,
+    # offshore and onshore flow are different weather from the same pressure
+    # gradient. Measured on this repo's own archive, the day's climb splits by
+    # resultant octant with a spread of 8.08 C at Sao Paulo, 4.81 C at Cape
+    # Town and 4.16 C at Warsaw; on a held-out OLS over 205 city-days the pair
+    # is worth about 0.135 C of MAE on average and 0.26 to 0.70 C where the
+    # mechanism is strongest - against band widths of a degree or two.
+    #
+    # A MEAN OF BEARINGS IS NOT A MEAN WIND: 350 and 10 average to 180, the
+    # opposite direction. What is stored on both sides is the speed-weighted
+    # resultant divided by the scalar wind run, so each component is the
+    # direction's east/north share TIMES the day's directional constancy -
+    # dimensionless and bounded by [-1, 1], which is what lets one coefficient
+    # mean the same thing in Denver and in Singapore.
+    #
+    # BOTH SIDES LANDED TOGETHER, deliberately. The observed side is
+    # backfilled from data/archive/observations (the bearing was always in
+    # those files), and the forecast side cannot be backfilled at all - so
+    # P1.4 and P1.5 were taught to fetch it in the same change. Offering this
+    # to the fit while only one side carried it is the silent failure
+    # BASE_FEATURES' own comment describes, and it cost six cities their
+    # forward predictions in September when wind_max was on one side only.
+    "wind_u_mean",
+    "wind_v_mean",
 ]
 
 # Features computed from the row's DATE rather than read from a column.
@@ -251,6 +280,8 @@ MEANING = {
     "wind_max": "per unit of the windiest daytime hour — a gust front ends the climb",
     "doy_sin": "the seasonal cycle's east-west component — with doy_cos, where the day sits in the year",
     "doy_cos": "the seasonal cycle's north-south component — with doy_sin, where the day sits in the year",
+    "wind_u_mean": "per unit of steady easterly flow — an onshore wind and a downslope one are different weather",
+    "wind_v_mean": "per unit of steady northerly flow — where the day's air came from, weighted by how steadily",
 }
 
 # Two features are collinear when one is nearly a linear function of the other.

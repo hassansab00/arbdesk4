@@ -156,7 +156,12 @@ MEASURED_MINUTES = {
     "observations.yml": 2.5,
     "archive_observations.yml": 1.5,
     "paper_trade_log.yml": 1.5,
-    "weather_model.yml": 1.5,
+    # 1.5 measured before 2026-09-22; the wind-direction backfill added a
+    # step that reads 22k cache rows and scans ~415k archived observations
+    # the first time it runs, and writes nothing on every run after that.
+    # Held at 4.0 until a run with the step in it has been timed - the
+    # budget may round up, it may not guess low.
+    "weather_model.yml": 4.0,
     "live_weather.yml": 1.5,
     "verify_resolution_source.yml": 1.5,
     "backtest.yml": 1.5,
