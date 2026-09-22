@@ -159,7 +159,8 @@ begin
       ('derived_capacity',           array['city_key','computed_at','hour_utc'],       'computed_at'),
       ('weather_forecast_features',  array['city_key','for_date','run_at'],            'captured_at'),
       ('fact_forecast_outcome',      array['city_key','for_date','model','lead_days'], 'captured_at'),
-      ('derived_forecast_postprocess',array['city_key','lead_days'],                   'computed_at')
+      ('derived_forecast_postprocess',array['city_key','lead_days'],                   'computed_at'),
+      ('derived_trajectory',          array['city_key','local_hour'],                  'computed_at')
     ) as t(tbl, cols, newest)
   loop
     v_msg := ad4_ensure_natural_key(r.tbl, r.cols, r.newest);

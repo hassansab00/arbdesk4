@@ -176,17 +176,44 @@ def unit_edge_c(unit, boundary):
     return half_step_local
 
 
-def band_mass(centre_c, sigma_c, unit, band_lo, band_hi, open_low, open_high):
-    """Probability mass for one band under Normal(centre_c, sigma_c)."""
+def band_mass(centre_c, sigma_c, unit, band_lo, band_hi, open_low, open_high,
+              floor_c=None):
+    """Probability mass for one band under max(floor_c, Normal(centre, sigma)).
+
+    WITH NO FLOOR this is the plain Normal and nothing below changes.
+
+    WITH ONE it is the distribution of the FINAL maximum given what the day has
+    already recorded, and the difference is an atom, not a truncation:
+
+        F(x) = 0        for x < floor
+             = Phi(x)   for x >= floor
+
+    because max(a, X) puts every draw of X below a exactly ON a. So the band
+    holding the floor receives all of that mass, and the bands above it receive
+    none of it.
+
+    THAT IS NOT WHAT THE DESK USED TO DO. It zeroed the passed bands and
+    renormalised the survivors in proportion, which hands the sub-floor mass to
+    every band above the floor according to the forecast's opinion of them. A
+    city sitting at 25.3 C with 40% of the forecast below 25.0 gave that 40% to
+    26, 27 and 28 - reading as room to climb that the arithmetic forbids. This
+    is the same class of fix as the floor itself: the maximum of a set does not
+    decrease when you add to it, and the consequences of that are not a
+    modelling choice.
+
+    `floor_c` must already be discounted by OBSERVED_FLOOR_TOLERANCE_C - see
+    compute_band_probabilities, which owns that decision.
+    """
+    def F(x):
+        if floor_c is not None and x < floor_c:
+            return 0.0
+        return normal_cdf(x, centre_c, sigma_c)
+
     if open_low:
-        edge_hi = unit_edge_c(unit, band_hi)
-        return normal_cdf(edge_hi, centre_c, sigma_c)
+        return F(unit_edge_c(unit, band_hi))
     if open_high:
-        edge_lo = unit_edge_c(unit, band_lo)
-        return 1.0 - normal_cdf(edge_lo, centre_c, sigma_c)
-    edge_lo = unit_edge_c(unit, band_lo)
-    edge_hi = unit_edge_c(unit, band_hi)
-    return max(0.0, normal_cdf(edge_hi, centre_c, sigma_c) - normal_cdf(edge_lo, centre_c, sigma_c))
+        return 1.0 - F(unit_edge_c(unit, band_lo))
+    return max(0.0, F(unit_edge_c(unit, band_hi)) - F(unit_edge_c(unit, band_lo)))
 
 
 # A DAILY MAXIMUM CANNOT GO DOWN.
@@ -238,23 +265,28 @@ def compute_band_probabilities(centre_c, sigma_c, unit, bands, floor_c=None):
              market does not resolve today or no observation exists.
     Returns list of (band_id, prob) with prob summing to exactly 1.0.
     """
-    raw = [(b["band_id"], band_mass(centre_c, sigma_c, unit,
-                                     b["band_lo"], b["band_hi"],
-                                     bool(b.get("open_low")), bool(b.get("open_high"))))
-           for b in bands]
+    def _masses(fl):
+        return [(b["band_id"], band_mass(centre_c, sigma_c, unit,
+                                         b["band_lo"], b["band_hi"],
+                                         bool(b.get("open_low")),
+                                         bool(b.get("open_high")), fl))
+                for b in bands]
+
+    raw = _masses(None)
 
     if floor_c is not None:
-        kept = [(bid, 0.0 if band_is_impossible(
-                     floor_c, unit, b["band_lo"], b["band_hi"],
-                     bool(b.get("open_low")), bool(b.get("open_high"))) else p)
-                for (bid, p), b in zip(raw, bands)]
+        # THE TOLERANCE IS APPLIED ONCE, HERE. Our running maximum comes from
+        # the station live_weather tracks and the venue settles on its own, so
+        # the floor is discounted before it is allowed to move any mass.
+        effective = floor_c - OBSERVED_FLOOR_TOLERANCE_C
+        floored = _masses(effective)
         # IF THE FLOOR KILLS EVERYTHING, DO NOT APPLY IT. A day that has already
         # run past the entire ladder means the ladder is wrong, the station is
         # wrong, or the city is mismatched - and none of those are improved by
         # publishing a uniform distribution over impossibilities. Fall back to
         # the unfloored lattice, which at least states the forecast's opinion.
-        if sum(p for _, p in kept) > 0:
-            raw = kept
+        if sum(p for _, p in floored) > 0:
+            raw = floored
 
     total = sum(p for _, p in raw)
     if total <= 0:
@@ -510,6 +542,68 @@ def _calibration_for(city_key):
     except (TypeError, ValueError):
         return 1.0, None
     return (m, row) if m > 0 else (1.0, None)
+
+
+_trajectory_cache = None
+
+# The day is never known to better than this, whatever the profile says.
+TRAJECTORY_SD_FLOOR_C = 0.15
+
+
+def _trajectory_now():
+    """{city_key: row} from v_city_trajectory_now, read once per run.
+
+    One request for the whole roster. A city with no row, no applied
+    trajectory, or no reading today is simply absent, and the caller prices
+    from the forecast exactly as it did before this view existed.
+    """
+    global _trajectory_cache
+    if _trajectory_cache is None:
+        _trajectory_cache = {}
+        try:
+            for r in rest("v_city_trajectory_now", [
+                    ("select", "city_key,local_date,local_hour,running_max_c,"
+                               "latest_temp_today_c,readings_today,"
+                               "typical_climb_left_c,climb_left_sd_c,"
+                               "pct_already_peaked,sd_ratio,crps_gain,"
+                               "trajectory_applied"),
+                    ("trajectory_applied", "is.true"),
+            ]):
+                _trajectory_cache[r["city_key"]] = r
+        except Exception as e:
+            print(f"  note: trajectory layer unavailable ({str(e)[:80]}) - "
+                  f"pricing the whole day from the forecast. "
+                  f"Run sql/ad4_86_trajectory.sql.", file=sys.stderr)
+    return _trajectory_cache
+
+
+def _trajectory_for(city_key, for_date):
+    """(centre_c, sigma_c, row) for the REST of today, or (None, None, None).
+
+    Four things must hold and each of them is a different way of being wrong:
+
+      the market resolves TODAY in this city's own local date - a trajectory
+      says nothing about tomorrow;
+      the city-hour is applied - it beat the floored forecast out of sample;
+      there is a reading from today - without one there is no trajectory, only
+      a forecast;
+      the profile has both a typical climb and a spread for this hour.
+    """
+    row = _trajectory_now().get(city_key)
+    if not row or str(for_date) != str(row.get("local_date")):
+        return None, None, None
+    temp = row.get("latest_temp_today_c")
+    climb = row.get("typical_climb_left_c")
+    sd = row.get("climb_left_sd_c")
+    if temp is None or climb is None or sd is None:
+        return None, None, None
+    try:
+        centre = float(temp) + float(climb)
+        sigma = max(TRAJECTORY_SD_FLOOR_C,
+                    float(sd) * float(row.get("sd_ratio") or 1.0))
+    except (TypeError, ValueError):
+        return None, None, None
+    return centre, sigma, row
 
 
 _postprocess_cache = None
@@ -1017,6 +1111,34 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     local_date, running_max = (floors or {}).get(city_key, (None, None))
     if local_date is not None and str(for_date) == local_date:
         observed_floor_c = running_max
+
+    # ---- THE REST OF TODAY, WHERE THE DAY ITSELF KNOWS BETTER --------------
+    #
+    # A morning forecast describes the whole day. By mid-afternoon most of that
+    # day has happened, and what is left is a much smaller question: how much
+    # further can it still climb from here. derived_climb_profile has measured
+    # exactly that, per city and local hour, over ~89 days - and until now
+    # nothing read it.
+    #
+    # Applied ONLY where scripts/trajectory.py found it beats the FLOORED
+    # forecast on held-out days by CRPS, which is a harder bar than beating a
+    # bare one: the floor is what the desk already gets for free.
+    #
+    # The floor still applies on top. These are two different statements - the
+    # trajectory says where the rest of the day is going, the floor says the
+    # maximum cannot go down - and the second is an identity that holds
+    # whichever centre and width the first produces.
+    traj_centre, traj_sigma, traj_row = _trajectory_for(city_key, for_date)
+    if traj_centre is not None:
+        reasons.append(
+            f"trajectory:{traj_row.get('local_hour'):02d}h_local:"
+            f"reading{float(traj_row['latest_temp_today_c']):.1f}C"
+            f"+climb{float(traj_row['typical_climb_left_c']):.2f}C"
+            f"={traj_centre:.1f}C_sigma{sigma:.2f}->{traj_sigma:.2f}"
+            f":{traj_row.get('pct_already_peaked')}pct_peaked"
+            f":crps_gain_{traj_row.get('crps_gain')}")
+        centre_corrected = traj_centre
+        sigma = traj_sigma
 
     probs = compute_band_probabilities(centre_corrected, sigma, unit, bands,
                                        floor_c=observed_floor_c)

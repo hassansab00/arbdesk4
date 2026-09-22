@@ -139,6 +139,16 @@ jobs:
         timeout-minutes: 10
         run: python scripts/forecast_postprocess.py
 
+      # 6c. Fit the intraday trajectory layer: per city and local hour, does
+      #     pricing the rest of the day from its own climb beat the FLOORED
+      #     forecast? After the databank freeze and after 6b, because it is
+      #     scored against the distribution the desk actually published.
+      #     Seconds of arithmetic over a few thousand city-day-hours.
+      - name: Fit the intraday trajectory
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: python scripts/trajectory.py
+
       # 7. Capacity, correlation, peak hour, climate cache, the day-feature
       #    cache - and the calibration FEEDBACK, which measures whether the
       #    sigma the desk quoted turned out honest. After the databank freeze,

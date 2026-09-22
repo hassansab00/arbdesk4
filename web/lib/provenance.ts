@@ -255,6 +255,15 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
+  "derived_trajectory": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/trajectory.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    }
+  ],
   "derived_weather_model": [
     {
       "cadence": "daily",
@@ -910,6 +919,13 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "cities",
     "weather_observations"
   ],
+  "v_city_trajectory_now": [
+    "cities",
+    "derived_climb_profile",
+    "live_weather",
+    "weather_observations",
+    "derived_trajectory"
+  ],
   "v_city_volume": [
     "bands",
     "markets",
@@ -1237,6 +1253,22 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "live_weather",
     "derived_climb_profile",
     "weather_observations"
+  ],
+  "v_trajectory_applied": [
+    "derived_trajectory"
+  ],
+  "v_trajectory_evidence": [
+    "band_probabilities",
+    "bands",
+    "cities",
+    "derived_climb_profile",
+    "markets",
+    "weather_resolution_evidence",
+    "weather_observations"
+  ],
+  "v_trajectory_health": [
+    "derived_climb_profile",
+    "derived_trajectory"
   ],
   "v_venue_band_resolution": [
     "bands",

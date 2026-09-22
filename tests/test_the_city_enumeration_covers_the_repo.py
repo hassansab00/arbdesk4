@@ -155,6 +155,13 @@ SQL_FILTERS = {
     "sql/ad4_71_observation_health.sql":        "is the DESK's data healthy - operational, not the record",
     "sql/ad4_75_probability_reliability.sql":   "the measured haircut, applied to live prices",
     "sql/ad4_live_weather_timing.sql":          "refresh_live_weather_timing - only worth computing for a live city",
+    # v_city_trajectory_now prices the rest of TODAY for cities the desk is
+    # trading, and filters to active on its own. The evidence view beside it
+    # joins cities only for the timezone that turns a timestamp into a local
+    # hour, so it is not asking a question about the roster at all. FILTERS is
+    # the right call for the file, because the relation an engine reads is the
+    # one that decides.
+    "sql/ad4_86_trajectory.sql":                "v_city_trajectory_now - what the engine prices the rest of today from",
     # v_trade_plan joins cities for observation_trust, the gate that decides
     # whether s5 and s7 may fire in a city at all. FILTERS, and it already is:
     # every row comes from v_opportunities, which admits only the active
