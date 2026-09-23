@@ -53,21 +53,30 @@ def _gz(rows):
 
 
 @pytest.fixture
-def desk(tmp_path, monkeypatch):
-    """A repo-shaped tmp dir with a real git history."""
+def desk(tmp_path, tmp_path_factory, monkeypatch):
+    """A repo-shaped tmp dir with a real git history AND a remote.
+
+    Committed means pushed (plan v2 P1.5): is_committed() compares each file
+    with the blob on origin, so the fixture has an origin to push to.
+    """
     monkeypatch.setattr(ao, "_root", lambda: str(tmp_path))
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    monkeypatch.setenv("GITHUB_REF_NAME", "main")
+    remote = tmp_path_factory.mktemp("origin") / "repo.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
     subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp_path, check=True)
     subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=tmp_path, check=True)
     (tmp_path / "seed").write_text("x")
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-qm", "seed"], cwd=tmp_path, check=True)
+    _commit_all(tmp_path, "seed")
     return tmp_path
 
 
-def _commit_all(root, msg="archive"):
+def _commit_all(root, msg="archive", push=True):
     subprocess.run(["git", "add", "-A"], cwd=root, check=True)
     subprocess.run(["git", "commit", "-qm", msg], cwd=root, check=True)
+    if push:
+        subprocess.run(["git", "push", "-q", "origin", "main"], cwd=root, check=True)
 
 
 def _prune_calls(monkeypatch):
@@ -122,6 +131,16 @@ def test_a_committed_file_lets_the_prune_through(desk, monkeypatch):
     # tier - scheduled behind the prune rather than on a clock that assumed
     # the prune had already happened.
     assert calls[1:] == [("request_reclaim", {"p_table": "weather_observations"})]
+
+
+def test_a_commit_that_was_never_pushed_stops_the_prune(desk, monkeypatch):
+    """The failure P1.5 found: four failed pushes, and the step still passed.
+    The file is in local HEAD, byte-identical - and on no machine but this one."""
+    _pend(desk)
+    _commit_all(desk, push=False)
+    calls = _prune_calls(monkeypatch)
+    assert ao.prune_one(ao.TABLES["observations"], "observations", object()) == 1
+    assert calls == [], "a commit that never left the runner authorised a delete"
 
 
 def test_a_file_edited_after_the_commit_stops_the_prune(desk, monkeypatch):

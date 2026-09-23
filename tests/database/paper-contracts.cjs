@@ -79,7 +79,18 @@ const assert = require('node:assert/strict');
       enabled boolean not null default true,created_at timestamptz not null default now(),
       universe jsonb,regime_filter jsonb,capital_cap_pct numeric,max_concurrent integer,extra jsonb);
     insert into public.strategies(strategy_id,name) values('s1','price entry');
-    create table public.band_probabilities(prob_id uuid primary key,band_id uuid,computed_at timestamptz default now());
+    -- band_probabilities matches the live table's columns, types, NOT NULLs
+    -- and defaults (information_schema.columns, 23 Sep). It was three columns
+    -- with a uuid prob_id; live is bigint. The research-capture trigger fires
+    -- on its pricing columns, so the contract needs them to exist.
+    create table public.band_probabilities(prob_id bigserial primary key,band_id uuid not null,
+      computed_at timestamptz not null default now(),forecast_version uuid,calibration_version uuid,
+      raw_prob numeric,calibrated_prob numeric,input_forecast_run timestamptz,input_book_snapshot bigint,
+      forecast_max_c numeric,bias_applied_c numeric,sigma_c numeric,lead_days integer,
+      lattice_applied boolean default false,confidence numeric,regime_label text,skill_lead_days integer,
+      skill_proxy boolean not null default false,skill_source text not null default 'legacy',
+      pricing_eligible boolean not null default true,pricing_block_reason text,observed_floor_c numeric,
+      centre_c numeric,forecast_sigma_c numeric);
     -- book_snapshot_id is a foreign key into book_snapshots in production and
     -- v_prunable_book_redundancy reads it to refuse anything an edge cites.
     -- Missing here, the view does not compile - the fixture-does-not-match-
@@ -238,7 +249,7 @@ const assert = require('node:assert/strict');
       values(1,'london','test',now(),current_date);
     insert into public.book_snapshots(snapshot_id,band_id,observed_at,tradeable) values(1,'${band}',now(),true);
     insert into public.band_probabilities(prob_id,band_id,computed_at)
-      values('60000000-0000-0000-0000-000000000001','${band}',now());
+      values(60000001,'${band}',now());
     insert into public.edges(edge_id,band_id,computed_at,side,tradeable) values(1,'${band}',now(),'YES',true);
     insert into public.live_weather(city_key,updated_at,observed_at) values('london',now(),now());
     insert into public.trades_observed(trade_id,city_key,traded_at) values(1,'london',now());
@@ -1616,6 +1627,42 @@ const assert = require('node:assert/strict');
   assert.match(bySid.s_single.verdict,/too few settled signals to judge/,
     'two signals is not a record, and the verdict must say so rather than quoting a rate');
 
+
+  // ======================================================================
+  // A BACKFILL IS NOT RESEARCH (plan v2 P1.4,
+  // 20260923110000_a_backfill_is_not_research.sql).
+  //
+  // One UPDATE of a non-pricing column on 22 Sep copied 66,345 rows into
+  // research_captures. A new price is captured; a re-label is not; and a
+  // deliberate backfill can switch capture off for its own transaction.
+  // ======================================================================
+  await db.exec('reset role;');
+  const caps=async()=>Number((await db.query(
+    "select count(*)::int as n from research_captures where source_relation='band_probabilities'")).rows[0].n);
+  const c0=await caps();
+  await db.query(`insert into public.band_probabilities(prob_id,band_id,raw_prob,calibrated_prob,centre_c,sigma_c)
+                  values(60000002,$1,.30,.31,20.4,1.1)`,[band]);
+  const c1=await caps();
+  assert.equal(c1,c0+1,'a new price was not captured');
+  // THE PLAN'S ACCEPTANCE: a non-pricing UPDATE in a transaction creates 0 captures.
+  await db.exec(`begin; update public.band_probabilities set pricing_block_reason='relabel', regime_label='dry',
+                   observed_floor_c=19.0 where prob_id=60000002; rollback;`);
+  await db.query(`update public.band_probabilities set pricing_block_reason='relabel', regime_label='dry'
+                  where prob_id=60000002`);
+  assert.equal(await caps(),c1,'an update that changed no price was captured as research output');
+  await db.query('update public.band_probabilities set calibrated_prob=calibrated_prob where prob_id=60000002');
+  assert.equal(await caps(),c1,'an update that set a price to itself was captured');
+  await db.query('update public.band_probabilities set calibrated_prob=.35 where prob_id=60000002');
+  assert.equal(await caps(),c1+1,'a real re-price was NOT captured - research output was lost');
+  // The switch: on for one transaction, gone after it.
+  await db.exec(`begin; set local arbdesk.skip_capture = on;
+                   update public.band_probabilities set calibrated_prob=.40 where prob_id=60000002;
+                   insert into public.band_probabilities(prob_id,band_id,raw_prob) values(60000003,'${band}',.1);
+                 commit;`);
+  assert.equal(await caps(),c1+1,'a backfill that set arbdesk.skip_capture was captured anyway');
+  await db.query('update public.band_probabilities set calibrated_prob=.41 where prob_id=60000002');
+  assert.equal(await caps(),c1+2,'skip_capture leaked past the transaction that set it');
+
   await db.close();
-  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune and the desk-independent strategy mark');
+  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark and research capture of prices only');
 })().catch(e=>{console.error(e);process.exit(1);});
