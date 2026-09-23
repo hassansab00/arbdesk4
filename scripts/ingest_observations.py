@@ -61,7 +61,20 @@ def fetch_station(station, start, end, since=None, until=None):
         "year1": start.year, "month1": start.month, "day1": start.day,
         "year2": end.year,   "month2": end.month,   "day2": end.day,
         "tz": "Etc/UTC", "format": "onlycomma", "latlon": "no",
-        "missing": "empty", "trace": "empty", "direct": "no", "report_type": "3",
+        "missing": "empty", "trace": "empty", "direct": "no",
+        # ROUTINE AND SPECIAL REPORTS - every report the station files, which
+        # is what the venue's WRH page shows (plan v2 P2.1). report_type=3
+        # alone is the routine report only: one per hour, so a European
+        # station filing half-hourly lost half its day and every US special
+        # was dropped. Measured against IEM on 23 Sep, local days, max
+        # against the WRH evidence the venue settles on:
+        #   EGLC 17 Sep   3: 24 rows, 21C   3+4: 48 rows, 22C   WRH 22C
+        #   EHAM 12 Sep   3: 24 rows, 21C   3+4: 48 rows, 22C   WRH 22C
+        #   LGA  20 Sep   3: 24 rows, 71F   3+4: 37 rows, 72F   WRH 72F
+        #   DAL  13 Sep   3: 24 rows, 99F   3+4: 24 rows, 99F   WRH 99F
+        # 3+4 does not bring in the US five-minute feed (LGA: 13 extra rows,
+        # all specials). report_type=1 returned nothing for EGLC and EHAM.
+        "report_type": ["3", "4"],
     }
     if since is not None:
         p["sts"] = since.strftime("%Y-%m-%dT%H:%MZ")
