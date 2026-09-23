@@ -202,7 +202,13 @@ select
   -- a city we get right half the time is half a rule.
   case when count(ours) >= 10
        then round(1.0 * count(*) filter (where agrees) / count(ours), 4)
-  end                                                        as observation_trust
+  end                                                        as observation_trust,
+  -- APPENDED (plan v2 P2.3). The venue settled exactly ONE bucket above our
+  -- reading (we read in the band just below the winner), or one below. These
+  -- are what P3.1's q_up / q_down are fitted on; a miss further than one
+  -- bucket is neither, and is left in with_a_reading - agreed.
+  count(*) filter (where ours <  band_lo and ours >= band_lo - band_width) as one_bucket_up,
+  count(*) filter (where ours >= band_hi and ours <  band_hi + band_width) as one_bucket_down
 from scored
 group by city_key;
 
