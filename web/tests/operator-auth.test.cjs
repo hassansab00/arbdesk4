@@ -24,20 +24,35 @@ const forged = (url, extra = {}) => new Request(`${SITE}${url}`, {
 (async () => {
   for (const k of Object.keys(process.env)) if (/SUPABASE/i.test(k)) delete process.env[k];
 
-  // 1. Every write route: a forged same-origin request with no session is 401.
+  // 1a. SIGN-IN OFF (the default; Hassan, 23 Sep). The gate lets a
+  // same-origin request through to the service key, and with no service key
+  // configured the route says so (503) rather than doing anything.
+  delete process.env.OPERATOR_SIGN_IN;
+  for (const [p, url] of [['operator', '/api/operator'], ['paper-desk', '/api/paper-desk'],
+                          ['paper-run', '/api/paper-run'], ['paper-cycle', '/api/paper-cycle']]) {
+    const res = await route(p).POST(forged(url));
+    assert.notEqual(res.status, 401, `${url}: sign-in is off but the route still asked for a session`);
+  }
+  assert.equal((await route('operator').POST(forged('/api/operator'))).status, 503,
+    'with sign-in off and no service key, a write must stop at 503, not pass');
+
+  // A cross-origin request is refused in both modes, before anything else.
+  const cross = new Request(`${SITE}/api/operator`, { method: 'POST', headers: { origin: 'https://evil.example' }, body: '{}' });
+  assert.equal((await route('operator').POST(cross)).status, 403);
+
+  // 1b. SIGN-IN ON (OPERATOR_SIGN_IN=required): the plan's acceptance - a
+  // forged same-origin request with no session is 401 on every write route.
+  process.env.OPERATOR_SIGN_IN = 'required';
   for (const [p, url] of [['operator', '/api/operator'], ['paper-desk', '/api/paper-desk'],
                           ['paper-run', '/api/paper-run'], ['paper-cycle', '/api/paper-cycle']]) {
     const res = await route(p).POST(forged(url));
     assert.equal(res.status, 401, `${url}: a forged Origin with no session got ${res.status}, not 401`);
   }
-
-  // A cross-origin request is still refused before anything else.
-  const cross = new Request(`${SITE}/api/operator`, { method: 'POST', headers: { origin: 'https://evil.example' }, body: '{}' });
   assert.equal((await route('operator').POST(cross)).status, 403);
-
   // A token with no server to check it against is not a pass: 503, not 200.
   const tokenNoServer = await route('operator').POST(forged('/api/operator', { authorization: 'Bearer abc' }));
   assert.equal(tokenNoServer.status, 503, 'a token was accepted with nothing configured to verify it');
+  delete process.env.OPERATOR_SIGN_IN;
 
   // 2. The decision itself, with its I/O stubbed.
   const deps = (email, ops) => ({ emailForToken: async () => email, operators: async () => ops });
@@ -56,5 +71,5 @@ const forged = (url, extra = {}) => new Request(`${SITE}${url}`, {
   assert.deepEqual(auth.normaliseOperators(['A@x.io', 3, '', null, ' b@y.io ']), ['a@x.io', 'b@y.io']);
   assert.deepEqual(auth.normaliseOperators({ emails: ['a@x.io'] }), [], 'only a JSON array is an operator list');
 
-  console.log('PASS: operator gate - forged Origin without a session is 401 on every write route');
+  console.log('PASS: operator gate - sign-in off passes to the service key; sign-in on refuses a forged Origin with 401 on every write route');
 })().catch((e) => { console.error(e); process.exit(1); });
