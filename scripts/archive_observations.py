@@ -557,49 +557,6 @@ def gh(repo, token, method, path, **kw):
     return r
 
 
-def ensure_release(repo, token, spec):
-    tag = spec["tag"]
-    r = gh(repo, token, "GET", f"/releases/tags/{tag}")
-    if r.status_code == 200:
-        return r.json()
-    r = gh(repo, token, "POST", "/releases", json={
-        "tag_name": tag, "name": f"{spec['table']} archive",
-        "body": (f"Cold rows from {spec['table']}, pruned from Supabase to stay inside "
-                 "the free tier.\n\nOne gzipped CSV per archive run, named by the range "
-                 "it covers. The header is the column list, so it loads straight into "
-                 "PostgreSQL with \\copy - see docs/local_archive.md."),
-        "prerelease": True,
-    })
-    r.raise_for_status()
-    return r.json()
-
-
-def upload(repo, token, release, name, blob):
-    # Replace an asset of the same name rather than letting GitHub silently
-    # refuse the upload with 422.
-    for a in release.get("assets", []):
-        if a["name"] == name:
-            gh(repo, token, "DELETE", f"/releases/assets/{a['id']}")
-    url = release["upload_url"].split("{")[0] + f"?name={name}"
-    r = requests.post(url, headers={"Authorization": f"Bearer {token}",
-                                    "Content-Type": "application/gzip"},
-                      data=blob, timeout=600)
-    r.raise_for_status()
-    return r.json()
-
-
-def verify(asset, expect_rows, token):
-    """Download it back and count. An upload that returns 201 and stored a
-    truncated file is the failure this exists to catch."""
-    r = requests.get(asset["url"],
-                     headers={"Authorization": f"Bearer {token}",
-                              "Accept": "application/octet-stream"},
-                     timeout=600)
-    r.raise_for_status()
-    got = count_rows(r.content)
-    return got, got == expect_rows
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     # NO GLOBAL DEFAULT ANY MORE. Ninety days is right for three tables with
@@ -761,9 +718,9 @@ def pull_releases(args):
     pulled, skipped, missing = 0, 0, []
     for name in sorted(TABLES):
         spec = TABLES[name]
-        # gh() HANDS BACK A RAW Response, NOT PARSED JSON - ensure_release
-        # checks .status_code and calls .json(), and the first draft of this
-        # function did neither. A missing release came back as a 404 Response
+        # gh() HANDS BACK A RAW Response, NOT PARSED JSON - check
+        # .status_code and call .json(); the first draft of this function
+        # did neither. A missing release came back as a 404 Response
         # rather than an exception, the try/except never fired, and the run
         # died on `'Response' object has no attribute 'get'` before a single
         # byte was pulled.

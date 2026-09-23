@@ -8,16 +8,16 @@ export const dynamic = 'force-dynamic';
 /**
  * READ THE ARCHIVE. The half that was missing.
  *
- * scripts/archive_observations.py moves cold rows out of Postgres and into a
- * GitHub Release. That part worked. What did not exist was any way to get
+ * scripts/archive_observations.py moves cold rows out of Postgres and into
+ * data/archive/ in this repo (a GitHub Release until #87). That part worked. What did not exist was any way to get
  * them back, so from the platform's side an archive was indistinguishable
  * from a deletion: the rows stopped being in Supabase, every page that read
  * them went empty, and nothing said where they had gone.
  *
  * This is where they went. The manifest at /archive/index.json is public and
  * needs no token - a page can fetch it directly to learn WHICH ranges are
- * archived and offer them. The rows themselves live in a Release asset on a
- * private repo, so fetching one needs a token, which is why it happens here
+ * archived and offer them. The rows themselves live in a file of a private
+ * repo (older ones also on a Release), so fetching one needs a token, which is why it happens here
  * and not in the browser.
  *
  * TWO CALLS:
@@ -35,7 +35,7 @@ export const dynamic = 'force-dynamic';
  * reports how many matched. A page shows a window; an export takes the file.
  *
  * THE FILE ITSELF IS ALWAYS AVAILABLE. ?asset=<name>&redirect=1 returns the
- * Release's own download URL so a person can take the whole thing, which is
+ * repo's own download URL so a person can take the whole thing, which is
  * the honest answer for anything bigger than a window.
  */
 
@@ -105,7 +105,43 @@ function parseCsv(text: string): Record<string, string>[] {
     .map(r => Object.fromEntries(head.map((h, i) => [h, r[i]])));
 }
 
-async function assetRows(assetName: string, tag: string): Promise<Record<string, string>[]> {
+/** Where an archive file lives in the repo. Every export since #87 (21 Sep)
+ *  is committed here and nowhere else, and the archive job pulls every older
+ *  Release asset into the same folder, so the repo is the complete copy. On
+ *  23 Sep the repo held all 29 files in the index; the observations Release
+ *  held 6 of its 9. */
+const ARCHIVE_REF = process.env.ARCHIVE_REF || 'main';
+function repoPath(dataset: string, assetName: string) {
+  return `data/archive/${dataset}/${assetName}`;
+}
+
+async function fromRepo(dataset: string, assetName: string, headers: Record<string, string>) {
+  // The contents API serves files up to 100 MB, but above 1 MB only as the raw
+  // media type - which is also the only form that skips base64.
+  const r = await fetch(
+    `https://api.github.com/repos/${repo()}/contents/${repoPath(dataset, assetName)}?ref=${ARCHIVE_REF}`,
+    { headers: { ...headers, Accept: 'application/vnd.github.raw' }, cache: 'no-store' });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`repo ${repoPath(dataset, assetName)}: ${r.status}`);
+  return Buffer.from(await r.arrayBuffer());
+}
+
+async function fromRelease(assetName: string, tag: string, headers: Record<string, string>) {
+  const rel = await fetch(`https://api.github.com/repos/${repo()}/releases/tags/${tag}`,
+                          { headers, cache: 'no-store' });
+  if (!rel.ok) throw new Error(`release ${tag}: ${rel.status}`);
+  const found = ((await rel.json()).assets ?? [])
+    .find((a: { name: string }) => a.name === assetName);
+  if (!found) throw new Error(`asset ${assetName} is neither in the repo nor on release ${tag}`);
+  const bin = await fetch(found.url, {
+    headers: { ...headers, Accept: 'application/octet-stream' },
+    cache: 'no-store',
+  });
+  if (!bin.ok) throw new Error(`download: ${bin.status}`);
+  return Buffer.from(await bin.arrayBuffer());
+}
+
+async function assetRows(dataset: string, assetName: string, tag: string): Promise<Record<string, string>[]> {
   const hit = cache.get(assetName);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.rows;
 
@@ -113,19 +149,16 @@ async function assetRows(assetName: string, tag: string): Promise<Record<string,
   if (!tok) throw new Error('no token');
   const headers = { Authorization: `Bearer ${tok}`, Accept: 'application/vnd.github+json' };
 
-  const rel = await fetch(`https://api.github.com/repos/${repo()}/releases/tags/${tag}`,
-                          { headers, cache: 'no-store' });
-  if (!rel.ok) throw new Error(`release ${tag}: ${rel.status}`);
-  const found = ((await rel.json()).assets ?? [])
-    .find((a: { name: string }) => a.name === assetName);
-  if (!found) throw new Error(`asset ${assetName} is not on release ${tag}`);
-
-  const bin = await fetch(found.url, {
-    headers: { ...headers, Accept: 'application/octet-stream' },
-    cache: 'no-store',
-  });
-  if (!bin.ok) throw new Error(`download: ${bin.status}`);
-  const rows = parseCsv(gunzipSync(Buffer.from(await bin.arrayBuffer())).toString('utf-8'));
+  // The repo first: it holds every file. A Release only as the fallback, for a
+  // deployment whose token cannot read contents.
+  let gz: Buffer | null = null;
+  try {
+    gz = await fromRepo(dataset, assetName, headers);
+  } catch {
+    gz = null;
+  }
+  if (!gz) gz = await fromRelease(assetName, tag, headers);
+  const rows = parseCsv(gunzipSync(gz).toString('utf-8'));
   cache.set(assetName, { at: Date.now(), rows });
   return rows;
 }
@@ -157,17 +190,17 @@ export async function GET(request: Request) {
   const asset = url.searchParams.get('asset');
   if (asset && url.searchParams.get('redirect') === '1') {
     return NextResponse.json({
-      download: `https://github.com/${repo()}/releases/download/${ds.release_tag}/${asset}`,
-      note: 'The whole file. A private repo will ask you to sign in.',
+      download: `https://github.com/${repo()}/raw/${ARCHIVE_REF}/${repoPath(dataset, asset)}`,
+      note: 'The whole file, from the repo. A private repo will ask you to sign in.',
     });
   }
 
   if (!token()) {
     return NextResponse.json({
       error: 'This deployment has no GitHub token, so archived rows cannot be fetched. '
-        + 'The data is not lost - it is in the release below - but the site cannot read it. '
+        + 'The data is not lost - it is in the repo folder below - but the site cannot read it. '
         + 'Set GITHUB_DISPATCH_TOKEN and redeploy.',
-      release: `https://github.com/${repo()}/releases/tag/${ds.release_tag}`,
+      folder: `https://github.com/${repo()}/tree/${ARCHIVE_REF}/data/archive/${dataset}`,
       assets: ds.assets,
     }, { status: 503 });
   }
@@ -187,7 +220,7 @@ export async function GET(request: Request) {
   try {
     const collected: Record<string, string>[] = [];
     for (const a of wanted) {
-      for (const row of await assetRows(a.asset, ds.release_tag)) {
+      for (const row of await assetRows(dataset, a.asset, ds.release_tag)) {
         const stamp = (row.captured_at ?? row.valid_at ?? row.for_date
                        ?? row.traded_at ?? '').slice(0, 10);
         if (from && stamp && stamp < from) continue;
@@ -211,8 +244,8 @@ export async function GET(request: Request) {
   } catch (e) {
     return NextResponse.json({
       error: `The archive could not be read: ${e instanceof Error ? e.message : String(e)}. `
-        + 'The rows are still in the release; this is a fetch failure, not a loss.',
-      release: `https://github.com/${repo()}/releases/tag/${ds.release_tag}`,
+        + 'The rows are still in the repo; this is a fetch failure, not a loss.',
+      folder: `https://github.com/${repo()}/tree/${ARCHIVE_REF}/data/archive/${dataset}`,
     }, { status: 502 });
   }
 }
