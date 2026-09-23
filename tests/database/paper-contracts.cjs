@@ -1616,6 +1616,128 @@ const assert = require('node:assert/strict');
   assert.match(bySid.s_single.verdict,/too few settled signals to judge/,
     'two signals is not a record, and the verdict must say so rather than quoting a rate');
 
+
+  // ======================================================================
+  // A RETIRED DESK STAYS RETIRED (plan v2 P0.3,
+  // 20260923100000_a_retired_desk_stays_retired.sql).
+  //
+  // archived_at was a two-way door and nothing on the order path read it.
+  // Retirement is one-way: the row is frozen, no order can be written for it
+  // by any path, and queue_plan says so in plain words. Every desk here is
+  // created here, so none of it depends on which desks happen to exist.
+  // ======================================================================
+  await db.exec('reset role; set role service_role;');
+  const retiree=(await db.query(
+    "select paper_desk_create('Retiree',300,'automatic',null,$1::jsonb) as id",
+    [JSON.stringify({cities:['ALL'],strategies:['s1'],min_edge:.01,max_plan_usd:10,max_exposure_usd:50})])).rows[0].id;
+  await assert.rejects(db.query('select paper_desk_retire($1,$2)',[retiree,'  ']),/needs a reason/,
+    'a desk was retired with no reason on record');
+  const retired=(await db.query("select paper_desk_retire($1,'plan v2: engine rebuild') as r",[retiree])).rows[0].r;
+  assert.equal(retired.status,'retired');
+  assert.equal(retired.already,false);
+  assert.equal((await db.query("select paper_desk_retire($1,'again') as r",[retiree])).rows[0].r.already,true,
+    'retiring twice must be a no-op, not a second retirement');
+  const rrow=(await db.query('select * from public.paper_accounts where account_id=$1',[retiree])).rows[0];
+  assert.equal(rrow.status,'retired');
+  assert.equal(rrow.retired_reason,'plan v2: engine rebuild','the second call rewrote the reason');
+  assert.ok(rrow.retired_at!==null && rrow.archived_at!==null,
+    'a retired desk must also be archived, so every reader that hides archived desks hides it');
+  assert.equal(rrow.entries_paused,true);
+  assert.equal(Number((await db.query(
+    "select count(*)::int as n from paper_activity where account_id=$1 and event_type='account_retired'",[retiree])).rows[0].n),1,
+    'the retirement is a ledger event and must be written exactly once');
+  await books(retiree,'after the desk was retired');
+
+  // FROZEN: un-archiving, un-pausing, re-policying and moving cash are refused;
+  // only the name may change.
+  await assert.rejects(db.query('select paper_desk_archive($1,false)',[retiree]),/is retired/,
+    'a retired desk was un-archived back into the desk list');
+  await assert.rejects(db.query('select paper_desk_update($1,null,null,null,false)',[retiree]),/is retired/,
+    'a retired desk was un-paused');
+  await assert.rejects(db.query("select paper_desk_update($1,null,null,'manual')",[retiree]),/is retired/);
+  await assert.rejects(db.query('select paper_desk_update($1,null,null,null,null,$2::jsonb)',
+    [retiree,JSON.stringify({cities:['london'],strategies:['s1'],min_edge:.02,max_plan_usd:5})]),/is retired/,
+    'a retired desk was re-policied');
+  await db.exec('reset role;');
+  await assert.rejects(db.query('update public.paper_accounts set cash=cash+1 where account_id=$1',[retiree]),/is retired/,
+    'cash moved on a retired desk');
+  await assert.rejects(db.query("update public.paper_accounts set status='active' where account_id=$1",[retiree]),/is retired/,
+    'a retired desk was brought back by editing its status');
+  await db.exec('set role service_role;');
+  await db.query("select paper_desk_update($1,'Retiree (history)')",[retiree]);
+  assert.equal((await db.query('select name from public.paper_accounts where account_id=$1',[retiree])).rows[0].name,
+    'Retiree (history)','renaming a retired desk is the one change it allows');
+
+  // NO ORDER, BY ANY PATH. queue_plan refuses first, in plain words; the
+  // trigger catches a writer that never calls queue_plan.
+  await db.exec(`reset role;update signals set fired_at=now() where signal_id=1;set role service_role;`);
+  const retiredPlan=(await db.query('select publish_paper_plan($1,$2,1,$3,$4) as id',
+    [retiree,'40000000-0000-0000-0000-00000000fe01',
+     JSON.stringify([{band_id:band,side:'YES',shares:'2',limit_price:'.50',cash_ceiling:'1.05'}]),
+     JSON.stringify({net_edge_per_share:'.10'})])).rows[0].id;
+  await assert.rejects(db.query("select arbdesk_private.queue_plan($1,'assisted')",[retiredPlan]),/Desk retired/,
+    'queue_plan queued a plan on a retired desk');
+  await db.exec('reset role;');
+  await assert.rejects(db.query(
+    `insert into public.paper_orders(account_id,command_key,band_id,token_id,side,action,origin,strategy_id,
+       shares,limit_price,cash_ceiling,policy_version,expires_at)
+     values($1,gen_random_uuid(),$2,'yes','YES','BUY','manual','s1',1,.5,.5,1,now()+interval '5 minutes')`,
+    [retiree,band]),/Desk retired/,'an order was written for a retired desk without going through queue_plan');
+  assert.equal(Number((await db.query('select count(*)::int as n from paper_orders where account_id=$1',[retiree])).rows[0].n),0);
+
+  // RETIREMENT NEVER STRANDS A POSITION. A desk holding shares must settle
+  // or sell first; otherwise the frozen row could never be paid out.
+  const holder=(await db.query("select paper_desk_create('Holder',100,'manual') as id")).rows[0].id;
+  await db.query(`insert into public.paper_positions(account_id,band_id,side,shares,cost_basis,realized_pnl)
+                  values($1,$2,'YES',5,2.5,0)`,[holder,band]);
+  await db.exec('set role service_role;');
+  await assert.rejects(db.query("select paper_desk_retire($1,'test')",[holder]),/1 open position/,
+    'a desk holding shares was retired');
+  await db.exec('reset role;');
+  assert.equal((await db.query('select status from public.paper_accounts where account_id=$1',[holder])).rows[0].status,'active');
+  await db.query('delete from public.paper_positions where account_id=$1',[holder]);
+
+  // ONLY THE SERVICE ROLE RETIRES A DESK.
+  for (const role of ['anon','authenticated']) {
+    assert.equal((await db.query(
+      `select has_function_privilege('${role}','public.paper_desk_retire(uuid,text)','execute') as ok`)).rows[0].ok,false,
+      `${role} can retire a desk`);
+  }
+
+  // EVERY CHANGE TO A STRATEGY'S SWITCH IS ON RECORD, with who and why.
+  await db.exec(`begin; set local arbdesk.change_reason='plan v2 P0.3';
+    update public.strategies set enabled=false where strategy_id='s1'; commit;`);
+  const hist=(await db.query(
+    `select operation,reason,old_row->>'enabled' as was,new_row->>'enabled' as now
+       from public.strategy_config_history where strategy_id='s1' order by history_id desc limit 1`)).rows[0];
+  assert.deepEqual([hist.operation,hist.reason,hist.was,hist.now],['UPDATE','plan v2 P0.3','true','false'],
+    'disabling a strategy left no record of what it was, or why');
+  const histBefore=Number((await db.query('select count(*)::int as n from public.strategy_config_history')).rows[0].n);
+  await db.query("update public.strategies set enabled=false where strategy_id='s1'");
+  assert.equal(Number((await db.query('select count(*)::int as n from public.strategy_config_history')).rows[0].n),histBefore,
+    'an update that changed nothing was recorded as a change');
+  await db.query("update public.strategies set enabled=true where strategy_id='s1'");
+  await db.exec('set role service_role;');
+  // The same, through the RPC a script uses (a PATCH cannot carry a reason).
+  await assert.rejects(db.query("select set_strategies_enabled(array['s1'],false,'')"),/needs a reason/);
+  assert.equal((await db.query("select set_strategies_enabled(array['s1'],false,'rpc reason') as n")).rows[0].n,1);
+  assert.equal((await db.query("select set_strategies_enabled(array['s1'],false,'rpc reason') as n")).rows[0].n,0,
+    'switching off a strategy that is already off counted as a change');
+  assert.equal((await db.query(
+    "select reason from public.strategy_config_history where strategy_id='s1' order by history_id desc limit 1")).rows[0].reason,
+    'rpc reason');
+  await db.exec('reset role;');
+  await db.query("update public.strategies set enabled=true where strategy_id='s1'");
+  for (const role of ['anon','authenticated']) {
+    assert.equal((await db.query(
+      `select has_function_privilege('${role}','public.set_strategies_enabled(text[],boolean,text)','execute') as ok`)).rows[0].ok,false,
+      `${role} can flip strategy switches through set_strategies_enabled`);
+  }
+  await db.exec('set role service_role;');
+  await assert.rejects(db.query('delete from public.strategy_config_history'),/permission denied/);
+  await assert.rejects(db.query("update public.strategy_config_history set reason='x'"),/permission denied/);
+  await db.exec('reset role;');
+
   await db.close();
-  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune and the desk-independent strategy mark');
+  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark and desk retirement');
 })().catch(e=>{console.error(e);process.exit(1);});

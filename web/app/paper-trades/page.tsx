@@ -66,8 +66,11 @@ export default function PaperTradesPage() {
   // Archived desks are excluded from the switcher by the route, so without
   // this they would be unreachable - "remove" that cannot be undone from the
   // UI is a delete however it is spelled in the database.
-  const archived=useQuery<Array<{account_id:string;name:string;mode:string;archived_at:string|null}>>(
-    ()=>supabase.from('v_paper_desks').select('account_id,name,mode,archived_at:created_at').eq('archived',true).order('name'),
+  // Retired desks (plan v2 P0.3) are archived too, so they land here, hidden
+  // behind the same toggle. Unlike an archived desk they cannot be restored:
+  // the database refuses, so the button is not offered.
+  const archived=useQuery<Array<{account_id:string;name:string;mode:string;archived_at:string|null;status:string|null}>>(
+    ()=>supabase.from('v_paper_desks').select('account_id,name,mode,archived_at:created_at,status').eq('archived',true).order('name'),
     [],undefined);
   // DO THIS DESK'S BOOKS BALANCE?
   //
@@ -330,9 +333,10 @@ export default function PaperTradesPage() {
         <span className="text-xs font-normal text-muted">{showArchived?'Hide':'Show'}</span>
       </button>
       {showArchived&&<>
-        <p className="text-xs text-muted">Off the switcher and stopped. Every trade, order and activity row is still there — restoring brings all of it back, still paused.</p>
+        <p className="text-xs text-muted">Off the switcher and stopped. Every trade, order and activity row is still there — restoring an archived desk brings all of it back, still paused. A retired desk cannot be restored.</p>
         {archived.data.map(d=><div key={d.account_id} className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2 text-sm">
-          <span>{d.name} <span className="text-muted">— {d.mode}</span></span>
+          <span>{d.name} <span className="text-muted">— {d.status==='retired'?'retired':d.mode}</span></span>
+          {d.status==='retired'?<span className="text-xs text-muted">Kept as history; never trades again.</span>:
           <span className="flex items-center gap-1">
             <button type="button" disabled={busy} className={button}
               onClick={async()=>{
@@ -340,7 +344,7 @@ export default function PaperTradesPage() {
                 if(done){archived.refresh();}
               }}>Restore</button>
             <Hint text={H.restore}/>
-          </span>
+          </span>}
         </div>)}
       </>}
     </div>}

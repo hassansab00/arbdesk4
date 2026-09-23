@@ -69,6 +69,7 @@ export const SQL_OWNER: Record<string, string> = {
   "settings": "ad4_00_preflight.sql",
   "signals": "ad4_00_preflight.sql",
   "strategies": "ad4_00_preflight.sql",
+  "strategy_config_history": "supabase/migrations/20260923100000_a_retired_desk_stays_retired.sql",
   "strategy_conflicts": "ad4_phase2.sql",
   "synthesis_thresholds": "ad4_40_synthesis.sql",
   "trades_observed": "ad4_00_preflight.sql",
