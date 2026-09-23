@@ -46,28 +46,40 @@ where m.closed = false
   and m.resolution_date < (now() at time zone c.timezone)::date - 1;
 
 -- ---- A6: probability mass on impossible buckets, latest run -> 0 and 0 -----
--- The impossibility rule is the pre-P3.1 one; update it when P3.1 lands.
+-- The P3.1 rule: R = venue_round(observed floor), b_R the bucket holding R, and
+-- a bucket is impossible iff it lies entirely below b_R - 1 (two or more
+-- buckets under the reading). The bucket just below keeps q_down x the atom.
 with latest as (
   select distinct on (bp.band_id) bp.band_id, bp.raw_prob, bp.observed_floor_c
   from band_probabilities bp
   where bp.computed_at > now() - interval '6 hours'
   order by bp.band_id, bp.computed_at desc),
 j as (
-  select m.city_key, m.resolution_date, l.raw_prob,
-    (l.observed_floor_c is not null and b.open_high is not true and
-     l.observed_floor_c - 0.5 >= case when m.unit = 'F'
-                                      then ((b.band_hi - 0.5) - 32) * 5 / 9
-                                      else b.band_hi - 0.5 end) as impossible,
-    row_number() over (partition by m.city_key, m.resolution_date
-                       order by l.raw_prob desc) as rk
+  select m.market_id, m.city_key, m.resolution_date, m.unit, b.band_id, b.band_lo, b.band_hi,
+         b.open_low, b.open_high, l.raw_prob, l.observed_floor_c,
+         venue_round(l.observed_floor_c, m.unit) as r,
+         row_number() over (partition by m.market_id
+                            order by b.open_low desc, b.open_high, b.band_lo) as idx,
+         row_number() over (partition by m.market_id order by l.raw_prob desc) as rk
   from latest l
   join v_canonical_bands b on b.band_id = l.band_id
-  join v_canonical_markets m on m.market_id = b.market_id)
+  join v_canonical_markets m on m.market_id = b.market_id),
+r_idx as (
+  select market_id, min(idx) as idx_r
+  from j
+  where r is not null
+    and ((open_low and r < band_hi) or (open_high and r >= band_lo)
+         or (not open_low and not open_high and r >= band_lo and r < band_hi))
+  group by market_id),
+scored as (
+  select j.*, (ri.idx_r is not null and j.idx < ri.idx_r - 1) as impossible
+  from j left join r_idx ri using (market_id))
 select count(*) as bands,
        count(distinct (city_key, resolution_date)) as ladders,
        count(*) filter (where impossible and raw_prob > 0.05) as impossible_priced_over_5pct,
-       count(*) filter (where rk = 1 and impossible) as top_pick_is_impossible
-from j;
+       count(*) filter (where rk = 1 and impossible) as top_pick_is_impossible,
+       round(sum(raw_prob) filter (where impossible), 4) as impossible_mass
+from scored;
 
 -- ---- A7: prices written after the market's local day ended -----------------
 -- The plan's acceptance counts rows since the P3.2 deploy. The baseline counts

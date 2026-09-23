@@ -245,14 +245,15 @@ def test_no_floor_leaves_the_lattice_exactly_as_it_was():
     assert plain == explicit
 
 
-def test_the_tolerance_protects_against_a_different_settlement_station():
-    """Our station and the venue's can disagree by tenths. A band is only
-    killed once the observed maximum has cleared its top edge by more than
-    half a degree C - 26.5 is band 26's edge, so 26.8 must NOT kill it."""
-    near = dict(pe.compute_band_probabilities(26.0, 1.5, "C", floor_bands(), floor_c=26.8))
-    assert near["26"] > 0, "a band was zeroed on a margin smaller than the tolerance"
-    clear = dict(pe.compute_band_probabilities(26.0, 1.5, "C", floor_bands(), floor_c=27.1))
-    assert clear["26"] == 0.0, "a band survived a maximum well past its top edge"
+def test_a_different_settlement_station_is_the_measurement_layer_not_a_tolerance():
+    """Our station and the venue's can disagree by one bucket (plan v2 P3.1).
+    26.8 reads as 27, so band 27 holds R; band 26 keeps exactly q_down of the
+    atom and band 25, two below, keeps nothing."""
+    near = dict(pe.compute_band_probabilities(26.0, 1.5, "C", floor_bands(), floor_c=26.8,
+                                              q_down=0.02))
+    atom = pe.normal_cdf(pe.unit_edge_c("C", 28), 26.0, 1.5)
+    assert near["26"] == pytest.approx(0.02 * atom, abs=1e-9)
+    assert near["25"] == 0.0 and near["24"] == 0.0
 
 
 def test_an_open_high_band_is_never_impossible():
