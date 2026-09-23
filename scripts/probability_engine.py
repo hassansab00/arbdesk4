@@ -475,9 +475,13 @@ def _forecast_for(city_key, for_date, as_of=None):
         ("order", "lead_days.asc,run_at.desc"),
         ("limit", "1"),
     ]
+    table = "weather_forecasts"
     if as_of is not None:
-        params.insert(3, ("run_at", f"lte.{as_of}"))
-    rows = rest("weather_forecasts", params)
+        # ISSUED by as_of, not run_at (plan v2 P2.6): run_at is a synthetic
+        # midnight on backfilled rows and a fetch time on Open-Meteo's.
+        params.insert(3, ("issued_at", f"lte.{as_of}"))
+        table = "v_forecast_issued"
+    rows = rest(table, params)
     return rows[0] if rows else None
 
 

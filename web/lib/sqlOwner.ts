@@ -137,6 +137,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_forecast_divergence": "ad4_16_nws.sql",
   "v_forecast_divergence_current": "ad4_19_stats_cache.sql",
   "v_forecast_features": "ad4_24_nws_gridpoint.sql",
+  "v_forecast_issued": "supabase/migrations/20260923160000_when_was_the_forecast_issued.sql",
   "v_forecast_model_skill": "ad4_49_model_skill.sql",
   "v_forecast_postprocess_applied": "ad4_83_forecast_postprocess.sql",
   "v_forecast_postprocess_health": "ad4_83_forecast_postprocess.sql",

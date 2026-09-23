@@ -99,12 +99,31 @@ def forecasts(city_key, start, end):
     row was written. New York's archive happened to be 1,099 rows, so its page
     reached today, and it became the only city the desk could price.
     """
-    return rest_all("weather_forecasts", [
-        ("select", "for_date,lead_days,forecast_max_c,model,run_at"),
+    # v_forecast_issued, not the table: it carries same_day_issue, the one
+    # thing day_ahead_only() needs (plan v2 P2.6).
+    return rest_all("v_forecast_issued", [
+        ("select", "for_date,lead_days,forecast_max_c,model,run_at,same_day_issue"),
         ("city_key", f"eq.{city_key}"),
         ("for_date", f"gte.{start.isoformat()}"),
         ("for_date", f"lte.{end.isoformat()}"),
     ], order="for_date.asc,lead_days.asc,model.asc,run_at.asc", page_size=1000)
+
+
+def day_ahead_only(rows):
+    """A lead of 1 or more is a claim that the forecast existed before the
+    city's day began. Drop the rows that break it (plan v2 P2.6).
+
+    The lead is stamped by each writer, and NWS's is computed on UTC dates,
+    so a row can say lead 1 while having been issued on the local target day
+    - knowing its morning. Scored as day-ahead skill, such a row flatters the
+    width every day-ahead price is quoted with. Lead 0 is same-day by
+    definition and is left alone. Measured 23 Sep: 2 such rows (Open-Meteo);
+    the view also catches any a writer makes later. A backfilled row's
+    same_day_issue is None - its issue date is unknown, not same-day - and it
+    is kept on its nominal lead.
+    """
+    return [r for r in rows
+            if not ((r.get("lead_days") or 0) >= 1 and r.get("same_day_issue") is True)]
 
 def main():
     days = int(sys.argv[1]) if len(sys.argv) > 1 else 400
@@ -133,7 +152,7 @@ def main():
         # band width expressed in degrees C
         band_c = 1.0 if unit_of[ck] == "C" else 2.0 * 5.0 / 9.0
 
-        fc = one_row_per_run_key(fc)
+        fc = one_row_per_run_key(day_ahead_only(fc))
 
         # Two grains, one pass. by_lead is the number the desk prices with;
         # by_model_lead is the breakdown behind it, because error is generated
