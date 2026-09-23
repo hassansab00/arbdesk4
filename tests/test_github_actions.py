@@ -156,7 +156,10 @@ MEASURED_MINUTES = {
     "pipeline_daily.yml": 29.0,
     "forecasts.yml": 18.5,
     "observations.yml": 2.5,
-    "archive_observations.yml": 1.5,
+    # 1.5 measured before the nightly mirror (plan v2.1 P1.7) was added to
+    # this job; the mirror's first run copies every table's history. Held at
+    # 4.0 until a run with the mirror in it has been timed.
+    "archive_observations.yml": 4.0,
     "paper_trade_log.yml": 1.5,
     # 1.5 measured before 2026-09-22; the wind-direction backfill added a
     # step that reads 22k cache rows and scans ~415k archived observations
