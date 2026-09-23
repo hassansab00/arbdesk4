@@ -230,6 +230,33 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
+  "derived_hit_recipe": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/hit_tournament.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    }
+  ],
+  "derived_hit_summary": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/hit_tournament.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    }
+  ],
+  "derived_hit_tournament": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/hit_tournament.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    }
+  ],
   "derived_model_forecast": [
     {
       "cadence": "daily",
@@ -1050,6 +1077,26 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_forecast_postprocess_health": [
     "derived_forecast_postprocess"
+  ],
+  "v_hit_forecasts": [
+    "cities",
+    "weather_forecasts",
+    "band_probabilities",
+    "edges",
+    "fact_band_outcome",
+    "bands",
+    "markets",
+    "weather_resolution_evidence",
+    "weather_forecast_models"
+  ],
+  "v_hit_ladders": [
+    "band_probabilities",
+    "cities",
+    "edges",
+    "fact_band_outcome",
+    "bands",
+    "markets",
+    "weather_resolution_evidence"
   ],
   "v_index_never_used": [
     "bands",

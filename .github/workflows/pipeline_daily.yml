@@ -172,6 +172,16 @@ jobs:
           print("observation trust:", out)
           PY
 
+      # 7c. The hit tournament (plan v2.1 P3.8): per city, every pricing recipe
+      #     scored FORWARD on the bucket that settled, against the live engine
+      #     and the market at 18:00 local the evening before. After the databank
+      #     freeze (its evidence) and 7b (the per-city measurement layer).
+      #     Shadow: it writes derived_hit_*, the engine does not read them yet.
+      - name: The hit tournament
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: python scripts/hit_tournament.py
+
       # 8. Safety net: run anything left queued in backtest_runs. Usually a
       #    no-op. An explicit backtest is backtest.yml, run by hand.
       - name: Queued backtests
