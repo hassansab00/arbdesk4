@@ -216,6 +216,10 @@ SQL_RECORD = {
 # rather than a bug. It is here because a blind spot is how the last four got
 # in.
 MIGRATION_RECORD = {
+    "supabase/migrations/20260923170000_trust_shrunk_toward_the_pool.sql":
+        "refresh_observation_trust() - the RECORD of how often each city's thermometer "
+        "names the venue's band, like the migration it replaces; the gate that reads it "
+        "is ad4_34, filtered",
     "supabase/migrations/20260923160000_when_was_the_forecast_issued.sql":
         "v_forecast_issued - cities.timezone only, to put each forecast's issue time on "
         "the city's calendar; a retired city's forecasts were issued when they were",
