@@ -38,34 +38,8 @@ with live_bands as (
                and coalesce(c.status, 'active') = 'active'
   where m.resolution_date >= current_date
 ),
-snaps as (
-  select s.band_id, s.observed_at, s.mid
-  from book_snapshots s
-  join live_bands lb on lb.band_id = s.band_id
-  where s.observed_at > now() - interval '48 hours' and s.mid is not null
-),
-now_price as (
-  select distinct on (band_id) band_id, mid as mid_now, observed_at as book_at
-  from snaps order by band_id, observed_at desc
-),
--- The price nearest each lag, so "an hour ago" means the closest reading to an
--- hour ago rather than the nearest reading of any age. A band snapshotted once
--- a day would otherwise report yesterday's price as its 1-hour figure.
-lag_1h as (
-  select distinct on (band_id) band_id, mid as mid_1h
-  from snaps where observed_at <= now() - interval '45 minutes'
-  order by band_id, observed_at desc
-),
-lag_6h as (
-  select distinct on (band_id) band_id, mid as mid_6h
-  from snaps where observed_at <= now() - interval '5 hours'
-  order by band_id, observed_at desc
-),
-lag_24h as (
-  select distinct on (band_id) band_id, mid as mid_24h
-  from snaps where observed_at <= now() - interval '22 hours'
-  order by band_id, observed_at desc
-),
+-- (The four prices - now, and nearest to 1h, 6h and 24h ago - are found per
+-- band in the select below, one backwards probe each.)
 -- The two newest forecasts for each city-day, so a MOVE can be measured rather
 -- than just a latest value.
 fc2 as (
@@ -116,10 +90,44 @@ select
   round(extract(epoch from ((lb.resolution_date + 1)::timestamptz - now())) / 3600.0, 1)
                                      as hours_to_resolution
 from live_bands lb
-left join now_price np on np.band_id = lb.band_id
-left join lag_1h  l1  on l1.band_id  = lb.band_id
-left join lag_6h  l6  on l6.band_id  = lb.band_id
-left join lag_24h l24 on l24.band_id = lb.band_id
+-- FOUR PROBES PER BAND, NOT A 48-HOUR SCAN.
+--
+-- These were four `distinct on` passes over every snapshot of the last 48
+-- hours - 44,280 rows fetched and sorted to answer four questions about each
+-- of ~1,070 bands. Measured 2026-09-22 as the browser's role: 3,785 ms, of
+-- which 3,081 ms was that scan, against an 8-second limit and alongside the
+-- rest of the Opportunities page. Each question is really "the newest reading
+-- at or before time T", which ad4_ix_book_band_time (band_id, observed_at)
+-- answers with one backwards index probe. Same window, same `mid is not null`,
+-- same "newest at or before" rule - verified by fingerprinting the whole
+-- output before and after.
+--
+-- The price nearest each lag, so "an hour ago" means the closest reading to an
+-- hour ago rather than the nearest reading of any age. A band snapshotted once
+-- a day would otherwise report yesterday's price as its 1-hour figure.
+left join lateral (
+  select s.mid as mid_now, s.observed_at as book_at from book_snapshots s
+   where s.band_id = lb.band_id and s.mid is not null
+     and s.observed_at > now() - interval '48 hours'
+   order by s.observed_at desc limit 1) np on true
+left join lateral (
+  select s.mid as mid_1h from book_snapshots s
+   where s.band_id = lb.band_id and s.mid is not null
+     and s.observed_at > now() - interval '48 hours'
+     and s.observed_at <= now() - interval '45 minutes'
+   order by s.observed_at desc limit 1) l1 on true
+left join lateral (
+  select s.mid as mid_6h from book_snapshots s
+   where s.band_id = lb.band_id and s.mid is not null
+     and s.observed_at > now() - interval '48 hours'
+     and s.observed_at <= now() - interval '5 hours'
+   order by s.observed_at desc limit 1) l6 on true
+left join lateral (
+  select s.mid as mid_24h from book_snapshots s
+   where s.band_id = lb.band_id and s.mid is not null
+     and s.observed_at > now() - interval '48 hours'
+     and s.observed_at <= now() - interval '22 hours'
+   order by s.observed_at desc limit 1) l24 on true
 left join fc_move fm  on fm.city_key = lb.city_key and fm.for_date = lb.resolution_date;
 
 

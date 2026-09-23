@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
+import { readAllRows } from "@/lib/readAll";
 import { DataState } from "@/components/DataState";
 import PredictionHindsight from "@/components/PredictionHindsight";
 import CalibrationStatus from "@/components/CalibrationStatus";
@@ -31,25 +32,35 @@ interface ConvRow {
   forecast_max_c: number; observed_max_c: number | null;
   error_c: number | null; is_past: boolean; is_settled: boolean;
 }
+/** sql/ad4_85_city_hit_history.sql - the call as it stood BEFORE the day began. */
 interface HitRow {
   city_key: string; display_name: string | null; unit: string | null;
-  for_date: string; bands_scored: number;
+  for_date: string; ladder_bands: number; model_bands: number;
   observed_max_c: number | null; forecast_max_c: number | null; error_c: number | null;
   sigma_c: number | null; confidence: number | null; regime_label: string | null;
   winner: string | null;
   model_call: string | null; model_call_prob: number | null; model_prob_on_winner: number | null;
+  model_hit: boolean | null;
+  /** over the whole settled ladder; an unpriced band counts as zero */
+  brier_model: number | null; brier_uniform: number | null;
+  called_at: string | null; hours_before_day: number | null;
+  /** both sides priced the winner before the day; the market columns are null otherwise */
+  head_to_head: boolean;
+  bands_scored: number | null;
   market_call: string | null; market_call_price: number | null; market_prob_on_winner: number | null;
-  model_hit: boolean | null; market_hit: boolean | null;
-  brier_model: number | null; brier_market: number | null; brier_uniform: number | null;
+  market_hit: boolean | null;
+  brier_model_common: number | null; brier_market: number | null; brier_uniform_common: number | null;
 }
 interface HitSummaryRow {
   city_key: string; display_name: string | null; days: number;
-  model_hits: number; market_hits: number;
-  model_hit_rate: number | null; market_hit_rate: number | null;
-  avg_model_prob_on_winner: number | null; avg_market_prob_on_winner: number | null;
-  brier_model: number | null; brier_market: number | null; brier_uniform: number | null;
-  mae_c: number | null; bias_c: number | null; days_we_beat_the_market: number;
-  first_day: string | null; last_day: string | null; verdict: string;
+  model_hits: number; model_hit_rate: number | null;
+  avg_model_prob_on_winner: number | null;
+  brier_model: number | null; brier_uniform: number | null;
+  mae_c: number | null; bias_c: number | null; avg_hours_before_day: number | null;
+  first_day: string | null; last_day: string | null;
+  h2h_days: number; h2h_model_hits: number; market_hits: number;
+  market_hit_rate: number | null; brier_model_h2h: number | null; brier_market: number | null;
+  days_we_beat_the_market: number; verdict: string;
 }
 interface LadderRow {
   city_key: string; for_date: string; band_id: string; band_index: number | null;
@@ -223,11 +234,19 @@ export default function PredictivePage() {
     [activeKeys.join(",")], 300000, 1000
   );
   // Forward only: the ladder is drawn for days that have not resolved, and
-  // the whole table is one row per band per day for every city.
+  // the whole table is one row per band per SIDE per day for every city -
+  // 2,112 rows on 22 Sep, past what one request returns, so it is read a page
+  // at a time in a fixed order (band_id + side is unique). The columns are
+  // the ones LadderRow declares and nothing else.
+  const LADDER_MAX = 12000;
   const ladderQ = useQuery<LadderRow[]>(
-    () => supabase.from("v_prediction_ladder").select("*")
-            .gte("for_date", new Date().toISOString().slice(0, 10)).limit(1000),
-    [], 120000, 1000
+    () => readAllRows<LadderRow>((from, to) =>
+      supabase.from("v_prediction_ladder")
+        .select("city_key,for_date,band_id,band_index,band_label,band_lo,band_hi,open_low,open_high,closed,won,model_prob,forecast_max_c,sigma_c,confidence,market_price,edge_net_pp,depth_5c,tradeable,side")
+        .gte("for_date", new Date().toISOString().slice(0, 10))
+        .order("for_date").order("city_key").order("band_id").order("side")
+        .range(from, to), LADDER_MAX),
+    [], 120000, LADDER_MAX
   );
   const cityLadderQ = useQuery<Array<{ band_lo: number | null; band_hi: number | null }>>(
     () => supabase.from("v_prediction_ladder").select("band_lo,band_hi")
@@ -606,20 +625,22 @@ export default function PredictivePage() {
           </select>
         </div>
         <p className="max-w-3xl text-xs leading-relaxed text-muted">
-          Every settled day for this city: the bucket the desk called, the bucket the market
-          called, and the bucket that actually paid. <b>Both sides are scored on the same
-          bands</b> — only the ones both of them priced, each renormalised over that set. That
-          matters: the venue quotes a median 6.8 of 11 buckets, so scoring each side over
-          whatever it happened to price flatters the market by selection. Brier is the
-          multiclass score over those shared bands, lower is better, and a uniform guess is
-          shown beside it so &quot;better than nothing&quot; is visible rather than assumed.
+          Every settled day for this city: the bucket the desk called <b>before the day
+          began</b>, and the bucket that actually paid. The call is the last probability the
+          desk computed before the city&apos;s local midnight — never one made after the day&apos;s
+          high was already on the thermometer. Brier is the multiclass score over the whole
+          settled ladder (lower is better; a bucket the desk did not price counts as zero), with a
+          uniform guess beside it so &quot;better than nothing&quot; is visible rather than assumed.
+          The market is set beside it only on days both sides priced the winning bucket before
+          the day, scored on the buckets both priced, each renormalised over that set — scoring
+          each side over whatever it happened to price flatters whichever priced less.
         </p>
         <DataState
           relation="v_city_hit_history"
           truncated={hitQ.truncated}
           loading={hitQ.loading} error={hitQ.error} isEmpty={hits.length === 0}
           emptyTitle="No settled days for this city yet"
-          emptyBody={MISSING("sql/ad4_85_city_hit_history.sql", "and remember a day only appears here once it has settled against final station authority AND both sides priced the winning band.")}
+          emptyBody={MISSING("sql/ad4_85_city_hit_history.sql", "and remember a day only appears here once it has settled against final station authority and the desk priced its ladder before the day began.")}
           onRetry={hitQ.refresh}
         >
           <div className="space-y-3">
@@ -627,34 +648,50 @@ export default function PredictivePage() {
               <div className="rounded border border-border bg-panel p-3">
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
                   <Stat label="settled days" value={fmtInt(hitSum.days)} />
-                  <Stat
-                    label="we called it"
-                    value={fmtPct(hitSum.model_hit_rate ?? 0)}
-                    tone={(hitSum.model_hit_rate ?? 0) >= (hitSum.market_hit_rate ?? 0)
-                      ? "var(--c-good)" : "var(--c-bad)"}
-                  />
-                  <Stat label="market called it" value={fmtPct(hitSum.market_hit_rate ?? 0)} />
+                  <Stat label="we called it" value={fmtPct(hitSum.model_hit_rate ?? 0)} />
                   <Stat
                     label="our Brier"
                     value={(hitSum.brier_model ?? 0).toFixed(3)}
-                    tone={(hitSum.brier_model ?? 1) <= (hitSum.brier_market ?? 1)
+                    tone={(hitSum.brier_model ?? 1) < (hitSum.brier_uniform ?? 1)
                       ? "var(--c-good)" : "var(--c-bad)"}
                   />
-                  <Stat label="market Brier" value={(hitSum.brier_market ?? 0).toFixed(3)} />
                   <Stat label="uniform guess" value={(hitSum.brier_uniform ?? 0).toFixed(3)} />
+                  <Stat label="our p on the winner" value={fmtPct(hitSum.avg_model_prob_on_winner ?? 0)} />
+                  <Stat
+                    label="called, on average"
+                    value={hitSum.avg_hours_before_day == null ? "—" : `${hitSum.avg_hours_before_day.toFixed(1)} h before`}
+                  />
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                  <Stat label="days the market also priced" value={`${fmtInt(hitSum.h2h_days)} of ${fmtInt(hitSum.days)}`} />
+                  {hitSum.h2h_days > 0 ? (
+                    <>
+                      <Stat
+                        label="those days: we / market called it"
+                        value={`${fmtInt(hitSum.h2h_model_hits)} / ${fmtInt(hitSum.market_hits)}`}
+                        tone={hitSum.h2h_model_hits >= hitSum.market_hits ? "var(--c-good)" : "var(--c-bad)"}
+                      />
+                      <Stat
+                        label="those days: our / market Brier"
+                        value={`${(hitSum.brier_model_h2h ?? 0).toFixed(3)} / ${(hitSum.brier_market ?? 0).toFixed(3)}`}
+                        tone={(hitSum.brier_model_h2h ?? 1) <= (hitSum.brier_market ?? 1)
+                          ? "var(--c-good)" : "var(--c-bad)"}
+                      />
+                      <Stat
+                        label="days we beat the market"
+                        value={`${fmtInt(hitSum.days_we_beat_the_market)} of ${fmtInt(hitSum.h2h_days)}`}
+                      />
+                    </>
+                  ) : null}
                   <Stat label="mean |error|" value={`${(hitSum.mae_c ?? 0).toFixed(2)} °C`} />
                   <Stat
                     label="bias (forecast − actual)"
                     value={`${(hitSum.bias_c ?? 0) > 0 ? "+" : ""}${(hitSum.bias_c ?? 0).toFixed(2)} °C`}
                   />
-                  <Stat
-                    label="days we beat the market"
-                    value={`${fmtInt(hitSum.days_we_beat_the_market)} of ${fmtInt(hitSum.days)}`}
-                  />
-                  <Stat label="measured over" value={`${hitSum.first_day ?? "—"} → ${hitSum.last_day ?? "—"}`} />
                 </div>
+                <p className="mt-2 text-[11px] text-muted">
+                  Measured over {hitSum.first_day ?? "—"} → {hitSum.last_day ?? "—"}.
+                </p>
                 <p className="mt-3 text-[11px] text-muted">
                   <b>Verdict:</b> {hitSum.verdict}
                 </p>
@@ -672,9 +709,11 @@ export default function PredictivePage() {
                     <th className="p-2 text-left">paid</th>
                     <th className="p-2 text-left">we called</th>
                     <th className="p-2 text-right">our p on winner</th>
+                    <th className="p-2 text-right">called</th>
                     <th className="p-2 text-left">market called</th>
                     <th className="p-2 text-right">its p on winner</th>
-                    <th className="p-2 text-right">Brier us / market</th>
+                    <th className="p-2 text-right">Brier us / uniform</th>
+                    <th className="p-2 text-right">shared bands: us / market</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -691,16 +730,36 @@ export default function PredictivePage() {
                         {r.model_hit ? "✓ " : "✗ "}{r.model_call ?? "—"}
                       </td>
                       <td className="p-2 text-right">{fmtPct(r.model_prob_on_winner ?? 0)}</td>
-                      <td className="p-2" style={{ color: r.market_hit ? "var(--c-good)" : "var(--c-bad)" }}>
-                        {r.market_hit ? "✓ " : "✗ "}{r.market_call ?? "—"}
+                      <td className="p-2 text-right text-muted" title={r.called_at ?? undefined}>
+                        {r.hours_before_day == null ? "—" : `${r.hours_before_day.toFixed(1)} h before`}
                       </td>
-                      <td className="p-2 text-right">{fmtPct(r.market_prob_on_winner ?? 0)}</td>
+                      {r.head_to_head ? (
+                        <>
+                          <td className="p-2" style={{ color: r.market_hit ? "var(--c-good)" : "var(--c-bad)" }}>
+                            {r.market_hit ? "✓ " : "✗ "}{r.market_call ?? "—"}
+                          </td>
+                          <td className="p-2 text-right">{fmtPct(r.market_prob_on_winner ?? 0)}</td>
+                        </>
+                      ) : (
+                        <td className="p-2 text-muted" colSpan={2}>not priced by the market before the day</td>
+                      )}
                       <td className="p-2 text-right">
-                        <span style={{ color: (r.brier_model ?? 1) <= (r.brier_market ?? 1) ? "var(--c-good)" : "var(--c-bad)" }}>
+                        <span style={{ color: (r.brier_model ?? 1) < (r.brier_uniform ?? 1) ? "var(--c-good)" : "var(--c-bad)" }}>
                           {(r.brier_model ?? 0).toFixed(2)}
                         </span>
                         {" / "}
-                        {(r.brier_market ?? 0).toFixed(2)}
+                        {(r.brier_uniform ?? 0).toFixed(2)}
+                      </td>
+                      <td className="p-2 text-right">
+                        {r.head_to_head ? (
+                          <>
+                            <span style={{ color: (r.brier_model_common ?? 1) <= (r.brier_market ?? 1) ? "var(--c-good)" : "var(--c-bad)" }}>
+                              {(r.brier_model_common ?? 0).toFixed(2)}
+                            </span>
+                            {" / "}
+                            {(r.brier_market ?? 0).toFixed(2)}
+                          </>
+                        ) : "—"}
                       </td>
                     </tr>
                   ))}

@@ -13,6 +13,7 @@ import { fmtBandRange, fmtTemp, fmtTempDelta, type Unit } from "@/lib/units";
 import { fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
 import { feeRateAt } from "@/lib/costs";
 import { type BookRow, type Limits } from "@/lib/execution";
+import { latestBooks } from "@/lib/books";
 import { priceRow, byExpectedValue, type PricedRow } from "@/lib/opportunity";
 import type { ReliabilityBucket } from "@/lib/calibration";
 import { useExecutionLimits } from "@/lib/useExecutionLimits";
@@ -106,10 +107,14 @@ export default function OpportunitiesPage() {
   // THE ACTUAL BOOK, not a mid. Every "if right" and "EV" on this page used to
   // be computed at market_price - a midpoint - as though any quantity could be
   // bought there. You buy at the ask, and you buy down the ladder.
+  //
+  // THE BOOKS OF THE ROWS ON THIS PAGE. Read unfiltered, v_latest_book returned
+  // an arbitrary 1,000 of its 13,545 bands - mostly settled ones - so a row
+  // could be priced with no book at all while its book sat unread.
+  const rowBandIds = useMemo(() => (q.data ?? []).map((r) => r.band_id), [q.data]);
   const bookQ = useQuery<BookRow[]>(
-    () => supabase.from("v_latest_book")
-      .select("band_id,ask_levels,bid_levels,ask_levels_source,bid_levels_source,ask_depth_usd,bid_depth_usd,best_ask,best_bid"),
-    [],
+    () => latestBooks(rowBandIds),
+    [Array.from(new Set(rowBandIds)).sort().join(",")],
     30000
   );
   // WHAT THE MODEL'S PROBABILITIES HAVE ACTUALLY MEANT. Nine rows, one per

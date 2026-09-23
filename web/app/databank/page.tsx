@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
+import { rowsText } from "@/lib/useFreshness";
 import { DataState } from "@/components/DataState";
 import { FreshnessRow } from "@/components/Provenance";
 import DataBank from "@/components/DataBank";
@@ -33,6 +34,8 @@ interface Inv {
   dataset: string; ord: number; feeder: string; rows: number; cities: number;
   first_at: string | null; last_at: string | null; days_covered: number | null;
   rows_per_day: number | null; hours_since: number | null; freshness: string;
+  /** rows is the planner's estimate, not a count - over 5,000 rows (ad4_51). */
+  rows_estimated?: boolean | null;
 }
 interface Syn {
   layer: string; ord: number; what: string; builder: string; rows: number;
@@ -67,6 +70,7 @@ export default function DataBankPage() {
   const [onlyProblems, setOnlyProblems] = useState(true);
 
   const totalRows = (invQ.data ?? []).reduce((s, r) => s + Number(r.rows ?? 0), 0);
+  const totalEstimated = (invQ.data ?? []).some((r) => r.rows_estimated);
   const cityRows = cityQ.data ?? [];
   const problems = cityRows.filter((c) => c.verdict !== "complete" && c.status === "active");
   const shownCities = onlyProblems ? problems : cityRows;
@@ -77,7 +81,7 @@ export default function DataBankPage() {
         <h1 className="text-lg font-semibold">Data Bank</h1>
         <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted">
           Everything the desk has collected, and everything it has computed from it.{" "}
-          <b className="text-text">{fmtInt(totalRows)}</b> rows of primary record. The two layers are
+          <b className="text-text">{rowsText(totalRows, totalEstimated)}</b> rows of primary record. The two layers are
           kept apart on purpose: a thin collection makes everything below it decoration, while a
           stale derived layer is a job that has not run — a different problem with a different fix.
         </p>
@@ -145,7 +149,12 @@ export default function DataBankPage() {
                       <div>{r.dataset}</div>
                       <div className={`text-[10px] ${FRESH_TONE[r.freshness] ?? "text-muted"}`}>{r.freshness}</div>
                     </td>
-                    <td className="px-2 py-1.5 text-right font-mono tabular-nums">{fmtInt(r.rows)}</td>
+                    <td
+                      className="px-2 py-1.5 text-right font-mono tabular-nums"
+                      title={r.rows_estimated ? "Planner estimate (pg_class), not a count: this feed is over 5,000 rows." : undefined}
+                    >
+                      {rowsText(r.rows, r.rows_estimated)}
+                    </td>
                     <td className="px-2 py-1.5 text-right font-mono tabular-nums">{r.cities || "—"}</td>
                     <td className="px-2 py-1.5 text-right font-mono tabular-nums text-muted">
                       {r.days_covered ? `${r.days_covered}d` : "—"}

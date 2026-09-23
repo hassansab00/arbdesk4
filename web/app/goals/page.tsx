@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
+import { latestBooks } from "@/lib/books";
 import { fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
 import { DataState, ErrorBox, InlineError } from "@/components/DataState";
 import { FreshnessRow } from "@/components/Provenance";
@@ -149,9 +150,16 @@ export default function GoalsPage() {
     60000
   );
 
+  // The books of THIS market's bands. Unfiltered, v_latest_book gave back an
+  // arbitrary 1,000 of 13,545 bands, and the goal's buckets were often not
+  // among them.
+  const goalBandIds = useMemo(
+    () => ((opps.data as Array<{ band_id: string }> | null) ?? []).map((o) => o.band_id),
+    [opps.data]
+  );
   const books = useQuery(
-    () => supabase.from("v_latest_book").select("band_id,best_bid,best_ask,bid_levels,ask_levels,ask_levels_source,bid_levels_source"),
-    [cityKey],
+    () => latestBooks(goalBandIds, "band_id,best_bid,best_ask,bid_levels,ask_levels,ask_levels_source,bid_levels_source"),
+    [cityKey, Array.from(new Set(goalBandIds)).sort().join(",")],
     30000
   );
 

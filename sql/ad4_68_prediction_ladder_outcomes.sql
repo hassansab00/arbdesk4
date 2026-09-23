@@ -147,7 +147,40 @@ create index if not exists ad4_ix_edges_band_side_time
 analyze edges;
 
 
-create or replace view public.v_prediction_ladder as
+-- ===========================================================================
+-- AND WHY IT TIMED OUT AGAIN. Measured 2026-09-22, as the browser's role, on
+-- the same query - `where for_date >= current_date limit 1000`:
+--
+--    3,726 ms  before
+--       18 ms  after
+--
+-- The latest probability and the latest edge came from v_latest_prob and
+-- v_latest_edge: `distinct on` over the WHOLE of band_probabilities and
+-- edges. The planner estimated this view at 20 rows, so it merge-joined them
+-- in band order - walking 69,339 edges (2,166 ms) and 33,448 probabilities
+-- (1,457 ms) to use the latest row of 500 bands. Those two tables grow every
+-- intraday run, so the page got slower every day until it hit 57014.
+--
+-- Driven from the band instead: one index probe per band on
+-- band_probabilities_band_id_computed_at_forecast_version_key and one on
+-- ad4_ix_edges_band_side_time. The ordering is copied exactly -
+-- (computed_at desc, prob_id desc) for the probability, (side, computed_at
+-- desc) per band for the edge, so a band still yields one row per side.
+-- Verified identical before it was applied: 24,991 rows, 0 differing in
+-- either direction (EXCEPT ALL both ways, same transaction).
+-- ===========================================================================
+-- ---------------------------------------------------------------------------
+-- ONE ROW PER BAND: what was predicted and what happened, with no edge in it.
+--
+-- The edge is the only thing in the ladder that is per SIDE, and it is what
+-- makes a band two rows. v_prediction_hindsight only ever wanted the band -
+-- it read the two-row ladder and threw the second row away with a
+-- `distinct on (..., band_id) order by (side = 'YES') desc` - but it still
+-- paid for the edge probe on every settled band it discarded: 160,603 of its
+-- 311,570 buffers. Everything per BAND lives here, once, and the ladder below
+-- adds the edge to it; hindsight reads this and never touches edges at all.
+-- ---------------------------------------------------------------------------
+create or replace view public.v_prediction_ladder_bands as
 select
   m.city_key,
   m.resolution_date as for_date,
@@ -175,14 +208,6 @@ select
   p.sigma_c,
   p.confidence,
   p.regime_label,
-  e.side,
-  e.market_price,
-  e.edge_pp,
-  e.edge_net_pp,
-  e.fillable_usd_5c as depth_5c,
-  e.tradeable,
-  e.block_reason,
-  e.computed_at as edge_at,
   case
     when vb.resolution_state = 'confirmed' and vb.settled_yes is not null then 'venue'
     when fb.settled_yes is not null then 'weather'
@@ -198,14 +223,139 @@ from markets m
 join cities ct on ct.city_key = m.city_key
               and coalesce(ct.status, 'active') = 'active'
 join bands b on b.market_id = m.market_id
-left join v_latest_prob p on p.band_id = b.band_id
-left join v_latest_edge e on e.band_id = b.band_id
+-- v_latest_prob, for this band only. Same order, including the tie-break.
+left join lateral (
+  select bp.raw_prob, bp.calibrated_prob, bp.forecast_max_c, bp.sigma_c,
+         bp.confidence, bp.regime_label
+    from band_probabilities bp
+   where bp.band_id = b.band_id
+   order by bp.computed_at desc, bp.prob_id desc
+   limit 1
+) p on true
 left join mv_venue_band_resolution vb on vb.band_id = b.band_id
 left join fact_band_outcome fb on fb.band_id = b.band_id
 where m.resolution_date >= (current_date - 45)
   and m.resolution_date <= (current_date + 16);
 
+comment on view public.v_prediction_ladder_bands is
+  'One row per band the desk priced in the last 45 days and the next 16: the latest probability and how the band settled. v_prediction_ladder is this plus the latest edge per side; read this instead when the side does not matter, because the edge lookup is most of the cost.';
+
+grant select on public.v_prediction_ladder_bands to anon, authenticated, service_role;
+
+create or replace view public.v_prediction_ladder as
+select
+  lb.city_key,
+  lb.for_date,
+  lb.market_id,
+  lb.band_id,
+  lb.band_index,
+  lb.band_label,
+  lb.band_lo,
+  lb.band_hi,
+  lb.open_low,
+  lb.open_high,
+  lb.closed,
+  lb.settled_value,
+  lb.won,
+  lb.raw_prob,
+  lb.calibrated_prob,
+  lb.model_prob,
+  lb.forecast_max_c,
+  lb.sigma_c,
+  lb.confidence,
+  lb.regime_label,
+  e.side,
+  e.market_price,
+  e.edge_pp,
+  e.edge_net_pp,
+  e.fillable_usd_5c as depth_5c,
+  e.tradeable,
+  e.block_reason,
+  e.computed_at as edge_at,
+  lb.outcome_source,
+  lb.settled_at
+from v_prediction_ladder_bands lb
+-- v_latest_edge, for this band only: the latest edge on EACH side.
+left join lateral (
+  select distinct on (x.side)
+         x.side, x.market_price, x.edge_pp, x.edge_net_pp, x.fillable_usd_5c,
+         x.tradeable, x.block_reason, x.computed_at
+    from edges x
+   where x.band_id = lb.band_id
+   order by x.side, x.computed_at desc
+) e on true;
+
 comment on view public.v_prediction_ladder is
   'Every band the desk priced, with what it predicted and what actually happened. won comes from the venue when it has confirmed the band and from fact_band_outcome otherwise; settled_value is the observed maximum in Celsius; outcome_source names which answered, and is null for a day not yet settled.';
 
 grant select on public.v_prediction_ladder to anon, authenticated, service_role;
+
+
+-- ===========================================================================
+-- THE GRADE: what the desk said would happen, beside what did.
+--
+-- This view has been on the Predictive page (web/components/PredictionHindsight
+-- .tsx) since 16 Sep, and until 22 Sep it existed ONLY in the live database -
+-- no file in this repository created it, so a reinstall would have lost it
+-- and nothing would have said why the panel went blank. It is written down
+-- here now, beside the ladder it grades.
+--
+-- Per settled city-day: the band the model put the most probability on
+-- (ties to the lower band), and the band that paid (the lowest winner, when a
+-- venue ever paid two). A day appears only when both exist.
+--
+-- It read the two-row ladder and collapsed each band back to one row; it now
+-- reads v_prediction_ladder_bands, which is one row per band to begin with.
+-- The columns it takes are all per band, so the answer is the same - verified
+-- identical, 468 rows, 0 differing either way - and the cost is not. Measured
+-- 2026-09-22 as the browser's role:
+--
+--     311,570 buffers, 13,986 ms   ->   54,294 buffers, 142 ms
+-- ===========================================================================
+create or replace view public.v_prediction_hindsight as
+with bands_once as (
+  select city_key, for_date, band_id, band_label, band_lo, calibrated_prob,
+         forecast_max_c, sigma_c, regime_label, won, settled_value, outcome_source
+    from v_prediction_ladder_bands
+   where won is not null
+),
+predicted as (
+  select distinct on (city_key, for_date)
+         city_key, for_date,
+         band_label      as predicted_band,
+         calibrated_prob as predicted_prob,
+         forecast_max_c, sigma_c, regime_label
+    from bands_once
+   where calibrated_prob is not null
+   order by city_key, for_date, calibrated_prob desc, band_lo
+),
+actual as (
+  select distinct on (city_key, for_date)
+         city_key, for_date,
+         band_label     as actual_band,
+         settled_value  as observed_max_c,
+         outcome_source
+    from bands_once
+   where won
+   order by city_key, for_date, band_lo
+)
+select p.city_key,
+       p.for_date,
+       p.predicted_band,
+       round(100::numeric * p.predicted_prob, 1)       as predicted_pct,
+       a.actual_band,
+       round(a.observed_max_c, 1)                      as observed_max_c,
+       round(p.forecast_max_c, 1)                      as forecast_max_c,
+       round(a.observed_max_c - p.forecast_max_c, 1)   as forecast_error_c,
+       p.predicted_band = a.actual_band                as hit,
+       round(p.sigma_c, 2)                             as stated_sigma_c,
+       p.regime_label,
+       a.outcome_source
+  from predicted p
+  join actual a on a.city_key = p.city_key and a.for_date = p.for_date
+ order by p.for_date desc, p.city_key;
+
+comment on view public.v_prediction_hindsight is
+  'Per settled city-day: the band the model favoured and its stated probability, beside the band that paid and the observed maximum. hit is whether they were the same band. Read by the Predictive page.';
+
+grant select on public.v_prediction_hindsight to anon, authenticated, service_role;

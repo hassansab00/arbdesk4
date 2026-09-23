@@ -205,16 +205,6 @@ $ad4$;
 
 
 -- --------------------------------------------------------------------------
--- 2. Tell the planner the truth.
---
---    A table that has just gained an index still carries the statistics it
---    had before, and the planner will keep choosing the sequential scan it
---    was told was cheapest. ANALYZE is the half of this people leave out.
--- --------------------------------------------------------------------------
-do $ad4$
-declare t text;
-begin
--- --------------------------------------------------------------------------
 -- THE FRESHNESS TIMESTAMPS, which nothing indexed.
 --
 -- v_data_freshness renders on EVERY page and asks max(ts) of every table it
@@ -226,6 +216,11 @@ begin
 -- for one value. Built from data_freshness_spec so it covers exactly what
 -- that view asks for, and only where the table is big enough to matter.
 -- --------------------------------------------------------------------------
+-- (This block used to sit INSIDE section 2's DO body, between its `begin` and
+-- its loop. The second `$ad4$` closed the first early and the file failed to
+-- parse - `syntax error at or near "declare"` - from 7 Sep until 22 Sep, so
+-- anyone installing it got neither the freshness indexes nor the ANALYZE.
+-- It is its own statement now, and it runs before the ANALYZE it needs.)
 do $ad4$
 declare r record; idx text; made int := 0;
 begin
@@ -267,6 +262,39 @@ begin
 end
 $ad4$;
 
+
+-- --------------------------------------------------------------------------
+-- HOW MANY CITIES ARE ACTIVE - the one number every desk view guesses.
+--
+-- Every view that trades or scores filters on
+--
+--     coalesce(c.status, 'active') = 'active'
+--
+-- and Postgres keeps no statistics on an EXPRESSION, so it guessed that 1 of
+-- 54 cities passes. It is 48. The guess multiplies through every join below
+-- it: v_prediction_hindsight was planned for 326 bands and read 17,083, all by
+-- nested-loop index probes - 311,570 buffers, 14 s on this instance. With the
+-- estimate right (measured 2026-09-22, as the browser's role, cold / warm):
+--
+--     v_prediction_hindsight     19,771 / 1,112 ms  ->  7,229 / 561 ms
+--
+-- and nothing measured got slower. An extended statistic on the expression
+-- is metadata, changes no row, and ANALYZE keeps it current.
+-- --------------------------------------------------------------------------
+create statistics if not exists ad4_st_cities_active
+  on (coalesce(status, 'active')) from cities;
+analyze cities;
+
+-- --------------------------------------------------------------------------
+-- 2. Tell the planner the truth.
+--
+--    A table that has just gained an index still carries the statistics it
+--    had before, and the planner will keep choosing the sequential scan it
+--    was told was cheapest. ANALYZE is the half of this people leave out.
+-- --------------------------------------------------------------------------
+do $ad4$
+declare t text;
+begin
   foreach t in array array['book_snapshots','trades_observed','band_probabilities','bands',
                            'markets','signals','paper_trades','ledger','edges','weather_events',
                            'live_weather','weather_observations','weather_forecasts',

@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState, ErrorBox, Loading } from "@/components/DataState";
 import { Freshness, FreshnessRow } from "@/components/Provenance";
+import { rowsText } from "@/lib/useFreshness";
 import { fmtInt, fmtPct, fmtUsd, pnlColor } from "@/lib/format";
 import type { BacktestRun } from "@/lib/types";
 
@@ -17,6 +18,8 @@ interface BacktestWindow {
   mkt_from: string | null; mkt_to: string | null; n_markets: number;
   usable_from: string | null; usable_to: string | null;
   blocked_because: string | null;
+  /** n_books / n_obs are the planner's estimate above 5,000 rows (ad4_42). */
+  n_books_estimated?: boolean | null; n_obs_estimated?: boolean | null;
 }
 
 /** What backtest_readiness() answers for the exact window in the form. */
@@ -172,7 +175,7 @@ export default function BacktestPage() {
         {bounds?.book_from ? (
           <>
             Your book archive begins <b>{bounds.book_from}</b> and holds{" "}
-            {fmtInt(bounds.n_books)} snapshot(s). Polymarket publishes no depth history, so there is
+            {rowsText(bounds.n_books, bounds.n_books_estimated)} snapshot(s). Polymarket publishes no depth history, so there is
             no way to obtain more: <b>strategy profitability cannot be backtested before that date</b>,
             however far back you set the start. Forecast accuracy can, because observations and
             forecasts go back further — {bounds.obs_from ?? "no observations"} onward.

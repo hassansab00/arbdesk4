@@ -46,15 +46,34 @@ drop view if exists v_backtest_window cascade;
 --    history before this desk started collecting it.
 -- --------------------------------------------------------------------------
 create view v_backtest_window as
+-- NO FULL COUNTS. This counted every row of book_snapshots (192,000) and
+-- weather_observations (146,000) to draw one line of text on the Backtest
+-- page: 3.8 s cold on 22 Sep, and nothing on the page needs the exact number.
+-- The dates are exact - min() and max() are one index probe each - and
+-- emptiness is decided from them, which is exact too, because observed_at,
+-- valid_at and resolution_date are all NOT NULL. The counts follow the rule
+-- ad4_39 and ad4_51 use everywhere else: exact up to 5,000 rows, the planner's
+-- estimate above it, with *_estimated saying which (appended at the end so
+-- `create or replace` can extend a live view).
 with b as (
-  select min(observed_at)::date as book_from, max(observed_at)::date as book_to,
-         count(*)::bigint as n_books
-    from book_snapshots
+  select (select min(observed_at) from book_snapshots)::date as book_from,
+         (select max(observed_at) from book_snapshots)::date as book_to,
+         (select case when coalesce(c.reltuples, -1) > 5000
+                      then greatest(c.reltuples, 0)::bigint
+                      else (select count(*) from book_snapshots) end
+            from pg_class c where c.oid = 'public.book_snapshots'::regclass)::bigint as n_books,
+         (select coalesce(c.reltuples, -1) > 5000
+            from pg_class c where c.oid = 'public.book_snapshots'::regclass) as n_books_estimated
 ),
 o as (
-  select min(valid_at)::date as obs_from, max(valid_at)::date as obs_to,
-         count(*)::bigint as n_obs
-    from weather_observations
+  select (select min(valid_at) from weather_observations)::date as obs_from,
+         (select max(valid_at) from weather_observations)::date as obs_to,
+         (select case when coalesce(c.reltuples, -1) > 5000
+                      then greatest(c.reltuples, 0)::bigint
+                      else (select count(*) from weather_observations) end
+            from pg_class c where c.oid = 'public.weather_observations'::regclass)::bigint as n_obs,
+         (select coalesce(c.reltuples, -1) > 5000
+            from pg_class c where c.oid = 'public.weather_observations'::regclass) as n_obs_estimated
 ),
 m as (
   select min(resolution_date) as mkt_from, max(resolution_date) as mkt_to,
@@ -70,17 +89,19 @@ select
         coalesce(o.obs_to, current_date),
         coalesce(m.mkt_to, current_date))                as usable_to,
   case
-    when b.n_books = 0
+    when b.book_from is null
       then 'No book snapshots at all. Strategy profitability cannot be backtested until P0.3 has run - Polymarket publishes no depth history, so the archive starts the day you first collected it.'
     when m.n_markets = 0
       then 'No markets on record, so there is nothing to backtest against. P0.2 fills them.'
-    when o.n_obs = 0
+    when o.obs_from is null
       then 'No observations on record, so no day can be scored. P1.2 or the Observations action fills them.'
     when greatest(b.book_from, o.obs_from, m.mkt_from)
        > least(b.book_to, o.obs_to, m.mkt_to)
       then 'The market, observation and book archives do not overlap on a single day yet.'
     else null
-  end                                                    as blocked_because
+  end                                                    as blocked_because,
+  b.n_books_estimated,
+  o.n_obs_estimated
 from b, o, m;
 
 comment on view v_backtest_window is

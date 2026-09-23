@@ -57,12 +57,43 @@ def test_a_day_nobody_resolved_is_distinguishable_from_a_loss():
     assert "outcome_source" in ladder()
 
 
+def _view(s, name):
+    """One view's definition out of the comment-stripped file: from its
+    `create or replace view` to the statement's closing semicolon. The file
+    defines three views, so an index taken over the whole file answers for
+    whichever one comes first rather than the one being asked about."""
+    start = s.index(f"create or replace view public.{name} as")
+    return s[start:s.index(";", start)]
+
+
 def test_the_new_columns_are_appended_not_inserted():
     """create or replace view requires the existing columns to keep their
     position, name and type, and v_city_prediction_confidence is built on this
     view."""
+    v = _view(ladder(), "v_prediction_ladder")
+    assert v.index("e.computed_at as edge_at") < v.index("lb.outcome_source") \
+        < v.index("lb.settled_at"), (
+        "outcome_source and settled_at must stay the last two columns of the ladder")
+
+
+def test_the_ladder_is_the_band_view_plus_the_edge():
+    """Everything per band is defined once, in v_prediction_ladder_bands; the
+    ladder only adds the edge. A second copy of the outcome logic in the ladder
+    is how the two would drift apart."""
     s = ladder()
-    assert s.index("e.computed_at as edge_at") < s.index("as outcome_source")
+    ladder_view = _view(s, "v_prediction_ladder")
+    assert "from v_prediction_ladder_bands lb" in ladder_view
+    assert "fact_band_outcome" not in ladder_view and "mv_venue_band_resolution" not in ladder_view
+    assert "fact_band_outcome" in _view(s, "v_prediction_ladder_bands")
+
+
+def test_hindsight_is_in_the_repository_and_never_reads_edges():
+    """v_prediction_hindsight existed only in the live database from 16 to 22
+    Sep. It is defined here now, and it reads the band view: the edge lookup it
+    used to pay for and discard was 160,603 of its 311,570 buffers."""
+    hindsight = _view(ladder(), "v_prediction_hindsight")
+    assert "from v_prediction_ladder_bands" in hindsight
+    assert "edges" not in hindsight and "v_prediction_ladder " not in hindsight
 
 
 def test_hindsight_dedupes_by_band_rather_than_filtering_to_one_side():

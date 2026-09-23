@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { fillersFor, FILLED_BY, tablesBehind, type Filler } from "@/lib/provenance";
 import { SQL_OWNER } from "@/lib/sqlOwner";
-import { useFreshness, ageWords, type FreshRow } from "@/lib/useFreshness";
+import { useFreshness, ageWords, rowsText, type FreshRow } from "@/lib/useFreshness";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 
@@ -101,11 +101,11 @@ export function Freshness({
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded border border-border/70 bg-panel2/60 px-1.5 py-0.5 text-[10px] ${s.text}`}
-      title={`${row.table_name}: ${row.plain_english} ${(row.rows ?? 0).toLocaleString()} row(s), newest ${ageWords(row.age_hours)}.${others}`}
+      title={`${row.table_name}: ${row.plain_english} ${rowsText(row.rows ?? 0, row.rows_estimated)} row(s), newest ${ageWords(row.age_hours)}.${others}`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
       {showRows && row.rows !== null ? (
-        <span className="tabular-nums">{row.rows.toLocaleString()}</span>
+        <span className="tabular-nums">{rowsText(row.rows, row.rows_estimated)}</span>
       ) : null}
       <span>{row.state === "ok" ? ageWords(row.age_hours) : s.word}</span>
     </span>
@@ -234,7 +234,7 @@ export function WhatFillsThis({ relation }: { relation: string }) {
               <p key={r.table_name}>
                 <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${STATE_STYLE[r.state].dot}`} />
                 <span className="font-mono">{r.table_name}</span>{" "}
-                <span className="tabular-nums text-text">{(r.rows ?? 0).toLocaleString()}</span> row(s)
+                <span className="tabular-nums text-text">{rowsText(r.rows ?? 0, r.rows_estimated)}</span> row(s)
                 {r.age_hours !== null ? `, newest ${ageWords(r.age_hours)}` : ""}
               </p>
             ))}
@@ -329,7 +329,7 @@ export function DataHealthStrip({ layers }: { layers?: string[] }) {
                       </span>
                     </td>
                     <td className="py-1 pr-2 text-right tabular-nums">
-                      {r.rows === null ? "—" : r.rows.toLocaleString()}
+                      {rowsText(r.rows, r.rows_estimated)}
                     </td>
                     <td className={`py-1 pr-2 ${r.state === "ok" ? "text-muted" : st.text}`}>
                       {r.state === "absent" ? "not installed" : ageWords(r.age_hours)}
