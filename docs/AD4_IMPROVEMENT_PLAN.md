@@ -217,7 +217,7 @@ P7 design work (P7.1–P7.3) can start as soon as P2 is merged. Shadow trading (
 
   Open-Meteo's default is itself a blend chosen by Open-Meteo. With one predictor per city there is nothing to weight, so no loop can learn which model a city should trust (P3.8).
 - **Change:**
-  - `scripts/ingest_forecasts.py` (the daily previous-runs job, `forecasts.yml` 03:10) requests the individual models through the `models=` parameter, starting with `ecmwf_ifs025`, `gfs_seamless`, `icon_seamless`, `ukmo_seamless`, `jma_seamless`, `gem_seamless` and `meteofrance_seamless`. It writes one row per model under that model's name.
+  - `scripts/ingest_forecasts.py` (the daily previous-runs job, `forecasts.yml` 03:10) requests the individual models through the `models=` parameter, starting with `ecmwf_ifs025`, `gfs_seamless`, `icon_seamless`, `ukmo_seamless`, `jma_seamless`, `gem_seamless` and `meteofrance_seamless`. It writes one row per model under that model's name, in its own table `weather_forecast_models`. Putting them in `weather_forecasts` would let readers that take "the newest row, whatever the model" (`probability_engine._forecast_for`) pick a model by row order, because per-model rows share best_match's synthetic `run_at`.
   - The P1.4/P1.5 n8n live collectors do the same for today and tomorrow.
   - Check the Open-Meteo request count per run against its free-tier limit before switching the schedule on. Record the measured figure, not the documented one.
   - The job's own window is the last 10 days. A one-off manual run over the previous 90 days gives P3.8 three months of per-model day-ahead history straight away, instead of waiting three months for it.

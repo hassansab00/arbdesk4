@@ -24,13 +24,32 @@ API = "https://previous-runs-api.open-meteo.com/v1/forecast"
 LEADS = [1, 2, 3, 4, 5, 6, 7]
 MODEL_LABEL = "open_meteo_best_match"
 
+# EVERY MODEL, NOT ONE BLEND (plan v2.1 P2.8). best_match is Open-Meteo's own
+# pick of a model per location, so on 23 Sep weather_forecasts held one
+# forecast series per city (plus NWS for 12) and nothing could learn which
+# model a city should trust. These come in ONE extra request per city - the
+# API suffixes each variable with the model name - and go to their OWN table,
+# weather_forecast_models, under "open_meteo_<model>". Kept apart from
+# best_match twice over: a model the API refuses must not cost the series
+# every consumer reads, and a per-model row in weather_forecasts would tie
+# with best_match on its synthetic run_at in readers that pick "the newest
+# row, whatever the model" (probability_engine._forecast_for does).
+# FORECAST_MODELS="" switches them off; a comma list replaces the default.
+DEFAULT_MODELS = ("ecmwf_ifs025,gfs_seamless,icon_seamless,ukmo_seamless,"
+                  "jma_seamless,gem_seamless,meteofrance_seamless")
+MODELS = [m for m in os.environ.get("FORECAST_MODELS", DEFAULT_MODELS).split(",") if m.strip()]
+
 CHUNK_DAYS = 60
-TIMEOUT    = 100
+# 30 s, not 100. Measured on the 23 Sep 08:31Z run: a city that answered took
+# about 2.3 s, and five that did not each spent 2 x 100 s + 4 s timing out -
+# about 17 of the run's 22 minutes, billed, for nothing. A read that has not
+# answered in 30 s is left to the next run, which asks least-covered first.
+TIMEOUT    = 30
 PAUSE      = 0.2
 TRIES      = 2
 SOFT_DEADLINE_MIN = min(20, max(1, int(os.environ.get('FORECAST_DEADLINE_MINUTES', '20'))))
 
-def fetch(lat, lon, start, end, label):
+def fetch(lat, lon, start, end, label, models=None):
     fields = ["temperature_2m"] + [f"temperature_2m_previous_day{d}" for d in LEADS]
     p = {
         "latitude": lat, "longitude": lon,
@@ -47,6 +66,8 @@ def fetch(lat, lon, start, end, label):
         # so it fed straight into every sigma and every band probability.
         "timezone": "auto", "temperature_unit": "celsius",
     }
+    if models:
+        p["models"] = ",".join(models)
     # TWO WAYS TO COME BACK EMPTY, AND THEY ARE NOT THE SAME THING.
     #
     # This used to return None for both, and the caller counted both as a
@@ -81,14 +102,18 @@ def fetch(lat, lon, start, end, label):
             time.sleep(4)
     return None, "unreached"
 
-def build_rows(city_key, js):
+def build_rows(city_key, js, model=None):
+    """One row per (local date, lead). With `model`, read that model's columns:
+    a multi-model response names them temperature_2m_previous_day<N>_<model>."""
     hourly = (js or {}).get("hourly") or {}
     times = hourly.get("time") or []
     if not times:
         return []
+    suffix = f"_{model}" if model else ""
+    label = f"open_meteo_{model}" if model else MODEL_LABEL
     rows = []
     for lead in LEADS:
-        vals = hourly.get(f"temperature_2m_previous_day{lead}")
+        vals = hourly.get(f"temperature_2m_previous_day{lead}{suffix}")
         if not vals:
             continue
         daily = defaultdict(lambda: None)
@@ -114,7 +139,7 @@ def build_rows(city_key, js):
             run_at = dt.datetime.combine(for_date - dt.timedelta(days=lead),
                                          dt.time(0, 0), tzinfo=dt.timezone.utc)
             rows.append({
-                "city_key": city_key, "model": MODEL_LABEL,
+                "city_key": city_key, "model": label,
                 "run_at": run_at.isoformat(), "for_date": for_date.isoformat(),
                 "lead_days": lead, "forecast_max_c": round(float(mx), 2),
                 "variables": None, "source": "open-meteo-previous-runs",
@@ -209,6 +234,9 @@ def main():
     print(f"{done_ct}/{len(ranked)} cities complete ({total_days} days, all requested leads)\n")
 
     total, ran_out, missing_chunks, unreached_chunks, completed_dates = 0, False, 0, 0, 0
+    # The per-model request is reported, never raised: it is additive, and a
+    # refusal there must not stop best_match or start a paid continuation.
+    model_rows, model_failed, model_empty = defaultdict(int), defaultdict(int), set()
     for i, (n_before, c) in enumerate(ranked, 1):
         elapsed_min = (time.monotonic() - t0) / 60
         if elapsed_min > SOFT_DEADLINE_MIN:
@@ -243,6 +271,23 @@ def main():
             if rows:
                 got += upsert("weather_forecasts", rows, "city_key,model,run_at,for_date")
             time.sleep(PAUSE)
+            if MODELS:
+                mjs, mout = fetch(c["latitude"], c["longitude"], cs, ce,
+                                  f"{c['city_key']} {cs} models", models=MODELS)
+                if mout != "ok":
+                    model_failed[mout] += 1
+                else:
+                    for model in MODELS:
+                        mrows = [{k: v for k, v in r.items() if k != "variables"}
+                                 for r in build_rows(c["city_key"], mjs, model)]
+                        if mrows:
+                            n = upsert("weather_forecast_models", mrows,
+                                       "city_key,model,run_at,for_date")
+                            model_rows[model] += n
+                            got += n
+                        else:
+                            model_empty.add(model)
+                time.sleep(PAUSE)
         total += got
         missing_chunks += refused
         unreached_chunks += unreached
@@ -256,6 +301,11 @@ def main():
               f"(had {n_before}d){flag}", flush=True)
 
     print(f"\ntotal {total} forecast rows written this run")
+    if MODELS:
+        print("per model: " + ", ".join(f"{m} {model_rows[m]}" for m in MODELS)
+              + (f"; model requests refused {model_failed['refused']}, unreached "
+                 f"{model_failed['unreached']}" if model_failed else "")
+              + (f"; no rows for {sorted(model_empty)}" if model_empty else ""))
     incomplete = ran_out or missing_chunks > 0 or unreached_chunks > 0 or not all_cities
     if incomplete:
         print("INCOMPLETE - re-run the identical command to continue.")
@@ -272,7 +322,10 @@ def main():
     log_run("ingest_forecasts", "partial" if incomplete else "ok", total,
             {"start": str(start), "end": str(end), "leads": LEADS,
              "chunk_days": CHUNK_DAYS, "ran_out": ran_out,
-             "refused_chunks": missing_chunks, "unreached_chunks": unreached_chunks})
+             "refused_chunks": missing_chunks, "unreached_chunks": unreached_chunks,
+             "models": MODELS, "model_rows": dict(model_rows),
+             "model_requests_failed": dict(model_failed),
+             "models_without_rows": sorted(model_empty)})
 
 if __name__ == "__main__":
     main()
