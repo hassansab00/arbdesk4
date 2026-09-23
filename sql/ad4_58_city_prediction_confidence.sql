@@ -34,11 +34,12 @@
 --
 -- WHAT IT DOES NOT DO
 --
--- It does not invent a confidence for a lead the archive has never scored.
--- derived_forecast_skill starts at lead_days = 1, so a same-day row has a
--- prediction and no measured accuracy, and says exactly that instead of
--- borrowing tomorrow's number. Four of the 54 cities have no skill rows at
--- all yet; they come back with the prediction and a null skill.
+-- It does not invent a confidence for a lead the archive has never scored:
+-- a city and lead with no derived_forecast_skill row comes back with the
+-- prediction and a null skill, rather than borrowing another lead's number.
+-- (Updated 23 Sep, plan v2 P3.7: this note used to say skill starts at lead
+-- 1. measure_skill has written lead-0 rows since 18 Sep - 48 cities in the
+-- 23 Sep run - so a same-day row now carries its own measured accuracy.)
 --
 --
 -- "MOST LIKELY" IS THE MODAL CLOSED BUCKET, NOT THE LARGEST NUMBER

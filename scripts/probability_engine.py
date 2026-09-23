@@ -246,6 +246,13 @@ def band_mass(centre_c, sigma_c, unit, band_lo, band_hi, open_low, open_high,
 #
 # So a bucket is impossible only when it lies entirely below b_R - 1: two or
 # more buckets under the reading. The bucket just below keeps q_down * A.
+# THE SAME FLOOR forecast_postprocess.apply_fit puts under a fitted width
+# (plan v2 P3.7). The engine applied the fit's ratio without it, so a cell whose
+# ratio narrowed a small baseline could publish a distribution tighter than
+# the fit itself allowed. Not imported: forecast_postprocess imports
+# walk_forward, which imports this module. A test pins the two equal.
+POSTPROCESS_SIGMA_FLOOR_C = 0.25
+
 DEFAULT_Q_DOWN = 0.02
 DEFAULT_Q_UP = 0.05
 
@@ -544,6 +551,32 @@ def _bands_for_markets(market_ids):
         ], order="band_id", page_size=500)
         out.extend(rows)
     return out
+
+
+def forecast_provenance(model_priced, mrow, forecast, traj_row=None):
+    """(label, config) for the forecast a price was built on (plan v2 P3.7).
+
+    Decided from what the engine DID, not by comparing numbers. The old test
+    was `centre == the model's prediction`: when the trajectory replaced a
+    promoted model's centre the equality failed and the price was filed under
+    the public forecast - a model-priced, trajectory-adjusted price with no
+    trace of either. Now the model is named whenever it priced the centre, and
+    a trajectory that replaced that centre is named on top of it.
+    """
+    if model_priced and mrow is not None:
+        label = f"model:{mrow.get('model_version')}:{mrow.get('run_at')}"
+        config = {"model": "arbdesk_weather_model",
+                  "model_version": mrow.get("model_version"),
+                  "run_at": mrow.get("run_at"),
+                  "public_forecast_max_c": forecast.get("forecast_max_c")}
+    else:
+        label = f"{forecast.get('model')}:{forecast.get('run_at')}"
+        config = {"model": forecast.get("model"), "run_at": forecast.get("run_at")}
+    if traj_row is not None:
+        hour = traj_row.get("local_hour")
+        label = f"trajectory:{int(hour):02d}h:" + label if hour is not None else "trajectory:" + label
+        config = {**config, "centre": "trajectory", "local_hour": hour}
+    return label, config
 
 
 def _forecast_for(city_key, for_date, as_of=None):
@@ -1201,7 +1234,7 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
         bias_c = float(pp["bias_c"])
         centre_corrected = centre - bias_c
         sigma_historical = float(pp["baseline_sigma_c"])
-        sigma = sigma_historical * float(pp["sigma_ratio"])
+        sigma = max(POSTPROCESS_SIGMA_FLOOR_C, sigma_historical * float(pp["sigma_ratio"]))
         reasons.append(
             f"postprocessed:bias{bias_c:+.2f}C_width{float(pp['sigma_ratio']):.2f}x"
             f":lead{lead_days}:{pp.get('n_days')}d_cell_{pp.get('n_city_days')}d_city"
@@ -1308,15 +1341,8 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     # WHICH forecast this price was built on. When a promoted model supplied
     # the centre, the answer is that model and not the public run - otherwise
     # every post-mortem on a model-priced trade would point at NWS.
-    if promo and mrow is not None and centre_corrected == float(mrow["predicted_max_c"]):
-        forecast_label = f"model:{mrow.get('model_version')}:{mrow.get('run_at')}"
-        forecast_config = {"model": "arbdesk_weather_model",
-                           "model_version": mrow.get("model_version"),
-                           "run_at": mrow.get("run_at"),
-                           "public_forecast_max_c": forecast.get("forecast_max_c")}
-    else:
-        forecast_label = f"{forecast.get('model')}:{forecast.get('run_at')}"
-        forecast_config = {"model": forecast.get("model"), "run_at": forecast.get("run_at")}
+    forecast_label, forecast_config = forecast_provenance(
+        model_priced, mrow, forecast, traj_row if traj_centre is not None else None)
     forecast_version = model_version_id(
         "forecast", forecast_label, config=forecast_config, structural=False)
     _cal = _calibration_map()
