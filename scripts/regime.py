@@ -57,9 +57,14 @@ def _forecasts_for_date(city_key, for_date, as_of=None):
     """
     All forecast rows on record for this city+for_date, any lead/run.
     `as_of`: for walk-forward backtesting (Task 12) - restricts to rows
-    with run_at <= as_of, so a simulated day never sees a forecast that
-    hadn't been produced yet. None (live use) means no restriction: every
-    row that exists already happened before now by construction.
+    ISSUED by as_of, so a simulated day never sees a forecast that hadn't
+    been produced yet. None (live use) means no restriction: every row that
+    exists already happened before now by construction.
+
+    ISSUED, NOT run_at (plan v2 P2.6). run_at is NWS's issuance, Open-Meteo's
+    fetch time, or a synthetic midnight UTC depending on the source, so
+    `run_at <= as_of` let a backfilled row claim to be known before it was.
+    v_forecast_issued says when each row can first have been known.
     """
     params = [
         ("select", "for_date,lead_days,forecast_max_c,model,run_at"),
@@ -68,7 +73,8 @@ def _forecasts_for_date(city_key, for_date, as_of=None):
         ("order", "lead_days.asc"),
     ]
     if as_of is not None:
-        params.append(("run_at", f"lte.{as_of.isoformat()}"))
+        params.append(("issued_at", f"lte.{as_of.isoformat()}"))
+        return rest("v_forecast_issued", params)
     return rest("weather_forecasts", params)
 
 
@@ -113,12 +119,15 @@ def _history_disagreement(city_key, before_date, lookback_days=LOOKBACK_DAYS, as
         ("for_date", f"gte.{start}"),
         ("for_date", f"lte.{end}"),
     ]
+    table = "weather_forecasts"
     if as_of is not None:
-        params.append(("run_at", f"lte.{as_of.isoformat()}"))
+        # Issued, not run_at: see _forecasts_for_date.
+        params.append(("issued_at", f"lte.{as_of.isoformat()}"))
+        table = "v_forecast_issued"
     # 120 days x several models x 8 leads is more than the 1,000-row cap a
     # bare read returns; the percentile threshold was being built on a
     # truncated history.
-    rows = rest_all("weather_forecasts", params,
+    rows = rest_all(table, params,
                     order="for_date.asc,lead_days.asc,model.asc,run_at.asc", page_size=1000)
     by_date = defaultdict(list)
     for r in rows:

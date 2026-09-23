@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 202 of them - and for each MISSING one names the
+-- and function the app reads - 203 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -148,6 +148,7 @@ with expected(rel, owner, used_by) as (values
     ('v_forecast_divergence', 'ad4_16_nws.sql', ''),
     ('v_forecast_divergence_current', 'ad4_19_stats_cache.sql', ''),
     ('v_forecast_features', 'ad4_24_nws_gridpoint.sql', ''),
+    ('v_forecast_issued', 'supabase/migrations/20260923160000_when_was_the_forecast_issued.sql', ''),
     ('v_forecast_model_skill', 'ad4_49_model_skill.sql', ''),
     ('v_forecast_postprocess_applied', 'ad4_83_forecast_postprocess.sql', ''),
     ('v_forecast_postprocess_health', 'ad4_83_forecast_postprocess.sql', ''),
@@ -372,6 +373,7 @@ begin
     ('v_forecast_divergence', 'ad4_16_nws.sql', ''),
     ('v_forecast_divergence_current', 'ad4_19_stats_cache.sql', ''),
     ('v_forecast_features', 'ad4_24_nws_gridpoint.sql', ''),
+    ('v_forecast_issued', 'supabase/migrations/20260923160000_when_was_the_forecast_issued.sql', ''),
     ('v_forecast_model_skill', 'ad4_49_model_skill.sql', ''),
     ('v_forecast_postprocess_applied', 'ad4_83_forecast_postprocess.sql', ''),
     ('v_forecast_postprocess_health', 'ad4_83_forecast_postprocess.sql', ''),

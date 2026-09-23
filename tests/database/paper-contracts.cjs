@@ -29,8 +29,11 @@ const assert = require('node:assert/strict');
       updated_at timestamptz not null default now());
     create table public.weather_observations(obs_id bigint primary key,city_key text,valid_at timestamptz,
       observed_at timestamptz);
+    -- observed_at, variables and source are live columns (timestamptz, jsonb,
+    -- text): 20260923160000 builds v_forecast_issued over them.
     create table public.weather_forecasts(forecast_id bigint primary key,city_key text,model text,run_at timestamptz,
-      for_date date,lead_days int default 0,forecast_max_c numeric default 0);
+      for_date date,lead_days int default 0,forecast_max_c numeric default 0,
+      observed_at timestamptz not null default now(),variables jsonb,source text not null default 'open-meteo');
     create table public.book_snapshots(snapshot_id bigint primary key,band_id uuid,observed_at timestamptz,
       market_state text default 'LIVE',tradeable boolean default true);
     create table public.trades_observed(trade_id bigint primary key,city_key text,traded_at timestamptz);

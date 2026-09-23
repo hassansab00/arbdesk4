@@ -216,6 +216,9 @@ SQL_RECORD = {
 # rather than a bug. It is here because a blind spot is how the last four got
 # in.
 MIGRATION_RECORD = {
+    "supabase/migrations/20260923160000_when_was_the_forecast_issued.sql":
+        "v_forecast_issued - cities.timezone only, to put each forecast's issue time on "
+        "the city's calendar; a retired city's forecasts were issued when they were",
     "supabase/migrations/20260923140000_a_market_whose_day_ended_is_closed.sql":
         "market_day_ended() - closing a market whose local day has ended is the "
         "record being made true, and a retired city's ended market is ended too",

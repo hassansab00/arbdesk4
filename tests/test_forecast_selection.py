@@ -61,10 +61,20 @@ def test_forecast_pick_with_as_of_excludes_later_runs(monkeypatch):
     import probability_engine as pe
 
     seen = _params_of(monkeypatch, pe, as_of="2026-09-07T00:00:00Z")
-    assert seen["params"]["run_at"] == "lte.2026-09-07T00:00:00Z", (
+    assert seen["params"]["issued_at"] == "lte.2026-09-07T00:00:00Z", (
         "a backtest must not be able to price against a forecast that did "
         "not exist at the decision time"
     )
+    assert "run_at" not in seen["params"], (
+        "run_at is a synthetic midnight on backfilled rows (plan v2 P2.6) - "
+        "the as-of cut is on issued_at")
+    assert seen["path"] == "v_forecast_issued"
+
+
+def test_live_pricing_still_reads_the_table(monkeypatch):
+    import probability_engine as pe
+
+    assert _params_of(monkeypatch, pe)["path"] == "weather_forecasts"
 
 
 def test_denver_case_newest_run_wins(monkeypatch):
@@ -89,8 +99,9 @@ def test_denver_case_newest_run_wins(monkeypatch):
         p = dict(params)
         key, direction = p["order"].split(",")[-1].split(".")
         ordered = sorted(rows, key=lambda r: r[key], reverse=(direction == "desc"))
-        if "run_at" in p:
-            cut = p["run_at"].split("lte.", 1)[1]
+        if "issued_at" in p:
+            # Open-Meteo's issued_at is its fetch time, which is run_at.
+            cut = p["issued_at"].split("lte.", 1)[1]
             ordered = [r for r in ordered if r["run_at"] <= cut]
         return ordered[: int(p["limit"])]
 
