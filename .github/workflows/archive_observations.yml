@@ -108,7 +108,22 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # `!cancelled()` ON THIS STEP AND THE PRUNE, because an archive is seven
+      # independent datasets and one refusal must not strand the other six.
+      # On 23 Sep research, resolution and trades refused their exports, the
+      # step failed, and the default `success()` skipped this commit and the
+      # prune for every dataset - while books, edges, forecasts and
+      # observations had exported and verified cleanly. 138,152 rows ended up
+      # in the repository and still in the database, at 124% of the tier.
+      #
+      # The gate added no safety. Every prune decides for its own dataset: it
+      # needs a pending record (written only after THAT dataset's export,
+      # dry-run count and read-back all passed), a file that re-counts to the
+      # same rows, and that file in HEAD. A dataset whose export refused has no
+      # record and prunes nothing. The export step's failure still fails the
+      # job, so a refusal stays red until it is fixed.
       - name: Commit the data BEFORE anything is deleted
+        if: ${{ !cancelled() }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -140,7 +155,7 @@ jobs:
       # If the push above failed every retry, the files are not in HEAD and
       # every prune below refuses by itself. Nothing here needs to check.
       - name: Prune, now that the rows are in the repository
-        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.commit == 'true' }}
+        if: ${{ !cancelled() && (github.event_name != 'workflow_dispatch' || github.event.inputs.commit == 'true') }}
         run: |
           PYTHONPATH=scripts python scripts/archive_observations.py \
             --table ${{ github.event.inputs.table || 'all' }} \

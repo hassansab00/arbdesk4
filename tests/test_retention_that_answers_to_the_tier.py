@@ -63,9 +63,15 @@ def test_every_dataset_declares_how_short_it_can_go(name):
 
 
 @pytest.mark.parametrize("name", sorted(arch.TABLES))
-def test_a_floor_is_shorter_than_the_window_it_floors(name):
+def test_a_floor_is_never_longer_than_the_window_it_floors(name):
+    # NOT STRICTLY SHORTER. This asserted `<` and that is what put research
+    # at 1 and resolution at 1: both windows already sit ON their prune's own
+    # guard (2 and 3), so a strictly shorter floor is one the database
+    # refuses - and on 23 Sep, the first run under pressure, it did. Where the
+    # guard leaves room the floor must give something back; that is asserted
+    # against the parsed guards in test_a_floor_the_database_refuses_is_not_a_floor.
     spec = arch.TABLES[name]
-    assert 0 < spec["min_keep_days"] < spec.get("keep_days", 90)
+    assert 0 < spec["min_keep_days"] <= spec.get("keep_days", 90)
 
 
 def test_the_observation_floor_clears_the_prunes_own_refusal():

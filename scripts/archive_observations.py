@@ -126,7 +126,12 @@ TABLES = {
         "cutoff_col": "traded_at",
         "cutoff_is_date": False,
         "prune_rpc": "prune_trades",
-        "min_keep_days": 14,   # v_band_volume and v_city_volume both cut at lookback_hours = 24
+        # THIRTY, THE FLOOR prune_trades ENFORCES. This said 14, reasoned from
+        # the 24-hour volume window alone, and the function refuses anything
+        # under 30 so the window has room to be wrong. So the first run that
+        # reached a floor - 23 Sep, at 124% of the tier - exported 36,945
+        # rows to a 14-day cutoff, had the dry run refuse them, and failed.
+        "min_keep_days": 30,
         "tag": "trades-archive",
         "columns": ["band_id", "condition_id", "traded_at", "price", "size",
                     "side", "proxy_wallet", "ingested_at", "city_key",
@@ -177,7 +182,11 @@ TABLES = {
         # because every band is captured on every one of the six cycles a day,
         # and that is the number to change.
         "keep_days": 2,
-        "min_keep_days": 1,
+        # NO ROOM BELOW TWO, as the paragraph above says - and until 23 Sep
+        # the floor under it said 1, which prune_research_captures refuses.
+        # Under storage pressure that turned a working two-day archive into a
+        # refused one-day export: 19,127 rows read, nothing archived.
+        "min_keep_days": 2,
         # The other three exist so a model has history to train on, and
         # refresh_feature_cache is what preserves it. This one has no derived
         # form - the capture IS the artefact - so the cache step is not a
@@ -220,7 +229,10 @@ TABLES = {
         # which is what turns it into the frozen outcome that makes the proof
         # archivable in the first place.
         "keep_days": 3,
-        "min_keep_days": 1,   # nothing reads settlement evidence once the settlement is frozen
+        # Three, the same floor, for the same reason. It said 1 until 23 Sep,
+        # which prune_resolution_evidence refuses: 3,495 rows exported and
+        # refused on the first run under pressure.
+        "min_keep_days": 3,
         "needs_feature_cache": False,
     },
     # THE LARGEST TABLE ON THE DESK, and the only big one the archive never
@@ -810,6 +822,104 @@ def pull_releases(args):
     return 0
 
 
+def newest_archive(name):
+    """The index entry with the latest cutoff for this dataset, or None."""
+    try:
+        with open(os.path.join(_root(), MANIFEST), encoding="utf-8") as fh:
+            index = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    assets = [a for a in ((index.get("datasets") or {}).get(name) or {}).get("assets", [])
+              if a.get("asset") and a.get("archived_through")]
+    return max(assets, key=lambda a: str(a["archived_through"])) if assets else None
+
+
+def prune_was_recorded(name, asset):
+    """Did a prune of exactly this file report success?
+
+    ingest_log is the record: prune_one logs `ok` with the asset name only
+    after the database confirms the delete, and nothing prunes that table. An
+    export is recorded in the index the moment its file verifies, so the index
+    alone cannot tell an archive that finished from one whose prune never ran.
+    """
+    return bool(rest("ingest_log", [
+        ("select", "log_id"), ("job", f"eq.archive_{name}"), ("status", "eq.ok"),
+        ("detail->>asset", f"eq.{asset}"), ("limit", "1"),
+    ]))
+
+
+def finish_stranded_export(spec, name, keep_days):
+    """Finish an earlier run's export whose prune never ran. None means carry on.
+
+    WHAT HAPPENED ON 23 SEP. Three datasets refused their export, the export
+    step failed, and the workflow skipped the commit and the prune for all
+    seven. Books, edges, forecasts and observations had already exported
+    cleanly, and the step that always runs committed those four files - so
+    138,152 rows sat in the repository AND in the database, and the index
+    counted them as archived.
+
+    The next export reads every row older than a later cutoff, which includes
+    all of those. Left alone, that exports them a second time: the same rows
+    in two files, counted twice in the index, for as long as anything reads it.
+
+    So before exporting, this asks the database whether the newest archived
+    range is still there. The file already in HEAD is the proof the prune
+    needs, so it goes into the pending record exactly as a fresh export would,
+    with ITS cutoff and ITS row count, and this run exports nothing new for
+    the dataset. Tomorrow starts from a clean cutoff.
+
+    Only when the numbers agree exactly. A database holding a different
+    number of rows older than that cutoff than the file does is not a state
+    this can resolve by itself: exporting would duplicate, pruning would
+    delete rows the file does not hold. It refuses, and says which.
+    """
+    job = f"archive_{name}"
+    last = newest_archive(name)
+    if not last or prune_was_recorded(name, last["asset"]):
+        return None
+
+    through = last["archived_through"]
+    probe = _rpc(spec["prune_rpc"], {"p_keep_days": keep_days, "p_before": through,
+                                     "p_expected_rows": None, "p_dry_run": True})
+    if isinstance(probe, list):
+        probe = probe[0] if probe else {}
+    if not (probe or {}).get("ok"):
+        print(f"CANNOT TELL whether {last['asset']} was pruned: {probe}. Not exporting "
+              f"{name} - a new export could repeat its rows.", file=sys.stderr)
+        log_run(job, "attention", 0, {"stranded_asset": last["asset"],
+                                      "archived_through": through, "probe": probe})
+        return 1
+
+    left = int(probe.get("would_delete") or 0)
+    if left == 0:
+        return None     # pruned before this record existed, or the log was lost
+
+    rel = os.path.relpath(repo_archive_path(name, last["asset"]), _root())
+    got, ok = verify_repo_archive(os.path.join(_root(), rel), last.get("rows"))
+    committed, why = is_committed(rel)
+    if ok and committed and left == got:
+        pending = load_pending()
+        pending[name] = {
+            "file": rel, "asset": last["asset"], "rows": got, "cutoff": through,
+            "keep_days": keep_days, "resumed": True,
+            "exported_at": last.get("archived_at"),
+        }
+        save_pending(pending)
+        print(f"{got:,} rows archived to {rel} at {last.get('archived_at')} are still in "
+              f"the database - that run's prune never ran. Queued for this run's "
+              f"prune; nothing new is exported for {name} until it has.")
+        return 0
+
+    print(f"STRANDED EXPORT DOES NOT MATCH: {rel} holds {got:,} rows "
+          f"({'committed' if committed else why}) and the database has {left:,} older "
+          f"than {through}. Not exporting {name} - it would repeat those rows.",
+          file=sys.stderr)
+    log_run(job, "attention", left, {"stranded_asset": last["asset"], "archived_through": through,
+                                     "still_in_database": left, "file_rows": got,
+                                     "committed": committed})
+    return 1
+
+
 def export_one(spec, name, args):
     """Export this table's cold rows to a FILE IN THE REPOSITORY. Delete nothing.
 
@@ -840,6 +950,11 @@ def export_one(spec, name, args):
                   f"rows are what survives the prune.", file=sys.stderr)
             log_run(job, "attention", 0, {"error": str(e)})
             return 1
+
+    # 1b - an earlier export whose prune never ran is finished first
+    stranded = finish_stranded_export(spec, name, keep_days)
+    if stranded is not None:
+        return stranded
 
     # 2 - export
     print(f"reading {read_source(spec)} older than {cutoff.isoformat()} ...")
@@ -944,7 +1059,7 @@ def prune_one(spec, name, args):
     log_run(job, "ok", got, {
         "file": entry["file"], "asset": entry["asset"], "rows": got,
         "keep_days": entry["keep_days"], "archived_through": cutoff, "prune": prune,
-        "reclaim": reclaim,
+        "reclaim": reclaim, "resumed": bool(entry.get("resumed")),
     })
     pending = load_pending()
     pending.pop(name, None)
