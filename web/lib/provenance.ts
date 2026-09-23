@@ -1095,6 +1095,18 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "paper_resolution_evidence"
   ],
+  "v_mirror_book_kept": [
+    "bands",
+    "book_snapshots",
+    "edges",
+    "markets",
+    "signals"
+  ],
+  "v_mirror_edge_latest": [
+    "bands",
+    "edges",
+    "markets"
+  ],
   "v_model_disagreement": [
     "derived_model_promotion",
     "derived_model_forecast"
