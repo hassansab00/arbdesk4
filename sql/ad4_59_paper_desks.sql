@@ -86,7 +86,15 @@ end $ad4$;
 -- --------------------------------------------------------------------------
 alter table public.paper_accounts
   add column if not exists parent_account_id uuid references public.paper_accounts(account_id),
-  add column if not exists archived_at timestamptz;
+  add column if not exists archived_at timestamptz,
+  -- Retirement (plan v2 P0.3). The check constraint, the freeze trigger and
+  -- paper_desk_retire() are in
+  -- supabase/migrations/20260923100000_a_retired_desk_stays_retired.sql;
+  -- the columns are repeated here only so the view below can be built on a
+  -- database this file is installed into first.
+  add column if not exists status text not null default 'active',
+  add column if not exists retired_at timestamptz,
+  add column if not exists retired_reason text;
 
 create index if not exists ad4_ix_paper_accounts_parent
   on public.paper_accounts (parent_account_id) where parent_account_id is not null;
@@ -409,6 +417,7 @@ select
   coalesce(kid.n, 0)                                 as sub_accounts,
   -- One sentence for why this desk is or is not going to do anything.
   case
+    when a.status = 'retired'      then 'Retired. Kept as history; it will never trade again.'
     when a.archived_at is not null then 'Archived. Kept for its history; it will not trade.'
     when a.entries_paused          then 'Paused - it will not open anything. Unpause to let it act.'
     when a.mode = 'manual'         then 'Manual: it acts only on orders you place yourself.'
@@ -417,7 +426,9 @@ select
     else format('%s, entries live, %s strateg%s enabled.', initcap(a.mode),
                 (select count(*) from strategies s where s.enabled),
                 case when (select count(*) from strategies s where s.enabled) = 1 then 'y' else 'ies' end)
-  end                                                as state
+  end                                                as state,
+  -- Appended, not inserted, so CREATE OR REPLACE can add them to the live view.
+  a.status, a.retired_at
 from paper_accounts a
 left join paper_accounts p on p.account_id = a.parent_account_id
 left join lateral (select count(*) n, sum(realized_pnl) realized
@@ -443,14 +454,24 @@ begin
       execute format('grant select on v_paper_desks to %I', r);
     end if;
   end loop;
+  -- A new function is executable by PUBLIC unless revoked, and these are
+  -- SECURITY DEFINER: anon could reset or archive any desk (plan v2 P1.1).
+  -- Reset and archive are service_role only; the board reaches them through
+  -- /api/paper-desk, which holds the service key.
+  revoke execute on function paper_desk_create(text, numeric, text, uuid, jsonb) from public, anon;
+  revoke execute on function paper_desk_update(uuid, text, numeric, text, boolean, jsonb) from public, anon;
+  revoke execute on function paper_desk_reset(uuid) from public, anon, authenticated;
+  revoke execute on function paper_desk_archive(uuid, boolean) from public, anon, authenticated;
   foreach r in array array['authenticated', 'service_role'] loop
     if exists (select 1 from pg_roles where rolname = r) then
       execute format('grant execute on function paper_desk_create(text, numeric, text, uuid, jsonb) to %I', r);
       execute format('grant execute on function paper_desk_update(uuid, text, numeric, text, boolean, jsonb) to %I', r);
-      execute format('grant execute on function paper_desk_reset(uuid) to %I', r);
-      execute format('grant execute on function paper_desk_archive(uuid, boolean) to %I', r);
     end if;
   end loop;
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant execute on function paper_desk_reset(uuid) to service_role;
+    grant execute on function paper_desk_archive(uuid, boolean) to service_role;
+  end if;
 end $ad4$;
 
 do $ad4$

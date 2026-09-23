@@ -62,7 +62,14 @@ security definer
 set search_path = public, pg_temp
 as $function$
 declare
-  v_before timestamptz := coalesce(p_before, (current_date - p_keep_days)::timestamptz);
+  -- THE FLOOR HOLDS FOR p_before TOO (plan v2 P1.1). This was
+  -- coalesce(p_before, ...), so a caller passing p_before => now() deleted
+  -- every row it could reach with the 30-day check above never consulted.
+  -- A cutoff may be older than the floor, never newer. The archiver passes
+  -- its own now() - keep_days, which is always earlier than this now(), so a
+  -- legitimate cutoff is never moved.
+  v_before timestamptz := least(coalesce(p_before, (current_date - p_keep_days)::timestamptz),
+                                now() - make_interval(days => p_keep_days));
   v_cut date := (v_before at time zone 'UTC')::date;
   v_doomed bigint;
   v_keep bigint;
@@ -182,6 +189,9 @@ begin
 end;
 $function$;
 
+-- A new function is executable by PUBLIC unless revoked, and this one is
+-- SECURITY DEFINER and deletes rows: service_role only (plan v2 P1.1).
+revoke execute on function public.prune_trades(integer, boolean, timestamptz, bigint) from public, anon, authenticated;
 grant execute on function public.prune_trades(integer, boolean, timestamptz, bigint) to service_role;
 
 comment on function public.prune_trades(integer, boolean, timestamptz, bigint) is

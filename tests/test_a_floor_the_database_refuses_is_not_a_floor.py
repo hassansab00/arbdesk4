@@ -142,12 +142,16 @@ def _gz(rows):
 
 
 @pytest.fixture
-def desk(tmp_path, monkeypatch):
+def desk(tmp_path, tmp_path_factory, monkeypatch):
     """A repo-shaped tmp dir holding 23 Sep's state: a books file exported,
-    committed and listed in the index, whose prune never ran."""
+    committed, pushed and listed in the index, whose prune never ran.
+    (Committed means on origin - plan v2 P1.5.)"""
     monkeypatch.setattr(ao, "_root", lambda: str(tmp_path))
-    for cmd in (["git", "init", "-q"], ["git", "config", "user.email", "t@t"],
-                ["git", "config", "user.name", "t"]):
+    monkeypatch.setenv("GITHUB_REF_NAME", "main")
+    remote = tmp_path_factory.mktemp("origin") / "repo.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+    for cmd in (["git", "init", "-q", "-b", "main"], ["git", "config", "user.email", "t@t"],
+                ["git", "config", "user.name", "t"], ["git", "remote", "add", "origin", str(remote)]):
         subprocess.run(cmd, cwd=tmp_path, check=True)
     (tmp_path / FILE).parent.mkdir(parents=True)
     (tmp_path / FILE).write_bytes(_gz(40))
@@ -161,6 +165,7 @@ def desk(tmp_path, monkeypatch):
     ]}}}))
     subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-qm", "archive"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "push", "-q", "origin", "main"], cwd=tmp_path, check=True)
     return tmp_path
 
 
@@ -248,6 +253,7 @@ def test_rows_the_file_does_not_hold_stop_the_dataset(desk, monkeypatch):
 def test_a_file_that_is_not_in_head_is_not_proof(desk, monkeypatch):
     subprocess.run(["git", "rm", "-q", "--cached", FILE], cwd=desk, check=True)
     subprocess.run(["git", "commit", "-qm", "untrack"], cwd=desk, check=True)
+    subprocess.run(["git", "push", "-q", "origin", "main"], cwd=desk, check=True)
     _, exports, _ = _wire(monkeypatch)
 
     assert ao.export_one(ao.TABLES["books"], "books", Args()) == 1
