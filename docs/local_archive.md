@@ -7,6 +7,16 @@ September and never ran again.
 Nothing here deletes data. It **moves** the cold tail to a file you own, proves
 the file is complete, and only then frees the space in Postgres.
 
+## Two copies in the repo: the archive and the mirror (23 Sep)
+
+- **`data/archive/`** holds rows that were **pruned** from Postgres. Each file was exported, verified and committed before its rows were deleted. `/api/archive` reads these files from the repo (plan v2.1 P1.8).
+- **`data/mirror/`** holds rows that **stay** in Postgres: every price, settled outcome, learned parameter and reference table (plan v2.1 P1.7, `scripts/mirror_to_repo.py`).
+  - It runs every night in the same workflow and deletes nothing.
+  - `data/mirror/manifest.json` lists each file with its rows, key range and sha256.
+  - Append tables add one file per ended UTC day. `fact_*`, `markets` and `bands` add a file once their date is 9 days old. Small tables add a snapshot whenever their content changes.
+  - Any gzipped CSV in either folder loads with `\copy <table> from program 'gzip -dc <file>' csv header`.
+  - Tables the mirror does not copy, and why, are in `NOT_MIRRORED` in the script.
+
 ## What moves, and what it buys
 
 | Table | Size | Indexes | Older than 180 days |

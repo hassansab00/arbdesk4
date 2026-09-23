@@ -201,12 +201,18 @@ def test_nothing_in_the_repo_actually_reads_the_orphan_table():
         for f in root.rglob("*"):
             if not f.is_file() or ".next" in f.parts or "node_modules" in f.parts:
                 continue
+            if "__pycache__" in f.parts:
+                continue
             try:
                 text = f.read_text(encoding="utf-8", errors="ignore")
             except OSError:
                 continue
             if "ensemble_forecasts" in text:
                 hits.append(str(f.relative_to(ROOT)))
+    # The nightly mirror (P1.7) names it only to say it does NOT copy it.
+    import mirror_to_repo
+    if "ensemble_forecasts" in mirror_to_repo.NOT_MIRRORED:
+        hits = [h for h in hits if h != "scripts/mirror_to_repo.py"]
     assert hits == ["sql/ad4_39_freshness.sql"], (
         f"ensemble_forecasts is referenced by {hits} - it is no longer an "
         "orphan, so the exclusion has to be revisited"

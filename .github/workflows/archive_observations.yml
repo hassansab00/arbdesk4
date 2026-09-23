@@ -238,3 +238,43 @@ jobs:
             echo "::error::could not push after four attempts"
             exit 1
           fi
+
+      # THE NIGHTLY MIRROR (plan v2.1 P1.7). The steps above export only what
+      # the prune is about to remove. Every price, every settled outcome and
+      # every learned parameter the platform keeps lived in Postgres alone;
+      # this copies each one into data/mirror once its day has ended. It
+      # DELETES NOTHING, so it runs whatever happened above: a failed prune is
+      # no reason to leave the record uncopied.
+      - name: Mirror the proprietary record into the repository
+        if: always()
+        run: PYTHONPATH=scripts python scripts/mirror_to_repo.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+      # `if: always()`: a table that failed must not strand the ones that were
+      # written and verified - the manifest is saved after every table, so
+      # what is on disk is exactly what it records.
+      - name: Commit the mirror
+        if: always()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p data/mirror
+          git add data/mirror
+          if git diff --staged --quiet; then
+            echo "mirror unchanged - nothing new to copy"
+            exit 0
+          fi
+          FILES=$(git diff --staged --name-only | grep -c '\.csv\.gz$' || true)
+          git commit -m "Mirror: ${FILES} files into data/mirror [skip ci]"
+          pushed=0
+          for i in 1 2 3 4; do
+            if git push origin HEAD:${{ github.ref_name }}; then pushed=1; break; fi
+            echo "push failed, retrying"; sleep $((2 ** i))
+            git pull --rebase origin ${{ github.ref_name }} || true
+          done
+          if [ "$pushed" != "1" ]; then
+            echo "::error::could not push the mirror after four attempts"
+            exit 1
+          fi
