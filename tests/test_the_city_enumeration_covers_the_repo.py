@@ -174,6 +174,10 @@ SQL_FILTERS = {
     "sql/ad4_34_trade_plan.sql":                "v_trade_plan - the board, and the s5/s7 trust gate",
 }
 SQL_RECORD = {
+    # ad4_88 (plan v2.1 P3.8): cities.timezone only, to put the evening-before
+    # cutoff on each city's clock. A settled day in a city retired since is
+    # still evidence of which recipe predicts the winning bucket.
+    "sql/ad4_88_hit_tournament.sql",
     "sql/ad4_16_nws.sql", "sql/ad4_17_city_stats.sql", "sql/ad4_19_stats_cache.sql",
     "sql/ad4_21_weather_features.sql", "sql/ad4_23_reasoning.sql",
     "sql/ad4_26_temp_trend.sql", "sql/ad4_28_feature_cache.sql",

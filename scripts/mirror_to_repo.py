@@ -114,6 +114,9 @@ TABLES = {
     "derived_model_promotion":       snapshot("city_key", "lead_days", "target"),
     "derived_weather_model":         snapshot("city_key", "target"),
     "derived_city_climate":          snapshot("city_key"),
+    "derived_hit_recipe":            snapshot("city_key", "checkpoint", "lane"),
+    "derived_hit_tournament":        snapshot("city_key", "checkpoint", "lane", "recipe"),
+    "derived_hit_summary":           snapshot("unit", "checkpoint", "lane"),
     # --- what happened: inputs and settled outcomes -------------------------
     "weather_observations":          append("observed_at", "obs_id"),
     "weather_forecasts":             append("observed_at", "forecast_id"),

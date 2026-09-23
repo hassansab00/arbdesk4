@@ -72,3 +72,20 @@ def test_per_model_rows_never_enter_weather_forecasts():
     block = src[src.index("if MODELS:\n                mjs"):src.index("total += got")]
     assert '"weather_forecast_models"' in block
     assert '"weather_forecasts"' not in block
+
+
+def test_a_current_run_row_is_a_forecast_known_at_its_fetch_time():
+    """Plan v2.1 P3.8: the tournament's evening-before checkpoint needs rows
+    that provably existed then - run_at is the fetch, lead is days ahead of
+    the city's own today."""
+    import datetime as dt
+    fetched = dt.datetime(2026, 9, 23, 3, 10, tzinfo=dt.timezone.utc)
+    js = {"utc_offset_seconds": -4 * 3600,       # New York: still 22 Sep locally
+          "hourly": {"time": [f"2026-09-2{d}T{h:02d}:00" for d in (2, 3, 4) for h in range(24)],
+                     "temperature_2m_gfs_seamless": [20.0 + (h % 24) / 10 for h in range(72)]}}
+    rows = f.build_current_rows("nyc", js, "gfs_seamless", fetched)
+    by_date = {r["for_date"]: r for r in rows}
+    assert by_date["2026-09-23"]["lead_days"] == 1 and by_date["2026-09-22"]["lead_days"] == 0
+    assert {r["source"] for r in rows} == {f.CURRENT_SOURCE}
+    assert {r["run_at"] for r in rows} == {fetched.isoformat()}
+    assert by_date["2026-09-23"]["forecast_max_c"] == 22.3

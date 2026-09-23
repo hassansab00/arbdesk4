@@ -146,6 +146,64 @@ def build_rows(city_key, js, model=None):
             })
     return rows
 
+CURRENT_API = "https://api.open-meteo.com/v1/forecast"
+CURRENT_SOURCE = "open-meteo-models-current"
+
+
+def fetch_current(lat, lon, label):
+    """Each model's CURRENT run for the next three local days (plan v2.1 P3.8).
+
+    The previous-runs values above are stamped with their ingest time, and the
+    job only asks for dates up to today, so a lead-1 value reaches the table
+    on its own target day - after the evening-before checkpoint the hit
+    tournament grades at. This asks for the days AHEAD, now: a row whose
+    observed_at is the fetch time is a forecast provably known by then.
+    """
+    p = {"latitude": lat, "longitude": lon, "hourly": "temperature_2m",
+         "models": ",".join(MODELS), "forecast_days": 3,
+         "timezone": "auto", "temperature_unit": "celsius"}
+    for attempt in range(TRIES):
+        try:
+            r = requests.get(CURRENT_API, params=p, timeout=TIMEOUT)
+            if r.status_code == 400:
+                print(f"  ! {label} 400: {r.text[:200]}", file=sys.stderr)
+                return None, "refused"
+            r.raise_for_status()
+            return r.json(), "ok"
+        except Exception as e:
+            if attempt == TRIES - 1:
+                print(f"  ! {label} unreached: {str(e)[:100]}", file=sys.stderr)
+                return None, "unreached"
+            time.sleep(4)
+    return None, "unreached"
+
+
+def build_current_rows(city_key, js, model, fetched_at):
+    """One row per local date for one model's current run; lead is days after
+    the city's own today at fetch time."""
+    hourly = (js or {}).get("hourly") or {}
+    times = hourly.get("time") or []
+    vals = hourly.get(f"temperature_2m_{model}") or []
+    if not times or not vals:
+        return []
+    offset = dt.timedelta(seconds=int((js or {}).get("utc_offset_seconds") or 0))
+    local_today = (fetched_at + offset).date()
+    daily = {}
+    for t, v in zip(times, vals):
+        if v is None:
+            continue
+        d = t[:10]
+        daily[d] = v if d not in daily else max(daily[d], v)
+    rows = []
+    for d, mx in sorted(daily.items()):
+        for_date = dt.date.fromisoformat(d)
+        rows.append({"city_key": city_key, "model": f"open_meteo_{model}",
+                     "run_at": fetched_at.isoformat(), "for_date": d,
+                     "lead_days": (for_date - local_today).days,
+                     "forecast_max_c": round(float(mx), 2), "source": CURRENT_SOURCE})
+    return rows
+
+
 def chunks(start, end, days):
     cur = start
     out = []
@@ -300,6 +358,28 @@ def main():
         print(f"  [{i}/{len(ranked)}] {c['city_key']:16s} +{got:6d} rows "
               f"(had {n_before}d){flag}", flush=True)
 
+    # EVERY CITY'S CURRENT RUN, whatever the loop above skipped: a city complete
+    # for best_match still needs today's forecasts of the days ahead.
+    current_rows, current_failed = 0, defaultdict(int)
+    if MODELS:
+        for c in all_cities:
+            if (time.monotonic() - t0) / 60 > SOFT_DEADLINE_MIN + 2:
+                current_failed["deadline"] += 1
+                continue
+            fetched_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+            cjs, cout = fetch_current(c["latitude"], c["longitude"], f"{c['city_key']} current")
+            if cout != "ok":
+                current_failed[cout] += 1
+                continue
+            for model in MODELS:
+                crows = build_current_rows(c["city_key"], cjs, model, fetched_at)
+                if crows:
+                    current_rows += upsert("weather_forecast_models", crows,
+                                           "city_key,model,run_at,for_date")
+            time.sleep(PAUSE)
+        print(f"current runs: {current_rows} row(s)"
+              + (f"; failed {dict(current_failed)}" if current_failed else ""))
+
     print(f"\ntotal {total} forecast rows written this run")
     if MODELS:
         print("per model: " + ", ".join(f"{m} {model_rows[m]}" for m in MODELS)
@@ -325,7 +405,8 @@ def main():
              "refused_chunks": missing_chunks, "unreached_chunks": unreached_chunks,
              "models": MODELS, "model_rows": dict(model_rows),
              "model_requests_failed": dict(model_failed),
-             "models_without_rows": sorted(model_empty)})
+             "models_without_rows": sorted(model_empty),
+             "current_rows": current_rows, "current_failed": dict(current_failed)})
 
 if __name__ == "__main__":
     main()
