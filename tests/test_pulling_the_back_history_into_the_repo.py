@@ -5,8 +5,9 @@ loop:
 
     AttributeError: 'Response' object has no attribute 'get'
 
-gh() returns a raw requests.Response. ensure_release, right above it, checks
-.status_code and calls .json(); this called .get() straight on the Response.
+gh() returns a raw requests.Response. The Release-upload code of the time
+checked .status_code and called .json(); this called .get() straight on the
+Response.
 A missing release came back as a 404 Response rather than an exception, so
 the try/except around it never fired either - it was guarding against the
 wrong thing, and the run ended before a single byte was pulled.

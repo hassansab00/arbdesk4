@@ -87,9 +87,11 @@ def test_the_route_holds_the_token_rather_than_the_browser():
 
 def test_an_unreadable_archive_never_reads_as_an_empty_one():
     """The failure that started this: rows gone, page empty, no explanation.
-    Every error path has to point at the release."""
+    Every error path has to point at where the rows are: the repo folder,
+    which holds every archive file since P1.8 (the Release holds only the
+    files from before #87)."""
     code = _code(ROUTE)
-    assert code.count("releases/tag") >= 2, (
+    assert code.count("tree/${ARCHIVE_REF}/data/archive/${dataset}") >= 2, (
         "a token failure and a fetch failure must both name where the rows are")
     assert "not lost" in code or "not a loss" in code
 
