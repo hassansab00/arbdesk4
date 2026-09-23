@@ -102,6 +102,8 @@ def runs_per_30_days(expr):
 # THE BUDGET COUNTS MINUTES NOW, BECAUSE IT WAS MEASURING THE WRONG THING.
 #
 # A private repository meters Actions MINUTES: 2,000 a month on the free plan.
+# The repo is private (plan v2 P0.2, decided 23 Sep), so this is a hard limit,
+# and only plan step P6.1 changes the two budgets below.
 # This test counted RUNS and asserted "at ~2 billed minutes each". That
 # assumption is what made the real cost invisible. Measured from the runs
 # themselves on 2026-09-19:
