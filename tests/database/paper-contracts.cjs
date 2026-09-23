@@ -326,6 +326,23 @@ const assert = require('node:assert/strict');
   assert.equal(canonicalTail.band_lo,null);
   assert.deepEqual([Number(canonicalTail.band_hi),canonicalTail.open_low,canonicalTail.open_high,canonicalTail.label_unit],[29,true,false,'F']);
   await db.exec('reset role;');
+  // THE BROWSER READS THE CANONICAL BUCKET ONLY THROUGH A VIEW IT IS GIVEN
+  // (20260923150000). An owner-rights view built on the canonical views must
+  // serve anon - on 23 Sep three did not, while they were security_invoker -
+  // and anon must still be refused the canonical views and the corrections.
+  await db.exec(`create view public.contract_anon_bucket as
+      select b.band_id, b.band_hi, m.unit from public.v_canonical_bands b
+      join public.v_canonical_markets m on m.market_id = b.market_id;
+    grant select on public.contract_anon_bucket to anon;`);
+  await db.exec('set role anon;');
+  const anonBucket=(await db.query('select band_hi,unit from public.contract_anon_bucket where band_id=$1',[historicBand])).rows[0];
+  assert.deepEqual([Number(anonBucket.band_hi),anonBucket.unit],[21,'C'],
+    'an owner-rights view the browser reads could not read the canonical bucket');
+  for (const rel of ['v_canonical_bands','v_canonical_markets','proprietary_data_corrections']) {
+    await assert.rejects(db.query(`select 1 from public.${rel} limit 1`), /permission denied/,
+      `anon can read ${rel} directly`);
+  }
+  await db.exec('reset role;drop view public.contract_anon_bucket;');
 
   await db.exec(`set role authenticated;set request.jwt.claim.sub='${uid}';`);
   // ======================================================================

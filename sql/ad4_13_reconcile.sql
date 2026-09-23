@@ -908,8 +908,14 @@ with eligible as materialized (
          b.token_yes, b.token_no,
          m.city_key, m.resolution_date, m.unit,
          c.display_name, c.icao, c.station_name, c.timezone, c.band_width
-  from bands b
-  join markets m on m.market_id = b.market_id
+  -- CANONICAL (plan v2 P2.5): the corrected bucket bounds and unit. Measured
+  -- 23 Sep, one snapshot: 880 eligible rows either way, EXCEPT ALL 0 in both
+  -- directions - every correction is dated on or before 5 Sep, and this CTE
+  -- only reads today onward. It is here so an older day can never be read
+  -- in the wrong convention. Needs 20260923150000: the canonical views run
+  -- with owner rights, or every anon read of this view is refused.
+  from v_canonical_bands b
+  join v_canonical_markets m on m.market_id = b.market_id
   -- ACTIVE ONLY. A retired city keeps every row it ever wrote - nothing here
   -- deletes - so this join is what stops the desk proposing a trade in a city
   -- it has stopped trading. v_band_ladder, v_trade_plan and v_city_day_plan

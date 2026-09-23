@@ -24,19 +24,17 @@ columns from the raw tables - v_band_price_history, v_opportunities,
 v_prediction_ladder_bands, v_city_day_readiness, and v_opportunities_candidate,
 which is in no file in this repository.
 
-THE FOUR IN THE REPOSITORY ARE READ BY THE BROWSER (anon), AND THAT DECIDES IT.
-v_canonical_bands and v_canonical_markets are security_invoker over
-proprietary_data_corrections, which anon cannot read. security_invoker checks
-the base tables as the role running the query even when the view is reached
-through an owner-rights view. Switching the three owner-rights views to the
-canonical ones was applied live on 23 Sep at 16:23:22Z and every anon read
-of them failed with "permission denied for table proprietary_data_corrections"
-until the revert at 16:26:05Z. The equivalence checks had all run as the owner.
-So they stay on the raw tables, listed below, until Hassan decides how anon
-may read corrected bounds. What that costs, measured: v_band_price_history
-and everything on v_opportunities read today onward, where raw and canonical
-agree exactly (40,781 and 880 rows, EXCEPT ALL 0 both ways);
-v_prediction_ladder_bands differs on 7,340 of 17,611 rows, 21 Aug - 5 Sep.
+THE THREE OWNER-RIGHTS VIEWS THE BROWSER READS now read the canonical views:
+v_band_price_history, v_opportunities and v_prediction_ladder_bands.
+v_city_day_readiness is itself security_invoker and stays on the raw tables
+(test below).
+
+That needed 20260923150000 first. Until then v_canonical_* were
+security_invoker, which checks the base tables as the querying role even
+through an owner-rights view; switching the three views live on 23 Sep broke
+every anon read of them from 16:23:22Z to 16:26:05Z ("permission denied for
+table proprietary_data_corrections"). Hassan chose to run the canonical views
+with owner rights, still ungranted to anon; paper-contracts.cjs asserts both.
 """
 
 import glob
@@ -124,7 +122,7 @@ def test_the_bucket_readers_read_the_canonical_views(path, view):
 SQL_BUCKET_STATEMENTS = {
     ("sql/ad4_31_predictive.sql", "create or replace view v_prediction_ladder as"):
         "superseded: ad4_68 (later in INSTALL_ORDER) rebuilds v_prediction_ladder on "
-        "v_prediction_ladder_bands, listed below",
+        "v_prediction_ladder_bands, which reads the canonical views",
     ("sql/ad4_phase2.sql", "create view v_opportunities as"):
         "superseded: ad4_13_reconcile (later in INSTALL_ORDER) rebuilds v_opportunities",
     ("sql/ad4_phase2_ranking.sql", "create view v_opportunities as"):
@@ -133,12 +131,6 @@ SQL_BUCKET_STATEMENTS = {
         "joins bands for market_id only; the bounds are v_coherent_band_outcome's",
     ("sql/ad4_diagnose.sql", "with"):
         "read-only diagnosis, not installed",
-    ("sql/ad4_13_reconcile.sql", "execute $v$"):
-        "v_opportunities: read by anon, see the header. Today onward only, where raw = canonical",
-    ("sql/ad4_26_temp_trend.sql", "create or replace view v_band_price_history as"):
-        "read by anon, see the header. Last 48 h only, where raw = canonical",
-    ("sql/ad4_68_prediction_ladder_outcomes.sql", "create or replace view public.v_prediction_ladder_bands as"):
-        "read by anon, see the header. Differs from canonical on 21 Aug - 5 Sep; waits on Hassan",
 }
 
 RAW_SQL = re.compile(r"\b(?:from|join)\s+(?:public\.)?(?:bands|markets)\b(?!\s*\()", re.I)
@@ -168,22 +160,19 @@ def test_the_sql_list_has_not_gone_stale():
     assert sorted(set(SQL_BUCKET_STATEMENTS) - set(_sql_bucket_statements())) == []
 
 
-ANON_READ = ["sql/ad4_13_reconcile.sql", "sql/ad4_26_temp_trend.sql",
-             "sql/ad4_68_prediction_ladder_outcomes.sql"]
-
-
-@pytest.mark.parametrize("path", ANON_READ)
-def test_an_anon_view_is_not_built_on_the_invoker_canonical_views(path):
-    """The 23 Sep outage, as a rule: while v_canonical_* are security_invoker,
-    a view the browser reads cannot be built on them."""
-    canonical = (ROOT / "supabase/migrations/20260912230000_phase1_canonical_contracts.sql").read_text()
-    assert "security_invoker" in canonical, (
-        "v_canonical_* are no longer security_invoker - this rule, and the three raw "
-        "views listed above, can now be revisited")
+@pytest.mark.parametrize("path", ["sql/ad4_13_reconcile.sql", "sql/ad4_26_temp_trend.sql",
+                                  "sql/ad4_68_prediction_ladder_outcomes.sql"])
+def test_the_browser_views_read_the_canonical_bucket(path):
     src = re.sub(r"--[^\n]*", "", (ROOT / path).read_text())
-    assert "v_canonical_bands" not in src and "v_canonical_markets" not in src, (
-        f"{path} is read by anon and would fail with permission denied for "
-        "proprietary_data_corrections")
+    assert "v_canonical_bands" in src and "v_canonical_markets" in src
+
+
+def test_the_canonical_views_run_with_owner_rights_and_stay_private():
+    """Without this, every view above is refused to anon (the 23 Sep outage)."""
+    sql = (ROOT / "supabase/migrations/20260923150000_the_browser_reads_the_canonical_bucket.sql").read_text()
+    for v in ("v_canonical_bands", "v_canonical_markets"):
+        assert f"alter view public.{v} set (security_invoker = false)" in sql
+    assert "from public, anon, authenticated" in sql
 
 
 def test_readiness_stays_on_the_raw_tables_on_purpose():

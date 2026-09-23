@@ -717,8 +717,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "fact_band_outcome"
   ],
   "v_band_price_history": [
-    "bands",
     "book_snapshots",
+    "bands",
     "markets",
     "derived_climb_profile",
     "cities",
@@ -1150,11 +1150,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_prediction_hindsight": [
     "band_probabilities",
-    "bands",
     "cities",
     "fact_band_outcome",
-    "markets",
-    "paper_resolution_evidence"
+    "bands",
+    "paper_resolution_evidence",
+    "markets"
   ],
   "v_prediction_ladder": [
     "bands",
@@ -1167,11 +1167,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_prediction_ladder_bands": [
     "band_probabilities",
-    "bands",
     "cities",
     "fact_band_outcome",
-    "markets",
-    "paper_resolution_evidence"
+    "bands",
+    "paper_resolution_evidence",
+    "markets"
   ],
   "v_prediction_scorecard": [
     "fact_forecast_outcome",

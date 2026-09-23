@@ -319,8 +319,10 @@ select
   s.spread,
   s.market_state
 from book_snapshots s
-join bands b   on b.band_id = s.band_id
-join markets m on m.market_id = b.market_id
+-- Canonical bounds (plan v2 P2.5). Measured 23 Sep, one snapshot: 40,781 rows
+-- either way, EXCEPT ALL 0 in both directions. Needs 20260923150000.
+join v_canonical_bands b   on b.band_id = s.band_id
+join v_canonical_markets m on m.market_id = b.market_id
 where s.observed_at > now() - interval '48 hours'
   and m.resolution_date >= current_date - 1;
 
