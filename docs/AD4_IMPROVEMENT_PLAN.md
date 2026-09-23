@@ -8,6 +8,10 @@ Line numbers are hints. Code moves, so find each change by the function or symbo
 - The repo **goes private**, so Actions minutes are metered: 2,000 a month on the free plan. Hourly jobs **stay on GitHub Actions** and are designed for minimum billed minutes (P6.1).
 - S10 and every other strategy must be **adaptive, not hard-coded**. Thresholds, margins, sizing, timing and holding decisions are learned from evidence and conditioned on the day's state. Only safety rails stay fixed (P5.3–P5.9, P7, P8).
 
+**v2.1 additions (Hassan, 23 Sep evening):**
+- **The single-bucket thesis gets its own learning loop.** Every night, per city, every predictor and permutation is scored on the bucket that actually settled, out of sample; the winner prices, with bounded steps and a version (P3.8). Before it can choose between forecast models, the platform must collect more than one (P2.8).
+- **Supabase is continuously unloaded into the repo**, not only the rows about to be pruned (P1.7), and the platform reads back everything the repo holds (P1.8).
+
 ---
 
 ## 0. How to execute this plan
@@ -135,6 +139,29 @@ P7 design work (P7.1–P7.3) can start as soon as P2 is merged. Shadow trading (
   - Drop the 13 unused indexes reported by the advisor, but only after checking `pg_stat_user_indexes.idx_scan = 0` over 7 days.
 - **Acceptance:** A3 `storage_pressure()` < 90% of tier (under 450 MB).
 
+### P1.7 Mirror the proprietary record into the repo every night
+- **Why:** the archive exports only rows it is about to prune. What the platform produces and never prunes is in Postgres alone: every price (`band_probabilities`, +6,766 rows a day), every settled outcome (`fact_band_outcome` +831, `fact_forecast_outcome` +955, `fact_signal_outcome` +517 a day), every learned parameter (`derived_*`, `model_versions`), `signals`, and the market and band reference rows. These are 7-day averages measured on 23 Sep. `research_captures` holds JSON copies of six of those tables, but only since 12 Sep. That is the proprietary record, and it has no second copy.
+- **Change:**
+  - Add a mirror step to `archive_observations.yml` after the archive commit. This uses the existing 03:00 schedule, so no new scheduled workflow is added (rule 7). It **deletes nothing**.
+  - Append-only tables are exported by watermark: rows with a key above the last mirrored one go to `data/mirror/<table>/<table>-<from>-to-<to>.csv.gz`.
+  - Tables that are rewritten in a trailing window are exported only once their window has closed: `fact_*` rows whose `for_date` is older than databank's 7-day window.
+  - Small mutable tables (`cities`, `markets`, `bands`, `model_versions`, `strategy_config_history`, `settings` minus any secret-bearing key) are snapshotted whole. A new file is written only when the content hash changes.
+  - `data/mirror/manifest.json` records per file: table, key range, rows, sha256 and the export time. The watermark is read back from the committed manifest, not from the runner.
+  - Verify before the commit: re-read each file and match its row count and sha256 against the query that produced it. Push is retried and a failure fails the step, as in P1.5.
+  - Add `tests/test_every_table_has_a_home.py`. Every `public` table must be listed as archived (P1.3), mirrored (here), or excluded with a written reason. A new table that nobody classifies fails CI.
+- **Acceptance:**
+  - After the first run, for each mirrored table, the manifest row count equals `select count(*)` up to the watermark.
+  - A second run with no new rows writes nothing.
+  - The added minutes are measured and written into `MEASURED_MINUTES`.
+
+### P1.8 The platform reads back what the repo holds
+- **Why:** `web/app/api/archive/route.ts` reads GitHub Release assets only. Since #87 (21 Sep) new archive files go only to `data/archive/`, never to a Release. On 23 Sep the repo held 9 observation files and the `observations-archive` Release held 6. So `observations-2026-06-23-to-2026-06-23`, `…-06-23-to-2026-06-24` and `…-06-24-to-2026-07-25` cannot be read by the platform, and the first two are already pruned from Postgres. That breaks "rows leave Postgres only through the archive … so the platform can still read them".
+- **Change:**
+  - The route reads `data/archive/<dataset>/<asset>` (and `data/mirror/…`) from the repo through the contents API with the server's token.
+  - It falls back to the Release for assets that were never committed.
+  - Delete the dead Release-upload code in `archive_observations.py` (`ensure_release`, `upload`, `verify`), which is never called.
+- **Acceptance:** every entry in `web/public/archive/index.json` returns its row count through `/api/archive`. The test fetches each asset and compares its count with the index.
+
 ---
 
 ## P2. Correct inputs
@@ -181,6 +208,21 @@ P7 design work (P7.1–P7.3) can start as soon as P2 is merged. Shadow trading (
 - **Why:** outside the US, `live_weather.temp_c` is Open-Meteo **model** output (`source_kind='model'`). Mexico City's station was 19 hours stale.
 - **Change:** no engine or strategy may treat a `source_kind='model'` value as a floor or a "current temperature". Add an assertion in `probability_engine._observed_floors` and in the strategy context builder.
 - **Also:** fix the empty IEM window in `live_weather.py` (L82, missing sts/ets) or retire the script. Clean the metadata: the Toronto, Zhengzhou and Ankara `wu_path` values, about 38 Wunderground `resolution_url` values, and `nws_station_id` for the 11 US cities.
+
+### P2.8 Collect every forecast model, not one blend
+- **Why:** measured 23 Sep, `weather_forecasts` holds one forecast per city from Open-Meteo, plus NWS for 12 US cities:
+  - `open_meteo_forecast`: 41,744 rows;
+  - `open_meteo_best_match`: 32,830 rows;
+  - `nws`: 2,609 rows.
+
+  Open-Meteo's default is itself a blend chosen by Open-Meteo. With one predictor per city there is nothing to weight, so no loop can learn which model a city should trust (P3.8).
+- **Change:**
+  - `scripts/ingest_forecasts.py` (the daily previous-runs job, `forecasts.yml` 03:10) requests the individual models through the `models=` parameter, starting with `ecmwf_ifs025`, `gfs_seamless`, `icon_seamless`, `ukmo_seamless`, `jma_seamless`, `gem_seamless` and `meteofrance_seamless`. It writes one row per model under that model's name.
+  - The P1.4/P1.5 n8n live collectors do the same for today and tomorrow.
+  - Check the Open-Meteo request count per run against its free-tier limit before switching the schedule on. Record the measured figure, not the documented one.
+  - The job's own window is the last 10 days. A one-off manual run over the previous 90 days gives P3.8 three months of per-model day-ahead history straight away, instead of waiting three months for it.
+  - P2.6 applies unchanged: these rows are `ingest_time_true_issue_unverified` until P7.2 proves which run each value came from.
+- **Acceptance:** for each active city, at least 5 distinct models with a lead-1 forecast for every date of the last 7 days.
 
 ---
 
@@ -247,6 +289,65 @@ P7 design work (P7.1–P7.3) can start as soon as P2 is merged. Shadow trading (
 - Re-apply the 0.25 °C sigma floor after the post-process ratio.
 - Fix the `forecast_label` test so it can't mislabel provenance when the trajectory fires on a promoted model.
 - Update the lead-0 note in the `ad4_58` header.
+
+### P3.8 The hit tournament: a nightly per-city learning loop on the winning bucket
+- **Why:**
+  - **Measured on `v_city_hit_history`, 13–22 Sep, day-ahead:**
+    - Celsius cities: our top pick was the bucket that settled on 31.3% of 294 city-days. The market's favourite was, on 43.8% of the 283 days both priced.
+    - Fahrenheit cities: 27.0% for us against 47.1% for the market.
+  - **Seven learners feed pricing, and none of them learns the bucket:** skill, post-process, trajectory, the global T, the ad4_45 width multiplier, the promoted regression model and observation trust. Pricing stacks them in a fixed order: promoted model > post-process > skill, then trajectory, then T. Each is gated alone against its own baseline, on °C error or CRPS.
+  - **Only two learners look at the bucket at all.** The global T does, but it is fitted on ladders priced after the local close (P4.3). Observation trust does, but it models the thermometer, not the forecast.
+  - **No combination is ever scored.** No city chooses between models, because there is only one (P2.8).
+  - **Several learners grade themselves on their own data.** Post-process and trajectory train on folds that include future blocks, and skill, ad4_45 and trust are in-sample (P3.4).
+- **Change** (`scripts/hit_tournament.py`, a step in `pipeline_daily.yml`, so no new schedule):
+  1. **Evidence.**
+     - Rows: every settled city-day with a venue winner (`v_coherent_band_outcome`), its canonical ladder (`v_canonical_bands`), and every forecast whose `issued_at` (P2.6) falls before the checkpoint cutoff.
+     - First checkpoint: `d1_eve`, 18:00 local time the day before. P4.2 adds the others; same-day checkpoints bring in the P3.1 floor atom and the P3.3 trajectory.
+     - Truth is the venue winner only.
+  2. **Candidates.** Each candidate is a full pricing recipe. It is run through `probability_engine.compute_band_probabilities`, the same function live pricing uses, so what is scored is what would be published.
+     - Centre, any one of:
+       - each model alone;
+       - equal-weight mean;
+       - median;
+       - inverse-error weights per city, shrunk to pooled weights.
+     - Bias, any one of:
+       - none;
+       - the long-run shrunk bias;
+       - a recent bias: the EWMA of the city's last residuals, half-life 5 days, bounded ±1.5 °C. This is P7.2's term, brought to the day-ahead path.
+     - Width: sigma = a × recent error, where `a` is learned on winning-bucket log loss, per city × lead, shrunk to pooled, bounded [0.5, 2.5].
+     - Calibration: with and without the global T.
+  3. **Scoring (out of sample).**
+     - Expanding-window walk-forward, using P3.4's `walk_forward_folds`: whatever prices day d is fitted only on days before d.
+     - Per city × checkpoint, record:
+       - winning-bucket log loss (the primary score);
+       - top-pick hit;
+       - multiclass Brier.
+     - The same record for the market's price at the same cutoff and for the uniform ladder.
+  4. **Selection, per city, hierarchical.**
+     - The pooled champion prices a city unless the city's own best recipe beats it.
+     - That needs the lower 90% bound of the day-block bootstrap log-loss gain above 0, on at least 20 settled city-days.
+     - A challenger replaces the live recipe only under the same test against it, over the last 30 settled days.
+  5. **Rule 11.**
+     - Priors are the pooled values.
+     - Every parameter has hard bounds.
+     - The minimum sample is 20 settled city-days.
+     - The maximum change per night: model weight ±0.10, width factor ±10%, bias ±0.3 °C.
+     - The version is a hash of the recipe and its parameters. It is written on every `band_probabilities` row in a new `recipe_version` column.
+     - The engine's `reasons`, which `main()` drops today, are persisted too, so every price says which layers made it.
+  6. **Output.**
+     - `derived_hit_tournament`: per city × checkpoint × candidate, with n, log loss, hit, Brier, the market's figures and the fold version.
+     - `derived_hit_recipe`: the champion per city, its bounded parameters, its version, and a state of `shadow` or `live`.
+     - The engine reads `live` recipes. Until a recipe passes the gate it runs in shadow, which is free under rule 6.
+     - Predictive → city shows the champion recipe and its out-of-sample hit rate against the live engine and the market.
+  7. **Later.** P4 (checkpoints), P5.8 (strategy learning) and P7.2 (the remaining-day model) add candidates and checkpoints to this same loop rather than building separate ones.
+- **Order:**
+  - It needs P3.4's walk-forward and bootstrap helpers.
+  - It runs with the predictors that exist (one or two per city) until P2.8 lands, then picks up every model automatically.
+  - It does not wait for P3.6's 7-day window.
+- **Acceptance:**
+  - The first nightly run writes a version.
+  - The PR reports, per unit, out-of-sample top-pick hit and winning-bucket log loss for the champion, the live engine and the market, each with its bootstrap CI.
+  - Recipes go live only where the gate passes. It is fine if none do yet: the report says how many settled days the gate still needs.
 
 ---
 
