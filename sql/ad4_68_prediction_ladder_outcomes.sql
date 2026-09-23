@@ -216,13 +216,19 @@ select
     case when vb.resolution_state = 'confirmed' then vb.confirmed_at end,
     fb.captured_at
   ) as settled_at
-from markets m
+-- THE CANONICAL LADDER (plan v2 P2.5). Raw `bands` stores the inclusive
+-- convention and zero-width labels its collectors wrote before 6 Sep; the
+-- canonical views apply the append-only corrections. Measured 23 Sep: of
+-- 17,611 rows, 7,340 change, every one a corrected band whose bounds differ,
+-- all dated 21 Aug - 5 Sep. Nothing after 5 Sep changes. Needs
+-- 20260923150000: the canonical views run with owner rights.
+from v_canonical_markets m
 -- ACTIVE ONLY. The Predictive page is where a city is judged; a retired one
 -- has stopped being judged. Its settled history stays readable in
 -- fact_band_outcome and the archive views, which is where history belongs.
 join cities ct on ct.city_key = m.city_key
               and coalesce(ct.status, 'active') = 'active'
-join bands b on b.market_id = m.market_id
+join v_canonical_bands b on b.market_id = m.market_id
 -- v_latest_prob, for this band only. Same order, including the tie-break.
 left join lateral (
   select bp.raw_prob, bp.calibrated_prob, bp.forecast_max_c, bp.sigma_c,
