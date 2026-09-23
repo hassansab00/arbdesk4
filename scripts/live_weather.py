@@ -79,7 +79,12 @@ def fetch_reading(city_key, icao, resolution_source):
     # 429 here killed the whole run - one busy station took every city's
     # reading down with it. retry() returns None on give-up, so a station
     # that stays rate-limited is skipped and the rest still get read.
-    text = retry(lambda: fetch_station(icao, start.date(), end.date()),
+    # THE WINDOW IS THE LAST THREE HOURS, sent as sts/ets (plan v2 P2.7).
+    # Passing start.date() and end.date() alone asked IEM for [day1, day2),
+    # and day2 is exclusive: whenever the three hours fell inside one UTC day
+    # - 21 hours of every 24 - the window was empty and no reading came back.
+    text = retry(lambda: fetch_station(icao, start.date(), end.date(),
+                                       since=start, until=end),
                  label=f"IEM {icao}")
     rows = parse_iem(text, city_key) if text else []
     if not rows:

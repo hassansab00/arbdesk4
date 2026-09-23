@@ -194,16 +194,24 @@ select
   -- treating it as today's floor would carry 28.7 C into a day on which
   -- nothing has been measured, which is the same error as handing today's
   -- running maximum to tomorrow's market.
-  case when (lw.observed_at at time zone t.timezone)::date = t.local_date
+  --
+  -- AND ONLY A STATION'S (plan v2 P2.7). For 37 of 48 active cities the live
+  -- row is Open-Meteo model output; as a floor it put Seoul's at 23.2 C while
+  -- its station had measured 21.0 (23 Sep). latest_temp_c above still shows it,
+  -- labelled by live_source_kind; no maximum may be built from it.
+  case when lw.source_kind is not distinct from 'station'
+        and (lw.observed_at at time zone t.timezone)::date = t.local_date
        then lw.temp_c end                                               as latest_temp_today_c,
 
   d.observed_max_today_c,
-  lw.running_max_c                                                      as stored_running_max_c,
+  case when lw.source_kind is not distinct from 'station'
+       then lw.running_max_c end                                        as stored_running_max_c,
 
   -- ---- can the running maximum be believed? -----------------------------
   public.ad4_running_max_basis(
     coalesce(d.readings_today, 0)::integer,
-    case when (lw.observed_at at time zone t.timezone)::date = t.local_date
+    case when lw.source_kind is not distinct from 'station'
+          and (lw.observed_at at time zone t.timezone)::date = t.local_date
          then lw.temp_c end)                                            as running_max_basis,
 
   -- The stored field disagreeing with a reading from the SAME day is its own
@@ -224,6 +232,11 @@ select
           or (lw.observed_at at time zone t.timezone)::date <> t.local_date) then
       format('Nothing measured on %s yet. The newest live reading belongs to another day, so '
              'nothing here can say where this one is going.', t.local_date)
+    when coalesce(d.readings_today, 0) = 0
+     and lw.source_kind is distinct from 'station' then
+      format('The observation feed has nothing for %s yet, and the live value (%s C) is model '
+             'output, not a measurement - nothing is known about today''s maximum.',
+             t.local_date, lw.temp_c)
     when coalesce(d.readings_today, 0) = 0 then
       format('The observation feed has nothing for %s yet - it runs about a day behind for this '
              'city - so the only thing known about today is the live reading. The day''s maximum '
@@ -274,7 +287,10 @@ select
   h.latest_temp_c,
   h.readings_today,
   h.stored_max_below_latest,
-  h.note
+  h.note,
+  -- Appended (plan v2 P2.7): which kind of live row sits behind this city, so
+  -- a consumer can refuse a floor that rests on anything but a station.
+  h.live_source_kind
 from v_city_observation_health h;
 
 comment on view v_city_running_max is

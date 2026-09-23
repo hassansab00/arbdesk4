@@ -114,10 +114,20 @@ def test_the_floor_is_read_from_the_view_that_carries_the_invariant(monkeypatch)
         return [
             # the munich case: no archive today, but the thermometer says 21.5
             {"city_key": "munich", "local_date": "2026-09-19",
-             "running_max_c": 21.5, "running_max_basis": "floor_only"},
+             "running_max_c": 21.5, "running_max_basis": "floor_only",
+             "observed_max_today_c": None, "live_source_kind": "station"},
             # a full series
             {"city_key": "austin", "local_date": "2026-09-19",
-             "running_max_c": 31.0, "running_max_basis": "series"},
+             "running_max_c": 31.0, "running_max_basis": "series",
+             "observed_max_today_c": 31.0, "live_source_kind": "station"},
+            # SEOUL, 23 Sep (plan v2 P2.7): a model live value above the station
+            {"city_key": "seoul", "local_date": "2026-09-23",
+             "running_max_c": 23.2, "running_max_basis": "series",
+             "observed_max_today_c": 21.0, "live_source_kind": "model"},
+            # a model live value and no station reading today: no floor at all
+            {"city_key": "karachi", "local_date": "2026-09-23",
+             "running_max_c": 29.4, "running_max_basis": "floor_only",
+             "observed_max_today_c": None, "live_source_kind": "model"},
             # the shanghai case: rolled into a new local day, nothing measured
             {"city_key": "shanghai", "local_date": "2026-09-20",
              "running_max_c": None, "running_max_basis": "absent"},
@@ -133,6 +143,10 @@ def test_the_floor_is_read_from_the_view_that_carries_the_invariant(monkeypatch)
     assert floors["munich"] == ("2026-09-19", 21.5), (
         "a floor may rest on a single reading - 'the day already reached at "
         "least 21.5' is true of one reading, and it is exactly what a floor is")
+    assert floors["seoul"] == ("2026-09-23", 21.0), (
+        "a model value became the floor - 23.2 against a measured 21.0 left no "
+        "probability on buckets the day could still settle in")
+    assert "karachi" not in floors, "model output alone is not a floor"
     assert "shanghai" not in floors, (
         "nothing measured today is no floor; treating it as zero would make "
         "every band impossible")
