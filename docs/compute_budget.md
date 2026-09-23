@@ -247,18 +247,18 @@ red pipeline costs several times what a green one costs and produces nothing.
 a correctness bug first and a cost bug second, but it is the larger of the two
 remaining numbers.
 
-## The option that removes the limit entirely
+## The repo is private, so the limit stands (decided 23 Sep)
 
-**GitHub Actions minutes are free and unlimited on public repositories.** The
-2,000-minute allowance only applies to private ones.
+Hassan decided on 23 Sep (plan v2, step P0.2) that the repo stays **private**.
+`GET /repos/hassansab00/arbdesk4` returns `"private": true`. Public repos get
+free, unlimited Actions minutes, but that option is closed: the budget is
+**2,000 minutes a month on the free plan**, and it is a hard limit.
 
-Nothing secret is committed to this repo — every Supabase key lives in GitHub
-Secrets (which stay private on a public repo), every n8n `Config` node ships
-blank, and `scripts/sanitise_n8n_export.py` exists to keep it that way. A scan
-for JWTs, `sb_secret_` keys and API tokens across the tree returns only
-documentation describing their shape.
-
-So making the repo public costs nothing operationally and removes the compute
-ceiling. What it costs is that the strategies, the model and the reasoning
-become readable by anyone. That is a real trade and it is yours to make — the
-budget above is designed so you do not have to.
+What this means for the work:
+- Only plan step P6.1 changes `SCHEDULED_MINUTE_BUDGET` /
+  `SCHEDULED_RUN_BUDGET` in `tests/test_github_actions.py`, and it writes the
+  reason into the constant.
+- No new scheduled workflow is added outside P6.1, which replaces the
+  intraday pipeline with one hourly tick designed to bill one minute per run.
+- The figures above describe the schedule before P6.1. P6.1 rewrites this
+  document with minutes measured from the Actions API (plan Appendix A11).
