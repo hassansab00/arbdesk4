@@ -12,8 +12,12 @@ const assert = require('node:assert/strict');
     create function auth.uid() returns uuid language sql as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
     create table public.bands(band_id uuid primary key,market_id uuid,band_index int,band_label text,
       band_lo numeric,band_hi numeric,open_low boolean,open_high boolean,token_yes text,token_no text,condition_id text);
+    -- The four resolution columns are live (uuid, uuid, timestamptz, text,
+    -- all nullable): 20260923140000_a_market_whose_day_ended_is_closed.sql
+    -- fills them from the venue's confirmed settlement.
     create table public.markets(market_id uuid primary key,closed boolean,resolution_date date,city_key text,
-      event_slug text,unit text,condition_id text,last_seen_at timestamptz default now());
+      event_slug text,unit text,condition_id text,last_seen_at timestamptz default now(),
+      winning_band_id uuid,resolved_band_id uuid,resolution_verified_at timestamptz,resolution_source_used text);
     -- created_at/updated_at are NOT NULL in production (both default now()).
     -- A migration that stamps updated_at fails here without them, and the
     -- 2026-09-19 retirement migration does exactly that. See CLAUDE.md: the
@@ -245,8 +249,14 @@ const assert = require('node:assert/strict');
   const band='20000000-0000-0000-0000-000000000001', market='30000000-0000-0000-0000-000000000001';
   const command='40000000-0000-0000-0000-000000000001';
   await db.exec(`insert into auth.users values('${uid}'),('${other}');insert into public.desk_members(user_id) values('${uid}');
+    -- UTC, not Europe/London, ON PURPOSE. Every "today" this fixture checks
+    -- (v_city_day_readiness, v_archive_daily, the forecast below) is UTC
+    -- current_date. Under Europe/London, from 23:00Z in summer the market's
+    -- local day has ended, and 20260923140000 (P2.4) rightly closes it - so
+    -- the contracts would fail for one hour a day. market-state.cjs tests
+    -- the local-day rule with real zones.
     insert into public.cities(city_key,display_name,unit,status,timezone,latitude,longitude)
-      values('london','London','C','active','Europe/London',51.47,-0.45);
+      values('london','London','C','active','UTC',51.47,-0.45);
     insert into public.markets(market_id,closed,resolution_date,city_key,event_slug,unit)
       values('${market}',false,current_date,'london','highest-temperature-in-london','F');
     insert into public.bands(band_id,market_id,band_index,band_label,band_lo,band_hi,open_low,open_high,token_yes,token_no,condition_id)

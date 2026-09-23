@@ -149,6 +149,8 @@ SQL_FILTERS = {
     "sql/ad4_13_reconcile.sql":                 "v_opportunities - and through it v_band_ladder, v_trade_plan, v_city_day_plan",
     "sql/ad4_22_opportunity_context.sql":       "v_opportunity_context - the movement panel behind each card",
     "sql/ad4_68_prediction_ladder_outcomes.sql":"v_prediction_ladder - the Predictive page",
+    "sql/ad4_87_market_settlement_gaps.sql":    "v_market_settlement_gaps - ended days to act on; a "
+                                                "retired city is not collected on purpose",
     "sql/ad4_30_open_meteo.sql":                "the forecast collector's city list",
     "sql/ad4_32_run_scope.sql":                 "v_run_scope - which cities a job runs over",
     "sql/ad4_33_control.sql":                   "the control surface's city list",
@@ -214,6 +216,9 @@ SQL_RECORD = {
 # rather than a bug. It is here because a blind spot is how the last four got
 # in.
 MIGRATION_RECORD = {
+    "supabase/migrations/20260923140000_a_market_whose_day_ended_is_closed.sql":
+        "market_day_ended() - closing a market whose local day has ended is the "
+        "record being made true, and a retired city's ended market is ended too",
     "supabase/migrations/20260922230000_a_rule_is_only_as_good_as_the_thermometer_under_it.sql":
         "cities.observation_trust and refresh_observation_trust() - the RECORD "
         "of how often a city's thermometer named the band the venue settled on. "

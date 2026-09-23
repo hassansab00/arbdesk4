@@ -146,6 +146,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_latest_edge": "ad4_phase2.sql",
   "v_latest_prob": "ad4_phase2.sql",
   "v_learning_state": "ad4_40_synthesis.sql",
+  "v_market_settlement_gaps": "ad4_87_market_settlement_gaps.sql",
   "v_model_disagreement": "ad4_25_model_forecast.sql",
   "v_model_forecast_current": "ad4_25_model_forecast.sql",
   "v_model_forecast_skill": "ad4_25_model_forecast.sql",

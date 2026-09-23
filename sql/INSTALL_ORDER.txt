@@ -98,6 +98,7 @@ ad4_83_forecast_postprocess.sql
 ad4_84_risk_budget.sql
 ad4_85_city_hit_history.sql
 ad4_86_trajectory.sql
+ad4_87_market_settlement_gaps.sql
 ad4_live_weather_timing.sql
 ad4_book_no_side.sql
 ad4_prune_dead_book_detail.sql
