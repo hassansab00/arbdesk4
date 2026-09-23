@@ -89,6 +89,25 @@ def one_row_per_run_key(rows):
     return list(best.values())
 
 
+def newest_per_date_lead(rows):
+    """One row per (for_date, lead): the newest run, WHICHEVER MODEL.
+
+    That is the forecast the desk actually prices - probability_engine.
+    _forecast_for orders by lead_days, run_at desc and takes one row - and it
+    is one piece of evidence per day. by_lead used to take every model's row
+    for the date, so a day NWS and Open-Meteo both forecast counted twice and
+    n_days ran about 2.4x the days actually seen (plan v2 P3.5), making thin
+    evidence look settled to every threshold that reads n_days.
+    """
+    best = {}
+    for r in rows:
+        k = (r.get("for_date"), r.get("lead_days"))
+        cur = best.get(k)
+        if cur is None or (r.get("run_at") or "") > (cur.get("run_at") or ""):
+            best[k] = r
+    return list(best.values())
+
+
 def forecasts(city_key, start, end):
     """Every forecast row for the city inside [start, end], completely.
 
@@ -165,10 +184,16 @@ def main():
             a = obs.get(f["for_date"])
             if a is None or f.get("forecast_max_c") is None:
                 continue
-            err = f["forecast_max_c"] - a                             # signed error
-            by_lead[f["lead_days"]].append(err)
             if f.get("model"):
-                by_model_lead[(f["model"], f["lead_days"])].append(err)
+                by_model_lead[(f["model"], f["lead_days"])].append(f["forecast_max_c"] - a)
+        # ONE ROW PER DAY for the number the desk prices with (plan v2 P3.5);
+        # the per-model breakdown above keeps every model's own row.
+        for f in newest_per_date_lead([r for r in fc if r.get("forecast_max_c") is not None
+                                       and r.get("for_date") in obs]):
+            a = obs.get(f["for_date"])
+            if a is None or f.get("forecast_max_c") is None:
+                continue
+            by_lead[f["lead_days"]].append(f["forecast_max_c"] - a)   # signed error
 
         for lead, errs in sorted(by_lead.items()):
             stats = skill_stats(errs, band_c)
