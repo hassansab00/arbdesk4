@@ -290,7 +290,10 @@ def bank_bands(observed, days_back, force):
     ids = list(by_market)
     for i in range(0, len(ids), 100):
         chunk = ids[i:i + 100]
-        bands += rest_all("bands", [
+        # CANONICAL BOUNDS (plan v2 P2.5). Raw `bands` holds the inclusive
+        # convention and zero-width labels written before 6 Sep; freezing an
+        # outcome against those decides the wrong band on 9,183 of them.
+        bands += rest_all("v_canonical_bands", [
             ("select", "band_id,market_id,band_lo,band_hi,open_low,open_high"),
             ("market_id", f"in.({','.join(str(x) for x in chunk)})"), ], order="band_id.asc", page_size=1000)
     # A LADDER FREEZES WHOLE, OR NOT AT ALL.

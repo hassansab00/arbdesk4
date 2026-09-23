@@ -120,8 +120,9 @@ def cycle(budget_seconds=60):
         """city, date and unit for a band's market. Cached: an exit cycle walks
         many positions on the same handful of markets."""
         if market_id and market_id not in _markets:
-            rows = rest('markets', {'market_id': 'eq.' + str(market_id),
-                                    'select': 'city_key,resolution_date,unit'})
+            # Canonical (plan v2 P2.5): 667 markets carry a wrong raw unit.
+            rows = rest('v_canonical_markets', {'market_id': 'eq.' + str(market_id),
+                                                'select': 'city_key,resolution_date,unit'})
             _markets[market_id] = rows[0] if rows else None
         return _markets.get(market_id)
 
@@ -156,7 +157,7 @@ def cycle(budget_seconds=60):
                 'side':'eq.'+pos['side'],'status':'in.(queued,working)','select':'order_id','limit':'1'})
             if pending:
                 continue
-            bands=rest('bands',{'band_id':'eq.'+pos['band_id'],
+            bands=rest('v_canonical_bands',{'band_id':'eq.'+pos['band_id'],
                 'select':'token_yes,token_no,band_lo,band_hi,open_low,open_high,market_id'})
             if not bands:
                 continue

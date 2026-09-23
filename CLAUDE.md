@@ -133,6 +133,21 @@ On `band_probabilities` an update is captured only when `raw_prob`,
 `calibrated_prob`, `centre_c` or `sigma_c` actually changes
 (`20260923110000_a_backfill_is_not_research.sql`).
 
+## Check a changed view as the role that reads it
+
+The Supabase SQL tool runs as the owner, which can read everything. On 23 Sep
+three browser-read views were rebuilt on `v_canonical_bands`/`_markets`. Every
+equivalence check passed as the owner, and every anon read failed for 2 min
+43 s: those views are `security_invoker` over the private
+`proprietary_data_corrections`, and `security_invoker` checks as the querying
+role even through an owner-rights view. After changing a view the web app
+reads, and before calling it done, read it as that role:
+
+```sql
+set local role anon;   -- in the same execute_sql call
+select count(*) from v_the_view_you_changed;
+```
+
 ## Generated files have tests that catch them going stale
 
 `web/lib/provenance.ts`, `web/lib/sqlOwner.ts` and `sql/ad4_98_ui_health.sql`

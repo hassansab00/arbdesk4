@@ -562,13 +562,29 @@ def _load_targets(days: int, maximum: int,
     rows = rest_all(
         "markets",
         [
-            ("select", "market_id,city_key,resolution_date,unit,rules_text,last_seen_at"),
+            ("select", "market_id,city_key,resolution_date,rules_text,last_seen_at"),
             ("resolution_date", f"gte.{cutoff}"),
             ("resolution_date", f"lte.{today}"),
         ],
         order="resolution_date.asc,market_id.asc",
         page_size=500,
     )
+    # THE CANONICAL UNIT (plan v2 P2.5). The rule is parsed in the market's
+    # unit, and 667 raw markets dated 15 Apr - 5 Sep carry the wrong one
+    # (measured 23 Sep). rules_text and last_seen_at are not in the canonical
+    # view, so the unit alone is read from it.
+    canonical_unit = {r["market_id"]: r.get("unit") for r in rest_all(
+        "v_canonical_markets",
+        [
+            ("select", "market_id,unit"),
+            ("resolution_date", f"gte.{cutoff}"),
+            ("resolution_date", f"lte.{today}"),
+        ],
+        order="resolution_date.asc,market_id.asc",
+        page_size=500,
+    )}
+    for row in rows:
+        row["unit"] = canonical_unit.get(row.get("market_id"))
     latest: dict[tuple[str, str], dict[str, Any]] = {}
     for row in rows:
         key = (row["city_key"], row["resolution_date"])
