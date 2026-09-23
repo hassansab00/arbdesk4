@@ -231,3 +231,27 @@ def test_the_mirror_deletes_nothing():
     for verb in ("delete", "prune", "DELETE", "truncate"):
         assert f'"{verb}' not in src and f"'{verb}" not in src
     assert "requests.delete" not in src and "rpc(" not in src
+
+
+def test_a_view_source_is_read_and_counted_in_place_of_the_table(world):
+    """book_snapshots and edges are mirrored from the views that hold only what
+    the archive never takes - the read AND the count must use the view."""
+    today = dt.date(2026, 9, 30)
+    world.tables["v_mirror_edge_latest"] = [
+        {"edge_id": i, "mirror_resolution_date": (today - dt.timedelta(days=d)).isoformat()}
+        for i, d in enumerate([20, 9, 8], start=1)]
+    world.tables["edges"] = [{"edge_id": i} for i in range(1, 100)]   # must not be read
+    man = {"schema": 1, "tables": {}}
+    n, _ = run("edges", m.TABLES["edges"], man, today)
+    assert n == 2
+    assert man["tables"]["edges"]["files"][0]["file"].startswith("edges-")
+
+
+def test_kept_books_wait_past_the_edge_prune(world):
+    today = dt.date(2026, 9, 30)
+    world.tables["v_mirror_book_kept"] = [
+        {"snapshot_id": i, "mirror_resolution_date": (today - dt.timedelta(days=d)).isoformat()}
+        for i, d in enumerate([17, 16, 15, 10], start=1)]
+    man = {"schema": 1, "tables": {}}
+    n, _ = run("book_snapshots", m.TABLES["book_snapshots"], man, today)
+    assert n == 2, "16 days or older only: the edges' 14-day prune can still un-cite the rest"
