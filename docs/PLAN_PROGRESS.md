@@ -33,14 +33,19 @@ Hassan merges any PR that:
 - touches paper accounts or money settings;
 - changes Actions schedules or budgets beyond what P6.1 specifies.
 
+**In practice (session 1):** Claude merged #104 itself. The session's
+auto-mode permission guard then flagged that merge as "merge without review".
+Since then Claude opens PRs and **Hassan merges them**, until he changes the
+session's permission settings.
+
 ## Checklist
 
 | Step | Title | Status | PR | Acceptance result | Notes |
 |---|---|---|---|---|---|
-| — | Progress file and `CLAUDE.md` pointer | doing | | n/a | First PR. Also adds the plan itself as `docs/AD4_IMPROVEMENT_PLAN.md`. |
-| **P0.1** | Capture the baseline | todo | | | |
-| **P0.2** | Repo goes private | todo | | | The API already says `private: true` (session log, 23 Sep). The doc and comment updates are still to do. |
-| **P0.3** | Retire every existing paper desk | todo | | | Touches paper accounts, so Hassan merges it. |
+| — | Progress file and `CLAUDE.md` pointer | done | [#104](https://github.com/hassansab00/arbdesk4/pull/104) | n/a | Also adds the plan itself as `docs/AD4_IMPROVEMENT_PLAN.md`. |
+| **P0.1** | Capture the baseline | done | plan/p0-baseline | `docs/baseline_2026-09-23.md` holds size, A1, A2, A4–A7 and decision-time hit rates | Decision-time hit rates are a proxy (B1 in `tools/audit_baseline.sql`) until P4 writes checkpoint rows. Noon: model 23.3%, market 52.4%. |
+| **P0.2** | Repo goes private | done | plan/p0-baseline | `GET /repos/hassansab00/arbdesk4` → `"private": true` | `compute_budget.md` and the budget comment in `test_github_actions.py` now say private, 2,000 min. **Not verified:** the plan's anonymous `git ls-remote`. This container's egress proxy authenticates GitHub requests (an unauthenticated `curl` of the repo API returned 200), so an anonymous check isn't possible from here. Hassan can confirm it from a logged-out browser. The n8n webhook-path rotation belongs after P1.2. |
+| **P0.3** | Retire every existing paper desk | doing | plan/p0-retire-desks | pending: merge, apply the migration, dispatch `retire_desks.yml` | Built: the migration (status columns, `paper_desk_retire()`, frozen retired rows, no orders for a retired desk by any path, `queue_plan` refusal, `strategy_config_history` + `set_strategies_enabled()`); `tools/retire_desks.py` (export → verify → retire); a manual-only workflow, because the export needs the service key and this container has none; and the web archived-desks panel (retired desks are archived too, so they sit behind the existing Show/Hide toggle, with no Restore button). **Plan findings that did not hold as written:** (1) `export_paper_trades.py` exports only *closed paper_trades*, not orders, plans, positions, settlements or activity, so a separate export was written; (2) `web/public/archive/index.json` carries no sha256, so the desk export has its own `manifest.json` with a sha256 per file; (3) `paper_accounts` had no `status` column; (4) `queue_plan` never read `archived_at`, so an archived desk could still be queued. Hassan merges it (paper accounts). |
 | **P1.1** | Revoke PUBLIC execute on destructive functions | todo | | | Grants, so Hassan merges it. |
 | **P1.2** | Put UI writes behind auth | todo | | | Auth, so Hassan merges it. |
 | **P1.3** | Align archiver floors with the SQL prune floors | doing | [#102](https://github.com/hassansab00/arbdesk4/pull/102) + plan/p1-archive-guards | pending: the next archive run after merge must log research, resolution and trades `ok` | Floors fixed in #102 (merged before the plan run; its test parses the SQL guards). This branch adds the rest of the step: a preflight **refusal** now logs `status='error'` with `detail.refused = <the function's reason>`, and a genuine count mismatch still says ARCHIVE COUNT MISMATCH. The 08:16Z run on 23 Sep (before #102) logged `attention` with `preflight.ok=false` for research, resolution and trades. |
