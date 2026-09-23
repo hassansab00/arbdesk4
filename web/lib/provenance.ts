@@ -576,6 +576,22 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "AD4 P1.5 - Open-Meteo Global"
     }
   ],
+  "weather_forecast_models": [
+    {
+      "cadence": "daily",
+      "file": "forecasts.yml",
+      "how": "scripts/ingest_forecasts.py",
+      "kind": "action",
+      "name": "Forecasts (Open-Meteo Previous Runs)"
+    },
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/ingest_forecasts.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    }
+  ],
   "weather_forecasts": [
     {
       "cadence": "daily",

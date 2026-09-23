@@ -114,6 +114,7 @@ TABLES = {
     # --- what happened: inputs and settled outcomes -------------------------
     "weather_observations":          append("observed_at", "obs_id"),
     "weather_forecasts":             append("observed_at", "forecast_id"),
+    "weather_forecast_models":       append("observed_at", "city_key", "model", "run_at", "for_date"),
     "weather_forecast_features":     append("captured_at", "city_key", "for_date", "run_at"),
     "weather_resolution_evidence":   append("captured_at", "evidence_id"),
     "weather_resolution_attempts":   append("captured_at", "attempt_id"),

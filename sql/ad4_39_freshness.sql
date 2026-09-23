@@ -73,6 +73,7 @@ insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plai
   ('trades_observed',           'traded_at',       6, 'market',    'Trades that actually happened, used for real traded volume.'),
   ('weather_observations',      'valid_at',        3, 'weather',   'The archive of what the temperature actually was.'),
   ('weather_forecasts',         'run_at',          8, 'weather',   'What each model said the temperature would be.'),
+  ('weather_forecast_models',   'observed_at',    30, 'weather',   'What each forecast model, by name, said the day before - the models the hit tournament chooses between.'),
   ('weather_forecast_features', 'run_at',         12, 'weather',   'Hour-by-hour forecast detail: cloud, wind, humidity.'),
   ('live_weather',              'updated_at',      2, 'weather',   'The current reading per city, refreshed through the day.'),
   ('weather_events',            'detected_at',  null, 'weather',   'Notable weather worth an alert. Empty is good news.'),

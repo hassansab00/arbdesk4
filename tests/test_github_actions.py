@@ -154,7 +154,11 @@ MEASURED_MINUTES = {
     # measured 2026-09-19 from the jobs API, mean of the last six scheduled runs
     "pipeline_intraday.yml": 6.2,     # 10.2 before --holdings-only
     "pipeline_daily.yml": 29.0,
-    "forecasts.yml": 18.5,
+    # 18.5 measured 19 Sep. Plan v2.1 P2.8 adds one multi-model request per
+    # city and cuts the read timeout from 100 s to 30 s (five timeouts cost
+    # about 17 of 22 minutes on 23 Sep). Neither is timed yet, so this is held
+    # at 22.0 until a run with both has been.
+    "forecasts.yml": 22.0,
     "observations.yml": 2.5,
     # 1.5 measured before the nightly mirror (plan v2.1 P1.7) was added to
     # this job; the mirror's first run copies every table's history. Held at

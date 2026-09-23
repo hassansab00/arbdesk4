@@ -205,6 +205,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_write_access": "ad4_38_grants.sql",
   "weather_events": "ad4_live_weather.sql",
   "weather_forecast_features": "ad4_24_nws_gridpoint.sql",
+  "weather_forecast_models": "supabase/migrations/20260923190000_every_forecast_model.sql",
   "weather_forecasts": "ad4_00_preflight.sql",
   "weather_observations": "ad4_00_preflight.sql",
   "weather_resolution_attempts": "supabase/migrations/20260913230000_phase2b_weather_resolution_collection.sql",
