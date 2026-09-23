@@ -215,37 +215,51 @@ comment on view v_trajectory_health is
 -- local clock - 15:00 in Tokyo and 15:00 UTC are different afternoons.
 -- --------------------------------------------------------------------------
 create or replace view v_city_trajectory_now as
+-- THE HOUR OF THE READING, NOT OF THE CLOCK (plan v2 P3.3). The climb profile
+-- says how much a day still rises after a given local hour; applying the hour
+-- of now() to a reading taken ninety minutes earlier adds the wrong climb to
+-- the wrong temperature. local_hour is now the reading's own hour, and the
+-- reading and its time travel with the row so the engine can refuse a stale one.
 with at_now as (
   select c.city_key,
          coalesce(c.timezone, 'UTC')                                          as tz,
-         (now() at time zone coalesce(c.timezone, 'UTC'))::date               as local_date,
-         extract(hour from now() at time zone coalesce(c.timezone, 'UTC'))::int as local_hour
+         (now() at time zone coalesce(c.timezone, 'UTC'))::date               as local_date
   from cities c
   where coalesce(c.status, 'active') = 'active'
+),
+at_reading as (
+  select a.city_key, a.tz, a.local_date,
+         rm.running_max_c, rm.latest_temp_today_c, rm.readings_today, rm.timing_trustworthy,
+         rm.latest_reading_at, rm.latest_reading_c,
+         extract(hour from rm.latest_reading_at at time zone a.tz)::int      as reading_hour
+  from at_now a
+  left join v_city_running_max rm
+         on rm.city_key = a.city_key and rm.local_date = a.local_date
 )
 select
   a.city_key,
   a.tz,
   a.local_date,
-  a.local_hour,
-  rm.running_max_c,
-  rm.latest_temp_today_c,
-  rm.readings_today,
-  rm.timing_trustworthy,
+  a.reading_hour                                as local_hour,
+  a.running_max_c,
+  a.latest_temp_today_c,
+  a.readings_today,
+  a.timing_trustworthy,
   cp.typical_climb_left_c,
   cp.climb_left_sd_c,
   cp.pct_already_peaked,
   cp.n_days                                     as climb_n_days,
   t.sd_ratio,
   t.crps_gain,
-  (t.city_key is not null)                      as trajectory_applied
-from at_now a
-left join v_city_running_max rm
-       on rm.city_key = a.city_key and rm.local_date = a.local_date
+  (t.city_key is not null)                      as trajectory_applied,
+  -- Appended (plan v2 P3.3).
+  a.latest_reading_at,
+  a.latest_reading_c
+from at_reading a
 left join derived_climb_profile cp
-       on cp.city_key = a.city_key and cp.local_hour = a.local_hour
+       on cp.city_key = a.city_key and cp.local_hour = a.reading_hour
 left join v_trajectory_applied t
-       on t.city_key = a.city_key and t.local_hour = a.local_hour;
+       on t.city_key = a.city_key and t.local_hour = a.reading_hour;
 
 comment on view v_city_trajectory_now is
-  'Per active city, right now: its local date and hour, the latest reading and the maximum so far, what the climb profile says is still to come at this hour, and whether that city-hour has earned the right to price from it. One request for the whole roster.';
+  'Per active city, right now: its local date, the newest station reading and the local hour it was taken (plan v2 P3.3 - not the hour of now()), the maximum so far, what the climb profile says is still to come after that hour, and whether that city-hour has earned the right to price from it. One request for the whole roster.';

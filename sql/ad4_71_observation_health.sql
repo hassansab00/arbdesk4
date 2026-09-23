@@ -163,6 +163,15 @@ today as (
 ),
 -- Feed age looks PAST today on purpose: a city whose newest reading is
 -- thirty hours old has an age to report, not an absence.
+-- The newest reading of today's series, and when it was taken (plan v2 P3.3):
+-- what the trajectory stands on, and how old it is.
+newest as (
+  select distinct on (r.city_key) r.city_key,
+         r.valid_at                                                     as latest_reading_at,
+         r.temp_c                                                       as latest_reading_c
+  from v_city_today_readings r
+  order by r.city_key, r.valid_at desc
+),
 feed as (
   select t.city_key,
          (select max(o.valid_at)
@@ -249,8 +258,12 @@ select
     else
       format('%s readings today, newest %s minutes old.', d.readings_today,
              round(extract(epoch from (now() - d.newest_today_at)) / 60.0))
-  end                                                                   as note
+  end                                                                   as note,
+  -- Appended (plan v2 P3.3).
+  n.latest_reading_at,
+  n.latest_reading_c
 from tz t
+left join newest n         on n.city_key  = t.city_key
 left join today d          on d.city_key  = t.city_key
 left join feed f           on f.city_key  = t.city_key
 left join live_weather lw  on lw.city_key = t.city_key;
@@ -290,7 +303,10 @@ select
   h.note,
   -- Appended (plan v2 P2.7): which kind of live row sits behind this city, so
   -- a consumer can refuse a floor that rests on anything but a station.
-  h.live_source_kind
+  h.live_source_kind,
+  -- Appended (plan v2 P3.3): the newest station reading of today and its time.
+  h.latest_reading_at,
+  h.latest_reading_c
 from v_city_observation_health h;
 
 comment on view v_city_running_max is

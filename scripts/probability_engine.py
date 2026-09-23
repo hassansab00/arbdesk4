@@ -655,6 +655,11 @@ _trajectory_cache = None
 
 # The day is never known to better than this, whatever the profile says.
 TRAJECTORY_SD_FLOOR_C = 0.15
+# The plan's bound (v2 P3.3): a reading older than this describes another hour.
+# The observation ingest is hourly at :10, so a reading is ~20-80 minutes old
+# depending on when the engine runs; measured 23 Sep 17:32Z, 35 of 48 cities
+# were inside it.
+TRAJECTORY_MAX_READING_AGE_MIN = 75
 
 
 def _trajectory_now():
@@ -670,7 +675,8 @@ def _trajectory_now():
         try:
             for r in rest("v_city_trajectory_now", [
                     ("select", "city_key,local_date,local_hour,running_max_c,"
-                               "latest_temp_today_c,readings_today,"
+                               "latest_temp_today_c,readings_today,timing_trustworthy,"
+                               "latest_reading_at,latest_reading_c,"
                                "typical_climb_left_c,climb_left_sd_c,"
                                "pct_already_peaked,sd_ratio,crps_gain,"
                                "trajectory_applied"),
@@ -699,7 +705,13 @@ def _trajectory_for(city_key, for_date):
     row = _trajectory_now().get(city_key)
     if not row or str(for_date) != str(row.get("local_date")):
         return None, None, None
-    temp = row.get("latest_temp_today_c")
+    # FRESH AND TRUSTWORTHY, OR NOT AT ALL (plan v2 P3.3). The reading is the
+    # newest of today's station series and local_hour is the hour it was
+    # taken; a stale one would add the climb left after one hour to a
+    # temperature from an earlier one.
+    if not row.get("timing_trustworthy") or not _fresh(row.get("latest_reading_at")):
+        return None, None, dict(row, skipped="stale_reading")
+    temp = row.get("latest_reading_c")
     climb = row.get("typical_climb_left_c")
     sd = row.get("climb_left_sd_c")
     if temp is None or climb is None or sd is None:
@@ -711,6 +723,18 @@ def _trajectory_for(city_key, for_date):
     except (TypeError, ValueError):
         return None, None, None
     return centre, sigma, row
+
+
+def _fresh(reading_at, now=None):
+    """True when a reading timestamp is at most TRAJECTORY_MAX_READING_AGE_MIN old."""
+    if not reading_at:
+        return False
+    try:
+        t = dt.datetime.fromisoformat(str(reading_at).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    now = now or dt.datetime.now(dt.timezone.utc)
+    return (now - t).total_seconds() / 60.0 <= TRAJECTORY_MAX_READING_AGE_MIN
 
 
 _postprocess_cache = None
@@ -1249,10 +1273,12 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     # the calibration map the desk is far more overconfident than it is.
     forecast_sigma_c = sigma
     traj_centre, traj_sigma, traj_row = _trajectory_for(city_key, for_date)
+    if traj_centre is None and traj_row and traj_row.get("skipped"):
+        reasons.append(f"trajectory_skipped:{traj_row['skipped']}")
     if traj_centre is not None:
         reasons.append(
             f"trajectory:{traj_row.get('local_hour'):02d}h_local:"
-            f"reading{float(traj_row['latest_temp_today_c']):.1f}C"
+            f"reading{float(traj_row['latest_reading_c']):.1f}C"
             f"+climb{float(traj_row['typical_climb_left_c']):.2f}C"
             f"={traj_centre:.1f}C_sigma{sigma:.2f}->{traj_sigma:.2f}"
             f":{traj_row.get('pct_already_peaked')}pct_peaked"
