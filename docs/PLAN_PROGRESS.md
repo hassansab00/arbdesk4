@@ -49,9 +49,9 @@ Hassan merges any PR that:
 | **P1.6** | Get under the cap | todo | | | 622.4 MB = 124.5% of the 500 MB tier (`select storage_pressure()`, 23 Sep 08:56Z). |
 | **P2.1** | Read every METAR | blocked | | | **Blocked on network access.** Step 1 (fetch IEM with `report_type=3&4` and `=1` for EGLC/EHAM, 12 and 17 Sep) needs a live fetch, and this environment's network policy denies `mesonet.agron.iastate.edu`, `api.synopticdata.com`, `www.weather.gov`, `api.weather.gov`, `aviationweather.gov`, Open-Meteo and Polymarket (curl → proxy 403). Hassan can allow these hosts in the environment's network settings. **What the DB already shows (23 Sep):** WRH evidence for London 17 Sep has 48 readings (:20 and :50), max 22 °C at 14:20Z; our IEM rows for that local day are 24 (:50 only), max 21 °C. Amsterdam 12 Sep: IEM 24 readings, max 21 °C, WRH 22 °C. NYC 20 Sep: the winner 72–73 °F is named only by a 01:04Z report (71.96 °F), not by the :51 routine reports (max 71 °F), which points at specials (`report_type=4`). |
 | **P2.2** | Fix `v_station_day_max` / the agreement view | doing | plan/p2-station-agreement | pending: merge, apply `sql/ad4_82`, re-run A4 | Finding confirmed (Dallas 13 Sep: NWS KDAL 100.4 °F at :55 leaked past the ±4-minute window; the routine report was 99.0 °F). The hourly columns now read the primary source (`obs_primary_source()`, `'IEM'` until P2.1) with no minute window; `venue_round(value_c, unit)` rounds to whole degrees in the canonical unit. Live, 23 Sep, 638 settled ladders with a reading: 579 agree today → 587 with this change; the 51 left are 46 below and 5 above (P2.1's missing reports). New PGlite harness `settlement-agreement.cjs` with the Dallas, NYC and London fixtures, mutation-checked. |
-| **P2.3** | Rebuild `observation_trust` from venue evidence | todo | | | |
-| **P2.4** | Keep market state current | todo | | | |
-| **P2.5** | One bucket convention everywhere | todo | | | |
+| **P2.3** | Rebuild `observation_trust` from venue evidence | blocked | | | Refits on the corrected source, so it waits for P2.1. |
+| **P2.4** | Keep market state current | todo | | | **Needs a decision from Hassan.** Live on 23 Sep: 379 markets past `local today − 1` still `closed=false` (A5), from 20 May to 21 Sep; 96 of them within the last 4 days. 231 already have a `confirmed` venue resolution in `v_venue_market_resolution` (from stored Gamma+CLOB proofs), so they can be closed from evidence in SQL, with no new API client. The other 148 are `partial`/`unverified`, and the oldest are likely beyond Polymarket's retention. Question: should `closed=true` be set only from venue evidence, or also inferred once the local day has ended? Plan finding that doesn't hold: `markets` has no `closed_time` column (it has `settled_at` and `resolution_verified_at`). Discovery (P0.2) runs in n8n, not `market_state.py`. |
+| **P2.5** | One bucket convention everywhere | todo | | | Scope measured: raw `bands` is read by 20 files in `sql/` and 6 scripts (`databank`, `export_paper_trades`, `paper_exits`, `paper_settlement`, `paper_worker`, …). Most read it only to join `band_id`→`market_id`, which is harmless. The work is the subset reading `band_lo`/`band_hi`/`open_*` or `markets.unit`, and each view changed needs its own live comparison. Settled ladders in `v_settlement_agreement` showed no raw-vs-canonical unit mismatch (507 C, 147 F). P2.2 already switched that view to `v_canonical_markets`. |
 | **P2.6** | Real forecast issue times | todo | | | |
 | **P2.7** | Label live-weather sources | todo | | | |
 | **P3.1** | Fix the floor atom | todo | | | |
@@ -121,3 +121,16 @@ figures. Record the A11 projection here after P6.1.
   - Vercel: the MCP tools are listed; not exercised yet.
 - **Live DB:** `select storage_pressure()` at 08:56Z returned `db_mb 622.4`, `tier_mb 500`, `pct_of_tier 124.5`.
 - **`main` has moved** past the plan's base: `908427c` → `9fcb411` (PRs #102 and #103). #102 already fixed the P1.3 floors.
+- **End of session 1 — state for the next session:**
+  - Open PRs, none merged. Each needs Hassan's merge (the auto-mode guard blocked Claude's merges after #104):
+    - [#105](https://github.com/hassansab00/arbdesk4/pull/105) P0.1/P0.2 docs;
+    - [#106](https://github.com/hassansab00/arbdesk4/pull/106) P0.3 retire desks (stacked on #105);
+    - [#107](https://github.com/hassansab00/arbdesk4/pull/107) P1.3–P1.5;
+    - [#108](https://github.com/hassansab00/arbdesk4/pull/108) P1.1;
+    - [#109](https://github.com/hassansab00/arbdesk4/pull/109) P1.2;
+    - [#110](https://github.com/hassansab00/arbdesk4/pull/110) P2.2.
+  - Several PRs append a block before `await db.close()` in `tests/database/paper-contracts.cjs` and edit its PASS line. Expect merge conflicts there once the first lands. Resolve by keeping every block.
+  - Nothing has been applied to the live database yet. Each PR says what to apply after merge and how to check it.
+  - Blocked: P2.1 and P2.3 on network access (see P2.1). P2.4 on the decision above. P1.2 on Vercel/Supabase Auth settings (see P1.2).
+  - Live DB still over the cap: 622.4 MB at 08:56Z. The 03:00 UTC archive run on 24 Sep is the first with #102's floors.
+
