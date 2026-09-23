@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { operatorRpc } from "@/lib/operator";
 import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
 
@@ -64,7 +65,7 @@ export default function ScopeControl({ jobs }: { jobs: Array<{ job: string; labe
   async function save(job: string, all: boolean) {
     setSaving(true);
     setMsg(null);
-    const { error } = await supabase.rpc("set_run_scope", {
+    const { error } = await operatorRpc("set_run_scope", {
       p_job: job,
       p_cities: all ? null : Array.from(draft),
     });

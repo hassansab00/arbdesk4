@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { operatorRpc } from "@/lib/operator";
 import { paperRead } from "@/lib/paperSupabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
@@ -189,7 +190,7 @@ export default function StrategiesPage() {
   async function toggle(r: StrategyBoardRow) {
     setBusy(r.strategy_id);
     setMsg(null);
-    const { data, error } = await supabase.rpc("set_strategy_enabled", {
+    const { data, error } = await operatorRpc("set_strategy_enabled", {
       p_strategy_id: r.strategy_id,
       p_enabled: !r.enabled,
     });

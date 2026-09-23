@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { requireOperator } from '../../../lib/operatorAuth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -85,6 +86,10 @@ export async function GET(request:Request) {
 
 export async function POST(request:Request) {
   if(!sameOrigin(request)) return NextResponse.json({data:null,error:{message:'Cross-origin paper command rejected.'}},{status:403});
+  // The Origin header is set by whoever sends the request, so it proves
+  // nothing on its own. A signed-in operator is required (plan v2 P1.2).
+  const verdict=await requireOperator(request);
+  if(!verdict.ok) return NextResponse.json({data:null,error:{message:verdict.message}},{status:verdict.status});
   const size=Number(request.headers.get('content-length')||0);
   if(size>16_384) return NextResponse.json({data:null,error:{message:'Paper command is too large.'}},{status:413});
   try {

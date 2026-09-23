@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { fmtCompactUsd, fmtUsd, pnlColor } from "@/lib/format";
+import { operatorRpc } from "@/lib/operator";
+import OperatorSignIn from "@/components/OperatorSignIn";
 
 // Model cycles run 4x/day at 01:30/07:30/13:30/19:30 UTC (30 min after
 // P0.2 market discovery, matching .github/workflows/pipeline_intraday.yml).
@@ -90,7 +92,7 @@ export default function GlobalBar() {
     const amount = parseFloat(draft);
     if (Number.isNaN(amount)) return setEditing(false);
     setSaving(true);
-    const { error: rpcError } = await supabase.rpc("update_setting", {
+    const { error: rpcError } = await operatorRpc("update_setting", {
       p_key: "bankroll",
       p_value: { amount, currency: "USD", compounding: false },
     });
@@ -137,6 +139,7 @@ export default function GlobalBar() {
       <div><span className="text-muted">Next model cycle</span> {now ? fmtCountdown(nextModelCycle(now), now) : "—"}</div>
       <div title="Traded volume across every city in the last 24h, from trades_observed."><span className="text-muted">Vol 24h</span> {volume24h !== null ? fmtCompactUsd(volume24h) : "—"}</div>
       <div className="hidden sm:block"><span className="text-muted">Next peak window</span> {nextPeakMinutes !== null ? `${nextPeakMinutes}m` : "—"}</div>
+      <div className="ml-auto font-sans"><OperatorSignIn /></div>
     </div>
     </>
   );

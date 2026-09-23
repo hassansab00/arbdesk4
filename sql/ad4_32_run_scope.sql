@@ -269,9 +269,14 @@ begin
     if exists (select 1 from pg_roles where rolname = r) then
       execute format('grant select on v_run_scope to %I', r);
       execute format('grant execute on function run_scope(text) to %I', r);
-      execute format('grant execute on function set_run_scope(text, text[]) to %I', r);
     end if;
   end loop;
+  -- set_run_scope is a write: service_role only, reached through the site's
+  -- operator route (plan v2 P1.2, 20260923130000_writes_need_an_operator.sql).
+  revoke execute on function set_run_scope(text, text[]) from public;
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant execute on function set_run_scope(text, text[]) to service_role;
+  end if;
 end
 $ad4$;
 

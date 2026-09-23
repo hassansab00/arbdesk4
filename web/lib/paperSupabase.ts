@@ -1,3 +1,5 @@
+import { operatorFetch } from './operator';
+
 type PaperResult<T>={data:T|null;error:unknown};
 
 export async function paperRead<T>(resource:string,account?:string):Promise<PaperResult<T>> {
@@ -8,7 +10,8 @@ export async function paperRead<T>(resource:string,account?:string):Promise<Pape
 }
 
 export async function paperAction<T=unknown>(action:string,payload:Record<string,unknown>):Promise<PaperResult<T>> {
-  const response=await fetch('/api/paper-desk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,payload})});
+  // A paper command is a write: it carries the operator's session (plan v2 P1.2).
+  const response=await operatorFetch('/api/paper-desk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,payload})});
   return await response.json().catch(()=>({data:null,error:{message:'Paper desk returned an invalid response.'}})) as PaperResult<T>;
 }
 
@@ -28,7 +31,7 @@ export async function paperAction<T=unknown>(action:string,payload:Record<string
 export type WorkerResult = { orders_completed?: number; started?: boolean; note?: string };
 
 export async function runPaperWorker(): Promise<WorkerResult> {
-  const response = await fetch('/api/paper-cycle', { method: 'POST' });
+  const response = await operatorFetch('/api/paper-cycle', { method: 'POST' });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(typeof payload?.error === 'string'

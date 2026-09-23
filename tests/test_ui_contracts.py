@@ -213,7 +213,10 @@ def test_only_s7_claims_the_peak_window():
 def test_strategy_toggle_goes_through_the_rpc_not_a_table_write():
     """A table grant would also expose capital_cap_pct and max_concurrent."""
     src = _read("web/app/strategies/page.tsx")
-    assert 'supabase.rpc("set_strategy_enabled"' in src
+    # Through the operator route since plan v2 P1.2: the RPC is called
+    # server-side with the service key after a signed-in operator is checked.
+    assert 'operatorRpc("set_strategy_enabled"' in src
+    assert 'supabase.rpc("set_strategy_enabled"' not in src, "the browser must not call the write RPC itself"
     assert 'from("strategies")' not in src, "the page must not write the table directly"
 
 

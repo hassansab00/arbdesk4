@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { exportDataset, PROPRIETARY_EXPORT_DATASETS } from "@/lib/proprietaryExport";
+import { requireOperator } from "../../../lib/operatorAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,6 +74,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return jsonError("Cross-origin export rejected.", 403);
+  // A signed-in operator, not just a matching Origin header (plan v2 P1.2).
+  const verdict = await requireOperator(request);
+  if (!verdict.ok) return jsonError(verdict.message, verdict.status);
   if (!configured()) return jsonError("Private export is not enabled on the server.", 503);
   if (Number(request.headers.get("content-length") || 0) > 4_096) {
     return jsonError("Export request is too large.", 413);

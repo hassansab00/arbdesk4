@@ -1,0 +1,24 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "../.route-test",
+    "rootDir": "..",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2020",
+    "jsx": "react",
+    "incremental": false,
+    "allowImportingTsExtensions": false,
+    "isolatedModules": false,
+    "plugins": []
+  },
+  "include": [],
+  "files": [
+    "../lib/operatorAuth.ts",
+    "../app/api/operator/route.ts",
+    "../app/api/paper-desk/route.ts",
+    "../app/api/paper-run/route.ts",
+    "../app/api/paper-cycle/route.ts"
+  ]
+}

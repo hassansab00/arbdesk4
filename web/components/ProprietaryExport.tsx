@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PROPRIETARY_EXPORT_DATASETS } from "@/lib/proprietaryExport";
+import { operatorFetch } from "@/lib/operator";
 
 function dayOffset(days: number) {
   const date = new Date();
@@ -29,7 +30,7 @@ export default function ProprietaryExport() {
     setBusy(true);
     setMessage(null);
     try {
-      const response = await fetch("/api/proprietary-export", {
+      const response = await operatorFetch("/api/proprietary-export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dataset, from, through }),

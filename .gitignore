@@ -7,6 +7,7 @@ node_modules/
 .next/
 web/node_modules/
 web/.next/
+web/.route-test/
 web/out/
 *.log
 web/tsconfig.tsbuildinfo

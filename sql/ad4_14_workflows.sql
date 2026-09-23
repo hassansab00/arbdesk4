@@ -131,9 +131,14 @@ begin
   foreach r in array array['anon','authenticated'] loop
     if exists (select 1 from pg_roles where rolname = r) then
       execute format('grant select on v_workflow_runs to %I', r);
-      execute format('grant execute on function update_setting(text, jsonb) to %I', r);
     end if;
   end loop;
+  -- update_setting is a write: service_role only, reached through the site's
+  -- operator route (plan v2 P1.2, 20260923130000_writes_need_an_operator.sql).
+  revoke execute on function update_setting(text, jsonb) from public;
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant execute on function update_setting(text, jsonb) to service_role;
+  end if;
   if exists (select 1 from pg_roles where rolname = 'service_role') then
     grant select on v_workflow_runs to service_role;
   end if;

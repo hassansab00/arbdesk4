@@ -432,23 +432,14 @@ comment on view v_trade_timing is
 -- --------------------------------------------------------------------------
 -- 4. Grants.
 --
---    set_strategy_enabled is a WRITE and it IS granted to anon, which is a
---    deliberate exception worth stating rather than burying.
---
---    sql/ad4_13 revoked execute from anon on every function and hands back
---    only the browser RPCs. This joins that short list, for one reason: this
---    desk is a single operator behind Supabase's own publishable key, and the
---    alternative is what has actually happened every time the question came
---    up - the main switch lives in a SQL console and the app cannot be used
---    to run the desk.
---
---    What makes it acceptable is the narrowness of the function, not trust in
---    the caller. It flips one boolean on one row and refuses the system
---    pseudo-strategy. capital_cap_pct and max_concurrent - the actual risk
---    limits - are unreachable through it, which a `grant update on strategies`
---    would not have been. Enabling a strategy also places no order: it lets
---    that strategy write to `signals`, and the paper engine and approval
---    queue still sit between a signal and money.
+--    set_strategy_enabled is a WRITE. It used to be granted to anon, as a
+--    deliberate exception, so the app could run the desk without a SQL
+--    console. Plan v2 P1.2 removed the exception: the app now calls it through
+--    its operator route (web/app/api/operator), which checks a signed-in
+--    operator and uses the service key, so the switch still works from the
+--    site and is no longer open to anyone holding the public key. The function
+--    stays narrow: it flips one boolean on one row and refuses the system
+--    pseudo-strategy; capital_cap_pct and max_concurrent stay out of reach.
 -- --------------------------------------------------------------------------
 do $ad4$
 declare r text; v text;
@@ -461,18 +452,13 @@ begin
     end loop;
   end loop;
 
-  foreach r in array array['authenticated', 'service_role'] loop
-    if exists (select 1 from pg_roles where rolname = r) then
-      execute format('grant execute on function set_strategy_enabled(text, boolean) to %I', r);
-    end if;
-  end loop;
-
-  -- anon too: this desk is a single operator behind Supabase's own key, and
-  -- the alternative is what has happened every time so far - the switch lives
-  -- in a SQL console and the app cannot be used to run the desk. The function
-  -- can only flip one boolean; the risk limits stay out of reach.
-  if exists (select 1 from pg_roles where rolname = 'anon') then
-    execute 'grant execute on function set_strategy_enabled(text, boolean) to anon';
+  -- service_role only (plan v2 P1.2). This used to be granted to anon so the
+  -- app could run the desk at all; the app now reaches it through its
+  -- operator route, which checks a signed-in operator and uses the service
+  -- key, so the switch works from the site without being open to the internet.
+  revoke execute on function set_strategy_enabled(text, boolean) from public;
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant execute on function set_strategy_enabled(text, boolean) to service_role;
   end if;
 end
 $ad4$;

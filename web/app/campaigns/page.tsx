@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { operatorRpc } from "@/lib/operator";
 import { useQuery } from "@/lib/useQuery";
 import { DataState, InlineError } from "@/components/DataState";
 import { Freshness, FreshnessRow } from "@/components/Provenance";
@@ -128,7 +129,7 @@ export default function CampaignsPage() {
     if (!form.strategy_id) return setActionError("Pick the strategy this campaign runs.");
     if (!form.target.trim()) return setActionError("Say what it points at — a city, a list, or a region.");
     setBusy(true);
-    const { error } = await supabase.rpc("upsert_deployment", {
+    const { error } = await operatorRpc("upsert_deployment", {
       p_deployment: {
         name: form.name,
         strategy_id: form.strategy_id,
@@ -158,7 +159,7 @@ export default function CampaignsPage() {
   }
 
   async function setStatus(id: string, status: string) {
-    const { error } = await supabase.rpc("set_deployment_status", {
+    const { error } = await operatorRpc("set_deployment_status", {
       p_deployment_id: id, p_status: status,
     });
     setActionError(error ? error.message : null);

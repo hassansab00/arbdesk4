@@ -72,29 +72,69 @@ def _web_sources():
 # 1. The precondition. This is the test that matters.
 # --------------------------------------------------------------------------
 
-def test_the_app_still_has_no_sign_in():
+# The only files allowed to touch a Supabase Auth session (plan v2 P1.2).
+# The session identifies an operator to this site's own write routes; it is
+# never attached to a read.
+SESSION_MODULES = {
+    "web/lib/operator.ts",
+    "web/lib/operatorAuth.ts",
+    "web/components/OperatorSignIn.tsx",
+}
+
+
+def test_every_read_is_still_anon():
     """The moment this fails, the definer views must be revisited.
 
-    They are accepted because every caller is the same single operator
-    arriving as `anon`. An auth flow makes `authenticated` real, and then a
-    definer view over paper_accounts serves one signed-in user another's
-    desk. Failing here is the alarm, not a nuisance - read
-    supabase/migrations/20260922220000_*.sql before changing this test.
+    They are accepted because every READ arrives as `anon`. Plan v2 P1.2
+    added a sign-in, but only to authorise writes: the operator's session is
+    kept by its own client (lib/operator.ts, its own storage key) and sent
+    only to this site's /api routes, which check it server-side. The data
+    client in lib/supabase.ts never holds a session, so every read is still
+    anon and the definer views serve exactly what they served before.
+
+    If a page ever reads through a signed-in client, `authenticated` becomes
+    a real reader and a definer view over paper_accounts would serve one
+    signed-in user another's desk. Failing here is the alarm, not a nuisance -
+    read supabase/migrations/20260922220000_*.sql before changing this test.
     """
     hits = []
     for p in _web_sources():
+        rel = str(p.relative_to(ROOT))
+        if rel in SESSION_MODULES:
+            continue
         src = p.read_text(errors="ignore")
         for token in ("signInWith", "signUp(", "auth.getSession",
-                      "auth.setSession", "auth.getUser"):
+                      "auth.setSession", "auth.getUser", "access_token"):
             if token in src:
-                hits.append(f"{p.relative_to(ROOT)}: {token}")
+                hits.append(f"{rel}: {token}")
     assert not hits, (
-        "the web app now authenticates: " + "; ".join(hits) +
+        "a session is handled outside the operator modules: " + "; ".join(hits) +
         " - the security-definer views listed in EXPOSED_BY_DESIGN were "
-        "accepted ONLY because every caller is anon. With real sessions they "
-        "leak one user's desk to another. Switch them to security_invoker and "
-        "confirm the per-user RLS policies cover the pages."
+        "accepted ONLY because every read is anon. With reads made as a signed-in "
+        "user they leak one user's desk to another. Switch them to "
+        "security_invoker and confirm the per-user RLS policies cover the pages."
     )
+
+    data_client = (WEB / "lib" / "supabase.ts").read_text()
+    for opt in ("persistSession: false", "autoRefreshToken: false", "detectSessionInUrl: false"):
+        assert opt in data_client, (
+            f"the data client lost `{opt}`: it could pick up the operator's session "
+            "and read as `authenticated`")
+
+
+def test_the_session_goes_only_to_this_sites_routes():
+    """operatorFetch attaches the access token; it must only ever be pointed
+    at a relative /api/ path on this site, never at Supabase or n8n."""
+    import re
+    bad = []
+    for p in _web_sources():
+        src = p.read_text(errors="ignore")
+        # every call, not the definition (`function operatorFetch(input: ...`)
+        for m in re.finditer(r"(?<!function )operatorFetch\(\s*([^,)]+)", src):
+            arg = m.group(1).strip()
+            if not re.match(r"""^["'`]/api/""", arg):
+                bad.append(f"{p.relative_to(ROOT)}: operatorFetch({arg}")
+    assert not bad, "the operator session is sent somewhere other than /api/: " + "; ".join(bad)
 
 
 def test_the_accepted_views_are_named_not_waved_away():

@@ -71,6 +71,10 @@ const assert = require('node:assert/strict');
     -- here would let a migration seed a null value and pass.
     create table public.settings(key text primary key, value jsonb not null,
       updated_at timestamptz not null default now());
+    -- Live ACL (pg_class.relacl, 23 Sep): anon=rm, authenticated=rm. With the
+    -- grant in place, what anon may read is decided by the RLS policy, which
+    -- is what the operator-list contract below tests.
+    grant select on public.settings to anon, authenticated;
     -- strategies is created by sql/ad4_rpc.sql. Only v_paper_desks reads it,
     -- and only to count the enabled ones, but the column types and NOT NULLs
     -- match the live table so the view is built against the real shape.
@@ -1839,6 +1843,24 @@ const assert = require('node:assert/strict');
   assert.equal(legit.ok,true,'a cutoff older than the floor must still be honoured');
   assert.equal(new Date(legit.older_than).getTime()<Date.now()-30*86400e3,true);
 
+  // ======================================================================
+  // WRITES NEED AN OPERATOR (plan v2 P1.2,
+  // 20260923130000_writes_need_an_operator.sql). The browser reads settings
+  // as anon; it must not see who the operators are, nor the n8n webhook URLs,
+  // which are all it takes to fire a job.
+  // ======================================================================
+  await db.exec(`reset role;
+    insert into public.settings(key,value) values ('n8n_webhooks','{"P0.3":{"url":"https://n8n.example/webhook/x"}}'),
+      ('bankroll','{"amount":100}') on conflict (key) do nothing;`);
+  assert.deepEqual((await db.query("select value from public.settings where key='operators'")).rows[0].value,[],
+    'the operator list must exist and start empty - nobody writes until someone is added');
+  await db.exec('set role anon;');
+  const anonKeys=(await db.query('select key from public.settings order by key')).rows.map(r=>r.key);
+  assert.ok(!anonKeys.includes('operators'),'anon can read the operator list');
+  assert.ok(!anonKeys.includes('n8n_webhooks'),'anon can read the n8n webhook URLs');
+  assert.ok(anonKeys.includes('bankroll'),'anon lost the settings the board reads');
+  await db.exec('reset role;');
+
   await db.close();
-  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, research capture of prices only and no PUBLIC execute on SECURITY DEFINER functions');
+  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, research capture of prices only, no PUBLIC execute on SECURITY DEFINER functions and the settings the browser may not read');
 })().catch(e=>{console.error(e);process.exit(1);});
