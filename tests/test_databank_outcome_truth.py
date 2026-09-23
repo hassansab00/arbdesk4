@@ -30,7 +30,7 @@ def test_band_truth_comes_from_venue_not_temperature_math(monkeypatch):
         if path=="v_venue_market_resolution": return [{"market_id":market,"resolution_state":"confirmed"}]
         if path=="v_venue_band_resolution": return [{"band_id":band,"market_id":market,"settled_yes":True,
                                                         "resolution_state":"confirmed","confirmed_at":"now"}]
-        if path=="bands": return [{"band_id":band,"market_id":market,"band_lo":20,"band_hi":21,
+        if path=="v_canonical_bands": return [{"band_id":band,"market_id":market,"band_lo":20,"band_hi":21,
                                     "open_low":False,"open_high":False}]
         if path=="band_probabilities": return [{"band_id":band,"raw_prob":.2,"calibrated_prob":None,
                                                   "computed_at":"now"}]
@@ -54,7 +54,7 @@ def test_partial_venue_ladder_is_not_banked(monkeypatch):
         if path=="markets": return [{"market_id":market,"city_key":"london","resolution_date":"2026-09-12"}]
         if path=="v_venue_market_resolution": return [{"market_id":market,"resolution_state":"partial"}]
         if path=="v_venue_band_resolution": return []
-        if path=="bands": return []
+        if path=="v_canonical_bands": return []
         raise AssertionError(path)
     monkeypatch.setattr(databank,"rest",rows)
     monkeypatch.setattr(databank,"rest_all",lambda path,params=None,**kw: rows(path,params))

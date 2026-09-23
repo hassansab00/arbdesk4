@@ -71,7 +71,7 @@ def run(monkeypatch, bands, res, frozen=(), market_state="confirmed"):
             return [{"market_id": MARKET, "resolution_state": market_state}]
         if path == "v_venue_band_resolution":
             return res
-        if path == "bands":
+        if path == "v_canonical_bands":
             return bands
         if path == "band_probabilities":
             return [{"band_id": b["band_id"], "raw_prob": 0.09,
