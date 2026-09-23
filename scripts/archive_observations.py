@@ -982,7 +982,18 @@ def export_one(spec, name, args):
     # PostgREST page caps, and it is the check that stopped the resolution
     # archive from turning a 4,540-row export into a 3,853-row delete.
     preflight = _rpc(spec["prune_rpc"], {**prune_args, "p_dry_run": True})
-    if not (preflight or {}).get("ok") or preflight.get("would_delete") != n_rows:
+    # A REFUSAL IS NOT A MISMATCH (plan v2 P1.3). On 23 Sep the prune
+    # functions refused keep_days below their floors, and this reported it as
+    # "ARCHIVE COUNT MISMATCH" with status attention - the one wording that
+    # sends a reader looking for lost rows. The database said no, and why.
+    if not (preflight or {}).get("ok"):
+        reason = (preflight or {}).get("error") or "no reason returned"
+        print(f"PRUNE PREFLIGHT REFUSED: {reason}. Nothing written or deleted.",
+              file=sys.stderr)
+        log_run(job, "error", 0, {"refused": reason, "rows": n_rows, "preflight": preflight,
+                                  "keep_days": keep_days, "cutoff": cutoff.isoformat()})
+        return 1
+    if preflight.get("would_delete") != n_rows:
         print(f"ARCHIVE COUNT MISMATCH: exported {n_rows:,} rows but prune "
               f"preflight returned {preflight}. Nothing written or deleted.",
               file=sys.stderr)
@@ -1095,26 +1106,43 @@ def request_reclaim(table):
         return {"ok": False, "error": str(e)[:300]}
 
 
-def is_committed(rel_path):
-    """Is this file in HEAD, with no unstaged change?
+def is_committed(rel_path, branch=None, root=None):
+    """Is this exact file on the REMOTE branch, as of a fresh fetch?
 
     The prune asks git rather than trusting the phase order, because a commit
     step that silently did nothing - a push that failed, a path that was not
     added - looks exactly like a successful one from here.
+
+    LOCAL HEAD IS NOT THE ARCHIVE (plan v2 P1.5). This used to check HEAD, and
+    the workflow's push loop could run out after four failures and still exit
+    0 (its last command was a `git pull --rebase` that succeeded). The file
+    was then "in HEAD" - on a runner about to be thrown away - and the rows
+    would have been deleted with no copy anywhere. Now the blob on
+    origin/<branch>, fetched here, must be byte-identical to the file read
+    back from disk. FETCH_HEAD rather than origin/<branch>, because a shallow
+    CI checkout need not have a remote-tracking ref for the branch.
     """
     import subprocess
+    root = root or _root()
+    branch = branch or os.environ.get("GITHUB_REF_NAME") or "main"
     try:
-        r = subprocess.run(["git", "cat-file", "-e", f"HEAD:{rel_path}"],
-                           cwd=_root(), capture_output=True)
-        if r.returncode != 0:
-            return False, "not in HEAD"
-        d = subprocess.run(["git", "diff", "--quiet", "HEAD", "--", rel_path],
-                           cwd=_root(), capture_output=True)
-        if d.returncode != 0:
-            return False, "differs from HEAD"
+        f = subprocess.run(["git", "fetch", "--quiet", "origin", branch],
+                           cwd=root, capture_output=True, text=True)
+        if f.returncode != 0:
+            return False, f"git fetch origin {branch} failed: {f.stderr.strip()[:200]}"
+        remote = subprocess.run(["git", "rev-parse", "--verify", "--quiet", f"FETCH_HEAD:{rel_path}"],
+                                cwd=root, capture_output=True, text=True)
+        if remote.returncode != 0:
+            return False, f"not on origin/{branch}"
+        local = subprocess.run(["git", "hash-object", "--", rel_path],
+                               cwd=root, capture_output=True, text=True)
+        if local.returncode != 0:
+            return False, "cannot hash the local file"
+        if local.stdout.strip() != remote.stdout.strip():
+            return False, f"differs from origin/{branch}"
     except (OSError, subprocess.SubprocessError) as e:
         return False, f"git unavailable: {e}"
-    return True, "in HEAD"
+    return True, f"on origin/{branch}"
 
 
 def run_one(spec, name, args):

@@ -118,34 +118,52 @@ def test_the_day_max_publishes_both_units():
         assert col in sql, f"v_station_day_max is missing {col}"
 
 
-def test_an_unknown_filing_minute_falls_back_to_the_whole_feed():
+def test_the_hourly_columns_read_the_primary_source_and_no_minute_window():
+    """Plan v2 P2.2 replaced the filing-minute window.
+
+    The window kept any row within four minutes of report_minute WHATEVER ITS
+    SOURCE, so the NWS five-minute feed leaked in (Dallas 13 Sep: KDAL 100.4F
+    at :55 against a routine 99.0F, winner 98-99F), and it dropped reports the
+    station did file off its routine minute (London's :20 half-hourlies, NYC's
+    specials). The hourly columns now read the primary source, whole. The
+    behaviour is exercised on those three cases in
+    tests/database/settlement-agreement.cjs; this pins the shape.
+    """
     view = AGREE.read_text()
     view = view[view.index("create or replace view v_station_day_max"):]
     view = view[:view.index("comment on view v_station_day_max")]
-    # Three filtered aggregates - max_c_hourly, max_f_hourly, n_hourly - and
-    # every one of them has to survive a city whose filing minute we have not
-    # learned yet by returning its whole feed rather than an empty maximum.
-    assert view.count("report_minute is null") == 3, view.count("report_minute is null")
+    assert view.count("o.source = obs_primary_source()") == 4, (
+        "station, max_c_hourly, max_f_hourly and n_hourly must all read the primary source")
+    code = [line for line in view.splitlines() if not line.strip().startswith("--")]
+    assert not any("report_minute" in line for line in code), (
+        "a minute window is back in v_station_day_max")
 
 
 def test_the_agreement_view_compares_against_the_hourly_report():
     sql = AGREE.read_text()
     view = sql[sql.index("create or replace view v_settlement_agreement"):]
-    assert "s.max_f_hourly else s.max_c_hourly" in view, (
-        "the venue settles on the routine report; comparing against the "
-        "five-minute feed measures a different question and reads 14 points low"
+    assert "venue_round(s.max_c_hourly, w.unit)" in view, (
+        "the venue settles on the station's own reports, read as a whole degree "
+        "in its own unit; comparing anything else measures a different question"
     )
     assert "s.max_f else s.max_c end as ours" not in view
 
 
 def test_the_agreement_view_compares_in_the_markets_own_unit():
+    """Rounded in the market's unit, from the stored Celsius.
+
+    The earlier worry was the round trip: Austin's 100.4F is exactly 38.0C,
+    and comparing an unrounded Celsius-converted value against F bands cost
+    2.9 points. Rounded to a whole degree first, the two agree: measured on
+    the live database on 23 Sep over 638 settled ladders, rounding from the
+    stored Celsius and rounding the native Fahrenheit gave the same whole
+    degree on every one of them.
+    """
     view = AGREE.read_text()
     view = view[view.index("create or replace view v_settlement_agreement"):]
-    assert "w.unit = 'F'" in view
-    assert "band_local_value" not in view, (
-        "converting a Celsius store back to F to compare against F bands costs "
-        "2.9 points - Austin's 100.4F is exactly 38.0C. Compare natively."
-    )
+    assert "venue_round(s.max_c_hourly, w.unit)" in view
+    assert "v_canonical_markets" in view, "the unit must be the canonical one (P2.5)"
+    assert "band_local_value" not in view
 
 
 def test_a_city_with_too_little_history_gets_no_trust_score():

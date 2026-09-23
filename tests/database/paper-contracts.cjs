@@ -83,7 +83,18 @@ const assert = require('node:assert/strict');
       enabled boolean not null default true,created_at timestamptz not null default now(),
       universe jsonb,regime_filter jsonb,capital_cap_pct numeric,max_concurrent integer,extra jsonb);
     insert into public.strategies(strategy_id,name) values('s1','price entry');
-    create table public.band_probabilities(prob_id uuid primary key,band_id uuid,computed_at timestamptz default now());
+    -- band_probabilities matches the live table's columns, types, NOT NULLs
+    -- and defaults (information_schema.columns, 23 Sep). It was three columns
+    -- with a uuid prob_id; live is bigint. The research-capture trigger fires
+    -- on its pricing columns, so the contract needs them to exist.
+    create table public.band_probabilities(prob_id bigserial primary key,band_id uuid not null,
+      computed_at timestamptz not null default now(),forecast_version uuid,calibration_version uuid,
+      raw_prob numeric,calibrated_prob numeric,input_forecast_run timestamptz,input_book_snapshot bigint,
+      forecast_max_c numeric,bias_applied_c numeric,sigma_c numeric,lead_days integer,
+      lattice_applied boolean default false,confidence numeric,regime_label text,skill_lead_days integer,
+      skill_proxy boolean not null default false,skill_source text not null default 'legacy',
+      pricing_eligible boolean not null default true,pricing_block_reason text,observed_floor_c numeric,
+      centre_c numeric,forecast_sigma_c numeric);
     -- book_snapshot_id is a foreign key into book_snapshots in production and
     -- v_prunable_book_redundancy reads it to refuse anything an edge cites.
     -- Missing here, the view does not compile - the fixture-does-not-match-
@@ -226,6 +237,10 @@ const assert = require('node:assert/strict');
   // of this file.
   await db.exec(fs.readFileSync(
     path.resolve(__dirname,'../../sql/ad4_79_prune_book_redundancy.sql'),'utf8'));
+  // ad4_65 is the trades prune. It was never applied here, so its PUBLIC
+  // grant and its p_before floor bypass had no contract (plan v2 P1.1).
+  await db.exec(fs.readFileSync(
+    path.resolve(__dirname,'../../sql/ad4_65_prune_trades.sql'),'utf8'));
   const uid='10000000-0000-0000-0000-000000000001', other='10000000-0000-0000-0000-000000000002';
   const band='20000000-0000-0000-0000-000000000001', market='30000000-0000-0000-0000-000000000001';
   const command='40000000-0000-0000-0000-000000000001';
@@ -242,7 +257,7 @@ const assert = require('node:assert/strict');
       values(1,'london','test',now(),current_date);
     insert into public.book_snapshots(snapshot_id,band_id,observed_at,tradeable) values(1,'${band}',now(),true);
     insert into public.band_probabilities(prob_id,band_id,computed_at)
-      values('60000000-0000-0000-0000-000000000001','${band}',now());
+      values(60000001,'${band}',now());
     insert into public.edges(edge_id,band_id,computed_at,side,tradeable) values(1,'${band}',now(),'YES',true);
     insert into public.live_weather(city_key,updated_at,observed_at) values('london',now(),now());
     insert into public.trades_observed(trade_id,city_key,traded_at) values(1,'london',now());
@@ -1622,6 +1637,213 @@ const assert = require('node:assert/strict');
 
 
   // ======================================================================
+  // A RETIRED DESK STAYS RETIRED (plan v2 P0.3,
+  // 20260923100000_a_retired_desk_stays_retired.sql).
+  //
+  // archived_at was a two-way door and nothing on the order path read it.
+  // Retirement is one-way: the row is frozen, no order can be written for it
+  // by any path, and queue_plan says so in plain words. Every desk here is
+  // created here, so none of it depends on which desks happen to exist.
+  // ======================================================================
+  await db.exec('reset role; set role service_role;');
+  const retiree=(await db.query(
+    "select paper_desk_create('Retiree',300,'automatic',null,$1::jsonb) as id",
+    [JSON.stringify({cities:['ALL'],strategies:['s1'],min_edge:.01,max_plan_usd:10,max_exposure_usd:50})])).rows[0].id;
+  await assert.rejects(db.query('select paper_desk_retire($1,$2)',[retiree,'  ']),/needs a reason/,
+    'a desk was retired with no reason on record');
+  const retired=(await db.query("select paper_desk_retire($1,'plan v2: engine rebuild') as r",[retiree])).rows[0].r;
+  assert.equal(retired.status,'retired');
+  assert.equal(retired.already,false);
+  assert.equal((await db.query("select paper_desk_retire($1,'again') as r",[retiree])).rows[0].r.already,true,
+    'retiring twice must be a no-op, not a second retirement');
+  const rrow=(await db.query('select * from public.paper_accounts where account_id=$1',[retiree])).rows[0];
+  assert.equal(rrow.status,'retired');
+  assert.equal(rrow.retired_reason,'plan v2: engine rebuild','the second call rewrote the reason');
+  assert.ok(rrow.retired_at!==null && rrow.archived_at!==null,
+    'a retired desk must also be archived, so every reader that hides archived desks hides it');
+  assert.equal(rrow.entries_paused,true);
+  assert.equal(Number((await db.query(
+    "select count(*)::int as n from paper_activity where account_id=$1 and event_type='account_retired'",[retiree])).rows[0].n),1,
+    'the retirement is a ledger event and must be written exactly once');
+  await books(retiree,'after the desk was retired');
+
+  // FROZEN: un-archiving, un-pausing, re-policying and moving cash are refused;
+  // only the name may change.
+  await assert.rejects(db.query('select paper_desk_archive($1,false)',[retiree]),/is retired/,
+    'a retired desk was un-archived back into the desk list');
+  await assert.rejects(db.query('select paper_desk_update($1,null,null,null,false)',[retiree]),/is retired/,
+    'a retired desk was un-paused');
+  await assert.rejects(db.query("select paper_desk_update($1,null,null,'manual')",[retiree]),/is retired/);
+  await assert.rejects(db.query('select paper_desk_update($1,null,null,null,null,$2::jsonb)',
+    [retiree,JSON.stringify({cities:['london'],strategies:['s1'],min_edge:.02,max_plan_usd:5})]),/is retired/,
+    'a retired desk was re-policied');
+  await db.exec('reset role;');
+  await assert.rejects(db.query('update public.paper_accounts set cash=cash+1 where account_id=$1',[retiree]),/is retired/,
+    'cash moved on a retired desk');
+  await assert.rejects(db.query("update public.paper_accounts set status='active' where account_id=$1",[retiree]),/is retired/,
+    'a retired desk was brought back by editing its status');
+  await db.exec('set role service_role;');
+  await db.query("select paper_desk_update($1,'Retiree (history)')",[retiree]);
+  assert.equal((await db.query('select name from public.paper_accounts where account_id=$1',[retiree])).rows[0].name,
+    'Retiree (history)','renaming a retired desk is the one change it allows');
+
+  // NO ORDER, BY ANY PATH. queue_plan refuses first, in plain words; the
+  // trigger catches a writer that never calls queue_plan.
+  await db.exec(`reset role;update signals set fired_at=now() where signal_id=1;set role service_role;`);
+  const retiredPlan=(await db.query('select publish_paper_plan($1,$2,1,$3,$4) as id',
+    [retiree,'40000000-0000-0000-0000-00000000fe01',
+     JSON.stringify([{band_id:band,side:'YES',shares:'2',limit_price:'.50',cash_ceiling:'1.05'}]),
+     JSON.stringify({net_edge_per_share:'.10'})])).rows[0].id;
+  await assert.rejects(db.query("select arbdesk_private.queue_plan($1,'assisted')",[retiredPlan]),/Desk retired/,
+    'queue_plan queued a plan on a retired desk');
+  await db.exec('reset role;');
+  await assert.rejects(db.query(
+    `insert into public.paper_orders(account_id,command_key,band_id,token_id,side,action,origin,strategy_id,
+       shares,limit_price,cash_ceiling,policy_version,expires_at)
+     values($1,gen_random_uuid(),$2,'yes','YES','BUY','manual','s1',1,.5,.5,1,now()+interval '5 minutes')`,
+    [retiree,band]),/Desk retired/,'an order was written for a retired desk without going through queue_plan');
+  assert.equal(Number((await db.query('select count(*)::int as n from paper_orders where account_id=$1',[retiree])).rows[0].n),0);
+
+  // RETIREMENT NEVER STRANDS A POSITION. A desk holding shares must settle
+  // or sell first; otherwise the frozen row could never be paid out.
+  const holder=(await db.query("select paper_desk_create('Holder',100,'manual') as id")).rows[0].id;
+  await db.query(`insert into public.paper_positions(account_id,band_id,side,shares,cost_basis,realized_pnl)
+                  values($1,$2,'YES',5,2.5,0)`,[holder,band]);
+  await db.exec('set role service_role;');
+  await assert.rejects(db.query("select paper_desk_retire($1,'test')",[holder]),/1 open position/,
+    'a desk holding shares was retired');
+  await db.exec('reset role;');
+  assert.equal((await db.query('select status from public.paper_accounts where account_id=$1',[holder])).rows[0].status,'active');
+  await db.query('delete from public.paper_positions where account_id=$1',[holder]);
+
+  // ONLY THE SERVICE ROLE RETIRES A DESK.
+  for (const role of ['anon','authenticated']) {
+    assert.equal((await db.query(
+      `select has_function_privilege('${role}','public.paper_desk_retire(uuid,text)','execute') as ok`)).rows[0].ok,false,
+      `${role} can retire a desk`);
+  }
+
+  // EVERY CHANGE TO A STRATEGY'S SWITCH IS ON RECORD, with who and why.
+  await db.exec(`begin; set local arbdesk.change_reason='plan v2 P0.3';
+    update public.strategies set enabled=false where strategy_id='s1'; commit;`);
+  const hist=(await db.query(
+    `select operation,reason,old_row->>'enabled' as was,new_row->>'enabled' as now
+       from public.strategy_config_history where strategy_id='s1' order by history_id desc limit 1`)).rows[0];
+  assert.deepEqual([hist.operation,hist.reason,hist.was,hist.now],['UPDATE','plan v2 P0.3','true','false'],
+    'disabling a strategy left no record of what it was, or why');
+  const histBefore=Number((await db.query('select count(*)::int as n from public.strategy_config_history')).rows[0].n);
+  await db.query("update public.strategies set enabled=false where strategy_id='s1'");
+  assert.equal(Number((await db.query('select count(*)::int as n from public.strategy_config_history')).rows[0].n),histBefore,
+    'an update that changed nothing was recorded as a change');
+  await db.query("update public.strategies set enabled=true where strategy_id='s1'");
+  await db.exec('set role service_role;');
+  // The same, through the RPC a script uses (a PATCH cannot carry a reason).
+  await assert.rejects(db.query("select set_strategies_enabled(array['s1'],false,'')"),/needs a reason/);
+  assert.equal((await db.query("select set_strategies_enabled(array['s1'],false,'rpc reason') as n")).rows[0].n,1);
+  assert.equal((await db.query("select set_strategies_enabled(array['s1'],false,'rpc reason') as n")).rows[0].n,0,
+    'switching off a strategy that is already off counted as a change');
+  assert.equal((await db.query(
+    "select reason from public.strategy_config_history where strategy_id='s1' order by history_id desc limit 1")).rows[0].reason,
+    'rpc reason');
+  await db.exec('reset role;');
+  await db.query("update public.strategies set enabled=true where strategy_id='s1'");
+  for (const role of ['anon','authenticated']) {
+    assert.equal((await db.query(
+      `select has_function_privilege('${role}','public.set_strategies_enabled(text[],boolean,text)','execute') as ok`)).rows[0].ok,false,
+      `${role} can flip strategy switches through set_strategies_enabled`);
+  }
+  await db.exec('set role service_role;');
+  await assert.rejects(db.query('delete from public.strategy_config_history'),/permission denied/);
+  await assert.rejects(db.query("update public.strategy_config_history set reason='x'"),/permission denied/);
+  await db.exec('reset role;');
+
+  // ======================================================================
+  // A BACKFILL IS NOT RESEARCH (plan v2 P1.4,
+  // 20260923110000_a_backfill_is_not_research.sql).
+  //
+  // One UPDATE of a non-pricing column on 22 Sep copied 66,345 rows into
+  // research_captures. A new price is captured; a re-label is not; and a
+  // deliberate backfill can switch capture off for its own transaction.
+  // ======================================================================
+  await db.exec('reset role;');
+  const caps=async()=>Number((await db.query(
+    "select count(*)::int as n from research_captures where source_relation='band_probabilities'")).rows[0].n);
+  const c0=await caps();
+  await db.query(`insert into public.band_probabilities(prob_id,band_id,raw_prob,calibrated_prob,centre_c,sigma_c)
+                  values(60000002,$1,.30,.31,20.4,1.1)`,[band]);
+  const c1=await caps();
+  assert.equal(c1,c0+1,'a new price was not captured');
+  // THE PLAN'S ACCEPTANCE: a non-pricing UPDATE in a transaction creates 0 captures.
+  await db.exec(`begin; update public.band_probabilities set pricing_block_reason='relabel', regime_label='dry',
+                   observed_floor_c=19.0 where prob_id=60000002; rollback;`);
+  await db.query(`update public.band_probabilities set pricing_block_reason='relabel', regime_label='dry'
+                  where prob_id=60000002`);
+  assert.equal(await caps(),c1,'an update that changed no price was captured as research output');
+  await db.query('update public.band_probabilities set calibrated_prob=calibrated_prob where prob_id=60000002');
+  assert.equal(await caps(),c1,'an update that set a price to itself was captured');
+  await db.query('update public.band_probabilities set calibrated_prob=.35 where prob_id=60000002');
+  assert.equal(await caps(),c1+1,'a real re-price was NOT captured - research output was lost');
+  // The switch: on for one transaction, gone after it.
+  await db.exec(`begin; set local arbdesk.skip_capture = on;
+                   update public.band_probabilities set calibrated_prob=.40 where prob_id=60000002;
+                   insert into public.band_probabilities(prob_id,band_id,raw_prob) values(60000003,'${band}',.1);
+                 commit;`);
+  assert.equal(await caps(),c1+1,'a backfill that set arbdesk.skip_capture was captured anyway');
+  await db.query('update public.band_probabilities set calibrated_prob=.41 where prob_id=60000002');
+  assert.equal(await caps(),c1+2,'skip_capture leaked past the transaction that set it');
+
+  // ======================================================================
+  // NO SECURITY DEFINER FUNCTION IS EXECUTABLE BY PUBLIC (plan v2 P1.1,
+  // 20260923120000_revoke_public_execute.sql). Checked AFTER every sql/ file
+  // above has run, because those create functions after the migrations and a
+  // new function is executable by PUBLIC unless something stops it.
+  // ======================================================================
+  await db.exec('reset role;');
+  const publicX=(await db.query(`
+    select p.oid::regprocedure::text as sig from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+     where n.nspname='public' and p.prosecdef
+       and exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+                    where a.grantee=0 and a.privilege_type='EXECUTE')`)).rows.map(r=>r.sig);
+  assert.deepEqual(publicX,[],`SECURITY DEFINER functions executable by PUBLIC: ${publicX.join(', ')}`);
+  for (const sig of ['prune_trades(integer,boolean,timestamptz,bigint)',
+                     'prune_exported_paper_trades(integer,uuid[],boolean)',
+                     'paper_desk_reset(uuid)','paper_desk_archive(uuid,boolean)']) {
+    for (const role of ['anon','authenticated']) {
+      assert.equal((await db.query(`select has_function_privilege('${role}','public.${sig}','execute') as ok`)).rows[0].ok,false,
+        `${role} can execute ${sig}`);
+    }
+    assert.equal((await db.query(`select has_function_privilege('service_role','public.${sig}','execute') as ok`)).rows[0].ok,true,
+      `service_role lost ${sig}, which the archive and the board's server route call`);
+  }
+  // And a function created from here on gets no PUBLIC grant either.
+  await db.exec(`create function public.zz_new_definer() returns int language sql security definer as 'select 1';`);
+  assert.equal((await db.query("select has_function_privilege('anon','public.zz_new_definer()','execute') as ok")).rows[0].ok,false,
+    'a newly created function is executable by anon again - the next migration would reopen this');
+  await db.exec('drop function public.zz_new_definer();');
+
+  // THE TRADES FLOOR HOLDS FOR p_before TOO. Before, p_before => now() was a
+  // cutoff of now, and the 30-day check never looked at it.
+  await db.exec(`insert into public.trades_observed(trade_id,city_key,traded_at) values
+      (900001,'london',now()-interval '40 days'),(900002,'london',now()-interval '2 days'),
+      (900003,'london',now()-interval '1 hour');
+    insert into public.archive_daily_city_presence(dataset,day,city_key)
+      select 'Trades seen',(traded_at at time zone 'UTC')::date,city_key from public.trades_observed
+      on conflict do nothing;`);
+  const observedBefore=(await db.query('select count(*)::int as n from public.trades_observed')).rows[0].n;
+  const older=(await db.query("select count(*)::int as n from public.trades_observed where traded_at < now()-interval '30 days'")).rows[0].n;
+  const dry=(await db.query('select prune_trades(30,true,now()) as r')).rows[0].r;
+  assert.equal(dry.ok,true);
+  assert.equal(Number(dry.would_delete),older,
+    `p_before => now() reached past the 30-day floor: would delete ${dry.would_delete}, only ${older} are older than 30 days`);
+  const wet=(await db.query(`select prune_trades(30,false,now(),${observedBefore}) as r`)).rows[0].r;
+  assert.equal(wet.ok,false,'a committed prune with p_before => now() went through');
+  assert.equal((await db.query('select count(*)::int as n from public.trades_observed')).rows[0].n,observedBefore,
+    'rows inside the 30-day window were deleted');
+  const legit=(await db.query("select prune_trades(30,true,now()-interval '31 days') as r")).rows[0].r;
+  assert.equal(legit.ok,true,'a cutoff older than the floor must still be honoured');
+  assert.equal(new Date(legit.older_than).getTime()<Date.now()-30*86400e3,true);
+
+  // ======================================================================
   // WRITES NEED AN OPERATOR (plan v2 P1.2,
   // 20260923130000_writes_need_an_operator.sql). The browser reads settings
   // as anon; it must not see who the operators are, nor the n8n webhook URLs,
@@ -1640,5 +1862,5 @@ const assert = require('node:assert/strict');
   await db.exec('reset role;');
 
   await db.close();
-  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark and the settings the browser may not read');
+  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, research capture of prices only, no PUBLIC execute on SECURITY DEFINER functions and the settings the browser may not read');
 })().catch(e=>{console.error(e);process.exit(1);});

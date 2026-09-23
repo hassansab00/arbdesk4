@@ -47,8 +47,49 @@
 -- own, so falling back to it beats banking a null, as long as the row says
 -- which source answered. That is obs_source on fact_band_outcome.
 --
+-- 23 SEP, PLAN V2 P2.2 - TWO OF THE FINDINGS ABOVE DID NOT SURVIVE.
+--
+--   THE FILTER.   max_*_hourly kept any row within four minutes of
+--                 report_minute WHATEVER ITS SOURCE, so the NWS five-minute
+--                 feed (whole degrees C) leaked in: Dallas 13 Sep read
+--                 100.4F off a KDAL row at :55 while the routine METAR said
+--                 99.0F, and the winner was 98-99F. The hourly columns now
+--                 read the PRIMARY source only (obs_primary_source(), one
+--                 place to change when P2.1 settles which feed that is) and
+--                 no minute window: the primary source carries only reports
+--                 the station filed, and a window would drop the half-hourly
+--                 and special reports P2.1 adds.
+--   ROUNDING.     The venue compares a whole-degree reading, in its own unit,
+--                 against [lo, hi) bands. venue_round(value_c, unit) does
+--                 that, and v_settlement_agreement uses it. Measured on the
+--                 live database on 23 Sep over the 638 settled ladders with a
+--                 reading: current view 579 agree; primary source with the
+--                 window 584; with the window and rounding 585; primary
+--                 source, no window, rounded 587. The 51 left are 46 where
+--                 we read below the winner and 5 above - the readings we do
+--                 not have (P2.1), not the arithmetic.
+--
 -- Run order: after sql/ad4_81_paper_desk_integrity.sql. Re-runnable.
 -- ===========================================================================
+
+-- --------------------------------------------------------------------------
+-- 0. The two definitions every comparison with the venue shares.
+-- --------------------------------------------------------------------------
+
+-- Which feed in weather_observations is the station's own reports. One place,
+-- so P2.1 changes it here and every reader follows.
+create or replace function obs_primary_source() returns text
+language sql immutable set search_path = '' as $$ select 'IEM'::text $$;
+
+-- A maximum as the venue reads it: whole degrees in the market's unit.
+-- round() on numeric is half away from zero, which matches half-up for every
+-- daily maximum these markets price (all above freezing on the roster).
+create or replace function venue_round(p_value_c numeric, p_unit text) returns numeric
+language sql immutable set search_path = '' as $$
+  select case when p_value_c is null then null
+              when upper(p_unit) = 'F' then round(p_value_c * 9 / 5 + 32)
+              else round(p_value_c) end
+$$;
 
 -- --------------------------------------------------------------------------
 -- 1. The station feed's own answer for a city-day, in the unit the market
@@ -68,27 +109,17 @@ select
   max(o.temp_f)                                                as max_f,
   count(*)                                                     as n_readings,
   max(o.valid_at)                                              as last_reading_at,
-  min(o.station)                                               as station,
-  -- THE ROUTINE REPORT ONLY, which is the column the venue settles on. See
-  -- 20260922180000_the_venue_reads_the_hourly_column.sql: the eleven US ASOS
-  -- sites file about 125 observations a day and the venue reads 24 of them,
-  -- so max() over the five-minute feed catches spikes the "Temp" column never
-  -- shows and moves the day into the next band up. 76.8% -> 90.9% on those
-  -- cities. A four-minute tolerance because a station that files at :53 files
-  -- at :51 when it is busy.
-  --
-  -- Null report_minute means we have not seen enough of that station's
-  -- history to know its filing minute, and then the honest answer is the
-  -- whole feed rather than an empty one.
-  max(o.temp_c) filter (where c.report_minute is null
-                           or abs(extract(minute from o.valid_at)::int
-                                  - c.report_minute) <= 4)     as max_c_hourly,
-  max(o.temp_f) filter (where c.report_minute is null
-                           or abs(extract(minute from o.valid_at)::int
-                                  - c.report_minute) <= 4)     as max_f_hourly,
-  count(*) filter (where c.report_minute is null
-                      or abs(extract(minute from o.valid_at)::int
-                             - c.report_minute) <= 4)          as n_hourly
+  min(o.station) filter (where o.source = obs_primary_source()) as station,
+  -- THE PRIMARY SOURCE ONLY (plan v2 P2.2), which carries the reports the
+  -- station itself filed and that the venue settles on. This was a minute
+  -- window around report_minute over EVERY source, which let the NWS
+  -- five-minute feed in (Dallas 13 Sep: 100.4F from KDAL at :55 against a
+  -- routine 99.0F). 20260922180000_the_venue_reads_the_hourly_column.sql is
+  -- why the five-minute feed must stay out; the window was the wrong way to
+  -- keep it out, because it also drops the half-hourly and special reports.
+  max(o.temp_c) filter (where o.source = obs_primary_source())   as max_c_hourly,
+  max(o.temp_f) filter (where o.source = obs_primary_source())   as max_f_hourly,
+  count(*) filter (where o.source = obs_primary_source())        as n_hourly
 from weather_observations o
 join cities c on c.city_key = o.city_key
 where o.temp_c is not null
@@ -117,16 +148,18 @@ with win as (
          m.unit
     from v_coherent_band_outcome f
     join bands bd  on bd.band_id  = f.band_id
-    join markets m on m.market_id = bd.market_id
+    -- The canonical unit (plan v2 P2.5): rounding in the wrong unit would
+    -- move a reading several bands.
+    join v_canonical_markets m on m.market_id = bd.market_id
    where f.settled_yes
      and f.band_lo is not null and f.band_hi is not null
 ),
 j as (
   select w.*,
-         -- The routine report, not the whole feed: this view answers "did we
-         -- name the band the venue settled on", and the venue settles on the
-         -- hourly column.
-         case when w.unit = 'F' then s.max_f_hourly else s.max_c_hourly end as ours
+         -- The station's own reports, rounded the way the venue reads them
+         -- (plan v2 P2.2): whole degrees in the market's unit, against
+         -- [lo, hi) bands.
+         venue_round(s.max_c_hourly, w.unit)                              as ours
     from win w
     left join v_station_day_max s
            on s.city_key = w.city_key and s.for_date = w.for_date
@@ -187,6 +220,8 @@ begin
     if exists (select 1 from pg_roles where rolname = r) then
       execute format('grant select on v_station_day_max to %I', r);
       execute format('grant select on v_settlement_agreement to %I', r);
+      execute format('grant execute on function obs_primary_source() to %I', r);
+      execute format('grant execute on function venue_round(numeric, text) to %I', r);
     end if;
   end loop;
 end

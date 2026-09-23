@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 199 of them - and for each MISSING one names the
+-- and function the app reads - 201 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -80,9 +80,11 @@ with expected(rel, owner, used_by) as (values
     ('settings', 'ad4_00_preflight.sql', '(GlobalBar), (ScheduleControl), /goals'),
     ('signals', 'ad4_00_preflight.sql', ''),
     ('strategies', 'ad4_00_preflight.sql', '/campaigns'),
+    ('strategy_config_history', 'supabase/migrations/20260923100000_a_retired_desk_stays_retired.sql', ''),
     ('strategy_conflicts', 'ad4_phase2.sql', ''),
     ('synthesis_thresholds', 'ad4_40_synthesis.sql', ''),
     ('trades_observed', 'ad4_00_preflight.sql', ''),
+    ('v_anon_rpc_allowlist', 'supabase/migrations/20260923120000_revoke_public_execute.sql', ''),
     ('v_archive_by_city', 'ad4_35_databank_inventory.sql', '/databank'),
     ('v_archive_daily', 'ad4_35_databank_inventory.sql', '/databank'),
     ('v_archive_inventory', 'ad4_35_databank_inventory.sql', '/databank'),
@@ -301,9 +303,11 @@ begin
     ('settings', 'ad4_00_preflight.sql', '(GlobalBar), (ScheduleControl), /goals'),
     ('signals', 'ad4_00_preflight.sql', ''),
     ('strategies', 'ad4_00_preflight.sql', '/campaigns'),
+    ('strategy_config_history', 'supabase/migrations/20260923100000_a_retired_desk_stays_retired.sql', ''),
     ('strategy_conflicts', 'ad4_phase2.sql', ''),
     ('synthesis_thresholds', 'ad4_40_synthesis.sql', ''),
     ('trades_observed', 'ad4_00_preflight.sql', ''),
+    ('v_anon_rpc_allowlist', 'supabase/migrations/20260923120000_revoke_public_execute.sql', ''),
     ('v_archive_by_city', 'ad4_35_databank_inventory.sql', '/databank'),
     ('v_archive_daily', 'ad4_35_databank_inventory.sql', '/databank'),
     ('v_archive_inventory', 'ad4_35_databank_inventory.sql', '/databank'),

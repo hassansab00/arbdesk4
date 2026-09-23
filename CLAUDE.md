@@ -111,6 +111,26 @@ session, and expects 401 (plan v2 P1.2). Every browser write goes through
 client in `web/lib/supabase.ts` stays anonymous, and must never carry a
 session: `tests/test_the_definer_views_are_a_decision.py` says why.
 
+## A backfill switches research capture off for its own transaction
+
+`preserve_research_output` copies rows from six tables into
+`research_captures` on insert and update. An untracked backfill UPDATE on
+22 Sep copied 66,345 rows in an hour. Any deliberate backfill or bulk
+UPDATE of those tables (`band_probabilities`, `signals`,
+`fact_forecast_outcome`, `fact_band_outcome`, `fact_signal_outcome`,
+`model_versions`) runs like this:
+
+```sql
+begin;
+set local arbdesk.skip_capture = on;   -- ends with the transaction
+update public.band_probabilities set ... where ...;
+commit;
+```
+
+On `band_probabilities` an update is captured only when `raw_prob`,
+`calibrated_prob`, `centre_c` or `sigma_c` actually changes
+(`20260923110000_a_backfill_is_not_research.sql`).
+
 ## Generated files have tests that catch them going stale
 
 `web/lib/provenance.ts`, `web/lib/sqlOwner.ts` and `sql/ad4_98_ui_health.sql`
