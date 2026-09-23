@@ -93,13 +93,23 @@ Weather is autocorrelated, so a random hold-out leaks: the days either side of
 a held-out day carry most of its information. Folds are CONTIGUOUS DAY BLOCKS,
 same reasoning as the moving-block bootstrap in model_promotion.py.
 
-THE GATE
---------
-A correction is written for every cell and `applied` only when it beats the
-uncorrected baseline on held-out blocks, by CRPS, with at least MIN_DAYS
-behind it. A cell that fails stays in shadow and prices exactly as it does
-today. Nothing here can make the desk worse than the number it replaces
-without the measurement saying so first.
+THE GATE (plan v2 P3.4)
+-----------------------
+Held out means FORWARD. Until 23 Sep the folds trained on every block but the
+test one - blocks after it included - and a cell applied on a bare
+`gain > 0`: 72 of 399 cells, while 320 showed no gain at all. Now:
+
+  - expanding window (walk_forward.walk_forward_folds): each block is priced
+    by a fit on the dates before it only, and so is its city pool;
+  - K is chosen on dates before each block, never on the block it grades;
+  - the score is what the engine publishes - the bucket ladder, by ranked
+    probability score (walk_forward.bucket_scores) - not a continuous CRPS;
+  - `applied` needs MIN_GATE_DAYS forward-scored days and a day-block
+    bootstrap 90% interval of the per-day gain entirely above zero.
+
+A correction is written for every cell either way; a cell that fails stays in
+shadow and prices exactly as it does today. Nothing here can make the desk
+worse than the number it replaces without the measurement saying so first.
 """
 
 import argparse
@@ -110,6 +120,8 @@ import sys
 from collections import defaultdict, namedtuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from walk_forward import walk_forward_folds, bucket_scores, gate, per_day, MIN_GATE_DAYS  # noqa: E402
 
 MAE_TO_SIGMA = 1.2533       # sigma = MAE * sqrt(pi/2) for a normal distribution
 INV_SQRT_PI = 0.5641895835477563
@@ -255,25 +267,6 @@ def apply_fit(fit, forecast_c):
 # ---------------------------------------------------------------------------
 # Held-out scoring.
 # ---------------------------------------------------------------------------
-def blocked_folds(n, k=N_FOLDS):
-    """k contiguous index blocks over days already sorted by date.
-
-    Contiguous, not interleaved: a random hold-out over autocorrelated days
-    puts a held-out day's neighbours in the training set, which scores a fit
-    on information it was given.
-    """
-    if n <= 0 or k <= 1:
-        return []
-    k = min(k, n)
-    size, rem, out, start = n // k, n % k, [], 0
-    for i in range(k):
-        stop = start + size + (1 if i < rem else 0)
-        if stop > start:
-            out.append((start, stop))
-        start = stop
-    return out
-
-
 def score_days(days, fit):
     """Mean CRPS of a fit over days it did not see. inf if it cannot price."""
     if not days or fit is None:
@@ -309,25 +302,24 @@ def baseline_fit_with_bias(days):
 
 
 def cross_validate(cell_days, city_days, k_cell, k_city, folds=N_FOLDS):
-    """(crps_fitted, crps_baseline, n_scored) over held-out contiguous blocks.
+    """(crps_fitted, crps_baseline, n_scored) over FORWARD blocks.
 
-    The city pool is trimmed to the training dates too. Leaving it whole would
-    let a held-out day inform the city bias that prices it - the subtle half of
-    the same leak the blocked folds close.
+    Each test block is priced by a fit on the days before it; the first block
+    is history only and never scored. The city pool is cut at the same date,
+    so nothing on or after a test day informs the correction that prices it.
     """
     days = sorted(cell_days, key=lambda d: d.for_date)
-    blocks = blocked_folds(len(days), folds)
+    blocks = walk_forward_folds(len(days), folds)
     if not blocks:
         return float("inf"), float("inf"), 0
     fit_total = base_total = 0.0
     scored = 0
     for start, stop in blocks:
-        test = days[start:stop]
-        train = days[:start] + days[stop:]
+        test, train = days[start:stop], days[:start]
         if not train or not test:
             continue
-        test_dates = {d.for_date for d in test}
-        city_train = [d for d in city_days if d.for_date not in test_dates]
+        first = test[0].for_date
+        city_train = [d for d in city_days if d.for_date < first]
         f = fit_cell(train, city_train, k_cell, k_city)
         b = baseline_fit(train)
         bb = baseline_fit_with_bias(train)
@@ -339,6 +331,56 @@ def cross_validate(cell_days, city_days, k_cell, k_city, folds=N_FOLDS):
     if scored == 0:
         return float("inf"), float("inf"), 0
     return fit_total / scored, base_total / scored, scored
+
+
+def forward_gate(by_cell, pools, k_for, units, min_days=MIN_DAYS, folds=N_FOLDS,
+                 q_layers=None):
+    """{cell: (gate verdict, crps_fitted, crps_baseline)} from forward blocks
+    on the DESK-WIDE calendar.
+
+    Blocks are cut on the union of every cell's dates, so the shrinkage K can
+    be chosen once per block - by k_for(cutoff), on dates before the cutoff
+    only - rather than on the days it then grades. Each test day is scored on
+    the published buckets: the fit's ladder against the better of the two
+    baselines (no bias / today's raw bias), the better one picked per block
+    so a correction is never credited with a gain a baseline would have had.
+    """
+    dates = sorted({d.for_date for days in by_cell.values() for d in days})
+    diffs = defaultdict(list)
+    crps = defaultdict(lambda: [0.0, 0.0, 0])
+    for start, stop in walk_forward_folds(len(dates), folds):
+        cutoff, last = dates[start], dates[stop - 1]
+        k_cell, k_city = k_for(cutoff)
+        for (city, lead), days in by_cell.items():
+            train = [d for d in days if d.for_date < cutoff]
+            test = [d for d in days if cutoff <= d.for_date <= last]
+            if len(train) < min_days or not test:
+                continue
+            city_train = [d for d in pools.get(city, []) if d.for_date < cutoff]
+            f = fit_cell(train, city_train, k_cell, k_city)
+            b, bb = baseline_fit(train), baseline_fit_with_bias(train)
+            base = b if score_days(test, b) <= score_days(test, bb) else bb
+            unit = units.get(city, "C")
+            qd, qu = (q_layers or {}).get(city, (0.0, 0.0))
+            for d in test:
+                mf, sf = apply_fit(f, d.forecast_c)
+                mb, sb = apply_fit(base, d.forecast_c)
+                rf = bucket_scores(mf, sf, unit, d.observed_c, q_down=qd, q_up=qu)[0]
+                rb = bucket_scores(mb, sb, unit, d.observed_c, q_down=qd, q_up=qu)[0]
+                diffs[(city, lead)].append((d.for_date, rb - rf))
+            acc = crps[(city, lead)]
+            acc[0] += score_days(test, f) * len(test)
+            acc[1] += score_days(test, base) * len(test)
+            acc[2] += len(test)
+    out = {}
+    for cell in by_cell:
+        g = gate(per_day(diffs.get(cell, [])), min_days=MIN_GATE_DAYS)
+        g["pairs"] = diffs.get(cell, [])
+        acc = crps.get(cell)
+        cf = acc[0] / acc[2] if acc and acc[2] else None
+        cb = acc[1] / acc[2] if acc and acc[2] else None
+        out[cell] = (g, cf, cb)
+    return out
 
 
 def choose_shrinkage(cells, k_cell_grid=K_CELL_GRID, k_city_grid=K_CITY_GRID,
@@ -472,8 +514,16 @@ def city_pools(by_cell):
     return pools
 
 
-def fit_all(by_cell, pools, k_cell, k_city, min_days=MIN_DAYS, folds=N_FOLDS):
-    """One decided row per cell. Cells below min_days are reported, not fitted."""
+def fit_all(by_cell, pools, k_cell, k_city, min_days=MIN_DAYS, folds=N_FOLDS,
+            k_for=None, units=None, q_layers=None, collect=None):
+    """One decided row per cell. Cells below min_days are reported, not fitted.
+
+    The written correction is fitted on every day with (k_cell, k_city). The
+    verdict on it comes from forward_gate, where each block's K is k_for(cutoff)
+    - chosen before that block - or the same fixed K when no chooser is given.
+    """
+    k_for = k_for or (lambda _cutoff: (k_cell, k_city))
+    verdicts = forward_gate(by_cell, pools, k_for, units or {}, min_days, folds, q_layers)
     out = []
     for (city, lead), days in sorted(by_cell.items()):
         pool = pools.get(city, [])
@@ -495,25 +545,21 @@ def fit_all(by_cell, pools, k_cell, k_city, min_days=MIN_DAYS, folds=N_FOLDS):
                         "reason": f"{n} settled day(s); needs {min_days}"})
             continue
         fit = fit_cell(days, pool, k_cell, k_city)
-        crps_f, crps_b, scored = cross_validate(days, pool, k_cell, k_city, folds)
-        gain = (crps_b - crps_f) if (math.isfinite(crps_f) and math.isfinite(crps_b)) else None
-        applied = bool(gain is not None and gain > 0.0 and scored > 0)
-        if applied:
-            reason = (f"held-out CRPS {crps_f:.4f} against {crps_b:.4f} over "
-                      f"{scored} day(s): {gain:+.4f} C better")
-        elif gain is None:
-            reason = "held-out score could not be computed"
-        else:
-            reason = (f"held-out CRPS {crps_f:.4f} against {crps_b:.4f} over "
-                      f"{scored} day(s): {gain:+.4f} C - no gain, stays in shadow")
+        g, crps_f, crps_b = verdicts.get((city, lead), (gate([]), None, None))
+        if collect is not None and g["applied"]:
+            collect.extend(g.get("pairs", []))
+        gain = (crps_b - crps_f) if (crps_f is not None and crps_b is not None) else None
+        reason = ("forward-scored on the published buckets: " + g["reason"])
+        if crps_f is not None:
+            reason += f"; forward CRPS {crps_f:.4f} against {crps_b:.4f}"
         out.append({**base,
                     "bias_c": round(fit.bias_c, 4),
                     "sigma_ratio": round(fit.sigma_ratio, 4),
                     "baseline_sigma_c": round(fit.baseline_sigma_c, 4),
-                    "crps_fitted": round(crps_f, 5) if math.isfinite(crps_f) else None,
-                    "crps_baseline": round(crps_b, 5) if math.isfinite(crps_b) else None,
+                    "crps_fitted": round(crps_f, 5) if crps_f is not None else None,
+                    "crps_baseline": round(crps_b, 5) if crps_b is not None else None,
                     "crps_gain": round(gain, 5) if gain is not None else None,
-                    "applied": applied, "reason": reason})
+                    "applied": bool(g["applied"]), "reason": reason})
     return out
 
 
@@ -552,8 +598,36 @@ def main():
           f"CRPS {best['crps']:.5f} vs {best['crps_baseline']:.5f} "
           f"({best['crps_baseline'] - best['crps']:+.5f} C)")
 
+    # K FOR EACH FORWARD BLOCK, CHOSEN BEFORE IT (plan v2 P3.4). The K written
+    # above is chosen on every day, which is right for the correction that
+    # prices tomorrow and wrong for grading it: the gate's block at cutoff c
+    # uses the K that the dates before c alone would have chosen.
+    chosen = {}
+
+    def k_for(cutoff):
+        if cutoff not in chosen:
+            before = [([d for d in days if d.for_date < cutoff],
+                       [d for d in pools.get(c, []) if d.for_date < cutoff])
+                      for (c, _l), days in by_cell.items()]
+            before = [x for x in before if len(x[0]) >= args.min_days]
+            b, _t = choose_shrinkage(before, folds=args.folds)
+            chosen[cutoff] = (b["k_cell"], b["k_city"]) if b else (best["k_cell"], best["k_city"])
+        return chosen[cutoff]
+
+    from common import get_cities
+    cities = {c["city_key"]: c for c in get_cities()}
+    units = {k: (c.get("unit") or "C") for k, c in cities.items()}
+    q_layers = {k: (float(c.get("observation_q_down") or 0.0), float(c.get("observation_q_up") or 0.0))
+                for k, c in cities.items()}
+    applied_pairs = []
     rows = fit_all(by_cell, pools, best["k_cell"], best["k_city"],
-                   args.min_days, args.folds)
+                   args.min_days, args.folds, k_for=k_for, units=units, q_layers=q_layers,
+                   collect=applied_pairs)
+    # THE AGGREGATE, for plan v2 P3.4's acceptance: every applied cell's
+    # forward-scored days together, one mean gain per date, bootstrapped.
+    agg = gate(per_day(applied_pairs), min_days=1)
+    print("applied cells together: " + agg["reason"])
+    print("K per forward block: " + ", ".join(f"{c}: {k}" for c, k in sorted(chosen.items())))
     n_applied = sum(1 for r in rows if r["applied"])
     print(f"{len(rows)} cell(s), {n_applied} applied, {len(rows) - n_applied} shadow")
     if args.dry_run:
@@ -584,8 +658,11 @@ def main():
     upsert_replace("derived_forecast_postprocess", rows,
                    on_conflict="city_key,lead_days")
     log_run("forecast_postprocess", "ok", len(rows),
-            f"{n_applied} applied, k_cell={best['k_cell']}, k_city={best['k_city']}, "
-            f"CRPS {best['crps']:.5f} vs {best['crps_baseline']:.5f}")
+            {"applied": n_applied, "cells": len(rows), "k_cell": best["k_cell"],
+             "k_city": best["k_city"], "k_per_block": {str(c): list(k) for c, k in chosen.items()},
+             "gate": "forward RPS, day-block bootstrap 90% lower > 0, >= 20 days (P3.4)",
+             "applied_gain_rps_per_day": agg["mean"], "applied_gain_lo": agg["lo"],
+             "applied_gain_hi": agg["hi"], "applied_days": agg["n"]})
     return 0
 
 
