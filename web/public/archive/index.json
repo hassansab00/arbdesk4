@@ -28,10 +28,19 @@
           "gzip_bytes": 583533,
           "rows": 8979,
           "to": "2026-09-15"
+        },
+        {
+          "archived_at": "2026-09-23T08:13:40+00:00",
+          "archived_through": "2026-09-19T08:13:02.414887+00:00",
+          "asset": "books-2026-09-15-to-2026-09-19.csv.gz",
+          "from": "2026-09-15",
+          "gzip_bytes": 3760527,
+          "rows": 55929,
+          "to": "2026-09-19"
         }
       ],
       "release_tag": "books-archive",
-      "rows_archived": 64495,
+      "rows_archived": 120424,
       "table": "book_snapshots"
     },
     "edges": {
@@ -44,10 +53,19 @@
           "gzip_bytes": 652327,
           "rows": 15234,
           "to": "2026-09-05"
+        },
+        {
+          "archived_at": "2026-09-23T08:13:58+00:00",
+          "archived_through": "2026-09-16T08:13:40.535020+00:00",
+          "asset": "edges-2026-09-12-to-2026-09-16.csv.gz",
+          "from": "2026-09-12",
+          "gzip_bytes": 2188894,
+          "rows": 32798,
+          "to": "2026-09-16"
         }
       ],
       "release_tag": "edges-archive",
-      "rows_archived": 15234,
+      "rows_archived": 48032,
       "table": "edges"
     },
     "forecasts": {
@@ -109,10 +127,19 @@
           "gzip_bytes": 3558,
           "rows": 350,
           "to": "2026-06-23"
+        },
+        {
+          "archived_at": "2026-09-23T08:14:25+00:00",
+          "archived_through": "2026-07-25",
+          "asset": "forecasts-2026-06-24-to-2026-07-24.csv.gz",
+          "from": "2026-06-24",
+          "gzip_bytes": 73098,
+          "rows": 10850,
+          "to": "2026-07-24"
         }
       ],
       "release_tag": "forecasts-archive",
-      "rows_archived": 34880,
+      "rows_archived": 45730,
       "table": "weather_forecasts"
     },
     "observations": {
@@ -193,10 +220,19 @@
           "gzip_bytes": 8804,
           "rows": 815,
           "to": "2026-06-24"
+        },
+        {
+          "archived_at": "2026-09-23T08:14:51+00:00",
+          "archived_through": "2026-07-25T08:14:25.812918+00:00",
+          "asset": "observations-2026-06-24-to-2026-07-25.csv.gz",
+          "from": "2026-06-24",
+          "gzip_bytes": 290101,
+          "rows": 38575,
+          "to": "2026-07-25"
         }
       ],
       "release_tag": "observations-archive",
-      "rows_archived": 415619,
+      "rows_archived": 454194,
       "table": "weather_observations"
     },
     "research": {
@@ -288,5 +324,5 @@
     }
   },
   "rebuilt_from": "release assets, row counts parsed from the files themselves",
-  "updated_at": "2026-09-22T08:13:31+00:00"
+  "updated_at": "2026-09-23T08:14:51+00:00"
 }
