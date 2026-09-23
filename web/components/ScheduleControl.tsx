@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { operatorRpc } from "@/lib/operator";
 import { useQuery } from "@/lib/useQuery";
 
 /**
@@ -76,7 +77,7 @@ export default function ScheduleControl({ jobs }: { jobs: Array<{ job: string; l
   async function save() {
     setSaving(true); setMsg(null);
     const note = ((q.data ?? [])[0]?.value as { note?: string } | undefined)?.note;
-    const { error } = await supabase.rpc("update_setting", {
+    const { error } = await operatorRpc("update_setting", {
       p_key: "workflow_schedules",
       p_value: { ...(note ? { note } : {}), ...cur },
     });

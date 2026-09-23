@@ -18,7 +18,7 @@ export default function RefreshButton({
   className?: string;
 }) {
   const wf = useWorkflow(job);
-  const disabled = !wf.url || wf.busy;
+  const disabled = !wf.configured || wf.busy;
 
   return (
     <span className={`inline-flex flex-col items-end gap-1 ${className}`}>
@@ -26,8 +26,8 @@ export default function RefreshButton({
         onClick={() => wf.fire(body ?? {}, onDone)}
         disabled={disabled}
         title={
-          wf.url
-            ? `POSTs to ${job} in n8n, then re-reads this page.`
+          wf.configured
+            ? `Runs ${job} in n8n (sign in first), then re-reads this page.`
             : `No webhook URL for ${job}. Paste its n8n Production URL on the Workflows page.`
         }
         className={`rounded border px-2.5 py-1 text-xs transition ${
@@ -43,7 +43,7 @@ export default function RefreshButton({
           {wf.message}
         </span>
       )}
-      {wf.ready && !wf.url && (
+      {wf.ready && !wf.configured && (
         <span className="text-[10px] text-muted">set its URL on Workflows to enable</span>
       )}
     </span>

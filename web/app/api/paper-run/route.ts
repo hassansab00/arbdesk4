@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireOperator } from '../../../lib/operatorAuth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -70,6 +71,10 @@ export async function POST(request: Request) {
   if (!origin || origin !== new URL(request.url).origin) {
     return NextResponse.json({ error: 'Cross-origin run request rejected.' }, { status: 403 });
   }
+  // The Origin header is set by whoever sends the request, so it proves
+  // nothing on its own. A signed-in operator is required (plan v2 P1.2).
+  const verdict = await requireOperator(request);
+  if (!verdict.ok) return NextResponse.json({ error: verdict.message }, { status: verdict.status });
   const { token, repo, ref } = config();
   if (!token) {
     return NextResponse.json({

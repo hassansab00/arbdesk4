@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { operatorRpc } from "@/lib/operator";
 import { useQuery } from "@/lib/useQuery";
 import { latestBooks } from "@/lib/books";
 import { fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
@@ -298,7 +299,7 @@ export default function GoalsPage() {
       risk_mode: riskMode,
       side,
     };
-    const { error } = await supabase.rpc("update_setting", { p_key: "goal", p_value: payload });
+    const { error } = await operatorRpc("update_setting", { p_key: "goal", p_value: payload });
     setSaveMsg(error ? `Save failed: ${error.message}` : "Goal saved.");
     settings.refresh();
     setTimeout(() => setSaveMsg(null), 4000);

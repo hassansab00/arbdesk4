@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { paperAction, runPaperWorker, describeWorker } from "@/lib/paperSupabase";
+import { operatorFetch } from "@/lib/operator";
 import { fmtUsd, fmtAge } from "@/lib/format";
 import { nextCycle } from "@/components/PaperPipelineStatus";
 
@@ -136,7 +137,7 @@ export default function PaperDeskControl({ desk, exposure, openPositions, lastFi
   }, paused ? "stop" : "start");
 
   const runCycle = () => say(async () => {
-    const r = await fetch("/api/paper-run", { method: "POST" });
+    const r = await operatorFetch("/api/paper-run", { method: "POST" });
     const body = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(body.error ?? "The cycle could not be started.");
     return body.note ?? "Cycle requested.";

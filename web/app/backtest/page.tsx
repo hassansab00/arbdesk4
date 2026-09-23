@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { labelBacktest, operatorRpc } from "@/lib/operator";
 import { useQuery } from "@/lib/useQuery";
 import { DataState, ErrorBox, Loading } from "@/components/DataState";
 import { Freshness, FreshnessRow } from "@/components/Provenance";
@@ -143,22 +144,22 @@ export default function BacktestPage() {
       starting_budget: parseFloat(startingBudget) || 10000,
       evaluation_lead_days: 1,
     };
-    const { data, error } = await supabase.rpc("queue_backtest", { p_params: params });
+    const { data, error } = await operatorRpc<string>("queue_backtest", { p_params: params });
     if (error) {
       setQueueError(`${error.message}${error.hint ? ` — ${error.hint}` : ""}`);
       setQueueMsg(null);
       return;
     }
     setQueueError(null);
-    // `label` is written by the queueing client rather than by
-    // queue_backtest(jsonb), which takes only params. anon has SELECT but
-    // no UPDATE on backtest_runs under RLS, so a label set from the
-    // browser is best-effort and its failure must not read as a failed
-    // queue - the run itself is already recorded.
+    // `label` is written separately, because queue_backtest(jsonb) takes
+    // only params. It goes through /api/operator like every other write
+    // (plan v2 P1.2); anon never had UPDATE on backtest_runs, so the old
+    // browser-side update always failed. Its failure still must not read
+    // as a failed queue - the run itself is already recorded.
     let labelNote = "";
     if (label && data) {
-      const { error: labelErr } = await supabase.from("backtest_runs").update({ label }).eq("run_id", data);
-      if (labelErr) labelNote = " (label not saved: writes to backtest_runs are blocked for the anon key)";
+      const { error: labelErr } = await labelBacktest(String(data), label);
+      if (labelErr) labelNote = ` (label not saved: ${labelErr.message})`;
     }
     setQueueMsg(`Queued run ${String(data).slice(0, 8)}. Now press Run in GitHub Actions → Backtest — it no longer polls.${labelNote}`);
     setLabel("");

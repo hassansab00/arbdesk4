@@ -41,7 +41,14 @@ function getClient(): SupabaseClient {
     if (classifyKey(key) === "secret") {
       throw new Error(SECRET_KEY_MESSAGE);
     }
-    cached = createClient(url, key);
+    // ALWAYS ANONYMOUS (plan v2 P1.2). Reads are granted to anon by RLS
+    // policy on almost every table, and a client that picked up a signed-in
+    // session would read as `authenticated` and see nothing. The operator
+    // session lives in its own client with its own storage key
+    // (lib/operator.ts) and is sent only to this site's write routes.
+    cached = createClient(url, key, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
   }
   return cached;
 }

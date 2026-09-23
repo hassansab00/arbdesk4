@@ -236,10 +236,14 @@ begin
   -- The blanket revoke above is deliberate: naming argument types here goes
   -- stale the moment a signature changes. Now grant back exactly what the UI
   -- does call, by name, so the list is visible and arguable.
+  -- The WRITES left this list in plan v2 P1.2 (update_setting,
+  -- set_strategy_enabled, set_run_scope, queue_backtest, upsert_deployment,
+  -- set_deployment_status, approve_signal, dismiss_signal): the site now
+  -- makes them through its server routes, which check a signed-in operator
+  -- and use the service key. See
+  -- supabase/migrations/20260923130000_writes_need_an_operator.sql.
   foreach f in array array[
-    'approve_signal', 'dismiss_signal', 'set_run_scope', 'set_strategy_enabled',
-    'queue_backtest', 'backtest_readiness', 'upsert_deployment',
-    'set_deployment_status', 'update_setting', 'run_scope',
+    'backtest_readiness', 'run_scope',
     'band_contains', 'band_local_value', 'capacity_side', 'depth_usd',
     'ad4_num', 'ad4_plural', 'ad4_region', 'ad4_norm_levels',
     'ad4_synth_levels', 'ad4_raw_book_side'
