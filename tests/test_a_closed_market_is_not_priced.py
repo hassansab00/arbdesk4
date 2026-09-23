@@ -45,23 +45,29 @@ def _params(module, monkeypatch):
     return seen
 
 
+MIGRATION = (ROOT / "supabase/migrations/"
+             "20260923180000_a_priceable_market_is_one_whose_local_day_has_not_ended.sql").read_text()
+
+
 def test_the_edge_engine_does_not_price_a_closed_market(monkeypatch):
-    seen = _params(ee, monkeypatch)
-    assert ("closed", "eq.false") in seen["params"], seen["params"]
+    # Since plan v2 P3.2 the rule lives in v_priceable_markets, shared by both.
+    assert _params(ee, monkeypatch)["table"] == "v_priceable_markets"
+    assert "not coalesce(m.closed, false)" in MIGRATION
 
 
 def test_the_probability_engine_does_not_price_a_closed_market(monkeypatch):
-    seen = _params(pe, monkeypatch)
-    assert ("closed", "eq.false") in seen["params"], seen["params"]
+    assert _params(pe, monkeypatch)["table"] == "v_priceable_markets"
 
 
 def test_both_engines_still_bound_by_date(monkeypatch):
     # The closed filter REPLACES nothing. A market that is open but resolved
     # last week is still not upcoming, and dropping the date bound would price
-    # the entire history.
+    # the entire history. The bound is now the city's LOCAL date (P3.2).
+    assert "m.resolution_date >= (now() at time zone c.timezone)::date" in MIGRATION
     for module in (ee, pe):
         params = _params(module, monkeypatch)["params"]
-        assert any(k == "resolution_date" and v.startswith("gte.") for k, v in params), params
+        assert not any(k == "resolution_date" for k, _ in params), (
+            "a UTC date bound on top of the view drops western cities after 00:00Z")
 
 
 def test_the_book_snapshot_job_does_not_ask_for_a_closed_market_s_book():

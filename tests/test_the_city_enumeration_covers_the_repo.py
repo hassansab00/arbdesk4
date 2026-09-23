@@ -149,6 +149,8 @@ SQL_FILTERS = {
     "sql/ad4_13_reconcile.sql":                 "v_opportunities - and through it v_band_ladder, v_trade_plan, v_city_day_plan",
     "sql/ad4_22_opportunity_context.sql":       "v_opportunity_context - the movement panel behind each card",
     "sql/ad4_68_prediction_ladder_outcomes.sql":"v_prediction_ladder - the Predictive page",
+    "supabase/migrations/20260923180000_a_priceable_market_is_one_whose_local_day_has_not_ended.sql":
+        "v_priceable_markets - the markets both engines price; a retired city is not priced",
     "sql/ad4_87_market_settlement_gaps.sql":    "v_market_settlement_gaps - ended days to act on; a "
                                                 "retired city is not collected on purpose",
     "sql/ad4_30_open_meteo.sql":                "the forecast collector's city list",
