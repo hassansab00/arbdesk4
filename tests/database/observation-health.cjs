@@ -106,7 +106,9 @@ function middayZone() {
       ('series_city',     'Series',      'active', '${TZ}'),
       ('floor_city',      'Floor only',  'active', '${TZ}'),
       ('stale_live_city', 'Stale live',  'active', '${TZ}'),
-      ('one_reading_city','One reading', 'active', '${TZ}');
+      ('one_reading_city','One reading', 'active', '${TZ}'),
+      ('model_city',      'Model live',  'active', '${TZ}'),
+      ('model_only_city', 'Model only',  'active', '${TZ}');
 
     -- A city the archive covers: three readings today, peaking at 22.0.
     insert into public.weather_observations(city_key, valid_at, temp_c, source) values
@@ -115,6 +117,9 @@ function middayZone() {
       ('series_city', now() - interval '10 minutes', 20.0, 'iem'),
       -- and one reading today for the city that has exactly one
       ('one_reading_city', now() - interval '30 minutes', 19.0, 'iem'),
+      -- SEOUL, 23 Sep (plan v2 P2.7): the station has measured 21.0 today
+      ('model_city', now() - interval '2 hours', 20.0, 'iem'),
+      ('model_city', now() - interval '1 hour',  21.0, 'iem'),
       -- yesterday's archive for the two cities the feed runs a day behind on
       ('floor_city',      now() - interval '30 hours', 12.0, 'iem'),
       ('stale_live_city', now() - interval '30 hours', 27.0, 'iem');
@@ -126,8 +131,17 @@ function middayZone() {
         null, null, null, 'station'),
       -- THE MUNICH CASE: a stored maximum of 9.0 from early this morning while
       -- the thermometer reads 21.5. Impossible, and it was the live state.
+      -- A STATION's thermometer: since P2.7 only a station reading may lift a
+      -- maximum (model_city below is the other half).
       ('floor_city', now(), now(), 21.5,
-        9.0, now() - interval '6 hours', 9.0, 'model'),
+        9.0, now() - interval '6 hours', 9.0, 'station'),
+      -- ...and Open-Meteo model output at 23.2, with a stored maximum it had
+      -- already contaminated. Neither may become the maximum.
+      ('model_city', now(), now() - interval '5 minutes', 23.2,
+        23.2, now() - interval '5 minutes', 18.0, 'model'),
+      -- model output and no station reading today: nothing is known.
+      ('model_only_city', now(), now() - interval '5 minutes', 25.0,
+        null, null, null, 'model'),
       -- THE SHANGHAI CASE: the newest live reading belongs to YESTERDAY, so
       -- nothing at all is known about the day now in progress.
       ('stale_live_city', now(), now() - interval '14 hours', 28.7,
@@ -137,7 +151,7 @@ function middayZone() {
   `);
 
   const refreshed = (await db.query('select public.refresh_live_weather_timing() as n')).rows[0].n;
-  assert.equal(refreshed, 4, 'the refresh did not touch every city');
+  assert.equal(refreshed, 6, 'the refresh did not touch every city');
 
   const rows = Object.fromEntries((await db.query(`
     select lw.city_key, lw.running_max_c::float8 as running_max_c,
@@ -173,6 +187,17 @@ function middayZone() {
     'ONE reading is not a series, however fresh it is - s5 must not lock on it');
   assert.equal(rows.one_reading_city.readings_today, 1);
 
+  // ---- 1b. a model value is never a maximum (plan v2 P2.7) ---------------
+  assert.equal(rows.model_city.running_max_c, 21.0,
+    'Open-Meteo model output became the maximum: 23.2 against a station that '
+    + 'measured 21.0 is the Seoul floor of 23 Sep');
+  assert.equal(rows.model_city.view_max_c, 21.0);
+  assert.equal(rows.model_city.running_max_basis, 'series');
+  assert.equal(rows.model_only_city.running_max_c, null,
+    'model output alone is not a floor');
+  assert.equal(rows.model_only_city.running_max_basis, 'absent');
+  assert.match(rows.model_only_city.note, /model output, not a measurement/);
+
   // ---- 2. nothing anywhere breaks the arithmetic --------------------------
   const impossible = (await db.query(`
     select lw.city_key, lw.running_max_c, lw.running_min_c, lw.temp_c
@@ -180,6 +205,8 @@ function middayZone() {
       join public.cities c using (city_key)
      where (lw.observed_at at time zone c.timezone)::date
          = (now() at time zone c.timezone)::date
+       -- a reading: a model's temp_c is not one, and may sit anywhere
+       and lw.source_kind = 'station'
        and ( (lw.running_max_c is not null and lw.temp_c > lw.running_max_c)
           or (lw.running_min_c is not null and lw.temp_c < lw.running_min_c) )
   `)).rows;

@@ -329,11 +329,38 @@ def _observed_floors():
     """
     floors = {}
     for row in rest("v_city_running_max",
-                    {"select": "city_key,local_date,running_max_c,running_max_basis"}):
-        if row.get("running_max_c") is None or not row.get("local_date"):
+                    {"select": "city_key,local_date,running_max_c,running_max_basis,"
+                               "observed_max_today_c,live_source_kind"}):
+        floor = measured_floor(row)
+        if floor is None or not row.get("local_date"):
             continue
-        floors[row["city_key"]] = (str(row["local_date"]), float(row["running_max_c"]))
+        floors[row["city_key"]] = (str(row["local_date"]), floor)
     return floors
+
+
+def measured_floor(row):
+    """The floor a v_city_running_max row may put under a price, or None.
+
+    A MODEL VALUE IS NEVER A FLOOR (plan v2 P2.7). "The day has already
+    reached at least X" is a claim about a thermometer. For 37 of 48 active
+    cities the live row is Open-Meteo model output, and on 23 Sep it had lifted
+    10 cities' floors above everything their station measured - Seoul's to
+    23.2 C against a measured 21.0, leaving no probability on buckets the day
+    could still settle in. The SQL (ad4_71, ad4_live_weather_timing) now keeps
+    model values out; this is the second lock, so a view that regresses cannot
+    reach a price: a maximum above the station series is accepted only when the
+    live row behind it is a station's.
+    """
+    top = row.get("running_max_c")
+    if top is None:
+        return None
+    top = float(top)
+    series = row.get("observed_max_today_c")
+    if row.get("live_source_kind") == "station":
+        return top
+    if series is None:
+        return None
+    return min(top, float(series))
 
 
 def _promoted_models():

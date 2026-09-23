@@ -90,7 +90,17 @@ begin
   -- is what lets running_max_at name the reading the maximum actually came
   -- from instead of being coalesced away from it.
   prev as (
-    select city_key, running_max_c, running_max_at, running_min_c, temp_c, observed_at
+    select city_key, running_max_c, running_max_at, running_min_c, temp_c, observed_at,
+           -- ONLY A STATION'S OWN READING may become part of a maximum (plan
+           -- v2 P2.7). For 37 of 48 active cities live_weather.temp_c is
+           -- Open-Meteo MODEL output (source_kind = 'model', n8n P1.5).
+           -- Folded in here it became the stored maximum and then the pricing
+           -- floor: on 23 Sep 10 cities' floors sat above everything their
+           -- station had measured, Seoul's by 2.2 C (23.2 vs 21.0). The kept
+           -- extreme goes too, because a model value once kept was carried to
+           -- the end of the local day. The station series (v_city_today_
+           -- readings) is recomputed on every run, so nothing real is lost.
+           source_kind is not distinct from 'station' as live_is_station
       from live_weather
   ),
   calc as (
@@ -104,11 +114,11 @@ begin
            nw.latest_temp_c,
            -- A stored extreme counts only while the reading it came from
            -- belongs to this city's current local day.
-           case when (pv.running_max_at at time zone k.tz)::date = k.local_now::date
+           case when pv.live_is_station and (pv.running_max_at at time zone k.tz)::date = k.local_now::date
                 then pv.running_max_c end  as kept_max_c,
-           case when (pv.running_max_at at time zone k.tz)::date = k.local_now::date
+           case when pv.live_is_station and (pv.running_max_at at time zone k.tz)::date = k.local_now::date
                 then pv.running_max_at end as kept_max_at,
-           case when (pv.running_max_at at time zone k.tz)::date = k.local_now::date
+           case when pv.live_is_station and (pv.running_max_at at time zone k.tz)::date = k.local_now::date
                 then pv.running_min_c end  as kept_min_c,
            -- THE LIVE THERMOMETER, which nothing here used to read. n8n keeps
            -- it current for all 54 cities; the observation feed is about a day
@@ -116,9 +126,9 @@ begin
            -- maximum BELOW the current temperature for 14 cities - by up to
            -- 12.5 C - which is arithmetically impossible and made bands the
            -- day had already cleared look unreachable.
-           case when (pv.observed_at at time zone k.tz)::date = k.local_now::date
+           case when pv.live_is_station and (pv.observed_at at time zone k.tz)::date = k.local_now::date
                 then pv.temp_c end         as live_temp_c,
-           case when (pv.observed_at at time zone k.tz)::date = k.local_now::date
+           case when pv.live_is_station and (pv.observed_at at time zone k.tz)::date = k.local_now::date
                 then pv.observed_at end    as live_at,
            case when l1.temp_c is null then null else round(nw.latest_temp_c - l1.temp_c, 2) end as temp_change_1h,
            case when l3.temp_c is null then null else round(nw.latest_temp_c - l3.temp_c, 2) end as temp_change_3h,

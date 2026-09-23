@@ -84,11 +84,21 @@ def test_a_blocked_side_is_carried_with_its_reason(board):
 
 def test_live_weather_rides_along_when_present(board):
     board([_opp("b1", "YES")],
-          live=[{"city_key": "london", "running_max_c": 19.4,
+          live=[{"city_key": "london", "running_max_c": 19.4, "source_kind": "station",
                  "peak_window_state": "IN_WINDOW", "day_decided": False}])
     v = se._band_views()[0]
     assert v.running_max_c == 19.4 and v.peak_window_state == "IN_WINDOW"
     assert v.day_decided is False
+
+
+def test_a_model_maximum_does_not_ride_along(board):
+    """live_weather.running_max_c is model output for 37 of 48 cities; as a
+    fallback it would hand a strategy a model value as today's maximum
+    (plan v2 P2.7)."""
+    board([_opp("b1", "YES")],
+          live=[{"city_key": "london", "running_max_c": 23.2, "source_kind": "model",
+                 "peak_window_state": "IN_WINDOW", "day_decided": False}])
+    assert se._band_views()[0].running_max_c is None
 
 
 def test_absent_live_weather_is_none_not_zero(board):
@@ -228,7 +238,7 @@ def test_a_source_that_states_no_day_still_rides_along(board):
     where these sources carry no date - which is how a safety check becomes an
     outage."""
     board([_opp("b1", "YES", resolution_date="2026-09-15")],
-          live=[{"city_key": "london", "running_max_c": 19.4,
+          live=[{"city_key": "london", "running_max_c": 19.4, "source_kind": "station",
                  "peak_window_state": "IN_WINDOW", "day_decided": False}])
     v = se._band_views()[0]
     assert v.running_max_c == 19.4

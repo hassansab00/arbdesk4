@@ -285,8 +285,11 @@ def _band_views():
             # refresh_observation_trust() writes. None where fewer than ten
             # ladders have settled, and None means "no opinion" downstream.
             observation_trust=trust.get(city),
+            # The fallback is live_weather's own maximum, which may carry model
+            # output unless the row is a station's (plan v2 P2.7).
             running_max_c=_first(tm, "running_max_c") if tm.get("running_max_c") is not None
-                          else lw.get("running_max_c"),
+                          else (lw.get("running_max_c") if lw.get("source_kind") == "station"
+                                else None),
             minutes_to_peak=_first(tm, "minutes_to_peak") if tm.get("minutes_to_peak") is not None
                             else lw.get("minutes_to_peak"),
             peak_window_state=window_state,

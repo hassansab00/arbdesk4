@@ -101,3 +101,21 @@ def test_detect_events_precip_start():
     kinds = {e["kind"] for e in events}
     assert "CONDITION_CHANGE" in kinds
     assert "PRECIP_START" in kinds
+
+
+def test_the_iem_request_is_the_last_three_hours_not_an_empty_day_range(monkeypatch):
+    """day2 is exclusive, so start.date()..end.date() on one UTC day asked IEM
+    for nothing - 21 hours of every 24 (plan v2 P2.7)."""
+    seen = {}
+
+    def fake_fetch(station, start, end, since=None, until=None):
+        seen.update(station=station, since=since, until=until)
+        return ""
+
+    monkeypatch.setattr(lw, "fetch_station", fake_fetch)
+    monkeypatch.setattr(lw, "fetch_primary_reading", lambda icao: None)
+    monkeypatch.setattr(lw, "retry", lambda fn, label=None: fn())
+    lw.fetch_reading("london", "EGLC", "WU")
+    assert seen["station"] == "EGLC"
+    assert seen["since"] is not None and seen["until"] is not None
+    assert 2.9 <= (seen["until"] - seen["since"]).total_seconds() / 3600 <= 3.1
