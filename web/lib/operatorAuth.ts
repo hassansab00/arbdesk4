@@ -80,7 +80,27 @@ export function serviceClient(): SupabaseClient | null {
  * else is looked at, so a forged Origin with no session learns nothing about
  * how the server is configured.
  */
+/**
+ * SIGN-IN IS OFF (Hassan, 23 Sep: he is the only user of the platform).
+ *
+ * With it off, a write still goes through a server route and the service key -
+ * the browser's anon key can no longer call any write RPC itself
+ * (20260923130000_writes_need_an_operator.sql) - but no session is asked for.
+ * The site's access boundary is then Vercel's deployment protection, as it is
+ * for every read. Set OPERATOR_SIGN_IN=required on the server to turn the
+ * operator check below back on; settings.operators and this code are kept for
+ * that day.
+ */
+export function signInRequired(): boolean {
+  return process.env.OPERATOR_SIGN_IN === "required";
+}
+
 export async function requireOperator(request: Request): Promise<Verdict> {
+  if (!signInRequired()) {
+    return serviceClient()
+      ? { ok: true, email: "sign-in off" }
+      : { ok: false, status: 503, message: "Writes are not configured on this server: SUPABASE_SERVICE_KEY is not set." };
+  }
   const token = bearerToken(request);
   if (!token) return authorize(null, { emailForToken: async () => null, operators: async () => [] });
   const client = serviceClient();

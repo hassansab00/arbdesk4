@@ -50,9 +50,9 @@ async function webhooks(): Promise<Webhooks | null> {
 }
 
 /**
- * GET ?what=workflows - which n8n jobs have a webhook URL. Anyone may ask
- * whether a job is configured; only an operator gets the URLs themselves,
- * because a webhook URL is all it takes to fire the job.
+ * GET ?what=workflows - which n8n jobs have a webhook URL, and the URLs
+ * themselves to whoever passes requireOperator (everyone who can reach the
+ * site while sign-in is off; only an operator when it is on).
  */
 export async function GET(request: Request) {
   const what = new URL(request.url).searchParams.get("what");
@@ -63,7 +63,7 @@ export async function GET(request: Request) {
   for (const [job, entry] of Object.entries(hooks)) {
     configured[job] = !!(entry && typeof entry === "object" && typeof entry.url === "string" && entry.url.trim());
   }
-  const verdict = request.headers.get("authorization") ? await requireOperator(request) : null;
+  const verdict = await requireOperator(request);
   return NextResponse.json(
     { data: { configured, webhooks: verdict?.ok ? hooks : null }, error: null },
     { headers: noStore },

@@ -105,11 +105,13 @@ If you change the web app, also:
 cd web && ./node_modules/.bin/tsc --noEmit && npm run test:routes && ./node_modules/.bin/next build
 ```
 
-`test:routes` runs the real write routes with a forged `Origin` and no
-session, and expects 401 (plan v2 P1.2). Every browser write goes through
-`web/app/api/operator` or a route that calls `requireOperator`. The data
-client in `web/lib/supabase.ts` stays anonymous, and must never carry a
-session: `tests/test_the_definer_views_are_a_decision.py` says why.
+Every browser write goes through `web/app/api/operator` or a route that
+calls `requireOperator`, and the server makes it with the service key; the
+anon key cannot call a write RPC (plan v2 P1.2). **Sign-in is off** (Hassan,
+23 Sep: he is the only user); `OPERATOR_SIGN_IN=required` on the server turns
+the operator check back on. `test:routes` tests both modes. The data client in
+`web/lib/supabase.ts` stays anonymous and must never carry a session:
+`tests/test_the_definer_views_are_a_decision.py` says why.
 
 ## A backfill switches research capture off for its own transaction
 

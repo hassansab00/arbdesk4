@@ -4,12 +4,12 @@ import { classifyKey, SECRET_KEY_MESSAGE } from "./keyGuard";
 /**
  * THE OPERATOR'S SESSION, AND THE ONLY WAY THE BROWSER WRITES (plan v2 P1.2).
  *
- * Signing in is an email magic link (Supabase Auth). The session is kept by
- * this client alone, under its own storage key, so the data client in
- * lib/supabase.ts stays anonymous and every read keeps working exactly as it
- * did. The session's access token goes only to this site's own API routes,
- * which check it against settings.operators and make the write with the
- * service key. The browser never calls a write RPC itself any more.
+ * The browser never calls a write RPC itself: every write goes to this
+ * site's own API routes, which make it with the service key. Sign-in is OFF
+ * for now (Hassan, 23 Sep - single user; see requireOperator). If it is turned
+ * back on, the session lives in this client alone, under its own storage key,
+ * so the data client in lib/supabase.ts stays anonymous, and its access token
+ * is attached only to this site's /api routes.
  */
 
 let cached: SupabaseClient | null = null;
@@ -36,18 +36,6 @@ export async function currentSession(): Promise<Session | null> {
   } catch {
     return null;
   }
-}
-
-export async function signInWithEmail(email: string): Promise<string | null> {
-  const { error } = await authClient().auth.signInWithOtp({
-    email: email.trim(),
-    options: { emailRedirectTo: window.location.origin + window.location.pathname, shouldCreateUser: false },
-  });
-  return error ? error.message : null;
-}
-
-export async function signOut(): Promise<void> {
-  await authClient().auth.signOut();
 }
 
 /** fetch() to one of this site's routes, with the operator's session attached. */
