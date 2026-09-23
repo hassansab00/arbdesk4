@@ -80,17 +80,23 @@ with ladder as (
   select o.city_key, o.for_date, o.band_id,
          o.band_lo, o.band_hi, o.open_low, o.open_high,
          o.settled_yes, o.observed_max_c,
-         -- A LABEL THE PAGE CAN PRINT. The bands are stored as edges, and an
-         -- operator reads "82-83" faster than two numeric columns.
-         case
-           when o.open_low  then '<= ' || trim(to_char(o.band_hi, 'FM999990.#'))
-           when o.open_high then '>= ' || trim(to_char(o.band_lo, 'FM999990.#'))
-           else trim(to_char(o.band_lo, 'FM999990.#')) || '-' || trim(to_char(o.band_hi, 'FM999990.#'))
-         end as band_label,
+         -- THE VENUE'S OWN LABEL: "22°C", "70-71°F", "18°C or below". Built
+         -- from the edges this read "22-23" for the single-degree bucket 22°C
+         -- and "70-72" for 70-71°F, because a band is half-open [lo, hi): a
+         -- Celsius bucket is ONE temperature, a Fahrenheit one two. The
+         -- computed form below is only a fallback, and it is half-open too.
+         coalesce(cb.band_label,
+           case
+             when o.open_low  then '<= ' || trim(to_char(o.band_hi - 1, 'FM999990.#'))
+             when o.open_high then '>= ' || trim(to_char(o.band_lo, 'FM999990.#'))
+             when o.band_hi - o.band_lo = 1 then trim(to_char(o.band_lo, 'FM999990.#'))
+             else trim(to_char(o.band_lo, 'FM999990.#')) || '-' || trim(to_char(o.band_hi - 1, 'FM999990.#'))
+           end) as band_label,
          -- The city's own midnight at the start of the day being called.
          (o.for_date::timestamp at time zone coalesce(c.timezone, 'UTC')) as day_starts_at
     from fact_band_outcome o
     left join cities c on c.city_key = o.city_key
+    left join v_canonical_bands cb on cb.band_id = o.band_id
    where o.observed_max_c is not null
 ),
 settled as (

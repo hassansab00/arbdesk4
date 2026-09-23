@@ -846,13 +846,15 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "band_probabilities",
     "cities",
     "edges",
-    "fact_band_outcome"
+    "fact_band_outcome",
+    "bands"
   ],
   "v_city_hit_summary": [
     "band_probabilities",
     "cities",
     "edges",
-    "fact_band_outcome"
+    "fact_band_outcome",
+    "bands"
   ],
   "v_city_metadata_health": [
     "cities"
