@@ -443,14 +443,24 @@ begin
       execute format('grant select on v_paper_desks to %I', r);
     end if;
   end loop;
+  -- A new function is executable by PUBLIC unless revoked, and these are
+  -- SECURITY DEFINER: anon could reset or archive any desk (plan v2 P1.1).
+  -- Reset and archive are service_role only; the board reaches them through
+  -- /api/paper-desk, which holds the service key.
+  revoke execute on function paper_desk_create(text, numeric, text, uuid, jsonb) from public, anon;
+  revoke execute on function paper_desk_update(uuid, text, numeric, text, boolean, jsonb) from public, anon;
+  revoke execute on function paper_desk_reset(uuid) from public, anon, authenticated;
+  revoke execute on function paper_desk_archive(uuid, boolean) from public, anon, authenticated;
   foreach r in array array['authenticated', 'service_role'] loop
     if exists (select 1 from pg_roles where rolname = r) then
       execute format('grant execute on function paper_desk_create(text, numeric, text, uuid, jsonb) to %I', r);
       execute format('grant execute on function paper_desk_update(uuid, text, numeric, text, boolean, jsonb) to %I', r);
-      execute format('grant execute on function paper_desk_reset(uuid) to %I', r);
-      execute format('grant execute on function paper_desk_archive(uuid, boolean) to %I', r);
     end if;
   end loop;
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant execute on function paper_desk_reset(uuid) to service_role;
+    grant execute on function paper_desk_archive(uuid, boolean) to service_role;
+  end if;
 end $ad4$;
 
 do $ad4$
