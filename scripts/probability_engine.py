@@ -201,8 +201,8 @@ def band_mass(centre_c, sigma_c, unit, band_lo, band_hi, open_low, open_high,
     decrease when you add to it, and the consequences of that are not a
     modelling choice.
 
-    `floor_c` must already be discounted by OBSERVED_FLOOR_TOLERANCE_C - see
-    compute_band_probabilities, which owns that decision.
+    compute_band_probabilities no longer passes a floor here: the floor is an
+    atom on the venue-read bucket (plan v2 P3.1), placed there directly.
     """
     def F(x):
         if floor_c is not None and x < floor_c:
@@ -216,83 +216,140 @@ def band_mass(centre_c, sigma_c, unit, band_lo, band_hi, open_low, open_high,
     return max(0.0, F(unit_edge_c(unit, band_hi)) - F(unit_edge_c(unit, band_lo)))
 
 
-# A DAILY MAXIMUM CANNOT GO DOWN.
+# A DAILY MAXIMUM CANNOT GO DOWN - AND THE VENUE READS IT IN WHOLE DEGREES.
 #
-# The lattice prices every band off a forecast and a width, and then ignores
-# the fact that the day is half over and the thermometer has already been
-# somewhere. On 16 Sep at 16:00 UTC, across the 297 bands resolving that day in
-# 27 cities, 28 were already PHYSICALLY IMPOSSIBLE - their top was below the
-# temperature their own city had already recorded - and twelve of those were
-# still priced above 2%, the worst at 23.7%. Nearly a full unit of probability
-# mass sat on outcomes that could not happen, and the desk would have bought
-# them at a discount it had invented.
+# On 16 Sep at 16:00 UTC, 28 of 297 bands resolving that day were already
+# physically impossible and twelve were still priced above 2%. The first fix
+# floored the Normal at the observed maximum less a 0.5 C tolerance. That put
+# the floor EXACTLY on a bucket split for any whole-degree reading, and the
+# atom - every draw below the floor - landed on the bucket BELOW the one the
+# day was standing in. 22 Sep: London had read 25.0 C and the model put 100% on
+# the 24 C bucket; an observed 80 F put 0.711 on 78-79 F. In 12 of 48
+# same-day cities the top pick was a bucket the engine itself called impossible.
 #
-# This is not a model improvement. It is arithmetic: the maximum of a set does
-# not decrease when you add to it. Of everything the platform collects, it is
-# the cheapest and the most certain, and it was not being used.
+# THE MODEL NOW (plan v2 P3.1), stated once:
 #
-# THE TOLERANCE IS THE WHOLE RISK. Our running max comes from the station
-# live_weather tracks; the venue settles on ITS chosen source, and the two can
-# disagree by a few tenths. Killing a band on a 0.1C edge would eventually zero
-# a band that settles right where we said it could not. So the floor is
-# discounted by OBSERVED_FLOOR_TOLERANCE_C before it is allowed to zero
-# anything: a band dies only when the observed maximum has cleared its top edge
-# by more than half a degree Celsius, which is under one degree Fahrenheit.
-OBSERVED_FLOOR_TOLERANCE_C = 0.5
+#   R    the observed running maximum, rounded the way the venue reads it
+#        (venue_round, P2.2) - a whole degree in the market's unit
+#   b_R  the bucket that holds R
+#   M    = max(R, X), X ~ Normal(centre, sigma): the final maximum
+#
+#   every bucket above b_R   its ordinary Normal mass
+#   b_R                      A = P(X settles at or below b_R) - the atom
+#   every bucket below b_R   nothing
+#
+# and then a MEASUREMENT LAYER, because our thermometer and the venue's can
+# disagree by one bucket: q_down * A moves to the bucket below b_R and q_up * A
+# to the bucket above. q_down and q_up are each city's own shrunk rates from
+# P2.3 (cities.observation_q_down / _up); a city without them uses the plan's
+# pooled defaults and says so in its reasons.
+#
+# So a bucket is impossible only when it lies entirely below b_R - 1: two or
+# more buckets under the reading. The bucket just below keeps q_down * A.
+DEFAULT_Q_DOWN = 0.02
+DEFAULT_Q_UP = 0.05
 
 
-def band_is_impossible(floor_c, unit, band_lo, band_hi, open_low, open_high,
-                       tolerance_c=OBSERVED_FLOOR_TOLERANCE_C):
-    """True when today's already-observed maximum settles ABOVE this band.
+def venue_round(value_c, unit):
+    """The whole degree the venue would read, in the market's unit.
 
-    A closed band [lo, hi) covers the integers lo..hi-1, so its upper split
-    point in Celsius is unit_edge_c(unit, band_hi) - the boundary between
-    settling as hi-1 and settling as hi. An observed maximum at or above that
-    point has already settled the day outside this band.
-
-    An open-high band is never impossible: there is no temperature the day can
-    reach that puts it out of range.
+    The Python twin of sql/ad4_82 venue_round(): PostgreSQL's round() on a
+    numeric, which rounds half away from zero - not Python's round(), which
+    rounds half to even. The value is cut to six places first so a float such
+    as 77.49999999 does not fall on the wrong side of a boundary the numeric
+    column never had.
     """
-    if floor_c is None or open_high:
-        return False
-    return (floor_c - tolerance_c) >= unit_edge_c(unit, band_hi)
+    v = value_c * 9.0 / 5.0 + 32.0 if unit == "F" else float(value_c)
+    v = round(v, 6)
+    return math.copysign(math.floor(abs(v) + 0.5), v)
 
 
-def compute_band_probabilities(centre_c, sigma_c, unit, bands, floor_c=None):
+def _ladder(bands):
+    """The bands in temperature order: open low tail, closed bands, open high tail."""
+    def key(b):
+        if b.get("open_low"):
+            return (0, float("-inf"))
+        if b.get("open_high"):
+            return (2, float(b["band_lo"]))
+        return (1, float(b["band_lo"]))
+    return sorted(bands, key=key)
+
+
+def _holds(band, r):
+    if band.get("open_low"):
+        return r < band["band_hi"]
+    if band.get("open_high"):
+        return r >= band["band_lo"]
+    return band["band_lo"] <= r < band["band_hi"]
+
+
+def floor_bucket(floor_c, unit, bands):
+    """(ordered ladder, index of the bucket holding the venue-read floor).
+
+    The index is None when no floor is given or no bucket holds it - a closed
+    ladder the day has already run past, which is the ladder's problem, not a
+    reason to publish a distribution over impossibilities.
+    """
+    ladder = _ladder(bands)
+    if floor_c is None:
+        return ladder, None
+    r = venue_round(floor_c, unit)
+    for i, b in enumerate(ladder):
+        if _holds(b, r):
+            return ladder, i
+    return ladder, None
+
+
+def impossible_band_ids(floor_c, unit, bands):
+    """Bands lying entirely below b_R - 1: two or more buckets under the
+    reading, which not even a one-bucket station disagreement can reach."""
+    ladder, i = floor_bucket(floor_c, unit, bands)
+    if i is None:
+        return set()
+    return {b["band_id"] for b in ladder[:max(0, i - 1)]}
+
+
+def band_is_impossible(floor_c, unit, band, bands):
+    return band["band_id"] in impossible_band_ids(floor_c, unit, bands)
+
+
+def compute_band_probabilities(centre_c, sigma_c, unit, bands, floor_c=None,
+                               q_down=0.0, q_up=0.0):
     """
     bands: list of dicts with band_id, band_lo, band_hi, open_low, open_high.
     floor_c: the maximum already observed today, in Celsius, or None when the
              market does not resolve today or no observation exists.
-    Returns list of (band_id, prob) with prob summing to exactly 1.0.
+    q_down, q_up: the measurement layer - the share of the atom that belongs
+             one bucket below / above b_R. 0 means the pure atom model.
+    Returns list of (band_id, prob) in the order given, summing to exactly 1.0.
     """
-    def _masses(fl):
-        return [(b["band_id"], band_mass(centre_c, sigma_c, unit,
-                                         b["band_lo"], b["band_hi"],
-                                         bool(b.get("open_low")),
-                                         bool(b.get("open_high")), fl))
-                for b in bands]
+    raw = {b["band_id"]: band_mass(centre_c, sigma_c, unit, b["band_lo"], b["band_hi"],
+                                   bool(b.get("open_low")), bool(b.get("open_high")))
+           for b in bands}
 
-    raw = _masses(None)
+    masses = raw
+    ladder, i = floor_bucket(floor_c, unit, bands)
+    if i is not None:
+        b_r = ladder[i]
+        atom = 1.0 if b_r.get("open_high") else normal_cdf(
+            unit_edge_c(unit, b_r["band_hi"]), centre_c, sigma_c)
+        masses = {}
+        for j, b in enumerate(ladder):
+            masses[b["band_id"]] = 0.0 if j < i else (atom if j == i else raw[b["band_id"]])
+        q_down = min(max(float(q_down or 0.0), 0.0), 0.5)
+        q_up = min(max(float(q_up or 0.0), 0.0), 0.5)
+        if i > 0 and q_down > 0:
+            masses[ladder[i - 1]["band_id"]] += q_down * atom
+            masses[b_r["band_id"]] -= q_down * atom
+        if i < len(ladder) - 1 and q_up > 0:
+            masses[ladder[i + 1]["band_id"]] += q_up * atom
+            masses[b_r["band_id"]] -= q_up * atom
 
-    if floor_c is not None:
-        # THE TOLERANCE IS APPLIED ONCE, HERE. Our running maximum comes from
-        # the station live_weather tracks and the venue settles on its own, so
-        # the floor is discounted before it is allowed to move any mass.
-        effective = floor_c - OBSERVED_FLOOR_TOLERANCE_C
-        floored = _masses(effective)
-        # IF THE FLOOR KILLS EVERYTHING, DO NOT APPLY IT. A day that has already
-        # run past the entire ladder means the ladder is wrong, the station is
-        # wrong, or the city is mismatched - and none of those are improved by
-        # publishing a uniform distribution over impossibilities. Fall back to
-        # the unfloored lattice, which at least states the forecast's opinion.
-        if sum(p for _, p in floored) > 0:
-            raw = floored
-
-    total = sum(p for _, p in raw)
+    total = sum(masses.values())
     if total <= 0:
-        n = len(raw)
-        return [(bid, 1.0 / n) for bid, _ in raw]
-    return [(bid, p / total) for bid, p in raw]
+        n = len(bands)
+        return [(b["band_id"], 1.0 / n) for b in bands]
+    return [(b["band_id"], masses[b["band_id"]] / total) for b in bands]
 
 
 # --------------------------------------------------------------------------
@@ -361,6 +418,26 @@ def measured_floor(row):
     if series is None:
         return None
     return min(top, float(series))
+
+
+_measurement_cache = None
+
+
+def _measurement_layer_for(city_key):
+    """(q_down, q_up) fitted for this city by refresh_observation_trust()
+    (plan v2 P2.3), or None when it has none. Read once per run."""
+    global _measurement_cache
+    if _measurement_cache is None:
+        _measurement_cache = {}
+        try:
+            for r in get_cities(require_coords=False):
+                if r.get("observation_q_down") is not None and r.get("observation_q_up") is not None:
+                    _measurement_cache[r["city_key"]] = (float(r["observation_q_down"]),
+                                                         float(r["observation_q_up"]))
+        except Exception as e:
+            print(f"  note: no fitted measurement layer ({str(e)[:80]}) - pooled defaults",
+                  file=sys.stderr)
+    return _measurement_cache.get(city_key)
 
 
 def _promoted_models():
@@ -1184,12 +1261,17 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
         centre_corrected = traj_centre
         sigma = traj_sigma
 
+    q_down, q_up = DEFAULT_Q_DOWN, DEFAULT_Q_UP
+    if observed_floor_c is not None:
+        fitted = _measurement_layer_for(city_key)
+        if fitted is not None:
+            q_down, q_up = fitted
+            reasons.append(f"measurement_layer:q_down{q_down:.4f}_q_up{q_up:.4f}:city")
+        else:
+            reasons.append(f"measurement_layer:q_down{q_down:.2f}_q_up{q_up:.2f}:pooled_default")
     probs = compute_band_probabilities(centre_corrected, sigma, unit, bands,
-                                       floor_c=observed_floor_c)
-    floored = [b["band_id"] for b in bands
-               if observed_floor_c is not None and band_is_impossible(
-                   observed_floor_c, unit, b["band_lo"], b["band_hi"],
-                   bool(b.get("open_low")), bool(b.get("open_high")))]
+                                       floor_c=observed_floor_c, q_down=q_down, q_up=q_up)
+    floored = sorted(impossible_band_ids(observed_floor_c, unit, bands))
     if floored and len(floored) < len(bands):
         print(f"  {city_key} {for_date}: already {observed_floor_c:.1f}C today - "
               f"{len(floored)} of {len(bands)} bands are out of reach")

@@ -160,14 +160,18 @@ def test_a_floor_over_a_CLOSED_ladder_is_refused_rather_than_obeyed():
     assert floored == pytest.approx(plain)
 
 
-def test_the_tolerance_still_protects_a_band_the_day_only_just_passed():
-    """Our station and the venue's can disagree by a few tenths, so a band
-    dies only once the floor has cleared its top by more than the tolerance."""
-    edge = pe.unit_edge_c("C", 26)                      # top of band b
-    just_over = edge + 0.1                              # inside the tolerance
-    assert _probs(25.0, 1.5, floor=just_over)["b"] > 0
-    well_over = edge + pe.OBSERVED_FLOOR_TOLERANCE_C + 0.2
-    assert _probs(25.0, 1.5, floor=well_over)["b"] == 0.0
+def test_the_bucket_just_below_keeps_the_measurement_share_and_no_more():
+    """The 0.5 C tolerance is gone (plan v2 P3.1). Our station and the venue's
+    can disagree by one bucket, and that is now modelled rather than hidden:
+    the bucket just below b_R keeps q_down x the atom, and nothing further
+    down keeps anything."""
+    just_over = pe.unit_edge_c("C", 26) + 0.1           # 25.6 reads as 26: c holds R
+    p = dict(pe.compute_band_probabilities(25.0, 1.5, "C", BANDS, floor_c=just_over,
+                                           q_down=0.02, q_up=0.0))
+    atom = pe.normal_cdf(pe.unit_edge_c("C", 27), 25.0, 1.5)
+    assert p["b"] == pytest.approx(0.02 * atom, abs=1e-9)
+    assert p["a"] == 0.0
+    assert dict(pe.compute_band_probabilities(25.0, 1.5, "C", BANDS, floor_c=just_over))["b"] == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -389,11 +393,14 @@ def test_the_floor_still_applies_on_top_of_the_trajectory(monkeypatch):
     monkeypatch.setattr(pe, "_trajectory_cache",
                         {"london": _traj_row(latest_temp_today_c=26.0,
                                              typical_climb_left_c=0.1)})
+    monkeypatch.setattr(pe, "_measurement_cache", {"london": (0.0, 0.0)})
     rows, _reg, _why = pe.process_city_day("london", "2026-09-19", "C", BANDS, {},
                                            floors, None, None)
     by_id = {r["band_id"]: r["raw_prob"] for r in rows}
     # clamp_prob floors a published probability at 1e-6 rather than zero, so a
-    # dead band reads as that rather than as nothing at all.
+    # dead band reads as that rather than as nothing at all. 26.3 reads as 26,
+    # so c holds R; with the city's measurement layer at zero, nothing below it
+    # survives (plan v2 P3.1).
     assert by_id["a"] <= 1e-6 and by_id["b"] <= 1e-6, "the floor still kills passed bands"
 
 
