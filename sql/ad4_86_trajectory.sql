@@ -73,6 +73,29 @@ with hourly as (
   where o.temp_c is not null
   group by 1, 2, 3
 ),
+-- THE CLIMB PROFILE AS OF THE DAY BEFORE (plan v2 P3.4). derived_climb_profile
+-- is measured over every day it has, the graded day included, so a
+-- trajectory fitted against it had already seen part of the answer. These
+-- columns carry the same statistic built only from the days BEFORE each row's
+-- date - the window stops one day short - and trajectory.py fits on them.
+ahead as (
+  select city_key, local_date, local_hour,
+         max(temp_c) over (partition by city_key, local_date order by local_hour
+                           rows between current row and unbounded following) - temp_c
+                                                                        as climb_left_c,
+         count(*) over (partition by city_key, local_date)             as n_hours
+  from hourly
+),
+asof as (
+  select city_key, local_date, local_hour,
+         avg(climb_left_c)          over w as climb_left_asof_c,
+         stddev_samp(climb_left_c)  over w as climb_sd_asof_c,
+         count(*)                   over w as climb_n_asof
+  from ahead
+  where n_hours >= 12
+  window w as (partition by city_key, local_hour order by local_date
+               rows between unbounded preceding and 1 preceding)
+),
 walked as (
   select city_key, local_date, local_hour, temp_c,
          -- THE RUNNING MAXIMUM IS THE FLOOR, and it has to be the maximum of
@@ -135,7 +158,11 @@ select
   cp.climb_left_sd_c                          as climb_sd_c,
   cp.n_days                                   as climb_n_days,
   p.centre_c                                  as forecast_c,
-  p.sigma_c                                   as forecast_sigma_c
+  p.sigma_c                                   as forecast_sigma_c,
+  -- as of the day before; null until 20 earlier days exist, as the profile's own floor
+  case when a.climb_n_asof >= 20 then round(a.climb_left_asof_c::numeric, 2) end as climb_left_asof_c,
+  case when a.climb_n_asof >= 20 then round(a.climb_sd_asof_c::numeric, 2) end   as climb_sd_asof_c,
+  a.climb_n_asof::int                         as climb_n_asof
 from walked w
 join derived_climb_profile cp
   on cp.city_key = w.city_key and cp.local_hour = w.local_hour
@@ -143,6 +170,8 @@ join published p
   on p.city_key = w.city_key and p.for_date = w.local_date
 left join v_verified_weather_outcomes v
   on v.city_key = w.city_key and v.for_date = w.local_date
+left join asof a
+  on a.city_key = w.city_key and a.local_date = w.local_date and a.local_hour = w.local_hour
 where w.n_hours >= 12
   and cp.typical_climb_left_c is not null
   and cp.climb_left_sd_c is not null;

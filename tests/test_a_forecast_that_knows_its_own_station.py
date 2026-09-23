@@ -211,19 +211,23 @@ def test_a_distribution_never_collapses_to_a_point():
 # ---------------------------------------------------------------------------
 # Held-out scoring.
 # ---------------------------------------------------------------------------
-def test_the_folds_are_contiguous_and_cover_every_day():
-    blocks = fp.blocked_folds(11, 4)
-    assert len(blocks) == 4
-    assert blocks[0][0] == 0 and blocks[-1][1] == 11
+def test_the_folds_walk_forward_and_never_test_the_first_block():
+    """Plan v2 P3.4: an expanding window. Each test block is predicted from the
+    days before it; the first block is history only."""
+    from walk_forward import walk_forward_folds
+    blocks = walk_forward_folds(11, 4)
+    assert blocks == [(3, 6), (6, 9), (9, 11)]
     for (a, b), (c, d) in zip(blocks, blocks[1:]):
-        assert b == c, "a gap or an overlap between blocks"
-    assert sum(b - a for a, b in blocks) == 11
+        assert b == c, "a gap or an overlap between test blocks"
+    assert blocks[-1][1] == 11 and blocks[0][0] > 0
 
 
 def test_folds_degrade_gracefully_on_a_tiny_sample():
-    assert fp.blocked_folds(0, 4) == []
-    assert fp.blocked_folds(5, 1) == []
-    assert len(fp.blocked_folds(2, 4)) == 2
+    from walk_forward import walk_forward_folds
+    assert walk_forward_folds(0, 4) == []
+    assert walk_forward_folds(5, 1) == []
+    assert walk_forward_folds(2, 4) == [(1, 2)]
+    assert not hasattr(fp, "blocked_folds"), "the two-sided folds must not come back"
 
 
 def test_a_held_out_day_never_informs_the_fit_that_prices_it():
@@ -232,12 +236,27 @@ def test_a_held_out_day_never_informs_the_fit_that_prices_it():
     Twelve clean days and one 10 C outlier. If the outlier's own block fed the
     fit, its held-out CRPS would be small. Scored honestly it is large, so the
     fitted score over all blocks must be worse than a fit that had seen it.
+    Forward folds score every block but the first (13 days: 4 + 3 + 3 + 3).
     """
     days = _days([(20.0, 20.0)] * 6 + [(30.0, 20.0)] + [(20.0, 20.0)] * 6)
     honest, _, n = fp.cross_validate(days, days, 0.0, 0.0, folds=4)
     seen = fp.score_days(days, fp.fit_cell(days, days, 0.0, 0.0))
-    assert n == len(days)
+    assert n == len(days) - 4
     assert honest > seen, "the held-out score was no worse than the in-sample one"
+
+
+def test_a_later_day_never_informs_an_earlier_block():
+    """The half the old folds leaked: training on blocks AFTER the test block.
+    A bias that only appears in the last block cannot improve the first
+    scored block's fit."""
+    early = _days([(20.0 + o, 20.0) for o in (0.1, -0.1, 0.0, 0.2, -0.2, 0.1, 0.0, -0.1)])
+    late = _days([(23.0, 20.0)] * 8, start=9)
+    everything = early + late
+    first_test = fp.walk_forward_folds(len(everything), 4)[0]
+    train = everything[:first_test[0]]
+    assert all(d.for_date < everything[first_test[0]].for_date for d in train)
+    assert fp.fit_cell(train, train, 0.0, 0.0).bias_c == pytest.approx(
+        fp.measured_bias(train)), "the first scored block's fit saw only earlier days"
 
 
 # ---------------------------------------------------------------------------
@@ -247,16 +266,33 @@ def _cells(days):
     return {("testville", 0): days}
 
 
+def _hot(n):
+    """A forecast about 2 C warm every day, with ordinary day-to-day scatter."""
+    base = [(22.0, 20.0), (23.0, 21.2), (24.5, 22.4), (21.0, 19.1), (25.0, 23.3),
+            (23.5, 21.4), (22.5, 20.6), (24.0, 22.1), (23.0, 20.9), (22.0, 20.2),
+            (25.5, 23.4), (24.0, 21.9)]
+    return _days([base[i % len(base)] for i in range(n)])
+
+
 def test_a_real_station_bias_earns_its_correction():
-    """A forecast 2 C hot every day is exactly what this layer is for."""
-    days = _days([(22.0, 20.0), (23.0, 21.2), (24.5, 22.4), (21.0, 19.1),
-                  (25.0, 23.3), (23.5, 21.4), (22.5, 20.6), (24.0, 22.1),
-                  (23.0, 20.9), (22.0, 20.2), (25.5, 23.4), (24.0, 21.9)])
+    """A forecast 2 C hot every day is exactly what this layer is for - given
+    enough forward-scored days for the bootstrap to be sure (30 days: 22
+    scored after the first block)."""
+    days = _hot(30)
     rows = fp.fit_all(_cells(days), {"testville": days}, 5.0, 15.0)
     row = rows[0]
     assert row["applied"] is True, row["reason"]
     assert row["bias_c"] > 1.0
     assert row["crps_gain"] > 0
+
+
+def test_a_real_bias_on_too_few_days_waits():
+    """Plan v2 P3.4: n_days >= 20 forward-scored. Twelve days used to be
+    enough for a bare `gain > 0`; now they are not enough to price."""
+    days = _hot(12)
+    row = fp.fit_all(_cells(days), {"testville": days}, 5.0, 15.0)[0]
+    assert row["applied"] is False
+    assert "needs 20" in row["reason"]
 
 
 def test_a_forecast_with_nothing_wrong_with_it_is_left_alone():

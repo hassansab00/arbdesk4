@@ -80,8 +80,11 @@ def append(time, *pk):
     return {"kind": "append", "time": time, "pk": list(pk)}
 
 
-def closed(date, *pk, via=None):
-    return {"kind": "closed", "date": date, "pk": list(pk), "via": via}
+def closed(date, *pk, via=None, source=None, after_days=None):
+    """`source`: a view to read instead of the table. `after_days`: how old the
+    date must be before the rows are final (default CLOSED_AFTER_DAYS)."""
+    return {"kind": "closed", "date": date, "pk": list(pk), "via": via,
+            "source": source, "after_days": after_days}
 
 
 def snapshot(*pk, where=None):
@@ -128,6 +131,16 @@ TABLES = {
     "derived_city_day_volume":       closed("trade_date", "city_key", "trade_date"),
     "markets":                       closed("resolution_date", "market_id"),
     "bands":                         closed("resolution_date", "band_id", via="markets"),
+    # ONLY WHAT THE ARCHIVE NEVER TAKES. The archive commits every book
+    # snapshot and edge it prunes; these views are the exact complement, the
+    # rows Postgres keeps forever (23 Sep: 83,334 + 131,160 = 214,494 books,
+    # 17,730 + 134,570 = 152,300 edges, no overlap). Together the repo holds
+    # every row of both tables once. Books wait 16 days - past the edges'
+    # 14-day prune, which un-cites a snapshot and hands it to the archive.
+    "book_snapshots":                closed("mirror_resolution_date", "snapshot_id",
+                                            source="v_mirror_book_kept", after_days=16),
+    "edges":                         closed("mirror_resolution_date", "edge_id",
+                                            source="v_mirror_edge_latest"),
     # --- the integrity trail ------------------------------------------------
     "proprietary_data_corrections":  append("recorded_at", "correction_id"),
     "proprietary_data_quality_flags": append("detected_at", "flag_id"),
@@ -162,10 +175,6 @@ TABLES = {
 # TABLES nor here fails tests/test_every_table_has_a_home.py.
 NOT_MIRRORED = {
     "research_captures": "JSON copies of six mirrored tables; the archive exports it at 2 days",
-    "book_snapshots": "22,074 rows a day (23 Sep); prunable rows are archived; which book detail "
-                      "to keep beyond that is plan step P5.13",
-    "edges": "13,473 rows a day (23 Sep); superseded pricings are archived at 14 days; the model "
-             "side of every price is band_probabilities, which is mirrored; the rest is P5.13",
     "paper_resolution_evidence": "archived at 3 days once its outcome is frozen in fact_band_outcome",
     "live_weather": "one row per city, overwritten every run; its readings are weather_observations",
     "book_ladder_cache": "a cache of book_snapshots, rebuilt by trigger",
@@ -220,6 +229,7 @@ def pk_list(spec):
 def read_rows(table, spec, filters):
     """Every row matching `filters`, in primary-key order, keyset-paged."""
     pk = pk_list(spec)
+    table = spec.get("source") or table
     select = "*"
     if spec.get("via"):
         select = f"*,{spec['via']}!inner({spec['date']})"
@@ -302,7 +312,7 @@ def window(spec, state, today):
     col = spec["date"]
     if spec.get("via"):
         col = f"{spec['via']}.{col}"
-    upper = (today - dt.timedelta(days=CLOSED_AFTER_DAYS)).isoformat()
+    upper = (today - dt.timedelta(days=spec.get("after_days") or CLOSED_AFTER_DAYS)).isoformat()
     lower = state.get("through")
     if lower is not None and lower >= upper:
         return None
@@ -347,7 +357,7 @@ def mirror_one(table, spec, manifest, today, dry_run):
     if spec.get("via"):
         # the count needs the same inner join the read used
         count_filters = [("select", f"{pk_list(spec)[0]},{spec['via']}!inner({spec['date']})")] + filters
-    n = exact_count(table, count_filters)
+    n = exact_count(spec.get("source") or table, count_filters)
     if n != len(rows):
         raise RuntimeError(f"{table}: read {len(rows)} rows in the window, the table has {n} - "
                            "paging skipped or repeated rows")

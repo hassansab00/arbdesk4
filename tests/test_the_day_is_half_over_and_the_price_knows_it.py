@@ -249,7 +249,8 @@ def _running_day(d, offset=0.0):
 def test_the_trajectory_wins_when_the_day_contradicts_the_forecast():
     offsets = [0.05, -0.1, 0.0, 0.08, -0.05, 0.1, -0.08,
                0.03, -0.03, 0.06, 0.0, -0.06, 0.09, -0.09]
-    rows = [_running_day(d, o) for d, o in zip(range(1, 15), offsets)]
+    # 30 days: the gate needs 20 forward-scored (plan v2 P3.4)
+    rows = [_running_day(d, offsets[d % len(offsets)]) for d in range(1, 31)]
     fit = tj.fit_cell("testville", 15, rows)
     assert fit.applied is True, fit.reason
     assert fit.crps_gain > 0
@@ -276,9 +277,8 @@ def test_on_a_day_that_is_already_over_the_atom_alone_is_enough():
 
 
 def test_a_morning_hour_where_the_forecast_is_better_stays_in_shadow():
-    rows = [_morning(d, o) for d, o in
-            zip(range(1, 15), [0.1, -0.2, 0.0, 0.15, -0.1, 0.2, -0.05,
-                               0.1, -0.15, 0.05, 0.0, -0.1, 0.2, -0.2])]
+    offs = [0.1, -0.2, 0.0, 0.15, -0.1, 0.2, -0.05, 0.1, -0.15, 0.05, 0.0, -0.1, 0.2, -0.2]
+    rows = [_morning(d, offs[d % len(offs)]) for d in range(1, 31)]
     fit = tj.fit_cell("testville", 8, rows)
     assert fit.applied is False, fit.reason
     assert "shadow" in fit.reason
@@ -534,3 +534,29 @@ def test_the_databank_freezes_the_width_that_belongs_beside_the_forecast_centre(
     assert frozen.startswith('"sigma_c": p.get("forecast_sigma_c")'), (
         "fact_band_outcome.sigma_c must take the forecast path's width, not "
         "whatever the trajectory replaced it with")
+
+
+def test_fourteen_good_days_are_not_yet_enough():
+    """Plan v2 P3.4: a gain on fewer than 20 forward-scored days waits."""
+    rows = [_running_day(d) for d in range(1, 15)]
+    fit = tj.fit_cell("testville", 15, rows)
+    assert fit.applied is False
+    assert "needs 20" in fit.reason
+
+
+def test_an_hour_too_thin_alone_can_pass_with_its_block_of_hours():
+    """The pooled fallback: hours 12-15 together, by day."""
+    rows = {("testville", h): [_running_day(d)._replace(local_hour=h) for d in range(1, 29)]
+            for h in (12, 13, 14, 15)}
+    rows[("testville", 15)] = rows[("testville", 15)][:12]     # too few alone
+    out = {r["local_hour"]: r for r in tj.fit_all(rows)}
+    assert out[15]["applied"] is True, out[15]["reason"]
+    assert "pooled with hours 12-15" in out[15]["reason"]
+
+
+def test_a_morning_that_fails_alone_and_pooled_prices_from_the_forecast():
+    offs = [0.1, -0.2, 0.0, 0.15, -0.1, 0.2, -0.05, 0.1, -0.15, 0.05, 0.0, -0.1, 0.2, -0.2]
+    rows = {("testville", 8): [_morning(d, offs[d % len(offs)]) for d in range(1, 31)]}
+    out = tj.fit_all(rows)[0]
+    assert out["applied"] is False
+    assert "Pooled hours 08-11" in out["reason"]

@@ -63,6 +63,11 @@ class _Recorder:
     def log_run(self, job, status, rows, detail):
         self.logged.append((job, status, rows, detail))
 
+    # the city's unit and measurement layer, which the P3.4 bucket gate reads
+    def get_cities(self, *a, **k):
+        return [{"city_key": "alpha", "unit": "C",
+                 "observation_q_down": 0.02, "observation_q_up": 0.05}]
+
 
 def _run(module, recorder, argv):
     sys.modules["common"] = recorder
@@ -104,7 +109,8 @@ def _trajectory_rows(n_days=14, city="alpha", hour=14):
             "city_key": city, "local_date": day, "local_hour": hour,
             "temp_c": final - 1.5, "running_max_c": final - 1.0,
             "final_max_c": final, "final_is_verified": True,
-            "climb_left_c": 1.4, "climb_sd_c": 0.6, "climb_n_days": 60,
+            # the climb profile as of the day before (plan v2 P3.4)
+            "climb_left_asof_c": 1.4, "climb_sd_asof_c": 0.6, "climb_n_asof": 60,
             "forecast_c": final + 1.0, "forecast_sigma_c": 2.0,
         })
     return out

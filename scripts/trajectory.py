@@ -93,8 +93,20 @@ from collections import defaultdict, namedtuple
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from forecast_postprocess import (  # one definition of each, shared
-    crps_gaussian, normal_cdf, normal_pdf, blocked_folds, shrink,
+    crps_gaussian, normal_cdf, normal_pdf, shrink,
 )
+from walk_forward import walk_forward_folds, bucket_scores, gate, per_day, MIN_GATE_DAYS  # noqa: E402
+
+# Pooled fallback (plan v2 P3.4): a city-hour with too few forward days, or no
+# significant gain, is tried again as part of its block of hours.
+HOUR_BANDS = ((0, 7), (8, 11), (12, 15), (16, 23))
+
+
+def hour_band(hour):
+    for lo, hi in HOUR_BANDS:
+        if lo <= hour <= hi:
+            return lo, hi
+    raise ValueError(hour)
 
 MIN_DAYS = 10            # settled days in a (city, hour) cell before fitting
 N_FOLDS = 4              # contiguous day blocks for the held-out score
@@ -220,7 +232,40 @@ def measured_sd_ratio(rows):
     return math.sqrt(num / den)
 
 
-def fit_cell(city_key, local_hour, rows, min_days=MIN_DAYS, folds=N_FOLDS):
+def forward_diffs(rows, folds=N_FOLDS, unit="C", q=(0.0, 0.0)):
+    """Forward blocks over date-ordered rows: (traj_crps, fc_crps, scored, [(date, diff)]).
+
+    Each block is priced with the width correction fitted on the rows before
+    it only (plan v2 P3.4). The climb profile each row carries is itself as of
+    the day before (v_trajectory_evidence.climb_*_asof), so no part of the
+    predictor has seen the day it is graded on. diff is the forecast's bucket
+    RPS minus the trajectory's, on the ladder the engine publishes: floor atom
+    at the running maximum and the city's measurement layer included.
+    """
+    traj_total = fc_total = 0.0
+    scored, pairs = 0, []
+    for start, stop in walk_forward_folds(len(rows), folds):
+        test, train = rows[start:stop], rows[:start]
+        if not test or not train:
+            continue
+        r = max(SD_RATIO_FLOOR, min(SD_RATIO_CEILING,
+                shrink(measured_sd_ratio(train), len(train), K_SD, 1.0)))
+        traj_total += score(test, trajectory_predictor, r) * len(test)
+        fc_total += score(test, forecast_predictor) * len(test)
+        scored += len(test)
+        for h in test:
+            ft, mt, st = trajectory_predictor(h, r)
+            ff, mf, sf = forecast_predictor(h)
+            rt = bucket_scores(mt, st, unit, h.final_max_c, floor_c=ft, q_down=q[0], q_up=q[1])[0]
+            rf = bucket_scores(mf, sf, unit, h.final_max_c, floor_c=ff, q_down=q[0], q_up=q[1])[0]
+            pairs.append((h.local_date, rf - rt))
+    if not scored:
+        return None, None, 0, []
+    return traj_total / scored, fc_total / scored, scored, pairs
+
+
+def fit_cell(city_key, local_hour, rows, min_days=MIN_DAYS, folds=N_FOLDS,
+             unit="C", q=(0.0, 0.0)):
     """Decide whether the trajectory beats the floored forecast at this hour."""
     rows = sorted(rows, key=lambda h: h.local_date)
     n = len(rows)
@@ -233,31 +278,18 @@ def fit_cell(city_key, local_hour, rows, min_days=MIN_DAYS, folds=N_FOLDS):
     ratio = shrink(measured_sd_ratio(rows), n, K_SD, 1.0)
     ratio = max(SD_RATIO_FLOOR, min(SD_RATIO_CEILING, ratio))
 
-    traj_total = fc_total = 0.0
-    scored = 0
-    for start, stop in blocked_folds(n, folds):
-        test, train = rows[start:stop], rows[:start] + rows[stop:]
-        if not test or not train:
-            continue
-        r = max(SD_RATIO_FLOOR, min(SD_RATIO_CEILING,
-                shrink(measured_sd_ratio(train), len(train), K_SD, 1.0)))
-        traj_total += score(test, trajectory_predictor, r) * len(test)
-        fc_total += score(test, forecast_predictor) * len(test)
-        scored += len(test)
+    traj, fc, scored, pairs = forward_diffs(rows, folds, unit, q)
     if not scored:
         return Fit(**base, sd_ratio=ratio, crps_trajectory=None, crps_forecast=None,
                    crps_gain=None, applied=False,
-                   reason="held-out score could not be computed")
-
-    traj, fc = traj_total / scored, fc_total / scored
+                   reason="no forward block could be scored")
+    g = gate(per_day(pairs), min_days=MIN_GATE_DAYS)
     gain = fc - traj
-    applied = gain > 0
-    verdict = "better than the floored forecast" if applied else "no gain, stays in shadow"
     return Fit(**base, sd_ratio=round(ratio, 4),
                crps_trajectory=round(traj, 5), crps_forecast=round(fc, 5),
-               crps_gain=round(gain, 5), applied=applied,
-               reason=(f"held-out CRPS {traj:.4f} against the floored forecast's "
-                       f"{fc:.4f} over {scored} day(s): {gain:+.4f} C - {verdict}"))
+               crps_gain=round(gain, 5), applied=bool(g["applied"]),
+               reason=(f"forward-scored against the floored forecast on the published "
+                       f"buckets: {g['reason']}; forward CRPS {traj:.4f} against {fc:.4f}"))
 
 
 # ---------------------------------------------------------------------------
@@ -275,46 +307,120 @@ def load_evidence(lookback_days=120):
     since = (dt.date.today() - dt.timedelta(days=lookback_days)).isoformat()
     rows = rest_all("v_trajectory_evidence", [
         ("select", "city_key,local_date,local_hour,temp_c,running_max_c,"
-                   "final_max_c,final_is_verified,climb_left_c,climb_sd_c,"
-                   "climb_n_days,forecast_c,forecast_sigma_c"),
+                   "final_max_c,final_is_verified,climb_left_asof_c,climb_sd_asof_c,"
+                   "climb_n_asof,forecast_c,forecast_sigma_c"),
         ("local_date", f"gte.{since}"),
+        # A SETTLED ANSWER ONLY (plan v2 P3.4). final_max_c falls back to the
+        # raw series maximum where no verified outcome exists - which is the
+        # current, unsettled day among others - and fitting on it grades the
+        # layer against a number the venue never paid on.
+        ("final_is_verified", "is.true"),
     ], order="city_key.asc,local_date.asc,local_hour.asc", page_size=1000)
 
-    by_cell, verified = defaultdict(list), 0
+    by_cell, kept_mismatch = defaultdict(list), 0
     for r in rows:
         try:
             h = Hour(local_date=str(r["local_date"]), local_hour=int(r["local_hour"]),
                      temp_c=float(r["temp_c"]), running_max_c=float(r["running_max_c"]),
-                     climb_left_c=float(r["climb_left_c"]), climb_sd_c=float(r["climb_sd_c"]),
+                     climb_left_c=float(r["climb_left_asof_c"]),
+                     climb_sd_c=float(r["climb_sd_asof_c"]),
                      final_max_c=float(r["final_max_c"]),
                      forecast_c=float(r["forecast_c"]),
                      forecast_sigma_c=float(r["forecast_sigma_c"]))
         except (TypeError, ValueError, KeyError):
-            continue
-        # A RUNNING MAXIMUM ABOVE THE FINAL ONE IS NOT EVIDENCE, it is a
-        # station or a timezone mismatch, and fitting on it would teach the
-        # layer to distrust a floor that is usually right.
+            continue            # no as-of profile yet, or a missing input
+        # A RUNNING MAXIMUM ABOVE THE VERIFIED FINAL IS KEPT (plan v2 P3.4).
+        # It used to be dropped as a mismatch - 973 verified rows on 23 Sep -
+        # but it is exactly the case the measurement layer (P2.3/P3.1) prices:
+        # our thermometer one bucket above the venue's. Scoring on the
+        # published buckets handles it; dropping it flattered both layers.
         if h.running_max_c > h.final_max_c + 1e-9:
-            continue
+            kept_mismatch += 1
         by_cell[(r["city_key"], h.local_hour)].append(h)
-        verified += 1 if r.get("final_is_verified") else 0
-    return by_cell, len(rows), verified
+    return by_cell, len(rows), kept_mismatch
 
 
-def fit_all(by_cell, min_days=MIN_DAYS, folds=N_FOLDS):
-    out = []
+def _row(f, reason=None, applied=None, sd_ratio=None):
+    return {
+        "city_key": f.city_key, "local_hour": f.local_hour,
+        "n_days": f.n_days,
+        "climb_n_days": None,
+        "sd_ratio": f.sd_ratio if sd_ratio is None else sd_ratio,
+        "crps_trajectory": f.crps_trajectory,
+        "crps_forecast": f.crps_forecast,
+        "crps_gain": f.crps_gain,
+        "applied": f.applied if applied is None else applied,
+        "reason": f.reason if reason is None else reason,
+    }
+
+
+def fit_all(by_cell, min_days=MIN_DAYS, folds=N_FOLDS, units=None, q_layers=None, collect=None):
+    """One row per city-hour. An hour that cannot pass on its own is tried as
+    part of its block of hours (HOUR_BANDS), pooled by day; if that fails too
+    it prices from the public forecast, as it does today."""
+    units, q_layers = units or {}, q_layers or {}
+    fits = {}
     for (city, hour), rows in sorted(by_cell.items()):
-        f = fit_cell(city, hour, rows, min_days, folds)
-        out.append({
-            "city_key": f.city_key, "local_hour": f.local_hour,
-            "n_days": f.n_days,
-            "climb_n_days": None,
-            "sd_ratio": f.sd_ratio,
-            "crps_trajectory": f.crps_trajectory,
-            "crps_forecast": f.crps_forecast,
-            "crps_gain": f.crps_gain,
-            "applied": f.applied, "reason": f.reason,
-        })
+        fits[(city, hour)] = fit_cell(city, hour, rows, min_days, folds,
+                                      units.get(city, "C"), q_layers.get(city, (0.0, 0.0)))
+
+    pooled = {}
+    for (city, hour), f in fits.items():
+        if f.applied:
+            continue
+        band = hour_band(hour)
+        if (city, band) in pooled:
+            continue
+        band_rows = [h for (c, hr), rows in by_cell.items()
+                     if c == city and band[0] <= hr <= band[1] for h in rows]
+        band_rows.sort(key=lambda h: (h.local_date, h.local_hour))
+        # blocks by DATE, so an hour of day d never trains the block holding d
+        dates = sorted({h.local_date for h in band_rows})
+        pairs, ratio = [], None
+        for start, stop in walk_forward_folds(len(dates), folds):
+            cutoff, last = dates[start], dates[stop - 1]
+            train = [h for h in band_rows if h.local_date < cutoff]
+            test = [h for h in band_rows if cutoff <= h.local_date <= last]
+            if len(train) < min_days or not test:
+                continue
+            r = max(SD_RATIO_FLOOR, min(SD_RATIO_CEILING,
+                    shrink(measured_sd_ratio(train), len(train), K_SD, 1.0)))
+            q = q_layers.get(city, (0.0, 0.0))
+            for h in test:
+                ft, mt, st = trajectory_predictor(h, r)
+                ff, mf, sf = forecast_predictor(h)
+                u = units.get(city, "C")
+                rt = bucket_scores(mt, st, u, h.final_max_c, floor_c=ft, q_down=q[0], q_up=q[1])[0]
+                rf = bucket_scores(mf, sf, u, h.final_max_c, floor_c=ff, q_down=q[0], q_up=q[1])[0]
+                pairs.append((h.local_date, rf - rt))
+        if len(band_rows) >= min_days:
+            ratio = max(SD_RATIO_FLOOR, min(SD_RATIO_CEILING,
+                        shrink(measured_sd_ratio(band_rows), len(band_rows), K_SD, 1.0)))
+        g = gate(per_day(pairs), min_days=MIN_GATE_DAYS)
+        g["pairs"] = pairs
+        pooled[(city, band)] = (g, ratio)
+
+    out, counted = [], set()
+    for (city, hour), f in sorted(fits.items()):
+        if f.applied:
+            out.append(_row(f))
+            if collect is not None:
+                q = q_layers.get(city, (0.0, 0.0))
+                collect.extend(forward_diffs(sorted(by_cell[(city, hour)], key=lambda h: h.local_date),
+                                             folds, units.get(city, "C"), q)[3])
+            continue
+        band = hour_band(hour)
+        g, ratio = pooled.get((city, band), (None, None))
+        if g and g["applied"] and ratio is not None:
+            if collect is not None and (city, band) not in counted:
+                collect.extend(g["pairs"])
+                counted.add((city, band))
+            out.append(_row(f, applied=True, sd_ratio=round(ratio, 4),
+                            reason=(f"pooled with hours {band[0]:02d}-{band[1]:02d}: {g['reason']}. "
+                                    f"On its own: {f.reason}")))
+        else:
+            pooled_note = f" Pooled hours {band[0]:02d}-{band[1]:02d}: {g['reason']}." if g else ""
+            out.append(_row(f, reason=f.reason + pooled_note))
     return out
 
 
@@ -328,15 +434,24 @@ def main():
 
     from common import upsert_replace, log_run
 
-    by_cell, n_rows, n_verified = load_evidence(args.lookback)
+    by_cell, n_rows, n_mismatch = load_evidence(args.lookback)
     if not by_cell:
         print("no trajectory evidence - nothing to fit", file=sys.stderr)
         log_run("trajectory", "ok", 0, "no evidence")
         return 0
-    print(f"{n_rows} evidence row(s), {n_verified} against a verified station "
-          f"maximum, over {len(by_cell)} city-hour cell(s)")
+    print(f"{n_rows} verified evidence row(s), {n_mismatch} with our maximum above "
+          f"the venue's (kept), over {len(by_cell)} city-hour cell(s)")
 
-    rows = fit_all(by_cell, args.min_days, args.folds)
+    from common import get_cities
+    cities = {c["city_key"]: c for c in get_cities()}
+    units = {k: (c.get("unit") or "C") for k, c in cities.items()}
+    q_layers = {k: (float(c.get("observation_q_down") or 0.0), float(c.get("observation_q_up") or 0.0))
+                for k, c in cities.items()}
+    applied_pairs = []
+    rows = fit_all(by_cell, args.min_days, args.folds, units, q_layers, collect=applied_pairs)
+    # plan v2 P3.4's acceptance: the applied cells' forward days together
+    agg = gate(per_day(applied_pairs), min_days=1)
+    print("applied city-hours together: " + agg["reason"])
     applied = [r for r in rows if r["applied"]]
     print(f"{len(rows)} cell(s), {len(applied)} applied, "
           f"{len(rows) - len(applied)} shadow")
@@ -367,7 +482,12 @@ def main():
         r["computed_at"] = computed_at
     upsert_replace("derived_trajectory", rows, on_conflict="city_key,local_hour")
     log_run("trajectory", "ok", len(rows),
-            f"{len(applied)} of {len(rows)} city-hours applied")
+            {"applied": len(applied), "cells": len(rows),
+             "gate": "forward RPS, day-block bootstrap 90% lower > 0, >= 20 days, "
+                     "hour-block fallback (P3.4)",
+             "evidence_rows": n_rows, "kept_mismatch_rows": n_mismatch,
+             "applied_gain_rps_per_day": agg["mean"], "applied_gain_lo": agg["lo"],
+             "applied_gain_hi": agg["hi"], "applied_days": agg["n"]})
     return 0
 
 
