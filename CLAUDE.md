@@ -1,5 +1,48 @@
 # Working in this repository
 
+## Hassan's standing rules
+
+These come from Hassan, who owns this platform. They apply to every session
+and override defaults.
+
+**No inventing numbers, no assuming, no messing up. Work scientifically.**
+- Every number you state (in chat, a commit message, a comment, a doc) comes
+  from something you ran: a query against the live database, a test, a log,
+  a file. Say where it came from. If you have not measured it, say "not
+  measured"; do not estimate and present it as fact.
+- Do not assume how the code or the live system behaves. Read the code and
+  query the live database first. A comment, a doc, an audit or an earlier
+  session's claim is a lead to check, not a fact.
+- Do not break what works. Before replacing a live view or function, prove
+  the new one returns the same rows as the old: one REPEATABLE READ snapshot,
+  `EXCEPT ALL` in both directions. After a change, check it on the next real
+  run rather than assuming it worked.
+- Say what you have not verified. Report a failure as a failure.
+
+**The paper desks are examples, not the truth.** Judge and improve the
+engines behind them (forecasts, probabilities, pricing, strategy logic) on
+settled outcomes. What one desk happened to fill says nothing about a
+strategy.
+
+**Never delete data.** Rows leave Postgres only through the archive: exported
+into the repository, verified, committed, then pruned, so the platform can
+still read them. Anything that should go away is archived or retired so it
+stays readable, unless Hassan explicitly asks for it to be removed.
+
+**No cutting corners.** Keep the quality structures (tests, verification, the
+two-phase archive) intact, and fix things at their root cause.
+
+**Stay focused** on what was asked. Mention anything else you notice briefly;
+do not widen the work on your own.
+
+**Pull requests are enabled.** When a piece of work is finished and both test
+suites pass, push it and open a PR without waiting to be asked. Merge it once
+CI is green on the PR and Hassan has said to merge.
+
+**Secrets.** Never print a key's value. The Supabase secret key never goes in
+a Vercel `NEXT_PUBLIC_*` variable or an n8n Config node. Email workflows stay
+disabled.
+
 ## Run the WHOLE suite before you push, not just pytest
 
 `.github/workflows/tests.yml` runs two things. Running only the first is how
