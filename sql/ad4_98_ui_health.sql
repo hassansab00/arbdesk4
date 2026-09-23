@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 201 of them - and for each MISSING one names the
+-- and function the app reads - 202 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -157,6 +157,7 @@ with expected(rel, owner, used_by) as (values
     ('v_latest_edge', 'ad4_phase2.sql', ''),
     ('v_latest_prob', 'ad4_phase2.sql', ''),
     ('v_learning_state', 'ad4_40_synthesis.sql', '/synthesis'),
+    ('v_market_settlement_gaps', 'ad4_87_market_settlement_gaps.sql', ''),
     ('v_model_disagreement', 'ad4_25_model_forecast.sql', '(Reasoning)'),
     ('v_model_forecast_current', 'ad4_25_model_forecast.sql', ''),
     ('v_model_forecast_skill', 'ad4_25_model_forecast.sql', '(ModelAnalytics)'),
@@ -380,6 +381,7 @@ begin
     ('v_latest_edge', 'ad4_phase2.sql', ''),
     ('v_latest_prob', 'ad4_phase2.sql', ''),
     ('v_learning_state', 'ad4_40_synthesis.sql', '/synthesis'),
+    ('v_market_settlement_gaps', 'ad4_87_market_settlement_gaps.sql', ''),
     ('v_model_disagreement', 'ad4_25_model_forecast.sql', '(Reasoning)'),
     ('v_model_forecast_current', 'ad4_25_model_forecast.sql', ''),
     ('v_model_forecast_skill', 'ad4_25_model_forecast.sql', '(ModelAnalytics)'),

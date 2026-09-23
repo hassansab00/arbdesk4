@@ -1064,6 +1064,15 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "edges",
     "weather_forecasts"
   ],
+  "v_market_settlement_gaps": [
+    "cities",
+    "fact_band_outcome",
+    "fact_forecast_outcome",
+    "markets",
+    "weather_observations",
+    "bands",
+    "paper_resolution_evidence"
+  ],
   "v_model_disagreement": [
     "derived_model_promotion",
     "derived_model_forecast"
