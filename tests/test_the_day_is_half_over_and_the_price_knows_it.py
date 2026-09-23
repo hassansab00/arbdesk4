@@ -310,9 +310,19 @@ def test_the_gate_scores_on_days_the_fit_did_not_see():
 # ---------------------------------------------------------------------------
 # The wiring, in the engine that actually runs.
 # ---------------------------------------------------------------------------
+def _fresh_iso(minutes_ago=10):
+    import datetime as _dt
+    return (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(minutes=minutes_ago)).isoformat()
+
+
 def _traj_row(**kw):
+    # latest_reading_c / _at: the newest station-series reading and when it was
+    # taken (plan v2 P3.3); latest_temp_today_c is the live row, which since
+    # P2.7 is null wherever that row is model output.
     row = {"city_key": "london", "local_date": "2026-09-19", "local_hour": 16,
            "running_max_c": 24.8, "latest_temp_today_c": 24.6,
+           "latest_reading_c": 24.6, "latest_reading_at": _fresh_iso(),
+           "timing_trustworthy": True,
            "readings_today": 14, "typical_climb_left_c": 0.2,
            "climb_left_sd_c": 0.45, "pct_already_peaked": 83.9,
            "sd_ratio": 1.0, "crps_gain": 0.21, "trajectory_applied": True}
@@ -357,13 +367,35 @@ def test_the_width_correction_reaches_the_published_sigma(monkeypatch):
     assert rows[0]["sigma_c"] == pytest.approx(0.90)
 
 
+def test_a_stale_reading_falls_back_to_the_forecast_and_says_so(monkeypatch):
+    """Plan v2 P3.3: the climb left after one hour, added to a temperature from
+    an earlier one, is a centre nobody measured."""
+    rows, _reg, why = _price(monkeypatch, traj=_traj_row(
+        latest_reading_at=_fresh_iso(pe.TRAJECTORY_MAX_READING_AGE_MIN + 5)))
+    assert rows[0]["sigma_c"] == pytest.approx(2.0 * pe.MAE_TO_SIGMA)
+    assert "trajectory_skipped:stale_reading" in why
+    assert not any(r.startswith("trajectory:") for r in why)
+
+
+def test_an_untrustworthy_timing_falls_back_too(monkeypatch):
+    rows, _reg, why = _price(monkeypatch, traj=_traj_row(timing_trustworthy=False))
+    assert rows[0]["sigma_c"] == pytest.approx(2.0 * pe.MAE_TO_SIGMA)
+    assert "trajectory_skipped:stale_reading" in why
+
+
+def test_a_fresh_reading_applies(monkeypatch):
+    rows, _reg, why = _price(monkeypatch, traj=_traj_row(latest_reading_at=_fresh_iso(30)))
+    assert rows[0]["sigma_c"] == pytest.approx(0.45)
+    assert any(r.startswith("trajectory:") for r in why)
+
+
 def test_a_trajectory_says_nothing_about_tomorrow(monkeypatch):
     rows, _reg, why = _price(monkeypatch, traj=_traj_row(), for_date="2026-09-20")
     assert rows[0]["sigma_c"] == pytest.approx(2.0 * pe.MAE_TO_SIGMA)
     assert not any(r.startswith("trajectory") for r in why)
 
 
-@pytest.mark.parametrize("missing", ["latest_temp_today_c", "typical_climb_left_c",
+@pytest.mark.parametrize("missing", ["latest_reading_c", "typical_climb_left_c",
                                      "climb_left_sd_c"])
 def test_a_missing_input_prices_from_the_forecast_rather_than_guessing(monkeypatch, missing):
     rows, _reg, why = _price(monkeypatch, traj=_traj_row(**{missing: None}))
@@ -391,7 +423,7 @@ def test_the_floor_still_applies_on_top_of_the_trajectory(monkeypatch):
     monkeypatch.setattr(pe, "model_version_id", lambda *_a, **_k: None)
     monkeypatch.setattr(pe, "_postprocess_for", lambda *_a, **_k: None)
     monkeypatch.setattr(pe, "_trajectory_cache",
-                        {"london": _traj_row(latest_temp_today_c=26.0,
+                        {"london": _traj_row(latest_temp_today_c=26.0, latest_reading_c=26.0,
                                              typical_climb_left_c=0.1)})
     monkeypatch.setattr(pe, "_measurement_cache", {"london": (0.0, 0.0)})
     rows, _reg, _why = pe.process_city_day("london", "2026-09-19", "C", BANDS, {},
