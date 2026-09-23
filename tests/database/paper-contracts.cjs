@@ -233,6 +233,10 @@ const assert = require('node:assert/strict');
   // of this file.
   await db.exec(fs.readFileSync(
     path.resolve(__dirname,'../../sql/ad4_79_prune_book_redundancy.sql'),'utf8'));
+  // ad4_65 is the trades prune. It was never applied here, so its PUBLIC
+  // grant and its p_before floor bypass had no contract (plan v2 P1.1).
+  await db.exec(fs.readFileSync(
+    path.resolve(__dirname,'../../sql/ad4_65_prune_trades.sql'),'utf8'));
   const uid='10000000-0000-0000-0000-000000000001', other='10000000-0000-0000-0000-000000000002';
   const band='20000000-0000-0000-0000-000000000001', market='30000000-0000-0000-0000-000000000001';
   const command='40000000-0000-0000-0000-000000000001';
@@ -1784,6 +1788,57 @@ const assert = require('node:assert/strict');
   await db.query('update public.band_probabilities set calibrated_prob=.41 where prob_id=60000002');
   assert.equal(await caps(),c1+2,'skip_capture leaked past the transaction that set it');
 
+  // ======================================================================
+  // NO SECURITY DEFINER FUNCTION IS EXECUTABLE BY PUBLIC (plan v2 P1.1,
+  // 20260923120000_revoke_public_execute.sql). Checked AFTER every sql/ file
+  // above has run, because those create functions after the migrations and a
+  // new function is executable by PUBLIC unless something stops it.
+  // ======================================================================
+  await db.exec('reset role;');
+  const publicX=(await db.query(`
+    select p.oid::regprocedure::text as sig from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+     where n.nspname='public' and p.prosecdef
+       and exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+                    where a.grantee=0 and a.privilege_type='EXECUTE')`)).rows.map(r=>r.sig);
+  assert.deepEqual(publicX,[],`SECURITY DEFINER functions executable by PUBLIC: ${publicX.join(', ')}`);
+  for (const sig of ['prune_trades(integer,boolean,timestamptz,bigint)',
+                     'prune_exported_paper_trades(integer,uuid[],boolean)',
+                     'paper_desk_reset(uuid)','paper_desk_archive(uuid,boolean)']) {
+    for (const role of ['anon','authenticated']) {
+      assert.equal((await db.query(`select has_function_privilege('${role}','public.${sig}','execute') as ok`)).rows[0].ok,false,
+        `${role} can execute ${sig}`);
+    }
+    assert.equal((await db.query(`select has_function_privilege('service_role','public.${sig}','execute') as ok`)).rows[0].ok,true,
+      `service_role lost ${sig}, which the archive and the board's server route call`);
+  }
+  // And a function created from here on gets no PUBLIC grant either.
+  await db.exec(`create function public.zz_new_definer() returns int language sql security definer as 'select 1';`);
+  assert.equal((await db.query("select has_function_privilege('anon','public.zz_new_definer()','execute') as ok")).rows[0].ok,false,
+    'a newly created function is executable by anon again - the next migration would reopen this');
+  await db.exec('drop function public.zz_new_definer();');
+
+  // THE TRADES FLOOR HOLDS FOR p_before TOO. Before, p_before => now() was a
+  // cutoff of now, and the 30-day check never looked at it.
+  await db.exec(`insert into public.trades_observed(trade_id,city_key,traded_at) values
+      (900001,'london',now()-interval '40 days'),(900002,'london',now()-interval '2 days'),
+      (900003,'london',now()-interval '1 hour');
+    insert into public.archive_daily_city_presence(dataset,day,city_key)
+      select 'Trades seen',(traded_at at time zone 'UTC')::date,city_key from public.trades_observed
+      on conflict do nothing;`);
+  const observedBefore=(await db.query('select count(*)::int as n from public.trades_observed')).rows[0].n;
+  const older=(await db.query("select count(*)::int as n from public.trades_observed where traded_at < now()-interval '30 days'")).rows[0].n;
+  const dry=(await db.query('select prune_trades(30,true,now()) as r')).rows[0].r;
+  assert.equal(dry.ok,true);
+  assert.equal(Number(dry.would_delete),older,
+    `p_before => now() reached past the 30-day floor: would delete ${dry.would_delete}, only ${older} are older than 30 days`);
+  const wet=(await db.query(`select prune_trades(30,false,now(),${observedBefore}) as r`)).rows[0].r;
+  assert.equal(wet.ok,false,'a committed prune with p_before => now() went through');
+  assert.equal((await db.query('select count(*)::int as n from public.trades_observed')).rows[0].n,observedBefore,
+    'rows inside the 30-day window were deleted');
+  const legit=(await db.query("select prune_trades(30,true,now()-interval '31 days') as r")).rows[0].r;
+  assert.equal(legit.ok,true,'a cutoff older than the floor must still be honoured');
+  assert.equal(new Date(legit.older_than).getTime()<Date.now()-30*86400e3,true);
+
   await db.close();
-  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement and research capture of prices only');
+  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, research capture of prices only and no PUBLIC execute on SECURITY DEFINER functions');
 })().catch(e=>{console.error(e);process.exit(1);});

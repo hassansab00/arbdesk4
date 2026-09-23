@@ -181,6 +181,9 @@ begin
 end;
 $function$;
 
+-- SECURITY DEFINER and it deletes rows: service_role only. A new function is
+-- executable by PUBLIC unless revoked (plan v2 P1.1).
+revoke execute on function public.prune_exported_paper_trades(integer, uuid[], boolean) from public, anon, authenticated;
 grant execute on function public.prune_exported_paper_trades(integer, uuid[], boolean) to service_role;
 
 comment on function public.prune_exported_paper_trades(integer, uuid[], boolean) is

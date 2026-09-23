@@ -73,6 +73,7 @@ export const SQL_OWNER: Record<string, string> = {
   "strategy_conflicts": "ad4_phase2.sql",
   "synthesis_thresholds": "ad4_40_synthesis.sql",
   "trades_observed": "ad4_00_preflight.sql",
+  "v_anon_rpc_allowlist": "supabase/migrations/20260923120000_revoke_public_execute.sql",
   "v_archive_by_city": "ad4_35_databank_inventory.sql",
   "v_archive_daily": "ad4_35_databank_inventory.sql",
   "v_archive_inventory": "ad4_35_databank_inventory.sql",
