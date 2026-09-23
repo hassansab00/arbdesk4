@@ -166,6 +166,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_prediction_ladder_bands": "ad4_68_prediction_ladder_outcomes.sql",
   "v_prediction_scorecard": "ad4_31_predictive.sql",
   "v_prediction_scorecard_all": "ad4_62_settled_history_ungated.sql",
+  "v_priceable_markets": "supabase/migrations/20260923180000_a_priceable_market_is_one_whose_local_day_has_not_ended.sql",
   "v_probability_reliability": "ad4_75_probability_reliability.sql",
   "v_provisional_settings": "ad4_39_freshness.sql",
   "v_prunable_book_redundancy": "ad4_79_prune_book_redundancy.sql",

@@ -490,7 +490,7 @@ def _model_forecasts(promoted):
     try:
         rows = rest_all("derived_model_forecast", [
             ("select", "city_key,for_date,run_at,lead_days,predicted_max_c,model_version"),
-            ("for_date", f"gte.{dt.date.today().isoformat()}"),
+            ("for_date", f"gte.{_EARLIEST_LOCAL_DATE()}"),
             ("city_key", f"in.({','.join(cities)})"),
         ], order="city_key.asc,for_date.asc,run_at.asc", page_size=1000)
     except Exception as e:
@@ -506,26 +506,25 @@ def _model_forecasts(promoted):
     return out
 
 
+def _EARLIEST_LOCAL_DATE():
+    """No city on Earth is more than one calendar day behind UTC, so this is
+    the earliest date any market can still be live on (plan v2 P3.2). A cache
+    bounded at the UTC date dropped western cities' local today after 00:00Z."""
+    return (dt.datetime.now(dt.timezone.utc).date() - dt.timedelta(days=1)).isoformat()
+
+
 def _upcoming_markets():
-    return rest("v_canonical_markets", [
+    # THE CITY'S DAY, NOT THE RUNNER'S (plan v2 P3.2). v_priceable_markets is
+    # an active city's market that is not closed and whose local day has not
+    # ended. The old filter was closed = false and resolution_date >= the UTC
+    # date: over 7 days to 23 Sep it priced 5,401 rows after a local day had
+    # ended and skipped 310 market-runs of western cities still mid-day.
+    #
+    # CLOSED MARKETS ARE STILL NOT UPCOMING ONES. Pricing them (18 of 51 of
+    # 21 Sep's markets, 198 bands) cost rows no strategy could read and made
+    # `stale_book` read like a broken snapshot job; the view keeps that rule.
+    return rest("v_priceable_markets", [
         ("select", "market_id,city_key,resolution_date,unit,correction_id"),
-        # CLOSED MARKETS ARE NOT UPCOMING ONES, whatever their resolution_date
-        # says. A city's market closes when its local day finishes, so at any
-        # hour a slice of today's board has already been decided - measured
-        # 21 Sep: 18 of 51 markets dated today were closed, carrying 198 bands,
-        # while 0 of tomorrow's 49 were.
-        #
-        # Pricing them cost 198 x 2 rows an edge run, six runs a day, and
-        # nothing could ever read them: v_opportunities - the only thing the
-        # strategies see - already returns 0 rows on a closed market. The rows
-        # were computed, stored, archived and pruned unread, on a database at
-        # 95.6% of its tier.
-        #
-        # It also made the diagnostics lie. 196 of the 218 bands blocked
-        # `stale_book` were closed markets whose books stopped being quoted,
-        # which reads as a broken snapshot job and is nothing of the kind.
-        ("closed", "eq.false"),
-        ("resolution_date", f"gte.{dt.date.today().isoformat()}"),
     ])
 
 
@@ -780,7 +779,7 @@ def _divergence():
         try:
             rows = rest_all("v_forecast_divergence", [
                 ("select", "city_key,for_date,n_models,models,spread_c,sigma_multiplier"),
-                ("for_date", f"gte.{dt.date.today().isoformat()}"),
+                ("for_date", f"gte.{_EARLIEST_LOCAL_DATE()}"),
             ], order="city_key.asc,for_date.asc", page_size=1000)
             for r in rows:
                 _divergence_cache[(r["city_key"], str(r["for_date"]))] = r

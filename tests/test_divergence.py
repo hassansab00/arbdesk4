@@ -117,7 +117,10 @@ def test_only_dates_this_engine_prices_are_fetched(monkeypatch):
     load(monkeypatch, [row()], seen=seen)
     pe._divergence()
     params = seen[0]
-    assert params["for_date"] == f"gte.{dt.date.today().isoformat()}"
+    # One day behind UTC: the earliest local date any market can still be
+    # live on (plan v2 P3.2), not the runner's date.
+    earliest = (dt.datetime.now(dt.timezone.utc).date() - dt.timedelta(days=1)).isoformat()
+    assert params["for_date"] == f"gte.{earliest}"
 
 
 def test_the_read_pages_the_whole_scope_instead_of_capping_it(monkeypatch):
