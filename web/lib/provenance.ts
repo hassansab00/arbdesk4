@@ -843,11 +843,15 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_forecasts"
   ],
   "v_city_hit_history": [
+    "band_probabilities",
     "cities",
+    "edges",
     "fact_band_outcome"
   ],
   "v_city_hit_summary": [
+    "band_probabilities",
     "cities",
+    "edges",
     "fact_band_outcome"
   ],
   "v_city_metadata_health": [
@@ -870,11 +874,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "cities",
     "derived_forecast_skill",
     "bands",
+    "edges",
     "fact_band_outcome",
     "markets",
-    "paper_resolution_evidence",
-    "edges",
-    "band_probabilities"
+    "band_probabilities",
+    "paper_resolution_evidence"
   ],
   "v_city_reasoning": [
     "cities",
@@ -1135,14 +1139,30 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "cities",
     "weather_observations"
   ],
-  "v_prediction_ladder": [
+  "v_prediction_hindsight": [
+    "band_probabilities",
     "bands",
     "cities",
     "fact_band_outcome",
     "markets",
-    "paper_resolution_evidence",
+    "paper_resolution_evidence"
+  ],
+  "v_prediction_ladder": [
+    "bands",
     "edges",
-    "band_probabilities"
+    "fact_band_outcome",
+    "markets",
+    "band_probabilities",
+    "cities",
+    "paper_resolution_evidence"
+  ],
+  "v_prediction_ladder_bands": [
+    "band_probabilities",
+    "bands",
+    "cities",
+    "fact_band_outcome",
+    "markets",
+    "paper_resolution_evidence"
   ],
   "v_prediction_scorecard": [
     "fact_forecast_outcome",

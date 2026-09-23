@@ -175,7 +175,20 @@ $q$;
   end if;
 
   if has_opp then
-    sql := sql || $q$, top_band as (
+    sql := sql || $q$, opp_yes as materialized (
+  -- ONE PASS OVER v_opportunities, NOT TWO. top_band and top_tails each read
+  -- the view on their own, and it cannot be filtered to one city before it
+  -- runs - its eligible and book steps are materialised for every city - so
+  -- the Why panel, asking about one city, built the whole desk's
+  -- opportunities twice: about 20,000 buffers each time. Read once, here,
+  -- and both of them take what they need from it.
+  select o.city_key, o.band_id, o.band_label, o.band_lo, o.band_hi,
+         o.open_low, o.open_high, o.model_prob, o.market_price, o.edge_net_pp,
+         o.confidence, o.regime_label, o.tradeable, o.block_reason
+  from v_opportunities o
+  join day d on d.city_key = o.city_key and d.resolution_date = o.resolution_date
+  where o.side = 'YES' and o.model_prob is not null
+), top_band as (
   -- "MOST LIKELY" IS THE MODAL *CLOSED* BUCKET.
   --
   -- The ladder's end buckets are open-ended: "27C or higher" runs to plus
@@ -197,10 +210,8 @@ $q$;
     o.city_key, o.band_id, o.band_label, o.band_lo, o.band_hi,
     o.open_low, o.open_high, o.model_prob, o.market_price, o.edge_net_pp,
     o.confidence, o.regime_label, o.tradeable, o.block_reason
-  from v_opportunities o
-  join day d on d.city_key = o.city_key and d.resolution_date = o.resolution_date
-  where o.side = 'YES' and o.model_prob is not null
-    and not coalesce(o.open_low, false) and not coalesce(o.open_high, false)
+  from opp_yes o
+  where not coalesce(o.open_low, false) and not coalesce(o.open_high, false)
     and o.band_lo is not null and o.band_hi is not null
   order by o.city_key, o.model_prob desc, o.band_lo
 ), top_tails as (
@@ -210,9 +221,7 @@ $q$;
   select o.city_key,
          round(100 * sum(o.model_prob) filter (where coalesce(o.open_low, false)), 1)  as tail_low_pct,
          round(100 * sum(o.model_prob) filter (where coalesce(o.open_high, false)), 1) as tail_high_pct
-  from v_opportunities o
-  join day d on d.city_key = o.city_key and d.resolution_date = o.resolution_date
-  where o.side = 'YES' and o.model_prob is not null
+  from opp_yes o
   group by o.city_key
 )$q$;
   else
@@ -297,7 +306,19 @@ left join skill sk      on sk.city_key = c.city_key and sk.lead_days = coalesce(
 left join div dv        on dv.city_key = c.city_key
 left join top_band tb   on tb.city_key = c.city_key
 left join top_tails tt  on tt.city_key = c.city_key
-left join ctx oc        on oc.band_id = tb.band_id
+-- THE CONTEXT OF ONE BAND, NOT OF EVERY BAND. A plain join made Postgres build
+-- v_opportunity_context for all 1,056 live bands - four order-book lookups
+-- each, about 54,000 buffers - and then keep the one row matching the top
+-- band. Asked from inside a lateral it is filtered to that band before it is
+-- built. `offset 0` changes no row (the view holds one row per band); it stops
+-- the planner flattening the lateral back into the join it replaces, which it
+-- otherwise does - measured at 90,891 buffers that way, 16,053 this way.
+left join lateral (
+  select x.forecast_ahead_of_book, x.forecast_move_c, x.drift_24h, x.hours_to_resolution
+    from ctx x
+   where x.band_id = tb.band_id
+  offset 0
+) oc on true
 $q$;
 
   execute sql;

@@ -27,21 +27,54 @@ INSTALL = ROOT / "sql/ad4_33_control.sql"
 
 
 def _statement(text, opening):
-    """The statement starting at `opening`, up to its terminating semicolon."""
-    start = text.index(opening)
-    return text[start:text.index(";", text.index(" from ", start))]
+    """The statement starting at `opening`, up to its terminating semicolon.
+
+    `--` comments are removed first. A semicolon in a comment is not the end
+    of a statement - this used to stop at one, inside the explanation above
+    v_signal_mark, and "compared" the two copies' first few comment lines -
+    and drift means the SQL differs, not the prose around it."""
+    code = re.sub(r"--[^\n]*", "", text)
+    start = code.index(opening)
+    return code[start:code.index(";", code.index(" from ", start))]
+
+
+def _latest_migration_defining(opening):
+    """The migration production applies LAST for this statement. An applied
+    migration is never edited, so a later fix lands in a new one - and that is
+    the copy the install file has to match, not the first."""
+    hits = [p for p in sorted((ROOT / "supabase/migrations").glob("*.sql"))
+            if opening in p.read_text()]
+    assert hits, f"no migration defines {opening!r}"
+    return hits[-1]
 
 
 def test_both_copies_of_the_mark_view_are_identical():
-    a = _statement(MIGRATION.read_text(), "create or replace view public.v_signal_mark as")
-    b = _statement(INSTALL.read_text(), "create or replace view public.v_signal_mark as")
-    assert a == b, "v_signal_mark has drifted between the migration and sql/ad4_33_control.sql"
+    opening = "create or replace view public.v_signal_mark as"
+    latest = _latest_migration_defining(opening)
+    a = _statement(latest.read_text(), opening)
+    b = _statement(INSTALL.read_text(), opening)
+    assert a == b, (f"v_signal_mark has drifted between {latest.name} "
+                    "and sql/ad4_33_control.sql")
+
+
+def test_the_mark_reads_the_payload_once_per_use_not_per_reference():
+    """signals.payload is TOASTed for most signals, and every reference to it
+    re-reads the TOAST pages. It is read in one materialised step; nothing
+    after that step may name it again."""
+    mark = _statement(INSTALL.read_text(), "create or replace view public.v_signal_mark as")
+    raw = mark[mark.index("with raw as materialized ("):mark.index("shaped as (")]
+    after = mark[mark.index("shaped as ("):]
+    assert raw.count("s.payload") == 3, "the materialised step should read the payload exactly three times"
+    assert "payload" not in after, "a step after `raw` reads signals.payload again"
 
 
 def test_both_copies_of_the_board_are_identical():
-    a = _statement(MIGRATION.read_text(), "create or replace view v_strategy_board as")
-    b = _statement(INSTALL.read_text(), "create or replace view v_strategy_board as")
-    assert a == b, "v_strategy_board has drifted between the migration and sql/ad4_33_control.sql"
+    opening = "create or replace view v_strategy_board as"
+    latest = _latest_migration_defining(opening)
+    a = _statement(latest.read_text(), opening)
+    b = _statement(INSTALL.read_text(), opening)
+    assert a == b, (f"v_strategy_board has drifted between {latest.name} "
+                    "and sql/ad4_33_control.sql")
 
 
 def test_the_verdict_never_branches_on_a_fill():

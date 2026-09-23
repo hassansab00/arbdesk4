@@ -225,6 +225,11 @@ MIGRATION_RECORD = {
     "supabase/migrations/20260912234500_phase1c_operational_readiness.sql":
         "v_city_day_readiness / v_operational_health - derived from markets, so "
         "already carries no retired city; diagnosis either way",
+    "supabase/migrations/20260923010000_readiness_reads_one_row_per_band.sql":
+        "v_city_day_readiness / v_city_day_execution_readiness, re-issued with "
+        "the latest book, probability and edge read per band instead of over "
+        "their whole history. Same rows and the same classification as phase1c "
+        "and phase1d: derived from markets, so no retired city; diagnosis",
     "supabase/migrations/20260913091000_phase1d_databank_city_rollup.sql":
         "v_archive_by_city - the archive rollup",
     "supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql":

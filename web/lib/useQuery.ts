@@ -50,7 +50,7 @@ export interface QueryState<T> {
   truncated: boolean;
 }
 
-function messageOf(e: unknown): string {
+export function messageOf(e: unknown): string {
   if (!e) return "Unknown error";
   const pg = e as Partial<PostgrestError> & { message?: string };
   const parts = [pg.message, pg.details, pg.hint].filter(Boolean);

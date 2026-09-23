@@ -90,6 +90,17 @@ comment on table weather_forecast_features is
 
 create index if not exists wff_city_date on weather_forecast_features (city_key, for_date desc, run_at desc);
 
+-- READABLE THE WAY EVERY OTHER FEED IS. The browser holds SELECT on this
+-- table, but RLS was on with no policy, so anon read zero rows without an
+-- error. v_archive_inventory counts a feed under 50,000 rows as the caller,
+-- which put "Forecast detail (hourly)" on the Data Bank as 0 rows, 0 cities,
+-- EMPTY - while it held 42,307 rows for 54 cities. weather_forecasts and
+-- weather_observations carry exactly this policy; so does this now.
+alter table weather_forecast_features enable row level security;
+drop policy if exists anon_read on weather_forecast_features;
+create policy anon_read on weather_forecast_features
+  for select to anon, authenticated using (true);
+
 
 -- --------------------------------------------------------------------------
 -- 2. The freshest forecast conditions per city-day.

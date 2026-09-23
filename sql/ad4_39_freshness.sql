@@ -213,30 +213,42 @@ $ad4$;
 --   THE COUNT is exact where counting is cheap and an estimate where it is
 --   not. pg_class.reltuples is maintained by ANALYZE and is what the planner
 --   itself trusts; on a table of half a million rows it is the right answer
---   to "how big is this". Anything under 50,000 rows is still counted
---   exactly, which is most of the schema. rows_estimated says which you are
---   looking at, so the UI can print the tilde rather than implying precision
---   it does not have.
+--   to "how big is this". Anything under 5,000 rows is still counted
+--   exactly (the line was 50,000; see below for why it moved).
+--   rows_estimated says which you are looking at, and the UI prints a tilde
+--   beside an estimate rather than implying precision it does not have.
+-- --------------------------------------------------------------------------
+--
+-- DECIDED WHEN THE PAGE ASKS, NOT WHEN THE VIEW WAS BUILT. These two used to
+-- read reltuples at INSTALL time and bake the answer into the view's SQL, so a
+-- table that was small when ad4_39 last ran stayed on the exact-count path for
+-- ever. Measured 2026-09-22 as the browser's role: band_probabilities had
+-- grown to 69,513 rows and was still being `count(*)`-ed on every page load -
+-- 862 ms of a 3,134 ms view, with bands (375 ms), research_captures (452 ms)
+-- and paper_resolution_evidence (256 ms) the same story. The expressions now
+-- read reltuples when the view runs, so a table crossing the line is estimated
+-- from its next read onward, and nobody has to remember to re-run this file.
+--
+-- 5,000, NOT 50,000. Counting 5,000 rows is milliseconds even cold; counting
+-- 50,000 is not, and the view does it for forty-eight tables at once, on every
+-- page, inside the same 8-second limit. rows_estimated still says which one the
+-- page is showing. ad4_51 (the Data Bank) uses the same line, so the two pages
+-- never disagree about whether a number is a count or an estimate.
 -- --------------------------------------------------------------------------
 create or replace function ad4_rowcount_is_estimate(p_table text)
 returns text language sql stable as $ad4$
-  select case when coalesce((select c.reltuples from pg_class c
-                              join pg_namespace n on n.oid = c.relnamespace
-                             where n.nspname = 'public' and c.relname = p_table), -1) > 50000
-              then 'true' else 'false' end;
+  select format('(select coalesce(c.reltuples, -1) > 5000 from pg_class c '
+                'join pg_namespace n on n.oid = c.relnamespace '
+                'where n.nspname = ''public'' and c.relname = %L)', p_table);
 $ad4$;
 
 create or replace function ad4_rowcount_expr(p_table text)
 returns text language sql stable as $ad4$
-  select case
-    when coalesce((select c.reltuples from pg_class c
-                    join pg_namespace n on n.oid = c.relnamespace
-                   where n.nspname = 'public' and c.relname = p_table), -1) > 50000
-      then format('(select greatest(c.reltuples, 0)::bigint from pg_class c '
-                  'join pg_namespace n on n.oid = c.relnamespace '
-                  'where n.nspname = ''public'' and c.relname = %L)', p_table)
-    else format('(select count(*) from public.%I)::bigint', p_table)
-  end;
+  select format('(select case when coalesce(c.reltuples, -1) > 5000 '
+                'then greatest(c.reltuples, 0)::bigint '
+                'else (select count(*) from public.%I)::bigint end '
+                'from pg_class c join pg_namespace n on n.oid = c.relnamespace '
+                'where n.nspname = ''public'' and c.relname = %L)', p_table, p_table);
 $ad4$;
 
 do $ad4$

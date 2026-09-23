@@ -73,21 +73,27 @@ comment on function set_strategy_enabled(text, boolean) is
 --    numbers are the frozen ones rather than a live table's current mood.
 -- --------------------------------------------------------------------------
 create or replace view public.v_signal_mark as
-with shaped as (
-  select f.signal_id,
-         f.strategy_id,
-         f.side,
-         f.price_at_fire                                            as price_at_fire,
-         -- s2/s6 carry the whole basket in one signal; s8/s9 carry a leg each
-         -- and tie them together with basket_group.
-         (s.payload ? 'band_ids') and not (s.payload ? 'basket_group')
-                                                                    as summed,
-         case when (s.payload ? 'band_ids') and not (s.payload ? 'basket_group')
-              then coalesce(jsonb_array_length(s.payload -> 'band_ids'), 1)
-              else 1 end                                            as legs,
-         case when (s.payload ? 'band_ids') and not (s.payload ? 'basket_group')
-              then s.payload -> 'band_ids'
-              else to_jsonb(array[f.band_id::text]) end             as leg_ids
+-- THE PAYLOAD, READ THREE TIMES INSTEAD OF EIGHT - AND THE LEGS, ONCE.
+--
+-- signals.payload is over 2 KB for 71% of signals (avg 3 KB, 20 MB of TOAST),
+-- so it lives out of line, and Postgres re-reads it for EVERY reference: the
+-- summed / legs / leg_ids expressions below named it eight times per row.
+-- legs_settled and legs_yes were correlated subqueries in a CTE the planner
+-- inlines, so each of the output columns that mentions legs_yes ran its own
+-- copy. Together: 163,507 buffers for v_strategy_board's ten rows.
+--
+-- `raw` reads the three things the mark needs from the payload once each and
+-- is materialised, so everything after it works on small values in memory;
+-- one lateral counts both kinds of leg in a single pass. fact_band_outcome is
+-- keyed by band_id, so the left join adds no rows and the two counts are the
+-- two EXISTS counts they replace. Verified identical before it was applied -
+-- 3,624 marks and the board's 10 rows, none differing in either direction -
+-- and the board fell to 54,184 buffers.
+with raw as materialized (
+  select f.signal_id, f.strategy_id, f.side, f.price_at_fire, f.band_id,
+         s.payload ? 'band_ids'     as has_band_ids,
+         s.payload ? 'basket_group' as has_basket_group,
+         s.payload -> 'band_ids'    as band_ids
     from public.fact_signal_outcome f
     join public.signals s on s.signal_id = f.signal_id
    where f.action = 'ENTER'
@@ -96,18 +102,32 @@ with shaped as (
      and f.price_at_fire > 0
      and f.price_at_fire < 1
 ),
+shaped as (
+  select r.signal_id,
+         r.strategy_id,
+         r.side,
+         r.price_at_fire                                            as price_at_fire,
+         -- s2/s6 carry the whole basket in one signal; s8/s9 carry a leg each
+         -- and tie them together with basket_group.
+         r.has_band_ids and not r.has_basket_group                  as summed,
+         case when r.has_band_ids and not r.has_basket_group
+              then coalesce(jsonb_array_length(r.band_ids), 1)
+              else 1 end                                            as legs,
+         case when r.has_band_ids and not r.has_basket_group
+              then r.band_ids
+              else to_jsonb(array[r.band_id::text]) end             as leg_ids
+    from raw r
+),
 counted as (
-  select h.*,
-         -- Every leg must have settled, or the basket has no outcome yet.
-         (select count(*) from jsonb_array_elements_text(h.leg_ids) t(id)
-           where exists (select 1 from public.fact_band_outcome b
-                          where b.band_id = t.id::uuid
-                            and b.settled_yes is not null))          as legs_settled,
-         (select count(*) from jsonb_array_elements_text(h.leg_ids) t(id)
-           where exists (select 1 from public.fact_band_outcome b
-                          where b.band_id = t.id::uuid
-                            and b.settled_yes))                      as legs_yes
+  select h.*, n.legs_settled, n.legs_yes
     from shaped h
+    -- Every leg must have settled, or the basket has no outcome yet.
+    cross join lateral (
+      select count(*) filter (where b.settled_yes is not null) as legs_settled,
+             count(*) filter (where b.settled_yes)             as legs_yes
+        from jsonb_array_elements_text(h.leg_ids) t(id)
+        left join public.fact_band_outcome b on b.band_id = t.id::uuid
+    ) n
 )
 select c.signal_id,
        c.strategy_id,

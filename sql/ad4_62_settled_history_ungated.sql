@@ -99,15 +99,26 @@ with latest as (
      and forecast_max_c is not null
    order by city_key, for_date, model, lead_days, run_at desc
 ),
+-- ONE VERIFICATION PER CITY-DAY VALUE, NOT PER FORECAST ROW. fact_forecast_
+-- outcome holds a row per model and lead for every city-day - 11,325 in the
+-- 45-day window - and the corroboration test below ran once for each of them,
+-- though it depends only on (city, day, observed value): 1,111 distinct
+-- triples. It is the "Actual against predicted" panel's query, and on
+-- 2026-09-22 it was one of the 57014s. Deduplicated first, the same answer
+-- costs 8,701 buffers instead of 44,066: max() over the distinct values is
+-- the max over all rows, and bool_or() of a test that depends only on the
+-- triple is the same over the triples as over the rows. Verified identical,
+-- 24,213 rows, before it was applied.
 observed as (
-  select f.city_key, f.for_date,
-         max(f.observed_max_c) as observed_max_c,
+  select g.city_key, g.for_date,
+         max(g.observed_max_c) as observed_max_c,
          bool_or(exists (select 1 from v_verified_weather_outcomes w
-                          where w.city_key = f.city_key and w.for_date = f.for_date
-                            and abs(f.observed_max_c - w.observed_max_c) <= 0.01)) as verified
-    from fact_forecast_outcome f
-   where f.for_date >= current_date - 45
-   group by f.city_key, f.for_date
+                          where w.city_key = g.city_key and w.for_date = g.for_date
+                            and abs(g.observed_max_c - w.observed_max_c) <= 0.01)) as verified
+    from (select distinct f.city_key, f.for_date, f.observed_max_c
+            from fact_forecast_outcome f
+           where f.for_date >= current_date - 45) g
+   group by g.city_key, g.for_date
 )
 select l.city_key, l.for_date, l.model, l.lead_days, l.forecast_max_c, l.run_at,
        o.observed_max_c,

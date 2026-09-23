@@ -11,6 +11,7 @@ import { fmtBandRange, fmtTemp, type Unit } from "@/lib/units";
 import { fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
 import { solveBoard, overround, type Leg } from "@/lib/ladder";
 import { parseLevels, type BookRow, type Limits } from "@/lib/execution";
+import { latestBooks } from "@/lib/books";
 import { useExecutionLimits } from "@/lib/useExecutionLimits";
 import { feeRateAt } from "@/lib/costs";
 import { LADDER_SOURCE_LABEL, VOLUME_SOURCE_LABEL, type Opportunity } from "@/lib/types";
@@ -224,10 +225,16 @@ export default function BoardPage() {
   // THE REAL LADDER. The board capped a leg at its depth figure and priced the
   // whole thing at the mid; a stake bigger than the top level does not just
   // cap, it fills at a worse average, and that difference is the cost of size.
+  //
+  // THE BOARD'S OWN BANDS. This read every band's book - PostgREST cut it to an
+  // arbitrary 1,000 of 13,545, so the ladder on screen could simply be missing.
+  const boardBandIds = useMemo(
+    () => (board?.bands ?? []).map(({ yes, no }) => (yes ?? no)?.band_id),
+    [board]
+  );
   const bookQ = useQuery<BookRow[]>(
-    () => supabase.from("v_latest_book")
-      .select("band_id,ask_levels,bid_levels,ask_levels_source,bid_levels_source,ask_depth_usd,bid_depth_usd,best_ask,best_bid"),
-    [],
+    () => latestBooks(boardBandIds),
+    [boardBandIds.join(",")],
     30000
   );
   const { limits } = useExecutionLimits();

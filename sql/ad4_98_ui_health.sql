@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 196 of them - and for each MISSING one names the
+-- and function the app reads - 199 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -28,6 +28,7 @@ with expected(rel, owner, used_by) as (values
     ('band_probabilities', 'ad4_00_preflight.sql', '/analytics'),
     ('bands', 'ad4_00_preflight.sql', ''),
     ('book_capture_attempts', 'supabase/migrations/20260913090000_phase1d_probability_and_book_diagnostics.sql', ''),
+    ('book_ladder_cache', 'ad4_13_reconcile.sql', ''),
     ('book_snapshots', 'ad4_00_preflight.sql', ''),
     ('cities', 'ad4_00_preflight.sql', '(Header), (ModelAnalytics), (RightRail), (ScopeControl), /, /campaigns, /live, /predictive'),
     ('city_metadata_evidence', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', ''),
@@ -150,7 +151,7 @@ with expected(rel, owner, used_by) as (values
     ('v_forecast_postprocess_health', 'ad4_83_forecast_postprocess.sql', ''),
     ('v_index_never_used', 'ad4_50_index_dedupe.sql', ''),
     ('v_jit_state', 'ad4_46_jit.sql', ''),
-    ('v_latest_book', 'ad4_13_reconcile.sql', '/board, /goals, /opportunities'),
+    ('v_latest_book', 'ad4_13_reconcile.sql', ''),
     ('v_latest_edge', 'ad4_phase2.sql', ''),
     ('v_latest_prob', 'ad4_phase2.sql', ''),
     ('v_learning_state', 'ad4_40_synthesis.sql', '/synthesis'),
@@ -167,7 +168,9 @@ with expected(rel, owner, used_by) as (values
     ('v_paper_desks', 'ad4_59_paper_desks.sql', ''),
     ('v_peak_hour_coverage', 'ad4_37_peak_hour.sql', '/globe'),
     ('v_persistence_skill', 'ad4_21_weather_features.sql', '(ModelAnalytics)'),
+    ('v_prediction_hindsight', 'ad4_68_prediction_ladder_outcomes.sql', '(PredictionHindsight)'),
     ('v_prediction_ladder', 'ad4_31_predictive.sql', '/predictive'),
+    ('v_prediction_ladder_bands', 'ad4_68_prediction_ladder_outcomes.sql', ''),
     ('v_prediction_scorecard', 'ad4_31_predictive.sql', ''),
     ('v_prediction_scorecard_all', 'ad4_62_settled_history_ungated.sql', '/predictive'),
     ('v_probability_reliability', 'ad4_75_probability_reliability.sql', '/opportunities'),
@@ -246,6 +249,7 @@ begin
     ('band_probabilities', 'ad4_00_preflight.sql', '/analytics'),
     ('bands', 'ad4_00_preflight.sql', ''),
     ('book_capture_attempts', 'supabase/migrations/20260913090000_phase1d_probability_and_book_diagnostics.sql', ''),
+    ('book_ladder_cache', 'ad4_13_reconcile.sql', ''),
     ('book_snapshots', 'ad4_00_preflight.sql', ''),
     ('cities', 'ad4_00_preflight.sql', '(Header), (ModelAnalytics), (RightRail), (ScopeControl), /, /campaigns, /live, /predictive'),
     ('city_metadata_evidence', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', ''),
@@ -368,7 +372,7 @@ begin
     ('v_forecast_postprocess_health', 'ad4_83_forecast_postprocess.sql', ''),
     ('v_index_never_used', 'ad4_50_index_dedupe.sql', ''),
     ('v_jit_state', 'ad4_46_jit.sql', ''),
-    ('v_latest_book', 'ad4_13_reconcile.sql', '/board, /goals, /opportunities'),
+    ('v_latest_book', 'ad4_13_reconcile.sql', ''),
     ('v_latest_edge', 'ad4_phase2.sql', ''),
     ('v_latest_prob', 'ad4_phase2.sql', ''),
     ('v_learning_state', 'ad4_40_synthesis.sql', '/synthesis'),
@@ -385,7 +389,9 @@ begin
     ('v_paper_desks', 'ad4_59_paper_desks.sql', ''),
     ('v_peak_hour_coverage', 'ad4_37_peak_hour.sql', '/globe'),
     ('v_persistence_skill', 'ad4_21_weather_features.sql', '(ModelAnalytics)'),
+    ('v_prediction_hindsight', 'ad4_68_prediction_ladder_outcomes.sql', '(PredictionHindsight)'),
     ('v_prediction_ladder', 'ad4_31_predictive.sql', '/predictive'),
+    ('v_prediction_ladder_bands', 'ad4_68_prediction_ladder_outcomes.sql', ''),
     ('v_prediction_scorecard', 'ad4_31_predictive.sql', ''),
     ('v_prediction_scorecard_all', 'ad4_62_settled_history_ungated.sql', '/predictive'),
     ('v_probability_reliability', 'ad4_75_probability_reliability.sql', '/opportunities'),

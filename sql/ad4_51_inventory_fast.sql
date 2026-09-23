@@ -34,11 +34,16 @@
 --
 -- WHAT IT DOES INSTEAD - THREE DIFFERENT ANSWERS, NOT ONE COMPROMISE
 --
--- 1. ROWS. Exact under 50,000 rows, planner estimate above it. This is not
+-- 1. ROWS. Exact under 5,000 rows, planner estimate above it. This is not
 --    a new idea invented here: ad4_39_freshness.sql already draws exactly
 --    this line with ad4_rowcount_expr(), and already surfaces a
 --    rows_estimated flag beside the number. This file reuses the rule and
 --    the flag, so the two pages agree about what a row count means.
+--
+--    The line was 50,000 in both files until 2026-09-22, when counting the
+--    tables between the two thresholds was measured as most of a 3-second
+--    freshness read; ad4_39 moved to 5,000 and this moved with it, because
+--    the whole point of sharing the rule is that the pages never disagree.
 --
 --    The estimate comes from pg_class.reltuples, which ANALYZE maintains and
 --    autovacuum runs; it is typically within a percent or two. The panel
@@ -56,7 +61,7 @@
 -- ===========================================================================
 
 -- --------------------------------------------------------------------------
--- 1. Row count, at the same threshold ad4_39 already uses.
+-- 1. Row count, at the same threshold ad4_39 uses (5,000).
 --
 --    A function rather than SQL text baked into the view: the view then
 --    adapts as a table grows past the line, instead of freezing whichever
@@ -73,7 +78,7 @@ begin
   select c.reltuples into v_est
     from pg_class c join pg_namespace n on n.oid = c.relnamespace
    where n.nspname = 'public' and c.relname = p_table;
-  if coalesce(v_est, -1) > 50000 then
+  if coalesce(v_est, -1) > 5000 then
     return greatest(v_est, 0)::bigint;
   end if;
   execute format('select count(*) from public.%I', p_table) into v_n;
@@ -86,11 +91,11 @@ returns boolean language sql stable
 set search_path = public, pg_catalog as $ad4$
   select coalesce((select c.reltuples from pg_class c
                      join pg_namespace n on n.oid = c.relnamespace
-                    where n.nspname = 'public' and c.relname = p_table), -1) > 50000;
+                    where n.nspname = 'public' and c.relname = p_table), -1) > 5000;
 $ad4$;
 
 comment on function ad4_table_rows(text) is
-  'Rows in a table: exact below 50,000, planner estimate above. Same threshold as ad4_rowcount_expr in ad4_39, so the Data Bank and the freshness panel mean the same thing by "rows". Pair with ad4_table_rows_estimated to say which one you got.';
+  'Rows in a table: exact below 5,000, planner estimate above. Same threshold as ad4_rowcount_expr in ad4_39, so the Data Bank and the freshness panel mean the same thing by "rows". Pair with ad4_table_rows_estimated to say which one you got.';
 
 
 -- --------------------------------------------------------------------------
@@ -244,7 +249,7 @@ select dataset, ord, feeder, rows, cities, first_at, last_at,
  order by ord;
 
 comment on view v_archive_inventory is
-  'What each feed holds, how many cities it covers and when it last moved. Row counts are exact under 50,000 and planner estimates above - rows_estimated says which, on the same threshold ad4_39 uses. City counts and timestamps are exact: the cities come from a skip scan (one index descent per city) rather than a full pass, which is what made this panel time out at 57014. Measured on the live archive: 2,566 ms -> 541 ms, every number identical.';
+  'What each feed holds, how many cities it covers and when it last moved. Row counts are exact under 5,000 and planner estimates above - rows_estimated says which, on the same threshold ad4_39 uses. City counts and timestamps are exact: the cities come from a skip scan (one index descent per city) rather than a full pass, which is what made this panel time out at 57014. Measured on the live archive: 2,566 ms -> 541 ms, every number identical.';
 
 grant select on v_archive_inventory to anon, authenticated;
 

@@ -261,6 +261,67 @@ $ad4$;
 
 
 -- ===========================================================================
+-- 1b. book_ladder_cache - THE LADDER, COMPUTED ONCE WHEN THE BOOK ARRIVES.
+--
+-- MEASURED 2026-09-22, against the browser's own role and its 8-second limit.
+-- Every slow page on the desk traced back to one expression: the four
+-- ad4_ladder_* normalisers plus depth_usd(), evaluated on a band's newest
+-- snapshot. About 2.7 ms per band, and it was evaluated on EVERY read:
+--
+--     v_opportunities, one city (22 rows)     2,039 ms   1,974 of it here
+--     count(*) where tradeable  (Header)      9,066 ms   on every page load
+--     v_city_reasoning, one city              9,255 ms
+--     v_trade_plan                            6,873 ms
+--     v_city_day_plan                         5,512 ms
+--     v_latest_book, whole                   13,276 ms
+--
+-- The answer only changes when a new snapshot arrives - about 840 an hour -
+-- but it was being recomputed for 715 bands every time anybody opened a page.
+-- So it is computed once, by a trigger on book_snapshots, for the newest
+-- snapshot of each band, and the views read it back.
+--
+-- THE CACHE CAN NEVER BE WRONG, ONLY MISSING. Every reader still finds the
+-- newest snapshot itself - one index probe, 0.004 ms - and uses a cached row
+-- only when its snapshot_id IS that snapshot. A row that is stale, missing,
+-- or from an out-of-order insert simply does not match, and the reader
+-- computes the ladder exactly as it always has. The functions are unchanged,
+-- so a cached value and a computed one are the same expression evaluated on
+-- the same row. prune_dead_book_detail never touches the newest snapshot of
+-- a band, so the row the cache was computed from cannot change after it.
+--
+-- BOUNDED TO THREE DAYS. book_snapshots keeps one snapshot per band FOREVER
+-- (prune_book_redundancy collapses a day to one row per band, it never
+-- empties it), so a cache tied to snapshots would grow ~1,300 bands a day
+-- for good. Nothing reads a book for a market that stopped being captured
+-- three days ago except the capacity history, which walks snapshots anyway.
+-- Measured: every band captured in the last 8 days is 5,193 rows and 7.4 MB
+-- of ladder; three days is about a third of that.
+-- ===========================================================================
+create table if not exists book_ladder_cache (
+  band_id           uuid        primary key,
+  snapshot_id       bigint      not null,
+  observed_at       timestamptz not null,
+  bid_levels        jsonb,
+  ask_levels        jsonb,
+  bid_levels_source text,
+  ask_levels_source text,
+  bid_depth_usd     numeric,
+  ask_depth_usd     numeric,
+  cached_at         timestamptz not null default now()
+);
+create index if not exists book_ladder_cache_observed on book_ladder_cache (observed_at);
+
+comment on table book_ladder_cache is
+  'The normalised ladder and depth of each band''s newest book snapshot, computed once by trg_book_ladder_cache when the snapshot is written. Readers use a row only when its snapshot_id is the snapshot they found themselves, so a stale or missing row costs time, never correctness. Holds three days.';
+
+-- Same exposure as book_snapshots, which it is derived from: public market
+-- data, readable by the browser, written only by the trigger.
+alter table book_ladder_cache enable row level security;
+drop policy if exists anon_read on book_ladder_cache;
+create policy anon_read on book_ladder_cache for select to anon using (true);
+grant select on book_ladder_cache to anon, authenticated;
+
+-- ===========================================================================
 -- 2. v_band_book - THE book adapter. One row per band, latest snapshot,
 --    with both ladders already normalised and the provenance of each.
 --
@@ -358,10 +419,14 @@ begin
   -- it was building this ladder, and calling depth_usd() over it, for all
   -- 13,545 bands that carry a snapshot in order to keep 880.
   --
-  -- The obvious fix does not work. `select * from v_band_book where band_id =
-  -- $1` is NOT an index probe: the planner will not push a predicate through
-  -- a view whose target list calls depth_usd() over a three-way coalesce of
-  -- normalisers, so it rebuilds every row and filters. Wrapping the lateral
+  -- The obvious fix did not work, and the reason given here for years was
+  -- wrong. `select * from v_band_book where band_id = $1` was NOT an index
+  -- probe - but not because of depth_usd() in the target list. The view's
+  -- band_id was s.band_id, the OUTPUT of the lateral below, and a lateral with
+  -- a LIMIT cannot be flattened, so the planner had no way to know that
+  -- s.band_id = bd.band_id and could only filter after building every band.
+  -- Since 2026-09-22 the column is bd.band_id, the same value by the lateral's
+  -- own condition, and the filter is one index probe (see the build below). Wrapping the lateral
   -- in `limit 1` makes it worse - per-row evaluation of a view that cannot be
   -- parameterised is the whole walk, once per row. A set-returning function
   -- per band was worse again: ~4.5 ms of call overhead each, which turned
@@ -388,28 +453,121 @@ begin
   -- Same rows, same columns, same cost as before for whole-table callers:
   -- one index probe per band. recompute_capacity_city() reads this over a
   -- city's whole snapshot history and is unaffected.
+  --
+  -- bd.band_id, NOT s.band_id. They are equal - the lateral selects on
+  -- bs.band_id = bd.band_id - but only bd.band_id is visible to the planner as
+  -- a column of `bands`. Exposed as s.band_id, every `where band_id = ...`
+  -- on this view or on v_latest_book built all 13,545 books and then
+  -- filtered: 147,836 buffers to return the books of eleven bands. Exposed as
+  -- bd.band_id it is an index probe on bands: 103 buffers, 0.9 ms. Verified
+  -- identical on every band before it was applied - 13,545 rows in each view,
+  -- none differing in either direction.
   execute
     'create or replace view v_band_book as select ' ||
-    '  s.band_id, s.observed_at, s.best_bid, s.best_ask, ' ||
+    '  bd.band_id, s.observed_at, s.best_bid, s.best_ask, ' ||
     case when v_has_sprd  then 's.spread'       else 'null::numeric' end || ' as spread, ' ||
     case when v_has_state then 's.market_state' else 'null::text'    end || ' as market_state, ' ||
     case when v_has_trade then 's.tradeable'    else 'null::boolean' end || ' as tradeable, ' ||
-    '  ad4_ladder_bid(s)            as bid_levels,
-       ad4_ladder_ask(s)            as ask_levels,
-       ad4_ladder_src_bid(s)        as bid_levels_source,
-       ad4_ladder_src_ask(s)        as ask_levels_source,
-       depth_usd(ad4_ladder_bid(s)) as bid_depth_usd,
-       depth_usd(ad4_ladder_ask(s)) as ask_depth_usd, ' ||
+    -- Cached when the cache holds THIS snapshot, computed otherwise. See 1b.
+    '  case when lc.snapshot_id is not null then lc.bid_levels        else ad4_ladder_bid(s)            end as bid_levels,
+       case when lc.snapshot_id is not null then lc.ask_levels        else ad4_ladder_ask(s)            end as ask_levels,
+       case when lc.snapshot_id is not null then lc.bid_levels_source else ad4_ladder_src_bid(s)        end as bid_levels_source,
+       case when lc.snapshot_id is not null then lc.ask_levels_source else ad4_ladder_src_ask(s)        end as ask_levels_source,
+       case when lc.snapshot_id is not null then lc.bid_depth_usd     else depth_usd(ad4_ladder_bid(s)) end as bid_depth_usd,
+       case when lc.snapshot_id is not null then lc.ask_depth_usd     else depth_usd(ad4_ladder_ask(s)) end as ask_depth_usd, ' ||
     case when v_has_v24 then 's.band_volume_24hr' else 'null::numeric' end || ' as band_volume_24h, ' ||
     case when v_has_vol then 's.band_volume'      else 'null::numeric' end || ' as band_volume_lifetime ' ||
     'from bands bd cross join lateral (' ||
     '  select * from book_snapshots bs where bs.band_id = bd.band_id ' ||
-    '  order by bs.observed_at desc limit 1) s';
+    '  order by bs.observed_at desc limit 1) s ' ||
+    'left join book_ladder_cache lc on lc.band_id = bd.band_id and lc.snapshot_id = s.snapshot_id';
 
   raise notice 'v_band_book built: raw_book=%  jsonb_levels=%  usd_tiers=%',
                v_has_raw, v_lv_jsonb, v_has_tiers;
 end
 $ad4$;
+
+-- ---------------------------------------------------------------------------
+-- 1b, continued: what fills book_ladder_cache. After the functions exist,
+-- because it calls them.
+--
+-- STATEMENT-LEVEL, with a transition table - the same shape as the two
+-- archive capture triggers already on book_snapshots - so a capture that
+-- writes 1,300 snapshots in one statement pays one trigger call, not 1,300.
+-- The newest row per band in the batch wins; an older row arriving late is
+-- refused by the `where` on the upsert, so a backfill can never replace a
+-- newer ladder with an older one.
+-- ---------------------------------------------------------------------------
+create or replace function arbdesk_private.cache_book_ladder()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, extensions, pg_temp
+as $cbl$
+begin
+  insert into public.book_ladder_cache as c
+         (band_id, snapshot_id, observed_at, bid_levels, ask_levels,
+          bid_levels_source, ask_levels_source, bid_depth_usd, ask_depth_usd, cached_at)
+  select r.band_id, r.snapshot_id, r.observed_at,
+         l.bid, l.ask,
+         ad4_ladder_src_bid(r), ad4_ladder_src_ask(r),
+         depth_usd(l.bid), depth_usd(l.ask),
+         now()
+    from new_rows r
+    cross join lateral (select ad4_ladder_bid(r) as bid, ad4_ladder_ask(r) as ask) l
+   where r.band_id is not null
+     and r.observed_at is not null
+     and not exists (select 1 from new_rows n
+                      where n.band_id = r.band_id
+                        and (n.observed_at, n.snapshot_id) > (r.observed_at, r.snapshot_id))
+  on conflict (band_id) do update
+     set snapshot_id       = excluded.snapshot_id,
+         observed_at       = excluded.observed_at,
+         bid_levels        = excluded.bid_levels,
+         ask_levels        = excluded.ask_levels,
+         bid_levels_source = excluded.bid_levels_source,
+         ask_levels_source = excluded.ask_levels_source,
+         bid_depth_usd     = excluded.bid_depth_usd,
+         ask_depth_usd     = excluded.ask_depth_usd,
+         cached_at         = excluded.cached_at
+   where (excluded.observed_at, excluded.snapshot_id) >= (c.observed_at, c.snapshot_id);
+
+  -- The three-day bound, kept here so it cannot be forgotten by a job that
+  -- stopped running. An index range scan that finds nothing almost always.
+  delete from public.book_ladder_cache where observed_at < now() - interval '3 days';
+  return null;
+end
+$cbl$;
+
+revoke all on function arbdesk_private.cache_book_ladder() from public, anon, authenticated;
+
+drop trigger if exists trg_book_ladder_cache on book_snapshots;
+create trigger trg_book_ladder_cache
+  after insert on book_snapshots
+  referencing new table as new_rows
+  for each statement execute function arbdesk_private.cache_book_ladder();
+
+-- THE BACKFILL: every band captured in the last three days, newest snapshot.
+-- Idempotent - it is the same upsert, so re-running this file refreshes the
+-- cache rather than duplicating it.
+insert into book_ladder_cache as c
+       (band_id, snapshot_id, observed_at, bid_levels, ask_levels,
+        bid_levels_source, ask_levels_source, bid_depth_usd, ask_depth_usd, cached_at)
+select s.band_id, s.snapshot_id, s.observed_at,
+       l.bid, l.ask, ad4_ladder_src_bid(s), ad4_ladder_src_ask(s),
+       depth_usd(l.bid), depth_usd(l.ask), now()
+  from (select distinct on (bs.band_id) bs.*
+          from book_snapshots bs
+         where bs.observed_at >= now() - interval '3 days'
+         order by bs.band_id, bs.observed_at desc, bs.snapshot_id desc) s
+  cross join lateral (select ad4_ladder_bid(s) as bid, ad4_ladder_ask(s) as ask) l
+on conflict (band_id) do update
+   set snapshot_id = excluded.snapshot_id, observed_at = excluded.observed_at,
+       bid_levels = excluded.bid_levels, ask_levels = excluded.ask_levels,
+       bid_levels_source = excluded.bid_levels_source, ask_levels_source = excluded.ask_levels_source,
+       bid_depth_usd = excluded.bid_depth_usd, ask_depth_usd = excluded.ask_depth_usd,
+       cached_at = excluded.cached_at
+ where (excluded.observed_at, excluded.snapshot_id) >= (c.observed_at, c.snapshot_id);
 
 -- Long form of the same thing, one row per (band, side). Handy for the
 -- calculator and for anything that wants to iterate sides generically.
@@ -657,6 +815,10 @@ begin
     if r.column_name in ('ask_levels', 'bid_levels') then
       v_cols := v_cols || 'bb.' || quote_ident(r.column_name) || ' as ' || quote_ident(r.column_name) || ', ';
       v_seen := true;
+    elsif r.column_name = 'band_id' then
+      -- From the band, not from the lateral: the same value, but the only one
+      -- a `where band_id = any(...)` can be pushed down to. See v_band_book.
+      v_cols := v_cols || 'bb.band_id as band_id, ';
     else
       v_cols := v_cols || 's.' || quote_ident(r.column_name) || ', ';
     end if;
@@ -778,16 +940,20 @@ with eligible as materialized (
 -- v_band_book is built from, so a ladder here and a ladder there can never
 -- disagree.
 book as materialized (
+  -- Read from book_ladder_cache when it holds THIS snapshot, computed as
+  -- before when it does not (see 1b). Measured: this CTE was 1,974 ms of a
+  -- 2,039 ms query for 715 bands - the ladder work, not the index probe.
   select e.band_id,
          s.observed_at, s.best_bid, s.best_ask, s.spread, s.market_state,
-         ad4_ladder_src_bid(s)        as bid_levels_source,
-         ad4_ladder_src_ask(s)        as ask_levels_source,
-         depth_usd(ad4_ladder_bid(s)) as bid_depth_usd,
-         depth_usd(ad4_ladder_ask(s)) as ask_depth_usd
+         case when lc.snapshot_id is not null then lc.bid_levels_source else ad4_ladder_src_bid(s)        end as bid_levels_source,
+         case when lc.snapshot_id is not null then lc.ask_levels_source else ad4_ladder_src_ask(s)        end as ask_levels_source,
+         case when lc.snapshot_id is not null then lc.bid_depth_usd     else depth_usd(ad4_ladder_bid(s)) end as bid_depth_usd,
+         case when lc.snapshot_id is not null then lc.ask_depth_usd     else depth_usd(ad4_ladder_ask(s)) end as ask_depth_usd
   from eligible e
   left join lateral (select * from book_snapshots bs
                       where bs.band_id = e.band_id
                       order by bs.observed_at desc limit 1) s on true
+  left join book_ladder_cache lc on lc.band_id = e.band_id and lc.snapshot_id = s.snapshot_id
 )
 select
   e.edge_id, e.side, e.model_prob, e.market_price, e.edge_net_pp,

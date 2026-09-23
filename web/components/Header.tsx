@@ -44,9 +44,20 @@ export default function Header() {
 
   useEffect(() => {
     async function load() {
-      const newest = async (table: string, col: string) => {
+      // `nullsLast` has to match the index, or "newest" becomes a sort of the
+      // whole table. `order=col.desc` is DESC NULLS FIRST. book_snapshots'
+      // index (ad4_ix_book_time) is exactly that. weather_forecasts' is
+      // ad4_ix_fresh_weather_forecasts, built DESC NULLS LAST by ad4_44 for
+      // max(), so the plain desc could not use it: a sequential scan and sort
+      // of 74,400 forecasts, every minute, on every open page - 1,071 ms mean
+      // over 4,187 calls in pg_stat_statements. Asking for the newest NON-NULL
+      // run_at is also the right question, and it is one index probe (0.09 ms).
+      // The reverse would break book_snapshots: NULLS LAST there is a 3.6 s scan.
+      const newest = async (table: string, col: string, nullsLast = false) => {
         try {
-          const { data } = await supabase.from(table).select(col).order(col, { ascending: false }).limit(1);
+          const base = supabase.from(table).select(col);
+          const { data } = await (nullsLast ? base.not(col, "is", null) : base)
+            .order(col, { ascending: false, nullsFirst: !nullsLast }).limit(1);
           const row = (data as Array<Record<string, string>> | null)?.[0];
           return row ? row[col] ?? null : null;
         } catch {
@@ -56,7 +67,7 @@ export default function Header() {
       const [books, weather, forecasts] = await Promise.all([
         newest("book_snapshots", "observed_at"),
         newest("live_weather", "updated_at"),
-        newest("weather_forecasts", "run_at"),
+        newest("weather_forecasts", "run_at", true),
       ]);
       // The masthead line: how much market this desk is actually covering.
       try {
