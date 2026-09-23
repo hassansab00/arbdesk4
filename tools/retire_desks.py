@@ -122,8 +122,10 @@ def on_remote(paths, branch="main", root=ROOT):
     if fetch.returncode != 0:
         print(f"git fetch origin {branch} failed: {fetch.stderr.strip()}", file=sys.stderr)
         return False
+    # FETCH_HEAD, not origin/<branch>: a shallow CI checkout need not have a
+    # remote-tracking ref for the branch it fetched.
     for p in paths:
-        ok = subprocess.run(["git", "-C", root, "cat-file", "-e", f"origin/{branch}:{p}"],
+        ok = subprocess.run(["git", "-C", root, "cat-file", "-e", f"FETCH_HEAD:{p}"],
                             capture_output=True)
         if ok.returncode != 0:
             print(f"{p} is not on origin/{branch}", file=sys.stderr)
