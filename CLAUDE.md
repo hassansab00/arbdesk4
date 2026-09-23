@@ -43,6 +43,30 @@ CI is green on the PR and Hassan has said to merge.
 a Vercel `NEXT_PUBLIC_*` variable or an n8n Config node. Email workflows stay
 disabled.
 
+## The improvement plan in progress
+
+`docs/AD4_IMPROVEMENT_PLAN.md` (v2, 23 Sep) is the plan being executed.
+`docs/PLAN_PROGRESS.md` is its checklist: every step's status, PR, acceptance
+result and notes. **Read the progress file first and resume from it**, and
+update it in every PR that advances a step. Where this file and the plan
+conflict, the plan wins, because it is newer. Three of its rules apply to all
+work, not just to plan steps:
+
+- **Rule 6: shadow is free, capital is Hassan's.** Strategies may run in
+  `shadow` mode without asking. Anything that puts capital on the
+  **portfolio** account needs Hassan's approval: turning allocation on, the
+  bankroll, and the fixed safety rails.
+- **Rule 7: Actions minutes are a hard budget.** The repo is private, with
+  2,000 minutes a month on the free plan. Only plan step P6.1 changes
+  `SCHEDULED_MINUTE_BUDGET` / `SCHEDULED_RUN_BUDGET`, and it writes the
+  reason into the constant. Every workflow's measured minutes go into
+  `MEASURED_MINUTES`. No new scheduled workflow is added outside P6.1.
+- **Rule 11: adaptive never means unbounded.** Every learned parameter has a
+  prior, hard bounds, a minimum sample before it moves off the prior, a
+  maximum change per nightly update, and a version recorded on every decision
+  that used it. Nothing learned may be evaluated on the data it was learned
+  from.
+
 ## Run the WHOLE suite before you push, not just pytest
 
 `.github/workflows/tests.yml` runs two things. Running only the first is how
