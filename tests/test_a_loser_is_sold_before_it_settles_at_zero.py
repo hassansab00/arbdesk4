@@ -94,3 +94,42 @@ def test_the_venue_reading_decides_not_the_raw_one():
     assert not px.certainly_lost(c23, 23.4, "YES", "C", day_decided=False)
     # and the day decided at 23.4 is read as 23: inside, so the NO lost
     assert px.certainly_lost(c23, 23.4, "NO", "C", day_decided=True)
+
+
+def test_a_lost_position_is_held_to_settlement_not_sold(monkeypatch):
+    """Hassan, 24 Sep: once the day has peaked and the book has settled on one
+    bucket, nobody buys the dead one. The cycle used to try, and
+    queue_automatic_paper_exit refused it unless the stop-loss was hit, which
+    raised and ended the whole cycle. Now it is counted and left for settlement."""
+    import paper_worker
+
+    account = {"account_id": "a1", "policy_version": 1,
+               "policy": {"stop_loss_fraction": 0.5, "take_profit_fraction": 0.5}}
+    position = {"account_id": "a1", "band_id": "b1", "side": "YES", "shares": 10, "cost_basis": 3}
+
+    def rest_all(table, params, order=None):
+        return {"paper_accounts": [account], "paper_positions": [position]}[table]
+
+    def rest(table, params):
+        return {
+            "paper_orders": [],
+            "v_canonical_bands": [{"token_yes": "ty", "token_no": "tn", "band_lo": 23, "band_hi": 24,
+                                   "open_low": False, "open_high": False, "market_id": "m1"}],
+            "v_canonical_markets": [{"city_key": "london", "resolution_date": "2026-09-24", "unit": "C"}],
+            "live_weather": [{"running_max_c": 25.2, "day_decided": True, "local_date": "2026-09-24"}],
+        }[table]
+
+    calls = {"book": 0, "rpc": 0}
+    monkeypatch.setattr(px, "rest_all", rest_all)
+    monkeypatch.setattr(px, "rest", rest)
+    monkeypatch.setattr(px, "rpc", lambda *a, **k: calls.__setitem__("rpc", calls["rpc"] + 1))
+    logged = {}
+    monkeypatch.setattr(px, "log_run", lambda job, status, n, detail: logged.update(detail))
+    monkeypatch.setattr(paper_worker, "capture_book",
+                        lambda order: calls.__setitem__("book", calls["book"] + 1))
+
+    out = px.cycle()
+    assert calls == {"book": 0, "rpc": 0}, "a lost position is neither priced nor sold"
+    assert out["exits_queued"] == 0
+    assert out["skipped"] == {"lost_hold_to_settlement": 1}
+    assert logged["lost_held_to_settlement"] == 1

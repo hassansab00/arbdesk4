@@ -28,11 +28,48 @@ export interface LiveRow {
   source_kind: string | null;
 }
 
+/** One settled day-ahead call, from v_city_hit_history. */
+export interface HitRow {
+  unit: string | null; model_call: string | null; market_call: string | null;
+  model_hit: boolean | null; market_hit: boolean | null; head_to_head: boolean | null;
+}
+
+/** When the engine's pick and the market's pick differed, who won - per unit. */
+export interface DisagreementRecord { days: number; engine_won: number; market_won: number }
+
+export function disagreementRecord(rows: HitRow[]): Record<string, DisagreementRecord> {
+  const out: Record<string, DisagreementRecord> = {};
+  for (const r of rows) {
+    if (!r.head_to_head || !r.model_call || !r.market_call || r.model_call === r.market_call) continue;
+    const u = r.unit === "F" ? "F" : "C";
+    const rec = (out[u] ??= { days: 0, engine_won: 0, market_won: 0 });
+    rec.days += 1;
+    if (r.model_hit) rec.engine_won += 1;
+    if (r.market_hit) rec.market_won += 1;
+  }
+  return out;
+}
+
+/** Public forecasts this far apart (in C) mean the day is genuinely uncertain. */
+export const FORECASTS_DISAGREE_C = 1.5;
+
 export interface CityCard {
   city_key: string; name: string; unit: Unit; for_date: string;
   predicted_c: number | null; sigma_c: number | null; confidence: number | null; regime: string | null;
   top_band: string | null; top_prob: number | null; top_yes_price: number | null;
-  best: { side: string; band: string | null; edge: number; price: number | null; depth: number | null } | null;
+  /** The bucket the market prices highest, and that price (the YES row). */
+  market_band: string | null; market_price: number | null;
+  /** The engine's favourite and the market's are different buckets. */
+  disagrees: boolean;
+  /** The engine's favourite is a bucket the market prices under 5c, or one the edge engine calls dead. */
+  favourite_dead: boolean;
+  /** Spread between the public forecasts for this day, in C; null with fewer than two. */
+  forecast_spread_c: number | null;
+  /** The engine's centre lies outside every public forecast for this day (by more than 0.5 C). */
+  centre_outside_forecasts: boolean;
+  best: { side: string; band: string | null; edge: number; price: number | null; depth: number | null;
+          /** a bet on the engine's view against the market's favourite */
+          against_market: boolean } | null;
   blocked: string | null; priced_at: string | null;
   forecasts: Array<{ model: string; max_c: number; run_at: string | null }>;
   own: OwnModelRow | null; live: LiveRow | null;
@@ -50,7 +87,11 @@ export interface CityCard {
  * market_price is the price of that row's own side, so the YES row is the
  * only one whose price answers "what does the market charge for this bucket".
  * BEST TRADE: the highest net edge among rows the edge engine marked
- * tradeable - never a blocked row, whatever its edge.
+ * tradeable - never a blocked row, whatever its edge - and flagged when it
+ * bets on the engine against the market's favourite.
+ * MARKET'S FAVOURITE: the YES row the market prices highest. Shown beside the
+ * engine's because on settled days (v_city_hit_history, 13-23 Sep) the
+ * market's pick won about twice as often as the engine's when they differed.
  */
 export function buildCards(
   cities: CityRow[], ladder: LadderRow[], forecasts: ForecastRow[],
@@ -83,6 +124,19 @@ export function buildCards(
       if (!cur || f.lead_days < cur.lead_days) latestByModel.set(f.model, f);
     }
     const liveRow = live.find((l) => l.city_key === c.city_key) ?? null;
+    const priced = yes.filter((r) => r.market_price !== null);
+    const mkt = priced.slice().sort((a, b) => (b.market_price ?? 0) - (a.market_price ?? 0))[0];
+    const disagrees = !!(top && mkt && top.band_id !== mkt.band_id);
+    const fcVals = Array.from(latestByModel.values()).map((f) => f.forecast_max_c as number);
+    const spread = fcVals.length >= 2 ? Math.max(...fcVals) - Math.min(...fcVals) : null;
+    const centre = any?.forecast_max_c ?? null;
+    const outside = centre !== null && fcVals.length > 0
+      && (centre > Math.max(...fcVals) + 0.5 || centre < Math.min(...fcVals) - 0.5);
+    // AGAINST THE MARKET: YES on a bucket the market does not favour, or NO on
+    // the one it does, while the engine and the market disagree about the
+    // favourite. That is the bet the settled record says loses most often.
+    const againstMarket = (b: LadderRow | undefined) => !!(b && disagrees && mkt && (
+      (b.side === "YES" && b.band_id !== mkt.band_id) || (b.side === "NO" && b.band_id === mkt.band_id)));
     out.push({
       city_key: c.city_key, name: c.display_name ?? c.city_key,
       unit: (c.unit === "F" ? "F" : "C") as Unit, for_date,
@@ -90,9 +144,15 @@ export function buildCards(
       confidence: any?.confidence ?? null, regime: any?.regime_label ?? null,
       top_band: top?.band_label ?? null, top_prob: top?.model_prob ?? null,
       top_yes_price: top?.market_price ?? null,
+      market_band: mkt?.band_label ?? null, market_price: mkt?.market_price ?? null,
+      disagrees,
+      favourite_dead: !!(top && ((top.market_price !== null && top.market_price < 0.05)
+        || day.some((r) => r.band_id === top.band_id && r.block_reason === "dead_band"))),
+      forecast_spread_c: spread,
+      centre_outside_forecasts: outside,
       best: best && (best.edge_net_pp ?? 0) > 0
         ? { side: best.side ?? "", band: best.band_label, edge: best.edge_net_pp as number,
-            price: best.market_price, depth: best.depth_5c }
+            price: best.market_price, depth: best.depth_5c, against_market: againstMarket(best) }
         : null,
       blocked,
       priced_at: day.reduce<string | null>((m, r) => (r.edge_at && (!m || r.edge_at > m) ? r.edge_at : m), null),
@@ -104,6 +164,10 @@ export function buildCards(
       live: liveRow && liveRow.local_date === for_date ? liveRow : null,
     });
   }
-  return out.sort((a, b) => (b.best?.edge ?? -1) - (a.best?.edge ?? -1) || a.name.localeCompare(b.name));
+  // A trade against the market sorts after every trade that is not, whatever
+  // its claimed edge: the size of a disagreement is not evidence it is right.
+  const rank = (c: CityCard) => (c.best ? (c.best.against_market ? 1 : 2) : 0);
+  return out.sort((a, b) => rank(b) - rank(a) || (b.best?.edge ?? -1) - (a.best?.edge ?? -1)
+    || a.name.localeCompare(b.name));
 }
 

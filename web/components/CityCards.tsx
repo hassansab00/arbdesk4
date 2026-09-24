@@ -9,7 +9,9 @@ import RefreshButton from "@/components/RefreshButton";
 import { fmtPct, fmtPp, fmtPrice, pnlColor, regimeColor } from "@/lib/format";
 import { fmtTemp, fmtTempDelta } from "@/lib/units";
 import {
-  buildCards, type CityCard, type CityRow, type ForecastRow, type LadderRow, type LiveRow, type OwnModelRow,
+  buildCards, disagreementRecord, FORECASTS_DISAGREE_C,
+  type CityCard, type CityRow, type DisagreementRecord, type ForecastRow, type HitRow, type LadderRow,
+  type LiveRow, type OwnModelRow,
 } from "@/lib/cityCards";
 import { fmtDateTime, fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
 
@@ -76,7 +78,17 @@ export default function CityCards({ onPick }: { onPick?: (city: string) => void 
     []
   );
 
-  const reload = () => { citiesQ.refresh(); ladderQ.refresh(); forecastQ.refresh(); ownQ.refresh(); liveQ.refresh(); };
+  // The settled record of engine vs market when their favourites differed.
+  // v_city_hit_history reads stored rows (P6.5): 11 ms as anon on 24 Sep.
+  const hitQ = useQuery<HitRow[]>(
+    () => supabase.from("v_city_hit_history")
+      .select("unit,model_call,market_call,model_hit,market_hit,head_to_head")
+      .gte("for_date", isoDay(-30)).limit(1000),
+    [], undefined, 1000
+  );
+  const record = useMemo(() => disagreementRecord(hitQ.data ?? []), [hitQ.data]);
+
+  const reload = () => { citiesQ.refresh(); ladderQ.refresh(); forecastQ.refresh(); ownQ.refresh(); liveQ.refresh(); hitQ.refresh(); };
   const dates = useMemo(
     () => Array.from(new Set((ladderQ.data ?? []).map((r) => r.for_date))).sort(), [ladderQ.data]);
   const cards = useMemo(
@@ -112,7 +124,10 @@ export default function CityCards({ onPick }: { onPick?: (city: string) => void 
       <p className="max-w-3xl text-xs leading-relaxed text-muted">
         For each city, the market it can still trade: the desk&rsquo;s predicted maximum, the public
         forecasts and the desk&rsquo;s own model for that day, the bucket the model favours against what
-        the market charges for it, and the best tradeable edge on the ladder. Sorted by that edge.{" "}
+        the market charges for it, the market&rsquo;s own favourite, and the best tradeable edge on the
+        ladder. Trades that side with the market come first; a trade that bets on the engine against the
+        market&rsquo;s favourite is marked and sorted after them, because on settled days the market&rsquo;s
+        pick has won about twice as often when the two disagreed (the record is on each card).{" "}
         <b className="text-text">Reload</b> re-reads the stored rows (refreshed at :12 and :42 and after
         each pipeline run). <b className="text-text">Reprice now</b> runs the Intraday pipeline on
         GitHub Actions (about 2 billed minutes); press Reload once it has finished.
@@ -133,17 +148,18 @@ export default function CityCards({ onPick }: { onPick?: (city: string) => void 
         onRetry={reload}
       >
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {cards.map((c) => <Card key={`${c.city_key}|${c.for_date}`} c={c} onPick={onPick} />)}
+          {cards.map((c) => <Card key={`${c.city_key}|${c.for_date}`} c={c} onPick={onPick} record={record[c.unit]} />)}
         </div>
       </DataState>
     </section>
   );
 }
 
-function Card({ c, onPick }: { c: CityCard; onPick?: (city: string) => void }) {
+function Card({ c, onPick, record }: { c: CityCard; onPick?: (city: string) => void; record?: DisagreementRecord }) {
   const u = c.unit;
+  const trusted = c.best && !c.best.against_market;
   return (
-    <div className={`rounded border bg-panel p-3 text-xs ${c.best ? "border-accent/60" : "border-border"}`}>
+    <div className={`rounded border bg-panel p-3 text-xs ${trusted ? "border-accent/60" : c.disagrees ? "border-bad/40" : "border-border"}`}>
       <div className="flex items-baseline justify-between gap-2">
         <button className="truncate text-sm font-semibold text-accent hover:underline"
           onClick={() => onPick?.(c.city_key)} title="Show this city in the panels below">
@@ -157,8 +173,20 @@ function Card({ c, onPick }: { c: CityCard; onPick?: (city: string) => void }) {
       <div className="mt-2 flex items-baseline gap-2">
         <span className="text-2xl font-semibold tabular-nums">{fmtTemp(c.predicted_c, u)}</span>
         {c.sigma_c !== null && <span className="text-muted tabular-nums">± {fmtTempDelta(c.sigma_c, u).replace("+", "")}</span>}
-        <span className="text-muted">predicted max</span>
+        <span className="text-muted" title="The centre the engine priced the ladder from: its forecast input (Open-Meteo) after bias correction. Not a blend of the forecasts listed below.">
+          engine&rsquo;s predicted max
+        </span>
       </div>
+      {c.centre_outside_forecasts && (
+        <div className="mt-0.5 text-[11px] text-bad">
+          outside every public forecast for this day - treat the engine&rsquo;s call with suspicion
+        </div>
+      )}
+      {c.forecast_spread_c !== null && c.forecast_spread_c >= FORECASTS_DISAGREE_C && (
+        <div className="mt-0.5 text-[11px] text-bad">
+          the public forecasts disagree by {fmtTempDelta(c.forecast_spread_c, u).replace("+", "")} - an uncertain day
+        </div>
+      )}
       {/* The predicted maximum is the forecast centre the ladder was priced
           from. Once the day's own reading is above it, the ladder is priced
           from that floor instead (P2.7; a station reading only, never a model
@@ -201,22 +229,38 @@ function Card({ c, onPick }: { c: CityCard; onPick?: (city: string) => void }) {
             </dd>
           </>
         )}
-        <dt className="text-muted">Model favours</dt>
+        <dt className="text-muted">Engine favours</dt>
         <dd className="tabular-nums">
           {c.top_band ? <>{c.top_band} <b>{fmtPct(c.top_prob, 0)}</b>
-            <span className="text-muted"> · market {fmtPrice(c.top_yes_price)}</span></>
+            <span className="text-muted"> · market {fmtPrice(c.top_yes_price)}</span>
+            {c.favourite_dead && <span className="text-bad"> · the market treats it as dead</span>}</>
             : <span className="text-muted">not priced</span>}
+        </dd>
+        <dt className="text-muted">Market favours</dt>
+        <dd className="tabular-nums">
+          {c.market_band ? <>{c.market_band} <b>{fmtPrice(c.market_price)}</b></>
+            : <span className="text-muted">no price</span>}
         </dd>
         <dt className="text-muted">Best trade</dt>
         <dd className="tabular-nums">
           {c.best
-            ? <><b className={pnlColor(c.best.edge)}>{fmtPp(c.best.edge)}</b>{" "}
+            ? <><b className={c.best.against_market ? "text-muted" : pnlColor(c.best.edge)}>{fmtPp(c.best.edge)}</b>{" "}
                 {c.best.side} {c.best.band} @ {fmtPrice(c.best.price)}
-                {c.best.depth !== null && <span className="text-muted"> · depth ${Math.round(c.best.depth)}</span>}</>
+                {c.best.depth !== null && <span className="text-muted"> · depth ${Math.round(c.best.depth)}</span>}
+                {c.best.against_market && <span className="block text-bad">against the market&rsquo;s favourite - not a trade the record supports</span>}</>
             : <span className="text-muted">no positive tradeable edge{c.blocked ? ` (mostly ${c.blocked})` : ""}</span>}
         </dd>
       </dl>
 
+      {c.disagrees && (
+        <div className="mt-2 rounded border border-bad/40 px-2 py-1 text-[11px] text-bad">
+          The engine and the market favour different buckets.
+          {record && record.days > 0 && (
+            <> Over the last 30 settled days ({c.unit === "F" ? "°F" : "°C"} cities) they disagreed on {record.days}:
+              the market&rsquo;s pick won {record.market_won}, the engine&rsquo;s {record.engine_won}.</>
+          )}
+        </div>
+      )}
       <div className="mt-2 text-[10px] text-muted">
         {c.priced_at ? <>priced {fmtDateTime(c.priced_at)}</> : "not priced yet"}
       </div>
