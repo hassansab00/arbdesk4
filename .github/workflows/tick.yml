@@ -4,17 +4,20 @@ name: Tick (hourly checkpoints)
 # scripts/tick.py writes one prediction_checkpoints row per city whose
 # checkpoint fell in the last 75 minutes, on the city's own clock.
 #
-# BY HAND ONLY, UNTIL IT HAS BEEN TIMED. GitHub bills each job in whole
-# minutes, so the tick is worth scheduling hourly only if it finishes inside
-# 60 s: at 61 s it costs two, 1,440 a month on its own. The schedule
-# (hourly at :35), the new budget constants and retiring pipeline_intraday
-# land together in P6.1's next PR, with the measured wall time written into
-# MEASURED_MINUTES.
+# HOURLY AT :35, NOW THAT IT HAS BEEN TIMED. GitHub bills each job in whole
+# minutes, so the tick is worth an hourly schedule only inside 60 s: at 61 s
+# it costs two, 1,440 a month on its own. Dispatched on 24 Sep it took 35 s
+# cold and 21 s warm; tick.py stops itself at 45 s. It is paid for by the
+# engine speed-up (intraday 6.2 -> 2.0 billed minutes a run), so the minute
+# budget in tests/test_github_actions.py is unchanged. Intraday keeps pricing
+# every four hours until its stages move into the tick.
 #
 # Built for the minute: one job, no matrix, a shallow sparse checkout of the
 # two paths it needs, and a cached virtualenv so a warm run installs nothing.
 
 on:
+  schedule:
+    - cron: '35 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:
