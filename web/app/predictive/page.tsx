@@ -6,12 +6,13 @@ import { useQuery } from "@/lib/useQuery";
 import { readAllRows } from "@/lib/readAll";
 import { DataState } from "@/components/DataState";
 import PredictionHindsight from "@/components/PredictionHindsight";
+import CityCards from "@/components/CityCards";
 import CalibrationStatus from "@/components/CalibrationStatus";
 import { Freshness, FreshnessRow } from "@/components/Provenance";
 import { Empty, LineChart, Scatter } from "@/components/charts";
 import Convergence3D, { type ConvergencePoint } from "@/components/Convergence3D";
-import { fmtInt, fmtPct, fmtPrice, fmtUsd, pnlColor } from "@/lib/format";
-import { fmtTemp, type Unit } from "@/lib/units";
+import { fmtInt, fmtPct, fmtPp, fmtPrice, fmtUsd, pnlColor } from "@/lib/format";
+import { fmtTemp, fmtTempDelta, type Unit } from "@/lib/units";
 import { fmtResolutionDate } from "@/lib/time";
 
 /**
@@ -69,6 +70,7 @@ interface LadderRow {
   won: boolean | null; model_prob: number | null; forecast_max_c: number | null;
   sigma_c: number | null; confidence: number | null; market_price: number | null;
   edge_net_pp: number | null; depth_5c: number | null; tradeable: boolean | null;
+  side: string | null;
 }
 interface ScoreRow {
   city_key: string; model: string; lead_days: number; n_days: number;
@@ -279,6 +281,9 @@ export default function PredictivePage() {
 
   const conv = convQ.data ?? [];
   const unit = (cities.find((c) => c.city_key === active)?.unit ?? "C") as Unit;
+  // The forward table lists every city, so each row takes ITS city's unit -
+  // not the unit of whichever city is selected further down the page.
+  const unitOf = (key: string) => (cities.find((c) => c.city_key === key)?.unit === "F" ? "F" : "C") as Unit;
 
   const hits = hitQ.data ?? [];
   const hitSum = (hitSumQ.data ?? []).find((r) => r.city_key === active) ?? null;
@@ -317,10 +322,13 @@ export default function PredictivePage() {
     return Array.from(byCityDay.entries())
       .map(([k, bands]) => {
         const [city_key, for_date] = k.split("|");
-        const priced = bands.filter((b) => b.model_prob !== null);
+        // model_prob is the YES probability on both rows of a band, and
+        // market_price is the price of the row's OWN side - so only the YES
+        // row's price is "what the market charges for this bucket".
+        const priced = bands.filter((b) => b.model_prob !== null && b.side === "YES");
         const best = priced.slice().sort((a, b) => (b.model_prob ?? 0) - (a.model_prob ?? 0))[0];
         const bestEdge = bands
-          .filter((b) => b.edge_net_pp !== null && b.tradeable !== false)
+          .filter((b) => b.edge_net_pp !== null && b.tradeable === true)
           .sort((a, b) => (b.edge_net_pp ?? 0) - (a.edge_net_pp ?? 0))[0];
         return {
           city_key, for_date, n_bands: bands.length, n_priced: priced.length,
@@ -502,6 +510,9 @@ export default function PredictivePage() {
         </div>
       </div>
 
+      {/* ================================================ 0. EVERY CITY == */}
+      <CityCards onPick={setCity} />
+
       {/* ======================================================== 1. FORWARD == */}
       <section className="space-y-2">
         <h2 className="text-sm font-semibold">What the desk expects</h2>
@@ -542,16 +553,17 @@ export default function PredictivePage() {
                     </td>
                     <td className="px-2 py-1.5 text-muted">{fmtResolutionDate(r.for_date)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">
-                      {r.forecast_max_c === null ? "—" : fmtTemp(r.forecast_max_c, unit, 1)}
+                      {r.forecast_max_c === null ? "—" : fmtTemp(r.forecast_max_c, unitOf(r.city_key), 1)}
                     </td>
                     <td className="px-2 py-1.5 text-right tabular-nums text-muted">
-                      {r.sigma_c === null ? "—" : `±${r.sigma_c.toFixed(2)}`}
+                      {r.sigma_c === null ? "—" : `±${fmtTempDelta(r.sigma_c, unitOf(r.city_key)).replace("+", "")}`}
                     </td>
                     <td className="px-2 py-1.5">{r.best_band ?? <span className="text-muted">not priced</span>}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmtPct(r.best_prob)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmtPrice(r.best_price)}</td>
                     <td className={`px-2 py-1.5 text-right tabular-nums ${pnlColor(r.top_edge_pp)}`}>
-                      {r.top_edge_pp === null ? "—" : `${r.top_edge_pp > 0 ? "+" : ""}${r.top_edge_pp.toFixed(1)} pp`}
+                      {/* edge_net_pp is a FRACTION (0.08 = 8pp), as every other page formats it */}
+                      {fmtPp(r.top_edge_pp)}
                       {r.top_edge_band ? <span className="ml-1 text-muted">{r.top_edge_band}</span> : null}
                     </td>
                   </tr>
