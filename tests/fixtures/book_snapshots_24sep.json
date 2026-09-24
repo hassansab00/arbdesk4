@@ -1,0 +1,13 @@
+{
+  "source": "public.book_snapshots, read 24 Sep 2026 ~18:30Z. raw_book is the YES-token CLOB book as captured; best_bid, best_ask, spread and ask_usd_5c are the columns the pipeline stored beside it.",
+  "snapshots": [
+    {"snapshot_id": 293949, "observed_at": "2026-09-24 16:26:10.181+00",
+     "best_bid": 0.36, "best_ask": 0.44, "spread": 0.08, "ask_usd_5c": 20.3684,
+     "raw_book": {"asks":[{"size":25.61,"price":0.44},{"size":10,"price":0.45},{"size":10,"price":0.46},{"size":175.67,"price":0.6},{"size":5,"price":0.7},{"size":30,"price":0.87},{"size":33,"price":0.94},{"size":30,"price":0.95},{"size":21,"price":0.96},{"size":5,"price":0.97},{"size":12.5,"price":0.98},{"size":103.96,"price":0.99}],
+                  "bids":[{"size":5,"price":0.36},{"size":16.42,"price":0.35},{"size":5,"price":0.34},{"size":5.95,"price":0.33},{"size":32.47,"price":0.32},{"size":9,"price":0.24},{"size":10,"price":0.21},{"size":38.32,"price":0.06},{"size":115,"price":0.04},{"size":150,"price":0.03},{"size":12.5,"price":0.02},{"size":174,"price":0.01}]}},
+    {"snapshot_id": 292972, "observed_at": "2026-09-24 15:26:41.415+00",
+     "best_bid": 0.3, "best_ask": 0.39, "spread": 0.09, "ask_usd_5c": 12.66,
+     "raw_book": {"asks":[{"size":5,"price":0.39},{"size":21.65,"price":0.4},{"size":5,"price":0.41},{"size":23,"price":0.68},{"size":50,"price":0.69},{"size":5,"price":0.7},{"size":30,"price":0.87},{"size":40,"price":0.95},{"size":21,"price":0.96},{"size":5,"price":0.97},{"size":42.5,"price":0.98},{"size":73.96,"price":0.99}],
+                  "bids":[{"size":5,"price":0.3},{"size":43.32,"price":0.29},{"size":5,"price":0.28},{"size":15.38,"price":0.26},{"size":9,"price":0.24},{"size":10,"price":0.21},{"size":20,"price":0.11},{"size":115,"price":0.04},{"size":150,"price":0.03},{"size":12.5,"price":0.02},{"size":174,"price":0.01}]}}
+  ]
+}
