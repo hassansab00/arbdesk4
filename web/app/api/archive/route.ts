@@ -56,7 +56,11 @@ function repo() {
 }
 
 function token() {
-  return process.env.GITHUB_DISPATCH_TOKEN || process.env.GITHUB_TOKEN;
+  // LEAST PRIVILEGE (plan v2 P6.4). Reading the archive needs contents: read
+  // and nothing else; the dispatch token is meant to start workflows and
+  // nothing else. On 24 Sep the dispatch token answered 403 for contents, so
+  // the archive gets its own read-only token, preferred over the others.
+  return process.env.GITHUB_ARCHIVE_TOKEN || process.env.GITHUB_DISPATCH_TOKEN || process.env.GITHUB_TOKEN;
 }
 
 type Manifest = {
@@ -172,7 +176,7 @@ async function probeRepo(): Promise<{ ok: boolean; status: number | null; files?
     if (!r.ok) {
       return { ok: false, status: r.status,
                reason: r.status === 404 || r.status === 403
-                 ? 'the token cannot read this repository (needs contents: read)'
+                 ? 'the token cannot read this repository: set GITHUB_ARCHIVE_TOKEN to a fine-grained token with Contents: read-only on this repo, then redeploy'
                  : 'GitHub refused the request' };
     }
     const list = await r.json();
@@ -245,7 +249,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       error: 'This deployment has no GitHub token, so archived rows cannot be fetched. '
         + 'The data is not lost - it is in the repo folder below - but the site cannot read it. '
-        + 'Set GITHUB_DISPATCH_TOKEN and redeploy.',
+        + 'Set GITHUB_ARCHIVE_TOKEN (a fine-grained token with Contents: read on this repo) and redeploy.',
       folder: `https://github.com/${repo()}/tree/${ARCHIVE_REF}/data/archive/${dataset}`,
       assets: ds.assets,
     }, { status: 503 });
