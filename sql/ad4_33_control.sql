@@ -84,8 +84,8 @@ create or replace view public.v_signal_mark as
 --
 -- `raw` reads the three things the mark needs from the payload once each and
 -- is materialised, so everything after it works on small values in memory;
--- one lateral counts both kinds of leg in a single pass. fact_band_outcome is
--- keyed by band_id, so the left join adds no rows and the two counts are the
+-- one lateral counts both kinds of leg in a single pass. The band outcome
+-- (v_fact_band_outcome_clean since plan v2 P4.4) is keyed by band_id, so the left join adds no rows and the two counts are the
 -- two EXISTS counts they replace. Verified identical before it was applied -
 -- 3,624 marks and the board's 10 rows, none differing in either direction -
 -- and the board fell to 54,184 buffers.
@@ -126,7 +126,7 @@ counted as (
       select count(*) filter (where b.settled_yes is not null) as legs_settled,
              count(*) filter (where b.settled_yes)             as legs_yes
         from jsonb_array_elements_text(h.leg_ids) t(id)
-        left join public.fact_band_outcome b on b.band_id = t.id::uuid
+        left join public.v_fact_band_outcome_clean b on b.band_id = t.id::uuid
     ) n
 )
 select c.signal_id,

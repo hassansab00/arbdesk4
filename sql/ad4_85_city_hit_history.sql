@@ -94,7 +94,7 @@ with ladder as (
            end) as band_label,
          -- The city's own midnight at the start of the day being called.
          (o.for_date::timestamp at time zone coalesce(c.timezone, 'UTC')) as day_starts_at
-    from fact_band_outcome o
+    from v_fact_band_outcome_clean o
     left join cities c on c.city_key = o.city_key
     left join v_canonical_bands cb on cb.band_id = o.band_id
    where o.observed_max_c is not null

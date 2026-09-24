@@ -889,15 +889,15 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "band_probabilities",
     "cities",
     "edges",
-    "fact_band_outcome",
-    "bands"
+    "bands",
+    "fact_band_outcome"
   ],
   "v_city_hit_summary": [
     "band_probabilities",
     "cities",
     "edges",
-    "fact_band_outcome",
-    "bands"
+    "bands",
+    "fact_band_outcome"
   ],
   "v_city_metadata_health": [
     "cities"
@@ -1025,6 +1025,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_execution_limits": [
     "markets"
   ],
+  "v_fact_band_outcome_clean": [
+    "fact_band_outcome"
+  ],
   "v_forecast_audit": [
     "cities",
     "derived_city_climate",
@@ -1083,9 +1086,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_forecasts",
     "band_probabilities",
     "edges",
-    "fact_band_outcome",
     "bands",
     "markets",
+    "fact_band_outcome",
     "weather_resolution_evidence",
     "weather_forecast_models"
   ],
@@ -1093,9 +1096,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "band_probabilities",
     "cities",
     "edges",
-    "fact_band_outcome",
     "bands",
     "markets",
+    "fact_band_outcome",
     "weather_resolution_evidence"
   ],
   "v_index_never_used": [
@@ -1128,8 +1131,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_city_climate",
     "derived_city_day_features",
     "derived_weather_peak",
-    "fact_band_outcome",
     "markets",
+    "fact_band_outcome",
     "edges",
     "weather_forecasts"
   ],
@@ -1232,10 +1235,10 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_prediction_hindsight": [
     "band_probabilities",
     "cities",
-    "fact_band_outcome",
     "bands",
     "paper_resolution_evidence",
-    "markets"
+    "markets",
+    "fact_band_outcome"
   ],
   "v_prediction_ladder": [
     "bands",
@@ -1249,10 +1252,10 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_prediction_ladder_bands": [
     "band_probabilities",
     "cities",
-    "fact_band_outcome",
     "bands",
     "paper_resolution_evidence",
-    "markets"
+    "markets",
+    "fact_band_outcome"
   ],
   "v_prediction_scorecard": [
     "fact_forecast_outcome",
@@ -1342,9 +1345,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_city_climate",
     "derived_city_day_features",
     "derived_weather_peak",
-    "fact_band_outcome",
     "fact_forecast_outcome",
     "markets",
+    "fact_band_outcome",
     "edges",
     "weather_forecasts"
   ],

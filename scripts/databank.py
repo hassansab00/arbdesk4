@@ -489,9 +489,12 @@ def bank_signals(days_back, force):
         return []
 
     # THE BAND'S OUTCOME IS THE HINGE. Venue-confirmed, one row per band.
+    # Read through the clean record (plan v2 P4.4): a band banked before
+    # 13 Sep carries the venue's answer or nothing, never the faulty reader's
+    # - a signal outcome is frozen, so the quarantine has to hold here too.
     outcome = {}
-    for r in rest_all("fact_band_outcome",
-                      [("select", "band_id,settled_yes,captured_at,for_date")],
+    for r in rest_all("v_fact_band_outcome_clean",
+                      [("select", "band_id,settled_yes,captured_at,for_date,outcome_provenance")],
                       order="band_id.asc", page_size=1000):
         outcome[str(r["band_id"])] = r
 
@@ -544,7 +547,9 @@ def bank_signals(days_back, force):
             "settled_yes": settled_yes,
             "signal_correct": signal_correct(s.get("action"), s.get("side"), settled_yes),
             "settled_at": o.get("captured_at"),
-            "outcome_source": "fact_band_outcome",
+            "outcome_source": ("fact_band_outcome"
+                               if o.get("outcome_provenance", "recorded") == "recorded"
+                               else "fact_band_outcome_venue_rebuilt"),
             # What produced the call, so "which forecast version was right" has
             # an answer. Absent on signals fired before the snapshot existed.
             "forecast_version": snap.get("forecast_version"),

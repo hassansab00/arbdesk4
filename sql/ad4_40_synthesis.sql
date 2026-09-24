@@ -104,7 +104,7 @@ lean as (
 -- The only measurement that is about money rather than temperature.
 disagreed as (
   select b.settled_yes, b.model_prob, b.market_price, b.city_key
-    from fact_band_outcome b
+    from v_fact_band_outcome_clean b
    where b.settled_yes is not null
      and b.model_prob is not null and b.market_price is not null
      and b.model_prob - b.market_price > 0.05      -- the desk said cheaper than priced

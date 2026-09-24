@@ -89,7 +89,7 @@ def _bank(monkeypatch, signals, outcomes, trades, banked=()):
             return [{"signal_id": i} for i in banked]
         if path == "signals":
             return signals
-        if path == "fact_band_outcome":
+        if path == "v_fact_band_outcome_clean":
             return outcomes
         if path == "paper_trades":
             return trades
@@ -216,3 +216,17 @@ def test_versions_get_their_own_scorecard():
     history into a null half and a non-null half the day versions start
     arriving, and hide the overall hit rate behind the change."""
     assert "create or replace view v_signal_scorecard_by_version" in _sql()
+
+
+def test_the_frozen_outcome_comes_from_the_clean_record(monkeypatch):
+    """Plan v2 P4.4. A signal outcome is immutable once banked, so it must be
+    read through v_fact_band_outcome_clean: a band banked before 13 Sep has the
+    venue's answer there or no row at all - never the faulty reader's."""
+    early = dict(_outcome(), outcome_provenance="venue_rebuilt")
+    rows = _bank(monkeypatch, [_signal()], [early], [])
+    assert rows[0]["outcome_source"] == "fact_band_outcome_venue_rebuilt"
+    assert _bank(monkeypatch, [_signal()], [], []) == [], (
+        "an early band the venue never confirmed is absent from the clean record")
+    src = open(db.__file__).read()
+    body = src[src.index("def bank_signals("):src.index("def main(")]
+    assert 'rest_all("fact_band_outcome"' not in body
