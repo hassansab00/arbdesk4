@@ -141,6 +141,27 @@ async function fromRelease(assetName: string, tag: string, headers: Record<strin
   return Buffer.from(await bin.arrayBuffer());
 }
 
+async function probeRepo(): Promise<{ ok: boolean; status: number | null; files?: number; reason?: string }> {
+  const tok = token();
+  if (!tok) return { ok: false, status: null, reason: 'no GitHub token in this deployment' };
+  try {
+    const r = await fetch(
+      `https://api.github.com/repos/${repo()}/contents/data/archive?ref=${ARCHIVE_REF}`,
+      { headers: { Authorization: `Bearer ${tok}`, Accept: 'application/vnd.github+json' },
+        cache: 'no-store' });
+    if (!r.ok) {
+      return { ok: false, status: r.status,
+               reason: r.status === 404 || r.status === 403
+                 ? 'the token cannot read this repository (needs contents: read)'
+                 : 'GitHub refused the request' };
+    }
+    const list = await r.json();
+    return { ok: true, status: r.status, files: Array.isArray(list) ? list.length : undefined };
+  } catch (e) {
+    return { ok: false, status: null, reason: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 async function assetRows(dataset: string, assetName: string, tag: string): Promise<Record<string, string>[]> {
   const hit = cache.get(assetName);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.rows;
@@ -175,6 +196,11 @@ export async function GET(request: Request) {
       // So a page can say "archived, but this deployment cannot reach it"
       // rather than showing an empty table and implying the data is gone.
       can_fetch_rows: !!token(),
+      // PROVEN, NOT ASSUMED (plan v2.1 P1.8). Having a token is not the same
+      // as the token reading this repo: one small listing of data/archive
+      // says whether every archived file is reachable from here, so a single
+      // request to this URL answers the question for the whole archive.
+      repo_read: await probeRepo(),
       repo: repo(),
     }, { headers: { 'Cache-Control': 'no-store' } });
   }
