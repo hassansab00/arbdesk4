@@ -1,6 +1,43 @@
 """Shared Supabase helpers for AD4 jobs."""
 import os, sys, time, json
 import requests
+import threading
+
+# ONE CONNECTION POOL FOR THE PROCESS (plan v2 P6.1). Every call used to be a
+# bare requests.get/post: a new TCP and TLS handshake per request. Measured on
+# the 24 Sep 04:43Z intraday run, "Band probabilities" took 231 s for 65
+# city-days - about a dozen sequential round trips each, and the handshake is
+# most of a round trip. A Session keeps the connections alive. Tests replace
+# requests.get / requests.post with fakes; _get/_post honour that, so a fake
+# is always what a test talks to.
+_REAL_GET, _REAL_POST = requests.get, requests.post
+_session_obj = None
+_session_lock = threading.Lock()
+
+
+def _session():
+    global _session_obj
+    if _session_obj is None:
+        with _session_lock:
+            if _session_obj is None:
+                s = requests.Session()
+                adapter = requests.adapters.HTTPAdapter(pool_connections=4, pool_maxsize=16)
+                s.mount("https://", adapter)
+                s.mount("http://", adapter)
+                _session_obj = s
+    return _session_obj
+
+
+def _get(url, **kw):
+    if requests.get is not _REAL_GET:
+        return requests.get(url, **kw)
+    return _session().get(url, **kw)
+
+
+def _post(url, **kw):
+    if requests.post is not _REAL_POST:
+        return requests.post(url, **kw)
+    return _session().post(url, **kw)
 
 _config = None
 
@@ -55,7 +92,7 @@ def rest(path, params=None, tries=4):
     for attempt in range(tries):
         last = attempt == tries - 1
         try:
-            r = requests.get(url, headers=_headers(), params=params or {}, timeout=90)
+            r = _get(url, headers=_headers(), params=params or {}, timeout=90)
         except (requests.ConnectionError, requests.Timeout,
                 requests.exceptions.ChunkedEncodingError) as e:
             if last:
@@ -168,7 +205,7 @@ def _post_batch(url, headers, params, batch, table, verb, tries=4):
     for attempt in range(tries):
         last = attempt == tries - 1
         try:
-            r = requests.post(url, headers=headers, params=params or {},
+            r = _post(url, headers=headers, params=params or {},
                               data=json.dumps(batch), timeout=120)
         except (requests.ConnectionError, requests.Timeout,
                 requests.exceptions.ChunkedEncodingError) as e:
@@ -282,7 +319,7 @@ def rpc(fn, params=None, timeout=120):
     the identical string "500 Server Error for url: .../refresh_feature_cache",
     which is not a diagnosis.
     """
-    r = requests.post(f"{_cfg()['url']}/rest/v1/rpc/{fn}", headers=_headers(),
+    r = _post(f"{_cfg()['url']}/rest/v1/rpc/{fn}", headers=_headers(),
                       data=json.dumps(params or {}), timeout=timeout)
     if r.status_code >= 400:
         raise requests.HTTPError(f"{fn} -> HTTP {r.status_code}: {r.text[:400]}",
@@ -348,7 +385,7 @@ def refresh_feature_cache(days=None, quiet=False):
 
 def log_run(job, status, rows, detail):
     try:
-        response = requests.post(f"{_cfg()['url']}/rest/v1/rpc/log_ingest", headers=_headers(),
+        response = _post(f"{_cfg()['url']}/rest/v1/rpc/log_ingest", headers=_headers(),
                       data=json.dumps({"p_job": job, "p_status": status,
                                        "p_rows": rows, "p_detail": detail}), timeout=30)
         response.raise_for_status()
@@ -596,7 +633,19 @@ def model_version_id(kind, label, config=None, structural=False, active=True):
     key = (kind, label)
     if key in _version_ids:
         return _version_ids[key]
+    # One registration at a time: the engine prices city-days on a thread pool
+    # (plan v2 P6.1), and two threads meeting the same new label must not both
+    # try to create it.
+    with _version_lock:
+        if key in _version_ids:
+            return _version_ids[key]
+        return _model_version_id_locked(kind, label, key, config, structural, active)
 
+
+_version_lock = threading.Lock()
+
+
+def _model_version_id_locked(kind, label, key, config, structural, active):
     try:
         found = rest("model_versions", {
             "kind": f"eq.{kind}", "label": f"eq.{label}",
@@ -608,7 +657,7 @@ def model_version_id(kind, label, config=None, structural=False, active=True):
 
         h = _headers()
         h["Prefer"] = "return=representation"
-        r = requests.post(f"{_cfg()['url']}/rest/v1/model_versions", headers=h,
+        r = _post(f"{_cfg()['url']}/rest/v1/model_versions", headers=h,
                           data=json.dumps([{
                               "kind": kind, "label": label,
                               "config": config or {}, "structural": structural,
