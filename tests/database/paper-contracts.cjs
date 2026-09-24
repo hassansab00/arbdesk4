@@ -514,9 +514,13 @@ const assert = require('node:assert/strict');
   const policy={strategies:['s1'],cities:['london'],max_plan_usd:10,max_exposure_usd:50,min_edge:.03};
   await db.query("select set_paper_policy($1,'assisted',true,$2)",[account,JSON.stringify(policy)]);
   await db.exec('reset role;set role service_role;');
+  // NO, not YES: the desk already holds YES on this band (the fills above), and
+  // since P5.0 item 1 a plan cannot buy a side the desk holds. Approval is what
+  // this block tests, so it buys the side the desk does not hold.
   const legs=[{band_id:band,side:'YES',shares:'4',limit_price:'.50',cash_ceiling:'2.10'}];
+  const approvalLegs=[{...legs[0],side:'NO'}];
   const plan=(await db.query('select publish_paper_plan($1,$2,1,$3,$4) as id',
-    [account,'40000000-0000-0000-0000-000000000002',JSON.stringify(legs),JSON.stringify({net_edge_per_share:'.10'})])).rows[0].id;
+    [account,'40000000-0000-0000-0000-000000000002',JSON.stringify(approvalLegs),JSON.stringify({net_edge_per_share:'.10'})])).rows[0].id;
   await db.exec(`reset role;set role authenticated;set request.jwt.claim.sub='${other}';`);
   assert.equal((await db.query('select * from paper_trade_plans')).rows.length,0);
   await assert.rejects(db.query('select approve_paper_plan($1)',[plan]),/Account access denied/);
@@ -754,6 +758,17 @@ const assert = require('node:assert/strict');
       fills:[{shares:'4',price:'.50',notional:'2.00',fee:'.05'}]})]);
   assert.equal((await db.query('select status from paper_trade_plans where plan_id=$1',[singlePlan])).rows[0].status,'filled',
     'an order that filled must carry its plan with it');
+  // The two-leg plan below buys YES again on this band, and since P5.0 item 1
+  // a desk cannot buy a side it holds. So the desk sells what it just bought
+  // first: a flat position (0 shares) is not a holding.
+  const flatExit=(await db.query("select submit_single_paper_exit($1,$2,$3,'YES',4,.50) as id",
+    [single,'50000000-0000-0000-0000-0000000000e1',band])).rows[0].id;
+  const flatJob=(await db.query('select claim_paper_order() as job')).rows[0].job;
+  assert.equal(flatJob.order_id,flatExit);
+  await db.query('select complete_paper_order($1,$2,$3)',[flatExit,flatJob.lease_token,
+    JSON.stringify({status:'filled',shares:'4',notional:'2.00',fee:'.05',snapshot_id:'snapshot',
+      fills:[{shares:'4',price:'.50',notional:'2.00',fee:'.05'}]})]);
+  assert.equal(Number((await db.query("select shares from paper_positions where account_id=$1 and side='YES'",[single])).rows[0].shares),0);
 
   // A TWO-LEG PLAN WITH ONE LEG ON IS NOT "filled". s8 covers two buckets and
   // s9 builds a ladder, so this is their shape - carried here under s1, the
@@ -1872,6 +1887,61 @@ const assert = require('node:assert/strict');
   const legit=(await db.query("select prune_trades(30,true,now()-interval '31 days') as r")).rows[0].r;
   assert.equal(legit.ok,true,'a cutoff older than the floor must still be honoured');
   assert.equal(new Date(legit.older_than).getTime()<Date.now()-30*86400e3,true);
+
+  // ======================================================================
+  // ONE BUY PER BAND AND SIDE (plan v2 P5.0 item 1,
+  // 20260924050000_one_buy_per_band.sql). Live on 24 Sep, 14 of 53
+  // (desk, band, side) keys had been bought more than once - up to 5 times -
+  // because a signal that fires again publishes a new plan and nothing asked
+  // whether the desk already held or was already buying that band.
+  // ======================================================================
+  await db.exec('reset role; set role service_role;');
+  const dd=(await db.query(
+    "select paper_desk_create('Dedupe',300,'automatic',null,$1::jsonb) as id",
+    [JSON.stringify({cities:['ALL'],strategies:['s1'],min_edge:.01,max_plan_usd:10,max_exposure_usd:50})])).rows[0].id;
+  await db.exec('reset role; update public.paper_accounts set entries_paused=false where account_id=\''+dd+'\'; update signals set fired_at=now() where signal_id=1; set role service_role;');
+  let ddN=0;
+  const ddPlan=async(side)=>{
+    const id=(await db.query('select publish_paper_plan($1,$2,1,$3,$4) as id',
+      [dd,`60000000-0000-0000-0000-${String(++ddN).padStart(12,'0')}`,
+       JSON.stringify([{band_id:band,side,shares:'2',limit_price:'.50',cash_ceiling:'1.05'}]),
+       JSON.stringify({net_edge_per_share:'.10'})])).rows[0].id;
+    return (await db.query('select status,reason from paper_trade_plans where plan_id=$1',[id])).rows[0];
+  };
+  const ddOrders=async()=>(await db.query(
+    "select count(*)::int as n from paper_orders where account_id=$1 and status in ('queued','working')",[dd])).rows[0].n;
+  const ddReserved=async()=>Number((await db.query('select reserved_cash from paper_accounts where account_id=$1',[dd])).rows[0].reserved_cash);
+
+  assert.equal((await ddPlan('YES')).status,'queued','the first YES buy on a band must queue');
+  const reservedAfterFirst=await ddReserved();
+  const ddAgain=await ddPlan('YES');
+  assert.equal(ddAgain.status,'blocked','a second YES buy was queued while the first order was still live');
+  assert.match(ddAgain.reason,/Already holding or ordering YES on this band/);
+  assert.equal(await ddOrders(),1,'the refused plan still wrote an order');
+  assert.equal(await ddReserved(),reservedAfterFirst,'the refused plan still reserved cash');
+  assert.equal((await ddPlan('NO')).status,'queued','the other side of the band is a different key and must still queue');
+
+  // A finished order is not a live one; a held position is.
+  await db.exec(`reset role; update public.paper_orders set status='expired' where account_id='${dd}'; set role service_role;`);
+  assert.equal((await ddPlan('YES')).status,'queued','after its order ended, the band must be buyable again');
+  await db.exec(`reset role; update public.paper_orders set status='expired' where account_id='${dd}';
+    insert into public.paper_positions(account_id,band_id,side,shares,cost_basis,realized_pnl) values('${dd}','${band}','YES',3,1.5,0);
+    set role service_role;`);
+  const ddHeld=await ddPlan('YES');
+  assert.equal(ddHeld.status,'blocked','a YES buy was queued on a band the desk already holds');
+  assert.match(ddHeld.reason,/Already holding or ordering YES/);
+  await db.exec(`reset role; update public.paper_positions set shares=0,cost_basis=0 where account_id='${dd}'; set role service_role;`);
+  assert.equal((await ddPlan('YES')).status,'queued','a flat position (0 shares) is not a holding');
+
+  // The assisted path gets the refusal back in plain words.
+  await db.exec(`reset role; update public.paper_accounts set mode='assisted' where account_id='${dd}'; set role service_role;`);
+  const assistedPlan=(await db.query('select publish_paper_plan($1,$2,1,$3,$4) as id',
+    [dd,'60000000-0000-0000-0000-0000000000ff',
+     JSON.stringify([{band_id:band,side:'YES',shares:'2',limit_price:'.50',cash_ceiling:'1.05'}]),
+     JSON.stringify({net_edge_per_share:'.10'})])).rows[0].id;
+  await assert.rejects(db.query("select arbdesk_private.queue_plan($1,'assisted')",[assistedPlan]),
+    /Already holding or ordering YES on this band/,'an approval queued a second YES buy on a live band');
+  await db.exec('reset role;');
 
   // ======================================================================
   // WRITES NEED AN OPERATOR (plan v2 P1.2,
