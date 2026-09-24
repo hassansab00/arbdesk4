@@ -84,12 +84,17 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "ad4-nws-monitor",
+        "authentication": "headerAuth",
         "responseMode": "responseNode",
-        "options": {
-          "allowedOrigins": "*"
-        }
+        "options": {}
       },
-      "webhookId": "ad4-nws-monitor"
+      "webhookId": "ad4-nws-monitor",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ad4-webhook-key",
+          "name": "AD4 Webhook Key"
+        }
+      }
     },
     {
       "id": "config",

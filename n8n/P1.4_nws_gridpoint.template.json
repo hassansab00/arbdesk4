@@ -84,12 +84,17 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "ad4-nws-gridpoint",
+        "authentication": "headerAuth",
         "responseMode": "responseNode",
-        "options": {
-          "allowedOrigins": "*"
-        }
+        "options": {}
       },
-      "webhookId": "ad4-nws-gridpoint"
+      "webhookId": "ad4-nws-gridpoint",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ad4-webhook-key",
+          "name": "AD4 Webhook Key"
+        }
+      }
     },
     {
       "id": "config",

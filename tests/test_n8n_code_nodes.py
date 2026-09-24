@@ -747,11 +747,45 @@ def test_p21_names_what_it_can_start_when_only_is_wrong():
     assert "not_a_stage" in r["error"] and "evidence" in r["error"]
 
 
-def test_p21_refuses_to_dispatch_without_a_github_token():
-    r = run("P2.1_relearn.template.json", "plan_P2.1_no_token.json")
+def test_p21_refuses_a_token_left_in_config():
+    """Plan v2 P6.4: the token lives in the n8n credential "AD4 GitHub
+    Actions", which is encrypted and never leaves in an export. A Config field
+    is plain text in both, so one found there is refused rather than used."""
+    r = run("P2.1_relearn.template.json", "plan_P2.1_token_in_config.json")
     assert r["ok"] is False and r["node"] == "Check config", r
-    assert "Config.github_token is empty" in r["error"], r["error"]
+    assert "AD4 GitHub Actions" in r["error"], r["error"]
     assert "NOWHERE ELSE" in r["error"]
+    assert "notarealtoken" not in r["error"], "the error must never echo the token"
+
+
+def test_p21_dispatches_with_the_credential_and_config_holds_no_token():
+    d = json.load(open(os.path.join(ROOT, "n8n", "P2.1_relearn.template.json")))
+    by = {n["name"]: n for n in d["nodes"]}
+    names = [a["name"] for a in by["Config"]["parameters"]["assignments"]["assignments"]]
+    assert "github_token" not in names, names
+    disp = by["Dispatch"]
+    assert disp["parameters"]["authentication"] == "genericCredentialType"
+    assert disp["parameters"]["genericAuthType"] == "httpHeaderAuth"
+    assert disp["credentials"]["httpHeaderAuth"]["name"] == "AD4 GitHub Actions"
+    headers = [h["name"].lower() for h in disp["parameters"]["headerParameters"]["parameters"]]
+    assert "authorization" not in headers, "the credential sends it; an expression must not"
+
+
+@pytest.mark.parametrize("workflow", sorted(
+    [f for f in os.listdir(os.path.join(ROOT, "n8n")) if f.endswith(".template.json")]))
+def test_every_webhook_needs_a_header_key(workflow):
+    """Plan v2 P6.4. An n8n webhook with no auth can be started by anyone who
+    learns its URL, and allowedOrigins "*" let any web page do it from a
+    visitor's browser. The platform calls them from its server only
+    (web/app/api/operator), sending X-AD4-Key, so every webhook checks it."""
+    d = json.load(open(os.path.join(ROOT, "n8n", workflow)))
+    hooks = [n for n in d["nodes"] if n["type"] == "n8n-nodes-base.webhook"]
+    if not hooks:
+        pytest.skip("no webhook in this file")
+    for n in hooks:
+        assert n["parameters"].get("authentication") == "headerAuth", (workflow, n["name"])
+        assert "httpHeaderAuth" in (n.get("credentials") or {}), (workflow, n["name"])
+        assert "allowedOrigins" not in (n["parameters"].get("options") or {}), (workflow, n["name"])
 
 
 def test_p21_waits_as_long_between_stages_as_config_says():

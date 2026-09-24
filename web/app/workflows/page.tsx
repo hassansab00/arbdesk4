@@ -67,7 +67,7 @@ const CATALOGUE: Array<{
     what:
       "The desk's remote control for GitHub Actions. With no argument it runs the learning chain in order - settle and freeze the evidence, refit the desk's own correction per city, then produce the corrected forecast and reprice the board on it - queuing each stage after the one before, because every stage reads what the last one wrote. The buttons beside it start one job on its own.",
     note:
-      "This is the only workflow that holds a GitHub token, and deliberately so: every Run button here and the Learn button on Synthesis call this webhook rather than GitHub, because a page that could start a build would be a page carrying a credential. Put a fine-grained token scoped to this one repository, with Actions: Read and write, in its Config node - never in Vercel and never in a NEXT_PUBLIC_ variable.",
+      "This is the only workflow that holds a GitHub token, and deliberately so: every Run button here and the Learn button on Synthesis call this webhook rather than GitHub, because a page that could start a build would be a page carrying a credential. Its token is the n8n credential \"AD4 GitHub Actions\" (Header Auth, Authorization: Bearer and a fine-grained token scoped to this one repository, with Actions: Read and write) - never in its Config node, never in Vercel and never in a NEXT_PUBLIC_ variable. Every AD4 webhook also checks the header X-AD4-Key, which this site's server sends from N8N_WEBHOOK_KEY.",
     variants: [
       { label: "Relearn (whole chain)", body: {} },
       { label: "Daily pipeline", body: { only: "evidence" } },
@@ -456,9 +456,10 @@ export default function WorkflowsPage() {
         <b>Why a Run button can fail even when the workflow is fine:</b> an inactive n8n workflow
         only answers its <code>/webhook-test/</code> URL, and only for one call after you press
         &ldquo;Listen for test event&rdquo;. The <code>/webhook/</code> URL used here needs the
-        workflow <b>Active</b>. The browser also needs the Webhook Trigger&rsquo;s{" "}
-        <code>allowedOrigins</code> to include this site — the shipped workflows set it to{" "}
-        <code>*</code>, which you can narrow to your own domain once it is settled.
+        workflow <b>Active</b>. The call goes from this site&rsquo;s server, not your browser,
+        and carries the header <code>X-AD4-Key</code> from the server-only variable{" "}
+        <code>N8N_WEBHOOK_KEY</code>; every AD4 webhook checks it against the n8n credential{" "}
+        &ldquo;AD4 Webhook Key&rdquo;. A 403 means the two values differ, or one is missing.
       </p>
     </div>
   );
