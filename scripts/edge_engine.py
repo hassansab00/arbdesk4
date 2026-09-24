@@ -214,6 +214,86 @@ def floor_impossible_ids(markets, bands, floors, unit_of):
     return out
 
 
+# ---------------------------------------------------------------------------
+# AGAINST THE MARKET (Hassan, 24 Sep: "never favour losing bets").
+#
+# Measured on settled day-ahead calls (v_city_hit_history, 13-23 Sep, head to
+# head): when the engine's favourite bucket and the market's differed, the
+# market's won C 62 of 155 and F 18 of 41; the engine's won C 34 and F 8. And
+# on v_verified_fact_band_outcome (12-23 Sep) every size band of bets where
+# the engine priced a bucket above the market lost money. So a trade that
+# backs the engine against the market's favourite - YES on a bucket the market
+# does not favour, NO on the one it does - is blocked while the engine loses
+# those disagreements.
+#
+# Rule 11: the prior is ON (blocked). It lifts per unit only on evidence: at
+# least AGAINST_MARKET_MIN_DAYS disagreement days in the last 30, with the
+# lower 90% bound of (engine wins - market wins) per day above zero. The gate
+# is recomputed every run from settled days only, never from the day it prices,
+# and its inputs are written to ingest_log with each run.
+# ---------------------------------------------------------------------------
+AGAINST_MARKET_MIN_DAYS = 30
+AGAINST_MARKET_WINDOW_DAYS = 30
+
+
+def against_market_gate(rows):
+    """{unit: {"on": bool, "days": n, "engine_won": a, "market_won": b, "lo90": x}}
+    from v_city_hit_history rows (unit, model_call, market_call, model_hit,
+    market_hit, head_to_head). A unit with no record keeps the prior: on."""
+    by_unit = {}
+    for r in rows:
+        if not r.get("head_to_head") or not r.get("model_call") or not r.get("market_call"):
+            continue
+        if r["model_call"] == r["market_call"]:
+            continue
+        u = "F" if r.get("unit") == "F" else "C"
+        # +1 engine right, -1 market right, 0 neither
+        by_unit.setdefault(u, []).append((1 if r.get("model_hit") else 0) - (1 if r.get("market_hit") else 0))
+    out = {}
+    for u in ("C", "F"):
+        d = by_unit.get(u, [])
+        n = len(d)
+        mean = sum(d) / n if n else 0.0
+        var = (sum((x - mean) ** 2 for x in d) / (n - 1)) if n > 1 else 0.0
+        lo90 = mean - 1.645 * math.sqrt(var / n) if n > 1 else None
+        proven = n >= AGAINST_MARKET_MIN_DAYS and lo90 is not None and lo90 > 0
+        out[u] = {"on": not proven, "days": n,
+                  "engine_won": sum(1 for x in d if x > 0), "market_won": sum(1 for x in d if x < 0),
+                  "lo90": None if lo90 is None else round(lo90, 4)}
+    return out
+
+
+def against_market_rows(rows):
+    """Indexes (into `rows`) of trades that back the engine against the market's
+    favourite, for ONE market's edge rows. Empty when the two agree, or when
+    either favourite cannot be named. model_prob is the side's own probability,
+    so the YES rows carry the engine's view and the YES prices the market's."""
+    yes = [(i, r) for i, r in enumerate(rows) if r["side"] == "YES"]
+    priced = [(i, r) for i, r in yes if r.get("model_prob") is not None]
+    quoted = [(i, r) for i, r in yes if r.get("market_price") is not None]
+    if not priced or not quoted:
+        return set()
+    engine_fav = max(priced, key=lambda x: x[1]["model_prob"])[1]["band_id"]
+    market_fav = max(quoted, key=lambda x: x[1]["market_price"])[1]["band_id"]
+    if engine_fav == market_fav:
+        return set()
+    return {i for i, r in enumerate(rows)
+            if (r["side"] == "YES" and r["band_id"] != market_fav)
+            or (r["side"] == "NO" and r["band_id"] == market_fav)}
+
+
+def _against_market_record():
+    since = (dt.date.today() - dt.timedelta(days=AGAINST_MARKET_WINDOW_DAYS)).isoformat()
+    try:
+        return rest_all("v_city_hit_history", {
+            "select": "unit,model_call,market_call,model_hit,market_hit,head_to_head",
+            "for_date": f"gte.{since}"}, order="city_key.asc,for_date.asc")
+    except Exception as e:
+        print(f"  ! settled record unavailable ({str(e)[:120]}) - the against-market gate keeps its prior (on)",
+              file=sys.stderr)
+        return []
+
+
 def _upcoming_markets():
     # THE CITY'S DAY, NOT THE RUNNER'S (plan v2 P3.2). v_priceable_markets is
     # an active city's market that is not closed and whose local day has not
@@ -315,6 +395,7 @@ def main():
     if not bands:
         print("no bands for upcoming markets - nothing to price")
         return
+    band_market = {b["band_id"]: b["market_id"] for b in bands}
     band_ids = [b["band_id"] for b in bands]
 
     probs = _latest_by_band("v_latest_prob",
@@ -462,6 +543,24 @@ def main():
                 "tradeable": tradeable, "block_reason": block_reason,
             })
 
+    # THE AGAINST-MARKET GATE, per market, after every row of it is priced.
+    gate = against_market_gate(_against_market_record())
+    by_market = {}
+    for i, r in enumerate(out_rows):
+        by_market.setdefault(band_market[r["band_id"]], []).append(i)
+    against_blocked = 0
+    for market_id, idxs in by_market.items():
+        unit = unit_of.get(market_city.get(market_id), "C")
+        if not gate.get(unit, {"on": True})["on"]:
+            continue
+        rows = [out_rows[i] for i in idxs]
+        for j in against_market_rows(rows):
+            r = rows[j]
+            if r["tradeable"]:
+                r["tradeable"] = False
+                r["block_reason"] = "against_market"
+                against_blocked += 1
+
     if out_rows:
         insert("edges", out_rows)
 
@@ -472,7 +571,8 @@ def main():
         {"bands": len(bands), "tradeable": tradeable_n,
          "missing_books": missing_books, "stale_books": stale_books,
          "stale_probabilities": stale_probabilities,
-         "blocked_probabilities": blocked_probabilities},
+         "blocked_probabilities": blocked_probabilities,
+         "against_market_blocked": against_blocked, "against_market_gate": gate},
     )
     print(f"wrote {len(out_rows)} edge rows ({tradeable_n} tradeable, {n_anomalies} flagged anomalous)")
 
