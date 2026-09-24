@@ -52,3 +52,12 @@ def test_the_repo_comes_first_and_the_release_is_the_fallback():
     release_at = body.index("fromRelease(")
     assert repo_at < release_at
     assert "if (!gz) gz = await fromRelease(" in body
+
+
+def test_the_manifest_proves_it_can_read_the_repo():
+    """One request to /api/archive answers whether every archived file is
+    reachable from this deployment - a token that exists is not a token that
+    reads this repository."""
+    assert "repo_read: await probeRepo()" in ROUTE
+    probe = ROUTE[ROUTE.index("async function probeRepo("):ROUTE.index("async function assetRows(")]
+    assert "contents/data/archive" in probe and "contents: read" in probe
