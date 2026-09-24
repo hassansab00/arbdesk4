@@ -50,7 +50,8 @@ const assert = require('node:assert/strict');
     -- last so the positional inserts below keep working.
     create table public.signals(signal_id bigint primary key,action text,strategy_id text,
       fired_at timestamptz,reason text,payload jsonb,regime_label text,book_snapshot_id bigint,
-      band_id uuid,city_key text,side text,price_at_fire numeric,status text);
+      band_id uuid,city_key text,side text,price_at_fire numeric,status text,
+      prob_at_fire numeric);
     -- ledger is created by sql/ad4_00_preflight.sql, which this harness never
     -- applies. Column types and the two NOT NULLs match the live table.
     --
@@ -745,7 +746,7 @@ const assert = require('node:assert/strict');
   assert.equal((await db.query('select cancel_single_paper_order($1) as canceled',[singleOrder])).rows[0].canceled,true);
   await db.query("select set_single_paper_policy($1,'assisted',true,$2)",[single,JSON.stringify(policy)]);
   await db.query('select set_single_paper_exit_policy($1,true,.25,.15)',[single]);
-  await db.exec("reset role;insert into signals values(2,'ENTER','s1',now(),'single strategy');set role service_role;");
+  await db.exec("reset role;insert into signals values(2,'ENTER','s1',now(),'single strategy');update signals set prob_at_fire=.61 where signal_id=2;set role service_role;");
   const singlePlan=(await db.query('select publish_paper_plan($1,$2,2,$3,$4) as id',
     [single,'50000000-0000-0000-0000-000000000002',JSON.stringify(legs),JSON.stringify({net_edge_per_share:'.10'})])).rows[0].id;
   await db.query('select approve_single_paper_plan($1)',[singlePlan]);
@@ -762,6 +763,18 @@ const assert = require('node:assert/strict');
       fills:[{shares:'4',price:'.50',notional:'2.00',fee:'.05'}]})]);
   assert.equal((await db.query('select status from paper_trade_plans where plan_id=$1',[singlePlan])).rows[0].status,'filled',
     'an order that filled must carry its plan with it');
+  // POSITIONS CARRY THEIR ENTRY (plan v2 P5.0 item 4,
+  // 20260924070000_positions_carry_their_lineage.sql): the order, strategy,
+  // ledger, plan (the group of linked legs) and the probability it was bought at.
+  const lineage=async(side)=>(await db.query(
+    `select strategy_id,ledger_id,entry_order_id,group_id,p_at_entry,entry_decision_id,p_cons_at_entry,params_version,entered_at
+       from paper_positions where account_id=$1 and band_id=$2 and side=$3`,[single,band,side])).rows[0];
+  const entry=await lineage('YES');
+  assert.deepEqual([entry.strategy_id,entry.ledger_id,entry.entry_order_id,entry.group_id,Number(entry.p_at_entry)],
+    ['s1',single,singlePlanOrder,singlePlan,0.61],'a new position records the entry that opened it');
+  assert.deepEqual([entry.entry_decision_id,entry.p_cons_at_entry,entry.params_version],[null,null,null],
+    'the columns later steps fill (P5.11, P5.3, P5.5) stay empty rather than guessed');
+  assert.ok(entry.entered_at!==null);
   // The two-leg plan below buys YES again on this band, and since P5.0 item 1
   // a desk cannot buy a side it holds. So the desk sells what it just bought
   // first: a flat position (0 shares) is not a holding.
@@ -809,6 +822,9 @@ const assert = require('node:assert/strict');
       fills:[{shares:'2',price:'.50',notional:'1.00',fee:'.025'}]})]);
   assert.equal(await coverStatus(),'partial',
     'one leg filled and one canceled is a PARTIAL plan - calling it filled claims a position the desk does not hold');
+  const reentry=await lineage('YES');
+  assert.deepEqual([reentry.entry_order_id,reentry.group_id],[yesLeg,coverPlan],
+    'a position bought again from flat is a new entry and records the new order');
   // ======================================================================
   // A RESET FLATTENS A DESK. IT DOES NOT ERASE ITS RECORD.
   //
