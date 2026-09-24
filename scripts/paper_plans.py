@@ -11,6 +11,7 @@ import requests
 import re
 from decimal import Decimal, ROUND_DOWN, ROUND_UP
 from common import rest, rest_all, rpc, log_run
+import risk_rails
 from paper_execution import instant, number, simulate
 
 
@@ -163,7 +164,41 @@ def command_key(account, signal):
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"arbdesk:paper:{account['account_id']}:{identity}"))
 
 
-def prepare(account, signal, capture, *, now=None):
+def rail_room(account, quoted, context, rails, halted, halt_reason, *, rest_fn=None):
+    """(dollars this plan may still spend on its city-day, refusal or None).
+
+    The same arithmetic queue_plan enforces: equity at cost is cash plus the
+    cost of open positions; the city-day holds positions plus live BUY
+    reservations on the plan's market; the rail is city_day_frac of equity.
+    """
+    rest_fn = rest_fn or rest
+    if halted:
+        return Decimal(0), f"Trading halted ({halt_reason or 'no reason given'})"
+    for _bid, _tok, price, _rate, _book in quoted:
+        if price > Decimal(str(rails['max_price'])):
+            return Decimal(0), f"Rail: {price} is above the {rails['max_price']} price bound"
+    acct = account['account_id']
+    positions = rest_fn('paper_positions', {'select': 'band_id,cost_basis', 'account_id': f'eq.{acct}',
+                                            'shares': 'gt.0'})
+    equity = number(account['cash']) + sum((number(p.get('cost_basis') or 0) for p in positions), Decimal(0))
+    city, date, _unit = context
+    market = rest_fn('markets', {'select': 'market_id', 'city_key': f'eq.{city}',
+                                 'resolution_date': f'eq.{date}', 'limit': '1'})
+    held = Decimal(0)
+    if market:
+        mid = market[0]['market_id']
+        bands = {b['band_id'] for b in rest_fn('bands', {'select': 'band_id', 'market_id': f'eq.{mid}'})}
+        held += sum((number(p.get('cost_basis') or 0) for p in positions if p['band_id'] in bands), Decimal(0))
+        live = rest_fn('paper_orders', {'select': 'band_id,cash_ceiling', 'account_id': f'eq.{acct}',
+                                        'status': 'in.(queued,working)', 'action': 'eq.BUY'})
+        held += sum((number(o.get('cash_ceiling') or 0) for o in live if o['band_id'] in bands), Decimal(0))
+    room = Decimal(str(rails['city_day_frac'])) * equity - held
+    if room <= 0:
+        return Decimal(0), f"Rail: {city} {date} already holds {held} of the {rails['city_day_frac']} city-day limit"
+    return room, None
+
+
+def prepare(account, signal, capture, *, now=None, rail_room=None):
     fixed_now = now
     now = now or dt.datetime.now(dt.timezone.utc)
     policy, payload = account['policy'], signal.get('payload') or {}
@@ -212,6 +247,15 @@ def prepare(account, signal, capture, *, now=None):
         raise ValueError('Fresh fee-inclusive basket edge is below policy')
     # Reserve rounded per-leg fees plus a cent of rounding headroom per leg.
     budget = min(number(policy['max_plan_usd']),number(account['cash'])-number(account['reserved_cash']))
+    # INSIDE THE RAILS, NOT REFUSED BY THEM (plan v2 P5.9). queue_plan refuses
+    # a plan that would put more than 3% of the account on one city-day, or
+    # buy above 0.97, or run while halted; sizing the plan to fit here means
+    # the decision still reaches the ledger at the size the rails allow.
+    if rail_room is not None:
+        room, why = rail_room(account, quoted, contexts[0])
+        if why:
+            raise ValueError(why)
+        budget = min(budget, room)
     affordable_q = ((budget-Decimal('.01')*len(quoted))/unit_cost).quantize(Decimal('.01'),rounding=ROUND_DOWN)
     if affordable_q<=0:
         raise ValueError('Insufficient available paper cash')
@@ -460,6 +504,9 @@ def cycle(max_plans=10, budget_seconds=90):
          ('fired_at','lte.'+now.isoformat())],order='fired_at.desc,signal_id'))
     enabled = {s['strategy_id'] for s in rest('strategies',{'enabled':'eq.true','select':'strategy_id'})}
     seen = set()
+    rails, halted, halt_reason = risk_rails.load()
+    def rails_room(account, quoted, context):
+        return rail_room(account, quoted, context, rails, halted, halt_reason)
     def capture(order):
         if time.monotonic()-started>budget_seconds:
             raise ValueError('Proposal cycle budget reached; await the next fresh decision')
@@ -523,7 +570,7 @@ def cycle(max_plans=10, budget_seconds=90):
                 continue
             reason, legs, evidence = None, [], {'signal':signal}
             try:
-                legs,evidence=prepare(account,signal,capture)
+                legs,evidence=prepare(account,signal,capture,rail_room=rails_room)
             except (ValueError,KeyError,TypeError,ArithmeticError,requests.RequestException) as exc:
                 reason=str(exc)[:400]
             rpc('publish_paper_plan',{'p_account':account['account_id'],'p_command':command,'p_signal':signal['signal_id'],

@@ -83,3 +83,54 @@ def test_nothing_is_bought_above_the_price_rail():
               {"id": "b1", "p": 0.01, "yes_price": 0.005, "no_price": None}]
     book = hs.solve_book(ladder, allow=("YES",), max_price=rr.DEFAULTS["max_price"])
     assert "b0:YES" not in book["weights"], "a 98c YES is past the 0.97 rail"
+
+
+# --------------------------------------------------------------------------
+# The plan builder sizes inside the rails instead of being refused by them
+# --------------------------------------------------------------------------
+from decimal import Decimal
+
+import paper_plans as pp
+
+ACCOUNT = {"account_id": "a1", "cash": "900", "reserved_cash": "0"}
+
+
+def _rest(positions=(), orders=(), bands=("b1", "b2"), market=True):
+    def fn(table, params):
+        if table == "paper_positions":
+            return list(positions)
+        if table == "markets":
+            return [{"market_id": "m1"}] if market else []
+        if table == "bands":
+            return [{"band_id": b} for b in bands]
+        if table == "paper_orders":
+            return list(orders)
+        raise AssertionError(table)
+    return fn
+
+
+def _q(price):
+    return [("b1", "t1", Decimal(str(price)), Decimal("0.05"), {})]
+
+
+def test_the_room_is_three_percent_of_equity_less_what_the_city_day_holds():
+    # Equity at cost: $900 cash + $100 of positions = $1,000; 3% is $30.
+    room, why = pp.rail_room(ACCOUNT, _q(0.4), ("nyc", "2026-09-25", "F"), rr.DEFAULTS, False, None,
+                             rest_fn=_rest(positions=[{"band_id": "b1", "cost_basis": "12"},
+                                                      {"band_id": "zz", "cost_basis": "88"}],
+                                           orders=[{"band_id": "b2", "cash_ceiling": "5"}]))
+    assert why is None and room == Decimal("13.00"), "30 - 12 held - 5 reserved on this city-day"
+
+
+def test_a_full_city_day_is_refused_with_the_rail_named():
+    room, why = pp.rail_room(ACCOUNT, _q(0.4), ("nyc", "2026-09-25", "F"), rr.DEFAULTS, False, None,
+                             rest_fn=_rest(positions=[{"band_id": "b1", "cost_basis": "40"}]))
+    assert room == 0 and "city-day" in why
+
+
+def test_the_price_rail_and_the_halt_refuse_before_any_read():
+    def never(*a, **k):
+        raise AssertionError("read the database for a plan the rails refuse anyway")
+    assert "price bound" in pp.rail_room(ACCOUNT, _q(0.98), ("nyc", "d", "F"), rr.DEFAULTS, False, None, rest_fn=never)[1]
+    assert "halted (venue outage)" in pp.rail_room(ACCOUNT, _q(0.4), ("nyc", "d", "F"), rr.DEFAULTS, True,
+                                                   "venue outage", rest_fn=never)[1]
