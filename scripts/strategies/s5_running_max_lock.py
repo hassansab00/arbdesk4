@@ -21,6 +21,7 @@ capacity" reasoning, documented rather than guessing an early-entry
 threshold with no data to tune it against yet.
 """
 from strategies.base import Strategy, Signal, dedupe_key
+from venue import venue_read
 
 DEFAULT_MAX_ENTRY_PRICE = 0.90   # provisional - don't pay near-$1 for a "still cheap" lock
 
@@ -32,6 +33,10 @@ def _local_value(band):
 
 
 def _contains(band, value):
+    # The venue settles on the whole degree (venue.py, plan v2 P5.0 item 6):
+    # buckets are [lo, hi) on whole degrees, so a raw 23.6 would sit in the
+    # bucket below the one the venue will pay.
+    value = venue_read(value)
     if band.open_low:
         return value < band.band_hi
     if band.open_high:

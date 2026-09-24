@@ -37,6 +37,7 @@ from collections import defaultdict
 
 from common import rest, rest_all, insert, get_cities, log_run, model_version_id
 import regime
+import venue as _venue
 
 MAE_TO_SIGMA = 1.2533          # sourced: sigma = MAE * sqrt(pi/2) for a normal distribution
 CALIBRATION_VERSION = "v0_normal_lattice_no_calibration"
@@ -262,15 +263,11 @@ DEFAULT_Q_UP = 0.05
 def venue_round(value_c, unit):
     """The whole degree the venue would read, in the market's unit.
 
-    The Python twin of sql/ad4_82 venue_round(): PostgreSQL's round() on a
-    numeric, which rounds half away from zero - not Python's round(), which
-    rounds half to even. The value is cut to six places first so a float such
-    as 77.49999999 does not fall on the wrong side of a boundary the numeric
-    column never had.
+    The Python twin of sql/ad4_82 venue_round(). Defined once, in venue.py,
+    because the strategies and the exit rules ask the same question
+    (plan v2 P5.0 item 6).
     """
-    v = value_c * 9.0 / 5.0 + 32.0 if unit == "F" else float(value_c)
-    v = round(v, 6)
-    return math.copysign(math.floor(abs(v) + 0.5), v)
+    return _venue.venue_round(value_c, unit)
 
 
 def _ladder(bands):

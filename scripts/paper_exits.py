@@ -11,6 +11,7 @@ import requests
 
 from common import rest, rest_all, rpc, log_run
 from paper_execution import number, simulate
+from venue import venue_read
 
 
 def _book_or_reason(capture_book, order):
@@ -88,7 +89,11 @@ def certainly_lost(band, running_max_c, side, unit, day_decided):
     $1.00 and selling it costs the venue fee on the way out, so holding is
     strictly better. This only ever recovers residual value from a loser.
     """
-    value = to_band_unit(running_max_c, unit)
+    # Read the way the venue settles: the whole degree in the band's unit
+    # (venue.py, plan v2 P5.0 item 6). Buckets are [lo, hi) on whole degrees,
+    # so a raw 69.6 F would still be "inside" a 68-69 F bucket the venue has
+    # already left behind at 70.
+    value = venue_read(to_band_unit(running_max_c, unit))
     if value is None:
         return False
     inside = band_contains(band, value)

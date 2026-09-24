@@ -303,7 +303,7 @@ def climbing_band(**over):
         minutes_to_peak=45, reading_age_min=12.0,
         slope_3_c_per_h=0.75, slope_6_c_per_h=1.08, rolling_over=False,
         latest_temp_c=28.4, running_max_c=28.4,
-        typical_climb_left_c=1.1, implied_max_c=29.5,
+        typical_climb_left_c=1.1, implied_max_c=29.4,
         implied_max_low_c=29.2, implied_max_high_c=30.4,
         yes_price=0.42, model_prob_yes=0.55,
     )
@@ -319,7 +319,7 @@ def test_s7_buys_the_band_the_day_is_climbing_into():
     out = s7().entry_signals(make_ctx([climbing_band()]))
     assert [s.side for s in out] == ["YES"]
     assert out[0].reason == "climbing_into_band_before_peak"
-    assert out[0].payload["implied_max_c"] == 29.5
+    assert out[0].payload["implied_max_c"] == 29.4
 
 
 def test_s7_does_not_buy_the_band_it_is_already_in():
@@ -332,7 +332,8 @@ def test_s7_does_not_buy_the_band_it_is_already_in():
 def test_s7_refuses_a_band_only_the_best_afternoons_reach():
     """implied_max lands in the band, but the pessimistic case falls short of
     its floor. That is a hope, not a trade."""
-    out = s7().entry_signals(make_ctx([climbing_band(implied_max_low_c=28.6)]))
+    # 28.4 is read as 28 by the venue: below this band's 29 floor.
+    out = s7().entry_signals(make_ctx([climbing_band(implied_max_low_c=28.4)]))
     assert out == []
 
 
@@ -594,7 +595,7 @@ from strategies.s9_ladder_basket import S9LadderBasket, basket_math, leg_fee
 def rung(i, price, prob, **over):
     """One bucket of a 1C ladder starting at 27C."""
     d = dict(band_lo=27 + i, band_hi=28 + i, band_label=f"{27+i}-{28+i}C",
-             yes_price=price, model_prob_yes=prob, implied_max_c=29.5)
+             yes_price=price, model_prob_yes=prob, implied_max_c=29.4)
     d.update(over)
     return make_band(f"r{i}", **d)
 
@@ -712,3 +713,51 @@ def test_s9_reports_what_the_trade_actually_returns():
     # 58c plus fee returning $1.00 is about 68%
     assert 60 < p["return_if_win_pct"] < 75
     assert p["range"] == [28, 30]
+
+
+# ==========================================================================
+# THE VENUE READS WHOLE DEGREES (plan v2 P5.0 item 6)
+#
+# Buckets are [lo, hi) with whole-degree edges and the venue settles on the
+# reading rounded half away from zero. Every containment test reads the value
+# the same way, or a raw 29.5 sits in the 29 bucket while the venue pays 30.
+# ==========================================================================
+def test_s7_buys_the_bucket_the_venue_will_read_not_the_raw_one():
+    at_29 = climbing_band(implied_max_c=29.5, implied_max_low_c=29.5)
+    at_30 = climbing_band(band_lo=30, band_hi=31, band_label="30-31C",
+                          implied_max_c=29.5, implied_max_low_c=29.5)
+    assert s7().entry_signals(make_ctx([at_29])) == [], "29.5 settles as 30, not in 29-30"
+    assert [s.side for s in s7().entry_signals(make_ctx([at_30]))] == ["YES"]
+
+
+def test_s7_does_not_sell_a_bucket_the_venue_already_reads():
+    """Running max 29.6 is read as 30: the 30-31 bucket is where the day
+    stands, not a bucket above it that a rolled-over day cannot reach."""
+    b = climbing_band(band_lo=30, band_hi=31, band_label="30-31C",
+                      slope_3_c_per_h=-0.35, rolling_over=True,
+                      latest_temp_c=28.4, running_max_c=29.6, no_price=0.30)
+    assert s7().entry_signals(make_ctx([b])) == []
+
+
+def test_s9_anchors_on_the_venue_read():
+    # 28.5 reads as 29, so the 27-28/28-29 window no longer holds the day
+    ctx = ladder([(0.05, 0.40), (0.10, 0.45), (0.60, 0.10), (0.20, 0.05)], implied_max_c=28.5)
+    for sig in s9(min_ev_per_dollar=0.01).entry_signals(ctx):
+        assert "29-30C" in sig.payload["buckets"]
+
+
+def test_venue_read_is_half_away_from_zero_not_bankers():
+    from venue import venue_read, venue_round
+    assert [venue_read(v) for v in (23.5, 24.5, 23.4999, -0.5)] == [24, 25, 23, -1]
+    # float noise on a half is still the half: cut to six places, as the
+    # numeric column the database rounds never held the noise
+    assert venue_read(23.49999999) == 24
+    assert venue_round(21.39, "F") == 71          # 70.502 F
+    assert venue_read(None) is None
+
+
+def test_probability_engine_and_strategies_share_one_rounding():
+    import probability_engine, venue
+    for c in (21.39, 23.5, 25.0, 26.67):
+        for unit in ("C", "F"):
+            assert probability_engine.venue_round(c, unit) == venue.venue_round(c, unit)

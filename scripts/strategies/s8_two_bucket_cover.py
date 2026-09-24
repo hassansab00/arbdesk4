@@ -39,6 +39,7 @@ directional bet with extra steps. The two signals share a dedupe bucket so the
 conflict layer treats them as one position.
 """
 from strategies.base import Strategy, Signal, dedupe_key
+from venue import venue_read
 
 DEFAULT_MAX_PAIR_COST = 0.70
 DEFAULT_MIN_PAIR_PROB = 0.72      # must beat the cost, with room for the fee
@@ -63,6 +64,10 @@ def _to_local(c, unit):
 
 
 def _contains(band, value):
+    # The venue settles on the whole degree (venue.py, plan v2 P5.0 item 6):
+    # buckets are [lo, hi) on whole degrees, so a raw 23.6 would sit in the
+    # bucket below the one the venue will pay.
+    value = venue_read(value)
     if value is None:
         return False
     if band.open_low:

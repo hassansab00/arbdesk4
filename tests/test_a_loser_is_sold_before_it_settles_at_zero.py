@@ -83,3 +83,14 @@ def test_an_unbounded_bucket_missing_its_edge_is_not_a_verdict():
     assert px.band_contains({"open_high": True, "band_lo": None, "band_hi": None}, 80) is None
     assert not px.certainly_lost({"open_high": True, "band_lo": None, "band_hi": None},
                                  80, "YES", "C", day_decided=True)
+
+
+def test_the_venue_reading_decides_not_the_raw_one():
+    """Plan v2 P5.0 item 6. A 23 C bucket is [23, 24). A running max of 23.6 C
+    is read by the venue as 24, so a YES on 23 C has already lost - the raw
+    23.6 would have held it to a settlement it cannot win."""
+    c23 = {"band_lo": 23, "band_hi": 24, "open_low": False, "open_high": False}
+    assert px.certainly_lost(c23, 23.6, "YES", "C", day_decided=False)
+    assert not px.certainly_lost(c23, 23.4, "YES", "C", day_decided=False)
+    # and the day decided at 23.4 is read as 23: inside, so the NO lost
+    assert px.certainly_lost(c23, 23.4, "NO", "C", day_decided=True)
