@@ -58,7 +58,7 @@ with priced as (
   -- band_probabilities.computed_at when the outcome is frozen, so this pairs a
   -- settlement with the row that priced it rather than with a later reprice.
   select p.raw_prob, o.settled_yes
-    from public.fact_band_outcome o
+    from public.v_fact_band_outcome_clean o
     join public.cities c
       on c.city_key = o.city_key and coalesce(c.status, 'active') = 'active'
     join public.band_probabilities p

@@ -33,7 +33,7 @@ create or replace view public.v_hit_ladders as
 with day as (
   select o.city_key, o.for_date,
          (((o.for_date - 1)::timestamp + interval '18 hours') at time zone c.timezone) as cutoff_at
-    from public.fact_band_outcome o
+    from public.v_fact_band_outcome_clean o
     join public.cities c using (city_key)
    group by o.city_key, o.for_date, c.timezone
   having count(*) filter (where o.settled_yes) = 1
@@ -50,7 +50,7 @@ select d.city_key, d.for_date, d.cutoff_at, o.band_id,
          where e.band_id = o.band_id and e.side = 'YES' and e.computed_at <= d.cutoff_at
          order by e.computed_at desc limit 1)                            as market_price
   from day d
-  join public.fact_band_outcome o on o.city_key = d.city_key and o.for_date = d.for_date
+  join public.v_fact_band_outcome_clean o on o.city_key = d.city_key and o.for_date = d.for_date
   join public.v_canonical_bands cb on cb.band_id = o.band_id
   join public.v_canonical_markets cm on cm.market_id = cb.market_id
   left join public.v_verified_weather_outcomes v

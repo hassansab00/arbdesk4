@@ -111,6 +111,21 @@ jobs:
         timeout-minutes: 10
         run: python scripts/model_promotion.py
 
+      # 4c. The early record (plan v2 P4.4): a band banked before 13 Sep is
+      #     read by the learners only with the venue's confirmed answer. On
+      #     24 Sep 2,027 early bands had one and 3,578 were still unverified
+      #     or partial; the sweep above can still prove them, so the answers
+      #     it confirms are added here, before databank freezes signal
+      #     outcomes from the clean record. Idempotent; adds, never rewrites.
+      - name: Rebuild the early record from the venue
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: |
+          python - <<'PY'
+          from common import rpc
+          print("early bands rebuilt from the venue:", rpc("rebuild_early_band_outcomes"))
+          PY
+
       # 5. Freeze the desk's own record - what it predicted, what the market
       #    said, what happened. These rows are never updated: a maximum frozen
       #    too early is wrong forever, which is why it waits for settlement.

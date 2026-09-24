@@ -128,6 +128,9 @@ TABLES = {
     "weather_events":                append("detected_at", "event_id"),
     "trades_observed":               append("ingested_at", "trade_id"),
     "fact_band_outcome":             closed("for_date", "band_id"),
+    # plan v2 P4.4: which early outcomes the learners read, and which bands are out
+    "fact_band_outcome_venue_rebuilt": append("rebuilt_at", "band_id"),
+    "fact_band_outcome_exclusions":  append("recorded_at", "band_id"),
     "fact_forecast_outcome":         closed("for_date", "city_key", "for_date", "model", "lead_days"),
     "fact_signal_outcome":           closed("for_date", "signal_id"),
     "derived_city_day_features":     closed("obs_date", "city_key", "obs_date"),

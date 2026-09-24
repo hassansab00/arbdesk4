@@ -239,7 +239,7 @@ left join lateral (
    limit 1
 ) p on true
 left join mv_venue_band_resolution vb on vb.band_id = b.band_id
-left join fact_band_outcome fb on fb.band_id = b.band_id
+left join v_fact_band_outcome_clean fb on fb.band_id = b.band_id
 where m.resolution_date >= (current_date - 45)
   and m.resolution_date <= (current_date + 16);
 
