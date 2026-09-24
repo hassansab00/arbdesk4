@@ -519,6 +519,15 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
+  "prediction_checkpoints": [
+    {
+      "cadence": "only when you run it",
+      "file": "tick.yml",
+      "how": "scripts/tick.py",
+      "kind": "action",
+      "name": "Tick (hourly checkpoints)"
+    }
+  ],
   "research_captures": [
     {
       "cadence": "daily",

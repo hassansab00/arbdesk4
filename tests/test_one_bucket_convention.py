@@ -59,6 +59,8 @@ SCRIPT_RAW_READS = {
     "scripts/weather_outcomes.py": "markets: rules_text and last_seen_at, which the canonical "
                                    "view does not carry; the unit comes from v_canonical_markets",
     "scripts/databank.py": "markets: ids and dates; the bounds come from v_canonical_bands",
+    "scripts/tick.py": "bands: the YES token of each due band, for its CLOB book; the bounds "
+                       "come from v_canonical_bands",
 }
 
 RAW_CALL = re.compile(r"rest(?:_all)?\(\s*['\"](bands|markets)['\"]", re.S)

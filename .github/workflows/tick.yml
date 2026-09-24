@@ -1,0 +1,66 @@
+name: Tick (hourly checkpoints)
+
+# THE HOURLY TICK (plan v2 P6.1), first stage: the checkpoint writer (P4.2).
+# scripts/tick.py writes one prediction_checkpoints row per city whose
+# checkpoint fell in the last 75 minutes, on the city's own clock.
+#
+# BY HAND ONLY, UNTIL IT HAS BEEN TIMED. GitHub bills each job in whole
+# minutes, so the tick is worth scheduling hourly only if it finishes inside
+# 60 s: at 61 s it costs two, 1,440 a month on its own. The schedule
+# (hourly at :35), the new budget constants and retiring pipeline_intraday
+# land together in P6.1's next PR, with the measured wall time written into
+# MEASURED_MINUTES.
+#
+# Built for the minute: one job, no matrix, a shallow sparse checkout of the
+# two paths it needs, and a cached virtualenv so a warm run installs nothing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Price and print, write nothing (true/false)'
+        required: false
+        default: 'false'
+      at:
+        description: 'Rehearse as if it were this UTC time (ISO, blank = now)'
+        required: false
+        default: ''
+
+concurrency:
+  group: tick
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: scripts
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            scripts
+            requirements.runtime.txt
+          sparse-checkout-cone-mode: false
+      - id: py
+        uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - id: venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: tick-venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-${{ hashFiles('requirements.runtime.txt') }}
+      - if: steps.venv.outputs.cache-hit != 'true'
+        run: python -m venv .venv && .venv/bin/pip install -q -r requirements.runtime.txt
+      - name: Checkpoints
+        # Inputs reach the script through the environment, never the shell
+        # line, and tick.py parses --at as a timestamp or refuses it.
+        env:
+          TICK_DRY_RUN: ${{ github.event.inputs.dry_run }}
+          TICK_AT: ${{ github.event.inputs.at }}
+        run: .venv/bin/python scripts/tick.py
