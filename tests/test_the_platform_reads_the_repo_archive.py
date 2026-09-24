@@ -61,3 +61,16 @@ def test_the_manifest_proves_it_can_read_the_repo():
     assert "repo_read: await probeRepo()" in ROUTE
     probe = ROUTE[ROUTE.index("async function probeRepo("):ROUTE.index("async function assetRows(")]
     assert "contents/data/archive" in probe and "contents: read" in probe
+
+
+def test_the_index_is_read_from_the_repo_never_from_the_site_itself():
+    """24 Sep: every /api/archive call was a 500. The route fetched
+    `${origin}/archive/index.json` - the deployment asking itself - and behind
+    Vercel Authentication that answer is the sign-in page, HTML with a 200, on
+    which r.json() threw. The index lives in the repo beside the files; the
+    build-time copy is the fallback; no body is parsed as JSON unchecked."""
+    body = ROUTE[ROUTE.index("async function manifest("):ROUTE.index("/** Minimal CSV reader.")]
+    assert "contents/web/public/archive/index.json" in body
+    assert "${origin}" not in ROUTE.replace("`${origin}/archive/index.json` - the site asking", "")
+    assert "bundledIndex" in body and "r.json()" not in body
+    assert "manifest_source: manifestSource" in ROUTE

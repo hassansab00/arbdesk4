@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { gunzipSync } from 'node:zlib';
 import { decodePayload } from '@/lib/archiveFormat';
+import bundledIndex from '../../../public/archive/index.json';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -69,12 +70,31 @@ type Manifest = {
   }>;
 };
 
-async function manifest(origin: string): Promise<Manifest> {
-  // Served as a static file from web/public, so this is the same fetch the
-  // browser would make - no token, no database.
-  const r = await fetch(`${origin}/archive/index.json`, { cache: 'no-store' });
-  if (!r.ok) return { datasets: {} };
-  return await r.json() as Manifest;
+/**
+ * THE INDEX, FROM THE REPO (plan v2.1 P1.8). This used to fetch
+ * `${origin}/archive/index.json` - the site asking itself over HTTP. Behind
+ * Vercel Authentication that request gets the sign-in page, a 200 of HTML, and
+ * `r.json()` threw: on 24 Sep every call to /api/archive was a 500 with an
+ * empty body ("Unexpected token '<', "<!DOCTYPE "..."). The repo is where the
+ * archive job commits the index, beside the files it names, so that is where
+ * it is read - current to the last commit, no redeploy needed. The copy
+ * bundled at build time is the fallback, and nothing here parses a body that
+ * is not JSON.
+ */
+async function manifest(): Promise<{ index: Manifest; source: string }> {
+  const tok = token();
+  if (tok) {
+    try {
+      const r = await fetch(
+        `https://api.github.com/repos/${repo()}/contents/web/public/archive/index.json?ref=${ARCHIVE_REF}`,
+        { headers: { Authorization: `Bearer ${tok}`, Accept: 'application/vnd.github.raw' },
+          cache: 'no-store' });
+      if (r.ok) return { index: JSON.parse(await r.text()) as Manifest, source: 'repo' };
+    } catch {
+      // fall through to the bundled copy
+    }
+  }
+  return { index: bundledIndex as Manifest, source: 'bundled at build' };
 }
 
 /** Minimal CSV reader. The archive writes with Python's csv module: RFC 4180,
@@ -186,13 +206,13 @@ async function assetRows(dataset: string, assetName: string, tag: string): Promi
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const origin = url.origin;
   const dataset = url.searchParams.get('dataset');
-  const idx = await manifest(origin);
+  const { index: idx, source: manifestSource } = await manifest();
 
   if (!dataset) {
     return NextResponse.json({
       ...idx,
+      manifest_source: manifestSource,
       // So a page can say "archived, but this deployment cannot reach it"
       // rather than showing an empty table and implying the data is gone.
       can_fetch_rows: !!token(),
