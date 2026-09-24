@@ -12,7 +12,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## What this is\n\nThe only workflow in AD4 that holds a GitHub token.\n\nThe Synthesis page has a \"Learn from what has settled\" button. It cannot start a GitHub Action itself - a page that could would be a page carrying a credential, and that credential would end up in the browser bundle. So the button calls this workflow's webhook, and the token lives here.\n\n### Set up\n1. Config -> github_owner / github_repo\n2. Config -> github_token: a fine-grained PAT scoped to that ONE repository, with Repository permissions -> Actions: Read and write. Nothing else.\n3. Activate the workflow, copy the Production webhook URL, and paste it on the AD4 Workflows page as P2.1_relearn.\n\nNEVER put this token in Vercel or in any NEXT_PUBLIC_ variable.",
+        "content": "## What this is\n\nThe only workflow in AD4 that holds a GitHub token.\n\nThe Synthesis page has a \"Learn from what has settled\" button. It cannot start a GitHub Action itself - a page that could would be a page carrying a credential, and that credential would end up in the browser bundle. So the button calls this workflow's webhook, and the token lives here.\n\n### Set up\n1. Config -> github_owner / github_repo\n2. Credentials -> Header Auth named \"AD4 GitHub Actions\": Name `Authorization`, Value `Bearer ` + a fine-grained PAT scoped to that ONE repository, with Repository permissions -> Actions: Read and write. Nothing else. The Dispatch node uses it; Config holds no token.\n3. The webhook needs the header credential \"AD4 Webhook Key\" (X-AD4-Key), the same key as Vercel's N8N_WEBHOOK_KEY, so only the platform's server can call it.\n4. Activate the workflow, copy the Production webhook URL, and paste it on the AD4 Workflows page as P2.1_relearn.\n\nNEVER put this token in Vercel or in any NEXT_PUBLIC_ variable.",
         "height": 460,
         "width": 420
       },
@@ -40,10 +40,9 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "ad4-relearn",
+        "authentication": "headerAuth",
         "responseMode": "responseNode",
-        "options": {
-          "allowedOrigins": "*"
-        }
+        "options": {}
       },
       "id": "trig-hook",
       "name": "Webhook Trigger",
@@ -52,7 +51,13 @@
       "position": [
         -40,
         200
-      ]
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ad4-webhook-key",
+          "name": "AD4 Webhook Key"
+        }
+      }
     },
     {
       "parameters": {
@@ -74,12 +79,6 @@
               "id": "3",
               "name": "github_ref",
               "value": "main",
-              "type": "string"
-            },
-            {
-              "id": "4",
-              "name": "github_token",
-              "value": "",
               "type": "string"
             },
             {
@@ -108,7 +107,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// AD4-KEY-CHECK\n// THE KEY IS NOT IN THIS FILE ANY MORE, AND THAT IS THE POINT.\n//\n// Every Supabase node in this workflow authenticates with an n8n SUPABASE\n// CREDENTIAL rather than a key pasted into the Config node. That is one place\n// to set it instead of twelve, it is encrypted at rest in n8n, and exporting\n// this workflow can no longer leak it - the old shape had the service key\n// sitting in plain text inside a JSON file that gets emailed around.\n//\n// SET IT UP ONCE, BEFORE IMPORTING ANYTHING:\n//   n8n -> Credentials -> New -> Supabase API\n//     Name         AD4 Supabase        <- this name exactly\n//     Host         https://<your-project-ref>.supabase.co\n//     Service Role the SERVICE ROLE key (Project Settings -> API keys)\n//\n// The name matters because every Supabase node in every AD4 workflow is\n// already bound to a credential called AD4 Supabase. Create it first and\n// n8n links all of them on import - nothing to pick node by node. Import\n// first and the nodes come in unbound, and you pick the credential on each\n// one by hand; it works, it is just ~57 dropdowns instead of zero.\n//\n// The credential sends `apikey` and `Authorization: Bearer` itself, which is\n// exactly what these nodes used to set by hand.\n//\n// WHAT STILL CHECKS THE KEY. This node can no longer read it - a credential\n// is not visible to an expression, by design. Two things downstream do:\n//\n//   the schedule gate, immediately below. sql/ad4_38 revokes should_run from\n//   anon, so a credential holding the publishable key is refused HERE, two\n//   nodes in, before a single row is fetched.\n//\n//   the write guard in the Summary node, which names any refusal the\n//   database gives and refuses to report success on a run that wrote nothing.\n//\n// supabase_url stays in Config because an expression has to build the request\n// URL and cannot read the credential's host. It is not a secret.\n{\n  const cfg = $('Config').first().json ?? {};\n  const url = String(cfg.supabase_url ?? '').trim();\n  if (!url) {\n    throw new Error(\n      'Config -> supabase_url is empty. Set it to exactly ' +\n      'https://<your-project-ref>.supabase.co - no trailing slash and no /rest/v1, ' +\n      'which every node below appends itself. The KEY does not go here: it belongs in ' +\n      'the n8n Supabase credential (Credentials -> New -> Supabase API), which is ' +\n      'where the nodes now read it from.');\n  }\n  if (!/^https:\\/\\//.test(url) || /\\/rest\\b/.test(url) || /\\/$/.test(url)) {\n    throw new Error(\n      `Config -> supabase_url is \"${url}\", which is not the shape every node below ` +\n      'expects: https://<your-project-ref>.supabase.co, no trailing slash, no /rest/v1. ' +\n      'Nothing was fetched and nothing was written.');\n  }\n}\n\n// AD4-KEY-CHECK\n// A TOKEN THAT CAN START A BUILD IS NOT A SUPABASE KEY.\n//\n// This workflow is the one place in AD4 that holds a GitHub token, and it is\n// deliberately the only one: the browser button that calls it holds nothing.\n// A page that could start a workflow on its own would be a page carrying a\n// credential, and that credential would end up in the bundle.\n//\n// So the checks here are about the GitHub side, not the database side. Nothing\n// below prints, returns or logs the token.\n{\n  const cfg = $('Config').first().json ?? {};\n  const need = ['github_owner', 'github_repo', 'github_token'];\n  const missing = need.filter((k) => !String(cfg[k] ?? '').trim());\n  if (missing.length) {\n    throw new Error(\n      `Config.${missing.join(' and Config.')} is empty. This workflow asks GitHub to run the ` +\n      `learning Actions, so it needs the repository and a token with the \"actions: write\" ` +\n      `permission - a fine-grained personal access token scoped to that one repository is ` +\n      `enough. Put it in Config -> github_token here in n8n and NOWHERE ELSE: not in Vercel, ` +\n      `not in any NEXT_PUBLIC_ variable, not in the browser.`);\n  }\n  const tok = String(cfg.github_token).trim();\n  if (tok.startsWith('eyJ') || tok.startsWith('sb_')) {\n    throw new Error(\n      'Config -> github_token holds a Supabase key, not a GitHub token. GitHub tokens begin ' +\n      'ghp_, github_pat_ or gho_. Nothing was dispatched.');\n  }\n  if (/\\s/.test(tok)) {\n    throw new Error('Config -> github_token has whitespace in it - it was probably pasted with a ' +\n                    'line break. Nothing was dispatched.');\n  }\n}\n\nreturn $input.all();\n"
+        "jsCode": "// AD4-KEY-CHECK\n// THE KEY IS NOT IN THIS FILE ANY MORE, AND THAT IS THE POINT.\n//\n// Every Supabase node in this workflow authenticates with an n8n SUPABASE\n// CREDENTIAL rather than a key pasted into the Config node. That is one place\n// to set it instead of twelve, it is encrypted at rest in n8n, and exporting\n// this workflow can no longer leak it - the old shape had the service key\n// sitting in plain text inside a JSON file that gets emailed around.\n//\n// SET IT UP ONCE, BEFORE IMPORTING ANYTHING:\n//   n8n -> Credentials -> New -> Supabase API\n//     Name         AD4 Supabase        <- this name exactly\n//     Host         https://<your-project-ref>.supabase.co\n//     Service Role the SERVICE ROLE key (Project Settings -> API keys)\n//\n// The name matters because every Supabase node in every AD4 workflow is\n// already bound to a credential called AD4 Supabase. Create it first and\n// n8n links all of them on import - nothing to pick node by node. Import\n// first and the nodes come in unbound, and you pick the credential on each\n// one by hand; it works, it is just ~57 dropdowns instead of zero.\n//\n// The credential sends `apikey` and `Authorization: Bearer` itself, which is\n// exactly what these nodes used to set by hand.\n//\n// WHAT STILL CHECKS THE KEY. This node can no longer read it - a credential\n// is not visible to an expression, by design. Two things downstream do:\n//\n//   the schedule gate, immediately below. sql/ad4_38 revokes should_run from\n//   anon, so a credential holding the publishable key is refused HERE, two\n//   nodes in, before a single row is fetched.\n//\n//   the write guard in the Summary node, which names any refusal the\n//   database gives and refuses to report success on a run that wrote nothing.\n//\n// supabase_url stays in Config because an expression has to build the request\n// URL and cannot read the credential's host. It is not a secret.\n{\n  const cfg = $('Config').first().json ?? {};\n  const url = String(cfg.supabase_url ?? '').trim();\n  if (!url) {\n    throw new Error(\n      'Config -> supabase_url is empty. Set it to exactly ' +\n      'https://<your-project-ref>.supabase.co - no trailing slash and no /rest/v1, ' +\n      'which every node below appends itself. The KEY does not go here: it belongs in ' +\n      'the n8n Supabase credential (Credentials -> New -> Supabase API), which is ' +\n      'where the nodes now read it from.');\n  }\n  if (!/^https:\\/\\//.test(url) || /\\/rest\\b/.test(url) || /\\/$/.test(url)) {\n    throw new Error(\n      `Config -> supabase_url is \"${url}\", which is not the shape every node below ` +\n      'expects: https://<your-project-ref>.supabase.co, no trailing slash, no /rest/v1. ' +\n      'Nothing was fetched and nothing was written.');\n  }\n}\n\n// AD4-KEY-CHECK\n// THE GITHUB TOKEN IS IN A CREDENTIAL, NOT IN CONFIG (plan v2 P6.4).\n//\n// This workflow is the one place in AD4 that can start a GitHub Action, and\n// deliberately the only one: the platform's Run buttons call its webhook from\n// the server, and the page holds nothing. The token that lets it dispatch\n// lives in the n8n credential \"AD4 GitHub Actions\" (Header Auth,\n// Authorization: Bearer github_pat_...), which the Dispatch node uses. A\n// credential is encrypted at rest and never leaves in an export; a Config\n// field is plain text in both. So a token found in Config is refused, not\n// used: it has to move, and nothing below prints, returns or logs it.\n{\n  const cfg = $('Config').first().json ?? {};\n  const need = ['github_owner', 'github_repo'];\n  const missing = need.filter((k) => !String(cfg[k] ?? '').trim());\n  if (missing.length) {\n    throw new Error(\n      `Config.${missing.join(' and Config.')} is empty. This workflow asks GitHub to run the ` +\n      'learning Actions, so it needs to know which repository. Nothing was dispatched.');\n  }\n  if (String(cfg.github_token ?? '').trim()) {\n    throw new Error(\n      'Config -> github_token holds a token. It does not belong there: a Config field is plain ' +\n      'text in every export of this workflow. Delete that field, and put the token in the n8n ' +\n      'credential \"AD4 GitHub Actions\" (Header Auth; Name: Authorization; Value: Bearer ' +\n      'github_pat_...), which the Dispatch node reads - NOWHERE ELSE: not in Vercel, not in ' +\n      'any NEXT_PUBLIC_ variable, not in the browser. Nothing was dispatched.');\n  }\n}\n\nreturn $input.all();\n"
       },
       "id": "check",
       "name": "Check config",
@@ -136,13 +135,11 @@
       "parameters": {
         "method": "POST",
         "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $('Config').first().json.github_token }}"
-            },
             {
               "name": "Accept",
               "value": "application/vnd.github+json"
@@ -185,11 +182,17 @@
         120
       ],
       "onError": "continueRegularOutput",
-      "alwaysOutputData": true
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ad4-github-actions",
+          "name": "AD4 GitHub Actions"
+        }
+      }
     },
     {
       "parameters": {
-        "jsCode": "// DID GITHUB TAKE IT?\n//\n// A dispatch that succeeds returns 204 with an EMPTY BODY, so \"no output\" is\n// the success case here and cannot be used as the failure test. The failures\n// all return a body, and each one means something specific and fixable.\nconst cfg = $('Config').first().json ?? {};\nconst asked = $('Build dispatches').all().map((i) => i.json);\nconst results = $('Dispatch').all().map((i) => i.json ?? {});\n\nconst problems = [];\nfor (const r of results) {\n  if (!r || typeof r !== 'object' || !r.message) continue;\n  problems.push(String(r.message));\n}\n\nif (problems.length) {\n  const m = problems[0];\n  if (/Bad credentials/i.test(m)) {\n    throw new Error(\n      'GitHub rejected the token (Bad credentials). It is wrong, revoked, or expired. ' +\n      'Replace Config -> github_token with a token that has \"actions: write\" on ' +\n      `${cfg.github_owner}/${cfg.github_repo}. Nothing was started.`);\n  }\n  if (/Resource not accessible|must have admin|permission/i.test(m)) {\n    throw new Error(\n      'The token is valid but is not allowed to start workflows. A fine-grained token needs ' +\n      'Repository permissions -> Actions: Read and write on ' +\n      `${cfg.github_owner}/${cfg.github_repo}. Nothing was started.`);\n  }\n  if (/Not Found/i.test(m)) {\n    throw new Error(\n      `GitHub says Not Found. Either ${cfg.github_owner}/${cfg.github_repo} is wrong, or one of ` +\n      'the workflow files does not exist on the default branch, or the token cannot see the ' +\n      'repository at all. A workflow can only be dispatched if it carries workflow_dispatch AND ' +\n      'exists on the branch in Config -> github_ref. Nothing was started.');\n  }\n  if (/No ref found|does not have a workflow/i.test(m)) {\n    throw new Error(\n      `Config -> github_ref is \"${cfg.github_ref || 'main'}\" and GitHub cannot find it, or the ` +\n      'workflow does not exist on it. Set it to the branch the Actions actually live on. ' +\n      'Nothing was started.');\n  }\n  throw new Error(`GitHub refused the dispatch: ${m}. Nothing was started.`);\n}\n\nconst started = asked.map((a) => a.stage);\nconst summary =\n  `AD4 P2.1: asked GitHub to run ${started.length} learning stage(s) in order: ${started.join(' -> ')}. ` +\n  `Each is queued ${asked[0]?.wait_seconds ?? 0}s apart so a stage reads what the one before it wrote. ` +\n  `Watch them at ${asked[0]?.runs_url ?? 'the repository Actions tab'}.`;\n\nreturn [{ json: {\n  summary,\n  status: 'ok',\n  rows: started.length,\n  stages: asked.map((a) => ({ stage: a.stage, file: a.file, why: a.why, runs_url: a.runs_url })),\n  log: {\n    p_job: 'P2.1_relearn',\n    p_status: 'ok',\n    p_rows: started.length,\n    p_detail: { stages: started, summary, trigger: $execution.mode, execution_id: $execution.id },\n  },\n}}];\n"
+        "jsCode": "// DID GITHUB TAKE IT?\n//\n// A dispatch that succeeds returns 204 with an EMPTY BODY, so \"no output\" is\n// the success case here and cannot be used as the failure test. The failures\n// all return a body, and each one means something specific and fixable.\nconst cfg = $('Config').first().json ?? {};\nconst asked = $('Build dispatches').all().map((i) => i.json);\nconst results = $('Dispatch').all().map((i) => i.json ?? {});\n\nconst problems = [];\nfor (const r of results) {\n  if (!r || typeof r !== 'object' || !r.message) continue;\n  problems.push(String(r.message));\n}\n\nif (problems.length) {\n  const m = problems[0];\n  if (/Bad credentials/i.test(m)) {\n    throw new Error(\n      'GitHub rejected the token (Bad credentials). It is wrong, revoked, or expired. ' +\n      'Replace the value in the n8n credential \"AD4 GitHub Actions\" with \"Bearer \" and a ' +\n      'fine-grained token that has Actions: Read and write on ' +\n      `${cfg.github_owner}/${cfg.github_repo}. Nothing was started.`);\n  }\n  if (/Resource not accessible|must have admin|permission/i.test(m)) {\n    throw new Error(\n      'The token in the credential \"AD4 GitHub Actions\" is valid but is not allowed to start ' +\n      'workflows. A fine-grained token needs Repository permissions -> Actions: Read and write on ' +\n      `${cfg.github_owner}/${cfg.github_repo}. Nothing was started.`);\n  }\n  if (/Not Found/i.test(m)) {\n    throw new Error(\n      `GitHub says Not Found. Either ${cfg.github_owner}/${cfg.github_repo} is wrong, or one of ` +\n      'the workflow files does not exist on the default branch, or the token cannot see the ' +\n      'repository at all. A workflow can only be dispatched if it carries workflow_dispatch AND ' +\n      'exists on the branch in Config -> github_ref. Nothing was started.');\n  }\n  if (/No ref found|does not have a workflow/i.test(m)) {\n    throw new Error(\n      `Config -> github_ref is \"${cfg.github_ref || 'main'}\" and GitHub cannot find it, or the ` +\n      'workflow does not exist on it. Set it to the branch the Actions actually live on. ' +\n      'Nothing was started.');\n  }\n  throw new Error(`GitHub refused the dispatch: ${m}. Nothing was started.`);\n}\n\nconst started = asked.map((a) => a.stage);\nconst summary =\n  `AD4 P2.1: asked GitHub to run ${started.length} learning stage(s) in order: ${started.join(' -> ')}. ` +\n  `Each is queued ${asked[0]?.wait_seconds ?? 0}s apart so a stage reads what the one before it wrote. ` +\n  `Watch them at ${asked[0]?.runs_url ?? 'the repository Actions tab'}.`;\n\nreturn [{ json: {\n  summary,\n  status: 'ok',\n  rows: started.length,\n  stages: asked.map((a) => ({ stage: a.stage, file: a.file, why: a.why, runs_url: a.runs_url })),\n  log: {\n    p_job: 'P2.1_relearn',\n    p_status: 'ok',\n    p_rows: started.length,\n    p_detail: { stages: started, summary, trigger: $execution.mode, execution_id: $execution.id },\n  },\n}}];\n"
       },
       "id": "summary",
       "name": "Summary",

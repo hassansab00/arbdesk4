@@ -100,12 +100,17 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "ad4-refresh-rules",
+        "authentication": "headerAuth",
         "responseMode": "responseNode",
-        "options": {
-          "allowedOrigins": "*"
-        }
+        "options": {}
       },
-      "webhookId": "ad4-refresh-rules"
+      "webhookId": "ad4-refresh-rules",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ad4-webhook-key",
+          "name": "AD4 Webhook Key"
+        }
+      }
     },
     {
       "id": "config",

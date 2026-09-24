@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOperator, serviceClient } from "../../../lib/operatorAuth";
+import { webhookHeaders, webhookRefusal } from "../../../lib/n8nWebhook";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -118,14 +119,16 @@ export async function POST(request: Request) {
       if (!url || typeof url !== "string") return fail(`No webhook URL is saved for ${job || "(none)"}.`, 400);
       if (!/^https:\/\//i.test(url)) return fail(`The saved URL for ${job} is not https.`, 400);
       const extra = (body.body && typeof body.body === "object" ? body.body : {}) as Record<string, unknown>;
+      // Server to n8n only, carrying the webhook key (plan v2 P6.4).
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: webhookHeaders(),
         body: JSON.stringify({ source: "ad4-ui", ...extra }),
         cache: "no-store",
         signal: AbortSignal.timeout(20_000),
       });
-      const text = await res.text();
+      const refused = webhookRefusal(res.status);
+      const text = refused ?? (await res.text());
       return NextResponse.json({ data: { status: res.status, ok: res.ok, text: text.slice(0, 4000) }, error: null },
         { headers: noStore });
     }

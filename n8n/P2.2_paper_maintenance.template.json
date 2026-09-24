@@ -58,13 +58,18 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "ad4-paper-maintenance",
+        "authentication": "headerAuth",
         "responseMode": "responseNode",
-        "options": {
-          "allowedOrigins": "*"
-        }
+        "options": {}
       },
       "webhookId": "ad4-paper-maintenance",
-      "id": "19774457-8784-5bc0-9fa4-cf3822c18ef6"
+      "id": "19774457-8784-5bc0-9fa4-cf3822c18ef6",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ad4-webhook-key",
+          "name": "AD4 Webhook Key"
+        }
+      }
     },
     {
       "name": "Config",

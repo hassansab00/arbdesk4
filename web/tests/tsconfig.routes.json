@@ -16,6 +16,7 @@
   "include": [],
   "files": [
     "../lib/operatorAuth.ts",
+    "../lib/n8nWebhook.ts",
     "../app/api/operator/route.ts",
     "../app/api/paper-desk/route.ts",
     "../app/api/paper-run/route.ts",

@@ -71,5 +71,16 @@ const forged = (url, extra = {}) => new Request(`${SITE}${url}`, {
   assert.deepEqual(auth.normaliseOperators(['A@x.io', 3, '', null, ' b@y.io ']), ['a@x.io', 'b@y.io']);
   assert.deepEqual(auth.normaliseOperators({ emails: ['a@x.io'] }), [], 'only a JSON array is an operator list');
 
+  // 3. The n8n webhook key (plan v2 P6.4): sent from the server when set,
+  // absent when not, and never echoed back in a refusal.
+  const hook = require(path.join(OUT, 'lib', 'n8nWebhook.js'));
+  assert.deepEqual(hook.webhookHeaders({}), { 'Content-Type': 'application/json' });
+  assert.equal(hook.webhookHeaders({ N8N_WEBHOOK_KEY: ' k3y ' })['X-AD4-Key'], 'k3y');
+  assert.equal(hook.webhookHeaders({ NEXT_PUBLIC_N8N_WEBHOOK_KEY: 'k' })['X-AD4-Key'], undefined,
+    'a NEXT_PUBLIC_ copy of the key must never be what the server sends');
+  assert.equal(hook.webhookRefusal(200, { N8N_WEBHOOK_KEY: 'k' }), null);
+  assert.match(hook.webhookRefusal(403, {}), /set N8N_WEBHOOK_KEY/);
+  assert.ok(!hook.webhookRefusal(403, { N8N_WEBHOOK_KEY: 'k3y' }).includes('k3y'), 'a refusal echoed the key');
+
   console.log('PASS: operator gate - sign-in off passes to the service key; sign-in on refuses a forged Origin with 401 on every write route');
 })().catch((e) => { console.error(e); process.exit(1); });
