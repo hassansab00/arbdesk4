@@ -42,6 +42,7 @@ describes an hour that has already finished. max_reading_age_min is a hard
 gate, not a preference.
 """
 from strategies.base import Strategy, Signal, dedupe_key
+from venue import venue_read
 
 DEFAULT_ENTRY_WINDOW_MIN = 60      # "an hour or less before peak"
 DEFAULT_MAX_READING_AGE_MIN = 90   # older than this and the slope is history
@@ -58,6 +59,10 @@ def _to_local(c, unit):
 
 
 def _contains(band, value):
+    # The venue settles on the whole degree (venue.py, plan v2 P5.0 item 6):
+    # buckets are [lo, hi) on whole degrees, so a raw 23.6 would sit in the
+    # bucket below the one the venue will pay.
+    value = venue_read(value)
     if value is None:
         return False
     if band.open_low:
@@ -73,7 +78,7 @@ def _above(band, value):
     """Wholly above `value` - the bands a falling day can no longer reach."""
     if value is None or band.band_lo is None:
         return False
-    return band.band_lo > value
+    return band.band_lo > venue_read(value)
 
 
 class S7PrePeakGradient(Strategy):
@@ -124,7 +129,7 @@ class S7PrePeakGradient(Strategy):
                 # on its best tenth of afternoons.
                 reachable = (band.open_low
                              or band.band_lo is None
-                             or (implied_low is not None and implied_low >= band.band_lo))
+                             or (implied_low is not None and venue_read(implied_low) >= band.band_lo))
                 if reachable:
                     out.append(Signal(
                         strategy_id=self.config.strategy_id, band_id=band.band_id, side="YES",

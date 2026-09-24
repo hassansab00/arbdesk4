@@ -44,6 +44,7 @@ window would systematically pick the narrowest, because narrow windows are
 enumerated first and are cheapest.
 """
 from strategies.base import Strategy, Signal, dedupe_key
+from venue import venue_read
 
 DEFAULT_MAX_BUCKETS = 4
 DEFAULT_MIN_EV_PER_DOLLAR = 0.08   # 8c expected on the dollar, after fees
@@ -79,6 +80,10 @@ def _to_local(c, unit):
 
 
 def _contains(band, value):
+    # The venue settles on the whole degree (venue.py, plan v2 P5.0 item 6):
+    # buckets are [lo, hi) on whole degrees, so a raw 23.6 would sit in the
+    # bucket below the one the venue will pay.
+    value = venue_read(value)
     if value is None:
         return False
     if band.open_low:
