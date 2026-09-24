@@ -274,10 +274,19 @@
           "gzip_bytes": 2397593,
           "rows": 26734,
           "to": "2026-09-20"
+        },
+        {
+          "archived_at": "2026-09-24T08:05:45+00:00",
+          "archived_through": "2026-09-22T08:04:27.361688+00:00",
+          "asset": "research-2026-09-20-to-2026-09-22.csv.gz",
+          "from": "2026-09-20",
+          "gzip_bytes": 3813608,
+          "rows": 19127,
+          "to": "2026-09-22"
         }
       ],
       "release_tag": "research-archive",
-      "rows_archived": 130570,
+      "rows_archived": 149697,
       "table": "research_captures"
     },
     "resolution": {
@@ -299,10 +308,19 @@
           "gzip_bytes": 563050,
           "rows": 679,
           "to": "2026-09-19"
+        },
+        {
+          "archived_at": "2026-09-24T08:06:03+00:00",
+          "archived_through": "2026-09-21T08:05:45.138308+00:00",
+          "asset": "resolution-2026-09-19-to-2026-09-20.csv.gz",
+          "from": "2026-09-19",
+          "gzip_bytes": 2304547,
+          "rows": 2656,
+          "to": "2026-09-20"
         }
       ],
       "release_tag": "resolution-archive",
-      "rows_archived": 8034,
+      "rows_archived": 10690,
       "table": "paper_resolution_evidence"
     },
     "trades": {
@@ -316,13 +334,22 @@
           "rows": 90640,
           "sha256": "145486f286ec1fe59ad22b17fcfd3e1989ac4257125215de8915fa6d3a1b2bc2",
           "to": "2026-04-17"
+        },
+        {
+          "archived_at": "2026-09-24T08:06:31+00:00",
+          "archived_through": "2026-08-25T08:06:04.178091+00:00",
+          "asset": "trades-2026-08-19-to-2026-08-25.csv.gz",
+          "from": "2026-08-19",
+          "gzip_bytes": 344301,
+          "rows": 14145,
+          "to": "2026-08-25"
         }
       ],
       "release_tag": "trades-archive",
-      "rows_archived": 90640,
+      "rows_archived": 104785,
       "table": "trades_observed"
     }
   },
   "rebuilt_from": "release assets, row counts parsed from the files themselves",
-  "updated_at": "2026-09-23T08:14:51+00:00"
+  "updated_at": "2026-09-24T08:06:31+00:00"
 }
