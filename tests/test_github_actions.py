@@ -259,15 +259,60 @@ def test_no_workflow_file_declares_the_same_key_twice():
             ) from None
 
 
+def n8n_clock():
+    """{workflow file: runs per 30 days} dispatched on a clock by n8n (plan v2 P6.1).
+
+    GitHub's cron dropped 6 of the tick's first 7 hourly runs on 24 Sep, so the
+    tick and intraday are started by the n8n workflow P6.1_clock instead. Those
+    runs bill Actions minutes exactly as scheduled ones do, so they count here:
+    the CLOCK table in its "Due this hour" node is one JSON literal, parsed.
+    """
+    import glob
+    import json as _json
+    import re as _re
+
+    out = {}
+    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.template.json"))):
+        for node in _json.load(open(path)).get("nodes", []):
+            code = node.get("parameters", {}).get("jsCode", "")
+            m = _re.search(r"const CLOCK = (\[.*?\]);\n", code)
+            if not m:
+                continue
+            for entry in _json.loads(m.group(1)):
+                hours = entry["hours_utc"]
+                per_day = 24 if hours == "*" else len(set(hours))
+                out[entry["file"]] = out.get(entry["file"], 0) + per_day * 30
+    return out
+
+
 def _scheduled():
-    """[(runs_per_month, minutes_per_run, name)] for every scheduled workflow."""
-    out = []
+    """[(runs_per_month, minutes_per_run, name)] for every workflow on a clock:
+    GitHub's own cron, or n8n's clock dispatching it."""
+    runs = dict(n8n_clock())
     for name, doc in workflows():
         sched = triggers(doc).get("schedule") or []
         n = sum(runs_per_30_days(entry["cron"]) for entry in sched)
         if n:
-            out.append((n, MEASURED_MINUTES.get(name, DEFAULT_MINUTES), name))
+            runs[name] = runs.get(name, 0) + n
+    out = [(n, MEASURED_MINUTES.get(name, DEFAULT_MINUTES), name) for name, n in runs.items() if n]
     return sorted(out, key=lambda r: -r[0] * r[1])
+
+
+def test_the_n8n_clock_is_the_only_clock_for_what_it_starts():
+    """A workflow on the n8n clock that ALSO keeps a GitHub cron runs twice
+    whenever GitHub's cron does fire - double the minutes for the same work.
+    And the clock can only start a workflow that exists and takes
+    workflow_dispatch; GitHub answers anything else with a 404 or a 422."""
+    clock = n8n_clock()
+    assert clock, "the n8n clock template (n8n/P6.1_clock.template.json) has no CLOCK table"
+    docs = dict(workflows())
+    for name in clock:
+        assert name in docs, f"the n8n clock dispatches {name}, which does not exist"
+        t = triggers(docs[name])
+        assert "workflow_dispatch" in t, f"{name} is on the n8n clock but cannot be dispatched"
+        assert not t.get("schedule"), (
+            f"{name} is on the n8n clock AND has a GitHub cron, so it runs twice "
+            f"whenever GitHub's cron fires")
 
 
 def test_the_scheduled_workflows_fit_in_the_minute_allowance():

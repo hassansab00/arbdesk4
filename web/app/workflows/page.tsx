@@ -168,6 +168,12 @@ const CATALOGUE: Array<{
     what: "Expires paper orders past their deadline and gives back the cash they had reserved, then reports what is still open. It does not fill or settle - the note on the workflow says exactly why.",
   },
   {
+    job: "P6.1_clock",
+    label: "Clock",
+    schedule: "hourly at :36 UTC",
+    what: "Starts the hourly checkpoint tick every hour, and the intraday pricing run at 00, 04, 08, 12, 16 and 20 UTC. GitHub's own schedule skipped most of those runs on 24 Sep; this one fires on the minute. Switch it off here to pause both.",
+  },
+  {
     job: "P4.1_health_watchdog",
     label: "Health Watchdog",
     schedule: "every 6 hours",

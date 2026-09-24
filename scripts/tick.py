@@ -41,7 +41,7 @@ CHECKPOINTS = ("d1_eve", "morning", "noon", "prepeak_2h", "prepeak_1h", "postpea
 PEAK_OFFSETS_H = {"prepeak_2h": -2, "prepeak_1h": -1, "postpeak_1h": 1}
 FIXED_LOCAL = {"morning": (0, 9, 0), "noon": (0, 12, 0), "d1_eve": (-1, 18, 0)}
 
-# A tick runs hourly at :35, so a decision time is normally 35-95 minutes old
+# A tick runs hourly at :36 (n8n's clock), so a decision time is normally 36-96 minutes old
 # when the first tick after it runs. 75 minutes catches every checkpoint once
 # with the tick on time, and twice across a 15-minute overlap - the second
 # write is ignored by the table's unique key.

@@ -4,7 +4,7 @@ name: Tick (hourly checkpoints)
 # scripts/tick.py writes one prediction_checkpoints row per city whose
 # checkpoint fell in the last 75 minutes, on the city's own clock.
 #
-# HOURLY AT :35, NOW THAT IT HAS BEEN TIMED. GitHub bills each job in whole
+# HOURLY AT :36 (started by n8n's clock, see `on:`), NOW THAT IT HAS BEEN TIMED. GitHub bills each job in whole
 # minutes, so the tick is worth an hourly schedule only inside 60 s: at 61 s
 # it costs two, 1,440 a month on its own. Dispatched on 24 Sep it took 35 s
 # cold and 21 s warm; tick.py stops itself at 45 s. It is paid for by the
@@ -16,8 +16,11 @@ name: Tick (hourly checkpoints)
 # two paths it needs, and a cached virtualenv so a warm run installs nothing.
 
 on:
-  schedule:
-    - cron: '35 * * * *'
+  # NO GITHUB CRON: n8n's "AD4 P6.1 - Clock" dispatches this every hour at
+  # :36 UTC. GitHub's cron ran this job once in its first seven hourly slots
+  # (11:35-17:35Z, 24 Sep); n8n's schedules fired on the minute all week.
+  # tests/test_github_actions.py counts the clock's runs against the budget
+  # from the CLOCK table in n8n/P6.1_clock.template.json.
   workflow_dispatch:
     inputs:
       dry_run:

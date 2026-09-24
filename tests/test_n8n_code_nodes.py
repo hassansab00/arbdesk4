@@ -1242,7 +1242,8 @@ def test_every_supabase_node_is_bound_to_the_same_named_credential():
     # - n8n_supabase_nodes() recognises a node by its credential type, so
     # an unbound one is invisible to the loop above and only the total
     # notices it.
-    assert bound == 68, f"expected 68 Supabase nodes across the files, found {bound}"
+    # 70: plus P6.1's clock (plan v2 P6.1), Check schedule and Log run.
+    assert bound == 70, f"expected 70 Supabase nodes across the files, found {bound}"
 
 
 def test_the_email_workflows_bind_smtp_and_a_real_sender():
@@ -1343,8 +1344,9 @@ def test_every_gate_throws_the_same_diagnostic():
         seen.setdefault(found[0], []).append(os.path.basename(path))
     assert len(seen) == 1, f"gates disagree: {[v for v in seen.values()]}"
     # 14: the 13 that were here, plus P1.6, whose gate is the same code
-    # copied rather than a second version of it.
-    assert len(next(iter(seen.values()))) == 14, seen
+    # copied rather than a second version of it. 15: plus the P6.1 clock,
+    # the same code copied again.
+    assert len(next(iter(seen.values()))) == 15, seen
 
 
 def test_the_service_key_is_let_through():

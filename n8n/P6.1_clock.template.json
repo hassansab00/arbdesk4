@@ -1,0 +1,373 @@
+{
+  "name": "AD4 P6.1 - Clock (dispatch the tick hourly, intraday every 4 h)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false,
+    "executionTimeout": 120
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## AD4 P6.1 - Clock\n\nGitHub's own cron dropped 6 of the tick's first 7 hourly runs on 24 Sep, and started none of intraday's 00:15, 08:15 and 16:15 runs. n8n's schedules fired on the minute all week, so the clock lives here and GitHub only runs what it is asked to.\n\nEvery hour at :36 UTC this dispatches:\n- tick.yml (the checkpoint writer), every hour\n- pipeline_intraday.yml, at 00, 04, 08, 12, 16 and 20 UTC\n\n:36, not :35: P0.4 starts at :34 and P0.5 at 22:38, and the stagger test needs each one's measured runtime plus a minute of room.\n\nThe CLOCK table in \"Due this hour\" is read by tests/test_github_actions.py and counted against the Actions minute budget (Rule 7). Change the cadence there and nowhere else.\n\nSet up: Config -> github_owner, github_repo, supabase_url. Dispatch uses the credential \"AD4 Github Actions\", the one Relearn uses. Each run is logged to ingest_log as job \"P6.1_clock\"; pause the clock by setting that job to off on the Workflows page (settings.workflow_schedules, sql/ad4_90_clock.sql).",
+        "height": 460,
+        "width": 440
+      },
+      "id": "note",
+      "name": "Note what",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1,
+              "triggerAtMinute": 36
+            }
+          ]
+        }
+      },
+      "id": "sched",
+      "name": "Every hour at :36",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -40,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "github_owner",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "github_repo",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "github_ref",
+              "value": "main",
+              "type": "string"
+            },
+            {
+              "id": "4",
+              "name": "supabase_url",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "cfg",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        180,
+        120
+      ]
+    },
+    {
+      "id": "sched-check",
+      "name": "Check schedule",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        380,
+        -50
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/should_run",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_job: \"P6.1_clock\", p_trigger: $('Every hour at :36').isExecuted ? \"schedule\" : \"manual\" }) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi"
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "ad4-supabase",
+          "name": "AD4 Supabase"
+        }
+      }
+    },
+    {
+      "id": "sched-gate",
+      "name": "Run now?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        570,
+        -50
+      ],
+      "parameters": {
+        "jsCode": "// AD4-KEY-CHECK\n// THE KEY IS NOT IN THIS FILE ANY MORE, AND THAT IS THE POINT.\n//\n// Every Supabase node in this workflow authenticates with an n8n SUPABASE\n// CREDENTIAL rather than a key pasted into the Config node. That is one place\n// to set it instead of twelve, it is encrypted at rest in n8n, and exporting\n// this workflow can no longer leak it - the old shape had the service key\n// sitting in plain text inside a JSON file that gets emailed around.\n//\n// SET IT UP ONCE, BEFORE IMPORTING ANYTHING:\n//   n8n -> Credentials -> New -> Supabase API\n//     Name         AD4 Supabase        <- this name exactly\n//     Host         https://<your-project-ref>.supabase.co\n//     Service Role the SERVICE ROLE key (Project Settings -> API keys)\n//\n// The name matters because every Supabase node in every AD4 workflow is\n// already bound to a credential called AD4 Supabase. Create it first and\n// n8n links all of them on import - nothing to pick node by node. Import\n// first and the nodes come in unbound, and you pick the credential on each\n// one by hand; it works, it is just ~57 dropdowns instead of zero.\n//\n// The credential sends `apikey` and `Authorization: Bearer` itself, which is\n// exactly what these nodes used to set by hand.\n//\n// WHAT STILL CHECKS THE KEY. This node can no longer read it - a credential\n// is not visible to an expression, by design. Two things downstream do:\n//\n//   the schedule gate, immediately below. sql/ad4_38 revokes should_run from\n//   anon, so a credential holding the publishable key is refused HERE, two\n//   nodes in, before a single row is fetched.\n//\n//   the write guard in the Summary node, which names any refusal the\n//   database gives and refuses to report success on a run that wrote nothing.\n//\n// supabase_url stays in Config because an expression has to build the request\n// URL and cannot read the credential's host. It is not a secret.\n{\n  const cfg = $('Config').first().json ?? {};\n  const url = String(cfg.supabase_url ?? '').trim();\n  if (!url) {\n    throw new Error(\n      'Config -> supabase_url is empty. Set it to exactly ' +\n      'https://<your-project-ref>.supabase.co - no trailing slash and no /rest/v1, ' +\n      'which every node below appends itself. The KEY does not go here: it belongs in ' +\n      'the n8n Supabase credential (Credentials -> New -> Supabase API), which is ' +\n      'where the nodes now read it from.');\n  }\n  if (!/^https:\\/\\//.test(url) || /\\/rest\\b/.test(url) || /\\/$/.test(url)) {\n    throw new Error(\n      `Config -> supabase_url is \"${url}\", which is not the shape every node below ` +\n      'expects: https://<your-project-ref>.supabase.co, no trailing slash, no /rest/v1. ' +\n      'Nothing was fetched and nothing was written.');\n  }\n}\n\n// Ask the database whether this run should do anything.\n//\n// n8n cannot be told from outside not to FIRE a schedule trigger, so the saving\n// is here: returning no items stops every node below, and the execution ends\n// having done two trivial requests instead of the whole job.\n//\n// settings.workflow_schedules owns the answer (sql/ad4_20_schedules.sql) and\n// the Workflows page edits it. A manual or webhook run always proceeds - a Run\n// button that obeyed the cadence would be a Run button that does nothing.\nconst d = $('Check schedule').first().json ?? {};\nconst decision = Array.isArray(d) ? d[0] : d;\n\n// A PERMISSION ERROR IS NOT AN UNAVAILABLE GATE. 42501 here means the key\n// cannot even call should_run, and a key that cannot do that cannot write\n// either - so stop, rather than failing open into a run that writes nothing.\n//\n// THIS NODE CANNOT CHECK THE KEY ITSELF ANY MORE - it is in the credential,\n// which an expression cannot read. So a refusal here is one of two things and\n// both stop the run: the credential holds the anon/publishable key rather than\n// the service role key, or service_role has not been granted what it needs.\n// Either way every write below would be refused the same way, so there is\n// nothing to gain by going on. ad4_38's output tells you which it was.\n//\n// ad4_38 revokes should_run from anon for this reason: it was granted so the\n// Workflows page could preview a cadence, that page reads v_execution_budget\n// instead, and the grant only let a bad key through the gate.\nif (decision && (String(decision.code) === '42501' ||\n                 /permission denied/i.test(String(decision.message || '')))) {\n  throw new Error(\n    `Supabase refused should_run: ${decision.message} (${decision.code}). Every write below ` +\n    `would be refused the same way, so nothing was fetched and nothing was written. Two ` +\n    `things cause this and the workflow cannot tell them apart, because the key now lives ` +\n    `in the n8n credential where an expression cannot read it. (1) THE KEY: open n8n -> ` +\n    `Credentials -> the Supabase account these nodes use and check Service Role Secret ` +\n    `holds the SERVICE ROLE key (Supabase -> Project Settings -> API -> service_role, or a ` +\n    `key beginning sb_secret_) - an anon key gets exactly this error, because anon is ` +\n    `granted SELECT and nothing else. NEVER put the service key anywhere starting ` +\n    `NEXT_PUBLIC_. (2) THE DATABASE: service_role has not been granted what it needs. Run ` +\n    `sql/ad4_38_grants.sql in the Supabase SQL editor - it grants the write path back and ` +\n    `then prints one row per ingest table saying whether the service key can write it, ` +\n    `which also tells you which of the two it was.`);\n}\n\n// A gate that fails closed would silently disable every workflow the first\n// time the settings row is missing or the RPC is absent. Fail OPEN: an\n// unreachable gate means run, and say so in the log.\nif (decision === null || decision === undefined || decision.run === undefined) {\n  console.log('schedule gate unavailable - running anyway');\n  return $input.all();\n}\n\nif (decision.run === false) {\n  // Recorded, so a skipped run is visible on the Workflows page as a skip\n  // rather than looking like a workflow that silently stopped working.\n  return [{ json: { __skipped: true, reason: decision.reason || 'not scheduled',\n                    minutes_since: decision.minutes_since ?? null,\n                    every_minutes: decision.every_minutes ?? null } }];\n}\nreturn $input.all();"
+      }
+    },
+    {
+      "id": "sched-stop",
+      "name": "Stop if skipped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        -50
+      ],
+      "parameters": {
+        "jsCode": "// Returning [] stops the workflow here. Everything below this node\n// is skipped, which is the entire point of the gate.\nconst items = $input.all();\nif (items.length === 1 && items[0].json && items[0].json.__skipped) {\n  console.log('skipped: ' + items[0].json.reason);\n  return [];\n}\nreturn items;"
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// THE CLOCK TABLE (plan v2 P6.1). tests/test_github_actions.py parses this\n// one JSON literal and counts every run it implies against the Actions\n// minute budget, so a cadence change here is a budget change there.\n// hours_utc \"*\" means every hour.\nconst CLOCK = [{\"file\": \"tick.yml\", \"hours_utc\": \"*\"}, {\"file\": \"pipeline_intraday.yml\", \"hours_utc\": [0, 4, 8, 12, 16, 20]}];\n\nconst cfg = $('Config').first().json;\nfor (const k of ['github_owner', 'github_repo', 'supabase_url']) {\n  if (!String(cfg[k] ?? '').trim()) throw new Error(`Config.${k} is empty. Nothing was dispatched.`);\n}\nconst hour = new Date().getUTCHours();\nconst out = CLOCK.filter((c) => c.hours_utc === '*' || c.hours_utc.includes(hour));\nreturn out.map((c) => ({ json: {\n  file: c.file,\n  hour_utc: hour,\n  ref: cfg.github_ref || 'main',\n  url: `https://api.github.com/repos/${cfg.github_owner}/${cfg.github_repo}/actions/workflows/${c.file}/dispatches`,\n} }));\n"
+      },
+      "id": "due",
+      "name": "Due this hour",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        950,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            },
+            {
+              "name": "User-Agent",
+              "value": "ad4-clock"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ ref: $json.ref }) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "dispatch",
+      "name": "Dispatch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1150,
+        120
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ad4-github-actions",
+          "name": "AD4 GitHub Actions"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// A dispatch GitHub accepts answers 204 with an EMPTY body; every refusal\n// carries a message. So a message is the failure test, never its absence.\nconst asked = $('Due this hour').all().map((i) => i.json);\nconst got = $('Dispatch').all().map((i) => i.json ?? {});\nconst refused = [];\nasked.forEach((a, i) => {\n  const r = got[i] ?? {};\n  if (r && typeof r === 'object' && r.message) refused.push({ file: a.file, message: String(r.message).slice(0, 200) });\n});\nconst started = asked.filter((a) => !refused.some((r) => r.file === a.file)).map((a) => a.file);\nreturn [{ json: { log: {\n  p_job: 'P6.1_clock',\n  p_status: refused.length ? 'error' : 'ok',\n  p_rows: started.length,\n  p_detail: { hour_utc: asked[0]?.hour_utc ?? null, dispatched: started, refused, trigger: $execution.mode, execution_id: $execution.id },\n} } }];\n"
+      },
+      "id": "summary",
+      "name": "Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1350,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/log_ingest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.log) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi"
+      },
+      "id": "log",
+      "name": "Log run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1550,
+        120
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "ad4-supabase",
+          "name": "AD4 Supabase"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every hour at :36": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Check schedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Due this hour": {
+      "main": [
+        [
+          {
+            "node": "Dispatch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dispatch": {
+      "main": [
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary": {
+      "main": [
+        [
+          {
+            "node": "Log run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check schedule": {
+      "main": [
+        [
+          {
+            "node": "Run now?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now?": {
+      "main": [
+        [
+          {
+            "node": "Stop if skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stop if skipped": {
+      "main": [
+        [
+          {
+            "node": "Due this hour",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
