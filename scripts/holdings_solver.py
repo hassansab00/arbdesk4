@@ -38,15 +38,32 @@ growth at the MEAN ladder:
     mean_d sum_k pi_dk log W_k  =  sum_k (mean_d pi_dk) log W_k
 
 The draws cancel; p_sd changes nothing. test_the_draw_average_ignores_p_sd
-proves it on real numbers. Making uncertainty shrink a bet needs a different
-objective (for example the mean of the worst fraction of draws, which stays
-concave), and that choice is Hassan's to make before part 2 wires one in.
-Until then solve() uses the posterior means and growth_by_draw() reports the
-spread across draws beside it.
+proves it on real numbers.
+
+SO THE OBJECTIVE IS THE WORST FRACTION OF DRAWS (Hassan, 24 Sep: "do the
+effective, efficient, smart and logical way"). solve_robust() maximises the
+mean growth over the worst ALPHA of the posterior draws - a CVaR of the
+growth. Each draw's growth is concave in the book, and the mean of the worst
+fraction of concave functions is concave, so there is still one maximum. A
+bucket the belief layer is sure of looks the same in every draw and keeps its
+size; a bucket it is unsure of is priced at its bad draws and is sized down,
+which is what the plan wanted the draws for. At ALPHA = 1 it is exactly the
+mean objective, so the plan's version is the limit of this one.
+
+How it is solved: for the current book, the worst ALPHA of draws average to
+one pessimistic ladder q; a Cover step on q moves the book up that ladder's
+growth; repeat, and keep the running mean of the books. That is mirror
+ascent on the concave objective, and the running mean converges to its
+maximum. The tests hold it to three properties: it equals solve() when the
+draws do not vary, it is never worse than the mean-optimal book on the worst
+draws, and it shrinks as the sd grows.
 
 RULE 11. lambda (the Kelly fraction) has prior 0.25 and bounds [0.05, 0.5];
 h (the no-trade threshold) has prior 0.002 and bounds [0.0005, 0.01]. Both
-are the plan's numbers, learned in P5.8, clipped here on every use.
+are the plan's numbers, learned in P5.8, clipped here on every use. ALPHA,
+the worst fraction of draws, has prior 0.25 and bounds [0.05, 1.0]: this
+module's prior, not a measurement, learned in P5.8 like lambda (from whether
+realised growth tracks the growth the robust book predicted).
 """
 import math
 import random
@@ -56,6 +73,8 @@ from allocator import effective_cost
 LAMBDA_PRIOR, LAMBDA_BOUNDS = 0.25, (0.05, 0.5)
 H_PRIOR, H_BOUNDS = 0.002, (0.0005, 0.01)
 N_DRAWS = 200
+ALPHA_PRIOR, ALPHA_BOUNDS = 0.25, (0.05, 1.0)
+ROBUST_ITERS = 3000
 COVER_ITERS = 20000
 COVER_TOL = 1e-12
 
@@ -210,6 +229,52 @@ def dirichlet_draws(ps, kappa, n=N_DRAWS, seed=0):
 
 def growth_by_draw(draws, w, x):
     return [growth(d, w, x) for d in draws]
+
+
+def worst_mean(values, alpha):
+    """Mean of the worst ceil(alpha * n) values: the CVaR of a growth sample."""
+    k = max(1, math.ceil(_clip(alpha, ALPHA_BOUNDS) * len(values)))
+    return sum(sorted(values)[:k]) / k
+
+
+def solve_robust(ladder, sds, alpha=ALPHA_PRIOR, allow=("YES", "NO"),
+                 n_draws=N_DRAWS, seed=0, iters=ROBUST_ITERS):
+    """The book that maximises mean growth over the worst ALPHA of posterior draws.
+
+    ladder carries each bucket's posterior mean as "p"; sds is each bucket's
+    posterior sd (belief.ladder_posterior). Draws are seeded, so the answer is
+    reproducible. Returns solve()'s shape plus the robust growth, the mean
+    growth, alpha and kappa.
+    """
+    alpha = _clip(alpha, ALPHA_BOUNDS)
+    ps = [float(b["p"]) for b in ladder]
+    names, x = assets(ladder, allow)
+    m, n = len(names), len(ps)
+    kappa = concentration(ps, sds)
+    draws = dirichlet_draws(ps, kappa, n_draws, seed)
+    k = max(1, math.ceil(alpha * len(draws)))
+
+    # The running mean is taken over the second half only: the first half
+    # still carries the uniform starting book, which would leave every asset
+    # - even one with no edge - a sliver of weight.
+    w = [1.0 / m] * m
+    avg = [0.0] * m
+    counted = 0
+    for t in range(1, iters + 1):
+        W = wealth(w, x)
+        logW = [math.log(v) if v > 0 else -1e9 for v in W]
+        worst = sorted(draws, key=lambda d: sum(d[j] * logW[j] for j in range(n)))[:k]
+        q = [sum(d[j] for d in worst) / k for j in range(n)]
+        new = [w[j] * sum(q[i] * x[j][i] / W[i] for i in range(n) if q[i] > 0) for j in range(m)]
+        z = sum(new)
+        w = [v / z for v in new]
+        if t > iters // 2:
+            counted += 1
+            avg = [a + (v - a) / counted for a, v in zip(avg, w)]
+    robust = worst_mean(growth_by_draw(draws, avg, x), alpha)
+    return {"weights": {names[j][0]: avg[j] for j in range(1, m) if avg[j] > 1e-9},
+            "cash": avg[0], "growth": robust, "mean_growth": growth(ps, avg, x),
+            "alpha": alpha, "kappa": kappa, "iterations": iters}
 
 
 # --------------------------------------------------------------------------
