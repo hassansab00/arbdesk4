@@ -1347,6 +1347,9 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
         model_priced, mrow, forecast, traj_row if traj_centre is not None else None)
     forecast_version = model_version_id(
         "forecast", forecast_label, config=forecast_config, structural=False)
+    # The readable label too, for a caller that records the path (the tick's
+    # checkpoint rows, plan v2 P4.2); band_probabilities carries the uuid.
+    reasons.append(f"priced_from:{forecast_label}")
     _cal = _calibration_map()
     calibration_version = model_version_id(
         "calibration",
