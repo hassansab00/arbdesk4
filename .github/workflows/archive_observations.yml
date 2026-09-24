@@ -87,6 +87,18 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # EVERY ARCHIVED VERDICT STAYS READABLE (plan v2 P4.5). A pruned proof
+      # used to take the venue's answer with it: v_venue_band_resolution read
+      # the evidence table, and on 24 Sep 2,948 banked outcomes had dropped out
+      # of the verified record that way. resolution_verdicts keeps each verdict
+      # without its payload and a trigger fills it from every new proof; this
+      # puts back the ones archived before the trigger existed. Idempotent,
+      # append-only, and before the prune, so it never waits on one.
+      - name: Keep every archived verdict readable
+        run: PYTHONPATH=scripts python scripts/restore_verdicts.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       # THE ORDER IS THE SAFETY. Export writes files into data/archive and
       # deletes nothing; the commit pushes them; only then does the prune run,
       # and it re-reads each committed file and asks git whether it is in HEAD

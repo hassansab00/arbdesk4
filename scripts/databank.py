@@ -236,11 +236,36 @@ def bank_forecasts(observed, days_back, force):
     return out
 
 
-def bank_bands(observed, days_back, force):
+def _late_proof_markets(proof_days, days_back):
+    """Markets the venue confirmed in the last `proof_days` whose day is
+    already older than the `days_back` window (plan v2 P4.5).
+
+    --days used to be the only window, and it is on the MARKET'S date. A
+    ladder whose last proof arrives after its day has left the window is never
+    looked at again: measured 24 Sep, 165 venue-confirmed market-days (27 Aug
+    - 9 Sep) had never been banked, their proofs captured 16 - 21 Sep. The
+    proof's own time is what says a ladder has just become bankable."""
+    since_proof = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=proof_days)).isoformat()
+    window = (dt.date.today() - dt.timedelta(days=days_back)).isoformat()
+    try:
+        return rest_all("v_venue_market_resolution", [
+            ("select", "market_id,city_key,resolution_date,confirmed_at"),
+            ("resolution_state", "eq.confirmed"),
+            ("confirmed_at", f"gte.{since_proof}"),
+            ("resolution_date", f"lt.{window}"),
+        ], order="market_id.asc", page_size=1000)
+    except Exception as e:
+        print(f"  note: late proofs not read ({e}); banking the date window only", file=sys.stderr)
+        return []
+
+
+def bank_bands(observed, days_back, force, late_markets=()):
     """One row per band after its complete ladder is venue-confirmed.
 
     `observed` contains verified weather evidence when available. It is useful
     context but never decides YES/NO; the matching Gamma+CLOB winner does.
+    `late_markets` are ladders whose proof arrived after their day left the
+    window (see _late_proof_markets); they are judged exactly like the rest.
     """
     since = (dt.date.today() - dt.timedelta(days=days_back)).isoformat()
     until = dt.date.today().isoformat()
@@ -257,6 +282,10 @@ def bank_bands(observed, days_back, force):
                                     ("resolution_date", f"gte.{since}"),
                                     ("resolution_date", f"lt.{until}")],
                        order="market_id.asc", page_size=1000)
+    seen = {m["market_id"] for m in markets}
+    markets = markets + [{"market_id": m["market_id"], "city_key": m["city_key"],
+                          "resolution_date": m["resolution_date"]}
+                         for m in late_markets if m["market_id"] not in seen]
     if not markets:
         return []
     by_market = {m["market_id"]: m for m in markets}
@@ -566,11 +595,24 @@ def main():
                     help="ignore the local skip-list and offer every settled day to the "
                          "database. Rows already frozen stay as they are; rows MISSING from "
                          "a partially-banked day get written. Use it to repair, not to rewrite.")
+    ap.add_argument("--proof-days", type=int, default=30,
+                    help="also bank ladders whose venue proof arrived in this many days, "
+                         "however old their date (plan v2 P4.5)")
     args = ap.parse_args()
+
+    late = _late_proof_markets(args.proof_days, args.days)
+    # The observation context has to reach back as far as the oldest late
+    # ladder, or it is banked with no observed maximum beside it.
+    span = args.days
+    if late:
+        oldest = min(dt.date.fromisoformat(str(m["resolution_date"])) for m in late)
+        span = max(args.days, (dt.date.today() - oldest).days + 1)
+        print(f"{len(late)} market-day(s) proven in the last {args.proof_days} days are older "
+              f"than the {args.days}-day window; observations read over {span} days")
 
     observed = _observed_max(args.days)
     verified = _verified_weather(args.days)
-    banded = observed_with_fallback(args.days)
+    banded = observed_with_fallback(span)
     print(f"observed maxima available for {len(observed)} city-day(s); "
           f"{len(verified)} have final authority evidence; "
           f"{len(banded)} city-day(s) have one or the other for the band record")
@@ -589,7 +631,7 @@ def main():
     # station reading that agrees with the venue 90.6% of the time is far
     # better than the null that was being written for one day in five.
     fc = bank_forecasts(verified, args.days, args.force)
-    bd = bank_bands(banded, args.days, args.force)
+    bd = bank_bands(banded, args.days, args.force, late_markets=late)
     sg = bank_signals(args.days, args.force)
 
     # upsert, not insert. These tables are immutable and primary-keyed, so a
@@ -621,7 +663,7 @@ def main():
         print(f"  of the bands banked, {hits} settled yes ({hits / len(bd):.1%})")
     log_run("databank", "ok", n_fc + n_bd + n_sg + n_cp,
             {"forecasts": n_fc, "bands": n_bd, "signals": n_sg, "checkpoints": n_cp,
-             "summary": summary})
+             "late_proof_markets": len(late), "summary": summary})
 
 
 if __name__ == "__main__":

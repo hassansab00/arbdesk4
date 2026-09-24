@@ -196,8 +196,13 @@ def cycle(budget_seconds=60, days_back=180, max_new_evidence=100, holdings_only=
     days_checked=[]
     positions=rest_all('paper_positions',{'shares':'gt.0','select':'band_id,account_id,side'},order='band_id,account_id,side')
     position_band_ids=list(dict.fromkeys(str(p['band_id']) for p in positions))
+    # WHAT HAS BEEN PROVEN, FROM THE LEDGER (plan v2 P4.5). The evidence table
+    # loses every proof the archive prunes, so reading it here made the sweep
+    # spend its budget fetching again what it had already proven and pruned.
+    # resolution_verdicts keeps every verdict ever captured.
     existing={str(e['condition_id']) for e in rest_all(
-        'paper_resolution_evidence',{'select':'condition_id,proof_id'},order='condition_id.asc,proof_id.asc')}
+        'resolution_verdicts',{'select':'condition_id,captured_at'},
+        order='condition_id.asc,token_yes.asc,token_no.asc,captured_at.asc')}
 
     candidates=_candidate_bands(position_band_ids,days_back,existing,holdings_only)
     unreached=0

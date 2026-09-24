@@ -546,6 +546,15 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
+  "resolution_verdicts": [
+    {
+      "cadence": "daily",
+      "file": "archive_observations.yml",
+      "how": "scripts/restore_verdicts.py",
+      "kind": "action",
+      "name": "Archive Observations"
+    }
+  ],
   "settings": [
     {
       "cadence": "daily",
@@ -726,7 +735,8 @@ export const FILLED_BY: Record<string, Filler[]> = {
 export const VIEW_TABLES: Record<string, string[]> = {
   "mv_venue_band_resolution": [
     "bands",
-    "paper_resolution_evidence"
+    "paper_resolution_evidence",
+    "resolution_verdicts"
   ],
   "v_archive_by_city": [
     "bands",
@@ -815,6 +825,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "fact_band_outcome",
     "bands",
     "paper_resolution_evidence",
+    "resolution_verdicts",
     "markets"
   ],
   "v_calibration_status": [
@@ -941,7 +952,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "fact_band_outcome",
     "markets",
     "band_probabilities",
-    "paper_resolution_evidence"
+    "paper_resolution_evidence",
+    "resolution_verdicts"
   ],
   "v_city_reasoning": [
     "cities",
@@ -1022,12 +1034,14 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "fact_band_outcome",
     "bands",
     "paper_resolution_evidence",
+    "resolution_verdicts",
     "markets"
   ],
   "v_edge_scaling": [
     "fact_band_outcome",
     "bands",
     "paper_resolution_evidence",
+    "resolution_verdicts",
     "markets"
   ],
   "v_execution_health": [
@@ -1161,7 +1175,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "markets",
     "weather_observations",
     "bands",
-    "paper_resolution_evidence"
+    "paper_resolution_evidence",
+    "resolution_verdicts"
   ],
   "v_mirror_book_kept": [
     "bands",
@@ -1225,6 +1240,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "fact_forecast_outcome",
     "paper_resolution_evidence",
     "bands",
+    "resolution_verdicts",
     "markets",
     "weather_resolution_evidence"
   ],
@@ -1255,6 +1271,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "cities",
     "bands",
     "paper_resolution_evidence",
+    "resolution_verdicts",
     "markets",
     "fact_band_outcome"
   ],
@@ -1265,13 +1282,15 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "markets",
     "band_probabilities",
     "cities",
-    "paper_resolution_evidence"
+    "paper_resolution_evidence",
+    "resolution_verdicts"
   ],
   "v_prediction_ladder_bands": [
     "band_probabilities",
     "cities",
     "bands",
     "paper_resolution_evidence",
+    "resolution_verdicts",
     "markets",
     "fact_band_outcome"
   ],
@@ -1407,17 +1426,20 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_venue_band_resolution": [
     "bands",
-    "paper_resolution_evidence"
+    "paper_resolution_evidence",
+    "resolution_verdicts"
   ],
   "v_venue_market_resolution": [
     "bands",
     "markets",
-    "paper_resolution_evidence"
+    "paper_resolution_evidence",
+    "resolution_verdicts"
   ],
   "v_verified_fact_band_outcome": [
     "bands",
     "fact_band_outcome",
     "paper_resolution_evidence",
+    "resolution_verdicts",
     "markets"
   ],
   "v_verified_fact_forecast_outcome": [
