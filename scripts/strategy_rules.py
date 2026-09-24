@@ -113,13 +113,24 @@ def anomaly_signals(anomaly_rows):
 # Strategy orchestration
 # --------------------------------------------------------------------------
 
-def run_strategies(ctx, strategy_configs, open_positions, portfolio=None):
+def run_strategies(ctx, strategy_configs, open_positions, portfolio=None, portfolios=None):
     """
     Runs every enabled strategy's entry+exit rules, sizes every ENTER
     signal via that strategy's own size(signal, portfolio) - entry_signals
     itself has no portfolio context, so every strategy deliberately leaves
     suggested_shares at 0.0/N-from-formula for this step to finalise -
     then applies the Task 8 conflict rules before returning.
+
+    ONE BOOK, OR ONE BOOK PER STRATEGY. With `portfolio` alone (the backtest)
+    every strategy sizes against one shared book and the conflict rules run
+    across all of them. With `portfolios`, {strategy_id: Portfolio}, each
+    strategy trades its own shadow ledger (plan v2 P5.1): it sizes against
+    that ledger only, and the conflict rules run inside its own book - its own
+    signals against its own open positions. Another strategy holding NO on a
+    band does not stop this one buying YES there; the ledgers are separate
+    evidence, and one strategy limiting another is exactly what they are for
+    removing. A strategy with no ledger in `portfolios` sizes to zero: it has
+    nowhere to trade.
     """
     all_entries, all_exits = [], []
     for cfg in strategy_configs:
@@ -127,10 +138,24 @@ def run_strategies(ctx, strategy_configs, open_positions, portfolio=None):
         if cls is None or not cfg.enabled:
             continue
         strat = cls(cfg)
+        book = portfolio if portfolios is None else portfolios.get(cfg.strategy_id)
         for sig in strat.entry_signals(ctx):
-            sig.suggested_shares = strat.size(sig, portfolio)
+            sig.suggested_shares = strat.size(sig, book)
             all_entries.append(sig)
         all_exits.extend(strat.exit_signals(ctx, open_positions))
 
-    allowed_entries, blocked_entries, conflict_rows = resolve_conflicts(all_entries, open_positions)
+    if portfolios is None:
+        allowed_entries, blocked_entries, conflict_rows = resolve_conflicts(all_entries, open_positions)
+        return allowed_entries + all_exits, blocked_entries, conflict_rows
+
+    allowed_entries, blocked_entries, conflict_rows = [], [], []
+    by_strategy = defaultdict(list)
+    for sig in all_entries:
+        by_strategy[sig.strategy_id].append(sig)
+    for sid, entries in by_strategy.items():
+        own = [p for p in open_positions if p.get("strategy_id") == sid]
+        a, b, rows = resolve_conflicts(entries, own)
+        allowed_entries += a
+        blocked_entries += b
+        conflict_rows += rows
     return allowed_entries + all_exits, blocked_entries, conflict_rows

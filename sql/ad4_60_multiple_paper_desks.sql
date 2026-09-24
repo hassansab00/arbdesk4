@@ -71,9 +71,14 @@ declare id uuid;
 begin
   -- ORDER BY created_at: see the header. Without it this answers arbitrarily
   -- once a second desk exists.
+  -- kind IS NULL (plan v2 P5.1): a strategy's shadow ledger and the portfolio
+  -- account are single_desk rows too, and a fresh database opens them before
+  -- anyone bootstraps a desk. The bootstrap must never hand one of them out
+  -- as "the desk" for manual orders and policy edits.
   select account_id into id
     from public.paper_accounts
    where access_mode = 'single_desk'
+     and kind is null
    order by created_at
    limit 1;
   if found then return id; end if;

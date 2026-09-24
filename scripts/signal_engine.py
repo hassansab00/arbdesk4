@@ -363,60 +363,64 @@ def _open_positions():
         return []          # no desk has traded yet; every strategy sees a flat book
 
 
-def _portfolio():
-    """The paper cash the strategies may size against.
+def _ledgers():
+    """{strategy_id: its active shadow ledger} (plan v2 P5.1).
 
-    run_strategies sizes every ENTER signal from portfolio.bankroll, and the
-    first restoration passed None - so every strategy but S6 suggested 0
-    shares. The bankroll is the free cash of the desks that can act on a
-    proposal (assisted or automatic); the plan builder re-checks each account's
-    own limits, so this is a sizing hint, never an authorisation.
+    Every registered strategy has one, opened by the registration itself, and
+    it is the only account that strategy trades on. The bankroll a strategy
+    sizes against is that ledger's free cash - not the summed cash of every
+    desk that can act, which is what sized every strategy before, and which
+    made each one's size depend on how many other desks existed.
+
+    A read that fails is not a reason to size from anything else: no ledgers
+    means every strategy sizes to zero, the signals are still written as the
+    day's record, and paper_plans refuses a zero size (P5.0 item 3).
     """
-    bankroll = 0.0
     try:
-        rows = rest("paper_accounts", [("select", "cash,reserved_cash,mode,archived_at"),
-                                       ("mode", "in.(assisted,automatic)"),
-                                       ("archived_at", "is.null"), ("limit", "100")])
-        bankroll = sum(float(r.get("cash") or 0) - float(r.get("reserved_cash") or 0) for r in rows)
+        rows = rest("paper_accounts",
+                    [("select", "account_id,strategy_id,cash,reserved_cash,bankroll_usd"),
+                     ("kind", "eq.shadow"), ("status", "eq.active"), ("limit", "1000")])
     except Exception as e:
-        print(f"  note: paper_accounts unavailable ({e}); sizing from settings.bankroll", file=sys.stderr)
-    if bankroll <= 0:
-        try:
-            rows = rest("settings", [("select", "value"), ("key", "eq.bankroll"), ("limit", "1")])
-            bankroll = float(((rows or [{}])[0].get("value") or {}).get("amount") or 0)
-        except Exception:
-            bankroll = 0.0
-    return Portfolio(bankroll=max(bankroll, 0.0))
+        print(f"  note: shadow ledgers unavailable ({e}); every strategy sizes to zero",
+              file=sys.stderr)
+        return {}
+    return {r["strategy_id"]: r for r in rows or [] if r.get("strategy_id")}
 
 
-def _risk_state():
-    """(equity, high_water, spent_today_usd) across the desks that can act.
+def _portfolios(ledgers):
+    """{strategy_id: Portfolio} - each strategy's own ledger, at its free cash."""
+    return {sid: Portfolio(bankroll=max(float(r.get("cash") or 0)
+                                        - float(r.get("reserved_cash") or 0), 0.0))
+            for sid, r in ledgers.items()}
 
-    SUMMING HIGH-WATER MARKS IS DELIBERATE AND IT IS THE SAFE DIRECTION. The
-    sum of each desk's peak is at least the peak of their sum, because no desk
-    is below its own maximum at the moment the combined book peaked. So the
-    drawdown computed here is never smaller than the true combined drawdown,
-    and a control that errs is erring toward taking risk off.
 
-    A missing view is not a reason to stop trading. Returning (None, None, 0)
-    leaves risk_budget.drawdown_scale at 1.0, which is exactly how the desk
-    behaved before this existed.
+def _risk_states(ledgers):
+    """{strategy_id: (equity, high_water, spent_today_usd)}, each from its own ledger.
+
+    One ledger's drawdown scales that strategy and no other. A missing row, or
+    a failed read, leaves (None, None, 0.0), which leaves
+    risk_budget.drawdown_scale at 1.0 - a missing view is not a reason to stop.
     """
+    blank = {sid: (None, None, 0.0) for sid in ledgers}
+    if not ledgers:
+        return blank
+    ids = ",".join(str(r["account_id"]) for r in ledgers.values())
     try:
         rows = rest("v_desk_risk_state",
-                    [("select", "equity,high_water,spent_today_usd,mode,entries_paused"),
-                     ("mode", "in.(assisted,automatic)"),
-                     ("entries_paused", "is.false"), ("limit", "100")])
+                    [("select", "account_id,equity,high_water,spent_today_usd"),
+                     ("account_id", f"in.({ids})"), ("limit", "1000")])
     except Exception as e:
         print(f"  note: v_desk_risk_state unavailable ({e}); "
               f"no drawdown scaling this run", file=sys.stderr)
-        return None, None, 0.0
-    if not rows:
-        return None, None, 0.0
-    equity = sum(float(r.get("equity") or 0) for r in rows)
-    high_water = sum(float(r.get("high_water") or 0) for r in rows)
-    spent = sum(float(r.get("spent_today_usd") or 0) for r in rows)
-    return equity, high_water, spent
+        return blank
+    by_account = {str(r["account_id"]): r for r in rows or []}
+    out = {}
+    for sid, led in ledgers.items():
+        r = by_account.get(str(led["account_id"]))
+        out[sid] = ((float(r["equity"]) if r.get("equity") is not None else None,
+                     float(r["high_water"]) if r.get("high_water") is not None else None,
+                     float(r.get("spent_today_usd") or 0)) if r else (None, None, 0.0))
+    return out
 
 
 def _correlations(cities):
@@ -784,18 +788,39 @@ def main():
         return 0
 
     ctx = _context(views)
-    portfolio = _portfolio()
-    fired, blocked, conflict_rows = run_strategies(ctx, configs, _open_positions(), portfolio)
+    ledgers = _ledgers()
+    portfolios = _portfolios(ledgers)
+    counts["ledgers"] = len(ledgers)
+    fired, blocked, conflict_rows = run_strategies(ctx, configs, _open_positions(),
+                                                   portfolios=portfolios)
     counts["fired"], counts["blocked"] = len(fired), len(blocked)
     counts["conflicts"] = len(conflict_rows)
 
+    # EACH LADDER IS SOLVED INSIDE ONE STRATEGY'S OWN BOOK (plan v2 P5.1).
+    # The allocator, the risk budget and the drawdown scale all run once per
+    # shadow ledger, on that ledger's cash and that ledger's record, so one
+    # strategy's claim on a band never zeroes another's.
+    #
+    # THE EARNED WEIGHT IS NOT APPLIED HERE. It shrinks a strategy's stake by
+    # its settled record, which is a decision about how to split one pot of
+    # capital - the portfolio account's question (P5.10), not a shadow
+    # ledger's. On a shadow ledger it only starves a weak strategy of the
+    # evidence that would show whether it is weak; P5.2 suspends a strategy
+    # whose record says it loses. The weights are still computed and logged.
     earned = _earned_weights()
-    risk = _risk_state()
+    risks = _risk_states(ledgers)
     corr = _correlations({v.city_key for v in views if v.city_key})
-    counts["resized"] = _allocate_ladders(fired, views, portfolio, earned, risk, corr)
-    counts["strategies_funded"] = sum(1 for v in earned.values() if v.weight > 0)
+    by_strategy = defaultdict(list)
+    for sig in fired:
+        by_strategy[sig.strategy_id].append(sig)
+    counts["resized"] = 0
+    for sid, own in sorted(by_strategy.items()):
+        counts["resized"] += _allocate_ladders(
+            own, views, portfolios.get(sid) or Portfolio(bankroll=0.0), {},
+            risks.get(sid, (None, None, 0.0)), corr)
+    counts["strategies_earning"] = sum(1 for v in earned.values() if v.weight > 0)
     for sid, v in sorted(earned.items()):
-        print(f"  weight {v.weight:.2f}  {sid}: {v.reason}")
+        print(f"  weight {v.weight:.2f}  {sid}: {v.reason} (logged; not applied to a shadow ledger)")
 
     fired, held = hold_entries_without_cost_version(fired, views)
     counts["held_no_cost_version"] = len(held)

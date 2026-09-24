@@ -448,9 +448,13 @@ def cycle(max_plans=10, budget_seconds=90):
         log_run('paper_plans', 'ok', published, {'proposals': published, 'stopped': note})
         return {'proposals': published}
 
-    accounts = rest_all('paper_accounts',{'mode':'in.(assisted,automatic)'},order='account_id')
+    # ACTIVE ONLY. A retired desk refuses every plan in queue_plan, and a
+    # suspended one refuses every entry (plan v2 P5.1), so offering them a
+    # signal only publishes a blocked plan and spends one of their plan slots
+    # on a refusal nobody needs to read.
+    accounts = rest_all('paper_accounts',{'mode':'in.(assisted,automatic)','status':'eq.active'},order='account_id')
     if not accounts:
-        return done(0, 'no assisted or automatic account')
+        return done(0, 'no active assisted or automatic account')
     signals = interleave_by_strategy(rest_all('signals',
         [('action','eq.ENTER'),('fired_at','gte.'+(now-dt.timedelta(minutes=15)).isoformat()),
          ('fired_at','lte.'+now.isoformat())],order='fired_at.desc,signal_id'))
