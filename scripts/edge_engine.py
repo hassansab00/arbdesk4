@@ -22,7 +22,7 @@ import sys
 import math
 from collections import defaultdict
 
-from common import rest, rest_all, insert, get_cities, log_run
+from common import rest, rest_all, insert, get_cities, log_run, city_local_date
 import cost_model
 import market_state
 
@@ -190,6 +190,30 @@ def opportunity_score(edge_net_pp, confidence, fillable_usd_5c):
 # I/O
 # --------------------------------------------------------------------------
 
+def floor_impossible_ids(markets, bands, floors, unit_of):
+    """Band ids the day has already passed, per P3.1 (plan v2 P5.0 item 5).
+
+    A market is judged only on its city's LOCAL today - the date the measured
+    floor belongs to. floors is probability_engine._observed_floors(): a
+    station maximum, never a model value (measured_floor refuses those), so a
+    model reading can never make a band impossible here. Returns the ids that
+    impossible_band_ids marks: two or more buckets under the venue-read floor,
+    which not even a one-bucket station disagreement can reach.
+    """
+    import probability_engine as pe
+    by_market = {}
+    for b in bands:
+        by_market.setdefault(b["market_id"], []).append(b)
+    out = set()
+    for m in markets:
+        floor = floors.get(m["city_key"])
+        if not floor or str(m.get("resolution_date")) != floor[0]:
+            continue
+        ladder = by_market.get(m["market_id"]) or []
+        out |= pe.impossible_band_ids(floor[1], unit_of.get(m["city_key"], "C"), ladder)
+    return out
+
+
 def _upcoming_markets():
     # THE CITY'S DAY, NOT THE RUNNER'S (plan v2 P3.2). v_priceable_markets is
     # an active city's market that is not closed and whose local day has not
@@ -312,6 +336,25 @@ def main():
     max_bands_from_centre = tradeability_yes.get("max_bands_from_centre", DEFAULT_MAX_BANDS_FROM_CENTRE)
     implausible_edge_threshold = _implausible_edge_threshold()
 
+    # THE HARD FLOOR GATE (plan v2 P5.0 item 5). The engine prices a band the
+    # day has passed at the probability floor, which prob_is_at_floor already
+    # blocks - but the measurement layer (P3.1) can leave such a band a small
+    # non-floor probability, and nothing here stopped a YES on it. A band
+    # impossible_band_ids marks is never a YES, whatever its price says.
+    try:
+        import probability_engine as pe
+        impossible = floor_impossible_ids(markets, bands, pe._observed_floors(), unit_of)
+    except Exception as e:
+        print(f"  ! floor gate unavailable ({str(e)[:120]}) - YES blocked on every market "
+              f"resolving today", file=sys.stderr)
+        impossible = None
+    # Without floors, fail closed only where a floor could matter: markets
+    # settling on their own city's local today.
+    tz_of = {c["city_key"]: c.get("timezone") for c in cities}
+    today_markets = {m["market_id"] for m in markets
+                     if str(m.get("resolution_date")) == city_local_date(
+                         dt.datetime.now(dt.timezone.utc).isoformat(), tz_of.get(m["city_key"]))}
+
     now = dt.datetime.now(dt.timezone.utc)
     computed_at = now.isoformat()
     out_rows = []
@@ -400,6 +443,12 @@ def main():
             if book_is_stale:
                 tradeable = False
                 block_reason = "no_book" if not book else "stale_book"
+            if side == "YES" and (band_id in impossible if impossible is not None
+                                  else b["market_id"] in today_markets):
+                # Last, so it is the reason shown: of everything that can block
+                # this row it is the one that never lifts.
+                tradeable = False
+                block_reason = "floor_impossible" if impossible is not None else "floor_unknown"
 
             out_rows.append({
                 "band_id": band_id, "computed_at": computed_at, "side": side,
