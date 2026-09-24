@@ -21,7 +21,7 @@ insert into settings (key, value)
 values ('workflow_schedules', '{
   "note": "Per-workflow cadence, owned here rather than inside each n8n file. mode: auto | manual | off. every_minutes is the MINIMUM GAP the gate enforces when mode=auto, and it must sit a few minutes BELOW the workflow Schedule Trigger cadence: ingest_log.logged_at is stamped when a run finishes, so consecutive stamps are a cadence apart give or take the run length, and a gate set equal to the cadence skips every other run. Set manual to run only from the Run buttons in the UI.",
   "P0.2_market_discovery":     {"mode": "auto",   "every_minutes": 300},
-  "P0.3_book_volume_snapshot": {"mode": "auto",   "every_minutes": 50},
+  "P0.3_book_volume_snapshot": {"mode": "auto",   "every_minutes": 110},
   "P0.4_trade_history":        {"mode": "auto",   "every_minutes": 300},
   "P0.5_refresh_rules_text":   {"mode": "auto",   "every_minutes": 1200},
   "P1.1_live_weather_alerts":  {"mode": "manual", "every_minutes": 0},
@@ -29,7 +29,7 @@ values ('workflow_schedules', '{
   "P1.3_nws_forecast":         {"mode": "auto",   "every_minutes": 300},
   "P1.4_nws_gridpoint":        {"mode": "auto",   "every_minutes": 300},
   "P1.5_open_meteo":           {"mode": "auto",   "every_minutes": 150},
-  "P1.6_iem_observations":     {"mode": "auto",   "every_minutes": 50},
+  "P1.6_iem_observations":     {"mode": "off",    "every_minutes": 50},
   "P2.1_relearn":              {"mode": "manual", "every_minutes": 0},
   "P2.2_paper_maintenance":    {"mode": "auto",   "every_minutes": 300},
   "P3.1_email_digests":        {"mode": "off",    "every_minutes": 400},

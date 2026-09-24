@@ -21,7 +21,7 @@ IEM = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
 MAX_DAYS_PER_REQUEST = 30
 
 
-def fetch_station(station, start, end, since=None, until=None):
+def fetch_station(station, start, end, since=None, until=None, timeout=300):
     """One request. `station` is an ICAO string OR a list of them.
 
     THE PER-IP RATE LIMIT WAS AN ARTEFACT OF ASKING 48 TIMES.
@@ -79,7 +79,7 @@ def fetch_station(station, start, end, since=None, until=None):
     if since is not None:
         p["sts"] = since.strftime("%Y-%m-%dT%H:%MZ")
         p["ets"] = (until or dt.datetime.now(dt.timezone.utc)).strftime("%Y-%m-%dT%H:%MZ")
-    r = requests.get(IEM, params=p, timeout=300)
+    r = requests.get(IEM, params=p, timeout=timeout)
     r.raise_for_status()
     return r.text
 

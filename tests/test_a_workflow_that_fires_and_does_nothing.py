@@ -183,21 +183,24 @@ def test_the_file_holding_the_view_is_installed():
 # 3. The seed half. The live row is the UI's to change; the seed is ours.
 # --------------------------------------------------------------------------
 
-def test_the_seed_runs_the_observation_feed_automatically():
+def test_the_observation_feed_is_the_hourly_tick():
+    """The station feed moved from n8n's P1.6 into the hourly tick (plan v2
+    P6.2: 720 n8n executions a month). So a fresh install collects through
+    the tick, and P1.6 seeds OFF - left on, it would collect everything twice
+    and spend the executions P6.2 exists to save."""
+    import pathlib
+    tick_src = (pathlib.Path(__file__).resolve().parents[1] / "scripts" / "tick.py").read_text()
+    assert "stations = read_stations(now, dry_run)" in tick_src, "the tick no longer reads the stations"
     seed = SCHEDULES.read_text()
-    m = re.search(r'"P1\.6_iem_observations":\s*\{\s*"mode":\s*"(\w+)",\s*"every_minutes":\s*(\d+)', seed)
+    m = re.search(r'"P1\.6_iem_observations":\s*\{\s*"mode":\s*"(\w+)"', seed)
     assert m, "P1.6 is not in the seeded schedule at all"
-    mode, every = m.group(1), int(m.group(2))
-    assert mode == "auto", f"the observation feed seeds as {mode} - a fresh install would not collect"
-    assert 0 < every < 60, (
-        f"every_minutes={every} must sit BELOW the hourly Schedule Trigger: "
-        "the gate measures from when the last run FINISHED, so a minimum "
-        "equal to the cadence skips every other run"
-    )
+    assert m.group(1) == "off", "P1.6 would collect the stations a second time beside the tick"
 
 
+# P1.6 is not here: the tick reads the stations since plan v2 P6.2, and P1.6
+# seeds off (test_the_observation_feed_is_the_hourly_tick).
 @pytest.mark.parametrize("job", ["P1.2_nws_monitor", "P1.3_nws_forecast", "P1.4_nws_gridpoint",
-                                 "P1.5_open_meteo", "P1.6_iem_observations"])
+                                 "P1.5_open_meteo"])
 def test_every_weather_feed_seeds_as_auto(job):
     seed = SCHEDULES.read_text()
     m = re.search(rf'"{re.escape(job)}":\s*\{{\s*"mode":\s*"(\w+)"', seed)
