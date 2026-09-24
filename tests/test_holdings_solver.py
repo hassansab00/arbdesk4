@@ -252,3 +252,100 @@ def test_alpha_is_bounded_and_the_answer_reproducible():
     a = hs.solve_robust(_EDGE, [0.05] * 3, allow=("YES",), seed=9)
     b = hs.solve_robust(_EDGE, [0.05] * 3, allow=("YES",), seed=9)
     assert a == b
+
+
+# --------------------------------------------------------------------------
+# Part 2: caps, holdings and the lock (solve_book)
+# --------------------------------------------------------------------------
+
+def _brute_capped(ladder, cap0, step=0.0005):
+    """Grid search over (b0 <= cap0, b1) for the YES-only 3-bucket ladder."""
+    c = [effective_cost(b["yes_price"]) for b in ladder]
+    p = [b["p"] for b in ladder]
+    best = (-1e9, 0, 0)
+    b0 = 0.0
+    while b0 <= cap0 + 1e-12:
+        b1 = 0.0
+        while b0 + b1 <= 1.0:
+            R = 1 - b0 - b1
+            if R > 0:
+                g = p[0] * math.log(R + b0 / c[0]) + p[1] * math.log(R + b1 / c[1]) + p[2] * math.log(R)
+                if g > best[0]:
+                    best = (g, b0, b1)
+            b1 += step
+        b0 += step
+    return best
+
+
+def test_without_constraints_the_book_is_the_exact_optimum():
+    exact = hs.solve(_EDGE, allow=("YES",))
+    book = hs.solve_book(_EDGE, allow=("YES",))
+    for a, f in exact["weights"].items():
+        assert book["weights"][a] == pytest.approx(f, abs=1e-4)
+    assert book["binding"] == []
+
+
+def test_a_binding_cap_holds_and_the_rest_is_reoptimised():
+    book = hs.solve_book(_EDGE, allow=("YES",), caps={"b0:YES": 0.10})
+    g, b0, b1 = _brute_capped(_EDGE, 0.10)
+    assert book["weights"]["b0:YES"] == pytest.approx(0.10, abs=1e-6)
+    assert book["weights"]["b1:YES"] == pytest.approx(b1, abs=2e-3)
+    assert book["growth"] >= g - 1e-6, "the grid found a better capped book"
+    assert book["binding"] == ["b0:YES"]
+
+
+def test_a_cap_that_does_not_bind_changes_nothing():
+    free = hs.solve_book(_EDGE, allow=("YES",))
+    loose = hs.solve_book(_EDGE, allow=("YES",), caps={"b0:YES": 0.9})
+    assert loose["weights"] == pytest.approx(free["weights"], abs=1e-6)
+    assert loose["binding"] == []
+
+
+def test_what_is_already_held_is_not_bought_twice():
+    """Holding part of the optimal b0 position, the solver buys only the rest:
+    the final book - holdings plus purchases - is the same optimal book."""
+    exact = hs.solve(_EDGE, allow=("YES",))
+    c0 = effective_cost(0.40)
+    total = 1000.0
+    spent = 100.0                                     # of the optimal ~283 on b0
+    shares = spent / c0
+    book = hs.solve_book(_EDGE, allow=("YES",), held={"b0": (shares, 0.0)},
+                         total_usd=total, cash_usd=total - spent)
+    assert book["weights"]["b0:YES"] == pytest.approx(exact["weights"]["b0:YES"] - spent / total, abs=1e-3)
+    assert book["weights"]["b1:YES"] == pytest.approx(exact["weights"]["b1:YES"], abs=1e-3)
+
+
+def test_the_lock_never_produces_a_losing_book():
+    # The edge ladder costs over $1 a set, so no book is sure: buy nothing.
+    book = hs.solve_book(_EDGE, allow=("YES",), lock=True)
+    assert book["weights"] == {} and book["binding"] == ["lock"]
+    assert min(book["wealth_by_outcome"].values()) >= 1.0 - 1e-9
+    # Under $1 a set: Kelly alone would lose if b2 wins (it bets by p, not
+    # equal shares), so the lock takes the best book that cannot lose.
+    arb = _ladder([0.5, 0.3, 0.2], [0.40, 0.20, 0.30])
+    kelly = hs.solve_book(arb, allow=("YES",))
+    assert min(kelly["wealth_by_outcome"].values()) < 1.0
+    locked = hs.solve_book(arb, allow=("YES",), lock=True)
+    assert locked["weights"] and "lock" in locked["binding"]
+    assert min(locked["wealth_by_outcome"].values()) >= 1.0 - 1e-9
+    assert locked["growth"] > 0, "a sure profit is still growth"
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_the_lock_never_loses_on_random_ladders(seed):
+    rng = random.Random(500 + seed)
+    ladder = _random_ladder(rng, rng.randint(3, 8))
+    book = hs.solve_book(ladder, allow=("YES",), lock=True, iters=1500)
+    assert min(book["wealth_by_outcome"].values()) >= 1.0 - 1e-9
+
+
+def test_the_robust_book_obeys_its_caps_too():
+    book = hs.solve_book(_EDGE, allow=("YES",), caps={"b0:YES": 0.05}, sds=[0.05] * 3)
+    assert book["weights"]["b0:YES"] <= 0.05 + 1e-9 and book["robust"]
+    assert _risky(book) <= _risky(hs.solve_book(_EDGE, allow=("YES",), caps={"b0:YES": 0.05})) + 1e-6
+
+
+def test_the_projection_is_onto_the_capped_simplex():
+    out = hs._project([0.5, 0.3, 0.2], [1.0, 0.1, 1.0], 1.0)
+    assert sum(out) == pytest.approx(1.0) and out[1] == pytest.approx(0.1)
+    assert out[0] / out[2] == pytest.approx(0.5 / 0.2), "the free coordinates keep their ratio (KL projection)"
