@@ -2057,6 +2057,70 @@ const assert = require('node:assert/strict');
   await db.exec('reset role;');
 
   // ======================================================================
+  // STRATEGY LIFECYCLE STATES (plan v2 P5.2,
+  // 20260924100000_strategy_lifecycle.sql). One state per strategy; enabled is
+  // derived from it both ways; only allowed transitions; the portfolio only by
+  // a named approval; every change on an append-only record.
+  // ======================================================================
+  await db.exec('reset role;');
+  const stateOf=async(sid)=>(await db.query('select state from strategy_state where strategy_id=$1',[sid])).rows[0]?.state;
+  const enabledOf=async(sid)=>(await db.query('select enabled from strategies where strategy_id=$1',[sid])).rows[0].enabled;
+  await db.exec("insert into public.strategies(strategy_id,name,enabled) values('s_life','lifecycle test',false);");
+  assert.equal(await stateOf('s_life'),'research','a registered, switched-off strategy starts in research');
+  assert.equal(await stateOf('system'),undefined,'the alert channel is not a strategy and has no state');
+
+  // enabled follows the state, and a direct flip of enabled moves the state.
+  await db.query("select set_strategy_state('s_life','shadow','first shadow run')");
+  assert.equal(await enabledOf('s_life'),true,'shadow must switch enabled on');
+  await db.query("update public.strategies set enabled=false where strategy_id='s_life'");
+  assert.equal(await stateOf('s_life'),'research','switching enabled off must move the state to research');
+  assert.equal((await db.query("select set_strategies_enabled(array['s_life'],true,'switched on by reason') as n")).rows[0].n,1);
+  assert.equal(await stateOf('s_life'),'shadow');
+  assert.equal((await db.query("select reason from strategy_state where strategy_id='s_life'")).rows[0].reason,
+    'switched on by reason','the reason given to the old switch must reach the state');
+
+  // Only allowed transitions.
+  await db.query("select set_strategy_state('s_life','suspended','losing record')");
+  assert.equal(await enabledOf('s_life'),false,'a suspended strategy makes no live decisions');
+  await db.query("select set_strategy_state('s_life','shadow','re-test after 14 days')");
+  await db.query("select set_strategy_state('s_life','research','back to replay')");
+  await assert.rejects(db.query("select set_strategy_state('s_life','suspended','no')"),
+    /research -> suspended is not an allowed transition/);
+  await assert.rejects(db.query("select set_strategy_state('s_life','shadow','')"),/needs a reason/);
+
+  // The portfolio is Hassan's decision.
+  await db.query("select set_strategy_state('s_life','shadow','again')");
+  await assert.rejects(db.query("select set_strategy_state('s_life','portfolio','allocate it')"),/promote_strategy_to_portfolio/);
+  await assert.rejects(db.query("update strategy_state set state='portfolio', reason='sneak' where strategy_id='s_life'"),
+    /Hassan's decision/,'a direct update put a strategy in the portfolio');
+  await assert.rejects(db.query("select promote_strategy_to_portfolio('s_life','','earned it')"),/names who approved it/);
+  await db.query("select promote_strategy_to_portfolio('s_life','Hassan','P5.10 report says it earned it')");
+  assert.equal(await stateOf('s_life'),'portfolio'); assert.equal(await enabledOf('s_life'),true);
+  const approved=(await db.query("select changed_by from strategy_state_history where strategy_id='s_life' and to_state='portfolio'")).rows;
+  assert.deepEqual(approved.map(r=>r.changed_by),['Hassan'],'the promotion must record who approved it');
+
+  // Retired is terminal; the record is complete and append-only.
+  await db.query("select set_strategy_state('s_life','retired','replaced by S10')");
+  await assert.rejects(db.query("select set_strategy_state('s_life','shadow','bring it back')"),/retired -> shadow/);
+  await assert.rejects(db.query("update public.strategies set enabled=true where strategy_id='s_life'"),/retired -> shadow/,
+    'the old switch brought a retired strategy back');
+  const lifeHist=(await db.query("select from_state,to_state from strategy_state_history where strategy_id='s_life' order by history_id")).rows
+    .map(r=>`${r.from_state??'-'}>${r.to_state}`);
+  assert.deepEqual(lifeHist,['->research','research>shadow','shadow>research','research>shadow','shadow>suspended',
+    'suspended>shadow','shadow>research','research>shadow','shadow>portfolio','portfolio>retired']);
+  await assert.rejects(db.query("delete from strategy_state_history where strategy_id='s_life'"),/append-only/);
+  await assert.rejects(db.query("update strategy_state_history set reason='x' where strategy_id='s_life'"),/append-only/);
+
+  // Only the service role changes a state.
+  for (const role of ['anon','authenticated']) {
+    for (const fn of ['public.set_strategy_state(text,text,text)','public.promote_strategy_to_portfolio(text,text,text)']) {
+      assert.equal((await db.query(`select has_function_privilege('${role}','${fn}','execute') as ok`)).rows[0].ok,false,
+        `${role} can call ${fn}`);
+    }
+  }
+  await db.exec('reset role;');
+
+  // ======================================================================
   // WRITES NEED AN OPERATOR (plan v2 P1.2,
   // 20260923130000_writes_need_an_operator.sql). The browser reads settings
   // as anon; it must not see who the operators are, nor the n8n webhook URLs,
@@ -2075,5 +2139,5 @@ const assert = require('node:assert/strict');
   await db.exec('reset role;');
 
   await db.close();
-  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, a shadow ledger per strategy and a suspended portfolio account, research capture of prices only, no PUBLIC execute on SECURITY DEFINER functions and the settings the browser may not read');
+  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, a shadow ledger per strategy and a suspended portfolio account, strategy lifecycle states, research capture of prices only, no PUBLIC execute on SECURITY DEFINER functions and the settings the browser may not read');
 })().catch(e=>{console.error(e);process.exit(1);});

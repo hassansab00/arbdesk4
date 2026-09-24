@@ -197,6 +197,16 @@ jobs:
         timeout-minutes: 10
         run: python scripts/hit_tournament.py
 
+      # 7d. Strategy lifecycle (plan v2 P5.2): suspend a shadow strategy whose
+      #     own ledger's record says it loses beyond its noise (>= 40 settled
+      #     decisions, upper 90% bound of mean log-growth < 0), and put one
+      #     suspended for 14 days back in shadow for a re-test. After the
+      #     settlement sweep, so tonight's closed trades count.
+      - name: Strategy lifecycle
+        if: ${{ !cancelled() }}
+        timeout-minutes: 3
+        run: python scripts/strategy_lifecycle.py
+
       # 8. Safety net: run anything left queued in backtest_runs. Usually a
       #    no-op. An explicit backtest is backtest.yml, run by hand.
       - name: Queued backtests
