@@ -158,7 +158,8 @@ def test_the_draw_average_ignores_p_sd():
     """For a fixed book, mean over draws of sum_k pi_dk log W_k equals
     sum_k (mean pi_k) log W_k. So a solver that maximises the draw average
     gives the same book whatever the spread of the draws - it cannot size an
-    uncertain bucket smaller, which is what the plan wants the draws for."""
+    uncertain bucket smaller, which is what the plan wants the draws for.
+    That is why solve_robust() optimises the worst ALPHA of draws instead."""
     ladder = _ladder([0.5, 0.3, 0.2], [0.40, 0.20, 0.30])
     ps = [b["p"] for b in ladder]
     book = hs.solve(ladder, allow=("YES",))
@@ -188,3 +189,66 @@ def test_the_concentration_matches_the_buckets_sd():
     v = [d[1] for d in draws]
     m = sum(v) / len(v)
     assert (sum((a - m) ** 2 for a in v) / len(v)) ** 0.5 == pytest.approx(0.05, abs=0.01)
+
+
+# --------------------------------------------------------------------------
+# The robust objective: the worst ALPHA of posterior draws (Hassan, 24 Sep)
+# --------------------------------------------------------------------------
+
+_EDGE = _ladder([0.5, 0.3, 0.2], [0.40, 0.20, 0.45])      # two buckets with an edge
+
+
+def _risky(r):
+    return 1.0 - r["cash"]
+
+
+def test_the_robust_book_shrinks_as_the_belief_grows_less_sure():
+    stakes = [_risky(hs.solve_robust(_EDGE, [sd] * 3, allow=("YES",))) for sd in (0.005, 0.03, 0.08, 0.15)]
+    assert stakes == sorted(stakes, reverse=True), stakes
+    assert stakes[-1] < 0.2 * stakes[0], "a very unsure belief must be staked far less"
+
+
+def test_a_sure_belief_is_staked_like_the_mean_book():
+    mean_book = _risky(hs.solve(_EDGE, allow=("YES",)))
+    assert _risky(hs.solve_robust(_EDGE, [0.005] * 3, allow=("YES",))) == pytest.approx(mean_book, rel=0.05)
+
+
+def test_alpha_one_is_the_plans_mean_objective():
+    """At ALPHA = 1 every draw counts, which is the draw average - the growth
+    at the sample-mean ladder. So it must equal solve() on that ladder."""
+    ps = [b["p"] for b in _EDGE]
+    got = hs.solve_robust(_EDGE, [0.08] * 3, alpha=1.0, allow=("YES",), seed=5)
+    draws = hs.dirichlet_draws(ps, hs.concentration(ps, [0.08] * 3), hs.N_DRAWS, 5)
+    sample_mean = [sum(d[k] for d in draws) / len(draws) for k in range(3)]
+    ref = hs.solve([dict(b, p=q) for b, q in zip(_EDGE, sample_mean)], allow=("YES",))
+    for a, f in ref["weights"].items():
+        assert got["weights"].get(a, 0.0) == pytest.approx(f, abs=5e-3)
+
+
+def test_the_robust_book_is_never_worse_on_its_own_objective():
+    """The whole claim: on the worst ALPHA of the draws, the robust book grows
+    at least as much as the mean-optimal book does."""
+    ps = [b["p"] for b in _EDGE]
+    sds = [0.08] * 3
+    r = hs.solve_robust(_EDGE, sds, allow=("YES",), seed=2)
+    names, x = hs.assets(_EDGE, ("YES",))
+    draws = hs.dirichlet_draws(ps, hs.concentration(ps, sds), hs.N_DRAWS, 2)
+    mean_book = hs.solve(_EDGE, allow=("YES",))
+    as_w = lambda b: [b["cash"]] + [b["weights"].get(n, 0.0) for n, *_ in names[1:]]
+    robust_worst = hs.worst_mean(hs.growth_by_draw(draws, as_w(r), x), hs.ALPHA_PRIOR)
+    mean_worst = hs.worst_mean(hs.growth_by_draw(draws, as_w(mean_book), x), hs.ALPHA_PRIOR)
+    assert robust_worst >= mean_worst - 1e-6
+    assert robust_worst == pytest.approx(r["growth"])
+
+
+def test_no_edge_is_still_no_trade_however_sure():
+    ladder = _ladder([0.5, 0.3, 0.2], [0.50, 0.30, 0.20])
+    assert _risky(hs.solve_robust(ladder, [0.01] * 3, allow=("YES",))) == pytest.approx(0.0, abs=1e-3)
+
+
+def test_alpha_is_bounded_and_the_answer_reproducible():
+    assert hs.solve_robust(_EDGE, [0.05] * 3, alpha=0.0, allow=("YES",))["alpha"] == hs.ALPHA_BOUNDS[0]
+    assert hs.solve_robust(_EDGE, [0.05] * 3, alpha=7.0, allow=("YES",))["alpha"] == hs.ALPHA_BOUNDS[1]
+    a = hs.solve_robust(_EDGE, [0.05] * 3, allow=("YES",), seed=9)
+    b = hs.solve_robust(_EDGE, [0.05] * 3, allow=("YES",), seed=9)
+    assert a == b
