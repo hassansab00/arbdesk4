@@ -47,6 +47,13 @@ FIXED_LOCAL = {"morning": (0, 9, 0), "noon": (0, 12, 0), "d1_eve": (-1, 18, 0)}
 # write is ignored by the table's unique key.
 GRACE_MIN = 75
 BUDGET_S = 45.0
+# THE STATIONS, EVERY HOUR (plan v2 P6.2). n8n's P1.6 did this hourly at :10
+# for 720 n8n executions a month; the tick already runs hourly, so it reads
+# them here and P1.6 is retired. Same request, same window as P1.6 (6 h),
+# same table and key. A short timeout, because a slow IEM must not eat the
+# pricing budget; an hour it misses is covered by the next hour's 6-h window.
+STATION_HOURS = 6
+STATION_TIMEOUT_S = 12
 CLOB_BOOKS = "https://clob.polymarket.com/books"
 ON_CONFLICT = "city_key,target_date,checkpoint,engine_version"
 SUM_TOLERANCE = 1e-4
@@ -242,6 +249,40 @@ def _written(version, keys):
     return {(r["city_key"], str(r["target_date"]), r["checkpoint"]) for r in rows}
 
 
+def read_stations(now, dry_run=False):
+    """Every active station's METAR readings over the last STATION_HOURS, in ONE request.
+
+    ingest_observations.fetch_station and parse are the same code the
+    backfill uses: one request for the whole board (IEM rate-limits by
+    request), US stations matched under their three-letter id, routine and
+    special reports. Returns a summary for the tick's log; raises nothing.
+    """
+    import ingest_observations as io
+    t0 = time.monotonic()
+    out = {"rows": 0, "cities": 0, "silent": [], "error": None}
+    try:
+        cities = get_cities(require_coords=False, require_icao=True)
+        by_station = io.station_map(cities)
+        icaos = sorted({(c.get("icao") or "").strip().upper() for c in cities if c.get("icao")})
+        since = now - dt.timedelta(hours=STATION_HOURS)
+        # day2 is EXCLUSIVE on the ASOS service (ingest_observations.window).
+        txt = io.fetch_station(icaos, since.date(), now.date() + dt.timedelta(days=1),
+                               since=since, until=now, timeout=STATION_TIMEOUT_S)
+        rows = io.parse(txt, by_station=by_station) if txt else []
+        seen = {r["city_key"] for r in rows}
+        out.update(cities=len(seen), silent=sorted(c["city_key"] for c in cities if c["city_key"] not in seen))
+        out["rows"] = (upsert("weather_observations", rows, "city_key,valid_at,source")
+                       if rows and not dry_run else len(rows))
+        if not rows:
+            out["error"] = "IEM returned nothing usable for any station" + (
+                ": rate limited" if txt and "too many requests" in txt.lower() else "")
+    except Exception as e:
+        out["error"] = f"{type(e).__name__}: {str(e)[:160]}"
+    out["seconds"] = round(time.monotonic() - t0, 1)
+    out["silent"] = out["silent"][:20]
+    return out
+
+
 def run(now=None, budget_s=BUDGET_S, dry_run=False):
     import probability_engine as pe
 
@@ -249,6 +290,8 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     now = now or dt.datetime.now(dt.timezone.utc)
     version = engine_version()
 
+    # Stations first, so this hour's checkpoints price on this hour's readings.
+    stations = read_stations(now, dry_run)
     cities = get_cities(require_coords=False)
     tz_of = {c["city_key"]: c.get("timezone") for c in cities}
     unit_of = {c["city_key"]: (c.get("unit") or "C") for c in cities}
@@ -262,11 +305,13 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     held = _written(version, {(c, t, k) for c, t, k, _ in candidates})
     due = [d for d in candidates if (d[0], d[1], d[2]) not in held]
     detail = {"engine_version": version, "due": len(due), "already_written": len(candidates) - len(due),
-              "notes": notes[:20]}
+              "notes": notes[:20], "observations": stations}
     if not due:
-        print(f"tick {now:%Y-%m-%d %H:%MZ}: nothing due ({len(held)} already written)")
+        print(f"tick {now:%Y-%m-%d %H:%MZ}: nothing due ({len(held)} already written); "
+              f"stations {stations['rows']} rows")
         if not dry_run:
-            log_run("tick", "ok", 0, dict(detail, seconds=round(time.monotonic() - t0, 1)))
+            log_run("tick", "attention" if stations["error"] else "ok", 0,
+                    dict(detail, seconds=round(time.monotonic() - t0, 1)))
         return detail
 
     market_of = {(m["city_key"], str(m["resolution_date"])): m for m in markets}
@@ -350,7 +395,7 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     detail.update({"written": written if not dry_run else 0, "would_write": len(out),
                    "deferred": deferred, "failed": failed[:30],
                    "books": len(books), "seconds": round(time.monotonic() - t0, 1)})
-    status = "ok" if not failed and not deferred else "attention"
+    status = "ok" if not failed and not deferred and not stations["error"] else "attention"
     print(f"tick {now:%Y-%m-%d %H:%MZ}: {len(due)} due, {len(out)} rows, "
           f"{len(deferred)} deferred, {len(failed)} failed, {detail['seconds']} s")
     for line in failed + [f"deferred: {d}" for d in deferred] + notes:

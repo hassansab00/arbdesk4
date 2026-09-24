@@ -24,3 +24,20 @@ do $$ begin
     jsonb_build_object('mode', 'auto', 'every_minutes', 55))
     where key = 'workflow_schedules' and not (value ? 'P6.1_clock');
 end $$;
+
+-- AND WHAT THE CLOCK LETS n8n STOP DOING (plan v2 P6.2: the instance must
+-- come in under 1,800 executions a month; measured ~100 a day on 24 Sep).
+--   P1.6 IEM observations: OFF. The hourly tick reads every station itself
+--        (scripts/tick.py read_stations), so its 720 executions a month go.
+--        The workflow is unpublished in n8n; its template stays, so it can
+--        come back as a manual backfill.
+--   P0.3 book snapshots: every 2 hours (the trigger changes in n8n); the gate
+--        moves to 110 minutes so an on-time run is never skipped. -360 a month.
+do $$ begin
+  if to_regclass('public.settings') is null then return; end if;
+  update public.settings
+     set value = value
+       || jsonb_build_object('P1.6_iem_observations', jsonb_build_object('mode', 'off', 'every_minutes', 50))
+       || jsonb_build_object('P0.3_book_volume_snapshot', jsonb_build_object('mode', 'auto', 'every_minutes', 110))
+   where key = 'workflow_schedules';
+end $$;

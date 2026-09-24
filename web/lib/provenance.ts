@@ -692,6 +692,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Observations (IEM METAR)"
     },
     {
+      "cadence": "only when you run it",
+      "file": "tick.yml",
+      "how": "scripts/tick.py",
+      "kind": "action",
+      "name": "Tick (hourly checkpoints)"
+    },
+    {
       "cadence": "whenever its n8n schedule fires",
       "file": "P1.2_nws_monitor.template.json",
       "how": "n8n",

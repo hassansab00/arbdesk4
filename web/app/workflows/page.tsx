@@ -87,7 +87,7 @@ const CATALOGUE: Array<{
   {
     job: "P0.3_book_volume_snapshot",
     label: "Book + Volume Snapshot",
-    schedule: "scheduled in n8n",
+    schedule: "every 2 hours at :24 UTC",
     what:
       "Writes one book_snapshots row per live band: the ladder into raw_book, the cumulative USD depth tiers, and the exchange's 24h volume. This is what every fill price on Goals and the Board walks.",
   },
@@ -129,7 +129,7 @@ const CATALOGUE: Array<{
   {
     job: "P1.6_iem_observations",
     label: "Station Observations (IEM METAR)",
-    schedule: "on demand",
+    schedule: "retired - the hourly tick reads every station; run by hand for a backfill",
     what:
       "Station readings for every city with an ICAO \u2014 the instrument record a daily high is SETTLED against, and the running maximum intraday logic reads. It is the only weather feed whose rows are evidence rather than a model's opinion, which is why settlement and the fitted model both use it and nothing else.",
     note:

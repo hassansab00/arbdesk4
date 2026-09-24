@@ -175,7 +175,9 @@ def test_the_engine_names_the_forecast_it_priced_from():
 # --------------------------------------------------------------------------
 @pytest.fixture
 def world(monkeypatch):
-    w = {"written": [], "logged": [], "held": [], "delay": 0.0}
+    w = {"written": [], "logged": [], "held": [], "delay": 0.0,
+         "stations": {"rows": 12, "cities": 1, "silent": [], "error": None, "seconds": 0.1}}
+    monkeypatch.setattr(tick, "read_stations", lambda now, dry_run=False: dict(w["stations"]))
     monkeypatch.setattr(tick, "get_cities", lambda **kw: [
         {"city_key": "nyc", "timezone": "America/New_York", "unit": "F"}])
     monkeypatch.setattr(pe, "_upcoming_markets", lambda: MARKETS[:1])
@@ -284,3 +286,72 @@ def test_the_tick_runs_hourly_at_36_on_the_n8n_clock_and_can_be_started_by_hand(
 def test_dispatch_inputs_never_reach_the_shell_line():
     for step in next(iter(_tick_yml()["jobs"].values()))["steps"]:
         assert "inputs." not in (step.get("run") or ""), step
+
+
+# --------------------------------------------------------------------------
+# the stations, every hour (plan v2 P6.2: n8n's P1.6 retired into the tick)
+# --------------------------------------------------------------------------
+def test_a_tick_logs_its_station_read_and_a_failed_read_is_attention(world):
+    out = tick.run(now=at("2026-09-24T22:35"))
+    assert out["observations"]["rows"] == 12 and world["logged"][0][1] == "ok"
+    world["logged"].clear(); world["written"].clear()
+    world["stations"]["error"] = "ReadTimeout: IEM"
+    tick.run(now=at("2026-09-24T22:35"))
+    assert world["logged"][0][1] == "attention", "a missed station read must not look healthy"
+
+
+def test_the_stations_are_read_even_when_no_checkpoint_is_due(world):
+    world["held"] = [{"city_key": "nyc", "target_date": "2026-09-25", "checkpoint": "d1_eve"}]
+    out = tick.run(now=at("2026-09-24T22:35"))
+    assert out["due"] == 0 and out["observations"]["rows"] == 12
+
+
+def _iem_csv(rows):
+    head = "station,valid,tmpf,dwpf,relh,drct,sknt,p01i,skyc1,mslp"
+    return "\n".join([head] + rows) + "\n"
+
+
+def test_read_stations_is_one_request_for_the_board_over_six_hours(monkeypatch):
+    import ingest_observations as io
+    calls, written = [], []
+    monkeypatch.setattr(tick, "get_cities", lambda **kw: [
+        {"city_key": "nyc", "icao": "KLGA"}, {"city_key": "london", "icao": "EGLC"}])
+
+    def fetch(station, start, end, since=None, until=None, timeout=300):
+        calls.append((list(station), start, end, since, until, timeout))
+        return _iem_csv(["LGA,2026-09-24 20:51,70.0,60.0,70,180,5,0,FEW,1015.0"])
+    monkeypatch.setattr(io, "fetch_station", fetch)
+    monkeypatch.setattr(tick, "upsert", lambda t, rows, k: written.append((t, rows, k)) or len(rows))
+    now = at("2026-09-24T22:36")
+    out = tick.read_stations(now)
+    (stations, start, end, since, until, timeout), = calls
+    assert stations == ["EGLC", "KLGA"], "one request carries every station"
+    assert since == now - dt.timedelta(hours=6) and until == now
+    assert end == dt.date(2026, 9, 25), "day2 is exclusive, so it must be tomorrow"
+    assert timeout == tick.STATION_TIMEOUT_S
+    (table, rows, key), = written
+    assert table == "weather_observations" and key == "city_key,valid_at,source"
+    assert rows[0]["city_key"] == "nyc", "a US station answers under its three-letter id"
+    assert out["rows"] == 1 and out["cities"] == 1 and out["silent"] == ["london"] and out["error"] is None
+
+
+def test_read_stations_never_raises(monkeypatch):
+    import ingest_observations as io
+    monkeypatch.setattr(tick, "get_cities", lambda **kw: [{"city_key": "nyc", "icao": "KLGA"}])
+
+    def boom(*a, **k):
+        raise TimeoutError("IEM slow")
+    monkeypatch.setattr(io, "fetch_station", boom)
+    out = tick.read_stations(at("2026-09-24T22:36"))
+    assert out["rows"] == 0 and "TimeoutError" in out["error"]
+    monkeypatch.setattr(io, "fetch_station", lambda *a, **k: "Too many requests from your IP address")
+    out = tick.read_stations(at("2026-09-24T22:36"))
+    assert "rate limited" in out["error"]
+
+
+def test_a_dry_run_reads_but_writes_no_stations(monkeypatch):
+    import ingest_observations as io
+    monkeypatch.setattr(tick, "get_cities", lambda **kw: [{"city_key": "nyc", "icao": "KLGA"}])
+    monkeypatch.setattr(io, "fetch_station", lambda *a, **k: _iem_csv(["LGA,2026-09-24 20:51,70.0,,,,,,,"]))
+    monkeypatch.setattr(tick, "upsert", lambda *a: (_ for _ in ()).throw(AssertionError("wrote in a dry run")))
+    assert tick.read_stations(at("2026-09-24T22:36"), dry_run=True)["rows"] == 1

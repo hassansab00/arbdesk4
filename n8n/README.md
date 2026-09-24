@@ -49,8 +49,8 @@ into the browser bundle.
 | # | File | What it does | Cadence | Starts | Needs |
 |---|---|---|---|---|---|
 | 1 | `P0.2_market_discovery.template.json` | Polymarket events → `markets` + `bands`. **Everything else is empty without this.** | 6 h | :20 | — |
-| 2 | `P0.3_book_volume_snapshot.template.json` | One order book per band → `book_snapshots`. Prices, depth, the fill model. | 1 h | :24 | 1 |
-| 3 | `P1.6_iem_observations.template.json` | IEM METAR station readings → `weather_observations`. **One request for the whole board**: IEM rate-limits by REQUEST per IP, so 48 requests lost two thirds of the stations from n8n's shared egress and one request loses none. | 1 h | :10 | — |
+| 2 | `P0.3_book_volume_snapshot.template.json` | One order book per band → `book_snapshots`. Prices, depth, the fill model. Every 2 h since plan v2 P6.2 (n8n executions). | 2 h | :24 | 1 |
+| 3 | `P1.6_iem_observations.template.json` | **Retired 24 Sep: unpublished in n8n and `off` in workflow_schedules; the cadence below is its template's (plan v2 P6.2): the hourly tick reads every station itself (`scripts/tick.py`), saving 720 n8n executions a month. Kept for a manual backfill.** IEM METAR station readings → `weather_observations`. **One request for the whole board**: IEM rate-limits by REQUEST per IP, so 48 requests lost two thirds of the stations from n8n's shared egress and one request loses none. | 1 h | :10 | — |
 | 4 | `P1.5_open_meteo.template.json` | Live reading + 7-day forecast for **every** city, in one request. | 3 h | :54 | — |
 | 5 | `P0.4_trade_history.template.json` | Trade tape per band → `trades_observed`. Volume, thin-market flags. | 6 h | :34 | 1 |
 | 6 | `P1.2_nws_monitor.template.json` | api.weather.gov observations + alerts. **US only.** | 2 h | :42 | — |
