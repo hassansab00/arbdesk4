@@ -94,6 +94,7 @@ def snapshot(*pk, where=None):
 TABLES = {
     # --- what the engine decided --------------------------------------------
     "band_probabilities":            append("computed_at", "prob_id"),
+    "prediction_checkpoints":        append("decided_at", "checkpoint_id"),
     "signals":                       append("fired_at", "signal_id"),
     "model_versions":                append("created_at", "version_id"),
     "strategy_config_history":       append("changed_at", "history_id"),

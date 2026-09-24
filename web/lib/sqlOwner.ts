@@ -64,6 +64,7 @@ export const SQL_OWNER: Record<string, string> = {
   "paper_resolution_evidence": "supabase/migrations/20260912083740_paper_position_lifecycle.sql",
   "paper_trade_plans": "supabase/migrations/20260912083728_paper_approvals_exits_and_policies.sql",
   "paper_trades": "ad4_00_preflight.sql",
+  "prediction_checkpoints": "supabase/migrations/20260924000000_prediction_checkpoints.sql",
   "proprietary_data_corrections": "supabase/migrations/20260912200000_proprietary_data_safeguards.sql",
   "proprietary_data_manifests": "supabase/migrations/20260912200000_proprietary_data_safeguards.sql",
   "proprietary_data_quality_flags": "supabase/migrations/20260912200000_proprietary_data_safeguards.sql",
