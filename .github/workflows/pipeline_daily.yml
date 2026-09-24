@@ -207,6 +207,16 @@ jobs:
         timeout-minutes: 3
         run: python scripts/strategy_lifecycle.py
 
+      # 7e. The meta-allocator (plan v2 P5.10): promote a shadow strategy
+      #     whose own ledger passes the evidence gate, activate the portfolio
+      #     account the first time one does, and write tonight's Thompson
+      #     allocation. After the lifecycle, so a strategy suspended tonight
+      #     is already out of the portfolio.
+      - name: Meta-allocator
+        if: ${{ !cancelled() }}
+        timeout-minutes: 3
+        run: python scripts/meta_allocator.py
+
       # 8. Safety net: run anything left queued in backtest_runs. Usually a
       #    no-op. An explicit backtest is backtest.yml, run by hand.
       - name: Queued backtests

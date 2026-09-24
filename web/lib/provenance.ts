@@ -427,7 +427,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
     {
       "cadence": "daily",
       "file": "pipeline_daily.yml",
-      "how": "scripts/paper_settlement.py",
+      "how": "scripts/meta_allocator.py",
       "kind": "action",
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     },

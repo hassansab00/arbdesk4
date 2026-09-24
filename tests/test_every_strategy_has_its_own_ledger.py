@@ -254,3 +254,13 @@ def test_only_active_desks_are_offered_signals(monkeypatch):
     paper_plans.cycle()
     assert seen["paper_accounts"]["status"] == "eq.active", \
         "a suspended or retired desk refuses every entry; offering it one only publishes a refusal"
+
+
+def test_every_signal_records_the_bankroll_it_was_sized_on():
+    """The portfolio account (P5.10) rescales a signal's size to its own pot;
+    it needs the base the engine used, not a guess at it."""
+    a, b = _signal("sA", "YES"), _signal("sB", "YES")
+    a.payload = {"k": 1}
+    se.stamp_sized_on([a, b], {"sA": Portfolio(bankroll=812.5)})
+    assert a.payload == {"k": 1, "sized_on_usd": 812.5}
+    assert b.payload == {"sized_on_usd": 0.0}

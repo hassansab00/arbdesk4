@@ -828,6 +828,7 @@ def main():
         print(f"  HELD {len(held)} ENTER signal(s): no cost version could be resolved this run "
               f"(cost_params unreadable or empty). Exits still go out.", file=sys.stderr)
 
+    stamp_sized_on(fired, portfolios)
     recent = _recently_fired(now)
     cycle_id = str(uuid.uuid4())
     decision_bands = {str(v.band_id): v for v in views}
@@ -854,6 +855,19 @@ def main():
           f"{counts['blocked']} blocked by conflict rules, over {counts['bands']} bands")
     log_run("signal_engine", "attention" if held else "ok", counts["written"], counts)
     return 0
+
+
+def stamp_sized_on(fired, portfolios):
+    """Every signal records the bankroll it was sized on (plan v2 P5.10).
+
+    The size is Kelly on the strategy's shadow ledger. The portfolio account
+    trades the same signal with a different pot - the strategy's share of it -
+    and scales the size by allocated capital / sized_on_usd, so it needs this
+    number and must not assume it.
+    """
+    for s in fired:
+        pf = portfolios.get(s.strategy_id)
+        s.payload = {**(s.payload or {}), "sized_on_usd": float(getattr(pf, "bankroll", 0.0) or 0.0)}
 
 
 def hold_entries_without_cost_version(fired, views):

@@ -2191,6 +2191,87 @@ const assert = require('node:assert/strict');
   await db.exec(`reset role; update public.settings set value=value||'{"daily_loss_frac":1,"city_day_frac":1000,"max_price":0.999,"close_buffer_min":0}'::jsonb where key='risk_rails';`);
 
   // ======================================================================
+  // THE PORTFOLIO ACCOUNT, ACTIVATED BY EVIDENCE (plan v2 P5.10,
+  // 20260924120000_portfolio_by_evidence.sql). Activation names its approver,
+  // happens once, from a desk with no history, and turns the placeholder cash
+  // into the bankroll through one activity row, so the books still balance.
+  // The nightly allocation takes only portfolio-state strategies, each within
+  // the cap, never more than the whole bankroll.
+  // ======================================================================
+  await db.exec('reset role;');
+  const gate=(await db.query("select value from settings where key='portfolio_gate'")).rows[0].value;
+  assert.equal(Number(gate.bankroll_usd),10000); assert.equal(Number(gate.cap_per_strategy),0.4);
+  assert.equal(Number(gate.min_settled_dates),30); assert.equal(Number(gate.min_decisions),60);
+  const pfId=(await db.query("select account_id from paper_accounts where kind='portfolio'")).rows[0].account_id;
+  await db.exec(`insert into public.strategies(strategy_id,name) values('s_pf_a','pf a'),('s_pf_b','pf b'),('s_pf_c','pf c'),('s_pf_x','pf x')
+      on conflict do nothing;`);
+  for (const sid of ['s_pf_a','s_pf_b','s_pf_c','s_pf_x'])
+    await db.query("select set_strategy_state($1,'shadow','P5.10 contract')",[sid]);
+  for (const sid of ['s_pf_a','s_pf_b','s_pf_c'])
+    await db.query("select promote_strategy_to_portfolio($1,'Hassan (delegated to Claude, 24 Sep)','passed the gate')",[sid]);
+  await db.exec('set role service_role;');
+  await assert.rejects(db.query(`select set_portfolio_allocation('{"s_pf_a":0.4}'::jsonb,'v1')`),/not active/,
+    'an allocation was written to a suspended portfolio');
+  await assert.rejects(db.query("select activate_portfolio_account(10000,'','the gate passed')"),/names who approved it/);
+  await assert.rejects(db.query("select activate_portfolio_account(10000,'Hassan','')"),/names who approved it/);
+  await assert.rejects(db.query("select activate_portfolio_account(0,'Hassan','the gate passed')"),/must be above 0/);
+  // A portfolio desk that has already done something cannot have its bankroll reset.
+  await db.exec('reset role; begin;');
+  await db.query("insert into paper_activity(account_id,event_type,payload) values($1,'plan_authorized','{}')",[pfId]);
+  await assert.rejects(db.query("select activate_portfolio_account(10000,'Hassan','the gate passed')"),/has history/);
+  await db.exec('rollback; set role service_role;');
+  const act=(await db.query(
+    "select activate_portfolio_account(10000,'Hassan (delegated to Claude, 24 Sep)','s_pf_a passed the P5.10 gate') as r")).rows[0].r;
+  assert.equal(act.already,false); assert.equal(Number(act.bankroll),10000);
+  await db.exec('reset role;');
+  const pfa=(await db.query('select * from paper_accounts where account_id=$1',[pfId])).rows[0];
+  assert.equal(pfa.status,'active'); assert.equal(pfa.mode,'automatic'); assert.equal(pfa.entries_paused,false);
+  assert.equal(Number(pfa.bankroll_usd),10000); assert.equal(Number(pfa.cash),10000); assert.equal(Number(pfa.starting_cash),10000);
+  assert.deepEqual(pfa.policy.strategies,[],'the portfolio trades nothing until the allocation names what');
+  await books(pfId,'portfolio activated');
+  const actRow=(await db.query("select payload,cash_delta from paper_activity where account_id=$1 and event_type='portfolio_activated'",[pfId])).rows;
+  assert.equal(actRow.length,1); assert.equal(actRow[0].payload.approved_by,'Hassan (delegated to Claude, 24 Sep)');
+  await db.exec('set role service_role;');
+  assert.equal((await db.query("select activate_portfolio_account(5,'Hassan','again') as r")).rows[0].r.already,true);
+  await db.exec('reset role;');
+  assert.equal(Number((await db.query('select cash from paper_accounts where account_id=$1',[pfId])).rows[0].cash),10000,
+    'a second activation changed the bankroll');
+  await db.exec('set role service_role;');
+  // The allocation.
+  await assert.rejects(db.query(`select set_portfolio_allocation('{"s_pf_a":0.41}'::jsonb,'v1')`),/outside \[0, 0.4/);
+  await assert.rejects(db.query(`select set_portfolio_allocation('{"s_pf_a":-0.1}'::jsonb,'v1')`),/outside/);
+  await assert.rejects(db.query(`select set_portfolio_allocation('{"s_pf_x":0.2}'::jsonb,'v1')`),/s_pf_x is not in the portfolio state/);
+  await db.exec(`reset role; update public.settings set value=value||'{"cap_per_strategy":0.5}'::jsonb where key='portfolio_gate'; set role service_role;`);
+  await assert.rejects(db.query(`select set_portfolio_allocation('{"s_pf_a":0.5,"s_pf_b":0.4,"s_pf_c":0.2}'::jsonb,'v1')`),/more than the whole bankroll/);
+  await db.exec(`reset role; update public.settings set value=value||'{"cap_per_strategy":0.4}'::jsonb where key='portfolio_gate'; set role service_role;`);
+  const pv0=(await db.query('select policy_version from paper_accounts where account_id=$1',[pfId])).rows[0].policy_version;
+  await db.query(`select set_portfolio_allocation('{"s_pf_a":0.4,"s_pf_b":0.25,"s_pf_c":0}'::jsonb,'thompson-v1')`);
+  const pol=(await db.query('select policy,policy_version from paper_accounts where account_id=$1',[pfId])).rows[0];
+  assert.deepEqual(pol.policy.strategies.sort(),['s_pf_a','s_pf_b'],'a zero weight must not be traded');
+  assert.equal(pol.policy.allocation_version,'thompson-v1'); assert.equal(pol.policy_version,pv0+1);
+  await db.query(`select set_portfolio_allocation('{"s_pf_a":0.4,"s_pf_b":0.25,"s_pf_c":0}'::jsonb,'thompson-v1')`);
+  assert.equal((await db.query('select policy_version from paper_accounts where account_id=$1',[pfId])).rows[0].policy_version,pv0+1,
+    'an unchanged allocation invalidated every pending plan');
+  // The portfolio trades an allocated strategy and refuses the rest.
+  await db.exec(`reset role; insert into signals(signal_id,action,strategy_id,fired_at,reason) values
+      (7101,'ENTER','s_pf_a',now(),'allocated'),(7102,'ENTER','s_pf_c',now(),'weight 0'); set role service_role;`);
+  const pfPlan=async(cmd,sig)=>{
+    const id=(await db.query('select publish_paper_plan($1,$2,$3,$4,$5) as id',
+      [pfId,cmd,sig,JSON.stringify([{band_id:band,side:'NO',shares:'2',limit_price:'.50',cash_ceiling:'1.05'}]),
+       JSON.stringify({net_edge_per_share:'.10'})])).rows[0].id;
+    return (await db.query('select status,reason from paper_trade_plans where plan_id=$1',[id])).rows[0];
+  };
+  assert.equal((await pfPlan('71000000-0000-0000-0000-000000000001',7101)).status,'queued','the portfolio could not trade an allocated strategy');
+  const unalloc=await pfPlan('71000000-0000-0000-0000-000000000002',7102);
+  assert.equal(unalloc.status,'blocked'); assert.match(unalloc.reason,/Strategy outside policy/);
+  for (const role of ['anon','authenticated'])
+    for (const fn of ['public.activate_portfolio_account(numeric,text,text)','public.set_portfolio_allocation(jsonb,text)'])
+      assert.equal((await db.query(`select has_function_privilege('${role}','${fn}','execute') as ok`)).rows[0].ok,false,
+        `${role} can call ${fn}`);
+  await db.exec('reset role;');
+  await books(pfId,'portfolio after its first plan');
+
+  // ======================================================================
   // WRITES NEED AN OPERATOR (plan v2 P1.2,
   // 20260923130000_writes_need_an_operator.sql). The browser reads settings
   // as anon; it must not see who the operators are, nor the n8n webhook URLs,
@@ -2209,5 +2290,5 @@ const assert = require('node:assert/strict');
   await db.exec('reset role;');
 
   await db.close();
-  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, a shadow ledger per strategy and a suspended portfolio account, strategy lifecycle states, the fixed risk rails and the kill switch, research capture of prices only, no PUBLIC execute on SECURITY DEFINER functions and the settings the browser may not read');
+  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, a shadow ledger per strategy and a suspended portfolio account, strategy lifecycle states, the fixed risk rails and the kill switch, the portfolio activated by evidence and its allocation, research capture of prices only, no PUBLIC execute on SECURITY DEFINER functions and the settings the browser may not read');
 })().catch(e=>{console.error(e);process.exit(1);});
