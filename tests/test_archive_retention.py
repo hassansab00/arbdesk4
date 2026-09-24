@@ -140,10 +140,8 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
     """
     from archive_observations import TABLES
 
-    # resolution: 3, the floor prune_resolution_evidence allows. A settlement
-    # captured this morning is still being read by the next databank run,
-    # which is what turns it into the frozen outcome that makes the proof
-    # archivable at all - so the window cannot be shorter than that loop.
+    # resolution: 1, the floor prune_resolution_evidence allows since the
+    # verdict ledger (P4.5) made the payload evidence at rest (P1.6, 24 Sep).
     # books: 7, and unlike the others this window does not bound HISTORY -
     # every band-day keeps its closing book at any age, so min(observed_at)
     # and the backtest window never move. What it bounds is how long the
@@ -155,7 +153,7 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
     # a SUPERSEDED pricing survives, and the longest window any live reader asks
     # for is the twelve hours the readiness views and ad4_40 use.
     limits = {"observations": 90, "forecasts": 90, "trades": 90, "research": 2,
-              "resolution": 3, "books": 7, "edges": 14}
+              "resolution": 1, "books": 7, "edges": 14}
     assert set(limits) == set(TABLES), (
         f"a dataset was added to the archive without a reasoned retention ceiling here: "
         f"{sorted(set(TABLES) ^ set(limits))}")
@@ -186,8 +184,8 @@ def test_the_floor_is_enforced_by_the_function_that_deletes():
 
     trades = Path(__file__).resolve().parents[1] / "sql" / "ad4_65_prune_trades.sql"
     research = Path(__file__).resolve().parents[1] / "sql" / "ad4_69_prune_research_captures.sql"
-    assert "p_keep_days < 30" in trades.read_text(encoding="utf-8"), (
-        "trades needs 30 days - the 24h volume window needs room to be wrong")
+    assert "p_keep_days < 14" in trades.read_text(encoding="utf-8"), (
+        "trades needs 14 days (P1.6, 24 Sep) - the 24h volume window needs room to be wrong")
     assert "p_keep_days < 2" in research.read_text(encoding="utf-8"), (
         "research needs a floor too, just a shorter one - its whole history is "
         "five days, so a 30-day floor would make the function permanently refuse")

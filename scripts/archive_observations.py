@@ -126,12 +126,12 @@ TABLES = {
         "cutoff_col": "traded_at",
         "cutoff_is_date": False,
         "prune_rpc": "prune_trades",
-        # THIRTY, THE FLOOR prune_trades ENFORCES. This said 14, reasoned from
-        # the 24-hour volume window alone, and the function refuses anything
-        # under 30 so the window has room to be wrong. So the first run that
-        # reached a floor - 23 Sep, at 124% of the tier - exported 36,945
-        # rows to a 14-day cutoff, had the dry run refuse them, and failed.
-        "min_keep_days": 30,
+        # FOURTEEN, THE FLOOR prune_trades ENFORCES since 24 Sep (plan v2
+        # P1.6): 14x the 24-hour volume window its only readers use. Until then
+        # the function said 30 while this said 14, and the first run under
+        # pressure (23 Sep) exported 36,945 rows, had them refused, and failed -
+        # which is why the floor is parsed from the SQL by a test now.
+        "min_keep_days": 14,
         "tag": "trades-archive",
         "columns": ["band_id", "condition_id", "traded_at", "price", "size",
                     "side", "proxy_wallet", "ingested_at", "city_key",
@@ -224,15 +224,13 @@ TABLES = {
         "columns": ["condition_id", "token_yes", "token_no",
                     "winning_token", "captured_at", "gamma", "clob", "source_urls"],
         "bytes_per_row": 7000,
-        # THREE DAYS, the floor prune_resolution_evidence allows: a settlement
-        # captured this morning is still being read by the next databank run,
-        # which is what turns it into the frozen outcome that makes the proof
-        # archivable in the first place.
-        "keep_days": 3,
-        # Three, the same floor, for the same reason. It said 1 until 23 Sep,
-        # which prune_resolution_evidence refuses: 3,495 rows exported and
-        # refused on the first run under pressure.
-        "min_keep_days": 3,
+        # ONE DAY, the floor prune_resolution_evidence allows since 24 Sep
+        # (plan v2 P1.6). It was three while databank read this table; since
+        # P4.5 the verdict lives in resolution_verdicts from the moment of
+        # insert, databank reads that, and the payload here is evidence at
+        # rest. At ~2,200 proofs a day of ~6 KB, three days held ~40 MB.
+        "keep_days": 1,
+        "min_keep_days": 1,
         "needs_feature_cache": False,
     },
     # THE LARGEST TABLE ON THE DESK, and the only big one the archive never
