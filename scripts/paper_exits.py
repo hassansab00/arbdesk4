@@ -71,23 +71,23 @@ def band_contains(band, value):
 
 
 def certainly_lost(band, running_max_c, side, unit, day_decided):
-    """True when this position can no longer win, so selling beats settling.
+    """True when this position can no longer win. It is then held to settlement,
+    not sold (Hassan, 24 Sep): nobody buys a bucket the day has already passed.
 
     A DAILY MAXIMUM ONLY GOES UP. That is the whole asymmetry, and it is a
     property of the instrument rather than a rule anyone chose:
 
       * once the running max has passed ABOVE a closed bucket, a YES on it can
         never win again - and that is certain long before the day is decided,
-        which is the point. Waiting for settlement pays $0; the book usually
-        still bids a cent or two.
+        which is the point.
       * on an open-high bucket ("95F or more") the reverse locks in: once the
         max reaches band_lo, YES has won permanently and the NO has lost.
       * everything else needs the day to be over, because the max can still
         move: a max sitting inside a bucket today may leave it this afternoon.
 
-    WINNERS ARE NOT EXITED HERE. A position that is certain to win settles at
-    $1.00 and selling it costs the venue fee on the way out, so holding is
-    strictly better. This only ever recovers residual value from a loser.
+    Neither side is sold on this: a certain winner settles at $1.00 and
+    selling it only pays the venue a fee, and a certain loser has no buyer
+    worth crossing, so cycle() counts it and leaves it to settlement.
     """
     # Read the way the venue settles: the whole degree in the band's unit
     # (venue.py, plan v2 P5.0 item 6). Buckets are [lo, hi) on whole degrees,
@@ -145,7 +145,7 @@ def cycle(budget_seconds=60):
         writing anything and the desk page showed a stale 'Exits' tile.
         """
         detail = {'exits_queued': queued, 'stopped': note,
-                  'exits_on_decided_outcome': exits_on_outcome}
+                  'lost_held_to_settlement': exits_on_outcome}
         if skipped:
             detail['skipped'] = dict(sorted(skipped.items()))
         log_run('paper_exits', 'ok', queued, detail)
@@ -179,6 +179,16 @@ def cycle(budget_seconds=60):
                 if weather and str(weather.get('local_date') or '')==str(market.get('resolution_date') or ''):
                     lost=certainly_lost(band, number(weather['running_max_c']) if weather.get('running_max_c') is not None else None,
                                         pos['side'], market.get('unit'), bool(weather.get('day_decided')))
+            # A LOSER IS HELD TO SETTLEMENT (Hassan, 24 Sep). Once the day has
+            # peaked and the venue's book has settled on one bucket, nobody
+            # buys the dead one: there is no bid worth crossing, and
+            # queue_automatic_paper_exit refuses the sale anyway unless the
+            # stop-loss is hit, which raised and ended the whole cycle. So the
+            # position is counted and left for venue settlement to close.
+            if lost:
+                exits_on_outcome += 1
+                skipped['lost_hold_to_settlement'] = skipped.get('lost_hold_to_settlement', 0) + 1
+                continue
             book, reason = _book_or_reason(capture_book, order)
             if book is None:
                 skipped[reason] = skipped.get(reason, 0) + 1
@@ -195,17 +205,11 @@ def cycle(budget_seconds=60):
             limit=min(number(x['price']) for x in preview['fills'])
             gain=(number(preview['notional'])-number(preview['fee']))/number(pos['cost_basis'])-1
             policy=account['policy']
-            # A loser that cannot recover is sold whatever the thresholds say:
-            # the alternative is settling it at $0. Winners still fall through
-            # to the thresholds, because a certain winner settles at $1.00 and
-            # selling one only pays the venue a fee.
-            if not lost and -number(policy['stop_loss_fraction'])<gain<number(policy['take_profit_fraction']):
+            if -number(policy['stop_loss_fraction'])<gain<number(policy['take_profit_fraction']):
                 continue
-            if lost:
-                exits_on_outcome+=1
             identity=f"{account['account_id']}:{pos['band_id']}:{pos['side']}:{pos['shares']}:{pos['cost_basis']}:{book['snapshot_id']}:{account['policy_version']}"
             rpc('queue_automatic_paper_exit',{'p_account':account['account_id'],'p_command':str(uuid.uuid5(uuid.NAMESPACE_URL,identity)),
-                'p_band':pos['band_id'],'p_side':pos['side'],'p_limit':str(limit),'p_evidence':{**preview,'exit_reason':'outcome_decided' if lost else 'threshold'},'p_policy_version':account['policy_version']})
+                'p_band':pos['band_id'],'p_side':pos['side'],'p_limit':str(limit),'p_evidence':{**preview,'exit_reason':'threshold'},'p_policy_version':account['policy_version']})
             queued+=1
     return done('considered every position')
 
