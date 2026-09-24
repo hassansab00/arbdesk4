@@ -1,0 +1,831 @@
+{
+ "schema": 1,
+ "tables": {
+  "anomalies": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:07:19+00:00",
+     "file": "anomalies-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 4738,
+     "sha256": "afe00b4869a6794485eda6f89a0cd75c82df9558c52f1ae74dfd762446bbcf87",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "anomaly_rules": {
+   "content_sha256": "034b6351d4ab7decdc240e515746585d280a7d86f4f293c7ced41c5b48b51265",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:07:22+00:00",
+     "file": "anomaly_rules-2026-09-24.csv.gz",
+     "rows": 5,
+     "sha256": "2ace7db144b0ef3821816016bc91583f9af602bc52dc021c8b8e7f8fb9d4ca50"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "backtest_results": {
+   "content_sha256": "5862ded0815e2adc0c79b66dd1e03cd67e8f55d37e6b40e4ebc8f8e9d90c7968",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:07:24+00:00",
+     "file": "backtest_results-2026-09-24.csv.gz",
+     "rows": 24,
+     "sha256": "bf01e9d95bcc238e59183456f87c5e6e9b323d3927b5c5ff70d8681eda7e2707"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "backtest_runs": {
+   "content_sha256": "628048bdc7d68e22a0140446316a580089cca93cbd9812e76aa5427b864b525b",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:07:25+00:00",
+     "file": "backtest_runs-2026-09-24.csv.gz",
+     "rows": 8,
+     "sha256": "ab91b4f5ebb3c3bca22c03691cfbdbcba56cc72a6ebcf3e6c9345dbefb52472e"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "backtest_trades": {
+   "files": [],
+   "kind": "snapshot"
+  },
+  "band_probabilities": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:07:26+00:00",
+     "file": "band_probabilities-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 74056,
+     "sha256": "5e067db213ec1a8c5bae2f50d7d857a86261acc62ff2e9411f3a1dd4759e38d3",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "bands": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:07:48+00:00",
+     "file": "bands-start-to-2026-09-15.csv.gz",
+     "from": null,
+     "rows": 15200,
+     "sha256": "9770fab5fa3f68210426b132e18bdc2233a6d7daf5f720c4bbd126b304b47e3e",
+     "to": "2026-09-15"
+    }
+   ],
+   "kind": "closed",
+   "through": "2026-09-15"
+  },
+  "book_snapshots": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:07:58+00:00",
+     "file": "book_snapshots-start-to-2026-09-08.csv.gz",
+     "from": null,
+     "rows": 15266,
+     "sha256": "a8e9f4ce2412774af3048a3c20866c9e579994664d0b23f8bd6d91bc8a56952a",
+     "to": "2026-09-08"
+    }
+   ],
+   "kind": "closed",
+   "through": "2026-09-08"
+  },
+  "cities": {
+   "content_sha256": "5a3efb5edeb8faa35bdd112095c0fb4f16f8bc0d089497ece9104404b646215f",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:08:47+00:00",
+     "file": "cities-2026-09-24.csv.gz",
+     "rows": 54,
+     "sha256": "285d6a61478529b942dd256c0ed69b9818d0bfbd064270f01956b4d353973173"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "city_metadata_evidence": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:08:48+00:00",
+     "file": "city_metadata_evidence-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 18,
+     "sha256": "23309935ec6fa31c73127832c9835c76e82555a0c326cf96aeaa512124dffff0",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "cost_params": {
+   "content_sha256": "7eb05c0fa1bf239c020e241ac9344f537e4d16636ed21ec7bf638601fa892493",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:08:49+00:00",
+     "file": "cost_params-2026-09-24.csv.gz",
+     "rows": 5,
+     "sha256": "418edf3477b7c9756a838bd885307d9b049bab4d2bf934312682e0c715791b5b"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "data_freshness_spec": {
+   "content_sha256": "edcf3ae08f711a34ba9c305c9a8d5ee123fbc910616d0ffd97fce5151653ebd1",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:08:50+00:00",
+     "file": "data_freshness_spec-2026-09-24.csv.gz",
+     "rows": 56,
+     "sha256": "27429e701a1d617b3d0ecba7df8cbec285ea510f0c31c0bca87fd3bf67622eea"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "deployments": {
+   "files": [],
+   "kind": "snapshot"
+  },
+  "derived_band_day_volume": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:08:52+00:00",
+     "file": "derived_band_day_volume-start-to-2026-09-15.csv.gz",
+     "from": null,
+     "rows": 2912,
+     "sha256": "305d55963a6525e07888c82711cd6e9ffd43089d9864ead0d9f639f2d228b720",
+     "to": "2026-09-15"
+    }
+   ],
+   "kind": "closed",
+   "through": "2026-09-15"
+  },
+  "derived_calibration_adjustment": {
+   "content_sha256": "f7527a05f2005e7fdbf58bc58a50604b5a0db8cc6942313b92483472098f2c96",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:08:55+00:00",
+     "file": "derived_calibration_adjustment-2026-09-24.csv.gz",
+     "rows": 49,
+     "sha256": "4895331e1980fa51397653535a4af1bad2b075c2dc0b176ad2fa85d4e218bb28"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "derived_capacity": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:08:56+00:00",
+     "file": "derived_capacity-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 8596,
+     "sha256": "1034bc57d40743d469498099fbf0f940d79468027727a592b8362bc00cd89c5d",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "derived_city_climate": {
+   "content_sha256": "3dc1878acc6f5a62fc7b90f8752fb1b050bc9deda6ccf5e9d636563527614e3a",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:08:58+00:00",
+     "file": "derived_city_climate-2026-09-24.csv.gz",
+     "rows": 54,
+     "sha256": "3a73518b3dd690a3b66a5e0b78178bc7bd9890916c20fd514b80e18a4ff9af1f"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "derived_city_correlation": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:08:59+00:00",
+     "file": "derived_city_correlation-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 43750,
+     "sha256": "644fdf3cc1068336266c376ce9d97f262bec4011638fcc87431904489e402a74",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "derived_city_day_features": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:09:24+00:00",
+     "file": "derived_city_day_features-start-to-2026-09-15.csv.gz",
+     "from": null,
+     "rows": 21996,
+     "sha256": "44bfbebc3a332f4f4cbf92cfdbc3ef55f3b9e38e7aca4723403f56a69cd3ed7e",
+     "to": "2026-09-15"
+    }
+   ],
+   "kind": "closed",
+   "through": "2026-09-15"
+  },
+  "derived_city_day_volume": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:09:31+00:00",
+     "file": "derived_city_day_volume-start-to-2026-09-15.csv.gz",
+     "from": null,
+     "rows": 967,
+     "sha256": "baef6d2562aca21014d3e18cf4dc5894764b710eadd833be57b85c49d3135ba8",
+     "to": "2026-09-15"
+    }
+   ],
+   "kind": "closed",
+   "through": "2026-09-15"
+  },
+  "derived_climb_profile": {
+   "content_sha256": "44a2be97b4af11f3f0db1b6e4ce154269b07761527b43be68631188207b3861b",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:09:32+00:00",
+     "file": "derived_climb_profile-2026-09-24.csv.gz",
+     "rows": 1248,
+     "sha256": "7828aab18888d4af127081304614d2a7e61e8def7bb9c88497c43c6d2e33e9a0"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "derived_forecast_postprocess": {
+   "content_sha256": "93efceeb1e4647e54cd69a144cafce40c4e536e97a00928fadad9847d66e5a8a",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:09:35+00:00",
+     "file": "derived_forecast_postprocess-2026-09-24.csv.gz",
+     "rows": 399,
+     "sha256": "7a009b60a528c7dc5feb3ce1fa85d372a69add69b37704e6dce93b02bafd754c"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "derived_forecast_skill": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:09:36+00:00",
+     "file": "derived_forecast_skill-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 9675,
+     "sha256": "deea05b4f194a444fdfbbde30121247e89d788de6fffd2f2dcdb1b39f8797227",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "derived_forecast_skill_model": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:09:39+00:00",
+     "file": "derived_forecast_skill_model-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 6910,
+     "sha256": "82381149966ff2e1efc7e79389e80b8e24ca5227edbd33aa08482735e2995cbb",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "derived_hit_recipe": {
+   "files": [],
+   "kind": "snapshot"
+  },
+  "derived_hit_summary": {
+   "files": [],
+   "kind": "snapshot"
+  },
+  "derived_hit_tournament": {
+   "files": [],
+   "kind": "snapshot"
+  },
+  "derived_market_peak": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:09:42+00:00",
+     "file": "derived_market_peak-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 505,
+     "sha256": "efae8d41f8a50365eec9aff30aacdff37850395b750c4c926aa21cd2546d1f39",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "derived_model_forecast": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:09:43+00:00",
+     "file": "derived_model_forecast-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 7003,
+     "sha256": "fb6d6e33df1bf37fbb8215fd19c40cb53cc45180386e2019d19def65c5d31a61",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "derived_model_promotion": {
+   "content_sha256": "c44d5df1e7b99e10c40437cb04b9b7d574abd2c5b5115d23ec3c154f014369d1",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:09:46+00:00",
+     "file": "derived_model_promotion-2026-09-24.csv.gz",
+     "rows": 392,
+     "sha256": "e1e5f002548797c20bcede3f0d3b6effc900a087a81de8a95987f07aa33f0f2c"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "derived_trajectory": {
+   "content_sha256": "54acf5710bf0e24f68cecb657ee790335a1cbcc974b1b497fadb61419bdb4be1",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:09:47+00:00",
+     "file": "derived_trajectory-2026-09-24.csv.gz",
+     "rows": 1176,
+     "sha256": "bb387eff36587a4969a2b86ba0c1772fea2fdef84b12448c9bb00d7c31f64d61"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "derived_weather_model": {
+   "content_sha256": "ccf1474e8e772fafc7b9f334a83de91c817abdf99b76eb6614430389e165900c",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:09:49+00:00",
+     "file": "derived_weather_model-2026-09-24.csv.gz",
+     "rows": 52,
+     "sha256": "642f6ad0ec2ab0a4c4a5f86252c21d256f93a48e3e59acc331e86e1a412d1841"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "derived_weather_peak": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:09:49+00:00",
+     "file": "derived_weather_peak-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 636,
+     "sha256": "9073a3e31912971bd9534d5453aff3c9194ad459399627ab61876fa2942b389b",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "edges": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:09:50+00:00",
+     "file": "edges-start-to-2026-09-15.csv.gz",
+     "from": null,
+     "rows": 7808,
+     "sha256": "d30f5ff45f79612e3b87e722e604e912a6814f5ea0df8316c9fe6e76caba1172",
+     "to": "2026-09-15"
+    }
+   ],
+   "kind": "closed",
+   "through": "2026-09-15"
+  },
+  "fact_band_outcome": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:02+00:00",
+     "file": "fact_band_outcome-start-to-2026-09-15.csv.gz",
+     "from": null,
+     "rows": 9147,
+     "sha256": "0c3a92a9f9a28baca2aa8b980caf4fd2a2cb9518670b94ba84e1c8ecd3b7d433",
+     "to": "2026-09-15"
+    }
+   ],
+   "kind": "closed",
+   "through": "2026-09-15"
+  },
+  "fact_band_outcome_exclusions": {
+   "files": [],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "fact_band_outcome_venue_rebuilt": {
+   "files": [],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "fact_forecast_outcome": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:07+00:00",
+     "file": "fact_forecast_outcome-start-to-2026-09-15.csv.gz",
+     "from": null,
+     "rows": 6629,
+     "sha256": "38e9de9e437f62c9c5392ca392333faac3c57dacde571edaefd3382c8a2fe625",
+     "to": "2026-09-15"
+    }
+   ],
+   "kind": "closed",
+   "through": "2026-09-15"
+  },
+  "fact_signal_outcome": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:11+00:00",
+     "file": "fact_signal_outcome-start-to-2026-09-15.csv.gz",
+     "from": null,
+     "rows": 5,
+     "sha256": "76a79f3debb0c70b1f392dca273512986d08e1eddaac4e538ab0a25538f6a051",
+     "to": "2026-09-15"
+    }
+   ],
+   "kind": "closed",
+   "through": "2026-09-15"
+  },
+  "ingest_log": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:12+00:00",
+     "file": "ingest_log-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 1913,
+     "sha256": "010fd8787d2d70130dc64a477f55bba5c98f44fc56e64a2090f95ed2f20b0859",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "ledger": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:13+00:00",
+     "file": "ledger-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 140,
+     "sha256": "d7cc2278128f43c8e91f780cc1d4b53c4379769c09206732588f2b5cf7481c00",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "markets": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:14+00:00",
+     "file": "markets-start-to-2026-09-15.csv.gz",
+     "from": null,
+     "rows": 1404,
+     "sha256": "89e9dd5aac5c8b4d8325e4ffa8742f1d09d68574bde20190684093e685b994cb",
+     "to": "2026-09-15"
+    }
+   ],
+   "kind": "closed",
+   "through": "2026-09-15"
+  },
+  "model_versions": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:15+00:00",
+     "file": "model_versions-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 87,
+     "sha256": "a8cf046df79423243983b28018445a46db156b8f5b5ed3d13c8f64bb52107220",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "paper_accounts": {
+   "content_sha256": "2ceb80d2d6a39e0b2a1019af680dd6403348da3b5fe3393ac48eb8332ea9eb99",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:16+00:00",
+     "file": "paper_accounts-2026-09-24.csv.gz",
+     "rows": 4,
+     "sha256": "00e2fd7f46fcb9f36b5caed92a91c567611d5e7e3028d74ea988e1bc787a442a"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "paper_activity": {
+   "content_sha256": "a9de24147099ce093d2849e7f959bef66ef1c406ce668193c2983f98dc24178d",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:17+00:00",
+     "file": "paper_activity-2026-09-24.csv.gz",
+     "rows": 233,
+     "sha256": "a679cee2d84c63aa9793da1dc49766c762b31234a865455f8f5b9d320eaa8ef6"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "paper_book_evidence": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:18+00:00",
+     "file": "paper_book_evidence-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 863,
+     "sha256": "ac682c5ff03577aff7b3d14f24ae18399345b6a21f2b2483f3908d3556393ff7",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "paper_orders": {
+   "content_sha256": "000805eea061298e97be0c6f68f540eb06858469f4b9afca5b0d7a87ee073b4f",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:22+00:00",
+     "file": "paper_orders-2026-09-24.csv.gz",
+     "rows": 79,
+     "sha256": "b17713fe0bf411cefedb4e58b0964286ca5541879002d85545d1ff1a486a660b"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "paper_position_settlements": {
+   "content_sha256": "b2504a0090cc2cfcaa249306eec2c7caca651e14e193a15d3c5fec98aeb84bde",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:24+00:00",
+     "file": "paper_position_settlements-2026-09-24.csv.gz",
+     "rows": 50,
+     "sha256": "510a524ab50835c6bce28239815910f62dcff42535dac0861ef7e964895a071d"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "paper_positions": {
+   "content_sha256": "3a1f12e7c29ca4d40e98390bd7d776951bf48773ee1a78571fab2d9536ae9c12",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:25+00:00",
+     "file": "paper_positions-2026-09-24.csv.gz",
+     "rows": 50,
+     "sha256": "58bd39eee63d2eb74ebcfd24e0bdb479fb37d5d5ecb7b93bd2e1ad0b5e198799"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "paper_trade_plans": {
+   "content_sha256": "cb64fa8b756a58ae011439b03f8b6ced0accfd07e25316a7768d495ccad9351d",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:26+00:00",
+     "file": "paper_trade_plans-2026-09-24.csv.gz",
+     "rows": 449,
+     "sha256": "e711a6ca36aba629ae9b49bad92b19b9f92c0423e1eb038f3682dc747a6591fd"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "paper_trades": {
+   "content_sha256": "00e7b104f99fa5bca84d7ab6b56dcb9c959145ed71ad72125516e89424842779",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:28+00:00",
+     "file": "paper_trades-2026-09-24.csv.gz",
+     "rows": 70,
+     "sha256": "c6255b7d4ed3f77a5e92b7f388242a4be0fd34bb483aa0bbb964923d4de54321"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "prediction_checkpoints": {
+   "files": [],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "proprietary_data_corrections": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:29+00:00",
+     "file": "proprietary_data_corrections-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 9850,
+     "sha256": "1bac6b538f3f3ce0982ae2320c7fc6809ae8b939770321e419f6917e5146c002",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "proprietary_data_manifests": {
+   "files": [],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "proprietary_data_quality_flags": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:37+00:00",
+     "file": "proprietary_data_quality_flags-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 6872,
+     "sha256": "009d79db53d878e8e481b2a36ca1e0c761ac735c595ec90dafad4ff365e3fa76",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "settings": {
+   "content_sha256": "31fd5cf61cca0cc5160d03b852f16e3112429eaa58a14eea8935f4889568d7e1",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:41+00:00",
+     "file": "settings-2026-09-24.csv.gz",
+     "rows": 19,
+     "sha256": "13d273c827fb303c0dab9c185025b27807a4fd2e95b37b8c4087aa72f388ebf7"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "signals": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:10:42+00:00",
+     "file": "signals-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 5963,
+     "sha256": "fb4edd6fab4d9cdac8f41d579fc8ee7dc5e170465ea4ee17ea8b2f2c8782f0b2",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "strategies": {
+   "content_sha256": "a0d7843f73bbe061aa6a613e5a1e50b4ed0bc90fdaad83510473f09af49baa58",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:11:03+00:00",
+     "file": "strategies-2026-09-24.csv.gz",
+     "rows": 10,
+     "sha256": "aef7f2479f736c9244a130ed744df5a0eb870f1fde5e08402bbd4b3be8122bc0"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "strategy_config_history": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:11:04+00:00",
+     "file": "strategy_config_history-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 3,
+     "sha256": "14acce1b890136634b9ec777757014dab0aaca60afee8fb1e664dda025bdfe01",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "strategy_conflicts": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:11:05+00:00",
+     "file": "strategy_conflicts-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 23,
+     "sha256": "da1951362586211f7ca8925b5e2a10b488f768853035cd864aedb0c5806dcda9",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "synthesis_thresholds": {
+   "content_sha256": "e0d71c9f8ed08ab820b731e83f0a713535eb6d2d5e6349fce4a1d1d2bf64f399",
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:11:06+00:00",
+     "file": "synthesis_thresholds-2026-09-24.csv.gz",
+     "rows": 4,
+     "sha256": "3c9cb32c44b4deb85a84b0cb3047905305ec5ee54a5361abf0ffb85fa16aa0a2"
+    }
+   ],
+   "kind": "snapshot"
+  },
+  "trades_observed": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:11:06+00:00",
+     "file": "trades_observed-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 87138,
+     "sha256": "9a012316e09416ecb1e6f5c0ab2420f18379e69dbd946adb0837ccf59863a3fa",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "weather_events": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:11:25+00:00",
+     "file": "weather_events-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 85,
+     "sha256": "df4bdb980f2cc9a09abcfe68fc6717394fbbd92a4949efbadc5d6b0f869cac04",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "weather_forecast_features": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:11:26+00:00",
+     "file": "weather_forecast_features-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 45636,
+     "sha256": "f5056d761625422568e9b0823469033603e2dbf214e607ce6ded03f2e5f3f372",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "weather_forecast_models": {
+   "files": [],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "weather_forecasts": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:11:40+00:00",
+     "file": "weather_forecasts-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 67167,
+     "sha256": "41e3bd7b94614fd5a3f14d166c7f12baf63d856cc245e2495802a0c9e1b5d456",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "weather_observations": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:12:00+00:00",
+     "file": "weather_observations-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 132241,
+     "sha256": "431ecc9dc832c02f522f714343ccd3e8a506aafb6d9867fb0de3ee2612be5278",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "weather_resolution_attempts": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:12:23+00:00",
+     "file": "weather_resolution_attempts-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 3501,
+     "sha256": "3c5d52040cc5a14a326f7b5164cbdb4b51fb8d88d36af57646ba31a34c239aeb",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  },
+  "weather_resolution_evidence": {
+   "files": [
+    {
+     "exported_at": "2026-09-24T08:12:26+00:00",
+     "file": "weather_resolution_evidence-start-to-2026-09-24.csv.gz",
+     "from": null,
+     "rows": 1172,
+     "sha256": "51aaf2bca5938fe557d263f40ce916921e93ba237b3816c6ada50a81d1848b6e",
+     "to": "2026-09-24T00:00:00+00:00"
+    }
+   ],
+   "kind": "append",
+   "through": "2026-09-24T00:00:00+00:00"
+  }
+ },
+ "updated_at": "2026-09-24T08:12:30+00:00"
+}
