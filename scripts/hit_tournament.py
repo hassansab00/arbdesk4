@@ -82,6 +82,16 @@ HALF_LIFE_DAYS = 5.0
 BIAS_BOUND_RECENT = 1.5
 BIAS_BOUND = 5.0
 WIDTHS = (0.8, 1.0, 1.25, 1.6)
+# WIDTH THAT GROWS WITH DISAGREEMENT (24 Sep). Hassan's review of the cards:
+# San Francisco's engine centred at 81.7 F with sigma ~1 C while NWS said
+# 73.4 F, so it put 0.1% on the bucket the market favoured. A width from
+# the recipe's own training error alone cannot know that today's forecasts
+# disagree by 4 C. These add today's spread across the lane's forecasts
+# (population SD) in quadrature: sigma = sqrt((w x rmse)^2 + spread^2).
+# Bounded (Rule 11): the spread term is capped at SPREAD_CAP_C, and a day with
+# one forecast adds nothing. Only offered where a city has two or more models.
+SPREAD_WIDTHS = ("1.0+spread", "1.25+spread")
+SPREAD_CAP_C = 3.0
 RMSE_FLOOR_C = 0.5
 SIGMA_FLOOR_C = 0.25
 POOLED_COVERAGE = 0.8         # a pooled champion must score >= 80% of the best-covered recipe's days
@@ -102,12 +112,24 @@ def parse_key(key):
     return dict(part.split("=", 1) for part in key.split("|"))
 
 
+def widths_for(models):
+    return list(WIDTHS) + (list(SPREAD_WIDTHS) if len(models) >= 2 else [])
+
+
 def recipes_for(models):
     centres = [f"model:{m}" for m in sorted(models)]
     if len(models) >= 2:
         centres += ["mean", "median", "invmse"]
     return [recipe_key(c, b, w) for c in centres for b in ("none", "long", "recent")
-            for w in WIDTHS]
+            for w in widths_for(models)]
+
+
+def spread_of(fc):
+    """Population SD of the day's forecasts in one lane, capped; 0 with fewer than two."""
+    vals = [v for v in (fc or {}).values() if v is not None]
+    if len(vals) < 2:
+        return 0.0
+    return min(SPREAD_CAP_C, statistics.pstdev(vals))
 
 
 def shrink(value, n, k, prior):
@@ -173,8 +195,12 @@ def bias_of(kind, resid):
     return max(-BIAS_BOUND_RECENT, min(BIAS_BOUND_RECENT, b))
 
 
-def sigma_of(resid, bias, width):
+def sigma_of(resid, bias, width, spread=0.0):
     rmse = math.sqrt(sum((x - bias) ** 2 for x in resid) / len(resid))
+    w = str(width)
+    if w.endswith("+spread"):
+        base = max(RMSE_FLOOR_C, rmse) * float(w[: -len("+spread")])
+        return max(SIGMA_FLOOR_C, math.sqrt(base ** 2 + min(SPREAD_CAP_C, spread) ** 2))
     return max(SIGMA_FLOOR_C, max(RMSE_FLOOR_C, rmse) * float(width))
 
 
@@ -186,17 +212,23 @@ def fit(key, train, lane, models):
     if len(resid) < MIN_TRAIN:
         return None
     bias = bias_of(r["bias"], resid)
+    # For a "+spread" width, sigma_c is the width WITHOUT today's spread;
+    # predict() adds the spread of the day it prices.
     return {"bias_c": bias, "sigma_c": sigma_of(resid, bias, r["width"]),
             "weights": weights, "n": len(resid)}
 
 
 def predict(key, params, day, lane):
     r = parse_key(key)
-    c = centre_of(r["centre"], day.forecasts.get(lane, {}), params.get("weights") or {})
+    fc = day.forecasts.get(lane, {})
+    c = centre_of(r["centre"], fc, params.get("weights") or {})
     if c is None:
         return None
+    sigma = params["sigma_c"]
+    if str(r["width"]).endswith("+spread"):
+        sigma = math.sqrt(sigma ** 2 + spread_of(fc) ** 2)
     return [p for _b, p in compute_band_probabilities(
-        c - params["bias_c"], params["sigma_c"], day.unit, day.bands)]
+        c - params["bias_c"], sigma, day.unit, day.bands)]
 
 
 # ---------------------------------------------------------------------------
@@ -247,11 +279,12 @@ def walk_city(days, lane):
             c_today = centre_of(centre, fc, weights if centre == "invmse" else {})
             if c_today is None:
                 continue
+            spread_today = spread_of(fc)
             for kind in ("none", "long", "recent"):
                 bias = bias_of(kind, resid)
-                for w in WIDTHS:
+                for w in widths_for(models):
                     probs = [p for _b, p in compute_band_probabilities(
-                        c_today - bias, sigma_of(resid, bias, w), day.unit, day.bands)]
+                        c_today - bias, sigma_of(resid, bias, w, spread_today), day.unit, day.bands)]
                     out[recipe_key(centre, kind, w)][day.date] = score(probs, day.winner)
     return out
 

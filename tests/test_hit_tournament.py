@@ -158,3 +158,35 @@ def test_a_full_night_fits_in_the_pipeline():
     t0 = time.time()
     ht.run_lane(days, "asof")
     assert time.time() - t0 < 60, "the tournament must not eat the daily job's minutes"
+
+
+# ---------------------------------------------------------------------------
+# WIDTH THAT GROWS WITH DISAGREEMENT (24 Sep): San Francisco's centre at
+# 81.7 F with sigma ~1 C while NWS said 73.4 F.
+
+def test_a_spread_width_adds_todays_disagreement_in_quadrature():
+    import math
+    import hit_tournament as ht
+    resid = [1.0, -1.0, 1.0, -1.0, 1.0]            # rmse 1.0
+    base = ht.sigma_of(resid, 0.0, 1.0)
+    assert base == 1.0
+    assert ht.sigma_of(resid, 0.0, "1.0+spread", spread=0.0) == 1.0, "no disagreement, no change"
+    assert math.isclose(ht.sigma_of(resid, 0.0, "1.0+spread", spread=2.0), math.sqrt(5.0))
+    # bounded: the spread term never exceeds the cap
+    assert math.isclose(ht.sigma_of(resid, 0.0, "1.0+spread", spread=99.0),
+                        math.sqrt(1.0 + ht.SPREAD_CAP_C ** 2))
+
+
+def test_the_spread_is_the_disagreement_between_forecasts_and_needs_two():
+    import hit_tournament as ht
+    assert ht.spread_of({"nws": 23.0}) == 0.0
+    assert ht.spread_of({"nws": 23.0, "open_meteo_forecast": 27.0}) == 2.0
+    assert ht.spread_of({}) == 0.0
+
+
+def test_spread_widths_are_offered_only_where_there_is_something_to_disagree():
+    import hit_tournament as ht
+    one = ht.recipes_for({"open_meteo_forecast"})
+    two = ht.recipes_for({"open_meteo_forecast", "nws"})
+    assert not any("+spread" in k for k in one)
+    assert any("width=1.0+spread" in k for k in two) and any("width=1.25+spread" in k for k in two)
