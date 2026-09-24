@@ -49,6 +49,7 @@ export const SQL_OWNER: Record<string, string> = {
   "fact_band_outcome": "ad4_18_databank.sql",
   "fact_band_outcome_exclusions": "supabase/migrations/20260924010000_quarantine_the_early_record.sql",
   "fact_band_outcome_venue_rebuilt": "supabase/migrations/20260924010000_quarantine_the_early_record.sql",
+  "fact_checkpoint_outcome": "supabase/migrations/20260924020000_checkpoint_outcomes.sql",
   "fact_forecast_outcome": "ad4_18_databank.sql",
   "fact_signal_outcome": "ad4_18_databank.sql",
   "ingest_log": "ad4_00_preflight.sql",

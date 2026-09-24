@@ -78,6 +78,7 @@ insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plai
   ('derived_hit_tournament',    'computed_at',    48, 'model',     'Per city, the best-scoring pricing recipes on the bucket that settled, scored day by day on days they never saw.'),
   ('derived_hit_summary',       'computed_at',    48, 'model',     'Across all cities, the tournament champion against the live engine and the market: winning-bucket hit rate and log loss.'),
   ('prediction_checkpoints',    'decided_at',      2, 'model',     'The ladder the engine published at each fixed moment on a city''s own clock, with the market beside it - the record the scoreboard grades.'),
+  ('fact_checkpoint_outcome',   'banked_at',      30, 'databank',  'Each checkpoint call scored against the winner the venue confirmed: whether the desk and the market picked it, and by how much.'),
   ('weather_forecast_features', 'run_at',         12, 'weather',   'Hour-by-hour forecast detail: cloud, wind, humidity.'),
   ('live_weather',              'updated_at',      2, 'weather',   'The current reading per city, refreshed through the day.'),
   ('weather_events',            'detected_at',  null, 'weather',   'Notable weather worth an alert. Empty is good news.'),

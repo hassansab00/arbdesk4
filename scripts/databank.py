@@ -33,7 +33,7 @@ import datetime as dt
 import sys
 from collections import defaultdict
 
-from common import (rest, rest_all, upsert, log_run, get_cities,
+from common import (rest, rest_all, rpc, upsert, log_run, get_cities,
                     city_local_date, timezone_of)
 
 # Kept for observation-quality diagnostics. It is no longer sufficient to
@@ -604,14 +604,24 @@ def main():
     n_bd = upsert("fact_band_outcome", bd, "band_id") if bd else 0
     n_sg = upsert("fact_signal_outcome", sg, "signal_id") if sg else 0
 
+    # THE CHECKPOINTS (plan v2 P4.3): every ladder the tick published at a
+    # fixed local moment, scored against the winner the venue confirmed. The
+    # database does it in one statement and only ever adds.
+    try:
+        n_cp = int(rpc("bank_checkpoint_outcomes") or 0)
+    except Exception as e:
+        n_cp = 0
+        print(f"  ! checkpoint outcomes not banked: {str(e)[:200]}", file=sys.stderr)
+
     summary = (f"banked {n_fc} forecast outcome(s), {n_bd} band outcome(s), "
-               f"{n_sg} signal outcome(s)")
+               f"{n_sg} signal outcome(s), {n_cp} checkpoint outcome(s)")
     print(summary)
     if n_bd:
         hits = sum(1 for b in bd if b["settled_yes"])
         print(f"  of the bands banked, {hits} settled yes ({hits / len(bd):.1%})")
-    log_run("databank", "ok", n_fc + n_bd + n_sg,
-            {"forecasts": n_fc, "bands": n_bd, "signals": n_sg, "summary": summary})
+    log_run("databank", "ok", n_fc + n_bd + n_sg + n_cp,
+            {"forecasts": n_fc, "bands": n_bd, "signals": n_sg, "checkpoints": n_cp,
+             "summary": summary})
 
 
 if __name__ == "__main__":
