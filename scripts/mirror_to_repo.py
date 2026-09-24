@@ -98,6 +98,7 @@ TABLES = {
     "signals":                       append("fired_at", "signal_id"),
     "model_versions":                append("created_at", "version_id"),
     "strategy_config_history":       append("changed_at", "history_id"),
+    "strategy_state_history":        append("changed_at", "history_id"),   # plan v2 P5.2
     "strategy_conflicts":            append("detected_at", "conflict_id"),
     "anomalies":                     append("detected_at", "anomaly_id"),
     # --- what it learned ----------------------------------------------------
@@ -167,6 +168,7 @@ TABLES = {
     "deployments":                   snapshot("deployment_id"),
     # --- the paper desk and the backtests -----------------------------------
     "paper_accounts":                snapshot("account_id"),
+    "strategy_state":                snapshot("strategy_id"),              # plan v2 P5.2
     "paper_trade_plans":             snapshot("plan_id"),
     "paper_orders":                  snapshot("order_id"),
     "paper_positions":               snapshot("account_id", "band_id", "side"),
