@@ -195,6 +195,11 @@ select cron.schedule(
 -- statement from its argument. Only the seven tables the archive prunes can
 -- be named, and the name is quoted with %I regardless.
 -- ===========================================================================
+-- NOT IN THE MIDDLE OF THE DAY (plan v2 P6.5). Two minutes after the prune
+-- meant 08:08 on 24 Sep, when GitHub ran the 03:00 archive five hours late:
+-- eight tables rewritten at once under 9-24 s ACCESS EXCLUSIVE locks and 14
+-- page panels timed out. Straight away only inside 00:00-06:00 UTC, otherwise
+-- the next 01:00 UTC, staggered two minutes a table.
 create or replace function public.request_reclaim(p_table text)
 returns jsonb
 language plpgsql
@@ -205,8 +210,10 @@ declare
   v_allowed constant text[] := array[
     'research_captures', 'paper_resolution_evidence', 'book_snapshots', 'edges',
     'weather_observations', 'weather_forecasts', 'trades_observed'];
-  v_at    timestamptz := now() + interval '2 minutes';
-  v_utc   timestamp   := v_at at time zone 'UTC';
+  v_now   timestamptz := now();
+  v_hour  int := extract(hour from (v_now at time zone 'UTC'))::int;
+  v_at    timestamptz;
+  v_utc   timestamp;
   v_job   text;
   v_expr  text;
 begin
@@ -214,6 +221,15 @@ begin
     raise exception 'request_reclaim: % is not a table the archive prunes', p_table
       using errcode = '22023';
   end if;
+
+  if v_hour < 6 then
+    v_at := v_now + make_interval(mins => 2 + 2 * (array_position(v_allowed, p_table) - 1));
+  else
+    v_at := ((date_trunc('day', v_now at time zone 'UTC') + interval '1 day' + interval '1 hour')
+             at time zone 'UTC')
+            + make_interval(mins => 2 * (array_position(v_allowed, p_table) - 1));
+  end if;
+  v_utc := v_at at time zone 'UTC';
 
   v_job  := 'ad4_reclaim_after_archive_' || p_table;
   v_expr := format('%s %s %s %s *',
@@ -223,12 +239,11 @@ begin
   perform cron.schedule(v_job, v_expr,
                         format('VACUUM (FULL, ANALYZE) public.%I', p_table));
 
-  return jsonb_build_object('ok', true, 'job', v_job, 'cron', v_expr,
-                            'fires_at', v_at);
+  return jsonb_build_object('ok', true, 'job', v_job, 'cron', v_expr, 'fires_at', v_at);
 end $$;
 
 comment on function public.request_reclaim(text) is
-  'Schedules a VACUUM FULL of one archive-pruned table for two minutes from now, so the space a prune frees is returned to the tier behind that prune rather than whenever the next fixed cron happens to fire. Called by scripts/archive_observations.py after each committed prune.';
+  'Schedules a VACUUM FULL of one archive-pruned table in the next quiet window (straight away inside 00:00-06:00 UTC, otherwise the next 01:00 UTC), staggered two minutes a table, so the space a prune frees comes back the same night without locking pages mid-day (plan v2 P6.5).';
 
 revoke all on function public.request_reclaim(text) from public, anon, authenticated;
 grant execute on function public.request_reclaim(text) to service_role;
