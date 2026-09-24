@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 216 of them - and for each MISSING one names the
+-- and function the app reads - 217 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -60,6 +60,7 @@ with expected(rel, owner, used_by) as (values
     ('fact_band_outcome', 'ad4_18_databank.sql', ''),
     ('fact_band_outcome_exclusions', 'supabase/migrations/20260924010000_quarantine_the_early_record.sql', ''),
     ('fact_band_outcome_venue_rebuilt', 'supabase/migrations/20260924010000_quarantine_the_early_record.sql', ''),
+    ('fact_checkpoint_outcome', 'supabase/migrations/20260924020000_checkpoint_outcomes.sql', ''),
     ('fact_forecast_outcome', 'ad4_18_databank.sql', ''),
     ('fact_signal_outcome', 'ad4_18_databank.sql', ''),
     ('ingest_log', 'ad4_00_preflight.sql', '(PaperPipelineStatus), (PipelineStatus)'),
@@ -298,6 +299,7 @@ begin
     ('fact_band_outcome', 'ad4_18_databank.sql', ''),
     ('fact_band_outcome_exclusions', 'supabase/migrations/20260924010000_quarantine_the_early_record.sql', ''),
     ('fact_band_outcome_venue_rebuilt', 'supabase/migrations/20260924010000_quarantine_the_early_record.sql', ''),
+    ('fact_checkpoint_outcome', 'supabase/migrations/20260924020000_checkpoint_outcomes.sql', ''),
     ('fact_forecast_outcome', 'ad4_18_databank.sql', ''),
     ('fact_signal_outcome', 'ad4_18_databank.sql', ''),
     ('ingest_log', 'ad4_00_preflight.sql', '(PaperPipelineStatus), (PipelineStatus)'),
