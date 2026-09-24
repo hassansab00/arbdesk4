@@ -465,9 +465,12 @@ const assert = require('node:assert/strict');
   const submit=()=>db.query(`select submit_paper_order($1,$2,$3,'YES',10,0.55,6,'test') as id`,[account,command,band]);
   const order=(await submit()).rows[0].id;
   assert.equal((await submit()).rows[0].id,order,'Retry returns the original command');
-  assert.equal(Number((await db.query('select reserved_cash from paper_accounts')).rows[0].reserved_cash),6);
+  assert.equal(Number((await db.query('select reserved_cash from paper_accounts where account_id=$1',[account])).rows[0].reserved_cash),6);
   await db.exec(`set request.jwt.claim.sub='${other}';`);
-  assert.equal((await db.query('select * from paper_accounts')).rows.length,0,'Nonowner cannot read account');
+  // Scoped to the member account: single-desk accounts (the P5.1 ledgers among
+  // them) are readable by any signed-in user by design - live policy
+  // single_desk_read - so an unscoped count measures them, not this rule.
+  assert.equal((await db.query('select * from paper_accounts where account_id=$1',[account])).rows.length,0,'Nonowner cannot read account');
   await assert.rejects(submit(),/Account access denied/);
   await db.exec('reset role;set role anon;');
   await assert.rejects(db.query(`select create_paper_account('Unauthorized',100)`),/permission denied/);
@@ -486,7 +489,7 @@ const assert = require('node:assert/strict');
   await assert.rejects(finish({...result,fills:[{shares:'10',price:'.50',notional:'5.30',fee:'.12425'}]}),/Invalid fill arithmetic/);
   await finish();await finish();
   await books(account,'after a fill, and after the same fill is replayed');
-  const balance=(await db.query('select cash,reserved_cash from paper_accounts')).rows[0];
+  const balance=(await db.query('select cash,reserved_cash from paper_accounts where account_id=$1',[account])).rows[0];
   assert.equal(Number(balance.cash),94.57575);assert.equal(Number(balance.reserved_cash),0);
   assert.equal(Number((await db.query('select shares from paper_positions')).rows[0].shares),10);
   assert.equal((await db.query("select count(*)::int as n from paper_activity where event_type='execution_completed'")).rows[0].n,1);
@@ -528,7 +531,7 @@ const assert = require('node:assert/strict');
   await db.exec(`set request.jwt.claim.sub='${uid}';`);
   await db.query('select approve_paper_plan($1)',[plan]);
   await db.query('select approve_paper_plan($1)',[plan]);
-  assert.equal(Number((await db.query('select reserved_cash from paper_accounts')).rows[0].reserved_cash),2.10);
+  assert.equal(Number((await db.query('select reserved_cash from paper_accounts where account_id=$1',[account])).rows[0].reserved_cash),2.10);
   const queued=(await db.query('select order_id from paper_orders where plan_id=$1',[plan])).rows;
   assert.equal(queued.length,1,'Repeated approval never duplicates legs');
   // A PLAN MUST STOP READING "queued" ONCE ITS ORDER IS DONE. Measured on the
@@ -541,7 +544,7 @@ const assert = require('node:assert/strict');
   await db.query('select cancel_paper_order($1)',[queued[0].order_id]);
   await books(account,'after an order is cancelled and its reserve released');
   assert.equal(await planStatus(),'canceled','a canceled order must not leave its plan reading queued forever');
-  assert.equal(Number((await db.query('select reserved_cash from paper_accounts')).rows[0].reserved_cash),0);
+  assert.equal(Number((await db.query('select reserved_cash from paper_accounts where account_id=$1',[account])).rows[0].reserved_cash),0);
   const exitCommand='40000000-0000-0000-0000-000000000003';
   const exit=()=>db.query("select submit_paper_exit($1,$2,$3,'YES',4,.60) as id",[account,exitCommand,band]);
   const exitId=(await exit()).rows[0].id;
@@ -554,12 +557,12 @@ const assert = require('node:assert/strict');
     notional:'2.40',fee:'.048',snapshot_id:'snapshot',fills:[{shares:'4',price:'.60',notional:'2.40',fee:'.048'}]})]);
   const pos=(await db.query('select * from paper_positions')).rows[0];
   assert.equal(Number(pos.shares),6);assert.equal(Number(pos.cost_basis),3.25455);assert.equal(Number(pos.realized_pnl),.1823);
-  assert.equal(Number((await db.query('select cash from paper_accounts')).rows[0].cash),96.92775);
+  assert.equal(Number((await db.query('select cash from paper_accounts where account_id=$1',[account])).rows[0].cash),96.92775);
   await db.exec(`reset role;set role authenticated;set request.jwt.claim.sub='${uid}';`);
   await db.query("select set_paper_policy($1,'automatic',true,$2)",[account,JSON.stringify(policy)]);
   await db.query('select set_paper_exit_policy($1,true,.25,.15)',[account]);
   await books(account,'after the exit policy changes');
-  const version=(await db.query('select policy_version from paper_accounts')).rows[0].policy_version;
+  const version=(await db.query('select policy_version from paper_accounts where account_id=$1',[account])).rows[0].policy_version;
   await db.exec('reset role;set role service_role;');
   const preview={status:'filled',shares:'6',notional:'4.80',fee:'.048',snapshot_id:'snapshot',
     fills:[{shares:'6',price:'.80',notional:'4.80',fee:'.048'}]};
@@ -582,7 +585,7 @@ const assert = require('node:assert/strict');
   await db.query("update paper_orders set expires_at=now()-interval '1 second' where order_id=$1",[expiring]);
   await db.query('select expire_paper_commands()');await db.query('select expire_paper_commands()');
   await books(account,'after the expiry sweep ran twice');
-  assert.equal(Number((await db.query('select reserved_cash from paper_accounts')).rows[0].reserved_cash),0);
+  assert.equal(Number((await db.query('select reserved_cash from paper_accounts where account_id=$1',[account])).rows[0].reserved_cash),0);
   assert.equal((await db.query("select count(*)::int as n from paper_activity where event_type='order_expired'")).rows[0].n,1);
   await db.exec(`reset role;set role authenticated;set request.jwt.claim.sub='${uid}';`);
   const settleOrder=(await db.query("select submit_paper_order($1,$2,$3,'YES',2,.50,1.10,'settlement test') as id",
@@ -591,7 +594,7 @@ const assert = require('node:assert/strict');
   const settleClaim=(await db.query('select claim_paper_order() as job')).rows[0].job;
   await db.query('select complete_paper_order($1,$2,$3)',[settleOrder,settleClaim.lease_token,JSON.stringify({status:'filled',shares:'2',
     notional:'1',fee:'.025',snapshot_id:'snapshot',fills:[{shares:'2',price:'.50',notional:'1',fee:'.025'}]})]);
-  const beforeSettlement=Number((await db.query('select cash from paper_accounts')).rows[0].cash);
+  const beforeSettlement=Number((await db.query('select cash from paper_accounts where account_id=$1',[account])).rows[0].cash);
   const gamma={conditionId:'condition',closed:true,umaResolutionStatus:'resolved'};
   const clob={condition_id:'condition',closed:true,accepting_orders:false,tokens:[{token_id:'yes',winner:true},{token_id:'no',winner:false}]};
   await db.query('insert into paper_resolution_evidence(proof_id,condition_id,token_yes,token_no,winning_token,gamma,clob,source_urls) values($1,$2,$3,$4,$5,$6,$7,$8)',
@@ -599,7 +602,7 @@ const assert = require('node:assert/strict');
   assert.equal((await db.query("select settle_paper_inventory($1,'resolution') as n",[band])).rows[0].n,1);
   assert.equal((await db.query("select settle_paper_inventory($1,'resolution') as n",[band])).rows[0].n,0);
   await books(account,'after venue settlement, and after it was replayed');
-  assert.equal(Number((await db.query('select cash from paper_accounts')).rows[0].cash),beforeSettlement+2);
+  assert.equal(Number((await db.query('select cash from paper_accounts where account_id=$1',[account])).rows[0].cash),beforeSettlement+2);
   assert.equal(Number((await db.query('select shares from paper_positions')).rows[0].shares),0);
   assert.equal((await db.query('select count(*)::int as n from paper_position_settlements')).rows[0].n,1);
 
@@ -1115,7 +1118,7 @@ const assert = require('node:assert/strict');
   // reliably fail. This asserts the contract itself.
   const oldestDesk=(await db.query(
     `select account_id from public.paper_accounts
-      where access_mode='single_desk' order by created_at limit 1`)).rows[0].account_id;
+      where access_mode='single_desk' and kind is null order by created_at limit 1`)).rows[0].account_id;
   assert.equal(
     (await db.query("select create_single_paper_account('ignored',1) as id")).rows[0].id,
     oldestDesk,
@@ -1967,6 +1970,93 @@ const assert = require('node:assert/strict');
   await db.exec('reset role;');
 
   // ======================================================================
+  // EVERY STRATEGY HAS ITS OWN LEDGER (plan v2 P5.1,
+  // 20260924090000_every_strategy_has_its_own_ledger.sql). One shadow ledger
+  // per registered strategy, opened by the registration itself, trading only
+  // that strategy at the standard notional; one portfolio account, suspended,
+  // which cannot go active until Hassan writes its bankroll (rule 6).
+  // ======================================================================
+  await db.exec('reset role;');
+  const ledgerOf=async(sid)=>(await db.query(
+    "select * from paper_accounts where kind='shadow' and strategy_id=$1 and status<>'retired'",[sid])).rows;
+  // The fixture registered s1 before the migrations ran: the backfill opened it.
+  const [l1]=await ledgerOf('s1');
+  assert.ok(l1,'the strategy registered before the migration has no shadow ledger');
+  assert.equal(l1.status,'active'); assert.equal(l1.mode,'automatic');
+  assert.equal(l1.entries_paused,false,'a shadow ledger that is paused collects no evidence');
+  assert.equal(Number(l1.bankroll_usd),1000,'the standard notional is $1,000 by default');
+  assert.equal(Number(l1.cash),1000); assert.equal(Number(l1.starting_cash),1000);
+  assert.deepEqual(l1.policy.strategies,['s1'],'a shadow ledger trades its own strategy and nothing else');
+  assert.equal(Number(l1.policy.max_plan_usd),1000);
+  assert.equal(Number((await db.query(
+    "select sum(cash_delta) as s from paper_activity where account_id=$1",[l1.account_id])).rows[0].s),1000,
+    'the opening cash is not on the activity ledger, so the desk integrity check could never balance');
+  assert.equal((await db.query("select arbdesk_private.open_shadow_ledger('s1') as id")).rows[0].id,
+    l1.account_id,'opening a ledger twice made a second one');
+
+  // Registered means opened - and 'system', the name alerts are filed under, is not a strategy.
+  await db.exec("insert into public.strategies(strategy_id,name) values('s_ledger_a','ledger test'),('system','alerts') on conflict do nothing;");
+  assert.equal((await ledgerOf('s_ledger_a')).length,1,'registering a strategy did not open its shadow ledger');
+  assert.equal((await ledgerOf('system')).length,0,'the system pseudo-strategy was given a ledger');
+  await assert.rejects(db.query(
+    "insert into paper_accounts(name,kind,strategy_id,bankroll_usd,starting_cash,cash,access_mode) values('dup','shadow','s_ledger_a',1000,1000,1000,'single_desk')"),
+    /paper_accounts_one_shadow_per_strategy/,'a strategy got two live shadow ledgers');
+  await assert.rejects(db.query(
+    "insert into paper_accounts(name,kind,starting_cash,cash,access_mode,bankroll_usd) values('orphan','shadow',1000,1000,'single_desk',1000)"),
+    /paper_accounts_shadow_has_a_strategy/,'a shadow ledger with no strategy was accepted');
+  await assert.rejects(db.query(
+    "insert into paper_accounts(name,strategy_id,starting_cash,cash,access_mode) values('plain','s1',1000,1000,'single_desk')"),
+    /paper_accounts_shadow_has_a_strategy/,'a strategy was attached to an account that is not its shadow ledger');
+  await assert.rejects(db.query('update paper_accounts set strategy_id=$2 where account_id=$1',[l1.account_id,'s_ledger_a']),
+    /kind and strategy are fixed/,'a shadow ledger was re-pointed at another strategy');
+
+  // The portfolio account: one, suspended, manual, paused, no bankroll.
+  const pf=(await db.query("select * from paper_accounts where kind='portfolio'")).rows;
+  assert.equal(pf.length,1,'there must be exactly one portfolio account');
+  assert.equal(pf[0].status,'suspended'); assert.equal(pf[0].mode,'manual'); assert.equal(pf[0].entries_paused,true);
+  assert.equal(pf[0].bankroll_usd,null,'the portfolio bankroll is Hassan\'s decision, not a migration default');
+  await assert.rejects(db.query("update paper_accounts set status='active' where account_id=$1",[pf[0].account_id]),
+    /paper_accounts_portfolio_needs_a_bankroll/,'the portfolio account went active with no bankroll');
+  await assert.rejects(db.query(
+    "insert into paper_accounts(name,kind,starting_cash,cash,access_mode,status) values('second','portfolio',1,1,'single_desk','suspended')"),
+    /paper_accounts_one_portfolio/,'a second portfolio account was accepted');
+
+  // The order path: a ledger queues its own strategy, refuses another's even
+  // when its policy is edited to allow it, and a suspended ledger buys nothing.
+  await db.exec(`insert into signals(signal_id,action,strategy_id,fired_at,reason) values
+      (5101,'ENTER','s1',now(),'own strategy'),(5102,'ENTER','s_ledger_a',now(),'another strategy'),
+      (5103,'ENTER','s1',now(),'while suspended');
+    set role service_role;`);
+  const lPlan=async(acct,cmd,sig,side)=>{
+    const id=(await db.query('select publish_paper_plan($1,$2,$3,$4,$5) as id',
+      [acct,cmd,sig,JSON.stringify([{band_id:band,side,shares:'2',limit_price:'.50',cash_ceiling:'1.05'}]),
+       JSON.stringify({net_edge_per_share:'.10'})])).rows[0].id;
+    return (await db.query('select status,reason from paper_trade_plans where plan_id=$1',[id])).rows[0];
+  };
+  assert.equal((await lPlan(l1.account_id,'70000000-0000-0000-0000-000000000001',5101,'YES')).status,'queued',
+    'a shadow ledger could not trade its own strategy');
+  await db.exec(`reset role; update paper_accounts set policy=policy||'{"strategies":["s1","s_ledger_a"]}'::jsonb where account_id='${l1.account_id}'; set role service_role;`);
+  const cross=await lPlan(l1.account_id,'70000000-0000-0000-0000-000000000002',5102,'NO');
+  assert.equal(cross.status,'blocked','a shadow ledger traded another strategy because its policy listed it');
+  assert.match(cross.reason,/Shadow ledger of s1 trades only that strategy/);
+  await db.exec(`reset role; update paper_accounts set status='suspended' where account_id='${l1.account_id}'; set role service_role;`);
+  const susp=await lPlan(l1.account_id,'70000000-0000-0000-0000-000000000003',5103,'NO');
+  assert.equal(susp.status,'blocked','a suspended ledger queued an entry');
+  assert.match(susp.reason,/Desk suspended/);
+  // Whoever writes it, no BUY order lands on a suspended desk ...
+  await db.exec('reset role;');
+  await assert.rejects(db.query(
+    "insert into paper_orders(account_id,command_key,band_id,token_id,side,action,origin,shares,limit_price,cash_ceiling,policy_version,expires_at) "+
+    "select $1,gen_random_uuid(),band_id,token_no,'NO','BUY','manual',1,.5,.5,1,now()+interval '5 minutes' from bands where band_id=$2",
+    [l1.account_id,band]),/Desk suspended/,'a BUY order was written straight into a suspended desk');
+  // ... but it can always sell what it holds.
+  await db.exec(`insert into paper_positions(account_id,band_id,side,shares,cost_basis,realized_pnl) values('${l1.account_id}','${band}','NO',3,1.5,0);
+    set role service_role;`);
+  assert.ok((await db.query("select submit_single_paper_exit($1,'70000000-0000-0000-0000-000000000004',$2,'NO',3,.40) as id",
+    [l1.account_id,band])).rows[0].id,'a suspended desk could not sell what it holds');
+  await db.exec('reset role;');
+
+  // ======================================================================
   // WRITES NEED AN OPERATOR (plan v2 P1.2,
   // 20260923130000_writes_need_an_operator.sql). The browser reads settings
   // as anon; it must not see who the operators are, nor the n8n webhook URLs,
@@ -1985,5 +2075,5 @@ const assert = require('node:assert/strict');
   await db.exec('reset role;');
 
   await db.close();
-  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, research capture of prices only, no PUBLIC execute on SECURITY DEFINER functions and the settings the browser may not read');
+  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, a shadow ledger per strategy and a suspended portfolio account, research capture of prices only, no PUBLIC execute on SECURITY DEFINER functions and the settings the browser may not read');
 })().catch(e=>{console.error(e);process.exit(1);});
