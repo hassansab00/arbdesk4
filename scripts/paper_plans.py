@@ -198,7 +198,54 @@ def rail_room(account, quoted, context, rails, halted, halt_reason, *, rest_fn=N
     return room, None
 
 
-def prepare(account, signal, capture, *, now=None, rail_room=None):
+def allocation_room(account, signal, *, rest_fn=None):
+    """(dollars this strategy may still spend on the portfolio account, the
+    factor its engine size scales by, the record for the plan's evidence).
+
+    THE PORTFOLIO SPLITS ONE POT BY THE NIGHTLY ALLOCATION (plan v2 P5.10).
+    meta_allocator.py writes {strategy: weight} into the portfolio policy. A
+    strategy may hold at most weight x equity (cash plus open cost basis): its
+    open trades on the account at cost, plus its live BUY reservations, count
+    against that. queue_plan already refuses a plan whose strategy has no
+    weight, since only weighted strategies are in policy.strategies.
+
+    The engine sized the signal on the strategy's shadow ledger, whose bankroll
+    the signal records as sized_on_usd. The same Kelly fraction of the
+    strategy's allocated capital is that size x capital / sized_on_usd. A
+    signal that does not say what it was sized on is refused here rather than
+    guessed at: scaling the wrong base mis-sizes by the ratio of the two.
+    """
+    rest_fn = rest_fn or rest
+    policy = account.get('policy') or {}
+    sid = signal['strategy_id']
+    weight = number((policy.get('allocation') or {}).get(sid) or 0)
+    if weight <= 0:
+        raise ValueError(f'{sid} has no portfolio allocation')
+    sized_on = number((signal.get('payload') or {}).get('sized_on_usd') or 0)
+    if sized_on <= 0:
+        raise ValueError('The signal does not say what bankroll it was sized on (sized_on_usd missing)')
+    acct = account['account_id']
+    positions = rest_fn('paper_positions', {'select': 'cost_basis', 'account_id': f'eq.{acct}', 'shares': 'gt.0'})
+    equity = number(account['cash']) + sum((number(p.get('cost_basis') or 0) for p in positions), Decimal(0))
+    capital = weight * equity
+    held = rest_fn('paper_trades', {'select': 'shares,avg_fill_price,fee_paid', 'account_id': f'eq.{acct}',
+                                    'strategy_id': f'eq.{sid}', 'closed_at': 'is.null'})
+    live = rest_fn('paper_orders', {'select': 'cash_ceiling', 'account_id': f'eq.{acct}', 'strategy_id': f'eq.{sid}',
+                                    'status': 'in.(queued,working)', 'action': 'eq.BUY'})
+    used = (sum((number(t.get('shares') or 0) * number(t.get('avg_fill_price') or 0) + number(t.get('fee_paid') or 0)
+                 for t in held), Decimal(0))
+            + sum((number(o.get('cash_ceiling') or 0) for o in live), Decimal(0)))
+    room = capital - used
+    if room <= 0:
+        raise ValueError(f'{sid} already uses {used.quantize(Decimal(".01"))} of its '
+                         f'{capital.quantize(Decimal(".01"))} portfolio allocation')
+    record = {'weight': str(weight), 'version': policy.get('allocation_version'),
+              'capital_usd': str(capital.quantize(Decimal('.01'))), 'used_usd': str(used.quantize(Decimal('.01'))),
+              'sized_on_usd': str(sized_on)}
+    return room, capital / sized_on, record
+
+
+def prepare(account, signal, capture, *, now=None, rail_room=None, allocation=None):
     fixed_now = now
     now = now or dt.datetime.now(dt.timezone.utc)
     policy, payload = account['policy'], signal.get('payload') or {}
@@ -256,6 +303,11 @@ def prepare(account, signal, capture, *, now=None, rail_room=None):
         if why:
             raise ValueError(why)
         budget = min(budget, room)
+    # THE PORTFOLIO'S SHARE FOR THIS STRATEGY (plan v2 P5.10).
+    allocated = None
+    if allocation is not None and account.get('kind') == 'portfolio':
+        room, scale, allocated = allocation(account, signal)
+        budget = min(budget, room)
     affordable_q = ((budget-Decimal('.01')*len(quoted))/unit_cost).quantize(Decimal('.01'),rounding=ROUND_DOWN)
     if affordable_q<=0:
         raise ValueError('Insufficient available paper cash')
@@ -272,7 +324,10 @@ def prepare(account, signal, capture, *, now=None, rail_room=None):
     # 2,610), so a missing size is a fault to surface, not a default to fill.
     if signal.get('suggested_shares') is None:
         raise ValueError('The engine gave this signal no size (suggested_shares missing)')
-    target = number(signal['suggested_shares']).quantize(Decimal('.01'),rounding=ROUND_DOWN)
+    target = number(signal['suggested_shares'])
+    if allocated is not None:
+        target = target * scale
+    target = target.quantize(Decimal('.01'),rounding=ROUND_DOWN)
     if target<=0:
         raise ValueError('The engine sized this signal to zero shares')
     quantity = min(affordable_q, target)
@@ -411,6 +466,7 @@ def prepare(account, signal, capture, *, now=None, rail_room=None):
     return legs, {'signal':signal,'quotes':quotes,'net_edge_per_share':str(net_edge),'expected_payout_per_basket':str(expected),
         'quoted_cost_per_basket':str(unit_cost),'prepared_at':now.isoformat(),
         'engine_shares':str(target),'budget_shares':str(affordable_q),
+        **({'allocation':allocated} if allocated is not None else {}),
         'execution_assumption':'Independent IOC legs; no guaranteed basket completion',
         'engine_version':os.environ.get('GITHUB_SHA') or os.environ.get('ARBDESK_ENGINE_VERSION','unversioned')}
 
@@ -570,7 +626,7 @@ def cycle(max_plans=10, budget_seconds=90):
                 continue
             reason, legs, evidence = None, [], {'signal':signal}
             try:
-                legs,evidence=prepare(account,signal,capture,rail_room=rails_room)
+                legs,evidence=prepare(account,signal,capture,rail_room=rails_room,allocation=allocation_room)
             except (ValueError,KeyError,TypeError,ArithmeticError,requests.RequestException) as exc:
                 reason=str(exc)[:400]
             rpc('publish_paper_plan',{'p_account':account['account_id'],'p_command':command,'p_signal':signal['signal_id'],

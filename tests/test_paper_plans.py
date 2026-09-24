@@ -635,3 +635,72 @@ def test_an_engine_size_below_the_venue_floor_names_the_engine():
     signal['suggested_shares'] = 2          # $1 minimum at 30c is 3.34 shares
     with pytest.raises(ValueError, match="limited by the engine's size"):
         prepare(account, signal, capture, now=NOW)
+
+
+# ---------------------------------------------------------------------------
+# THE PORTFOLIO SPLITS ONE POT BY THE NIGHTLY ALLOCATION (plan v2 P5.10)
+
+def _portfolio(weight=0.2, cash=10000):
+    return {'account_id': 'pf', 'kind': 'portfolio', 'cash': cash, 'reserved_cash': 0,
+            'policy': {'cities': ['ALL'], 'max_plan_usd': cash, 'min_edge': 0, 'strategies': ['s1'],
+                       'allocation': {'s1': weight}, 'allocation_version': 'thompson-v1:2026-11-20'}}
+
+
+def _alloc_rest(positions=(), trades=(), orders=()):
+    def fake(table, params):
+        return {'paper_positions': list(positions), 'paper_trades': list(trades), 'paper_orders': list(orders)}[table]
+    return fake
+
+
+def test_the_room_is_the_weight_of_equity_less_what_the_strategy_already_uses():
+    from paper_plans import allocation_room
+    signal = {'strategy_id': 's1', 'payload': {'sized_on_usd': 1000}}
+    room, scale, rec = allocation_room(
+        _portfolio(0.2, cash=9000), signal,
+        rest_fn=_alloc_rest(positions=[{'cost_basis': 1000}],
+                            trades=[{'shares': 100, 'avg_fill_price': '.40', 'fee_paid': '1'}],
+                            orders=[{'cash_ceiling': '59'}]))
+    # equity 10,000 at cost; 20% is 2,000; the strategy holds 41 and reserves 59.
+    assert room == Decimal('1900') and scale == Decimal('2')
+    assert rec['version'] == 'thompson-v1:2026-11-20' and rec['used_usd'] == '100.00'
+
+
+@pytest.mark.parametrize('account,signal,why', [
+    (_portfolio(0), {'strategy_id': 's1', 'payload': {'sized_on_usd': 1000}}, 'no portfolio allocation'),
+    (_portfolio(0.2), {'strategy_id': 's1', 'payload': {}}, 'sized_on_usd missing'),
+])
+def test_a_strategy_without_weight_or_a_signal_without_its_base_is_refused(account, signal, why):
+    from paper_plans import allocation_room
+    with pytest.raises(ValueError, match=why):
+        allocation_room(account, signal, rest_fn=_alloc_rest())
+
+
+def test_a_strategy_at_its_allocation_is_refused():
+    from paper_plans import allocation_room
+    with pytest.raises(ValueError, match='portfolio allocation'):
+        allocation_room(_portfolio(0.01, cash=10000), {'strategy_id': 's1', 'payload': {'sized_on_usd': 1000}},
+                        rest_fn=_alloc_rest(orders=[{'cash_ceiling': '100'}]))
+
+
+def test_the_portfolio_scales_the_engine_size_and_records_the_allocation():
+    account, signal, capture = fixture()
+    account.update(kind='portfolio', policy={**account['policy'], 'max_plan_usd': 1000})
+    account['cash'] = 1000
+    signal['suggested_shares'] = 10
+    seen = {}
+    def allocation(acct, sig):
+        seen['called'] = True
+        return Decimal('500'), Decimal('3'), {'weight': '0.3', 'version': 'v'}
+    legs, evidence = prepare(account, signal, capture, now=NOW, allocation=allocation)
+    assert seen and Decimal(legs[0]['shares']) == Decimal('30')       # 10 shares sized on the ledger, x3
+    assert evidence['allocation'] == {'weight': '0.3', 'version': 'v'}
+
+
+def test_a_shadow_ledger_is_not_sized_by_the_allocation():
+    account, signal, capture = fixture()
+    account['kind'] = 'shadow'
+    signal['suggested_shares'] = 10
+    def never(acct, sig):
+        raise AssertionError('a shadow ledger read the portfolio allocation')
+    legs, evidence = prepare(account, signal, capture, now=NOW, allocation=never)
+    assert Decimal(legs[0]['shares']) == Decimal('10') and 'allocation' not in evidence
