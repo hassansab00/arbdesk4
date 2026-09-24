@@ -166,7 +166,11 @@ class S7PrePeakGradient(Strategy):
                 out.append(Signal(
                     strategy_id=self.config.strategy_id, band_id=band.band_id, side="NO",
                     action="ENTER", reason="rolled_over_band_unreachable",
-                    price_at_fire=band.no_price, prob_at_fire=band.model_prob_yes,
+                    # A NO wins when the band does NOT settle, so its
+                    # probability is 1 - p (plan v2 P5.0 item 7), as s1 and
+                    # s4 record it. Kelly and the ledger both read this.
+                    price_at_fire=band.no_price,
+                    prob_at_fire=(1 - band.model_prob_yes) if band.model_prob_yes is not None else None,
                     edge_at_fire=band.no_edge_net_pp, suggested_shares=0.0,
                     confidence=band.confidence, regime_label=band.regime_label,
                     severity="high",

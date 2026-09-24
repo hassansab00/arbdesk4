@@ -93,6 +93,11 @@ class S6AnchorInsurance(Strategy):
         # Overrides the default flat-fraction sizing: N is already computed
         # from the target-profit formula in entry_signals, capped by the
         # same capital_cap_pct ceiling every strategy respects.
+        #
+        # ZERO MEANS ZERO (plan v2 P5.0 item 7). The base returns 0 when Kelly
+        # says the bet has no edge at its price, or there is no bankroll, and
+        # `min(...) if cap_shares else n_from_target` read that 0 as "no cap"
+        # and returned the full target - the one case the cap exists for.
         n_from_target = signal.suggested_shares
         cap_shares = super().size(signal, portfolio)
-        return min(n_from_target, cap_shares) if cap_shares else n_from_target
+        return min(n_from_target, cap_shares)

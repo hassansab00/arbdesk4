@@ -139,7 +139,9 @@ def test_a_fired_signal_is_written_where_paper_plans_looks(monkeypatch):
                     no_price=0.8, yes_edge_net_pp=9.0, no_edge_net_pp=-2.0,
                     yes_tradeable=True, yes_block_reason=None, no_tradeable=True,
                     no_block_reason=None, confidence=0.6, regime_label="NORMAL",
-                    market_state="LIVE")])
+                    market_state="LIVE",
+                    # every live view carries the run's cost version (P5.0 item 7)
+                    decision_snapshot={"cost_version": "00000000-0000-0000-0000-00000000c057"})])
     monkeypatch.setattr(se, "_context", lambda views: object())
 
     from strategies.base import Signal
@@ -242,3 +244,30 @@ def test_a_source_that_states_no_day_still_rides_along(board):
                  "peak_window_state": "IN_WINDOW", "day_decided": False}])
     v = se._band_views()[0]
     assert v.running_max_c == 19.4
+
+
+# ---------------------------------------------------------------------------
+# COST VERSION IS NEVER NULL ON A TRADE (plan v2 P5.0 item 7)
+
+def _sig(action):
+    from strategies.base import Signal
+    return Signal(strategy_id="s1_buy_low_sell_signal", band_id="b1", side="YES",
+                  action=action, reason="x", price_at_fire=0.22, prob_at_fire=0.31,
+                  edge_at_fire=0.09, suggested_shares=10.0, confidence=0.6,
+                  regime_label="NORMAL", severity="info", dedupe_key=f"k-{action}")
+
+
+class _View:
+    def __init__(self, cost):
+        self.decision_snapshot = {"cost_version": cost}
+
+
+def test_entries_are_held_when_the_run_has_no_cost_version():
+    kept, held = se.hold_entries_without_cost_version([_sig("ENTER"), _sig("EXIT")], [_View(None)])
+    assert [s.action for s in kept] == ["EXIT"], "an exit is risk coming off and is never held"
+    assert [s.action for s in held] == ["ENTER"]
+
+
+def test_entries_go_out_when_the_run_has_a_cost_version():
+    kept, held = se.hold_entries_without_cost_version([_sig("ENTER")], [_View("uuid-1")])
+    assert [s.action for s in kept] == ["ENTER"] and held == []

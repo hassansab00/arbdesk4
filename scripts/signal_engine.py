@@ -797,6 +797,12 @@ def main():
     for sid, v in sorted(earned.items()):
         print(f"  weight {v.weight:.2f}  {sid}: {v.reason}")
 
+    fired, held = hold_entries_without_cost_version(fired, views)
+    counts["held_no_cost_version"] = len(held)
+    if held:
+        print(f"  HELD {len(held)} ENTER signal(s): no cost version could be resolved this run "
+              f"(cost_params unreadable or empty). Exits still go out.", file=sys.stderr)
+
     recent = _recently_fired(now)
     cycle_id = str(uuid.uuid4())
     decision_bands = {str(v.band_id): v for v in views}
@@ -821,8 +827,27 @@ def main():
               f"{s.suggested_shares:.0f}sh @ {s.price_at_fire} - {s.reason}")
     print(f"signals: {counts['written']} written, {counts['deduped']} deduped, "
           f"{counts['blocked']} blocked by conflict rules, over {counts['bands']} bands")
-    log_run("signal_engine", "ok", counts["written"], counts)
+    log_run("signal_engine", "attention" if held else "ok", counts["written"], counts)
     return 0
+
+
+def hold_entries_without_cost_version(fired, views):
+    """(kept, held): ENTER signals are held when the run has no cost version.
+
+    cost_version is never null on a trade (plan v2 P5.0 item 7). Live on 24
+    Sep, 66 of 70 paper_trades carried none - all of them before the 19 Sep
+    lineage fix - and 0 of 4,069 ENTER signals in the 14 days before. The
+    one path still open is _cost_version() returning None when cost_params
+    cannot be read, and every entry of that run would then be priced by an
+    unrecorded cost model. An entry can wait for the next run; an EXIT is
+    risk coming off and is never held for a label.
+    """
+    have_cost = any((v.decision_snapshot or {}).get("cost_version") for v in views)
+    if have_cost:
+        return list(fired), []
+    kept = [s for s in fired if s.action != "ENTER"]
+    held = [s for s in fired if s.action == "ENTER"]
+    return kept, held
 
 
 if __name__ == "__main__":
