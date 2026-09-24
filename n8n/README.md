@@ -62,6 +62,7 @@ into the browser bundle.
 | 12 | `P1.1_live_weather_alerts.template.json` | Webhook → email when a weather event fires. | event | — | — |
 | 13 | `P0.5_refresh_rules_text.template.json` | Watches the settlement rules for a mid-market change. Least urgent. | 1 day | 01:38 | 1 |
 | 14 | `P2.1_relearn.template.json` | Fires the GitHub Actions relearn run — refits the model on the evidence collected since the last one. | manual | — | — |
+| 15 | `P6.1_clock.template.json` | **The desk's clock** (plan v2 P6.1): dispatches `tick.yml` every hour and `pipeline_intraday.yml` every 4 h. GitHub's own cron dropped most of their runs on 24 Sep, so neither has one any more. Its CLOCK table is what `tests/test_github_actions.py` counts against the Actions budget. | 1 h | :36 | GitHub credential `AD4 GitHub Actions` |
 | 15 | `P2.2_paper_trades.template.json` | Drives the paper cycle through the paper worker — leases, fills and settles. Needs `PAPER_WORKER_URL`/`PAPER_WORKER_TOKEN` and a deployed worker, so it is not part of the import sequence above. | manual | — | — |
 
 **Every workflow starts at its own minute past the hour, and that is not

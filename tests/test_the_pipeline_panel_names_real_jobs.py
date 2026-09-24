@@ -152,8 +152,22 @@ def test_alternative_writers_are_judged_on_the_newer_one():
 import yaml
 
 
+def _n8n_clock_files():
+    """Workflow files n8n's clock dispatches on a schedule (plan v2 P6.1)."""
+    import json
+    files = set()
+    for path in (ROOT / "n8n").glob("*.template.json"):
+        for node in json.loads(path.read_text(encoding="utf-8")).get("nodes", []):
+            m = re.search(r"const CLOCK = (\[.*?\]);", node.get("parameters", {}).get("jsCode", ""))
+            if m:
+                files |= {e["file"] for e in json.loads(m.group(1))}
+    return files
+
+
 def _scheduled_workflow_titles():
-    """The `name:` of every .github workflow that actually runs on a schedule."""
+    """The `name:` of every .github workflow that actually runs on a schedule:
+    its own cron, or n8n's clock dispatching it."""
+    clock = _n8n_clock_files()
     titles = {}
     for path in (ROOT / ".github" / "workflows").glob("*.yml"):
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -161,7 +175,7 @@ def _scheduled_workflow_titles():
         triggers = doc.get("on", doc.get(True)) or {}
         titles[doc.get("name", path.stem)] = bool(
             isinstance(triggers, dict) and triggers.get("schedule")
-        )
+        ) or path.name in clock
     return titles
 
 

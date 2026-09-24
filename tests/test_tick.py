@@ -261,13 +261,24 @@ def test_the_tick_is_one_job_with_no_matrix():
     assert doc["concurrency"] == {"group": "tick", "cancel-in-progress": False}
 
 
-def test_the_tick_runs_hourly_at_35_and_can_be_started_by_hand():
+def test_the_tick_runs_hourly_at_36_on_the_n8n_clock_and_can_be_started_by_hand():
     """Scheduled only after it was timed (35 s cold, 21 s warm, 24 Sep), at
-    one fixed minute an hour: :35, so a checkpoint on the hour is 35 minutes
-    old when priced and a delayed run still falls inside the 75-minute grace."""
+    one fixed minute an hour: :36, so a checkpoint on the hour is 36 minutes
+    old when priced and a delayed run still falls inside the 75-minute grace.
+
+    The clock is n8n's, not GitHub's: GitHub's cron started this job once in
+    its first seven hourly slots (24 Sep). So tick.yml has no schedule of its
+    own, and n8n/P6.1_clock.template.json dispatches it every hour."""
+    import re
     triggers = _tick_yml().get(True) or _tick_yml().get("on")
-    assert set(triggers) == {"schedule", "workflow_dispatch"}
-    assert [c["cron"] for c in triggers["schedule"]] == ["35 * * * *"]
+    assert set(triggers) == {"workflow_dispatch"}, "a GitHub cron as well would run it twice"
+    clock = json.loads((pathlib.Path(__file__).resolve().parents[1] / "n8n" / "P6.1_clock.template.json").read_text())
+    sched = next(n for n in clock["nodes"] if n["type"].endswith("scheduleTrigger"))
+    assert sched["parameters"]["rule"]["interval"] == [
+        {"field": "hours", "hoursInterval": 1, "triggerAtMinute": 36}]
+    code = next(n for n in clock["nodes"] if n["name"] == "Due this hour")["parameters"]["jsCode"]
+    table = json.loads(re.search(r"const CLOCK = (\[.*?\]);", code).group(1))
+    assert {"file": "tick.yml", "hours_utc": "*"} in table
 
 
 def test_dispatch_inputs_never_reach_the_shell_line():

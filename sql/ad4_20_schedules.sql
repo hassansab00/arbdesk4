@@ -33,7 +33,8 @@ values ('workflow_schedules', '{
   "P2.1_relearn":              {"mode": "manual", "every_minutes": 0},
   "P2.2_paper_maintenance":    {"mode": "auto",   "every_minutes": 300},
   "P3.1_email_digests":        {"mode": "off",    "every_minutes": 400},
-  "P4.1_health_watchdog":      {"mode": "auto",   "every_minutes": 300}
+  "P4.1_health_watchdog":      {"mode": "auto",   "every_minutes": 300},
+  "P6.1_clock":                {"mode": "auto",   "every_minutes": 55}
 }'::jsonb)
 on conflict (key) do nothing;
 

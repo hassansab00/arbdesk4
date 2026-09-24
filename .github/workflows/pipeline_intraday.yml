@@ -20,16 +20,22 @@ name: Intraday Pipeline (model, probabilities, edges)
 # job still fails, and the step that failed is named.
 
 on:
-  schedule:
+  # NO GITHUB CRON: n8n's "AD4 P6.1 - Clock" dispatches this at 00:36, 04:36,
+  # 08:36, 12:36, 16:36 and 20:36 UTC. On 24 Sep GitHub's cron started none of
+  # the 00:15, 08:15 and 16:15 runs - three of the five slots that had passed
+  # by 19:00Z. The cadence below is unchanged; only
+  # the minute moves, from :15 to :36, still after P0.2's discovery at :20.
+  # The CLOCK table in n8n/P6.1_clock.template.json is what the budget counts.
+  #
+  # (The cadence, as it was set:)
     # EVERY FOUR HOURS, up from every six. Merging three workflows into this
     # one freed enough of the monthly allowance to buy freshness with it
     # rather than bank it: probabilities and edges are now at most
     # four hours old instead of six, and the whole schedule still costs about
     # half what the nine separate workflows did.
     #
-    # Offset 15 past the hour so each cycle lands after P0.2's market
+    # Offset past the hour so each cycle lands after P0.2's market
     # discovery rather than racing it.
-    - cron: '15 0,4,8,12,16,20 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
