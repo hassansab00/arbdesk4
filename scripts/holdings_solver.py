@@ -278,6 +278,161 @@ def solve_robust(ladder, sds, alpha=ALPHA_PRIOR, allow=("YES", "NO"),
 
 
 # --------------------------------------------------------------------------
+# Part 2: the book under caps, with what the ledger already holds, and the lock
+# --------------------------------------------------------------------------
+
+BOOK_ITERS = 4000
+BIND_TOL = 1e-4
+
+
+def _project(w, u, total):
+    """The KL projection of w onto {0 <= w_j <= u_j, sum w = total}.
+
+    Cap every coordinate that exceeds its cap, rescale the free ones to fill
+    what is left, repeat until nothing exceeds. It is exact for the capped
+    simplex, and feasible whenever the uncapped cash coordinate exists.
+    """
+    w = [max(v, 0.0) for v in w]
+    capped = [False] * len(w)
+    for _ in range(len(w) + 1):
+        fixed = sum(u[j] for j in range(len(w)) if capped[j])
+        free_sum = sum(w[j] for j in range(len(w)) if not capped[j])
+        room = total - fixed
+        scale = room / free_sum if free_sum > 0 else 0.0
+        out = [u[j] if capped[j] else w[j] * scale for j in range(len(w))]
+        over = [j for j in range(len(w)) if not capped[j] and out[j] > u[j]]
+        if not over:
+            return out
+        for j in over:
+            capped[j] = True
+    return out
+
+
+def _lock_book(best, names, u, c0, n, wealth_of, objective, steps=200):
+    """The best book that never ends below the ledger's wealth, or all cash.
+
+    The growth-optimal book broke the lock. A book that cannot lose is the
+    EQUAL-SHARES book - the same number of YES shares on every bucket (pays the
+    same whichever wins), or of NO shares on every bucket (pays n - 1 shares):
+    the old S6's insurance. It exists only when those shares cost less than
+    they are sure to pay. Between it and the growth-optimal book every mix is
+    feasible where the lock holds, and growth is concave along the segment, so
+    the best feasible mix on a fine grid is taken. With neither equal-shares
+    book on offer, nothing is bought: the lock never pays to lose.
+    """
+    m = len(names)
+    cash_only = [c0] + [0.0] * (m - 1)
+    candidates = []
+    for side, pays in (("YES", 1.0), ("NO", float(n - 1))):
+        idx = [j for j in range(1, m) if names[j][1] == side]
+        if len(idx) != n:
+            continue                              # a bucket side has no price: no equal-shares book
+        cost = sum(names[j][3] for j in idx)       # one share of each
+        if cost >= pays:
+            continue
+        # Spend what the caps allow, all of it on equal shares.
+        k_shares = min([c0 / cost] + [u[j] / names[j][3] for j in idx])
+        eq = [c0 - k_shares * cost] + [0.0] * (m - 1)
+        for j in idx:
+            eq[j] = k_shares * names[j][3]
+        candidates.append(eq)
+    best_book, best_g = cash_only, objective(cash_only)
+    for eq in candidates:
+        for t in range(steps + 1):
+            a = t / steps
+            w = [(1 - a) * e + a * b for e, b in zip(eq, best)]
+            if min(wealth_of(w)) < 1.0 - 1e-9:
+                continue
+            g = objective(w)
+            if g > best_g:
+                best_book, best_g = w, g
+    return best_book
+
+
+def solve_book(ladder, allow=("YES", "NO"), caps=None, held=None, total_usd=1.0, cash_usd=None,
+               sds=None, alpha=ALPHA_PRIOR, lock=False, iters=BOOK_ITERS, n_draws=N_DRAWS, seed=0):
+    """The growth-optimal NEW purchases for one ladder, under every constraint part 2 knows.
+
+    caps      {asset name: most of total wealth it may take} - depth at the
+              limit, the risk layer's caps (P5.9), the rails. Cash is never capped.
+    held      {bucket id: (yes_shares, no_shares)} already on the ledger. They
+              pay what they pay whatever this decides; the solver buys around
+              them, so a bucket already held is not bought twice.
+    total_usd the ledger's wealth (cash plus what it holds, at cost); cash_usd
+              the part that is free to spend (default: all of it).
+    sds       posterior sds: given, the objective is the worst ALPHA of draws
+              (solve_robust's); absent, the mean ladder (solve's).
+    lock      the book - holdings plus purchases - must not end below the
+              ledger's wealth in ANY outcome. If the growth-optimal book
+              breaks it, the best book on the segment from the equal-shares
+              (insurance) book to it is taken; with no equal-shares book on
+              offer, nothing is bought (_lock_book).
+
+    Selling what is held is not decided here: it is the no-trade band's and
+    the timing step's (P5.6) question, weighed against the bid ladder.
+
+    Returns {"weights", "cash", "growth", "binding": [...], "wealth_by_outcome"}.
+    """
+    ps = [float(b["p"]) for b in ladder]
+    names, x = assets(ladder, allow)
+    m, n = len(names), len(ps)
+    total = float(total_usd)
+    c0 = (float(cash_usd) if cash_usd is not None else total) / total
+    ids = [b["id"] for b in ladder]
+    h = [0.0] * n
+    for bid, (yes, no) in (held or {}).items():
+        i = ids.index(bid)
+        for k in range(n):
+            h[k] += ((yes if k == i else 0.0) + (0.0 if k == i else no)) / total
+    u = [c0] + [min(float((caps or {}).get(names[j][0], c0)), c0) for j in range(1, m)]
+
+    robust = sds is not None
+    if robust:
+        alpha = _clip(alpha, ALPHA_BOUNDS)
+        draws = dirichlet_draws(ps, concentration(ps, sds), n_draws, seed)
+        kk = max(1, math.ceil(alpha * len(draws)))
+
+    def wealth_of(w):
+        return [sum(w[j] * x[j][k] for j in range(m)) + h[k] for k in range(n)]
+
+    def step_p(W):
+        if not robust:
+            return ps
+        logW = [math.log(v) if v > 0 else -1e9 for v in W]
+        worst = sorted(draws, key=lambda d: sum(d[k] * logW[k] for k in range(n)))[:kk]
+        return [sum(d[k] for d in worst) / kk for k in range(n)]
+
+    w = _project([c0 / m] * m, u, c0)
+    avg, counted = [0.0] * m, 0
+    for t in range(1, iters + 1):
+        W = wealth_of(w)
+        q = step_p(W)
+        g = [sum(q[k] * x[j][k] / W[k] for k in range(n) if q[k] > 0) for j in range(m)]
+        w = _project([w[j] * g[j] for j in range(m)], u, c0)
+        if t > iters // 2:
+            counted += 1
+            avg = [a + (v - a) / counted for a, v in zip(avg, w)]
+
+    binding = [names[j][0] for j in range(1, m) if u[j] < c0 and avg[j] >= u[j] - BIND_TOL]
+
+    def objective(wv):
+        if robust:
+            return worst_mean([sum(d[k] * math.log(v) for k, v in enumerate(wealth_of(wv)) if d[k] > 0)
+                               for d in draws], alpha)
+        return sum(ps[k] * math.log(v) for k, v in enumerate(wealth_of(wv)) if ps[k] > 0)
+
+    W = wealth_of(avg)
+    if lock and min(W) < 1.0 - 1e-9:
+        avg = _lock_book(avg, names, u, c0, n, wealth_of, objective)
+        W = wealth_of(avg)
+        binding.append("lock")
+
+    return {"weights": {names[j][0]: avg[j] for j in range(1, m) if avg[j] > 1e-9},
+            "cash": avg[0], "growth": objective(avg), "binding": binding,
+            "wealth_by_outcome": dict(zip(ids, W)), "robust": robust}
+
+
+# --------------------------------------------------------------------------
 # lambda, the no-trade band, the lock, and S10
 # --------------------------------------------------------------------------
 
