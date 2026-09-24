@@ -30,7 +30,9 @@ Run standalone (`python probability_engine.py`) or via
 """
 import datetime as dt
 import math
+import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 
 from common import rest, rest_all, insert, get_cities, log_run, model_version_id
@@ -1417,6 +1419,16 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     return out, reg, reasons
 
 
+def _warm_caches():
+    """Load every lazily-filled module cache once (see main)."""
+    _calibration_map()
+    _measurement_layer_for(None)
+    _calibration_for(None)
+    _trajectory_now()
+    _postprocess_for(None, 0)
+    _divergence()
+
+
 def main():
     cities = get_cities(require_coords=False)
     unit_of = {c["city_key"]: (c.get("unit") or "C") for c in cities}
@@ -1442,21 +1454,40 @@ def main():
     all_rows = []
     sample_prints = []
     priced_city_days = 0
+    jobs = []
     for city_key, city_markets in by_city.items():
         for m in city_markets:
             unit = m.get("unit") or unit_of.get(city_key, "C")
             band_rows = bands_by_market.get(m["market_id"], [])
-            if not band_rows:
-                continue
-            result = process_city_day(city_key, m["resolution_date"], unit, band_rows,
-                                      history_cache, floors, promoted, model_forecasts)
-            if result is None:
-                continue
-            rows, reg, reasons = result
-            all_rows.extend(rows)
-            priced_city_days += 1
-            if len(sample_prints) < 3:
-                sample_prints.append((city_key, m["resolution_date"], band_rows, rows, reg))
+            if band_rows:
+                jobs.append((city_key, m["resolution_date"], unit, band_rows))
+
+    # CITY-DAYS IN PARALLEL (plan v2 P6.1). Each is a dozen independent reads
+    # and some arithmetic; priced one after another they took 231 s for 65 on
+    # 24 Sep. Results are collected in submission order, so the rows, the
+    # samples printed and the insert are exactly what the serial loop produced.
+    def _price(job):
+        city_key, for_date, unit, band_rows = job
+        return process_city_day(city_key, for_date, unit, band_rows,
+                                history_cache, floors, promoted, model_forecasts)
+
+    # FILL EVERY SHARED CACHE BEFORE THE POOL STARTS. Each loader sets its
+    # cache to {} and then fills it, so a second thread arriving mid-fill would
+    # read an empty cache and price without calibration, trajectory,
+    # post-processing, divergence or the measurement layer - silently. Filled
+    # here, serially, the workers only ever read.
+    _warm_caches()
+    workers = max(1, int(os.environ.get("ENGINE_WORKERS", "8")))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(_price, jobs))
+    for (city_key, for_date, unit, band_rows), result in zip(jobs, results):
+        if result is None:
+            continue
+        rows, reg, reasons = result
+        all_rows.extend(rows)
+        priced_city_days += 1
+        if len(sample_prints) < 3:
+            sample_prints.append((city_key, for_date, band_rows, rows, reg))
 
     if all_rows:
         insert("band_probabilities", all_rows)

@@ -91,7 +91,7 @@ above still get Hassan's eye first: say so in the PR and ask.
 | **P5.11** | Decision log | todo | | | |
 | **P5.12** | One engine for live and replay | todo | | | |
 | **P5.13** | Archive what research needs | todo | | | |
-| **P6.1** | Hourly tick on Actions | todo | | | Start as soon as P3 is merged. |
+| **P6.1** | Hourly tick on Actions, minimum billed minutes | doing: step 3 (parallel I/O) first | plan/p6-fast-engine | pending: the next `pipeline_intraday` run's "Band probabilities" step time (was **231 s** for 65 city-days, 24 Sep 04:43Z; the whole run 5 min 7 s) | The tick must replace intraday within a 55 s wall, and one step alone was 231 s: about 3.5 s per city-day, a dozen sequential REST round trips each, every one a new TCP and TLS handshake. Change: (1) `common` keeps one keep-alive `requests.Session` for the process (test fakes of `requests.get/post` are still what it calls); (2) the engine prices city-days on a thread pool (`ENGINE_WORKERS`, default 8), results kept in submission order; (3) every lazily-filled cache is warmed serially before the pool starts, because each sets itself to `{}` before filling and a racing thread would price without calibration or trajectory; (4) `model_version_id` registration is serialised by a lock. Next: `tick.yml` + `scripts/tick.py` (P4.2 checkpoint writer), `daily.yml`, retiring intraday. |
 | **P6.2** | n8n under 2,000 executions a month | todo | | | |
 | **P6.3** | Watchdog | todo | | | |
 | **P6.4** | Secure webhooks and the dispatch token | todo | | | |
