@@ -88,6 +88,18 @@ jobs:
         env:
           RESEARCH_CAPTURE_ID: ${{ github.run_id }}-${{ github.run_attempt }}
 
+      # EXITS FIRST (plan v2 P5.0 item 2). Every exit the desk ever queued -
+      # 5 of 5, 17-19 Sep - expired unfilled: this step ran after the fill, so
+      # its order waited four hours for the next worker. Evaluated here, the
+      # exit is queued before "Fill queued paper orders" and filled in this
+      # same run. It is also before the signals, so the time it takes is not
+      # taken from a new BUY's five minutes. An exit order lives 30 minutes
+      # (20260924060000_exits_live_thirty_minutes.sql).
+      - name: Paper exit policies
+        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}
+        timeout-minutes: 2
+        run: python scripts/paper_exits.py
+
       # THE STEP THAT WAS MISSING. paper_plans.py below reads signals fired in
       # the last fifteen minutes; nothing wrote them, so it proposed nothing
       # and every assisted desk looked dead. This runs the enabled strategies
@@ -119,9 +131,9 @@ jobs:
       # run had just created - the automatic desk would queue, reserve the
       # cash, release it, and report nothing filled.
       #
-      # Neither settlement nor exits needs to precede a fill. Settlement pays
-      # out resolutions and exits act on positions that already exist, so both
-      # read a strictly better picture after this step than before it.
+      # Settlement does not need to precede a fill: it pays out resolutions,
+      # and reads a strictly better picture after this step than before it.
+      # Exits DO need to precede it, which is why they run above.
       - name: Fill queued paper orders
         if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}
         timeout-minutes: 3
@@ -143,11 +155,6 @@ jobs:
         if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}
         timeout-minutes: 6
         run: python scripts/paper_settlement.py --holdings-only --budget-seconds 60 --max-evidence 100
-
-      - name: Paper exit policies
-        if: ${{ !cancelled() && vars.PAPER_TRADES_ENABLED != 'false' }}
-        timeout-minutes: 2
-        run: python scripts/paper_exits.py
 
       # THE PAGES READ STORED ROWS (plan v2 P6.5): refresh them now that this
       # run has written, rather than at the next :12 / :42 of pg_cron.
