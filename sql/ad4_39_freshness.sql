@@ -109,6 +109,7 @@ insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plai
   ('paper_trade_plans',         'created_at',   null, 'trading',   'Strategy proposals and recorded approval decisions.'),
   ('paper_book_evidence',       'captured_at',  null, 'trading',   'Direct token books retained as fill evidence.'),
   ('paper_resolution_evidence', 'captured_at',  null, 'trading',   'Matching final Gamma and CLOB resolution evidence.'),
+  ('resolution_verdicts',       'captured_at',  null, 'trading',   'Every winner the venue has confirmed, kept after its evidence is archived.'),
   -- 30, not null. This was the one table in the chain exempted from being
   -- called stale, and it is the table the whole scoring chain hangs on: no
   -- verified evidence, no fact_forecast_outcome, no fact_signal_outcome, and

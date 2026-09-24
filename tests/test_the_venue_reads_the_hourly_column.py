@@ -259,7 +259,10 @@ def test_the_band_record_says_which_thermometer():
 
 def test_the_fitters_target_keeps_one_thermometer():
     src = (ROOT / "scripts/databank.py").read_text()
-    main = src[src.index("observed_with_fallback(args.days)"):]
+    main = src[src.index("banded = observed_with_fallback("):]
+    # the forecasts' authority stays on the --days window; only the band
+    # record's context reaches back for late proofs (plan v2 P4.5)
+    assert 'verified = _verified_weather(args.days)' in src
     assert "bank_forecasts(verified," in main, (
         "fact_forecast_outcome.error_c is what the model fits against. Measured "
         "by two different thermometers it stops being a target."

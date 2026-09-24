@@ -38,7 +38,7 @@ def test_closed_markets_build_evidence_without_an_open_position(monkeypatch):
 
     def all_rows(path,params,**kwargs):
         if path=='paper_positions': return []
-        if path=='paper_resolution_evidence': return []
+        if path=='resolution_verdicts': return []
         if path=='markets': return [{'market_id':'market-1','resolution_date':'2026-09-12'}]
         if path=='bands': return [band]
         raise AssertionError(path)

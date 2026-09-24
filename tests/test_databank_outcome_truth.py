@@ -87,3 +87,42 @@ def test_legacy_artifacts_are_preserved_but_untrusted():
         assert f"delete from public.{table}" not in migration
         assert f"truncate public.{table}" not in migration
     assert "evidence_scope = 'verified_outcomes_v1'" in migration
+
+
+def test_a_ladder_proven_after_its_day_left_the_window_is_banked(monkeypatch):
+    """Plan v2 P4.5. The window is on the market's date; a proof that arrives
+    after the day has left it used to strand the ladder for good (165
+    confirmed market-days on 24 Sep). A late-proven market is judged exactly
+    like one inside the window."""
+    market="30000000-0000-0000-0000-000000000009"
+    band="20000000-0000-0000-0000-000000000009"
+    def rows(path,params=None):
+        if path=="fact_band_outcome": return []
+        if path=="markets": return []                       # nothing inside the date window
+        if path=="v_venue_market_resolution": return [{"market_id":market,"resolution_state":"confirmed"}]
+        if path=="v_venue_band_resolution": return [{"band_id":band,"market_id":market,"settled_yes":True,
+                                                        "resolution_state":"confirmed","confirmed_at":"now"}]
+        if path=="v_canonical_bands": return [{"band_id":band,"market_id":market,"band_lo":20,"band_hi":21,
+                                    "open_low":False,"open_high":False}]
+        if path=="band_probabilities": return []
+        if path in ("v_opportunities","v_latest_edge"): return []
+        raise AssertionError(path)
+    monkeypatch.setattr(databank,"rest",rows)
+    monkeypatch.setattr(databank,"rest_all",lambda path,params=None,**kw: rows(path,params))
+    late=[{"market_id":market,"city_key":"london","resolution_date":"2026-09-01",
+           "confirmed_at":"2026-09-17T00:00:00+00:00"}]
+    assert databank.bank_bands({},7,False)==[], "without the late proof nothing is in the window"
+    got=databank.bank_bands({},7,False,late_markets=late)
+    assert [(r["band_id"],r["for_date"],r["settled_yes"]) for r in got]==[(band,"2026-09-01",True)]
+
+
+def test_late_proofs_are_read_by_the_proof_s_time_and_only_when_confirmed(monkeypatch):
+    seen={}
+    def fake(path,params=None,**kw):
+        seen[path]=dict(params)
+        return []
+    monkeypatch.setattr(databank,"rest_all",fake)
+    databank._late_proof_markets(30,7)
+    p=seen["v_venue_market_resolution"]
+    assert p["resolution_state"]=="eq.confirmed"
+    assert p["confirmed_at"].startswith("gte.") and p["resolution_date"].startswith("lt.")

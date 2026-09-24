@@ -73,6 +73,7 @@ export const SQL_OWNER: Record<string, string> = {
   "proprietary_data_quality_flags": "supabase/migrations/20260912200000_proprietary_data_safeguards.sql",
   "public": "ad4_00_preflight.sql",
   "research_captures": "supabase/migrations/20260912083705_paper_accounts_and_research_history.sql",
+  "resolution_verdicts": "supabase/migrations/20260924030000_the_verdicts_are_kept.sql",
   "settings": "ad4_00_preflight.sql",
   "signals": "ad4_00_preflight.sql",
   "strategies": "ad4_00_preflight.sql",
