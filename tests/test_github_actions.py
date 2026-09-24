@@ -151,8 +151,16 @@ def runs_per_30_days(expr):
 # unmeasured job should look expensive until somebody measures it.
 # ============================================================================
 MEASURED_MINUTES = {
-    # measured 2026-09-19 from the jobs API, mean of the last six scheduled runs
-    "pipeline_intraday.yml": 6.2,     # 10.2 before --holdings-only
+    # 6.2 measured 2026-09-19 (mean of six scheduled runs; 10.2 before
+    # --holdings-only). Plan v2 P6.1 step 3 (#134, the engine priced on a
+    # thread pool): the first run on it, 24 Sep 10:37Z, took 1 min 48 s -
+    # "Band probabilities" 34 s for 96 city-days, where 04:43Z took 231 s for
+    # 65. Billed per job in whole minutes, so 2.0.
+    "pipeline_intraday.yml": 2.0,
+    # The hourly checkpoint tick (plan v2 P6.1 / P4.2). Dispatched 24 Sep:
+    # 35 s with a cold venv cache, 21 s warm (7 checkpoints, script 11.8 s).
+    # Billed at one minute; tick.py stops itself at 45 s.
+    "tick.yml": 1.0,
     # 29.0 measured 19 Sep; plan v2.1 P3.8 adds the hit tournament (a synthetic
     # 48-city night: 16.7 s a lane, two lanes). Held at 30.0 until timed.
     "pipeline_daily.yml": 30.0,
@@ -192,7 +200,15 @@ SCHEDULED_MINUTE_BUDGET = 3000
 
 # Kept so a schedule change that doubles the RUNS is still visible even if the
 # per-run time falls. Both ceilings apply.
-SCHEDULED_RUN_BUDGET = 430
+#
+# 1,060, raised from 430 by plan v2 P6.1 (the reason, as the repo requires):
+# the hourly checkpoint tick adds 720 runs a month, one billed minute each.
+# It is paid for by the engine speed-up it follows - intraday fell from 6.2
+# to 2.0 billed minutes a run, 756 minutes a month - so the MINUTE budget
+# above is unchanged and still binds (2,956 of 3,000 when this was set).
+# Plan v2 targets 800 once intraday, forecasts, observations and paper_fill
+# are folded into the tick and daily.yml; lower this then.
+SCHEDULED_RUN_BUDGET = 1060
 
 
 class _StrictLoader(yaml.SafeLoader):

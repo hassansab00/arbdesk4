@@ -530,7 +530,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "prediction_checkpoints": [
     {
-      "cadence": "only when you run it",
+      "cadence": "daily",
       "file": "tick.yml",
       "how": "scripts/tick.py",
       "kind": "action",

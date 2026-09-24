@@ -261,11 +261,13 @@ def test_the_tick_is_one_job_with_no_matrix():
     assert doc["concurrency"] == {"group": "tick", "cancel-in-progress": False}
 
 
-def test_the_tick_is_not_scheduled_until_it_has_been_timed():
-    """Rule 7: the schedule, the budget constants and retiring intraday land
-    together, with a measured wall time. Until then it runs by hand only."""
+def test_the_tick_runs_hourly_at_35_and_can_be_started_by_hand():
+    """Scheduled only after it was timed (35 s cold, 21 s warm, 24 Sep), at
+    one fixed minute an hour: :35, so a checkpoint on the hour is 35 minutes
+    old when priced and a delayed run still falls inside the 75-minute grace."""
     triggers = _tick_yml().get(True) or _tick_yml().get("on")
-    assert set(triggers) == {"workflow_dispatch"}
+    assert set(triggers) == {"schedule", "workflow_dispatch"}
+    assert [c["cron"] for c in triggers["schedule"]] == ["35 * * * *"]
 
 
 def test_dispatch_inputs_never_reach_the_shell_line():
