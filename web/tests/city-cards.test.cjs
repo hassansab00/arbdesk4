@@ -1,0 +1,63 @@
+// The Predictive page's city cards (web/lib/cityCards.ts): which market a card
+// shows, which bucket it calls, which trade it offers. Run with: npm run test:routes
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const { buildCards } = require(path.join(__dirname, '..', '.route-test', 'lib', 'cityCards.js'));
+
+const cities = [
+  { city_key: 'london', display_name: 'London', unit: 'C' },
+  { city_key: 'nyc', display_name: 'New York', unit: 'F' },
+  { city_key: 'empty', display_name: 'No market', unit: 'C' },
+];
+const row = (o) => ({ band_id: `${o.city_key}-${o.band_label}-${o.side}`, band_index: 1, sigma_c: 1.2,
+  confidence: 0.6, regime_label: 'normal', depth_5c: 40, block_reason: null, edge_at: '2026-09-24T13:00:00Z',
+  forecast_max_c: 24.1, ...o });
+const ladder = [
+  // London tomorrow: 24C is the favourite. On the NO row model_prob is still the YES probability,
+  // and its price is the NO price - the card must quote the YES price (0.39).
+  row({ city_key: 'london', for_date: '2026-09-25', band_label: '24C', side: 'NO', model_prob: 0.41, market_price: 0.63, edge_net_pp: -0.05, tradeable: true }),
+  row({ city_key: 'london', for_date: '2026-09-25', band_label: '24C', side: 'YES', model_prob: 0.41, market_price: 0.39, edge_net_pp: 0.01, tradeable: true }),
+  // The biggest edge on the ladder is BLOCKED; the best tradeable one is 8pp.
+  row({ city_key: 'london', for_date: '2026-09-25', band_label: '23C', side: 'YES', model_prob: 0.26, market_price: 0.17, edge_net_pp: 0.08, tradeable: true }),
+  row({ city_key: 'london', for_date: '2026-09-25', band_label: '22C', side: 'YES', model_prob: 0.06, market_price: 0.02, edge_net_pp: 0.30, tradeable: false, block_reason: 'below_7c_yes' }),
+  // London the day after: not the soonest, so not the default card.
+  row({ city_key: 'london', for_date: '2026-09-26', band_label: '25C', side: 'YES', model_prob: 0.5, market_price: 0.4, edge_net_pp: 0.02, tradeable: true }),
+  // New York: nothing tradeable with a positive edge.
+  row({ city_key: 'nyc', for_date: '2026-09-24', band_label: '70-71F', side: 'YES', model_prob: 0.3, market_price: 0.35, edge_net_pp: -0.06, tradeable: true }),
+  row({ city_key: 'nyc', for_date: '2026-09-24', band_label: '72-73F', side: 'YES', model_prob: 0.2, market_price: 0.01, edge_net_pp: 0.1, tradeable: false, block_reason: 'dead_band' }),
+];
+const forecasts = [
+  { city_key: 'london', for_date: '2026-09-25', model: 'open_meteo_forecast', lead_days: 2, forecast_max_c: 23.0, run_at: 'a' },
+  { city_key: 'london', for_date: '2026-09-25', model: 'open_meteo_forecast', lead_days: 1, forecast_max_c: 24.0, run_at: 'b' },
+];
+const own = [{ city_key: 'london', for_date: '2026-09-25', lead_days: 1, predicted_max_c: 23.6, nws_max_c: null, promotion_state: 'shadow' }];
+const live = [
+  { city_key: 'london', local_date: '2026-09-24', temp_c: 20, running_max_c: 22, peak_window_state: 'past', day_decided: true, observed_at: 'x', source_kind: 'station' },
+  { city_key: 'nyc', local_date: '2026-09-24', temp_c: 21, running_max_c: 22.5, peak_window_state: 'in_window', day_decided: false, observed_at: 'x', source_kind: 'station' },
+];
+
+const cards = buildCards(cities, ladder, forecasts, own, live, 'soonest');
+assert.deepEqual(cards.map((c) => c.city_key), ['london', 'nyc'],
+  'a city with no open market gets no card; the card with a real edge comes first');
+const [ldn, ny] = cards;
+assert.equal(ldn.for_date, '2026-09-25', 'the soonest OPEN trade date');
+assert.equal(ldn.top_band, '24C');
+assert.equal(ldn.top_yes_price, 0.39, 'the favourite is quoted at the YES price, never the NO row');
+assert.deepEqual([ldn.best.band, ldn.best.side, ldn.best.edge], ['23C', 'YES', 0.08],
+  'the best trade is the best TRADEABLE edge, never a blocked one');
+assert.deepEqual(ldn.forecasts, [{ model: 'open_meteo_forecast', max_c: 24.0, run_at: 'b' }],
+  'each model shows its latest run for the day (the shortest lead)');
+assert.equal(ldn.own.predicted_max_c, 23.6);
+assert.equal(ldn.live, null, "today's live readings must not appear on tomorrow's card");
+assert.equal(ldn.unit, 'C');
+
+assert.equal(ny.best, null, 'no positive tradeable edge means no trade offered');
+assert.equal(ny.blocked, 'dead_band');
+assert.equal(ny.live.running_max_c, 22.5, 'same-day live readings are shown');
+assert.equal(ny.unit, 'F');
+
+const later = buildCards(cities, ladder, forecasts, own, live, '2026-09-26');
+assert.deepEqual(later.map((c) => [c.city_key, c.for_date]), [['london', '2026-09-26']],
+  'a chosen date shows only the cities with an open market that day');
+
+console.log('PASS: city cards - soonest open market, YES-price favourite, best tradeable edge, same-day live only');
