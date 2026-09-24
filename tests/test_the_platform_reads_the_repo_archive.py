@@ -60,7 +60,7 @@ def test_the_manifest_proves_it_can_read_the_repo():
     reads this repository."""
     assert "repo_read: await probeRepo()" in ROUTE
     probe = ROUTE[ROUTE.index("async function probeRepo("):ROUTE.index("async function assetRows(")]
-    assert "contents/data/archive" in probe and "contents: read" in probe
+    assert "contents/data/archive" in probe and "contents: read" in probe.lower()
 
 
 def test_the_index_is_read_from_the_repo_never_from_the_site_itself():
@@ -74,3 +74,12 @@ def test_the_index_is_read_from_the_repo_never_from_the_site_itself():
     assert "${origin}" not in ROUTE.replace("`${origin}/archive/index.json` - the site asking", "")
     assert "bundledIndex" in body and "r.json()" not in body
     assert "manifest_source: manifestSource" in ROUTE
+
+
+def test_the_archive_reads_with_its_own_read_only_token_first():
+    """24 Sep: repo_read was 403 - the dispatch token cannot read contents,
+    and should not be widened to (plan v2 P6.4). The archive prefers a token
+    of its own, read-only."""
+    fn = ROUTE[ROUTE.index("function token()"):]
+    fn = fn[:fn.index("\n}\n")]
+    assert fn.index("GITHUB_ARCHIVE_TOKEN") < fn.index("GITHUB_DISPATCH_TOKEN")
