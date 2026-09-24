@@ -761,3 +761,35 @@ def test_probability_engine_and_strategies_share_one_rounding():
     for c in (21.39, 23.5, 25.0, 26.67):
         for unit in ("C", "F"):
             assert probability_engine.venue_round(c, unit) == venue.venue_round(c, unit)
+
+
+# ==========================================================================
+# SMALL FIXES (plan v2 P5.0 item 7)
+# ==========================================================================
+def test_s7_records_the_probability_of_the_side_it_buys():
+    """A NO wins when the band does not settle: its probability is 1 - p, as
+    s1 and s4 record it. Kelly sized s7's NO on the YES probability."""
+    b = climbing_band(
+        band_lo=30, band_hi=31, band_label="30-31C",
+        slope_3_c_per_h=-0.35, slope_6_c_per_h=0.33, rolling_over=True,
+        latest_temp_c=28.4, running_max_c=29.1, no_price=0.30, model_prob_yes=0.12,
+    )
+    out = s7().entry_signals(make_ctx([b]))
+    assert [s.side for s in out] == ["NO"]
+    assert out[0].prob_at_fire == pytest.approx(0.88)
+
+
+def test_s6_sizes_to_zero_when_kelly_says_no_edge():
+    """The base size() returns 0 when the bet has no edge at its price, and
+    `min(...) if cap else target` read that 0 as 'no cap' and bought the full
+    target-profit size - exactly the case the cap exists for."""
+    from paper_engine import Portfolio
+    strat = S6AnchorInsurance(enabled_config("s6_anchor_insurance", side="YES",
+                                             extra={"target_profit_usd": 40.0, "width_bands": 1}))
+    sig = strat.entry_signals(make_ctx([make_band(f"b{i}", band_lo=24 + i, band_hi=25 + i,
+                                                  yes_price=0.20, yes_edge_net_pp=0.05)
+                                        for i in range(3)]))[0]
+    assert sig.suggested_shares > 0
+    sig.prob_at_fire = 0.05                      # far below what the basket costs
+    assert strat.size(sig, Portfolio(bankroll=1000.0)) == 0
+    assert strat.size(sig, Portfolio(bankroll=0.0)) == 0, "no bankroll is no size, not the full target"
