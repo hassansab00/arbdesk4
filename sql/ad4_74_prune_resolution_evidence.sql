@@ -59,17 +59,27 @@
 -- test. Two hand-written predicates would drift, and the drift would show up
 -- as a refused prune at best and a wider delete at worst.
 -- --------------------------------------------------------------------------
+-- THE VERDICT IS KEPT, SO THE PAYLOAD CAN GO (plan v2 P1.6, 24 Sep).
+--
+-- This used to wait for the band's outcome to be frozen in fact_band_outcome,
+-- because the proof was the only copy of the venue's answer. Since P4.5
+-- (20260924030000) every proof leaves its verdict in resolution_verdicts, by
+-- trigger, at insert, and that ledger is never pruned; v_venue_band_resolution
+-- and so databank read the ledger, not this table. So the rule is now "the
+-- ledger holds this proof's verdict": identity AND winner. Measured 24 Sep:
+-- all 2,884 proofs older than 3 days were in the ledger; 1,968 of them were
+-- still held here only because their band was not banked.
 create or replace view v_prunable_resolution_evidence as
 select e.proof_id, e.condition_id, e.token_yes, e.token_no,
        e.winning_token, e.captured_at, e.gamma, e.clob, e.source_urls
 from paper_resolution_evidence e
 where exists (
   select 1
-    from bands b
-    join fact_band_outcome f on f.band_id = b.band_id
-   where b.condition_id = e.condition_id
-     and b.token_yes    = e.token_yes
-     and b.token_no     = e.token_no)
+    from resolution_verdicts v
+   where v.condition_id  = e.condition_id
+     and v.token_yes     = e.token_yes
+     and v.token_no      = e.token_no
+     and v.winning_token = e.winning_token)
   -- AND NOTHING HAS SETTLED ON IT.
   --
   -- paper_position_settlements.proof_id is a foreign key into this table,
@@ -88,7 +98,7 @@ where exists (
   select 1 from public.paper_position_settlements s where s.proof_id = e.proof_id);
 
 comment on view v_prunable_resolution_evidence is
-  'Resolution proofs whose band outcome is already frozen in fact_band_outcome AND that no settlement cites, and therefore archivable. A proof for a band nobody has banked is the only copy of that answer; a proof a settlement points at is the evidence that settlement paid out on. Neither is here at any age.';
+  'Resolution proofs whose verdict is already kept in resolution_verdicts (never pruned, plan v2 P4.5) AND that no settlement cites, and therefore archivable. A proof a settlement points at is the evidence that settlement paid out on, and is never here at any age.';
 
 grant select on v_prunable_resolution_evidence to service_role;
 
@@ -111,11 +121,14 @@ declare
   v_manifest bigint;
   v_covered  timestamptz;
 begin
-  if p_keep_days < 3 then
+  -- ONE DAY. The three-day floor existed because databank read this table;
+  -- it reads the verdict ledger now (P4.5). One day still keeps a proof
+  -- captured this morning here while its settlement and verify() finish.
+  if p_keep_days < 1 then
     return jsonb_build_object(
       'ok', false,
-      'error', 'keep_days must be at least 3 - a settlement captured this morning is '
-               'still being read by the next databank run');
+      'error', 'keep_days must be at least 1 - a proof captured this morning is still '
+               'being settled against');
   end if;
 
   if not p_dry_run and p_expected_rows is null then
@@ -199,7 +212,7 @@ end;
 $fn$;
 
 comment on function public.prune_resolution_evidence(integer, boolean, timestamptz, bigint) is
-  'Delete venue resolution proofs, but only ones whose band outcome is already frozen in fact_band_outcome, only after scripts/archive_observations.py has uploaded them to a Release and counted them back, never a row a stored integrity manifest has hashed, and only by claiming the transaction-local, DELETE-only, single-table exemption from the append-only guard.';
+  'Delete venue resolution proofs, but only ones whose verdict is already kept in resolution_verdicts (never pruned) and that no settlement cites, only after scripts/archive_observations.py has uploaded them to a Release and counted them back, never a row a stored integrity manifest has hashed, and only by claiming the transaction-local, DELETE-only, single-table exemption from the append-only guard.';
 
 revoke all on function public.prune_resolution_evidence(integer, boolean, timestamptz, bigint) from public;
 grant execute on function public.prune_resolution_evidence(integer, boolean, timestamptz, bigint) to service_role;

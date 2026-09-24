@@ -112,19 +112,23 @@ def _resolution_sql():
                      if not l.strip().startswith("--"))
 
 
-def test_only_a_proof_whose_outcome_is_already_frozen_may_go():
-    """A proof for a band nobody has banked is the ONLY copy of that answer.
-    Age is not the test; whether fact_band_outcome already holds the result
-    is."""
+def test_only_a_proof_whose_verdict_is_kept_may_go():
+    """A proof may leave only once the venue's answer it carries is kept
+    elsewhere for good. Since P4.5 that is resolution_verdicts, written by
+    trigger at insert and never pruned - and the match has to include the
+    WINNER, not just the identity, or a proof whose verdict differs from the
+    ledger's could be deleted as if it were a copy (P1.6, 24 Sep)."""
     sql = _resolution_sql()
     view = sql[sql.index("create or replace view v_prunable_resolution_evidence"):]
     view = view[: view.index(";")]
-    assert "fact_band_outcome" in view
+    assert "resolution_verdicts" in view
+    assert "v.winning_token = e.winning_token" in view
     assert "exists" in view.lower()
+    assert "paper_position_settlements" in view, "a proof a settlement cites must stay"
 
     delete = sql[sql.rindex("delete from public.paper_resolution_evidence"):]
     assert "v_prunable_resolution_evidence" in delete[: delete.index(";")], (
-        "the delete does not go through the frozen-outcome view, so it can take "
+        "the delete does not go through the verdict-kept view, so it can take "
         "a proof that is still the only record of its own answer")
 
 
@@ -158,10 +162,10 @@ def test_it_claims_the_same_narrow_exemption():
     assert "set_config('arbdesk.archiving', '', true)" in sql, "the exemption is not given back"
 
 
-def test_the_window_floor_is_the_banking_loop_not_a_round_number():
-    """Three days, because a settlement captured this morning is still being
-    read by the next databank run - and that run is what freezes the outcome
-    that makes the proof archivable in the first place."""
+def test_the_window_floor_is_one_day_because_the_verdict_is_kept_at_insert():
+    """Three days while databank read this table; one since it reads the
+    verdict ledger (P4.5). A proof captured this morning still stays while its
+    settlement runs."""
     sql = _resolution_sql()
-    assert "p_keep_days < 3" in sql
-    assert "still being read by the next databank run" in sql
+    assert "p_keep_days < 1" in sql
+    assert "being settled against" in sql

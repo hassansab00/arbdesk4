@@ -77,10 +77,15 @@ declare
   v_presence bigint;
   v_freed text;
 begin
-  if p_keep_days < 30 then
+  -- FOURTEEN (plan v2 P1.6, 24 Sep). The readers are v_band_volume and
+  -- v_city_volume, whose window is settings.volume_thresholds.lookback_hours
+  -- (24 on 24 Sep); nothing else reads trades_observed. Thirty was 30x the
+  -- window on a database over its tier; fourteen is still 14x it, and keeps
+  -- two weeks of prints for the replay harness (P5.12) without the archive.
+  if p_keep_days < 14 then
     return jsonb_build_object(
       'ok', false,
-      'error', 'keep_days must be at least 30 - the 24h volume window needs room to be wrong'
+      'error', 'keep_days must be at least 14 - the 24h volume window needs room to be wrong'
     );
   end if;
 

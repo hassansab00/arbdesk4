@@ -1827,7 +1827,8 @@ const assert = require('node:assert/strict');
   // 20260923110000_a_backfill_is_not_research.sql).
   //
   // One UPDATE of a non-pricing column on 22 Sep copied 66,345 rows into
-  // research_captures. A new price is captured; a re-label is not; and a
+  // research_captures. A re-price is captured; a re-label is not; a new
+  // price is not (P1.6: it is already in the table and the mirror); and a
   // deliberate backfill can switch capture off for its own transaction.
   // ======================================================================
   await db.exec('reset role;');
@@ -1837,7 +1838,9 @@ const assert = require('node:assert/strict');
   await db.query(`insert into public.band_probabilities(prob_id,band_id,raw_prob,calibrated_prob,centre_c,sigma_c)
                   values(60000002,$1,.30,.31,20.4,1.1)`,[band]);
   const c1=await caps();
-  assert.equal(c1,c0+1,'a new price was not captured');
+  // P1.6 (20260924080000): a NEW price is not copied - it is in the table
+  // and in the nightly mirror already. Only a revision in place is captured.
+  assert.equal(c1,c0,'a new price was copied into research_captures a third time');
   // THE PLAN'S ACCEPTANCE: a non-pricing UPDATE in a transaction creates 0 captures.
   await db.exec(`begin; update public.band_probabilities set pricing_block_reason='relabel', regime_label='dry',
                    observed_floor_c=19.0 where prob_id=60000002; rollback;`);

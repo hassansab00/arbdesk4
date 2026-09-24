@@ -1320,10 +1320,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "edges"
   ],
   "v_prunable_resolution_evidence": [
-    "bands",
-    "fact_band_outcome",
     "paper_position_settlements",
-    "paper_resolution_evidence"
+    "paper_resolution_evidence",
+    "resolution_verdicts"
   ],
   "v_risk_budget_health": [
     "paper_trades",
