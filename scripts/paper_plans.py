@@ -212,9 +212,27 @@ def prepare(account, signal, capture, *, now=None):
         raise ValueError('Fresh fee-inclusive basket edge is below policy')
     # Reserve rounded per-leg fees plus a cent of rounding headroom per leg.
     budget = min(number(policy['max_plan_usd']),number(account['cash'])-number(account['reserved_cash']))
-    quantity = ((budget-Decimal('.01')*len(quoted))/unit_cost).quantize(Decimal('.01'),rounding=ROUND_DOWN)
-    if quantity<=0:
+    affordable_q = ((budget-Decimal('.01')*len(quoted))/unit_cost).quantize(Decimal('.01'),rounding=ROUND_DOWN)
+    if affordable_q<=0:
         raise ValueError('Insufficient available paper cash')
+    # THE ENGINE'S SIZE REACHES THE ORDER (plan v2 P5.0 item 3).
+    #
+    # signal_engine sizes every ENTER signal - Kelly on the edge, then the
+    # ladder allocation and the per-city and gross risk caps - and writes it
+    # as suggested_shares. This function used to ignore it and buy whatever
+    # min(max_plan_usd, free cash) afforded, so every plan spent the desk's
+    # whole plan limit whatever the engine had decided the edge was worth.
+    # The engine's size is now a ceiling like the budget and the book, and the
+    # smallest of the three is the order. A signal without a size is refused:
+    # every ENTER signal written in the 7 days to 24 Sep carried one (2,610 of
+    # 2,610), so a missing size is a fault to surface, not a default to fill.
+    if signal.get('suggested_shares') is None:
+        raise ValueError('The engine gave this signal no size (suggested_shares missing)')
+    target = number(signal['suggested_shares']).quantize(Decimal('.01'),rounding=ROUND_DOWN)
+    if target<=0:
+        raise ValueError('The engine sized this signal to zero shares')
+    quantity = min(affordable_q, target)
+    limited_by = 'the engine\'s size' if target < affordable_q else 'account budget'
     # BUY WHAT IS THERE, RATHER THAN REFUSING WHAT IS NOT.
     #
     # The size above is what the BUDGET affords. What the book offers at the
@@ -248,6 +266,12 @@ def prepare(account, signal, capture, *, now=None):
     # smaller of the two is under the floor, raising it would break the other
     # constraint. What CAN be fixed is which one to go and change.
     floor = venue_minimum_shares(quoted, DEFAULT_SHARE_STEP)
+    if target < floor:
+        # No walk can help: the walk buys exactly the floor, which is more
+        # than the engine decided this edge is worth.
+        raise ValueError(
+            f'Below the venue minimum order size: the engine sized {plain(target)} shares '
+            f'against a {plain(floor)}-share floor, limited by the engine\'s size')
     if quantity < floor and depth < floor:
         # THE TOUCH IS NOT THE BOOK, and treating it as one threw away 219 of
         # the desk's 360 plans - 61% - every one of them "limited by book
@@ -306,7 +330,7 @@ def prepare(account, signal, capture, *, now=None):
     elif quantity < floor:
         raise ValueError(
             f'Below the venue minimum order size: {plain(quantity)} shares against a '
-            f'{plain(floor)}-share floor, limited by account budget')
+            f'{plain(floor)}-share floor, limited by {limited_by}')
     legs, quotes = [], []
     for bid,token,price,rate,book in quoted:
         order={'action':'BUY','token_id':token,'shares':str(quantity),'limit_price':str(price),'share_step':str(DEFAULT_SHARE_STEP),
@@ -342,6 +366,7 @@ def prepare(account, signal, capture, *, now=None):
         quotes.append({'snapshot_id':book['snapshot_id'],'preview':preview,'venue_metadata':book.get('market_metadata')})
     return legs, {'signal':signal,'quotes':quotes,'net_edge_per_share':str(net_edge),'expected_payout_per_basket':str(expected),
         'quoted_cost_per_basket':str(unit_cost),'prepared_at':now.isoformat(),
+        'engine_shares':str(target),'budget_shares':str(affordable_q),
         'execution_assumption':'Independent IOC legs; no guaranteed basket completion',
         'engine_version':os.environ.get('GITHUB_SHA') or os.environ.get('ARBDESK_ENGINE_VERSION','unversioned')}
 

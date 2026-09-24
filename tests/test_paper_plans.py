@@ -10,7 +10,7 @@ def fixture():
     account={'account_id':'desk','cash':100,'reserved_cash':0,'policy':{'cities':['london'],'max_plan_usd':10,'min_edge':'.03'}}
     inputs={bid:{'unit':'C','model_prob_yes':.45,'decision_evidence':{'band':{'band_id':bid,'band_label':f'{20+i}°C','band_lo':20+i,'band_hi':21+i,'token_yes':bid,'token_no':'no-'+bid},
         'market':{'city_key':'london','unit':'C','resolution_date':'2026-09-12'},'forecast':{'for_date':'2026-09-12','run_at':'2026-09-12T06:00:00Z'}}} for i,bid in enumerate(['a','b'])}
-    signal={'signal_id':1,'band_id':'a','side':'YES','payload':{'cycle_id':'cycle','basket_group':'a:b','band_ids':['a','b'],'decision_at':NOW.isoformat(),'decision_inputs':inputs}}
+    signal={'signal_id':1,'band_id':'a','side':'YES','suggested_shares':100000,'payload':{'cycle_id':'cycle','basket_group':'a:b','band_ids':['a','b'],'decision_at':NOW.isoformat(),'decision_inputs':inputs}}
     def capture(order):
         return {'token_id':order['token_id'],'observed_at':NOW.isoformat(),'tradeable':True,'snapshot_id':order['token_id'],
             'tick_size':'.01','fee_rate':'.05','min_order_size':1,'min_order_size_unit':'USDC',
@@ -589,3 +589,49 @@ def test_the_reservation_rule_is_still_the_one_the_database_enforces():
         'queue_plan no longer requires cash_ceiling >= shares * limit_price. If the '
         'rule moved or changed, update prepare() and the test above to match it - do '
         'not leave them asserting a rule the database has stopped keeping')
+
+
+# ---------------------------------------------------------------------------
+# THE ENGINE'S SIZE REACHES THE ORDER (plan v2 P5.0 item 3)
+#
+# signal_engine sizes each ENTER signal (Kelly, ladder allocation, risk caps)
+# into suggested_shares. prepare() used to ignore it and spend
+# min(max_plan_usd, cash) on every plan.
+
+def test_the_engine_size_binds_when_it_is_the_smallest():
+    account, signal, capture = fixture()
+    signal['suggested_shares'] = 12.349
+    legs, evidence = prepare(account, signal, capture, now=NOW)
+    assert [leg['shares'] for leg in legs] == ['12.34', '12.34'], 'rounded down to the share step, never up'
+    assert evidence['engine_shares'] == '12.34'
+    assert Decimal(evidence['budget_shares']) > Decimal('12.34'), 'the budget alone would have bought more'
+
+
+def test_the_budget_still_binds_when_the_engine_asks_for_more():
+    account, signal, capture = fixture()
+    signal['suggested_shares'] = 100000
+    legs, _ = prepare(account, signal, capture, now=NOW)
+    assert Decimal(legs[0]['shares']) < Decimal('100000')
+    assert sum(Decimal(x['cash_ceiling']) for x in legs) <= 10
+
+
+@pytest.mark.parametrize('size, message', [
+    (None, 'no size'),
+    (0, 'sized this signal to zero'),
+    (-3, 'sized this signal to zero'),
+])
+def test_a_signal_without_a_positive_engine_size_is_refused(size, message):
+    account, signal, capture = fixture()
+    if size is None:
+        signal.pop('suggested_shares')
+    else:
+        signal['suggested_shares'] = size
+    with pytest.raises(ValueError, match=message):
+        prepare(account, signal, capture, now=NOW)
+
+
+def test_an_engine_size_below_the_venue_floor_names_the_engine():
+    account, signal, capture = fixture()
+    signal['suggested_shares'] = 2          # $1 minimum at 30c is 3.34 shares
+    with pytest.raises(ValueError, match="limited by the engine's size"):
+        prepare(account, signal, capture, now=NOW)
