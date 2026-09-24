@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 212 of them - and for each MISSING one names the
+-- and function the app reads - 213 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -75,6 +75,7 @@ with expected(rel, owner, used_by) as (values
     ('paper_resolution_evidence', 'supabase/migrations/20260912083740_paper_position_lifecycle.sql', ''),
     ('paper_trade_plans', 'supabase/migrations/20260912083728_paper_approvals_exits_and_policies.sql', ''),
     ('paper_trades', 'ad4_00_preflight.sql', '(GlobalBar), (PaperTradeHistory), /, /analytics, /goals'),
+    ('prediction_checkpoints', 'supabase/migrations/20260924000000_prediction_checkpoints.sql', ''),
     ('proprietary_data_corrections', 'supabase/migrations/20260912200000_proprietary_data_safeguards.sql', ''),
     ('proprietary_data_manifests', 'supabase/migrations/20260912200000_proprietary_data_safeguards.sql', ''),
     ('proprietary_data_quality_flags', 'supabase/migrations/20260912200000_proprietary_data_safeguards.sql', ''),
@@ -309,6 +310,7 @@ begin
     ('paper_resolution_evidence', 'supabase/migrations/20260912083740_paper_position_lifecycle.sql', ''),
     ('paper_trade_plans', 'supabase/migrations/20260912083728_paper_approvals_exits_and_policies.sql', ''),
     ('paper_trades', 'ad4_00_preflight.sql', '(GlobalBar), (PaperTradeHistory), /, /analytics, /goals'),
+    ('prediction_checkpoints', 'supabase/migrations/20260924000000_prediction_checkpoints.sql', ''),
     ('proprietary_data_corrections', 'supabase/migrations/20260912200000_proprietary_data_safeguards.sql', ''),
     ('proprietary_data_manifests', 'supabase/migrations/20260912200000_proprietary_data_safeguards.sql', ''),
     ('proprietary_data_quality_flags', 'supabase/migrations/20260912200000_proprietary_data_safeguards.sql', ''),
