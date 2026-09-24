@@ -208,3 +208,15 @@ jobs:
         env:
           BACKTEST_BUDGET_MINUTES: '26'
         run: python scripts/backtest/runner.py
+
+      # THE PAGES READ STORED ROWS (plan v2 P6.5): refresh them now that this
+      # run has written, rather than at the next :12 / :42 of pg_cron.
+      # CONCURRENTLY, so a page open during the refresh keeps reading.
+      - name: Refresh the stored page rows
+        if: ${{ !cancelled() }}
+        timeout-minutes: 3
+        run: |
+          python - <<'PY'
+          from common import rpc
+          print("page cache refreshed (ms):", rpc("refresh_page_cache"))
+          PY
