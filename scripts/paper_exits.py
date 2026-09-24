@@ -184,7 +184,7 @@ def cycle(budget_seconds=60):
             limit=min(number(x['price']) for x in book['bids'])
             now=dt.datetime.now(dt.timezone.utc)
             preview=simulate({**order,'action':'SELL','shares':pos['shares'],'limit_price':str(limit),'share_step':'.01',
-                'max_book_age_seconds':120,'expires_at':(now+dt.timedelta(minutes=5)).isoformat()},book,now=now)
+                'max_book_age_seconds':120,'expires_at':(now+dt.timedelta(minutes=30)).isoformat()},book,now=now)
             if preview['status']!='filled':
                 continue
             limit=min(number(x['price']) for x in preview['fills'])

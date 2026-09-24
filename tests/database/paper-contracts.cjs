@@ -565,6 +565,10 @@ const assert = require('node:assert/strict');
   const auto=(await db.query("select queue_automatic_paper_exit($1,$2,$3,'YES',.80,$4,$5) as id",
     [account,'40000000-0000-0000-0000-000000000005',band,JSON.stringify(preview),version])).rows[0].id;
   assert.ok(auto,'Entry pause leaves explicitly enabled exits available');
+  // P5.0 item 2: 5 of 5 live exits expired at a 5-minute life. An exit lives 30.
+  assert.equal(Number((await db.query(
+    'select extract(epoch from expires_at-requested_at)::int as s from paper_orders where order_id=$1',[auto])).rows[0].s)>=1800,true,
+    'an automatic exit order must live at least 30 minutes');
   const exitClaim=(await db.query('select claim_paper_order() as job')).rows[0].job;
   assert.equal(exitClaim.order_id,auto);
   await db.query('select complete_paper_order($1,$2,$3)',[auto,exitClaim.lease_token,JSON.stringify(preview)]);
