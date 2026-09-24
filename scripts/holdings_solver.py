@@ -285,6 +285,27 @@ BOOK_ITERS = 4000
 BIND_TOL = 1e-4
 
 
+def _project_bounded(w, lo, u, total, iters=200):
+    """The KL projection of w onto {lo_j <= w_j <= u_j, sum w = total}.
+
+    Its solution is w_j(t) = clip(t * w_j, lo_j, u_j) for the one t that makes
+    the sum `total`; the sum rises with t, so t is found by bisection. A
+    coordinate with w_j = 0 sits on its lower bound, as it should.
+    """
+    def total_at(t):
+        return sum(min(max(t * v, a), b) for v, a, b in zip(w, lo, u))
+    lo_t, hi_t = 0.0, 1.0
+    while total_at(hi_t) < total and hi_t < 1e12:
+        hi_t *= 2.0
+    for _ in range(iters):
+        mid = (lo_t + hi_t) / 2.0
+        if total_at(mid) < total:
+            lo_t = mid
+        else:
+            hi_t = mid
+    return [min(max(hi_t * v, a), b) for v, a, b in zip(w, lo, u)]
+
+
 def _project(w, u, total):
     """The KL projection of w onto {0 <= w_j <= u_j, sum w = total}.
 
@@ -350,7 +371,8 @@ def _lock_book(best, names, u, c0, n, wealth_of, objective, steps=200):
 
 
 def solve_book(ladder, allow=("YES", "NO"), caps=None, held=None, total_usd=1.0, cash_usd=None,
-               sds=None, alpha=ALPHA_PRIOR, lock=False, iters=BOOK_ITERS, n_draws=N_DRAWS, seed=0):
+               sds=None, alpha=ALPHA_PRIOR, lock=False, iters=BOOK_ITERS, n_draws=N_DRAWS, seed=0,
+               max_spend=None, max_price=None):
     """The growth-optimal NEW purchases for one ladder, under every constraint part 2 knows.
 
     caps      {asset name: most of total wealth it may take} - depth at the
@@ -368,11 +390,19 @@ def solve_book(ladder, allow=("YES", "NO"), caps=None, held=None, total_usd=1.0,
               (insurance) book to it is taken; with no equal-shares book on
               offer, nothing is bought (_lock_book).
 
+    max_spend the most of total wealth this ladder may take in new purchases,
+              all assets together: the city-day rail (risk_rails.ladder_budget).
+    max_price no YES or NO bought above it: the price rail (0.97).
+
     Selling what is held is not decided here: it is the no-trade band's and
     the timing step's (P5.6) question, weighed against the bid ladder.
 
     Returns {"weights", "cash", "growth", "binding": [...], "wealth_by_outcome"}.
     """
+    if max_price is not None:
+        # Above the rail a side is not an asset at all.
+        ladder = [dict(b, **{k: (None if b.get(k) is not None and float(b[k]) > max_price else b.get(k))
+                             for k in ("yes_price", "no_price")}) for b in ladder]
     ps = [float(b["p"]) for b in ladder]
     names, x = assets(ladder, allow)
     m, n = len(names), len(ps)
@@ -402,18 +432,27 @@ def solve_book(ladder, allow=("YES", "NO"), caps=None, held=None, total_usd=1.0,
         worst = sorted(draws, key=lambda d: sum(d[k] * logW[k] for k in range(n)))[:kk]
         return [sum(d[k] for d in worst) / kk for k in range(n)]
 
-    w = _project([c0 / m] * m, u, c0)
+    # The city-day rail: all new purchases on this ladder together, so cash
+    # may not fall below c0 - max_spend. A floor on cash, not a cap on assets.
+    if max_spend is not None:
+        lo = [max(c0 - max(float(max_spend), 0.0), 0.0)] + [0.0] * (m - 1)
+        proj = lambda v: _project_bounded(v, lo, u, c0)
+    else:
+        proj = lambda v: _project(v, u, c0)
+    w = proj([c0 / m] * m)
     avg, counted = [0.0] * m, 0
     for t in range(1, iters + 1):
         W = wealth_of(w)
         q = step_p(W)
         g = [sum(q[k] * x[j][k] / W[k] for k in range(n) if q[k] > 0) for j in range(m)]
-        w = _project([w[j] * g[j] for j in range(m)], u, c0)
+        w = proj([w[j] * g[j] for j in range(m)])
         if t > iters // 2:
             counted += 1
             avg = [a + (v - a) / counted for a, v in zip(avg, w)]
 
     binding = [names[j][0] for j in range(1, m) if u[j] < c0 and avg[j] >= u[j] - BIND_TOL]
+    if max_spend is not None and avg[0] <= c0 - float(max_spend) + BIND_TOL:
+        binding.append("city_day")
 
     def objective(wv):
         if robust:

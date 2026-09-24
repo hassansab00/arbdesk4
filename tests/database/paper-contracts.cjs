@@ -249,6 +249,19 @@ const assert = require('node:assert/strict');
   // grant and its p_before floor bypass had no contract (plan v2 P1.1).
   await db.exec(fs.readFileSync(
     path.resolve(__dirname,'../../sql/ad4_65_prune_trades.sql'),'utf8'));
+  // THE FIXED RAILS (plan v2 P5.9, 20260924110000). First: the migration
+  // seeded exactly the plan's defaults - that is what production runs. Then
+  // they are relaxed for every contract above the rails block, whose $100-$300
+  // test desks place orders far above 3% of themselves to test OTHER things.
+  // The rails block restores the real values and tests them on their own.
+  {
+    const r=(await db.query("select value from public.settings where key='risk_rails'")).rows[0].value;
+    assert.deepEqual([r.daily_loss_frac,r.city_day_frac,r.cluster_day_frac,r.max_price,r.close_buffer_min],
+      [0.05,0.03,0.08,0.97,15],'the migration did not seed the plan\'s default rails');
+    assert.equal((await db.query("select value->>'halted' as h from public.settings where key='trading_halt'")).rows[0].h,'false');
+    await db.exec(`update public.settings set value=value||'{"daily_loss_frac":1,"city_day_frac":1000,"max_price":0.999,"close_buffer_min":0}'::jsonb
+      where key='risk_rails';`);
+  }
   const uid='10000000-0000-0000-0000-000000000001', other='10000000-0000-0000-0000-000000000002';
   const band='20000000-0000-0000-0000-000000000001', market='30000000-0000-0000-0000-000000000001';
   const command='40000000-0000-0000-0000-000000000001';
@@ -2121,6 +2134,63 @@ const assert = require('node:assert/strict');
   await db.exec('reset role;');
 
   // ======================================================================
+  // THE FIXED RAILS (plan v2 P5.9, 20260924110000_fixed_risk_rails.sql).
+  // The plan's defaults, decided on Hassan's delegation 24 Sep, enforced in
+  // queue_plan so they hold whoever proposed the order. close_buffer_min is
+  // held at 0 except in its own case: the fixture market closes at the end of
+  // today (UTC), so the real 15 minutes would fail these contracts for the
+  // last quarter-hour of every day.
+  // ======================================================================
+  await db.exec(`reset role; update public.settings set value=value||'{"daily_loss_frac":0.05,"city_day_frac":0.03,"max_price":0.97,"close_buffer_min":0}'::jsonb where key='risk_rails';`);
+  await db.exec('set role service_role;');
+  const rd=(await db.query("select paper_desk_create('Rails',1000,'automatic',null,$1::jsonb) as id",
+    [JSON.stringify({cities:['ALL'],strategies:['s1'],min_edge:.01,max_plan_usd:1000,max_exposure_usd:100000})])).rows[0].id;
+  await db.exec(`reset role; update public.paper_accounts set entries_paused=false where account_id='${rd}';
+    insert into signals(signal_id,action,strategy_id,fired_at,reason) select g,'ENTER','s1',now(),'rails' from generate_series(6101,6120) g;
+    set role service_role;`);
+  let rn=0;
+  const rPlan=async(side,shares,price)=>{
+    const ceiling=(shares*price*1.05).toFixed(4);
+    const id=(await db.query('select publish_paper_plan($1,$2,$3,$4,$5) as id',
+      [rd,`61000000-0000-0000-0000-${String(++rn).padStart(12,'0')}`,6100+rn,
+       JSON.stringify([{band_id:band,side,shares:String(shares),limit_price:String(price),cash_ceiling:ceiling}]),
+       JSON.stringify({net_edge_per_share:'.10'})])).rows[0].id;
+    return (await db.query('select status,reason from paper_trade_plans where plan_id=$1',[id])).rows[0];
+  };
+  // 3% of a $1,000 desk is $30 on one city-day.
+  assert.equal((await rPlan('YES',40,.50)).status,'queued','$21 on a city-day is inside the 3% rail');
+  const over=await rPlan('NO',30,.40);
+  assert.equal(over.status,'blocked','$21 held + $12.60 more on the same city-day passed the 3% rail');
+  assert.match(over.reason,/Rail: .* would exceed 0\.03 of the account/);
+  await db.exec(`reset role; update public.paper_orders set status='expired' where account_id='${rd}';
+    update public.paper_accounts set reserved_cash=0 where account_id='${rd}'; set role service_role;`);
+  const dear=await rPlan('NO',10,.98);
+  assert.equal(dear.status,'blocked'); assert.match(dear.reason,/above the 0\.97 price bound/);
+  // The kill switch, with its reason.
+  await assert.rejects(db.query("select set_trading_halt(true,'')"),/needs a reason/);
+  await db.query("select set_trading_halt(true,'contract test')");
+  const halted=await rPlan('NO',10,.40);
+  assert.equal(halted.status,'blocked'); assert.match(halted.reason,/trading halted \(contract test\)/);
+  await db.query("select set_trading_halt(false,null)");
+  assert.equal((await rPlan('NO',10,.40)).status,'queued','lifting the halt must let entries through again');
+  await db.exec(`reset role; update public.paper_orders set status='expired' where account_id='${rd}';
+    update public.paper_accounts set reserved_cash=0 where account_id='${rd}'; set role service_role;`);
+  // No entry within the close buffer (the market's local day ends tonight).
+  await db.exec(`reset role; update public.settings set value=value||'{"close_buffer_min":100000}'::jsonb where key='risk_rails'; set role service_role;`);
+  const late=await rPlan('NO',10,.40);
+  assert.equal(late.status,'blocked'); assert.match(late.reason,/within 100000 min of the local close/);
+  await db.exec(`reset role; update public.settings set value=value||'{"close_buffer_min":0}'::jsonb where key='risk_rails'; set role service_role;`);
+  // The daily loss rail: $60 lost today on a ~$1,000 desk is past 5%.
+  await db.exec(`reset role; insert into public.paper_trades(account_id,band_id,side,opened_at,shares,avg_fill_price,closed_at,net_pnl)
+    values('${rd}','${band}','YES',now(),10,.5,now(),-60); set role service_role;`);
+  const lost=await rPlan('NO',10,.40);
+  assert.equal(lost.status,'blocked'); assert.match(lost.reason,/daily loss limit reached/);
+  // Only the service role flips the kill switch.
+  for (const role of ['anon','authenticated'])
+    assert.equal((await db.query(`select has_function_privilege('${role}','public.set_trading_halt(boolean,text)','execute') as ok`)).rows[0].ok,false);
+  await db.exec(`reset role; update public.settings set value=value||'{"daily_loss_frac":1,"city_day_frac":1000,"max_price":0.999,"close_buffer_min":0}'::jsonb where key='risk_rails';`);
+
+  // ======================================================================
   // WRITES NEED AN OPERATOR (plan v2 P1.2,
   // 20260923130000_writes_need_an_operator.sql). The browser reads settings
   // as anon; it must not see who the operators are, nor the n8n webhook URLs,
@@ -2139,5 +2209,5 @@ const assert = require('node:assert/strict');
   await db.exec('reset role;');
 
   await db.close();
-  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, a shadow ledger per strategy and a suspended portfolio account, strategy lifecycle states, research capture of prices only, no PUBLIC execute on SECURITY DEFINER functions and the settings the browser may not read');
+  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, a shadow ledger per strategy and a suspended portfolio account, strategy lifecycle states, the fixed risk rails and the kill switch, research capture of prices only, no PUBLIC execute on SECURITY DEFINER functions and the settings the browser may not read');
 })().catch(e=>{console.error(e);process.exit(1);});
