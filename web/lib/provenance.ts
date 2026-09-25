@@ -112,7 +112,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "decisions": [
     {
-      "cadence": "only when you run it",
+      "cadence": "daily",
       "file": "pipeline_intraday.yml",
       "how": "scripts/signal_engine.py",
       "kind": "action",
