@@ -102,6 +102,7 @@ ad4_87_market_settlement_gaps.sql
 ad4_88_hit_tournament.sql
 ad4_89_page_cache.sql
 ad4_90_clock.sql
+ad4_91_database_jobs.sql
 ad4_live_weather_timing.sql
 ad4_book_no_side.sql
 ad4_prune_dead_book_detail.sql

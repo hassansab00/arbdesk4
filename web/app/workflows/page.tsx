@@ -164,7 +164,7 @@ const CATALOGUE: Array<{
   {
     job: "P2.2_paper_maintenance",
     label: "Paper Maintenance",
-    schedule: "hourly",
+    schedule: "every 6 hours, in the database (pg_cron)",
     what: "Expires paper orders past their deadline and gives back the cash they had reserved, then reports what is still open. It does not fill or settle - the note on the workflow says exactly why.",
   },
   {
@@ -176,8 +176,8 @@ const CATALOGUE: Array<{
   {
     job: "P4.1_health_watchdog",
     label: "Health Watchdog",
-    schedule: "every 6 hours",
-    what: "Checks snapshot freshness, forecast runs, failed ingest jobs, anomalies and traded volume. Emails only on failure.",
+    schedule: "every 6 hours, in the database (pg_cron)",
+    what: "Checks snapshot freshness, forecast runs, failed ingest jobs, anomalies and traded volume. Runs in the database since 25 Sep so it costs no n8n executions; the Run button still starts the n8n copy. Email is off.",
   },
 ];
 
