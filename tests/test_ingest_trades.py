@@ -185,3 +185,18 @@ def test_the_n8n_interval_does_not_throttle_the_hourly_run(monkeypatch):
     # every_minutes is 300 and the last run was an hour ago: it still runs.
     logged, seen = _wire(monkeypatch, 10, prev={"complete": True})
     assert it.main(now=NOW)["status"] == "ok" and seen == [0]
+
+
+def test_a_batch_that_would_overrun_the_budget_is_not_started(monkeypatch):
+    # 25 Sep 10:36Z: batch 1 started at 14 s of a 15 s budget and ran 13 s.
+    clock = [0.0]
+    monkeypatch.setattr(it.time, "monotonic", lambda: clock[0])
+    logged, seen = _wire(monkeypatch, 3 * it.BATCH)
+    real = it.fetch_batch
+
+    def slow(ids, since):
+        clock[0] += 9.0                                    # 9 s a batch: a second one ends at 18 s
+        return real(ids, since)
+    monkeypatch.setattr(it, "fetch_batch", slow)
+    d = it.main(budget_s=15, now=NOW)
+    assert seen == [0] and not d["complete"] and d["cursor"] == f"0x{it.BATCH - 1:04d}"
