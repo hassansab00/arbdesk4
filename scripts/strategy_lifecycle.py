@@ -2,7 +2,8 @@
 
 Two moves need nobody:
 
-  shadow -> suspended   when the strategy's LIVE record on its own shadow
+  shadow -> suspended   (and portfolio -> suspended, plan v2 P5.10)
+                        when the strategy's LIVE record on its own shadow
                         ledger says it loses: at least MIN_DECISIONS settled
                         decisions, and the upper one-sided 90% bound of its
                         mean log-growth per decision below zero. A strategy
@@ -15,8 +16,9 @@ Two moves need nobody:
 The third automatic trigger in the plan, a fixed-rail breach, needs the rails
 (P5.9, pending Hassan's approval of the numbers). It is not guessed at here.
 
-Everything else - into the portfolio, retirement, back to research - is a
-person's decision and goes through the operator page.
+Everything else - retirement, back to research - is a person's decision and
+goes through the operator page. Into the portfolio is meta_allocator.py's
+evidence gate, on Hassan's delegation (P5.10).
 
 THE RECORD. A settled decision is a closed paper_trades row on the
 strategy's shadow ledger. Its log-growth is log(E_after / E_before), where E
@@ -71,7 +73,10 @@ def upper_bound(growths):
 def decide(state_row, ledger, trades, now):
     """The move for one strategy, or None: (to_state, reason)."""
     state = state_row["state"]
-    if state == "shadow":
+    # A strategy in the portfolio is judged on the same record - its own shadow
+    # ledger, which keeps trading beside the portfolio (P5.10) - and leaves the
+    # portfolio the same way it would leave shadow.
+    if state in ("shadow", "portfolio"):
         if not ledger:
             return None
         b = upper_bound(log_growths(ledger["starting_cash"], trades))
@@ -101,7 +106,7 @@ def main(now=None):
         sid = s["strategy_id"]
         led = ledgers.get(sid)
         trades = []
-        if s["state"] == "shadow" and led:
+        if s["state"] in ("shadow", "portfolio") and led:
             trades = rest_all("paper_trades",
                               {"select": "trade_id,net_pnl,closed_at", "account_id": f"eq.{led['account_id']}",
                                "closed_at": "not.is.null"}, order="closed_at.asc,trade_id.asc")

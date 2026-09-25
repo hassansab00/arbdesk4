@@ -66,9 +66,16 @@ def test_a_suspended_strategy_is_retested_after_fourteen_days():
     assert sl.decide({"state": "suspended", "since": early}, LEDGER, [], NOW) is None
 
 
-@pytest.mark.parametrize("state", ["research", "portfolio", "retired"])
+def test_a_losing_portfolio_strategy_is_suspended_on_its_shadow_record():
+    losing = _trades([-10, -8, -12, -9, -11] * 8)
+    move = sl.decide({"state": "portfolio"}, LEDGER, losing, NOW)
+    assert move and move[0] == "suspended"
+    assert sl.decide({"state": "portfolio"}, LEDGER, _trades([10] * 50), NOW) is None
+
+
+@pytest.mark.parametrize("state", ["research", "retired"])
 def test_no_other_state_moves_by_itself(state):
-    """Research -> shadow, the portfolio and retirement are people's decisions."""
+    """Research -> shadow and retirement are people's decisions."""
     losing = _trades([-10] * 60)
     assert sl.decide({"state": state, "since": "2026-01-01T00:00:00+00:00"}, LEDGER, losing, NOW) is None
 
