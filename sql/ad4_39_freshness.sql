@@ -101,6 +101,7 @@ insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plai
   ('derived_city_day_volume',   'computed_at',    12, 'market',    'Dollars traded per city per day.'),
   ('derived_band_day_volume',   'computed_at',    12, 'market',    'Dollars traded per bucket per day.'),
   ('signals',                   'fired_at',       26, 'trading',   'Trades a strategy asked for.'),
+  ('decisions',                 'decided_at',      8, 'trading',   'What each strategy decided on each city-day at each run, including doing nothing.'),
   ('paper_trades',              'opened_at',    null, 'trading',   'Positions the paper desk holds or has closed.'),
   ('paper_accounts',            'created_at',   null, 'trading',   'Private paper accounts; created by the desk owner.'),
   ('paper_orders',              'requested_at', null, 'trading',   'Queued and completed paper orders.'),

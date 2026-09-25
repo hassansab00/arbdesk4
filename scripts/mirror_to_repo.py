@@ -176,6 +176,7 @@ TABLES = {
     "paper_activity":                snapshot("event_id"),
     "paper_trades":                  snapshot("trade_id"),
     "paper_book_evidence":           append("captured_at", "snapshot_id"),
+    "decisions":                     append("decided_at", "decision_id"),  # plan v2 P5.11
     "ledger":                        append("recorded_at", "entry_id"),
     "backtest_runs":                 snapshot("run_id"),
     "backtest_results":              snapshot("result_id"),

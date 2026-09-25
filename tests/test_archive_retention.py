@@ -152,8 +152,11 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
     # v_latest_edge reads and every page is built on. What it bounds is how long
     # a SUPERSEDED pricing survives, and the longest window any live reader asks
     # for is the twelve hours the readiness views and ad4_40 use.
+    # decisions: 30, the plan's window for the decision log (P5.11). Every row
+    # is also mirrored into the repository nightly, and nothing live reads a
+    # decision older than that from Postgres.
     limits = {"observations": 90, "forecasts": 90, "trades": 90, "research": 2,
-              "resolution": 1, "books": 7, "edges": 14}
+              "resolution": 1, "books": 7, "edges": 14, "decisions": 30}
     assert set(limits) == set(TABLES), (
         f"a dataset was added to the archive without a reasoned retention ceiling here: "
         f"{sorted(set(TABLES) ^ set(limits))}")

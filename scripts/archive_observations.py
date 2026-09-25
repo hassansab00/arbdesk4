@@ -271,6 +271,25 @@ TABLES = {
         "min_keep_days": 7,   # halves the window AND unpins 11,726 book snapshots held only by an edge older than a week
         "needs_feature_cache": False,
     },
+    # THE DECISION LOG (plan v2 P5.11): one row per run, strategy and
+    # city-day, about 2,600 a day at 48 city-days, 9 strategies and six runs
+    # (measured 25 Sep). Nothing reads a decision older than 30 days from
+    # Postgres; the Release keeps every one. prune_decisions refuses under 14.
+    "decisions": {
+        "table": "decisions",
+        "pk": "decision_id",
+        "cutoff_col": "decided_at",
+        "cutoff_is_date": False,
+        "prune_rpc": "prune_decisions",
+        "tag": "decisions-archive",
+        "columns": ["run_id", "decided_at", "tick_id", "checkpoint_id", "strategy_id",
+                    "city_key", "resolution_date", "action", "reason_code", "g_now", "g_wait",
+                    "binding", "target_usd", "held_usd", "n_signals", "params_version"],
+        "bytes_per_row": 150,
+        "keep_days": 30,
+        "min_keep_days": 14,
+        "needs_feature_cache": False,
+    },
     "books": {
         "table": "book_snapshots",
         "read_from": "v_prunable_book_redundancy",

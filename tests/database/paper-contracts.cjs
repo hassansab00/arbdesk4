@@ -2272,6 +2272,49 @@ const assert = require('node:assert/strict');
   await books(pfId,'portfolio after its first plan');
 
   // ======================================================================
+  // THE DECISION LOG (plan v2 P5.11, 20260925090000_decision_log.sql). One
+  // row per run, strategy and city-day, NONE included; append-only; rows
+  // leave only through prune_decisions() with the archive's verified count.
+  // ======================================================================
+  await db.exec('reset role;');
+  await db.exec('set role service_role;');
+  const dRun='a1000000-0000-0000-0000-000000000001';
+  await db.query(`insert into decisions(run_id,decided_at,strategy_id,city_key,resolution_date,action,reason_code,held_usd,n_signals)
+    values ($1, now()-interval '40 days','s1','london','2026-08-10','NONE','no_signal',0,0),
+           ($1, now()-interval '40 days','s1','paris','2026-08-10','BUY','enter',0,1),
+           ('a1000000-0000-0000-0000-000000000002', now(),'s1','london',current_date,'HOLD','holding',3.5,0)`,[dRun]);
+  await assert.rejects(db.query(`insert into decisions(run_id,decided_at,strategy_id,city_key,resolution_date,action,reason_code)
+    values ($1, now(),'s1','london','2026-08-10','NONE','no_signal')`,[dRun]),/decisions_one_per_run/,
+    'a run decided the same strategy and city-day twice');
+  await assert.rejects(db.query(`insert into decisions(run_id,decided_at,strategy_id,city_key,resolution_date,action,reason_code)
+    values (gen_random_uuid(), now(),'s1','london','2026-08-10','MAYBE','no_signal')`),/decisions_action_check/);
+  await assert.rejects(db.query(`insert into decisions(run_id,decided_at,strategy_id,city_key,resolution_date,action,reason_code)
+    values (gen_random_uuid(), now(),'s1','london','2026-08-10','NONE','A reason, in prose.')`),/decisions_reason_code_check/,
+    'the reason is a short code, not a text blob');
+  // The service role cannot even ask; the owner, who can, is refused by the trigger.
+  await assert.rejects(db.query("delete from decisions where run_id=$1",[dRun]),/permission denied/);
+  await db.exec('reset role;');
+  await assert.rejects(db.query("update decisions set action='BUY' where run_id=$1",[dRun]),/append-only/);
+  await assert.rejects(db.query("delete from decisions where run_id=$1",[dRun]),/append-only/,
+    'a decision left Postgres outside the archive');
+  await db.exec('set role service_role;');
+  // The prune: never under 14 days, never without the verified count, never a different count.
+  assert.equal((await db.query("select prune_decisions(7,false,null,2) as r")).rows[0].r.ok,false);
+  assert.match((await db.query("select prune_decisions(30,false) as r")).rows[0].r.error,/p_expected_rows is required/);
+  const dMis=(await db.query("select prune_decisions(30,false,null,5) as r")).rows[0].r;
+  assert.equal(dMis.ok,false); assert.match(dMis.error,/verified 5 rows but prune would delete 2/);
+  assert.equal((await db.query("select prune_decisions(30,true) as r")).rows[0].r.would_delete,2);
+  assert.equal((await db.query("select prune_decisions(30,false,null,2) as r")).rows[0].r.deleted,2);
+  assert.deepEqual((await db.query("select action from decisions")).rows.map(r=>r.action),['HOLD'],
+    'the prune took a decision inside the window');
+  await db.exec('reset role;');
+  await assert.rejects(db.query("delete from decisions"),/append-only/,'the archive exemption outlived the prune');
+  for (const role of ['anon','authenticated']) {
+    assert.equal((await db.query(`select has_table_privilege('${role}','public.decisions','select') as ok`)).rows[0].ok,false);
+    assert.equal((await db.query(`select has_function_privilege('${role}','public.prune_decisions(integer,boolean,timestamptz,bigint)','execute') as ok`)).rows[0].ok,false);
+  }
+
+  // ======================================================================
   // WRITES NEED AN OPERATOR (plan v2 P1.2,
   // 20260923130000_writes_need_an_operator.sql). The browser reads settings
   // as anon; it must not see who the operators are, nor the n8n webhook URLs,
@@ -2290,5 +2333,5 @@ const assert = require('node:assert/strict');
   await db.exec('reset role;');
 
   await db.close();
-  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, a shadow ledger per strategy and a suspended portfolio account, strategy lifecycle states, the fixed risk rails and the kill switch, the portfolio activated by evidence and its allocation, research capture of prices only, no PUBLIC execute on SECURITY DEFINER functions and the settings the browser may not read');
+  console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, a shadow ledger per strategy and a suspended portfolio account, strategy lifecycle states, the fixed risk rails and the kill switch, the portfolio activated by evidence and its allocation, the decision log and its verified prune, research capture of prices only, no PUBLIC execute on SECURITY DEFINER functions and the settings the browser may not read');
 })().catch(e=>{console.error(e);process.exit(1);});
