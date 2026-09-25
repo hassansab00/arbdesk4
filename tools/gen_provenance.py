@@ -220,12 +220,16 @@ def _resolve(name, views, tracked, seen=None):
     return out
 
 
+# First match wins. The hour field decides: '*' is hourly, a list or a step is
+# several times a day, one number is daily. (Until 25 Sep "daily" came first
+# and matched any hour field, so the clock's hourly tick and 4-hourly intraday
+# were both described as daily.)
 CADENCE_WORDS = [
-    (r"^\S+ \S+ \* \* \*$", "daily"),
-    (r"^\S+ \S+ \* \* [0-6]", "weekly"),
-    (r"^\S+ \*/\d+ ", "several times a day"),
     (r"^\*/\d+ ", "several times an hour"),
+    (r"^\S+ \S+ \* \* [0-6]", "weekly"),
     (r"^\S+ \* \* \* \*$", "hourly"),
+    (r"^\S+ (\*/\d+|\d+(,\d+)+) \* \* \*$", "several times a day"),
+    (r"^\S+ \d+ \* \* \*$", "daily"),
 ]
 
 

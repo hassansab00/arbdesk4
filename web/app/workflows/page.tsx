@@ -94,8 +94,8 @@ const CATALOGUE: Array<{
   {
     job: "P0.4_trade_history",
     label: "Trade History",
-    schedule: "scheduled in n8n",
-    what: "Pulls recent prints into trades_observed, then calls refresh_derived() to rebuild the city-day and band-day volume rollups.",
+    schedule: "hourly, in the GitHub tick (scripts/ingest_trades.py); the n8n workflow keeps only its Run button",
+    what: "Pulls every open market's new prints into trades_observed, then calls refresh_derived() to rebuild the city-day and band-day volume rollups.",
   },
   {
     job: "P0.5_refresh_rules_text",

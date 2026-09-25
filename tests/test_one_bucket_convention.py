@@ -61,6 +61,8 @@ SCRIPT_RAW_READS = {
     "scripts/databank.py": "markets: ids and dates; the bounds come from v_canonical_bands",
     "scripts/tick.py": "bands: the YES token of each due band, for its CLOB book; the bounds "
                        "come from v_canonical_bands",
+    "scripts/ingest_trades.py": "bands: condition and token ids of every open market, to map "
+                                "each print to its band (P0.4's mapping); no bounds",
 }
 
 RAW_CALL = re.compile(r"rest(?:_all)?\(\s*['\"](bands|markets)['\"]", re.S)

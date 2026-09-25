@@ -70,3 +70,10 @@ jobs:
           TICK_DRY_RUN: ${{ github.event.inputs.dry_run }}
           TICK_AT: ${{ github.event.inputs.at }}
         run: .venv/bin/python scripts/tick.py
+      - name: Trade prints (replaces n8n P0.4)
+        # Every open market's new trades since the stored high-water mark, in a
+        # 15 s budget so the job still finishes inside its one billed minute; a
+        # run that runs out resumes next hour where it stopped (ingest_trades.py).
+        # Not on a rehearsal: dry_run writes nothing.
+        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
+        run: .venv/bin/python scripts/ingest_trades.py --budget 15
