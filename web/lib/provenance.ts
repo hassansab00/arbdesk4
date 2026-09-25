@@ -21,7 +21,7 @@ export type Filler = {
 export const FILLED_BY: Record<string, Filler[]> = {
   "anomalies": [
     {
-      "cadence": "daily",
+      "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
       "how": "scripts/edge_engine.py",
       "kind": "action",
@@ -69,7 +69,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "band_probabilities": [
     {
-      "cadence": "daily",
+      "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
       "how": "scripts/probability_engine.py",
       "kind": "action",
@@ -112,7 +112,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "decisions": [
     {
-      "cadence": "daily",
+      "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
       "how": "scripts/signal_engine.py",
       "kind": "action",
@@ -120,6 +120,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
     }
   ],
   "derived_band_day_volume": [
+    {
+      "cadence": "hourly",
+      "file": "tick.yml",
+      "how": "scripts/ingest_trades.py",
+      "kind": "action",
+      "name": "Tick (hourly checkpoints)"
+    },
     {
       "cadence": "whenever its n8n schedule fires",
       "file": "P0.4_trade_history.template.json",
@@ -188,6 +195,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
     }
   ],
   "derived_city_day_volume": [
+    {
+      "cadence": "hourly",
+      "file": "tick.yml",
+      "how": "scripts/ingest_trades.py",
+      "kind": "action",
+      "name": "Tick (hourly checkpoints)"
+    },
     {
       "cadence": "whenever its n8n schedule fires",
       "file": "P0.4_trade_history.template.json",
@@ -268,7 +282,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "derived_model_forecast": [
     {
-      "cadence": "daily",
+      "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
       "how": "scripts/weather_model.py",
       "kind": "action",
@@ -302,7 +316,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "derived_weather_model": [
     {
-      "cadence": "daily",
+      "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
       "how": "scripts/weather_model.py",
       "kind": "action",
@@ -327,7 +341,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "edges": [
     {
-      "cadence": "daily",
+      "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
       "how": "scripts/edge_engine.py",
       "kind": "action",
@@ -441,7 +455,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     },
     {
-      "cadence": "daily",
+      "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
       "how": "scripts/paper_exits.py",
       "kind": "action",
@@ -464,7 +478,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Fill Queued Paper Orders"
     },
     {
-      "cadence": "daily",
+      "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
       "how": "scripts/paper_worker.py",
       "kind": "action",
@@ -473,7 +487,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "paper_orders": [
     {
-      "cadence": "daily",
+      "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
       "how": "scripts/paper_exits.py",
       "kind": "action",
@@ -489,7 +503,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     },
     {
-      "cadence": "daily",
+      "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
       "how": "scripts/paper_settlement.py",
       "kind": "action",
@@ -505,7 +519,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Fill Queued Paper Orders"
     },
     {
-      "cadence": "daily",
+      "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
       "how": "scripts/paper_worker.py",
       "kind": "action",
@@ -521,7 +535,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     },
     {
-      "cadence": "daily",
+      "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
       "how": "scripts/paper_settlement.py",
       "kind": "action",
@@ -530,7 +544,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "paper_trade_plans": [
     {
-      "cadence": "daily",
+      "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
       "how": "scripts/paper_plans.py",
       "kind": "action",
@@ -539,7 +553,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "prediction_checkpoints": [
     {
-      "cadence": "daily",
+      "cadence": "hourly",
       "file": "tick.yml",
       "how": "scripts/tick.py",
       "kind": "action",
@@ -548,7 +562,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "research_captures": [
     {
-      "cadence": "daily",
+      "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
       "how": "scripts/research_capture.py",
       "kind": "action",
@@ -575,7 +589,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "signals": [
     {
-      "cadence": "daily",
+      "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
       "how": "scripts/signal_engine.py",
       "kind": "action",
@@ -584,7 +598,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "strategy_conflicts": [
     {
-      "cadence": "daily",
+      "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
       "how": "scripts/signal_engine.py",
       "kind": "action",
@@ -592,6 +606,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
     }
   ],
   "trades_observed": [
+    {
+      "cadence": "hourly",
+      "file": "tick.yml",
+      "how": "scripts/ingest_trades.py",
+      "kind": "action",
+      "name": "Tick (hourly checkpoints)"
+    },
     {
       "cadence": "whenever its n8n schedule fires",
       "file": "P0.4_trade_history.template.json",
@@ -701,7 +722,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Observations (IEM METAR)"
     },
     {
-      "cadence": "daily",
+      "cadence": "hourly",
       "file": "tick.yml",
       "how": "scripts/tick.py",
       "kind": "action",
