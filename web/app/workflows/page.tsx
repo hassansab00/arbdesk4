@@ -171,7 +171,7 @@ const CATALOGUE: Array<{
     job: "P6.1_clock",
     label: "Clock",
     schedule: "hourly at :36 UTC",
-    what: "Starts the hourly checkpoint tick every hour, and the intraday pricing run at 00, 04, 08, 12, 16 and 20 UTC. GitHub's own schedule skipped most of those runs on 24 Sep; this one fires on the minute. Switch it off here to pause both.",
+    what: "Starts every scheduled GitHub workflow at :36 past the hour: the checkpoint tick hourly, intraday pricing at 00/04/08/12/16/20, the archive at 02, forecasts at 03, the daily pipeline at 04, observations and the trade log at 05, and the weather model on Mondays at 08 (UTC). GitHub's own schedule skipped most runs on 24 Sep and started nothing for 12 hours after; this one fires on the minute. Switch it off here to pause all of them.",
   },
   {
     job: "P4.1_health_watchdog",

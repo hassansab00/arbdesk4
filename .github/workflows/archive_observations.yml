@@ -31,14 +31,16 @@ name: Archive Observations
 # asset per table, so the cost of running it more often is a few megabytes of
 # release storage.
 on:
-  schedule:
-    # DAILY, not weekly. Weekly was right when the archive covered three
+  # NO GITHUB CRON (25 Sep): n8n's "AD4 P6.1 - Clock" dispatches this at 02:36 UTC daily, with inputs commit=true and table=all.
+  # GitHub's cron started nothing on this repo from 20:04Z on 24 Sep for 12 h;
+  # every scheduled workflow is on the CLOCK table in n8n/P6.1_clock.template.json.
+  #
+  # (Why daily:) DAILY, not weekly. Weekly was right when the archive covered three
     # tables with months of history and a ninety-day window. research_captures
     # grows about 29 MB a day - 25,808 rows on 15 Sep, 24,510 on the 16th - on
     # a 500 MB tier, so a week between runs is 200 MB, which is more headroom
     # than the tier has. The other three find nothing most days and cost a
     # query that returns zero rows.
-    - cron: '0 3 * * *'          # 03:00 UTC daily
   workflow_dispatch:
     inputs:
       keep_days:

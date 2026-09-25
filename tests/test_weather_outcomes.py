@@ -145,7 +145,11 @@ def test_phase2b_is_cost_neutral_private_and_exportable():
     export = open("web/lib/proprietaryExport.ts", encoding="utf-8").read()
 
     assert "python scripts/weather_outcomes.py" in workflow
-    assert workflow.count("cron:") == 1  # no new paid schedule
+    # No new paid schedule: the daily pipeline is started once a day by the
+    # n8n clock (plan v2 P6.1) and has no GitHub cron of its own.
+    assert workflow.count("cron:") == 0
+    import test_github_actions as gha
+    assert gha.n8n_clock().get("pipeline_daily.yml") == 30
     assert "enable row level security" in migration.lower()
     assert "revoke all on public.weather_resolution_attempts" in migration.lower()
     assert "before update or delete" in migration.lower()

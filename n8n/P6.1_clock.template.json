@@ -1,5 +1,5 @@
 {
-  "name": "AD4 P6.1 - Clock (dispatch the tick hourly, intraday every 4 h)",
+  "name": "AD4 P6.1 - Clock (dispatch every scheduled workflow)",
   "active": false,
   "settings": {
     "executionOrder": "v1",
@@ -12,7 +12,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## AD4 P6.1 - Clock\n\nGitHub's own cron dropped 6 of the tick's first 7 hourly runs on 24 Sep, and started none of intraday's 00:15, 08:15 and 16:15 runs. n8n's schedules fired on the minute all week, so the clock lives here and GitHub only runs what it is asked to.\n\nEvery hour at :36 UTC this dispatches:\n- tick.yml (the checkpoint writer), every hour\n- pipeline_intraday.yml, at 00, 04, 08, 12, 16 and 20 UTC\n\n:36, not :35: P0.4 starts at :34 and P0.5 at 22:38, and the stagger test needs each one's measured runtime plus a minute of room.\n\nThe CLOCK table in \"Due this hour\" is read by tests/test_github_actions.py and counted against the Actions minute budget (Rule 7). Change the cadence there and nowhere else.\n\nSet up: Config -> github_owner, github_repo, supabase_url. Dispatch uses the credential \"AD4 Github Actions\", the one Relearn uses. Each run is logged to ingest_log as job \"P6.1_clock\"; pause the clock by setting that job to off on the Workflows page (settings.workflow_schedules, sql/ad4_90_clock.sql).",
+        "content": "## AD4 P6.1 - Clock\n\nGitHub's own cron dropped 6 of the tick's first 7 hourly runs on 24 Sep, and started none of intraday's 00:15, 08:15 and 16:15 runs. n8n's schedules fired on the minute all week, so the clock lives here and GitHub only runs what it is asked to.\n\nEvery hour at :36 UTC it dispatches what is due - EVERY scheduled workflow, none keeps a GitHub cron:\n- tick.yml, every hour\n- pipeline_intraday.yml, 00/04/08/12/16/20\n- archive_observations.yml 02, forecasts.yml 03, pipeline_daily.yml 04, observations.yml and paper_trade_log.yml 05\n- weather_model.yml, Mondays 08\n\n:36, not :35: P0.4 starts at :34 and P0.5 at 22:38, and the stagger test needs each one's measured runtime plus a minute of room.\n\nThe CLOCK table in \"Due this hour\" is read by tests/test_github_actions.py and counted against the Actions minute budget (Rule 7). Change the cadence there and nowhere else.\n\nSet up: Config -> github_owner, github_repo, supabase_url. Dispatch uses the credential \"AD4 Github Actions\", the one Relearn uses. Each run is logged to ingest_log as job \"P6.1_clock\"; pause the clock by setting that job to off on the Workflows page (settings.workflow_schedules, sql/ad4_90_clock.sql).",
         "height": 460,
         "width": 440
       },
@@ -162,7 +162,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// THE CLOCK TABLE (plan v2 P6.1). tests/test_github_actions.py parses this\n// one JSON literal and counts every run it implies against the Actions\n// minute budget, so a cadence change here is a budget change there.\n// hours_utc \"*\" means every hour.\nconst CLOCK = [{\"file\": \"tick.yml\", \"hours_utc\": \"*\"}, {\"file\": \"pipeline_intraday.yml\", \"hours_utc\": [0, 4, 8, 12, 16, 20]}];\n\nconst cfg = $('Config').first().json;\nfor (const k of ['github_owner', 'github_repo', 'supabase_url']) {\n  if (!String(cfg[k] ?? '').trim()) throw new Error(`Config.${k} is empty. Nothing was dispatched.`);\n}\nconst hour = new Date().getUTCHours();\nconst out = CLOCK.filter((c) => c.hours_utc === '*' || c.hours_utc.includes(hour));\nreturn out.map((c) => ({ json: {\n  file: c.file,\n  hour_utc: hour,\n  ref: cfg.github_ref || 'main',\n  url: `https://api.github.com/repos/${cfg.github_owner}/${cfg.github_repo}/actions/workflows/${c.file}/dispatches`,\n} }));\n"
+        "jsCode": "// THE CLOCK TABLE (plan v2 P6.1). tests/test_github_actions.py parses this\n// one JSON literal and counts every run it implies against the Actions\n// minute budget, so a cadence change here is a budget change there.\n// hours_utc \"*\" means every hour. weekdays_utc (0 = Sunday) limits an entry to\n// those days; inputs are sent as the dispatch's workflow inputs (strings).\n//\n// EVERY SCHEDULED WORKFLOW IS HERE (25 Sep). GitHub's own cron is best-effort\n// and on this repo it was not a schedule at all: 1 of the tick's first 7\n// hourly slots ran on 24 Sep, the daily pipeline and the archive ran ~5 h\n// late, and from 20:04Z on 24 Sep it started nothing for 12 hours. So no\n// workflow keeps a GitHub cron; this table is the one clock.\nconst CLOCK = [{\"file\": \"tick.yml\", \"hours_utc\": \"*\"}, {\"file\": \"pipeline_intraday.yml\", \"hours_utc\": [0, 4, 8, 12, 16, 20]}, {\"file\": \"archive_observations.yml\", \"hours_utc\": [2], \"inputs\": {\"commit\": \"true\", \"table\": \"all\"}}, {\"file\": \"forecasts.yml\", \"hours_utc\": [3]}, {\"file\": \"pipeline_daily.yml\", \"hours_utc\": [4]}, {\"file\": \"observations.yml\", \"hours_utc\": [5]}, {\"file\": \"paper_trade_log.yml\", \"hours_utc\": [5]}, {\"file\": \"weather_model.yml\", \"hours_utc\": [8], \"weekdays_utc\": [1]}];\n\nconst cfg = $('Config').first().json;\nfor (const k of ['github_owner', 'github_repo', 'supabase_url']) {\n  if (!String(cfg[k] ?? '').trim()) throw new Error(`Config.${k} is empty. Nothing was dispatched.`);\n}\nconst hour = new Date().getUTCHours();\nconst day = new Date().getUTCDay();\nconst out = CLOCK.filter((c) => (c.hours_utc === '*' || c.hours_utc.includes(hour))\n  && (!c.weekdays_utc || c.weekdays_utc.includes(day)));\nreturn out.map((c) => ({ json: {\n  file: c.file,\n  hour_utc: hour,\n  ref: cfg.github_ref || 'main',\n  inputs: c.inputs || null,\n  url: `https://api.github.com/repos/${cfg.github_owner}/${cfg.github_repo}/actions/workflows/${c.file}/dispatches`,\n} }));\n"
       },
       "id": "due",
       "name": "Due this hour",
@@ -198,7 +198,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ ref: $json.ref }) }}",
+        "jsonBody": "={{ JSON.stringify($json.inputs ? { ref: $json.ref, inputs: $json.inputs } : { ref: $json.ref }) }}",
         "options": {
           "timeout": 30000,
           "response": {

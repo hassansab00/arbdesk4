@@ -239,8 +239,37 @@ def _cadence(crons, manual):
     return f"on a schedule ({crons[0]})"
 
 
+def _clock_crons():
+    """{workflow file: [cron]} for what the n8n clock dispatches (plan v2 P6.1).
+
+    Since 25 Sep no workflow keeps a GitHub cron: n8n's clock starts every one
+    at its trigger minute, in the hours (and weekdays) its CLOCK table names.
+    Read as the equivalent cron, so a workflow on the clock is described by
+    when it runs rather than as "only when you run it".
+    """
+    path = os.path.join(ROOT, "n8n", "P6.1_clock.template.json")
+    if not os.path.exists(path):
+        return {}
+    nodes = json.load(open(path)).get("nodes", [])
+    minute = next((n["parameters"]["rule"]["interval"][0].get("triggerAtMinute", 0)
+                   for n in nodes if n["type"].endswith("scheduleTrigger")), 0)
+    out = {}
+    for n in nodes:
+        m = re.search(r"const CLOCK = (\[.*?\]);\n", n.get("parameters", {}).get("jsCode", ""))
+        if not m:
+            continue
+        for e in json.loads(m.group(1)):
+            hours = "*" if e["hours_utc"] == "*" else ",".join(str(h) for h in e["hours_utc"])
+            days = ",".join(str(d) for d in e["weekdays_utc"]) if e.get("weekdays_utc") else "*"
+            out.setdefault(e["file"], []).append(f"{minute} {hours} * * {days}")
+    return out
+
+
 def build():
     actions = _yaml_workflows()
+    for base, crons in _clock_crons().items():
+        if base in actions and not actions[base]["crons"]:
+            actions[base]["crons"] = crons
     scripts = _script_writes()
     rpcs = _rpc_writes()
     n8n = _n8n_writes(rpcs)

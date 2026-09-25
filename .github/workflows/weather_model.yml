@@ -12,8 +12,9 @@ name: Weather Model
 # matters comes from Model Forecast, which applies these same coefficients to
 # fresh NWS conditions every 6 hours.
 on:
-  schedule:
-    - cron: '0 8 * * 1'         # Mondays, after the weekend's observations land
+  # NO GITHUB CRON (25 Sep): n8n's "AD4 P6.1 - Clock" dispatches this at 08:36 UTC on Mondays, after the weekend's observations land.
+  # GitHub's cron started nothing on this repo from 20:04Z on 24 Sep for 12 h;
+  # every scheduled workflow is on the CLOCK table in n8n/P6.1_clock.template.json.
   workflow_dispatch:
     inputs:
       min_days:

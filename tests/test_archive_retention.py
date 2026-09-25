@@ -119,11 +119,10 @@ def test_the_export_is_never_gated_off():
 def test_it_is_scheduled_often_enough_to_matter():
     """Monthly was for a database with room. research_captures alone adds
     ~15 MB a day against 64 MB of headroom."""
-    crons = [c["cron"] for c in _workflow()[True]["schedule"]]
-    assert crons, "no schedule at all"
-    for cron in crons:
-        dom = cron.split()[2]
-        assert dom == "*", f"'{cron}' fires on one day of the month; that is too slow"
+    # The n8n clock starts it (plan v2 P6.1, 25 Sep): 30 runs in 30 days is
+    # daily; anything less is too slow.
+    import test_github_actions as gha
+    assert gha.n8n_clock().get("archive_observations.yml", 0) >= 30, "not on the clock daily"
 
 
 # --- the window has to be shorter than the history ------------------------
