@@ -213,10 +213,16 @@ def main(budget_s=BUDGET_S, now=None):
     fetched = new = unmatched = batches_done = 0
     errors, truncated = [], []
     done_to, resume_at, stopped = cursor, None, False
+    slowest = 0.0
     for batch in batches:
-        if time.monotonic() - started > budget_s:
+        # Start a batch only if one as slow as the slowest so far still ends
+        # inside the budget. Checking only the time already spent let a second
+        # backlog batch start at 14 s of 15 on 25 Sep 10:36Z: the step took
+        # 27.6 s and the tick job 58 s of its one billed minute.
+        if time.monotonic() - started + slowest > budget_s:
             stopped = True
             break
+        t0 = time.monotonic()
         try:
             raw = fetch_batch(batch, since)
             if since is not None and len(raw) >= MAX_PAGES * PAGE and \
@@ -239,6 +245,7 @@ def main(budget_s=BUDGET_S, now=None):
             if resume_at is None:
                 resume_at = done_to
         done_to = batch[-1]
+        slowest = max(slowest, time.monotonic() - t0)
     complete = resume_at is None and not stopped
     next_cursor = None if complete else (resume_at if resume_at is not None else done_to)
     rollups = None
@@ -255,7 +262,7 @@ def main(budget_s=BUDGET_S, now=None):
               "fetched": fetched, "new": new, "unmatched": unmatched, "errors": errors[:5],
               "seconds": round(time.monotonic() - started, 1), "rollups": rollups,
               "summary": f"{new} new trades from {len(ids)} open markets "
-                         f"({batches_done}/{len(batches)} batches left in the cycle, {fetched} fetched since the mark)"}
+                         f"({batches_done} of the {len(batches)} batches left in the cycle, {fetched} fetched since the mark)"}
     log_run("P0.4_trade_history", status, new, detail)
     print(detail["summary"], "| errors:", len(errors))
     detail["status"] = status
