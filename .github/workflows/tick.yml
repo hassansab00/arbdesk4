@@ -77,3 +77,8 @@ jobs:
         # Not on a rehearsal: dry_run writes nothing.
         if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
         run: .venv/bin/python scripts/ingest_trades.py --budget 15
+      - name: NWS forecasts (replaces n8n P1.3 and P1.4)
+        # Runs in the ticks of 03, 09, 15 and 21 UTC, the hours n8n ran them;
+        # every other tick it returns at once (ingest_nws.py HOURS_UTC).
+        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
+        run: .venv/bin/python scripts/ingest_nws.py

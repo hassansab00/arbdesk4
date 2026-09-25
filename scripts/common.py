@@ -468,11 +468,13 @@ def timezone_of(cities):
     return {c["city_key"]: c.get("timezone") for c in cities}
 
 
-def get_cities(require_coords=True, require_icao=False):
+def get_cities(require_coords=True, require_icao=False, extra=()):
     # observation_q_down / _up: the measurement layer P3.1 prices the floor
     # atom with, fitted per city by refresh_observation_trust() (plan v2 P2.3).
+    # extra: more columns for one caller (ingest_nws.py reads the nws_* ids),
+    # so it need not read the table around this definition of active.
     cols = ("city_key,icao,unit,latitude,longitude,timezone,resolution_source,status,"
-            "observation_q_down,observation_q_up")
+            "observation_q_down,observation_q_up") + "".join("," + c for c in extra)
     rows = rest("cities", {"select": cols, "status": "eq.active", "limit": "500"})
     out = []
     for c in rows:

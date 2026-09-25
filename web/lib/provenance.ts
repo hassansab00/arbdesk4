@@ -96,6 +96,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "cities": [
     {
+      "cadence": "hourly",
+      "file": "tick.yml",
+      "how": "scripts/ingest_nws.py",
+      "kind": "action",
+      "name": "Tick (hourly checkpoints)"
+    },
+    {
       "cadence": "whenever its n8n schedule fires",
       "file": "P1.2_nws_monitor.template.json",
       "how": "n8n",
@@ -646,6 +653,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "weather_forecast_features": [
     {
+      "cadence": "hourly",
+      "file": "tick.yml",
+      "how": "scripts/ingest_nws.py",
+      "kind": "action",
+      "name": "Tick (hourly checkpoints)"
+    },
+    {
       "cadence": "whenever its n8n schedule fires",
       "file": "P1.4_nws_gridpoint.template.json",
       "how": "n8n",
@@ -690,6 +704,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/ingest_forecasts.py",
       "kind": "action",
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
+    {
+      "cadence": "hourly",
+      "file": "tick.yml",
+      "how": "scripts/ingest_nws.py",
+      "kind": "action",
+      "name": "Tick (hourly checkpoints)"
     },
     {
       "cadence": "whenever its n8n schedule fires",

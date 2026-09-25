@@ -121,7 +121,7 @@ const CATALOGUE: Array<{
   {
     job: "P1.3_nws_forecast",
     label: "NWS Forecast",
-    schedule: "every 6 hours",
+    schedule: "every 6 hours, in the GitHub tick at 03/09/15/21 UTC (scripts/ingest_nws.py); the n8n workflow keeps only its Run button",
     what:
       "The second forecast model. Takes NWS's hourly gridpoint forecast and writes a daily maximum per city, beside Open-Meteo's. Where the two disagree about a day, that day's sigma widens \u2014 disagreement can only ever make AD4 less confident, never more.",
     note: "A day whose hourly series misses the 12:00\u201318:00 peak window is skipped rather than written low: an understated max would invent disagreement that is not there.",
@@ -146,7 +146,7 @@ const CATALOGUE: Array<{
   {
     job: "P1.4_nws_gridpoint",
     label: "NWS Gridpoint",
-    schedule: "every 6 hours",
+    schedule: "every 6 hours, in the GitHub tick at 03/09/15/21 UTC (scripts/ingest_nws.py); the n8n workflow keeps only its Run button",
     what:
       "P1.3 forecasts the temperature; this forecasts what MOVES it \u2014 cloud cover, dewpoint depression, wind, rain and the morning temperature, from the raw /gridpoints endpoint. The columns it writes carry the same names as the observed ones, so the model fitted on days that already happened reads a forecast day with no translation.",
     note: "Registered by sql/ad4_24_nws_gridpoint.sql. Feeds Model Forecast \u2014 without it there is nothing for the fitted coefficients to be applied to.",
