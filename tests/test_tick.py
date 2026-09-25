@@ -273,7 +273,14 @@ def test_the_tick_runs_hourly_at_36_on_the_n8n_clock_and_can_be_started_by_hand(
     own, and n8n/P6.1_clock.template.json dispatches it every hour."""
     import re
     triggers = _tick_yml().get(True) or _tick_yml().get("on")
-    assert set(triggers) == {"workflow_dispatch"}, "a GitHub cron as well would run it twice"
+    import test_github_actions as gha
+    if "tick.yml" in gha.GITHUB_CRON_FALLBACK:
+        # Until n8n's dispatches stop being refused (24 Sep), GitHub's cron is
+        # the fallback, at the clock's own minute.
+        assert set(triggers) == {"workflow_dispatch", "schedule"}
+        assert triggers["schedule"] == [{"cron": "36 * * * *"}]
+    else:
+        assert set(triggers) == {"workflow_dispatch"}, "a GitHub cron as well would run it twice"
     clock = json.loads((pathlib.Path(__file__).resolve().parents[1] / "n8n" / "P6.1_clock.template.json").read_text())
     sched = next(n for n in clock["nodes"] if n["type"].endswith("scheduleTrigger"))
     assert sched["parameters"]["rule"]["interval"] == [

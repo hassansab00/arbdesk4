@@ -36,6 +36,13 @@ on:
     #
     # Offset past the hour so each cycle lands after P0.2's market
     # discovery rather than racing it.
+  #
+  # FALLBACK UNTIL n8n CAN DISPATCH (24 Sep): the clock's dispatches are
+  # refused ("Resource not accessible by personal access token"), so GitHub's
+  # cron starts this at the clock's own times until the token is fixed.
+  # REMOVE THIS once a clock dispatch succeeds (GITHUB_CRON_FALLBACK).
+  schedule:
+    - cron: '36 0,4,8,12,16,20 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
