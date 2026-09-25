@@ -29,10 +29,12 @@ WHAT THIS DOES INSTEAD.
 
 A TIME BUDGET. It runs inside the hourly tick job, which is billed one minute
 while it finishes inside 60 s. A run that runs out of BUDGET_S says so in its
-log (complete: false, the batch it stopped at, the mark it used), and the next
-run starts at that batch with the OLDER of the two marks - otherwise the
-batches it never reached would be read from a mark set by trades on the
-batches it did, and their gap would be skipped for good.
+log (complete: false, the cursor it reached, the mark it used), and the next
+run carries on after that cursor with the OLDER mark - otherwise the markets
+it never reached would be read from a mark set by trades on the ones it did,
+and their gap would be skipped for good (see plan()). Measured 25 Sep 09:37Z,
+the first run: a day's backlog took 20 s for one batch of 100 markets, so the
+backlog is read one batch per hour until the cycle reaches the end.
 """
 import argparse
 import datetime as dt
@@ -124,14 +126,27 @@ def previous_run():
 
 
 def plan(hw, prev):
-    """(since, first batch) for this run."""
+    """(since, cursor) for this run.
+
+    A CYCLE reads every open market once, in condition-id order, from the
+    start of the list to its end. It can take several runs - while a backlog
+    is being read, one batch can use the whole budget - so a run that stops
+    early saves a CURSOR, the last condition id it finished, and the next run
+    carries on after it with the SAME mark. Only a run that reaches the end of
+    the list starts the next cycle from the new high-water mark. (Until 25 Sep
+    the saved position was a batch number: it could not finish a cycle that
+    spanned runs, and the numbering moved whenever a market opened.)
+
+    cursor '' is the start of the list. A run logged before cursors existed
+    carries no cursor: its cycle restarts from the start with its mark.
+    """
     since = hw - OVERLAP if hw else None
-    start = 0
+    cursor = ""
     if prev.get("complete") is False and prev.get("since"):
         prev_since = dt.datetime.fromisoformat(prev["since"])
         since = prev_since if since is None else min(since, prev_since)
-        start = int(prev.get("next_batch") or 0)
-    return since, start
+        cursor = prev.get("cursor") or ""
+    return since, cursor
 
 
 def fetch_batch(ids, since, get=requests.get):
@@ -191,20 +206,17 @@ def main(budget_s=BUDGET_S, now=None):
                 by_token[str(b[k])] = b
     ids = sorted({b["condition_id"] for b in bands})
     hw = high_water()
-    total_batches = -(-len(ids) // BATCH)
-    since, start = plan(hw, previous_run())
-    start = start % total_batches if total_batches else 0
+    since, cursor = plan(hw, previous_run())
+    todo = [c for c in ids if c > cursor]
+    batches = [todo[i:i + BATCH] for i in range(0, len(todo), BATCH)]
     ingested_at = now.isoformat()
     fetched = new = unmatched = batches_done = 0
     errors, truncated = [], []
-    next_batch = first_failed = None
-    for k in range(total_batches):
-        j = (start + k) % total_batches
+    done_to, resume_at, stopped = cursor, None, False
+    for batch in batches:
         if time.monotonic() - started > budget_s:
-            next_batch = j
+            stopped = True
             break
-        i = j * BATCH
-        batch = ids[i:i + BATCH]
         try:
             raw = fetch_batch(batch, since)
             if since is not None and len(raw) >= MAX_PAGES * PAGE and \
@@ -212,7 +224,7 @@ def main(budget_s=BUDGET_S, now=None):
                 # Every page full and still newer than the mark: the API will
                 # not page deeper, so the trades between are out of reach.
                 # Said in the log, never silently skipped.
-                truncated.append(j)
+                truncated.append(batch[0])
             trades = [t for t in raw if since is None or float(t["timestamp"]) >= since.timestamp()]
             rows, um = to_rows(trades, by_token, ingested_at)
             fetched += len(rows)
@@ -220,13 +232,15 @@ def main(budget_s=BUDGET_S, now=None):
             new += insert_new(rows)
             batches_done += 1
         except Exception as e:                       # noqa: BLE001 - counted and reported
-            errors.append(f"batch {j}: {str(e)[:160]}")
-            if first_failed is None:
-                first_failed = j
-    # A failed batch is resumed from like an unreached one: its gap must not be
-    # skipped when the high-water mark moves on.
-    if next_batch is None:
-        next_batch = first_failed
+            errors.append(f"after {done_to or 'the start'}: {str(e)[:160]}")
+            # A failed batch is resumed like an unreached one: its gap must not
+            # be skipped when the high-water mark moves on. The batches after
+            # it still run, and are read again next time (duplicates ignored).
+            if resume_at is None:
+                resume_at = done_to
+        done_to = batch[-1]
+    complete = resume_at is None and not stopped
+    next_cursor = None if complete else (resume_at if resume_at is not None else done_to)
     rollups = None
     if new:
         try:
@@ -234,14 +248,14 @@ def main(budget_s=BUDGET_S, now=None):
         except Exception as e:                       # noqa: BLE001
             errors.append(f"refresh_derived: {str(e)[:160]}")
     status = "error" if errors and not batches_done else (
-        "attention" if errors or truncated or batches_done < total_batches else "ok")
-    detail = {"markets": len(ids), "batches": f"{batches_done}/{total_batches}", "high_water": hw.isoformat() if hw else None,
-              "since": since.isoformat() if since else None, "complete": next_batch is None,
-              "next_batch": next_batch, "truncated": truncated,
+        "attention" if errors or truncated or not complete else "ok")
+    detail = {"markets": len(ids), "batches": f"{batches_done}/{len(batches)}", "high_water": hw.isoformat() if hw else None,
+              "since": since.isoformat() if since else None, "complete": complete,
+              "cursor": next_cursor, "truncated": truncated,
               "fetched": fetched, "new": new, "unmatched": unmatched, "errors": errors[:5],
               "seconds": round(time.monotonic() - started, 1), "rollups": rollups,
               "summary": f"{new} new trades from {len(ids)} open markets "
-                         f"({batches_done}/{total_batches} batches, {fetched} fetched since the high-water mark)"}
+                         f"({batches_done}/{len(batches)} batches left in the cycle, {fetched} fetched since the mark)"}
     log_run("P0.4_trade_history", status, new, detail)
     print(detail["summary"], "| errors:", len(errors))
     detail["status"] = status

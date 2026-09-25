@@ -67,13 +67,16 @@ def test_a_short_page_is_the_last():
     assert calls == ["0xa,0xb"]                       # one request for the whole batch
 
 
-def test_the_plan_resumes_an_incomplete_run_with_the_older_mark():
+def test_the_plan_resumes_an_incomplete_cycle_with_the_older_mark():
     hw = dt.datetime(2026, 9, 25, 8, 0, tzinfo=dt.timezone.utc)
-    assert it.plan(hw, {}) == (hw - it.OVERLAP, 0)
-    assert it.plan(hw, {"complete": True, "since": "2026-09-24T00:00:00+00:00"}) == (hw - it.OVERLAP, 0)
-    since, start = it.plan(hw, {"complete": False, "since": "2026-09-24T09:00:00+00:00", "next_batch": 7})
-    assert since == dt.datetime(2026, 9, 24, 9, tzinfo=dt.timezone.utc) and start == 7
-    assert it.plan(None, {}) == (None, 0)
+    assert it.plan(hw, {}) == (hw - it.OVERLAP, "")
+    assert it.plan(hw, {"complete": True, "since": "2026-09-24T00:00:00+00:00", "cursor": None}) == (hw - it.OVERLAP, "")
+    since, cursor = it.plan(hw, {"complete": False, "since": "2026-09-24T09:00:00+00:00", "cursor": "0x0099"})
+    assert since == dt.datetime(2026, 9, 24, 9, tzinfo=dt.timezone.utc) and cursor == "0x0099"
+    # A run logged before cursors (25 Sep 09:37Z) restarts its cycle, with its mark.
+    assert it.plan(hw, {"complete": False, "since": "2026-09-24T08:42:45+00:00", "next_batch": 1}) == \
+        (dt.datetime(2026, 9, 24, 8, 42, 45, tzinfo=dt.timezone.utc), "")
+    assert it.plan(None, {}) == (None, "")
 
 
 def _wire(monkeypatch, n_conditions, prev=None, fail_batches=(), deep_batches=(), mode="auto"):
@@ -119,22 +122,54 @@ def test_a_failed_batch_is_resumed_next_run(monkeypatch):
     n = 2 * it.BATCH + 20
     logged, seen = _wire(monkeypatch, n, fail_batches={1})
     d = it.main(now=NOW)
-    assert logged["status"] == "attention" and not d["complete"] and d["next_batch"] == 1
+    assert seen == [0, 1, 2]                               # the batches after a failure still run
+    assert logged["status"] == "attention" and not d["complete"] and d["cursor"] == f"0x{it.BATCH - 1:04d}"
     logged, seen = _wire(monkeypatch, n, prev=d)
     d2 = it.main(now=NOW)
-    assert seen == [1, 2, 0] and d2["since"] == d["since"]
+    assert seen == [1, 2] and d2["complete"] and d2["since"] == d["since"]
 
 
 def test_a_run_out_of_time_says_where_it_stopped(monkeypatch):
     logged, seen = _wire(monkeypatch, 120)
     d = it.main(budget_s=-1, now=NOW)
-    assert seen == [] and not d["complete"] and d["next_batch"] == 0 and d["status"] == "attention"
+    assert seen == [] and not d["complete"] and d["cursor"] == "" and d["status"] == "attention"
+
+
+def test_a_backlog_spread_over_runs_finishes_its_cycle(monkeypatch):
+    """The bug the first live run exposed (25 Sep 09:37Z): one batch used the
+    whole budget, and a cycle that had to finish inside ONE run never could."""
+    n = 3 * it.BATCH
+    clock = [0.0]
+    monkeypatch.setattr(it.time, "monotonic", lambda: clock[0])
+    prev, runs = None, []
+    for _ in range(4):
+        logged, seen = _wire(monkeypatch, n, prev=prev)
+        real = it.fetch_batch
+
+        def slow(ids, since, real=real):
+            clock[0] += 20.0                               # a backlog batch: 20 s, measured
+            return real(ids, since)
+        monkeypatch.setattr(it, "fetch_batch", slow)
+        prev = it.main(now=NOW)
+        runs.append((seen[:], prev["complete"]))
+    assert runs[:3] == [([0], False), ([1], False), ([2], True)]
+    assert runs[3][0] == [0]                               # the next cycle starts at the top
+    assert prev["since"] == "2026-09-24T08:42:45+00:00"     # from the stored mark, not the old one
+
+
+def test_a_cycle_carries_on_after_its_cursor(monkeypatch):
+    # The cursor is a condition id, not a batch number, so a market opening
+    # mid-cycle cannot shift an unread market into a batch already done.
+    logged, seen = _wire(monkeypatch, 2 * it.BATCH, prev={"complete": False, "since": "2026-09-24T08:00:00+00:00",
+                                                        "cursor": f"0x{it.BATCH - 1:04d}"})
+    d = it.main(now=NOW)
+    assert seen == [1] and d["complete"]
 
 
 def test_a_batch_deeper_than_the_api_pages_is_reported(monkeypatch):
     logged, seen = _wire(monkeypatch, 2 * it.BATCH, deep_batches={1})
     d = it.main(now=NOW)
-    assert d["truncated"] == [1] and d["status"] == "attention" and d["complete"]
+    assert d["truncated"] == [f"0x{it.BATCH:04d}"] and d["status"] == "attention" and d["complete"]
     logged, seen = _wire(monkeypatch, 2 * it.BATCH)
     assert it.main(now=NOW)["truncated"] == []
 
