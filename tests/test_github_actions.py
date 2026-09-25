@@ -285,6 +285,19 @@ def n8n_clock():
     return out
 
 
+# THE FALLBACK WHILE n8n CANNOT DISPATCH (24 Sep). The clock fired on time at
+# 21:36Z and 22:36Z and GitHub refused both dispatches: "Resource not
+# accessible by personal access token" (the n8n credential's token lacks
+# Actions: Read and write). A refused dispatch runs nothing and bills nothing,
+# so for these files GitHub's cron is the clock, at the clock's own cadence,
+# and the budget counts one clock, not two. Empty this, and delete the two
+# crons, the day a clock dispatch succeeds - after that both would run.
+GITHUB_CRON_FALLBACK = {
+    "tick.yml": "n8n clock dispatch refused by the token, 24 Sep",
+    "pipeline_intraday.yml": "n8n clock dispatch refused by the token, 24 Sep",
+}
+
+
 def _scheduled():
     """[(runs_per_month, minutes_per_run, name)] for every workflow on a clock:
     GitHub's own cron, or n8n's clock dispatching it."""
@@ -292,7 +305,9 @@ def _scheduled():
     for name, doc in workflows():
         sched = triggers(doc).get("schedule") or []
         n = sum(runs_per_30_days(entry["cron"]) for entry in sched)
-        if n:
+        if n and name in GITHUB_CRON_FALLBACK:
+            runs[name] = max(runs.get(name, 0), n)
+        elif n:
             runs[name] = runs.get(name, 0) + n
     out = [(n, MEASURED_MINUTES.get(name, DEFAULT_MINUTES), name) for name, n in runs.items() if n]
     return sorted(out, key=lambda r: -r[0] * r[1])
@@ -310,6 +325,13 @@ def test_the_n8n_clock_is_the_only_clock_for_what_it_starts():
         assert name in docs, f"the n8n clock dispatches {name}, which does not exist"
         t = triggers(docs[name])
         assert "workflow_dispatch" in t, f"{name} is on the n8n clock but cannot be dispatched"
+        if name in GITHUB_CRON_FALLBACK:
+            # The fallback keeps the clock's cadence exactly, so switching back
+            # is deleting the cron and nothing else.
+            n = sum(runs_per_30_days(e["cron"]) for e in t.get("schedule") or [])
+            assert n == clock[name], (
+                f"{name}'s fallback cron runs {n} times a month, the n8n clock {clock[name]}")
+            continue
         assert not t.get("schedule"), (
             f"{name} is on the n8n clock AND has a GitHub cron, so it runs twice "
             f"whenever GitHub's cron fires")

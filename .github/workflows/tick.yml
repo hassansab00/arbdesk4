@@ -21,6 +21,16 @@ on:
   # (11:35-17:35Z, 24 Sep); n8n's schedules fired on the minute all week.
   # tests/test_github_actions.py counts the clock's runs against the budget
   # from the CLOCK table in n8n/P6.1_clock.template.json.
+  #
+  # FALLBACK UNTIL n8n CAN DISPATCH (24 Sep). Every clock dispatch so far
+  # (21:36Z, 22:36Z) was refused by GitHub: "Resource not accessible by
+  # personal access token" - the token lacks Actions: Read and write. Until it
+  # has it, GitHub's cron is the only thing that starts this job, and an
+  # unreliable clock beats none. REMOVE THIS once a clock dispatch succeeds,
+  # or the job runs twice an hour (tests/test_github_actions.py,
+  # GITHUB_CRON_FALLBACK, says the same).
+  schedule:
+    - cron: '36 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:
