@@ -99,8 +99,10 @@ def test_the_reclaim_does_not_collide_with_the_daily_pipeline():
     """The weekly jobs began at 04:00 Monday, which is when pipeline_daily
     fires - and that pipeline runs ingest_forecasts.py, writing the very first
     table in the sequence. VACUUM FULL takes an ACCESS EXCLUSIVE lock."""
-    pipeline = (ROOT / ".github" / "workflows" / "pipeline_daily.yml").read_text(encoding="utf-8")
-    hour = int(re.search(r"cron:\s*'(\d+)\s+(\d+)", pipeline).group(2))
+    # pipeline_daily is started by the n8n clock (plan v2 P6.1), at :36 of the
+    # hours its CLOCK entry names.
+    import test_github_actions as gha
+    (hour,) = gha.clock_entry("pipeline_daily.yml")["hours_utc"]
     for table, schedule in _scheduled_jobs().items():
         minute, job_hour = schedule.split()[0], schedule.split()[1]
         assert int(job_hour) != hour, (
@@ -111,16 +113,17 @@ def test_the_reclaim_does_not_collide_with_the_daily_pipeline():
 
 def test_the_daily_reclaims_run_after_the_archive_that_feeds_them():
     """Reclaiming before the prune rewrites the same rows and returns nothing."""
-    archive = (ROOT / ".github" / "workflows" / "archive_observations.yml").read_text(encoding="utf-8")
-    m = re.search(r"cron:\s*'(\d+)\s+(\d+)\s+\*\s+\*\s+\*'", archive)
-    assert m, "archive_observations.yml no longer has a daily cron"
-    archive_minutes = int(m.group(2)) * 60 + int(m.group(1))
+    import test_github_actions as gha
+    entry = gha.clock_entry("archive_observations.yml")
+    assert entry and not entry.get("weekdays_utc"), "archive_observations.yml is not on the clock daily"
+    (a_hour,) = entry["hours_utc"]
+    archive_minutes = a_hour * 60 + gha.CLOCK_MINUTE
     for table, schedule in _scheduled_jobs().items():
         minute, hour, _, _, dow = schedule.split()
         if dow != "*":
             continue
         assert int(hour) * 60 + int(minute) > archive_minutes, (
-            f"{table} reclaims at {schedule!r}, at or before the {m.group(2)}:{m.group(1)} "
+            f"{table} reclaims at {schedule!r}, at or before the {a_hour:02d}:{gha.CLOCK_MINUTE} "
             "archive that creates the dead rows it is meant to return"
         )
 

@@ -25,8 +25,9 @@ name: Paper Trade Log
 # positions and recent closes live from Postgres and everything older from the
 # repo, so the tail has to outlive the gap between runs by a wide margin.
 on:
-  schedule:
-    - cron: '30 5 * * *'          # after pipeline_daily's 04:00 settlement sweep
+  # NO GITHUB CRON (25 Sep): n8n's "AD4 P6.1 - Clock" dispatches this at 05:36 UTC daily, after pipeline_daily's 04:36 settlement sweep.
+  # GitHub's cron started nothing on this repo from 20:04Z on 24 Sep for 12 h;
+  # every scheduled workflow is on the CLOCK table in n8n/P6.1_clock.template.json.
   workflow_dispatch:
     inputs:
       prune_days:

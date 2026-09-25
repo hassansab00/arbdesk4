@@ -10,12 +10,13 @@ on:
   # days" - so a scheduled run needs no parameters at all and simply catches
   # up the recent gap.
   #
-  # 03:10 UTC, ahead of the 04:00 daily pipeline, so the skill and outcome
+  # 03:36 UTC (was 03:10), ahead of the 04:36 daily pipeline, so the skill and outcome
   # steps that read this archive see the newest rows rather than yesterday's.
   # Deliberately not more often: this is a historical archive, and the FORWARD
   # forecast the desk prices from comes from n8n's P1.5 every three hours.
-  schedule:
-    - cron: '10 3 * * *'
+  # NO GITHUB CRON (25 Sep): n8n's "AD4 P6.1 - Clock" dispatches this at 03:36 UTC daily.
+  # GitHub's cron started nothing on this repo from 20:04Z on 24 Sep for 12 h;
+  # every scheduled workflow is on the CLOCK table in n8n/P6.1_clock.template.json.
   workflow_dispatch:
     inputs:
       start:

@@ -87,11 +87,12 @@ RUNTIME_SECONDS = {
     "AD4 P1.6 - Station Observations (IEM METAR)": 20,
     "AD4 P2.2 - Paper Maintenance":      4,    # 2.6-3.8 s
     "AD4 - P4.1 Health Watchdog":        13,   # 3.5-12.8 s
-    # The desk's clock (plan v2 P6.1): the gate, one or two GitHub dispatches
-    # and the log. NOT MEASURED - it has not run yet. Held at 20 s, which covers
-    # P2.2's measured gate-and-log shape (2.6-3.8 s) with room for two
-    # dispatches; replace it with the worst of its first runs.
-    "AD4 P6.1 - Clock (dispatch the tick hourly, intraday every 4 h)": 20,
+    # The desk's clock (plan v2 P6.1): the gate, the GitHub dispatches due that
+    # hour and the log. Measured: 2.85 s, 2.72 s and 2.66 s (n8n executions
+    # 8576, 8584, 8628, one or two dispatches each; a dispatch took 305 ms in
+    # 8628). Since 25 Sep it dispatches every scheduled workflow - at most three
+    # in one hour (04 and 05 UTC) - so 5 s covers the worst run plus two more.
+    "AD4 P6.1 - Clock (dispatch every scheduled workflow)": 5,
     # Inactive (no SMTP credential), so it has no scheduled runs to measure.
     # Held at P0.3's figure so that enabling it cannot quietly overlap anything.
     "AD4 - P3.1 Email Digests":          140,

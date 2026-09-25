@@ -43,8 +43,9 @@ name: Observations (IEM METAR)
 # Hourly here was never possible anyway: tests/test_github_actions.py caps
 # scheduled runs at 430 a month and '0 * * * *' is 720 on its own.
 on:
-  schedule:
-    - cron: '7 5 * * *'
+  # NO GITHUB CRON (25 Sep): n8n's "AD4 P6.1 - Clock" dispatches this at 05:36 UTC daily.
+  # GitHub's cron started nothing on this repo from 20:04Z on 24 Sep for 12 h;
+  # every scheduled workflow is on the CLOCK table in n8n/P6.1_clock.template.json.
   workflow_dispatch:
     inputs:
       days:

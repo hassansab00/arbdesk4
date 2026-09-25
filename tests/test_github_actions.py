@@ -259,6 +259,29 @@ def test_no_workflow_file_declares_the_same_key_twice():
             ) from None
 
 
+# The n8n clock's schedule trigger fires once an hour at this minute; a CLOCK
+# entry names only hours (and optionally weekdays). Read from the template, so
+# moving the trigger moves every test that reasons about start times.
+def _clock_template():
+    import json as _json
+    return _json.load(open(os.path.join(ROOT, "n8n", "P6.1_clock.template.json")))
+
+
+CLOCK_MINUTE = next(n["parameters"]["rule"]["interval"][0]["triggerAtMinute"]
+                    for n in _clock_template()["nodes"] if n["type"].endswith("scheduleTrigger"))
+
+
+def clock_entry(file):
+    """The CLOCK table entry that dispatches `file`, or None."""
+    import json as _json
+    import re as _re
+    for node in _clock_template()["nodes"]:
+        m = _re.search(r"const CLOCK = (\[.*?\]);\n", node.get("parameters", {}).get("jsCode", ""))
+        if m:
+            return next((e for e in _json.loads(m.group(1)) if e["file"] == file), None)
+    return None
+
+
 def n8n_clock():
     """{workflow file: runs per 30 days} dispatched on a clock by n8n (plan v2 P6.1).
 
@@ -281,21 +304,23 @@ def n8n_clock():
             for entry in _json.loads(m.group(1)):
                 hours = entry["hours_utc"]
                 per_day = 24 if hours == "*" else len(set(hours))
-                out[entry["file"]] = out.get(entry["file"], 0) + per_day * 30
+                # weekdays_utc (0 = Sunday) limits an entry to some days of
+                # the week, counted over the same 30 days from 1 Jan 2026 that
+                # runs_per_30_days walks for a GitHub cron's day-of-week field.
+                days = entry.get("weekdays_utc")
+                import datetime as _dt
+                n_days = sum(1 for i in range(30)
+                             if not days or ((_dt.date(2026, 1, 1) + _dt.timedelta(days=i)).weekday() + 1) % 7 in days)
+                out[entry["file"]] = out.get(entry["file"], 0) + per_day * n_days
     return out
 
 
-# THE FALLBACK WHILE n8n CANNOT DISPATCH (24 Sep). The clock fired on time at
-# 21:36Z and 22:36Z and GitHub refused both dispatches: "Resource not
-# accessible by personal access token" (the n8n credential's token lacks
-# Actions: Read and write). A refused dispatch runs nothing and bills nothing,
-# so for these files GitHub's cron is the clock, at the clock's own cadence,
-# and the budget counts one clock, not two. Empty this, and delete the two
-# crons, the day a clock dispatch succeeds - after that both would run.
-GITHUB_CRON_FALLBACK = {
-    "tick.yml": "n8n clock dispatch refused by the token, 24 Sep",
-    "pipeline_intraday.yml": "n8n clock dispatch refused by the token, 24 Sep",
-}
+# THE FALLBACK WHILE n8n COULD NOT DISPATCH (24-25 Sep). GitHub's crons were
+# restored on tick.yml and pipeline_intraday.yml while every n8n dispatch was
+# refused ("Resource not accessible by personal access token"). Empty now:
+# every scheduled workflow is on the n8n clock and none keeps a GitHub cron.
+# A file listed here may keep a cron at exactly the clock's cadence, counted once.
+GITHUB_CRON_FALLBACK = {}
 
 
 def _scheduled():

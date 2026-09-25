@@ -23,8 +23,9 @@ name: Daily Pipeline (forecasts, settlement, skill, databank, derived)
 # The job still fails, and names the step.
 
 on:
-  schedule:
-    - cron: '0 4 * * *'
+  # NO GITHUB CRON (25 Sep): n8n's "AD4 P6.1 - Clock" dispatches this at 04:36 UTC daily.
+  # GitHub's cron started nothing on this repo from 20:04Z on 24 Sep for 12 h;
+  # every scheduled workflow is on the CLOCK table in n8n/P6.1_clock.template.json.
   workflow_dispatch:
     inputs:
       databank_days:
