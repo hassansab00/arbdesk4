@@ -103,6 +103,7 @@ EXPORT_SOURCE = {
     "resolution":   "v_prunable_resolution_evidence",
     "books":        "v_prunable_book_redundancy",
     "edges":        "v_prunable_edge_history",
+    "decisions":    "decisions",
 }
 
 

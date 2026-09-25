@@ -159,6 +159,15 @@ select cron.schedule(
   'VACUUM (FULL, ANALYZE) public.edges'
 );
 
+-- The decision log (plan v2 P5.11): about 2,600 rows a day, pruned past 30
+-- days. Small, so the rewrite is short; 03:55, behind edges, for the same
+-- one-rewrite-at-a-time reason.
+select cron.schedule(
+  'ad4_reclaim_decisions',
+  '55 3 * * *',
+  'VACUUM (FULL, ANALYZE) public.decisions'
+);
+
 -- Did they take, and did the last run work?
 --   select jobname, schedule, active from cron.job where jobname like 'ad4_reclaim%';
 --   select j.jobname, d.status, d.start_time, d.return_message
@@ -192,7 +201,7 @@ select cron.schedule(
 -- backstop for a day the archive does not run at all.
 --
 -- ALLOW-LISTED, because this is a SECURITY DEFINER function that builds a
--- statement from its argument. Only the seven tables the archive prunes can
+-- statement from its argument. Only the eight tables the archive prunes can
 -- be named, and the name is quoted with %I regardless.
 -- ===========================================================================
 -- NOT IN THE MIDDLE OF THE DAY (plan v2 P6.5). Two minutes after the prune
@@ -209,7 +218,7 @@ as $$
 declare
   v_allowed constant text[] := array[
     'research_captures', 'paper_resolution_evidence', 'book_snapshots', 'edges',
-    'weather_observations', 'weather_forecasts', 'trades_observed'];
+    'weather_observations', 'weather_forecasts', 'trades_observed', 'decisions'];
   v_now   timestamptz := now();
   v_hour  int := extract(hour from (v_now at time zone 'UTC'))::int;
   v_at    timestamptz;

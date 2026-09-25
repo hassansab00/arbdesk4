@@ -42,6 +42,8 @@ import sys
 import uuid
 
 import allocator
+import decision_log
+import os
 import risk_budget
 import strategy_gate
 from collections import defaultdict
@@ -791,7 +793,8 @@ def main():
     ledgers = _ledgers()
     portfolios = _portfolios(ledgers)
     counts["ledgers"] = len(ledgers)
-    fired, blocked, conflict_rows = run_strategies(ctx, configs, _open_positions(),
+    positions = _open_positions()
+    fired, blocked, conflict_rows = run_strategies(ctx, configs, positions,
                                                    portfolios=portfolios)
     counts["fired"], counts["blocked"] = len(fired), len(blocked)
     counts["conflicts"] = len(conflict_rows)
@@ -834,14 +837,18 @@ def main():
     decision_bands = {str(v.band_id): v for v in views}
     city_of = {v.band_id: v.city_key for v in views}
     rows = []
+    outcomes = [(s, "blocked") for s in blocked] + [(s, "held_no_cost_version") for s in held]
     for s in fired:
         if s.dedupe_key in recent:
             counts["deduped"] += 1
+            outcomes.append((s, "deduped"))
             continue
         rows.append(_row(_enrich(s, decision_bands, cycle_id, now), city_of, now))
+        outcomes.append((s, "written"))
     if rows:
         insert("signals", rows)
         counts["written"] = len(rows)
+    decisions_ok = write_decisions(cycle_id, now, configs, views, outcomes, positions, ledgers, counts)
     if conflict_rows:
         try:
             insert("strategy_conflicts", conflict_rows)
@@ -853,8 +860,34 @@ def main():
               f"{s.suggested_shares:.0f}sh @ {s.price_at_fire} - {s.reason}")
     print(f"signals: {counts['written']} written, {counts['deduped']} deduped, "
           f"{counts['blocked']} blocked by conflict rules, over {counts['bands']} bands")
-    log_run("signal_engine", "attention" if held else "ok", counts["written"], counts)
+    log_run("signal_engine", "attention" if held or not decisions_ok else "ok", counts["written"], counts)
     return 0
+
+
+def write_decisions(run_id, now, configs, views, outcomes, positions, ledgers, counts):
+    """One decisions row per (strategy, city-day) this run (plan v2 P5.11).
+
+    Written after the signals, and a failure here does not take the signals
+    with it: it is counted, printed and turns the run 'attention'. A decision
+    log that silently stopped would look exactly like strategies that stopped
+    deciding.
+    """
+    try:
+        band_cd = {str(v.band_id): (v.city_key, str(v.resolution_date)) for v in views if v.city_key}
+        city_days = set(band_cd.values())
+        ledger_strategy = {str(r["account_id"]): sid for sid, r in ledgers.items()}
+        held_usd = decision_log.held_by_city_day(positions, ledger_strategy, band_cd)
+        version = os.environ.get("GITHUB_SHA") or os.environ.get("ARBDESK_ENGINE_VERSION", "unversioned")
+        strategy_ids = [sid for sid in (getattr(c, "strategy_id", None) for c in configs) if sid]
+        rows, unmapped = decision_log.build(run_id, now, strategy_ids, city_days,
+                                            outcomes, band_cd, held_usd, version)
+        counts["decisions"], counts["decisions_unmapped_signals"] = len(rows), unmapped
+        insert("decisions", rows)
+        return True
+    except Exception as e:                      # noqa: BLE001 - reported, not swallowed
+        counts["decisions_error"] = str(e)[:300]
+        print(f"  DECISIONS NOT WRITTEN: {e}", file=sys.stderr)
+        return False
 
 
 def stamp_sized_on(fired, portfolios):

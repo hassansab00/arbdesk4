@@ -110,6 +110,15 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "AD4 P1.3 - NWS Forecast"
     }
   ],
+  "decisions": [
+    {
+      "cadence": "only when you run it",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/signal_engine.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
+    }
+  ],
   "derived_band_day_volume": [
     {
       "cadence": "whenever its n8n schedule fires",

@@ -23,6 +23,7 @@ export const SQL_OWNER: Record<string, string> = {
   "city_metadata_evidence": "supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql",
   "cost_params": "ad4_phase2.sql",
   "data_freshness_spec": "ad4_39_freshness.sql",
+  "decisions": "supabase/migrations/20260925090000_decision_log.sql",
   "deployments": "ad4_00_preflight.sql",
   "derived_band_day_volume": "ad4_00_preflight.sql",
   "derived_calibration_adjustment": "ad4_45_calibration_feedback.sql",
