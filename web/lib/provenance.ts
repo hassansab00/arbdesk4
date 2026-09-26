@@ -900,6 +900,15 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "resolution_verdicts",
     "markets"
   ],
+  "v_calibration_evidence": [
+    "band_probabilities",
+    "cities",
+    "bands",
+    "fact_band_outcome",
+    "paper_resolution_evidence",
+    "resolution_verdicts",
+    "markets"
+  ],
   "v_calibration_status": [
     "ingest_log"
   ],

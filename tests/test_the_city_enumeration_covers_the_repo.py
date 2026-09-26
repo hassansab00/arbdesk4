@@ -222,6 +222,10 @@ SQL_RECORD = {
 # rather than a bug. It is here because a blind spot is how the last four got
 # in.
 MIGRATION_RECORD = {
+    "supabase/migrations/20260926100000_calibration_learns_frozen_calls.sql":
+        "v_calibration_evidence - cities.timezone only, to find when each settled "
+        "band's local day began; the record of what was forecast before it, and a "
+        "retired city's settled days were forecast like any other",
     "supabase/migrations/20260924110000_fixed_risk_rails.sql":
         "queue_plan's close-buffer rail reads cities.timezone for ONE market's city, "
         "to put the market's close on its local clock; it enumerates nothing, and a "
