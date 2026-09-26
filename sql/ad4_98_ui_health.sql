@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 221 of them - and for each MISSING one names the
+-- and function the app reads - 224 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -116,6 +116,8 @@ with expected(rel, owner, used_by) as (values
     ('v_campaign_targets', 'ad4_41_campaigns.sql', ''),
     ('v_canonical_bands', 'supabase/migrations/20260912230000_phase1_canonical_contracts.sql', ''),
     ('v_canonical_markets', 'supabase/migrations/20260912230000_phase1_canonical_contracts.sql', ''),
+    ('v_checkpoint_calls', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', ''),
+    ('v_checkpoint_scoreboard', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', ''),
     ('v_city_climate', 'ad4_17_city_stats.sql', ''),
     ('v_city_climb_profile', 'ad4_26_temp_trend.sql', '(ModelAnalytics)'),
     ('v_city_climb_profile_live', 'ad4_26_temp_trend.sql', ''),
@@ -188,7 +190,8 @@ with expected(rel, owner, used_by) as (values
     ('v_paper_desks', 'ad4_59_paper_desks.sql', ''),
     ('v_peak_hour_coverage', 'ad4_37_peak_hour.sql', '/globe'),
     ('v_persistence_skill', 'ad4_21_weather_features.sql', '(ModelAnalytics)'),
-    ('v_prediction_hindsight', 'ad4_68_prediction_ladder_outcomes.sql', '(PredictionHindsight)'),
+    ('v_prediction_hindsight', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', '(PredictionHindsight)'),
+    ('v_prediction_hindsight_summary', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', '(PredictionHindsight)'),
     ('v_prediction_ladder', 'ad4_31_predictive.sql', '(CityCards), /predictive'),
     ('v_prediction_ladder_bands', 'ad4_68_prediction_ladder_outcomes.sql', ''),
     ('v_prediction_scorecard', 'ad4_31_predictive.sql', ''),
@@ -359,6 +362,8 @@ begin
     ('v_campaign_targets', 'ad4_41_campaigns.sql', ''),
     ('v_canonical_bands', 'supabase/migrations/20260912230000_phase1_canonical_contracts.sql', ''),
     ('v_canonical_markets', 'supabase/migrations/20260912230000_phase1_canonical_contracts.sql', ''),
+    ('v_checkpoint_calls', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', ''),
+    ('v_checkpoint_scoreboard', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', ''),
     ('v_city_climate', 'ad4_17_city_stats.sql', ''),
     ('v_city_climb_profile', 'ad4_26_temp_trend.sql', '(ModelAnalytics)'),
     ('v_city_climb_profile_live', 'ad4_26_temp_trend.sql', ''),
@@ -431,7 +436,8 @@ begin
     ('v_paper_desks', 'ad4_59_paper_desks.sql', ''),
     ('v_peak_hour_coverage', 'ad4_37_peak_hour.sql', '/globe'),
     ('v_persistence_skill', 'ad4_21_weather_features.sql', '(ModelAnalytics)'),
-    ('v_prediction_hindsight', 'ad4_68_prediction_ladder_outcomes.sql', '(PredictionHindsight)'),
+    ('v_prediction_hindsight', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', '(PredictionHindsight)'),
+    ('v_prediction_hindsight_summary', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', '(PredictionHindsight)'),
     ('v_prediction_ladder', 'ad4_31_predictive.sql', '(CityCards), /predictive'),
     ('v_prediction_ladder_bands', 'ad4_68_prediction_ladder_outcomes.sql', ''),
     ('v_prediction_scorecard', 'ad4_31_predictive.sql', ''),

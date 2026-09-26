@@ -95,6 +95,16 @@ def test_the_best_prices_do_not_depend_on_the_level_order():
     assert tick.market_price({"bid": None, "ask": None, "last": None}) is None
 
 
+def test_a_one_sided_book_is_held_inside_its_quote():
+    """Live 26 Sep: a dead bucket offered at 0.001 with a last trade of 0.999
+    was the market's favourite on 970 books. It is worth at most its ask."""
+    assert tick.market_price({"bid": None, "ask": 0.001, "last": 0.999}) == 0.001
+    assert tick.market_price({"bid": 0.05, "ask": None, "last": 0.01}) == 0.05
+    assert tick.market_price({"bid": 0.05, "ask": None, "last": 0.3}) == 0.3
+    assert tick.market_price({"bid": None, "ask": 0.3, "last": None}) is None
+    assert tick.market_price({"bid": None, "ask": None, "last": 0.4}) == 0.4
+
+
 def test_books_are_matched_by_asset_id_not_position(monkeypatch):
     class R:
         def raise_for_status(self):

@@ -298,70 +298,14 @@ grant select on public.v_prediction_ladder to anon, authenticated, service_role;
 
 
 -- ===========================================================================
--- THE GRADE: what the desk said would happen, beside what did.
+-- THE GRADE (v_prediction_hindsight) LIVES IN
+-- supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql.
 --
--- This view has been on the Predictive page (web/components/PredictionHindsight
--- .tsx) since 16 Sep, and until 22 Sep it existed ONLY in the live database -
--- no file in this repository created it, so a reinstall would have lost it
--- and nothing would have said why the panel went blank. It is written down
--- here now, beside the ladder it grades.
---
--- Per settled city-day: the band the model put the most probability on
--- (ties to the lower band), and the band that paid (the lowest winner, when a
--- venue ever paid two). A day appears only when both exist.
---
--- It read the two-row ladder and collapsed each band back to one row; it now
--- reads v_prediction_ladder_bands, which is one row per band to begin with.
--- The columns it takes are all per band, so the answer is the same - verified
--- identical, 468 rows, 0 differing either way - and the cost is not. Measured
--- 2026-09-22 as the browser's role:
---
---     311,570 buffers, 13,986 ms   ->   54,294 buffers, 142 ms
+-- It was defined here from 22 Sep, grading each band's LATEST probability
+-- with no time limit - the engine re-prices through the day and after it, so
+-- the "prediction" it graded was mostly the thermometer read back (26 Sep, its
+-- last 30 days: 627 of 647 scored city-days last priced after 15:00 local,
+-- 306 after the day had ended). It now grades only calls frozen before the
+-- answer, and it needs the checkpoint tables that only migrations create, so
+-- it is defined there and not here.
 -- ===========================================================================
-create or replace view public.v_prediction_hindsight as
-with bands_once as (
-  select city_key, for_date, band_id, band_label, band_lo, calibrated_prob,
-         forecast_max_c, sigma_c, regime_label, won, settled_value, outcome_source
-    from v_prediction_ladder_bands
-   where won is not null
-),
-predicted as (
-  select distinct on (city_key, for_date)
-         city_key, for_date,
-         band_label      as predicted_band,
-         calibrated_prob as predicted_prob,
-         forecast_max_c, sigma_c, regime_label
-    from bands_once
-   where calibrated_prob is not null
-   order by city_key, for_date, calibrated_prob desc, band_lo
-),
-actual as (
-  select distinct on (city_key, for_date)
-         city_key, for_date,
-         band_label     as actual_band,
-         settled_value  as observed_max_c,
-         outcome_source
-    from bands_once
-   where won
-   order by city_key, for_date, band_lo
-)
-select p.city_key,
-       p.for_date,
-       p.predicted_band,
-       round(100::numeric * p.predicted_prob, 1)       as predicted_pct,
-       a.actual_band,
-       round(a.observed_max_c, 1)                      as observed_max_c,
-       round(p.forecast_max_c, 1)                      as forecast_max_c,
-       round(a.observed_max_c - p.forecast_max_c, 1)   as forecast_error_c,
-       p.predicted_band = a.actual_band                as hit,
-       round(p.sigma_c, 2)                             as stated_sigma_c,
-       p.regime_label,
-       a.outcome_source
-  from predicted p
-  join actual a on a.city_key = p.city_key and a.for_date = p.for_date
- order by p.for_date desc, p.city_key;
-
-comment on view public.v_prediction_hindsight is
-  'Per settled city-day: the band the model favoured and its stated probability, beside the band that paid and the observed maximum. hit is whether they were the same band. Read by the Predictive page.';
-
-grant select on public.v_prediction_hindsight to anon, authenticated, service_role;
