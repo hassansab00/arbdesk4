@@ -18,10 +18,18 @@
      "rows": 123,
      "sha256": "2f8e39a359cefde7a4c08217ecd88e1e2ab771d0f9d8605e676311103807825c",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:39:37+00:00",
+     "file": "anomalies-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 115,
+     "sha256": "58553c36e9fd806d19c11bc2fbb1eecb1237e8e79bc87f5dab056960ec118382",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "anomaly_rules": {
    "content_sha256": "034b6351d4ab7decdc240e515746585d280a7d86f4f293c7ced41c5b48b51265",
@@ -92,10 +100,18 @@
      "rows": 4114,
      "sha256": "8290a3334526a203aa5b2c6f90610d9af825f03e4dbc9f3cba0e7ee836f4461e",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:39:39+00:00",
+     "file": "band_probabilities-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 3828,
+     "sha256": "c4c682519479692a45edfcc08fa731fe39b7ae3b4d3f25ac724cf72ff1b57d4a",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "bands": {
    "files": [
@@ -114,10 +130,18 @@
      "rows": 561,
      "sha256": "5a8e42ebe4d8a28c1a3993a47f9e74a62d8212d883b78a01f57aedda67dbb11d",
      "to": "2026-09-16"
+    },
+    {
+     "exported_at": "2026-09-26T02:39:42+00:00",
+     "file": "bands-2026-09-16-to-2026-09-17.csv.gz",
+     "from": "2026-09-16",
+     "rows": 561,
+     "sha256": "9c0cb41b111395f85abb5798d29460b7c8aa9879b8da3e1bc042da98e25aa1c9",
+     "to": "2026-09-17"
     }
    ],
    "kind": "closed",
-   "through": "2026-09-16"
+   "through": "2026-09-17"
   },
   "book_snapshots": {
    "files": [
@@ -131,10 +155,10 @@
     }
    ],
    "kind": "closed",
-   "through": "2026-09-09"
+   "through": "2026-09-10"
   },
   "cities": {
-   "content_sha256": "c03a26f6a828b53a5b56b90b6b89d7426f796a80d43f117459d37aa5ab0d8d2e",
+   "content_sha256": "56222e1ed7351c4608c3d45b7c6ca2290f0f8cdb9c5887a213afb84fd7e393e6",
    "files": [
     {
      "exported_at": "2026-09-24T08:08:47+00:00",
@@ -147,6 +171,12 @@
      "file": "cities-2026-09-25.csv.gz",
      "rows": 54,
      "sha256": "28b513c0999a5e679b2652f083fb53ea042ce23ccda05a7db237782ca57c082c"
+    },
+    {
+     "exported_at": "2026-09-26T02:39:45+00:00",
+     "file": "cities-2026-09-26.csv.gz",
+     "rows": 54,
+     "sha256": "7ec4875dc4685fa46106853fc48827cbcce3cde85046064bc3591590cb1e68b0"
     }
    ],
    "kind": "snapshot"
@@ -163,7 +193,7 @@
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "cost_params": {
    "content_sha256": "7eb05c0fa1bf239c020e241ac9344f537e4d16636ed21ec7bf638601fa892493",
@@ -196,9 +226,18 @@
    "kind": "snapshot"
   },
   "decisions": {
-   "files": [],
+   "files": [
+    {
+     "exported_at": "2026-09-26T02:39:48+00:00",
+     "file": "decisions-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 3132,
+     "sha256": "505a88da0f27fc7199f989f1c80ae4eef8547da05710455ffb0725ba3743b859",
+     "to": "2026-09-26T00:00:00+00:00"
+    }
+   ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "deployments": {
    "files": [],
@@ -221,13 +260,21 @@
      "rows": 181,
      "sha256": "a3c537a48c2ab3a51fbbb5ae2772112c7f10daad32a8ce89b22d5299fe390f60",
      "to": "2026-09-16"
+    },
+    {
+     "exported_at": "2026-09-26T02:39:50+00:00",
+     "file": "derived_band_day_volume-2026-09-16-to-2026-09-17.csv.gz",
+     "from": "2026-09-16",
+     "rows": 158,
+     "sha256": "ce2cff3130ebc5950f7580f3610064f5faca3492af376b8a170cdb4caa01a8e2",
+     "to": "2026-09-17"
     }
    ],
    "kind": "closed",
-   "through": "2026-09-16"
+   "through": "2026-09-17"
   },
   "derived_calibration_adjustment": {
-   "content_sha256": "dadcc50187212a33b9841beac7174dc77c9fa39db42577fb53f3bda4776a7020",
+   "content_sha256": "2d221d89da750e965379ed3e3a929e418d63840947bcc6e5dd8dd97a5e391be1",
    "files": [
     {
      "exported_at": "2026-09-24T08:08:55+00:00",
@@ -240,6 +287,12 @@
      "file": "derived_calibration_adjustment-2026-09-25.csv.gz",
      "rows": 49,
      "sha256": "98be924aea9ab3f705023170c051f489cde2c9715c840d80c12ef9fb25badb94"
+    },
+    {
+     "exported_at": "2026-09-26T02:39:50+00:00",
+     "file": "derived_calibration_adjustment-2026-09-26.csv.gz",
+     "rows": 49,
+     "sha256": "c8849550e74a8c43c8714f55189f496a0196de0034e91caa71ade70ca7b33793"
     }
    ],
    "kind": "snapshot"
@@ -261,13 +314,21 @@
      "rows": 772,
      "sha256": "aee647f2972d4c1b8f73da9284c3cfdcb0f4e2254649d6f5d9de6aba5e414b52",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:39:51+00:00",
+     "file": "derived_capacity-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 375,
+     "sha256": "c458651c93dd708d8c7a8e266d6c31a8250c13718ed8cd98791dfc9c63c8078a",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "derived_city_climate": {
-   "content_sha256": "8ec89c7db1d2c9f9cc53ea393236f8afc9137723365c631c776141ac36ddc788",
+   "content_sha256": "edd2b58e6eee750c19bb304ca02e1e32c59ce21fb67c1d1628155128b231f091",
    "files": [
     {
      "exported_at": "2026-09-24T08:08:58+00:00",
@@ -280,6 +341,12 @@
      "file": "derived_city_climate-2026-09-25.csv.gz",
      "rows": 54,
      "sha256": "c63191e3a1c5d90350dead2d24dbfbce540779b7c18de834b21575578dad750e"
+    },
+    {
+     "exported_at": "2026-09-26T02:39:52+00:00",
+     "file": "derived_city_climate-2026-09-26.csv.gz",
+     "rows": 54,
+     "sha256": "7bbb3b87533167586044e74ad17bf6b41973ce94ec3dcc7b82a4de77ed463bd1"
     }
    ],
    "kind": "snapshot"
@@ -301,10 +368,18 @@
      "rows": 2652,
      "sha256": "9c485f406aa2f78e48f1485d8ec5ff86d44ef4d450834ebd670a755eb60eba58",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:39:53+00:00",
+     "file": "derived_city_correlation-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 1326,
+     "sha256": "6dc64ca575a5ca445d95fa20250830f0005a2f0c9ee7963342c7b118661ebe20",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "derived_city_day_features": {
    "files": [
@@ -323,10 +398,18 @@
      "rows": 52,
      "sha256": "5e7ddf04bfec892d0ca6949fb6507964dc6c0a8f5188ee6631dc03b9df95aa92",
      "to": "2026-09-16"
+    },
+    {
+     "exported_at": "2026-09-26T02:39:54+00:00",
+     "file": "derived_city_day_features-2026-09-16-to-2026-09-17.csv.gz",
+     "from": "2026-09-16",
+     "rows": 52,
+     "sha256": "79ea06791899dd46634c78557cd76d896b98c1d754db049ad2b1407ee8abbec6",
+     "to": "2026-09-17"
     }
    ],
    "kind": "closed",
-   "through": "2026-09-16"
+   "through": "2026-09-17"
   },
   "derived_city_day_volume": {
    "files": [
@@ -345,13 +428,21 @@
      "rows": 21,
      "sha256": "d3a21ab44706df7d264cea68cb566c93df2cf8163081c675ed9127ce54f56ce9",
      "to": "2026-09-16"
+    },
+    {
+     "exported_at": "2026-09-26T02:39:54+00:00",
+     "file": "derived_city_day_volume-2026-09-16-to-2026-09-17.csv.gz",
+     "from": "2026-09-16",
+     "rows": 20,
+     "sha256": "1297df8208bf9c85dcf64e10af955f4bbdae0f68bbae1b9f64d2e541308167a4",
+     "to": "2026-09-17"
     }
    ],
    "kind": "closed",
-   "through": "2026-09-16"
+   "through": "2026-09-17"
   },
   "derived_climb_profile": {
-   "content_sha256": "ba9d07ca00387090e09e85ab727d0ca0590d574d737cbfc0db4148eb318b5baa",
+   "content_sha256": "9f5f5e166524c57339fb3a8aeea0226022d2aa186b43394944cb0842325664e9",
    "files": [
     {
      "exported_at": "2026-09-24T08:09:32+00:00",
@@ -364,12 +455,18 @@
      "file": "derived_climb_profile-2026-09-25.csv.gz",
      "rows": 1248,
      "sha256": "00b0eaeb19f5db2d8afcf6d9ed74eb486fdba1b663ade4cf6dfc51b15fe1baf0"
+    },
+    {
+     "exported_at": "2026-09-26T02:39:55+00:00",
+     "file": "derived_climb_profile-2026-09-26.csv.gz",
+     "rows": 1248,
+     "sha256": "82333209c82f4524e818abaa1a0343b4e1211b9061245a534facaa1a99cd84c2"
     }
    ],
    "kind": "snapshot"
   },
   "derived_forecast_postprocess": {
-   "content_sha256": "19131e79dbab684db922d5c17292cdd7456536edf83bb8dc3976a38b26f9d470",
+   "content_sha256": "0449b8df3bb1f6b70b631bc8a64f959e480e3d82e86e0b0f52113ca2dd418d8e",
    "files": [
     {
      "exported_at": "2026-09-24T08:09:35+00:00",
@@ -382,6 +479,12 @@
      "file": "derived_forecast_postprocess-2026-09-25.csv.gz",
      "rows": 399,
      "sha256": "9e883efae77da0c429ef9a0fa59d5601c92a33b5a3e11ef15db34478534c7e53"
+    },
+    {
+     "exported_at": "2026-09-26T02:39:56+00:00",
+     "file": "derived_forecast_postprocess-2026-09-26.csv.gz",
+     "rows": 399,
+     "sha256": "a227310b830caa561c12ea9cda826578e5eda6c27593f8c2abe266e1cac658d5"
     }
    ],
    "kind": "snapshot"
@@ -403,10 +506,18 @@
      "rows": 768,
      "sha256": "85e4c27bc9530aa1b5170c849541e33b542f8af45259b6554b780d71d569f835",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:39:57+00:00",
+     "file": "derived_forecast_skill-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 384,
+     "sha256": "1dce9d5d6b9a994e45a3d587e7e8737307ba2c78eeb92e40223bb3da6f282947",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "derived_forecast_skill_model": {
    "files": [
@@ -425,43 +536,69 @@
      "rows": 1355,
      "sha256": "2b73f453ce924378242d02fd0ab396a1187c81e9df86a88fea60756398502af0",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:39:59+00:00",
+     "file": "derived_forecast_skill_model-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 702,
+     "sha256": "1714558cab8e2ae6d0505e05fa68977c9c08172830d5ec58ccf9371bc0a1a5d4",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "derived_hit_recipe": {
-   "content_sha256": "3fc37532b902661ef8430e954cedae67a59f58812cd8c3642a2f2154f947866e",
+   "content_sha256": "a1c11dced434683bfd6d94b3a83674477d1154c6ff0e9e829efd5f7f074c3f1c",
    "files": [
     {
      "exported_at": "2026-09-25T09:43:15+00:00",
      "file": "derived_hit_recipe-2026-09-25.csv.gz",
      "rows": 91,
      "sha256": "4ffbf103092e4a6911bf5bde87b53d9a09ceef1d0d2fa66afcff86ba65fc6d25"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:00+00:00",
+     "file": "derived_hit_recipe-2026-09-26.csv.gz",
+     "rows": 97,
+     "sha256": "e4941eb981b7f6b2985fa6ed9ed4f7dcfe35c348a7df74097689e62a742d63f3"
     }
    ],
    "kind": "snapshot"
   },
   "derived_hit_summary": {
-   "content_sha256": "110453be2320efb9a690a8914ef79d59956ddabc859e8c8e14ba177171abdf12",
+   "content_sha256": "7bdeb89b4180056d9bbf2c4439f6bcad50eaba7d2f5c336050b8fb2d851cd8b0",
    "files": [
     {
      "exported_at": "2026-09-25T09:43:16+00:00",
      "file": "derived_hit_summary-2026-09-25.csv.gz",
      "rows": 4,
      "sha256": "c9811aae4ee621300df3800409425c51dffbb4e65bf1a69a49956afb88589b5f"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:13+00:00",
+     "file": "derived_hit_summary-2026-09-26.csv.gz",
+     "rows": 4,
+     "sha256": "07cf37736bdd0efa9f08630520864f45921fb9318671485fe9046e8b1d2af75c"
     }
    ],
    "kind": "snapshot"
   },
   "derived_hit_tournament": {
-   "content_sha256": "a3de2f4abb78e056309982c6d2fa5f105d1591b5fe8cd4b82156a41ff9501f60",
+   "content_sha256": "b71a8b9d1e082b92ea7a0a8c54df0d97b8affce3cd5bc4cdfc98620cb1f867cb",
    "files": [
     {
      "exported_at": "2026-09-25T09:43:17+00:00",
      "file": "derived_hit_tournament-2026-09-25.csv.gz",
      "rows": 1032,
      "sha256": "ef04c2171fa8daba9960e78c4453c3b7ec5ed63a79139fb3cc1334d0acdc19dc"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:14+00:00",
+     "file": "derived_hit_tournament-2026-09-26.csv.gz",
+     "rows": 1412,
+     "sha256": "5f04992dc3faf7a77bf396a3ad24590c2767f23e6fe20271a84a3c79f51f9b2b"
     }
    ],
    "kind": "snapshot"
@@ -478,7 +615,7 @@
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "derived_model_forecast": {
    "files": [
@@ -497,13 +634,21 @@
      "rows": 1534,
      "sha256": "6e492f813de5522a426122b48cecd0fceaf256f13758809dc3e9955b640244e8",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:15+00:00",
+     "file": "derived_model_forecast-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 1536,
+     "sha256": "6b17bd9dd9a83e392742df9cacd8a4bb778d3c1dcdd0df667ebbc20aa899f1e3",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "derived_model_promotion": {
-   "content_sha256": "df5052ff0e872eb35748f83712b45850a2d0354117c12c710b7bd3bce932e3a1",
+   "content_sha256": "b39dcc9a2e1cd7495f74ca627e1af29bebeb623d2ee9e77de5c71ddfca27bee0",
    "files": [
     {
      "exported_at": "2026-09-24T08:09:46+00:00",
@@ -516,12 +661,18 @@
      "file": "derived_model_promotion-2026-09-25.csv.gz",
      "rows": 392,
      "sha256": "46ceb1cc71267a458a871d9306fbc3cec35048ea7645d654d79d0f52e5058a63"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:18+00:00",
+     "file": "derived_model_promotion-2026-09-26.csv.gz",
+     "rows": 392,
+     "sha256": "c0f130adf700c9e75aa8706340b11718f458cde4e2cb0a1e8f657aead4f509ee"
     }
    ],
    "kind": "snapshot"
   },
   "derived_trajectory": {
-   "content_sha256": "aea99e146c8af7a749d511cd1766b8f9eeabb47a38e94c71064d8f3b12b22eac",
+   "content_sha256": "8b8aefd87a862ffae539b577d316c23914393448a71719d10b7c315fc0e97815",
    "files": [
     {
      "exported_at": "2026-09-24T08:09:47+00:00",
@@ -534,6 +685,12 @@
      "file": "derived_trajectory-2026-09-25.csv.gz",
      "rows": 1176,
      "sha256": "1be70ad6674c787740356a7aef2317bd492f8a5c397f1ed2818bd177de8ae307"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:19+00:00",
+     "file": "derived_trajectory-2026-09-26.csv.gz",
+     "rows": 1176,
+     "sha256": "29fa938fc15c718605051f71e0dda59bfeaaef7ac2754f3116d494a642d98662"
     }
    ],
    "kind": "snapshot"
@@ -567,10 +724,18 @@
      "rows": 94,
      "sha256": "9acb12f1401ff7fb18ba0962bede7f9e84526544bd047daf3f34d465f16d4c1a",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:20+00:00",
+     "file": "derived_weather_peak-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 95,
+     "sha256": "fae57e3cc97d1dce8688069d12c6b2fefd5a979453d09d826e3dbba7edeae123",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "edges": {
    "files": [
@@ -589,10 +754,18 @@
      "rows": 1122,
      "sha256": "764bad6ca7466b276b327ca9f8a8791363b9d98b9b1d6d9eea98b78416bda5e0",
      "to": "2026-09-16"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:21+00:00",
+     "file": "edges-2026-09-16-to-2026-09-17.csv.gz",
+     "from": "2026-09-16",
+     "rows": 1122,
+     "sha256": "8379ad7735f32c62640a5075b4f50a01b275d1c29de95c815340966d661ed005",
+     "to": "2026-09-17"
     }
    ],
    "kind": "closed",
-   "through": "2026-09-16"
+   "through": "2026-09-17"
   },
   "fact_band_outcome": {
    "files": [
@@ -611,15 +784,23 @@
      "rows": 561,
      "sha256": "4e4c0202913860bd46c843ebfc027aacff25e4fe5b2798bde97ad13306635212",
      "to": "2026-09-16"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:23+00:00",
+     "file": "fact_band_outcome-2026-09-16-to-2026-09-17.csv.gz",
+     "from": "2026-09-16",
+     "rows": 561,
+     "sha256": "a49d9b39a6468f8e6de98941c2700ef77823be964f947f36cca303b735be4665",
+     "to": "2026-09-17"
     }
    ],
    "kind": "closed",
-   "through": "2026-09-16"
+   "through": "2026-09-17"
   },
   "fact_band_outcome_exclusions": {
    "files": [],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "fact_band_outcome_venue_rebuilt": {
    "files": [
@@ -630,15 +811,32 @@
      "rows": 2027,
      "sha256": "64ada85d6b3d179e96a2fb5c44d54c1c38ead6bc53627b8d6ecc641afb943cd2",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:25+00:00",
+     "file": "fact_band_outcome_venue_rebuilt-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 3578,
+     "sha256": "1ae4ff6ae03ac5da5a724ca73ee508268027c052bb994f21f25fa7958f680d47",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "fact_checkpoint_outcome": {
-   "files": [],
+   "files": [
+    {
+     "exported_at": "2026-09-26T02:40:27+00:00",
+     "file": "fact_checkpoint_outcome-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 28,
+     "sha256": "7552dbeff2af79c51c928e2b44cf36ca0b87a5dba8c7b925263e4660357c7430",
+     "to": "2026-09-26T00:00:00+00:00"
+    }
+   ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "fact_forecast_outcome": {
    "files": [
@@ -657,10 +855,18 @@
      "rows": 737,
      "sha256": "237de4ede8e20dfbe49cc76bad5b28a75419582b9b55861e377d94f849644d16",
      "to": "2026-09-16"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:28+00:00",
+     "file": "fact_forecast_outcome-2026-09-16-to-2026-09-17.csv.gz",
+     "from": "2026-09-16",
+     "rows": 762,
+     "sha256": "b8a45d92f4174a07ff556afe392dc2b9515d740602348930021798f52b9ffc68",
+     "to": "2026-09-17"
     }
    ],
    "kind": "closed",
-   "through": "2026-09-16"
+   "through": "2026-09-17"
   },
   "fact_signal_outcome": {
    "files": [
@@ -679,10 +885,18 @@
      "rows": 301,
      "sha256": "8f70b8ca25a145f0aa4f37d6c5b957b7228be056842a925068f099bb59517188",
      "to": "2026-09-16"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:29+00:00",
+     "file": "fact_signal_outcome-2026-09-16-to-2026-09-17.csv.gz",
+     "from": "2026-09-16",
+     "rows": 997,
+     "sha256": "f7dd756cd33680d7895a6ee7b153968dea7c1dba6b73bb3775f8453aa5d68241",
+     "to": "2026-09-17"
     }
    ],
    "kind": "closed",
-   "through": "2026-09-16"
+   "through": "2026-09-17"
   },
   "ingest_log": {
    "files": [
@@ -701,10 +915,18 @@
      "rows": 209,
      "sha256": "ebe12298715287b7d1a34a354817b30fc2619536f97245f0db7dd3d4bc7409a9",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:30+00:00",
+     "file": "ingest_log-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 240,
+     "sha256": "bb8840edecf5f8dd19643d3f721f2b837a4c407c70470164373fdf6bb4ceb00f",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "ledger": {
    "files": [
@@ -715,10 +937,18 @@
      "rows": 140,
      "sha256": "d7cc2278128f43c8e91f780cc1d4b53c4379769c09206732588f2b5cf7481c00",
      "to": "2026-09-24T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:31+00:00",
+     "file": "ledger-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 30,
+     "sha256": "3e38f673dc7fd1b8464b6e78a4c8921c7ad3a12acf990a01569e77a99c73ec1c",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "markets": {
    "files": [
@@ -737,10 +967,18 @@
      "rows": 51,
      "sha256": "ac34e22d81c6b279fbeebd4b985b0a77d771c08a99018f4d65ae99a030d23301",
      "to": "2026-09-16"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:32+00:00",
+     "file": "markets-2026-09-16-to-2026-09-17.csv.gz",
+     "from": "2026-09-16",
+     "rows": 51,
+     "sha256": "bacfb5f1d4648ae449bded58354578f4c1defeae9d49f3e9005318e69c4943ae",
+     "to": "2026-09-17"
     }
    ],
    "kind": "closed",
-   "through": "2026-09-16"
+   "through": "2026-09-17"
   },
   "model_versions": {
    "files": [
@@ -759,13 +997,21 @@
      "rows": 11,
      "sha256": "c6391566914db654765d9bd12458cc5a4d5fda4d34b198af197d21e7bff32b58",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:33+00:00",
+     "file": "model_versions-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 7,
+     "sha256": "822889fbf9f3aecebae4c1ab4c14aa8e66a17d045a5c6348f9e09e239031faa5",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "paper_accounts": {
-   "content_sha256": "c4e08e97b198892a6023d0488924d704f48ea9f08f679556e846985dd763f3dc",
+   "content_sha256": "aec6de2cabc8ff8642966bbb3edc0147aa96b13e83604d62ee291adf7ed221e4",
    "files": [
     {
      "exported_at": "2026-09-24T08:10:16+00:00",
@@ -778,12 +1024,18 @@
      "file": "paper_accounts-2026-09-25.csv.gz",
      "rows": 14,
      "sha256": "0d3b0df2682bf410a6c6812f4008eba895351837c5a213a53d7d4b7e5f040ecb"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:33+00:00",
+     "file": "paper_accounts-2026-09-26.csv.gz",
+     "rows": 14,
+     "sha256": "05b11edd2690f3147b0dd364c99b97a31717003dbf44e595478e0aa85d7d0786"
     }
    ],
    "kind": "snapshot"
   },
   "paper_activity": {
-   "content_sha256": "f8a69acdfae3798117e5477ad13a6e8e96cc9ac0a28b73ea7f0d7683f3c17cdd",
+   "content_sha256": "a3117edcc9b12b9931ccdf71e137dd998ded908e206605cf7e09cf74882acee7",
    "files": [
     {
      "exported_at": "2026-09-24T08:10:17+00:00",
@@ -796,6 +1048,12 @@
      "file": "paper_activity-2026-09-25.csv.gz",
      "rows": 273,
      "sha256": "f0e81581ef614522458aa4a40d92ed01859b99ba863cd0ea3d2bc1c4399dd7b9"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:34+00:00",
+     "file": "paper_activity-2026-09-26.csv.gz",
+     "rows": 327,
+     "sha256": "b89d63a0fe6f88481a131be95e5822bccbec15ea540f23820a36bf57ea2e4db7"
     }
    ],
    "kind": "snapshot"
@@ -809,13 +1067,21 @@
      "rows": 863,
      "sha256": "ac682c5ff03577aff7b3d14f24ae18399345b6a21f2b2483f3908d3556393ff7",
      "to": "2026-09-24T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:36+00:00",
+     "file": "paper_book_evidence-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 223,
+     "sha256": "ca25deb506f4688b0ca0879d02120925fa5e3423f873a6efa57a304d8bd93964",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "paper_orders": {
-   "content_sha256": "c6a107a7656513375fe204fb68b78411d20ca2f5fc2d1cd69f111350c6adcc93",
+   "content_sha256": "0c1bbd89fa5db7b1b1b0f4e4eb2f260e2c6212f6867f61d0eff77792d50a7b12",
    "files": [
     {
      "exported_at": "2026-09-24T08:10:22+00:00",
@@ -828,6 +1094,12 @@
      "file": "paper_orders-2026-09-25.csv.gz",
      "rows": 94,
      "sha256": "fd338bd621fc7100957dc7658a6fcd4a012ae493ec01c2dee1d594866626cf44"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:37+00:00",
+     "file": "paper_orders-2026-09-26.csv.gz",
+     "rows": 121,
+     "sha256": "e1efe462f73e812b8c18073fc221c4425c374097961b1e147c32522769aa7ae3"
     }
    ],
    "kind": "snapshot"
@@ -845,7 +1117,7 @@
    "kind": "snapshot"
   },
   "paper_positions": {
-   "content_sha256": "b8487a43a88a92867121ec2942e67931bb9e34ab1571c616a8672d0b03e9c881",
+   "content_sha256": "1df3f4ebe6712c52b26451d7111550f4953e54273fd79a031aed4aba53dc8fb4",
    "files": [
     {
      "exported_at": "2026-09-24T08:10:25+00:00",
@@ -858,12 +1130,18 @@
      "file": "paper_positions-2026-09-25.csv.gz",
      "rows": 58,
      "sha256": "e2f7150d662d24c128d3776d0df6b4079a913012be6584394c3b37e75824526a"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:39+00:00",
+     "file": "paper_positions-2026-09-26.csv.gz",
+     "rows": 85,
+     "sha256": "77e0f6736d1ddca643d4dbcb83c9a475e45fae5c3aecd7ff89de035f97378a61"
     }
    ],
    "kind": "snapshot"
   },
   "paper_trade_plans": {
-   "content_sha256": "93f1e7296faa8fa7945483de7ae37114b62f2dc0bac6e6ce92e74d7308ece9ee",
+   "content_sha256": "a85cdf30befdff785d9287c232191ae9aa76a43e064c7e63b1b19a5beffc4c16",
    "files": [
     {
      "exported_at": "2026-09-24T08:10:26+00:00",
@@ -876,12 +1154,18 @@
      "file": "paper_trade_plans-2026-09-25.csv.gz",
      "rows": 480,
      "sha256": "8f3f183d35d108d2240ff2c6a7ac508313ed10fb715b66ce8cf65890c96c3893"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:40+00:00",
+     "file": "paper_trade_plans-2026-09-26.csv.gz",
+     "rows": 616,
+     "sha256": "b0775fd4001380f1588561ccce7c2dc7274b851dc8a9116de69a574b31b6368d"
     }
    ],
    "kind": "snapshot"
   },
   "paper_trades": {
-   "content_sha256": "d828f294204449f8849cb606ca998c4d8fd6e493ee8de7e554655bfc83f2a46d",
+   "content_sha256": "9f7b827302df62ca6c06f9562c6a96f2f8abae220c9e5ead17cb8d959094a3e6",
    "files": [
     {
      "exported_at": "2026-09-24T08:10:28+00:00",
@@ -894,6 +1178,12 @@
      "file": "paper_trades-2026-09-25.csv.gz",
      "rows": 78,
      "sha256": "d76a41adcde20beeb335b48452031ae9acd328ef890529cf6ad5149ed7c227b3"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:42+00:00",
+     "file": "paper_trades-2026-09-26.csv.gz",
+     "rows": 105,
+     "sha256": "841c4fa822533895da219add9ca549825888803013c74810f77efa7e3053061d"
     }
    ],
    "kind": "snapshot"
@@ -907,10 +1197,18 @@
      "rows": 35,
      "sha256": "567b7dc171645fd35c0f2fad6bdeffca45afe277df7ccf2f5edbf4504c5c1350",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:43+00:00",
+     "file": "prediction_checkpoints-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 187,
+     "sha256": "dfba6f6bde5c2679ae33e8e97d0bd84187606a9dee776aa4940cc8309f8ea858",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "proprietary_data_corrections": {
    "files": [
@@ -924,12 +1222,12 @@
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "proprietary_data_manifests": {
    "files": [],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "proprietary_data_quality_flags": {
    "files": [
@@ -943,7 +1241,7 @@
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "resolution_verdicts": {
    "files": [
@@ -954,13 +1252,21 @@
      "rows": 9372,
      "sha256": "a540c43bb2d9bd04f7a1bdf1fb6aaf8e0aad1b9e5603e008c8776ec7df6f24af",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:46+00:00",
+     "file": "resolution_verdicts-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 11681,
+     "sha256": "02016934eaaa89cea4c30a2ef85ac4a57cbfad07658ae1a1131b2d1e4b53632d",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "settings": {
-   "content_sha256": "7b37faeb79f9983109be18618c33b5cf4d488295cf4470fa120d118453e26638",
+   "content_sha256": "179bdd4a513f99850bd6259e9ba9099a8f5e4fdf56b25c11f2a208a8b4ea36ef",
    "files": [
     {
      "exported_at": "2026-09-24T08:10:41+00:00",
@@ -973,6 +1279,12 @@
      "file": "settings-2026-09-25.csv.gz",
      "rows": 23,
      "sha256": "817a0b50992c7a832cce2b17868a5035255691349969798758beb326a1085f8b"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:52+00:00",
+     "file": "settings-2026-09-26.csv.gz",
+     "rows": 23,
+     "sha256": "b4ef9984377a4409e5e8f30a336d9cc066dcdeb116a7e4377be9dbe32305ddd4"
     }
    ],
    "kind": "snapshot"
@@ -986,10 +1298,18 @@
      "rows": 5963,
      "sha256": "fb4edd6fab4d9cdac8f41d579fc8ee7dc5e170465ea4ee17ea8b2f2c8782f0b2",
      "to": "2026-09-24T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:52+00:00",
+     "file": "signals-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 210,
+     "sha256": "728808499644893a6056b587a5e3976da4aa8efaa51f1bfaf90cbbb5b4b2c6a2",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "strategies": {
    "content_sha256": "4e856cf463f4ad36e3faf3b39133da3007bd3d0a246104d7987fa37564efafb6",
@@ -1029,7 +1349,7 @@
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "strategy_conflicts": {
    "files": [
@@ -1043,7 +1363,7 @@
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "strategy_state": {
    "content_sha256": "948d4513c688fd1879232073870bbd4142f3f5803ca3f56bf6d7a93ef6daaff8",
@@ -1069,7 +1389,7 @@
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "synthesis_thresholds": {
    "content_sha256": "e0d71c9f8ed08ab820b731e83f0a713535eb6d2d5e6349fce4a1d1d2bf64f399",
@@ -1100,10 +1420,18 @@
      "rows": 308,
      "sha256": "e4bcb32bec1caf58ac743448fc3381f47ba8bd2a00c709040a521afbc281ce89",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:40:57+00:00",
+     "file": "trades_observed-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 71724,
+     "sha256": "3c2f7187dd224f435471c43f36165cf7ffd4f6c64af5f2f98665c5f249e7fb8c",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "weather_events": {
    "files": [
@@ -1117,7 +1445,7 @@
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "weather_forecast_features": {
    "files": [
@@ -1136,10 +1464,18 @@
      "rows": 3336,
      "sha256": "481e22a957623393d735fe9f6d9d30ef6a79b2fdd1311155573013a32a03a942",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:41:22+00:00",
+     "file": "weather_forecast_features-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 3337,
+     "sha256": "cf46681177aea2a926ddde1c4b3d8d92860b5c25d6bc9fc0dba3e63076b1a612",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "weather_forecast_models": {
    "files": [
@@ -1150,10 +1486,18 @@
      "rows": 67956,
      "sha256": "ca375b1c50d4d626b874c85ffe72d64e66fc4ec63bad707eb3277fca6aa9a6f4",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:41:25+00:00",
+     "file": "weather_forecast_models-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 12936,
+     "sha256": "6a5437350d540cae4ea7d2d3089e321f28f5dbdd626ac4fe6b01730c6ddd187d",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "weather_forecasts": {
    "files": [
@@ -1172,10 +1516,18 @@
      "rows": 3635,
      "sha256": "bbd697fad2b0c7225f4cbda43d43478925da0cb4c5880e1c081628ce4dfa5311",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:41:29+00:00",
+     "file": "weather_forecasts-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 3629,
+     "sha256": "01770800b76b21ebe08beec8c158321eaf61c191e45be5a0c03154beef51e2de",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "weather_observations": {
    "files": [
@@ -1194,10 +1546,18 @@
      "rows": 4877,
      "sha256": "d9aae69e410d382054a7d3735afc4c8550eee0ee4c5a6669ef3ffdef6d9b56b4",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:41:32+00:00",
+     "file": "weather_observations-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 4968,
+     "sha256": "7d2cd0a1ad4716001624e314c5b09e6c5d13db97a93bf26e4735bf71ffef33b4",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "weather_resolution_attempts": {
    "files": [
@@ -1216,10 +1576,18 @@
      "rows": 145,
      "sha256": "7e8646e9f1356b1abeec6b16f02239141c28ee755d84e7a381a5c036b1a936c1",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:41:36+00:00",
+     "file": "weather_resolution_attempts-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 96,
+     "sha256": "65bc59b5e9dde912b760be14f94bbfe9071835afe3b75bf63cfc0c1b931a7217",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   },
   "weather_resolution_evidence": {
    "files": [
@@ -1238,11 +1606,19 @@
      "rows": 48,
      "sha256": "0aaaeeb4728520a2ed7f60d2af73314750838fe4884383b2e8300997c6d8e0ae",
      "to": "2026-09-25T00:00:00+00:00"
+    },
+    {
+     "exported_at": "2026-09-26T02:41:37+00:00",
+     "file": "weather_resolution_evidence-2026-09-25-to-2026-09-26.csv.gz",
+     "from": "2026-09-25T00:00:00+00:00",
+     "rows": 48,
+     "sha256": "b8024b8d117f626f82f90c15d43e414b0301293d937bdd36fe6c0ed43d77951f",
+     "to": "2026-09-26T00:00:00+00:00"
     }
    ],
    "kind": "append",
-   "through": "2026-09-25T00:00:00+00:00"
+   "through": "2026-09-26T00:00:00+00:00"
   }
  },
- "updated_at": "2026-09-25T09:44:25+00:00"
+ "updated_at": "2026-09-26T02:41:39+00:00"
 }
