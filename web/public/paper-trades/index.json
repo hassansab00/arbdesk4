@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-09-22T10:09:33.559452+00:00",
+  "generated_at": "2026-09-26T05:36:57.886221+00:00",
   "months": [
     "2026-09"
   ],
-  "trades": 70,
-  "net_pnl": -529.75557,
-  "gross_pnl": -486.3836,
-  "fees": 43.37197,
-  "wins": 11,
+  "trades": 73,
+  "net_pnl": -524.65288,
+  "gross_pnl": -480.4614,
+  "fees": 43.79148,
+  "wins": 14,
   "losses": 59,
   "cities": [
     "amsterdam",
@@ -41,8 +41,9 @@
   ],
   "strategies": [
     "s1_buy_low_sell_signal",
+    "s3_concentration",
     "s4_tail_fade"
   ],
   "first_closed_at": "2026-09-16T23:00:46.118439+00:00",
-  "last_closed_at": "2026-09-22T09:08:11.135611+00:00"
+  "last_closed_at": "2026-09-26T04:41:43.867163+00:00"
 }
