@@ -497,10 +497,19 @@ def test_a_daily_maximum_is_a_local_day():
     """The market settles on the city's local calendar day. ingest_forecasts.py
     asked Open-Meteo for UTC days, so for New York its "day" ran from 20:00 the
     previous local evening - a different quantity in the same column, and
-    derived_forecast_skill is measured from these rows."""
+    derived_forecast_skill is measured from these rows.
+
+    The first fix asked timezone=auto. Measured 26 Sep, that is ONE fixed
+    offset for the whole range - the city's offset at the moment of the
+    request - so a day across a clock change was still an hour off. The job
+    now asks for UTC HOURS and puts each one in the city's own day with
+    common.city_local_date; a date sliced off a UTC timestamp would be the
+    original bug again."""
     src = _read("scripts/ingest_forecasts.py")
-    assert '"timezone": "UTC"' not in src
-    assert '"timezone": "auto"' in src
+    assert '"timezone": "auto"' not in src
+    assert src.count('"timezone": "GMT"') == 2
+    assert "city_local_date(t, tz)" in src
+    assert "d = t[:10]" not in src
 
 
 # --------------------------------------------------------------------------
