@@ -35,10 +35,18 @@ The mix was chosen over A and B on those same months (four forms tried), so
 its advantage over the better single form there is not a confirmed result; the
 P7.3 replay against the venue and the shadow days after it are.
 
+ITS WIDTH IS CALIBRATED. Uncalibrated, the 80% interval covered 75% at 11h and
+71% at 13h (too little mass near R at midday). Both scales are now multiplied
+by a factor chosen on each training window's last fifth (choose_widen): the
+same walk-forward then covered 81-84% in every tercile of model disagreement at
+every hour, for bucket log loss 1.804/1.627/1.269/0.678 (+0.003, +0.011,
++0.014, -0.002).
+
 RULE 11. Every learned parameter has a prior (a city's coefficients shrink to
-the pooled fit; the pool to zero), bounds (BOUNDS), a minimum sample
-(MIN_TRAIN_ROWS for an hour, MIN_CITY_ROWS before a city leaves the pool), and
-a version on every output. A refit is weekly (plan P7.2); the nightly bounded
+the pooled fit; the pool to zero; the width factor to 1.0), bounds (BOUNDS,
+WIDEN_GRID), a minimum sample (MIN_TRAIN_ROWS for an hour, MIN_CITY_ROWS before
+a city leaves the pool, MIN_INNER_ROWS before the width moves), and a version
+on every output. A refit is weekly (plan P7.2); the nightly bounded
 update of city effects and the recent-bias term is not built yet.
 
 Pure Python (the scheduled jobs install no numpy).
@@ -62,6 +70,15 @@ LAM_LOGIT = 1.0
 LOGIT_ITERS = 50
 LOGIT_TOL = 1e-8
 MIN_TRAIN_ROWS = 2000
+# THE WIDTH, CALIBRATED (Rule 11: prior 1.0, bounds, chosen on training days
+# only). Both scales are multiplied by the smallest WIDEN_GRID value whose 80%
+# interval covers at least TARGET_COVER of the last INNER_SHARE of the training
+# days, fitted on the days before them. Measured 26 Sep before it: 80%
+# intervals covered 75% at 11h and 71% at 13h.
+WIDEN_GRID = (1.0, 1.05, 1.1, 1.15, 1.2, 1.3, 1.4, 1.5, 1.6)
+TARGET_COVER = 0.80
+INNER_SHARE = 0.2
+MIN_INNER_ROWS = 400
 MIN_CITY_ROWS = 60
 MIN_READINGS = 3
 MIN_REST_HOURS = 6
@@ -216,9 +233,40 @@ def _coef(pool, cities, city):
 
 def fit_hour(rows):
     """One decision hour. rows: dicts with city, x (FEATURES), R, y (the day's
-    maximum). Returns the parameters, or None under MIN_TRAIN_ROWS."""
+    maximum), date. Returns the parameters, or None under MIN_TRAIN_ROWS."""
     if len(rows) < MIN_TRAIN_ROWS:
         return None
+    p = _fit_core(rows)
+    p["widen"], p["widen_cover"], p["widen_n"] = choose_widen(rows)
+    return p
+
+
+def choose_widen(rows):
+    """(factor, inner 80% coverage at it, inner n): the smallest WIDEN_GRID
+    factor whose 80% interval covers TARGET_COVER of the last INNER_SHARE of
+    the training days, fitted on the days before them. 1.0 when the inner
+    split is too small to say (Rule 11: no move off the prior)."""
+    days = sorted({r["date"] for r in rows})
+    cut = days[int(len(days) * (1 - INNER_SHARE))] if days else None
+    early = [r for r in rows if r["date"] < cut]
+    late = [r for r in rows if r["date"] >= cut]
+    if len(late) < MIN_INNER_ROWS or len(early) < MIN_TRAIN_ROWS:
+        return 1.0, None, len(late)
+    p = _fit_core(early)
+    dists = [distribution(dict(p, widen=1.0), r["city"], r["x"], r["R"]) for r in late]
+    cover = None
+    for k in WIDEN_GRID:
+        hits = 0
+        for d, r in zip(dists, late):
+            dk = dict(d, scale_a=d["scale_a"] * k, scale_b=d["scale_b"] * k)
+            hits += quantile(dk, 0.1) <= r["y"] <= quantile(dk, 0.9)
+        cover = hits / len(late)
+        if cover >= TARGET_COVER:
+            return k, round(cover, 4), len(late)
+    return WIDEN_GRID[-1], round(cover, 4), len(late)
+
+
+def _fit_core(rows):
     mu, sd = _standardiser([r["x"] for r in rows])
     zs = [_z(r["x"], mu, sd) for r in rows]
     cities = [r["city"] for r in rows]
@@ -271,9 +319,9 @@ def distribution(p, city, x, R):
     return {"R": R,
             "p_set": 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, s)))),
             "log_rise": _clip(_dot(z, _coef(p["a_pool"], p["a_city"], city)), "log_rise"),
-            "scale_a": _clip(_dot(z, p["a_scale"]) * SQRT_HALF_PI, "scale_a"),
+            "scale_a": _clip(_dot(z, p["a_scale"]) * SQRT_HALF_PI * p.get("widen", 1.0), "scale_a"),
             "centre": R + _clip(_dot(z, _coef(p["b_pool"], p["b_city"], city)), "rise_b"),
-            "scale_b": _clip(_dot(z, p["b_scale"]) * SQRT_HALF_PI, "scale_b")}
+            "scale_b": _clip(_dot(z, p["b_scale"]) * SQRT_HALF_PI * p.get("widen", 1.0), "scale_b")}
 
 
 def cdf(d, v):

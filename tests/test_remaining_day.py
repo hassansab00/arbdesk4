@@ -177,3 +177,30 @@ def test_every_fit_carries_a_version_that_names_it(fitted):
     assert rd.version_of({11: other}) != version
     blob = rd.to_json(params, version)
     assert version in blob and '"weight_a": 0.5' in blob
+
+
+def test_the_width_factor_is_learned_on_training_days_and_bounded(fitted):
+    """Rule 11 for the calibrated width: prior 1.0, inside WIDEN_GRID's range,
+    chosen on the training window's last days only, carried in the version."""
+    rows, p = fitted
+    assert rd.WIDEN_GRID[0] == 1.0 and max(rd.WIDEN_GRID) <= 1.6
+    assert p["widen"] in rd.WIDEN_GRID
+    # too few inner rows to say: stays on the prior
+    assert rd.choose_widen(rows[:300]) == (1.0, None, rd.choose_widen(rows[:300])[2])
+    wide = dict(p, widen=1.3)
+    r = rows[0]
+    d1, d13 = rd.distribution(dict(p, widen=1.0), r["city"], r["x"], r["R"]), rd.distribution(wide, r["city"], r["x"], r["R"])
+    assert d13["scale_b"] == pytest.approx(min(rd.BOUNDS["scale_b"][1], d1["scale_b"] * 1.3))
+    assert rd.version_of({11: wide}) != rd.version_of({11: dict(p, widen=1.0)})
+
+
+def test_the_width_factor_reaches_its_coverage_target_on_the_inner_days():
+    rows = _synthetic(n_days=150, cities=("a", "b", "c", "d"))
+    old = (rd.MIN_TRAIN_ROWS, rd.MIN_INNER_ROWS)
+    rd.MIN_TRAIN_ROWS, rd.MIN_INNER_ROWS = 100, 50
+    try:
+        k, cover, n = rd.choose_widen(rows)
+    finally:
+        rd.MIN_TRAIN_ROWS, rd.MIN_INNER_ROWS = old
+    assert n == len([r for r in rows if r["date"] >= sorted({r["date"] for r in rows})[120]])
+    assert cover >= rd.TARGET_COVER or k == rd.WIDEN_GRID[-1]

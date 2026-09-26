@@ -123,7 +123,7 @@ def run(args):
         p = rd.fit_hour(train)
         if p is None or not test:
             continue
-        versions.append(rd.version_of({H: p}))
+        versions.append((rd.version_of({H: p}), p.get("widen"), p.get("widen_cover")))
         base_c = [max(r["R"], r["fc_day"]) for r in train]
         sig0 = max(0.5, sum(abs(b - r["y"]) for b, r in zip(base_c, train)) / len(train) * 1.25)
         for r in test:
@@ -155,7 +155,7 @@ def run(args):
         terc[name] = {"n": len(xs), "spread_c": [round(min(x[4] for x in xs), 2), round(max(x[4] for x in xs), 2)],
                       "cover80": round(sum(x[5] for x in xs) / len(xs), 3),
                       "width80_c": round(sum(x[6] for x in xs) / len(xs), 2)}
-    return {"interval80_by_disagreement": terc, "hour": H, "n": n, "days": len(days), "cities": len({x[3] for x in res}), "fits": len(versions),
+    return {"interval80_by_disagreement": terc, "hour": H, "n": n, "days": len(days), "cities": len({x[3] for x in res}), "fits": len(versions), "widen_by_month": [v[1] for v in versions],
             "model": {"logloss": round(-sum(x[1][0] for x in res) / n, 3),
                       "hit": round(sum(x[1][1] for x in res) / n, 4),
                       "crps": round(sum(x[1][2] for x in res) / n, 3)},
