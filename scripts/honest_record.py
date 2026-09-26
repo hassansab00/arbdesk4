@@ -37,6 +37,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal, ROUND_HALF_UP
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -95,14 +96,32 @@ def _round(v, places):
     return int(q) if places == 0 else float(q)
 
 
-def _by_day(hourly, key):
-    """{local date: [(hour, value)]} for one series; hours in local time
-    (the request asks timezone=auto)."""
-    times = hourly.get("time") or []
+def local_stamps(times, tz):
+    """[(local date, local hour)] for UTC hourly stamps, on the city's own wall
+    clock.
+
+    THE REQUESTS ASK FOR UTC (timezone=GMT), NOT timezone=auto. Measured 26 Sep
+    on 48 cities x 439 days: with timezone=auto Open-Meteo returns the WHOLE
+    range at ONE fixed offset - the city's offset at the moment of the request
+    (every series exactly 439 x 24 hours, no daylight-saving step anywhere;
+    Wellington +13 even for July, when it is +12). So a winter day fetched in
+    summer sat an hour away from its wall-clock day, and the same day fetched
+    again in winter would have come out differently. Converting UTC with the
+    city's IANA zone gives the same row whenever it is fetched."""
+    zone = ZoneInfo(tz)
+    out = []
+    for t in times:
+        loc = dt.datetime.fromisoformat(t).replace(tzinfo=dt.timezone.utc).astimezone(zone)
+        out.append((loc.date().isoformat(), loc.hour))
+    return out
+
+
+def _by_day(hourly, key, stamps):
+    """{local date: [(hour, value)]} for one series."""
     vals = hourly.get(key) or []
     out = {}
-    for t, v in zip(times, vals):
-        out.setdefault(t[:10], []).append((int(t[11:13]), v))
+    for (d, h), v in zip(stamps, vals):
+        out.setdefault(d, []).append((h, v))
     return out
 
 
@@ -110,10 +129,12 @@ def _pick(pairs, lo, hi):
     return [v for h, v in pairs if lo <= h <= hi and v is not None]
 
 
-def daily_best_match(hourly, key):
-    """[[lead-less row from tmax_c to n_hours], keyed by date] for one lead.
-    `key(var)` names that variable's hourly series in the response."""
-    days = {var: _by_day(hourly, key(var)) for var in HEATING}
+def daily_best_match(hourly, key, tz):
+    """[[lead-less row from tmax_c to n_hours], keyed by local date] for one
+    lead. `key(var)` names that variable's hourly series in the response;
+    the response's times are UTC and `tz` is the city's IANA zone."""
+    stamps = local_stamps(hourly.get("time") or [], tz)
+    days = {var: _by_day(hourly, key(var), stamps) for var in HEATING}
     rows = {}
     for d, tt_pairs in days["temperature_2m"].items():
         tt = [(h, _dec(v)) for h, v in tt_pairs]
@@ -144,12 +165,13 @@ def daily_best_match(hourly, key):
     return rows
 
 
-def daily_models(hourly, key):
+def daily_models(hourly, key, tz):
     """{(model, date): [tmax_c, tmax_00_17_c]} for one lead; `key(model)`
-    names that model's hourly temperature series."""
+    names that model's hourly temperature series (times UTC, `tz` the zone)."""
+    stamps = local_stamps(hourly.get("time") or [], tz)
     out = {}
     for model in MODELS:
-        for d, pairs in _by_day(hourly, key(model)).items():
+        for d, pairs in _by_day(hourly, key(model), stamps).items():
             vals = [(h, _dec(v)) for h, v in pairs]
             if sum(1 for _, v in vals if v is not None) < MIN_HOURS:
                 continue
@@ -159,37 +181,38 @@ def daily_models(hourly, key):
     return out
 
 
-def previous_rows(city_key, heating_js, models_js):
-    """(best_match rows, model rows) for both leads, in the files' column order."""
+def previous_rows(city_key, heating_js, models_js, tz, first=None, last=None):
+    """(best_match rows, model rows) for both leads, in the files' column order,
+    for local days from `first` to `last` (ISO dates, inclusive) if given - the
+    request reaches a day further each side, so the edge days are partial."""
+    keep = lambda d: (first is None or d >= first) and (last is None or d <= last)
     bm, md = [], []
     for lead in LEADS:
         if heating_js:
             for d, vals in daily_best_match(heating_js.get("hourly") or {},
-                                            lambda v: f"{v}_previous_day{lead}").items():
-                bm.append([city_key, lead, d] + vals)
+                                            lambda v: f"{v}_previous_day{lead}", tz).items():
+                if keep(d):
+                    bm.append([city_key, lead, d] + vals)
         if models_js:
             for (m, d), vals in daily_models(models_js.get("hourly") or {},
-                                             lambda m: f"temperature_2m_previous_day{lead}_{m}").items():
-                md.append([city_key, lead, m, d] + vals)
+                                             lambda m: f"temperature_2m_previous_day{lead}_{m}", tz).items():
+                if keep(d):
+                    md.append([city_key, lead, m, d] + vals)
     return bm, md
 
 
-def current_rows(city_key, heating_js, models_js, fetched_at):
+def current_rows(city_key, heating_js, models_js, fetched_at, tz):
     """The same rows from each model's CURRENT run, for the days after the
-    city's own today: lead = days ahead at fetch time."""
-    def local_today(js):
-        off = dt.timedelta(seconds=int((js or {}).get("utc_offset_seconds") or 0))
-        return (fetched_at + off).date()
+    city's own today: lead = days ahead of its wall-clock date at fetch time."""
+    today = fetched_at.astimezone(ZoneInfo(tz)).date()
     bm, md = [], []
     if heating_js:
-        today = local_today(heating_js)
-        for d, vals in daily_best_match(heating_js.get("hourly") or {}, lambda v: v).items():
+        for d, vals in daily_best_match(heating_js.get("hourly") or {}, lambda v: v, tz).items():
             lead = (dt.date.fromisoformat(d) - today).days
             if lead in LEADS:
                 bm.append([city_key, lead, d] + vals)
     if models_js:
-        today = local_today(models_js)
-        for (m, d), vals in daily_models(models_js.get("hourly") or {}, lambda m: f"temperature_2m_{m}").items():
+        for (m, d), vals in daily_models(models_js.get("hourly") or {}, lambda m: f"temperature_2m_{m}", tz).items():
             lead = (dt.date.fromisoformat(d) - today).days
             if lead in LEADS:
                 md.append([city_key, lead, m, d] + vals)
@@ -217,8 +240,11 @@ def _get(url, params, label):
 
 
 def fetch_previous(city, start, end):
-    base = {"latitude": city["latitude"], "longitude": city["longitude"], "timezone": "auto",
-            "start_date": start.isoformat(), "end_date": end.isoformat()}
+    """UTC hours from the day before `start` to the day after `end`, so every
+    local day between them is whole whatever the city's offset."""
+    base = {"latitude": city["latitude"], "longitude": city["longitude"], "timezone": "GMT",
+            "start_date": (start - dt.timedelta(days=1)).isoformat(),
+            "end_date": (end + dt.timedelta(days=1)).isoformat()}
     heating = _get(PREVIOUS_API, dict(base, hourly=",".join(f"{v}_previous_day{l}" for v in HEATING for l in LEADS)),
                    f"{city['city_key']} previous heating")
     models = _get(PREVIOUS_API, dict(base, hourly=",".join(f"temperature_2m_previous_day{l}" for l in LEADS),
@@ -227,8 +253,8 @@ def fetch_previous(city, start, end):
 
 
 def fetch_current(city):
-    base = {"latitude": city["latitude"], "longitude": city["longitude"], "timezone": "auto",
-            "forecast_days": 3}
+    base = {"latitude": city["latitude"], "longitude": city["longitude"], "timezone": "GMT",
+            "forecast_days": 4}          # UTC days: enough for local day+2 at any offset
     heating = _get(CURRENT_API, dict(base, hourly=",".join(HEATING)), f"{city['city_key']} current heating")
     models = _get(CURRENT_API, dict(base, hourly="temperature_2m", models=",".join(MODELS)),
                   f"{city['city_key']} current models")
@@ -243,7 +269,7 @@ def forward_rows(cities, fetched_at=None):
         for city, (h, m) in zip(cities, pool.map(fetch_current, cities)):
             if h is None or m is None:
                 missing.append(city["city_key"])
-            b, x = current_rows(city["city_key"], h, m, fetched_at)
+            b, x = current_rows(city["city_key"], h, m, fetched_at, city["timezone"])
             bm += b
             md += x
     return bm, md, missing
@@ -301,13 +327,14 @@ def main(argv=None):
 
     today = dt.datetime.now(dt.timezone.utc).date()
     start, end = today - dt.timedelta(days=args.days), today - dt.timedelta(days=1)
-    cities = [c for c in get_cities() if c.get("latitude") is not None and c.get("status", "active") == "active"]
+    cities = [c for c in get_cities() if c.get("latitude") is not None and c.get("timezone")
+              and c.get("status", "active") == "active"]
     bm, md, missing = [], [], []
     with ThreadPoolExecutor(WORKERS) as pool:
         for city, (h, m) in zip(cities, pool.map(lambda c: fetch_previous(c, start, end), cities)):
             if h is None or m is None:
                 missing.append(city["city_key"])
-            b, x = previous_rows(city["city_key"], h, m)
+            b, x = previous_rows(city["city_key"], h, m, city["timezone"], start.isoformat(), end.isoformat())
             bm += b
             md += x
     old_bm, old_md = read_rows(BEST_MATCH_FILE), read_rows(MODELS_FILE)
