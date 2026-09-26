@@ -23,9 +23,20 @@ import station_mos as sm
 FIXTURE = os.path.join(ROOT, "tests", "fixtures", "previous_runs_amsterdam_2025-07-18_4days.json")
 
 
+AMS = "Europe/Amsterdam"
+
+
 def _fixture():
+    """Four real days of Amsterdam's raw answer, captured with timezone=auto
+    (a fixed +2 h in July), turned back into the UTC hours the job now asks for."""
     with open(FIXTURE) as f:
-        return json.load(f)
+        fx = json.load(f)
+    for js in (fx["heating"], fx["models"]):
+        off = dt.timedelta(seconds=js["utc_offset_seconds"])
+        js["hourly"]["time"] = [(dt.datetime.fromisoformat(t) - off).strftime("%Y-%m-%dT%H:%M")
+                                for t in js["hourly"]["time"]]
+        js["utc_offset_seconds"] = 0
+    return fx
 
 
 # ---------------------------------------------------------------------------
@@ -36,7 +47,7 @@ def test_the_nightly_rules_rewrite_the_committed_record_exactly():
     requests the record was made from) reduce to the committed rows, text for
     text: the SQL that made the record and the Python that extends it agree."""
     fx = _fixture()
-    bm, md = hr.previous_rows("amsterdam", fx["heating"], fx["models"])
+    bm, md = hr.previous_rows("amsterdam", fx["heating"], fx["models"], AMS)
     want_bm = {tuple(r[:3]): r for r in hr.read_rows(hr.BEST_MATCH_FILE)
                if r[0] == "amsterdam" and "2025-07-18" <= r[2] <= "2025-07-21"}
     want_md = {tuple(r[:4]): r for r in hr.read_rows(hr.MODELS_FILE)
@@ -62,13 +73,14 @@ def test_no_input_moves_when_the_hours_after_the_cutoff_change():
     changed = copy.deepcopy(fx)
     for js in (changed["heating"], changed["models"]):
         h = js["hourly"]
+        local_hours = [hour for _, hour in hr.local_stamps(h["time"], AMS)]
         for k, vals in h.items():
             if k == "time":
                 continue
-            h[k] = [(v + 9.0 if v is not None else v) if int(t[11:13]) > hr.LAST_HOUR else v
-                    for t, v in zip(h["time"], vals)]
-    before = hr.previous_rows("amsterdam", fx["heating"], fx["models"])
-    after = hr.previous_rows("amsterdam", changed["heating"], changed["models"])
+            h[k] = [(v + 9.0 if v is not None else v) if hour > hr.LAST_HOUR else v
+                    for hour, v in zip(local_hours, vals)]
+    before = hr.previous_rows("amsterdam", fx["heating"], fx["models"], AMS)
+    after = hr.previous_rows("amsterdam", changed["heating"], changed["models"], AMS)
     tmax_col = hr.BEST_MATCH_HEADER.index("tmax_c")
     for b, a in zip(before[0], after[0]):
         assert b[:tmax_col] + b[tmax_col + 1:] == a[:tmax_col] + a[tmax_col + 1:]
@@ -85,16 +97,35 @@ def test_training_and_forward_rows_come_from_one_definition():
     cur_m = {"time": fx["models"]["hourly"]["time"],
              **{f"temperature_2m_{m}": fx["models"]["hourly"][f"temperature_2m_previous_day1_{m}"]
                 for m in hr.MODELS}}
-    offset = fx["heating"]["utc_offset_seconds"]
-    fetched = dt.datetime(2025, 7, 18, 12, tzinfo=dt.timezone.utc) - dt.timedelta(seconds=offset) \
-        - dt.timedelta(days=1)                       # local "today" = 17 Jul, so 18 Jul is lead 1
-    fbm, fmd = hr.current_rows("amsterdam", {"hourly": cur_h, "utc_offset_seconds": offset},
-                               {"hourly": cur_m, "utc_offset_seconds": offset}, fetched)
-    pbm, pmd = hr.previous_rows("amsterdam", fx["heating"], fx["models"])
+    fetched = dt.datetime(2025, 7, 17, 10, tzinfo=dt.timezone.utc)   # 12:00 on 17 Jul in Amsterdam
+    fbm, fmd = hr.current_rows("amsterdam", {"hourly": cur_h}, {"hourly": cur_m}, fetched, AMS)
+    pbm, pmd = hr.previous_rows("amsterdam", fx["heating"], fx["models"], AMS)
     lead1 = {tuple(r[:3]): r for r in pbm if r[1] == 1}
     assert fbm and all(lead1[tuple(r[:3])] == r for r in fbm if r[1] == 1)
     lead1m = {tuple(r[:4]): r for r in pmd if r[1] == 1}
     assert fmd and all(lead1m[tuple(r[:4])] == r for r in fmd if r[1] == 1)
+
+
+def test_days_are_the_city_s_own_wall_clock_days_in_every_season():
+    """Open-Meteo's timezone=auto gives the whole range at the offset of the
+    moment of the request (measured 26 Sep: no daylight-saving step in 439
+    days for any of 48 cities). The job asks for UTC and converts with the
+    city's zone, so London's winter 23:00 UTC is 23:00 that day and its summer
+    23:00 UTC is midnight the next."""
+    assert hr.local_stamps(["2026-01-15T23:00"], "Europe/London") == [("2026-01-15", 23)]
+    assert hr.local_stamps(["2026-07-15T23:00"], "Europe/London") == [("2026-07-16", 0)]
+    assert hr.local_stamps(["2026-07-15T11:00"], "Pacific/Auckland") == [("2026-07-15", 23)]
+    assert hr.local_stamps(["2026-01-15T11:00"], "Pacific/Auckland") == [("2026-01-16", 0)]
+    # the autumn change: London's 25 Oct 2026 has 25 hours, and all are kept
+    hours = [f"2026-10-24T{h:02d}:00" for h in (23,)] + [f"2026-10-25T{h:02d}:00" for h in range(24)]
+    assert sum(1 for d, _ in hr.local_stamps(hours, "Europe/London") if d == "2026-10-25") == 25
+
+
+def test_a_request_reaches_a_day_further_each_side_and_keeps_only_whole_days():
+    fx = _fixture()
+    bm, md = hr.previous_rows("amsterdam", fx["heating"], fx["models"], AMS, "2025-07-19", "2025-07-20")
+    assert {r[2] for r in bm} == {"2025-07-19", "2025-07-20"}
+    assert {r[3] for r in md} == {"2025-07-19", "2025-07-20"}
 
 
 def test_the_merge_replaces_a_day_it_reads_again_and_keeps_the_rest():

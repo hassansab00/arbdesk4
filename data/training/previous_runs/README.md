@@ -8,18 +8,30 @@ nothing in these files was known later than the call it would inform.
 ## Source
 
 Open-Meteo's Previous Runs API (`previous-runs-api.open-meteo.com/v1/forecast`),
-hourly, `timezone=auto` (the city's local time), at each city's coordinates in
-`public.cities`. Fetched on 26 Sep 2026 through the database's `pg_net` (the
-sandbox's shared address was over Open-Meteo's daily limit) and reduced to one
-row per day in SQL; the query is in `tools/experiments_p29_honest_mos.py`'s
-notes and `docs/PLAN_PROGRESS.md` (P2.9).
+hourly, at each city's coordinates in `public.cities`. Fetched on 26 Sep 2026
+through the database's `pg_net` (the sandbox's shared address was over
+Open-Meteo's daily limit).
+
+**Days are the city's wall-clock days** (its IANA zone in `public.cities`, with
+daylight saving). The first build used `timezone=auto`, and Open-Meteo returns
+the whole range at ONE fixed offset - the city's offset at the moment of the
+request (measured: every series exactly 439 x 24 hours, no daylight-saving step
+in any of 48 cities; Wellington +13 for July). That put a daylight-saving
+city's winter days an hour off, and would have made the same day come out
+differently when re-fetched in winter. The record was rebuilt the same evening
+from the same answers, each hour turned back into UTC with its fixed offset and
+grouped by `scripts/honest_record.py` (`local_stamps`, `previous_rows`) - the
+code the nightly append runs, which now asks for `timezone=GMT`. 6,336 of the
+42,144 best_match rows changed, all in daylight-saving cities, almost all
+November-March (and Wellington's own winter); `tmax_00_17_c` moved by 0.042 C
+on average, 5.3 C at most.
 
 `lead_days` N means the `_previous_dayN` series: for an hour H, the value from
 a run started at least N x 24 h before H.
 
 ## Which hours
 
-Every window ends by **17:00 local**. A run started by 17:00 the day before and
+Every window ends by **17:00 local** (wall clock). A run started by 17:00 the day before and
 published within about 7 hours is out before the local midnight the day-ahead
 call is frozen at; a later hour could come from a run published after it. The
 publication delay is assumed from the providers' schedules, not verified run by
