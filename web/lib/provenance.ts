@@ -409,6 +409,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Live Weather Monitor"
     },
     {
+      "cadence": "hourly",
+      "file": "tick.yml",
+      "how": "scripts/ingest_nws_monitor.py",
+      "kind": "action",
+      "name": "Tick (hourly checkpoints)"
+    },
+    {
       "cadence": "whenever its n8n schedule fires",
       "file": "P1.2_nws_monitor.template.json",
       "how": "n8n",
@@ -637,6 +644,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Live Weather Monitor"
     },
     {
+      "cadence": "hourly",
+      "file": "tick.yml",
+      "how": "scripts/ingest_nws_monitor.py",
+      "kind": "action",
+      "name": "Tick (hourly checkpoints)"
+    },
+    {
       "cadence": "whenever its n8n schedule fires",
       "file": "P1.1_live_weather_alerts.template.json",
       "how": "n8n",
@@ -745,7 +759,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
     {
       "cadence": "hourly",
       "file": "tick.yml",
-      "how": "scripts/tick.py",
+      "how": "scripts/ingest_nws_monitor.py",
       "kind": "action",
       "name": "Tick (hourly checkpoints)"
     },
