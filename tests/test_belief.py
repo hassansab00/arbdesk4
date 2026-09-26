@@ -168,6 +168,25 @@ def test_an_unreadable_parameter_table_means_the_prior(capsys):
     def boom(*a, **k):
         raise RuntimeError("relation strategy_params does not exist")
     assert bf.load(rest=boom) is None
-    assert bf.load(rest=lambda *a, **k: []) is None
-    t = bf.load(rest=lambda *a, **k: [{"value": {"bins": {}}, "version": "belief:x"}])
+    assert bf.load(rest=_learning_on(lambda *a, **k: [])) is None
+    t = bf.load(rest=_learning_on(lambda *a, **k: [{"value": {"bins": {}}, "version": "belief:x"}]))
     assert t["version"] == "belief:x"
+
+
+def _learning_on(rows_for, enabled=True):
+    """A rest() whose settings row says strategy_learning.enabled, and whose
+    strategy_params answer is rows_for()."""
+    def rest(path, params=None, **k):
+        if path == "settings":
+            return [{"value": {"enabled": enabled}}]
+        return rows_for(path, params)
+    return rest
+
+
+def test_what_was_learned_is_not_used_until_the_flag_is_on():
+    """Plan v2 P5.8: until the replay shows learned values beat the priors,
+    the loop ships with priors frozen and a flag to enable it."""
+    stored = lambda *a, **k: [{"value": {"bins": {}}, "version": "belief:x"}]
+    assert bf.load(rest=_learning_on(stored, enabled=False)) is None
+    assert bf.load(rest=lambda path, params=None, **k: [] if path == "settings" else stored()) is None
+    assert bf.load(rest=_learning_on(stored))["version"] == "belief:x"

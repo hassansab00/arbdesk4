@@ -141,7 +141,8 @@ def test_learned_parameters_are_clipped_to_their_bounds_and_versioned():
     rows = [{"param": "p_fill_touch_1h", "value": {"v": 0.99}, "version": "v7"},
             {"param": "adverse_spread_fraction", "value": {"v": -0.3}, "version": "v7"},
             {"param": "p_fill_touch_1h", "value": {"v": 0.5}, "version": "v6"}]
-    params = ec.load(rest=lambda *a, **k: rows)
+    params = ec.load(rest=lambda path, params=None, **k:
+                     [{"value": {"enabled": True}}] if path == "settings" else rows)
     assert params["p_fill_touch_1h"] == ec.P_FILL_TOUCH_1H_BOUNDS[1], "the newest row wins, clipped"
     assert params["adverse_spread_fraction"] == ec.ADVERSE_BOUNDS[0]
     assert params["version"] == "adverse_spread_fraction:v7,p_fill_touch_1h:v7"
@@ -152,3 +153,10 @@ def test_no_parameter_table_means_the_priors():
         raise RuntimeError("relation strategy_params does not exist")
     assert ec.load(rest=boom) == ec.priors()
     assert ec.load(rest=lambda *a, **k: []) == ec.priors()
+
+
+def test_learned_parameters_wait_for_the_flag():
+    """Plan v2 P5.8: priors frozen until the replay says the learned ones win."""
+    rows = [{"param": "p_fill_touch_1h", "value": {"v": 0.3}, "version": "v7"}]
+    off = lambda path, params=None, **k: [{"value": {"enabled": False}}] if path == "settings" else rows
+    assert ec.load(rest=off) == ec.priors()

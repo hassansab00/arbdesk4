@@ -192,6 +192,9 @@ def load(rest=None):
     if rest is None:
         from common import rest as rest
     params = priors()
+    import learned
+    if not learned.enabled(rest):
+        return params                    # priors frozen until the replay (P5.8, P7.3)
     try:
         rows = rest("strategy_params", [("select", "param,value,version"),
                                         ("param", "in.(p_fill_touch_1h,adverse_spread_fraction)"),

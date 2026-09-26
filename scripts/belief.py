@@ -243,13 +243,17 @@ def fit(checkpoints, outcomes, as_of, clusters=None, previous=None):
 def load(rest=None):
     """The latest belief table from strategy_params, or None (the prior).
 
-    strategy_params is written by the nightly loop (P5.8). Until it exists,
-    or if it cannot be read, every posterior is the prior - p_model with a
+    strategy_params is written by the nightly loop (P5.8), and read only while
+    settings.strategy_learning.enabled is true. Until then, or if it cannot be
+    read, every posterior is the prior - p_model with a
     wide sd - which is the safe direction: nothing is believed more strongly
     than the model already says.
     """
     if rest is None:
         from common import rest as rest
+    import learned
+    if not learned.enabled(rest):
+        return None                      # priors frozen until the replay (P5.8, P7.3)
     try:
         rows = rest("strategy_params", [("select", "value,version"), ("param", "eq.belief"),
                                         ("order", "fitted_at.desc"), ("limit", "1")])

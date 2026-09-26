@@ -619,6 +619,15 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
+  "strategy_params": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/strategy_learn.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    }
+  ],
   "trades_observed": [
     {
       "cadence": "hourly",
