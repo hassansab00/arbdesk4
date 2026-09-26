@@ -171,14 +171,19 @@ def test_legacy_platt_map_is_ignored(monkeypatch):
     assert pe._calibration_map() is None
 
 
-def test_verified_platt_map_is_accepted(monkeypatch):
+def test_a_platt_map_is_accepted_only_from_frozen_evidence(monkeypatch):
+    """A Platt map under verified_outcomes_v1 was fitted on the latest pricing
+    before settlement (26 Sep: 335 of 673 city-days priced after the day
+    ended), so it is refused like the temperature map from the same data."""
     pe = _engine()
-    monkeypatch.setattr(pe, "rest", lambda *_: [{"value": {
-        "method": "platt", "a": 0.5, "b": 0.1, "n": 500, "applies": True,
-        "evidence_scope": pe.VERIFIED_EVIDENCE_SCOPE,
-    }}])
+    value = {"method": "platt", "a": 0.5, "b": 0.1, "n": 500, "applies": True,
+             "evidence_scope": pe.CALIBRATION_EVIDENCE_SCOPE}
+    monkeypatch.setattr(pe, "rest", lambda *_: [{"value": value}])
     pe._calibration = None
     assert pe._calibration_map()["a"] == 0.5
+    value["evidence_scope"] = pe.VERIFIED_EVIDENCE_SCOPE
+    pe._calibration = None
+    assert pe._calibration_map() is None
 
 
 def test_widening_sigma_lowers_confidence():

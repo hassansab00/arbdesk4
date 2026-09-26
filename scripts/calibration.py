@@ -53,6 +53,34 @@ Measured 2026-09-19: 336 complete ladders - which clears that half - across 8
 settlement dates, which does not. A calibration fitted across eight days of
 weather describes those eight days.
 
+AND IT LEARNS ONLY FROM FORECASTS (26 Sep)
+------------------------------------------
+Until 26 Sep it learned from fact_band_outcome.model_prob, which databank
+freezes from the LATEST pricing before settlement. Over the last 30 days of
+that table, 0 of 673 city-days had been priced before the local day began,
+338 in its afternoon and 335 after it had ended, when the engine holds the
+running maximum. That fit said T=1.999937, and it would have been applied to the
+forecasts the desk trades on as soon as the gate opened.
+
+It now reads v_calibration_evidence: the RAW probability of the last pricing
+before the city's local day began - the number the map is applied to, at the
+moment it is a forecast. The engine refuses any map without this scope
+(probability_engine.CALIBRATION_EVIDENCE_SCOPE), so the old fit cannot come
+back. Measured 26 Sep on that evidence: 607 ladders over 13 dates; fitted on
+the first 9 dates, T=1.365, and on the 4 later dates it made things WORSE
+(Brier 0.7563 -> 0.7651, log loss 1.5988 -> 1.6475). The day-ahead ladder's
+spread is about right; what it lacks is skill, which no temperature supplies.
+
+RULE 11 (adaptive never means unbounded):
+  prior      T = 1 (no correction) until the gate opens and validation passes
+  bounds     T in [T_MIN, T_MAX] = [0.5, 2.0] - this module's priors, not
+             measurements
+  min sample the gate: 30 settlement dates and 300 complete ladders
+  max step   T moves at most MAX_STEP (25%, the plan's P5.8 number) from the
+             map applied before it, per nightly fit
+  version    every band_probabilities row carries calibration_version
+  held out   scored only on dates the fit never saw
+
     python scripts/calibration.py [--dry-run] [--min-dates 30] [--min-ladders 300]
 """
 import argparse
@@ -61,7 +89,8 @@ import json
 import math
 import sys
 
-VERIFIED_EVIDENCE_SCOPE = "verified_outcomes_v1"
+# What the map learned from; probability_engine applies only this scope.
+CALIBRATION_EVIDENCE_SCOPE = "frozen_day_ahead_v1"
 
 from common import rest_all, log_run, model_version_id, _cfg, _headers  # noqa: F401
 import requests
@@ -81,6 +110,11 @@ MIN_COMPLETE_LADDERS = 300
 # the validation slice.
 MIN_VALIDATION_BRIER_GAIN = 0.001
 TRAIN_FRACTION = 0.70
+# Rule 11. The bounds are this module's priors, not measurements. MAX_STEP is
+# the plan's P5.8 guard: no learned value moves more than 25% in one night.
+T_PRIOR = 1.0
+T_MIN, T_MAX = 0.5, 2.0
+MAX_STEP = 0.25
 # A ladder missing bands is not a ladder: the probabilities no longer describe
 # a partition of the outcome space, so normalising them means something else.
 MIN_BANDS_IN_LADDER = 8
@@ -159,6 +193,23 @@ def multiclass_log_loss(ladders, T=None):
     return total / len(ladders)
 
 
+def bounded(T, previous=T_PRIOR):
+    """T held inside its hard bounds and within MAX_STEP of the map applied
+    before it. What is validated and written is this number, not the raw fit."""
+    lo = max(T_MIN, previous * (1 - MAX_STEP))
+    hi = min(T_MAX, previous * (1 + MAX_STEP))
+    return min(hi, max(lo, T))
+
+
+def previous_T(value):
+    """The T the engine applies today: the stored map's, when it applies and
+    carries this scope; otherwise the prior."""
+    if (isinstance(value, dict) and value.get("applies") and value.get("method") == "temperature"
+            and value.get("evidence_scope") == CALIBRATION_EVIDENCE_SCOPE and value.get("T")):
+        return float(value["T"])
+    return T_PRIOR
+
+
 def describe(T):
     """What the number means, because 'T=1.18' is not a finding."""
     if T > 1.05:
@@ -182,10 +233,11 @@ def build_ladders(rows, min_bands=MIN_BANDS_IN_LADDER):
     """
     by_day = {}
     for r in rows:
-        if r.get("model_prob") is None:
+        p = r.get("prob")
+        if p is None:
             continue
         by_day.setdefault((r["city_key"], str(r["for_date"])), []).append(
-            (float(r["model_prob"]), 1 if r.get("settled_yes") else 0))
+            (float(p), 1 if r.get("settled_yes") else 0))
     out, dropped = {}, 0
     for key, lad in by_day.items():
         if len(lad) >= min_bands and sum(y for _, y in lad) == 1:
@@ -220,13 +272,14 @@ def main():
     args = ap.parse_args()
 
     try:
-        rows = rest_all("v_verified_fact_band_outcome", [
-            ("select", "band_id,model_prob,market_price,settled_yes,for_date,city_key"),
-            ("model_prob", "not.is.null"),
+        rows = rest_all("v_calibration_evidence", [
+            ("select", "band_id,prob,settled_yes,for_date,city_key"),
+            ("prob", "not.is.null"),
         ], order="for_date.asc,band_id.asc", page_size=1000)
+        stored = rest_all("settings", [("select", "value"), ("key", "eq.calibration_map")])
     except Exception as e:
-        print(f"verified band outcomes unavailable ({e}). Apply the Phase 2A outcome-truth "
-              f"migration, collect venue evidence, then run scripts/databank.py.", file=sys.stderr)
+        print(f"calibration evidence unavailable ({e}). Apply migration "
+              f"20260926100000_calibration_learns_frozen_calls.sql.", file=sys.stderr)
         log_run("calibration", "attention", 0, {"error": str(e)})
         return 1
 
@@ -252,7 +305,12 @@ def main():
         gate.append(f"{len(ladders)} complete ladders, needs {args.min_ladders}")
 
     train, val, train_dates, val_dates = split_by_date(ladders)
-    T = fit_temperature(train) if train else 1.0
+    prev = previous_T(stored[0]["value"] if stored else None)
+    T_fitted = fit_temperature(train) if train else T_PRIOR
+    T = bounded(T_fitted, prev)
+    if T != T_fitted:
+        print(f"  fitted T={T_fitted:.3f} held to {T:.3f}: bounds [{T_MIN}, {T_MAX}], at most "
+              f"{MAX_STEP:.0%} from the T applied now ({prev:.3f})")
 
     before_br = multiclass_brier(val) if val else None
     after_br = multiclass_brier(val, T) if val else None
@@ -270,19 +328,10 @@ def main():
     else:
         print("\n  not enough distinct dates to hold any of them back; nothing was fitted")
 
-    # THE MARKET, AS CONTEXT AND NEVER AS A VERDICT. The two sides were not
-    # frozen at the same cutoff, so the market's number includes information
-    # the model did not have when it priced.
-    mkt = [(float(r["market_price"]), 1 if r.get("settled_yes") else 0)
-           for r in rows if r.get("market_price") is not None]
-    if mkt:
-        mkt_br = sum((p - y) ** 2 for p, y in mkt) / len(mkt)
-        print(f"\n  (market per-band Brier {mkt_br:.4f} - context only. It is not a "
-              f"benchmark until both sides are frozen at the same cutoff timestamp, and "
-              f"it is a per-BAND figure, which is not comparable to the per-ladder ones "
-              f"above.)")
-    else:
-        mkt_br = None
+    # THE MARKET IS NOT READ HERE. The old "context only" market Brier came
+    # from fact_band_outcome.market_price, frozen at the same late cutoff as the
+    # model's number; the like-for-like comparison, both sides frozen at the
+    # same moment, is v_checkpoint_scoreboard and v_city_hit_history.
 
     brier_gain = (before_br - after_br) if (before_br is not None and after_br is not None) else None
     ll_improved = (before_ll is not None and after_ll is not None and after_ll < before_ll)
@@ -307,7 +356,10 @@ def main():
     payload = {
         "method": "temperature",
         "T": round(T, 6),
-        "evidence_scope": VERIFIED_EVIDENCE_SCOPE,
+        "T_fitted": round(T_fitted, 6),
+        "T_previous": round(prev, 6),
+        "prior": T_PRIOR, "bounds": [T_MIN, T_MAX], "max_step": MAX_STEP,
+        "evidence_scope": CALIBRATION_EVIDENCE_SCOPE,
         "band_rows": len(rows),
         "complete_ladders": len(ladders),
         "settlement_dates": len(dates),
@@ -319,7 +371,6 @@ def main():
         "validation_brier_after": round(after_br, 6) if after_br is not None else None,
         "validation_log_loss_before": round(before_ll, 6) if before_ll is not None else None,
         "validation_log_loss_after": round(after_ll, 6) if after_ll is not None else None,
-        "market_band_brier_context_only": round(mkt_br, 6) if mkt_br is not None else None,
         "gate_unmet": gate,
         "applies": applies,
         "fitted_at": dt.datetime.now(dt.timezone.utc).isoformat(),

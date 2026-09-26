@@ -42,6 +42,12 @@ import venue as _venue
 MAE_TO_SIGMA = 1.2533          # sourced: sigma = MAE * sqrt(pi/2) for a normal distribution
 CALIBRATION_VERSION = "v0_normal_lattice_no_calibration"
 VERIFIED_EVIDENCE_SCOPE = "verified_outcomes_v1"
+# The calibration map's own scope, and it names WHICH probability it learned
+# from, not only which outcomes. Maps fitted before 26 Sep carry
+# verified_outcomes_v1 and learned from fact_band_outcome.model_prob - the
+# latest pricing before settlement, made after the local day had ended on 335
+# of 673 city-days - so they are refused here whatever they say about applies.
+CALIBRATION_EVIDENCE_SCOPE = "frozen_day_ahead_v1"
 COLD_START_MAE_C = 4.0
 
 # A PROBABILITY OF EXACTLY ZERO IS A ROUNDING ARTEFACT, NOT A FORECAST.
@@ -77,8 +83,9 @@ def clamp_prob(p):
 # The lattice gives a probability from a normal centred on the forecast. That
 # is a MODEL of how the day resolves, not a measurement of how often this desk
 # is right, and the two differ in a way only the desk's own history can show.
-# scripts/calibration.py fits a two-parameter Platt map on settled bands from
-# fact_band_outcome and writes it to settings.calibration_map.
+# scripts/calibration.py fits a one-parameter temperature on settled ladders,
+# from the raw probability each band had before its local day began
+# (v_calibration_evidence), and writes it to settings.calibration_map.
 #
 # Two guards, because a wrong calibration map is worse than none - it rescales
 # every probability while looking exactly like a right one:
@@ -115,7 +122,7 @@ def _calibration_map():
             rows = rest("settings", [("select", "value"), ("key", "eq.calibration_map")])
             v = rows[0]["value"] if rows else None
             if (isinstance(v, dict) and v.get("applies")
-                    and v.get("evidence_scope") == VERIFIED_EVIDENCE_SCOPE):
+                    and v.get("evidence_scope") == CALIBRATION_EVIDENCE_SCOPE):
                 if v.get("method") == "temperature" and v.get("T"):
                     _calibration = {"method": "temperature", "T": float(v["T"]),
                                     "n": v.get("complete_ladders"), "note": v.get("note")}

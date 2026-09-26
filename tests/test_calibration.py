@@ -120,7 +120,7 @@ def _rows(dates, cities, n_bands=11, winner=0):
         for c in cities:
             for i in range(n_bands):
                 out.append({"city_key": c, "for_date": d, "band_id": f"{c}{d}{i}",
-                            "model_prob": 0.5 if i == 0 else 0.05,
+                            "prob": 0.5 if i == 0 else 0.05,
                             "settled_yes": i == winner})
     return out
 
@@ -178,14 +178,65 @@ def test_the_gate_names_both_halves():
     assert "MIN_COMPLETE_LADDERS = 300" in src
 
 
-def test_the_market_brier_is_context_and_never_a_verdict():
-    """0.003819 against 0.074 looks decisive and is not like-for-like: the two
-    sides were not frozen at the same cutoff, and one is per band while the
-    other is per ladder."""
+def test_the_market_is_not_part_of_the_fit():
+    """The old market Brier came from the same late cutoff as the model's
+    number. The like-for-like comparison lives in v_checkpoint_scoreboard."""
     src = open(cal.__file__).read()
-    assert "context only" in src
+    code = "\n".join(l.split("#")[0] for l in src.splitlines())
+    assert "market_price" not in code
     verdict = src[src.index("    validated = bool("):src.index("    if gate:")]
     assert "mkt" not in verdict
+
+
+# ---------------------------------------------------------------------------
+# it learns from forecasts, not from the thermometer read back (26 Sep)
+# ---------------------------------------------------------------------------
+def test_it_reads_the_probability_frozen_before_the_day():
+    """fact_band_outcome.model_prob is the latest pricing before settlement:
+    0 of 673 city-days were priced before the local day began, 335 after it
+    ended. The evidence is the raw pricing from before the day."""
+    src = open(cal.__file__).read()
+    main = src[src.index("def main():"):]
+    assert 'rest_all("v_calibration_evidence"' in main
+    assert "v_verified_fact_band_outcome" not in main and "model_prob" not in main
+    mig = open(cal.__file__.replace("scripts/calibration.py",
+               "supabase/migrations/20260926100000_calibration_learns_frozen_calls.sql")).read()
+    assert "bp.computed_at < l.day_starts_at" in mig
+    assert "p.raw_prob        as prob" in mig
+
+
+def test_a_row_without_a_frozen_probability_is_not_evidence():
+    rows = _rows(["2026-09-01"], ["london"])
+    rows[3]["prob"] = None
+    ladders, dropped = cal.build_ladders(rows)
+    assert len(ladders[("london", "2026-09-01")]) == 10 and dropped == 0
+
+
+def test_T_is_bounded_and_steps_at_most_a_quarter():
+    """Rule 11: a prior, hard bounds, and a maximum change per nightly fit."""
+    assert cal.bounded(2.0) == pytest.approx(1.25)           # from the prior 1.0
+    assert cal.bounded(0.3) == pytest.approx(0.75)
+    assert cal.bounded(1.1) == pytest.approx(1.1)            # inside the step
+    assert cal.bounded(5.0, previous=1.9) == cal.T_MAX       # the bound wins
+    assert cal.bounded(0.1, previous=0.55) == cal.T_MIN
+    assert (cal.T_PRIOR, cal.T_MIN, cal.T_MAX, cal.MAX_STEP) == (1.0, 0.5, 2.0, 0.25)
+
+
+def test_the_step_is_from_the_map_the_engine_applies():
+    ok = {"method": "temperature", "T": 1.2, "applies": True,
+          "evidence_scope": cal.CALIBRATION_EVIDENCE_SCOPE}
+    assert cal.previous_T(ok) == 1.2
+    assert cal.previous_T(dict(ok, applies=False)) == 1.0
+    assert cal.previous_T(dict(ok, evidence_scope="verified_outcomes_v1")) == 1.0
+    assert cal.previous_T(None) == 1.0
+
+
+def test_the_bounded_T_is_what_is_validated_and_written():
+    src = open(cal.__file__).read()
+    assert "T = bounded(T_fitted, prev)" in src
+    scoring = src[src.index("    before_br ="):src.index("    if train and val:")]
+    assert "multiclass_brier(val, T)" in scoring and "T_fitted" not in scoring
+    assert '"T": round(T, 6)' in src and '"T_fitted": round(T_fitted, 6)' in src
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +271,7 @@ def test_a_map_the_fitter_rejected_is_not_applied(monkeypatch):
 
 def test_a_fitted_map_is_applied(monkeypatch):
     _map(monkeypatch, {"method": "platt", "a": 0.7, "b": 0.0, "applies": True,
-                       "n": 900, "evidence_scope": pe.VERIFIED_EVIDENCE_SCOPE})
+                       "n": 900, "evidence_scope": pe.CALIBRATION_EVIDENCE_SCOPE})
     out = pe._calibrate(0.2)
     assert out != 0.2
     # a < 1 pulls toward 0.5, so a 20% band should come back higher
@@ -250,7 +301,7 @@ def test_the_map_is_read_once_per_run(monkeypatch):
 
 def test_calibrated_output_stays_a_probability(monkeypatch):
     _map(monkeypatch, {"method": "platt", "a": 0.6, "b": -1.5, "applies": True,
-                       "evidence_scope": pe.VERIFIED_EVIDENCE_SCOPE})
+                       "evidence_scope": pe.CALIBRATION_EVIDENCE_SCOPE})
     for p in (0.0, 1e-9, 0.001, 0.5, 0.999, 1.0):
         q = pe._calibrate(p)
         assert 0.0 <= q <= 1.0, (p, q)
@@ -259,7 +310,7 @@ def test_calibrated_output_stays_a_probability(monkeypatch):
 def test_a_temperature_map_is_applied(monkeypatch):
     _map(monkeypatch, {"method": "temperature", "T": 2.0, "applies": True,
                        "complete_ladders": 400,
-                       "evidence_scope": pe.VERIFIED_EVIDENCE_SCOPE})
+                       "evidence_scope": pe.CALIBRATION_EVIDENCE_SCOPE})
     # p^(1/T), unnormalised - the division by the ladder's sum is the second
     # half of the formula and happens once, where the ladder exists.
     assert pe._calibrate(0.25) == pytest.approx(0.25 ** 0.5)
@@ -269,7 +320,7 @@ def test_a_temperature_map_below_the_gate_is_not_applied(monkeypatch):
     """applies=false is what an unmet gate or a failed validation writes.
     Honouring it is the difference between a correction and a superstition."""
     _map(monkeypatch, {"method": "temperature", "T": 2.0, "applies": False,
-                       "evidence_scope": pe.VERIFIED_EVIDENCE_SCOPE})
+                       "evidence_scope": pe.CALIBRATION_EVIDENCE_SCOPE})
     assert pe._calibrate(0.25) == 0.25
 
 
@@ -277,13 +328,23 @@ def test_tempering_a_whole_ladder_still_sums_to_one(monkeypatch):
     """The engine divides by the ladder's sum after calibrating each band, and
     for temperature scaling that division IS the formula rather than a repair."""
     _map(monkeypatch, {"method": "temperature", "T": 2.5, "applies": True,
-                       "evidence_scope": pe.VERIFIED_EVIDENCE_SCOPE})
+                       "evidence_scope": pe.CALIBRATION_EVIDENCE_SCOPE})
     ps = [0.5, 0.2, 0.15, 0.1, 0.05]
     qs = [pe._calibrate(p) for p in ps]
     total = sum(qs)
     assert sum(q / total for q in qs) == pytest.approx(1.0)
     # ...and it matches what the fitter computed for the same T
     assert [q / total for q in qs] == pytest.approx(cal.temper(ps, 2.5))
+
+
+def test_the_hindsight_map_is_refused(monkeypatch):
+    """The live map on 26 Sep: T=1.999937, fitted on after-the-fact
+    probabilities, scope verified_outcomes_v1. Even marked applies, the engine
+    must not use it."""
+    _map(monkeypatch, {"method": "temperature", "T": 1.999937, "applies": True,
+                       "complete_ladders": 670, "evidence_scope": "verified_outcomes_v1"})
+    assert pe._calibrate(0.25) == 0.25
+    assert pe.CALIBRATION_EVIDENCE_SCOPE == cal.CALIBRATION_EVIDENCE_SCOPE
 
 
 def test_a_map_from_another_evidence_scope_is_ignored(monkeypatch):
