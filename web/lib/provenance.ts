@@ -233,6 +233,15 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
+  "derived_corrected_forecast": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/station_correction.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    }
+  ],
   "derived_forecast_postprocess": [
     {
       "cadence": "daily",
@@ -308,6 +317,15 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "cadence": "daily",
       "file": "pipeline_daily.yml",
       "how": "scripts/model_promotion.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    }
+  ],
+  "derived_station_correction": [
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/station_correction.py",
       "kind": "action",
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }

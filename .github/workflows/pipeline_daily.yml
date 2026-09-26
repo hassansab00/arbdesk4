@@ -152,6 +152,16 @@ jobs:
         timeout-minutes: 5
         run: python scripts/strategy_learn.py
 
+      # 6a2. Plan v2.2 P3.9: each forecast model's error at the settlement
+      #      station, learned per city and lead, and the corrected equal-weight
+      #      combination for the open days. Shadow: nothing prices from it
+      #      until it beats the engine's input on later dates. Scores itself
+      #      walk-forward every night (logged). Seconds of arithmetic.
+      - name: Fit the station correction per forecast model
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: python scripts/station_correction.py
+
       # 6b. Fit the distributional post-processing: per city and lead, the
       #     station bias to subtract and the factor the published width was
       #     missing. Reads fact_forecast_outcome, so it goes AFTER the databank
