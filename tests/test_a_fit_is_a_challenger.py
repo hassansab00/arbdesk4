@@ -102,9 +102,11 @@ def test_the_block_length_grows_with_the_sample():
 # ---------------------------------------------------------------------------
 # the rule
 # ---------------------------------------------------------------------------
-def _verdict(rows, stale=(), dropped=()):
+def _verdict(rows, stale=(), dropped=(), advance_only=True):
+    """The evidence rule, for a fit trained honestly; the training rule has
+    its own test below."""
     scored = mp.score(rows, draws=400) if rows else None
-    return mp.decide(scored, list(stale), list(dropped)), scored
+    return mp.decide(scored, list(stale), list(dropped), advance_only=advance_only), scored
 
 
 def test_a_model_that_beats_persistence_and_loses_to_the_forecast_is_rejected():
@@ -124,6 +126,22 @@ def test_a_model_that_beats_both_by_a_clear_margin_is_promoted():
     (state, reasons), scored = _verdict(rows)
     assert state == "promoted", [r for r in reasons if not r["held"]]
     assert scored["boot_lo_c"] > 0
+
+
+def test_a_fit_trained_on_the_afternoon_it_predicts_is_never_promoted():
+    """Plan v2.2 P2.9. weather_model reads derived_city_day_features, where
+    wind, cloud and rain are the afternoon's OBSERVED values; forward they are
+    forecasts. Its best evidence is shown, and it is not promoted."""
+    import weather_model
+    assert weather_model.TRAINS_ONLY_ON_ADVANCE_INFORMATION is False
+    rows = series(120, model_err=0.4, public_err=1.2, pers_err=2.0)
+    scored = mp.score(rows, draws=400)
+    state, reasons = mp.decide(scored, [], [])             # the flag, by default
+    assert state == "rejected"
+    held = {r["rule"]: r["held"] for r in reasons}
+    assert held["trained_only_on_what_was_known_in_advance"] is False
+    assert held["beats_public_forecast_by_margin"] is True    # the evidence is still shown
+    assert mp.decide(scored, [], [], advance_only=True)[0] == "promoted"
 
 
 def test_thirty_days_is_a_floor_no_margin_can_buy_past():

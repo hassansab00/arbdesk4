@@ -265,6 +265,22 @@ FIT_COLUMNS = ["city_key", "obs_date", "max_c", "n_obs"] + [
     if f not in DATE_DERIVED_FEATURES
 ]
 
+# WHAT THE FIT WAS ALLOWED TO KNOW (plan v2.2 P2.9).
+#
+# FIT_COLUMNS are read from derived_city_day_features, and there wind_mean and
+# cloud_mean are OBSERVED means over 09:00-17:00 local and precip_total is the
+# OBSERVED whole-day sum. Forward, the same names come from the forecast
+# (weather_forecast_features). So every held-out score this fit has reported
+# was made with the afternoon's actual weather in hand, which no morning has -
+# and forward it lost to the public forecast by 0.969 C on average
+# (derived_model_promotion, 26 Sep: 0 of 392 city-leads promoted).
+#
+# scripts/model_promotion.py reads this flag: a fit trained on what was only
+# known afterwards can be scored, never promoted. The honest record is
+# data/training/previous_runs (what each forecast said before the day), and a
+# model trained on it sets its own flag.
+TRAINS_ONLY_ON_ADVANCE_INFORMATION = False
+
 # What each coefficient means, so the output is a finding and not six numbers.
 MEANING = {
     "prev_max_c": "carry-over from yesterday's max (1.0 would be pure persistence)",
