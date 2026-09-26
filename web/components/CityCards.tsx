@@ -122,10 +122,11 @@ export default function CityCards({ onPick }: { onPick?: (city: string) => void 
         </div>
       </div>
       <p className="max-w-3xl text-xs leading-relaxed text-muted">
-        For each city, the market it can still trade: the desk&rsquo;s predicted maximum, the public
-        forecasts and the desk&rsquo;s own model for that day, the bucket the model favours against what
-        the market charges for it, the market&rsquo;s own favourite, and the best tradeable edge on the
-        ladder. Trades that side with the market come first; a trade that bets on the engine against the
+        For each city, the market it can still trade. On top, the <b className="text-text">platform&rsquo;s
+        pick</b>: the one temperature it thinks the day will settle on (its most likely bucket), how likely
+        it says that is, and the <b className="text-text">market&rsquo;s pick</b> beside it. Below, the best
+        tradeable edge, and what the pick is built from: the forecast centre, the public forecasts and the
+        desk&rsquo;s own model. Trades that side with the market come first; a trade that bets on the engine against the
         market&rsquo;s favourite is marked and sorted after them, because on settled days the market&rsquo;s
         pick has won about twice as often when the two disagreed (the record is on each card).{" "}
         <b className="text-text">Reload</b> re-reads the stored rows (refreshed at :12 and :42 and after
@@ -170,16 +171,40 @@ function Card({ c, onPick, record }: { c: CityCard; onPick?: (city: string) => v
         </span>
       </div>
 
-      <div className="mt-2 flex items-baseline gap-2">
-        <span className="text-2xl font-semibold tabular-nums">{fmtTemp(c.predicted_c, u)}</span>
-        {c.sigma_c !== null && <span className="text-muted tabular-nums">± {fmtTempDelta(c.sigma_c, u).replace("+", "")}</span>}
-        <span className="text-muted" title="The centre the engine priced the ladder from: its forecast input (Open-Meteo) after bias correction. Not a blend of the forecasts listed below.">
-          engine&rsquo;s predicted max
-        </span>
+      {/* THE PICK. The one temperature the platform says the day will settle
+          on: its most likely bucket. Hassan, 26 Sep: the big number used to be
+          the forecast centre, labelled "predicted max", and three forecasts
+          below it - four temperatures and no answer. The centre is an input;
+          the pick is the answer, and the market's pick sits beside it because
+          when the two differ the market has been right about twice as often. */}
+      <div className="mt-2 rounded border border-border bg-panel2 px-2 py-1.5">
+        <div className="text-[10px] uppercase tracking-wide text-muted">Platform&rsquo;s pick - most likely winning temperature</div>
+        {c.top_band ? (
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <span className="text-2xl font-semibold tabular-nums">{c.top_band}</span>
+            <span className="tabular-nums"><b>{fmtPct(c.top_prob, 0)}</b> likely</span>
+            <span className="text-muted tabular-nums">· market charges {fmtPrice(c.top_yes_price)}</span>
+          </div>
+        ) : <div className="text-muted">not priced yet</div>}
+        {c.favourite_dead && <div className="text-[11px] text-bad">the market treats this bucket as dead</div>}
+        <div className="mt-0.5 tabular-nums">
+          <span className="text-muted">Market&rsquo;s pick: </span>
+          {c.market_band
+            ? c.disagrees
+              ? <><b className="text-warn">{c.market_band}</b> at <b>{fmtPrice(c.market_price)}</b></>
+              : <span className="text-good">the same bucket, at {fmtPrice(c.market_price)}</span>
+            : <span className="text-muted">no price</span>}
+        </div>
       </div>
+      {c.live?.running_max_c != null && c.live.source_kind !== "model" && c.predicted_c !== null
+        && c.live.running_max_c > c.predicted_c && (
+        <div className="mt-0.5 text-[11px] text-accent">
+          already {fmtTemp(c.live.running_max_c, u)} today, above the forecast; priced from that floor
+        </div>
+      )}
       {c.centre_outside_forecasts && (
         <div className="mt-0.5 text-[11px] text-bad">
-          outside every public forecast for this day - treat the engine&rsquo;s call with suspicion
+          the forecast the pick is built on is outside every public forecast for this day - treat it with suspicion
         </div>
       )}
       {c.forecast_spread_c !== null && c.forecast_spread_c >= FORECASTS_DISAGREE_C && (
@@ -187,38 +212,8 @@ function Card({ c, onPick, record }: { c: CityCard; onPick?: (city: string) => v
           the public forecasts disagree by {fmtTempDelta(c.forecast_spread_c, u).replace("+", "")} - an uncertain day
         </div>
       )}
-      {/* The predicted maximum is the forecast centre the ladder was priced
-          from. Once the day's own reading is above it, the ladder is priced
-          from that floor instead (P2.7; a station reading only, never a model
-          value), so say so rather than leave the two
-          numbers looking like a contradiction. */}
-      {c.live?.running_max_c != null && c.live.source_kind !== "model" && c.predicted_c !== null
-        && c.live.running_max_c > c.predicted_c && (
-        <div className="mt-0.5 text-[11px] text-accent">
-          already {fmtTemp(c.live.running_max_c, u)} today, above the forecast; priced from that floor
-        </div>
-      )}
-      <div className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-muted">
-        {c.confidence !== null && <span>confidence {fmtPct(c.confidence, 0)}</span>}
-        {c.regime && <span className={regimeColor(c.regime)}>{c.regime}</span>}
-      </div>
 
       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-        <dt className="text-muted">Forecasts</dt>
-        <dd className="tabular-nums">
-          {c.forecasts.length === 0 ? <span className="text-muted">none for this day</span>
-            : c.forecasts.map((f) => (
-              <span key={f.model} className="mr-2" title={f.run_at ? `run ${fmtDateTime(f.run_at)}` : undefined}>
-                {MODEL_LABEL[f.model] ?? f.model} {fmtTemp(f.max_c, u)}
-              </span>))}
-        </dd>
-        <dt className="text-muted">Desk model</dt>
-        <dd className="tabular-nums">
-          {c.own?.predicted_max_c != null
-            ? <>{fmtTemp(c.own.predicted_max_c, u)}{" "}
-                <span className="text-muted">({c.own.promotion_state ?? "state unknown"})</span></>
-            : <span className="text-muted">no prediction for this day</span>}
-        </dd>
         {c.live && (
           <>
             <dt className="text-muted">Today so far</dt>
@@ -229,18 +224,6 @@ function Card({ c, onPick, record }: { c: CityCard; onPick?: (city: string) => v
             </dd>
           </>
         )}
-        <dt className="text-muted">Engine favours</dt>
-        <dd className="tabular-nums">
-          {c.top_band ? <>{c.top_band} <b>{fmtPct(c.top_prob, 0)}</b>
-            <span className="text-muted"> · market {fmtPrice(c.top_yes_price)}</span>
-            {c.favourite_dead && <span className="text-bad"> · the market treats it as dead</span>}</>
-            : <span className="text-muted">not priced</span>}
-        </dd>
-        <dt className="text-muted">Market favours</dt>
-        <dd className="tabular-nums">
-          {c.market_band ? <>{c.market_band} <b>{fmtPrice(c.market_price)}</b></>
-            : <span className="text-muted">no price</span>}
-        </dd>
         <dt className="text-muted">Best trade</dt>
         <dd className="tabular-nums">
           {c.best
@@ -252,12 +235,51 @@ function Card({ c, onPick, record }: { c: CityCard; onPick?: (city: string) => v
         </dd>
       </dl>
 
+      {/* INPUTS, NOT ANSWERS. Each is a forecast of the day's maximum; the
+          pick above is the bucket the engine's probabilities favour after
+          spreading its centre by the measured error. */}
+      <div className="mt-2 border-t border-border pt-1.5 text-[11px]">
+        <div className="text-[10px] uppercase tracking-wide text-muted">What the pick is built from</div>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+          <dt className="text-muted" title="The temperature the engine centres its probabilities on: its forecast input (Open-Meteo) after bias correction. A forecast, not the pick - the pick is the bucket with the most probability once the forecast's measured error is spread around this centre.">
+            Forecast centre
+          </dt>
+          <dd className="tabular-nums">
+            {fmtTemp(c.predicted_c, u)}
+            {c.sigma_c !== null && <span className="text-muted"> ± {fmtTempDelta(c.sigma_c, u).replace("+", "")}</span>}
+            {c.confidence !== null && <span className="text-muted"> · confidence {fmtPct(c.confidence, 0)}</span>}
+            {c.regime && <span className={`ml-1 ${regimeColor(c.regime)}`}>{c.regime}</span>}
+          </dd>
+          <dt className="text-muted">Public forecasts</dt>
+          <dd className="tabular-nums">
+            {c.forecasts.length === 0 ? <span className="text-muted">none for this day</span>
+              : c.forecasts.map((f) => (
+                <span key={f.model} className="mr-2" title={f.run_at ? `run ${fmtDateTime(f.run_at)}` : undefined}>
+                  {MODEL_LABEL[f.model] ?? f.model} {fmtTemp(f.max_c, u)}
+                </span>))}
+          </dd>
+          <dt className="text-muted" title="The desk's own weather model. Until it is promoted it is measured beside the forecasts and does not move the pick.">
+            Desk model
+          </dt>
+          <dd className="tabular-nums">
+            {c.own?.predicted_max_c != null
+              ? <>{fmtTemp(c.own.predicted_max_c, u)}{" "}
+                  <span className="text-muted">({c.own.promotion_state === "shadow"
+                    ? "shadow - measured, not used in the pick" : c.own.promotion_state ?? "state unknown"})</span></>
+              : <span className="text-muted">no prediction for this day</span>}
+          </dd>
+        </dl>
+      </div>
+
       {c.disagrees && (
         <div className="mt-2 rounded border border-bad/40 px-2 py-1 text-[11px] text-bad">
-          The engine and the market favour different buckets.
+          The platform and the market pick different winners here.
           {record && record.days > 0 && (
-            <> Over the last 30 settled days ({c.unit === "F" ? "°F" : "°C"} cities) they disagreed on {record.days}:
-              the market&rsquo;s pick won {record.market_won}, the engine&rsquo;s {record.engine_won}.</>
+            <> When that happened before - across all {c.unit === "F" ? "°F" : "°C"} cities, on the last 30
+              settled days, comparing the picks made the day before - they differed {record.days} times: the
+              market&rsquo;s pick won {record.market_won}, the platform&rsquo;s {record.engine_won}, and
+              neither {record.days - record.market_won - record.engine_won}. So far the market&rsquo;s pick
+              is the better bet when the two differ.</>
           )}
         </div>
       )}
