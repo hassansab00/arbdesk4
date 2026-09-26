@@ -321,6 +321,38 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
+  "derived_mos_coefficients": [
+    {
+      "cadence": "daily",
+      "file": "archive_observations.yml",
+      "how": "scripts/station_mos.py",
+      "kind": "action",
+      "name": "Archive Observations"
+    },
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/station_mos.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    }
+  ],
+  "derived_mos_forecast": [
+    {
+      "cadence": "daily",
+      "file": "archive_observations.yml",
+      "how": "scripts/station_mos.py",
+      "kind": "action",
+      "name": "Archive Observations"
+    },
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/station_mos.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    }
+  ],
   "derived_station_correction": [
     {
       "cadence": "daily",
