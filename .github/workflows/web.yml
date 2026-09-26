@@ -38,7 +38,10 @@ jobs:
 
       - name: Confirm no Supabase env vars are present
         run: |
-          if env | grep -qi 'SUPABASE'; then
+          # Variable NAMES only. Matching whole lines also matched values, so
+          # a branch called plan/p6-2-clock-in-supabase (GITHUB_HEAD_REF)
+          # failed this check on 26 Sep with no Supabase variable set at all.
+          if env | cut -d= -f1 | grep -qi 'SUPABASE'; then
             echo "::error::A SUPABASE variable is set - this job must prove the build works without one."
             exit 1
           fi
