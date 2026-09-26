@@ -10,7 +10,8 @@ fills them all serially before the pool starts; these tests hold that.
 import probability_engine as pe
 
 CACHES = ("_calibration", "_measurement_cache", "_calibration_cache",
-          "_trajectory_cache", "_postprocess_cache", "_divergence_cache")
+          "_trajectory_cache", "_postprocess_cache", "_divergence_cache",
+          "_station_cache")
 
 
 def test_warming_fills_every_shared_cache(monkeypatch):
