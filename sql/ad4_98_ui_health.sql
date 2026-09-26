@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 225 of them - and for each MISSING one names the
+-- and function the app reads - 226 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -91,6 +91,7 @@ with expected(rel, owner, used_by) as (values
     ('strategies', 'ad4_00_preflight.sql', '/campaigns'),
     ('strategy_config_history', 'supabase/migrations/20260923100000_a_retired_desk_stays_retired.sql', ''),
     ('strategy_conflicts', 'ad4_phase2.sql', ''),
+    ('strategy_params', 'supabase/migrations/20260926110000_strategy_params.sql', ''),
     ('strategy_state', 'supabase/migrations/20260924100000_strategy_lifecycle.sql', ''),
     ('strategy_state_history', 'supabase/migrations/20260924100000_strategy_lifecycle.sql', ''),
     ('synthesis_thresholds', 'ad4_40_synthesis.sql', ''),
@@ -338,6 +339,7 @@ begin
     ('strategies', 'ad4_00_preflight.sql', '/campaigns'),
     ('strategy_config_history', 'supabase/migrations/20260923100000_a_retired_desk_stays_retired.sql', ''),
     ('strategy_conflicts', 'ad4_phase2.sql', ''),
+    ('strategy_params', 'supabase/migrations/20260926110000_strategy_params.sql', ''),
     ('strategy_state', 'supabase/migrations/20260924100000_strategy_lifecycle.sql', ''),
     ('strategy_state_history', 'supabase/migrations/20260924100000_strategy_lifecycle.sql', ''),
     ('synthesis_thresholds', 'ad4_40_synthesis.sql', ''),

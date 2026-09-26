@@ -142,6 +142,16 @@ jobs:
         timeout-minutes: 15
         run: python scripts/calibration.py
 
+      # 6a. The nightly learning loop (plan v2 P5.8): the belief maps, from the
+      #     checkpoint outcomes databank banked above, one immutable row per
+      #     version in strategy_params. Recorded every night, used only once
+      #     settings.strategy_learning.enabled is on (after the replay, P7.3).
+      #     Seconds of arithmetic on a few thousand buckets.
+      - name: Learn strategy parameters
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: python scripts/strategy_learn.py
+
       # 6b. Fit the distributional post-processing: per city and lead, the
       #     station bias to subtract and the factor the published width was
       #     missing. Reads fact_forecast_outcome, so it goes AFTER the databank
