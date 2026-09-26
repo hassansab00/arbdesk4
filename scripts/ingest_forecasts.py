@@ -230,6 +230,29 @@ def existing_dates(city_key, start, end):
 def coverage_count(city_key, start, end):
     return len(existing_dates(city_key, start, end))
 
+def missing_span(have, cs, ce):
+    """(first, last) missing date inside [cs, ce], or None when all are present.
+
+    THE NIGHTLY RUN ASKED FOR 36 DAYS TO FILL ONE. The catch-up window is 35
+    days so an old hole is still seen, and a chunk is 60 days so that window is
+    one request - but a chunk with ANY missing date was fetched whole, and the
+    newest date is always missing when the run starts. So every night fetched
+    36 days of best_match and 36 days of seven models for all 48 cities, and
+    chained two continuations to finish: measured 26 Sep, forecasts.yml
+    03:36-04:44Z (three jobs, ~68 billed minutes) plus pipeline_daily's own
+    ingest step 19 minutes - with 19-26 Sep already complete for every city.
+    Asking only for the span that is missing keeps the 35-day view of holes
+    and fetches one day on a normal night."""
+    first = last = None
+    d = cs
+    while d <= ce:
+        if d.isoformat() not in have:
+            first = first or d
+            last = d
+        d += dt.timedelta(days=1)
+    return (first, last) if first else None
+
+
 def chunk_is_covered(have, cs, ce):
     d = cs
     while d <= ce:
@@ -318,6 +341,9 @@ def main():
             if have and chunk_is_covered(have, cs, ce):
                 skipped += 1
                 continue
+            span = missing_span(have, cs, ce)
+            if span:
+                cs, ce = span
             js, outcome = fetch(c["latitude"], c["longitude"], cs, ce, f"{c['city_key']} {cs}")
             if outcome == "refused":
                 refused += 1
