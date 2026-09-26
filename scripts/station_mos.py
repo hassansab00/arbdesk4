@@ -305,9 +305,16 @@ def held_out(rows, lead, as_of):
 # I/O
 # ---------------------------------------------------------------------------
 def load_labels(rest_all):
-    rows = rest_all("derived_city_day_features", [("select", "city_key,obs_date,max_c"), ("max_c", "not.is.null")],
+    """Whole days only - both as the label and as the last station maximum a
+    forward row starts from (common.day_had_ended)."""
+    from common import day_had_ended
+    tz = {r["city_key"]: r.get("timezone") for r in rest_all(
+        "cities", [("select", "city_key,timezone")], order="city_key.asc")}
+    rows = rest_all("derived_city_day_features",
+                    [("select", "city_key,obs_date,max_c,computed_at"), ("max_c", "not.is.null")],
                     order="city_key.asc,obs_date.asc")
-    return {(r["city_key"], str(r["obs_date"])): float(r["max_c"]) for r in rows}
+    return {(r["city_key"], str(r["obs_date"])): float(r["max_c"]) for r in rows
+            if day_had_ended(r["obs_date"], r.get("computed_at"), tz.get(r["city_key"]))}
 
 
 def load_previous(rest_all):

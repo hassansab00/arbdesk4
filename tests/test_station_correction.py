@@ -94,14 +94,18 @@ def test_the_version_names_the_day_and_the_fit():
 def test_a_run_writes_cells_and_open_days_and_logs(monkeypatch):
     import sys
     import types
+    import common as real_common
     pairs = _pairs(days=30)
     written, logged = {}, []
     common = types.ModuleType("common")
 
     def rest_all(path, params=None, **k):
         p = dict(params)
+        if path == "cities":
+            return [{"city_key": c, "timezone": "UTC"} for c in {p[0] for p in pairs}]
         if path == "derived_city_day_features":
-            return [{"city_key": c, "obs_date": d, "max_c": y}
+            return [{"city_key": c, "obs_date": d, "max_c": y, "computed_at": f"{d}T23:59:00+00:00"
+                     if d == "2026-09-25" else "2026-09-26T05:00:00+00:00"}
                     for c, d, s, l, fc, y in pairs if s == "m1" and l == 1]
         if path == "weather_forecast_models" and p.get("source") == f"eq.{sc.FIT_SOURCE}":
             return [{"city_key": c, "model": s, "for_date": d, "lead_days": l, "forecast_max_c": fc}
@@ -113,10 +117,28 @@ def test_a_run_writes_cells_and_open_days_and_logs(monkeypatch):
             return []
         raise AssertionError(path)
     common.rest_all = rest_all
+    common.day_had_ended = real_common.day_had_ended
     common.upsert_replace = lambda t, rows, key: written.setdefault(t, rows) and len(rows)
     common.log_run = lambda job, status, rows, detail: logged.append((job, status, rows, detail))
     monkeypatch.setitem(sys.modules, "common", common)
     d = sc.main(["--as-of", "2026-09-26"])
+    # 25 Sep was "computed" at 23:59 on the day itself: part of the day, so
+    # it is not truth and none of its pairs was read
+    assert d["pairs"] == len([p for p in pairs if p[1] != "2026-09-25"])
     assert len(written["derived_station_correction"]) == 2 * len(SOURCES) * len(sc.LEADS)
     assert written["derived_corrected_forecast"][0]["city_key"] == "hot"
     assert logged[0][0] == "P3.9_station_correction" and d["walk_forward"]["n"] > 0
+
+
+def test_a_day_is_truth_only_once_it_has_ended():
+    """derived_city_day_features' row for "today" holds the readings so far;
+    on 26 Sep the 35 rows computed at 05:18Z were 4.1 C short on average."""
+    import common
+    assert common.day_had_ended("2026-09-26", "2026-09-27T05:20:00+00:00", "Europe/London")
+    assert not common.day_had_ended("2026-09-26", "2026-09-26T05:18:00+00:00", "Europe/London")
+    # Los Angeles' 26 Sep ends at 07:00 UTC on the 27th
+    assert not common.day_had_ended("2026-09-26", "2026-09-27T05:20:00+00:00", "America/Los_Angeles")
+    assert common.day_had_ended("2026-09-26", "2026-09-27T07:00:00+00:00", "America/Los_Angeles")
+    # Tokyo's 26 Sep ended at 15:00 UTC on the 26th
+    assert common.day_had_ended("2026-09-26", "2026-09-26T15:00:00Z", "Asia/Tokyo")
+    assert not common.day_had_ended("2026-09-26", None, "Asia/Tokyo")

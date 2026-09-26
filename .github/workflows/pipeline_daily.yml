@@ -152,29 +152,6 @@ jobs:
         timeout-minutes: 5
         run: python scripts/strategy_learn.py
 
-      # 6a2. Plan v2.2 P3.9: each forecast model's error at the settlement
-      #      station, learned per city and lead, and the corrected equal-weight
-      #      combination for the open days. Shadow: nothing prices from it
-      #      until it beats the engine's input on later dates. Scores itself
-      #      walk-forward every night (logged). Seconds of arithmetic.
-      - name: Fit the station correction per forecast model
-        if: ${{ !cancelled() }}
-        timeout-minutes: 5
-        run: python scripts/station_correction.py
-
-      # 6a3. Plan v2.2 P2.9: the honest station model - learned only from what
-      #      the forecasts said beforehand (data/training/previous_runs, which
-      #      archive_observations.yml extends nightly) - and its blend with the
-      #      P3.9 combination above, for the open days. Scores itself on the
-      #      last 30 days with a fit that ended before them (logged). Shadow
-      #      until settings.station_mos_pricing is on. Measured locally 26 Sep:
-      #      a fit 3.4 s, the held-out check 4.8 s, per lead; plus 96 requests
-      #      for the current runs.
-      - name: The honest station model
-        if: ${{ !cancelled() }}
-        timeout-minutes: 5
-        run: python scripts/station_mos.py
-
       # 6b. Fit the distributional post-processing: per city and lead, the
       #     station bias to subtract and the factor the published width was
       #     missing. Reads fact_forecast_outcome, so it goes AFTER the databank
@@ -206,6 +183,36 @@ jobs:
         if: ${{ !cancelled() }}
         timeout-minutes: 30
         run: python scripts/capacity.py
+
+      # 7a. Plan v2.2 P3.9: each forecast model's error at the settlement
+      #      station, learned per city and lead, and the corrected equal-weight
+      #      combination for the open days. AFTER the derived recompute (7):
+      #      its truth is derived_city_day_features, and until 7 runs the row
+      #      for yesterday is the part of the day seen at 05Z the day before -
+      #      measured 26 Sep, 4.1 C short on average across 35 cities. The
+      #      script also reads only rows computed after their local day ended.
+      #      The engine prices from it only while
+      #      settings.station_correction_pricing is on. Scores itself
+      #      walk-forward every night (logged). Seconds of arithmetic.
+      - name: Fit the station correction per forecast model
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: python scripts/station_correction.py
+
+      # 7a2. Plan v2.2 P2.9: the honest station model (after 7 and 7a, for
+      #      the same reason: its labels and the last station maximum a
+      #      forward row starts from must be whole days) - learned only from what
+      #      the forecasts said beforehand (data/training/previous_runs, which
+      #      archive_observations.yml extends nightly) - and its blend with the
+      #      P3.9 combination above, for the open days. Scores itself on the
+      #      last 30 days with a fit that ended before them (logged). Shadow
+      #      until settings.station_mos_pricing is on. Measured locally 26 Sep:
+      #      a fit 3.4 s, the held-out check 4.8 s, per lead; plus 96 requests
+      #      for the current runs.
+      - name: The honest station model
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: python scripts/station_mos.py
 
       # 7b. How right each city's thermometer has been, copied onto cities so
       #     both engines can read it. AFTER "Freeze settled city-days", because
