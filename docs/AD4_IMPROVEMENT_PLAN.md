@@ -12,6 +12,11 @@ Line numbers are hints. Code moves, so find each change by the function or symbo
 - **The single-bucket thesis gets its own learning loop.** Every night, per city, every predictor and permutation is scored on the bucket that actually settled, out of sample; the winner prices, with bounded steps and a version (P3.8). Before it can choose between forecast models, the platform must collect more than one (P2.8).
 - **Supabase is continuously unloaded into the repo**, not only the rows about to be pruned (P1.7), and the platform reads back everything the repo holds (P1.8).
 
+**v2.2 additions (Hassan, 26 Sep: "I want a superior predictive model"; source: an external audit of the predictive model, each claim checked below against the code and the live database before it was written in):**
+- **Predict the station's remaining temperature evolution, not only turn a public daily forecast into buckets.** The public models are the starting point; AD4 learns when, where and by how much they are wrong at the settlement station, and updates that during the day from what the station is actually doing (P2.9, P2.10, P3.9, and the P7.2/P7.3 amendments).
+- **Every addition must improve predictions on later dates**, reported per checkpoint and per city, on both temperature error and the winning bucket. The experiment that matters is the morning and pre-peak checkpoints, not after the maximum is apparent.
+- **Hit and Miss for US cities lands a day late** because the venue proofs are collected once a day before US days end (P4.7).
+
 ---
 
 ## 0. How to execute this plan
@@ -226,6 +231,29 @@ P7 design work (P7.1–P7.3) can start as soon as P2 is merged. Shadow trading (
 
 ---
 
+### P2.9 An honest training record for the desk's own weather model (v2.2)
+**Finding (checked 26 Sep):** `scripts/weather_model.py` trains on `derived_city_day_features` (`sql/ad4_21_weather_features.sql`), where `wind_mean` and `cloud_mean` are OBSERVED means over 09:00-17:00 local and `precip_total` is the OBSERVED whole-day sum, and then predicts forward with the FORECAST versions of the same columns (`weather_forecast_features`). Its held-out skill was measured with the afternoon's actual weather in hand, which the morning never has. The promotion gate caught the consequence: on 26 Sep none of 392 city-horizon models was promoted (263 shadow, 129 stale), and on forward days they averaged 0.969 C WORSE than the public forecast (`derived_model_promotion.gain_vs_public_c`).
+- **Change:** one training row per (station, target day, cutoff). Its inputs are only: observations with `valid_at <= cutoff`; forecast runs whose publication time `<= cutoff` (P2.6 issue times plus the provider's publication delay, P2.10); the remaining forecast hours; and history known at the cutoff. The label is the eventual station maximum. A future observation is never a predictor.
+- Completed-day features stay in `derived_city_day_features` for error analysis. A model fitted on them is never presented or promoted as an advance forecaster.
+- **Test:** a lookahead test over the feature builder (no input timestamp after the cutoff), and one proving the training and forward paths read the same source for every feature.
+- **Acceptance:** the refitted model's forward-day gain against the public forecast, from `derived_model_promotion`, reported before and after, per lead.
+
+### P2.10 The whole Open-Meteo feed, including archived runs (v2.2)
+**Finding (checked 26 Sep):**
+- n8n P1.5 asks the Forecast API (best_match only) for hourly `temperature_2m, relative_humidity_2m, dew_point_2m, apparent_temperature, precipitation, precipitation_probability, cloud_cover, wind_speed_10m, wind_direction_10m, surface_pressure, pressure_msl`.
+- `scripts/ingest_forecasts.py` asks the Previous Runs API for `temperature_2m` only, for best_match and 7 models (ECMWF IFS, GFS, ICON, UKMO, JMA, GEM, Meteo-France), at leads 1-7.
+- None of the variables that govern daytime heating is collected: shortwave/direct radiation, sunshine duration, cloud by layer (low cloud matters most for Tmax), 850 hPa temperature, boundary-layer height, soil moisture, vapour-pressure deficit, gusts. No ensemble spread, and no archive of runs by initialisation time.
+- **Change:**
+  1. Collect per model: the heating variables above, hourly, for the target days the desk prices.
+  2. The Ensemble API for spread (members' Tmax distribution).
+  3. The Single Runs / Historical Forecast archives, to backfill training examples by initialisation time. Each run carries its **publication time**, not its initialisation time: a 00Z run is not available at 00Z.
+  4. Track model upgrades (a source whose physics changed is a new source for the correction in P3.9).
+- **Budget first:**
+  - Open-Meteo counts each location and each 10 variables as calls. The free API is for non-commercial use with a daily cap. Measure calls per run before and after, keep production under the cap, and say whether a commercial key is needed.
+  - Storage: the Supabase cap (P1.6) means hourly archives go to the repo mirror or parquet (P1.7), not Postgres.
+  - Actions minutes (Rule 7).
+- **Acceptance:** per model and variable, coverage of the target days priced, and the measured call count per day against the cap.
+
 ## P3. Correct pricing
 
 ### P3.1 Fix the floor atom (critical)
@@ -351,6 +379,25 @@ P7 design work (P7.1–P7.3) can start as soon as P2 is merged. Shadow trading (
 
 ---
 
+### P3.9 Learn each source's error at the settlement station, then combine (v2.2)
+**Finding (checked 26 Sep):**
+- `scripts/forecast_postprocess.py` corrects ONE series (the desk's forecast input) per city and lead: a shrunk bias and a width factor.
+- `scripts/hit_tournament.py` chooses between models per city, but on the winning bucket rather than by correcting each model.
+- Nothing learns how a source's error depends on the day's conditions.
+- **Change:** for each source (model), learn its error at the station (station max - source max) as a function of station and season, lead, cloud and wind (as forecast), recent errors of that source, and the grid-versus-station difference (elevation, coast distance).
+  - One pooled, regularised (ridge) regression with modest station effects shrunk to the pool. Not a separate model per city, hour and regime.
+  - Then combine the corrected sources. **Equal weights are the benchmark**; learned weights are used only if they beat it on later dates.
+  - A boosted-tree challenger may compete later, and must earn its place the same way.
+- **Uncertainty** comes from the conditions: disagreement between corrected sources, recent error, uncertain cloud clearing or wind change, missing or old observations, and time left. Agreement between sources is not enough to narrow it, because sources share errors.
+- Rule 11 applies: prior (no correction), bounds, minimum n per station before its effect moves off the pool, a maximum step per refit, and a version on every price.
+- **Acceptance:** walk-forward on dates after the fit window. Report temperature MAE, CRPS and winning-bucket hit rate for each of:
+  - raw best_match;
+  - each corrected source;
+  - the equal-weight combination;
+  - the learned combination.
+
+  Report them per lead and per city, with all eligible events.
+
 ## P4. Honest evidence
 
 ### P4.1 The `prediction_checkpoints` table (shared with S10)
@@ -413,6 +460,14 @@ P7 design work (P7.1–P7.3) can start as soon as P2 is merged. Shadow trading (
 
 ---
 
+
+### P4.7 US city-days are scored a day late (v2.2)
+**Finding (checked 26 Sep):**
+- Venue confirmations are collected once a day, about 05:00Z, in `pipeline_daily`. A US local day ends at 04:00-07:00Z, so a US day is confirmed on the following day's run.
+- Measured: 25 Sep had 32 confirmed C markets at 04:58-05:04Z on 26 Sep, and 0 of 11 F. 55 US checkpoints written for 25 Sep have 0 banked.
+- The Hit and Miss table, sorted newest first, therefore shows only C cities on its latest date.
+- **Change:** confirm and bank recently ended markets after the US day ends, inside an existing run (the tick or a later daily step), without a new schedule unless P6.1's budget allows it. The panel says which days are still waiting on the venue.
+- **Acceptance:** for three consecutive days, the lag between a market's local day end and its checkpoint rows being banked, for C and F cities.
 
 ## P5. Paper trading engine v2
 
@@ -790,6 +845,28 @@ Predicts the distribution of the **final daily max** from what has happened so f
   - **Uncertainty depends on the state (heteroscedastic).** The spread of the remaining rise is itself a function of the features: slope, cloud, the size of the forecast remaining rise, and **cross-model disagreement**, which marks sharp days versus uncertain ones. Width must not be one number per city-hour. Test that the predicted spread is wider on high-disagreement days and that the coverage of the 80% interval holds in each regime tercile.
   - **Adaptive between refits.** The weekly refit (P6.1 `weekly.yml`) re-estimates the coefficients. The nightly loop (P5.8) updates only the shrunk **city effects** and a **recent-bias term** (an exponentially weighted mean of the last 10 days' final-max residuals per city, half-life 5 days, bounded ±1.5 °C). The model tracks seasonal drift without refitting everything.
   - **Output:** the final-max distribution, converted to buckets through P3.1 (venue rounding plus q_up/q_down).
+  - **v2.2 additions (audit, 26 Sep).**
+    - **Observed-versus-forecast discrepancy features, all as of the decision time:**
+      - temperature error over recent readings;
+      - observed versus forecast warming rate;
+      - observed versus forecast cloud;
+      - wind direction and speed change;
+      - forecast revisions of the remaining hours (newest run minus previous);
+      - remaining solar radiation and daylight.
+    - How long a morning error persists is **learned**, never assumed: sometimes it persists and sometimes the forecast catches up. Cloud errors and coastal airflow get particular attention. No hard-coded rule such as "dry air means more warming".
+    - **A noisy reading is not an unquestionable floor.** Station reading error and official settlement corrections are modelled separately, so the atom at R carries observation uncertainty.
+    - **Peak timing is an output, not an assumption:**
+      - the probability of exceeding the current maximum;
+      - the probability of crossing the next bucket boundary;
+      - the distribution of when a new maximum could occur over the whole remaining settlement window.
+
+      The city's mean peak hour is a feature, not the answer.
+    - **Later candidate:** simulated remaining-day temperature paths, with the maximum taken per path. Adjacent hours must stay dependent; independent hourly draws exaggerate the maximum.
+    - **Outputs kept distinct:**
+      - the predicted maximum (median);
+      - a prediction interval with stated coverage;
+      - the most likely settlement bucket, computed from the full distribution under the venue's rounding (it is not necessarily the bucket holding the mean);
+      - the probability of further warming.
 - **Stage 2 — only if Stage 1 wins.** Try gradient-boosted quantiles (LightGBM) on the same features. It must beat Stage 1 walk-forward by the P3.4 bootstrap rule.
 - **Before any observation exists** (the `d1_eve` checkpoint, and `morning` for late-peaking cities): the model reduces to the corrected forecast distribution. Make sure the Stage 1 features let the forecast dominate when `R` is uninformative, and test that it does.
 - **Training data:**
@@ -804,6 +881,14 @@ Predicts the distribution of the **final daily max** from what has happened so f
 - Write rows to `replay_checkpoints` in the same shape as `prediction_checkpoints`. Keep them in parquet or a separate schema, not the live DB, because of the cap.
 - Report `v_checkpoint_scoreboard`-equivalent metrics for Stage 0, Stage 1 and the public-forecast argmax. The market comparison is only possible where books exist (from 22 Aug, full ladders from 12 Sep).
 - From 12 Sep onward, the replay also runs the **full decision engine** (P5.12) for each S10 variant (P7.5), with the learning loop replayed day by day. That gives a hypothetical trading record before any live shadow day.
+- **v2.2: the version ladder.** Build and compare, in this order, each kept only if it improves on later dates:
+  1. the current forecast path;
+  2. the corrected forecast combination (P3.9);
+  3. that combination updated with the day's observation errors;
+  4. the remaining-day maximum distribution (P7.2 Stage 1);
+  5. a more flexible model, only if needed.
+
+  Report temperature error, winning-bucket hit rate and probability quality, per checkpoint and per city, with all eligible events. The experiment that decides is **morning and pre-peak**.
 - **Acceptance:** a replay report in `docs/S10_REPLAY_<date>.md` with n, coverage, accuracy with Wilson CI per checkpoint, reliability, and CRPS/log loss against the baseline.
 
 ### P7.4 S10 inside the hourly tick
