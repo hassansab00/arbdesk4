@@ -929,6 +929,16 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_canonical_markets": [
     "markets"
   ],
+  "v_checkpoint_calls": [
+    "bands",
+    "fact_checkpoint_outcome",
+    "prediction_checkpoints"
+  ],
+  "v_checkpoint_scoreboard": [
+    "bands",
+    "fact_checkpoint_outcome",
+    "prediction_checkpoints"
+  ],
   "v_city_climate": [
     "cities",
     "weather_observations"
@@ -1339,12 +1349,21 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_observations"
   ],
   "v_prediction_hindsight": [
+    "bands",
+    "fact_checkpoint_outcome",
+    "prediction_checkpoints",
     "band_probabilities",
     "cities",
+    "edges",
+    "fact_band_outcome"
+  ],
+  "v_prediction_hindsight_summary": [
     "bands",
-    "paper_resolution_evidence",
-    "resolution_verdicts",
-    "markets",
+    "fact_checkpoint_outcome",
+    "prediction_checkpoints",
+    "band_probabilities",
+    "cities",
+    "edges",
     "fact_band_outcome"
   ],
   "v_prediction_ladder": [

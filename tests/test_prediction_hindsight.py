@@ -87,13 +87,57 @@ def test_the_ladder_is_the_band_view_plus_the_edge():
     assert "fact_band_outcome" in _view(s, "v_prediction_ladder_bands")
 
 
-def test_hindsight_is_in_the_repository_and_never_reads_edges():
-    """v_prediction_hindsight existed only in the live database from 16 to 22
-    Sep. It is defined here now, and it reads the band view: the edge lookup it
-    used to pay for and discard was 160,603 of its 311,570 buffers."""
-    hindsight = _view(ladder(), "v_prediction_hindsight")
-    assert "from v_prediction_ladder_bands" in hindsight
-    assert "edges" not in hindsight and "v_prediction_ladder " not in hindsight
+FROZEN = ROOT / "supabase" / "migrations" / "20260926090000_hit_and_miss_scores_frozen_calls.sql"
+
+
+def frozen():
+    import re
+    body = re.sub(r"--[^\n]*", " ", FROZEN.read_text(encoding="utf-8"))
+    return " ".join(body.lower().split())
+
+
+def test_hindsight_grades_only_calls_frozen_before_the_answer():
+    """Until 26 Sep the grade took each band's LATEST probability with no time
+    limit: 627 of 647 city-days had last been priced after 15:00 local, 306
+    after the day ended. It now reads the day-ahead call (the last pricing
+    before the local day began) and the fixed-time checkpoints, and nothing
+    that reads the latest probability."""
+    s = frozen()
+    view = s[s.index("create view public.v_prediction_hindsight as"):]
+    view = view[:view.index(";")]
+    assert "from public.v_city_hit_history h" in view
+    assert "from public.v_checkpoint_calls c" in view
+    for leak in ("v_prediction_ladder_bands", "band_probabilities", "edges", "v_prediction_ladder "):
+        assert leak not in view, f"{leak} is priced at any time, including after the day"
+    assert "create or replace view public.v_prediction_hindsight" not in ladder(), (
+        "the leaky definition must not come back from sql/ad4_68 on a reinstall")
+
+
+def test_after_the_peak_is_marked_and_kept_out_of_the_headline():
+    s = frozen()
+    assert "cp.checkpoint = 'postpeak_1h' as after_peak" in s
+    src = PANEL.read_text(encoding="utf-8")
+    assert 'x.called_when === "day_ahead"' in src, "the headline is the day-ahead call"
+    assert "After the peak — not a forecast" in src
+
+
+def test_the_market_favourite_is_priced_inside_its_quote():
+    """A dead bucket offered at 0.001 with a last trade of 0.999 was the
+    market's favourite on 26 Sep. One rule, in the database and in tick.py."""
+    s = frozen()
+    assert "when ask is not null then least(last, ask)" in s
+    assert "when bid is not null then greatest(last, bid)" in s
+    assert s.count("public.book_mark(") >= 3      # defined, used to bank, used to grade
+    tick = (ROOT / "scripts" / "tick.py").read_text(encoding="utf-8")
+    assert "return min(last, ask)" in tick and "return max(last, bid)" in tick
+
+
+def test_the_panel_reads_totals_from_the_database():
+    """PostgREST returns at most 1,000 rows; the row view passes that in days,
+    and a summary computed from a truncated read looks like an answer."""
+    src = PANEL.read_text(encoding="utf-8")
+    assert "v_prediction_hindsight_summary" in src
+    assert "create or replace view public.v_prediction_hindsight_summary" in frozen()
 
 
 def test_hindsight_dedupes_by_band_rather_than_filtering_to_one_side():
