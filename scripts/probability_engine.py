@@ -559,7 +559,7 @@ def _bands_for_markets(market_ids):
     return out
 
 
-def forecast_provenance(model_priced, mrow, forecast, traj_row=None):
+def forecast_provenance(model_priced, mrow, forecast, traj_row=None, station_row=None):
     """(label, config) for the forecast a price was built on (plan v2 P3.7).
 
     Decided from what the engine DID, not by comparing numbers. The old test
@@ -578,6 +578,10 @@ def forecast_provenance(model_priced, mrow, forecast, traj_row=None):
     else:
         label = f"{forecast.get('model')}:{forecast.get('run_at')}"
         config = {"model": forecast.get("model"), "run_at": forecast.get("run_at")}
+    if station_row is not None:
+        label = f"station_correction:{station_row.get('version')}:" + label
+        config = {**config, "centre": "station_correction", "version": station_row.get("version"),
+                  "combined_c": station_row.get("combined_c"), "n_sources": station_row.get("n_sources")}
     if traj_row is not None:
         hour = traj_row.get("local_hour")
         label = f"trajectory:{int(hour):02d}h:" + label if hour is not None else "trajectory:" + label
@@ -777,6 +781,60 @@ def _fresh(reading_at, now=None):
 
 
 _postprocess_cache = None
+_station_cache = None
+
+# PLAN v2.2 P3.9: the station-corrected combination prices days ahead.
+#
+# derived_corrected_forecast holds, per open city-day, the equal-weight mean of
+# seven public models after each model's learned station bias
+# (scripts/station_correction.py). Replayed on 582 settled city-days of 13-25
+# Sep, day-ahead, on the venue's own ladders and the engine's own sigma, with
+# ONLY the centre changed: right bucket 30.2% -> 37.1% (+6.9 pts, 95% by date
+# bootstrap [+2.3, +11.1]); log loss 1.847 -> 1.657; centre error 1.12 -> 0.82 C.
+# So it replaces the centre - and nothing else - for markets at lead 1 or more,
+# the horizon the replay covered. Same-day prices keep their path (fresher
+# intraday forecasts, the observed floor, the trajectory) until a same-day
+# replay says otherwise. A promoted model still wins: it is a different centre
+# with different errors.
+#
+# Switched by settings.station_correction_pricing (enabled, min_lead_days,
+# max_age_hours). A row older than max_age_hours is not used: the fit runs
+# nightly, and a stale combination must fall back to the live path rather
+# than price from yesterday's runs without saying so.
+STATION_MIN_LEAD_DAYS = 1
+STATION_MAX_AGE_HOURS = 36.0
+
+
+def _station_corrected_for(city_key, for_date, lead_days):
+    """The station-corrected combination for this city-day, or None."""
+    global _station_cache
+    if _station_cache is None:
+        _station_cache = {}
+        try:
+            cfg = rest("settings", [("select", "value"), ("key", "eq.station_correction_pricing")])
+            cfg = (cfg[0].get("value") if cfg else None) or {}
+            if cfg.get("enabled") is True:
+                min_lead = int(cfg.get("min_lead_days", STATION_MIN_LEAD_DAYS))
+                max_age = float(cfg.get("max_age_hours", STATION_MAX_AGE_HOURS))
+                since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=max_age)).isoformat()
+                for r in rest("derived_corrected_forecast", [
+                        ("select", "city_key,for_date,lead_days,combined_c,spread_c,n_sources,version,computed_at"),
+                        ("computed_at", f"gte.{since}")]):
+                    r["_min_lead"] = min_lead
+                    _station_cache[(r["city_key"], str(r["for_date"]))] = r
+        except Exception as e:
+            print(f"  note: station correction unavailable ({str(e)[:80]}) - "
+                  f"pricing from the public forecast path", file=sys.stderr)
+    if city_key is None or lead_days is None:
+        return None
+    row = _station_cache.get((city_key, str(for_date)))
+    if row is None or int(lead_days) < int(row.get("_min_lead", STATION_MIN_LEAD_DAYS)):
+        return None
+    try:
+        float(row["combined_c"])
+    except (TypeError, ValueError, KeyError):
+        return None
+    return row
 
 
 def _postprocess_for(city_key, lead_days):
@@ -1310,6 +1368,19 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     # its own homework, and ad4_45's z = (observed - forecast_max_c)/sigma_c
     # would divide a forecast-sized error by a trajectory-sized width and tell
     # the calibration map the desk is far more overconfident than it is.
+    # ---- THE STATION-CORRECTED COMBINATION REPLACES THE CENTRE (P3.9) ----
+    # Days ahead only, never over a promoted model; the width is untouched,
+    # because the replay that earned this kept the engine's own sigma.
+    srow = None if model_priced else _station_corrected_for(city_key, for_date, lead_days)
+    if srow is not None:
+        public_centre = centre_corrected
+        centre_corrected = float(srow["combined_c"])
+        spread = srow.get("spread_c")
+        reasons.append(
+            f"station_correction:{srow.get('version')}:{srow.get('n_sources')}sources"
+            f":spread{'-' if spread is None else format(float(spread), '.2f')}C"
+            f":centre{centre_corrected:.2f}C_vs_public{public_centre:.2f}C")
+
     forecast_sigma_c = sigma
     traj_centre, traj_sigma, traj_row = _trajectory_for(city_key, for_date)
     if traj_centre is None and traj_row and traj_row.get("skipped"):
@@ -1348,7 +1419,7 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     # the centre, the answer is that model and not the public run - otherwise
     # every post-mortem on a model-priced trade would point at NWS.
     forecast_label, forecast_config = forecast_provenance(
-        model_priced, mrow, forecast, traj_row if traj_centre is not None else None)
+        model_priced, mrow, forecast, traj_row if traj_centre is not None else None, srow)
     forecast_version = model_version_id(
         "forecast", forecast_label, config=forecast_config, structural=False)
     # The readable label too, for a caller that records the path (the tick's
@@ -1433,6 +1504,7 @@ def _warm_caches():
     _calibration_for(None)
     _trajectory_now()
     _postprocess_for(None, 0)
+    _station_corrected_for(None, None, None)
     _divergence()
 
 
