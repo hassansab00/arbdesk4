@@ -21,6 +21,7 @@ export const SQL_OWNER: Record<string, string> = {
   "book_snapshots": "ad4_00_preflight.sql",
   "cities": "ad4_00_preflight.sql",
   "city_metadata_evidence": "supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql",
+  "clock_schedule": "supabase/migrations/20260926130000_the_clock_moves_into_supabase.sql",
   "cost_params": "ad4_phase2.sql",
   "data_freshness_spec": "ad4_39_freshness.sql",
   "decisions": "supabase/migrations/20260925090000_decision_log.sql",

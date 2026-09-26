@@ -282,37 +282,43 @@ def clock_entry(file):
     return None
 
 
-def n8n_clock():
-    """{workflow file: runs per 30 days} dispatched on a clock by n8n (plan v2 P6.1).
+CLOCK_MIGRATION = "20260926130000_the_clock_moves_into_supabase.sql"
 
-    GitHub's cron dropped 6 of the tick's first 7 hourly runs on 24 Sep, so the
-    tick and intraday are started by the n8n workflow P6.1_clock instead. Those
-    runs bill Actions minutes exactly as scheduled ones do, so they count here:
-    the CLOCK table in its "Due this hour" node is one JSON literal, parsed.
+
+def clock():
+    """{workflow file: runs per 30 days} dispatched on the desk's clock.
+
+    GitHub's cron dropped 6 of the tick's first 7 hourly runs on 24 Sep, so
+    every scheduled workflow is started by a clock instead: n8n's P6.1_clock
+    until 26 Sep, then public.clock_tick() in Supabase (pg_cron + pg_net, plan
+    v2 P6.2). Those runs bill Actions minutes exactly as scheduled ones do, so
+    they count here. The schedule is one JSON literal in the migration that
+    seeds public.clock_schedule, parsed.
     """
-    import glob
+    import datetime as _dt
     import json as _json
     import re as _re
 
+    sql = open(os.path.join(ROOT, "supabase", "migrations", CLOCK_MIGRATION)).read()
+    m = _re.search(r"jsonb_to_recordset\(\s*'(\[.*?\])'::jsonb", sql, _re.S)
+    assert m, f"the clock's schedule literal is missing from {CLOCK_MIGRATION}"
     out = {}
-    for path in sorted(glob.glob(os.path.join(ROOT, "n8n", "*.template.json"))):
-        for node in _json.load(open(path)).get("nodes", []):
-            code = node.get("parameters", {}).get("jsCode", "")
-            m = _re.search(r"const CLOCK = (\[.*?\]);\n", code)
-            if not m:
-                continue
-            for entry in _json.loads(m.group(1)):
-                hours = entry["hours_utc"]
-                per_day = 24 if hours == "*" else len(set(hours))
-                # weekdays_utc (0 = Sunday) limits an entry to some days of
-                # the week, counted over the same 30 days from 1 Jan 2026 that
-                # runs_per_30_days walks for a GitHub cron's day-of-week field.
-                days = entry.get("weekdays_utc")
-                import datetime as _dt
-                n_days = sum(1 for i in range(30)
-                             if not days or ((_dt.date(2026, 1, 1) + _dt.timedelta(days=i)).weekday() + 1) % 7 in days)
-                out[entry["file"]] = out.get(entry["file"], 0) + per_day * n_days
+    for entry in _json.loads(m.group(1)):
+        hours = entry["hours_utc"]
+        per_day = 24 if hours == "*" else len(set(hours))
+        # weekdays_utc (0 = Sunday) limits an entry to some days of the week,
+        # counted over the same 30 days from 1 Jan 2026 that runs_per_30_days
+        # walks for a GitHub cron's day-of-week field.
+        days = entry.get("weekdays_utc")
+        n_days = sum(1 for i in range(30)
+                     if not days or ((_dt.date(2026, 1, 1) + _dt.timedelta(days=i)).weekday() + 1) % 7 in days)
+        out[entry["file"]] = out.get(entry["file"], 0) + per_day * n_days
     return out
+
+
+# The n8n clock's CLOCK table is no longer counted: that workflow is switched
+# off once the Supabase clock runs, and counting both would double the budget.
+n8n_clock = clock
 
 
 # THE FALLBACK WHILE n8n COULD NOT DISPATCH (24-25 Sep). GitHub's crons were
