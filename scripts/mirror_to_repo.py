@@ -122,6 +122,8 @@ TABLES = {
     # plan v2.2 P3.9: each model's station bias and the corrected combination
     "derived_station_correction":    snapshot("city_key", "source", "lead_days"),
     "derived_corrected_forecast":    snapshot("city_key", "for_date"),
+    "derived_mos_coefficients":      snapshot("city_key", "lead_days"),
+    "derived_mos_forecast":          snapshot("city_key", "for_date"),
     # --- what happened: inputs and settled outcomes -------------------------
     "weather_observations":          append("observed_at", "obs_id"),
     "weather_forecasts":             append("observed_at", "forecast_id"),

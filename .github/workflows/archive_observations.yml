@@ -266,6 +266,19 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
+      # THE HONEST TRAINING RECORD (plan v2.2 P2.9): what each public forecast
+      # said about the last days before they happened, appended to
+      # data/training/previous_runs for scripts/station_mos.py. Two requests a
+      # city (~200 weighted Open-Meteo calls for 10 days x 48 cities); it
+      # deletes nothing and a failed city is simply asked again tomorrow.
+      - name: Append the honest training record
+        if: always()
+        timeout-minutes: 5
+        run: PYTHONPATH=scripts python scripts/honest_record.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
       # `if: always()`: a table that failed must not strand the ones that were
       # written and verified - the manifest is saved after every table, so
       # what is on disk is exactly what it records.
@@ -274,14 +287,14 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          mkdir -p data/mirror
-          git add data/mirror
+          mkdir -p data/mirror data/training
+          git add data/mirror data/training
           if git diff --staged --quiet; then
             echo "mirror unchanged - nothing new to copy"
             exit 0
           fi
           FILES=$(git diff --staged --name-only | grep -c '\.csv\.gz$' || true)
-          git commit -m "Mirror: ${FILES} files into data/mirror [skip ci]"
+          git commit -m "Mirror: ${FILES} files into data/mirror and data/training [skip ci]"
           pushed=0
           for i in 1 2 3 4; do
             if git push origin HEAD:${{ github.ref_name }}; then pushed=1; break; fi

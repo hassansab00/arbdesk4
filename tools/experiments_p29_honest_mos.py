@@ -168,6 +168,11 @@ MODELS = ["ecmwf_ifs025", "gfs_seamless", "icon_seamless", "ukmo_seamless", "jma
           "meteofrance_seamless"]
 DEV = ["ecmwf_ifs025", "gfs_seamless", "icon_seamless", "jma_seamless"]
 FIRST_TEST = dt.date(2025, 11, 1)
+# The last station max the model may see: `lead` days before the target at a
+# midnight cutoff; one day more for a job that runs before the day has ended
+# (the nightly fit at ~05Z UTC). P2.9_PREV_EXTRA_LAG=1 measures that case.
+import os
+PREV_EXTRA_LAG = int(os.environ.get("P2.9_PREV_EXTRA_LAG".replace(".", "_"), "0"))
 
 def day(s): return dt.date.fromisoformat(s)
 
@@ -183,7 +188,7 @@ def build(lead):
         if y is None or r[3] is None or len(m17) < 4:
             continue
         d = day(ds)
-        prev = Y.get((city, (d - dt.timedelta(days=lead)).isoformat()))
+        prev = Y.get((city, (d - dt.timedelta(days=lead + PREV_EXTRA_LAG)).isoformat()))
         _, _, _, tmax, tmax17, tmin, t08, td08, td_day, cc_day, cc_max, sw, ws, pr, p08, n = r
         mean = sum(m17) / len(m17)
         spread = float(np.std(m17))

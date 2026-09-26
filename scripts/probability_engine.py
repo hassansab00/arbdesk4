@@ -804,6 +804,19 @@ _station_cache = None
 STATION_MIN_LEAD_DAYS = 1
 STATION_MAX_AGE_HOURS = 36.0
 
+# PLAN v2.2 P2.9: THE HONEST STATION MODEL JOINS IT.
+#
+# derived_mos_forecast holds scripts/station_mos.py's maximum, learned only
+# from what the forecasts said beforehand, and blend_c - its mean with the P3.9
+# combination above. Walk-forward Nov 2025-Sep 2026, lead 1, 15,652 city-days:
+# the blend beat P3.9 alone by 0.036 C MAE [0.031, 0.041] and +1.1 pts on the
+# same whole degree [+0.5, +1.6], in 11 of 11 months. It is used only where its
+# row was built against THE SAME P3.9 version the engine is about to price
+# from, so the blend is never half of tonight's combination and half of
+# yesterday's; both versions go into the reasons. Switched by
+# settings.station_mos_pricing (enabled, min_lead_days, max_age_hours), which
+# only matters while station_correction_pricing is on.
+
 
 def _station_corrected_for(city_key, for_date, lead_days):
     """The station-corrected combination for this city-day, or None."""
@@ -822,6 +835,7 @@ def _station_corrected_for(city_key, for_date, lead_days):
                         ("computed_at", f"gte.{since}")]):
                     r["_min_lead"] = min_lead
                     _station_cache[(r["city_key"], str(r["for_date"]))] = r
+                _blend_station_model(_station_cache)
         except Exception as e:
             print(f"  note: station correction unavailable ({str(e)[:80]}) - "
                   f"pricing from the public forecast path", file=sys.stderr)
@@ -835,6 +849,38 @@ def _station_corrected_for(city_key, for_date, lead_days):
     except (TypeError, ValueError, KeyError):
         return None
     return row
+
+
+def _blend_station_model(cache):
+    """Replace each P3.9 row's centre with the P3.9/station-model blend where
+    settings.station_mos_pricing allows and the blend was made from that very
+    P3.9 row. Any failure leaves the P3.9 rows as they are."""
+    try:
+        cfg = rest("settings", [("select", "value"), ("key", "eq.station_mos_pricing")])
+        cfg = (cfg[0].get("value") if cfg else None) or {}
+        if cfg.get("enabled") is not True:
+            return 0
+        min_lead = int(cfg.get("min_lead_days", STATION_MIN_LEAD_DAYS))
+        max_age = float(cfg.get("max_age_hours", STATION_MAX_AGE_HOURS))
+        since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=max_age)).isoformat()
+        updates = []
+        for m in rest("derived_mos_forecast", [
+                ("select", "city_key,for_date,lead_days,mos_c,blend_c,p39_version,version,computed_at"),
+                ("computed_at", f"gte.{since}"), ("blend_c", "not.is.null")]):
+            row = cache.get((m["city_key"], str(m["for_date"])))
+            if row is None or m.get("p39_version") != row.get("version") or int(m["lead_days"]) < min_lead:
+                continue
+            updates.append((row, float(m["blend_c"]), m))
+        for row, blend, m in updates:          # all or nothing: nothing above wrote
+            row["p39_c"] = row["combined_c"]
+            row["mos_c"] = m.get("mos_c")
+            row["combined_c"] = blend
+            row["version"] = f"{row.get('version')}+{m.get('version')}"
+        return len(updates)
+    except Exception as e:
+        print(f"  note: station model unavailable ({str(e)[:80]}) - "
+              f"pricing from the P3.9 combination alone", file=sys.stderr)
+        return 0
 
 
 def _postprocess_for(city_key, lead_days):
