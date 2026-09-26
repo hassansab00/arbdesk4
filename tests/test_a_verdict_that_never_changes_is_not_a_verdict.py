@@ -166,7 +166,7 @@ def test_scored_days_are_unaffected_by_the_pending_count():
              "public": 22.0, "persistence": 23.0} for d in range(1, 31)]
     scored = mp.score(rows, 30, draws=200)
     state, _ = mp.decide(scored, [], NO_DROPS, 30,
-                         pending={"unsettled": 7, "first_pending": "2026-09-26"})
+                         pending={"unsettled": 7, "first_pending": "2026-09-26"}, advance_only=True)
     assert state == "promoted"
 
 

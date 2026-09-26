@@ -66,6 +66,7 @@ import random
 import sys
 
 from common import rest_all, upsert_replace, log_run, active_city_keys, drop_retired
+from weather_model import TRAINS_ONLY_ON_ADVANCE_INFORMATION
 
 # ---------------------------------------------------------------------------
 # The rule, as constants, so changing the bar is a visible change.
@@ -213,8 +214,13 @@ def waiting_detail(pending, min_days=MIN_FORWARD_DAYS):
             f"cannot be reached before {floor_on}")
 
 
-def decide(scored, stale_reasons, dropped, min_days=MIN_FORWARD_DAYS, pending=None):
+def decide(scored, stale_reasons, dropped, min_days=MIN_FORWARD_DAYS, pending=None, advance_only=None):
     """shadow | promoted | rejected | stale, and every rule beside it.
+
+    A FIT TRAINED ON WHAT WAS ONLY KNOWN AFTERWARDS IS NEVER PROMOTED (plan
+    v2.2 P2.9). `advance_only` defaults to weather_model's own flag; when it is
+    false the evidence is still scored and shown, and a verdict that would have
+    been 'promoted' is 'rejected' with the rule that failed beside it.
 
     STALE BEATS EVERYTHING, because a stale model has not been beaten - it has
     not been judged, and reporting "rejected" for something nobody measured is
@@ -261,9 +267,17 @@ def decide(scored, stale_reasons, dropped, min_days=MIN_FORWARD_DAYS, pending=No
                        "and none is outstanding - the forecast job is not writing it"}]
 
     reasons += [{"rule": r, "held": bool(ok), "detail": d} for r, ok, d in scored["checks"]]
+    if advance_only is None:
+        advance_only = TRAINS_ONLY_ON_ADVANCE_INFORMATION
+    reasons.append({"rule": "trained_only_on_what_was_known_in_advance", "held": bool(advance_only),
+                    "detail": None if advance_only else
+                    "the fit read derived_city_day_features, whose wind, cloud and precipitation were "
+                    "observed over the afternoon; forward they are forecasts (plan v2.2 P2.9)"})
     if scored["n_days"] < min_days:
         return "shadow", reasons
-    return ("promoted" if all(ok for _, ok, _ in scored["checks"]) else "rejected"), reasons
+    if not all(ok for _, ok, _ in scored["checks"]):
+        return "rejected", reasons
+    return ("promoted" if advance_only else "rejected"), reasons
 
 
 # ---------------------------------------------------------------------------
