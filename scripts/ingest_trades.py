@@ -39,6 +39,7 @@ backlog is read one batch per hour until the cycle reaches the end.
 import argparse
 import datetime as dt
 import json
+import os
 import sys
 import time
 
@@ -51,6 +52,10 @@ BATCH = 100
 PAGE = 1000
 MAX_PAGES = 10               # the API refuses an offset over 10,000 (HTTP 400, measured 25 Sep)
 BUDGET_S = 15.0
+# What a run needs besides its batches (loading the bands, refresh_derived,
+# the log): a light run took 5.6 s in all on 26 Sep 01:37Z (one batch, 40 new
+# trades), so that much is kept back from the tick's deadline.
+RESERVE_S = 6.0
 OVERLAP = dt.timedelta(hours=1)
 UA = {"User-Agent": "arbdesk4-trades/1.0", "Accept": "application/json"}
 CONFLICT = "condition_id,traded_at,price,size,proxy_wallet"
@@ -189,8 +194,19 @@ def insert_new(rows):
     return new
 
 
+def budget(budget_s, deadline=None, now_epoch=None):
+    """The seconds this run may spend on batches: the flag, and never past the
+    tick job's deadline (TICK_DEADLINE, epoch seconds, set by tick.yml) less
+    RESERVE_S."""
+    if deadline is None:
+        return budget_s
+    left = float(deadline) - (time.time() if now_epoch is None else now_epoch) - RESERVE_S
+    return min(budget_s, left)
+
+
 def main(budget_s=BUDGET_S, now=None):
     started = time.monotonic()
+    budget_s = budget(budget_s, os.environ.get("TICK_DEADLINE"))
     now = now or dt.datetime.now(dt.timezone.utc)
     on, mode = switched_on()
     if not on:
@@ -260,7 +276,7 @@ def main(budget_s=BUDGET_S, now=None):
               "since": since.isoformat() if since else None, "complete": complete,
               "cursor": next_cursor, "truncated": truncated,
               "fetched": fetched, "new": new, "unmatched": unmatched, "errors": errors[:5],
-              "seconds": round(time.monotonic() - started, 1), "rollups": rollups,
+              "seconds": round(time.monotonic() - started, 1), "budget_s": round(budget_s, 1), "rollups": rollups,
               "summary": f"{new} new trades from {len(ids)} open markets "
                          f"({batches_done} of the {len(batches)} batches left in the cycle, {fetched} fetched since the mark)"}
     log_run("P0.4_trade_history", status, new, detail)

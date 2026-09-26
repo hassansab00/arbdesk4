@@ -113,7 +113,7 @@ const CATALOGUE: Array<{
   {
     job: "P1.2_nws_monitor",
     label: "NWS Monitor",
-    schedule: "every 2 hours",
+    schedule: "every 2 hours, in the GitHub tick at even UTC hours (scripts/ingest_nws_monitor.py); the n8n workflow keeps only its Run button",
     what:
       "Reads api.weather.gov \u2014 the service most of these markets settle on \u2014 for every US city: the current observation with its quality-control flag, any active heat advisory or warning, and today's solar transit (the sun's zenith, which is where the daily peak sits). Writes observations beside the IEM ones so the two feeds can be compared, and raises an alert only when it changes.",
     note: "api.weather.gov has no rate limit, but n8n's execution budget does \u2014 hence 2 hours, with this button for refreshing sooner. Non-US cities are checked once, marked unsupported, and skipped from then on.",

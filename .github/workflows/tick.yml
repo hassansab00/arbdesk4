@@ -46,6 +46,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      # THE ONE BILLED MINUTE. Every step after the fixed ones may use only the
+      # time left before this deadline: 52 s after the job's first step, which
+      # leaves the post-job steps their few seconds inside the minute.
+      - name: Deadline
+        run: echo "TICK_DEADLINE=$(( $(date +%s) + 52 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
@@ -70,15 +75,21 @@ jobs:
           TICK_DRY_RUN: ${{ github.event.inputs.dry_run }}
           TICK_AT: ${{ github.event.inputs.at }}
         run: .venv/bin/python scripts/tick.py
-      - name: Trade prints (replaces n8n P0.4)
-        # Every open market's new trades since the stored high-water mark, in a
-        # 15 s budget so the job still finishes inside its one billed minute; a
-        # run that runs out resumes next hour where it stopped (ingest_trades.py).
-        # Not on a rehearsal: dry_run writes nothing.
-        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
-        run: .venv/bin/python scripts/ingest_trades.py --budget 15
       - name: NWS forecasts (replaces n8n P1.3 and P1.4)
         # Runs in the ticks of 03, 09, 15 and 21 UTC, the hours n8n ran them;
         # every other tick it returns at once (ingest_nws.py HOURS_UTC).
         if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
         run: .venv/bin/python scripts/ingest_nws.py
+      - name: NWS station readings and alerts (replaces n8n P1.2)
+        # Runs in the ticks of even UTC hours, never beside the NWS forecast
+        # step (03/09/15/21); every other tick returns at once
+        # (ingest_nws_monitor.py HOURS_UTC).
+        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
+        run: .venv/bin/python scripts/ingest_nws_monitor.py
+      - name: Trade prints (replaces n8n P0.4)
+        # Last, because it is the one step that can stop anywhere and resume
+        # next hour (ingest_trades.py): it takes at most 15 s, and never more
+        # than is left before TICK_DEADLINE.
+        # Not on a rehearsal: dry_run writes nothing.
+        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
+        run: .venv/bin/python scripts/ingest_trades.py --budget 15

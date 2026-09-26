@@ -200,3 +200,17 @@ def test_a_batch_that_would_overrun_the_budget_is_not_started(monkeypatch):
     monkeypatch.setattr(it, "fetch_batch", slow)
     d = it.main(budget_s=15, now=NOW)
     assert seen == [0] and not d["complete"] and d["cursor"] == f"0x{it.BATCH - 1:04d}"
+
+
+def test_the_budget_never_runs_past_the_tick_deadline():
+    assert it.budget(15, None) == 15
+    assert it.budget(15, deadline=1000, now_epoch=950) == 15          # 44 s left: the flag binds
+    assert it.budget(15, deadline=1000, now_epoch=985) == pytest.approx(9)
+    assert it.budget(15, deadline=1000, now_epoch=999) < 0           # nothing starts; resumes next hour
+
+
+def test_a_run_with_no_time_left_starts_no_batch(monkeypatch):
+    monkeypatch.setenv("TICK_DEADLINE", "0")
+    logged, seen = _wire(monkeypatch, 2 * it.BATCH)
+    d = it.main(now=NOW)
+    assert seen == [] and not d["complete"] and d["cursor"] == ""
