@@ -425,6 +425,33 @@ def log_run(job, status, rows, detail):
 _ZONE_CACHE = {}
 _ZONE_WARNED = set()
 
+def day_had_ended(obs_date, computed_at, timezone):
+    """True when a per-day row (a city's daily maximum) was computed after that
+    local day ended - so it is the whole day, not the part of it seen so far.
+
+    derived_city_day_features is recomputed once a night (capacity.py), and the
+    row for "today" is written with the day's readings so far. Measured 26 Sep
+    22:45Z: the 35 rows for 26 Sep computed at 05:18Z were on average 4.1 C
+    below the day's maximum (17 C at most). A model that learns from, or
+    starts from, such a row learns a day that did not happen."""
+    import datetime as _dt
+    if obs_date is None or computed_at is None:
+        return False
+    try:
+        from zoneinfo import ZoneInfo
+        zone = ZoneInfo(timezone) if timezone else _dt.timezone.utc
+    except Exception:
+        zone = _dt.timezone.utc
+    day = _dt.date.fromisoformat(str(obs_date)[:10])
+    end = _dt.datetime.combine(day + _dt.timedelta(days=1), _dt.time(0, 0), tzinfo=zone)
+    at = computed_at
+    if isinstance(at, str):
+        at = _dt.datetime.fromisoformat(at.replace("Z", "+00:00"))
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=_dt.timezone.utc)
+    return at >= end
+
+
 def city_local_date(valid_at, timezone):
     """The calendar date `valid_at` falls on in `timezone`, as 'YYYY-MM-DD'.
 

@@ -259,3 +259,17 @@ def test_a_blend_made_from_another_p39_is_not_used(monkeypatch):
 def test_a_broken_station_model_read_keeps_p39(monkeypatch):
     row = _engine(monkeypatch, mos_on=True, mos_row=dict(MOS, blend_c="not a number"))
     assert row["combined_c"] == 22.4 and "+" not in row["version"]
+
+
+def test_labels_and_the_last_station_max_are_whole_days_only():
+    rows = [{"city_key": "london", "obs_date": "2026-09-25", "max_c": 19.0,
+             "computed_at": "2026-09-26T05:18:00+00:00"},
+            {"city_key": "london", "obs_date": "2026-09-26", "max_c": 12.0,      # 05:18 of the day itself
+             "computed_at": "2026-09-26T05:18:00+00:00"}]
+
+    def rest_all(path, params=None, **k):
+        if path == "cities":
+            return [{"city_key": "london", "timezone": "Europe/London"}]
+        return rows
+    labels = sm.load_labels(rest_all)
+    assert labels == {("london", "2026-09-25"): 19.0}

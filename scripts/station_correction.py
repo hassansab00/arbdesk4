@@ -163,12 +163,18 @@ def walk_forward(pairs, days):
 # --------------------------------------------------------------------------
 
 def load_pairs(rest_all, as_of):
+    """Only WHOLE days are truth: a row computed before its local day ended is
+    the part of the day seen so far (common.day_had_ended)."""
+    from common import day_had_ended
     start = (as_of - dt.timedelta(days=WINDOW_DAYS + EVAL_DAYS)).isoformat()
+    tz = {r["city_key"]: r.get("timezone") for r in rest_all(
+        "cities", [("select", "city_key,timezone")], order="city_key.asc")}
     obs = rest_all("derived_city_day_features",
-                   [("select", "city_key,obs_date,max_c"), ("obs_date", f"gte.{start}"),
+                   [("select", "city_key,obs_date,max_c,computed_at"), ("obs_date", f"gte.{start}"),
                     ("obs_date", f"lt.{as_of}"), ("max_c", "not.is.null")],
                    order="city_key.asc,obs_date.asc")
-    y = {(r["city_key"], str(r["obs_date"])): float(r["max_c"]) for r in obs}
+    y = {(r["city_key"], str(r["obs_date"])): float(r["max_c"]) for r in obs
+         if day_had_ended(r["obs_date"], r.get("computed_at"), tz.get(r["city_key"]))}
     fcs = rest_all("weather_forecast_models",
                    [("select", "city_key,model,for_date,lead_days,forecast_max_c"),
                     ("source", f"eq.{FIT_SOURCE}"), ("lead_days", f"lte.{max(LEADS)}"),
