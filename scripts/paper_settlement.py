@@ -189,6 +189,18 @@ def _candidate_bands(position_band_ids, days_back, settled_conditions=frozenset(
     return out
 
 
+def _proven(conditions, chunk=50):
+    """The subset of `conditions` resolution_verdicts already holds a verdict for."""
+    conditions=sorted(conditions)
+    out=set()
+    for i in range(0,len(conditions),chunk):
+        part=conditions[i:i+chunk]
+        out|={str(e['condition_id']) for e in rest_all(
+            'resolution_verdicts',{'select':'condition_id','condition_id':'in.('+','.join(part)+')'},
+            order='condition_id.asc')}
+    return out
+
+
 def cycle(budget_seconds=60, days_back=180, max_new_evidence=100, holdings_only=False):
     from paper_worker import public_json
     started,settled,checked=time.monotonic(),0,set()
@@ -200,11 +212,15 @@ def cycle(budget_seconds=60, days_back=180, max_new_evidence=100, holdings_only=
     # loses every proof the archive prunes, so reading it here made the sweep
     # spend its budget fetching again what it had already proven and pruned.
     # resolution_verdicts keeps every verdict ever captured.
-    existing={str(e['condition_id']) for e in rest_all(
-        'resolution_verdicts',{'select':'condition_id,captured_at'},
-        order='condition_id.asc,token_yes.asc,token_no.asc,captured_at.asc')}
-
-    candidates=_candidate_bands(position_band_ids,days_back,existing,holdings_only)
+    #
+    # ONLY FOR THE CONDITIONS THIS RUN WOULD ASK ABOUT (plan v2.2 P4.7). It
+    # read every verdict ever captured - 20,062 rows on 26 Sep, forty pages -
+    # before asking the venue anything, and that read was spent from the same
+    # time budget. The candidates are known first, so the ledger is asked
+    # about those alone; what is dropped is exactly what was dropped before.
+    candidates=_candidate_bands(position_band_ids,days_back,frozenset(),holdings_only)
+    existing=_proven({str(b['condition_id']) for b in candidates if b.get('condition_id')})
+    candidates=[b for b in candidates if str(b.get('condition_id')) not in existing]
     unreached=0
     skips,spans={},{}
 
