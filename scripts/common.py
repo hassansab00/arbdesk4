@@ -396,8 +396,13 @@ def log_run(job, status, rows, detail):
 # THE DAY A READING BELONGS TO.
 #
 # A daily maximum is a LOCAL-CALENDAR quantity. It is what the market settles
-# on, it is what Open-Meteo returns when asked with timezone=auto, and it is
-# what weather_forecasts.for_date holds.
+# on and what weather_forecasts.for_date holds.
+#
+# It is NOT quite what Open-Meteo returns with timezone=auto (measured 26 Sep):
+# that answers the whole range at ONE fixed offset, the city's offset at the
+# moment of the request - 48 cities x 439 days with no daylight-saving step,
+# Wellington at +13 for July. Right for days near the request, an hour off
+# across a clock change. The Python jobs ask for UTC and use this function.
 #
 # Three jobs did not agree with that. measure_skill.py, databank.py and the
 # backtest runner all took the day from `valid_at[:10]` - a slice of the UTC

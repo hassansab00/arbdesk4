@@ -18,7 +18,7 @@ Usage:
 import sys, time, os, json, datetime as dt
 from collections import defaultdict
 import requests
-from common import get_cities, upsert, rest, log_run
+from common import get_cities, upsert, rest, log_run, city_local_date
 
 API = "https://previous-runs-api.open-meteo.com/v1/forecast"
 LEADS = [1, 2, 3, 4, 5, 6, 7]
@@ -54,7 +54,10 @@ def fetch(lat, lon, start, end, label, models=None):
     p = {
         "latitude": lat, "longitude": lon,
         "hourly": ",".join(fields),
-        "start_date": start.isoformat(), "end_date": end.isoformat(),
+        # A DAY EITHER SIDE, IN UTC: every local day of [start, end] is whole
+        # whatever the city's offset; build_rows keeps only those days.
+        "start_date": (start - dt.timedelta(days=1)).isoformat(),
+        "end_date": (end + dt.timedelta(days=1)).isoformat(),
         # LOCAL DAYS, not UTC ones. A daily maximum is a local-calendar
         # quantity - it is the thing the market settles on - and every other
         # writer of weather_forecasts (n8n P1.3 and P1.5) groups by the city's
@@ -64,7 +67,16 @@ def fetch(lat, lon, start, end, label, models=None):
         # became the next day's forecast maximum. Small, systematic, warm, and
         # invisible - and derived_forecast_skill is measured from these rows,
         # so it fed straight into every sigma and every band probability.
-        "timezone": "auto", "temperature_unit": "celsius",
+        #
+        # AND UTC, NOT timezone=auto (26 Sep). Asked with timezone=auto,
+        # Open-Meteo returns the whole range at ONE fixed offset - the city's
+        # offset at the moment of the request: 48 cities x 439 days came back
+        # with no daylight-saving step anywhere, Wellington at +13 for July. A
+        # window fetched just after a clock change put the days before it an
+        # hour off, and a backfill run in one season shifted every day of the
+        # other. build_rows turns UTC hours into the city's wall-clock day with
+        # common.city_local_date, the one function every job uses for that.
+        "timezone": "GMT", "temperature_unit": "celsius",
     }
     if models:
         p["models"] = ",".join(models)
@@ -102,9 +114,13 @@ def fetch(lat, lon, start, end, label, models=None):
             time.sleep(4)
     return None, "unreached"
 
-def build_rows(city_key, js, model=None):
+def build_rows(city_key, js, model=None, tz=None, first=None, last=None):
     """One row per (local date, lead). With `model`, read that model's columns:
-    a multi-model response names them temperature_2m_previous_day<N>_<model>."""
+    a multi-model response names them temperature_2m_previous_day<N>_<model>.
+    The response's hours are UTC; `tz` is the city's zone, and only the local
+    days from `first` to `last` are kept (the request reaches a day further on
+    each side, so the days at its edges are partial)."""
+    tz = tz or "UTC"
     hourly = (js or {}).get("hourly") or {}
     times = hourly.get("time") or []
     if not times:
@@ -123,9 +139,9 @@ def build_rows(city_key, js, model=None):
             v = vals[i]
             if v is None:
                 continue
-            # timezone=auto means these timestamps are already the city's
-            # local time, so slicing the date off gives the local calendar day.
-            d = t[:10]
+            d = city_local_date(t, tz)
+            if (first and d < str(first)) or (last and d > str(last)):
+                continue
             cur = daily[d]
             if cur is None or v > cur:
                 daily[d] = v
@@ -159,9 +175,11 @@ def fetch_current(lat, lon, label):
     tournament grades at. This asks for the days AHEAD, now: a row whose
     observed_at is the fetch time is a forecast provably known by then.
     """
+    # UTC hours from yesterday to three days ahead: the city's today and next
+    # two days are whole at any offset (see fetch for why not timezone=auto).
     p = {"latitude": lat, "longitude": lon, "hourly": "temperature_2m",
-         "models": ",".join(MODELS), "forecast_days": 3,
-         "timezone": "auto", "temperature_unit": "celsius"}
+         "models": ",".join(MODELS), "past_days": 1, "forecast_days": 4,
+         "timezone": "GMT", "temperature_unit": "celsius"}
     for attempt in range(TRIES):
         try:
             r = requests.get(CURRENT_API, params=p, timeout=TIMEOUT)
@@ -178,28 +196,36 @@ def fetch_current(lat, lon, label):
     return None, "unreached"
 
 
-def build_current_rows(city_key, js, model, fetched_at):
-    """One row per local date for one model's current run; lead is days after
-    the city's own today at fetch time."""
+CURRENT_LEADS = (0, 1, 2)
+WHOLE_DAY_HOURS = 23      # a local day is 23, 24 or 25 hours; fewer is a partial edge
+
+
+def build_current_rows(city_key, js, model, fetched_at, tz=None):
+    """One row per local date for one model's current run - the city's today
+    and the next two days, whole days only; lead is days after the city's own
+    today at fetch time. Hours are UTC, `tz` the city's zone."""
+    tz = tz or "UTC"
     hourly = (js or {}).get("hourly") or {}
     times = hourly.get("time") or []
     vals = hourly.get(f"temperature_2m_{model}") or []
     if not times or not vals:
         return []
-    offset = dt.timedelta(seconds=int((js or {}).get("utc_offset_seconds") or 0))
-    local_today = (fetched_at + offset).date()
-    daily = {}
+    local_today = dt.date.fromisoformat(city_local_date(fetched_at, tz))
+    daily, hours = {}, defaultdict(int)
     for t, v in zip(times, vals):
+        d = city_local_date(t, tz)
+        hours[d] += 1
         if v is None:
             continue
-        d = t[:10]
         daily[d] = v if d not in daily else max(daily[d], v)
     rows = []
     for d, mx in sorted(daily.items()):
-        for_date = dt.date.fromisoformat(d)
+        lead = (dt.date.fromisoformat(d) - local_today).days
+        if lead not in CURRENT_LEADS or hours[d] < WHOLE_DAY_HOURS:
+            continue
         rows.append({"city_key": city_key, "model": f"open_meteo_{model}",
                      "run_at": fetched_at.isoformat(), "for_date": d,
-                     "lead_days": (for_date - local_today).days,
+                     "lead_days": lead,
                      "forecast_max_c": round(float(mx), 2), "source": CURRENT_SOURCE})
     return rows
 
@@ -351,7 +377,7 @@ def main():
             if outcome != "ok":
                 unreached += 1
                 continue
-            rows = build_rows(c["city_key"], js)
+            rows = build_rows(c["city_key"], js, tz=c.get("timezone"), first=cs, last=ce)
             if rows:
                 got += upsert("weather_forecasts", rows, "city_key,model,run_at,for_date")
             time.sleep(PAUSE)
@@ -363,7 +389,7 @@ def main():
                 else:
                     for model in MODELS:
                         mrows = [{k: v for k, v in r.items() if k != "variables"}
-                                 for r in build_rows(c["city_key"], mjs, model)]
+                                 for r in build_rows(c["city_key"], mjs, model, c.get("timezone"), cs, ce)]
                         if mrows:
                             n = upsert("weather_forecast_models", mrows,
                                        "city_key,model,run_at,for_date")
@@ -398,7 +424,7 @@ def main():
                 current_failed[cout] += 1
                 continue
             for model in MODELS:
-                crows = build_current_rows(c["city_key"], cjs, model, fetched_at)
+                crows = build_current_rows(c["city_key"], cjs, model, fetched_at, c.get("timezone"))
                 if crows:
                     current_rows += upsert("weather_forecast_models", crows,
                                            "city_key,model,run_at,for_date")
