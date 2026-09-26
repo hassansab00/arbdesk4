@@ -61,7 +61,9 @@ from weather_model import solve
 VERSION_PREFIX = "rd1"
 FEATURES = ["fc_rest_minus_now", "now_minus_R", "fc_err_now", "fc_err_3h", "slope_1h", "slope_3h",
             "fc_day_minus_R", "cloud_rest", "sw_rest", "doy_sin", "doy_cos", "models_spread"]
-HOURS = tuple(range(7, 20))
+# From 18:00 fewer than MIN_REST_HOURS forecast hours are left in the day, so
+# no row can be built (the replay of 26 Sep found hour 18 unfittable).
+HOURS = tuple(range(7, 18))
 SET_RISE_C = 0.25
 WEIGHT_A = 0.5
 LAM_POOL = 10.0
