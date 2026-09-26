@@ -371,6 +371,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/databank.py",
       "kind": "action",
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
+    {
+      "cadence": "hourly",
+      "file": "tick.yml",
+      "how": "scripts/confirm_recent.py",
+      "kind": "action",
+      "name": "Tick (hourly checkpoints)"
     }
   ],
   "fact_forecast_outcome": [
