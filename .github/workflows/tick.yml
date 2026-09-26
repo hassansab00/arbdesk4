@@ -86,6 +86,12 @@ jobs:
         # (ingest_nws_monitor.py HOURS_UTC).
         if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
         run: .venv/bin/python scripts/ingest_nws_monitor.py
+      # Plan v2.2 P4.7: US city-days confirmed and scored the same morning.
+      # Only at 06-17Z, with a budget cut from the deadline; `timeout` is the
+      # backstop that keeps the job inside its one billed minute.
+      - name: Venue confirmations for days that just ended
+        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
+        run: timeout 20 .venv/bin/python scripts/confirm_recent.py || echo "confirm_recent stopped at its 20 s backstop"
       - name: Trade prints (replaces n8n P0.4)
         # Last, because it is the one step that can stop anywhere and resume
         # next hour (ingest_trades.py): it takes at most 15 s, and never more
