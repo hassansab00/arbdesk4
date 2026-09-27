@@ -27,8 +27,9 @@ def _ladder(probs, asks, bids=None):
     bands = [{"band_id": b, "band_lo": 20 + i, "band_hi": 21 + i, "open_low": False, "open_high": False}
              for i, b in enumerate(ids)]
     book = {b: {"ask": asks[b], "bid": (bids or {}).get(b, max(asks[b] - 0.02, 0.01))} for b in ids}
+    # The constraints are what these ladders test: no market anchor, no gate.
     return {"bands": bands, "unit": "C", "probs": probs, "book": book, "floor_c": None,
-            "floor_basis": "series", "reading_age_min": 5}
+            "floor_basis": "series", "reading_age_min": 5, "anchor": False}
 
 
 # One engine decision costs 0.5-0.8 s in pure Python (measured 27 Sep on these
@@ -51,7 +52,8 @@ def _run(sid, ctx, **kw):
         return None, why
     if kw:
         view = dict(view, **kw)
-    return de.decide(view, book=book, ledger=LEDGER), None
+    params = {"against_market_gate_on": False} if ctx.get("anchor") is False else None
+    return de.decide(view, book=book, ledger=LEDGER, params=params), None
 
 
 def test_every_strategy_decides_or_says_why_on_every_real_ladder():
@@ -159,3 +161,28 @@ def test_s13_is_research_only():
 def test_an_unknown_strategy_is_refused():
     with pytest.raises(ValueError):
         ev.engine_input("s4_tail_fade", _ctx(ROWS[0]))
+
+
+def test_every_model_view_starts_from_the_market():
+    """Hassan, 27 Sep: the market-anchored belief. At the prior weight (0) a
+    view IS the market's own ladder, so no real 26 Sep ladder offers S11 or S12
+    a trade after fees, and the decision records the weight it used."""
+    for i in SOME:
+        ctx = _ctx(ROWS[i])
+        for sid in ("s11_ladder", "s12_no"):
+            view, _b, why = ev.engine_input(sid, ctx)
+            if view is None:
+                assert why.startswith("no market to anchor")
+                continue
+            assert view["anchor"]["w"] == 0.0 and view["anchor"]["version"] == "prior"
+            d = de.decide(view, book=_b, ledger=LEDGER)
+            assert d["action"] != "BUY", (sid, ROWS[i]["city_key"], d["orders"])
+            assert d["versions"]["market_anchor"]["w"] == 0.0
+
+
+def test_a_book_that_does_not_quote_every_bucket_has_no_anchor():
+    ctx = _ctx(ROWS[1])
+    first = ctx["bands"][0]["band_id"]
+    ctx["book"] = {b: q for b, q in ctx["book"].items() if b != first}
+    view, _b, why = ev.engine_input("s11_ladder", ctx)
+    assert view is None and why.startswith("no market to anchor")

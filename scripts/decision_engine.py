@@ -46,6 +46,29 @@ from belief import ladder_posterior
 ENGINE_VERSION = "engine-v1"
 
 
+def against_market_assets(probs, book, allow):
+    """Assets that back the view against the market's favourite (the platform's
+    rule, edge_engine.against_market_rows; Hassan, 24 Sep: "never favour losing
+    bets"): when the view's favourite bucket and the market's differ, YES on a
+    bucket the market does not favour and NO on the one it does. Empty when
+    they agree or either favourite cannot be named. The market's favourite is
+    the highest YES ask."""
+    priced = {b: p for b, p in probs.items() if p is not None}
+    quoted = {b: float(q["ask"]) for b, q in (book or {}).items() if q and q.get("ask") is not None}
+    if not priced or not quoted:
+        return set()
+    view_fav = max(priced, key=lambda b: (priced[b], b))
+    market_fav = max(quoted, key=lambda b: (quoted[b], b))
+    if view_fav == market_fav:
+        return set()
+    out = set()
+    if "YES" in allow:
+        out |= {f"{b}:YES" for b in probs if b != market_fav}
+    if "NO" in allow:
+        out.add(f"{market_fav}:NO")
+    return out
+
+
 def _price(q, key):
     v = (q or {}).get(key)
     return None if v is None else float(v)
@@ -113,7 +136,8 @@ def decide(view, *, book, ledger, rails=None, halted=False, params=None, state=N
                         "belief": (params.get("belief_table") or {}).get("version", "prior"),
                         "lambda": params.get("lambda_version", "prior"),
                         "h": params.get("h_version", "prior"),
-                        "timing": timing.TIMING_VERSION}}
+                        "timing": timing.TIMING_VERSION,
+                        "market_anchor": view.get("anchor")}}
     holding = any(float(y) > 0 or float(n) > 0 for y, n in held.values())
     idle = "HOLD" if holding else "NONE"
 
@@ -139,8 +163,17 @@ def decide(view, *, book, ledger, rails=None, halted=False, params=None, state=N
     if view.get("only") is not None:
         keep = set(view["only"])
         caps = {n[0]: 0.0 for n in names[1:] if n[0] not in keep}
+    # AGAINST THE MARKET, unless proven (edge_engine.against_market_gate: at
+    # least 30 disagreement days with the view ahead, lower 90% bound > 0). The
+    # lock's book cannot lose, so it is not a bet against anyone and is exempt.
+    blocked = set()
+    if params.get("against_market_gate_on", True) and not view.get("lock"):
+        blocked = against_market_assets(view["probs"], book, allow)
+        if blocked:
+            caps = dict(caps or {}, **{a: 0.0 for a in blocked})
+            out["binding"] = ["against_market"]
     if len(names) == 1 or (caps is not None and all(n[0] in caps for n in names[1:])):
-        out.update(action=idle, reason_code="nothing_tradeable")
+        out.update(action=idle, reason_code="against_market" if blocked else "nothing_tradeable")
         return out
 
     # The plan's order (P5.5): the Kelly book under the strategy's own
@@ -156,7 +189,7 @@ def decide(view, *, book, ledger, rails=None, halted=False, params=None, state=N
                            sds=sds, alpha=params.get("alpha", hs.ALPHA_PRIOR),
                            lock=bool(view.get("lock")), max_price=rails.get("max_price"))
     frac = hs.fractional(solved, params.get("lambda", hs.LAMBDA_PRIOR))
-    out["binding"] = list(solved["binding"])
+    out["binding"] = list(out["binding"]) + [b for b in solved["binding"] if b not in out["binding"]]
     spend = sum(frac["weights"].values())
     if spend > max_spend + 1e-12:
         s = max_spend / spend if spend > 0 else 0.0

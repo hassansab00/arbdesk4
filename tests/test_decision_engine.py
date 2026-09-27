@@ -8,6 +8,9 @@ import risk_rails
 import strategies.s10_max_temp_winner as s10
 
 LEDGER = {"equity_usd": 1000.0, "cash_usd": 1000.0}
+# The against-market gate (tested on its own below) is off where a test is
+# about sizing, rails or timing: those ladders deliberately disagree with the book.
+NO_GATE = {"against_market_gate_on": False}
 VIEW = {"strategy_id": "t", "city_key": "c", "resolution_date": "2026-09-28",
         "probs": {"a": 0.1, "b": 0.5, "c": 0.3, "d": 0.1}}
 BOOK = {"a": {"ask": 0.10, "bid": 0.08}, "b": {"ask": 0.35, "bid": 0.33, "depth_usd": 500.0},
@@ -62,10 +65,10 @@ def test_no_trade_when_every_bucket_costs_its_probability():
 
 def test_a_small_edge_stays_inside_the_no_trade_band():
     for ask in (0.35, 0.45):
-        d = de.decide(dict(VIEW, only=["b:YES"]), book=dict(BOOK, b={"ask": ask, "bid": ask - 0.02}), ledger=LEDGER)
+        d = de.decide(dict(VIEW, only=["b:YES"]), book=dict(BOOK, b={"ask": ask, "bid": ask - 0.02}), ledger=LEDGER, params=NO_GATE)
         assert d["reason_code"] == "no_trade_band" and d["g_target"] - d["g_now"] <= 0.002
     assert de.decide(dict(VIEW, only=["b:YES"]), book=dict(BOOK, b={"ask": 0.30, "bid": 0.28}),
-                     ledger=LEDGER)["action"] == "BUY"
+                     ledger=LEDGER, params=NO_GATE)["action"] == "BUY"
 
 
 def test_a_lock_view_never_ends_below_what_it_paid():
@@ -78,24 +81,24 @@ def test_a_lock_view_never_ends_below_what_it_paid():
 
 
 def test_only_restricts_the_book_to_the_strategys_assets():
-    d = de.decide(dict(VIEW, only=["b:YES"]), book=BOOK_ONE, ledger=LEDGER)
+    d = de.decide(dict(VIEW, only=["b:YES"]), book=BOOK_ONE, ledger=LEDGER, params=NO_GATE)
     assert d["action"] == "BUY" and {o["band_id"] for o in d["orders"]} == {"b"}
 
 
 def test_a_shrinking_gap_waits_under_the_prior_timing_rule():
-    d = de.decide(dict(VIEW, only=["b:YES"]), book=BOOK_ONE, ledger=LEDGER,
+    d = de.decide(dict(VIEW, only=["b:YES"]), book=BOOK_ONE, ledger=LEDGER, params=NO_GATE,
                   state={"hours_to_peak": 5, "regime": "normal", "gap_prev": 0.40})
     assert d["action"] == "WAIT" and d["reason_code"] == "timing"
     assert d["timing"]["rule"] == "prior" and d["timing"]["gap_trend"] == "shrinking"
 
 
 def test_holding_the_target_already_is_a_hold():
-    first = de.decide(dict(VIEW, only=["b:YES"]), book=BOOK_ONE, ledger=LEDGER)
+    first = de.decide(dict(VIEW, only=["b:YES"]), book=BOOK_ONE, ledger=LEDGER, params=NO_GATE)
     shares = first["orders"][0]["shares"]
     again = de.decide(dict(VIEW, only=["b:YES"]), book=BOOK_ONE,
                       ledger={"equity_usd": 1000.0, "cash_usd": 1000.0 - first["orders"][0]["usd"],
                               "on_market_usd": first["orders"][0]["usd"], "held": {"b": (shares, 0.0)},
-                              "held_usd": first["orders"][0]["usd"]})
+                              "held_usd": first["orders"][0]["usd"]}, params=NO_GATE)
     assert again["action"] == "HOLD" and not again["orders"]
 
 
@@ -110,3 +113,16 @@ def test_s10s_target_goes_through_the_engine_alone():
                   book=r["market"], ledger=LEDGER)
     assert d["action"] == "BUY" and {o["band_id"] for o in d["orders"]} == {pick["target"]}
     assert _paid(d["orders"]) <= 30.0 + 0.05
+
+
+def test_the_view_is_not_backed_against_the_market_until_proven():
+    """edge_engine's rule (Hassan, 24 Sep: never favour losing bets): the view's
+    favourite is b, the market's is c (the highest ask), so YES on anything but
+    c is blocked while the gate is on - its default."""
+    d = de.decide(dict(VIEW, only=["b:YES"]), book=BOOK_ONE, ledger=LEDGER)
+    assert d["action"] == "NONE" and d["reason_code"] == "against_market"
+    assert de.against_market_assets(VIEW["probs"], BOOK_ONE, ("YES", "NO")) == {"a:YES", "b:YES", "d:YES", "c:NO"}
+    assert de.against_market_assets(VIEW["probs"], BOOK, ("YES",)) == set()          # favourites agree
+    lock_probs = {"a": 0.10, "b": 0.50, "c": 0.30, "d": 0.10}
+    lock_book = {"a": {"ask": 0.08}, "b": {"ask": 0.40}, "c": {"ask": 0.25}, "d": {"ask": 0.08}}
+    assert de.decide(dict(VIEW, probs=lock_probs, lock=True), book=lock_book, ledger=LEDGER)["action"] == "BUY"
