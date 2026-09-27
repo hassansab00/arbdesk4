@@ -130,6 +130,53 @@ def test_a_run_writes_cells_and_open_days_and_logs(monkeypatch):
     assert logged[0][0] == "P3.9_station_correction" and d["walk_forward"]["n"] > 0
 
 
+def test_every_row_written_carries_this_runs_computed_at(monkeypatch):
+    """merge-duplicates updates only the columns a row carries: the column's
+    default fires on INSERT and never again. Without computed_at on the row, a
+    re-fitted open day keeps the time it was first written, and the engine,
+    which reads rows younger than max_age_hours by that column, drops it 36 h
+    later: 21 of the 37 rows for 29 Sep would have gone from 28 Sep 17:15Z,
+    before those cities' day-ahead evening."""
+    import sys
+    import types
+    import common as real_common
+    pairs = _pairs(days=30)
+    written = {}
+    common = types.ModuleType("common")
+
+    def rest_all(path, params=None, **k):
+        p = dict(params)
+        if path == "cities":
+            return [{"city_key": c, "timezone": "UTC"} for c in {q[0] for q in pairs}]
+        if path == "derived_city_day_features":
+            return [{"city_key": c, "obs_date": d, "max_c": y, "computed_at": "2026-09-26T05:00:00+00:00"}
+                    for c, d, s, l, fc, y in pairs if s == "m1" and l == 1]
+        if path == "weather_forecast_models" and p.get("source") == f"eq.{sc.FIT_SOURCE}":
+            return [{"city_key": c, "model": s, "for_date": d, "lead_days": l, "forecast_max_c": fc}
+                    for c, d, s, l, fc, y in pairs]
+        if path == "weather_forecast_models":
+            return [{"city_key": city, "model": s, "for_date": day, "lead_days": 1, "forecast_max_c": 25.0,
+                     "run_at": "2026-09-26T00:00:00Z"}
+                    for city in ("hot", "cold") for day in ("2026-09-27", "2026-09-28") for s in SOURCES]
+        if path == "derived_station_correction":
+            return []
+        raise AssertionError(path)
+    common.rest_all = rest_all
+    common.day_had_ended = real_common.day_had_ended
+    common.upsert_replace = lambda t, rows, key: (written.setdefault(t, rows), len(rows))[1]
+    common.log_run = lambda *a, **k: None
+    monkeypatch.setitem(sys.modules, "common", common)
+    before = dt.datetime.now(dt.timezone.utc)
+    sc.main(["--as-of", "2026-09-26"])
+    after = dt.datetime.now(dt.timezone.utc)
+    rows = written["derived_station_correction"] + written["derived_corrected_forecast"]
+    assert len(written["derived_corrected_forecast"]) == 4
+    stamps = {r.get("computed_at") for r in rows}
+    assert len(stamps) == 1 and None not in stamps, "every row carries the run's one computed_at"
+    t = dt.datetime.fromisoformat(stamps.pop())
+    assert t.tzinfo is not None and before <= t <= after
+
+
 def test_a_day_is_truth_only_once_it_has_ended():
     """derived_city_day_features' row for "today" holds the readings so far;
     on 26 Sep the 35 rows computed at 05:18Z were 4.1 C short on average."""
