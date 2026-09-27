@@ -300,6 +300,14 @@ def test_the_tick_runs_hourly_at_36_on_the_n8n_clock_and_can_be_started_by_hand(
     assert {"file": "tick.yml", "hours_utc": "*"} in table
 
 
+def test_the_deadline_leaves_the_job_inside_its_minute():
+    """27 Sep 12:36Z: at 52 s the job ran 62 s (this step began 4 s in, the
+    post steps and completion took 6 s). 48 + 4 + 6 = 58."""
+    import re
+    step = next(s for s in next(iter(_tick_yml()["jobs"].values()))["steps"] if s.get("name") == "Deadline")
+    assert int(re.search(r"\+ (\d+) \)\)", step["run"]).group(1)) <= 48
+
+
 def test_every_repo_file_the_tick_reads_is_checked_out():
     """The checkout is sparse. From 27 Sep 09:36Z every tick wrote no S10
     shadow row with "no fitted parameters at data/models/remaining_day/

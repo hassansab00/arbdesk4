@@ -212,5 +212,20 @@ def test_the_budget_never_runs_past_the_tick_deadline():
 def test_a_run_with_no_time_left_starts_no_batch(monkeypatch):
     monkeypatch.setenv("TICK_DEADLINE", "0")
     logged, seen = _wire(monkeypatch, 2 * it.BATCH)
+    reads = []
+    monkeypatch.setattr(it, "rest_all", lambda *a, **k: reads.append(a) or [])
     d = it.main(now=NOW)
-    assert seen == [] and not d["complete"] and d["cursor"] == ""
+    # No batch, and no read either: the reads alone ran a tick past its minute
+    # (27 Sep 12:36Z). Logged as skipped, which previous_run() passes over.
+    assert seen == [] and reads == [] and d["status"] == "attention"
+    assert logged == {"job": "P0.4_trade_history", "status": "attention", "rows": 0}
+    assert not d["complete"] and d["cursor"] == ""
+
+
+def test_a_run_with_no_time_left_carries_the_last_runs_place(monkeypatch):
+    monkeypatch.setenv("TICK_DEADLINE", "0")
+    prev = {"complete": False, "since": "2026-09-24T08:42:45+00:00", "cursor": "0x0099"}
+    _wire(monkeypatch, 3 * it.BATCH, prev=prev)
+    d = it.main(now=NOW)
+    # the next run plans from this row exactly as it would have from the last real one
+    assert it.plan(None, d) == it.plan(None, prev)
