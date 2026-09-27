@@ -207,6 +207,19 @@ def budget(budget_s, deadline=None, now_epoch=None):
 def main(budget_s=BUDGET_S, now=None):
     started = time.monotonic()
     budget_s = budget(budget_s, os.environ.get("TICK_DEADLINE"))
+    if budget_s <= 0:
+        # No time left: no batch would start, but the reads before the loop
+        # still ran. On 27 Sep 12:36Z this step began 2 s before the deadline,
+        # took 4 s, and put the tick job at 62 s, past its one billed minute.
+        # So read only where the last run stopped, carry it forward so the next
+        # hour resumes there, and say so (attention, never a silent skip).
+        prev = previous_run()
+        detail = {"summary": "no time left before the tick's deadline: nothing read; resumes next hour",
+                  "budget_s": round(budget_s, 1), "complete": bool(prev.get("complete", False)),
+                  "since": prev.get("since"), "cursor": prev.get("cursor") or ""}
+        log_run("P0.4_trade_history", "attention", 0, detail)
+        print(detail["summary"])
+        return {**detail, "status": "attention"}
     now = now or dt.datetime.now(dt.timezone.utc)
     on, mode = switched_on()
     if not on:

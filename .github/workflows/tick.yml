@@ -47,10 +47,11 @@ jobs:
     timeout-minutes: 3
     steps:
       # THE ONE BILLED MINUTE. Every step after the fixed ones may use only the
-      # time left before this deadline: 52 s after the job's first step, which
-      # leaves the post-job steps their few seconds inside the minute.
+      # time left before this deadline: 48 s after this step. Measured 27 Sep:
+      # this step starts 2-4 s into the job, and the post steps plus the job's
+      # completion take another 2-6 s, so at 52 s the 12:36Z job ran 62 s.
       - name: Deadline
-        run: echo "TICK_DEADLINE=$(( $(date +%s) + 52 ))" >> "$GITHUB_ENV"
+        run: echo "TICK_DEADLINE=$(( $(date +%s) + 48 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
