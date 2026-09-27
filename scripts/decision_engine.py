@@ -21,9 +21,12 @@ and optionally:
   sds       posterior sds to size on the worst ALPHA of draws; default: the
             belief layer's own
 THE LEDGER. {"equity_usd", "cash_usd", "on_market_usd", "pnl_today_usd",
-"held": {band: (yes_shares, no_shares)}} - the strategy's own shadow ledger.
+"held": {band: (yes_shares, no_shares)}} - the strategy's own shadow ledger -
+and optionally "high_water_usd" (drawdown scaling) and "same_day": {city:
+usd held plus reserved on this resolution date} (the cluster and correlated
+rooms, P5.9 part 2).
 PARAMS. The learned values (lambda, h, alpha, c_wait, belief table, timing
-model), each clipped to its bounds by the module that owns it; None anywhere
+model, city clusters), each clipped to its bounds by the module that owns it; None anywhere
 is that module's prior. Rule 11: every version used is on the decision.
 
 PART 1 LIMITS, stated so they are not mistaken for decisions:
@@ -37,6 +40,7 @@ PART 1 LIMITS, stated so they are not mistaken for decisions:
 """
 import math
 
+import city_clusters
 import holdings_solver as hs
 import paper_fill_sim
 import risk_rails
@@ -131,13 +135,14 @@ def decide(view, *, book, ledger, rails=None, halted=False, params=None, state=N
            "resolution_date": view.get("resolution_date"), "engine_version": ENGINE_VERSION,
            "action": "NONE", "reason_code": None, "orders": [], "g_now": None, "g_target": None,
            "g_wait": None, "binding": [], "target_usd": round(held_usd, 2), "held_usd": round(held_usd, 2),
-           "timing": None,
+           "timing": None, "drawdown_scale": None,
            "versions": {"engine": ENGINE_VERSION,
                         "belief": (params.get("belief_table") or {}).get("version", "prior"),
                         "lambda": params.get("lambda_version", "prior"),
                         "h": params.get("h_version", "prior"),
                         "timing": timing.TIMING_VERSION,
-                        "market_anchor": view.get("anchor")}}
+                        "market_anchor": view.get("anchor"),
+                        "clusters": city_clusters.version_of(params.get("clusters"))}}
     holding = any(float(y) > 0 or float(n) > 0 for y, n in held.values())
     idle = "HOLD" if holding else "NONE"
 
@@ -181,21 +186,36 @@ def decide(view, *, book, ledger, rails=None, halted=False, params=None, state=N
     # scaling after shrinks a bet twice: on a $1,000 ledger a 50% bucket at 35c
     # grew it by 0.0012, under h's 0.002, so nothing would ever trade.
     # Scaling a book toward cash keeps a lock a lock: W' = 1 + s (W - 1).
-    max_spend = risk_rails.ladder_budget(rails, equity, float(ledger.get("on_market_usd", 0.0)))
+    # The room is the tightest of the city-day rail, the cluster rail and the
+    # correlation-weighted exposure on the same date (P5.9 part 2).
+    on_market = float(ledger.get("on_market_usd", 0.0))
+    max_spend, room_by = risk_rails.ladder_budget(rails, equity, on_market), "city_day"
+    corr_room, corr_by = city_clusters.room(rails, params.get("clusters"), view.get("city_key"), equity,
+                                            on_market, ledger.get("same_day"))
+    if corr_room < max_spend:
+        max_spend, room_by = corr_room, corr_by
     if max_spend <= 0:
-        out.update(action=idle, reason_code="city_day_full", binding=["city_day"])
+        out.update(action=idle, reason_code=f"{room_by}_full", binding=[room_by])
         return out
     solved = hs.solve_book(ladder, allow=allow, caps=caps, held=held, total_usd=equity, cash_usd=cash,
                            sds=sds, alpha=params.get("alpha", hs.ALPHA_PRIOR),
                            lock=bool(view.get("lock")), max_price=rails.get("max_price"))
     frac = hs.fractional(solved, params.get("lambda", hs.LAMBDA_PRIOR))
     out["binding"] = list(out["binding"]) + [b for b in solved["binding"] if b not in out["binding"]]
+    # Drawdown scaling after lambda's own bounds, so a learned lambda at its
+    # floor is still cut when the ledger is down (P5.9: lambda x max(0.25, ...)).
+    dd = risk_rails.drawdown_scale(equity, ledger.get("high_water_usd"))
+    out["drawdown_scale"] = dd
+    if dd < 1.0:
+        frac = {"weights": {k: v * dd for k, v in frac["weights"].items() if v * dd > 1e-12},
+                "lambda": frac.get("lambda")}
+        out["binding"].append("drawdown")
     spend = sum(frac["weights"].values())
     if spend > max_spend + 1e-12:
         s = max_spend / spend if spend > 0 else 0.0
         frac = {"weights": {k: v * s for k, v in frac["weights"].items() if v * s > 1e-12},
                 "lambda": frac.get("lambda")}
-        out["binding"].append("city_day")
+        out["binding"].append(room_by)
 
     c0 = cash / equity
     held_frac = _held_fraction(ids, held, equity)

@@ -11,7 +11,9 @@ what was known at each decision:
   book     each band's newest snapshot at or before the decision, no older
            than BOOK_MAX_AGE_S (archived intraday rows and the database's own)
   ledger   the strategy's cash and holdings from its own earlier decisions, and
-           the day's realised P&L (UTC day) for the daily-loss rail
+           the day's realised P&L (UTC day) for the daily-loss rail, its
+           high-water mark (drawdown scaling) and what it holds on the other
+           cities of the same date (the cluster and correlated rooms, P5.9)
 
 The engine decides (decision_engine.decide, the code the tick will call); an
 IOC leg fills against the snapshot's depth tiers (FILL below); a market
@@ -197,7 +199,7 @@ def plan(markets, peaks, date_from, date_to, ladders):
 
 def walk(args):
     sid, events, markets, bands_of, ladders, books, rails = args
-    cash, realised = BANKROLL, 0.0
+    cash, realised, high = BANKROLL, 0.0, BANKROLL                  # high: the high-water mark (P5.9 drawdown)
     realised_by_day = defaultdict(float)                            # UTC day -> realised P&L (the daily-loss rail)
     held = defaultdict(lambda: defaultdict(lambda: [0.0, 0.0]))     # market -> band -> [yes, no]
     cost = defaultdict(float)                                       # market -> usd at cost
@@ -213,6 +215,7 @@ def walk(args):
                 del held[mid]
                 cost.pop(mid, None)
                 curve.append((t, cash + sum(cost.values())))
+                high = max(high, curve[-1][1])
             continue
         ladder = as_of((([x for x, _ in ladders[mid]]), [p for _, p in ladders[mid]]), t, LADDER_MAX_AGE_S)
         base = {"t": t, "strategy_id": sid, "market_id": mid, "city": m["city"], "date": m["date"].isoformat(),
@@ -236,8 +239,14 @@ def walk(args):
             continue
         equity = cash + sum(cost.values())
         today = realised_by_day.get(dt.datetime.fromtimestamp(t, UTC).date(), 0.0)
+        # What this ledger holds on the other cities of the same date (P5.9's
+        # cluster and correlated rooms), at cost like the city-day rail.
+        same_day = defaultdict(float)
+        for om, c in cost.items():
+            if om != mid and markets[om]["date"] == m["date"] and markets[om]["city"] != m["city"]:
+                same_day[markets[om]["city"]] += c
         ledger = {"equity_usd": equity, "cash_usd": cash, "on_market_usd": cost.get(mid, 0.0),
-                  "pnl_today_usd": today,
+                  "pnl_today_usd": today, "high_water_usd": high, "same_day": dict(same_day),
                   "held": {b: tuple(v) for b, v in held.get(mid, {}).items()}, "held_usd": cost.get(mid, 0.0)}
         d = de.decide(view, book=ebook, ledger=ledger, rails=rails)
         got_sh = got_usd = 0.0

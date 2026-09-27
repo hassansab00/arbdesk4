@@ -10,9 +10,15 @@ ONE SOURCE. settings 'risk_rails' holds the live values and both halves read
 it; DEFAULTS here is only the fallback when the row cannot be read, and a
 test holds it equal to the migration's seed.
 
-Clusters (8% per cluster-day) are part 2: fitted weekly from forecast-error
-correlations. Until then a city is its own cluster and the 3% city-day rail
-is the one that binds.
+Clusters (8% per cluster-day) are part 2: city_clusters.py fits them weekly
+from forecast-error correlations, and its room() holds a city-day's new spend
+to the cluster rail and to the correlation-weighted exposure on the same date.
+
+DRAWDOWN (part 2, the plan's rule, never learned): the Kelly fraction is
+multiplied by max(DRAWDOWN_MIN_SCALE, 1 - drawdown / DRAWDOWN_SPAN), drawdown
+measured from the ledger's high-water mark. At 10% down a bet is half size; from
+15% down it is a quarter, and no lower: the daily-loss rail and the kill switch
+are what stop trading, not this.
 """
 import sys
 
@@ -42,6 +48,18 @@ def load(rest=None):
         elif r.get("key") == "trading_halt":
             halted, reason = bool(v.get("halted")), v.get("reason")
     return rails, halted, reason
+
+
+DRAWDOWN_MIN_SCALE = 0.25
+DRAWDOWN_SPAN = 0.20
+
+
+def drawdown_scale(equity_usd, high_water_usd):
+    """max(0.25, 1 - drawdown/0.20); 1 with no high-water mark or at a new high."""
+    if not high_water_usd or float(high_water_usd) <= 0:
+        return 1.0
+    dd = max(0.0, 1.0 - float(equity_usd) / float(high_water_usd))
+    return max(DRAWDOWN_MIN_SCALE, 1.0 - dd / DRAWDOWN_SPAN)
 
 
 def ladder_budget(rails, equity_usd, on_market_usd):

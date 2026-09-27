@@ -8,6 +8,7 @@ import types
 import pytest
 
 import belief
+import city_clusters
 import strategy_learn as sl
 
 B1, B2, B3 = "b1", "b2", "b3"
@@ -30,9 +31,13 @@ class _DB:
 
     def module(self):
         m = types.ModuleType("common")
-        m.rest = lambda path, params=None, **k: (
-            [{"value": r["value"], "version": r["version"]} for r in self.stored[-1:]]
-            if path == "strategy_params" else [])
+        def rest(path, params=None, **k):
+            if path != "strategy_params":
+                return []
+            param = dict(params or []).get("param", "eq.belief")[3:]
+            mine = [r for r in self.stored if r["param"] == param]
+            return [{"value": r["value"], "version": r["version"]} for r in mine[-1:]]
+        m.rest = rest
 
         def rest_all(path, params=None, *, order, page_size=500):
             return self.checkpoints if path == "prediction_checkpoints" else self.outcomes
@@ -49,8 +54,9 @@ class _DB:
         return m
 
 
-def _run(monkeypatch, db, as_of="2026-09-26", dry=False):
+def _run(monkeypatch, db, as_of="2026-09-26", dry=False, clusters=([], {}, [])):
     monkeypatch.setitem(sys.modules, "common", db.module())
+    monkeypatch.setattr(sl, "cluster_inputs", lambda rest_all: clusters)
     return sl.main(["--as-of", as_of] + (["--dry-run"] if dry else []))
 
 
@@ -66,6 +72,7 @@ def test_a_night_writes_one_versioned_row_with_its_prior_and_bounds(monkeypatch)
     assert row["bounds"] == {"p": [belief.P_LO, belief.P_HI]}
     assert db.logged[0][:3] == ("P5.8_strategy_learn", "ok", 1)
     assert d["belief"]["written"] and set(d["not_fitted"]) >= {"lambda", "p_fill_touch_1h"}
+    assert "cluster_correlation" not in d["not_fitted"]
 
 
 def test_it_learns_only_from_days_before_it_runs(monkeypatch):
@@ -115,3 +122,44 @@ def test_the_daily_chain_runs_it_after_databank():
     wf = (pathlib.Path(__file__).resolve().parents[1] / ".github" / "workflows"
           / "pipeline_daily.yml").read_text()
     assert wf.index("scripts/databank.py") < wf.index("scripts/strategy_learn.py")
+
+
+def _cluster_inputs(n_days=120, end="2026-09-26"):
+    """Two cities whose forecasts miss together, one that does not."""
+    import random
+    rng, rows, labels = random.Random(3), [], {}
+    last = dt.date.fromisoformat(end)
+    for k in range(n_days):
+        d = str(last - dt.timedelta(days=n_days - k))
+        common = rng.gauss(0, 1)
+        for c, e in (("a", common + rng.gauss(0, 0.2)), ("b", common + rng.gauss(0, 0.2)), ("c", rng.gauss(0, 1))):
+            labels[(c, d)] = 20.0
+            rows.append([c, "1", d, f"{20.0 + e:.4f}"])
+    return rows, labels, ["a", "b", "c", "unmeasured"]
+
+
+def test_the_cluster_fit_is_weekly_and_versioned(monkeypatch):
+    db = _DB([_cp(1, "2026-09-24")], [_out(1)])
+    d = _run(monkeypatch, db, clusters=_cluster_inputs())
+    rows = [r for r in db.stored if r["param"] == "city_clusters"]
+    assert len(rows) == 1 and d["city_clusters"]["written"]
+    row = rows[0]
+    assert row["version"].startswith("city-clusters:2026-09-26:") and row["as_of"] == "2026-09-26"
+    assert row["bounds"] == {"rho": [0.0, 1.0]} and row["prior"]["rho"] == city_clusters.RHO_PRIOR
+    v = row["value"]
+    assert v["measured_cities"] == ["a", "b", "c"] and v["rho"]["a|unmeasured"] == city_clusters.RHO_PRIOR
+    assert v["rho"]["a|b"] == round(city_clusters.RHO_PRIOR + city_clusters.MAX_STEP, 4)
+    # six days later: not due, nothing written; seven: due, and it steps from the last version
+    d6 = _run(monkeypatch, db, as_of="2026-10-02", clusters=_cluster_inputs(end="2026-10-02"))
+    assert not d6["city_clusters"]["due"] and len([r for r in db.stored if r["param"] == "city_clusters"]) == 1
+    d7 = _run(monkeypatch, db, as_of="2026-10-03", clusters=_cluster_inputs(end="2026-10-03"))
+    assert d7["city_clusters"]["previous"] == row["version"]
+    second = [r for r in db.stored if r["param"] == "city_clusters"][-1]["value"]
+    assert abs(second["rho"]["a|b"] - v["rho"]["a|b"]) <= city_clusters.MAX_STEP + 1e-9
+
+
+def test_no_measured_city_writes_no_cluster_row(monkeypatch):
+    db = _DB([_cp(1, "2026-09-24")], [_out(1)])
+    d = _run(monkeypatch, db, clusters=_cluster_inputs(n_days=40))    # under MIN_DATES
+    assert not [r for r in db.stored if r["param"] == "city_clusters"]
+    assert d["city_clusters"]["measured_cities"] == 0 and not d["city_clusters"]["written"]
