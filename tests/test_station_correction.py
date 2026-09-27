@@ -142,3 +142,78 @@ def test_a_day_is_truth_only_once_it_has_ended():
     # Tokyo's 26 Sep ended at 15:00 UTC on the 26th
     assert common.day_had_ended("2026-09-26", "2026-09-26T15:00:00Z", "Asia/Tokyo")
     assert not common.day_had_ended("2026-09-26", None, "Asia/Tokyo")
+
+
+# ---------------------------------------------------------------------------
+# A RERUN CANNOT STEP TWICE (plan v2.3 P5.14). The step is measured from the
+# value in force BEFORE the night, which each row keeps beside its own value.
+# ---------------------------------------------------------------------------
+def test_the_anchor_is_the_newest_value_dated_before_the_night():
+    last_night = {"bias_c": -0.25, "as_of": "2026-09-27", "prev_bias_c": None, "prev_as_of": None}
+    assert sc.anchor_before(last_night, dt.date(2026, 9, 28)) == (-0.25, "2026-09-27")
+    tonight = {"bias_c": -0.50, "as_of": "2026-09-28", "prev_bias_c": -0.25, "prev_as_of": "2026-09-27"}
+    assert sc.anchor_before(tonight, dt.date(2026, 9, 28)) == (-0.25, "2026-09-27"), \
+        "a re-run tonight steps from last night's value, not from tonight's first run"
+    first_ever = {"bias_c": -1.75, "as_of": "2026-09-28", "prev_bias_c": None, "prev_as_of": None}
+    assert sc.anchor_before(first_ever, dt.date(2026, 9, 28)) is None, \
+        "a cell with nothing before tonight has no anchor on a re-run either, exactly as on the first run"
+
+
+def _run_against(stored, pairs, as_of, monkeypatch):
+    """One sc.main run against a table that returns `stored` and records what
+    is written, the way the real table would on the next read."""
+    import sys
+    import types
+    import common as real_common
+    written = {}
+    common = types.ModuleType("common")
+
+    def rest_all(path, params=None, **k):
+        p = dict(params)
+        if path == "derived_city_day_features":
+            return [{"city_key": c, "obs_date": d, "max_c": y, "computed_at": "2026-09-28T05:00:00+00:00"}
+                    for c, d, s, l, fc, y in pairs if s == "m1" and l == 1]
+        if path == "cities":
+            return [{"city_key": c, "timezone": "UTC"} for c in {q[0] for q in pairs}]
+        if path == "weather_forecast_models" and p.get("source") == f"eq.{sc.FIT_SOURCE}":
+            return [{"city_key": c, "model": s, "for_date": d, "lead_days": l, "forecast_max_c": fc}
+                    for c, d, s, l, fc, y in pairs]
+        if path == "weather_forecast_models":
+            return []
+        if path == "derived_station_correction":
+            return [dict(r) for r in stored]
+        raise AssertionError(path)
+    common.rest_all = rest_all
+    common.day_had_ended = real_common.day_had_ended
+    common.upsert_replace = lambda t, rows, key: (written.setdefault(t, rows), len(rows))[1]
+    common.log_run = lambda *a, **k: None
+    monkeypatch.setitem(sys.modules, "common", common)
+    sc.main(["--as-of", as_of])
+    return written["derived_station_correction"]
+
+
+def test_a_rerun_the_same_night_writes_the_same_numbers(monkeypatch):
+    """m1 runs 2 C cold at "hot", so its station error (station - model) is
+    about +2 C. Last night held it at +0.25 on the way there. Tonight's run
+    steps it to +0.50; a second run tonight, on the same data, must write
+    +0.50 again, not +0.75 (as it did when the step was measured from the
+    stored value, i.e. from tonight's own first run)."""
+    pairs = _pairs(days=30)
+    last_night = [{"city_key": "hot", "source": "m1", "lead_days": lead, "bias_c": 0.25, "as_of": "2026-09-27",
+                   "prev_bias_c": None, "prev_as_of": None} for lead in sc.LEADS]
+    first = _run_against(last_night, pairs, "2026-09-28", monkeypatch)
+    cell = {(r["source"], r["lead_days"], r["city_key"]): r for r in first}
+    for lead in sc.LEADS:
+        r = cell[("m1", lead, "hot")]
+        assert r["bias_c"] == pytest.approx(0.25 + sc.MAX_STEP_C)
+        assert (r["prev_bias_c"], r["prev_as_of"]) == (0.25, "2026-09-27")
+    second = _run_against(first, pairs, "2026-09-28", monkeypatch)
+    assert [(r["city_key"], r["source"], r["lead_days"], r["bias_c"], r["prev_bias_c"], r["prev_as_of"])
+            for r in second] == \
+           [(r["city_key"], r["source"], r["lead_days"], r["bias_c"], r["prev_bias_c"], r["prev_as_of"])
+            for r in first], "a same-night re-run changed a stored value"
+    # the next night steps on from tonight's value, one step
+    third = {(r["source"], r["lead_days"], r["city_key"]): r
+             for r in _run_against(second, pairs, "2026-09-29", monkeypatch)}
+    assert third[("m1", 1, "hot")]["bias_c"] == pytest.approx(0.25 + 2 * sc.MAX_STEP_C)
+    assert third[("m1", 1, "hot")]["prev_as_of"] == "2026-09-28"

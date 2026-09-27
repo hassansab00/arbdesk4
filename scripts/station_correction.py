@@ -208,10 +208,33 @@ def load_forward(rest_all, as_of):
     return out
 
 
-def load_previous(rest_all):
-    rows = rest_all("derived_station_correction", [("select", "city_key,source,lead_days,bias_c")],
+def anchor_before(row, as_of, value="bias_c", prev="prev_bias_c"):
+    """(value, its as_of) in force BEFORE the night `as_of`, or None (plan v2.3 P5.14).
+
+    A row carries tonight's value and the one it stepped from. A second run on
+    the same night (the Relearn webhook, a manual dispatch, a GitHub re-run)
+    must step from what the night started with, not from the first run's
+    output: stepping from its own output moves a held-back cell 0.50 C in one
+    night instead of 0.25. So the anchor is the newer of the two that is dated
+    before `as_of`."""
+    tonight = str(as_of)
+    for v, when in ((row.get(value), row.get("as_of")), (row.get(prev), row.get("prev_as_of"))):
+        if v is not None and when is not None and str(when) < tonight:
+            return v, str(when)
+    return None
+
+
+def load_previous(rest_all, as_of):
+    """{cell: (bias, as_of)} in force before the night `as_of`."""
+    rows = rest_all("derived_station_correction",
+                    [("select", "city_key,source,lead_days,bias_c,as_of,prev_bias_c,prev_as_of")],
                     order="city_key.asc,source.asc,lead_days.asc")
-    return {(r["source"], int(r["lead_days"]), r["city_key"]): float(r["bias_c"]) for r in rows}
+    out = {}
+    for r in rows:
+        a = anchor_before(r, as_of)
+        if a is not None:
+            out[(r["source"], int(r["lead_days"]), r["city_key"])] = (float(a[0]), a[1])
+    return out
 
 
 def main(argv=None, today=None):
@@ -228,17 +251,21 @@ def main(argv=None, today=None):
     score = walk_forward(pairs, days[-EVAL_DAYS:])
 
     window_start = (as_of - dt.timedelta(days=WINDOW_DAYS)).isoformat()
-    try:
-        previous = load_previous(rest_all)
-    except Exception as e:                       # first run, or the table is not there yet
-        print(f"  note: no previous correction ({e}); starting from the prior", file=sys.stderr)
-        previous = {}
-    table = fit([p for p in pairs if p[1] >= window_start], previous)
+    # No fallback to "no previous": a read that fails would otherwise fit every
+    # cell with no step bound at all, and the upsert below needs the same table.
+    # A failed night leaves last night's cells in force (the engine reads rows
+    # younger than 36 h), which is Rule 11's safe side.
+    previous = load_previous(rest_all, as_of)
+    table = fit([p for p in pairs if p[1] >= window_start], {k: v[0] for k, v in previous.items()})
     version = version_of(table, as_of)
 
+    # Each cell keeps the value it stepped from, so a re-run tonight steps from
+    # the same place and writes the same numbers (plan v2.3 P5.14).
     cell_rows = [{"city_key": city, "source": source, "lead_days": lead, "bias_c": round(b, 4),
                   "pooled_bias_c": round(table["pooled"][(source, lead)][0], 4), "n": n,
-                  "n_pooled": table["pooled"][(source, lead)][1], "version": version, "as_of": str(as_of)}
+                  "n_pooled": table["pooled"][(source, lead)][1], "version": version, "as_of": str(as_of),
+                  "prev_bias_c": previous[(source, lead, city)][0] if (source, lead, city) in previous else None,
+                  "prev_as_of": previous[(source, lead, city)][1] if (source, lead, city) in previous else None}
                  for (source, lead, city), (b, n) in sorted(table["cells"].items())]
     fwd_rows = []
     for (city, day), (lead, fcs) in sorted(load_forward(rest_all, as_of).items()):
