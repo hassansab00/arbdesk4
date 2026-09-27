@@ -176,6 +176,21 @@ def decision_row(run_id, decided_at, checkpoint_id, strategy_id, city, target, d
             "params_version": json.dumps(d.get("versions") or {}, sort_keys=True, default=str)}
 
 
+def stamp_s10(row, trace):
+    """The row, with the parameters S10's own rule decided on in its
+    params_version: the market anchor its ladder was pulled toward, its view
+    and h_switch. Until 27 Sep an S10 row that declined by its own rule
+    recorded none (33 of 33 at 20:36Z), and the replay is compared with live
+    for the same params version (plan v2 P5.12 acceptance). Other rows pass
+    through unchanged."""
+    s10d = (trace or {}).get("s10")
+    if not s10d:
+        return row
+    pv = json.loads(row["params_version"]) if row.get("params_version") else {"market_anchor": trace.get("anchor")}
+    pv["s10"] = {"view": s10d.get("view_version"), "h_switch": s10d.get("h_switch")}
+    return dict(row, params_version=json.dumps(pv, sort_keys=True, default=str))
+
+
 def reading_age(reading_at, decided_at):
     """Minutes from the newest station reading to the decision, or None.
 
@@ -259,15 +274,16 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
             if view is None and s10d.get("action") in ("SELL", "SWITCH") and held_s10:
                 row_out, ex = exit_of(sid, s10d, held_s10, book, ebook, lg, trace, params,
                                       run_id, decided_at, checkpoint_id, city, target)
-                rows.append(row_out)
+                rows.append(stamp_s10(row_out, trace))
                 if exits is not None and ex is not None:
                     exits.append(ex)
                 continue
             if view is None:
-                rows.append(decision_row(run_id, decided_at, checkpoint_id, sid, city, target, why=why))
+                rows.append(stamp_s10(decision_row(run_id, decided_at, checkpoint_id, sid, city, target, why=why),
+                                      trace))
                 continue
             d = de.decide(view, book=ebook, ledger=lg, params=params)
-            rows.append(decision_row(run_id, decided_at, checkpoint_id, sid, city, target, d=d))
+            rows.append(stamp_s10(decision_row(run_id, decided_at, checkpoint_id, sid, city, target, d=d), trace))
             if buys is not None and d.get("action") == "BUY":
                 buys.append((rows[-1], d, checkpoint_id))
     return rows, {"city_days": len(checkpoints), "reached": reached, "out_of_time": skipped}
@@ -313,8 +329,10 @@ def exit_of(sid, s10d, held, book, ebook, lg, trace, params, run_id, decided_at,
 # ---------------------------------------------------------------------------
 # I/O, called from tick.run; never raises
 # ---------------------------------------------------------------------------
-def read_ledgers(rest, rest_all, now):
-    """{strategy_id: f(city, target) -> ledger} from the strategies' shadow ledgers."""
+def read_ledgers(rest, rest_all, now, snapshot=None):
+    """{strategy_id: f(city, target) -> ledger} from the strategies' shadow ledgers.
+    `snapshot`, when a dict, receives what was read per strategy (the tick
+    records it: the replay is given the ledger live decided on)."""
     accounts = rest("paper_accounts", [("select", "account_id,strategy_id,cash,reserved_cash"),
                                        ("kind", "eq.shadow"), ("status", "eq.active"),
                                        ("strategy_id", f"in.({','.join(STRATEGIES)})")])
@@ -352,6 +370,13 @@ def read_ledgers(rest, rest_all, now):
         pnl = sum(float(t.get("net_pnl") or 0.0) for t in closed if str(t["account_id"]) == aid)
         out[a["strategy_id"]] = (lambda c, t, a=a, pos=pos, live=live, hw=hw, pnl=pnl:
                                  ledger(a, pos, city_day_of, live, c, t, hw, pnl))
+        if snapshot is not None:
+            snapshot[a["strategy_id"]] = {
+                "cash": a.get("cash"), "reserved_cash": a.get("reserved_cash"), "high_water": hw, "pnl_today": pnl,
+                "positions": [[str(p["band_id"]), p.get("side"), p.get("shares"), p.get("cost_basis"),
+                               list(city_day_of.get(str(p["band_id"])) or [])] for p in pos],
+                "orders": [[str(o["band_id"]), o.get("cash_ceiling"),
+                            list(city_day_of.get(str(o["band_id"])) or [])] for o in live]}
     return out
 
 
@@ -415,7 +440,15 @@ def record(written_rows, s10_ladders, bands_by_market, market_of, unit_of, floor
                 bands_of[(city, target)] = sorted(
                     bands_by_market.get(m["market_id"], []),
                     key=lambda b: (not b.get("open_low"), b["band_lo"] if b.get("band_lo") is not None else -1e9))
-        ledgers = read_ledgers(rest, rest_all, now)
+        snapshot = {}
+        ledgers = read_ledgers(rest, rest_all, now, snapshot=snapshot)
+        # What the engine decided on that no other table keeps as of this
+        # tick: each city's floor, its basis and the newest reading under it
+        # (v_city_running_max is a view of now), and each ledger as read. The
+        # replay is given these to be compared with live (P5.12 acceptance).
+        out["inputs"] = {"decided_at": now.isoformat(),
+                         "floors": {c: list(floors[c]) for c in sorted({k[0] for k in latest}) if c in floors},
+                         "ledgers": snapshot}
         params = {"clusters": city_clusters.load(rest)}
         anchor_table = market_anchor.load(rest)
         run_id = str(uuid.uuid4())

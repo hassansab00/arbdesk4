@@ -1,5 +1,7 @@
 """Plan v2 P5.12 part 3a: the one engine decides at the tick's checkpoints and
 records it in `decisions`, ordering nothing (scripts/engine_shadow.py)."""
+import datetime as dt
+import json
 import pathlib
 import re
 import time
@@ -174,6 +176,49 @@ def test_s10_hears_how_old_the_station_reading_is():
     assert {r["reason_code"] for r in stale} == {"own_rule_wait"}, "96 minutes old is past the 75-minute limit"
     none = _s10_rows({"london": ("2026-09-28", 18.0, "series", None)})
     assert {r["reason_code"] for r in none} == {"own_rule_wait"}
+
+
+def test_an_s10_row_records_the_parameters_its_own_rule_used():
+    """Until 27 Sep an S10 row that declined by its own rule had no
+    params_version (33 of 33 at 20:36Z), though its ladder was pulled toward
+    the market; the replay is compared with live for the same params version
+    (P5.12 acceptance)."""
+    import json
+    from strategies import s10_max_temp_winner as s10
+    rows = _s10_rows({"london": ("2026-09-28", 18.0, "series", "2026-09-28T11:10:00+00:00")})
+    assert rows and all(r["params_version"] for r in rows)
+    for r in rows:
+        pv = json.loads(r["params_version"])
+        assert pv["s10"] == {"view": s10.VIEW_VERSION, "h_switch": s10.h_switch()}
+        assert pv["market_anchor"]["version"] == "prior" and "scope" in pv["market_anchor"]
+    row = es.decision_row("run", "t", "cp", "s11_ladder", "london", "2026-09-28", why="no ladder")
+    assert es.stamp_s10(row, None) is row, "a row S10's own rule did not decide passes through"
+
+
+def test_the_ledger_the_engine_read_is_kept_for_the_replay():
+    """v_city_running_max and the ledgers are read as of now and kept nowhere;
+    the tick records them beside the decisions (P5.12 acceptance)."""
+    def rest(path, params=None, **k):
+        return {"paper_accounts": [{"account_id": "a1", "strategy_id": "s10_winner", "cash": 970.0,
+                                    "reserved_cash": 6.17}],
+                "v_desk_risk_state": [{"account_id": "a1", "high_water": 1000.0}]}.get(path, [])
+
+    def rest_all(path, params=None, **k):
+        return {"paper_positions": [{"account_id": "a1", "band_id": "b2", "side": "YES", "shares": 60.0,
+                                     "cost_basis": 30.0}],
+                "paper_orders": [{"account_id": "a1", "band_id": "b3", "cash_ceiling": 6.17}],
+                "paper_trades": [{"account_id": "a1", "net_pnl": -1.5}],
+                "bands": [{"band_id": "b2", "market_id": "m1"}, {"band_id": "b3", "market_id": "m1"}],
+                "markets": [{"market_id": "m1", "city_key": "london", "resolution_date": "2026-09-28"}]}.get(path, [])
+    snap = {}
+    led = es.read_ledgers(rest, rest_all, dt.datetime(2026, 9, 28, 11, 36, tzinfo=dt.timezone.utc), snapshot=snap)
+    assert snap == {"s10_winner": {"cash": 970.0, "reserved_cash": 6.17, "high_water": 1000.0, "pnl_today": -1.5,
+                                   "positions": [["b2", "YES", 60.0, 30.0, ["london", "2026-09-28"]]],
+                                   "orders": [["b3", 6.17, ["london", "2026-09-28"]]]}}
+    json.dumps(snap)
+    assert led["s10_winner"]("london", "2026-09-28")["held"] == {"b2": (60.0, 0.0)}
+    src = (ROOT / "scripts" / "engine_shadow.py").read_text()
+    assert 'out["inputs"] = {"decided_at": now.isoformat(),' in src
 
 
 def test_yesterdays_reading_vouches_for_nothing_today(monkeypatch):
