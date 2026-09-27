@@ -56,7 +56,7 @@ def test_the_model_request_cannot_stop_best_match():
     """Additive by construction: its failures are counted apart and never enter
     the counters that decide `incomplete`, a failed job or a paid continuation."""
     src = open(f.__file__).read()
-    block = src[src.index("if MODELS:\n                mjs"):src.index("total += got")]
+    block = src[src.index("if MODELS:\n                mjs"):src.index('total += out["got"]')]
     for counter in ("missing_chunks", "unreached_chunks", "refused +=", "unreached +="):
         assert counter not in block, counter
 
@@ -69,7 +69,7 @@ def test_per_model_rows_never_enter_weather_forecasts():
     """probability_engine._forecast_for takes the newest, shortest-lead row of
     ANY model. A per-model row there would tie with best_match on run_at."""
     src = open(f.__file__).read()
-    block = src[src.index("if MODELS:\n                mjs"):src.index("total += got")]
+    block = src[src.index("if MODELS:\n                mjs"):src.index('total += out["got"]')]
     assert '"weather_forecast_models"' in block
     assert '"weather_forecasts"' not in block
 

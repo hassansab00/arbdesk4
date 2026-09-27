@@ -16,6 +16,7 @@ Usage:
   python scripts/ingest_forecasts.py 2024-01-01 2026-08-27    # backfill range
 """
 import sys, time, os, json, datetime as dt
+from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 import requests
 from common import get_cities, upsert, rest, log_run, city_local_date
@@ -44,9 +45,20 @@ CHUNK_DAYS = 60
 # about 2.3 s, and five that did not each spent 2 x 100 s + 4 s timing out -
 # about 17 of the run's 22 minutes, billed, for nothing. A read that has not
 # answered in 30 s is left to the next run, which asks least-covered first.
-TIMEOUT    = 30
+TIMEOUT    = 20
 PAUSE      = 0.2
 TRIES      = 2
+RETRY_WAIT = 2
+# NOT ONE CITY AT A TIME (27 Sep). The 03:36Z run asked 36 cities in 21
+# minutes and hit its deadline at city 37 of 48: a city that answered took
+# about 4 s for its two requests, but 13 of the 36 hung and each hang cost
+# 2 x 30 s + 4 s, one after another - about 14 of the 21 minutes - and the
+# 44 current-run requests after the loop never started. Three continuation
+# runs and pipeline_daily's own ingest step then repeated the job: 67 + 18
+# billed minutes a night. A few cities at once overlap the hangs; a hung city
+# is asked once more at the end of the same run, not in a new 23-minute job.
+# Four requests in flight is far under Open-Meteo's free per-minute limit.
+WORKERS    = max(1, int(os.environ.get("FORECAST_WORKERS", "4")))
 SOFT_DEADLINE_MIN = min(20, max(1, int(os.environ.get('FORECAST_DEADLINE_MINUTES', '20'))))
 
 def fetch(lat, lon, start, end, label, models=None):
@@ -111,7 +123,7 @@ def fetch(lat, lon, start, end, label, models=None):
             if attempt == TRIES - 1:
                 print(f"  ! {label} unreached: {str(e)[:100]}", file=sys.stderr)
                 return None, "unreached"
-            time.sleep(4)
+            time.sleep(RETRY_WAIT)
     return None, "unreached"
 
 def build_rows(city_key, js, model=None, tz=None, first=None, last=None):
@@ -192,7 +204,7 @@ def fetch_current(lat, lon, label):
             if attempt == TRIES - 1:
                 print(f"  ! {label} unreached: {str(e)[:100]}", file=sys.stderr)
                 return None, "unreached"
-            time.sleep(4)
+            time.sleep(RETRY_WAIT)
     return None, "unreached"
 
 
@@ -331,61 +343,54 @@ def main():
     print(f"cities: {len(all_cities)}  window: {start} -> {end}  chunks/city: {len(windows)}")
     print("ranking cities by existing coverage (least first)...", flush=True)
 
-    ranked = []
-    for c in all_cities:
-        n = coverage_count(c["city_key"], start, end)
-        ranked.append((n, c))
-    ranked.sort(key=lambda x: x[0])   # LEAST covered first - always makes progress where it matters
+    # Coverage for every city at once; each city's known dates are kept, so
+    # its fetch below does not read them a second time.
+    with ThreadPoolExecutor(WORKERS) as pool:
+        haves = list(pool.map(lambda c: existing_dates(c["city_key"], start, end), all_cities))
+    ranked = sorted(((len(h), c, h) for c, h in zip(all_cities, haves)), key=lambda x: x[0])
+    # LEAST covered first - always makes progress where it matters
 
-    done_ct = sum(1 for n, _ in ranked if n >= total_days)
+    done_ct = sum(1 for n, _, _ in ranked if n >= total_days)
     print(f"{done_ct}/{len(ranked)} cities complete ({total_days} days, all requested leads)\n")
 
     total, ran_out, missing_chunks, unreached_chunks, completed_dates = 0, False, 0, 0, 0
     # The per-model request is reported, never raised: it is additive, and a
     # refusal there must not stop best_match or start a paid continuation.
     model_rows, model_failed, model_empty = defaultdict(int), defaultdict(int), set()
-    for i, (n_before, c) in enumerate(ranked, 1):
-        elapsed_min = (time.monotonic() - t0) / 60
-        if elapsed_min > SOFT_DEADLINE_MIN:
-            print(f"\n! soft deadline at {elapsed_min:.0f} min, stopping before "
-                  f"city {i}/{len(ranked)} ({c['city_key']}, had {n_before}d). "
-                  f"Re-run the identical command - least-covered cities go first "
-                  f"automatically, so progress is never lost or reprocessed.")
-            ran_out = True
-            break
 
-        if n_before >= total_days:
-            print(f"  [{i}/{len(ranked)}] {c['city_key']:16s} already complete ({n_before}d), skipping")
-            continue
-
-        have = existing_dates(c["city_key"], start, end)
-        got, skipped, refused, unreached = 0, 0, 0, 0
+    def one_city(item):
+        n_before, c, have = item
+        out = {"got": 0, "skipped": 0, "refused": 0, "unreached": 0, "ran_out": False,
+               "model_rows": defaultdict(int), "model_failed": defaultdict(int), "model_empty": set()}
+        if (time.monotonic() - t0) / 60 > SOFT_DEADLINE_MIN:
+            out["ran_out"] = True
+            return c, n_before, out
         for (cs, ce) in windows:
             if (time.monotonic()-t0)/60 > SOFT_DEADLINE_MIN:
-                ran_out = True
+                out["ran_out"] = True
                 break
             if have and chunk_is_covered(have, cs, ce):
-                skipped += 1
+                out["skipped"] += 1
                 continue
             span = missing_span(have, cs, ce)
             if span:
                 cs, ce = span
             js, outcome = fetch(c["latitude"], c["longitude"], cs, ce, f"{c['city_key']} {cs}")
             if outcome == "refused":
-                refused += 1
+                out["refused"] += 1
                 continue
             if outcome != "ok":
-                unreached += 1
+                out["unreached"] += 1
                 continue
             rows = build_rows(c["city_key"], js, tz=c.get("timezone"), first=cs, last=ce)
             if rows:
-                got += upsert("weather_forecasts", rows, "city_key,model,run_at,for_date")
+                out["got"] += upsert("weather_forecasts", rows, "city_key,model,run_at,for_date")
             time.sleep(PAUSE)
             if MODELS:
                 mjs, mout = fetch(c["latitude"], c["longitude"], cs, ce,
                                   f"{c['city_key']} {cs} models", models=MODELS)
                 if mout != "ok":
-                    model_failed[mout] += 1
+                    out["model_failed"][mout] += 1
                 else:
                     for model in MODELS:
                         mrows = [{k: v for k, v in r.items() if k != "variables"}
@@ -393,42 +398,99 @@ def main():
                         if mrows:
                             n = upsert("weather_forecast_models", mrows,
                                        "city_key,model,run_at,for_date")
-                            model_rows[model] += n
-                            got += n
+                            out["model_rows"][model] += n
+                            out["got"] += n
                         else:
-                            model_empty.add(model)
+                            out["model_empty"].add(model)
                 time.sleep(PAUSE)
-        total += got
-        missing_chunks += refused
-        unreached_chunks += unreached
-        completed_dates += max(0, coverage_count(c["city_key"], start, end)-n_before)
-        note = []
-        if skipped:  note.append(f"{skipped} chunks pre-existing")
-        if refused:  note.append(f"{refused} chunks refused")
-        if unreached: note.append(f"{unreached} chunks unreached")
-        flag = "  (" + ", ".join(note) + ")" if note else ""
-        print(f"  [{i}/{len(ranked)}] {c['city_key']:16s} +{got:6d} rows "
-              f"(had {n_before}d){flag}", flush=True)
+        return c, n_before, out
+
+    todo = [item for item in ranked if item[0] < total_days]
+    for n_before, c, _ in ranked:
+        if n_before >= total_days:
+            print(f"  {c['city_key']:16s} already complete ({n_before}d), skipping")
+    def settle(out):
+        settled["missing"] += out["refused"]
+        settled["unreached"] += out["unreached"]
+        for k, n in out["model_failed"].items():
+            model_failed[k] += n
+
+    settled = {"missing": 0, "unreached": 0}
+    for attempt in (1, 2):
+        again, pending = [], {}
+        with ThreadPoolExecutor(WORKERS) as pool:
+            for c, n_before, out in pool.map(one_city, todo):
+                if out["ran_out"]:
+                    ran_out = True
+                total += out["got"]
+                for m, n in out["model_rows"].items():
+                    model_rows[m] += n
+                model_empty |= out["model_empty"]
+                # a hung city is asked once more below; only its LAST answer counts
+                if out["unreached"] and attempt == 1:
+                    again.append(c)
+                    pending[c["city_key"]] = out
+                else:
+                    settle(out)
+                note = []
+                if out["skipped"]:  note.append(f"{out['skipped']} chunks pre-existing")
+                if out["refused"]:  note.append(f"{out['refused']} chunks refused")
+                if out["unreached"]: note.append(f"{out['unreached']} chunks unreached")
+                flag = "  (" + ", ".join(note) + ")" if note else ""
+                print(f"  [{attempt}] {c['city_key']:16s} +{out['got']:6d} rows "
+                      f"(had {n_before}d){flag}", flush=True)
+        if not again or (time.monotonic() - t0) / 60 > SOFT_DEADLINE_MIN:
+            for out in pending.values():   # no second chance left: the first answer stands
+                settle(out)
+            break
+        print(f"\nasking the {len(again)} hung cities once more", flush=True)
+        todo = [(len(h), c, h) for c, h in zip(
+            again, [existing_dates(c["city_key"], start, end) for c in again])]
+    missing_chunks += settled["missing"]
+    unreached_chunks += settled["unreached"]
+    with ThreadPoolExecutor(WORKERS) as pool:
+        after = list(pool.map(lambda c: coverage_count(c["city_key"], start, end), all_cities))
+    completed_dates = sum(max(0, a - len(h)) for a, h in zip(after, haves))
+    if ran_out:
+        print(f"\n! soft deadline at {(time.monotonic() - t0) / 60:.0f} min. Re-run the identical "
+              f"command - least-covered cities go first automatically, so progress is never lost "
+              f"or reprocessed.")
 
     # EVERY CITY'S CURRENT RUN, whatever the loop above skipped: a city complete
     # for best_match still needs today's forecasts of the days ahead.
     current_rows, current_failed = 0, defaultdict(int)
+
+    def one_current(c):
+        if (time.monotonic() - t0) / 60 > SOFT_DEADLINE_MIN + 2:
+            return c, "deadline", 0
+        fetched_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+        cjs, cout = fetch_current(c["latitude"], c["longitude"], f"{c['city_key']} current")
+        if cout != "ok":
+            return c, cout, 0
+        n = 0
+        for model in MODELS:
+            crows = build_current_rows(c["city_key"], cjs, model, fetched_at, c.get("timezone"))
+            if crows:
+                n += upsert("weather_forecast_models", crows, "city_key,model,run_at,for_date")
+        time.sleep(PAUSE)
+        return c, "ok", n
+
     if MODELS:
-        for c in all_cities:
-            if (time.monotonic() - t0) / 60 > SOFT_DEADLINE_MIN + 2:
-                current_failed["deadline"] += 1
-                continue
-            fetched_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
-            cjs, cout = fetch_current(c["latitude"], c["longitude"], f"{c['city_key']} current")
-            if cout != "ok":
-                current_failed[cout] += 1
-                continue
-            for model in MODELS:
-                crows = build_current_rows(c["city_key"], cjs, model, fetched_at, c.get("timezone"))
-                if crows:
-                    current_rows += upsert("weather_forecast_models", crows,
-                                           "city_key,model,run_at,for_date")
-            time.sleep(PAUSE)
+        todo = list(all_cities)
+        for attempt in (1, 2):
+            with ThreadPoolExecutor(WORKERS) as pool:
+                results = list(pool.map(one_current, todo))
+            current_rows += sum(n for _, _, n in results)
+            hung = [c for c, out, _ in results if out == "unreached"]
+            if attempt == 2 or not hung or (time.monotonic() - t0) / 60 > SOFT_DEADLINE_MIN + 2:
+                for _, out, _ in results:
+                    if out != "ok":
+                        current_failed[out] += 1
+                break
+            for _, out, _ in results:
+                if out not in ("ok", "unreached"):
+                    current_failed[out] += 1
+            todo = hung
         print(f"current runs: {current_rows} row(s)"
               + (f"; failed {dict(current_failed)}" if current_failed else ""))
 
