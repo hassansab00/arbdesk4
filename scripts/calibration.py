@@ -276,7 +276,7 @@ def main():
             ("select", "band_id,prob,settled_yes,for_date,city_key"),
             ("prob", "not.is.null"),
         ], order="for_date.asc,band_id.asc", page_size=1000)
-        stored = rest_all("settings", [("select", "value"), ("key", "eq.calibration_map")])
+        stored = rest_all("settings", [("select", "value"), ("key", "eq.calibration_map")], order="key.asc")
     except Exception as e:
         print(f"calibration evidence unavailable ({e}). Apply migration "
               f"20260926100000_calibration_learns_frozen_calls.sql.", file=sys.stderr)
