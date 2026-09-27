@@ -204,6 +204,19 @@ def decide(view, *, book, ledger, rails=None, halted=False, params=None, state=N
     # 1 refused every lock while anything else was held (the replay: all 119
     # lock_breaks of 12-25 Sep fell while s11_lock held tel_aviv 19 Sep).
     lock_floor = (cash + held_usd) / equity
+    # Nothing can pass the band: no buyable asset raises the mean growth the
+    # band compares, so skip the solve (holdings_solver.no_book_grows). A lock
+    # qualifies only while it holds nothing on this ladder: its floor is then
+    # the free cash, every book the lock path can return is on or above it,
+    # scaling toward cash keeps it there, and the band says NONE. A lock that
+    # already holds here can end below its floor (lock_breaks, read from the
+    # solved book), so it is solved.
+    if not (view.get("lock") and holding) and hs.no_book_grows(
+            ladder, allow=allow, caps=caps, held=held, total_usd=equity, cash_usd=cash,
+            max_price=rails.get("max_price")):
+        g = _growth([post[b][0] for b in ids], [cash / equity + v for v in _held_fraction(ids, held, equity)])
+        out.update(action=idle, reason_code="no_trade_band", g_now=g, g_target=g, no_edge=True)
+        return out
     solved = hs.solve_book(ladder, allow=allow, caps=caps, held=held, total_usd=equity, cash_usd=cash,
                            sds=sds, alpha=params.get("alpha", hs.ALPHA_PRIOR),
                            lock=bool(view.get("lock")), max_price=rails.get("max_price"),

@@ -484,6 +484,44 @@ def solve_book(ladder, allow=("YES", "NO"), caps=None, held=None, total_usd=1.0,
             "wealth_by_outcome": dict(zip(ids, W)), "robust": robust}
 
 
+def no_book_grows(ladder, allow=("YES", "NO"), caps=None, held=None, total_usd=1.0, cash_usd=None,
+                  max_price=None):
+    """True when no book the strategy may buy grows the MEAN growth
+    sum_k p_k log W_k above the current book's (all free cash plus what is
+    held), so the no-trade band refuses whatever solve_book returns and the
+    solve can be skipped (P5.12 part 3: the tick has one billed minute).
+
+    The mean growth is concave in the weights. At the current book, moving a
+    dollar of cash into asset j changes it at the rate
+        sum_k p_k (x_jk - 1) / W_k.
+    If that rate is <= 0 for every asset the strategy may buy (not capped to
+    zero, not above the price rail), no feasible book - whatever solve_book's
+    robust objective, lambda, the drawdown scale and the rooms make of it -
+    has a higher mean growth than the current one. decide's band compares
+    exactly that mean growth (g_target - g_now > h), so it would say NONE.
+    The inputs and their preparation are solve_book's.
+    """
+    if max_price is not None:
+        ladder = [dict(b, **{k: (None if b.get(k) is not None and float(b[k]) > max_price else b.get(k))
+                             for k in ("yes_price", "no_price")}) for b in ladder]
+    ps = [float(b["p"]) for b in ladder]
+    names, x = assets(ladder, allow)
+    m, n = len(names), len(ps)
+    total = float(total_usd)
+    c0 = (float(cash_usd) if cash_usd is not None else total) / total
+    if c0 <= 0:
+        return True
+    ids = [b["id"] for b in ladder]
+    h = [0.0] * n
+    for bid, (yes, no) in (held or {}).items():
+        i = ids.index(bid)
+        for k in range(n):
+            h[k] += ((yes if k == i else 0.0) + (0.0 if k == i else no)) / total
+    W = [c0 + h[k] for k in range(n)]
+    return all(sum(ps[k] * (x[j][k] - 1.0) / W[k] for k in range(n) if ps[k] > 0) <= 0.0
+               for j in range(1, m) if min(float((caps or {}).get(names[j][0], c0)), c0) > 0)
+
+
 # --------------------------------------------------------------------------
 # lambda, the no-trade band, the lock, and S10
 # --------------------------------------------------------------------------
