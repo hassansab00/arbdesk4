@@ -67,6 +67,7 @@ realised growth tracks the growth the robust book predicted).
 """
 import math
 import random
+from operator import mul
 
 from allocator import effective_cost
 
@@ -422,15 +423,23 @@ def solve_book(ladder, allow=("YES", "NO"), caps=None, held=None, total_usd=1.0,
         draws = dirichlet_draws(ps, concentration(ps, sds), n_draws, seed)
         kk = max(1, math.ceil(alpha * len(draws)))
 
+    # THE SAME ARITHMETIC, IN THE SAME ORDER, WITHOUT INDEXING (27 Sep). One
+    # call cost 0.5-0.8 s, 86% of it in step_p's per-element indexing, and the
+    # tick has one billed minute (P5.12). Every sum below adds the same terms in
+    # the same order as before and the sort is the same stable sort, so the
+    # result is bit-identical (tests/test_holdings_solver_speed.py holds it so).
+    xT = [[x[j][k] for j in range(m)] for k in range(n)]
+
     def wealth_of(w):
-        return [sum(w[j] * x[j][k] for j in range(m)) + h[k] for k in range(n)]
+        return [sum(map(mul, w, xT[k])) + h[k] for k in range(n)]
 
     def step_p(W):
         if not robust:
             return ps
         logW = [math.log(v) if v > 0 else -1e9 for v in W]
-        worst = sorted(draws, key=lambda d: sum(d[k] * logW[k] for k in range(n)))[:kk]
-        return [sum(d[k] for d in worst) / kk for k in range(n)]
+        vals = [sum(map(mul, d, logW)) for d in draws]
+        worst = sorted(range(len(draws)), key=vals.__getitem__)[:kk]
+        return [sum(col) / kk for col in zip(*[draws[i] for i in worst])]
 
     # The city-day rail: all new purchases on this ladder together, so cash
     # may not fall below c0 - max_spend. A floor on cash, not a cap on assets.
