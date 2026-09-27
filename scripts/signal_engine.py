@@ -43,6 +43,7 @@ import uuid
 
 import allocator
 import decision_log
+import engine_shadow
 import os
 import risk_budget
 import strategy_gate
@@ -62,10 +63,18 @@ SIGNAL_TTL_MINUTES = 30
 
 
 def _enabled_strategies():
-    """Only what the operator has switched on. All ten ship disabled."""
+    """Only what the operator has switched on. All ten ship disabled.
+
+    Not the one engine's strategies (plan v2 P5.12 part 3b): the tick decides
+    for them and records it. This engine has no rule for them, so all it did
+    was log a NONE no_signal per city-day under their ids - 390 rows at
+    20:38Z on 27 Sep - and, once their ledgers held something, a HOLD the
+    engine never decided."""
     rows = rest("strategies", [("select", "*"), ("enabled", "eq.true")])
     out = []
     for r in rows:
+        if r["strategy_id"] in engine_shadow.STRATEGIES:
+            continue
         extra = r.get("params") or r.get("extra") or {}
         out.append(StrategyConfig(
             strategy_id=r["strategy_id"],

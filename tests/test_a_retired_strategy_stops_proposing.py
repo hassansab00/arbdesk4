@@ -138,6 +138,16 @@ def test_the_engine_only_loads_enabled_strategies():
     )
 
 
+def test_the_one_engines_strategies_are_not_run_here(monkeypatch):
+    """The tick decides for them (P5.12 part 3b); here they only logged a
+    NONE or HOLD per city-day the engine never made."""
+    import engine_shadow
+    import signal_engine as se
+    rows = [{"strategy_id": sid} for sid in ("s1_buy_low_sell_signal",) + engine_shadow.STRATEGIES]
+    monkeypatch.setattr(se, "rest", lambda path, params=None, **k: rows)
+    assert [c.strategy_id for c in se._enabled_strategies()] == ["s1_buy_low_sell_signal"]
+
+
 def test_a_disabled_strategy_proposes_nothing():
     cfg = StrategyConfig(strategy_id="s1_buy_low_sell_signal", name="x", side="BOTH",
                          universe=["ALL"], regime_filter=["SHARP"], conflict_class="directional",
