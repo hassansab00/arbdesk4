@@ -60,3 +60,34 @@ def test_the_checkpoints_are_planned_on_the_citys_clock():
     paris = [cp for (m, cp, loc, utc) in planned if m[1] == "paris"]
     assert paris == ["morning", "noon"] and notes == {f"{cp}: no measured peak hour": 1
                                                      for cp in ("prepeak_2h", "prepeak_1h", "postpeak_1h")}
+
+
+# ---------------------------------------------------------------------------
+# the market the engine would have read (P5.3 amended: S10's market weight)
+# ---------------------------------------------------------------------------
+
+def test_the_engine_market_is_the_newest_book_read_the_engines_way():
+    tops = rc.index_tops({"rows": [["a", 100, 0.40, 0.44], ["a", 200, 0.50, 0.54], ["b", 150, None, 0.30],
+                                    ["a", 900, 0.90, 0.95]]})
+    got = rc.engine_market(["a", "b"], tops, 300)
+    # a: newest at or before 300 is (0.50, 0.54) -> 0.52; b ask-only -> half its ask, 0.15
+    assert abs(got["a"] - 0.52 / 0.67) < 1e-12 and abs(got["b"] - 0.15 / 0.67) < 1e-12
+    assert rc.engine_market(["a", "b"], tops, 120) is None                  # b not yet quoted
+    assert rc.engine_market(["a", "b"], tops, 150 + rc.MARKET_MAX_AGE_S + 1) is None   # b too old
+
+
+def test_the_market_weight_evidence_uses_only_complete_matching_ladders():
+    import importlib.util, pathlib
+    spec = importlib.util.spec_from_file_location(
+        "s10_market_weight", pathlib.Path(__file__).resolve().parents[1] / "tools" / "s10_market_weight.py")
+    t = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(t)
+    base = {"city_key": "x", "target_date": "2026-09-20", "checkpoint": "postpeak_1h", "winner": "a",
+            "model": {"a": 0.7, "b": 0.3}}
+    rows, dropped = t.usable([dict(base, market={"a": 0.5, "b": 0.5}), dict(base, market=None),
+                              dict(base, market={"a": 0.5, "c": 0.5}), dict(base, winner="z", market={"a": 0.5, "b": 0.5})])
+    assert [r[1] for r in rows] == ["s10:post_peak"]
+    assert dropped == {"no complete market ladder": 1, "model and market ladders differ": 1,
+                       "winner not on the ladder": 1}
+    ll = t.losses(rows)
+    assert ll["all"]["ll"][0.0] > ll["all"]["ll"][1.0]           # the model put more on the winner
