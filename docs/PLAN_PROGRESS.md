@@ -3,6 +3,8 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+**Latest handoff: `docs/HANDOFF_2026-09-27.md`.** It gives the state of 27 Sep ~15:40Z: what is live, the measured results, the open questions for Hassan, and what is next (P5.12 part 3b). Read it after `CLAUDE.md` and before this checklist.
+
 - **Statuses:** `todo` · `doing` · `done` · `skipped` (the finding no longer
   holds; the reason is in the notes) · `blocked` (the reason is in the notes).
 - **Done** means the step's acceptance check passed against the **live**
