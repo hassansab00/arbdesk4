@@ -57,6 +57,7 @@ jobs:
           sparse-checkout: |
             scripts
             requirements.runtime.txt
+            data/models/remaining_day/current.json
           sparse-checkout-cone-mode: false
       - id: py
         uses: actions/setup-python@v5

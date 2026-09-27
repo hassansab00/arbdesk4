@@ -300,6 +300,20 @@ def test_the_tick_runs_hourly_at_36_on_the_n8n_clock_and_can_be_started_by_hand(
     assert {"file": "tick.yml", "hours_utc": "*"} in table
 
 
+def test_every_repo_file_the_tick_reads_is_checked_out():
+    """The checkout is sparse. From 27 Sep 09:36Z every tick wrote no S10
+    shadow row with "no fitted parameters at data/models/remaining_day/
+    current.json": the file is committed, but the checkout held only scripts/."""
+    import s10_shadow
+    step = next(s for s in next(iter(_tick_yml()["jobs"].values()))["steps"]
+                if str(s.get("uses", "")).startswith("actions/checkout"))
+    paths = step["with"]["sparse-checkout"].split()
+    root = pathlib.Path(__file__).resolve().parents[1]
+    needed = pathlib.Path(s10_shadow.PARAMS_PATH).resolve().relative_to(root).as_posix()
+    assert (root / needed).exists()
+    assert any(needed == p or needed.startswith(p.rstrip("/") + "/") for p in paths), needed
+
+
 def test_dispatch_inputs_never_reach_the_shell_line():
     for step in next(iter(_tick_yml()["jobs"].values()))["steps"]:
         assert "inputs." not in (step.get("run") or ""), step
