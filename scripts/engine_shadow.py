@@ -108,7 +108,7 @@ def ledger(account, positions, city_day_of, live_orders, city, target, high_wate
     reserved = float(account.get("reserved_cash") or 0.0)
     cost = sum(float(p.get("cost_basis") or 0.0) for p in positions)
     equity = cash + cost
-    held, held_usd, same_day = {}, 0.0, {}
+    held, held_usd, same_day, held_cost = {}, 0.0, {}, {}
     key = (city, str(target))
     for p in positions:
         cd = city_day_of.get(str(p["band_id"]))
@@ -119,6 +119,7 @@ def ledger(account, positions, city_day_of, live_orders, city, target, high_wate
             y, n = held.get(str(p["band_id"]), (0.0, 0.0))
             sh = float(p.get("shares") or 0.0)
             held[str(p["band_id"])] = (y + sh, n) if p.get("side") == "YES" else (y, n + sh)
+            held_cost[(str(p["band_id"]), p.get("side"))] = held_cost.get((str(p["band_id"]), p.get("side")), 0.0) + c
             held_usd += c
         elif cd[1] == key[1]:
             same_day[cd[0]] = same_day.get(cd[0], 0.0) + c
@@ -132,7 +133,28 @@ def ledger(account, positions, city_day_of, live_orders, city, target, high_wate
             same_day[cd[0]] = same_day.get(cd[0], 0.0) + c
     return {"equity_usd": equity, "cash_usd": cash - reserved, "on_market_usd": held_usd + reserved_here,
             "pnl_today_usd": float(pnl_today or 0.0), "held": held, "held_usd": held_usd,
+            "held_cost": held_cost,
             "same_day": same_day, "high_water_usd": None if high_water is None else float(high_water)}
+
+
+def after_sale(lg, band_id, side, shares, proceeds):
+    """The ledger as it stands once `shares` of (band, side) are sold for
+    `proceeds`: what a switch's buy half is sized on."""
+    held = dict(lg.get("held") or {})
+    y, n = held.get(band_id, (0.0, 0.0))
+    held_shares = y if side == "YES" else n
+    frac = 1.0 if held_shares <= 0 else min(1.0, shares / held_shares)
+    cost = float((lg.get("held_cost") or {}).get((band_id, side), 0.0)) * frac
+    y, n = (max(0.0, y - shares), n) if side == "YES" else (y, max(0.0, n - shares))
+    if y > 0 or n > 0:
+        held[band_id] = (y, n)
+    else:
+        held.pop(band_id, None)
+    out = dict(lg, held=held, cash_usd=float(lg["cash_usd"]) + proceeds,
+               equity_usd=float(lg["equity_usd"]) - cost + proceeds,
+               held_usd=max(0.0, float(lg.get("held_usd", 0.0)) - cost),
+               on_market_usd=max(0.0, float(lg.get("on_market_usd", 0.0)) - cost))
+    return out
 
 
 def decision_row(run_id, decided_at, checkpoint_id, strategy_id, city, target, d=None, why=None):
@@ -185,11 +207,12 @@ def _num(x):
 
 
 def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, params, anchor_table,
-               deadline, run_id, decided_at, buys=None):
+               deadline, run_id, decided_at, buys=None, exits=None):
     """(rows, detail). checkpoints: [(checkpoint_id, row)] written this tick,
     latest per city-day. deadline: time.monotonic() to stop at. `buys`, when
     given, collects (row, decision, checkpoint_id) for every BUY: its orders
-    are what part 3b sends (engine_orders)."""
+    are what part 3b sends (engine_orders). `exits` collects S10's SELLs and
+    SWITCHes (exit_of) the same way."""
     import decision_engine as de
     from strategies import engine_views as ev
 
@@ -230,7 +253,16 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
                    "floor_c": floor_c, "floor_basis": floor_basis,
                    "reading_age_min": reading_age_min, "held": held_s10, "checkpoint": name,
                    "anchor": {"table": anchor_table}}
-            view, ebook, why = ev.engine_input(sid, ctx)
+            trace = {} if sid in S10 else None
+            view, ebook, why = ev.engine_input(sid, ctx, trace) if trace is not None else ev.engine_input(sid, ctx)
+            s10d = (trace or {}).get("s10") or {}
+            if view is None and s10d.get("action") in ("SELL", "SWITCH") and held_s10:
+                row_out, ex = exit_of(sid, s10d, held_s10, book, ebook, lg, trace, params,
+                                      run_id, decided_at, checkpoint_id, city, target)
+                rows.append(row_out)
+                if exits is not None and ex is not None:
+                    exits.append(ex)
+                continue
             if view is None:
                 rows.append(decision_row(run_id, decided_at, checkpoint_id, sid, city, target, why=why))
                 continue
@@ -239,6 +271,43 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
             if buys is not None and d.get("action") == "BUY":
                 buys.append((rows[-1], d, checkpoint_id))
     return rows, {"city_days": len(checkpoints), "reached": reached, "out_of_time": skipped}
+
+
+def exit_of(sid, s10d, held, book, ebook, lg, trace, params, run_id, decided_at, checkpoint_id, city, target):
+    """(decisions row, exit or None) for S10's own SELL or SWITCH (plan v2
+    P5.12 part 3b, step 3).
+
+    SELL    the held bucket is certainly lost: sell it at the bid.
+    SWITCH  sell the held bucket at the bid and buy the new target, the buy
+            half sized by the engine on the ledger as it will stand after the
+            sale (after_sale: the proceeds at the bid net of the fee). When
+            the engine gives the new target no size - its band, a rail, the
+            timing - selling would leave the ledger flat on a bucket S10 wanted
+            to hold, so the decision is HOLD, coded switch_unsized.
+    The row says what was decided; the exit says what to send."""
+    import decision_engine as de
+    from strategies import s10_max_temp_winner as s10m
+    band, shares = str(held["band_id"]), float(held.get("shares") or 0.0)
+    bid = (book.get(band) or {}).get("bid")
+    sell = {"band_id": band, "side": "YES", "shares": shares, "limit_price": None if bid is None else float(bid)}
+    if s10d["action"] == "SELL":
+        row = decision_row(run_id, decided_at, checkpoint_id, sid, city, target, why=f"s10 SELL: {s10d.get('reason')}")
+        row["n_signals"] = 1
+        return row, {"kind": "SELL", "row": row, "sell": sell, "buy": None, "checkpoint_id": checkpoint_id}
+    net_bid = s10m._net_bid(book, band)
+    view = (trace or {}).get("switch_view")
+    d_buy = None
+    if net_bid is not None and view is not None:
+        d_buy = de.decide(view, book=ebook, ledger=after_sale(lg, band, "YES", shares, shares * net_bid),
+                          params=params)
+    if d_buy is None or d_buy.get("action") != "BUY":
+        row = decision_row(run_id, decided_at, checkpoint_id, sid, city, target, d=d_buy) if d_buy else \
+            decision_row(run_id, decided_at, checkpoint_id, sid, city, target, why="switch_unsized")
+        row.update(action="HOLD", reason_code="switch_unsized", n_signals=0)
+        return row, None
+    row = decision_row(run_id, decided_at, checkpoint_id, sid, city, target, d=d_buy)
+    row.update(action="SWITCH", reason_code="own_rule_switch", n_signals=1 + len(d_buy.get("orders") or []))
+    return row, {"kind": "SWITCH", "row": row, "sell": sell, "buy": d_buy, "checkpoint_id": checkpoint_id}
 
 
 # ---------------------------------------------------------------------------
@@ -286,26 +355,27 @@ def read_ledgers(rest, rest_all, now):
     return out
 
 
-def send_orders(buys, run_id, deadline, dry_run=False):
-    """engine_orders.send for this run's BUYs; reads only when a BUY's
-    strategy is switched on. Never raises."""
+def send_orders(buys, run_id, deadline, dry_run=False, exits=()):
+    """engine_orders.send for this run's BUYs and S10 exits; reads only when
+    one of their strategies is switched on. Never raises."""
     from common import rest, rest_all, rpc
     import engine_orders
     try:
-        sids = sorted({r["strategy_id"] for r, _d, _c in buys})
+        sids = sorted({r["strategy_id"] for r, _d, _c in buys} | {e["row"]["strategy_id"] for e in exits})
         enabled = {r["strategy_id"] for r in rest("strategies", [
             ("select", "strategy_id"), ("enabled", "eq.true"), ("strategy_id", f"in.({','.join(sids)})")]) or []}
         if not enabled:
-            return {"buys": len(buys), "skipped": {"strategy not switched on": len(buys)}}
+            return {"buys": len(buys), "exits": len(exits),
+                    "skipped": {"strategy not switched on": len(buys) + len(exits)}}
         accounts = {a["strategy_id"]: a["account_id"] for a in rest("paper_accounts", [
             ("select", "account_id,strategy_id"), ("kind", "eq.shadow"), ("status", "eq.active"),
             ("strategy_id", f"in.({','.join(sorted(enabled))})")]) or []}
         ids = {(r["strategy_id"], r["city_key"], str(r["resolution_date"])): r["decision_id"] for r in rest_all(
             "decisions", [("select", "decision_id,strategy_id,city_key,resolution_date"),
-                          ("run_id", f"eq.{run_id}"), ("action", "eq.BUY")], order="decision_id.asc")}
+                          ("run_id", f"eq.{run_id}"), ("action", "in.(BUY,SELL,SWITCH)")], order="decision_id.asc")}
         import paper_worker
         return engine_orders.send(buys, accounts, enabled, ids, run_id, deadline, rpc, rest,
-                                  paper_worker.fill_order, dry_run=dry_run)
+                                  paper_worker.fill_order, dry_run=dry_run, exits=exits)
     except Exception as e:                       # noqa: BLE001 - never into the tick
         return {"buys": len(buys), "error": f"{type(e).__name__}: {str(e)[:160]}"}
 
@@ -349,10 +419,10 @@ def record(written_rows, s10_ladders, bands_by_market, market_of, unit_of, floor
         params = {"clusters": city_clusters.load(rest)}
         anchor_table = market_anchor.load(rest)
         run_id = str(uuid.uuid4())
-        buys = []
+        buys, exits = [], []
         rows, detail = decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, params,
                                   anchor_table, deadline - WRITE_RESERVE_S, run_id,
-                                  now.isoformat(), buys=buys)
+                                  now.isoformat(), buys=buys, exits=exits)
         out.update(detail)
         out["actions"] = {}
         for r in rows:
@@ -365,8 +435,8 @@ def record(written_rows, s10_ladders, bands_by_market, market_of, unit_of, floor
         # Part 3b: the BUYs of a switched-on strategy reach its shadow ledger,
         # filled before the tick ends (engine_orders). The decision is written
         # first: the plan must find it.
-        if buys:
-            out["orders"] = send_orders(buys, run_id, deadline - ORDER_RESERVE_S, dry_run)
+        if buys or exits:
+            out["orders"] = send_orders(buys, run_id, deadline - ORDER_RESERVE_S, dry_run, exits=exits)
     except Exception as e:                       # noqa: BLE001 - never into the tick
         out["error"] = f"{type(e).__name__}: {str(e)[:160]}"
     out["seconds"] = round(time.monotonic() - t0, 1)

@@ -113,6 +113,8 @@ def _rpc_rest(statuses=None):
             return f"plan-{params['p_decision']}"
         if fn == "claim_account_order":
             return None
+        if fn == "expire_paper_commands":
+            return 0
         raise AssertionError(fn)
 
     def rest(path, params=None, **k):
@@ -182,3 +184,174 @@ def test_orders_follow_the_decisions_insert_and_never_raise(monkeypatch):
     out = es.send_orders([({"strategy_id": "s10_winner", "city_key": "x", "resolution_date": "d"}, {}, "cp")],
                          "run", time.monotonic() + 30)
     assert out["error"].startswith("RuntimeError")
+
+
+# ---------------------------------------------------------------------------
+# Step 3: S10's own SELL and SWITCH
+# ---------------------------------------------------------------------------
+LG = {"equity_usd": 1000.0, "cash_usd": 970.0, "on_market_usd": 30.0, "pnl_today_usd": 0.0,
+      "held": {"b2": (60.0, 0.0)}, "held_usd": 30.0, "held_cost": {("b2", "YES"): 30.0},
+      "same_day": {}, "high_water_usd": 1000.0}
+
+
+def test_after_a_sale_the_ledger_holds_the_proceeds_not_the_bucket():
+    after = es.after_sale(LG, "b2", "YES", 60.0, 60 * 0.18)
+    assert after["held"] == {} and after["held_usd"] == 0.0 and after["on_market_usd"] == 0.0
+    assert after["cash_usd"] == pytest.approx(970.0 + 10.8)
+    assert after["equity_usd"] == pytest.approx(1000.0 - 30.0 + 10.8)
+    half = es.after_sale(LG, "b2", "YES", 30.0, 30 * 0.18)
+    assert half["held"] == {"b2": (30.0, 0.0)} and half["held_usd"] == pytest.approx(15.0)
+
+
+BOOK = {"b1": {"bid": 0.30, "ask": 0.33}, "b2": {"bid": 0.18, "ask": 0.21}, "b3": {"bid": 0.01, "ask": 0.03}}
+HELD = {"band_id": "b2", "shares": 60.0}
+
+
+def _exit(action, trace_extra=None, decide=None, monkeypatch=None):
+    import decision_engine as de
+    if decide is not None:
+        monkeypatch.setattr(de, "decide", decide)
+    trace = dict({"s10": {"action": action, "reason": "because", "target": "b1"}}, **(trace_extra or {}))
+    return es.exit_of("s10_winner", trace["s10"], HELD, BOOK, BOOK, LG, trace, {}, "run", "2026-09-28T13:36:00+00:00",
+                      "cp", "london", "2026-09-28")
+
+
+def test_a_certainly_lost_bucket_is_sold_at_the_bid():
+    row, ex = _exit("SELL")
+    assert (row["action"], row["reason_code"], row["n_signals"]) == ("SELL", "own_rule_sell", 1)
+    assert ex["kind"] == "SELL" and ex["buy"] is None
+    assert ex["sell"] == {"band_id": "b2", "side": "YES", "shares": 60.0, "limit_price": 0.18}
+
+
+def test_a_switch_is_a_sale_and_a_buy_sized_on_the_ledger_after_the_sale(monkeypatch):
+    seen = {}
+
+    def decide(view, *, book, ledger, params=None, **k):
+        seen["ledger"] = ledger
+        return {"action": "BUY", "reason_code": "enter", "orders": [{"band_id": "b1", "side": "YES",
+                "limit_price": 0.33, "shares": 40.0}], "p_post": {"b1": 0.5}, "g_now": 0.0, "g_wait": None,
+                "binding": [], "target_usd": 13.2, "held_usd": 0.0, "versions": {"engine": "engine-v1"}}
+    row, ex = _exit("SWITCH", {"switch_view": {"probs": {}}}, decide, monkeypatch)
+    assert (row["action"], row["reason_code"], row["n_signals"]) == ("SWITCH", "own_rule_switch", 2)
+    assert ex["kind"] == "SWITCH" and ex["buy"]["orders"][0]["band_id"] == "b1"
+    from strategies.s10_max_temp_winner import _net_bid
+    assert seen["ledger"]["held"] == {} and seen["ledger"]["cash_usd"] == pytest.approx(970 + 60 * _net_bid(BOOK, "b2"))
+
+
+def test_a_switch_the_engine_will_not_size_holds(monkeypatch):
+    def decide(view, **k):
+        return {"action": "NONE", "reason_code": "no_trade_band", "orders": [], "g_now": 0.0, "g_wait": None,
+                "binding": [], "target_usd": 0.0, "held_usd": 0.0, "versions": {}}
+    row, ex = _exit("SWITCH", {"switch_view": {"probs": {}}}, decide, monkeypatch)
+    assert (row["action"], row["reason_code"], row["n_signals"]) == ("HOLD", "switch_unsized", 0) and ex is None
+    row, ex = _exit("SWITCH")                                       # no buy view at all
+    assert (row["action"], row["reason_code"]) == ("HOLD", "switch_unsized") and ex is None
+
+
+def test_the_engine_collects_s10_exits(monkeypatch):
+    from strategies import engine_views as ev
+    from test_engine_shadow import BANDS, ROW, flat
+
+    def fake(sid, ctx, trace=None):
+        if trace is not None:
+            trace["s10"] = {"action": "SELL", "reason": "the held bucket is certainly lost", "target": None}
+        return None, ctx["book"], "s10 SELL: the held bucket is certainly lost"
+    monkeypatch.setattr(ev, "engine_input", fake)
+    holding = lambda c, t: dict(es.ledger({"cash": 970.0, "reserved_cash": 0.0},
+                                          [{"band_id": "b2", "side": "YES", "shares": 60.0, "cost_basis": 30.0}],
+                                          {"b2": ("london", "2026-09-28")}, [], c, t), held_cost={("b2", "YES"): 30.0})
+    ledgers = {sid: (holding if sid in es.S10 else flat) for sid in es.STRATEGIES}
+    exits = []
+    rows, _ = es.decide_all([("cp1", ROW)], {("london", "2026-09-28", "noon"): {b["band_id"]: 0.2 for b in BANDS}},
+                            {("london", "2026-09-28"): BANDS}, {"london": "C"}, {}, ledgers, {}, None,
+                            time.monotonic() + 60, "run-1", "2026-09-28T11:36:00+00:00", exits=exits)
+    assert {e["row"]["strategy_id"] for e in exits} == set(es.S10)
+    assert all(e["sell"]["band_id"] == "b2" and e["sell"]["shares"] == 60.0 for e in exits)
+    assert {r["action"] for r in rows if r["strategy_id"] in es.S10} == {"SELL"}
+
+
+def test_an_exit_below_the_venue_minimum_or_without_a_bid_is_not_sent():
+    assert eo.sell_leg({"shares": 60.0, "limit_price": 0.18}) == ((60.0, 0.18), None)
+    assert eo.sell_leg({"shares": 60.0, "limit_price": 0.01})[1] == "below the venue minimum of 5 USDC", \
+        "a certainly-lost bucket at a cent rarely reaches the venue's 5 USDC"
+    assert eo.sell_leg({"shares": 60.0, "limit_price": None})[1] == "no bid to sell at"
+
+
+def _exit_rpc(fill_status="filled"):
+    calls = []
+
+    def rpc(fn, params=None, **k):
+        calls.append((fn, params))
+        return {"submit_engine_exit": "order-1", "claim_account_order": {"order_id": "order-1"},
+                "expire_paper_commands": 0, "publish_engine_plan": "plan-9"}.get(fn)
+    return calls, rpc
+
+
+def test_a_switch_buys_only_once_its_sale_has_filled():
+    row = {"strategy_id": "s10_winner", "city_key": "london", "resolution_date": "2026-09-28"}
+    buy = {"orders": ORDERS[:1], "p_post": P_POST}
+    ex = {"kind": "SWITCH", "row": row, "sell": {"band_id": "b2", "side": "YES", "shares": 60.0, "limit_price": 0.18},
+          "buy": buy, "checkpoint_id": "cp"}
+    ids = {("s10_winner", "london", "2026-09-28"): 7}
+    for status, n_buys in (("filled", 1), ("partial", 1), ("rejected", 0)):
+        calls, rpc = _exit_rpc()
+        out, buys = eo.send_exits([ex], {"s10_winner": "acct"}, {"s10_winner"}, ids, time.monotonic() + 60, rpc,
+                                  lambda o, s=status: {"status": s})
+        assert [c[0] for c in calls] == ["submit_engine_exit", "claim_account_order"]
+        assert calls[0][1] == {"p_account": "acct", "p_decision": 7, "p_band": "b2", "p_side": "YES",
+                               "p_shares": 60.0, "p_limit": 0.18}
+        assert len(buys) == n_buys and out["fills"] == {status: 1}
+    calls, rpc = _exit_rpc()
+    out, buys = eo.send_exits([ex], {"s10_winner": "acct"}, set(), ids, time.monotonic() + 60, rpc,
+                              lambda o: pytest.fail("not switched on"))
+    assert calls == [] and out["skipped"] == {"strategy not switched on": 1}
+
+
+def test_send_expires_leftovers_first_and_sends_the_switch_buy():
+    row = {"strategy_id": "s10_winner", "city_key": "london", "resolution_date": "2026-09-28"}
+    ex = {"kind": "SWITCH", "row": row, "sell": {"band_id": "b2", "side": "YES", "shares": 60.0, "limit_price": 0.18},
+          "buy": {"orders": ORDERS[:1], "p_post": P_POST}, "checkpoint_id": "cp"}
+    calls, rpc = _exit_rpc()
+    out = eo.send([], {"s10_winner": "acct"}, {"s10_winner"}, {("s10_winner", "london", "2026-09-28"): 7}, "run",
+                  time.monotonic() + 60, rpc, lambda *a, **k: [{"plan_id": "plan-9", "status": "queued"}],
+                  lambda o: {"status": "filled"}, exits=[ex])
+    names = [c[0] for c in calls]
+    assert names[0] == "expire_paper_commands"
+    assert names.index("submit_engine_exit") < names.index("publish_engine_plan"), "sell first, then buy"
+    assert out["exit_orders"]["switch_buys"] == 1 and out["published"] == 1 and out["queued"] == 1
+
+
+def test_one_refused_order_does_not_stop_the_others():
+    import requests
+    row = lambda sid: {"strategy_id": sid, "city_key": "london", "resolution_date": "2026-09-28"}
+    sell = {"band_id": "b2", "side": "YES", "shares": 60.0, "limit_price": 0.18}
+    exits = [{"kind": "SELL", "row": row(s), "sell": sell, "buy": None, "checkpoint_id": "cp"}
+             for s in ("s10_winner", "s10_growth")]
+    ids = {("s10_winner", "london", "2026-09-28"): 7, ("s10_growth", "london", "2026-09-28"): 8,
+           ("s11_ladder", "london", "2026-09-28"): 9, ("s12_no", "london", "2026-09-28"): 10}
+    calls = []
+
+    def rpc(fn, params=None, **k):
+        calls.append((fn, params))
+        if (fn, (params or {}).get("p_decision")) in (("submit_engine_exit", 7), ("publish_engine_plan", 9)):
+            raise requests.HTTPError(f"{fn} -> HTTP 400: " + '{"code":"P0001","details":null,"hint":null,'
+                                     '"message":"Shares already sold or reserved for exit"}')
+        return {"submit_engine_exit": "order-8", "claim_account_order": {"order_id": "o"},
+                "expire_paper_commands": 0, "publish_engine_plan": "plan-10"}.get(fn)
+    d = {"orders": ORDERS[:1], "p_post": P_POST}
+    sids = {"s10_winner", "s10_growth", "s11_ladder", "s12_no"}
+    out = eo.send([(row("s11_ladder"), d, "cp"), (row("s12_no"), d, "cp")], {s: f"acct-{s}" for s in sids}, sids,
+                  ids, "run", time.monotonic() + 60, rpc, lambda *a, **k: [{"plan_id": "plan-10", "status": "queued"}],
+                  lambda o: {"status": "filled"}, exits=exits)
+    assert out["exit_orders"]["skipped"] == {"refused: Shares already sold or reserved for exit": 1}
+    assert out["exit_orders"]["submitted"] == 1 and out["exit_orders"]["fills"] == {"filled": 1}
+    assert out["skipped"] == {"refused: Shares already sold or reserved for exit": 1}
+    assert out["published"] == 1 and out["queued"] == 1
+    assert eo.refusal(RuntimeError("plain")) == "plain"
+
+
+def test_the_migration_carries_out_the_engines_exits():
+    src = open(eo.__file__.replace("scripts/engine_orders.py", "supabase/migrations/"
+                                   "20260927220000_the_engine_exits_by_its_own_rules.sql")).read()
+    assert "d.action not in ('SELL', 'SWITCH')" in src and "d.action not in ('BUY', 'SWITCH')" in src
+    assert "case when new.context ? 'decision_id' then 'engine_exit' else 'auto_exit' end" in src

@@ -2186,6 +2186,73 @@ const assert = require('node:assert/strict');
   assert.deepEqual(await Promise.all(engineIds.map(engAcct)),engPolicyBefore,'a re-run changes no ledger');
   assert.equal(Number((await db.query('select entry_decision_id from paper_positions where account_id=$1',[winner.account_id])).rows[0].entry_decision_id),
     Number(dBuy),'a re-run keeps the lineage');
+
+  // THE ENGINE EXITS BY ITS OWN RULES (P5.12 part 3b step 3,
+  // 20260927220000_the_engine_exits_by_its_own_rules.sql): a SELL or SWITCH
+  // decided by the ledger's own strategy sells what the ledger holds, as an
+  // automatic order naming the decision and never more than is left; its
+  // trade closes as engine_exit; a SWITCH's buy half is a plan like a BUY's.
+  // The re-run just above put back step 2's publish_engine_plan; live, this
+  // file applies after that one, so it does here too.
+  const exitsFile=fs.readFileSync(path.join(directory,'20260927220000_the_engine_exits_by_its_own_rules.sql'),'utf8');
+  await db.exec(exitsFile);
+  const engExit=(acct,dec,shares,limit=.70)=>db.query("select submit_engine_exit($1,$2,$3,'YES',$4,$5) as id",
+    [acct,dec,band,shares,limit]);
+  const dSell=await decide('s10_winner','SELL');
+  const dSwitch=await decide('s10_winner','SWITCH');
+  const dSellOld=await decide('s10_winner','SELL','20 minutes');
+  const dSellOther=await decide('s11_ladder','SELL');
+  await db.exec('set role service_role;');
+  await assert.rejects(engExit(winner.account_id,dBuy,5),/An engine SELL or SWITCH decision is required/);
+  await assert.rejects(engExit(winner.account_id,dSellOld,5),/Decision stale or future/);
+  await assert.rejects(engExit(winner.account_id,dSellOther,5),/A decision of s11_ladder on the ledger of s10_winner/);
+  await assert.rejects(engExit(winner.account_id,dSell,13),/Shares already sold or reserved for exit/,
+    'never more than the ledger holds');
+  await assert.rejects(engExit(l1.account_id,dSell,5),/Engine orders go to a shadow ledger only|A decision of/);
+  const xOrder=(await engExit(winner.account_id,dSell,5)).rows[0].id;
+  assert.equal((await engExit(winner.account_id,dSell,5)).rows[0].id,xOrder,'one exit per decision, band and side');
+  await assert.rejects(engExit(winner.account_id,dSwitch,8),/Shares already sold or reserved for exit/,
+    'what is already on its way out is not sold twice');
+  const xo=(await db.query(`select action,origin,strategy_id,status,shares,limit_price,cash_ceiling,context,
+      extract(epoch from expires_at-requested_at)::int as life from paper_orders where order_id=$1`,[xOrder])).rows[0];
+  assert.deepEqual([xo.action,xo.origin,xo.strategy_id,xo.status,Number(xo.shares),Number(xo.limit_price),
+    Number(xo.cash_ceiling),xo.life],['SELL','automatic','s10_winner','queued',5,.7,0,300]);
+  assert.equal(Number(xo.context.decision_id),Number(dSell),'the exit names its decision');
+  assert.equal(xo.context.action,'SELL');
+  const xJob=(await db.query('select claim_account_order($1) as job',[winner.account_id])).rows[0].job;
+  assert.equal(xJob.order_id,xOrder,'the ledger claims its own exit');
+  await db.query(`insert into paper_book_evidence(snapshot_id,token_id,observed_at,payload) values('engine-exit-snap',$1,now(),'{}')`,
+    [xJob.token_id]);
+  await db.query('select complete_paper_order($1,$2,$3::jsonb)',[xOrder,xJob.lease_token,JSON.stringify(
+    {status:'filled',reason:null,shares:'5',notional:'3.5',fee:'.0525',snapshot_id:'engine-exit-snap',
+     fills:[{shares:'5',price:'.70',notional:'3.5',fee:'.0525'}]})]);
+  // 12 bought for 6 plus .15 fee; 5 sold for 3.50 less .0525: basis 6.15 x 5/12.
+  const xPos=(await db.query('select shares,cost_basis,realized_pnl,entry_decision_id from paper_positions where account_id=$1',
+    [winner.account_id])).rows[0];
+  assert.deepEqual([Number(xPos.shares),Number(xPos.cost_basis),Number(xPos.realized_pnl)],[7,3.5875,.885]);
+  assert.equal(Number(xPos.entry_decision_id),Number(dBuy),'what is left still names the decision that opened it');
+  const xTrades=(await db.query(
+    'select shares,close_reason from paper_trades where account_id=$1 order by closed_at nulls last',[winner.account_id])).rows;
+  assert.deepEqual(xTrades.map(t=>[Number(t.shares),t.close_reason]),[[5,'engine_exit'],[7,null]],
+    'the shares the engine sold close as its exit; the rest stay open');
+  assert.ok((await db.query("select count(*)::int n from paper_trades where account_id=$1 and close_reason='auto_exit'",
+    [account])).rows[0].n>0,'every other SELL still closes as auto_exit');
+  // The SWITCH: the rest goes, and the buy half is a plan on the same gate.
+  const sOrder=(await engExit(winner.account_id,dSwitch,7,.40)).rows[0].id;
+  assert.equal((await db.query('select context from paper_orders where order_id=$1',[sOrder])).rows[0].context.action,'SWITCH');
+  const sPlan=(await publishEngine(winner.account_id,dSwitch)).rows[0].id;
+  const sp=(await db.query('select status,reason,evidence from paper_trade_plans where plan_id=$1',[sPlan])).rows[0];
+  assert.equal(Number(sp.evidence.decision_id),Number(dSwitch),'a SWITCH decision publishes its buy half');
+  assert.equal(sp.status,'blocked','queue_plan still judges it: the band is still held and its exit still working');
+  assert.match(sp.reason,/Already holding or ordering YES on this band/);
+  await db.exec('reset role;set role anon;');
+  await assert.rejects(db.query("select submit_engine_exit($1,$2,$3,'YES',1,.5)",[winner.account_id,dSwitch,band]),
+    /permission denied/);
+  await db.exec('reset role;');
+  const xBefore=(await db.query('select count(*)::int n from paper_orders where account_id=$1',[winner.account_id])).rows[0].n;
+  await db.exec(exitsFile);
+  assert.equal((await db.query('select count(*)::int n from paper_orders where account_id=$1',[winner.account_id])).rows[0].n,
+    xBefore,'a re-run changes nothing');
   const enabledOf=async(sid)=>(await db.query('select enabled from strategies where strategy_id=$1',[sid])).rows[0].enabled;
   await db.exec("insert into public.strategies(strategy_id,name,enabled) values('s_life','lifecycle test',false);");
   assert.equal(await stateOf('s_life'),'research','a registered, switched-off strategy starts in research');

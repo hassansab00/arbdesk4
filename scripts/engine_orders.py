@@ -31,6 +31,7 @@ Bounded: no fill starts after the deadline, at most MAX_FILLS per tick; what
 is not filled expires and its reserve is released (expire_paper_commands).
 Never raises into the tick.
 """
+import json
 import math
 import threading
 import time
@@ -155,16 +156,101 @@ def fill_ledgers(account_ids, deadline, claim, fill_one, max_fills=MAX_FILLS):
     return out
 
 
-def send(buys, accounts, enabled, decision_ids, run_id, deadline, rpc, rest, fill_one, dry_run=False):
-    """Publish a plan per BUY of a switched-on strategy and fill it.
+def refusal(e):
+    """The database's reason for refusing one order: common.rpc puts the
+    PostgREST body, whose `message` is the RAISE, in the exception."""
+    text = str(e)
+    body = text.split(": ", 1)[1] if ": " in text else ""
+    try:
+        text = json.loads(body).get("message") or body
+    except (ValueError, AttributeError):
+        text = body or text
+    return text[:80]
+
+
+def sell_leg(sell):
+    """(shares, limit) for an exit at the bid, or (None, why)."""
+    limit = sell.get("limit_price")
+    if limit is None or not (0.0 < float(limit) < 1.0):
+        return None, "no bid to sell at"
+    shares = _floor_step(float(sell.get("shares") or 0.0))
+    if shares <= 0 or shares * float(limit) < MIN_ORDER_USD:
+        return None, f"below the venue minimum of {MIN_ORDER_USD:g} USDC"
+    return (shares, float(limit)), None
+
+
+def send_exits(exits, accounts, enabled, decision_ids, deadline, rpc, fill_one, dry_run=False):
+    """Carry out S10's SELLs and SWITCHes, one at a time: submit the exit,
+    fill it now, and for a SWITCH whose sale filled, hand back its buy half.
+    Returns (detail, [(row, d_buy, checkpoint_id)] to send as BUYs)."""
+    out = {"exits": len(exits), "submitted": 0, "skipped": {}, "fills": {}, "switch_buys": 0}
+    buys = []
+    for ex in exits:
+        row = ex["row"]
+        sid = row["strategy_id"]
+        key = (sid, row["city_key"], str(row["resolution_date"]))
+        why = None
+        if sid not in enabled:
+            why = "strategy not switched on"
+        elif sid not in accounts:
+            why = "no shadow ledger"
+        elif decision_ids.get(key) is None:
+            why = "decision id not found"
+        leg = None
+        if why is None:
+            leg, why = sell_leg(ex["sell"])
+        if why is None and time.monotonic() + 2 * FILL_SECONDS >= deadline:
+            why = "no time left in the tick"
+        if why:
+            out["skipped"][why] = out["skipped"].get(why, 0) + 1
+            continue
+        if dry_run:
+            out["submitted"] += 1
+            continue
+        shares, limit = leg
+        try:
+            rpc("submit_engine_exit", {"p_account": accounts[sid], "p_decision": decision_ids[key],
+                                       "p_band": ex["sell"]["band_id"], "p_side": ex["sell"]["side"],
+                                       "p_shares": round(shares, 2), "p_limit": limit})
+        except Exception as e:                            # noqa: BLE001 - one refusal is not the tick's
+            why = f"refused: {refusal(e)}"
+            out["skipped"][why] = out["skipped"].get(why, 0) + 1
+            continue
+        out["submitted"] += 1
+        status = "not claimed"
+        try:
+            order = rpc("claim_account_order", {"p_account": accounts[sid]})
+            if order:
+                status = (fill_one(order) or {}).get("status") or "unknown"
+        except Exception as e:                            # noqa: BLE001 - never into the tick
+            status = f"error: {type(e).__name__}"
+        out["fills"][status] = out["fills"].get(status, 0) + 1
+        if ex["kind"] == "SWITCH" and status in ("filled", "partial") and ex.get("buy"):
+            buys.append((row, ex["buy"], ex["checkpoint_id"]))
+            out["switch_buys"] += 1
+    return out, buys
+
+
+def send(buys, accounts, enabled, decision_ids, run_id, deadline, rpc, rest, fill_one, dry_run=False, exits=()):
+    """Carry out S10's exits (send_exits), then publish a plan per BUY of a
+    switched-on strategy - and per switch whose sale filled - and fill them.
 
     buys          [(decision_row, d, checkpoint_id)] - the BUY rows engine_shadow wrote
     accounts      {strategy_id: account_id} of the shadow ledgers
     enabled       strategy ids switched on
     decision_ids  {(strategy_id, city_key, resolution_date): decision_id} of this run
+    exits         engine_shadow.exit_of's exits
     """
     out = {"buys": len(buys), "published": 0, "queued": 0, "blocked": {}, "skipped": {}, "fills": {}}
     t0 = time.monotonic()
+    if not dry_run:
+        # An order left from an earlier tick holds its reserve and its band
+        # until something expires it; this tick's claims must find only its own.
+        out["expired_before"] = rpc("expire_paper_commands", {})
+    if exits:
+        out["exit_orders"], switch_buys = send_exits(exits, accounts, enabled, decision_ids, deadline, rpc,
+                                                     fill_one, dry_run=dry_run)
+        buys = list(buys) + switch_buys
     queued_accounts, plan_ids = [], []
     for row, d, checkpoint_id in buys:
         sid = row["strategy_id"]
@@ -187,8 +273,14 @@ def send(buys, accounts, enabled, decision_ids, run_id, deadline, rpc, rest, fil
         if dry_run:
             out["published"] += 1
             continue
-        plan_ids.append(rpc("publish_engine_plan", {"p_account": accounts[sid], "p_decision": decision_ids[key],
-                                                    "p_legs": legs, "p_evidence": evidence}))
+        try:
+            plan_ids.append(rpc("publish_engine_plan", {"p_account": accounts[sid],
+                                                        "p_decision": decision_ids[key],
+                                                        "p_legs": legs, "p_evidence": evidence}))
+        except Exception as e:                            # noqa: BLE001 - one refusal is not the tick's
+            why = f"refused: {refusal(e)}"
+            out["skipped"][why] = out["skipped"].get(why, 0) + 1
+            continue
         out["published"] += 1
         queued_accounts.append(accounts[sid])
     if plan_ids:
