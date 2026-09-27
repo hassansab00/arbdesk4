@@ -38,6 +38,7 @@ replay_inputs is tools/p73_replay_inputs.sql's answer; the others are
 tools/experiments_p72_stage1.py's (labels whole days only).
 """
 import argparse
+import bisect
 import csv
 import datetime as dt
 import gzip
@@ -53,6 +54,7 @@ from zoneinfo import ZoneInfo
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
+import market_anchor  # noqa: E402
 import remaining_day as rd  # noqa: E402
 import tick  # noqa: E402
 from model_promotion import bootstrap_interval  # noqa: E402
@@ -167,6 +169,35 @@ def market_probs(band_ids, mids_of, at_epoch):
     return ({b: px[b] / total for b in band_ids} if complete else None), t
 
 
+def index_tops(tops):
+    """{band: ([epochs], [(bid, ask)])} sorted by time, from --tops rows
+    [band_id, epoch, best_bid, best_ask]."""
+    out = defaultdict(list)
+    for b, t, bid, ask in tops["rows"]:
+        out[b].append((int(t), (bid, ask)))
+    index = {}
+    for b, v in out.items():
+        v.sort(key=lambda r: r[0])
+        index[b] = ([t for t, _ in v], [q for _, q in v])
+    return index
+
+
+def engine_market(band_ids, tops_of, at_epoch):
+    """The market ladder the engine would read at at_epoch: each band's newest
+    top of book at or before it, no older than MARKET_MAX_AGE_S, read by
+    market_anchor.market_probs (half the ask for an ask-only book). None
+    unless every band is quoted - the engine's own rule."""
+    book = {}
+    for b in band_ids:
+        ts, qs = tops_of.get(b, ((), ()))
+        i = bisect.bisect_right(ts, at_epoch) - 1
+        if i < 0 or at_epoch - ts[i] > MARKET_MAX_AGE_S:
+            return None
+        bid, ask = qs[i]
+        book[b] = {"bid": bid, "ask": ask}
+    return market_anchor.market_probs(book, band_ids)
+
+
 def proxy_probs(bands, unit, R, fc_day, sigma):
     centre = max(R, fc_day)
     import probability_engine as pe
@@ -218,7 +249,10 @@ def plan_rows(inputs):
     return out, dict(notes)
 
 
-def replay(inputs, paths, processes=4):
+def replay(inputs, paths, processes=4, tops=None, ladders=None):
+    """ladders: a list to fill, when given with tops, with each row's full
+    model ladder and the engine's market ladder (the market-weight evidence,
+    P5.3 amended); the rows and the report are unchanged by it."""
     planned, notes = plan_rows(inputs)
     bands_of = defaultdict(list)
     for band_id, market_id, lo, hi, olo, ohi in inputs["bands"]:
@@ -251,6 +285,11 @@ def replay(inputs, paths, processes=4):
         proxy = proxy_probs(bands, unit, feat["R"], feat["fc_day"], sigma)
         mkt, mkt_top = market_probs([b["band_id"] for b in bands], mids_of, utc.timestamp())
         uni = {b["band_id"]: 1.0 / len(bands) for b in bands}
+        if ladders is not None and tops is not None:
+            ids = [b["band_id"] for b in bands]
+            ladders.append({"city_key": city, "target_date": d, "checkpoint": cp, "winner": winner,
+                            "model": {b: round(v, 6) for b, v in model.items()},
+                            "market": engine_market(ids, tops, utc.timestamp())})
         rows.append({
             "city_key": city, "target_date": d, "checkpoint": cp, "decision_local": loc.isoformat(timespec="minutes"),
             "model_hour": H, "model_version": rd.version_of({H: p}), "contract": CONTRACT, "winner": winner,
@@ -446,9 +485,17 @@ def main(argv=None):
     ap.add_argument("models")
     ap.add_argument("--out-rows")
     ap.add_argument("--out-report")
+    ap.add_argument("--tops", help="top-of-book rows [band_id, epoch, best_bid, best_ask] (json.gz)")
+    ap.add_argument("--out-ladders", help="each row's model and market ladders (jsonl.gz)")
     a = ap.parse_args(argv)
     inputs = _json(a.inputs)
-    rows, notes, skipped = replay(inputs, (a.fc, a.obs, a.labels, a.tz, a.models))
+    tops = index_tops(_json(a.tops)) if a.tops else None
+    ladders = [] if a.out_ladders else None
+    rows, notes, skipped = replay(inputs, (a.fc, a.obs, a.labels, a.tz, a.models), tops=tops, ladders=ladders)
+    if a.out_ladders:
+        with gzip.open(a.out_ladders, "wt") as f:
+            for r in ladders:
+                f.write(json.dumps(r, sort_keys=True) + "\n")
     text = report(rows, notes, skipped, inputs)
     if a.out_rows:
         os.makedirs(os.path.dirname(a.out_rows), exist_ok=True)
