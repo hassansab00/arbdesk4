@@ -221,6 +221,11 @@ def world(monkeypatch):
         return len(rows)
     monkeypatch.setattr(tick, "upsert", upsert)
     monkeypatch.setattr(tick, "log_run", lambda *a: w["logged"].append(a))
+    # The engine's step (P5.12 part 3a) has its own tests (test_engine_shadow);
+    # here it only reports, and w["engine"] says what.
+    import engine_shadow
+    w["engine"] = {"strategies": 6, "written": 0, "city_days": 0}
+    monkeypatch.setattr(engine_shadow, "record", lambda *a, **k: dict(w["engine"]))
     return w
 
 
@@ -337,6 +342,19 @@ def test_a_tick_logs_its_station_read_and_a_failed_read_is_attention(world):
     world["stations"]["error"] = "ReadTimeout: IEM"
     tick.run(now=at("2026-09-24T22:35"))
     assert world["logged"][0][1] == "attention", "a missed station read must not look healthy"
+
+
+def test_a_failed_engine_step_is_attention_not_ok(world):
+    """27 Sep 15:36Z: the engine decided 78 rows, the insert into decisions was
+    refused, and the tick logged "ok" - the failure sat only inside detail.
+    A step that fails inside the tick is attention."""
+    tick.run(now=at("2026-09-24T22:35"))
+    assert world["logged"][0][1] == "ok"
+    world["logged"].clear(); world["written"].clear()
+    world["engine"] = {"strategies": 6, "written": 0, "error": "HTTPError: 400 Client Error: Bad Request"}
+    tick.run(now=at("2026-09-24T22:35"))
+    status, detail = world["logged"][0][1], world["logged"][0][3]
+    assert status == "attention" and detail["engine"]["error"].startswith("HTTPError")
 
 
 def test_the_stations_are_read_even_when_no_checkpoint_is_due(world):
