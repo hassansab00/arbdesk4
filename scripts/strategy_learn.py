@@ -22,6 +22,15 @@ WHAT IT FITS NOW
            repository and the whole-day labels; refitted when the last version
            is REFIT_DAYS old, each pair moving at most MAX_STEP from it.
 
+  market_weight   (P5.3 amended, nightly) how far each view source may move
+           the belief off the market, per checkpoint class: the engine's
+           ladders (prediction_checkpoints) and S10's remaining-day ladders
+           (s10_shadow_checkpoints), each against the book the tick recorded
+           beside the engine's call, scored on the venue's winner
+           (fact_checkpoint_outcome). market_anchor.fit holds a scope at 0
+           until it has MIN_DAYS settled days and a gain whose bootstrap lower
+           bound is above zero, and moves it at most MAX_STEP a night.
+
 WHAT IT DOES NOT FIT YET, and why - named in every run's log so nobody reads
 an absent parameter as a learned one:
   p_fill_touch_1h, adverse_spread_fraction   need maker orders and their
@@ -47,6 +56,7 @@ import sys
 
 import belief
 import city_clusters
+import market_anchor
 
 JOB = "P5.8_strategy_learn"
 
@@ -114,6 +124,60 @@ def cluster_row(record_rows, labels, cities, as_of, previous=None):
     return row, table
 
 
+def market_rows(checkpoints, outcomes, s10_rows):
+    """[(date, scope, model probs, market probs, winner)] for market_anchor.fit.
+
+    The market is the book the tick stored on the engine's checkpoint
+    (prediction_checkpoints.market), read the way the engine reads it at a
+    decision (market_anchor.market_probs). S10's call at the same city, date
+    and checkpoint is scored against that same book and winner. A checkpoint
+    with an unquoted bucket, or a ladder without the winner, is left out.
+    """
+    won = {o["checkpoint_id"]: o["winner_band_id"] for o in outcomes
+           if o.get("ladder_has_winner") and o.get("winner_band_id")}
+    rows, by_key = [], {}
+    for c in checkpoints:
+        winner = won.get(c["checkpoint_id"])
+        probs = c.get("probs") or {}
+        if winner is None or not probs:
+            continue
+        market = market_anchor.market_probs(c.get("market"), list(probs))
+        if market is None or winner not in market:
+            continue
+        by_key[(c["city_key"], str(c["target_date"]), c["checkpoint"])] = (market, winner)
+        rows.append((str(c["target_date"]), market_anchor.scope("engine", c["checkpoint"]),
+                     {b: float(p) for b, p in probs.items()}, market, winner))
+    for s in s10_rows:
+        hit = by_key.get((s["city_key"], str(s["target_date"]), s["checkpoint"]))
+        probs = s.get("probs") or {}
+        if hit is None or set(probs) != set(hit[0]):
+            continue
+        rows.append((str(s["target_date"]), market_anchor.scope("s10", s["checkpoint"]),
+                     {b: float(p) for b, p in probs.items()}, hit[0], hit[1]))
+    return rows
+
+
+def market_weight_row(rows, as_of, previous=None):
+    """(row, table) for strategy_params, or (None, table) when there is no
+    evidence, or it is what the previous version already saw: either would
+    only restamp the prior or that version."""
+    table = market_anchor.fit(rows, as_of, previous=previous)
+    if not table["evidence"]:
+        return None, table
+    if previous and previous.get("weights") == table["weights"] and previous.get("evidence") == table["evidence"]:
+        return None, table
+    row = {
+        "param": "market_weight", "scope": "all", "version": table["version"], "value": table,
+        "n": sum(1 for r in rows if str(r[0]) < str(as_of)),
+        "as_of": str(as_of),
+        "prior": {"w": market_anchor.W_PRIOR, "min_days": market_anchor.MIN_DAYS,
+                  "max_step": market_anchor.MAX_STEP, "boot_n": market_anchor.BOOT_N,
+                  "boot_lower": market_anchor.BOOT_LOWER},
+        "bounds": {"w": list(market_anchor.W_BOUNDS)},
+    }
+    return row, table
+
+
 def main(argv=None, today=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--as-of", help="learn from target dates before this day (default: today, UTC)")
@@ -124,13 +188,25 @@ def main(argv=None, today=None):
     as_of = dt.date.fromisoformat(args.as_of) if args.as_of else (
         today or dt.datetime.now(dt.timezone.utc).date())
     checkpoints = rest_all("prediction_checkpoints",
-                           {"select": "checkpoint_id,city_key,target_date,checkpoint,probs",
+                           {"select": "checkpoint_id,city_key,target_date,checkpoint,probs,market",
                             "target_date": f"lt.{as_of}"}, order="checkpoint_id.asc")
     outcomes = rest_all("fact_checkpoint_outcome",
                         {"select": "checkpoint_id,winner_band_id,ladder_has_winner",
                          "target_date": f"lt.{as_of}"}, order="checkpoint_id.asc")
     previous = previous_belief(rest)
     row, table = belief_row(checkpoints, outcomes, as_of, previous)
+
+    # Nightly: how far each view may move the belief off the market (P5.3 amended).
+    s10_rows = rest_all("s10_shadow_checkpoints",
+                        {"select": "city_key,target_date,checkpoint,probs", "target_date": f"lt.{as_of}"},
+                        order="checkpoint_id.asc")
+    prev_w = previous_belief(rest, "market_weight")
+    m_rows = market_rows(checkpoints, outcomes, s10_rows)
+    w_row, w_table = market_weight_row(m_rows, as_of, prev_w)
+    w_detail = {"version": w_table["version"], "previous": (prev_w or {}).get("version"),
+                "rows": len(m_rows), "s10_rows": len(s10_rows), "weights": w_table["weights"],
+                "evidence": w_table["evidence"], "written": bool(w_row) and not args.dry_run,
+                "unchanged": w_row is None}
 
     # Weekly: the cluster correlations (P5.9 part 2).
     prev_c = previous_belief(rest, "city_clusters")
@@ -148,7 +224,7 @@ def main(argv=None, today=None):
     if not args.dry_run:
         # ignore-duplicates: a version is written once, and a re-run of the
         # same night finds its row already there.
-        new_rows = [r for r in (row, c_row) if r]
+        new_rows = [r for r in (row, w_row, c_row) if r]
         if new_rows:
             written = upsert("strategy_params", new_rows, "param,scope,version")
     detail = {
@@ -157,6 +233,7 @@ def main(argv=None, today=None):
                    "previous": (previous or {}).get("version"),
                    "written": bool(row) and not args.dry_run,
                    "unchanged": row is None},
+        "market_weight": w_detail,
         "city_clusters": c_detail,
         "not_fitted": NOT_FITTED,
         "dry_run": args.dry_run,
