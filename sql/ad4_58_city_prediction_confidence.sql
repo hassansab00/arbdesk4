@@ -42,25 +42,35 @@
 -- 23 Sep run - so a same-day row now carries its own measured accuracy.)
 --
 --
--- "MOST LIKELY" IS THE MODAL CLOSED BUCKET, NOT THE LARGEST NUMBER
+-- "MOST LIKELY" IS THE BUCKET MOST LIKELY TO PAY (plan v2.3 P4.8, 27 Sep)
 --
--- The first version of this view took max(calibrated_prob) across every
--- bucket, and the ladder's end buckets are OPEN-ENDED - "89F or below" runs
--- to minus infinity, "108F or higher" to plus infinity. An infinitely wide
--- bucket collects more mass than a 2F one without being more likely, so on
--- Austin at lead 1 (centre 95.7F, sigma 4.2C) it reported
+-- It is the bucket with the most probability of settling YES, over EVERY
+-- bucket, the open tails too, with ties to the lower band_id: the rule the
+-- city card and tick.py's top_band_id (which the scoreboard grades) already
+-- share. A selector that answers differently is a second definition of the
+-- platform's pick.
 --
---     most likely: 89F or below, 21.3%
+-- Until 27 Sep this view took the modal CLOSED bucket. Its first version had
+-- reported Austin at lead 1 (centre 95.7F, sigma 4.2C) as "most likely: 89F or
+-- below, 21.3%" while every closed bucket sat near 10%, and the argument was
+-- that an open tail is not more likely, only wider. That is true of the
+-- temperature's density per degree, and not of the contract: if the ladder is
+-- right, the open tail pays 21.3% of the time and no other bucket pays as
+-- often. A tail holding that much mass says the width is too wide or the
+-- centre too far out - a pricing question, answered by centre_band, the
+-- published tail masses and the width - not a reason to name another bucket.
+-- Measured 27 Sep ~15:45Z: of 92 open city-days, 6 had an open tail as the
+-- card's pick, and on exactly those 6 this view named a different bucket.
 --
--- while every real bucket sat near 10% and the desk's own centre was six
--- buckets higher. The bucket was not most likely, it was widest. Compare
--- like for like: modal_band ignores open-ended buckets, and the open tails
--- are still published as tail_low_pct / tail_high_pct because "21% chance
--- this lands below the whole board" is worth knowing, just not as a mode.
+-- centre_band is published beside it - the bucket the PRICED centre (centre_c)
+-- falls in, tails included. When the two disagree the distribution is
+-- skewed, and that is a fact about the model worth seeing rather than a
+-- number to pick between.
 --
--- centre_band is published beside it - the bucket the forecast itself falls
--- in. When the two disagree the distribution is skewed, and that is a fact
--- about the model worth seeing rather than a number to pick between.
+-- expected_max_c is the priced centre (band_probabilities.centre_c): the
+-- forecast after every correction the engine applied. The public forecast it
+-- started from is raw_forecast_max_c. They differ: 28 Sep, wuhan 26.005 C
+-- priced against a raw 28.9 C.
 --
 --
 -- UNITS FOLLOW THE CITY, BECAUSE THE MARKET DOES
@@ -111,17 +121,17 @@ top_band as (
   -- side of the ticket.
   select distinct on (city_key, for_date)
          city_key, for_date, band_id, band_label, band_lo, band_hi,
-         calibrated_prob, forecast_max_c, sigma_c, confidence, regime_label,
+         model_prob, centre_c, forecast_max_c, sigma_c, confidence, regime_label,
          market_price, edge_net_pp, tradeable, block_reason
     from v_prediction_ladder
-   where calibrated_prob is not null
+   where model_prob is not null
      and for_date >= current_date
      and side = 'YES'
-     -- closed buckets only: see "MOST LIKELY" above
-     and band_lo is not null and band_hi is not null
-   -- calibrated_prob desc alone is not deterministic - Austin's 98-99F and
+     -- every bucket, the tails too: see "MOST LIKELY" above
+   -- model_prob desc alone is not deterministic - Austin's 98-99F and
    -- 100-101F were both 15.7% and the "most likely" flipped between runs.
-   order by city_key, for_date, calibrated_prob desc, band_lo
+   -- Ties go to the lower band_id, as in the card and in tick.py.
+   order by city_key, for_date, model_prob desc, band_id
 ),
 spread as (
   -- How concentrated the whole ladder is, not just its top rung. A 26% top
@@ -133,14 +143,14 @@ spread as (
   -- is not a mode.
   select city_key, for_date,
          count(*)::int                       as bands_priced,
-         round(sum(calibrated_prob), 3)      as prob_mass,
+         round(sum(model_prob), 3)           as prob_mass,
          count(*) filter (where tradeable)::int as tradeable_bands,
-         round(100 * sum(calibrated_prob) filter (where band_lo is null), 1)
+         round(100 * sum(model_prob) filter (where band_lo is null), 1)
                                              as tail_low_pct,
-         round(100 * sum(calibrated_prob) filter (where band_hi is null), 1)
+         round(100 * sum(model_prob) filter (where band_hi is null), 1)
                                              as tail_high_pct
     from v_prediction_ladder
-   where calibrated_prob is not null and for_date >= current_date
+   where model_prob is not null and for_date >= current_date
      and side = 'YES'          -- as above: one row per band, not per ticket
    group by city_key, for_date
 ),
@@ -152,36 +162,37 @@ centre as (
   -- band_hi. Comparing 34.4 (C) against a 94-96 (F) bucket is how the first
   -- pass concluded the centre fell outside its own most likely band on 27 of
   -- 55 rows - it did not; 34.4 C is 93.9 F.
+  -- The PRICED centre (centre_c), and the tails hold it too.
   select distinct on (l.city_key, l.for_date)
          l.city_key, l.for_date, l.band_label as centre_band
     from v_prediction_ladder l
     join cities ct on ct.city_key = l.city_key
+   cross join lateral (
+     select case when ct.unit = 'F' then l.centre_c * 9.0 / 5.0 + 32 else l.centre_c end as x) c
    where l.for_date >= current_date and l.side = 'YES'
-     and l.band_lo is not null and l.band_hi is not null
-     and l.forecast_max_c is not null
-     and case when ct.unit = 'F' then l.forecast_max_c * 9.0 / 5.0 + 32
-              else l.forecast_max_c end >= l.band_lo
-     and case when ct.unit = 'F' then l.forecast_max_c * 9.0 / 5.0 + 32
-              else l.forecast_max_c end <  l.band_hi
-   order by l.city_key, l.for_date, l.band_lo
+     and l.centre_c is not null
+     and ((l.open_low and c.x < l.band_hi)
+          or (l.open_high and c.x >= l.band_lo)
+          or (l.band_lo is not null and l.band_hi is not null and c.x >= l.band_lo and c.x < l.band_hi))
+   order by l.city_key, l.for_date, l.band_lo nulls first
 )
 select
   t.city_key,
   c.display_name,
   t.for_date,
   (t.for_date - current_date)::int                     as lead_days,
-  round(t.forecast_max_c, 1)                           as expected_max_c,
+  round(t.centre_c, 1)                                 as expected_max_c,
   -- In the city's own scale, which is the scale its bands and its market are
   -- quoted in. A US city reading "34.4" beside "94-95F" looks wrong and is
   -- the same temperature.
-  round(case when c.unit = 'F' then t.forecast_max_c * 9.0 / 5.0 + 32
-             else t.forecast_max_c end, 1)             as expected_max_display,
+  round(case when c.unit = 'F' then t.centre_c * 9.0 / 5.0 + 32
+             else t.centre_c end, 1)                   as expected_max_display,
   coalesce(c.unit, 'C')                                as display_unit,
   t.band_label                                         as modal_band,
   ce.centre_band,
   (ce.centre_band is distinct from t.band_label)       as skewed,
   t.band_lo, t.band_hi,
-  round(100 * t.calibrated_prob, 1)                    as modal_pct,
+  round(100 * t.model_prob, 1)                         as modal_pct,
   round(100 * t.market_price, 1)                       as market_pct,
   round(t.edge_net_pp, 1)                              as edge_net_pp,
   t.tradeable, t.block_reason,
@@ -212,7 +223,9 @@ select
     else
       format('States +/-%s C, measured %s C typical and %s C in the worst tenth over %s day(s) - consistent.',
              round(t.sigma_c, 1), round(s.mae_c, 1), round(s.p90_abs_err_c, 1), s.n_days)
-  end                                                  as honesty
+  end                                                  as honesty,
+  -- The public forecast the engine started from, before any correction.
+  round(t.forecast_max_c, 1)                           as raw_forecast_max_c
 from top_band t
 left join skill s
        on s.city_key = t.city_key

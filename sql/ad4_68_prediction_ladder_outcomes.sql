@@ -215,7 +215,17 @@ select
   coalesce(
     case when vb.resolution_state = 'confirmed' then vb.confirmed_at end,
     fb.captured_at
-  ) as settled_at
+  ) as settled_at,
+  -- WHAT WAS PRICED, from the SAME band_probabilities row as model_prob (plan
+  -- v2.3 P4.8): the centre the ladder was integrated on (forecast_max_c is the
+  -- public input before any correction - 28 Sep, wuhan 28.9 C against a
+  -- priced 26.005 C), the day's maximum the price already counted, when it was
+  -- priced, and the engine's label for the path (forecast_provenance).
+  p.centre_c,
+  p.forecast_sigma_c,
+  p.observed_floor_c,
+  p.computed_at as prob_at,
+  (select mv.label from public.model_versions mv where mv.version_id = p.forecast_version) as priced_from
 -- THE CANONICAL LADDER (plan v2 P2.5). Raw `bands` stores the inclusive
 -- convention and zero-width labels its collectors wrote before 6 Sep; the
 -- canonical views apply the append-only corrections. Measured 23 Sep: of
@@ -232,7 +242,8 @@ join v_canonical_bands b on b.market_id = m.market_id
 -- v_latest_prob, for this band only. Same order, including the tie-break.
 left join lateral (
   select bp.raw_prob, bp.calibrated_prob, bp.forecast_max_c, bp.sigma_c,
-         bp.confidence, bp.regime_label
+         bp.confidence, bp.regime_label,
+         bp.centre_c, bp.forecast_sigma_c, bp.observed_floor_c, bp.computed_at, bp.forecast_version
     from band_probabilities bp
    where bp.band_id = b.band_id
    order by bp.computed_at desc, bp.prob_id desc
@@ -279,7 +290,12 @@ select
   e.block_reason,
   e.computed_at as edge_at,
   lb.outcome_source,
-  lb.settled_at
+  lb.settled_at,
+  lb.centre_c,
+  lb.forecast_sigma_c,
+  lb.observed_floor_c,
+  lb.prob_at,
+  lb.priced_from
 from v_prediction_ladder_bands lb
 -- v_latest_edge, for this band only: the latest edge on EACH side.
 left join lateral (

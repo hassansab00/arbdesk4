@@ -95,11 +95,22 @@ def test_the_skill_series_is_read_newest_first():
 # without being more likely. Taking max(calibrated_prob) over all of them
 # reported Austin at lead 1 as "most likely 89F or below, 21.3%" while its own
 # centre was 95.7F and every real bucket sat near 10%.
+#
+# REVERSED 27 Sep (plan v2.3 P4.8): that is the temperature's density per
+# degree, not the contract. The pick is the bucket most likely to pay, tails
+# included, as the card and the scoreboard have it; see the first test below.
 # --------------------------------------------------------------------------
-def test_the_modal_bucket_ignores_the_open_ended_ones():
-    top = next(b for b in LADDER_CTES if "calibrated_prob desc" in b)
-    assert "band_lo is not null" in top and "band_hi is not null" in top, (
-        "an open-ended bucket can win on width alone and be reported as the mode")
+def test_the_modal_bucket_is_the_one_most_likely_to_pay():
+    """Plan v2.3 P4.8 (27 Sep) reversed the closed-bucket rule above: the
+    platform's pick is the bucket with the most probability of settling YES,
+    open tails included - the card's and tick.py's rule, the one the
+    scoreboard grades. A tail holding the most mass is the contract most
+    likely to pay; if that is wrong, the width is wrong, not the selector.
+    On 27 Sep 6 of 92 open city-days had an open tail as the card's pick and
+    this view named another bucket on exactly those 6."""
+    top = next(b for b in LADDER_CTES if "model_prob desc" in b)
+    assert "band_lo is not null" not in top and "band_hi is not null" not in top, (
+        "a closed-only mode is a second definition of the platform's pick")
 
 
 def test_the_open_tails_are_still_published():
@@ -109,9 +120,11 @@ def test_the_open_tails_are_still_published():
 
 
 def test_the_modal_pick_is_deterministic():
-    """Austin's 98-99F and 100-101F were both 15.7%; the winner flipped."""
-    top = next(b for b in LADDER_CTES if "calibrated_prob desc" in b)
-    assert re.search(r"calibrated_prob desc,\s*band_lo", top), (
+    """Austin's 98-99F and 100-101F were both 15.7%; the winner flipped. Ties
+    go to the lower band_id: the card's stable sort over band_id order and
+    tick.py's sorted(-p, band_id) break them the same way (plan v2.3 P4.8)."""
+    top = next(b for b in LADDER_CTES if "model_prob desc" in b)
+    assert re.search(r"model_prob desc,\s*band_id", top), (
         "ties need a stable tie-break or 'most likely' changes between reads")
 
 
