@@ -35,7 +35,10 @@ const assert = require('node:assert/strict');
       for_date date,lead_days int default 0,forecast_max_c numeric default 0,
       observed_at timestamptz not null default now(),variables jsonb,source text not null default 'open-meteo');
     create table public.book_snapshots(snapshot_id bigint primary key,band_id uuid,observed_at timestamptz,
-      market_state text default 'LIVE',tradeable boolean default true);
+      market_state text default 'LIVE',tradeable boolean default true,
+      -- the ladder columns, live types (27 Sep): 20260927100000 builds
+      -- v_unarchived_ladders over them
+      best_bid numeric,best_ask numeric,no_best_bid numeric,no_best_ask numeric,raw_book jsonb,no_book jsonb);
     create table public.trades_observed(trade_id bigint primary key,city_key text,traded_at timestamptz);
     -- signals.payload carries the decision snapshot that
     -- 20260919180000_trade_decision_lineage.sql stamps onto every trade, so

@@ -48,7 +48,9 @@ def _guards():
     files = sorted((ROOT / "sql").glob("*.sql")) + sorted((ROOT / "supabase" / "migrations").glob("*.sql"))
     for path in files:
         text = path.read_text(encoding="utf-8")
-        for m in re.finditer(r"create\s+or\s+replace\s+function\s+(?:public\.)?(prune_\w+)\s*\(", text, re.I):
+        # mark_*_archived: a dataset whose second phase stamps rows as archived
+        # rather than deleting them (the ladders, P5.13) keeps the same guard.
+        for m in re.finditer(r"create\s+or\s+replace\s+function\s+(?:public\.)?(prune_\w+|mark_\w+_archived)\s*\(", text, re.I):
             body = text[m.end():]
             nxt = re.search(r"create\s+or\s+replace\s+function", body, re.I)
             body = body[:nxt.start()] if nxt else body

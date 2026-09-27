@@ -675,7 +675,9 @@ def test_every_archived_table_pages_on_its_real_primary_key():
             f"{table} is archived but sql/ad4_00_preflight.sql does not create it"
         assert spec["pk"] == declared[table], \
             f"{name} must page on {table}'s primary key ({declared[table]}), not {spec['pk']}"
-        assert spec["pk"] not in spec["columns"], \
+        # A dataset exports its key only when another archive refers to it,
+        # and says so (the ladders: edges.book_snapshot_id, plan v2 P5.13).
+        assert spec["pk"] not in spec["columns"] or spec.get("pk_is_exported_because"), \
             "the surrogate key is not exported - it means nothing outside its own database"
 
 

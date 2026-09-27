@@ -154,8 +154,11 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
     # decisions: 30, the plan's window for the decision log (P5.11). Every row
     # is also mirrored into the repository nightly, and nothing live reads a
     # decision older than that from Postgres.
+    # ladders: 1, and nothing leaves Postgres with it - the row and its numbers
+    # stay; the window is how long an unarchived ladder waits before the
+    # nightly run takes it, and after that the hourly prune may null it (P5.13).
     limits = {"observations": 90, "forecasts": 90, "trades": 90, "research": 2,
-              "resolution": 1, "books": 7, "edges": 14, "decisions": 30}
+              "resolution": 1, "books": 7, "edges": 14, "decisions": 30, "ladders": 1}
     assert set(limits) == set(TABLES), (
         f"a dataset was added to the archive without a reasoned retention ceiling here: "
         f"{sorted(set(TABLES) ^ set(limits))}")

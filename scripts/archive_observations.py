@@ -290,6 +290,41 @@ TABLES = {
         "min_keep_days": 14,
         "needs_feature_cache": False,
     },
+    # THE LADDERS, BEFORE THE HOURLY PRUNE EMPTIES THEM (plan v2 P5.13).
+    # prune_dead_book_detail nulls raw_book / no_book at 6 h (decided bands)
+    # or 48 h (trading ones), so "books" above, at 7 days, has only ever
+    # archived empty ladders: 0 raw_book values in its 7 files (27 Sep). The
+    # replay's taker fills (P5.12) walk exactly those ladders. This exports
+    # every tradeable snapshot whose ladder the archive does not hold yet
+    # (a DEAD_LOSER / DEAD_WINNER book keeps its 6-hour prune: ~500 an hour,
+    # a wall at 0.001 or 0.999, and too many MB to hold a day), nightly, and
+    # its "prune" is mark_ladders_archived: a stamp, not a delete. The hourly
+    # prune now nulls only stamped ladders (20260927100000). One day: the
+    # nightly run takes every ladder older than a day, so a ladder waits at
+    # most about two days in Postgres. About 2-4 MB of ladder JSON a day
+    # before gzip (26 Sep: 3.8 MB LIVE, 0.4 MB WIDE and ONE_SIDED).
+    "ladders": {
+        "table": "book_snapshots",
+        "read_from": "v_unarchived_ladders",
+        "pk": "snapshot_id",
+        "cutoff_col": "observed_at",
+        "cutoff_is_date": False,
+        "prune_rpc": "mark_ladders_archived",
+        "tag": "ladders-archive",
+        "columns": ["snapshot_id", "band_id", "observed_at", "market_state", "best_bid", "best_ask",
+                    "no_best_bid", "no_best_ask", "raw_book", "no_book"],
+        "bytes_per_row": 1100,
+        "keep_days": 1,
+        "min_keep_days": 1,
+        # THE ONE DATASET THAT EXPORTS ITS KEY, because P5.13 asks for it: the
+        # edges archive carries book_snapshot_id, and a ladder is joined to the
+        # pricing that used it through exactly this id.
+        "pk_is_exported_because": "edges.book_snapshot_id refers to it (plan v2 P5.13)",
+        "needs_feature_cache": False,
+        # A stamp frees no space, so there is nothing to VACUUM for; the space
+        # comes back when the hourly prune nulls the ladders.
+        "reclaim": False,
+    },
     "books": {
         "table": "book_snapshots",
         "read_from": "v_prunable_book_redundancy",
@@ -1040,7 +1075,7 @@ def prune_one(spec, name, args):
                 {"file": entry["file"], "rows": got, "prune": prune})
         return 1
 
-    reclaim = request_reclaim(spec["table"])
+    reclaim = request_reclaim(spec["table"]) if spec.get("reclaim", True) else {"skipped": "nothing deleted"}
     log_run(job, "ok", got, {
         "file": entry["file"], "asset": entry["asset"], "rows": got,
         "keep_days": entry["keep_days"], "archived_through": cutoff, "prune": prune,

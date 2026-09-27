@@ -104,6 +104,8 @@ EXPORT_SOURCE = {
     "books":        "v_prunable_book_redundancy",
     "edges":        "v_prunable_edge_history",
     "decisions":    "decisions",
+    # stamps, never deletes: the snapshots whose ladder the archive lacks (P5.13)
+    "ladders":      "v_unarchived_ladders",
 }
 
 
@@ -158,11 +160,15 @@ def test_the_exported_columns_exist_on_whatever_is_read(name):
         "v_prunable_resolution_evidence": "ad4_74_prune_resolution_evidence.sql",
         "v_prunable_book_redundancy":     "ad4_79_prune_book_redundancy.sql",
         "v_prunable_edge_history":        "ad4_80_prune_edge_history.sql",
+        "v_unarchived_ladders":           "../supabase/migrations/20260927100000_a_ladder_is_archived_before_it_is_pruned.sql",
     }
     assert source in defines, f"{source} has no SQL file registered here"
     sql = (Path(ao.__file__).resolve().parents[1]
            / "sql" / defines[source]).read_text(encoding="utf-8")
-    view = sql[sql.index(f"create or replace view {source}"):sql.index("comment on view")]
+    start = sql.find(f"create or replace view {source}")
+    if start < 0:
+        start = sql.index(f"create or replace view public.{source}")
+    view = sql[start:sql.index("comment on view", start)]
 
     # A view may take the columns one at a time or take them all. `select s.*`
     # off the spec's own table carries every column by construction - there is
