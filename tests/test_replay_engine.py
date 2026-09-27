@@ -65,3 +65,30 @@ def test_a_market_outside_the_window_or_without_pricing_is_not_replayed():
     assert re_.plan(markets, {}, dt.date(2026, 9, 12), dt.date(2026, 9, 25), {"m": [(0, {})]}) == []
     markets["m"]["date"] = dt.date(2026, 9, 20)
     assert re_.plan(markets, {}, dt.date(2026, 9, 12), dt.date(2026, 9, 25), {}) == []
+
+
+def test_a_decision_sees_the_same_date_and_the_high_water_mark(monkeypatch):
+    """P5.9 part 2: the ledger handed to the engine carries what the strategy
+    holds on the other cities of the same date, and its high-water mark."""
+    import strategies.engine_views as ev
+    day = dt.date(2026, 9, 20)
+    markets = {m: {"market_id": m, "city": c, "date": d, "winner": "w", "unit": "C", "tz": "UTC"}
+               for m, c, d in (("m1", "a", day), ("m2", "b", day), ("m3", "c", day + dt.timedelta(days=1)))}
+    bands = {m: [{"band_id": f"{m}b"}] for m in markets}
+    ladders = {m: [(0, {f"{m}b": 1.0})] for m in markets}
+    books = {f"{m}b": ([0], [dict(SNAP)]) for m in markets}
+    seen = []
+    monkeypatch.setattr(ev, "engine_input", lambda sid, ctx: ({"probs": ctx["probs"]}, ctx["book"], None))
+
+    def decide(view, *, book, ledger, rails):
+        seen.append(ledger)
+        if len(seen) == 1:           # the first decision buys; the rest hold
+            return {"action": "BUY", "reason_code": "enter", "g_now": 0, "g_target": 0,
+                    "orders": [{"band_id": list(book)[0], "side": "YES", "usd": 10.0, "limit_price": 0.32}]}
+        return {"action": "NONE", "reason_code": "x", "g_now": 0, "g_target": 0, "orders": []}
+    monkeypatch.setattr(re_.de, "decide", decide)
+    events = [(10, 0, "decide", "m1", "noon"), (20, 0, "decide", "m2", "noon"), (30, 0, "decide", "m3", "noon")]
+    re_.walk(("s", events, markets, bands, ladders, books, {"max_price": 0.97}))
+    assert seen[0]["same_day"] == {} and seen[0]["high_water_usd"] == re_.BANKROLL
+    assert seen[1]["same_day"] == {"a": 10.0}          # m1's city, same date
+    assert seen[2]["same_day"] == {}                   # the next day holds nothing
