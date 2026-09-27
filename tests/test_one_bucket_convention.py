@@ -63,6 +63,9 @@ SCRIPT_RAW_READS = {
                        "come from v_canonical_bands",
     "scripts/ingest_trades.py": "bands: condition and token ids of every open market, to map "
                                 "each print to its band (P0.4's mapping); no bounds",
+    "scripts/engine_shadow.py": "bands: band -> market id of what a ledger holds; markets: city "
+                                "and date of those, for the city-day and same-date rooms; no bounds "
+                                "(the ladder's bands come from the tick's v_canonical_bands read)",
 }
 
 RAW_CALL = re.compile(r"rest(?:_all)?\(\s*['\"](bands|markets)['\"]", re.S)

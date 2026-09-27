@@ -243,8 +243,10 @@ def fetch_inputs(now, cities, dry_run=False, budget_s=10.0):
     return out
 
 
-def record(due, market_of, bands_by_market, tz_of, unit_of, dry_run=False):
-    """Write the shadow ladders for the tick's due checkpoints."""
+def record(due, market_of, bands_by_market, tz_of, unit_of, dry_run=False, ladders=None):
+    """Write the shadow ladders for the tick's due checkpoints. ladders, when
+    given, is filled with {(city, target, checkpoint): probs} for the engine's
+    S10 decisions in the same tick (engine_shadow)."""
     from common import rest_all, upsert
     import probability_engine as pe
     t0 = time.monotonic()
@@ -280,6 +282,9 @@ def record(due, market_of, bands_by_market, tz_of, unit_of, dry_run=False):
         rows, skipped = shadow_rows(todo, params, version, inputs, obs_by_city, tz_of, unit_of,
                                     bands_of, pe.DEFAULT_Q_DOWN, pe.DEFAULT_Q_UP, spread_fallback)
         out["skipped"] = skipped
+        if ladders is not None:
+            for r in rows:
+                ladders[(r["city_key"], str(r["target_date"]), r["checkpoint"])] = r["probs"]
         if rows and not dry_run:
             out["written"] = upsert("s10_shadow_checkpoints", rows,
                                     "city_key,target_date,checkpoint,model_version")
