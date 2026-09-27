@@ -559,6 +559,19 @@ def _round(row):
     return {k: (round(v, 5) if isinstance(v, float) else v) for k, v in row.items()}
 
 
+def previous_recipes(rows, today):
+    """{lane: {city: {"recipe", "params"}}} to step from: the recipes in force
+    BEFORE the night `today` (plan v2.3 P5.14). A row written tonight is a
+    re-run's own first run, so its anchor is the prev_params that run stepped
+    from, not its output; stepping from the output moves a night twice."""
+    out = defaultdict(dict)
+    for r in rows:
+        if str(r.get("computed_at") or "")[:10] == str(today):
+            r = dict(r, params=r.get("prev_params"))
+        out[r["lane"]][r["city_key"]] = r
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description="The hit tournament (plan v2.1 P3.8)")
     ap.add_argument("--lookback", type=int, default=LOOKBACK_DAYS)
@@ -568,15 +581,16 @@ def main():
     from common import rest, upsert_replace, log_run
     days = load(args.lookback)
     print(f"{len(days)} settled city-day(s) with one winning bucket")
+    now = dt.datetime.now(dt.timezone.utc)
     prev = defaultdict(dict)
     try:
-        for r in rest("derived_hit_recipe", [("select", "city_key,lane,recipe,params"),
-                                             ("checkpoint", f"eq.{CHECKPOINT}")]):
-            prev[r["lane"]][r["city_key"]] = r
+        prev = previous_recipes(rest("derived_hit_recipe", [
+            ("select", "city_key,lane,recipe,params,prev_params,computed_at"),
+            ("checkpoint", f"eq.{CHECKPOINT}")]), now.date())
     except Exception as e:                       # first run: nothing to step from
         print(f"  no previous recipes ({e})", file=sys.stderr)
 
-    computed_at = dt.datetime.now(dt.timezone.utc).isoformat()
+    computed_at = now.isoformat()
     detail = {"days": len(days), "lanes": {}}
     for lane in LANES:
         t_rows, r_rows, summaries = run_lane(days, lane, prev.get(lane))

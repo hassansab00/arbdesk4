@@ -69,12 +69,16 @@ NOT_FITTED = {
 }
 
 
-def previous_belief(rest, param="belief"):
-    """The last table written for a param, whatever the flag says: the step
-    limit is taken from what the loop learned last, not from what the engine used."""
-    rows = rest("strategy_params", [("select", "value,version"), ("param", f"eq.{param}"),
-                                    ("scope", "eq.all"),
-                                    ("order", "fitted_at.desc"), ("limit", "1")])
+def previous_belief(rest, param="belief", as_of=None):
+    """The last table written for a param BEFORE the night `as_of`, whatever
+    the flag says: the step limit is taken from what the loop learned last, not
+    from what the engine used. A re-run the same night steps from the same
+    table as the first run, so it writes the same version (which the table
+    ignores) instead of a second step (plan v2.3 P5.14)."""
+    params = [("select", "value,version"), ("param", f"eq.{param}"), ("scope", "eq.all")]
+    if as_of is not None:
+        params.append(("as_of", f"lt.{as_of}"))
+    rows = rest("strategy_params", params + [("order", "fitted_at.desc"), ("limit", "1")])
     if not rows:
         return None
     table = rows[0].get("value") or {}
@@ -193,14 +197,14 @@ def main(argv=None, today=None):
     outcomes = rest_all("fact_checkpoint_outcome",
                         {"select": "checkpoint_id,winner_band_id,ladder_has_winner",
                          "target_date": f"lt.{as_of}"}, order="checkpoint_id.asc")
-    previous = previous_belief(rest)
+    previous = previous_belief(rest, as_of=as_of)
     row, table = belief_row(checkpoints, outcomes, as_of, previous)
 
     # Nightly: how far each view may move the belief off the market (P5.3 amended).
     s10_rows = rest_all("s10_shadow_checkpoints",
                         {"select": "city_key,target_date,checkpoint,probs", "target_date": f"lt.{as_of}"},
                         order="checkpoint_id.asc")
-    prev_w = previous_belief(rest, "market_weight")
+    prev_w = previous_belief(rest, "market_weight", as_of)
     m_rows = market_rows(checkpoints, outcomes, s10_rows)
     w_row, w_table = market_weight_row(m_rows, as_of, prev_w)
     w_detail = {"version": w_table["version"], "previous": (prev_w or {}).get("version"),
@@ -209,7 +213,7 @@ def main(argv=None, today=None):
                 "unchanged": w_row is None}
 
     # Weekly: the cluster correlations (P5.9 part 2).
-    prev_c = previous_belief(rest, "city_clusters")
+    prev_c = previous_belief(rest, "city_clusters", as_of)
     c_row, c_detail = None, {"due": city_clusters.due(prev_c, as_of), "previous": (prev_c or {}).get("version")}
     if c_detail["due"]:
         c_row, c_table = cluster_row(*cluster_inputs(rest_all), as_of, previous=prev_c)
