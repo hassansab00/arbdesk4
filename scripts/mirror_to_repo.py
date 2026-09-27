@@ -95,6 +95,10 @@ TABLES = {
     # --- what the engine decided --------------------------------------------
     "band_probabilities":            append("computed_at", "prob_id"),
     "prediction_checkpoints":        append("decided_at", "checkpoint_id"),
+    # S10 in shadow (plan v2 P7.4): the model's calls beside the engine's, and
+    # the day-before inputs they were made from
+    "s10_shadow_checkpoints":        append("decided_at", "checkpoint_id"),
+    "s10_day1_inputs":               append("fetched_at", "city_key", "local_date"),
     "signals":                       append("fired_at", "signal_id"),
     "model_versions":                append("created_at", "version_id"),
     "strategy_config_history":       append("changed_at", "history_id"),

@@ -47,6 +47,9 @@ FIXED_LOCAL = {"morning": (0, 9, 0), "noon": (0, 12, 0), "d1_eve": (-1, 18, 0)}
 # write is ignored by the table's unique key.
 GRACE_MIN = 75
 BUDGET_S = 45.0
+# S10 in shadow fetches at most this long per tick (about four cities' two
+# requests each, in parallel); the engine's own work keeps the rest.
+S10_FETCH_S = 8.0
 # THE STATIONS, EVERY HOUR (plan v2 P6.2). n8n's P1.6 did this hourly at :10
 # for 720 n8n executions a month; the tick already runs hourly, so it reads
 # them here and P1.6 is retired. Same request, same window as P1.6 (6 h),
@@ -314,11 +317,16 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
                              {"select": "city_key,month,peak_hour_local"})
                if r.get("peak_hour_local") is not None}
 
+    # S10 in shadow (plan v2 P7.4 part 1): the day-before inputs for the cities
+    # whose 07:00-09:00 local window is open. Bounded, and never raises.
+    import s10_shadow
+    s10 = {"inputs": s10_shadow.fetch_inputs(now, cities, dry_run, budget_s=S10_FETCH_S)}
+
     candidates, notes = due_checkpoints(now, markets, tz_of, peak_of, written=set())
     held = _written(version, {(c, t, k) for c, t, k, _ in candidates})
     due = [d for d in candidates if (d[0], d[1], d[2]) not in held]
     detail = {"engine_version": version, "due": len(due), "already_written": len(candidates) - len(due),
-              "notes": notes[:20], "observations": stations}
+              "notes": notes[:20], "observations": stations, "s10": s10}
     if not due:
         print(f"tick {now:%Y-%m-%d %H:%MZ}: nothing due ({len(held)} already written); "
               f"stations {stations['rows']} rows")
@@ -405,6 +413,8 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     written = 0
     if out and not dry_run:
         written = upsert("prediction_checkpoints", out, ON_CONFLICT)
+    # The remaining-day model's ladder beside each call, observe only (P7.4).
+    s10["shadow"] = s10_shadow.record(due, market_of, bands_by_market, tz_of, unit_of, dry_run)
     detail.update({"written": written if not dry_run else 0, "would_write": len(out),
                    "deferred": deferred, "failed": failed[:30],
                    "books": len(books), "seconds": round(time.monotonic() - t0, 1)})

@@ -80,6 +80,8 @@ export const SQL_OWNER: Record<string, string> = {
   "public": "ad4_00_preflight.sql",
   "research_captures": "supabase/migrations/20260912083705_paper_accounts_and_research_history.sql",
   "resolution_verdicts": "supabase/migrations/20260924030000_the_verdicts_are_kept.sql",
+  "s10_day1_inputs": "supabase/migrations/20260927090000_s10_shadow_observe.sql",
+  "s10_shadow_checkpoints": "supabase/migrations/20260927090000_s10_shadow_observe.sql",
   "settings": "ad4_00_preflight.sql",
   "signals": "ad4_00_preflight.sql",
   "strategies": "ad4_00_preflight.sql",

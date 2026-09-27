@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 231 of them - and for each MISSING one names the
+-- and function the app reads - 233 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -91,6 +91,8 @@ with expected(rel, owner, used_by) as (values
     ('public', 'ad4_00_preflight.sql', ''),
     ('research_captures', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),
     ('resolution_verdicts', 'supabase/migrations/20260924030000_the_verdicts_are_kept.sql', ''),
+    ('s10_day1_inputs', 'supabase/migrations/20260927090000_s10_shadow_observe.sql', ''),
+    ('s10_shadow_checkpoints', 'supabase/migrations/20260927090000_s10_shadow_observe.sql', ''),
     ('settings', 'ad4_00_preflight.sql', '(GlobalBar), (ScheduleControl), /goals'),
     ('signals', 'ad4_00_preflight.sql', ''),
     ('strategies', 'ad4_00_preflight.sql', '/campaigns'),
@@ -344,6 +346,8 @@ begin
     ('public', 'ad4_00_preflight.sql', ''),
     ('research_captures', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),
     ('resolution_verdicts', 'supabase/migrations/20260924030000_the_verdicts_are_kept.sql', ''),
+    ('s10_day1_inputs', 'supabase/migrations/20260927090000_s10_shadow_observe.sql', ''),
+    ('s10_shadow_checkpoints', 'supabase/migrations/20260927090000_s10_shadow_observe.sql', ''),
     ('settings', 'ad4_00_preflight.sql', '(GlobalBar), (ScheduleControl), /goals'),
     ('signals', 'ad4_00_preflight.sql', ''),
     ('strategies', 'ad4_00_preflight.sql', '/campaigns'),
