@@ -38,29 +38,24 @@ says the same). The exit cost is the wealth given up by selling the held shares
 at the net bid rather than holding them at their posterior value.
 """
 import holdings_solver as hs
-import market_state
+import strategy_params
 from belief import ladder_posterior
-from edge_engine import DEFAULT_MIN_PRICE_YES, classify_tradeability
+from edge_engine import DEFAULT_MIN_PRICE_YES
 from execution_cost import fee_per_share
-from probability_engine import TRAJECTORY_MAX_READING_AGE_MIN, impossible_band_ids
+from strategies import tradeable
+from strategies.tradeable import MAX_READING_AGE_MIN, STATION_BASES, readings_usable, ruled_out  # noqa: F401
 
 VARIANTS = ("s10_winner", "s10_growth", "s10_lock")
 VIEW_VERSION = "s10-view-v1"
 
-H_SWITCH_PRIOR = 0.005
-H_SWITCH_BOUNDS = (0.001, 0.02)
-# A reading older than this describes another hour: the engine's own limit for
-# a live reading (probability_engine.TRAJECTORY_MAX_READING_AGE_MIN).
-MAX_READING_AGE_MIN = TRAJECTORY_MAX_READING_AGE_MIN
-# A floor built from a thermometer: the station observation series, or a live
-# row that is a station's. A model value is never a floor (P2.7).
-STATION_BASES = ("station", "series")
+# The prior and bounds live in strategy_params (a strategy file holds no numbers).
+H_SWITCH_PRIOR = strategy_params.prior("h_switch")
+H_SWITCH_BOUNDS = strategy_params.bounds("h_switch")
 
 
 def h_switch(value=None):
     """h_switch clipped to its bounds; the prior when nothing was learned."""
-    lo, hi = H_SWITCH_BOUNDS
-    return min(max(H_SWITCH_PRIOR if value is None else float(value), lo), hi)
+    return strategy_params.value("h_switch", value)
 
 
 def view(probs, table=None, cluster=None, checkpoint=None):
@@ -69,37 +64,9 @@ def view(probs, table=None, cluster=None, checkpoint=None):
     return ladder_posterior(probs, table, cluster, checkpoint)
 
 
-def readings_usable(floor_basis, reading_age_min):
-    """(ok, reason). S10 buys and switches only on a fresh station reading."""
-    if floor_basis not in STATION_BASES:
-        return False, "no station reading under the floor"
-    if reading_age_min is None or float(reading_age_min) > MAX_READING_AGE_MIN:
-        return False, "the station reading is stale"
-    return True, None
-
-
-def ruled_out(floor_c, floor_basis, unit, bands):
-    """Band ids the day can no longer settle in (P3.1, venue-rounded), judged
-    on a station floor only."""
-    if floor_c is None or floor_basis not in STATION_BASES:
-        return set()
-    return impossible_band_ids(float(floor_c), unit, bands)
-
-
 def buyable(book, band_id, min_price_yes=DEFAULT_MIN_PRICE_YES):
-    """(ok, reason): the platform's own YES tradeability for this bucket's book.
-
-    On the real 26 Sep noon ladders Tokyo's book had 23-24 C at 0.998 (it won)
-    and 24-25 C at 0.003 with no bid; the engine gave 24-25 C 0.34, so its
-    "growth" at 0.003 was enormous and entirely illusory. A dead book is the
-    market saying the day is settled. The far-from-forecast rule is left out:
-    it measures distance from the day-ahead centre, and S10's ladder is its own.
-    """
-    q = (book or {}).get(band_id) or {}
-    ask, bid = q.get("ask"), q.get("bid")
-    state = market_state.classify(None if bid is None else float(bid), None if ask is None else float(ask))
-    return classify_tradeability("YES", None if ask is None else float(ask), 0, state,
-                                 min_price_yes=min_price_yes)
+    """(ok, reason): the platform's own YES tradeability (strategies.tradeable)."""
+    return tradeable.buyable(book, band_id, "YES", min_price_yes)
 
 
 def _ask(book, band_id):
@@ -155,8 +122,8 @@ def _lock_book(post, book, bands, anchor, held_shares, ledger_usd, cash_usd):
                         cash_usd=cash_usd, lock=True)
     if f"{anchor}:YES" not in out["weights"]:     # holdings_solver.assets names
         return None
-    if min(out["wealth_by_outcome"].values()) < 1.0 - 1e-9:
-        return None
+    # solve_book(lock=True) returns a book that holds the lock or all cash, and
+    # all cash has no anchor, so no second check of the lock is needed here.
     return out
 
 
