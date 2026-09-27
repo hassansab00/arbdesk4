@@ -259,13 +259,22 @@ def main(argv=None, today=None):
     table = fit([p for p in pairs if p[1] >= window_start], {k: v[0] for k, v in previous.items()})
     version = version_of(table, as_of)
 
+    # computed_at travels on every row. merge-duplicates updates only the
+    # columns the payload carries: a default of now() fires on INSERT and
+    # never again (measured on derived_forecast_postprocess, 22 Sep). The
+    # engine takes derived_corrected_forecast rows younger than max_age_hours
+    # by this column, so an open day's row first written two nights ago and
+    # re-fitted since would look 36 h old and price from the public forecast.
+    computed_at = dt.datetime.now(dt.timezone.utc).isoformat()
+
     # Each cell keeps the value it stepped from, so a re-run tonight steps from
     # the same place and writes the same numbers (plan v2.3 P5.14).
     cell_rows = [{"city_key": city, "source": source, "lead_days": lead, "bias_c": round(b, 4),
                   "pooled_bias_c": round(table["pooled"][(source, lead)][0], 4), "n": n,
                   "n_pooled": table["pooled"][(source, lead)][1], "version": version, "as_of": str(as_of),
                   "prev_bias_c": previous[(source, lead, city)][0] if (source, lead, city) in previous else None,
-                  "prev_as_of": previous[(source, lead, city)][1] if (source, lead, city) in previous else None}
+                  "prev_as_of": previous[(source, lead, city)][1] if (source, lead, city) in previous else None,
+                  "computed_at": computed_at}
                  for (source, lead, city), (b, n) in sorted(table["cells"].items())]
     fwd_rows = []
     for (city, day), (lead, fcs) in sorted(load_forward(rest_all, as_of).items()):
@@ -275,7 +284,8 @@ def main(argv=None, today=None):
         mean, spread, used = out
         fwd_rows.append({"city_key": city, "for_date": day, "lead_days": lead, "combined_c": round(mean, 3),
                          "spread_c": round(spread, 3) if spread is not None else None,
-                         "n_sources": len(used), "sources": used, "version": version})
+                         "n_sources": len(used), "sources": used, "version": version,
+                         "computed_at": computed_at})
 
     written = 0
     if not args.dry_run:

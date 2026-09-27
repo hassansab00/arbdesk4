@@ -62,7 +62,7 @@ The width served changes nightly (the skill and post-process refits). Mean width
 - The scored dates overlap the P3.9 go-live replay, which chose the centre. The widths themselves were fixed before any score was seen.
 - The forecasts are Open-Meteo Previous Runs at lead 1, not the live runs the engine reads.
 - Since 27 Sep 08:23Z the served centre is the blend with the station model (P2.9), which is a little more accurate; its own width was not measured here.
-- The probability served is the raw one this study scores. The calibration map is not applied: `settings.calibration_map` has `applies` false, with the gate unmet at 15 settlement dates of 30. All 6,402 `band_probabilities` rows of the 24 h before ~17:25Z on 27 Sep have `calibrated_prob` = `raw_prob`. Its last fit (26 Sep 05:16Z) found T = 2.0, "too peaked", on ladders priced from the raw centre before P3.9. Once the map passes its gate it scales whatever width is served, so it has to be fitted on that width.
+- The probability served is the raw one this study scores. The calibration map is not applied: `settings.calibration_map` has `applies` false, with the gate unmet at 15 settlement dates of 30. All 6,402 `band_probabilities` rows of the 24 h before the query (27 Sep, about 17:19Z) have `calibrated_prob` = `raw_prob`. Its last fit (26 Sep 05:16Z) found T = 2.0, "too peaked", on ladders priced from the raw centre before P3.9. Once the map passes its gate it scales whatever width is served, so it has to be fitted on that width.
 - Under the evaluation contract (plan v2.3 P7.3), a width is promoted on dates after its design froze. These dates are before it.
 
 **Next (P3.9 part 3, build):**
