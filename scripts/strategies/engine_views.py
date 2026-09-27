@@ -66,7 +66,9 @@ def anchored(ctx, source):
 def engine_input(strategy_id, ctx, trace=None):
     """`trace`, when a dict, receives S10's own decision under "s10": its SELL
     and SWITCH are carried out by the caller (plan v2 P5.12 part 3b), and they
-    need the held bucket, the target and the bid, not only the reason."""
+    need the held bucket, the target and the bid, not only the reason. It
+    also receives the market anchor used ("anchor"), which a row that
+    declined by S10's own rule records."""
     book = ctx.get("book") or {}
     rec = None
     if strategy_id in RESEARCH_ONLY:
@@ -75,6 +77,8 @@ def engine_input(strategy_id, ctx, trace=None):
         ctx, rec = anchored(ctx, "s10" if strategy_id in s10.VARIANTS else "engine")
         if ctx is None:
             return None, book, rec
+        if trace is not None:
+            trace["anchor"] = rec
     if strategy_id in s10.VARIANTS:
         d = s10.decide(strategy_id, bands=ctx["bands"], unit=ctx["unit"], probs=ctx["probs"], book=book,
                        floor_c=ctx.get("floor_c"), floor_basis=ctx.get("floor_basis"),

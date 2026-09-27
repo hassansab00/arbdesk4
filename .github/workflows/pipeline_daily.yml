@@ -228,6 +228,18 @@ jobs:
         timeout-minutes: 5
         run: python scripts/station_width_score.py
 
+      # 7a4. Plan v2 P5.12 acceptance: yesterday's (UTC) live engine
+      #      decisions, replayed through the same engine_shadow.decide_all on
+      #      the inputs each tick recorded (its checkpoint rows, S10's ladders,
+      #      the floors and ledgers in its ingest_log detail), compared row by
+      #      row. Logs job engine_replay: the share matched among rows decided
+      #      on the same parameters (the plan's bar is 95%) and the first
+      #      mismatches. Reads only. Its minutes are not measured yet.
+      - name: Replay yesterday's engine decisions
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: python scripts/engine_replay_live.py
+
       # 7b. How right each city's thermometer has been, copied onto cities so
       #     both engines can read it. AFTER "Freeze settled city-days", because
       #     v_settlement_agreement judges against ladders that have settled -
