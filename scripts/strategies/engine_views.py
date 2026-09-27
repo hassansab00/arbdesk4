@@ -17,6 +17,7 @@ no_ask, no_bid, depth_usd}}, "floor_c", "floor_basis", "reading_age_min",
 S10's SELL (certainly lost) and SWITCH are its own decisions and come back as
 the reason; the engine sizes buys only (it does not decide sells, P5.5).
 """
+import market_anchor
 from strategies import s2_structural_arb as s2
 from strategies import s10_max_temp_winner as s10
 from strategies import s11_ladder_optimiser as s11
@@ -35,10 +36,42 @@ def _with(view, constraints, ctx, strategy_id):
                 checkpoint=ctx.get("checkpoint"), **constraints)
 
 
+def _stamp(view, rec):
+    """The anchor's weight and version travel with the view onto the decision."""
+    return dict(view, anchor=rec) if view is not None and rec is not None else view
+
+
+def anchored(ctx, source):
+    """(ctx with the market-anchored probabilities, record) or (None, why).
+
+    Every view that rests on a model starts from the market (market_anchor,
+    Hassan 27 Sep): p = p_market + w (p_model - p_market), w learned per
+    view source and checkpoint class, 0 until the model earns it. A book
+    that does not quote every bucket has no market to anchor on, so no view.
+    ctx["anchor"] = False turns it off (tests of the constraints alone).
+    """
+    spec = ctx.get("anchor", {})
+    if spec is False:
+        return ctx, {"w": 1.0, "version": "off", "scope": None}
+    ids = [b["band_id"] for b in ctx["bands"]]
+    market = market_anchor.market_probs(ctx.get("book"), ids)
+    if market is None:
+        return None, "no market to anchor on: a bucket is not quoted"
+    sc = market_anchor.scope(spec.get("source", source), ctx.get("checkpoint"))
+    w, version = market_anchor.weight(spec.get("table"), sc)
+    probs = market_anchor.anchor({b: float(ctx["probs"].get(b, 0.0)) for b in ids}, market, w)
+    return dict(ctx, probs=probs), {"w": w, "version": version, "scope": sc}
+
+
 def engine_input(strategy_id, ctx):
     book = ctx.get("book") or {}
+    rec = None
     if strategy_id in RESEARCH_ONLY:
         return None, book, RESEARCH_ONLY[strategy_id]
+    if strategy_id not in s2.VARIANTS:                  # S2's view is prices only
+        ctx, rec = anchored(ctx, "s10" if strategy_id in s10.VARIANTS else "engine")
+        if ctx is None:
+            return None, book, rec
     if strategy_id in s10.VARIANTS:
         d = s10.decide(strategy_id, bands=ctx["bands"], unit=ctx["unit"], probs=ctx["probs"], book=book,
                        floor_c=ctx.get("floor_c"), floor_basis=ctx.get("floor_basis"),
@@ -49,19 +82,19 @@ def engine_input(strategy_id, ctx):
         # s10_winner / s10_growth: the one target bucket; s10_lock: the whole
         # ladder under the lock, anchored on the target S10 chose.
         lock = strategy_id == "s10_lock"
-        return _with({"probs": dict(ctx["probs"])},
+        return _stamp(_with({"probs": dict(ctx["probs"])},
                      {"allow": ("YES",), "only": None if lock else [f"{d['target']}:YES"], "lock": lock},
-                     ctx, strategy_id), book, None
+                     ctx, strategy_id), rec), book, None
     if strategy_id in s11.VARIANTS:
         v = s11.view(ctx)
         if v is None:
             return None, book, "no ladder"
-        return _with(v, s11.constraints(ctx, strategy_id), ctx, strategy_id), book, None
+        return _stamp(_with(v, s11.constraints(ctx, strategy_id), ctx, strategy_id), rec), book, None
     if strategy_id in s12.VARIANTS:
         v = s12.view(ctx)
         if v is None:
             return None, book, "no ladder"
-        return _with(v, s12.constraints(ctx, strategy_id), ctx, strategy_id), s12.book(ctx), None
+        return _stamp(_with(v, s12.constraints(ctx, strategy_id), ctx, strategy_id), rec), s12.book(ctx), None
     if strategy_id in s2.VARIANTS:
         v, why = s2.view(ctx)
         if v is None:
