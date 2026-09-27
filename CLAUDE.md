@@ -45,7 +45,7 @@ disabled.
 
 ## The improvement plan in progress
 
-`docs/AD4_IMPROVEMENT_PLAN.md` (v2, 23 Sep; v2.1 the same evening adds P1.7, P1.8, P2.8 and P3.8, the hit tournament; v2.2 on 26 Sep adds P2.9, P2.10, P3.9, P4.7 and amends P7.2/P7.3: the predictive engine learns station errors and the remaining day) is the plan being executed.
+`docs/AD4_IMPROVEMENT_PLAN.md` (v2, 23 Sep; v2.1 the same evening adds P1.7, P1.8, P2.8 and P3.8, the hit tournament; v2.2 on 26 Sep adds P2.9, P2.10, P3.9, P4.7 and amends P7.2/P7.3: the predictive engine learns station errors and the remaining day; v2.3 on 27 Sep adds P4.8, P4.9 and P5.14 and amends P3.9, P5.3, P7.2 and P7.3: the board shows what was priced, a rerun cannot step twice, the width follows the centre actually served) is the plan being executed.
 `docs/PLAN_PROGRESS.md` is its checklist: every step's status, PR, acceptance
 result and notes. **Read the progress file first and resume from it**, and
 update it in every PR that advances a step. Where this file and the plan

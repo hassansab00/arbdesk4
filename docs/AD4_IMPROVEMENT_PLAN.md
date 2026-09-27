@@ -17,6 +17,18 @@ Line numbers are hints. Code moves, so find each change by the function or symbo
 - **Every addition must improve predictions on later dates**, reported per checkpoint and per city, on both temperature error and the winning bucket. The experiment that matters is the morning and pre-peak checkpoints, not after the maximum is apparent.
 - **Hit and Miss for US cities lands a day late** because the venue proofs are collected once a day before US days end (P4.7).
 
+**v2.3 additions (Hassan, 27 Sep: assess an external predictive-model plan and "move forward with the improvements if they are fitting"; source: that plan, written against `38f5803`, each claim checked against the code and the live database before it was written in):**
+- **The board shows exactly what was priced, and says when that is out of date.** The city card showed the raw public forecast as its "forecast centre", took its "priced" time from the edges, and showed same-day picks the station had already passed (P4.8). Publishing the current prediction between the four-hourly pricing runs is P4.9, sized first against the tick's minute and the database cap.
+- **A rerun is not a second night.** Two learners that price live (P3.9, P2.9's blend) step again from their own output when `pipeline_daily` reruns the same night; five more would once their gates open (P5.14).
+- **The width describes the distribution served.** P3.9 replaced the day-ahead centre and kept the width fitted to the raw forecast's errors (P3.9 part 3).
+- **S10's late day and the evaluation contract** (P7.2, P7.3 amendments), and a note on the S10 market result (P5.3).
+- **Where the engine stands (fact_checkpoint_outcome, 24-26 Sep, 404 checkpoints):** on the same ladders the market's log loss is lower at every checkpoint (postpeak_1h 1.260 engine vs 0.776 market; noon 1.522 vs 1.254; d1_eve 1.731 vs 1.239), and after the morning the engine's stated top probability runs above its hit rate (noon 51.5% stated, 36.1% hit; prepeak_1h 52.4%, 42.3%). Day-ahead, 13-26 Sep: 176 of 562 top picks right (`v_city_hit_history`). Three days of intraday evidence, correlated within each day.
+- **Checked and not adopted as new steps:**
+  - A separate prediction-object table with a serving pointer (its A1): `band_probabilities` and `prediction_checkpoints` already keep every issued ladder, immutable, with its version and time. A pointer waits for P4.9's measurements and the database cap.
+  - Two targets, correction by lead, simple combinations first, observed-versus-forecast features, path simulation, and calibration kept apart from skill: already in P7.1, P3.9, P3.8, P7.2 (v2.2) and P3.6.
+  - Receipt times: forecasts carry issue times (P2.6) and P2.10 adds publication times. Whether `weather_observations.observed_at` is a receipt time was not checked; it belongs to P2.10's provenance work, not a step of its own.
+  - Its "what not to build" list (a neural network first, per-city models on a few days, manual city offsets, a universal confidence threshold, calibration switched on by a date counter) agrees with this plan already.
+
 ---
 
 ## 0. How to execute this plan
@@ -398,6 +410,11 @@ P7 design work (P7.1–P7.3) can start as soon as P2 is merged. Shadow trading (
 
   Report them per lead and per city, with all eligible events.
 
+**Part 3 (v2.3): the width of the distribution actually served.**
+- **Finding (checked 27 Sep):** P3.9 replaced the day-ahead centre and left the width alone ("the width is untouched, because the replay that earned this kept the engine's own sigma", `probability_engine`, the station-correction block). The go-live replay (582 city-days, 13-25 Sep) changed only the centre. The engine's rule for a promoted model is the opposite: "sigma must describe the distribution actually being published". The corrected centre has different errors (centre MAE 1.124 -> 0.820 C on that replay) and is priced with a width fitted to the raw forecast's.
+- **Change (research first, shadow until it wins):** fit the width on the walk-forward residuals of the centre actually served (P3.9's combination, and P2.9's blend where it priced), per lead, pooled with shrunk city effects. Candidates, in order: the current width; the served centre's own measured error; a width that grows with the corrected sources' disagreement and the recent residual spread (EMOS-style, fitted on CRPS). Rule 11 as P3.9.
+- **Acceptance:** on dates after the fit window, the venue ladder's log loss and Brier, CRPS, and the coverage of the 80% interval, each against the current width, with the P3.4 day-block bootstrap. Nothing prices from it until the lower bound of the gain is above zero.
+
 ## P4. Honest evidence
 
 ### P4.1 The `prediction_checkpoints` table (shared with S10)
@@ -469,6 +486,23 @@ P7 design work (P7.1–P7.3) can start as soon as P2 is merged. Shadow trading (
 - **Change:** confirm and bank recently ended markets after the US day ends, inside an existing run (the tick or a later daily step), without a new schedule unless P6.1's budget allows it. The panel says which days are still waiting on the venue.
 - **Acceptance:** for three consecutive days, the lag between a market's local day end and its checkpoint rows being banked, for C and F cities.
 
+### P4.8 The card shows what was priced (v2.3)
+**Finding (checked 27 Sep):**
+- `web/lib/cityCards.ts` showed `band_probabilities.forecast_max_c` as the "Forecast centre ... after bias correction". That column is the public input before any correction; the ladder was integrated on `centre_c`, which the ladder views did not expose. For 28 Sep, priced 27 Sep 12:36Z: wuhan 28.9 C shown, 26.005 C priced; paris 23.9 / 25.640; london 19.6 / 19.058.
+- The card's "priced" time was the newest edge. The probabilities are written at 00:36, 04:36 ... 20:36Z; the station is read hourly.
+- Over the same-day checkpoints of 24-27 Sep (noon, prepeak_2h, prepeak_1h, postpeak_1h; 488 instants), the newest pricing's top bucket got under 1% in the fresh ladder the tick computed at that moment at 68 of them (53 C, 15 F). At postpeak_1h, 38 of 123 card picks lay below the bucket holding the running maximum. The card's pricing was 139-156 minutes old on average at those instants.
+- `v_city_prediction_confidence` chose its modal bucket among closed buckets only. On 27 Sep ~15:45Z it named a different bucket from the card on 6 of 92 open city-days, exactly the 6 whose pick was an open tail. No page reads it.
+- **Change:**
+  - The ladder views carry `centre_c`, `forecast_sigma_c`, `observed_floor_c`, `prob_at` and `priced_from`, from the same `band_probabilities` row as the probability.
+  - The card shows the priced centre with the raw input under it (never in its place), the pricing's own time and path, and marks a pick the station has passed since it was priced, by the engine's P3.1 rule. It never swaps in another bucket: a new pick needs a new price.
+  - One rule for the most likely bucket everywhere: the most probability, tails included, ties to the lower `band_id` (the card's and `tick.py`'s rule).
+- **Acceptance:** before applying, the 30 existing ladder columns are identical in one snapshot (EXCEPT ALL, both ways); read as anon, every open row carries the new columns; the confidence view agrees with the card on every open city-day. After the next pricing run, the card's centre equals `centre_c` for every city.
+
+### P4.9 The current prediction between pricing runs (v2.3)
+**Finding (checked 27 Sep):** P4.8 marks a passed pick; it does not replace it. A fresh same-day ladder exists hourly only for the city-days whose checkpoint is due (`prediction_checkpoints`).
+- **Change:** measure first: the tick's seconds per re-priced city-day, how many same-day city-days see a new station maximum per hour, and the rows it would add. Then publish the current prediction for those city-days: newest wins, idempotent, a whole ladder or nothing, labelled with its time and path. No hourly appends to `band_probabilities` while the database is over its cap (650 MB, 130% of the 500 MB tier, `storage_pressure()`, 27 Sep ~15:50Z).
+- **Acceptance:** a new station maximum never leaves an incompatible pick labelled current; the tick stays inside its minute; the rows added per day are measured against P1.6.
+
 ## P5. Paper trading engine v2
 
 **Goal:** one shared decision engine that every strategy uses. A strategy supplies a **view**: a belief about the ladder, or a structural opportunity, plus its constraints. The engine decides everything else from evidence and from the book at that moment: whether there is an edge, how big, **when** to act, which order type to use, and how to manage the position afterwards.
@@ -534,6 +568,7 @@ Each of these gets a PGlite contract or pytest.
 - **Implementation:**
   - `scripts/belief.py`: pure functions plus a loader for `strategy_params['belief']`.
   - Tests: posterior-maths unit tests; with no data it returns the prior; with a heavy history it converges.
+- **v2.3 note on the S10 market result (#221).** Post-peak, the market's log loss 0.620 against 0.559 at w = 0.6 (591 rows, 18 days) is a hypothesis, not a weight: 0.6 was the best of a grid on that sample, S10's form was chosen on a walk-forward whose test months include those dates (`docs/S10_REPLAY_2026-09-26.md` says so), and a quote may be up to 3 h old. The clean test is the shadow days after the design froze (P7.6). The nightly fit's walk-forward kept w at 0 throughout.
 
 ### P5.4 Execution cost model
 - **Taker cost** for quantity q: walk the ask ladder (existing code, correct), plus the fee `rate·price·(1−price)` per share. Return the marginal cost curve, not just the touch price.
@@ -661,6 +696,14 @@ Each of these gets a PGlite contract or pytest.
 ### P5.13 Archive what research needs
 - Before `prune_dead_book_detail` nulls `raw_book`, the hourly tick exports that hour's ladders for bands that have holdings, resting orders or a checkpoint. It does not export all bands, to keep the archive small.
 - Include `snapshot_id`, `edge_id` and `observed_at` in the archive CSVs. Bump the schema version in `index.json`.
+
+### P5.14 A rerun cannot step twice (v2.3)
+**Finding (checked 27 Sep, code and `ingest_log`):** Rule 11's maximum change per nightly update is measured from the value stored last, so a same-night rerun of `pipeline_daily` (the Relearn webhook, a manual dispatch, a GitHub rerun) steps again from the first run's output, on the same data. Reruns happen: calibration ran 3 times on 22 Sep and twice on 24 Sep, the hit tournament twice on 24 Sep.
+- Priced now: `station_correction` (the step's anchor is every stored `bias_c`, overwritten in place) and `station_mos` (every stored coefficient). One rerun moves a held-back cell 0.50 C in a night instead of 0.25.
+- Latent: `calibration` (T, once its gate opens), `belief` and `market_weight` (while `strategy_learning` is off), `hit_tournament` (shadow), `meta_allocator` (portfolio inactive).
+- Safe: `city_clusters` (it refits only when its last fit is 7 days old).
+- **Change:** each learner steps from the value in force before tonight's data cutoff (the previous `as_of`), kept beside the new one, so a rerun with the same data writes the same values.
+- **Test:** per learner, a same-night rerun with the same data changes no stored value; a rerun with new data moves each value at most one step from the previous night's.
 
 ---
 
@@ -875,6 +918,9 @@ Predicts the distribution of the **final daily max** from what has happened so f
   3. Labels: the venue winner where available; otherwise the station max from the P2.1-quality series, flagged.
 - **Model registry:** each stage is registered in `model_versions` with its training window. The engine prices with the newest version whose replay (P7.3) beat the previous one; the others keep running in shadow scoring. Promotion between stages is automatic under the P3.4 bootstrap rule, and a demotion follows if the live 30-day CRPS falls back below the previous stage.
 - **Tests:** feature functions are pure; there is a lookahead test (no feature reads a timestamp after the decision time); the output ladder sums to 1; and the atom invariants from P3.1 hold.
+- **v2.3 additions (checked 27 Sep).**
+  - **The late day is unsupported, and says so.** Stage 1 fits local hours 07-17 (`remaining_day.HOURS = range(7, 18)`) and needs 6 forecast hours left (`MIN_REST_HOURS`), so a later checkpoint gets no S10 row. Until a tested late-day model exists, a late checkpoint falls back to the floored forecast and the row names the fallback. No "after 17:00 the day is done" rule, and no probability removed because the usual peak hour has passed.
+  - **"Already set" is an approximation.** Part A's zero-rise event is a rise under 0.25 C, not an exact zero. Crossing a bucket boundary is scored under the venue's rounding.
 
 ### P7.3 Historical replay harness (`scripts/backtest/replay_checkpoints.py`)
 - For every past city-day and checkpoint, rebuild the inputs **as of** the decision time: observations with `valid_at ≤ t`, forecasts with `issued_at ≤ t`, and the model trained only on dates before the target date (expanding window, retrained weekly).
@@ -890,6 +936,11 @@ Predicts the distribution of the **final daily max** from what has happened so f
 
   Report temperature error, winning-bucket hit rate and probability quality, per checkpoint and per city, with all eligible events. The experiment that decides is **morning and pre-peak**.
 - **Acceptance:** a replay report in `docs/S10_REPLAY_<date>.md` with n, coverage, accuracy with Wilson CI per checkpoint, reliability, and CRPS/log loss against the baseline.
+- **v2.3: the evaluation contract, frozen before any new model search.**
+  - The primary score is the venue ladder's multiclass log loss, with Brier beside it. For temperature: CRPS, and the coverage and width of stated intervals; then the median's MAE and bias, top-1 and top-2 hits. Every table carries eligible, scored, skipped, stale and abstained counts, so no model wins by dropping hard days.
+  - Uncertainty comes from a date-block bootstrap that keeps every city and checkpoint of a date together. Dates, city-days and checkpoints are reported separately.
+  - A checkpoint row is a decision at `decided_at` on a reading from `reading_at`, not an exact-time forecast (Munich 26 Sep "noon": reading 12:20 local, decided 12:37). Live comparisons with the market use the book read in the same tick; exact-time research rebuilds inputs as of the scheduled time.
+  - Replay dates that overlap a model's design are not untouched evidence. A model is promoted on dates after its design froze, and every candidate tried is recorded.
 
 ### P7.4 S10 inside the hourly tick
 - No separate runner: `scripts/tick.py` (P6.1) prices due city-days with the approved remaining-day model, writes checkpoint rows when due, and calls the decision engine for S10.
