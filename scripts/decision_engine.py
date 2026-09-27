@@ -17,7 +17,9 @@ and optionally:
   allow     sides the strategy may buy, default ("YES",)
   only      asset names ("<band>:YES") it may buy; every other asset is capped
             at zero (S10's one bucket is only=[target])
-  lock      the book must not end below the ledger's wealth in any outcome
+  lock      the book must not end below what this ladder is worth at cost -
+            the free cash plus what its holdings cost - in any outcome (money
+            on other ladders is not in this ladder's outcomes)
   sds       posterior sds to size on the worst ALPHA of draws; default: the
             belief layer's own
 THE LEDGER. {"equity_usd", "cash_usd", "on_market_usd", "pnl_today_usd",
@@ -197,9 +199,15 @@ def decide(view, *, book, ledger, rails=None, halted=False, params=None, state=N
     if max_spend <= 0:
         out.update(action=idle, reason_code=f"{room_by}_full", binding=[room_by])
         return out
+    # The lock's floor: this ladder's free cash plus its holdings at cost. A
+    # ledger with money on other ladders has less than 1 here, and a floor of
+    # 1 refused every lock while anything else was held (the replay: all 119
+    # lock_breaks of 12-25 Sep fell while s11_lock held tel_aviv 19 Sep).
+    lock_floor = (cash + held_usd) / equity
     solved = hs.solve_book(ladder, allow=allow, caps=caps, held=held, total_usd=equity, cash_usd=cash,
                            sds=sds, alpha=params.get("alpha", hs.ALPHA_PRIOR),
-                           lock=bool(view.get("lock")), max_price=rails.get("max_price"))
+                           lock=bool(view.get("lock")), max_price=rails.get("max_price"),
+                           lock_floor=lock_floor)
     frac = hs.fractional(solved, params.get("lambda", hs.LAMBDA_PRIOR))
     out["binding"] = list(out["binding"]) + [b for b in solved["binding"] if b not in out["binding"]]
     # Drawdown scaling after lambda's own bounds, so a learned lambda at its
@@ -229,7 +237,7 @@ def decide(view, *, book, ledger, rails=None, halted=False, params=None, state=N
     g_now, g_target = _growth(ps, w_now), _growth(ps, w_target)
     out.update(g_now=g_now, g_target=g_target)
 
-    if view.get("lock") and min(w_target) < 1.0 - 1e-9:
+    if view.get("lock") and min(w_target) < lock_floor - 1e-9:
         out.update(action=idle, reason_code="lock_breaks")
         return out
     if not frac["weights"] or not hs.worth_trading(g_target, g_now, params.get("h", hs.H_PRIOR)):
