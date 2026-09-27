@@ -188,6 +188,38 @@ def test_a_night_moves_a_city_by_at_most_the_step():
     assert sm.bounded_step(new, None, ref) == (new, 1.0), "the first night has nothing to step from"
 
 
+def test_a_rerun_the_same_night_steps_from_the_night_before():
+    """Plan v2.3 P5.14. Each row keeps the coefficients it stepped from; a
+    second run tonight must step from last night's, not from tonight's first
+    run, or one night moves a city twice (0.25 -> 0.50 C)."""
+    zero = {f: 0.0 for f in sm.FEATURES}
+    zero["intercept"] = 0.0
+    target = dict(zero, intercept=1.0)
+    ref = {"x": [0.0] * len(sm.FEATURES), "base": 0.0}
+    tonight = dt.date(2026, 9, 28)
+
+    def rest_all(path, params=None, **k):
+        assert path == "derived_mos_coefficients"
+        return rows
+    # last night's row: no anchor of its own
+    rows = [{"city_key": "x", "lead_days": 1, "coef": zero, "as_of": "2026-09-27",
+             "prev_coef": None, "prev_as_of": None}]
+    prev = sm.load_previous(rest_all, tonight)
+    assert prev == {("x", 1): (zero, "2026-09-27")}
+    first, a1 = sm.bounded_step(target, prev[("x", 1)][0], ref)
+    assert sm.correction(first, ref["x"]) == pytest.approx(sm.MAX_STEP_C)
+    # tonight's first run wrote `first`, keeping what it stepped from
+    rows = [{"city_key": "x", "lead_days": 1, "coef": first, "as_of": tonight.isoformat(),
+             "prev_coef": zero, "prev_as_of": "2026-09-27"}]
+    again = sm.load_previous(rest_all, tonight)
+    assert again == prev, "a re-run tonight anchors on last night's coefficients"
+    second, a2 = sm.bounded_step(target, again[("x", 1)][0], ref)
+    assert (second, a2) == (first, a1), "the same data writes the same coefficients"
+    # tomorrow steps on from tonight's
+    tomorrow = sm.load_previous(rest_all, dt.date(2026, 9, 29))
+    assert tomorrow == {("x", 1): (first, tonight.isoformat())}
+
+
 def test_the_version_names_the_coefficients():
     a = sm.version_of({("x", 1): {"intercept": 1.0}}, dt.date(2026, 9, 27), {})
     b = sm.version_of({("x", 1): {"intercept": 1.1}}, dt.date(2026, 9, 27), {})

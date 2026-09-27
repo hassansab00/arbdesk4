@@ -317,10 +317,19 @@ def load_labels(rest_all):
             if day_had_ended(r["obs_date"], r.get("computed_at"), tz.get(r["city_key"]))}
 
 
-def load_previous(rest_all):
-    rows = rest_all("derived_mos_coefficients", [("select", "city_key,lead_days,coef")],
+def load_previous(rest_all, as_of):
+    """{(city, lead): (coef, as_of)} in force BEFORE the night `as_of` (plan v2.3
+    P5.14): a re-run tonight steps from what the night started with, not from
+    the first run's output (station_correction.anchor_before)."""
+    rows = rest_all("derived_mos_coefficients",
+                    [("select", "city_key,lead_days,coef,as_of,prev_coef,prev_as_of")],
                     order="city_key.asc,lead_days.asc")
-    return {(r["city_key"], int(r["lead_days"])): r["coef"] for r in rows}
+    out = {}
+    for r in rows:
+        a = sc.anchor_before(r, as_of, value="coef", prev="prev_coef")
+        if a is not None:
+            out[(r["city_key"], int(r["lead_days"]))] = a
+    return out
 
 
 def load_p39(rest_all, today):
@@ -350,7 +359,7 @@ def main(argv=None):
                        [r for r in hr.read_rows(hr.MODELS_FILE) if r[0] in active], labels)
     fbm, fmd, unreached = hr.forward_rows(cities, now)
     forward = assemble([hr._text(r) for r in fbm], [hr._text(r) for r in fmd], labels)
-    previous = load_previous(rest_all)
+    previous = load_previous(rest_all, as_of)
     p39 = load_p39(rest_all, as_of)
 
     coefs, steps, chosen_by, scores, out_rows, coef_rows = {}, {}, {}, {}, [], []
@@ -365,7 +374,7 @@ def main(argv=None):
             n_city = sum(1 for r in train if r["city"] == city)
             new = craw.get(city, praw)
             ref = reference_day(train, city)
-            new, a = bounded_step(new, previous.get((city, lead)), ref)
+            new, a = bounded_step(new, (previous.get((city, lead)) or (None,))[0], ref)
             coefs[(city, lead)] = new
             steps[(city, lead)] = (a, n_city)
         if not args.no_eval:
@@ -374,9 +383,13 @@ def main(argv=None):
 
     for (city, lead), cf in coefs.items():
         a, n_city = steps[(city, lead)]
+        prev = previous.get((city, lead))
+        # The coefficients it stepped from ride along, so a re-run tonight
+        # steps from the same place and writes the same numbers (P5.14).
         coef_rows.append({"city_key": city, "lead_days": lead, "coef": {k: round(v, 6) for k, v in cf.items()},
                           "n": n_city, "pooled": n_city < MIN_CITY_DAYS, "step_fraction": round(a, 4),
-                          "version": version, "as_of": as_of.isoformat(), "computed_at": now.isoformat()})
+                          "version": version, "as_of": as_of.isoformat(), "computed_at": now.isoformat(),
+                          "prev_coef": prev[0] if prev else None, "prev_as_of": prev[1] if prev else None})
     for lead in LEADS:
         for r in forward[lead]:
             cf = coefs.get((r["city"], lead))
