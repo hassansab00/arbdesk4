@@ -42,8 +42,14 @@ STRATEGIES = ("s10_winner", "s10_growth", "s10_lock", "s11_ladder", "s11_lock", 
 S10 = ("s10_winner", "s10_growth", "s10_lock")
 WRITE_RESERVE_S = 3.0
 
+# decisions.reason_code's check, as 20260925090000_decision_log.sql declares
+# it: lower-case letters and underscores, NO DIGITS. One code outside it fails
+# the tick's whole insert: on 27 Sep 15:36Z the first engine tick decided 78
+# rows and wrote 0, because S10's own WAIT was coded 's10_wait'.
+CODE = re.compile(r"^[a-z_]{1,40}$")
+
 # engine_views says why it has no view in words; decisions.reason_code is a
-# code (^[a-z_]{1,40}$). Anything not listed is `no_view`.
+# code (CODE above). Anything not listed is `no_view`.
 WHY_CODES = (
     ("no market to anchor on", "no_market_anchor"),
     ("no ladder", "no_ladder"),
@@ -53,17 +59,21 @@ WHY_CODES = (
 
 
 def reason_code(why):
-    """A decisions.reason_code for engine_views' reason or decide's code."""
+    """A decisions.reason_code for engine_views' reason or decide's code.
+
+    S10 declining by its own rule (engine_views: "s10 WAIT: ...") is
+    `own_rule_<action>`: the strategy id already says which strategy, and the
+    code must not carry its digits."""
     if why is None:
         return "no_view"
     text = str(why)
     m = re.match(r"s10 (BUY|SELL|SWITCH|HOLD|WAIT|NONE)\b", text)
     if m:
-        return f"s10_{m.group(1).lower()}"
+        return f"own_rule_{m.group(1).lower()}"
     for words, code in WHY_CODES:
         if text.startswith(words):
             return code
-    return text if re.fullmatch(r"[a-z_]{1,40}", text) else "no_view"
+    return text if CODE.fullmatch(text) else "no_view"
 
 
 def s10_action(why):
