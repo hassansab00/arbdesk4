@@ -8,7 +8,22 @@ import engine_shadow as es
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ACTIONS = {"BUY", "SELL", "SWITCH", "HOLD", "WAIT", "NONE"}
-CODE = re.compile(r"^[a-z_]{1,40}$")
+
+
+def _declared_code_pattern():
+    """decisions.reason_code's check as the migrations declare it: the newest
+    migration that states it wins. Read from the SQL, not restated here - on
+    27 Sep 15:36Z a code this file believed valid ('s10_wait') failed the
+    tick's whole insert against the real constraint."""
+    found = None
+    for f in sorted((ROOT / "supabase" / "migrations").glob("*.sql")):
+        for m in re.finditer(r"check \(reason_code ~ '([^']+)'\)", f.read_text()):
+            found = m.group(1)
+    assert found, "no migration declares decisions.reason_code's check"
+    return found
+
+
+CODE = re.compile(_declared_code_pattern())
 
 BANDS = [{"band_id": f"b{i}", "band_lo": 10 + i, "band_hi": 11 + i, "open_low": i == 0, "open_high": i == 4}
          for i in range(5)]
@@ -25,9 +40,12 @@ def flat(c, t):
 
 
 def test_reason_codes_fit_the_table():
+    assert es.CODE.pattern == CODE.pattern                 # the module holds the table's own rule
     assert es.reason_code("no_trade_band") == "no_trade_band"
     assert es.reason_code("no market to anchor on: a bucket is not quoted") == "no_market_anchor"
-    assert es.reason_code("s10 SWITCH: the target moved") == "s10_switch"
+    assert es.reason_code("s10 SWITCH: the target moved") == "own_rule_switch"
+    for action in sorted(ACTIONS):                         # every word S10's own rule can say
+        assert CODE.match(es.reason_code(f"s10 {action}: why")), action
     assert es.reason_code("something new, in words") == "no_view"
     assert es.reason_code(None) == "no_view"
     assert es.s10_action("s10 SELL: the held bucket is certainly lost") == "SELL"
@@ -72,6 +90,22 @@ def test_every_strategy_gets_a_row_the_table_accepts():
     # S10 has no remaining-day ladder here: recorded, not skipped
     assert by["s10_winner"]["reason_code"] == "no_ladder"
     assert by["s11_ladder"]["params_version"] and "engine" in by["s11_ladder"]["params_version"]
+
+
+def test_s10_declining_by_its_own_rule_is_a_row_the_table_accepts():
+    """The path that failed live (27 Sep 15:36Z): S10 has its remaining-day
+    ladder, decides by its own rule not to buy, and its row must still fit
+    decisions.reason_code's check or the tick's whole insert is refused."""
+    ledgers = {sid: flat for sid in es.STRATEGIES}
+    rows, _ = es.decide_all([("cp1", ROW)], {("london", "2026-09-28", "noon"): PROBS},
+                            {("london", "2026-09-28"): BANDS}, {"london": "C"}, {}, ledgers, {}, None,
+                            time.monotonic() + 60, "run-1", "2026-09-28T11:36:00+00:00")
+    s10_rows = [r for r in rows if r["strategy_id"] in es.S10]
+    assert len(s10_rows) == len(es.S10)
+    for r in rows:
+        assert r["action"] in ACTIONS and CODE.match(r["reason_code"]), r
+    assert all(r["reason_code"].startswith("own_rule_") for r in s10_rows), s10_rows
+    assert all(r["action"] == r["reason_code"].removeprefix("own_rule_").upper() for r in s10_rows)
 
 
 def test_a_strategy_without_a_ledger_or_a_quoted_book_is_a_row_too():
