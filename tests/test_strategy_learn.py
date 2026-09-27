@@ -27,6 +27,7 @@ class _DB:
     """Fakes common.rest / rest_all / upsert / log_run for one run."""
     def __init__(self, checkpoints, outcomes, stored=None):
         self.checkpoints, self.outcomes, self.stored = checkpoints, outcomes, list(stored or [])
+        self.s10 = []
         self.logged, self.upserts = [], []
 
     def module(self):
@@ -40,7 +41,8 @@ class _DB:
         m.rest = rest
 
         def rest_all(path, params=None, *, order, page_size=500):
-            return self.checkpoints if path == "prediction_checkpoints" else self.outcomes
+            return {"prediction_checkpoints": self.checkpoints, "fact_checkpoint_outcome": self.outcomes,
+                    "s10_shadow_checkpoints": self.s10}[path]
         m.rest_all = rest_all
 
         def upsert(table, rows, on_conflict, chunk=500):
@@ -163,3 +165,45 @@ def test_no_measured_city_writes_no_cluster_row(monkeypatch):
     d = _run(monkeypatch, db, clusters=_cluster_inputs(n_days=40))    # under MIN_DATES
     assert not [r for r in db.stored if r["param"] == "city_clusters"]
     assert d["city_clusters"]["measured_cities"] == 0 and not d["city_clusters"]["written"]
+
+
+# ---------------------------------------------------------------------------
+# the market weight (P5.3 amended)
+# ---------------------------------------------------------------------------
+# As the tick stores it: a dead bucket is ask-only, and its last trade is ignored.
+BOOK = {B1: {"ask": 0.62, "bid": 0.58, "last": 0.6}, B2: {"ask": 0.32, "bid": 0.28, "last": 0.3},
+        B3: {"ask": 0.001, "bid": None, "last": 0.999}}
+
+
+def _mcp(i, day, checkpoint="noon", market=BOOK):
+    return dict(_cp(i, day, checkpoint), market=market)
+
+
+def test_the_market_weight_is_fitted_from_the_book_beside_each_call(monkeypatch):
+    days = [str(dt.date(2026, 9, 1) + dt.timedelta(days=k)) for k in range(5)]
+    cps = [_mcp(k, d) for k, d in enumerate(days)] + [_mcp(99, days[0], market={B1: {"ask": 0.6}})]
+    db = _DB(cps, [_out(k) for k in range(5)] + [_out(99)])
+    db.s10 = [{"city_key": "nyc", "target_date": days[0], "checkpoint": "noon",
+               "probs": {B1: 0.9, B2: 0.05, B3: 0.05}},
+              {"city_key": "nyc", "target_date": days[1], "checkpoint": "noon", "probs": {B1: 1.0}}]
+    d = _run(monkeypatch, db, as_of="2026-09-26")
+    row = [r for r in db.stored if r["param"] == "market_weight"][0]
+    v = row["value"]
+    # an unquoted bucket (checkpoint 99) and an S10 ladder over other buckets are left out
+    assert d["market_weight"]["rows"] == 6 and row["n"] == 6
+    assert set(v["weights"]) == {"engine:midday", "s10:midday"}
+    # 5 and 1 settled days: under MIN_DAYS, so both stay at the prior
+    assert v["weights"] == {"engine:midday": 0.0, "s10:midday": 0.0}
+    assert v["evidence"]["engine:midday"]["days"] == 5 and "held" in v["evidence"]["engine:midday"]
+    assert row["bounds"] == {"w": [0.0, 1.0]} and row["prior"]["w"] == 0.0
+    # the same evidence the next night writes nothing
+    d2 = _run(monkeypatch, db, as_of="2026-09-27")
+    assert d2["market_weight"]["unchanged"] and len([r for r in db.stored if r["param"] == "market_weight"]) == 1
+
+
+def test_the_market_weight_reads_no_day_it_is_fitted_for(monkeypatch):
+    cps = [_mcp(1, "2026-09-25"), _mcp(2, "2026-09-26")]
+    db = _DB(cps, [_out(1), _out(2)])
+    _run(monkeypatch, db, as_of="2026-09-26")
+    row = [r for r in db.stored if r["param"] == "market_weight"][0]
+    assert row["n"] == 1 and row["value"]["evidence"]["engine:midday"]["days"] == 1
