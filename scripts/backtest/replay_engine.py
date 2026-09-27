@@ -201,7 +201,7 @@ def walk(args):
     realised_by_day = defaultdict(float)                            # UTC day -> realised P&L (the daily-loss rail)
     held = defaultdict(lambda: defaultdict(lambda: [0.0, 0.0]))     # market -> band -> [yes, no]
     cost = defaultdict(float)                                       # market -> usd at cost
-    rows, curve = [], []
+    rows, curve, leg_log = [], [], []
     for t, _o, kind, mid, cp in events:
         m = markets[mid]
         if kind == "settle":
@@ -252,10 +252,15 @@ def walk(args):
             got_sh += sh
             got_usd += paid
             legs.append(f"{o['band_id'][:8]}:{o['side']}:{paid:.2f}")
+            # What the view said, what the book asked, what happened - per leg.
+            p_view = ladder[o["band_id"]] if o["side"] == "YES" else 1 - ladder[o["band_id"]]
+            won = (o["band_id"] == m["winner"]) == (o["side"] == "YES")
+            leg_log.append((p_view, float(o["limit_price"]), won, paid))
         rows.append(dict(base, action=d["action"], reason=d["reason_code"], g_now=d["g_now"], g_target=d["g_target"],
                          wanted_usd=round(sum(o["usd"] for o in d["orders"]), 2), filled_usd=round(got_usd, 2),
                          legs=len(legs), fills=";".join(legs), top_is_winner=max(ladder, key=ladder.get) == m["winner"]))
-    return sid, rows, {"cash": cash, "realised": realised, "open_cost": sum(cost.values()), "curve": curve}
+    return sid, rows, {"cash": cash, "realised": realised, "open_cost": sum(cost.values()), "curve": curve,
+                       "legs": leg_log}
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +295,13 @@ def summarise(rows, final, spread):
                         continue
                     g["low" if s <= lo else ("high" if s > hi else "mid")].append(r["legs"])
                 terc = {k: (len(v), round(sum(v) / len(v), 2)) for k, v in g.items() if v}
-        out[sid] = {"decisions": len(rs), "actions": dict(acts), "trades": len(traded), "markets_traded": len(days),
+        legs = f["legs"]
+        n = len(legs)
+        view = {"legs": n,
+                "mean_view_p": round(sum(x[0] for x in legs) / n, 3) if n else None,
+                "mean_ask": round(sum(x[1] for x in legs) / n, 3) if n else None,
+                "won": round(sum(x[2] for x in legs) / n, 3) if n else None}
+        out[sid] = {"view_vs_market": view, "decisions": len(rs), "actions": dict(acts), "trades": len(traded), "markets_traded": len(days),
                     "usd_filled": round(sum(r["filled_usd"] for r in traded), 2),
                     "wanted_usd": round(sum(r.get("wanted_usd", 0) or 0 for r in rs), 2),
                     "realised_pnl": round(f["realised"], 2), "equity": round(eq, 2),
@@ -317,6 +328,12 @@ def report(summary, meta):
         lines.append(f"| {sid} | {s['decisions']} | {s['actions'].get('BUY', 0)} | {s['trades']} | {s['markets_traded']} | "
                      f"{s['wanted_usd']:.2f} | {s['usd_filled']:.2f} | {s['realised_pnl']:+.2f} | {s['equity']:.2f} | "
                      f"{s['log_growth']} | {s['max_drawdown']} | {s['mean_legs_per_trade']} |")
+    lines += ["", "Where each strategy traded: the view's probability for the side it bought, the book's ask, and "
+              "how often that side won (per filled leg):", "",
+              "| strategy | legs | view's probability | ask | won |", "|---|---|---|---|---|"]
+    for sid, s in summary.items():
+        v = s["view_vs_market"]
+        lines.append(f"| {sid} | {v['legs']} | {v['mean_view_p']} | {v['mean_ask']} | {v['won']} |")
     lines += ["", "Actions and reasons, per strategy:", ""]
     for sid, s in summary.items():
         lines.append(f"- **{sid}**: " + ", ".join(f"{k} {v}" for k, v in sorted(s["actions"].items())))
