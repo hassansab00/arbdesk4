@@ -179,7 +179,7 @@ def test_the_cap_setting_cannot_loosen_the_hard_cap(monkeypatch):
 
 # ---- the nightly run ---------------------------------------------------------------
 
-def _fake(monkeypatch, states, pf_status, trades_by_account):
+def _fake(monkeypatch, states, pf_status, trades_by_account, policy=None):
     calls, logged = [], {}
 
     def fake_rest(table, params):
@@ -191,7 +191,7 @@ def _fake(monkeypatch, states, pf_status, trades_by_account):
         if p.get("kind") == "eq.shadow":
             return [{"account_id": f"acct_{s}", "strategy_id": s, "starting_cash": 1000} for s in states]
         assert p.get("kind") == "eq.portfolio"
-        return [{"account_id": "pf", "status": pf_status, "policy": {}}]
+        return [{"account_id": "pf", "status": pf_status, "policy": dict(policy or {})}]
 
     monkeypatch.setattr(ma, "rest", fake_rest)
     monkeypatch.setattr(ma, "rest_all", lambda t, p, order: trades_by_account[p["account_id"][3:]])
@@ -227,6 +227,21 @@ def test_an_active_portfolio_is_reallocated_even_when_nobody_is_in_it(monkeypatc
     calls, _ = _fake(monkeypatch, {"sA": "suspended"}, "active", {})
     ma.main(now=NOW)
     assert calls == [("set_portfolio_allocation", {"p_weights": {}, "p_version": "thompson-v1:2026-11-20"})]
+
+
+def test_a_rerun_the_same_night_leaves_tonights_allocation(monkeypatch):
+    """Plan v2.3 P5.14. The night before is not kept, so a second run tonight
+    would step again from tonight's own output; the date seeds the same draws,
+    so tonight's allocation stands and nothing is written."""
+    tonight = {"allocation": {"sA": 0.1}, "allocation_version": "thompson-v1:2026-11-20"}
+    calls, logged = _fake(monkeypatch, {"sA": "portfolio"}, "active", {"acct_sA": _winner()}, policy=tonight)
+    ma.main(now=NOW)
+    assert calls == []
+    assert logged["detail"]["already_allocated"] is True and logged["detail"]["allocation"] == {"sA": 0.1}
+    calls, _ = _fake(monkeypatch, {"sA": "portfolio"}, "active", {"acct_sA": _winner()},
+                     policy=dict(tonight, allocation_version="thompson-v1:2026-11-19"))
+    ma.main(now=NOW)
+    assert [fn for fn, _ in calls] == ["set_portfolio_allocation"], "last night's allocation is stepped from"
 
 
 def test_a_refused_activation_is_reported(monkeypatch):

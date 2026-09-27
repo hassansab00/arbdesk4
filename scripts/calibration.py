@@ -210,6 +210,17 @@ def previous_T(value):
     return T_PRIOR
 
 
+def anchor_T(value, today):
+    """The T in force BEFORE the night `today` (plan v2.3 P5.14). A map already
+    fitted tonight is a re-run's own first run: step from the T that run
+    stepped from (its T_previous), not from its output, or one night moves T
+    twice. Any older map: the T the engine applies (previous_T)."""
+    if (isinstance(value, dict) and str(value.get("fitted_at") or "")[:10] == str(today)
+            and value.get("T_previous") is not None):
+        return float(value["T_previous"])
+    return previous_T(value)
+
+
 def describe(T):
     """What the number means, because 'T=1.18' is not a finding."""
     if T > 1.05:
@@ -305,7 +316,8 @@ def main():
         gate.append(f"{len(ladders)} complete ladders, needs {args.min_ladders}")
 
     train, val, train_dates, val_dates = split_by_date(ladders)
-    prev = previous_T(stored[0]["value"] if stored else None)
+    prev = anchor_T(stored[0]["value"] if stored else None,
+                    dt.datetime.now(dt.timezone.utc).date())
     T_fitted = fit_temperature(train) if train else T_PRIOR
     T = bounded(T_fitted, prev)
     if T != T_fitted:

@@ -35,8 +35,11 @@ class _DB:
         def rest(path, params=None, **k):
             if path != "strategy_params":
                 return []
-            param = dict(params or []).get("param", "eq.belief")[3:]
+            p = dict(params or [])
+            param = p.get("param", "eq.belief")[3:]
             mine = [r for r in self.stored if r["param"] == param]
+            if "as_of" in p:                                   # lt.<date>: written before that night
+                mine = [r for r in mine if str(r["as_of"]) < p["as_of"][3:]]
             return [{"value": r["value"], "version": r["version"]} for r in mine[-1:]]
         m.rest = rest
 
@@ -102,6 +105,23 @@ def test_the_step_is_taken_from_the_last_version_written(monkeypatch):
     d = _run(monkeypatch, db, as_of="2026-09-26")
     assert len(db.stored) == 2
     assert d["belief"]["previous"] == db.stored[0]["version"] and d["belief"]["held_back"] > 0
+
+
+def test_a_rerun_the_same_night_steps_from_the_night_before(monkeypatch):
+    """Plan v2.3 P5.14. Night two is held back by the step; a second run that
+    night, on the same data, must step from night one again and write the same
+    version (ignored as a duplicate), not step once more and write a third row."""
+    first = [_cp(i, "2026-09-24") for i in range(40)]
+    db = _DB(first, [_out(i, B3) for i in range(40)])
+    _run(monkeypatch, db, as_of="2026-09-25")
+    more = first + [_cp(100 + i, "2026-09-25") for i in range(40)]
+    db.checkpoints, db.outcomes = more, db.outcomes + [_out(100 + i, B1) for i in range(40)]
+    night = _run(monkeypatch, db, as_of="2026-09-26")
+    assert night["belief"]["held_back"] > 0 and len(db.stored) == 2
+    again = _run(monkeypatch, db, as_of="2026-09-26")
+    assert again["belief"]["previous"] == db.stored[0]["version"], "the re-run anchors on the night before"
+    assert again["belief"]["version"] == night["belief"]["version"]
+    assert len(db.stored) == 2, "a same-night re-run stepped again"
 
 
 def test_a_dry_run_writes_and_logs_nothing(monkeypatch):

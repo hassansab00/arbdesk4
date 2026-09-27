@@ -266,13 +266,21 @@ def main(now=None):
             print(f"  portfolio activation refused: {e}", file=sys.stderr)
 
     if pf and pf["status"] == "active":
-        previous = (pf.get("policy") or {}).get("allocation") or {}
+        policy = pf.get("policy") or {}
         version = f"{ALLOCATION_VERSION}:{now:%Y-%m-%d}"
-        weights, draws = allocate(records, previous, cfg["cap_per_strategy"], seed=version)
-        rpc("set_portfolio_allocation", {"p_weights": weights, "p_version": version})
-        detail.update(allocation=weights, draws={s: round(d, 6) for s, d in draws.items()}, version=version)
-        for s, w in sorted(weights.items()):
-            print(f"  weight {w:.4f}  {s} (draw {draws[s]:+.5f})")
+        if policy.get("allocation_version") == version:
+            # ALLOCATED TONIGHT ALREADY (plan v2.3 P5.14). A re-run would step
+            # again from tonight's own output - the night before is not kept -
+            # and the date seeds the same draws, so tonight's allocation stands.
+            detail.update(allocation=policy.get("allocation") or {}, version=version, already_allocated=True)
+            print(f"  already allocated tonight ({version}); left as it is")
+        else:
+            previous = policy.get("allocation") or {}
+            weights, draws = allocate(records, previous, cfg["cap_per_strategy"], seed=version)
+            rpc("set_portfolio_allocation", {"p_weights": weights, "p_version": version})
+            detail.update(allocation=weights, draws={s: round(d, 6) for s, d in draws.items()}, version=version)
+            for s, w in sorted(weights.items()):
+                print(f"  weight {w:.4f}  {s} (draw {draws[s]:+.5f})")
 
     log_run("meta_allocator", status, len(promoted) + len(detail.get("allocation", {})), detail)
     print(f"meta allocator: {len(promoted)} promoted, {len(records)} in the portfolio state, "

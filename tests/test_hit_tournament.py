@@ -190,3 +190,17 @@ def test_spread_widths_are_offered_only_where_there_is_something_to_disagree():
     two = ht.recipes_for({"open_meteo_forecast", "nws"})
     assert not any("+spread" in k for k in one)
     assert any("width=1.0+spread" in k for k in two) and any("width=1.25+spread" in k for k in two)
+
+
+def test_a_rerun_the_same_night_steps_from_the_night_before():
+    """Plan v2.3 P5.14. Tonight's first run stepped bias 0.0 -> 0.3 and kept
+    prev_params {bias 0.0}; a re-run tonight must anchor on {bias 0.0} and write
+    0.3 again, not 0.6. Last night's rows are stepped from as before."""
+    import datetime as dt
+    tonight = {"lane": "l", "city_key": "x", "recipe": "r", "params": {"bias_c": 0.3, "sigma_c": 1.0},
+               "prev_params": {"bias_c": 0.0, "sigma_c": 1.0}, "computed_at": "2026-09-28T05:20:13+00:00"}
+    prev = ht.previous_recipes([tonight], dt.date(2026, 9, 28))
+    assert prev["l"]["x"]["params"] == {"bias_c": 0.0, "sigma_c": 1.0}
+    stepped = ht.bound_step({"bias_c": 2.0, "sigma_c": 1.0}, prev["l"]["x"]["params"])
+    assert stepped["bias_c"] == pytest.approx(ht.MAX_STEP["bias_c"])
+    assert ht.previous_recipes([tonight], dt.date(2026, 9, 29))["l"]["x"]["params"]["bias_c"] == 0.3

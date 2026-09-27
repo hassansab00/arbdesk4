@@ -231,6 +231,20 @@ def test_the_step_is_from_the_map_the_engine_applies():
     assert cal.previous_T(None) == 1.0
 
 
+def test_a_rerun_the_same_night_steps_from_the_t_before_it():
+    """Plan v2.3 P5.14. Tonight's first run stepped 1.0 -> 1.25 and wrote
+    T_previous 1.0; a re-run tonight must step from 1.0 again (writing 1.25),
+    not from 1.25 (writing 1.5625). An older map is stepped from as before."""
+    import datetime as dt
+    tonight = {"method": "temperature", "T": 1.25, "T_previous": 1.0, "applies": True,
+               "evidence_scope": cal.CALIBRATION_EVIDENCE_SCOPE, "fitted_at": "2026-09-28T05:12:23+00:00"}
+    assert cal.anchor_T(tonight, dt.date(2026, 9, 28)) == 1.0
+    assert cal.bounded(2.0, cal.anchor_T(tonight, dt.date(2026, 9, 28))) == pytest.approx(1.25)
+    assert cal.anchor_T(tonight, dt.date(2026, 9, 29)) == 1.25       # the next night steps on from it
+    assert cal.anchor_T(dict(tonight, applies=False), dt.date(2026, 9, 29)) == 1.0
+    assert cal.anchor_T(None, dt.date(2026, 9, 28)) == 1.0
+
+
 def test_the_bounded_T_is_what_is_validated_and_written():
     src = open(cal.__file__).read()
     assert "T = bounded(T_fitted, prev)" in src
