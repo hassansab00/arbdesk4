@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 236 of them - and for each MISSING one names the
+-- and function the app reads - 237 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -58,6 +58,7 @@ with expected(rel, owner, used_by) as (values
     ('derived_mos_coefficients', 'supabase/migrations/20260926150000_the_honest_station_model.sql', ''),
     ('derived_mos_forecast', 'supabase/migrations/20260926150000_the_honest_station_model.sql', ''),
     ('derived_station_correction', 'supabase/migrations/20260926120000_station_correction.sql', ''),
+    ('derived_station_width', 'supabase/migrations/20260927190000_the_width_around_the_corrected_centre.sql', ''),
     ('derived_trajectory', 'ad4_86_trajectory.sql', ''),
     ('derived_weather_model', 'ad4_21_weather_features.sql', ''),
     ('derived_weather_peak', 'ad4_00_preflight.sql', '/live'),
@@ -316,6 +317,7 @@ begin
     ('derived_mos_coefficients', 'supabase/migrations/20260926150000_the_honest_station_model.sql', ''),
     ('derived_mos_forecast', 'supabase/migrations/20260926150000_the_honest_station_model.sql', ''),
     ('derived_station_correction', 'supabase/migrations/20260926120000_station_correction.sql', ''),
+    ('derived_station_width', 'supabase/migrations/20260927190000_the_width_around_the_corrected_centre.sql', ''),
     ('derived_trajectory', 'ad4_86_trajectory.sql', ''),
     ('derived_weather_model', 'ad4_21_weather_features.sql', ''),
     ('derived_weather_peak', 'ad4_00_preflight.sql', '/live'),

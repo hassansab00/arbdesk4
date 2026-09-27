@@ -559,7 +559,8 @@ def _bands_for_markets(market_ids):
     return out
 
 
-def forecast_provenance(model_priced, mrow, forecast, traj_row=None, station_row=None):
+def forecast_provenance(model_priced, mrow, forecast, traj_row=None, station_row=None,
+                        width_version=None):
     """(label, config) for the forecast a price was built on (plan v2 P3.7).
 
     Decided from what the engine DID, not by comparing numbers. The old test
@@ -568,6 +569,10 @@ def forecast_provenance(model_priced, mrow, forecast, traj_row=None, station_row
     the public forecast - a model-priced, trajectory-adjusted price with no
     trace of either. Now the model is named whenever it priced the centre, and
     a trajectory that replaced that centre is named on top of it.
+
+    A station width that priced (P3.9 part 3) joins the station version the
+    way the station model's blend does, `+station-width:...`, so every reader
+    of the `station_correction:` prefix keeps working.
     """
     if model_priced and mrow is not None:
         label = f"model:{mrow.get('model_version')}:{mrow.get('run_at')}"
@@ -579,9 +584,14 @@ def forecast_provenance(model_priced, mrow, forecast, traj_row=None, station_row
         label = f"{forecast.get('model')}:{forecast.get('run_at')}"
         config = {"model": forecast.get("model"), "run_at": forecast.get("run_at")}
     if station_row is not None:
-        label = f"station_correction:{station_row.get('version')}:" + label
-        config = {**config, "centre": "station_correction", "version": station_row.get("version"),
+        version = station_row.get("version")
+        if width_version:
+            version = f"{version}+{width_version}"
+        label = f"station_correction:{version}:" + label
+        config = {**config, "centre": "station_correction", "version": version,
                   "combined_c": station_row.get("combined_c"), "n_sources": station_row.get("n_sources")}
+        if width_version:
+            config["width_version"] = width_version
     if traj_row is not None:
         hour = traj_row.get("local_hour")
         label = f"trajectory:{int(hour):02d}h:" + label if hour is not None else "trajectory:" + label
@@ -782,6 +792,7 @@ def _fresh(reading_at, now=None):
 
 _postprocess_cache = None
 _station_cache = None
+_station_width_cfg = None
 
 # PLAN v2.2 P3.9: the station-corrected combination prices days ahead.
 #
@@ -817,12 +828,28 @@ STATION_MAX_AGE_HOURS = 36.0
 # settings.station_mos_pricing (enabled, min_lead_days, max_age_hours), which
 # only matters while station_correction_pricing is on.
 
+# PLAN v2.3 P3.9 PART 3: THE WIDTH AROUND THAT CENTRE.
+#
+# The combination replaced the centre and kept the engine's width, which was
+# fitted to the RAW forecast's errors. scripts/station_correction.py stores
+# beside each open day the width fitted to the combination's own out-of-sample
+# errors (derived_corrected_forecast.width_c, version width_version).
+# docs/P39_SERVED_WIDTH_2026-09-27.md scored it before building, on 17-25 Sep:
+# +0.138 log loss per city-day, 90% [+0.105, +0.171], on the venue's ladders.
+# Those dates came before the design, so the width is RECORDED beside every
+# price it could have made (band_probabilities.station_width_c) for the
+# nightly forward score, and PRICES only while settings.station_width_pricing
+# is on (enabled, max_lead_days: the study and the score cover lead 1). It
+# starts off, and a failed read of the switch leaves it off.
+STATION_WIDTH_MAX_LEAD_DAYS = 1
+
 
 def _station_corrected_for(city_key, for_date, lead_days):
     """The station-corrected combination for this city-day, or None."""
-    global _station_cache
+    global _station_cache, _station_width_cfg
     if _station_cache is None:
         _station_cache = {}
+        _station_width_cfg = {}
         try:
             cfg = rest("settings", [("select", "value"), ("key", "eq.station_correction_pricing")])
             cfg = (cfg[0].get("value") if cfg else None) or {}
@@ -831,11 +858,13 @@ def _station_corrected_for(city_key, for_date, lead_days):
                 max_age = float(cfg.get("max_age_hours", STATION_MAX_AGE_HOURS))
                 since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=max_age)).isoformat()
                 for r in rest("derived_corrected_forecast", [
-                        ("select", "city_key,for_date,lead_days,combined_c,spread_c,n_sources,version,computed_at"),
+                        ("select", "city_key,for_date,lead_days,combined_c,spread_c,n_sources,version,"
+                                   "width_c,width_version,computed_at"),
                         ("computed_at", f"gte.{since}")]):
                     r["_min_lead"] = min_lead
                     _station_cache[(r["city_key"], str(r["for_date"]))] = r
                 _blend_station_model(_station_cache)
+                _station_width_cfg = _station_width_switch()
         except Exception as e:
             print(f"  note: station correction unavailable ({str(e)[:80]}) - "
                   f"pricing from the public forecast path", file=sys.stderr)
@@ -881,6 +910,36 @@ def _blend_station_model(cache):
         print(f"  note: station model unavailable ({str(e)[:80]}) - "
               f"pricing from the P3.9 combination alone", file=sys.stderr)
         return 0
+
+
+def _station_width_switch():
+    """settings.station_width_pricing, or {} (off) when it cannot be read."""
+    try:
+        cfg = rest("settings", [("select", "value"), ("key", "eq.station_width_pricing")])
+        cfg = (cfg[0].get("value") if cfg else None) or {}
+        return cfg if isinstance(cfg, dict) else {}
+    except Exception as e:
+        print(f"  note: station width switch unreadable ({str(e)[:80]}) - "
+              f"it stays off", file=sys.stderr)
+        return {}
+
+
+def _station_width_for(srow):
+    """(width, priced) for a station-corrected row: the stored width or None,
+    and whether settings.station_width_pricing lets it price this row."""
+    try:
+        width = float(srow.get("width_c"))
+    except (TypeError, ValueError):
+        return None, False
+    if not (width > 0) or not srow.get("width_version"):
+        return None, False
+    cfg = _station_width_cfg or {}
+    try:
+        max_lead = int(cfg.get("max_lead_days", STATION_WIDTH_MAX_LEAD_DAYS))
+        lead = int(srow.get("lead_days"))
+    except (TypeError, ValueError):
+        return width, False
+    return width, cfg.get("enabled") is True and 1 <= lead <= max_lead
 
 
 def _postprocess_for(city_key, lead_days):
@@ -1415,9 +1474,13 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     # would divide a forecast-sized error by a trajectory-sized width and tell
     # the calibration map the desk is far more overconfident than it is.
     # ---- THE STATION-CORRECTED COMBINATION REPLACES THE CENTRE (P3.9) ----
-    # Days ahead only, never over a promoted model; the width is untouched,
-    # because the replay that earned this kept the engine's own sigma.
+    # Days ahead only, never over a promoted model. The width stays the
+    # engine's own, because the replay that earned this kept it - unless
+    # settings.station_width_pricing is on (P3.9 part 3, above): then the
+    # width fitted to this centre's own errors replaces it. Either way the
+    # stored width is recorded beside the price, for the forward score.
     srow = None if model_priced else _station_corrected_for(city_key, for_date, lead_days)
+    station_width_c, width_priced = None, False
     if srow is not None:
         public_centre = centre_corrected
         centre_corrected = float(srow["combined_c"])
@@ -1426,6 +1489,12 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
             f"station_correction:{srow.get('version')}:{srow.get('n_sources')}sources"
             f":spread{'-' if spread is None else format(float(spread), '.2f')}C"
             f":centre{centre_corrected:.2f}C_vs_public{public_centre:.2f}C")
+        station_width_c, width_priced = _station_width_for(srow)
+        if width_priced:
+            reasons.append(
+                f"station_width:{srow.get('width_version')}:lead{srow.get('lead_days')}"
+                f":sigma{sigma:.2f}->{station_width_c:.2f}C")
+            sigma = station_width_c
 
     forecast_sigma_c = sigma
     traj_centre, traj_sigma, traj_row = _trajectory_for(city_key, for_date)
@@ -1465,7 +1534,8 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
     # the centre, the answer is that model and not the public run - otherwise
     # every post-mortem on a model-priced trade would point at NWS.
     forecast_label, forecast_config = forecast_provenance(
-        model_priced, mrow, forecast, traj_row if traj_centre is not None else None, srow)
+        model_priced, mrow, forecast, traj_row if traj_centre is not None else None, srow,
+        width_version=srow.get("width_version") if width_priced else None)
     forecast_version = model_version_id(
         "forecast", forecast_label, config=forecast_config, structural=False)
     # The readable label too, for a caller that records the path (the tick's
@@ -1499,6 +1569,11 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
         # fitter would learn from an outcome arithmetic had already decided.
         "observed_floor_c": observed_floor_c,
     }
+    # The stored station width for this city-day, whether or not it priced
+    # (P3.9 part 3): sigma_c says what priced. Omitted, not null, where there
+    # is none, like forecast_version below.
+    if station_width_c is not None:
+        row["station_width_c"] = round(station_width_c, 4)
     # A widened sigma must be explainable after the fact, not mysterious.
     if div_row and div_mult > 1.0:
         print(f"  {city_key} {for_date}: sigma {sigma_historical:.3f} -> {sigma:.3f} "

@@ -131,9 +131,12 @@ export function pricedFromWords(label: string | null | undefined): string | null
     rest = rest.replace(/^trajectory:(\d{2}h:)?/, "");
   }
   if (rest.startsWith("station_correction:")) {
-    parts.push(rest.includes("+station-mos:")
+    let words = rest.includes("+station-mos:")
       ? "forecast models corrected at the station, blended with the station model"
-      : "forecast models corrected at the station");
+      : "forecast models corrected at the station";
+    // plan v2.3 P3.9 part 3: only while settings.station_width_pricing is on
+    if (rest.includes("+station-width:")) words += ", with the width fitted to their own errors";
+    parts.push(words);
   } else if (rest.startsWith("model:")) {
     parts.push("the desk's promoted weather model");
   } else {

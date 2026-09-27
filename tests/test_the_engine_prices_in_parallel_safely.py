@@ -11,7 +11,7 @@ import probability_engine as pe
 
 CACHES = ("_calibration", "_measurement_cache", "_calibration_cache",
           "_trajectory_cache", "_postprocess_cache", "_divergence_cache",
-          "_station_cache")
+          "_station_cache", "_station_width_cfg")
 
 
 def test_warming_fills_every_shared_cache(monkeypatch):

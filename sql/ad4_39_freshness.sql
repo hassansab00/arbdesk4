@@ -79,6 +79,7 @@ insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plai
   ('derived_hit_summary',       'computed_at',    48, 'model',     'Across all cities, the tournament champion against the live engine and the market: winning-bucket hit rate and log loss.'),
   ('derived_station_correction','computed_at',    30, 'model',     'How far each forecast model runs warm or cold at each settlement station, per lead, learned nightly and bounded.'),
   ('derived_corrected_forecast','computed_at',    30, 'model',     'The open days'' forecast after each model''s station correction, combined with equal weights, and how much the corrected models disagree.'),
+  ('derived_station_width',     'computed_at',    30, 'model',     'How wide the station-corrected forecast''s distribution is per city and lead, fitted nightly to its own errors, bounded and stepped.'),
   ('derived_mos_coefficients',  'computed_at',    30, 'model',     'The honest station model per city and lead: how the station''s maximum departs from the public models'' mean, learned only from what the forecasts said beforehand, bounded and stepped.'),
   ('derived_mos_forecast',      'computed_at',    30, 'model',     'The open days'' maximum from the honest station model, and its blend with the station-corrected combination.'),
   ('prediction_checkpoints',    'decided_at',      2, 'model',     'The ladder the engine published at each fixed moment on a city''s own clock, with the market beside it - the record the scoreboard grades.'),
