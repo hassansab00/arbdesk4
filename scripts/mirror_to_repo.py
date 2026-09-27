@@ -143,6 +143,7 @@ TABLES = {
     "fact_band_outcome_venue_rebuilt": append("rebuilt_at", "band_id"),
     "fact_band_outcome_exclusions":  append("recorded_at", "band_id"),
     "fact_checkpoint_outcome":       append("banked_at", "checkpoint_id"),
+    "fact_station_width_score":      append("scored_at", "market_id"),
     # plan v2 P5.8: what the nightly loop learned, one immutable row per version
     "strategy_params":               append("fitted_at", "param_id"),
     "resolution_verdicts":           append("recorded_at", "condition_id", "token_yes", "token_no", "captured_at"),
