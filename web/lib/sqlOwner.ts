@@ -47,6 +47,7 @@ export const SQL_OWNER: Record<string, string> = {
   "derived_mos_coefficients": "supabase/migrations/20260926150000_the_honest_station_model.sql",
   "derived_mos_forecast": "supabase/migrations/20260926150000_the_honest_station_model.sql",
   "derived_station_correction": "supabase/migrations/20260926120000_station_correction.sql",
+  "derived_station_width": "supabase/migrations/20260927190000_the_width_around_the_corrected_centre.sql",
   "derived_trajectory": "ad4_86_trajectory.sql",
   "derived_weather_model": "ad4_21_weather_features.sql",
   "derived_weather_peak": "ad4_00_preflight.sql",

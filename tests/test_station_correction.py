@@ -264,3 +264,165 @@ def test_a_rerun_the_same_night_writes_the_same_numbers(monkeypatch):
              for r in _run_against(second, pairs, "2026-09-29", monkeypatch)}
     assert third[("m1", 1, "hot")]["bias_c"] == pytest.approx(0.25 + 2 * sc.MAX_STEP_C)
     assert third[("m1", 1, "hot")]["prev_as_of"] == "2026-09-28"
+
+
+# ---------------------------------------------------------------------------
+# The width around the combination (plan v2.3 P3.9 part 3)
+# ---------------------------------------------------------------------------
+def _errors(lead=1, cities=20, per_city=10, scale=None):
+    """{(lead, city): errors}; city ci's errors are +/-(0.5 + 0.05 i)."""
+    out = {}
+    for i in range(cities):
+        m = (scale or {}).get(f"c{i}", 0.5 + 0.05 * i)
+        out[(lead, f"c{i}")] = [m if k % 2 else -m for k in range(per_city)]
+    return out
+
+
+def test_the_width_is_the_citys_error_shrunk_to_its_pool():
+    errs = _errors()
+    wt = sc.fit_width(errs)
+    pool_mae = sum(0.5 + 0.05 * i for i in range(20)) / 20            # every city has 10 errors
+    assert wt["pooled"][1][1] == pytest.approx(pool_mae)
+    assert wt["pooled"][1][0] == pytest.approx(sc.MAE_TO_SIGMA * pool_mae)
+    for i in (0, 7, 19):
+        m = 0.5 + 0.05 * i
+        want = sc.MAE_TO_SIGMA * (10 * m + sc.WIDTH_K * pool_mae) / (10 + sc.WIDTH_K)
+        width, fitted, n, mae = wt["cells"][(1, f"c{i}")]
+        assert (width, fitted, n) == (pytest.approx(want), pytest.approx(want), 10)
+        assert mae == pytest.approx(m)
+
+
+def test_below_min_n_a_city_sits_on_its_pool_and_a_new_city_gets_the_pool():
+    errs = _errors()
+    errs[(1, "thin")] = [5.0] * (sc.MIN_N - 1)
+    wt = sc.fit_width(errs, cities={"newcomer"})
+    assert wt["cells"][(1, "thin")][0] == pytest.approx(wt["pooled"][1][0])
+    assert wt["cells"][(1, "newcomer")][:3] == (pytest.approx(wt["pooled"][1][0]),) * 2 + (0,)
+    assert sc.width_for(wt, "nobody", 1) == pytest.approx(wt["pooled"][1][0])
+    assert sc.width_for(wt, "c3", 0) == wt["cells"][(1, "c3")][0], "lead 0 uses lead 1, as correction"
+
+
+def test_a_lead_with_too_few_errors_has_no_width_at_all():
+    errs = _errors(cities=19)                                          # 190 < WIDTH_MIN_POOL
+    assert sum(len(v) for v in errs.values()) < sc.WIDTH_MIN_POOL
+    wt = sc.fit_width(errs)
+    assert wt == {"cells": {}, "pooled": {}}
+    assert sc.width_for(wt, "c1", 1) is None
+
+
+def test_the_width_is_bounded_and_steps_at_most_ten_percent_a_night():
+    huge = sc.fit_width(_errors(scale={f"c{i}": 9.0 for i in range(20)}))
+    assert all(v[0] == sc.WIDTH_HI_C for v in huge["cells"].values())
+    tiny = sc.fit_width(_errors(scale={f"c{i}": 0.01 for i in range(20)}))
+    assert all(v[0] == sc.WIDTH_LO_C for v in tiny["cells"].values())
+    errs = _errors()
+    fresh = sc.fit_width(errs)
+    stepped = sc.fit_width(errs, previous={(1, "c0"): 2.0, (1, "c19"): 0.6})
+    assert stepped["cells"][(1, "c0")][0] == pytest.approx(2.0 * (1 - sc.WIDTH_MAX_STEP))
+    assert stepped["cells"][(1, "c19")][0] == pytest.approx(0.6 * (1 + sc.WIDTH_MAX_STEP))
+    assert stepped["cells"][(1, "c0")][1] == fresh["cells"][(1, "c0")][1], "fitted is before the step"
+    assert stepped["cells"][(1, "c5")] == fresh["cells"][(1, "c5")], "no previous, no step"
+
+
+def test_the_widths_errors_never_see_the_day_they_score_or_later():
+    pairs = _pairs(days=40)
+    days = sorted({p[1] for p in pairs})
+    base = sc.oos_errors(pairs, days[-10:])
+    cut = days[-5]
+    poisoned = [(c, d, s, l, fc, y + (50.0 if d >= cut else 0.0)) for c, d, s, l, fc, y in pairs]
+    after = sc.oos_errors(poisoned, days[-10:])
+    for key in base:
+        n_before = sum(1 for d in days[-10:] if d < cut)
+        assert after[key][:n_before] == pytest.approx(base[key][:n_before]), \
+            "a day's error changed when only later days were poisoned"
+    assert set(base) == {(lead, c) for lead in sc.LEADS for c in ("hot", "cold")}
+
+
+def test_the_version_names_the_night_and_changes_with_a_width():
+    wt = sc.fit_width(_errors())
+    v = sc.width_version_of(wt, dt.date(2026, 9, 28))
+    assert v.startswith("station-width:2026-09-28:") and v == sc.width_version_of(wt, dt.date(2026, 9, 28))
+    other = sc.fit_width(_errors(scale={"c0": 3.0}))
+    assert sc.width_version_of(other, dt.date(2026, 9, 28)) != v
+
+
+def _width_run(stored_widths, pairs, as_of, monkeypatch, width_boom=False):
+    """One sc.main run; returns everything written and the log."""
+    import sys
+    import types
+    import common as real_common
+    written, logged = {}, []
+    common = types.ModuleType("common")
+
+    def rest_all(path, params=None, **k):
+        p = dict(params)
+        if path == "derived_city_day_features":
+            return [{"city_key": c, "obs_date": d, "max_c": y, "computed_at": "2026-09-28T05:00:00+00:00"}
+                    for c, d, s, l, fc, y in pairs if s == "m1" and l == 1]
+        if path == "cities":
+            return [{"city_key": c, "timezone": "UTC"} for c in {q[0] for q in pairs}]
+        if path == "weather_forecast_models" and p.get("source") == f"eq.{sc.FIT_SOURCE}":
+            return [{"city_key": c, "model": s, "for_date": d, "lead_days": l, "forecast_max_c": fc}
+                    for c, d, s, l, fc, y in pairs]
+        if path == "weather_forecast_models":
+            return [{"city_key": city, "model": s, "for_date": day, "lead_days": lead, "forecast_max_c": 25.0,
+                     "run_at": "2026-09-27T00:00:00Z"}
+                    for city in ("hot", "cold") for day, lead in (("2026-09-29", 1), ("2026-09-30", 2))
+                    for s in SOURCES]
+        if path == "derived_station_correction":
+            return []
+        if path == "derived_station_width":
+            if width_boom:
+                raise RuntimeError("relation derived_station_width does not exist")
+            return [dict(r) for r in stored_widths]
+        raise AssertionError(path)
+    common.rest_all = rest_all
+    common.day_had_ended = real_common.day_had_ended
+    common.upsert_replace = lambda t, rows, key: (written.setdefault(t, rows), len(rows))[1]
+    common.log_run = lambda job, status, rows, detail: logged.append((job, status, rows, detail))
+    monkeypatch.setitem(sys.modules, "common", common)
+    monkeypatch.setattr(sc, "WIDTH_MIN_POOL", 40)          # two synthetic cities, 30 days
+    sc.main(["--as-of", as_of])
+    return written, logged
+
+
+def test_a_run_stores_the_width_and_every_open_day_carries_it(monkeypatch):
+    pairs = _pairs(days=40, start=dt.date(2026, 8, 19))
+    written, logged = _width_run([], pairs, "2026-09-28", monkeypatch)
+    widths = {(r["lead_days"], r["city_key"]): r for r in written["derived_station_width"]}
+    assert set(widths) == {(lead, c) for lead in sc.LEADS for c in ("hot", "cold")}
+    version = next(iter(widths.values()))["version"]
+    assert version.startswith("station-width:2026-09-28:")
+    for r in widths.values():
+        assert r["sigma_c"] == r["fitted_sigma_c"] and r["prev_sigma_c"] is None and r["as_of"] == "2026-09-28"
+        assert sc.WIDTH_LO_C <= r["sigma_c"] <= sc.WIDTH_HI_C and r["n"] == 30
+    for f in written["derived_corrected_forecast"]:
+        assert f["width_c"] == widths[(f["lead_days"], f["city_key"])]["sigma_c"]
+        assert f["width_version"] == version
+    job, status, _n, detail = logged[0]
+    assert status == "ok" and detail["width"]["version"] == version and detail["width"]["days"] == 30
+    assert detail["priors"]["width_max_step"] == sc.WIDTH_MAX_STEP
+
+
+def test_a_rerun_the_same_night_writes_the_same_widths(monkeypatch):
+    pairs = _pairs(days=40, start=dt.date(2026, 8, 19))
+    last_night = [{"city_key": c, "lead_days": lead, "sigma_c": 1.0, "as_of": "2026-09-27",
+                   "prev_sigma_c": None, "prev_as_of": None} for c in ("hot", "cold") for lead in sc.LEADS]
+    first, _ = _width_run(last_night, pairs, "2026-09-28", monkeypatch)
+    second, _ = _width_run(first["derived_station_width"], pairs, "2026-09-28", monkeypatch)
+    key = lambda rows: [(r["city_key"], r["lead_days"], r["sigma_c"], r["prev_sigma_c"], r["prev_as_of"])
+                        for r in rows]
+    assert key(second["derived_station_width"]) == key(first["derived_station_width"])
+    for r in first["derived_station_width"]:
+        assert (r["prev_sigma_c"], r["prev_as_of"]) == (1.0, "2026-09-27")
+        assert 0.9 - 1e-9 <= r["sigma_c"] <= 1.1 + 1e-9, "one step from last night, not two"
+
+
+def test_a_failed_width_read_costs_the_width_not_the_correction(monkeypatch):
+    pairs = _pairs(days=40, start=dt.date(2026, 8, 19))
+    written, logged = _width_run([], pairs, "2026-09-28", monkeypatch, width_boom=True)
+    assert "derived_station_width" not in written, "no width is fitted without its step bound"
+    assert written["derived_station_correction"] and written["derived_corrected_forecast"]
+    assert all(f["width_c"] is None and f["width_version"] is None for f in written["derived_corrected_forecast"])
+    job, status, _n, detail = logged[0]
+    assert status == "attention" and "derived_station_width" in detail["width"]["error"]

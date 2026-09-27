@@ -625,6 +625,9 @@ begin
         -- trajectory replaced both describes a distribution nobody published.
         ('band_probabilities','centre_c','numeric'),
         ('band_probabilities','forecast_sigma_c','numeric'),
+        -- The stored station width for the city-day, whether or not it priced
+        -- (plan v2.3 P3.9 part 3); sigma_c says what priced.
+        ('band_probabilities','station_width_c','numeric'),
 
         -- strategies ----------------------------------------------------------
         -- The two columns that actually failed in production, plus the three

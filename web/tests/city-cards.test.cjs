@@ -133,6 +133,11 @@ assert.equal(pricedFromWords('trajectory:14h:open_meteo_forecast:2026-09-27T06:5
   'the day so far (trajectory), over the public forecast (open_meteo_forecast), bias-corrected');
 assert.equal(pricedFromWords('model:wm-v3:2026-09-27T05:00:00Z'), "the desk's promoted weather model");
 assert.equal(pricedFromWords(null), null);
+// P3.9 part 3: a width that priced joins the station version, like the blend
+assert.equal(pricedFromWords(BLEND.replace('8ea2d54103:', '8ea2d54103+station-width:2026-09-28:ab12cd34ef:')),
+  'forecast models corrected at the station, blended with the station model, with the width fitted to their own errors');
+assert.equal(pricedFromWords('station_correction:station-correction:2026-09-28:aa+station-width:2026-09-28:bb:open_meteo_forecast:2026-09-28T06:00:00Z'),
+  'forecast models corrected at the station, with the width fitted to their own errors');
 
 // ---- AN OPEN TAIL CAN BE THE PICK. Every bucket is a candidate, the tails too.
 const tail = [
