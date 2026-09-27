@@ -9,8 +9,8 @@ import RefreshButton from "@/components/RefreshButton";
 import { fmtPct, fmtPp, fmtPrice, pnlColor, regimeColor } from "@/lib/format";
 import { fmtTemp, fmtTempDelta } from "@/lib/units";
 import {
-  buildCards, disagreementRecord, FORECASTS_DISAGREE_C,
-  type CityCard, type CityRow, type DisagreementRecord, type ForecastRow, type HitRow, type LadderRow,
+  buildCards, FORECASTS_DISAGREE_C,
+  type CityCard, type CityRow, type ForecastRow, type LadderRow,
   type LiveRow, type OwnModelRow,
 } from "@/lib/cityCards";
 import { fmtDateTime, fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
@@ -78,17 +78,7 @@ export default function CityCards({ onPick }: { onPick?: (city: string) => void 
     []
   );
 
-  // The settled record of engine vs market when their favourites differed.
-  // v_city_hit_history reads stored rows (P6.5): 11 ms as anon on 24 Sep.
-  const hitQ = useQuery<HitRow[]>(
-    () => supabase.from("v_city_hit_history")
-      .select("unit,model_call,market_call,model_hit,market_hit,head_to_head")
-      .gte("for_date", isoDay(-30)).limit(1000),
-    [], undefined, 1000
-  );
-  const record = useMemo(() => disagreementRecord(hitQ.data ?? []), [hitQ.data]);
-
-  const reload = () => { citiesQ.refresh(); ladderQ.refresh(); forecastQ.refresh(); ownQ.refresh(); liveQ.refresh(); hitQ.refresh(); };
+  const reload = () => { citiesQ.refresh(); ladderQ.refresh(); forecastQ.refresh(); ownQ.refresh(); liveQ.refresh(); };
   const dates = useMemo(
     () => Array.from(new Set((ladderQ.data ?? []).map((r) => r.for_date))).sort(), [ladderQ.data]);
   const cards = useMemo(
@@ -128,7 +118,7 @@ export default function CityCards({ onPick }: { onPick?: (city: string) => void 
         tradeable edge, and what the pick is built from: the forecast centre, the public forecasts and the
         desk&rsquo;s own model. Trades that side with the market come first; a trade that bets on the engine against the
         market&rsquo;s favourite is marked and sorted after them, because on settled days the market&rsquo;s
-        pick has won about twice as often when the two disagreed (the record is on each card).{" "}
+        pick has won about twice as often when the two disagreed.{" "}
         <b className="text-text">Reload</b> re-reads the stored rows (refreshed at :12 and :42 and after
         each pipeline run). <b className="text-text">Reprice now</b> runs the Intraday pipeline on
         GitHub Actions (about 2 billed minutes); press Reload once it has finished.
@@ -149,18 +139,18 @@ export default function CityCards({ onPick }: { onPick?: (city: string) => void 
         onRetry={reload}
       >
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {cards.map((c) => <Card key={`${c.city_key}|${c.for_date}`} c={c} onPick={onPick} record={record[c.unit]} />)}
+          {cards.map((c) => <Card key={`${c.city_key}|${c.for_date}`} c={c} onPick={onPick} />)}
         </div>
       </DataState>
     </section>
   );
 }
 
-function Card({ c, onPick, record }: { c: CityCard; onPick?: (city: string) => void; record?: DisagreementRecord }) {
+function Card({ c, onPick }: { c: CityCard; onPick?: (city: string) => void }) {
   const u = c.unit;
   const trusted = c.best && !c.best.against_market;
   return (
-    <div className={`rounded border bg-panel p-3 text-xs ${trusted ? "border-accent/60" : c.disagrees ? "border-bad/40" : "border-border"}`}>
+    <div className={`rounded border bg-panel p-3 text-xs ${trusted ? "border-accent/60" : "border-border"}`}>
       <div className="flex items-baseline justify-between gap-2">
         <button className="truncate text-sm font-semibold text-accent hover:underline"
           onClick={() => onPick?.(c.city_key)} title="Show this city in the panels below">
@@ -271,18 +261,6 @@ function Card({ c, onPick, record }: { c: CityCard; onPick?: (city: string) => v
         </dl>
       </div>
 
-      {c.disagrees && (
-        <div className="mt-2 rounded border border-bad/40 px-2 py-1 text-[11px] text-bad">
-          The platform and the market pick different winners here.
-          {record && record.days > 0 && (
-            <> When that happened before - across all {c.unit === "F" ? "°F" : "°C"} cities, on the last 30
-              settled days, comparing the picks made the day before - they differed {record.days} times: the
-              market&rsquo;s pick won {record.market_won}, the platform&rsquo;s {record.engine_won}, and
-              neither {record.days - record.market_won - record.engine_won}. So far the market&rsquo;s pick
-              is the better bet when the two differ.</>
-          )}
-        </div>
-      )}
       <div className="mt-2 text-[10px] text-muted">
         {c.priced_at ? <>priced {fmtDateTime(c.priced_at)}</> : "not priced yet"}
       </div>

@@ -38,10 +38,12 @@ def test_the_forecasts_are_labelled_inputs():
     assert "A forecast, not the pick" in inputs
 
 
-def test_the_disagreement_notice_says_what_it_counts():
-    """It is pooled across every city of the unit, from day-ahead picks, and
-    the days neither won are said out loud rather than left as a gap."""
+def test_no_red_disagreement_box_on_the_card():
+    """Hassan, 27 Sep: remove the red "the platform and the market pick
+    different winners" box. The market's own pick stays on the card as one
+    line; the red box, its red border and the record it quoted are gone."""
     card = _card()
-    notice = card[card.index("{c.disagrees && ("):]
-    assert "across all" in notice and "the picks made the day before" in notice
-    assert "record.days - record.market_won - record.engine_won" in notice
+    assert "pick different winners" not in card
+    assert "{c.disagrees && (" not in card
+    assert 'c.disagrees ? "border-bad/40"' not in card
+    assert "Market&rsquo;s pick" in card
