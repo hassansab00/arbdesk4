@@ -421,7 +421,10 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     # recorded in `decisions`, ordering nothing (P5.12 part 3a). Bounded by
     # the tick's own budget; never raises.
     import engine_shadow
-    engine_floors = {c: (d, f, (running.get(c) or {}).get("running_max_basis")) for c, (d, f) in floors.items()}
+    # (local date, floor, its basis, the newest station reading under it): S10
+    # acts only on a fresh reading, so the engine needs the reading's time.
+    engine_floors = {c: (d, f, (running.get(c) or {}).get("running_max_basis"),
+                         (running.get(c) or {}).get("latest_reading_at")) for c, (d, f) in floors.items()}
     detail["engine"] = engine_shadow.record(out, s10_ladders, bands_by_market,
                                             market_of, unit_of, engine_floors, now,
                                             deadline=t0 + budget_s, dry_run=dry_run)

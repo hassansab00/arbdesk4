@@ -153,6 +153,28 @@ def decision_row(run_id, decided_at, checkpoint_id, strategy_id, city, target, d
             "params_version": json.dumps(d.get("versions") or {}, sort_keys=True, default=str)}
 
 
+def reading_age(reading_at, decided_at):
+    """Minutes from the newest station reading to the decision, or None.
+
+    S10 acts only on a fresh reading (strategies.tradeable.readings_usable:
+    at most MAX_READING_AGE_MIN, the trajectory's own limit). Until 27 Sep this
+    was always None, so every S10 variant waited on every city-day: 123 of 123
+    S10 rows with a ladder read own_rule_wait, 16:36-19:36Z."""
+    if reading_at is None or decided_at is None:
+        return None
+    try:
+        at = dt.datetime.fromisoformat(str(reading_at).replace("Z", "+00:00"))
+        now = dt.datetime.fromisoformat(str(decided_at).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=dt.timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=dt.timezone.utc)
+    age = (now - at).total_seconds() / 60.0
+    return round(age, 1) if age >= 0 else None
+
+
 def _num(x):
     try:
         v = float(x)
@@ -177,7 +199,13 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
         city, target, name = row["city_key"], str(row["target_date"]), row["checkpoint"]
         bands = bands_of.get((city, target)) or []
         floor = floors.get(city)
-        floor_c = floor[1] if floor and floor[0] == target else None
+        today = bool(floor) and floor[0] == target
+        floor_c = floor[1] if today else None
+        # The floor's basis and the age of the station reading under it, only
+        # for the target's own local day: yesterday's reading vouches for
+        # nothing today.
+        floor_basis = floor[2] if today and len(floor) > 2 else None
+        reading_age_min = reading_age(floor[3] if today and len(floor) > 3 else None, decided_at)
         book = engine_book(row.get("market"))
         for sid in STRATEGIES:
             probs = s10_ladders.get((city, target, name)) if sid in S10 else row.get("probs")
@@ -196,8 +224,8 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
                 yes = [(b, y) for b, (y, _n) in lg["held"].items() if y > 0]
                 held_s10 = {"band_id": yes[0][0], "shares": yes[0][1]} if yes else None
             ctx = {"bands": bands, "unit": unit_of.get(city, "C"), "probs": dict(probs), "book": book,
-                   "floor_c": floor_c, "floor_basis": floor[2] if floor and len(floor) > 2 else None,
-                   "reading_age_min": None, "held": held_s10, "checkpoint": name,
+                   "floor_c": floor_c, "floor_basis": floor_basis,
+                   "reading_age_min": reading_age_min, "held": held_s10, "checkpoint": name,
                    "anchor": {"table": anchor_table}}
             view, ebook, why = ev.engine_input(sid, ctx)
             if view is None:

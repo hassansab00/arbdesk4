@@ -144,3 +144,56 @@ def test_the_migration_registers_them_disabled_and_lets_switch_be_recorded():
     assert "on conflict (strategy_id) do nothing" in sql
     assert "'SWITCH'" in sql and "drop constraint if exists decisions_action_check" in sql
     assert "s2_combination_arb" not in es.STRATEGIES
+
+
+def test_the_reading_age_is_minutes_from_the_station_reading_to_the_decision():
+    assert es.reading_age("2026-09-28T11:10:00+00:00", "2026-09-28T11:36:00+00:00") == 26.0
+    assert es.reading_age("2026-09-28T11:10:00Z", "2026-09-28T11:36:00+00:00") == 26.0
+    assert es.reading_age(None, "2026-09-28T11:36:00+00:00") is None
+    assert es.reading_age("2026-09-28T11:40:00+00:00", "2026-09-28T11:36:00+00:00") is None, "a reading after the decision"
+    assert es.reading_age("not a time", "2026-09-28T11:36:00+00:00") is None
+
+
+def _s10_rows(floors):
+    ledgers = {sid: flat for sid in es.STRATEGIES}
+    rows, _ = es.decide_all([("cp1", ROW)], {("london", "2026-09-28", "noon"): PROBS},
+                            {("london", "2026-09-28"): BANDS}, {"london": "C"}, floors, ledgers, {}, None,
+                            time.monotonic() + 60, "run-1", "2026-09-28T11:36:00+00:00")
+    return [r for r in rows if r["strategy_id"] in es.S10]
+
+
+def test_s10_hears_how_old_the_station_reading_is():
+    """Until 27 Sep the engine passed S10 no reading age, and S10 waits on a
+    reading it cannot date: 123 of 123 S10 rows with a ladder were
+    own_rule_wait. A fresh reading on the target's own day lets S10's other
+    rules speak (here: nothing grows at these asks, so NONE); a stale one, or
+    none, is still a WAIT."""
+    fresh = _s10_rows({"london": ("2026-09-28", 18.0, "series", "2026-09-28T11:10:00+00:00")})
+    assert {r["reason_code"] for r in fresh} == {"own_rule_none"}, fresh
+    stale = _s10_rows({"london": ("2026-09-28", 18.0, "series", "2026-09-28T10:00:00+00:00")})
+    assert {r["reason_code"] for r in stale} == {"own_rule_wait"}, "96 minutes old is past the 75-minute limit"
+    none = _s10_rows({"london": ("2026-09-28", 18.0, "series", None)})
+    assert {r["reason_code"] for r in none} == {"own_rule_wait"}
+
+
+def test_yesterdays_reading_vouches_for_nothing_today(monkeypatch):
+    from strategies import engine_views as ev
+    seen = []
+    monkeypatch.setattr(ev, "engine_input", lambda sid, ctx: (seen.append((sid, ctx)), (None, None, "no ladder"))[1])
+    floors = {"london": ("2026-09-27", 18.0, "series", "2026-09-28T11:10:00+00:00")}
+    es.decide_all([("cp1", ROW)], {("london", "2026-09-28", "noon"): PROBS}, {("london", "2026-09-28"): BANDS},
+                  {"london": "C"}, floors, {sid: flat for sid in es.STRATEGIES}, {}, None,
+                  time.monotonic() + 60, "run-1", "2026-09-28T11:36:00+00:00")
+    assert seen and all(c["floor_c"] is None and c["floor_basis"] is None and c["reading_age_min"] is None
+                        for _sid, c in seen)
+    seen.clear()
+    floors = {"london": ("2026-09-28", 18.0, "series", "2026-09-28T11:10:00+00:00")}
+    es.decide_all([("cp1", ROW)], {("london", "2026-09-28", "noon"): PROBS}, {("london", "2026-09-28"): BANDS},
+                  {"london": "C"}, floors, {sid: flat for sid in es.STRATEGIES}, {}, None,
+                  time.monotonic() + 60, "run-1", "2026-09-28T11:36:00+00:00")
+    assert all((c["floor_c"], c["floor_basis"], c["reading_age_min"]) == (18.0, "series", 26.0) for _s, c in seen)
+
+
+def test_the_tick_hands_the_engine_the_readings_time():
+    src = (ROOT / "scripts" / "tick.py").read_text()
+    assert '(running.get(c) or {}).get("latest_reading_at")) for c, (d, f) in floors.items()}' in src
