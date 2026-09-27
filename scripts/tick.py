@@ -433,7 +433,8 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
                    "books": len(books), "seconds": round(time.monotonic() - t0, 1)})
     # A step that failed inside the tick is attention: on 27 Sep 15:36Z the
     # engine's insert into decisions was refused and the tick still said "ok".
-    engine_error = (detail.get("engine") or {}).get("error")
+    engine_error = ((detail.get("engine") or {}).get("error")
+                    or ((detail.get("engine") or {}).get("orders") or {}).get("error"))
     status = "ok" if not failed and not deferred and not stations["error"] and not engine_error else "attention"
     print(f"tick {now:%Y-%m-%d %H:%MZ}: {len(due)} due, {len(out)} rows, "
           f"{len(deferred)} deferred, {len(failed)} failed, {detail['seconds']} s")

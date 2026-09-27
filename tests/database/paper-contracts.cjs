@@ -209,6 +209,16 @@ const assert = require('node:assert/strict');
               ('${historicTailBand}','${historicTailMarket}',1,'<29°F',29,29,false,false,'tail-yes','tail-no','tail-condition');`);
     }
     await db.exec(fs.readFileSync(path.join(directory,file),'utf8'));
+    if (file==='20260912083705_paper_accounts_and_research_history.sql') {
+      // THE LIVE SHAPE FROM THE START. Production's paper_accounts has
+      // parent_account_id (sql/ad4_59_paper_desks.sql, applied below), and
+      // 20260923100000's frozen-desk trigger reads it on every UPDATE. The
+      // first migration to update paper_accounts after that trigger
+      // (20260927210000) failed here with 'record "new" has no field
+      // "parent_account_id"' while production has the column. ad4_59 adds
+      // it with `add column if not exists`, so this changes nothing there.
+      await db.exec('alter table public.paper_accounts add column if not exists parent_account_id uuid references public.paper_accounts(account_id)');
+    }
   }
   // DESK MANAGEMENT IS ENGINE CODE AND IT LIVES IN sql/.
   //
@@ -2098,6 +2108,84 @@ const assert = require('node:assert/strict');
   }
   await db.exec(fs.readFileSync(path.join(directory,'20260927150000_engine_strategies_are_registered.sql'),'utf8'));
   assert.deepEqual(await engineRows(),engineBefore,'re-running the registration changes nothing');
+
+  // THE ENGINE'S ORDERS REACH ITS LEDGERS (P5.12 part 3b,
+  // 20260927210000_engine_orders_reach_the_ledgers.sql): a BUY decision of a
+  // switched-on strategy becomes a plan on its own shadow ledger through
+  // queue_plan; nothing else does; the ledger's own claim fills it; the
+  // position names the decision; the engine ledgers take no automatic exits.
+  const engAcct=async(sid)=>(await db.query(
+    "select account_id,policy,policy_version from paper_accounts where kind='shadow' and strategy_id=$1",[sid])).rows[0];
+  for (const sid of engineIds) {
+    const a=await engAcct(sid);
+    assert.equal(a.policy.auto_exit_enabled,false,`${sid}: the engine exits only by its own rules`);
+    assert.equal(Number(a.policy_version),2,`${sid}: the policy change is versioned once`);
+  }
+  assert.equal((await db.query("select count(*)::int n from paper_activity where event_type='policy_changed' and payload->>'why' like 'plan v2 P5.12 part 3b%'")).rows[0].n,
+    engineIds.length,'each ledger logs the change');
+  assert.equal((await db.query("select data_type from information_schema.columns where table_name='paper_positions' and column_name='entry_decision_id'")).rows[0].data_type,
+    'bigint','a position names its decision by the decisions key');
+  const winner=await engAcct('s10_winner');
+  const decide=async(sid,action,ago='0 minutes')=>(await db.query(
+    `insert into decisions(run_id,decided_at,strategy_id,city_key,resolution_date,action,reason_code,params_version)
+     values(gen_random_uuid(),now()-$2::interval,$1,'london',current_date,$3,'enter','{"engine":"engine-v1"}') returning decision_id`,
+    [sid,ago,action])).rows[0].decision_id;
+  const engLegs=JSON.stringify([{band_id:band,side:'YES',shares:'12',limit_price:'.50',cash_ceiling:'6.17'}]);
+  const engEvidence=JSON.stringify({source:'engine',net_edge_per_share:'.08',legs_p:{[`${band}:YES`]:{p:0.62}}});
+  const publishEngine=(acct,dec)=>db.query('select publish_engine_plan($1,$2,$3,$4) as id',[acct,dec,engLegs,engEvidence]);
+  // Research: nothing is ordered, whatever the decision says.
+  const dResearch=await decide('s10_winner','BUY');
+  await db.exec('set role service_role;');
+  await assert.rejects(publishEngine(winner.account_id,dResearch),/Strategy s10_winner is not switched on/);
+  await db.exec('reset role;');
+  await db.query("select set_strategy_state('s10_winner','shadow','P5.12 part 3b contract')");
+  const dBuy=await decide('s10_winner','BUY');
+  const dWait=await decide('s10_winner','WAIT');
+  const dOld=await decide('s10_winner','BUY','20 minutes');
+  const dOther=await decide('s11_ladder','BUY');
+  await db.exec('set role service_role;');
+  await assert.rejects(publishEngine(winner.account_id,dWait),/An engine BUY decision is required/);
+  await assert.rejects(publishEngine(winner.account_id,dOld),/Decision stale or future/);
+  await assert.rejects(publishEngine(winner.account_id,dOther),/A decision of s11_ladder on the ledger of s10_winner/);
+  await assert.rejects(publishEngine(l1.account_id,dBuy),/Engine orders go to a shadow ledger only|A decision of/);
+  const engPlan=(await publishEngine(winner.account_id,dBuy)).rows[0].id;
+  assert.equal((await publishEngine(winner.account_id,dBuy)).rows[0].id,engPlan,'one plan per decision and ledger');
+  const ep=(await db.query('select status,signal_id,evidence from paper_trade_plans where plan_id=$1',[engPlan])).rows[0];
+  assert.equal(ep.status,'queued','queue_plan took the engine plan');
+  assert.equal(ep.signal_id,null,'an engine plan names its decision, not a signal');
+  assert.equal(Number(ep.evidence.decision_id),Number(dBuy));
+  // Only the ledger's own claim hands it out, and one lease at a time.
+  await db.exec(`reset role;
+    insert into paper_orders(account_id,command_key,band_id,token_id,side,action,origin,shares,limit_price,cash_ceiling,policy_version,expires_at)
+    select account_id,gen_random_uuid(),'${band}','no','NO','BUY','manual',1,.5,.6,policy_version,now()+interval '5 minutes'
+      from paper_accounts where kind='shadow' and strategy_id='s12_no';
+    update paper_accounts set reserved_cash=reserved_cash+.6 where kind='shadow' and strategy_id='s12_no';
+    set role service_role;`);
+  const engJob=(await db.query('select claim_account_order($1) as job',[winner.account_id])).rows[0].job;
+  assert.equal(engJob.plan_id,engPlan,'the ledger claims its own order');
+  assert.equal(engJob.account_id,winner.account_id);
+  assert.equal((await db.query('select claim_account_order($1) as job',[winner.account_id])).rows[0].job,null,
+    'one working order per ledger');
+  await db.query(`insert into paper_book_evidence(snapshot_id,token_id,observed_at,payload) values('engine-snap',$1,now(),'{}')`,
+    [engJob.token_id]);
+  await db.query('select complete_paper_order($1,$2,$3::jsonb)',[engJob.order_id,engJob.lease_token,JSON.stringify(
+    {status:'filled',reason:null,shares:'12',notional:'6',fee:'.15',snapshot_id:'engine-snap',
+     fills:[{shares:'12',price:'.50',notional:'6',fee:'.15'}]})]);
+  const engPos=(await db.query('select entry_decision_id,params_version,p_at_entry,strategy_id,group_id from paper_positions where account_id=$1',
+    [winner.account_id])).rows[0];
+  assert.equal(Number(engPos.entry_decision_id),Number(dBuy),'the position names the decision that opened it');
+  assert.equal(engPos.params_version,'{"engine":"engine-v1"}','and the parameter versions it used');
+  assert.equal(Number(engPos.p_at_entry),0.62,'and the probability the engine believed');
+  assert.equal(engPos.strategy_id,'s10_winner'); assert.equal(engPos.group_id,engPlan);
+  await db.exec('reset role;set role anon;');
+  await assert.rejects(db.query('select claim_account_order($1)',[winner.account_id]),/permission denied/);
+  await assert.rejects(db.query('select publish_engine_plan($1,$2,$3,$4)',[winner.account_id,dBuy,engLegs,engEvidence]),/permission denied/);
+  await db.exec('reset role;');
+  const engPolicyBefore=await Promise.all(engineIds.map(engAcct));
+  await db.exec(fs.readFileSync(path.join(directory,'20260927210000_engine_orders_reach_the_ledgers.sql'),'utf8'));
+  assert.deepEqual(await Promise.all(engineIds.map(engAcct)),engPolicyBefore,'a re-run changes no ledger');
+  assert.equal(Number((await db.query('select entry_decision_id from paper_positions where account_id=$1',[winner.account_id])).rows[0].entry_decision_id),
+    Number(dBuy),'a re-run keeps the lineage');
   const enabledOf=async(sid)=>(await db.query('select enabled from strategies where strategy_id=$1',[sid])).rows[0].enabled;
   await db.exec("insert into public.strategies(strategy_id,name,enabled) values('s_life','lifecycle test',false);");
   assert.equal(await stateOf('s_life'),'research','a registered, switched-off strategy starts in research');
@@ -2326,7 +2414,9 @@ const assert = require('node:assert/strict');
   assert.equal(dMis.ok,false); assert.match(dMis.error,/verified 5 rows but prune would delete 2/);
   assert.equal((await db.query("select prune_decisions(30,true) as r")).rows[0].r.would_delete,2);
   assert.equal((await db.query("select prune_decisions(30,false,null,2) as r")).rows[0].r.deleted,2);
-  assert.deepEqual((await db.query("select action from decisions")).rows.map(r=>r.action),['HOLD'],
+  // Scoped to this test's strategy: the engine's own decisions (P5.12 part 3b,
+  // above) are recent and stay, and are not this test's rows.
+  assert.deepEqual((await db.query("select action from decisions where strategy_id='s1'")).rows.map(r=>r.action),['HOLD'],
     'the prune took a decision inside the window');
   await db.exec('reset role;');
   await assert.rejects(db.query("delete from decisions"),/append-only/,'the archive exemption outlived the prune');

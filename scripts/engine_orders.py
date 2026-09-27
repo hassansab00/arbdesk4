@@ -1,0 +1,206 @@
+"""The engine's BUYs reach its shadow ledgers, filled inside the tick (plan v2
+P5.12 part 3b).
+
+engine_shadow decides at each checkpoint and writes `decisions`. For a
+strategy that is switched on (strategies.enabled: shadow or portfolio), each
+BUY becomes one plan on the strategy's own shadow ledger:
+
+  legs      decision_engine's IOC orders at the ask the tick read, as
+            queue_plan wants them: {band_id, side, shares, limit_price,
+            cash_ceiling}. The reserve covers the order filling entirely at
+            its limit plus the venue fee at the worst price it can fill at
+            (FEE_RATE, 0.05 on all 1,729 books the paper engine captured
+            16-27 Sep), and a cent.
+  dropped   a leg worth less than the venue's minimum order at its limit
+            (MIN_ORDER_USD: 5 USDC on every one of those books) is not sent -
+            the fill simulator would refuse it after spending a book capture
+            on it - and is recorded in the plan's evidence instead.
+  evidence  the decision (id, run, checkpoint, versions), each leg's
+            posterior (legs_p, which the position records at entry) and the
+            weighted net edge per share queue_plan checks against the
+            ledger's min_edge (0 on a shadow ledger).
+
+public.publish_engine_plan queues it through arbdesk_private.queue_plan -
+every rail, cap and holding check - or leaves it 'blocked' with the reason.
+The orders expire in 5 minutes, so the tick fills them itself, now:
+claim_account_order per ledger, paper_worker.fill_order (the book captured at
+that moment, the same simulator and completion as every paper order). Ledgers
+fill in parallel; one ledger's legs one at a time (one lease per account).
+
+Bounded: no fill starts after the deadline, at most MAX_FILLS per tick; what
+is not filled expires and its reserve is released (expire_paper_commands).
+Never raises into the tick.
+"""
+import math
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+FEE_RATE = 0.05          # measured: every paper_book_evidence fee_rate, 16-27 Sep
+MIN_ORDER_USD = 5.0      # measured: every paper_book_evidence min_order_size (USDC), 16-27 Sep
+SHARE_STEP = 0.01
+MAX_FILLS = 12           # prior: per tick, so the minute cannot be spent on fills
+FILL_SECONDS = 2.5       # prior: a fill is not started with less than this left
+
+
+def _floor_step(x, step=SHARE_STEP):
+    return math.floor(x / step + 1e-9) * step
+
+
+def _ceil_cents(x):
+    return math.ceil(x * 100 - 1e-9) / 100
+
+
+def worst_fee_per_share(limit, rate=FEE_RATE):
+    """The largest fee a share can carry when it fills at or below `limit`:
+    rate x q x (1 - q) rises with q up to a half."""
+    q = min(float(limit), 0.5)
+    return rate * q * (1.0 - q)
+
+
+def plan_legs(orders, p_post):
+    """(legs, dropped, legs_p) from decision_engine's orders.
+
+    orders  [{band_id, side, limit_price, usd, shares, ...}] (decide's IOC legs)
+    p_post  {band_id: posterior P(YES)} (decide's p_post)
+    """
+    legs, dropped, legs_p = [], [], {}
+    for o in orders or []:
+        band, side = str(o["band_id"]), o["side"]
+        limit = o.get("limit_price")
+        if limit is None or not (0.0 < float(limit) < 1.0):
+            dropped.append({"band_id": band, "side": side, "why": "no price to buy at"})
+            continue
+        limit = float(limit)
+        shares = _floor_step(float(o.get("shares") or 0.0))
+        if shares <= 0 or shares * limit < MIN_ORDER_USD:
+            dropped.append({"band_id": band, "side": side, "usd": round(shares * limit, 2),
+                            "why": f"below the venue minimum of {MIN_ORDER_USD:g} USDC"})
+            continue
+        ceiling = _ceil_cents(shares * limit + shares * worst_fee_per_share(limit) + 0.01)
+        legs.append({"band_id": band, "side": side, "shares": f"{shares:.2f}", "limit_price": f"{limit:g}",
+                     "cash_ceiling": f"{ceiling:.2f}"})
+        p_yes = p_post.get(band)
+        if p_yes is not None:
+            legs_p[f"{band}:{side}"] = {"p": round(float(p_yes) if side == "YES" else 1.0 - float(p_yes), 6)}
+    return legs, dropped, legs_p
+
+
+def net_edge_per_share(legs, legs_p, rate=FEE_RATE):
+    """Share-weighted (posterior - cost at the limit, fee included); None
+    without every leg's posterior (queue_plan then refuses the plan)."""
+    total, edge = 0.0, 0.0
+    for leg in legs:
+        p = (legs_p.get(f"{leg['band_id']}:{leg['side']}") or {}).get("p")
+        if p is None:
+            return None
+        q, limit = float(leg["shares"]), float(leg["limit_price"])
+        edge += q * (p - (limit + rate * limit * (1.0 - limit)))
+        total += q
+    return round(edge / total, 6) if total > 0 else None
+
+
+def build(decision_id, decision_row, d, run_id, checkpoint_id):
+    """(legs, evidence) for one BUY decision, or (None, why)."""
+    legs, dropped, legs_p = plan_legs(d.get("orders"), d.get("p_post") or {})
+    if not legs:
+        return None, "every leg below the venue minimum or unpriced"
+    edge = net_edge_per_share(legs, legs_p)
+    evidence = {"source": "engine", "decision_id": decision_id, "run_id": run_id, "checkpoint_id": checkpoint_id,
+                "strategy_id": decision_row["strategy_id"], "city_key": decision_row["city_key"],
+                "resolution_date": decision_row["resolution_date"], "engine_version": d.get("engine_version"),
+                "versions": d.get("versions"), "g_now": d.get("g_now"), "g_target": d.get("g_target"),
+                "target_usd": d.get("target_usd"), "legs_p": legs_p, "dropped": dropped,
+                "net_edge_per_share": None if edge is None else f"{edge:.6f}",
+                "execution_assumption": "Independent IOC legs at the tick's ask; filled against the book "
+                                        "captured at fill time"}
+    return (legs, evidence), None
+
+
+def fill_ledgers(account_ids, deadline, claim, fill_one, max_fills=MAX_FILLS):
+    """Fill every queued order of these ledgers until the deadline.
+    Returns {status: n} over the orders completed."""
+    budget, lock = {"left": max_fills}, threading.Lock()
+    out = {}
+
+    def take():
+        with lock:
+            if budget["left"] <= 0:
+                return False
+            budget["left"] -= 1
+            return True
+
+    def one_ledger(aid):
+        done = []
+        while time.monotonic() + FILL_SECONDS < deadline and take():
+            order = claim(aid)
+            if not order:
+                with lock:
+                    budget["left"] += 1
+                break
+            try:
+                result = fill_one(order)
+                done.append((result or {}).get("status") or "unknown")
+            except Exception as e:                        # noqa: BLE001 - never into the tick
+                done.append(f"error: {type(e).__name__}")
+        return done
+
+    ids = list(dict.fromkeys(str(a) for a in account_ids))
+    if not ids:
+        return out
+    with ThreadPoolExecutor(max_workers=len(ids)) as pool:
+        for statuses in pool.map(one_ledger, ids):
+            for s in statuses:
+                out[s] = out.get(s, 0) + 1
+    return out
+
+
+def send(buys, accounts, enabled, decision_ids, run_id, deadline, rpc, rest, fill_one, dry_run=False):
+    """Publish a plan per BUY of a switched-on strategy and fill it.
+
+    buys          [(decision_row, d, checkpoint_id)] - the BUY rows engine_shadow wrote
+    accounts      {strategy_id: account_id} of the shadow ledgers
+    enabled       strategy ids switched on
+    decision_ids  {(strategy_id, city_key, resolution_date): decision_id} of this run
+    """
+    out = {"buys": len(buys), "published": 0, "queued": 0, "blocked": {}, "skipped": {}, "fills": {}}
+    t0 = time.monotonic()
+    queued_accounts, plan_ids = [], []
+    for row, d, checkpoint_id in buys:
+        sid = row["strategy_id"]
+        key = (sid, row["city_key"], str(row["resolution_date"]))
+        why = None
+        if sid not in enabled:
+            why = "strategy not switched on"
+        elif sid not in accounts:
+            why = "no shadow ledger"
+        elif decision_ids.get(key) is None:
+            why = "decision id not found"
+        if why:
+            out["skipped"][why] = out["skipped"].get(why, 0) + 1
+            continue
+        built, why = build(decision_ids[key], row, d, run_id, checkpoint_id)
+        if built is None:
+            out["skipped"][why] = out["skipped"].get(why, 0) + 1
+            continue
+        legs, evidence = built
+        if dry_run:
+            out["published"] += 1
+            continue
+        plan_ids.append(rpc("publish_engine_plan", {"p_account": accounts[sid], "p_decision": decision_ids[key],
+                                                    "p_legs": legs, "p_evidence": evidence}))
+        out["published"] += 1
+        queued_accounts.append(accounts[sid])
+    if plan_ids:
+        for p in rest("paper_trade_plans", [("select", "plan_id,status,reason"),
+                                            ("plan_id", f"in.({','.join(str(i) for i in plan_ids)})")]) or []:
+            if p["status"] == "queued":
+                out["queued"] += 1
+            else:
+                r = str(p.get("reason") or p["status"])[:80]
+                out["blocked"][r] = out["blocked"].get(r, 0) + 1
+    if out["queued"] and not dry_run:
+        out["fills"] = fill_ledgers(queued_accounts, deadline,
+                                    lambda aid: rpc("claim_account_order", {"p_account": aid}), fill_one)
+    out["seconds"] = round(time.monotonic() - t0, 1)
+    return out
