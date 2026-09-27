@@ -214,6 +214,20 @@ jobs:
         timeout-minutes: 5
         run: python scripts/station_mos.py
 
+      # 7a3. Plan v2.3 P3.9 part 3: the width around the corrected centre,
+      #      scored FORWARD. Each market the venue has confirmed: the engine's
+      #      last day-ahead ladder as served, against the same ladder re-priced
+      #      with the stored width (band_probabilities.station_width_c) around
+      #      the same centre - log loss, Brier, top pick, and CRPS against the
+      #      whole-day station maximum, which is why it runs after 7. Writes
+      #      fact_station_width_score once per market and logs the date-block
+      #      verdict. It turns nothing on: settings.station_width_pricing is a
+      #      person's decision on that verdict. Reads a few thousand rows.
+      - name: Score the station width forward
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: python scripts/station_width_score.py
+
       # 7b. How right each city's thermometer has been, copied onto cities so
       #     both engines can read it. AFTER "Freeze settled city-days", because
       #     v_settlement_agreement judges against ladders that have settled -

@@ -59,6 +59,7 @@ export const SQL_OWNER: Record<string, string> = {
   "fact_checkpoint_outcome": "supabase/migrations/20260924020000_checkpoint_outcomes.sql",
   "fact_forecast_outcome": "ad4_18_databank.sql",
   "fact_signal_outcome": "ad4_18_databank.sql",
+  "fact_station_width_score": "supabase/migrations/20260927200000_the_width_scored_forward.sql",
   "ingest_log": "ad4_00_preflight.sql",
   "ledger": "ad4_00_preflight.sql",
   "live_weather": "ad4_live_weather.sql",
