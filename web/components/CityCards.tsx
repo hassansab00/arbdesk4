@@ -51,7 +51,7 @@ export default function CityCards({ onPick }: { onPick?: (city: string) => void 
   const ladderQ = useQuery<LadderRow[]>(
     () => readAllRows<LadderRow>((from, to) =>
       supabase.from("v_prediction_ladder")
-        .select("city_key,for_date,band_id,band_index,band_label,side,model_prob,forecast_max_c,sigma_c,confidence,regime_label,market_price,edge_net_pp,depth_5c,tradeable,block_reason,edge_at")
+        .select("city_key,for_date,band_id,band_index,band_label,side,model_prob,forecast_max_c,sigma_c,confidence,regime_label,market_price,edge_net_pp,depth_5c,tradeable,block_reason,edge_at,band_lo,band_hi,open_low,open_high,centre_c,forecast_sigma_c,observed_floor_c,prob_at,priced_from")
         .gte("for_date", since).eq("closed", false)
         .order("for_date").order("city_key").order("band_id").order("side")
         .range(from, to), LADDER_MAX),
@@ -186,17 +186,42 @@ function Card({ c, onPick }: { c: CityCard; onPick?: (city: string) => void }) {
             : <span className="text-muted">no price</span>}
         </div>
       </div>
-      {c.live?.running_max_c != null && c.live.source_kind !== "model" && c.predicted_c !== null
-        && c.live.running_max_c > c.predicted_c && (
+      {/* OUT OF DATE (plan v2.3 P4.8). The pick is a price made at priced_at;
+          when the station has since passed its bucket, say so rather than show
+          it as current. The bucket is not swapped for another: a new pick
+          needs a new price, and the next pricing run makes one. */}
+      {c.stale && (
+        <div className="mt-1 rounded border border-bad/60 px-2 py-1 text-[11px] text-bad">
+          <b>Out of date.</b> Priced {c.priced_at ? fmtDateTime(c.priced_at) : "earlier"}, when the day&rsquo;s
+          maximum was {c.stale.floor_c_then !== null ? fmtTemp(c.stale.floor_c_then, u) : "not yet recorded"};
+          the station has since reached {fmtTemp(c.stale.max_c_now, u)}.{" "}
+          {c.stale.standing === "impossible"
+            ? "This bucket can no longer win."
+            : "This bucket can now win only if the venue reads the day a bucket lower than the station."}{" "}
+          The next pricing run replaces this pick.
+        </div>
+      )}
+      {!c.stale && c.live?.running_max_c != null && c.live.source_kind !== "model" && c.centre_c !== null
+        && c.live.running_max_c > c.centre_c && (
         <div className="mt-0.5 text-[11px] text-accent">
-          already {fmtTemp(c.live.running_max_c, u)} today, above the forecast; priced from that floor
+          already {fmtTemp(c.live.running_max_c, u)} today, above the centre the ladder used
+          {c.priced_floor_c !== null && c.live.running_max_c <= c.priced_floor_c
+            ? "; the price counted that floor" : "; the price has not seen that reading yet"}
         </div>
       )}
-      {c.centre_outside_forecasts && (
-        <div className="mt-0.5 text-[11px] text-bad">
-          the forecast the pick is built on is outside every public forecast for this day - treat it with suspicion
-        </div>
-      )}
+      {c.centre_outside_forecasts && (c.priced_from?.includes("station_correction:")
+        ? (
+          <div className="mt-0.5 text-[11px] text-muted">
+            the centre is outside every public forecast: the station correction moved it{" "}
+            {c.centre_c !== null && c.raw_forecast_c !== null
+              ? fmtTempDelta(c.centre_c - c.raw_forecast_c, u) : ""}{" "}
+            from the raw forecast, by each model&rsquo;s measured error at this station
+          </div>
+        ) : (
+          <div className="mt-0.5 text-[11px] text-bad">
+            the centre the pick is built on is outside every public forecast for this day - treat it with suspicion
+          </div>
+        ))}
       {c.forecast_spread_c !== null && c.forecast_spread_c >= FORECASTS_DISAGREE_C && (
         <div className="mt-0.5 text-[11px] text-bad">
           the public forecasts disagree by {fmtTempDelta(c.forecast_spread_c, u).replace("+", "")} - an uncertain day
@@ -231,14 +256,21 @@ function Card({ c, onPick }: { c: CityCard; onPick?: (city: string) => void }) {
       <div className="mt-2 border-t border-border pt-1.5 text-[11px]">
         <div className="text-[10px] uppercase tracking-wide text-muted">What the pick is built from</div>
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-          <dt className="text-muted" title="The temperature the engine centres its probabilities on: its forecast input (Open-Meteo) after bias correction. A forecast, not the pick - the pick is the bucket with the most probability once the forecast's measured error is spread around this centre.">
+          <dt className="text-muted" title="The temperature this ladder was integrated on (band_probabilities.centre_c): the forecast after every correction the engine applied - the station correction, the station-model blend, the day's trajectory. The raw public input it started from is shown under it. A forecast, not the pick - the pick is the bucket with the most probability once the width is spread around this centre and the day's maximum so far is counted.">
             Forecast centre
           </dt>
           <dd className="tabular-nums">
-            {fmtTemp(c.predicted_c, u)}
+            {c.centre_c !== null ? fmtTemp(c.centre_c, u) : <span className="text-muted">not recorded for this price</span>}
             {c.sigma_c !== null && <span className="text-muted"> ± {fmtTempDelta(c.sigma_c, u).replace("+", "")}</span>}
             {c.confidence !== null && <span className="text-muted"> · confidence {fmtPct(c.confidence, 0)}</span>}
             {c.regime && <span className={`ml-1 ${regimeColor(c.regime)}`}>{c.regime}</span>}
+            {(c.raw_forecast_c !== null || c.priced_from_words) && (
+              <span className="block text-[10px] text-muted" title={c.priced_from ?? undefined}>
+                {c.raw_forecast_c !== null && <>raw input {fmtTemp(c.raw_forecast_c, u)}</>}
+                {c.raw_forecast_c !== null && c.priced_from_words && " · "}
+                {c.priced_from_words && <>priced from {c.priced_from_words}</>}
+              </span>
+            )}
           </dd>
           <dt className="text-muted">Public forecasts</dt>
           <dd className="tabular-nums">
@@ -262,7 +294,8 @@ function Card({ c, onPick }: { c: CityCard; onPick?: (city: string) => void }) {
       </div>
 
       <div className="mt-2 text-[10px] text-muted">
-        {c.priced_at ? <>priced {fmtDateTime(c.priced_at)}</> : "not priced yet"}
+        {c.priced_at ? <>probabilities priced {fmtDateTime(c.priced_at)}</> : "not priced yet"}
+        {c.edges_at && c.edges_at !== c.priced_at && <> · edges {fmtDateTime(c.edges_at)}</>}
       </div>
     </div>
   );

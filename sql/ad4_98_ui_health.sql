@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 234 of them - and for each MISSING one names the
+-- and function the app reads - 236 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -74,6 +74,7 @@ with expected(rel, owner, used_by) as (values
     ('live_weather', 'ad4_live_weather.sql', '(CityCards), (GlobalBar), (RightRail), /board, /live, /opportunities'),
     ('markets', 'ad4_00_preflight.sql', '(Header)'),
     ('model_versions', 'ad4_00_preflight.sql', ''),
+    ('mv_prediction_ladder', 'supabase/migrations/20260927170000_the_card_shows_what_was_priced.sql', ''),
     ('mv_venue_band_resolution', 'ad4_68_prediction_ladder_outcomes.sql', ''),
     ('paper_accounts', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),
     ('paper_activity', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),
@@ -203,6 +204,7 @@ with expected(rel, owner, used_by) as (values
     ('v_prediction_hindsight_summary', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', '(PredictionHindsight)'),
     ('v_prediction_ladder', 'ad4_31_predictive.sql', '(CityCards), /predictive'),
     ('v_prediction_ladder_bands', 'ad4_68_prediction_ladder_outcomes.sql', ''),
+    ('v_prediction_ladder_live', 'supabase/migrations/20260927170000_the_card_shows_what_was_priced.sql', ''),
     ('v_prediction_scorecard', 'ad4_31_predictive.sql', ''),
     ('v_prediction_scorecard_all', 'ad4_62_settled_history_ungated.sql', '/predictive'),
     ('v_priceable_markets', 'supabase/migrations/20260923180000_a_priceable_market_is_one_whose_local_day_has_not_ended.sql', ''),
@@ -330,6 +332,7 @@ begin
     ('live_weather', 'ad4_live_weather.sql', '(CityCards), (GlobalBar), (RightRail), /board, /live, /opportunities'),
     ('markets', 'ad4_00_preflight.sql', '(Header)'),
     ('model_versions', 'ad4_00_preflight.sql', ''),
+    ('mv_prediction_ladder', 'supabase/migrations/20260927170000_the_card_shows_what_was_priced.sql', ''),
     ('mv_venue_band_resolution', 'ad4_68_prediction_ladder_outcomes.sql', ''),
     ('paper_accounts', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),
     ('paper_activity', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),
@@ -459,6 +462,7 @@ begin
     ('v_prediction_hindsight_summary', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', '(PredictionHindsight)'),
     ('v_prediction_ladder', 'ad4_31_predictive.sql', '(CityCards), /predictive'),
     ('v_prediction_ladder_bands', 'ad4_68_prediction_ladder_outcomes.sql', ''),
+    ('v_prediction_ladder_live', 'supabase/migrations/20260927170000_the_card_shows_what_was_priced.sql', ''),
     ('v_prediction_scorecard', 'ad4_31_predictive.sql', ''),
     ('v_prediction_scorecard_all', 'ad4_62_settled_history_ungated.sql', '/predictive'),
     ('v_priceable_markets', 'supabase/migrations/20260923180000_a_priceable_market_is_one_whose_local_day_has_not_ended.sql', ''),

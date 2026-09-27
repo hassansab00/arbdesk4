@@ -149,6 +149,12 @@ SQL_FILTERS = {
     "sql/ad4_13_reconcile.sql":                 "v_opportunities - and through it v_band_ladder, v_trade_plan, v_city_day_plan",
     "sql/ad4_22_opportunity_context.sql":       "v_opportunity_context - the movement panel behind each card",
     "sql/ad4_68_prediction_ladder_outcomes.sql":"v_prediction_ladder - the Predictive page",
+    # Plan v2.3 P4.8 re-issues ad4_68's two views with the priced centre and
+    # time appended, and ad4_58's v_city_prediction_confidence (which joins
+    # cities only for the name and the unit). The relation the page reads is
+    # the ladder, which admits only the active roster: FILTERS, like ad4_68.
+    "supabase/migrations/20260927170000_the_card_shows_what_was_priced.sql":
+        "v_prediction_ladder_bands / _live / the stored copy - the Predictive page",
     "supabase/migrations/20260923180000_a_priceable_market_is_one_whose_local_day_has_not_ended.sql":
         "v_priceable_markets - the markets both engines price; a retired city is not priced",
     "sql/ad4_87_market_settlement_gaps.sql":    "v_market_settlement_gaps - ended days to act on; a "
