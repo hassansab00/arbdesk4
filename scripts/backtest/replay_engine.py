@@ -262,9 +262,13 @@ def walk(args):
             got_usd += paid
             legs.append(f"{o['band_id'][:8]}:{o['side']}:{paid:.2f}")
             # What the view said, what the book asked, what happened - per leg.
-            p_view = ladder[o["band_id"]] if o["side"] == "YES" else 1 - ladder[o["band_id"]]
+            # The model's ladder, and what the engine decided on: the view after
+            # the market anchor (P5.3) and the belief layer (decide's p_post).
+            p_model = ladder[o["band_id"]] if o["side"] == "YES" else 1 - ladder[o["band_id"]]
+            post = (d.get("p_post") or {}).get(o["band_id"])
+            p_view = None if post is None else (post if o["side"] == "YES" else 1 - post)
             won = (o["band_id"] == m["winner"]) == (o["side"] == "YES")
-            leg_log.append((p_view, float(o["limit_price"]), won, paid))
+            leg_log.append((p_view, float(o["limit_price"]), won, paid, p_model))
         rows.append(dict(base, action=d["action"], reason=d["reason_code"], g_now=d["g_now"], g_target=d["g_target"],
                          wanted_usd=round(sum(o["usd"] for o in d["orders"]), 2), filled_usd=round(got_usd, 2),
                          legs=len(legs), fills=";".join(legs), top_is_winner=max(ladder, key=ladder.get) == m["winner"]))
@@ -307,7 +311,9 @@ def summarise(rows, final, spread):
         legs = f["legs"]
         n = len(legs)
         view = {"legs": n,
-                "mean_view_p": round(sum(x[0] for x in legs) / n, 3) if n else None,
+                "mean_model_p": round(sum(x[4] for x in legs) / n, 3) if n else None,
+                "mean_view_p": round(sum(x[0] for x in legs if x[0] is not None) /
+                                     max(1, sum(x[0] is not None for x in legs)), 3) if n else None,
                 "mean_ask": round(sum(x[1] for x in legs) / n, 3) if n else None,
                 "won": round(sum(x[2] for x in legs) / n, 3) if n else None}
         out[sid] = {"view_vs_market": view, "decisions": len(rs), "actions": dict(acts), "trades": len(traded), "markets_traded": len(days),
@@ -337,12 +343,14 @@ def report(summary, meta):
         lines.append(f"| {sid} | {s['decisions']} | {s['actions'].get('BUY', 0)} | {s['trades']} | {s['markets_traded']} | "
                      f"{s['wanted_usd']:.2f} | {s['usd_filled']:.2f} | {s['realised_pnl']:+.2f} | {s['equity']:.2f} | "
                      f"{s['log_growth']} | {s['max_drawdown']} | {s['mean_legs_per_trade']} |")
-    lines += ["", "Where each strategy traded: the view's probability for the side it bought, the book's ask, and "
-              "how often that side won (per filled leg):", "",
-              "| strategy | legs | view's probability | ask | won |", "|---|---|---|---|---|"]
+    lines += ["", "Where each strategy traded, per filled leg, for the side it bought: the model's probability "
+              "(the engine's ladder), the probability the engine decided on (after the market anchor and the "
+              "belief layer), the book's ask, and how often that side won:", "",
+              "| strategy | legs | model's probability | engine's probability | ask | won |",
+              "|---|---|---|---|---|---|"]
     for sid, s in summary.items():
         v = s["view_vs_market"]
-        lines.append(f"| {sid} | {v['legs']} | {v['mean_view_p']} | {v['mean_ask']} | {v['won']} |")
+        lines.append(f"| {sid} | {v['legs']} | {v['mean_model_p']} | {v['mean_view_p']} | {v['mean_ask']} | {v['won']} |")
     lines += ["", "Actions and reasons, per strategy:", ""]
     for sid, s in summary.items():
         lines.append(f"- **{sid}**: " + ", ".join(f"{k} {v}" for k, v in sorted(s["actions"].items())))
