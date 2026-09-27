@@ -63,7 +63,10 @@ def anchored(ctx, source):
     return dict(ctx, probs=probs), {"w": w, "version": version, "scope": sc}
 
 
-def engine_input(strategy_id, ctx):
+def engine_input(strategy_id, ctx, trace=None):
+    """`trace`, when a dict, receives S10's own decision under "s10": its SELL
+    and SWITCH are carried out by the caller (plan v2 P5.12 part 3b), and they
+    need the held bucket, the target and the bid, not only the reason."""
     book = ctx.get("book") or {}
     rec = None
     if strategy_id in RESEARCH_ONLY:
@@ -77,6 +80,14 @@ def engine_input(strategy_id, ctx):
                        floor_c=ctx.get("floor_c"), floor_basis=ctx.get("floor_basis"),
                        reading_age_min=ctx.get("reading_age_min"), held=ctx.get("held"),
                        cluster=ctx.get("cluster"), checkpoint=ctx.get("checkpoint"))
+        if trace is not None:
+            trace["s10"] = d
+            if d["action"] == "SWITCH":
+                # The buy half of a switch, built as a BUY of the new target is.
+                trace["switch_view"] = _stamp(_with(
+                    {"probs": dict(ctx["probs"])},
+                    {"allow": ("YES",), "only": [f"{d['target']}:YES"], "lock": False},
+                    ctx, strategy_id), rec)
         if d["action"] != "BUY":
             return None, book, f"s10 {d['action']}: {d['reason']}"
         # s10_winner / s10_growth: the one target bucket; s10_lock: the whole

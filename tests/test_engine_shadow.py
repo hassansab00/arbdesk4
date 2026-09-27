@@ -179,7 +179,8 @@ def test_s10_hears_how_old_the_station_reading_is():
 def test_yesterdays_reading_vouches_for_nothing_today(monkeypatch):
     from strategies import engine_views as ev
     seen = []
-    monkeypatch.setattr(ev, "engine_input", lambda sid, ctx: (seen.append((sid, ctx)), (None, None, "no ladder"))[1])
+    monkeypatch.setattr(ev, "engine_input",
+                        lambda sid, ctx, trace=None: (seen.append((sid, ctx)), (None, None, "no ladder"))[1])
     floors = {"london": ("2026-09-27", 18.0, "series", "2026-09-28T11:10:00+00:00")}
     es.decide_all([("cp1", ROW)], {("london", "2026-09-28", "noon"): PROBS}, {("london", "2026-09-28"): BANDS},
                   {"london": "C"}, floors, {sid: flat for sid in es.STRATEGIES}, {}, None,
