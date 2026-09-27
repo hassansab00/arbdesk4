@@ -414,7 +414,17 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     if out and not dry_run:
         written = upsert("prediction_checkpoints", out, ON_CONFLICT)
     # The remaining-day model's ladder beside each call, observe only (P7.4).
-    s10["shadow"] = s10_shadow.record(due, market_of, bands_by_market, tz_of, unit_of, dry_run)
+    s10_ladders = {}
+    s10["shadow"] = s10_shadow.record(due, market_of, bands_by_market, tz_of, unit_of, dry_run,
+                                      ladders=s10_ladders)
+    # The one engine decides for its strategies on what this tick wrote,
+    # recorded in `decisions`, ordering nothing (P5.12 part 3a). Bounded by
+    # the tick's own budget; never raises.
+    import engine_shadow
+    engine_floors = {c: (d, f, (running.get(c) or {}).get("running_max_basis")) for c, (d, f) in floors.items()}
+    detail["engine"] = engine_shadow.record(out, s10_ladders, bands_by_market,
+                                            market_of, unit_of, engine_floors, now,
+                                            deadline=t0 + budget_s, dry_run=dry_run)
     detail.update({"written": written if not dry_run else 0, "would_write": len(out),
                    "deferred": deferred, "failed": failed[:30],
                    "books": len(books), "seconds": round(time.monotonic() - t0, 1)})

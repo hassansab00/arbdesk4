@@ -2080,6 +2080,24 @@ const assert = require('node:assert/strict');
   // ======================================================================
   await db.exec('reset role;');
   const stateOf=async(sid)=>(await db.query('select state from strategy_state where strategy_id=$1',[sid])).rows[0]?.state;
+
+  // THE ENGINE'S STRATEGIES ARE REGISTERED, NOT TRADING (P5.12 part 3a,
+  // 20260927150000_engine_strategies_are_registered.sql): each is disabled, in
+  // research, with its own shadow ledger, and a re-run changes nothing.
+  const engineIds=['s10_winner','s10_growth','s10_lock','s11_ladder','s11_lock','s12_no'];
+  const engineRows=async()=>(await db.query(`select s.strategy_id,s.enabled,st.state,
+      (select count(*)::int from paper_accounts a where a.kind='shadow' and a.strategy_id=s.strategy_id) ledgers
+      from strategies s left join strategy_state st using(strategy_id)
+      where s.strategy_id = any($1) order by 1`,[engineIds])).rows;
+  const engineBefore=await engineRows();
+  assert.deepEqual(engineBefore.map(r=>r.strategy_id),[...engineIds].sort(),'every engine strategy is registered');
+  for (const r of engineBefore) {
+    assert.equal(r.enabled,false,`${r.strategy_id} must not trade yet`);
+    assert.equal(r.state,'research',`${r.strategy_id} starts in research`);
+    assert.equal(r.ledgers,1,`${r.strategy_id} has exactly one shadow ledger`);
+  }
+  await db.exec(fs.readFileSync(path.join(directory,'20260927150000_engine_strategies_are_registered.sql'),'utf8'));
+  assert.deepEqual(await engineRows(),engineBefore,'re-running the registration changes nothing');
   const enabledOf=async(sid)=>(await db.query('select enabled from strategies where strategy_id=$1',[sid])).rows[0].enabled;
   await db.exec("insert into public.strategies(strategy_id,name,enabled) values('s_life','lifecycle test',false);");
   assert.equal(await stateOf('s_life'),'research','a registered, switched-off strategy starts in research');
