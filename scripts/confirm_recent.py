@@ -66,11 +66,12 @@ def main(now=None, deadline=None):
         log_run(JOB, "skipped", 0, detail)
         return detail
     sweep = paper_settlement.cycle(budget_seconds=seconds, days_back=DAYS_BACK,
-                                   max_new_evidence=MAX_EVIDENCE)
+                                   max_new_evidence=MAX_EVIDENCE, unconfirmed_only=True)
     banked = rpc("bank_checkpoint_outcomes") or 0
     detail = {"budget_s": round(seconds, 1), "banked_checkpoints": banked,
               "evidence_captured": sweep.get("evidence_captured"),
               "candidates": sweep.get("candidates"), "unreached": sweep.get("unreached"),
+              "prep_s": sweep.get("prep_s"),
               "skips": sweep.get("skips"), "trigger": "tick"}
     log_run(JOB, "attention" if sweep.get("failed") else "ok",
             (sweep.get("evidence_captured") or 0) + banked, detail)

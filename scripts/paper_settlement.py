@@ -47,7 +47,7 @@ SETTLE_LAG_DAYS = 1
 
 
 def _candidate_bands(position_band_ids, days_back, settled_conditions=frozenset(),
-                     holdings_only=False):
+                     holdings_only=False, unconfirmed_only=False):
     """Open positions first, then the unsettled archive, newest answerable day first.
 
     Venue outcomes are valuable model evidence even when the paper desk held
@@ -134,11 +134,21 @@ def _candidate_bands(position_band_ids, days_back, settled_conditions=frozenset(
     today = dt.date.today()
     since = (today - dt.timedelta(days=days_back)).isoformat()
     until = (today - dt.timedelta(days=SETTLE_LAG_DAYS)).isoformat()
+    # UNCONFIRMED ONLY, FOR THE HOURLY TICK (plan v2.2 P4.7). The tick's step
+    # has 12 s. Reading every band of two days (1,056 on 27 Sep) and asking the
+    # ledger about each, 50 at a time, is ~30 reads; at 07:36Z and 08:36Z on
+    # 27 Sep they spent the whole budget and the venue was asked about nothing
+    # (candidates 177, unreached 177), with 11 US markets of 26 Sep waiting.
+    # Every unproven band of the last 7 days was in a market with no
+    # resolution_verified_at (133 of 133, 27 Sep), so the tick reads those
+    # markets alone. A market marked verified some other way keeps any
+    # unproven band for the daily sweep, which does not use this filter.
+    market_filter = [('resolution_verified_at', 'is.null')] if unconfirmed_only else []
     markets = rest_all('markets', [
         ('select', 'market_id,resolution_date'),
         ('resolution_date', 'gte.' + since),
         ('resolution_date', 'lte.' + until),
-    ], order='resolution_date.desc,market_id.asc')
+    ] + market_filter, order='resolution_date.desc,market_id.asc')
     day_of = {str(m['market_id']): m.get('resolution_date') for m in markets}
     market_ids = list(day_of)
     for i in range(0, len(market_ids), 100):
@@ -201,7 +211,8 @@ def _proven(conditions, chunk=50):
     return out
 
 
-def cycle(budget_seconds=60, days_back=180, max_new_evidence=100, holdings_only=False):
+def cycle(budget_seconds=60, days_back=180, max_new_evidence=100, holdings_only=False,
+          unconfirmed_only=False):
     from paper_worker import public_json
     started,settled,checked=time.monotonic(),0,set()
     captured,failed,first_failure=0,0,None
@@ -218,9 +229,11 @@ def cycle(budget_seconds=60, days_back=180, max_new_evidence=100, holdings_only=
     # before asking the venue anything, and that read was spent from the same
     # time budget. The candidates are known first, so the ledger is asked
     # about those alone; what is dropped is exactly what was dropped before.
-    candidates=_candidate_bands(position_band_ids,days_back,frozenset(),holdings_only)
+    candidates=_candidate_bands(position_band_ids,days_back,frozenset(),holdings_only,unconfirmed_only)
     existing=_proven({str(b['condition_id']) for b in candidates if b.get('condition_id')})
     candidates=[b for b in candidates if str(b.get('condition_id')) not in existing]
+    # Seconds spent reading before the first venue call, out of the budget.
+    prep_s=round(time.monotonic()-started,1)
     unreached=0
     skips,spans={},{}
 
@@ -302,8 +315,8 @@ def cycle(budget_seconds=60, days_back=180, max_new_evidence=100, holdings_only=
     # what let an unreachable archive look healthy for days.
     detail={'positions_settled':settled,'evidence_captured':captured,
             'bands_checked':len(checked),'failed':failed,'first_failure':first_failure,
-            'candidates':len(candidates),'unreached':unreached,
-            'scope':'holdings' if holdings_only else 'holdings+archive',
+            'candidates':len(candidates),'unreached':unreached,'prep_s':prep_s,
+            'scope':'holdings' if holdings_only else ('unconfirmed' if unconfirmed_only else 'holdings+archive'),
             'skips':skips,'skip_day_spans':spans,
             'checked_span':[min(days_checked),max(days_checked)] if days_checked else None}
     log_run('paper_settlement',status,settled+captured,detail)

@@ -55,6 +55,11 @@ APPEND_DAYS = 10
 WORKERS = 4             # Open-Meteo refused a fifth concurrent request on 26 Sep
 TIMEOUT = 60
 TRIES = 2
+# A city whose request hung in the first pass is asked again once, after the
+# pass, with RETRY_WAIT between. On 27 Sep the multi-model request timed out
+# twice for moscow, paris, lucknow and houston within 05:16-05:18Z, so those
+# four had no station-model row and priced on P3.9 alone that day.
+RETRY_WAIT = 10
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 DIR = os.path.join(ROOT, "data", "training", "previous_runs")
@@ -261,17 +266,31 @@ def fetch_current(city):
     return heating, models
 
 
+def fetch_each(fetch, cities):
+    """[(city, (heating, models))] in `cities` order. One pass on the pool,
+    then one more pass over the cities with a part missing; a part the first
+    pass did get is kept."""
+    with ThreadPoolExecutor(WORKERS) as pool:
+        got = list(pool.map(fetch, cities))
+        again = [i for i, (h, m) in enumerate(got) if h is None or m is None]
+        if again:
+            time.sleep(RETRY_WAIT)
+            for i, (h, m) in zip(again, pool.map(fetch, [cities[i] for i in again])):
+                old_h, old_m = got[i]
+                got[i] = (old_h if old_h is not None else h, old_m if old_m is not None else m)
+    return list(zip(cities, got))
+
+
 def forward_rows(cities, fetched_at=None):
     """Tomorrow's and the day after's rows from each model's current run."""
     fetched_at = fetched_at or dt.datetime.now(dt.timezone.utc)
     bm, md, missing = [], [], []
-    with ThreadPoolExecutor(WORKERS) as pool:
-        for city, (h, m) in zip(cities, pool.map(fetch_current, cities)):
-            if h is None or m is None:
-                missing.append(city["city_key"])
-            b, x = current_rows(city["city_key"], h, m, fetched_at, city["timezone"])
-            bm += b
-            md += x
+    for city, (h, m) in fetch_each(fetch_current, cities):
+        if h is None or m is None:
+            missing.append(city["city_key"])
+        b, x = current_rows(city["city_key"], h, m, fetched_at, city["timezone"])
+        bm += b
+        md += x
     return bm, md, missing
 
 
@@ -330,13 +349,12 @@ def main(argv=None):
     cities = [c for c in get_cities() if c.get("latitude") is not None and c.get("timezone")
               and c.get("status", "active") == "active"]
     bm, md, missing = [], [], []
-    with ThreadPoolExecutor(WORKERS) as pool:
-        for city, (h, m) in zip(cities, pool.map(lambda c: fetch_previous(c, start, end), cities)):
-            if h is None or m is None:
-                missing.append(city["city_key"])
-            b, x = previous_rows(city["city_key"], h, m, city["timezone"], start.isoformat(), end.isoformat())
-            bm += b
-            md += x
+    for city, (h, m) in fetch_each(lambda c: fetch_previous(c, start, end), cities):
+        if h is None or m is None:
+            missing.append(city["city_key"])
+        b, x = previous_rows(city["city_key"], h, m, city["timezone"], start.isoformat(), end.isoformat())
+        bm += b
+        md += x
     old_bm, old_md = read_rows(BEST_MATCH_FILE), read_rows(MODELS_FILE)
     new_bm, new_md = merge(old_bm, bm, 3), merge(old_md, md, 4)
     detail = {"from": start.isoformat(), "to": end.isoformat(), "cities": len(cities),
