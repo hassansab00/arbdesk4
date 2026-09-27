@@ -126,3 +126,16 @@ def test_the_view_is_not_backed_against_the_market_until_proven():
     lock_probs = {"a": 0.10, "b": 0.50, "c": 0.30, "d": 0.10}
     lock_book = {"a": {"ask": 0.08}, "b": {"ask": 0.40}, "c": {"ask": 0.25}, "d": {"ask": 0.08}}
     assert de.decide(dict(VIEW, probs=lock_probs, lock=True), book=lock_book, ledger=LEDGER)["action"] == "BUY"
+
+
+def test_a_lock_is_still_a_lock_while_other_ladders_hold_money():
+    """The lock's floor is this ladder's cash plus its holdings at cost. With
+    a floor of 1, $100 on another ladder made every lock 'break' (the replay:
+    all 119 lock_breaks of 12-25 Sep fell while s11_lock held one position)."""
+    probs = {"a": 0.1, "b": 0.5, "c": 0.3, "d": 0.1}
+    book = {"a": {"ask": 0.08}, "b": {"ask": 0.40}, "c": {"ask": 0.25}, "d": {"ask": 0.08}}   # asks sum 0.81
+    ledger = dict(LEDGER, cash_usd=900.0, on_market_usd=0.0)            # $100 held elsewhere
+    d = de.decide(dict(VIEW, probs=probs, lock=True), book=book, ledger=ledger)
+    assert d["action"] == "BUY", d["reason_code"]
+    paid = _paid(d["orders"])
+    assert min(_payout_by_outcome(d["orders"], probs).values()) >= paid - 0.05

@@ -330,7 +330,7 @@ def _project(w, u, total):
     return out
 
 
-def _lock_book(best, names, u, c0, n, wealth_of, objective, steps=200):
+def _lock_book(best, names, u, c0, n, wealth_of, objective, steps=200, floor=1.0):
     """The best book that never ends below the ledger's wealth, or all cash.
 
     The growth-optimal book broke the lock. A book that cannot lose is the
@@ -363,7 +363,7 @@ def _lock_book(best, names, u, c0, n, wealth_of, objective, steps=200):
         for t in range(steps + 1):
             a = t / steps
             w = [(1 - a) * e + a * b for e, b in zip(eq, best)]
-            if min(wealth_of(w)) < 1.0 - 1e-9:
+            if min(wealth_of(w)) < floor - 1e-9:
                 continue
             g = objective(w)
             if g > best_g:
@@ -373,7 +373,7 @@ def _lock_book(best, names, u, c0, n, wealth_of, objective, steps=200):
 
 def solve_book(ladder, allow=("YES", "NO"), caps=None, held=None, total_usd=1.0, cash_usd=None,
                sds=None, alpha=ALPHA_PRIOR, lock=False, iters=BOOK_ITERS, n_draws=N_DRAWS, seed=0,
-               max_spend=None, max_price=None):
+               max_spend=None, max_price=None, lock_floor=1.0):
     """The growth-optimal NEW purchases for one ladder, under every constraint part 2 knows.
 
     caps      {asset name: most of total wealth it may take} - depth at the
@@ -391,6 +391,10 @@ def solve_book(ladder, allow=("YES", "NO"), caps=None, held=None, total_usd=1.0,
               (insurance) book to it is taken; with no equal-shares book on
               offer, nothing is bought (_lock_book).
 
+    lock_floor what the lock may not end below, per dollar of total wealth: the
+              free cash plus what this ladder's holdings cost. 1 when the
+              ledger holds nothing on other ladders; money on other ladders is
+              not in this ladder's outcomes, so it is not in the floor.
     max_spend the most of total wealth this ladder may take in new purchases,
               all assets together: the city-day rail (risk_rails.ladder_budget).
     max_price no YES or NO bought above it: the price rail (0.97).
@@ -470,8 +474,8 @@ def solve_book(ladder, allow=("YES", "NO"), caps=None, held=None, total_usd=1.0,
         return sum(ps[k] * math.log(v) for k, v in enumerate(wealth_of(wv)) if ps[k] > 0)
 
     W = wealth_of(avg)
-    if lock and min(W) < 1.0 - 1e-9:
-        avg = _lock_book(avg, names, u, c0, n, wealth_of, objective)
+    if lock and min(W) < lock_floor - 1e-9:
+        avg = _lock_book(avg, names, u, c0, n, wealth_of, objective, floor=lock_floor)
         W = wealth_of(avg)
         binding.append("lock")
 
