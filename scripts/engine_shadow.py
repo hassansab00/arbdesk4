@@ -41,6 +41,7 @@ JOB_KEY = "engine"
 STRATEGIES = ("s10_winner", "s10_growth", "s10_lock", "s11_ladder", "s11_lock", "s12_no")
 S10 = ("s10_winner", "s10_growth", "s10_lock")
 WRITE_RESERVE_S = 3.0
+ORDER_RESERVE_S = 1.0     # kept after the fills for the tick's own log
 
 # decisions.reason_code's check, as 20260925090000_decision_log.sql declares
 # it: lower-case letters and underscores, NO DIGITS. One code outside it fails
@@ -184,9 +185,11 @@ def _num(x):
 
 
 def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, params, anchor_table,
-               deadline, run_id, decided_at):
+               deadline, run_id, decided_at, buys=None):
     """(rows, detail). checkpoints: [(checkpoint_id, row)] written this tick,
-    latest per city-day. deadline: time.monotonic() to stop at."""
+    latest per city-day. deadline: time.monotonic() to stop at. `buys`, when
+    given, collects (row, decision, checkpoint_id) for every BUY: its orders
+    are what part 3b sends (engine_orders)."""
     import decision_engine as de
     from strategies import engine_views as ev
 
@@ -233,6 +236,8 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
                 continue
             d = de.decide(view, book=ebook, ledger=lg, params=params)
             rows.append(decision_row(run_id, decided_at, checkpoint_id, sid, city, target, d=d))
+            if buys is not None and d.get("action") == "BUY":
+                buys.append((rows[-1], d, checkpoint_id))
     return rows, {"city_days": len(checkpoints), "reached": reached, "out_of_time": skipped}
 
 
@@ -281,6 +286,30 @@ def read_ledgers(rest, rest_all, now):
     return out
 
 
+def send_orders(buys, run_id, deadline, dry_run=False):
+    """engine_orders.send for this run's BUYs; reads only when a BUY's
+    strategy is switched on. Never raises."""
+    from common import rest, rest_all, rpc
+    import engine_orders
+    try:
+        sids = sorted({r["strategy_id"] for r, _d, _c in buys})
+        enabled = {r["strategy_id"] for r in rest("strategies", [
+            ("select", "strategy_id"), ("enabled", "eq.true"), ("strategy_id", f"in.({','.join(sids)})")]) or []}
+        if not enabled:
+            return {"buys": len(buys), "skipped": {"strategy not switched on": len(buys)}}
+        accounts = {a["strategy_id"]: a["account_id"] for a in rest("paper_accounts", [
+            ("select", "account_id,strategy_id"), ("kind", "eq.shadow"), ("status", "eq.active"),
+            ("strategy_id", f"in.({','.join(sorted(enabled))})")]) or []}
+        ids = {(r["strategy_id"], r["city_key"], str(r["resolution_date"])): r["decision_id"] for r in rest_all(
+            "decisions", [("select", "decision_id,strategy_id,city_key,resolution_date"),
+                          ("run_id", f"eq.{run_id}"), ("action", "eq.BUY")], order="decision_id.asc")}
+        import paper_worker
+        return engine_orders.send(buys, accounts, enabled, ids, run_id, deadline, rpc, rest,
+                                  paper_worker.fill_order, dry_run=dry_run)
+    except Exception as e:                       # noqa: BLE001 - never into the tick
+        return {"buys": len(buys), "error": f"{type(e).__name__}: {str(e)[:160]}"}
+
+
 def record(written_rows, s10_ladders, bands_by_market, market_of, unit_of, floors, now, deadline,
            dry_run=False):
     """Decide for the checkpoints the tick just wrote, and write the rows."""
@@ -320,9 +349,10 @@ def record(written_rows, s10_ladders, bands_by_market, market_of, unit_of, floor
         params = {"clusters": city_clusters.load(rest)}
         anchor_table = market_anchor.load(rest)
         run_id = str(uuid.uuid4())
+        buys = []
         rows, detail = decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, params,
                                   anchor_table, deadline - WRITE_RESERVE_S, run_id,
-                                  now.isoformat())
+                                  now.isoformat(), buys=buys)
         out.update(detail)
         out["actions"] = {}
         for r in rows:
@@ -332,6 +362,11 @@ def record(written_rows, s10_ladders, bands_by_market, market_of, unit_of, floor
         elif rows:
             out["would_write"] = len(rows)
         out["run_id"] = run_id
+        # Part 3b: the BUYs of a switched-on strategy reach its shadow ledger,
+        # filled before the tick ends (engine_orders). The decision is written
+        # first: the plan must find it.
+        if buys:
+            out["orders"] = send_orders(buys, run_id, deadline - ORDER_RESERVE_S, dry_run)
     except Exception as e:                       # noqa: BLE001 - never into the tick
         out["error"] = f"{type(e).__name__}: {str(e)[:160]}"
     out["seconds"] = round(time.monotonic() - t0, 1)

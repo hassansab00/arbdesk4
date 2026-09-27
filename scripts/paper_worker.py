@@ -65,6 +65,24 @@ def consumed_depth(order, snapshot):
     return used
 
 
+def fill_order(order):
+    """Fill one claimed order against the book captured now, and record it.
+
+    The one way an order is filled: this worker's cycle and the tick's engine
+    orders (plan v2 P5.12 part 3b) both call it."""
+    try:
+        book = capture_book(order)
+        result = simulate(order, book, consumed=consumed_depth(order, book['snapshot_id']))
+        result['venue_metadata'] = book['market_metadata']
+        if number(result['notional'])+number(result['fee']) > number(order['cash_ceiling']) and order['action']=='BUY':
+            result = {'status':'rejected','reason':'fee_inclusive_cash_ceiling','fills':[], 'shares':'0','notional':'0','fee':'0'}
+    except (ValueError, KeyError, TypeError, requests.RequestException) as exc:
+        result = {'status':'rejected','reason':str(exc)[:400],'fills':[], 'shares':'0','notional':'0','fee':'0'}
+    result['engine_version'] = os.environ.get('GITHUB_SHA') or os.environ.get('ARBDESK_ENGINE_VERSION','unversioned')
+    rpc('complete_paper_order', {'p_order':order['order_id'],'p_lease':order['lease_token'],'p_result':result})
+    return result
+
+
 def cycle(max_orders=10):
     rpc('expire_paper_commands')
     started, completed = time.monotonic(), 0
@@ -74,16 +92,7 @@ def cycle(max_orders=10):
         order = rpc('claim_paper_order')
         if not order:
             break
-        try:
-            book = capture_book(order)
-            result = simulate(order, book, consumed=consumed_depth(order, book['snapshot_id']))
-            result['venue_metadata'] = book['market_metadata']
-            if number(result['notional'])+number(result['fee']) > number(order['cash_ceiling']) and order['action']=='BUY':
-                result = {'status':'rejected','reason':'fee_inclusive_cash_ceiling','fills':[], 'shares':'0','notional':'0','fee':'0'}
-        except (ValueError, KeyError, TypeError, requests.RequestException) as exc:
-            result = {'status':'rejected','reason':str(exc)[:400],'fills':[], 'shares':'0','notional':'0','fee':'0'}
-        result['engine_version'] = os.environ.get('GITHUB_SHA') or os.environ.get('ARBDESK_ENGINE_VERSION','unversioned')
-        rpc('complete_paper_order', {'p_order':order['order_id'],'p_lease':order['lease_token'],'p_result':result})
+        fill_order(order)
         completed += 1
     log_run('paper_worker','ok',completed,{'orders_completed':completed,'seconds':round(time.monotonic()-started,2)})
     return {'orders_completed':completed}
