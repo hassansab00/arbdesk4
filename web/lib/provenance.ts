@@ -1589,6 +1589,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_climb_profile",
     "derived_trajectory"
   ],
+  "v_unarchived_ladders": [
+    "book_snapshots"
+  ],
   "v_venue_band_resolution": [
     "bands",
     "paper_resolution_evidence",

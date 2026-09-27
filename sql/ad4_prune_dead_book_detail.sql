@@ -56,6 +56,10 @@
 -- windows almost guarantee that already on an hourly feed, but 'almost' is
 -- how v_latest_book would one day return a row with no ladder on a band the
 -- collector had stopped seeing.
+-- Stamped by mark_ladders_archived() once the nightly archive holds the
+-- ladder (supabase/migrations/20260927100000_a_ladder_is_archived_before_it_is_pruned.sql).
+alter table public.book_snapshots add column if not exists ladder_archived_at timestamptz;
+
 create or replace function public.prune_dead_book_detail(
   p_older_than      interval default interval '6 hours',
   p_live_older_than interval default interval '48 hours'
@@ -75,6 +79,8 @@ begin
   update book_snapshots b
      set raw_book = null, no_book = null
    where (b.raw_book is not null or b.no_book is not null)
+     -- a trading band's ladder is in the repository archive first (plan v2 P5.13)
+     and (b.ladder_archived_at is not null or b.market_state in ('DEAD_LOSER', 'DEAD_WINNER'))
      and b.snapshot_id not in (select snapshot_id from newest)
      and b.observed_at < now() - case
            when b.market_state in ('DEAD_LOSER', 'DEAD_WINNER') then p_older_than
@@ -86,7 +92,7 @@ end;
 $$;
 
 comment on function public.prune_dead_book_detail(interval, interval) is
-  'Nulls raw_book and no_book on snapshots nobody reads: six hours for a band the market has decided, forty-eight for one still trading, and never the newest snapshot of any band. Keeps every numeric column, including the cumulative USD tiers ad4_synth_levels() rebuilds a ladder from. Never deletes a row.';
+  'Nulls raw_book and no_book on snapshots nobody reads - six hours for a band the market has decided, forty-eight for one still trading, never the newest snapshot of any band - and a trading band''s only once its ladder is in the repository archive (ladder_archived_at, plan v2 P5.13). Keeps every numeric column. Never deletes a row.';
 
 drop function if exists public.prune_dead_book_detail(interval);
 revoke all on function public.prune_dead_book_detail(interval, interval) from public, anon, authenticated;
