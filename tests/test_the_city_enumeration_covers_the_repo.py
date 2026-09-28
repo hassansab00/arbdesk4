@@ -236,6 +236,10 @@ MIGRATION_RECORD = {
         "queue_plan's close-buffer rail reads cities.timezone for ONE market's city, "
         "to put the market's close on its local clock; it enumerates nothing, and a "
         "retired city's market closes when its day ends like any other",
+    "supabase/migrations/20260928090000_the_cluster_rail.sql":
+        "queue_plan again (P5.9 part 3, the cluster-day rail): the same close-buffer "
+        "read of cities.timezone for ONE market's city; the cluster sums read markets "
+        "and positions, not cities, and enumerate nothing",
     "supabase/migrations/20260923170000_trust_shrunk_toward_the_pool.sql":
         "refresh_observation_trust() - the RECORD of how often each city's thermometer "
         "names the venue's band, like the migration it replaces; the gate that reads it "
