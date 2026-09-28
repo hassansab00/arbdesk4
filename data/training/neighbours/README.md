@@ -4,6 +4,7 @@ The METAR temperatures of every active city's settlement station and of the stat
 
 - **Source:** the Iowa Environmental Mesonet's ASOS/METAR archive (`asos.py`): routine and special reports, `tmpf` converted to °C at one decimal. Station lists come from IEM's network files, `NETWORKS` in the tool.
 - **Period:** 1 Dec 2025 00:00 to 26 Sep 2026 23:58 UTC. IEM's end date is exclusive, so the tool's `END` of 27 Sep gives no readings on 27 Sep.
+- **The live tick reads the same service** (`asos.py`, every hour at about :36). A research fetch asks one station at a time and backs off. On 28 Sep, the 16:36Z tick's observation fetch got a 503 while this download's first, batched requests were getting 503 too; the cause is not established (P5.12 row).
 - **Fetched:** 28 Sep 2026, one station per request. IEM refused nine at once (503) and asked for fewer requests (429), so the tool waits between requests. The raw per-station downloads are cached in `cache/`, which is not committed.
 
 ## Files
