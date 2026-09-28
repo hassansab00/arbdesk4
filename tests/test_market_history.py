@@ -223,3 +223,34 @@ def test_a_city_weight_is_recovered_with_a_held():
         rows.append((mkt, mdl, w))
     assert abs(mvm.fit_b(rows, 1.1) - 0.5) < 0.15
     assert mvm.K8 == 60
+
+
+def test_the_recal_belief_trades_both_sides_after_its_cost_and_the_rail():
+    rb = _tool("p310_recal_belief")
+    p = [0.6, 0.3, 0.1]
+    assert all(abs(x - y) < 1e-12 for x, y in zip(rb.belief(p, 1.0), p))
+    sharp = rb.belief(p, 2.0)
+    assert sharp[0] > 0.6 and sharp[2] < 0.1 and abs(sum(sharp) - 1) < 1e-12
+    spreads = {rb.costs.bin_of(x): (0.01, 0.02, 9) for x in (0.02, 0.3, 0.6)}
+    got = {(i, side): (cost, edge) for i, side, cost, edge in rb.sides([0.6, 0.3, 0.02], sharp, spreads)}
+    # YES on bucket 0: ask 0.61 plus its fee; NO on bucket 2: ask 1 - 0.02 + 0.01 = 0.99 > the rail
+    assert abs(got[(0, "YES")][0] - (0.61 + 0.05 * 0.61 * 0.39)) < 1e-12
+    assert abs(got[(0, "YES")][1] - (sharp[0] - got[(0, "YES")][0])) < 1e-12
+    assert (2, "NO") not in got and (2, "YES") in got
+    assert abs(got[(1, "NO")][0] - (0.71 + 0.05 * 0.71 * 0.29)) < 1e-12
+    # real asks: a side the books did not quote is left out
+    real = rb.sides([0.6, 0.3, 0.02], sharp, spreads, asks={(0, "YES"): 0.65, (1, "NO"): 0.72})
+    assert [(i, s) for i, s, _c, _e in real] == [(0, "YES"), (1, "NO")]
+    assert rb.pnl("YES", 0, 0, 0.6)[0] == 0.4 and rb.pnl("NO", 0, 0, 0.3) == (-0.3, False)
+    assert rb.pnl("NO", 1, 0, 0.7)[1] is True
+
+
+def test_the_recal_study_is_fixed_before_it_is_read_and_prices_after_the_decision():
+    src = (ROOT / "tools" / "p310_recal_belief.py").read_text()
+    assert "FIXED HERE, BEFORE ANY RESULT WAS SEEN" in src and "mid.ladders_after" in src
+    rb = _tool("p310_recal_belief")
+    rows = [{"month": m, "p": [0.5, 0.3, 0.2], "w": 0} for m in ("2026-01", "2026-02") for _ in range(600)]
+    rb.MIN_TRAIN = 1000
+    assert set(rb.fits(rows)) == set()                      # 600 earlier city-days: too few for February
+    rows += [{"month": "2026-03", "p": [0.5, 0.3, 0.2], "w": 0}]
+    assert set(rb.fits(rows)) == {"2026-03"}

@@ -475,7 +475,13 @@ P7 design work (P7.1–P7.3) can start as soon as P2 is merged. Shadow trading (
 - **Part 3 (next, in this order):**
   1. P3.9's correction learns from the venue's truth (the settled bucket, or the venue's reading where `weather_resolution_evidence` has it) instead of the station labels; both label sets are scored on the venue's truth every night. **Built 28 Sep** (`v_venue_truth`, `scripts/venue_truth.py`). P2.9's station model is not switched: it trains on the whole year and the database's venue truth starts 22 Aug, so it is tested first.
   2. Whether S10's post-peak edge survives the cost of trading. The record's price is quoted, not executable; the spread comes from the archived books (23 Aug-24 Sep) and the live book since. **Done 28 Sep: no edge shown** (above).
-  3. The market's under-confidence (recal) as a shadow belief at the day-ahead checkpoint, judged after costs like 2.
+  3. The market's under-confidence (recal) as a shadow belief at the day-ahead checkpoint, judged after costs like 2. **Done 28 Sep: not shown after costs** (`tools/p310_recal_belief.py` -> `docs/RECAL_BELIEF_2026-09-28.md`).
+     - The belief: the market's ladder priced in the hour after the decision, raised to a power a fitted on earlier months (1.07-1.16 across the three decisions) and renormalised. It trades every side of every bucket whose value beats its ask plus fee by more than M, one share each, never above the 0.97 rail.
+     - The under-confidence holds on these prices: log loss better than the market at 00:00 by +0.0024 [+0.0006, +0.0043], at 18:00 the evening before by +0.0040, at 08:00 by +0.0017.
+     - At quoted prices plus the books' median half-spread, the rule chosen walk-forward makes +0.0626 per share [+0.0242, +0.1015] at 00:00 (273 trades, 96 days); at 18:00 the evening before +0.0050 [+0.0004, +0.0095]; at 08:00 +0.0149 [-0.0156, +0.0435].
+     - At the books' real asks (23 Aug-24 Sep) it does not hold: at 00:00 every side with M = 0 loses -0.0665 [-0.1181, -0.0259] (143 trades, 11 days), and M = 0.02 leaves 9 trades, too few to judge. Part 6 found the same gap between the midnight quote and the real ask.
+     - Checked after the results were read (disclosed in the tool): the quoted gain is not an artefact of stale ladders; it appears on ladders whose quotes sum to 0.95-1.05 as well (+0.0603 [+0.0151, +0.1051], 189 trades).
+     - **Not put in shadow as a view:** the live engine has no 00:00 checkpoint, and the open question is the real ask, which the book archive answers by itself (snapshots every 2 h since 26 Sep, about half of the buckets with a NO ask). **Re-run this tool when its real-ask table at 00:00 covers 45 or more dates (16 on 28 Sep).** It goes to shadow only if the real asks carry it.
 
 ## P4. Honest evidence
 
