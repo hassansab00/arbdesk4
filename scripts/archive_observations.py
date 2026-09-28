@@ -126,15 +126,20 @@ TABLES = {
         "cutoff_col": "traded_at",
         "cutoff_is_date": False,
         "prune_rpc": "prune_trades",
-        # TWO, THE FLOOR prune_trades ENFORCES since 28 Sep (plan v2 P1.6;
-        # fourteen from 24 Sep): twice the 24-hour volume window its readers
-        # use. Since the trade prints moved into the tick (P6.2, 24-25 Sep)
-        # the table takes 23,000-56,500 a day, and fourteen days of that is
-        # about 390 MB on a 500 MB tier (arithmetic). refresh_derived no
-        # longer lowers the day this cuts (28 Sep). The floor is parsed from
+        # ONE DAY, WANTED AND FLOOR ALIKE (plan v2 P1.6 phase 1, 28 Sep;
+        # Hassan approved it on condition that no collected trade is lost -
+        # every one is exported, read back and committed first). Two from
+        # earlier that day, fourteen from 24 Sep. Since the trade prints moved
+        # into the tick (P6.2, 24-25 Sep) the table takes 23,000-56,500 a day,
+        # and its readers look back 24 hours; prune_trades refuses any window
+        # shorter than that, and any cutoff past the trade ingest's own mark.
+        # keep_days is stated, not left to the 90-day default: below the
+        # high-water mark every dataset gets what it WANTS, and 90 days of
+        # trades would refill the tier within days. The floor is parsed from
         # the SQL by a test: on 23 Sep the function said 30 while this said
         # 14, and the run exported 36,945 rows, had them refused, and failed.
-        "min_keep_days": 2,
+        "keep_days": 1,
+        "min_keep_days": 1,
         "tag": "trades-archive",
         "columns": ["band_id", "condition_id", "traded_at", "price", "size",
                     "side", "proxy_wallet", "ingested_at", "city_key",

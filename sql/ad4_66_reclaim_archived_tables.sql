@@ -124,9 +124,13 @@ select cron.schedule(
   'VACUUM (FULL, ANALYZE) public.weather_observations'
 );
 
+-- DAILY SINCE 28 SEP (plan v2 P1.6 phase 1): trades keep one day, so the
+-- archive sheds a day of them every night (40,000-57,000 rows at full
+-- capture). 03:20, after the 02:36 archive and its own reclaim request, and
+-- before the 03:30 research reclaim, outside pipeline_daily's hour.
 select cron.schedule(
   'ad4_reclaim_trades_observed',
-  '50 6 * * 1',
+  '20 3 * * *',
   'VACUUM (FULL, ANALYZE) public.trades_observed'
 );
 

@@ -40,24 +40,57 @@ import archive_observations as ao  # noqa: E402
 
 # --- the floors ----------------------------------------------------------
 
-def _guards():
-    """{function name: the smallest p_keep_days it accepts}, from every SQL
-    definition in the repository. A function defined in more than one file
-    takes the strictest, since either may be the one applied last."""
+def _guards_in(path):
+    """{function name: the smallest p_keep_days it accepts} for one file."""
     found = {}
-    files = sorted((ROOT / "sql").glob("*.sql")) + sorted((ROOT / "supabase" / "migrations").glob("*.sql"))
-    for path in files:
-        text = path.read_text(encoding="utf-8")
-        # mark_*_archived: a dataset whose second phase stamps rows as archived
-        # rather than deleting them (the ladders, P5.13) keeps the same guard.
-        for m in re.finditer(r"create\s+or\s+replace\s+function\s+(?:public\.)?(prune_\w+|mark_\w+_archived)\s*\(", text, re.I):
-            body = text[m.end():]
-            nxt = re.search(r"create\s+or\s+replace\s+function", body, re.I)
-            body = body[:nxt.start()] if nxt else body
-            g = re.search(r"p_keep_days\s*<\s*(\d+)", body)
-            if g:
-                found[m.group(1)] = max(found.get(m.group(1), 0), int(g.group(1)))
+    text = path.read_text(encoding="utf-8")
+    # mark_*_archived: a dataset whose second phase stamps rows as archived
+    # rather than deleting them (the ladders, P5.13) keeps the same guard.
+    for m in re.finditer(r"create\s+or\s+replace\s+function\s+(?:public\.)?(prune_\w+|mark_\w+_archived)\s*\(", text, re.I):
+        body = text[m.end():]
+        nxt = re.search(r"create\s+or\s+replace\s+function", body, re.I)
+        body = body[:nxt.start()] if nxt else body
+        g = re.search(r"p_keep_days\s*<\s*(\d+)", body)
+        if g:
+            found[m.group(1)] = max(found.get(m.group(1), 0), int(g.group(1)))
     return found
+
+
+def _sql_guards():
+    """The guards the install order builds (sql/*.sql), strictest per name."""
+    found = {}
+    for path in sorted((ROOT / "sql").glob("*.sql")):
+        for name, g in _guards_in(path).items():
+            found[name] = max(found.get(name, 0), g)
+    return found
+
+
+def _migration_guards():
+    """The guards production runs: migrations apply in filename order, so the
+    NEWEST migration that defines a function is the one live."""
+    found = {}
+    for path in sorted((ROOT / "supabase" / "migrations").glob("*.sql")):
+        found.update(_guards_in(path))
+    return found
+
+
+def _guards():
+    """{function name: the smallest p_keep_days it accepts}. The newest
+    migration's guard where a migration defines the function (what production
+    runs), else the install order's. Until 28 Sep this took the strictest of
+    every file ever written, which made a lowered floor impossible to land:
+    the older migration still said the old number. The next test holds the
+    two sources together instead."""
+    return {**_sql_guards(), **_migration_guards()}
+
+
+def test_the_install_order_and_the_newest_migration_agree_on_every_floor():
+    """sql/ builds a fresh database and the newest migration is what
+    production runs; a floor lowered in one and not the other would make the
+    two databases refuse different windows."""
+    sql, mig = _sql_guards(), _migration_guards()
+    differ = {n: (sql[n], mig[n]) for n in sql.keys() & mig.keys() if sql[n] != mig[n]}
+    assert not differ, f"sql/ and the newest migration disagree (sql, migration): {differ}"
 
 
 def test_every_prune_the_archive_calls_has_a_guard_to_check_against():

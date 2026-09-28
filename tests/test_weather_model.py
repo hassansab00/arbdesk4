@@ -593,9 +593,9 @@ def test_the_archive_refuses_a_window_too_small_to_model_on():
 
     root = pathlib_root()
     trades = (root / "sql" / "ad4_65_prune_trades.sql").read_text(encoding="utf-8")
-    assert "p_keep_days < 2" in trades, (
-        "the 2-day floor (P1.6, 28 Sep) must survive where it matters - the 24h volume "
-        "window needs room to be wrong")
+    assert "p_keep_days < 1 or p_keep_days * 24 < v_lookback" in trades, (
+        "the trades floor (P1.6 phase 1, 28 Sep) must survive where it matters: at "
+        "least a day, and never shorter than the window the volume views read")
 
 
 def pathlib_root():

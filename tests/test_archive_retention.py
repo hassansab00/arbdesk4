@@ -189,8 +189,9 @@ def test_the_floor_is_enforced_by_the_function_that_deletes():
 
     trades = Path(__file__).resolve().parents[1] / "sql" / "ad4_65_prune_trades.sql"
     research = Path(__file__).resolve().parents[1] / "sql" / "ad4_69_prune_research_captures.sql"
-    assert "p_keep_days < 2" in trades.read_text(encoding="utf-8"), (
-        "trades needs 2 days (P1.6, 28 Sep; 14 from 24 Sep) - the 24h volume window needs room to be wrong")
+    assert "p_keep_days < 1 or p_keep_days * 24 < v_lookback" in trades.read_text(encoding="utf-8"), (
+        "trades keeps at least 1 day AND at least the window the volume views read "
+        "(P1.6 phase 1, 28 Sep; 2 earlier that day, 14 from 24 Sep)")
     assert "p_keep_days < 2" in research.read_text(encoding="utf-8"), (
         "research needs a floor too, just a shorter one - its whole history is "
         "five days, so a 30-day floor would make the function permanently refuse")
