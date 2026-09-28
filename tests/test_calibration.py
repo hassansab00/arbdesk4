@@ -247,10 +247,75 @@ def test_a_rerun_the_same_night_steps_from_the_t_before_it():
 
 def test_the_bounded_T_is_what_is_validated_and_written():
     src = open(cal.__file__).read()
-    assert "T = bounded(T_fitted, prev)" in src
+    assert "T = step_toward(T_fitted, prev, weight)" in src
     scoring = src[src.index("    before_br ="):src.index("    if train and val:")]
     assert "multiclass_brier(val, T)" in scoring and "T_fitted" not in scoring
     assert '"T": round(T, 6)' in src and '"T_fitted": round(T_fitted, 6)' in src
+
+
+# ---------------------------------------------------------------------------
+# the cadence (Hassan, 28 Sep): kicks in at 7 dates, updates every 7 days,
+# a full recalibration at the 30 mark
+# ---------------------------------------------------------------------------
+import datetime as _dt
+
+_D = _dt.date(2026, 9, 29)
+
+
+def test_the_cadence_constants_are_the_decision():
+    assert (cal.WEEKLY_MIN_DATES, cal.UPDATE_EVERY_DAYS, cal.FULL_RECALIBRATION_DATES) == (7, 7, 30)
+
+
+def test_below_seven_dates_nothing_can_apply():
+    assert cal.schedule(None, _D, 6) == ("gate", True, None)
+    assert cal.schedule({"updated_on": "2026-09-28"}, _D, 0)[0] == "gate"
+
+
+def test_the_first_update_comes_at_seven_dates_then_weekly():
+    assert cal.schedule(None, _D, 7) == ("weekly", True, _D + _dt.timedelta(days=7))
+    # an old-format map (no update on record) is due at once
+    assert cal.schedule({"method": "temperature", "T": 1.25, "applies": False}, _D, 15)[:2] == ("weekly", True)
+    last = {"updated_on": "2026-09-29", "update_kind": "weekly"}
+    for day in range(1, 7):
+        kind, due, nxt = cal.schedule(last, _D + _dt.timedelta(days=day), 15 + day)
+        assert (kind, due, nxt) == ("not_due", False, _dt.date(2026, 10, 6)), day
+    assert cal.schedule(last, _dt.date(2026, 10, 6), 22)[:2] == ("weekly", True)
+
+
+def test_a_rerun_the_night_of_an_update_is_the_same_update():
+    last = {"updated_on": "2026-09-29", "update_kind": "full", "full_on": "2026-09-29"}
+    assert cal.schedule(last, _D, 30)[:2] == ("full", True)
+    assert cal.schedule(dict(last, update_kind="weekly", full_on=None), _D, 12)[:2] == ("weekly", True)
+
+
+def test_the_thirty_date_mark_is_a_full_recalibration_whatever_the_week_says():
+    last = {"updated_on": "2026-09-27", "update_kind": "weekly"}       # two days ago
+    assert cal.schedule(last, _D, 29)[:2] == ("not_due", False)
+    assert cal.schedule(last, _D, 30)[:2] == ("full", True)
+    after = {"updated_on": "2026-09-29", "update_kind": "full", "full_on": "2026-09-29"}
+    assert cal.schedule(after, _dt.date(2026, 10, 2), 33)[:2] == ("not_due", False), "then weekly again"
+    assert cal.schedule(after, _dt.date(2026, 10, 6), 37)[:2] == ("weekly", True)
+
+
+def test_an_update_moves_by_the_evidence_it_has():
+    assert cal.evidence_weight(7) == pytest.approx(7 / 30)
+    assert cal.evidence_weight(15) == pytest.approx(0.5)
+    assert cal.evidence_weight(30) == 1.0 and cal.evidence_weight(45) == 1.0
+    # 15 dates: half way from 1.0 toward a fit of 1.30
+    assert cal.step_toward(1.30, 1.0, 0.5) == pytest.approx(1.15)
+    # full weight is still held to the step and the bounds (Rule 11)
+    assert cal.step_toward(2.0, 1.0, 1.0) == pytest.approx(1.25)
+    assert cal.step_toward(5.0, 1.9, 1.0) == cal.T_MAX
+
+
+def test_a_night_that_is_not_due_leaves_the_map_in_force():
+    src = open(cal.__file__).read()
+    body = src[src.index("    if not due:"):src.index("    r = requests.post(")]
+    assert "return 0" in body and "update_setting" not in body
+    assert 'applies=bool(in_force.get("applies"))' in body, "the log must say what is actually in force"
+    # every update still has to beat the raw ladder on dates it never saw
+    verdict = src[src.index("    validated = bool("):src.index("    applies = ")]
+    assert "brier_gain >= MIN_VALIDATION_BRIER_GAIN" in verdict and "ll_improved" in verdict
 
 
 # ---------------------------------------------------------------------------
