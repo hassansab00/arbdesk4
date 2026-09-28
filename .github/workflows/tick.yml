@@ -70,6 +70,28 @@ jobs:
           key: tick-venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-${{ hashFiles('requirements.runtime.txt') }}
       - if: steps.venv.outputs.cache-hit != 'true'
         run: python -m venv .venv && .venv/bin/pip install -q -r requirements.runtime.txt
+      - name: Trade prints, started beside the other steps (replaces n8n P0.4)
+        # IN THE BACKGROUND, NOT LAST (28 Sep). Run last, the trade prints got
+        # only what the other steps left before TICK_DEADLINE, and on 28 Sep
+        # that was nothing in 9 of 27 ticks and under 5 s in 6 more (tick.py
+        # 18-33 s, NWS readings 6-9 s, confirmations up to 20 s): 11 of 19 runs
+        # read no trade and the cycle stood at its 04:36Z mark all day. The
+        # step waits on the network, not the CPU, so it runs beside the others
+        # from here with up to 30 s of its own, still ending before the same
+        # deadline (ingest_trades.py budget()): one billed minute. The last
+        # step collects its log and exit code. set +e because the runner's
+        # bash -e would end the subshell before it wrote the code down; the
+        # subshell's own output goes to /dev/null so this step does not wait
+        # on a pipe it holds open.
+        # Not on a rehearsal: dry_run writes nothing.
+        id: trades
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          (
+            set +e
+            .venv/bin/python scripts/ingest_trades.py --budget 30 > "$RUNNER_TEMP/trades.log" 2>&1
+            echo $? > "$RUNNER_TEMP/trades.rc"
+          ) < /dev/null > /dev/null 2>&1 &
       - name: Checkpoints
         # Inputs reach the script through the environment, never the shell
         # line, and tick.py parses --at as a timestamp or refuses it.
@@ -94,10 +116,19 @@ jobs:
       - name: Venue confirmations for days that just ended
         if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
         run: timeout 20 .venv/bin/python scripts/confirm_recent.py || echo "confirm_recent stopped at its 20 s backstop"
-      - name: Trade prints (replaces n8n P0.4)
-        # Last, because it is the one step that can stop anywhere and resume
-        # next hour (ingest_trades.py): it takes at most 15 s, and never more
-        # than is left before TICK_DEADLINE.
-        # Not on a rehearsal: dry_run writes nothing.
-        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
-        run: .venv/bin/python scripts/ingest_trades.py --budget 15
+      - name: Trade prints, collected
+        # Waits for the run started above: it stops starting batches at its
+        # budget and before TICK_DEADLINE, so it has normally finished by now.
+        # A batch already in flight is let finish, as when this step ran last;
+        # 120 s is the backstop for a hung request, inside the job's 3-minute
+        # timeout. Its exit code is the step's: it fails only when nothing
+        # worked (ingest_trades.py). Only if the run was started.
+        if: ${{ !cancelled() && steps.trades.outcome == 'success' }}
+        run: |
+          for i in $(seq 1 240); do [ -f "$RUNNER_TEMP/trades.rc" ] && break; sleep 0.5; done
+          cat "$RUNNER_TEMP/trades.log" 2>/dev/null || true
+          if [ ! -f "$RUNNER_TEMP/trades.rc" ]; then
+            echo "trade prints still running after 120 s: the next run resumes from the last log row"
+            exit 0
+          fi
+          exit "$(cat "$RUNNER_TEMP/trades.rc")"

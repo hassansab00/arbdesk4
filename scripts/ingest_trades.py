@@ -35,6 +35,15 @@ it never reached would be read from a mark set by trades on the ones it did,
 and their gap would be skipped for good (see plan()). Measured 25 Sep 09:37Z,
 the first run: a day's backlog took 20 s for one batch of 100 markets, so the
 backlog is read one batch per hour until the cycle reaches the end.
+
+BESIDE THE TICK, NOT AFTER IT (28 Sep). tick.yml ran this last, on whatever
+the other steps left before TICK_DEADLINE. As the engine moved into tick.py
+that became nothing: from 27 Sep 16:36Z to 28 Sep 19:36Z 9 of 27 ticks left
+it no time and 6 more under 5 s, 11 of 28 Sep's 19 runs read no trade, and the cycle stood at its 04:36Z
+mark all day (nothing was lost: the mark held, and no batch was truncated).
+It waits on the API, not the CPU, so tick.yml now starts it in the background
+before the checkpoints with --budget 30; budget() still ends it before the
+same deadline, so the job stays inside its one billed minute.
 """
 import argparse
 import datetime as dt

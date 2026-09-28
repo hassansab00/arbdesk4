@@ -60,10 +60,15 @@ def test_the_venue_calls_are_short(monkeypatch):
     assert paper_worker.public_json is cr.quick_json and cr.REQUEST_TIMEOUT_S == 5
 
 
-def test_the_tick_runs_it_before_the_trades_with_a_backstop():
+def test_the_tick_runs_it_with_a_backstop_and_the_trades_do_not_wait_for_it():
+    """confirm_recent keeps its 20 s backstop. The trade prints no longer run
+    after it on what is left (27-28 Sep: under 5 s in 15 of 27 ticks); they start in
+    the background before the checkpoints and are collected in the last step."""
     wf = (ROOT / ".github" / "workflows" / "tick.yml").read_text()
     assert "timeout 20 .venv/bin/python scripts/confirm_recent.py" in wf
-    assert wf.index("scripts/confirm_recent.py") < wf.index("scripts/ingest_trades.py")
+    run = lambda script: wf.index(f".venv/bin/python scripts/{script}")
+    assert run("ingest_trades.py") < run("tick.py") < run("confirm_recent.py")
+    assert wf.rindex("trades.rc") > run("confirm_recent.py")
 
 
 def test_the_ledger_is_asked_only_about_the_candidates(monkeypatch):
