@@ -303,6 +303,40 @@ TABLES = {
         "min_keep_days": 1,
         "needs_feature_cache": False,
     },
+    # PAST FORECAST FEATURES (plan v2 P1.6 phase 1, step 3, 28 Sep; approved
+    # on condition that no collected data is lost). Each forecast run's
+    # conditions for a city-day, ~3,300 rows a day, 14 MB, never archived.
+    # Readers: v_forecast_features for for_date >= today (weather_model's
+    # forward predictions; its fit reads derived_city_day_features), plus the
+    # inventory and freshness views. The table's key is (city_key, for_date,
+    # run_at), so the export reads v_forecast_features_export, which joins
+    # them into one fixed-width text key to page on; the key itself is not
+    # exported. Two days, not one: scripts/mirror_to_repo.py copies this table
+    # by capture day AFTER the prune, and a for_date can be a day before its
+    # capture day (588 rows, measured 28 Sep), so a row leaves only once the
+    # mirror has it too. The prune refuses any row captured since yesterday.
+    "forecast_features": {
+        "table": "weather_forecast_features",
+        "read_from": "v_forecast_features_export",
+        "pk": "feature_key",
+        # the table's composite primary key, which the view joins into `pk`
+        "pk_joins": ["city_key", "for_date", "run_at"],
+        "cutoff_col": "for_date",
+        "cutoff_is_date": True,
+        "prune_rpc": "prune_forecast_features",
+        "tag": "forecast-features-archive",
+        "columns": ["city_key", "for_date", "run_at", "source", "lead_days",
+                    "forecast_max_c", "forecast_min_c", "apparent_max_c",
+                    "morning_temp_c", "morning_dewpoint_c", "dewpoint_depression_c",
+                    "morning_humidity", "cloud_mean", "cloud_max", "wind_mean",
+                    "wind_max", "precip_total", "precip_probability", "n_hours",
+                    "captured_at", "morning_pressure_hpa", "pressure_change_24h_hpa",
+                    "wind_u_mean", "wind_v_mean"],
+        "bytes_per_row": 230,
+        "keep_days": 2,
+        "min_keep_days": 2,
+        "needs_feature_cache": False,
+    },
     # THE DECISION LOG (plan v2 P5.11): one row per run, strategy and
     # city-day, about 2,600 a day at 48 city-days, 9 strategies and six runs
     # (measured 25 Sep). Nothing reads a decision older than 30 days from
