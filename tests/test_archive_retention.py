@@ -278,7 +278,10 @@ def test_a_row_with_no_trade_time_is_kept_not_orphaned():
     """The export filters `traded_at lt cutoff`, which excludes NULLs. The
     prune has to agree, or a NULL row is deleted without being archived."""
     sql = " ".join(PRUNE_TRADES.read_text(encoding="utf-8").lower().split())
-    assert "traded_at >= v_before or traded_at is null" in sql, (
+    # Since 28 Sep the delete also needs the mirror to have the trade
+    # (ingested before the cutoff's UTC day); the kept count is its exact
+    # complement, NULL trade times included.
+    assert "not (traded_at < v_before and ingested_at < v_mirrored) or traded_at is null" in sql, (
         "the kept-count must include rows with no traded_at, matching the "
         "delete predicate that leaves them alone")
 
