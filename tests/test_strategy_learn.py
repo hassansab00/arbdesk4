@@ -216,6 +216,10 @@ def test_the_market_weight_is_fitted_from_the_book_beside_each_call(monkeypatch)
     assert v["weights"] == {"engine:midday": 0.0, "s10:midday": 0.0}
     assert v["evidence"]["engine:midday"]["days"] == 5 and "held" in v["evidence"]["engine:midday"]
     assert row["bounds"] == {"w": [0.0, 1.0]} and row["prior"]["w"] == 0.0
+    # per city (after P3.10 Q8): the city travels with each row; one city, too few days to have its own
+    assert row["prior"]["city_min_days"] == 20 and row["prior"]["city_k"] == 60
+    assert v["city_weights"] == {} and v["city_evidence"]["engine:midday"]["cities"] == 1
+    assert d["market_weight"]["cities"]["engine:midday"]["eligible"] == 0
     # the same evidence the next night writes nothing
     d2 = _run(monkeypatch, db, as_of="2026-09-27")
     assert d2["market_weight"]["unchanged"] and len([r for r in db.stored if r["param"] == "market_weight"]) == 1
@@ -227,3 +231,12 @@ def test_the_market_weight_reads_no_day_it_is_fitted_for(monkeypatch):
     _run(monkeypatch, db, as_of="2026-09-26")
     row = [r for r in db.stored if r["param"] == "market_weight"][0]
     assert row["n"] == 1 and row["value"]["evidence"]["engine:midday"]["days"] == 1
+
+
+def test_the_rows_carry_the_city_the_call_was_for():
+    days = ["2026-09-01", "2026-09-02"]
+    cps = [dict(_mcp(k, d), city_key=c) for k, (d, c) in enumerate([(days[0], "nyc"), (days[1], "tel-aviv")])]
+    s10 = [{"city_key": "tel-aviv", "target_date": days[1], "checkpoint": "noon", "probs": {B1: 0.5, B2: 0.3, B3: 0.2}}]
+    rows = sl.market_rows(cps, [_out(0), _out(1)], s10)
+    assert [(r[1], r[5]) for r in rows] == [("engine:midday", "nyc"), ("engine:midday", "tel-aviv"),
+                                            ("s10:midday", "tel-aviv")]

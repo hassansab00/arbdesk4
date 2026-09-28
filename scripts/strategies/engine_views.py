@@ -46,7 +46,8 @@ def anchored(ctx, source):
 
     Every view that rests on a model starts from the market (market_anchor,
     Hassan 27 Sep): p = p_market + w (p_model - p_market), w learned per
-    view source and checkpoint class, 0 until the model earns it. A book
+    view source and checkpoint class (and per city, where one has earned its
+    own), 0 until the model earns it. A book
     that does not quote every bucket has no market to anchor on, so no view.
     ctx["anchor"] = False turns it off (tests of the constraints alone).
     """
@@ -58,9 +59,9 @@ def anchored(ctx, source):
     if market is None:
         return None, "no market to anchor on: a bucket is not quoted"
     sc = market_anchor.scope(spec.get("source", source), ctx.get("checkpoint"))
-    w, version = market_anchor.weight(spec.get("table"), sc)
+    w, version, used = market_anchor.weight_for(spec.get("table"), sc, spec.get("city"))
     probs = market_anchor.anchor({b: float(ctx["probs"].get(b, 0.0)) for b in ids}, market, w)
-    return dict(ctx, probs=probs), {"w": w, "version": version, "scope": sc}
+    return dict(ctx, probs=probs), {"w": w, "version": version, "scope": used}
 
 
 def engine_input(strategy_id, ctx, trace=None):
