@@ -188,3 +188,16 @@ def test_the_minute_signal_enters_a_bucket_before_the_report():
     pre = om.find_pre_events(events, {"nyc": "UTC"}, obs, {"nyc": minutes}, {"nyc": "KLGA"})
     # the report at 12:51 enters bucket 2; the minutes did at the 12:45 mark, confirmed 6 min later
     assert [(p[3], p[4], p[5], p[6]) for p in pre] == [(at(12, 45), 2, 1, at(12, 51))]
+
+
+def test_the_midnight_favourite_is_priced_after_the_decision_and_charged_its_cost():
+    mf = _tool("p310_midnight_favourite")
+    import datetime as dt
+    ev = {"e": {"city": "london", "date": "2026-07-02", "winner": 1}}
+    t = mf.decision_times(ev, {"london": "Europe/London"})
+    assert t[("e", "d0_00")] == int(dt.datetime(2026, 7, 1, 23, 0, tzinfo=dt.timezone.utc).timestamp())   # BST
+    assert t[("e", "d1_eve")] == t[("e", "d0_00")] - 6 * 3600
+    got = mf.trade(ev["e"], 1, 0.55, {}, real_ask=0.60)
+    assert abs(got["cost"] - (0.60 + 0.05 * 0.6 * 0.4)) < 1e-12 and got["win"] == 1.0
+    assert mf.AFTER_MIN == 60 and "td <= t <= td + AFTER_MIN * 60" in (ROOT / "tools" /
+                                                                      "p310_midnight_favourite.py").read_text()
