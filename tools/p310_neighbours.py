@@ -220,53 +220,60 @@ def parse_asos(text):
     return out
 
 
+def fetch_station(station):
+    """A station's readings over the period, cached one station a file (IEM refused nine at once: 503)."""
+    path = CACHE + station + ".csv.gz"
+    if not os.path.exists(path):
+        q = [("station", station), ("data", "tmpf"), ("year1", START.year), ("month1", START.month),
+             ("day1", START.day), ("year2", END.year), ("month2", END.month), ("day2", END.day),
+             ("tz", "Etc/UTC"), ("format", "onlycomma"), ("latlon", "no"), ("missing", "M"), ("trace", "T"),
+             ("direct", "no"), ("report_type", "3"), ("report_type", "4")]
+        try:
+            rows = get(f"{ASOS}?{urllib.parse.urlencode(q)}", parse=parse_asos)
+        except RuntimeError as e:                  # left out this run; a re-run asks again
+            print(f"{station}: unreached ({str(e)[-80:]})", file=sys.stderr)
+            return []
+        with gzip.open(path + ".tmp", "wt", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["station", "minute", "temp_c"])
+            w.writerows(rows)
+        os.replace(path + ".tmp", path)
+        print(f"{station}: {len(rows):,} readings", file=sys.stderr)
+        time.sleep(2)
+    with gzip.open(path, "rt") as f:
+        return list(csv.DictReader(f))
+
+
 def cmd_fetch():
     by_city = defaultdict(list)
     for r in csv.DictReader(open(CANDIDATES)):
         by_city[r["city_key"]].append(r["station"])
     os.makedirs(CACHE, exist_ok=True)
     for city, stations in sorted(by_city.items()):
-        path = CACHE + city + ".csv.gz"
-        if os.path.exists(path):
-            continue
-        q = [("station", s) for s in stations] + [
-            ("data", "tmpf"), ("year1", START.year), ("month1", START.month), ("day1", START.day),
-            ("year2", END.year), ("month2", END.month), ("day2", END.day), ("tz", "Etc/UTC"),
-            ("format", "onlycomma"), ("latlon", "no"), ("missing", "M"), ("trace", "T"),
-            ("direct", "no"), ("report_type", "3"), ("report_type", "4")]
-        rows = get(f"{ASOS}?{urllib.parse.urlencode(q)}", parse=parse_asos)
-        with gzip.open(path + ".tmp", "wt", newline="") as f:
-            w = csv.writer(f)
-            w.writerow(["station", "minute", "temp_c"])
-            w.writerows(rows)
-        os.replace(path + ".tmp", path)
-        print(f"{city}: {len(rows):,} readings from {len({r[0] for r in rows})} of {len(stations)} stations",
-              file=sys.stderr)
-        time.sleep(2)
+        for st in stations:
+            fetch_station(st)
     # the committed file: each city's settlement station and chosen neighbours
     hours = (END - START).days * 24 + 24
-    keep, chosen = set(), {}
+    chosen = {}
     cand = defaultdict(list)
     for r in csv.DictReader(open(CANDIDATES)):
         cand[r["city_key"]].append(r)
     for city, rs in sorted(cand.items()):
         got = defaultdict(set)
-        with gzip.open(CACHE + city + ".csv.gz", "rt") as f:
-            for r in csv.DictReader(f):
+        for st in [r["station"] for r in rs]:
+            for r in fetch_station(st):
                 got[r["station"]].add(int(r["minute"]) // 60)
         s = rs[0]["station"]
         nb = [r["station"] for r in rs[1:] if len(got.get(r["station"], ())) >= MIN_COVERAGE * hours][:NEIGHBOURS]
         chosen[city] = {"settlement": s, "neighbours": nb,
                         "coverage": {st: round(len(v) / hours, 3) for st, v in got.items()}}
-        keep |= {(city, st) for st in [s] + nb}
     with gzip.open(METAR + ".tmp", "wt", newline="") as out:
         w = csv.writer(out)
         w.writerow(["city_key", "station", "minute", "temp_c"])
         for city in sorted(cand):
-            with gzip.open(CACHE + city + ".csv.gz", "rt") as f:
-                for r in csv.DictReader(f):
-                    if (city, r["station"]) in keep:
-                        w.writerow([city, r["station"], r["minute"], r["temp_c"]])
+            for st in [chosen[city]["settlement"]] + chosen[city]["neighbours"]:
+                for r in fetch_station(st):
+                    w.writerow([city, r["station"], r["minute"], r["temp_c"]])
     os.replace(METAR + ".tmp", METAR)
     json.dump(chosen, open(OUT + "chosen.json", "w"), indent=1, sort_keys=True)
     print(f"-> {METAR}, {OUT}chosen.json", file=sys.stderr)
