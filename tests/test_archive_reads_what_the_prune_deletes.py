@@ -108,6 +108,8 @@ EXPORT_SOURCE = {
     "ladders":      "v_unarchived_ladders",
     # the whole table older than a day: no reader looks back past 900 s (P1.6)
     "book_evidence": "paper_book_evidence",
+    # the table with its three-column key joined into one to page on (P1.6)
+    "forecast_features": "v_forecast_features_export",
 }
 
 
@@ -163,6 +165,7 @@ def test_the_exported_columns_exist_on_whatever_is_read(name):
         "v_prunable_book_redundancy":     "ad4_79_prune_book_redundancy.sql",
         "v_prunable_edge_history":        "ad4_80_prune_edge_history.sql",
         "v_unarchived_ladders":           "../supabase/migrations/20260927100000_a_ladder_is_archived_before_it_is_pruned.sql",
+        "v_forecast_features_export":     "ad4_93_prune_forecast_features.sql",
     }
     assert source in defines, f"{source} has no SQL file registered here"
     sql = (Path(ao.__file__).resolve().parents[1]
@@ -176,14 +179,17 @@ def test_the_exported_columns_exist_on_whatever_is_read(name):
     # off the spec's own table carries every column by construction - there is
     # nothing to check and pretending otherwise by scanning for names would
     # just fail on a view that is correct. A view that projects a SUBSET must
-    # still name every exported column.
+    # still name every exported column. The star may follow a column the view
+    # builds itself - v_forecast_features_export's paging key (P1.6) - and
+    # the key the export pages on must then be named in the view.
     import re
-    star = re.search(r"select\s+(\w+)\.\*\s+from\s+(?:public\.)?(\w+)\s+\1\b", view)
+    star = re.search(r"(?:select|,)\s+(\w+)\.\*\s+from\s+(?:public\.)?(\w+)\s+\1\b", view)
     if star:
         assert star.group(2) == spec["table"], (
             f"{source} selects * from {star.group(2)}, not from {spec['table']}, so the "
             "exported columns are not the ones the prune deletes"
         )
+        assert spec["pk"] in view, f"{source} does not name {spec['pk']}, the key the export pages on"
         return
     for col in [spec["pk"]] + list(spec["columns"]):
         assert col in view, f"{source} does not select {col}, so the export would 400"

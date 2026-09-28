@@ -659,7 +659,7 @@ def test_every_archived_table_pages_on_its_real_primary_key():
     sources = ([os.path.join(root, "sql", "ad4_00_preflight.sql")]
                + sorted(glob.glob(os.path.join(root, "sql", "*.sql")))
                + sorted(glob.glob(os.path.join(root, "supabase", "migrations", "*.sql"))))
-    declared = {}
+    declared, composite = {}, {}
     for path in sources:
         schema = open(path, encoding="utf-8").read()
         for m in re.finditer(
@@ -668,9 +668,30 @@ def test_every_archived_table_pages_on_its_real_primary_key():
             pk = re.search(r"^\s*(\w+)\s[^,\n]*\bprimary key\b", m.group(2), re.M)
             if pk:
                 declared.setdefault(m.group(1), pk.group(1))
+            both = re.search(r"^\s*primary key\s*\(([^)]*)\)", m.group(2), re.M)
+            if both:
+                composite.setdefault(m.group(1), [c.strip() for c in both.group(1).split(",")])
 
     for name, spec in ao.TABLES.items():
         table = spec["table"]
+        # A COMPOSITE KEY IS PAGED THROUGH ONE THE VIEW BUILDS (P1.6,
+        # weather_forecast_features): the spec names the columns, they must be
+        # the table's whole primary key, and the view must build its key from
+        # every one of them - drop one and two rows share a key.
+        if spec.get("pk_joins"):
+            assert composite.get(table) == spec["pk_joins"], \
+                f"{name} joins {spec['pk_joins']}, but {table}'s primary key is {composite.get(table)}"
+            assert spec.get("read_from"), f"{name} has a joined key and no view to build it"
+            head = f"create or replace view public.{spec['read_from']}"
+            view_sql = next(t for t in (open(f, encoding="utf-8").read()
+                                        for f in sorted(glob.glob(os.path.join(root, "sql", "*.sql"))))
+                            if head in t)
+            start = view_sql.index(head)
+            key_expr = view_sql[start:view_sql.index(f"as {spec['pk']}", start)]
+            for col in spec["pk_joins"]:
+                assert f"f.{col}" in key_expr, f"{spec['read_from']} builds {spec['pk']} without {col}"
+            assert spec["pk"] not in spec["columns"], "the joined key is not exported; its columns are"
+            continue
         assert table in declared, \
             f"{table} is archived but sql/ad4_00_preflight.sql does not create it"
         assert spec["pk"] == declared[table], \

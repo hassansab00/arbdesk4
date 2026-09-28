@@ -163,6 +163,15 @@ select cron.schedule(
   'VACUUM (FULL, ANALYZE) public.edges'
 );
 
+-- Past forecast features (plan v2 P1.6 phase 1, 28 Sep): the archive sheds a
+-- day of them every night (~3,300 rows). Daily at 03:15, ahead of the trades
+-- backstop, after the 02:36 archive.
+select cron.schedule(
+  'ad4_reclaim_weather_forecast_features',
+  '15 3 * * *',
+  'VACUUM (FULL, ANALYZE) public.weather_forecast_features'
+);
+
 -- Book proof (plan v2 P1.6 phase 1, 28 Sep): kept one day, so the archive
 -- sheds a day of it every night (~340 rows at ~6.4 KB). Daily at 03:25,
 -- between the trades and research backstops.
@@ -233,7 +242,7 @@ declare
     'research_captures', 'paper_resolution_evidence', 'book_snapshots', 'edges',
     'weather_observations', 'weather_forecasts', 'trades_observed', 'decisions',
     -- appended (28 Sep), so every table above keeps its two-minute slot
-    'paper_book_evidence'];
+    'paper_book_evidence', 'weather_forecast_features'];
   v_now   timestamptz := now();
   v_hour  int := extract(hour from (v_now at time zone 'UTC'))::int;
   v_at    timestamptz;

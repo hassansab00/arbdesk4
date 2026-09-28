@@ -119,7 +119,9 @@ const assert = require('node:assert/strict');
     -- the whole fixture is a JS template literal, and one ends the string.)
     -- Declared WITHOUT the two pressure columns, at the shape production had
     -- before 20260921180000, so that migration's ALTER does real work rather
-    -- than finding them already present and proving nothing.
+    -- than finding them already present and proving nothing. The key is the
+    -- live one, three columns: v_forecast_features_export (P1.6) joins them
+    -- into the archive's paging key and is unique only because they are.
     create table public.weather_forecast_features(
       city_key text not null, for_date date not null, run_at timestamptz not null,
       source text not null default 'api.weather.gov', lead_days int,
@@ -129,7 +131,7 @@ const assert = require('node:assert/strict');
       cloud_mean numeric, cloud_max numeric, wind_mean numeric, wind_max numeric,
       precip_total numeric, precip_probability numeric,
       n_hours int, captured_at timestamptz not null default now(),
-      primary key (city_key, for_date, run_at, source));
+      primary key (city_key, for_date, run_at));
     create table public.ingest_log(log_id bigint primary key,job text,started_at timestamptz,finished_at timestamptz,
       status text,rows_written integer,detail jsonb,rows integer,logged_at timestamptz default now());
     create table public.model_versions(version_id uuid primary key,created_at timestamptz default now());
