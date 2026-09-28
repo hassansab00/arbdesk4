@@ -278,6 +278,9 @@ MIGRATION_RECORD = {
         "rows would never be aged out",
     "supabase/migrations/20260914110000_archive_prune_count_contract.sql":
         "prune_forecasts / prune_observations - same",
+    "supabase/migrations/20260929010000_a_cut_day_keeps_its_cached_values.sql":
+        "refresh_feature_cache, as in sql/ad4_28 and ad4_29 - the day-feature "
+        "record, which must cover every city a prune reaches",
 }
 
 JOINS_CITIES = re.compile(r"(?:join|from)\s+(?:public\.)?cities(?:\s|$|,|\))", re.I)
