@@ -1,53 +1,24 @@
 -- ===========================================================================
--- ad4_65_prune_trades.sql - THE TABLE THE ARCHIVE NEVER COVERED.
+-- TRADES KEEP ONE DAY, AND NEVER ONE THE INGEST MAY READ AGAIN
+-- (plan v2 P1.6 phase 1, 28 Sep)
 --
--- Safe to run any time. Creates one function. Deletes nothing by itself -
--- p_dry_run defaults to true and the caller must ask twice.
+-- Hassan, 28 Sep: "YES APPROVED as long as we dont lose any collected data".
+-- Every print older than the cutoff is still exported, read back from GitHub
+-- byte for byte and committed before this deletes it, and the delete runs
+-- only when the count matches the file exactly.
 --
--- scripts/archive_observations.py moves cold weather rows to a GitHub
--- Release, guarded by prune_observations() and prune_forecasts(). Nothing did
--- the same for trades_observed, which has quietly become the LARGEST table in
--- the database:
+-- 1. The floor 2 -> 1 day, tied to what reads the table: v_band_volume and
+--    v_city_volume look back settings.volume_thresholds.lookback_hours (24),
+--    refresh_derived never lowers a stored day. The function now refuses a
+--    keep_days shorter than that window, whatever the setting says.
+-- 2. The cutoff may not pass the trade ingest's mark (the `since` of its
+--    last run), so a stalled ingest cannot re-insert trades already archived
+--    and have them archived twice.
 --
---     trades_observed        91 MB   156,008 rows   90,640 older than 90d
---     research_captures      67 MB
---     weather_observations   57 MB   239,617 rows    114,283 older than 90d
---     weather_forecasts      33 MB    81,693 rows     31,787 older than 90d
+-- 3. Their backstop reclaim runs daily (03:20 UTC), not weekly: the archive
+--    now sheds a day of trades every night (sql/ad4_66).
 --
--- 55 MB of that 91 is indexes. The table has never been vacuumed, by hand or
--- by autovacuum, and does not need to be: n_dead_tup is 0, because nothing
--- ever updates or deletes a trade. All 91 MB is LIVE rows, 58% of which are
--- older than ninety days. That is why pruning is the only thing that shrinks
--- it - there is no bloat to reclaim, only rows nothing reads.
---
---
--- WHAT SURVIVES THE PRUNE, which is the only question that matters
---
--- Nothing live reads a trade older than a day. Both consumers -
--- v_band_volume and v_city_volume - filter to
--- `now() - settings.volume_thresholds.lookback_hours`, which is 24. A trade
--- from January contributes to no price, no edge, no probability and no
--- ranking; it sits in the heap and in five indexes and is read by nothing.
---
--- What IS permanent is archive_daily_city_presence and archive_daily_rollup:
--- one row per dataset-day-city and one per dataset-day with its row count,
--- written by arbdesk_private.capture_archive_daily() on every insert. 'Trades
--- seen' reaches back to 2025-01-18 across all 54 cities. That coverage record
--- is what proves the desk was watching a city on a day, and it is untouched
--- by deleting the raw rows behind it.
---
--- So the guard mirrors prune_observations: every city-day about to lose its
--- raw trades must ALREADY be in the presence rollup. If the trigger never
--- fired for a day - a bulk load that bypassed it, a restore - that day is not
--- summarised anywhere and deleting it would be the one loss this design
--- cannot survive. It refuses, and says how many days and which cutoff.
---
--- Run:
---   select prune_trades(90);                          -- dry run, says what
---   select prune_trades(90, false, null, 90640);      -- deletes, count-bound
---
--- scripts/archive_observations.py --table trades calls both halves in that
--- order and only after the gzipped CSV has been uploaded AND read back.
+-- The body is the one in sql/ad4_65_prune_trades.sql. Re-runnable.
 -- ===========================================================================
 
 create or replace function public.prune_trades(
@@ -248,3 +219,12 @@ grant execute on function public.prune_trades(integer, boolean, timestamptz, big
 
 comment on function public.prune_trades(integer, boolean, timestamptz, bigint) is
   'Delete trades_observed rows older than the cutoff, only when archive_daily_city_presence already covers every affected city-day and the caller''s verified archive row count matches exactly.';
+
+-- The backstop reclaim, daily now (the same job sql/ad4_66 schedules).
+do $$
+begin
+  if exists (select 1 from pg_namespace where nspname = 'cron') then
+    perform cron.schedule('ad4_reclaim_trades_observed', '20 3 * * *',
+                          'VACUUM (FULL, ANALYZE) public.trades_observed');
+  end if;
+end $$;
