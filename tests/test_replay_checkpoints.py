@@ -91,3 +91,15 @@ def test_the_market_weight_evidence_uses_only_complete_matching_ladders():
                        "winner not on the ladder": 1}
     ll = t.losses(rows)
     assert ll["all"]["ll"][0.0] > ll["all"]["ll"][1.0]           # the model put more on the winner
+
+
+def test_a_report_names_the_source_it_was_built_from():
+    # P3.10 part 2 feeds the venue's record to this replay: its report must not
+    # claim the database export or a thinly observed market.
+    meta = {"exported_at": "2026-09-26T23:20:00+00:00"}
+    old = rc.report([], {}, {}, meta)
+    assert "the database export of 2026-09-26T23:20Z (`tools/p73_replay_inputs.sql`)" in old
+    assert "The market is thinly observed" in old
+    new = rc.report([], {}, {}, dict(meta, source="the venue's own record", market_note="- **Hourly prices.**"))
+    assert "from the venue's own record." in new and "- **Hourly prices.**" in new
+    assert "p73_replay_inputs" not in new and "thinly observed" not in new

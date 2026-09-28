@@ -61,6 +61,27 @@ Q4  Where: Q3's pooled-vs-recal gain by unit, by month, and by how far the
 Q5  Is the market itself calibrated: every bucket at each cutoff, binned by
     its normalised price; realised rate, mean price, Wilson 95% interval.
 
+ADDED AFTER Q1-Q5 WERE READ (28 Sep, the same day; said here so nobody
+mistakes it for part of the design above)
+------------------------------------------------------------------------
+Q2 showed the model's median bucket below the winner on average (the market's
+is not). A diagnostic then compared the model's training labels with the
+venue: the station maximum in labels_whole falls in a LOWER bucket than the
+venue's winner on 8.9% of C city-days (Mar-Aug; 0.6% in Sep, after P2.1 read
+every METAR), and in Sep the F labels are whole Celsius, which cannot place a
+2 F bucket (19.2% land one bucket high). The model learns its station
+correction from those labels.
+Q6  One candidate, declared before it was run: the same recipe (the same
+    code, windows and width) trained on the venue's own truth instead of
+    labels_whole. The label of a settled city-day is the winning bucket's
+    reading: [k, k+1) C -> k C; [2j, 2j+2) F -> (2j + 0.5) F in C; an open
+    bucket gives no label. Walk-forward as before (a day's fit reads only
+    labels of days before it). It is better only if its log loss is lower
+    than the served recipe's on the same city-days with a 90% date-bootstrap
+    interval above 0; Q3's pooled test is repeated for it. The hypothesis came
+    from this record, so this is supporting evidence; the clean test is the
+    live days after 28 Sep.
+
 Inputs, all committed: data/training/market_history/ (market_history.py),
 data/training/previous_runs/models_daily.csv.gz, data/replay/
 inputs_2026-09-26/{labels_whole.json.gz,tz.json}, data/mirror/cities.
@@ -182,8 +203,25 @@ def market_ladders(events):
     return out
 
 
-def load_model_inputs():
-    labels = {(c, str(d)[:10]): float(m) for c, d, m, *_ in json.load(gzip.open(RI + "labels_whole.json.gz"))}
+def station_labels():
+    return {(c, str(d)[:10]): float(m) for c, d, m, *_ in json.load(gzip.open(RI + "labels_whole.json.gz"))}
+
+
+def venue_labels(events):
+    """{(city, date): the venue's reading in C} from each winning bucket (Q6):
+    [k, k+1) C -> k; [2j, 2j+2) F -> (2j + 0.5) F; open buckets give none."""
+    out = {}
+    for e in events.values():
+        b = next(b for b in e["bands"] if b["band_id"] == e["winner"])
+        if b["band_lo"] is None or b["band_hi"] is None:
+            continue
+        reading = (b["band_lo"] + b["band_hi"] - 1) / 2          # the whole readings' midpoint
+        out[(e["city"], e["date"])] = reading if e["unit"] == "C" else (reading - 32) * 5 / 9
+    return out
+
+
+def load_model_inputs(labels=None):
+    labels = station_labels() if labels is None else labels
     fc = defaultdict(dict)
     pairs = []
     for r in read_csv(PR):
@@ -379,6 +417,48 @@ def iv(t, n=3, sign=True):
     return f"{m:{s}.{n}f} [{lo:{s}.{n}f}, {hi:{s}.{n}f}]"
 
 
+def walk_forward(rs):
+    """Q3's folds: each calendar month scored with fits on the months before."""
+    months = sorted({r["month"] for r in rs})
+    scored, fits = [], []
+    for mo in months:
+        train = [(r["mkt"], r["mdl"], r["w"]) for r in rs if r["month"] < mo]
+        if len(train) < MIN_TRAIN:
+            continue
+        a_r, _ = fit_pool(train, with_model=False)
+        a_p, b_p = fit_pool(train, with_model=True)
+        w_a = fit_anchor(train)
+        fits.append((mo, len(train), a_r, a_p, b_p, w_a))
+        for r in rs:
+            if r["month"] != mo:
+                continue
+            ll_m = logloss(r["mkt"], r["w"])
+            ll_r = logloss(pool(r["mkt"], r["mdl"], a_r, 0.0), r["w"])
+            ll_p = logloss(pool(r["mkt"], r["mdl"], a_p, b_p), r["w"])
+            ll_a = logloss([m + w_a * (d - m) for m, d in zip(r["mkt"], r["mdl"])], r["w"])
+            scored.append(dict(r, ll_m=ll_m, ll_r=ll_r, ll_p=ll_p, ll_a=ll_a))
+    return scored, fits
+
+
+def label_agreement(events, labels):
+    """{(unit, 'below'|'same'|'above'): n}: the bucket a training label names
+    against the venue's winner (the venue reads whole degrees, half up)."""
+    out = defaultdict(int)
+    for e in events.values():
+        y = labels.get((e["city"], e["date"]))
+        if y is None:
+            continue
+        v = y if e["unit"] == "C" else y * 9 / 5 + 32
+        x = math.floor(v + 0.5)
+        k = next((b["band_id"] for b in e["bands"] if (b["band_lo"] is None or x >= b["band_lo"])
+                  and (b["band_hi"] is None or x < b["band_hi"])), None)
+        if k is None:
+            continue
+        side = "below" if k < e["winner"] else "same" if k == e["winner"] else "above"
+        out[(e["unit"], e["date"][:7] >= "2026-09", side)] += 1
+    return out
+
+
 # --------------------------------------------------------------------------
 # the report
 # --------------------------------------------------------------------------
@@ -495,29 +575,12 @@ def main():
       "month. Gain = market log loss minus the candidate's, per city-day (positive = better than the "
       "market), 90% interval over dates.")
     p()
-    q4_rows = {}
+    q4_rows, verdicts = {}, []
     for k in CUTOFFS:
         rs = rows[k]
         if not rs:
             continue
-        months = sorted({r["month"] for r in rs})
-        scored, fits = [], []
-        for i, mo in enumerate(months):
-            train = [(r["mkt"], r["mdl"], r["w"]) for r in rs if r["month"] < mo]
-            if len(train) < MIN_TRAIN:
-                continue
-            a_r, _ = fit_pool(train, with_model=False)
-            a_p, b_p = fit_pool(train, with_model=True)
-            w_a = fit_anchor(train)
-            fits.append((mo, len(train), a_r, a_p, b_p, w_a))
-            for r in rs:
-                if r["month"] != mo:
-                    continue
-                ll_m = logloss(r["mkt"], r["w"])
-                ll_r = logloss(pool(r["mkt"], r["mdl"], a_r, 0.0), r["w"])
-                ll_p = logloss(pool(r["mkt"], r["mdl"], a_p, b_p), r["w"])
-                ll_a = logloss([m + w_a * (d - m) for m, d in zip(r["mkt"], r["mdl"])], r["w"])
-                scored.append(dict(r, ll_m=ll_m, ll_r=ll_r, ll_p=ll_p, ll_a=ll_a))
+        scored, fits = walk_forward(rs)
         q4_rows[k] = scored
         if not scored:
             p(f"`{k}`: fewer than {MIN_TRAIN} training city-days in every fold.")
@@ -526,7 +589,11 @@ def main():
         p()
         p("| candidate | gain over market | gain over recal |")
         p("|---|---|---|")
-        p(f"| recal (market^a) | {iv(boot([(r['date'], r['ll_m'] - r['ll_r']) for r in scored]), 4)} | |")
+        g_recal = boot([(r['date'], r['ll_m'] - r['ll_r']) for r in scored])
+        g_pool = boot([(r['date'], r['ll_r'] - r['ll_p']) for r in scored])
+        verdicts.append((f"`{k}`: the market recalibrated (market^a) beats the market", g_recal))
+        verdicts.append((f"`{k}`: the served model adds to the price (pooled beats recal)", g_pool))
+        p(f"| recal (market^a) | {iv(g_recal, 4)} | |")
         p(f"| pooled (market^a x model^b) | {iv(boot([(r['date'], r['ll_m'] - r['ll_p']) for r in scored]), 4)} | "
           f"{iv(boot([(r['date'], r['ll_r'] - r['ll_p']) for r in scored]), 4)} |")
         p(f"| anchor (market + w (model - market)) | "
@@ -585,6 +652,80 @@ def main():
             p(f"| [{lo:.2f}, {min(hi, 1):.2f}) | {n:,} | {f(sum(q for q, _ in cells) / n, 4)} | "
               f"{f(k_ / n, 4)} | [{f(a, 4)}, {f(b, 4)}] |")
         p()
+
+    # ---------------- Q6: added after Q1-Q5 were read (see the docstring) ----------------
+    p("## Q6. The same recipe trained on the venue's own truth (added after Q1-Q5 were read)")
+    p()
+    p("Declared in the tool's docstring before it was run, after Q2 showed the model's median bucket "
+      "below the winner. First, why: the bucket each training label names against the venue's winner.")
+    p()
+    agree = label_agreement(events, labels)
+    p("| unit | days | label bucket below the winner | same | above |")
+    p("|---|---|---|---|---|")
+    for unit in ("C", "F"):
+        for sep in (False, True):
+            n = sum(agree.get((unit, sep, s_), 0) for s_ in ("below", "same", "above"))
+            if n:
+                p(f"| {unit} | {'Sep 2026' if sep else 'before Sep 2026'} ({n:,}) | "
+                  + " | ".join(f"{100 * agree.get((unit, sep, s_), 0) / n:.1f}%" for s_ in ("below", "same", "above"))
+                  + " |")
+    p()
+    vlab = venue_labels(events)
+    _, fc2, pairs2 = load_model_inputs(vlab)
+    model2 = Model(vlab, fc2, pairs2)
+    p(f"Venue-truth labels: {len(vlab):,} city-days (open buckets give none). The recipe, windows and width "
+      "are unchanged; only the labels differ.")
+    p()
+    p("| cutoff | n | log loss served / venue-truth / market | venue-truth minus served | venue-truth minus market | "
+      "median bucket = winner, served / venue-truth | mean distance, served / venue-truth |")
+    p("|---|---|---|---|---|---|---|")
+    rows2 = {}
+    for k in CUTOFFS:
+        rs2 = []
+        for r in rows[k]:
+            m2 = model2.ladder(events[r["eid"]])
+            if m2 is not None:
+                rs2.append(dict(r, mdl2=m2[0]))
+        rows2[k] = rs2
+        if not rs2:
+            continue
+        n = len(rs2)
+        l1 = sum(logloss(r["mdl"], r["w"]) for r in rs2) / n
+        l2 = sum(logloss(r["mdl2"], r["w"]) for r in rs2) / n
+        lk = sum(logloss(r["mkt"], r["w"]) for r in rs2) / n
+        d21 = boot([(r["date"], logloss(r["mdl2"], r["w"]) - logloss(r["mdl"], r["w"])) for r in rs2])
+        d2k = boot([(r["date"], logloss(r["mdl2"], r["w"]) - logloss(r["mkt"], r["w"])) for r in rs2])
+        h1 = sum(median_index(r["mdl"]) == r["w"] for r in rs2) / n
+        h2 = sum(median_index(r["mdl2"]) == r["w"] for r in rs2) / n
+        md1 = sum(r["w"] - median_index(r["mdl"]) for r in rs2) / n
+        md2 = sum(r["w"] - median_index(r["mdl2"]) for r in rs2) / n
+        verdicts.append((f"`{k}`: venue-truth labels improve the served model (log loss lower)",
+                         (-d21[0], -d21[2], -d21[1])))
+        p(f"| {k} | {n:,} | {f(l1)} / {f(l2)} / {f(lk)} | {iv(d21)} | {iv(d2k)} | "
+          f"{100 * h1:.1f}% / {100 * h2:.1f}% | {md1:+.3f} / {md2:+.3f} |")
+    p()
+    p("Q3 repeated with the venue-truth model (same folds):")
+    p()
+    p("| cutoff | scored | pooled over recal | pooled b by fold |")
+    p("|---|---|---|---|")
+    for k, rs2 in rows2.items():
+        sc2, fits2 = walk_forward([dict(r, mdl=r["mdl2"]) for r in rs2])
+        if not sc2:
+            continue
+        g2 = boot([(r['date'], r['ll_r'] - r['ll_p']) for r in sc2])
+        verdicts.append((f"`{k}`: the venue-truth model adds to the price (pooled beats recal)", g2))
+        p(f"| {k} | {len(sc2):,} | {iv(g2, 4)} | "
+          + ", ".join(f"{mo} {b:.3f}" for mo, _n, _a, _ap, b, _w in fits2) + " |")
+    p()
+
+    p("## Verdicts under the plan's rule (P3.10: a gain counts only with its 90% interval above 0)")
+    p()
+    p("| claim | gain, 90% interval | verdict |")
+    p("|---|---|---|")
+    for claim, (m, lo, hi) in verdicts:
+        v = "**yes**" if lo > 0 else ("no: it loses" if hi < 0 else "not shown (the interval spans 0)")
+        p(f"| {claim} | {m:+.4f} [{lo:+.4f}, {hi:+.4f}] | {v} |")
+    p()
 
 
 if __name__ == "__main__":

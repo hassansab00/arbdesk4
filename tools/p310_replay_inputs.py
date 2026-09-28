@@ -64,7 +64,14 @@ def build():
         t = int(r["t"])
         if w[0] <= t < w[1]:
             mids.append([f"{r['event_id']}:{r['band_index']}", t, float(r["p"])])
-    return {"exported_at": "market record, " + dt.date.today().isoformat(), "markets": markets, "bands": bands,
+    source = ("the venue's own record (`data/training/market_history/`, built by `tools/market_history.py`; "
+              "these inputs by `tools/p310_replay_inputs.py`), events " + FROM + " to " + LAST)
+    market_note = (f"- **The market is the venue's own hourly price.** Every bucket's hourly price from Polymarket's "
+                   f"price history; the whole ladder counts as priced when every bucket has a price within "
+                   "3 h (`MARKET_MAX_AGE_S`) before the decision time (the n in 'Against the market'). It is the venue's quoted price, "
+                   "not an executable bid or ask: what a trade would have paid is not measured here.")
+    return {"exported_at": dt.date.today().isoformat(), "source": source, "market_note": market_note,
+            "markets": markets, "bands": bands,
             "peaks": base["peaks"], "q": base["q"], "mids": mids}, left
 
 

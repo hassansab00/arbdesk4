@@ -427,6 +427,24 @@ P7 design work (P7.1–P7.3) can start as soon as P2 is merged. Shadow trading (
 - **Part 1, the diagnosis:** `tools/market_vs_model.py` -> `docs/MODEL_VS_MARKET_2026-09-28.md`. Its questions, cutoffs and candidates are fixed in the tool before any score: who prices the ladder better (Q1); centre or width (Q2); whether the model adds to the price, walk-forward by month, market vs the market recalibrated (market^a) vs the pooled second stage (market^a x model^b) vs the linear anchor (Q3); where (Q4); whether the market itself is calibrated (Q5). The model is what the engine serves day-ahead, rebuilt with the engine's own code from the committed record.
 - **Decision rule, fixed now:** a second stage (recal or pooled) goes to the engine, in shadow, only if its walk-forward gain over the market has a 90% interval above zero at a checkpoint; the model's weight in it only if pooled beats recal the same way. Rule 11 then applies as everywhere: the record gives the prior (fitted on dates before the live period), hard bounds (a in [0.25, 4], b in [0, 2]), a minimum sample, a maximum nightly step, a version on every decision, and the verdict comes from live dates after 28 Sep only.
 - **Part 2:** the intraday checkpoints (S10's remaining-day model after the peak) against the market on the same record. S10's form was chosen on a walk-forward whose test months overlap this record, so its result there is supporting evidence; the live shadow days stay the clean test (P7.3).
+- **Results (28 Sep), measured on the record:**
+  - **Part 1** (`docs/MODEL_VS_MARKET_2026-09-28.md`; 8,406 city-days at 00:00 and 7,238 at 08:00; 220 dates; 48 cities).
+    - The market prices the ladder better. At 00:00 the model's log loss is 1.460 against 1.291, a difference of +0.169 [+0.156, +0.181]; its top pick is right 40.7% of the time against 46.8%.
+    - The day-ahead model adds nothing to the price. Pooled over recal: +0.0006 [-0.0014, +0.0026] at 00:00, and -0.0015 [-0.0025, -0.0004] at 08:00. The engine's prior weight on it, 0, is right.
+    - The market's own under-confidence is real at 00:00: recal gains +0.0031 [+0.0011, +0.0050]. Buckets priced 50-60% won 60.7% [57.8, 63.5].
+  - **Found: the model trains on labels the venue does not agree with.**
+    - For C cities before Sep, the station maximum names a lower bucket than the venue's winner on 10.3% of city-days. P2.1's reading of every METAR brings that to 0.0% in Sep.
+    - For F cities in Sep, the labels are whole Celsius, and 19.2% name a bucket too high.
+    - The same recipe trained on the venue's own truth removes the bias: the median bucket's mean distance from the winner goes from +0.112 to +0.010.
+    - It lowers the log loss at 08:00, +0.0079 [+0.0013, +0.0140]; at 00:00 the gain is not shown. It is still 0.163 behind the market.
+  - **Part 2** (`docs/S10_VS_MARKET_RECORD_2026-09-28.md`; 6,397-7,130 city-days per checkpoint; 216-219 days).
+    - The market is better at every checkpoint before the peak (log-loss gaps from -0.112 to -0.312, every interval below 0).
+    - S10's remaining-day model is better 1 h after the peak: log loss 0.663 against 0.679, +0.085 [+0.047, +0.131]; top pick 74.3% against 70.5%, +4.5 pts [+2.9, +6.5].
+    - S10's form was chosen on a walk-forward that overlaps these months (see Part 2 above).
+- **Part 3 (next, in this order):**
+  1. P3.9's correction learns from the venue's truth (the settled bucket, or the venue's reading where `weather_resolution_evidence` has it) instead of the station labels; shadow-checked against the current labels on live dates.
+  2. Whether S10's post-peak edge survives the cost of trading. The record's price is quoted, not executable; the spread comes from the archived books (23 Aug-24 Sep) and the live book since.
+  3. The market's under-confidence (recal) as a shadow belief at the day-ahead checkpoint, judged after costs like 2.
 
 ## P4. Honest evidence
 
