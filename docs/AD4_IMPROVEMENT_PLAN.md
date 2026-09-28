@@ -459,6 +459,12 @@ P7 design work (P7.1–P7.3) can start as soon as P2 is merged. Shadow trading (
     - It is real and early: a report followed into the bucket within the hour 75.9% of the time, a median 32 min later (quartiles 16 / 46).
     - The market already prices it: the signalled bucket cost 0.231 on average and won 23.4%, so buying it 2 min after the signal made +0.0034 per share [-0.0042, +0.0111]. The control, the reports' bucket at the same moment, made -0.0420 [-0.0486, -0.0353].
     - No edge. And the one-minute archive is not real time anyway.
+  - **Q8, city by city** (Hassan, 28 Sep: win the single max-temperature winner; `docs/MODEL_VS_MARKET_2026-09-28.md`).
+    - Method: each city's weight on the Q7 blend, fitted on its earlier months and shrunk to the global weight (n / (n + 60)).
+    - At 00:00 the top pick is right 46.5% of the time against the market's 46.3% (+0.0022 [-0.0019, +0.0062] per day, not shown); at 08:00 it is worse than the market.
+    - 3 of 48 cities have a gain whose interval is above 0, against ~2.4 expected by chance.
+    - The 22 cities that gained through July did not in August-September (-0.0041 [-0.0117, +0.0030]).
+    - No reliable niche yet. Watch live, not claimed: Tel Aviv gains at both cutoffs (+0.0332 and +0.0201), on probabilities, not the top pick; the Chinese cities lean positive at 00:00.
   - **Part 6, the market's favourite at midnight** (`tools/p310_midnight_favourite.py` -> `docs/MIDNIGHT_FAVOURITE_2026-09-28.md`: the one positive finding, the market's under-confidence at 00:00, tested as a winner-first trade).
     - Priced at the first price after 00:00 local, walk-forward band choice: +0.0067 per share [-0.0158, +0.0304], 1,435 trades. Not shown.
     - Every favourite at 00:00: -0.0173 [-0.0271, -0.0077].

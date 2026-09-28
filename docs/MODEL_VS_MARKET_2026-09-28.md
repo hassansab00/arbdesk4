@@ -179,6 +179,74 @@ Q3 repeated with the blend (same folds):
 
 The station model's monthly fits: 2025-11 30 d half-life, inner MAE 0.9448; 2025-12 30 d half-life, inner MAE 0.835; 2026-01 30 d half-life, inner MAE 0.9292; 2026-02 90 d half-life, inner MAE 0.9105; 2026-03 90 d half-life, inner MAE 0.9293; 2026-04 90 d half-life, inner MAE 0.9316; 2026-05 90 d half-life, inner MAE 0.9259; 2026-06 365 d half-life, inner MAE 0.9309; 2026-07 365 d half-life, inner MAE 0.9921; 2026-08 365 d half-life, inner MAE 1.0293; 2026-09 90 d half-life, inner MAE 0.9366.
 
+## Q8. City by city: where does the model beat the market's pick? (added after Q1-Q7 were read)
+
+Declared in the tool's docstring before it was run (Hassan, 28 Sep: the model must win the single max-temperature winner). Model: the Q7 blend. Each city's weight on the model is fitted on its earlier months and shrunk to the global weight by n / (n + 60).
+
+**`d0_00`** - 6,929 scored city-days.
+
+| distribution | top pick = winner | log loss gain over recal |
+|---|---|---|
+| the market | 46.3% | |
+| the model alone (Q7 blend) | 41.5% | |
+| global second stage (a, b) | 46.3% | +0.0015 [-0.0011, +0.0041] |
+| per-city second stage (a, b_c) | 46.5% | -0.0021 [-0.0058, +0.0015] |
+
+Per-city second stage minus the market, top pick, per day: +0.0022 [-0.0019, +0.0062] (share of city-days).
+
+Cities with at least 30 scored days: 48; with the per-city gain's 90% interval above 0: **3** (about 2.4 expected by chance if none had a real gain).
+
+| city | days | gain over recal [90%] | top pick: per-city stage / market | mean b_c |
+|---|---|---|---|---|
+| tel_aviv | 148 | +0.0332 [+0.0132, +0.0538] | 66.2% / 66.2% | 0.483 |
+| zhengzhou | 49 | +0.0191 [-0.0048, +0.0419] | 46.9% / 49.0% | 0.126 |
+| chengdu | 147 | +0.0168 [+0.0032, +0.0310] | 28.6% / 28.6% | 0.117 |
+| qingdao | 147 | +0.0166 [+0.0010, +0.0315] | 36.7% / 37.4% | 0.216 |
+| shenzhen | 147 | +0.0156 [-0.0036, +0.0343] | 35.4% / 34.0% | 0.131 |
+| guangzhou | 147 | +0.0148 [-0.0002, +0.0302] | 32.0% / 33.3% | 0.195 |
+| beijing | 147 | +0.0147 [-0.0020, +0.0324] | 34.0% / 33.3% | 0.121 |
+| lucknow | 146 | +0.0139 [-0.0008, +0.0289] | 50.0% / 50.7% | 0.273 |
+| wuhan | 146 | +0.0131 [-0.0025, +0.0292] | 34.2% / 35.6% | 0.266 |
+| madrid | 146 | +0.0098 [-0.0196, +0.0313] | 60.3% / 63.0% | 0.219 |
+| ... | | | | |
+| milan | 146 | -0.0319 [-0.0706, +0.0035] | 46.6% / 46.6% | 0.439 |
+| mexico_city | 145 | -0.0373 [-0.1153, +0.0103] | 52.4% / 52.4% | 0.173 |
+| munich | 146 | -0.0399 [-0.0890, +0.0038] | 55.5% / 52.7% | 0.382 |
+
+Split check: 22 cities gained over recal on the scored months to July; on August-September (1,247 city-days) their gain is -0.0041 [-0.0117, +0.0030] and their top pick minus the market's -0.0032 [-0.0096, +0.0032].
+
+**`d0_08`** - 5,550 scored city-days.
+
+| distribution | top pick = winner | log loss gain over recal |
+|---|---|---|
+| the market | 48.9% | |
+| the model alone (Q7 blend) | 40.7% | |
+| global second stage (a, b) | 48.6% | -0.0024 [-0.0038, -0.0008] |
+| per-city second stage (a, b_c) | 48.4% | -0.0054 [-0.0082, -0.0026] |
+
+Per-city second stage minus the market, top pick, per day: -0.0049 [-0.0079, -0.0016] (share of city-days).
+
+Cities with at least 30 scored days: 48; with the per-city gain's 90% interval above 0: **1** (about 2.4 expected by chance if none had a real gain).
+
+| city | days | gain over recal [90%] | top pick: per-city stage / market | mean b_c |
+|---|---|---|---|---|
+| tel_aviv | 118 | +0.0201 [+0.0075, +0.0319] | 70.3% / 71.2% | 0.391 |
+| guangzhou | 117 | +0.0107 [-0.0005, +0.0222] | 37.6% / 38.5% | 0.103 |
+| beijing | 117 | +0.0082 [-0.0068, +0.0236] | 33.3% / 34.2% | 0.065 |
+| jeddah | 118 | +0.0066 [-0.0007, +0.0145] | 50.8% / 50.8% | 0.086 |
+| qingdao | 117 | +0.0062 [-0.0047, +0.0163] | 48.7% / 49.6% | 0.128 |
+| chengdu | 117 | +0.0061 [-0.0030, +0.0164] | 37.6% / 38.5% | 0.057 |
+| lucknow | 116 | +0.0043 [-0.0050, +0.0133] | 46.6% / 47.4% | 0.131 |
+| cape_town | 118 | +0.0032 [-0.0047, +0.0122] | 33.1% / 33.9% | 0.055 |
+| atlanta | 117 | +0.0026 [-0.0045, +0.0101] | 47.0% / 48.7% | 0.058 |
+| seattle | 117 | +0.0022 [-0.0059, +0.0117] | 43.6% / 43.6% | 0.047 |
+| ... | | | | |
+| ankara | 118 | -0.0203 [-0.0411, -0.0007] | 57.6% / 59.3% | 0.227 |
+| shenzhen | 117 | -0.0301 [-0.0638, -0.0013] | 34.2% / 34.2% | 0.120 |
+| munich | 118 | -0.0449 [-0.0835, -0.0101] | 49.2% / 49.2% | 0.227 |
+
+Split check: 17 cities gained over recal on the scored months to July; on August-September (965 city-days) their gain is -0.0043 [-0.0114, +0.0018] and their top pick minus the market's -0.0062 [-0.0114, -0.0010].
+
 ## Verdicts under the plan's rule (P3.10: a gain counts only with its 90% interval above 0)
 
 | claim | gain, 90% interval | verdict |
@@ -195,4 +263,10 @@ The station model's monthly fits: 2025-11 30 d half-life, inner MAE 0.9448; 2025
 | `d0_08`: the blend beats P3.9 alone (log loss lower) | +0.0285 [+0.0238, +0.0333] | **yes** |
 | `d0_00`: the blend adds to the price (pooled beats recal) | +0.0015 [-0.0011, +0.0041] | not shown (the interval spans 0) |
 | `d0_08`: the blend adds to the price (pooled beats recal) | -0.0024 [-0.0038, -0.0008] | no: it loses |
+| `d0_00`: per-city weights add to the price (pooled over recal) | -0.0021 [-0.0058, +0.0015] | not shown (the interval spans 0) |
+| `d0_00`: the per-city second stage picks the winner more often than the market | +0.0022 [-0.0019, +0.0062] | not shown (the interval spans 0) |
+| `d0_00`: cities chosen to July still gain in Aug-Sep (pooled over recal) | -0.0041 [-0.0117, +0.0030] | not shown (the interval spans 0) |
+| `d0_08`: per-city weights add to the price (pooled over recal) | -0.0054 [-0.0082, -0.0026] | no: it loses |
+| `d0_08`: the per-city second stage picks the winner more often than the market | -0.0049 [-0.0079, -0.0016] | no: it loses |
+| `d0_08`: cities chosen to July still gain in Aug-Sep (pooled over recal) | -0.0043 [-0.0114, +0.0018] | not shown (the interval spans 0) |
 
