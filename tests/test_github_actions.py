@@ -161,20 +161,26 @@ MEASURED_MINUTES = {
     # 35 s with a cold venv cache, 21 s warm (7 checkpoints, script 11.8 s).
     # Billed at one minute; tick.py stops itself at 45 s.
     "tick.yml": 1.0,
-    # 29.0 measured 19 Sep; plan v2.1 P3.8 adds the hit tournament (a synthetic
-    # 48-city night: 16.7 s a lane, two lanes). Held at 30.0 until timed.
+    # 29.0 measured 19 Sep. Measured 28 Sep with everything since in it (the
+    # hit tournament 2 min 2 s, the width score 3 s, the engine replay 6 s):
+    # the job ran 04:36:05-05:05:44, 29 min 39 s, billed 30. The settlement
+    # sweep is the largest step, 15 min 0 s; the forecast ingest 3 min 29 s
+    # (1,063 s on 27 Sep, before #204).
     "pipeline_daily.yml": 30.0,
-    # 18.5 measured 19 Sep. Plan v2.1 P2.8 adds one multi-model request per
-    # city and cuts the read timeout from 100 s to 30 s (five timeouts cost
-    # about 17 of 22 minutes on 23 Sep); P3.8 adds one current-run request per
-    # city (48 x ~2.3 s, the per-city time in the 23 Sep log). None of it is
-    # timed yet, so this is held at 24.0 until a run with all three has been.
-    "forecasts.yml": 24.0,
+    # Measured per night, every chained link included (the clock dispatches
+    # one run; an incomplete ingest chains the next). 27 Sep, before the
+    # parallel ingest (#204): three links, 67 billed minutes. 28 Sep, the
+    # first night with it: two links, 03:36:06-03:46:44 and 03:46:46-03:50:53,
+    # billed 11 + 5 = 16, with Open-Meteo timing out on 17 of 48 cities in the
+    # first pass. One night; re-measure before leaning on it.
+    "forecasts.yml": 16.0,
     "observations.yml": 2.5,
-    # 1.5 measured before the nightly mirror (plan v2.1 P1.7) was added to
-    # this job; the mirror's first run copies every table's history. Held at
-    # 4.0 until a run with the mirror in it has been timed.
-    "archive_observations.yml": 4.0,
+    # 1.5 measured before the nightly mirror (plan v2.1 P1.7) and the honest
+    # training record (P2.9) were added to this job. Measured with both:
+    # 27 Sep 6 min 45 s (billed 7); 28 Sep 10 min 43 s (billed 11), when the
+    # training record ran into its 5-minute step timeout on Open-Meteo read
+    # timeouts. That timeout bounds the job, so 11 is its worst case.
+    "archive_observations.yml": 11.0,
     "paper_trade_log.yml": 1.5,
     # 1.5 measured before 2026-09-22; the wind-direction backfill added a
     # step that reads 22k cache rows and scans ~415k archived observations
