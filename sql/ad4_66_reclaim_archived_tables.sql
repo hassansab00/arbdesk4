@@ -181,6 +181,15 @@ select cron.schedule(
   'VACUUM (FULL, ANALYZE) public.paper_book_evidence'
 );
 
+-- Signals' decision inputs (plan v2 P1.6 phase 1, 28 Sep): the archive strips
+-- a day of them every night (~300 payloads, ~3 KB each on disk); the rows
+-- stay. Daily at 03:40, between the observations and edges backstops.
+select cron.schedule(
+  'ad4_reclaim_signals',
+  '40 3 * * *',
+  'VACUUM (FULL, ANALYZE) public.signals'
+);
+
 -- The decision log (plan v2 P5.11): about 2,600 rows a day, pruned past 30
 -- days. Small, so the rewrite is short; 03:55, behind edges, for the same
 -- one-rewrite-at-a-time reason.
@@ -242,7 +251,7 @@ declare
     'research_captures', 'paper_resolution_evidence', 'book_snapshots', 'edges',
     'weather_observations', 'weather_forecasts', 'trades_observed', 'decisions',
     -- appended (28 Sep), so every table above keeps its two-minute slot
-    'paper_book_evidence', 'weather_forecast_features'];
+    'paper_book_evidence', 'weather_forecast_features', 'signals'];
   v_now   timestamptz := now();
   v_hour  int := extract(hour from (v_now at time zone 'UTC'))::int;
   v_at    timestamptz;

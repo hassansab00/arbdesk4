@@ -50,7 +50,7 @@ on:
       table:
         description: 'Which archive to run'
         type: choice
-        options: ['all', 'book_evidence', 'books', 'decisions', 'edges', 'forecast_features', 'forecasts', 'ladders', 'observations', 'research', 'resolution', 'trades']
+        options: ['all', 'book_evidence', 'books', 'decisions', 'edges', 'forecast_features', 'forecasts', 'ladders', 'observations', 'research', 'resolution', 'signal_inputs', 'trades']
         default: 'all'
       commit:
         description: 'Upload and prune (UNtick for a dry run)'

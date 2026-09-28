@@ -209,6 +209,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_run_scope": "ad4_32_run_scope.sql",
   "v_settlement_agreement": "ad4_82_settlement_agreement.sql",
   "v_sigma_inputs": "ad4_45_calibration_feedback.sql",
+  "v_signal_inputs_export": "ad4_94_prune_signal_inputs.sql",
   "v_signal_mark": "ad4_33_control.sql",
   "v_signal_outcome": "supabase/migrations/20260919190000_signals_learn_from_settlement.sql",
   "v_signal_scorecard": "supabase/migrations/20260919190000_signals_learn_from_settlement.sql",

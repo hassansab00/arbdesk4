@@ -1547,6 +1547,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_calibration_adjustment",
     "derived_forecast_skill"
   ],
+  "v_signal_inputs_export": [
+    "signals"
+  ],
   "v_signal_mark": [
     "fact_band_outcome",
     "fact_signal_outcome",
