@@ -161,6 +161,24 @@ Q3 repeated with the venue-truth model (same folds):
 | d0_00 | 6,932 | +0.0011 [-0.0008, +0.0031] | 2026-05 0.150, 2026-06 0.155, 2026-07 0.138, 2026-08 0.104, 2026-09 0.096 |
 | d0_08 | 5,553 | -0.0014 [-0.0024, -0.0004] | 2026-06 0.119, 2026-07 0.059, 2026-08 0.025, 2026-09 0.010 |
 
+## Q7. The blend the engine serves: P3.9 and P2.9's station model (added after Q1-Q6 were read)
+
+Declared in the tool's docstring before it was run (Hassan, 28 Sep: new information first). The station model adds the best_match run's heating variables (08:00 temperature and dewpoint, cloud, wind, radiation, rain, pressure) to the seven models.
+
+| cutoff | n | log loss P3.9 / blend / market | blend minus P3.9 | blend minus market | median bucket = winner, P3.9 / blend |
+|---|---|---|---|---|---|
+| d0_00 | 8,373 | 1.460 / 1.433 / 1.291 | -0.027 [-0.032, -0.023] | +0.142 [+0.130, +0.154] | 40.4% / 41.9% |
+| d0_08 | 7,220 | 1.482 / 1.453 / 1.245 | -0.029 [-0.033, -0.024] | +0.208 [+0.194, +0.221] | 39.3% / 40.7% |
+
+Q3 repeated with the blend (same folds):
+
+| cutoff | scored | pooled over recal | pooled b by fold |
+|---|---|---|---|
+| d0_00 | 6,929 | +0.0015 [-0.0011, +0.0041] | 2026-05 0.225, 2026-06 0.227, 2026-07 0.191, 2026-08 0.152, 2026-09 0.138 |
+| d0_08 | 5,550 | -0.0024 [-0.0038, -0.0008] | 2026-06 0.187, 2026-07 0.097, 2026-08 0.059, 2026-09 0.037 |
+
+The station model's monthly fits: 2025-11 30 d half-life, inner MAE 0.9448; 2025-12 30 d half-life, inner MAE 0.835; 2026-01 30 d half-life, inner MAE 0.9292; 2026-02 90 d half-life, inner MAE 0.9105; 2026-03 90 d half-life, inner MAE 0.9293; 2026-04 90 d half-life, inner MAE 0.9316; 2026-05 90 d half-life, inner MAE 0.9259; 2026-06 365 d half-life, inner MAE 0.9309; 2026-07 365 d half-life, inner MAE 0.9921; 2026-08 365 d half-life, inner MAE 1.0293; 2026-09 90 d half-life, inner MAE 0.9366.
+
 ## Verdicts under the plan's rule (P3.10: a gain counts only with its 90% interval above 0)
 
 | claim | gain, 90% interval | verdict |
@@ -173,4 +191,8 @@ Q3 repeated with the venue-truth model (same folds):
 | `d0_08`: venue-truth labels improve the served model (log loss lower) | +0.0079 [+0.0013, +0.0140] | **yes** |
 | `d0_00`: the venue-truth model adds to the price (pooled beats recal) | +0.0011 [-0.0008, +0.0031] | not shown (the interval spans 0) |
 | `d0_08`: the venue-truth model adds to the price (pooled beats recal) | -0.0014 [-0.0024, -0.0004] | no: it loses |
+| `d0_00`: the blend beats P3.9 alone (log loss lower) | +0.0273 [+0.0229, +0.0319] | **yes** |
+| `d0_08`: the blend beats P3.9 alone (log loss lower) | +0.0285 [+0.0238, +0.0333] | **yes** |
+| `d0_00`: the blend adds to the price (pooled beats recal) | +0.0015 [-0.0011, +0.0041] | not shown (the interval spans 0) |
+| `d0_08`: the blend adds to the price (pooled beats recal) | -0.0024 [-0.0038, -0.0008] | no: it loses |
 
