@@ -96,6 +96,21 @@ Q7  The day-ahead blend the engine prices from since 27 Sep 08:23Z: the mean
     blend's own out-of-sample errors of the WIDTH_DAYS before D. Scored as Q1
     and Q3 on the same city-days; the verdict rule is the same.
 
+ADDED 28 SEP AFTER Q1-Q7 WERE READ (Hassan: "we need our predictive model to
+win the single max temp winner"); declared here before it was run
+-------------------------------------------------------------------------
+Q8  Where does the model beat the market, city by city? Model: the Q7 blend.
+    Walk-forward by month, the same folds as Q3: the global (a, b) as Q3; then
+    each city's own b_c, fitted with a held at the global a on the city's
+    earlier months (1-D Newton), and shrunk to the global b by n / (n + K8)
+    city-days (K8 = 60). Scored on the month: pooled with (a, b_c).
+    Primary: per-city pooled over recal, log loss, 90% date bootstrap, and
+    the top pick's hit rate beside the market's (the winner, Hassan's
+    measure), paired per day. Per city: the same, with the count of cities
+    whose interval is above 0 beside the ~2.4 of 48 expected by chance.
+    Split check against fishing: cities chosen on the scored months to July
+    (gain over recal above 0), tested on August-September.
+
 Inputs, all committed: data/training/market_history/ (market_history.py),
 data/training/previous_runs/models_daily.csv.gz, data/replay/
 inputs_2026-09-26/{labels_whole.json.gz,tz.json}, data/mirror/cities.
@@ -109,6 +124,7 @@ import gzip
 import json
 import math
 import random
+import statistics
 import sys
 from collections import defaultdict
 from zoneinfo import ZoneInfo
@@ -441,6 +457,31 @@ def fit_pool(rows, with_model=True):
             break
         a, b = a_new, b_new
     return a, b
+
+
+K8 = 60
+
+
+def fit_b(rows, a, b0=0.0):
+    """b maximising the log likelihood of market^a x model^b with a held, by
+    1-D Newton from b0, clipped to B_BOUNDS."""
+    b = b0
+    for _ in range(50):
+        g = h = 0.0
+        for mkt, mdl, w in rows:
+            y = [math.log(d) for d in mdl]
+            p = pool(mkt, mdl, a, b)
+            ey = sum(pi * yi for pi, yi in zip(p, y))
+            g += y[w] - ey
+            h -= sum(pi * (yi - ey) ** 2 for pi, yi in zip(p, y))
+        if h >= -1e-12:
+            break
+        nb = min(max(b - g / h, B_BOUNDS[0]), B_BOUNDS[1])
+        if abs(nb - b) < 1e-7:
+            b = nb
+            break
+        b = nb
+    return b
 
 
 def fit_anchor(rows):
@@ -846,6 +887,100 @@ def main():
         f"{mo} {c['half_life_days']} d half-life, inner MAE {c['inner_mae']}" for mo, c in sorted(blend.chosen.items()))
       + ".")
     p()
+
+    # ---------------- Q8: added after Q1-Q7 were read (see the docstring) ----------------
+    p("## Q8. City by city: where does the model beat the market's pick? (added after Q1-Q7 were read)")
+    p()
+    p("Declared in the tool's docstring before it was run (Hassan, 28 Sep: the model must win the single max-temperature "
+      f"winner). Model: the Q7 blend. Each city's weight on the model is fitted on its earlier months and shrunk to the "
+      f"global weight by n / (n + {K8}).")
+    p()
+    for k, rs7 in rows7.items():
+        rs = [dict(r, mdl=r["mdl7"]) for r in rs7]
+        months = sorted({r["month"] for r in rs})
+        scored = []
+        for mo in months:
+            train = [r for r in rs if r["month"] < mo]
+            if len(train) < MIN_TRAIN:
+                continue
+            flat = [(r["mkt"], r["mdl"], r["w"]) for r in train]
+            a_r, _ = fit_pool(flat, with_model=False)
+            a_p, b_p = fit_pool(flat, with_model=True)
+            by_city = defaultdict(list)
+            for r in train:
+                by_city[r["city"]].append((r["mkt"], r["mdl"], r["w"]))
+            b_city = {}
+            for c, v in by_city.items():
+                b_hat = fit_b(v, a_p, b_p)
+                b_city[c] = b_p + len(v) / (len(v) + K8) * (b_hat - b_p)
+            for r in rs:
+                if r["month"] != mo:
+                    continue
+                bc = b_city.get(r["city"], b_p)
+                pr = pool(r["mkt"], r["mdl"], a_r, 0.0)
+                pg = pool(r["mkt"], r["mdl"], a_p, b_p)
+                pc = pool(r["mkt"], r["mdl"], a_p, bc)
+                scored.append(dict(r, ll_r=logloss(pr, r["w"]), ll_g=logloss(pg, r["w"]), ll_c=logloss(pc, r["w"]),
+                                   hit_m=top(r["mkt"]) == r["w"], hit_g=top(pg) == r["w"], hit_c=top(pc) == r["w"],
+                                   hit_model=top(r["mdl"]) == r["w"], b_c=bc))
+        if not scored:
+            continue
+        g_c = boot([(r["date"], r["ll_r"] - r["ll_c"]) for r in scored])
+        g_g = boot([(r["date"], r["ll_r"] - r["ll_g"]) for r in scored])
+        dh = boot([(r["date"], float(r["hit_c"]) - float(r["hit_m"])) for r in scored])
+        verdicts.append((f"`{k}`: per-city weights add to the price (pooled over recal)", g_c))
+        verdicts.append((f"`{k}`: the per-city second stage picks the winner more often than the market", dh))
+        n = len(scored)
+        p(f"**`{k}`** - {n:,} scored city-days.")
+        p()
+        p("| distribution | top pick = winner | log loss gain over recal |")
+        p("|---|---|---|")
+        p(f"| the market | {100 * sum(r['hit_m'] for r in scored) / n:.1f}% | |")
+        p(f"| the model alone (Q7 blend) | {100 * sum(r['hit_model'] for r in scored) / n:.1f}% | |")
+        p(f"| global second stage (a, b) | {100 * sum(r['hit_g'] for r in scored) / n:.1f}% | {iv(g_g, 4)} |")
+        p(f"| per-city second stage (a, b_c) | {100 * sum(r['hit_c'] for r in scored) / n:.1f}% | {iv(g_c, 4)} |")
+        p()
+        p(f"Per-city second stage minus the market, top pick, per day: {iv(dh, 4)} (share of city-days).")
+        p()
+        per = defaultdict(list)
+        for r in scored:
+            per[r["city"]].append(r)
+        rows_c = []
+        for c, v in per.items():
+            if len(v) < 30:
+                continue
+            gc = boot([(r["date"], r["ll_r"] - r["ll_c"]) for r in v])
+            rows_c.append((gc[0], c, len(v), gc, sum(r["hit_c"] for r in v) / len(v),
+                           sum(r["hit_m"] for r in v) / len(v), statistics.mean(r["b_c"] for r in v)))
+        rows_c.sort(reverse=True)
+        above = [x for x in rows_c if x[3][1] > 0]
+        p(f"Cities with at least 30 scored days: {len(rows_c)}; with the per-city gain's 90% interval above 0: "
+          f"**{len(above)}** (about {0.05 * len(rows_c):.1f} expected by chance if none had a real gain).")
+        p()
+        p("| city | days | gain over recal [90%] | top pick: per-city stage / market | mean b_c |")
+        p("|---|---|---|---|---|")
+        for x in rows_c[:10]:
+            m, c, nn, gc, hc, hm, bc = x
+            p(f"| {c} | {nn} | {iv(gc, 4)} | {100 * hc:.1f}% / {100 * hm:.1f}% | {bc:.3f} |")
+        if len(rows_c) > 13:
+            p("| ... | | | | |")
+        for x in rows_c[-3:] if len(rows_c) > 13 else []:
+            m, c, nn, gc, hc, hm, bc = x
+            p(f"| {c} | {nn} | {iv(gc, 4)} | {100 * hc:.1f}% / {100 * hm:.1f}% | {bc:.3f} |")
+        p()
+        early = [r for r in scored if r["month"] <= "2026-07"]
+        late = [r for r in scored if r["month"] >= "2026-08"]
+        pick = {c for c in {r["city"] for r in early}
+                if statistics.mean(r["ll_r"] - r["ll_c"] for r in early if r["city"] == c) > 0}
+        test = [r for r in late if r["city"] in pick]
+        if test:
+            gt = boot([(r["date"], r["ll_r"] - r["ll_c"]) for r in test])
+            ht = boot([(r["date"], float(r["hit_c"]) - float(r["hit_m"])) for r in test])
+            verdicts.append((f"`{k}`: cities chosen to July still gain in Aug-Sep (pooled over recal)", gt))
+            p(f"Split check: {len(pick)} cities gained over recal on the scored months to July; on August-September "
+              f"({len(test):,} city-days) their gain is {iv(gt, 4)} and their top pick minus the market's "
+              f"{iv(ht, 4)}.")
+            p()
 
     p("## Verdicts under the plan's rule (P3.10: a gain counts only with its 90% interval above 0)")
     p()

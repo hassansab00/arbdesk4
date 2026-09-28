@@ -201,3 +201,25 @@ def test_the_midnight_favourite_is_priced_after_the_decision_and_charged_its_cos
     assert abs(got["cost"] - (0.60 + 0.05 * 0.6 * 0.4)) < 1e-12 and got["win"] == 1.0
     assert mf.AFTER_MIN == 60 and "td <= t <= td + AFTER_MIN * 60" in (ROOT / "tools" /
                                                                       "p310_midnight_favourite.py").read_text()
+
+
+def test_a_city_weight_is_recovered_with_a_held():
+    rng = random.Random(9)
+    rows = []
+    for _ in range(2000):
+        mkt = [rng.random() + 0.05 for _ in range(5)]
+        s = sum(mkt)
+        mkt = [x / s for x in mkt]
+        mdl = [rng.random() + 0.05 for _ in range(5)]
+        s = sum(mdl)
+        mdl = [x / s for x in mdl]
+        truth = mvm.pool(mkt, mdl, 1.1, 0.5)
+        u, c, w = rng.random(), 0.0, 4
+        for i, q in enumerate(truth):
+            c += q
+            if u < c:
+                w = i
+                break
+        rows.append((mkt, mdl, w))
+    assert abs(mvm.fit_b(rows, 1.1) - 0.5) < 0.15
+    assert mvm.K8 == 60
