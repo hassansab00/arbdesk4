@@ -169,3 +169,22 @@ def test_a_new_maximum_is_an_event_only_when_it_enters_a_higher_bucket():
     ps = [(100, 0.1), (160, 0.2), (220, 0.3)]
     assert r.first_at_or_after(ps, 161) == 0.3 and r.last_at_or_before(ps, 161) == 0.2
     assert r.first_at_or_after(ps, 221) is None
+
+
+def test_the_minute_signal_enters_a_bucket_before_the_report():
+    om = _tool("p310_one_minute")
+    import datetime as dt
+    day0 = int(dt.datetime(2026, 7, 1, tzinfo=dt.timezone.utc).timestamp())
+    at = lambda h, m: day0 + h * 3600 + m * 60
+    # minutes: 70 F until 12:40, then 73 F; the 5-minute mean reaches 73 by the 12:45 mark
+    minutes = {t: (70.0 if t < at(12, 40) else 73.0) for t in range(at(9, 0), at(15, 0), 60)}
+    marks = dict(om.five_minute_marks(minutes, at(12, 30), at(12, 50)))
+    assert marks[at(12, 40)] == 71 and marks[at(12, 45)] == 73          # (70*4 + 73) / 5 = 70.6 -> 71
+    bands = [{"band_id": 0, "band_lo": None, "band_hi": 70.0}, {"band_id": 1, "band_lo": 70.0, "band_hi": 72.0},
+             {"band_id": 2, "band_lo": 72.0, "band_hi": 74.0}, {"band_id": 3, "band_lo": 74.0, "band_hi": None}]
+    events = {"e": {"city": "nyc", "date": "2026-07-01", "unit": "F", "bands": bands, "winner": 2}}
+    c = lambda f: (f - 32) * 5 / 9
+    obs = {("nyc", "2026-07-01"): [(at(9, 51), c(70)), (at(11, 51), c(70.5)), (at(12, 51), c(73))]}
+    pre = om.find_pre_events(events, {"nyc": "UTC"}, obs, {"nyc": minutes}, {"nyc": "KLGA"})
+    # the report at 12:51 enters bucket 2; the minutes did at the 12:45 mark, confirmed 6 min later
+    assert [(p[3], p[4], p[5], p[6]) for p in pre] == [(at(12, 45), 2, 1, at(12, 51))]
