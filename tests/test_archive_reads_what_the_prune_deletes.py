@@ -110,6 +110,8 @@ EXPORT_SOURCE = {
     "book_evidence": "paper_book_evidence",
     # the table with its three-column key joined into one to page on (P1.6)
     "forecast_features": "v_forecast_features_export",
+    # only the signals still carrying decision_inputs; the rows stay (P1.6)
+    "signal_inputs": "v_signal_inputs_export",
 }
 
 
@@ -166,6 +168,7 @@ def test_the_exported_columns_exist_on_whatever_is_read(name):
         "v_prunable_edge_history":        "ad4_80_prune_edge_history.sql",
         "v_unarchived_ladders":           "../supabase/migrations/20260927100000_a_ladder_is_archived_before_it_is_pruned.sql",
         "v_forecast_features_export":     "ad4_93_prune_forecast_features.sql",
+        "v_signal_inputs_export":         "ad4_94_prune_signal_inputs.sql",
     }
     assert source in defines, f"{source} has no SQL file registered here"
     sql = (Path(ao.__file__).resolve().parents[1]

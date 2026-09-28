@@ -337,6 +337,32 @@ TABLES = {
         "min_keep_days": 2,
         "needs_feature_cache": False,
     },
+    # A WEEK-OLD SIGNAL'S DECISION INPUTS (plan v2 P1.6 phase 1, step 4,
+    # 28 Sep; approved on condition that no collected data is lost). The rows
+    # stay - four tables hold foreign keys to them and the board reads every
+    # settled one. What goes is payload.decision_inputs, 40 MB of the 42 MB of
+    # payload in signals older than 7 days (uncompressed, measured 28 Sep).
+    # Its readers need 16 minutes (paper_plans: 15; decision_snapshot on a
+    # fill: the longest order lived 16 after its signal); the keys the board
+    # (band_ids, basket_group) and the databank (decision_snapshot) read stay.
+    # The "prune" strips the key, marks the payload decision_inputs_in_repo
+    # and switches research capture off for its transaction.
+    "signal_inputs": {
+        "table": "signals",
+        "read_from": "v_signal_inputs_export",
+        "pk": "signal_id",
+        "cutoff_col": "fired_at",
+        "cutoff_is_date": False,
+        "prune_rpc": "prune_signal_inputs",
+        "tag": "signal-inputs-archive",
+        "columns": ["signal_id", "fired_at", "strategy_id", "decision_inputs"],
+        "pk_is_exported_because": "the signal row stays in Postgres, and signal_id is how the archived key rejoins it",
+        # 16 MB of stored payload on 5,797 signals, ~95% of it decision_inputs
+        "bytes_per_row": 3300,
+        "keep_days": 7,
+        "min_keep_days": 7,
+        "needs_feature_cache": False,
+    },
     # THE DECISION LOG (plan v2 P5.11): one row per run, strategy and
     # city-day, about 2,600 a day at 48 city-days, 9 strategies and six runs
     # (measured 25 Sep). Nothing reads a decision older than 30 days from
