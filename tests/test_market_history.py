@@ -328,3 +328,15 @@ def test_the_neighbour_study_is_fixed_before_it_was_fetched():
     assert "FIXED HERE, BEFORE ANY DATA WAS FETCHED" in src and "Placebo" in src
     nb = _tool("p310_neighbours")
     assert nb.CHECKPOINTS == {"h10": 10, "h12": 12, "h14": 14} and nb.AFTER_MIN == 60
+
+
+def test_the_remaining_rise_is_seen_from_the_checkpoint_and_the_slope_is_ols():
+    nb = _tool("p310_neighbours")
+    t = 1000
+    s = ([t - nb.LAG_MIN - 5, t, t + 60, t + 120, t + 2000], [20.0, 21.0, 24.0, 23.0, 30.0])
+    # the reading a feature sees at t is 20.0; the day ends before the 30.0
+    assert nb.remaining_rise(s, t, t + 1000) == 4.0
+    assert nb.remaining_rise(([t + 5], [20.0]), t, t + 1000) is None
+    pairs = [(f"d{i % 7}", float(i), 2.0 * i + 1) for i in range(40)]
+    sl, lo, hi = nb.slope_boot(pairs)
+    assert abs(sl - 2.0) < 1e-9 and lo <= sl <= hi

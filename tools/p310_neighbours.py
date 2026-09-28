@@ -22,8 +22,8 @@ Stations. For each active city: its settlement station S (cities mirror, ICAO)
   fetching, the NEIGHBOURS nearest with a report in at least MIN_COVERAGE of
   the period's hours are the city's neighbours. A city with fewer than
   MIN_NEIGHBOURS is left out and named.
-Readings. IEM's routine and special METARs (tmpf), 2025-12-01 to 2026-09-27,
-  converted to C. A report counts at time t only if valid at or before
+Readings. IEM's routine and special METARs (tmpf), 2025-12-01 to 2026-09-27
+  (IEM's end is exclusive: the last readings are on 26 Sep), converted to C. A report counts at time t only if valid at or before
   t - LAG_MIN (the time to publish), and within STALE_MIN of t - LAG_MIN.
 Checkpoints. 10:00, 12:00 and 14:00 local on the event's day.
 The market. Each bucket's FIRST price at or after the checkpoint, at most
@@ -53,6 +53,15 @@ The question, per checkpoint: log loss of recal minus log loss with the
   market and of the model, and the placebo's gain.
   A trading test after costs is a later part, written down before it is run,
   and only for a checkpoint that passes here.
+
+ADDED AFTER THE RESULTS ABOVE WERE READ (28 Sep, disclosed as such): no
+  checkpoint passed, so a check that the features carry any signal at all,
+  without the market: on the scored city-days, the slope of the settlement
+  station's remaining rise (its highest reading from the checkpoint to the end
+  of the local day, minus its reading at the checkpoint) on each feature, with
+  a 90% bootstrap over dates. A slope away from zero means the neighbours say
+  something about the afternoon that the market already prices; a slope of
+  zero means they say nothing.
 
     python tools/p310_neighbours.py stations     # -> data/training/neighbours/candidates.csv
     python tools/p310_neighbours.py fetch        # -> data/training/neighbours/metar.csv.gz (resumable)
@@ -488,6 +497,37 @@ def with_baseline(raw):
     return out
 
 
+def remaining_rise(series, t_minute, end_minute):
+    """The station's highest reading valid in [t, end) minus its reading at t (as a feature sees it)."""
+    import bisect
+    now = reading_at(series, t_minute - LAG_MIN)
+    if now is None:
+        return None
+    ms, ts = series
+    i, j = bisect.bisect_left(ms, t_minute - LAG_MIN), bisect.bisect_left(ms, end_minute)
+    later = ts[i:j]
+    return max(later) - now if later else None
+
+
+def slope_boot(pairs, seed=SEED):
+    """(slope, lower 90%, upper 90%) of y on x, bootstrapping whole dates. pairs: [(date, x, y)]."""
+    by = defaultdict(list)
+    for d, x, y in pairs:
+        by[d].append((x, y))
+    dates = sorted(by)
+
+    def slope(rows):
+        n = len(rows)
+        mx = sum(x for x, _y in rows) / n
+        my = sum(y for _x, y in rows) / n
+        vx = sum((x - mx) ** 2 for x, _y in rows)
+        return sum((x - mx) * (y - my) for x, y in rows) / vx if vx else 0.0
+    rng = random.Random(seed)
+    stats = sorted(slope([r for _ in dates for r in by[dates[rng.randrange(len(dates))]]])
+                   for _i in range(1000))
+    return slope([r for d in dates for r in by[d]]), stats[50], stats[949]
+
+
 def cmd_study():
     tz = json.load(open(mvm.RI + "tz.json"))
     cities, _ = mvm.load_cities()
@@ -534,7 +574,7 @@ def cmd_study():
     p("| checkpoint | city-days scored | market log loss | recal | with the neighbours | gain over recal [90%] "
       "| placebo gain over recal [90%] | top pick: market | top pick: with the neighbours |")
     p("|---|---|---|---|---|---|---|---|---|")
-    fits_out = []
+    fits_out, signal = [], {}
     for k in CHECKPOINTS:
         rows = []
         for (eid, kk), ps in lad.items():
@@ -548,8 +588,11 @@ def cmd_study():
             s = sum(m)
             m = [x / s for x in m]
             w = [b["band_id"] for b in e["bands"]].index(e["winner"])
+            ser = readings.get((e["city"], chosen[e["city"]]["settlement"]))
+            day_end = times[(eid, k)] // 60 + (24 - CHECKPOINTS[k]) * 60
             rows.append({"date": e["date"], "month": e["date"][:7], "m": m, "c": centres_c(e["bands"], e["unit"]),
-                         "x": list(feat[key]), "xp": list(feat_pl[key]), "w": w})
+                         "x": list(feat[key]), "xp": list(feat_pl[key]), "w": w,
+                         "rise": remaining_rise(ser, times[(eid, k)] // 60, day_end) if ser else None})
         scored = []
         for mo in sorted({r["month"] for r in rows}):
             train = [r for r in rows if r["month"] < mo]
@@ -572,6 +615,7 @@ def cmd_study():
         if not scored:
             p(f"| {k} | 0 | | | | | | | |")
             continue
+        signal[k] = scored
         g = boot([(r["date"], r["ll_0"] - r["ll_1"]) for r in scored])
         gp = boot([(r["date"], r["ll_0"] - r["ll_2"]) for r in scored])
         n = len(scored)
@@ -582,6 +626,23 @@ def cmd_study():
     p()
     p("Gain: log loss of recal minus log loss with the features, per city-day (positive: the neighbours help). "
       "The placebo is the same features from the readings 24 hours earlier.")
+    p()
+    p("## Added after the results were read: do the features say anything about the afternoon?")
+    p()
+    p("The slope of the settlement station's remaining rise (C) on each feature (C), on the scored city-days, "
+      "without the market; 90% bootstrap over dates. See the docstring for why this was added.")
+    p()
+    p("| checkpoint | city-days | mean remaining rise | slope on level [90%] | slope on trend [90%] | "
+      "slope on placebo level [90%] |")
+    p("|---|---|---|---|---|---|")
+    for k, sc in signal.items():
+        rs = [r for r in sc if r["rise"] is not None]
+        sl = slope_boot([(r["date"], r["x"][0], r["rise"]) for r in rs])
+        st = slope_boot([(r["date"], r["x"][1], r["rise"]) for r in rs])
+        sp = slope_boot([(r["date"], r["xp"][0], r["rise"]) for r in rs])
+        p(f"| {k} | {len(rs):,} | {statistics.mean(r['rise'] for r in rs):.2f} | "
+          f"{sl[0]:+.3f} [{sl[1]:+.3f}, {sl[2]:+.3f}] | {st[0]:+.3f} [{st[1]:+.3f}, {st[2]:+.3f}] | "
+          f"{sp[0]:+.3f} [{sp[1]:+.3f}, {sp[2]:+.3f}] |")
     p()
     p("## The fits, each on the months before the month it scores")
     p()

@@ -471,6 +471,23 @@ P7 design work (P7.1–P7.3) can start as soon as P2 is merged. Shadow trading (
     - Every favourite at 00:00: -0.0173 [-0.0271, -0.0077].
     - At the archived books' real ask: -0.0864 [-0.1296, -0.0379], 297 trades. The midnight book is thin and its real ask sits well above the quote, so the under-confidence is a quote nobody can trade at.
     - The single band [0.50, 0.60) looks positive in hindsight (+0.0288 [+0.0037, +0.0541]), but it is one of seven reported, and the walk-forward choice did not reproduce it.
+  - **Part 7, the stations around the settlement airport** (`tools/p310_neighbours.py` -> `docs/NEIGHBOUR_STATIONS_2026-09-28.md`, data in `data/training/neighbours/`; Hassan, 28 Sep: new information first).
+    - The design was fixed before any reading was fetched:
+      - for each city, the 4 nearest METAR stations 10-150 km away that report in at least 70% of hours;
+      - two features at 10:00, 12:00 and 14:00 local: the air around warmer than usual relative to the station ("level"), and warming faster ("trend");
+      - a placebo from the readings 24 h earlier;
+      - the model tilts the market's ladder by the features, on top of the market's own recalibration, walk-forward by month.
+    - Coverage: 32 of 48 cities (1,876,936 readings, 1 Dec-26 Sep). Tokyo's, Tel Aviv's and most Chinese cities' nearby stations report too rarely in IEM's archive.
+    - **No information beyond the price.** Gain over recal:
+
+      | checkpoint | gain over recal [90%] | placebo |
+      |---|---|---|
+      | 10:00 | -0.0007 [-0.0011, -0.0003] | -0.0003 |
+      | 12:00 | -0.0002 [-0.0006, +0.0001] | -0.0002 |
+      | 14:00 | +0.0006 [-0.0006, +0.0019] | -0.0004 |
+
+      The top pick matches the market within 0.3 points. Scored July-September (2,734 / 2,746 / 1,800 city-days): the fits need 1,000 earlier city-days.
+    - Checked after reading (disclosed in the tool): the features do relate to the station's remaining rise. At 10:00, +0.709 C per C of "level" [+0.600, +0.821]; partly mechanical, since the station's own reading is in both. So the pipeline is live, and what the neighbours say about the afternoon is already in the price.
   - **Part 4, measured the same day** (`tools/p310_reaction.py` -> `docs/MARKET_REACTION_2026-09-28.md`; one-minute prices around 2,968 new daily maxima, sampled from 28,079, on 207 dates and 48 cities, Mar-Sep 2026). Where the entered bucket's price rises, half of the rise comes a median 11.2 min after the reading's observation time (quartiles 2.3 / 56.2); 1.8% had moved half-way by then. Buying the entered bucket after the reading loses after the spread and the fee: -0.0110 per share [-0.0203, -0.0015] 2 min after, about -0.02 at 5-15 min. The control (the running maximum's bucket at a random minute) is +0.0049 [-0.0023, +0.0121]. **No latency edge in this form.**
 - **Part 3 (next, in this order):**
   1. P3.9's correction learns from the venue's truth (the settled bucket, or the venue's reading where `weather_resolution_evidence` has it) instead of the station labels; both label sets are scored on the venue's truth every night. **Built 28 Sep** (`v_venue_truth`, `scripts/venue_truth.py`). P2.9's station model is not switched: it trains on the whole year and the database's venue truth starts 22 Aug, so it is tested first.
