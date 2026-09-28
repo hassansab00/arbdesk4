@@ -2351,6 +2351,84 @@ const assert = require('node:assert/strict');
   assert.equal((await rPlan('NO',10,.40)).status,'queued','lifting the halt must let entries through again');
   await db.exec(`reset role; update public.paper_orders set status='expired' where account_id='${rd}';
     update public.paper_accounts set reserved_cash=0 where account_id='${rd}'; set role service_role;`);
+  // A PLAN'S OWN LEGS COUNT ONCE (20260928090000). queue_plan inserts each
+  // leg's order before it checks the next leg, and the city-day sum used to
+  // count those orders as well as every leg of the plan: three $9 legs on one
+  // market, $27 against a $30 room, were refused at the second leg (9 + 27).
+  // An S11 ladder is exactly such a plan.
+  const band2='20000000-0000-0000-0000-000000000102', band3='20000000-0000-0000-0000-000000000103';
+  await db.exec(`reset role;
+    insert into public.bands(band_id,market_id,band_index,band_label,band_lo,band_hi,open_low,open_high,token_yes,token_no,condition_id)
+      values('${band2}','${market}',2,'21C',21,21,false,false,'yes2','no2','condition2'),
+            ('${band3}','${market}',3,'22C',22,22,false,false,'yes3','no3','condition3');
+    insert into signals(signal_id,action,strategy_id,fired_at,reason) select g,'ENTER','s1',now(),'rails' from generate_series(6121,6140) g;
+    set role service_role;`);
+  const legsPlan=async(legs)=>{
+    const id=(await db.query('select publish_paper_plan($1,$2,$3,$4,$5) as id',
+      [rd,`61000000-0000-0000-0000-${String(++rn).padStart(12,'0')}`,6100+rn,
+       JSON.stringify(legs.map(([b,sh,px,side='YES'])=>({band_id:b,side,shares:String(sh),limit_price:String(px),
+                                                         cash_ceiling:(sh*px).toFixed(4)}))),
+       JSON.stringify({net_edge_per_share:'.10'})])).rows[0].id;
+    return (await db.query('select status,reason from paper_trade_plans where plan_id=$1',[id])).rows[0];
+  };
+  const clearRd=()=>db.exec(`reset role; update public.paper_orders set status='expired' where account_id='${rd}';
+    update public.paper_accounts set reserved_cash=0 where account_id='${rd}'; set role service_role;`);
+  const ladder=await legsPlan([[band,18,.5],[band2,18,.5],[band3,18,.5]]);
+  assert.equal(ladder.status,'queued',`three $9 legs on one city-day ($27 of a $30 room) were refused: ${ladder.reason}`);
+  // The room itself still holds: $27 reserved plus $4 more is $31 of $30.
+  const ladderOver=await legsPlan([[band,8,.5,'NO']]);
+  assert.equal(ladderOver.status,'blocked','$31 on a city-day passed the 3% rail');
+  assert.match(ladderOver.reason,/Rail: 31\.00 on london .* would exceed 0\.03 of the account/);
+  assert.equal((await legsPlan([[band,4,.5,'NO']])).status,'queued','$29 of $30 is inside the rail');
+  await clearRd();
+
+  // THE CLUSTER-DAY RAIL (plan v2 P5.9 part 3, 20260928090000): held plus
+  // reserved plus this plan on every city of the cluster, that date, at most
+  // 8% of equity. Membership is the latest city_clusters fit, read only while
+  // strategy_learning is on, as the engine reads it; otherwise a city is its
+  // own cluster and the 3% city-day rail binds first.
+  const mParis='30000000-0000-0000-0000-000000000201', mBerlin='30000000-0000-0000-0000-000000000202';
+  const bParis='20000000-0000-0000-0000-000000000201', bBerlin='20000000-0000-0000-0000-000000000202';
+  await db.exec(`reset role;
+    insert into public.cities(city_key,display_name,unit,status,timezone,latitude,longitude)
+      values('paris','Paris','C','active','UTC',49.0,2.5),('berlin','Berlin','C','active','UTC',52.5,13.3);
+    insert into public.markets(market_id,closed,resolution_date,city_key,event_slug,unit)
+      values('${mParis}',false,current_date,'paris','highest-temperature-in-paris','C'),
+            ('${mBerlin}',false,current_date,'berlin','highest-temperature-in-berlin','C');
+    insert into public.bands(band_id,market_id,band_index,band_label,band_lo,band_hi,open_low,open_high,token_yes,token_no,condition_id)
+      values('${bParis}','${mParis}',1,'20C',20,20,false,false,'yes-p','no-p','condition-p'),
+            ('${bBerlin}','${mBerlin}',1,'20C',20,20,false,false,'yes-b','no-b','condition-b');
+    update public.settings set value=value||'{"cluster_day_frac":0.08}'::jsonb where key='risk_rails';
+    set role service_role;`);
+  // $27 on each of three cities, $81: over 8% ($80) as one cluster, fine as three.
+  const threeCities=async()=>{
+    const out=[];
+    for (const b of [band,bParis,bBerlin]) out.push(await legsPlan([[b,54,.5]]));
+    return out;
+  };
+  const alone=await threeCities();
+  assert.deepEqual(alone.map(p=>p.status),['queued','queued','queued'],'with learning off every city is its own cluster');
+  await clearRd();
+  await db.exec(`reset role;
+    insert into public.strategy_params(param,scope,version,value,n,prior,bounds,as_of)
+      values('city_clusters','all','city-clusters:contract',
+             '{"cluster":{"london":"berlin","paris":"berlin","berlin":"berlin"},"version":"city-clusters:contract"}',
+             3,'{"rho":0.3}','[0,1]',current_date);
+    update public.settings set value=value||'{"enabled":true}'::jsonb where key='strategy_learning';
+    set role service_role;`);
+  const clustered=await threeCities();
+  assert.deepEqual(clustered.slice(0,2).map(p=>p.status),['queued','queued']);
+  assert.equal(clustered[2].status,'blocked','$81 on one cluster-day passed the 8% rail');
+  assert.match(clustered[2].reason,/Rail: 81\.00 on the berlin cluster .* would exceed 0\.08 of the account/);
+  await clearRd();
+  // Another date is another cluster-day.
+  await db.exec(`reset role; update public.markets set resolution_date=current_date+1 where market_id='${mBerlin}'; set role service_role;`);
+  assert.deepEqual((await threeCities()).map(p=>p.status),['queued','queued','queued'],'the rail is per cluster AND date');
+  await clearRd();
+  await db.exec(`reset role; update public.markets set resolution_date=current_date where market_id='${mBerlin}';
+    update public.settings set value=value||'{"enabled":false}'::jsonb where key='strategy_learning';
+    set role service_role;`);
+
   // No entry within the close buffer (the market's local day ends tonight).
   await db.exec(`reset role; update public.settings set value=value||'{"close_buffer_min":100000}'::jsonb where key='risk_rails'; set role service_role;`);
   const late=await rPlan('NO',10,.40);
