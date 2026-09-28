@@ -141,7 +141,8 @@ def get(url, tries=5, parse=json.loads):
                 return parse(r.read().decode())
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
             err = e
-            time.sleep(5 * (i + 1))
+            # 429: IEM asks for fewer requests; wait minutes, not seconds
+            time.sleep(60 * (i + 1) if getattr(e, "code", None) == 429 else 5 * (i + 1))
     raise RuntimeError(f"{url}: {err}")
 
 
@@ -239,7 +240,7 @@ def fetch_station(station):
             w.writerows(rows)
         os.replace(path + ".tmp", path)
         print(f"{station}: {len(rows):,} readings", file=sys.stderr)
-        time.sleep(2)
+        time.sleep(3)
     with gzip.open(path, "rt") as f:
         return list(csv.DictReader(f))
 
