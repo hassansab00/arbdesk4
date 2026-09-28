@@ -1,0 +1,704 @@
+{
+ "amsterdam": {
+  "coverage": {
+   "EHAM": 0.996,
+   "EHDL": 0.956,
+   "EHKD": 0.954,
+   "EHLE": 0.996,
+   "EHQN": 0.994,
+   "EHQS": 0.992,
+   "EHQW": 0.992,
+   "EHRD": 0.996
+  },
+  "neighbours": [
+   "EHRD",
+   "EHQS",
+   "EHQW",
+   "EHQN"
+  ],
+  "settlement": "EHAM"
+ },
+ "ankara": {
+  "coverage": {
+   "LTAB": 0.011,
+   "LTAC": 0.997,
+   "LTAD": 0.062,
+   "LTAE": 0.23,
+   "LTCV": 0.994
+  },
+  "neighbours": [
+   "LTCV"
+  ],
+  "settlement": "LTAC"
+ },
+ "atlanta": {
+  "coverage": {
+   "ATL": 0.995,
+   "CCO": 0.927,
+   "FFC": 0.99,
+   "FTY": 0.986,
+   "HMP": 0.991,
+   "MGE": 0.903,
+   "PDK": 0.994,
+   "RYY": 0.952
+  },
+  "neighbours": [
+   "FTY",
+   "HMP",
+   "PDK",
+   "MGE"
+  ],
+  "settlement": "ATL"
+ },
+ "austin": {
+  "coverage": {
+   "ATT": 0.991,
+   "AUS": 0.993,
+   "BAZ": 0.991,
+   "EDC": 0.783,
+   "GTU": 0.962,
+   "HYI": 0.983,
+   "RYW": 0.827,
+   "T74": 0.912
+  },
+  "neighbours": [
+   "ATT",
+   "EDC",
+   "HYI",
+   "RYW"
+  ],
+  "settlement": "AUS"
+ },
+ "beijing": {
+  "coverage": {
+   "ZBAA": 0.997,
+   "ZBAD": 0.997,
+   "ZBTJ": 0.997
+  },
+  "neighbours": [
+   "ZBAD",
+   "ZBTJ"
+  ],
+  "settlement": "ZBAA"
+ },
+ "buenos_aires": {
+  "coverage": {
+   "SABE": 0.996,
+   "SADF": 0.996,
+   "SADJ": 0.575,
+   "SADL": 0.978,
+   "SADM": 0.992,
+   "SADP": 0.991,
+   "SAEZ": 0.996
+  },
+  "neighbours": [
+   "SADM",
+   "SADP",
+   "SABE",
+   "SADF"
+  ],
+  "settlement": "SAEZ"
+ },
+ "busan": {
+  "coverage": {
+   "RKPK": 0.992,
+   "RKPS": 0.0,
+   "RKTN": 0.991
+  },
+  "neighbours": [
+   "RKTN"
+  ],
+  "settlement": "RKPK"
+ },
+ "cape_town": {
+  "coverage": {
+   "FACT": 0.99,
+   "FALW": 0.875
+  },
+  "neighbours": [
+   "FALW"
+  ],
+  "settlement": "FACT"
+ },
+ "chengdu": {
+  "coverage": {
+   "ZUTF": 0.997,
+   "ZUUU": 0.997
+  },
+  "neighbours": [
+   "ZUTF"
+  ],
+  "settlement": "ZUUU"
+ },
+ "chicago": {
+  "coverage": {
+   "06C": 0.992,
+   "ARR": 0.975,
+   "DPA": 0.986,
+   "LOT": 0.982,
+   "MDW": 0.995,
+   "ORD": 0.995,
+   "PWK": 0.994,
+   "UGN": 0.982
+  },
+  "neighbours": [
+   "06C",
+   "PWK",
+   "MDW",
+   "DPA"
+  ],
+  "settlement": "ORD"
+ },
+ "chongqing": {
+  "coverage": {
+   "ZUCK": 0.997
+  },
+  "neighbours": [],
+  "settlement": "ZUCK"
+ },
+ "dallas": {
+  "coverage": {
+   "ADS": 0.969,
+   "DAL": 0.995,
+   "DFW": 0.994,
+   "F46": 0.99,
+   "GKY": 0.989,
+   "GPM": 0.991,
+   "HQZ": 0.789,
+   "LNC": 0.33,
+   "RBD": 0.995
+  },
+  "neighbours": [
+   "ADS",
+   "DFW",
+   "RBD",
+   "GPM"
+  ],
+  "settlement": "DAL"
+ },
+ "denver": {
+  "coverage": {
+   "APA": 0.995,
+   "BDU": 0.99,
+   "BJC": 0.939,
+   "BKF": 0.968,
+   "CFO": 0.793,
+   "DEN": 0.994,
+   "EIK": 0.979,
+   "MNH": 0.987
+  },
+  "neighbours": [
+   "DEN",
+   "APA",
+   "CFO",
+   "BJC"
+  ],
+  "settlement": "BKF"
+ },
+ "guangzhou": {
+  "coverage": {
+   "ZGGG": 0.997,
+   "ZGSZ": 0.997
+  },
+  "neighbours": [
+   "ZGSZ"
+  ],
+  "settlement": "ZGGG"
+ },
+ "helsinki": {
+  "coverage": {
+   "EFHK": 0.997,
+   "EFTP": 0.996,
+   "EFTU": 0.996,
+   "EFUT": 0.996
+  },
+  "neighbours": [
+   "EFUT",
+   "EFTP",
+   "EFTU"
+  ],
+  "settlement": "EFHK"
+ },
+ "houston": {
+  "coverage": {
+   "AXH": 0.835,
+   "DWH": 0.959,
+   "EFD": 0.837,
+   "HOU": 0.995,
+   "IAH": 0.996,
+   "LVJ": 0.991,
+   "MCJ": 0.925,
+   "SGR": 0.985,
+   "T41": 0.948
+  },
+  "neighbours": [
+   "EFD",
+   "LVJ",
+   "MCJ",
+   "T41"
+  ],
+  "settlement": "HOU"
+ },
+ "istanbul": {
+  "coverage": {
+   "LTBA": 0.996,
+   "LTBG": 0.025,
+   "LTBQ": 0.994,
+   "LTBR": 0.997,
+   "LTBU": 0.997,
+   "LTFJ": 0.997,
+   "LTFM": 0.997
+  },
+  "neighbours": [
+   "LTBA",
+   "LTFJ",
+   "LTBU",
+   "LTBQ"
+  ],
+  "settlement": "LTFM"
+ },
+ "jeddah": {
+  "coverage": {
+   "OEJN": 0.997,
+   "OETF": 0.991
+  },
+  "neighbours": [
+   "OETF"
+  ],
+  "settlement": "OEJN"
+ },
+ "karachi": {
+  "coverage": {
+   "OPKC": 0.996
+  },
+  "neighbours": [],
+  "settlement": "OPKC"
+ },
+ "kuala_lumpur": {
+  "coverage": {
+   "WMKK": 0.997,
+   "WMKM": 0.996,
+   "WMSA": 0.997
+  },
+  "neighbours": [
+   "WMSA",
+   "WMKM"
+  ],
+  "settlement": "WMKK"
+ },
+ "london": {
+  "coverage": {
+   "EGGW": 0.996,
+   "EGKB": 0.993,
+   "EGKK": 0.996,
+   "EGLC": 0.996,
+   "EGLF": 0.992,
+   "EGLL": 0.996,
+   "EGMC": 0.792,
+   "EGSS": 0.997,
+   "EGWU": 0.996
+  },
+  "neighbours": [
+   "EGKB",
+   "EGWU",
+   "EGLL",
+   "EGKK"
+  ],
+  "settlement": "EGLC"
+ },
+ "los_angeles": {
+  "coverage": {
+   "BUR": 0.993,
+   "LAX": 0.995,
+   "LGB": 0.966,
+   "SLI": 0.967,
+   "SMO": 0.984,
+   "TOA": 0.664,
+   "VNY": 0.991,
+   "WHP": 0.436
+  },
+  "neighbours": [
+   "SMO",
+   "LGB",
+   "BUR",
+   "VNY"
+  ],
+  "settlement": "LAX"
+ },
+ "lucknow": {
+  "coverage": {
+   "VERB": 0.002,
+   "VILK": 0.988
+  },
+  "neighbours": [],
+  "settlement": "VILK"
+ },
+ "madrid": {
+  "coverage": {
+   "LECV": 0.397,
+   "LEGT": 0.74,
+   "LEMD": 0.997,
+   "LEVS": 0.996
+  },
+  "neighbours": [
+   "LEVS",
+   "LEGT"
+  ],
+  "settlement": "LEMD"
+ },
+ "manila": {
+  "coverage": {
+   "RPLB": 0.996,
+   "RPLC": 0.996,
+   "RPLL": 0.996
+  },
+  "neighbours": [
+   "RPLB",
+   "RPLC"
+  ],
+  "settlement": "RPLL"
+ },
+ "mexico_city": {
+  "coverage": {
+   "MMCB": 0.579,
+   "MMMX": 0.993,
+   "MMPB": 0.574,
+   "MMSM": 0.975,
+   "MMTL": 0.965,
+   "MMTO": 0.988
+  },
+  "neighbours": [
+   "MMSM",
+   "MMTO",
+   "MMTL"
+  ],
+  "settlement": "MMMX"
+ },
+ "miami": {
+  "coverage": {
+   "FLL": 0.994,
+   "FXE": 0.929,
+   "HST": 0.959,
+   "HWO": 0.88,
+   "K70": 0.895,
+   "MIA": 0.995,
+   "OPF": 0.988,
+   "TMB": 0.807
+  },
+  "neighbours": [
+   "OPF",
+   "TMB",
+   "HWO",
+   "HST"
+  ],
+  "settlement": "MIA"
+ },
+ "milan": {
+  "coverage": {
+   "LIMA": 0.421,
+   "LIMC": 0.994,
+   "LIME": 0.994,
+   "LIMF": 0.993,
+   "LIMH": 0.077,
+   "LIMK": 0.981,
+   "LIML": 0.993,
+   "LIMN": 0.933,
+   "LIMW": 0.536
+  },
+  "neighbours": [
+   "LIMN",
+   "LIML",
+   "LIME",
+   "LIMF"
+  ],
+  "settlement": "LIMC"
+ },
+ "moscow": {
+  "coverage": {
+   "UUBC": 0.997,
+   "UUBW": 0.997,
+   "UUDD": 0.997,
+   "UUEE": 0.997,
+   "UUWW": 0.997
+  },
+  "neighbours": [
+   "UUEE",
+   "UUDD",
+   "UUBW",
+   "UUBC"
+  ],
+  "settlement": "UUWW"
+ },
+ "munich": {
+  "coverage": {
+   "EDDM": 0.997,
+   "EDMA": 0.992,
+   "EDMO": 0.993,
+   "ETHA": 0.984,
+   "ETSI": 0.991,
+   "ETSL": 0.997,
+   "ETSN": 0.996
+  },
+  "neighbours": [
+   "ETSI",
+   "EDMO",
+   "ETSN",
+   "EDMA"
+  ],
+  "settlement": "EDDM"
+ },
+ "nyc": {
+  "coverage": {
+   "CDW": 0.977,
+   "EWR": 0.995,
+   "FRG": 0.979,
+   "HPN": 0.993,
+   "JFK": 0.995,
+   "JRB": 0.942,
+   "LDJ": 0.963,
+   "LGA": 0.995,
+   "TEB": 0.991
+  },
+  "neighbours": [
+   "JRB",
+   "TEB",
+   "JFK",
+   "EWR"
+  ],
+  "settlement": "LGA"
+ },
+ "panama_city": {
+  "coverage": {
+   "MPMG": 0.956,
+   "MPPA": 0.925,
+   "MPSM": 0.518,
+   "MPTO": 0.972
+  },
+  "neighbours": [
+   "MPPA",
+   "MPTO"
+  ],
+  "settlement": "MPMG"
+ },
+ "paris": {
+  "coverage": {
+   "LFOB": 0.995,
+   "LFOE": 0.986,
+   "LFPB": 0.994,
+   "LFPM": 0.995,
+   "LFPN": 0.996,
+   "LFPO": 0.995,
+   "LFPT": 0.715,
+   "LFPV": 0.995
+  },
+  "neighbours": [
+   "LFPV",
+   "LFPO",
+   "LFPT",
+   "LFPN"
+  ],
+  "settlement": "LFPB"
+ },
+ "qingdao": {
+  "coverage": {
+   "ZSQD": 0.997
+  },
+  "neighbours": [],
+  "settlement": "ZSQD"
+ },
+ "san_francisco": {
+  "coverage": {
+   "HAF": 0.986,
+   "HWD": 0.986,
+   "LVK": 0.994,
+   "NUQ": 0.985,
+   "OAK": 0.996,
+   "PAO": 0.551,
+   "SFO": 0.996,
+   "SJC": 0.995,
+   "SQL": 0.868
+  },
+  "neighbours": [
+   "HAF",
+   "SQL",
+   "OAK",
+   "HWD"
+  ],
+  "settlement": "SFO"
+ },
+ "sao_paulo": {
+  "coverage": {
+   "SBGR": 0.995,
+   "SBKP": 0.997,
+   "SBMT": 0.746,
+   "SBSJ": 0.816,
+   "SBSP": 0.99,
+   "SBST": 0.44,
+   "SBTA": 0.715
+  },
+  "neighbours": [
+   "SBMT",
+   "SBSP",
+   "SBSJ",
+   "SBKP"
+  ],
+  "settlement": "SBGR"
+ },
+ "seattle": {
+  "coverage": {
+   "GRF": 0.959,
+   "OLM": 0.992,
+   "PAE": 0.995,
+   "PLU": 0.992,
+   "PWT": 0.992,
+   "SEA": 0.995,
+   "SHN": 0.994,
+   "TCM": 0.967,
+   "TIW": 0.98
+  },
+  "neighbours": [
+   "TIW",
+   "PWT",
+   "TCM",
+   "PLU"
+  ],
+  "settlement": "SEA"
+ },
+ "seoul": {
+  "coverage": {
+   "RKSF": 0.014,
+   "RKSI": 0.997,
+   "RKSM": 0.977,
+   "RKSO": 0.962,
+   "RKSS": 0.996,
+   "RKSV": 0.001,
+   "RKSW": 0.018,
+   "RKTB": 0.012
+  },
+  "neighbours": [
+   "RKSS",
+   "RKSM",
+   "RKSO"
+  ],
+  "settlement": "RKSI"
+ },
+ "shanghai": {
+  "coverage": {
+   "ZSNB": 0.997,
+   "ZSPD": 0.997,
+   "ZSSS": 0.997
+  },
+  "neighbours": [
+   "ZSSS",
+   "ZSNB"
+  ],
+  "settlement": "ZSPD"
+ },
+ "shenzhen": {
+  "coverage": {
+   "ZGGG": 0.997,
+   "ZGSZ": 0.997
+  },
+  "neighbours": [
+   "ZGGG"
+  ],
+  "settlement": "ZGSZ"
+ },
+ "singapore": {
+  "coverage": {
+   "WMAU": 0.996,
+   "WMKJ": 0.997,
+   "WSSL": 0.997,
+   "WSSS": 0.997
+  },
+  "neighbours": [
+   "WSSL",
+   "WMKJ",
+   "WMAU"
+  ],
+  "settlement": "WSSS"
+ },
+ "tel_aviv": {
+  "coverage": {
+   "LLBG": 0.994,
+   "LLHA": 0.678,
+   "LLIB": 0.333
+  },
+  "neighbours": [],
+  "settlement": "LLBG"
+ },
+ "tokyo": {
+  "coverage": {
+   "RJAI": 0.007,
+   "RJTF": 0.395,
+   "RJTI": 0.374,
+   "RJTK": 0.015,
+   "RJTL": 0.022,
+   "RJTR": 0.967,
+   "RJTT": 0.997
+  },
+  "neighbours": [
+   "RJTR"
+  ],
+  "settlement": "RJTT"
+ },
+ "toronto": {
+  "coverage": {
+   "CWWB": 0.993,
+   "CWWZ": 0.993,
+   "CXHM": 0.995,
+   "CXTO": 0.995,
+   "CXVN": 0.993,
+   "CYHM": 0.997,
+   "CYTZ": 0.997,
+   "CYYZ": 0.997
+  },
+  "neighbours": [
+   "CXTO",
+   "CYTZ",
+   "CWWB",
+   "CXHM"
+  ],
+  "settlement": "CYYZ"
+ },
+ "warsaw": {
+  "coverage": {
+   "EPLL": 0.996,
+   "EPMO": 0.996,
+   "EPRA": 0.997,
+   "EPSY": 0.997,
+   "EPWA": 0.996
+  },
+  "neighbours": [
+   "EPMO",
+   "EPRA",
+   "EPLL",
+   "EPSY"
+  ],
+  "settlement": "EPWA"
+ },
+ "wellington": {
+  "coverage": {
+   "NZWN": 0.996
+  },
+  "neighbours": [],
+  "settlement": "NZWN"
+ },
+ "wuhan": {
+  "coverage": {
+   "ZHEC": 0.997,
+   "ZHHH": 0.997
+  },
+  "neighbours": [
+   "ZHEC"
+  ],
+  "settlement": "ZHHH"
+ },
+ "zhengzhou": {
+  "coverage": {
+   "ZHCC": 0.997
+  },
+  "neighbours": [],
+  "settlement": "ZHCC"
+ }
+}
