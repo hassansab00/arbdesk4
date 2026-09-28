@@ -39,7 +39,10 @@ const assert = require('node:assert/strict');
       -- the ladder columns, live types (27 Sep): 20260927100000 builds
       -- v_unarchived_ladders over them
       best_bid numeric,best_ask numeric,no_best_bid numeric,no_best_ask numeric,raw_book jsonb,no_book jsonb);
-    create table public.trades_observed(trade_id bigint primary key,city_key text,traded_at timestamptz);
+    -- ingested_at as live (not null, default now()): prune_trades takes only
+    -- trades ingested before the cutoff's UTC day, which the mirror has.
+    create table public.trades_observed(trade_id bigint primary key,city_key text,traded_at timestamptz,
+      ingested_at timestamptz not null default now());
     -- signals.payload carries the decision snapshot that
     -- 20260919180000_trade_decision_lineage.sql stamps onto every trade, so
     -- the column has to exist here or that migration's backfill fails on a
@@ -1922,9 +1925,12 @@ const assert = require('node:assert/strict');
 
   // THE TRADES FLOOR HOLDS FOR p_before TOO. Before, p_before => now() was a
   // cutoff of now, and the 30-day check never looked at it.
-  await db.exec(`insert into public.trades_observed(trade_id,city_key,traded_at) values
-      (900001,'london',now()-interval '40 days'),(900002,'london',now()-interval '2 days'),
-      (900003,'london',now()-interval '1 hour');
+  // Each trade ingested when it traded, so the mirror's bound is not what
+  // decides here.
+  await db.exec(`insert into public.trades_observed(trade_id,city_key,traded_at,ingested_at) values
+      (900001,'london',now()-interval '40 days',now()-interval '40 days'),
+      (900002,'london',now()-interval '2 days',now()-interval '2 days'),
+      (900003,'london',now()-interval '1 hour',now()-interval '1 hour');
     insert into public.archive_daily_city_presence(dataset,day,city_key)
       select 'Trades seen',(traded_at at time zone 'UTC')::date,city_key from public.trades_observed
       on conflict do nothing;`);

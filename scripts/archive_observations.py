@@ -140,6 +140,15 @@ TABLES = {
         # 14, and the run exported 36,945 rows, had them refused, and failed.
         "keep_days": 1,
         "min_keep_days": 1,
+        # THE MIRROR HAS IT FIRST (Hassan, 28 Sep: "yes keep trades in te
+        # mrror to"). mirror_to_repo.py copies trades by ingested_at, a whole
+        # UTC day a night, AFTER the prune. So only trades ingested before the
+        # cutoff's UTC day began leave (the export filters on it and so does
+        # prune_trades), and only while the committed mirror manifest has
+        # reached that midnight. On 28 Sep 6,137 trades ingested that day had
+        # traded before the next night's cutoff.
+        "mirrored_on": "ingested_at",
+        "mirror_first": True,
         "tag": "trades-archive",
         "columns": ["band_id", "condition_id", "traded_at", "price", "size",
                     "side", "proxy_wallet", "ingested_at", "city_key",
@@ -335,6 +344,9 @@ TABLES = {
         "bytes_per_row": 230,
         "keep_days": 2,
         "min_keep_days": 2,
+        # prune_forecast_features refuses a row captured since yesterday's
+        # midnight; this refuses to start while the mirror is behind it.
+        "mirror_first": True,
         "needs_feature_cache": False,
     },
     # A WEEK-OLD SIGNAL'S DECISION INPUTS (plan v2 P1.6 phase 1, step 4,
@@ -590,6 +602,10 @@ def export_cold(spec, cutoff):
             ("order", f"{pk}.asc"),
             ("limit", str(PAGE)),
         ]
+        # Only what the repo mirror already has - the same bound the prune
+        # applies, from the same cutoff, so the counts still agree.
+        if spec.get("mirrored_on"):
+            params.append((spec["mirrored_on"], f"lt.{utc_midnight(cutoff).isoformat()}"))
         if after is not None:
             params.append((pk, f"gt.{after}"))
         rows = rest(source, params)
@@ -620,6 +636,37 @@ def export_cold(spec, cutoff):
 
 REPO_ARCHIVE = "data/archive"
 PENDING = os.path.join(REPO_ARCHIVE, ".pending.json")
+MIRROR_MANIFEST = os.path.join("data", "mirror", "manifest.json")
+
+
+def utc_midnight(ts):
+    """The UTC midnight that opens the day `ts` falls on."""
+    return ts.astimezone(dt.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def mirrored_through(table):
+    """How far scripts/mirror_to_repo.py has copied `table` into data/mirror,
+    read from its manifest in this checkout - what the previous night's
+    mirror committed, since tonight's runs after the prune. None when the
+    manifest or the table's entry is missing."""
+    try:
+        with open(os.path.join(_root(), MIRROR_MANIFEST), encoding="utf-8") as fh:
+            entry = (json.load(fh).get("tables") or {}).get(table) or {}
+    except (OSError, ValueError):
+        return None
+    through = entry.get("through")
+    return dt.datetime.fromisoformat(through) if through else None
+
+
+def mirror_needs(spec, cutoff, now=None):
+    """The midnight the mirror must have reached before this dataset's prune
+    may run: the cutoff's own UTC midnight where the export and the prune take
+    only rows the mirror had by then (`mirrored_on`), else the start of
+    yesterday, which is the newest row the prune itself lets go
+    (prune_forecast_features refuses anything captured since)."""
+    if spec.get("mirrored_on"):
+        return utc_midnight(cutoff)
+    return utc_midnight(now or dt.datetime.now(dt.timezone.utc)) - dt.timedelta(days=1)
 
 
 def _root():
@@ -1056,6 +1103,24 @@ def export_one(spec, name, args):
     stranded = finish_stranded_export(spec, name, keep_days)
     if stranded is not None:
         return stranded
+
+    # 1c - THE MIRROR HAS IT FIRST (Hassan, 28 Sep). mirror_to_repo.py runs
+    # after the prune, so what it has is what last night's run committed. If
+    # that run did not reach the midnight this prune relies on, the rows in
+    # between would leave with no mirror copy: nothing is exported or deleted
+    # tonight, and the next night, the mirror having caught up, takes both days.
+    if spec.get("mirror_first"):
+        need = mirror_needs(spec, cutoff)
+        have = mirrored_through(spec["table"])
+        if have is None or have < need:
+            print(f"THE MIRROR IS BEHIND: {MIRROR_MANIFEST} has {spec['table']} through "
+                  f"{have.isoformat() if have else 'nothing'}, and this prune needs "
+                  f"{need.isoformat()}. Nothing exported or deleted for {name}.",
+                  file=sys.stderr)
+            log_run(job, "attention", 0, {"mirror_through": have.isoformat() if have else None,
+                                          "mirror_needed": need.isoformat(),
+                                          "keep_days": keep_days, "storage": pressure})
+            return 1
 
     # 2 - export
     print(f"reading {read_source(spec)} older than {cutoff.isoformat()} ...")
