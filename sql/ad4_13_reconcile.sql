@@ -1080,7 +1080,16 @@ $ad4$;
 --    it keeps working if the ingest starts populating a different one.
 -- ===========================================================================
 create or replace function refresh_derived() returns jsonb
-language plpgsql security definer as $ad4$
+language plpgsql security definer set search_path = public, pg_temp as $ad4$
+-- A DAY'S VOLUME NEVER GOES DOWN (plan v2 P1.6, 28 Sep). Nothing updates or
+-- deletes a trade except the archive's prune, so a day's true count and
+-- volume only grow; a recount below what is stored can only mean trades were
+-- pruned from that day. The prune cuts at a timestamp (now() - keep_days),
+-- leaving its oldest day part-way through, and the recount overwrote that
+-- whole day's volume with the part left: against the repository's mirror,
+-- 25 Aug lost 348 trades and 11-14 Sep 330-634 a day. A recount may now only
+-- raise a stored day (or fill one that has no count), never lower it - which
+-- also holds when a trade arrives late for a day already pruned.
 declare
   v_ts        text;
   v_city      boolean;
@@ -1109,6 +1118,9 @@ begin
         set volume_usd = excluded.volume_usd,
             n_trades   = excluded.n_trades,
             computed_at = excluded.computed_at
+        where derived_city_day_volume.n_trades is null
+           or (excluded.n_trades >= derived_city_day_volume.n_trades
+               and excluded.volume_usd >= coalesce(derived_city_day_volume.volume_usd, 0))
     $f$, v_ts);
   else
     execute format($f$
@@ -1123,6 +1135,9 @@ begin
         set volume_usd = excluded.volume_usd,
             n_trades   = excluded.n_trades,
             computed_at = excluded.computed_at
+        where derived_city_day_volume.n_trades is null
+           or (excluded.n_trades >= derived_city_day_volume.n_trades
+               and excluded.volume_usd >= coalesce(derived_city_day_volume.volume_usd, 0))
     $f$, v_ts);
   end if;
   get diagnostics v_city_rows = row_count;
@@ -1142,6 +1157,9 @@ begin
           volume_usd = excluded.volume_usd,
           n_trades   = excluded.n_trades,
           computed_at = excluded.computed_at
+      where derived_band_day_volume.n_trades is null
+         or (excluded.n_trades >= derived_band_day_volume.n_trades
+             and excluded.volume_usd >= coalesce(derived_band_day_volume.volume_usd, 0))
   $f$,
     v_ts,
     case when v_city then 'max(t.city_key)'
