@@ -15,3 +15,4 @@ web/*.tsbuildinfo
 supabase/.temp/
 .venv*/
 data/archive/.pending.json
+data/training/neighbours/cache/

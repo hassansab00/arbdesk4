@@ -5,6 +5,8 @@ import math
 import pathlib
 import random
 
+import pytest
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
@@ -254,3 +256,75 @@ def test_the_recal_study_is_fixed_before_it_is_read_and_prices_after_the_decisio
     assert set(rb.fits(rows)) == set()                      # 600 earlier city-days: too few for February
     rows += [{"month": "2026-03", "p": [0.5, 0.3, 0.2], "w": 0}]
     assert set(rb.fits(rows)) == {"2026-03"}
+
+
+# Part 7: the stations around the settlement airport (tools/p310_neighbours.py)
+
+def test_neighbours_are_the_nearest_usable_stations_in_the_ring():
+    nb = _tool("p310_neighbours")
+    stations = {"EGLC": (51.505, 0.055), "EGLL": (51.477, -0.461), "EGKK": (51.148, -0.190),
+                "EGSS": (51.885, 0.235), "EGXX": (51.51, 0.06), "EGFAR": (53.0, 0.0), "EGZZ": (55.0, 0.0)}
+    got = nb.candidates(("EGLC", 51.505, 0.055), stations)
+    ids = [s for s, _d in got]
+    assert "EGLC" not in ids and "EGXX" not in ids          # itself, and under 10 km
+    assert "EGFAR" not in ids and "EGZZ" not in ids          # not a usable id; over 150 km
+    assert ids == sorted(ids, key=lambda s: dict(got)[s]) and set(ids) == {"EGLL", "EGKK", "EGSS"}
+    assert nb.iem_id("KORD") == "ORD" and nb.iem_id("EGLC") == "EGLC"
+    assert nb.candidates(("LGA", 40.77, -73.86), {"JFK": (40.64, -73.78), "KJFK": (40.64, -73.78)}, us=True) \
+        == [("JFK", round(nb.km(40.77, -73.86, 40.64, -73.78), 1))]
+
+
+def test_a_reading_counts_only_once_published_and_while_fresh():
+    nb = _tool("p310_neighbours")
+    s = ([100, 160, 220], [10.0, 11.0, 12.0])
+    assert nb.reading_at(s, 219) == 11.0 and nb.reading_at(s, 220) == 12.0
+    assert nb.reading_at(s, 99) is None and nb.reading_at(s, 220 + nb.STALE_MIN + 1) is None
+    assert nb.reading_near(s, 170) == 11.0 and nb.reading_near(s, 400) is None
+    text = "station,valid,tmpf\nEGLL,2026-09-01 00:50,59.00\nEGLL,2026-09-01 01:50,M\n"
+    assert nb.parse_asos(text) == [("EGLL", 1788223800 // 60, 15.0)]
+
+
+def test_the_features_are_the_air_around_against_the_station_itself():
+    nb = _tool("p310_neighbours")
+    t = 10_000
+    at = t - nb.LAG_MIN
+    two = at - nb.TREND_H * 60
+    readings = {("x", "S"): ([two, at], [20.0, 21.0]),
+                ("x", "A"): ([two, at], [20.0, 23.0]),
+                ("x", "B"): ([two, at], [21.0, 22.0]),
+                ("x", "C"): ([two], [30.0])}                 # C has no fresh reading at t: left out
+    ch = {"settlement": "S", "neighbours": ["A", "B", "C"]}
+    lv, tr = nb.raw_features(readings, "x", ch, t)
+    assert lv == ((23 - 21) + (22 - 21)) / 2 and tr == ((3 - 1) + (1 - 1)) / 2
+    assert nb.raw_features(readings, "x", {"settlement": "S", "neighbours": ["A"]}, t) is None
+    raw = {("x", f"2026-01-{d:02d}", "h12"): (float(d), 0.5) for d in range(1, 16)}
+    base = nb.with_baseline(raw)
+    # a day needs BASELINE_MIN earlier days; its level is less their median
+    assert ("x", "2026-01-10", "h12") not in base and base[("x", "2026-01-11", "h12")] == (11.0 - 5.5, 0.5)
+
+
+def test_the_tilt_model_recovers_a_planted_shift_and_the_centres_are_in_celsius():
+    nb = _tool("p310_neighbours")
+    bands = [{"band_lo": None, "band_hi": 60}, {"band_lo": 60, "band_hi": 62}, {"band_lo": 62, "band_hi": None}]
+    assert [round(c, 3) for c in nb.centres_c(bands, "F")] == [round((59 - 32) * 5 / 9, 3), round((61 - 32) * 5 / 9, 3),
+                                                               round((63 - 32) * 5 / 9, 3)]
+    rng = random.Random(3)
+    rows = []
+    for _ in range(1500):
+        m = [rng.random() + 0.05 for _ in range(6)]
+        s = sum(m)
+        m = [x / s for x in m]
+        c = [float(i) for i in range(6)]
+        x = [rng.gauss(0, 1), rng.gauss(0, 1)]
+        q = nb.model(m, c, 1.2, [0.5, 0.0], x)
+        rows.append((m, c, x, rng.choices(range(6), weights=q)[0]))
+    a, b = nb.fit(rows, 2)
+    assert abs(a - 1.2) < 0.15 and abs(b[0] - 0.5) < 0.1 and abs(b[1]) < 0.1
+    assert nb.model(m, c, 1.0, [], []) == [pytest.approx(v) for v in m]
+
+
+def test_the_neighbour_study_is_fixed_before_it_was_fetched():
+    src = (ROOT / "tools" / "p310_neighbours.py").read_text()
+    assert "FIXED HERE, BEFORE ANY DATA WAS FETCHED" in src and "Placebo" in src
+    nb = _tool("p310_neighbours")
+    assert nb.CHECKPOINTS == {"h10": 10, "h12": 12, "h14": 14} and nb.AFTER_MIN == 60
