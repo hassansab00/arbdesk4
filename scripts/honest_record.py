@@ -60,6 +60,18 @@ TRIES = 2
 # twice for moscow, paris, lucknow and houston within 05:16-05:18Z, so those
 # four had no station-model row and priced on P3.9 alone that day.
 RETRY_WAIT = 10
+# A run that outlives its step is killed before it writes anything. On 28 Sep
+# (02:41-02:46Z) eight cities' requests read-timed out, the 5-minute step
+# ended, and the whole night was lost, the forty cities that had answered
+# included. main() sets a deadline RUN_SECONDS after it starts: no request
+# waits past it, no retry starts without MIN_LEFT seconds, and what arrived is
+# written (status partial). A city left out is asked again the next night:
+# every run re-asks the last APPEND_DAYS days. Reading, merging and writing the
+# two files took 2.7 s on 28 Sep (42,234 and 293,313 rows), so 240 s leaves the
+# step (timeout-minutes: 5 in archive_observations.yml) a minute to spare.
+RUN_SECONDS = 240
+MIN_LEFT = 5
+_deadline = None                # time.monotonic() value, or None: no deadline
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 DIR = os.path.join(ROOT, "data", "training", "previous_runs")
@@ -227,10 +239,19 @@ def current_rows(city_key, heating_js, models_js, fetched_at, tz):
 # ---------------------------------------------------------------------------
 # requests
 # ---------------------------------------------------------------------------
+def _left():
+    """Seconds before the run's deadline, or None when it has none."""
+    return None if _deadline is None else _deadline - time.monotonic()
+
+
 def _get(url, params, label):
     for attempt in range(TRIES):
+        left = _left()
+        if left is not None and left < MIN_LEFT:
+            print(f"  ! {label} not asked: the run's deadline", file=sys.stderr)
+            return None
         try:
-            r = requests.get(url, params=params, timeout=TIMEOUT)
+            r = requests.get(url, params=params, timeout=TIMEOUT if left is None else min(TIMEOUT, left))
             if r.status_code == 400:
                 print(f"  ! {label} 400: {r.text[:200]}", file=sys.stderr)
                 return None
@@ -273,7 +294,8 @@ def fetch_each(fetch, cities):
     with ThreadPoolExecutor(WORKERS) as pool:
         got = list(pool.map(fetch, cities))
         again = [i for i, (h, m) in enumerate(got) if h is None or m is None]
-        if again:
+        left = _left()
+        if again and (left is None or left >= RETRY_WAIT + MIN_LEFT):
             time.sleep(RETRY_WAIT)
             for i, (h, m) in zip(again, pool.map(fetch, [cities[i] for i in again])):
                 old_h, old_m = got[i]
@@ -343,6 +365,8 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
     from common import get_cities, log_run
+    global _deadline
+    _deadline = time.monotonic() + RUN_SECONDS
 
     today = dt.datetime.now(dt.timezone.utc).date()
     start, end = today - dt.timedelta(days=args.days), today - dt.timedelta(days=1)
