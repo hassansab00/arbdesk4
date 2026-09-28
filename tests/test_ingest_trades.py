@@ -229,3 +229,65 @@ def test_a_run_with_no_time_left_carries_the_last_runs_place(monkeypatch):
     d = it.main(now=NOW)
     # the next run plans from this row exactly as it would have from the last real one
     assert it.plan(None, d) == it.plan(None, prev)
+
+
+# --- BESIDE THE TICK (28 Sep) ------------------------------------------------
+# Run last, the step got what the others left before TICK_DEADLINE: nothing in
+# 9 of 27 ticks (27 Sep 16:36Z - 28 Sep 19:36Z) and under 5 s in 6 more. tick.yml now starts it in
+# the background before the checkpoints and collects it in the last step.
+
+def _tick_steps():
+    import pathlib
+    import yaml
+    wf = yaml.safe_load((pathlib.Path(__file__).resolve().parents[1] / ".github" / "workflows"
+                         / "tick.yml").read_text())
+    return wf["jobs"]["tick"]["steps"]
+
+
+def test_the_tick_starts_the_trades_before_the_checkpoints_and_collects_them_last():
+    steps = _tick_steps()
+    names = [s.get("name", "") for s in steps]
+    start = next(i for i, s in enumerate(steps) if s.get("id") == "trades")
+    assert "scripts/ingest_trades.py --budget 30" in steps[start]["run"]
+    assert steps[start]["run"].rstrip().endswith("&")                      # backgrounded
+    assert start < names.index("Checkpoints")
+    last = steps[-1]
+    assert "trades.rc" in last["run"] and "steps.trades.outcome == 'success'" in last["if"]
+    # The only other place the script runs is nowhere: one run a tick.
+    assert sum("ingest_trades.py" in (s.get("run") or "") for s in steps) == 1
+
+
+def test_thirty_seconds_fit_the_deadline_it_starts_under():
+    """The step starts a few seconds after the Deadline step (checkout, python,
+    the cached venv); 48 s less RESERVE_S leaves room for the 30 it asks, and
+    budget() clamps it to the deadline whatever the start."""
+    deadline_step = _tick_steps()[0]
+    assert "+ 48 ))" in deadline_step["run"]
+    assert 48 - it.RESERVE_S - 10 >= 30
+    assert it.budget(30, deadline=1000, now_epoch=1000 - 48 + 10) == 30
+    assert it.budget(30, deadline=1000, now_epoch=1000 - 20) == pytest.approx(14)
+
+
+def test_the_background_run_hands_its_exit_code_to_the_last_step(tmp_path):
+    """Under the runner's own shell flags: the start step returns at once, and
+    the last step waits for the run and fails with it (bash -e would otherwise
+    end the subshell before the code is written down)."""
+    import os
+    import stat
+    import subprocess
+    import time
+    steps = _tick_steps()
+    start = next(s for s in steps if s.get("id") == "trades")["run"]
+    collect = steps[-1]["run"]
+    fake = tmp_path / ".venv" / "bin" / "python"
+    fake.parent.mkdir(parents=True)
+    fake.write_text("#!/bin/bash\nsleep 1\necho fake run\nexit 3\n")
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    env = {**os.environ, "RUNNER_TEMP": str(tmp_path)}
+    t0 = time.monotonic()
+    subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", start],
+                   cwd=tmp_path, env=env, check=True, timeout=10)
+    assert time.monotonic() - t0 < 0.9                                   # did not wait for the run
+    done = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", collect],
+                          cwd=tmp_path, env=env, capture_output=True, text=True, timeout=20)
+    assert done.returncode == 3 and "fake run" in done.stdout
