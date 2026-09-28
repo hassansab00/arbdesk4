@@ -63,6 +63,7 @@ from probability_engine import DEFAULT_Q_DOWN, DEFAULT_Q_UP  # noqa: E402
 CONTRACT = "s10-contract-v1"
 CHECKPOINTS = [c for c in tick.CHECKPOINTS if c != "d1_eve"]
 MARKET_MAX_AGE_S = 3 * 3600
+MARKET_AFTER_S = 3600
 THRESHOLDS = (0.4, 0.5, 0.6)
 LOG_FLOOR = 1e-6
 MIN_DAYS = 20          # the contract's floor (walk_forward.MIN_GATE_DAYS)
@@ -150,14 +151,25 @@ def top(probs):
     return max(probs, key=lambda b: (probs[b], b))
 
 
-def market_probs(band_ids, mids_of, at_epoch):
+def market_probs(band_ids, mids_of, at_epoch, after=False):
     """(probs normalised over the ladder or None, top band or None): each
-    band's latest mid at or before at_epoch, no older than MARKET_MAX_AGE_S."""
+    band's latest mid at or before at_epoch, no older than MARKET_MAX_AGE_S.
+
+    after: each band's FIRST mid at or after at_epoch, at most MARKET_AFTER_S
+    later (plan v2.4 P3.10). The model acts on readings up to the decision
+    hour; an hourly price from before it can predate the reading the model
+    uses, which favours the model (measured 28 Sep on the venue's record: the
+    newest price before the post-peak decision was a median 59 min old, and
+    the model's top bucket rose 0.077 on average in the next hour)."""
     px = {}
     for b in band_ids:
         best = None
         for t, m in mids_of.get(b, ()):
-            if t <= at_epoch and at_epoch - t <= MARKET_MAX_AGE_S and (best is None or t > best[0]):
+            if after:
+                ok = at_epoch <= t <= at_epoch + MARKET_AFTER_S and (best is None or t < best[0])
+            else:
+                ok = t <= at_epoch and at_epoch - t <= MARKET_MAX_AGE_S and (best is None or t > best[0])
+            if ok:
                 best = (t, m)
         if best is not None:
             px[b] = max(0.0, float(best[1]))
@@ -249,7 +261,7 @@ def plan_rows(inputs):
     return out, dict(notes)
 
 
-def replay(inputs, paths, processes=4, tops=None, ladders=None):
+def replay(inputs, paths, processes=4, tops=None, ladders=None, market_after=False):
     """ladders: a list to fill, when given with tops, with each row's full
     model ladder and the engine's market ladder (the market-weight evidence,
     P5.3 amended); the rows and the report are unchanged by it."""
@@ -283,7 +295,7 @@ def replay(inputs, paths, processes=4, tops=None, ladders=None):
         dist = rd.distribution(p, city, feat["x"], feat["R"])
         model = dict(rd.ladder_probabilities(dist, unit, bands, DEFAULT_Q_DOWN, DEFAULT_Q_UP))
         proxy = proxy_probs(bands, unit, feat["R"], feat["fc_day"], sigma)
-        mkt, mkt_top = market_probs([b["band_id"] for b in bands], mids_of, utc.timestamp())
+        mkt, mkt_top = market_probs([b["band_id"] for b in bands], mids_of, utc.timestamp(), after=market_after)
         uni = {b["band_id"]: 1.0 / len(bands) for b in bands}
         if ladders is not None and tops is not None:
             ids = [b["band_id"] for b in bands]
@@ -492,11 +504,19 @@ def main(argv=None):
     ap.add_argument("--out-report")
     ap.add_argument("--tops", help="top-of-book rows [band_id, epoch, best_bid, best_ask] (json.gz)")
     ap.add_argument("--out-ladders", help="each row's model and market ladders (jsonl.gz)")
+    ap.add_argument("--market-at", choices=("before", "after"), default="before",
+                    help="the market's price: the newest before the decision (default) or the first after it")
     a = ap.parse_args(argv)
     inputs = _json(a.inputs)
+    if a.market_at == "after":
+        inputs = dict(inputs, market_note=(inputs.get("market_note") or "") + (
+            "\n- **Priced after the decision.** Each bucket's price is its FIRST at or after the decision time, "
+            f"at most {MARKET_AFTER_S // 60} min later: the model acts on readings up to the decision hour, and a "
+            "price from before it can predate the reading the model uses."))
     tops = index_tops(_json(a.tops)) if a.tops else None
     ladders = [] if a.out_ladders else None
-    rows, notes, skipped = replay(inputs, (a.fc, a.obs, a.labels, a.tz, a.models), tops=tops, ladders=ladders)
+    rows, notes, skipped = replay(inputs, (a.fc, a.obs, a.labels, a.tz, a.models), tops=tops, ladders=ladders,
+                                  market_after=a.market_at == "after")
     if a.out_ladders:
         with gzip.open(a.out_ladders, "wt") as f:
             for r in ladders:

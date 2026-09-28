@@ -103,3 +103,15 @@ def test_a_report_names_the_source_it_was_built_from():
     new = rc.report([], {}, {}, dict(meta, source="the venue's own record", market_note="- **Hourly prices.**"))
     assert "from the venue's own record." in new and "- **Hourly prices.**" in new
     assert "p73_replay_inputs" not in new and "thinly observed" not in new
+
+
+def test_the_market_can_be_priced_after_the_decision():
+    # P3.10: an hourly price from before the decision can predate the reading
+    # the model acts on; "after" takes each band's first price at or after it.
+    mids = {"a": [(100, 0.2), (200, 0.3), (260, 0.35)], "b": [(150, 0.8), (230, 0.7), (250, 0.65)]}
+    before, _ = rc.market_probs(["a", "b"], mids, 220)
+    assert abs(before["a"] - 0.3 / 1.1) < 1e-12                     # newest at or before 220
+    after, _ = rc.market_probs(["a", "b"], mids, 220, after=True)
+    assert abs(after["a"] - 0.35 / 1.05) < 1e-12 and abs(after["b"] - 0.7 / 1.05) < 1e-12
+    late = {"a": [(220 + rc.MARKET_AFTER_S + 1, 0.3)], "b": [(230, 0.7)]}
+    assert rc.market_probs(["a", "b"], late, 220, after=True)[0] is None   # a has no price within the hour

@@ -52,9 +52,13 @@ The price fetch took 4,920 s for 106,868 buckets, with 0 failed requests.
   - The station can differ from the city's station today: Paris settled on LFPG until April 2026.
 - **`listing`:** `arch` marks the 149 slugs Polymarket prefixed `arch-`. 48 of them have a `main` twin for the same day, and the `main` one is preferred.
 - **`p`:** the venue's quoted price series, not an executable bid or ask.
+  - On buckets nobody is trading, it can be a stale quote. On 269 post-peak rows it was 0.077 below the archived books' real ask on average.
+  - A comparison with a model must take the first price at or after the model's information, not the last one before it. The newest price before a post-peak decision was a median 59 min old (`docs/S10_AFTER_COSTS_2026-09-28.md`).
 
 ## Used by
 
 - `tools/market_vs_model.py` → `docs/MODEL_VS_MARKET_2026-09-28.md`: the day-ahead model against the market.
 - `tools/p310_replay_inputs.py` → the S10 checkpoint replay's inputs → `docs/S10_VS_MARKET_RECORD_2026-09-28.md` and `data/replay/s10_market_record_2026-09-28.csv.gz`.
   - The inputs file itself is not committed: the builder rewrites it from these files.
+  - That report prices the market BEFORE the decision, which leaks. The corrected run, `--market-at after`, is `docs/S10_VS_MARKET_RECORD_AFTER_2026-09-28.md`, with rows in `data/replay/s10_market_record_after_2026-09-28.csv.gz`.
+- `tools/p310_s10_after_costs.py` → `docs/S10_AFTER_COSTS_2026-09-28.md`: S10's post-peak trades after the spread and the fee, including the archived books' real asks.
