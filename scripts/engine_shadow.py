@@ -267,7 +267,7 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
             ctx = {"bands": bands, "unit": unit_of.get(city, "C"), "probs": dict(probs), "book": book,
                    "floor_c": floor_c, "floor_basis": floor_basis,
                    "reading_age_min": reading_age_min, "held": held_s10, "checkpoint": name,
-                   "anchor": {"table": anchor_table}}
+                   "anchor": {"table": anchor_table, "city": city}}
             trace = {} if sid in S10 else None
             view, ebook, why = ev.engine_input(sid, ctx, trace) if trace is not None else ev.engine_input(sid, ctx)
             s10d = (trace or {}).get("s10") or {}

@@ -180,6 +180,26 @@ def test_every_model_view_starts_from_the_market():
             assert d["versions"]["market_anchor"]["w"] == 0.0
 
 
+def test_a_city_that_earned_its_own_weight_is_anchored_with_it():
+    """Per-city weights (28 Sep, after P3.10 Q8): the decision records which
+    weight it used, the city's or its scope's."""
+    ctx = _ctx(ROWS[SOME[0]])
+    ids = [b["band_id"] for b in ctx["bands"]]
+    market = ev.market_anchor.market_probs(ctx["book"], ids)
+    if market is None:
+        pytest.skip("this row's book does not quote every bucket")
+    sc = ev.market_anchor.scope("engine", ROWS[SOME[0]]["checkpoint"])
+    table = {"version": "v-city", "weights": {sc: 0.0}, "city_weights": {sc: {"here": 0.2}}}
+    got, rec = ev.anchored(dict(ctx, anchor={"table": table, "city": "here"}, checkpoint=ROWS[SOME[0]]["checkpoint"]),
+                           "engine")
+    assert rec == {"w": 0.2, "version": "v-city", "scope": f"{sc}@here"}
+    want = ev.market_anchor.anchor({b: float(ctx["probs"].get(b, 0.0)) for b in ids}, market, 0.2)
+    assert got["probs"] == want
+    _got, rec = ev.anchored(dict(ctx, anchor={"table": table, "city": "elsewhere"},
+                                 checkpoint=ROWS[SOME[0]]["checkpoint"]), "engine")
+    assert rec == {"w": 0.0, "version": "v-city", "scope": sc}
+
+
 def test_a_book_that_does_not_quote_every_bucket_has_no_anchor():
     ctx = _ctx(ROWS[1])
     first = ctx["bands"][0]["band_id"]

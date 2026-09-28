@@ -465,6 +465,7 @@ P7 design work (P7.1–P7.3) can start as soon as P2 is merged. Shadow trading (
     - 3 of 48 cities have a gain whose interval is above 0, against ~2.4 expected by chance.
     - The 22 cities that gained through July did not in August-September (-0.0041 [-0.0117, +0.0030]).
     - No reliable niche yet. Watch live, not claimed: Tel Aviv gains at both cutoffs (+0.0332 and +0.0201), on probabilities, not the top pick; the Chinese cities lean positive at 00:00.
+    - Follow-up, built 28 Sep: the nightly market-weight fit learns per-city weights in shadow, under two walk-forward tests (P5.3, v2.4 note on per-city weights).
   - **Part 6, the market's favourite at midnight** (`tools/p310_midnight_favourite.py` -> `docs/MIDNIGHT_FAVOURITE_2026-09-28.md`: the one positive finding, the market's under-confidence at 00:00, tested as a winner-first trade).
     - Priced at the first price after 00:00 local, walk-forward band choice: +0.0067 per share [-0.0158, +0.0304], 1,435 trades. Not shown.
     - Every favourite at 00:00: -0.0173 [-0.0271, -0.0077].
@@ -630,6 +631,19 @@ Each of these gets a PGlite contract or pytest.
   - `scripts/belief.py`: pure functions plus a loader for `strategy_params['belief']`.
   - Tests: posterior-maths unit tests; with no data it returns the prior; with a heavy history it converges.
 - **v2.3 note on the S10 market result (#221).** Post-peak, the market's log loss 0.620 against 0.559 at w = 0.6 (591 rows, 18 days) is a hypothesis, not a weight: 0.6 was the best of a grid on that sample, S10's form was chosen on a walk-forward whose test months include those dates (`docs/S10_REPLAY_2026-09-26.md` says so), and a quote may be up to 3 h old. The clean test is the shadow days after the design froze (P7.6). The nightly fit's walk-forward kept w at 0 throughout.
+- **v2.4 note: per-city weights (28 Sep, after P3.10 Q8; Hassan: "we need our predictive model to win the single max temp winner").** Under each scope (view source x checkpoint class), a city may earn a weight of its own, so a city where the model knows something the price does not can be trusted there alone.
+  - **Why guarded:** Q8 found 3 of 48 cities ahead of the market with an interval above 0 on the venue's record, about what chance gives (~2.4), and the cities that gained through July did not in August-September. 48 cities are 48 chances for luck.
+  - **The rule** (`scripts/market_anchor.py`, CITIES):
+    - the prior is the scope's weight: a city with no entry uses it;
+    - a city's estimate counts after `CITY_MIN_DAYS` (20) settled days of its own;
+    - a city carries only its difference from the scope's pooled best fit, shrunk by n / (n + 60) days (Q8's constant), added to the scope's weight;
+    - **two walk-forward tests, protected:** the cities' shrunk differences, each fitted on the days before, must beat the pooled fit on the day itself, as a family (lower 90% bound above 0, at least 20 such days), and then in that city alone (the same, on its own days). So no city can move before about 40 settled days in its scope;
+    - at most 0.05 a night from its last weight, back towards the scope's when a test stops passing; bounds [0, 1]; the table's version on every decision, whose record names the scope used (`engine:morning@tel-aviv`).
+  - **Simulated before it runs** (`tools/p53_city_weights_sim.py` -> `docs/CITY_WEIGHTS_SIMULATION_2026-09-28.md`, 48 cities x 60 days):
+    - with no city informed, the family test passed on 0 of 30 nights, and 0 of 1,440 city-nights moved;
+    - with every city equally informed, the scope's weight rose on all 30 nights, and no city took a weight of its own;
+    - with 5 informed cities among 43 that are not, the family test passed on 10 of 10 nights; the 5 moved on 44 of 50 city-nights, and the 43 on 0 of 430.
+  - **Shadow:** written nightly to `strategy_params` with the scope weights; read only when `strategy_learning` is on (P5.8), like every learned value.
 
 ### P5.4 Execution cost model
 - **Taker cost** for quantity q: walk the ask ladder (existing code, correct), plus the fee `rate·price·(1−price)` per share. Return the marginal cost curve, not just the touch price.
