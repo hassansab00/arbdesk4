@@ -7,7 +7,16 @@ atmosphere. What they do not know is the settlement station: its exposure, its
 height against the model's grid cell, its coast. So each source's error at the
 station is learned, per city and lead, and the corrected sources are combined.
 
-    error(source, lead, city) = station max - source max
+    error(source, lead, city) = the day's truth - source max
+
+THE TRUTH (plan v2.4 P3.10 part 3.1) is the venue's, the one the model is
+scored on (scripts/venue_truth.py, v_venue_truth): its verified reading, or its
+winning bucket's midpoint reading. The station maximum as the desk read it
+(derived_city_day_features) disagreed with it: 10.3% of C city-days a bucket
+low before Sep, and F labels 0.21 C high on average, 24 Aug-27 Sep.
+settings.truth_labels {"source": "station"} puts the station labels back;
+either way both sets are scored on the venue's truth every night (the log's
+labels.scored_on_venue_truth).
 
     pooled(source, lead)  = mean error over every city      (bounded)
     bias(source, lead, city) = pooled + sum(error - pooled) / (n + K)
@@ -192,6 +201,32 @@ def walk_forward(pairs, days):
             "same_integer_raw_mean": round(raw_hit / n, 4), "same_integer_corrected": round(cor_hit / n, 4)}
 
 
+def walk_forward_against(pairs, truth, days, day_fcs):
+    """walk_forward's fits (each scored day fitted on the WINDOW_DAYS before it,
+    from `pairs`), scored against `truth` {(city, day): C} on the city-days of
+    `day_fcs` {(city, day): {source: lead-1 forecast}} that `truth` covers.
+    Two label sets given the same truth and day_fcs are scored on the same
+    city-days (plan v2.4 P3.10 part 3.1)."""
+    err = []
+    for day in days:
+        start = (dt.date.fromisoformat(day) - dt.timedelta(days=WINDOW_DAYS)).isoformat()
+        train = [p for p in pairs if start <= p[1] < day]
+        if not train:
+            continue
+        table = fit(train)
+        for (city, d), fcs in day_fcs.items():
+            y = truth.get((city, d))
+            if d != day or y is None:
+                continue
+            out = combine(fcs, table, city, 1)
+            if out is not None:
+                err.append(out[0] - y)
+    n = len(err)
+    if not n:
+        return {"n": 0}
+    return {"n": n, "mae_c": round(sum(abs(e) for e in err) / n, 4), "bias_c": round(sum(err) / n, 4)}
+
+
 def oos_errors(pairs, days):
     """{(lead, city): [station max - combination]} over `days`, each day's
     combination fitted only on the WINDOW_DAYS before it (as walk_forward)."""
@@ -270,32 +305,54 @@ def width_version_of(wtable, as_of):
 # reading and writing
 # --------------------------------------------------------------------------
 
-def load_pairs(rest_all, as_of):
-    """Only WHOLE days are truth: a row computed before its local day ended is
+def load_start(as_of):
+    """The first day any fit, score or width tonight reads: the fit's window
+    before every day the walk-forward score or the width reads."""
+    return (as_of - dt.timedelta(days=WINDOW_DAYS + max(EVAL_DAYS, WIDTH_DAYS))).isoformat()
+
+
+def load_station_labels(rest_all, as_of):
+    """The station maximum as the desk read it (derived_city_day_features).
+    Only WHOLE days are truth: a row computed before its local day ended is
     the part of the day seen so far (common.day_had_ended)."""
     from common import day_had_ended
-    # the fit's window before every day the walk-forward score or the width reads
-    start = (as_of - dt.timedelta(days=WINDOW_DAYS + max(EVAL_DAYS, WIDTH_DAYS))).isoformat()
+    start = load_start(as_of)
     tz = {r["city_key"]: r.get("timezone") for r in rest_all(
         "cities", [("select", "city_key,timezone")], order="city_key.asc")}
     obs = rest_all("derived_city_day_features",
                    [("select", "city_key,obs_date,max_c,computed_at"), ("obs_date", f"gte.{start}"),
                     ("obs_date", f"lt.{as_of}"), ("max_c", "not.is.null")],
                    order="city_key.asc,obs_date.asc")
-    y = {(r["city_key"], str(r["obs_date"])): float(r["max_c"]) for r in obs
-         if day_had_ended(r["obs_date"], r.get("computed_at"), tz.get(r["city_key"]))}
-    fcs = rest_all("weather_forecast_models",
-                   [("select", "city_key,model,for_date,lead_days,forecast_max_c"),
-                    ("source", f"eq.{FIT_SOURCE}"), ("lead_days", f"lte.{max(LEADS)}"),
-                    ("for_date", f"gte.{start}"), ("for_date", f"lt.{as_of}"),
-                    ("forecast_max_c", "not.is.null")],
-                   order="city_key.asc,for_date.asc,model.asc,lead_days.asc")
+    return {(r["city_key"], str(r["obs_date"])): float(r["max_c"]) for r in obs
+            if day_had_ended(r["obs_date"], r.get("computed_at"), tz.get(r["city_key"]))}
+
+
+def load_fit_forecasts(rest_all, as_of):
+    """Each source's previous-runs maximum for every day in the window."""
+    return rest_all("weather_forecast_models",
+                    [("select", "city_key,model,for_date,lead_days,forecast_max_c"),
+                     ("source", f"eq.{FIT_SOURCE}"), ("lead_days", f"lte.{max(LEADS)}"),
+                     ("for_date", f"gte.{load_start(as_of)}"), ("for_date", f"lt.{as_of}"),
+                     ("forecast_max_c", "not.is.null")],
+                    order="city_key.asc,for_date.asc,model.asc,lead_days.asc")
+
+
+def pairs_from(fcs, y):
+    """(city, day, source, lead, forecast, label) for every labelled day."""
     pairs = []
     for r in fcs:
         key = (r["city_key"], str(r["for_date"]))
         if key in y and r["lead_days"] in LEADS:
             pairs.append((key[0], key[1], r["model"], int(r["lead_days"]), float(r["forecast_max_c"]), y[key]))
     return pairs
+
+
+def load_pairs(rest_all, as_of, y=None):
+    """pairs_from the window's forecasts. y: {(city, day): label C}; the
+    station labels when not given."""
+    if y is None:
+        y = load_station_labels(rest_all, as_of)
+    return pairs_from(load_fit_forecasts(rest_all, as_of), y)
 
 
 def load_forward(rest_all, as_of):
@@ -364,13 +421,30 @@ def main(argv=None, today=None):
     ap.add_argument("--as-of")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
-    from common import rest_all, upsert_replace, log_run
+    from common import rest_all, upsert_replace, log_run, get_cities
+    import venue_truth
 
     as_of = dt.date.fromisoformat(args.as_of) if args.as_of else (
         today or dt.datetime.now(dt.timezone.utc).date())
-    pairs = load_pairs(rest_all, as_of)
+    # What the corrections learn from (plan v2.4 P3.10 part 3.1): the venue's
+    # truth unless settings.truth_labels says "station". The other set is
+    # fitted too, and both are scored on the venue's truth on the same
+    # city-days, so every night's log says whether the choice holds.
+    label_source = venue_truth.source(rest_all)
+    icao = {c["city_key"]: c.get("icao") for c in get_cities(require_coords=False)}
+    labels = {"venue": venue_truth.load(rest_all, load_start(as_of), as_of, icao=icao),
+              "station": load_station_labels(rest_all, as_of)}
+    fcs = load_fit_forecasts(rest_all, as_of)
+    pairs = pairs_from(fcs, labels[label_source])
     days = sorted({p[1] for p in pairs})
     score = walk_forward(pairs, days[-EVAL_DAYS:])
+    day_fcs = {}
+    for r in fcs:
+        if r["lead_days"] == 1:
+            day_fcs.setdefault((r["city_key"], str(r["for_date"])), {})[r["model"]] = float(r["forecast_max_c"])
+    truth_days = sorted({d for _c, d in labels["venue"] if d < str(as_of)})[-EVAL_DAYS:]
+    against = {name: walk_forward_against(pairs_from(fcs, y), labels["venue"], truth_days, day_fcs)
+               for name, y in labels.items()}
 
     window_start = (as_of - dt.timedelta(days=WINDOW_DAYS)).isoformat()
     # No fallback to "no previous": a read that fails would otherwise fit every
@@ -457,6 +531,8 @@ def main(argv=None, today=None):
               "cities": len({r["city_key"] for r in cell_rows}), "forward_days": len(fwd_rows),
               "load_days": WINDOW_DAYS + max(EVAL_DAYS, WIDTH_DAYS),
               "walk_forward": score, "width": width_detail,
+              "labels": {"source": label_source, "venue_days": len(labels["venue"]),
+                         "station_days": len(labels["station"]), "scored_on_venue_truth": against},
               "priors": {"k": K, "min_n": MIN_N, "bound_c": BOUND_C, "max_step_c": MAX_STEP_C,
                          "min_sources": MIN_SOURCES, "window_days": WINDOW_DAYS,
                          "width_days": WIDTH_DAYS, "width_k": WIDTH_K, "width_min_pool": WIDTH_MIN_POOL,
