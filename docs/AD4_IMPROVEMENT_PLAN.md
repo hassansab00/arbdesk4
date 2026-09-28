@@ -29,6 +29,12 @@ Line numbers are hints. Code moves, so find each change by the function or symbo
   - Receipt times: forecasts carry issue times (P2.6) and P2.10 adds publication times. Whether `weather_observations.observed_at` is a receipt time was not checked; it belongs to P2.10's provenance work, not a step of its own.
   - Its "what not to build" list (a neural network first, per-city models on a few days, manual city offsets, a universal confidence threshold, calibration switched on by a date counter) agrees with this plan already.
 
+
+**v2.4 additions (Hassan, 28 Sep: "we need our predictive model to be superior ... apply scientific methods and quant methods ... whatever makes the platform solid, smart, adaptive and proprietary"):**
+- **Superior means better than the price.** The public forecast is not the benchmark any more: every model is judged against the market's own ladder at the same cutoff, and the question that decides trading is whether the model adds anything to the price. The standard way to ask it is a second stage that combines the market's probabilities with the model's (log-linear pooling over the ladder, the method of Benter's horse-racing model), fitted walk-forward (P3.10).
+- **Judge on the venue's whole record, not on a handful of days.** Whole priced ladders in the database start 22 Sep; every verdict so far rests on six days or fewer. Polymarket keeps the hourly price of every resolved bucket, so the market's belief at any cutoff can be rebuilt for every city-day it has listed since Dec 2025 (P3.10).
+- **The market-trust weight keeps its 20-day minimum** (Hassan left it to what makes the platform solid). P3.10 gives that fit months of independent evidence to start from instead of the prior alone.
+
 ---
 
 ## 0. How to execute this plan
@@ -414,6 +420,31 @@ P7 design work (P7.1–P7.3) can start as soon as P2 is merged. Shadow trading (
 - **Finding (checked 27 Sep):** P3.9 replaced the day-ahead centre and left the width alone ("the width is untouched, because the replay that earned this kept the engine's own sigma", `probability_engine`, the station-correction block). The go-live replay (582 city-days, 13-25 Sep) changed only the centre. The engine's rule for a promoted model is the opposite: "sigma must describe the distribution actually being published". The corrected centre has different errors (centre MAE 1.124 -> 0.820 C on that replay) and is priced with a width fitted to the raw forecast's.
 - **Change (research first, shadow until it wins):** fit the width on the walk-forward residuals of the centre actually served (P3.9's combination, and P2.9's blend where it priced), per lead, pooled with shrunk city effects. Candidates, in order: the current width; the served centre's own measured error; a width that grows with the corrected sources' disagreement and the recent residual spread (EMOS-style, fitted on CRPS). Rule 11 as P3.9.
 - **Acceptance:** on dates after the fit window, the venue ladder's log loss and Brier, CRPS, and the coverage of the 80% interval, each against the current width, with the P3.4 day-block bootstrap. Nothing prices from it until the lower bound of the gain is above zero.
+
+### P3.10 The venue's record: every model judged against the market on every listed day (v2.4)
+- **Finding (28 Sep):** the database holds whole priced ladders from 22 Sep only (older edges and books were pruned into `data/archive`, and those are partial ladders). Every model-against-market verdict so far rests on six days or fewer; the S10 replay could compare log loss with the market on 1-4 days per checkpoint (`docs/S10_REPLAY_2026-09-26.md`).
+- **Source (research record, in the repository, never in Postgres):** `tools/market_history.py` reads Polymarket's Gamma API (every "Highest temperature in ..." event, its ladder, its winner, its settlement page) and the CLOB `prices-history` (hourly, per bucket) into `data/training/market_history/`. Measured 28 Sep: 9,983 events, 108,841 buckets, 9,834 resolved; the price series are hourly with gaps of at most 3 h.
+- **Part 1, the diagnosis:** `tools/market_vs_model.py` -> `docs/MODEL_VS_MARKET_2026-09-28.md`. Its questions, cutoffs and candidates are fixed in the tool before any score: who prices the ladder better (Q1); centre or width (Q2); whether the model adds to the price, walk-forward by month, market vs the market recalibrated (market^a) vs the pooled second stage (market^a x model^b) vs the linear anchor (Q3); where (Q4); whether the market itself is calibrated (Q5). The model is what the engine serves day-ahead, rebuilt with the engine's own code from the committed record.
+- **Decision rule, fixed now:** a second stage (recal or pooled) goes to the engine, in shadow, only if its walk-forward gain over the market has a 90% interval above zero at a checkpoint; the model's weight in it only if pooled beats recal the same way. Rule 11 then applies as everywhere: the record gives the prior (fitted on dates before the live period), hard bounds (a in [0.25, 4], b in [0, 2]), a minimum sample, a maximum nightly step, a version on every decision, and the verdict comes from live dates after 28 Sep only.
+- **Part 2:** the intraday checkpoints (S10's remaining-day model after the peak) against the market on the same record. S10's form was chosen on a walk-forward whose test months overlap this record, so its result there is supporting evidence; the live shadow days stay the clean test (P7.3).
+- **Results (28 Sep), measured on the record:**
+  - **Part 1** (`docs/MODEL_VS_MARKET_2026-09-28.md`; 8,406 city-days at 00:00 and 7,238 at 08:00; 220 dates; 48 cities).
+    - The market prices the ladder better. At 00:00 the model's log loss is 1.460 against 1.291, a difference of +0.169 [+0.156, +0.181]; its top pick is right 40.7% of the time against 46.8%.
+    - The day-ahead model adds nothing to the price. Pooled over recal: +0.0006 [-0.0014, +0.0026] at 00:00, and -0.0015 [-0.0025, -0.0004] at 08:00. The engine's prior weight on it, 0, is right.
+    - The market's own under-confidence is real at 00:00: recal gains +0.0031 [+0.0011, +0.0050]. Buckets priced 50-60% won 60.7% [57.8, 63.5].
+  - **Found: the model trains on labels the venue does not agree with.**
+    - For C cities before Sep, the station maximum names a lower bucket than the venue's winner on 10.3% of city-days. P2.1's reading of every METAR brings that to 0.0% in Sep.
+    - For F cities in Sep, the labels are whole Celsius, and 19.2% name a bucket too high.
+    - The same recipe trained on the venue's own truth removes the bias: the median bucket's mean distance from the winner goes from +0.112 to +0.010.
+    - It lowers the log loss at 08:00, +0.0079 [+0.0013, +0.0140]; at 00:00 the gain is not shown. It is still 0.163 behind the market.
+  - **Part 2** (`docs/S10_VS_MARKET_RECORD_2026-09-28.md`; 6,397-7,130 city-days per checkpoint; 216-219 days).
+    - The market is better at every checkpoint before the peak (log-loss gaps from -0.112 to -0.312, every interval below 0).
+    - S10's remaining-day model is better 1 h after the peak: log loss 0.663 against 0.679, +0.085 [+0.047, +0.131]; top pick 74.3% against 70.5%, +4.5 pts [+2.9, +6.5].
+    - S10's form was chosen on a walk-forward that overlaps these months (see Part 2 above).
+- **Part 3 (next, in this order):**
+  1. P3.9's correction learns from the venue's truth (the settled bucket, or the venue's reading where `weather_resolution_evidence` has it) instead of the station labels; shadow-checked against the current labels on live dates.
+  2. Whether S10's post-peak edge survives the cost of trading. The record's price is quoted, not executable; the spread comes from the archived books (23 Aug-24 Sep) and the live book since.
+  3. The market's under-confidence (recal) as a shadow belief at the day-ahead checkpoint, judged after costs like 2.
 
 ## P4. Honest evidence
 
