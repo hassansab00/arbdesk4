@@ -228,6 +228,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_unarchived_ladders": "supabase/migrations/20260927100000_a_ladder_is_archived_before_it_is_pruned.sql",
   "v_venue_band_resolution": "supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql",
   "v_venue_market_resolution": "supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql",
+  "v_venue_truth": "supabase/migrations/20260928120000_the_venue_is_the_truth.sql",
   "v_verified_fact_band_outcome": "supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql",
   "v_verified_fact_forecast_outcome": "supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql",
   "v_verified_weather_outcomes": "supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql",

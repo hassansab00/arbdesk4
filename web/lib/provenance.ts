@@ -1641,6 +1641,12 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "paper_resolution_evidence",
     "resolution_verdicts"
   ],
+  "v_venue_truth": [
+    "bands",
+    "markets",
+    "fact_band_outcome",
+    "weather_resolution_evidence"
+  ],
   "v_verified_fact_band_outcome": [
     "bands",
     "fact_band_outcome",

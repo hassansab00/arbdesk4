@@ -442,7 +442,7 @@ P7 design work (P7.1–P7.3) can start as soon as P2 is merged. Shadow trading (
     - S10's remaining-day model is better 1 h after the peak: log loss 0.663 against 0.679, +0.085 [+0.047, +0.131]; top pick 74.3% against 70.5%, +4.5 pts [+2.9, +6.5].
     - S10's form was chosen on a walk-forward that overlaps these months (see Part 2 above).
 - **Part 3 (next, in this order):**
-  1. P3.9's correction learns from the venue's truth (the settled bucket, or the venue's reading where `weather_resolution_evidence` has it) instead of the station labels; shadow-checked against the current labels on live dates.
+  1. P3.9's correction learns from the venue's truth (the settled bucket, or the venue's reading where `weather_resolution_evidence` has it) instead of the station labels; both label sets are scored on the venue's truth every night. **Built 28 Sep** (`v_venue_truth`, `scripts/venue_truth.py`). P2.9's station model is not switched: it trains on the whole year and the database's venue truth starts 22 Aug, so it is tested first.
   2. Whether S10's post-peak edge survives the cost of trading. The record's price is quoted, not executable; the spread comes from the archived books (23 Aug-24 Sep) and the live book since.
   3. The market's under-confidence (recal) as a shadow belief at the day-ahead checkpoint, judged after costs like 2.
 

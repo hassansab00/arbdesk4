@@ -113,11 +113,16 @@ def test_a_run_writes_cells_and_open_days_and_logs(monkeypatch):
         if path == "weather_forecast_models":
             return [{"city_key": "hot", "model": s, "for_date": "2026-09-27", "lead_days": 1,
                      "forecast_max_c": 25.0, "run_at": "2026-09-26T00:00:00Z"} for s in SOURCES]
+        if path == "settings":
+            return [{"value": {"source": "station"}}]       # these tests are about the station labels
+        if path == "v_venue_truth":
+            return []
         if path == "derived_station_correction":
             return []
         raise AssertionError(path)
     common.rest_all = rest_all
     common.day_had_ended = real_common.day_had_ended
+    common.get_cities = lambda **k: []
     common.upsert_replace = lambda t, rows, key: written.setdefault(t, rows) and len(rows)
     common.log_run = lambda job, status, rows, detail: logged.append((job, status, rows, detail))
     monkeypatch.setitem(sys.modules, "common", common)
@@ -158,11 +163,16 @@ def test_every_row_written_carries_this_runs_computed_at(monkeypatch):
             return [{"city_key": city, "model": s, "for_date": day, "lead_days": 1, "forecast_max_c": 25.0,
                      "run_at": "2026-09-26T00:00:00Z"}
                     for city in ("hot", "cold") for day in ("2026-09-27", "2026-09-28") for s in SOURCES]
+        if path == "settings":
+            return [{"value": {"source": "station"}}]       # these tests are about the station labels
+        if path == "v_venue_truth":
+            return []
         if path == "derived_station_correction":
             return []
         raise AssertionError(path)
     common.rest_all = rest_all
     common.day_had_ended = real_common.day_had_ended
+    common.get_cities = lambda **k: []
     common.upsert_replace = lambda t, rows, key: (written.setdefault(t, rows), len(rows))[1]
     common.log_run = lambda *a, **k: None
     monkeypatch.setitem(sys.modules, "common", common)
@@ -227,11 +237,16 @@ def _run_against(stored, pairs, as_of, monkeypatch):
                     for c, d, s, l, fc, y in pairs]
         if path == "weather_forecast_models":
             return []
+        if path == "settings":
+            return [{"value": {"source": "station"}}]       # these tests are about the station labels
+        if path == "v_venue_truth":
+            return []
         if path == "derived_station_correction":
             return [dict(r) for r in stored]
         raise AssertionError(path)
     common.rest_all = rest_all
     common.day_had_ended = real_common.day_had_ended
+    common.get_cities = lambda **k: []
     common.upsert_replace = lambda t, rows, key: (written.setdefault(t, rows), len(rows))[1]
     common.log_run = lambda *a, **k: None
     monkeypatch.setitem(sys.modules, "common", common)
@@ -369,6 +384,10 @@ def _width_run(stored_widths, pairs, as_of, monkeypatch, width_boom=False):
                      "run_at": "2026-09-27T00:00:00Z"}
                     for city in ("hot", "cold") for day, lead in (("2026-09-29", 1), ("2026-09-30", 2))
                     for s in SOURCES]
+        if path == "settings":
+            return [{"value": {"source": "station"}}]       # these tests are about the station labels
+        if path == "v_venue_truth":
+            return []
         if path == "derived_station_correction":
             return []
         if path == "derived_station_width":
@@ -378,6 +397,7 @@ def _width_run(stored_widths, pairs, as_of, monkeypatch, width_boom=False):
         raise AssertionError(path)
     common.rest_all = rest_all
     common.day_had_ended = real_common.day_had_ended
+    common.get_cities = lambda **k: []
     common.upsert_replace = lambda t, rows, key: (written.setdefault(t, rows), len(rows))[1]
     common.log_run = lambda job, status, rows, detail: logged.append((job, status, rows, detail))
     monkeypatch.setitem(sys.modules, "common", common)

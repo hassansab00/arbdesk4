@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 238 of them - and for each MISSING one names the
+-- and function the app reads - 239 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -239,6 +239,7 @@ with expected(rel, owner, used_by) as (values
     ('v_unarchived_ladders', 'supabase/migrations/20260927100000_a_ladder_is_archived_before_it_is_pruned.sql', ''),
     ('v_venue_band_resolution', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', ''),
     ('v_venue_market_resolution', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', ''),
+    ('v_venue_truth', 'supabase/migrations/20260928120000_the_venue_is_the_truth.sql', ''),
     ('v_verified_fact_band_outcome', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', '(ModelAnalytics)'),
     ('v_verified_fact_forecast_outcome', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', ''),
     ('v_verified_weather_outcomes', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', ''),
@@ -499,6 +500,7 @@ begin
     ('v_unarchived_ladders', 'supabase/migrations/20260927100000_a_ladder_is_archived_before_it_is_pruned.sql', ''),
     ('v_venue_band_resolution', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', ''),
     ('v_venue_market_resolution', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', ''),
+    ('v_venue_truth', 'supabase/migrations/20260928120000_the_venue_is_the_truth.sql', ''),
     ('v_verified_fact_band_outcome', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', '(ModelAnalytics)'),
     ('v_verified_fact_forecast_outcome', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', ''),
     ('v_verified_weather_outcomes', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', ''),
