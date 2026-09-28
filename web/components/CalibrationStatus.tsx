@@ -42,12 +42,12 @@ const LOOK: Record<string, { label: string; tone: string; means: string }> = {
   pending_evidence: {
     label: "Pending",
     tone: "text-warn border-warn/40",
-    means: "A map is fitted every day and withheld until the gate is met. Raw probabilities are pricing.",
+    means: "Under 7 settlement dates: a map is fitted every night and none can apply yet. From 7 dates it updates weekly, and at 30 it runs a full recalibration. Raw probabilities are pricing.",
   },
   fitted_not_applied: {
     label: "Fitted, not applied",
     tone: "text-warn border-warn/40",
-    means: "There is enough evidence, and the fit still did not beat the uncalibrated numbers out of sample.",
+    means: "The last weekly update did not beat the uncalibrated numbers on days it never saw, so raw probabilities are pricing until the next one.",
   },
   failed: {
     label: "Failed",

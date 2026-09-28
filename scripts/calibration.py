@@ -71,17 +71,37 @@ the first 9 dates, T=1.365, and on the 4 later dates it made things WORSE
 (Brier 0.7563 -> 0.7651, log loss 1.5988 -> 1.6475). The day-ahead ladder's
 spread is about right; what it lacks is skill, which no temperature supplies.
 
+THE CADENCE (Hassan, 28 Sep: "the calibration model should kick in every 7
+days, not 30, and at the 30 mark it runs a full recalibration")
+------------------------------------------------------------------------------
+  below 7 dates   nothing can apply; the nightly fit is written INACTIVE, as
+                  before, so the number is visible.
+  weekly          from WEEKLY_MIN_DATES (7) settlement dates, the map is
+                  updated every UPDATE_EVERY_DAYS (7) days: fitted on every
+                  complete ladder so far, applied only if it beats the raw
+                  ladder on the later dates it never saw. Below 30 dates an
+                  update moves only part of the way to its fit - the evidence
+                  weight, dates / 30 - because the 26 and 28 Sep fits on 13
+                  and 15 dates made their held-out days worse.
+  full            when the evidence first reaches FULL_RECALIBRATION_DATES
+                  (30) dates, a full recalibration on everything collected, at
+                  full weight, that night whatever the weekly clock says. The
+                  weekly updates after it are full-weight too.
+  not due         the map in force is left alone; the night's fit is logged as
+                  a diagnostic only.
+
 RULE 11 (adaptive never means unbounded):
-  prior      T = 1 (no correction) until the gate opens and validation passes
+  prior      T = 1 (no correction) until an update passes validation
   bounds     T in [T_MIN, T_MAX] = [0.5, 2.0] - this module's priors, not
              measurements
-  min sample the gate: 30 settlement dates and 300 complete ladders
-  max step   T moves at most MAX_STEP (25%, the plan's P5.8 number) from the
-             map applied before it, per nightly fit
+  min sample 7 settlement dates and 300 complete ladders before anything can
+             apply (the full weight needs 30 dates)
+  max step   an update moves T at most MAX_STEP (25%, the plan's P5.8 number)
+             from the map applied before it, after the evidence weight
   version    every band_probabilities row carries calibration_version
   held out   scored only on dates the fit never saw
 
-    python scripts/calibration.py [--dry-run] [--min-dates 30] [--min-ladders 300]
+    python scripts/calibration.py [--dry-run] [--min-dates 7] [--min-ladders 300]
 """
 import argparse
 import datetime as dt
@@ -100,8 +120,16 @@ import requests
 # 30 distinct settlement dates, because the unit of independent evidence here
 # is closer to a DAY than to a band: every city on one day shares the same
 # synoptic pattern, and consecutive days share most of it. Eight days of data
-# is one or two weather regimes.
+# is one or two weather regimes. Since 28 Sep this is the FULL recalibration's
+# mark (and the evidence weight's denominator), not the first day anything can
+# apply: that is WEEKLY_MIN_DATES.
 MIN_SETTLEMENT_DATES = 30
+FULL_RECALIBRATION_DATES = MIN_SETTLEMENT_DATES
+# Hassan, 28 Sep: calibration kicks in at 7 settlement dates and updates every
+# 7 days. Held out-of-sample like any fit; weighted by dates / 30 until the
+# full recalibration.
+WEEKLY_MIN_DATES = 7
+UPDATE_EVERY_DAYS = 7
 # 300 complete ladders, because a ladder is the observation being calibrated
 # and a one-parameter fit needs a few hundred of them to mean anything.
 MIN_COMPLETE_LADDERS = 300
@@ -221,6 +249,52 @@ def anchor_T(value, today):
     return previous_T(value)
 
 
+def evidence_weight(n_dates):
+    """How far an update moves toward its fit: dates / 30, capped at 1. A
+    weekly update on 15 dates goes half way; the full recalibration and every
+    update after it go all the way (still within MAX_STEP)."""
+    return min(1.0, max(0, n_dates) / FULL_RECALIBRATION_DATES)
+
+
+def _day(value):
+    try:
+        return dt.date.fromisoformat(str(value)[:10]) if value else None
+    except ValueError:
+        return None
+
+
+def schedule(stored, today, n_dates):
+    """(kind, due, next_update_on) for tonight.
+
+      gate     below WEEKLY_MIN_DATES: nothing can apply; the inactive fit is
+               written every night, as before
+      full     the evidence has reached FULL_RECALIBRATION_DATES and no full
+               recalibration is on record
+      weekly   UPDATE_EVERY_DAYS since the last update, or none yet
+      not_due  otherwise: the map in force stays
+
+    A re-run on the night of an update is due again with the same kind, and
+    reproduces it (anchor_T steps from what that night stepped from)."""
+    stored = stored if isinstance(stored, dict) else {}
+    if n_dates < WEEKLY_MIN_DATES:
+        return "gate", True, None
+    updated = _day(stored.get("updated_on"))
+    full_on = _day(stored.get("full_on"))
+    if updated == today:
+        return (stored.get("update_kind") or "weekly"), True, today + dt.timedelta(days=UPDATE_EVERY_DAYS)
+    if n_dates >= FULL_RECALIBRATION_DATES and full_on is None:
+        return "full", True, today + dt.timedelta(days=UPDATE_EVERY_DAYS)
+    if updated is None or (today - updated).days >= UPDATE_EVERY_DAYS:
+        return "weekly", True, today + dt.timedelta(days=UPDATE_EVERY_DAYS)
+    return "not_due", False, updated + dt.timedelta(days=UPDATE_EVERY_DAYS)
+
+
+def step_toward(T_fitted, prev, weight):
+    """The weighted move from the T in force toward the fit, then held to the
+    bounds and the step (bounded)."""
+    return bounded(prev + weight * (T_fitted - prev), prev)
+
+
 def describe(T):
     """What the number means, because 'T=1.18' is not a finding."""
     if T > 1.05:
@@ -277,7 +351,7 @@ def split_by_date(ladders, train_fraction=TRAIN_FRACTION):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--min-dates", type=int, default=MIN_SETTLEMENT_DATES)
+    ap.add_argument("--min-dates", type=int, default=WEEKLY_MIN_DATES)
     ap.add_argument("--min-ladders", type=int, default=MIN_COMPLETE_LADDERS)
     ap.add_argument("--dry-run", action="store_true", help="fit and report, write nothing")
     args = ap.parse_args()
@@ -315,14 +389,21 @@ def main():
     if len(ladders) < args.min_ladders:
         gate.append(f"{len(ladders)} complete ladders, needs {args.min_ladders}")
 
+    today = dt.datetime.now(dt.timezone.utc).date()
+    current = stored[0]["value"] if stored else None
+    kind, due, next_update = schedule(current, today, len(dates))
+    weight = 1.0 if kind == "full" else evidence_weight(len(dates))
+    print(f"  cadence: {kind}" + ("" if due else f" - the map in force stays until {next_update}")
+          + (f"; evidence weight {weight:.2f} ({len(dates)} of {FULL_RECALIBRATION_DATES} dates)"
+             if kind in ("weekly", "full") else ""))
+
     train, val, train_dates, val_dates = split_by_date(ladders)
-    prev = anchor_T(stored[0]["value"] if stored else None,
-                    dt.datetime.now(dt.timezone.utc).date())
+    prev = anchor_T(current, today)
     T_fitted = fit_temperature(train) if train else T_PRIOR
-    T = bounded(T_fitted, prev)
+    T = step_toward(T_fitted, prev, weight)
     if T != T_fitted:
-        print(f"  fitted T={T_fitted:.3f} held to {T:.3f}: bounds [{T_MIN}, {T_MAX}], at most "
-              f"{MAX_STEP:.0%} from the T applied now ({prev:.3f})")
+        print(f"  fitted T={T_fitted:.3f} moved to {T:.3f}: weight {weight:.2f}, bounds [{T_MIN}, {T_MAX}], "
+              f"at most {MAX_STEP:.0%} from the T applied now ({prev:.3f})")
 
     before_br = multiclass_brier(val) if val else None
     after_br = multiclass_brier(val, T) if val else None
@@ -387,7 +468,31 @@ def main():
         "applies": applies,
         "fitted_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "note": describe(T),
+        "update_kind": kind,
+        "evidence_weight": round(weight, 4),
+        "weekly_min_dates": WEEKLY_MIN_DATES, "update_every_days": UPDATE_EVERY_DAYS,
+        "full_recalibration_dates": FULL_RECALIBRATION_DATES,
+        "updated_on": today.isoformat() if kind in ("weekly", "full") else None,
+        "next_update_on": next_update.isoformat() if next_update else None,
+        "full_on": (today.isoformat() if kind == "full"
+                    else (current or {}).get("full_on") if isinstance(current, dict) else None),
     }
+
+    if not due:
+        # NOT DUE: the map in force stays. What tonight's fit would have done
+        # is logged, and the log says what is actually in force, so the
+        # Predictive page's state (v_calibration_status) stays true.
+        in_force = current if isinstance(current, dict) else {}
+        diagnostic = dict(payload, applies=bool(in_force.get("applies")), T_candidate=payload["T"],
+                          T=in_force.get("T", T_PRIOR), gate_unmet=[],
+                          note=f"not due - the map of {in_force.get('updated_on')} stays until "
+                               f"{next_update}; tonight's fit: {describe(T)}")
+        if args.dry_run:
+            print("\n--dry-run: nothing written\n" + json.dumps(diagnostic, indent=2))
+            return 0
+        log_run("calibration", "ok", len(ladders), diagnostic)
+        print(f"\nnot due: settings.calibration_map unchanged until {next_update}")
+        return 0
 
     if args.dry_run:
         print("\n--dry-run: nothing written\n" + json.dumps(payload, indent=2))
