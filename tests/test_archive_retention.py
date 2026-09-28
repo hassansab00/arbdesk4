@@ -158,7 +158,9 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
     # stay; the window is how long an unarchived ladder waits before the
     # nightly run takes it, and after that the hourly prune may null it (P5.13).
     limits = {"observations": 90, "forecasts": 90, "trades": 90, "research": 2,
-              "resolution": 1, "books": 7, "edges": 14, "decisions": 30, "ladders": 1}
+              "resolution": 1, "books": 7, "edges": 14, "decisions": 30, "ladders": 1,
+              # book proof: its readers take proof no older than 900 s (P1.6, 28 Sep)
+              "book_evidence": 1}
     assert set(limits) == set(TABLES), (
         f"a dataset was added to the archive without a reasoned retention ceiling here: "
         f"{sorted(set(TABLES) ^ set(limits))}")

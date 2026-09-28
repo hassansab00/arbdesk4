@@ -59,10 +59,13 @@ def archive(monkeypatch):
 
 
 def test_the_table_that_raises_does_not_take_the_others_with_it(archive):
-    """The 21 Sep run, exactly: books raises and sorts first."""
-    rc, attempted, _ = archive(failing={"books"})
+    """The 21 Sep run: the table that sorts first raises. It was `books`;
+    since 28 Sep `book_evidence` sorts ahead of it, and the property is about
+    the first one, not the name."""
+    first = sorted(ao.TABLES)[0]
+    rc, attempted, _ = archive(failing={first})
 
-    assert attempted[0] == "books", "the test no longer reproduces the run it is about"
+    assert attempted[0] == first, "the test no longer reproduces the run it is about"
     assert set(attempted) == set(ao.TABLES), (
         f"only {attempted} were attempted - one table's exception is still cancelling the rest"
     )
