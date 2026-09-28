@@ -77,15 +77,23 @@ declare
   v_presence bigint;
   v_freed text;
 begin
-  -- FOURTEEN (plan v2 P1.6, 24 Sep). The readers are v_band_volume and
-  -- v_city_volume, whose window is settings.volume_thresholds.lookback_hours
-  -- (24 on 24 Sep); nothing else reads trades_observed. Thirty was 30x the
-  -- window on a database over its tier; fourteen is still 14x it, and keeps
-  -- two weeks of prints for the replay harness (P5.12) without the archive.
-  if p_keep_days < 14 then
+  -- TWO (plan v2 P1.6, 28 Sep; was fourteen from 24 Sep). The readers are
+  -- v_band_volume and v_city_volume, whose window is
+  -- settings.volume_thresholds.lookback_hours (24), and refresh_derived,
+  -- which may raise a day's stored volume but never lower it (so the day a
+  -- prune cuts keeps its whole total). Nothing else reads trades_observed: not the replay (P5.12),
+  -- checked 28 Sep. Since P6.2 moved the trade prints into the tick
+  -- (340d1dd, 824ccd3: its first live runs, 24-25 Sep) the table has taken
+  -- 23,034-56,510 prints a day (24-27 Sep) against 1,174-7,995 on 14-23 Sep,
+  -- at about 615 bytes a row with its indexes (138.5 MB, 225,491
+  -- rows, 28 Sep): fourteen days of that is about 390 MB (arithmetic, not
+  -- measured) on a 500 MB tier the database was already 38% over. Two days
+  -- is twice the window and a day of room; every print older than that is in
+  -- the archive, committed and read back before this deletes it.
+  if p_keep_days < 2 then
     return jsonb_build_object(
       'ok', false,
-      'error', 'keep_days must be at least 14 - the 24h volume window needs room to be wrong'
+      'error', 'keep_days must be at least 2 - the 24h volume window needs room to be wrong'
     );
   end if;
 

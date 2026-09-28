@@ -126,12 +126,15 @@ TABLES = {
         "cutoff_col": "traded_at",
         "cutoff_is_date": False,
         "prune_rpc": "prune_trades",
-        # FOURTEEN, THE FLOOR prune_trades ENFORCES since 24 Sep (plan v2
-        # P1.6): 14x the 24-hour volume window its only readers use. Until then
-        # the function said 30 while this said 14, and the first run under
-        # pressure (23 Sep) exported 36,945 rows, had them refused, and failed -
-        # which is why the floor is parsed from the SQL by a test now.
-        "min_keep_days": 14,
+        # TWO, THE FLOOR prune_trades ENFORCES since 28 Sep (plan v2 P1.6;
+        # fourteen from 24 Sep): twice the 24-hour volume window its readers
+        # use. Since the trade prints moved into the tick (P6.2, 24-25 Sep)
+        # the table takes 23,000-56,500 a day, and fourteen days of that is
+        # about 390 MB on a 500 MB tier (arithmetic). refresh_derived no
+        # longer lowers the day this cuts (28 Sep). The floor is parsed from
+        # the SQL by a test: on 23 Sep the function said 30 while this said
+        # 14, and the run exported 36,945 rows, had them refused, and failed.
+        "min_keep_days": 2,
         "tag": "trades-archive",
         "columns": ["band_id", "condition_id", "traded_at", "price", "size",
                     "side", "proxy_wallet", "ingested_at", "city_key",
