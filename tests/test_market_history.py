@@ -133,3 +133,19 @@ def test_the_replay_inputs_use_the_studys_events_and_the_day_itself():
     assert "dt.time(0), zone" in src and "day + dt.timedelta(days=1)" in src
     assert "w[0] <= t < w[1]" in src                               # 00:00 to 23:59 local, nothing after
     assert 'f"{eid}:{e[\'winner\']}"' in src                        # the venue's winner, nothing else
+
+
+def test_the_cost_study_prices_after_the_decision_and_checks_real_asks():
+    # P3.10 part 3.2: a price from before the decision leaked the reading the
+    # model trades on; the corrected study prices after it and checks the
+    # books' real asks on the same rows.
+    t = _tool("p310_s10_after_costs")
+    assert t.AFTER_S == 3600
+    assert abs(t.fee(0.5) - 0.0125) < 1e-12                    # 0.05 x p x (1 - p)
+    rows = [{"model_top": "e:1", "market_top": "e:2", "winner": "e:1", "model_top_prob": "0.7",
+             "target_date": "2026-09-01"}]
+    got = t.trades(rows, {(0, "model"): 0.40}, {}, "model", 0.05, "ask")
+    assert len(got) == 1 and abs(got[0]["cost"] - (0.40 + 0.05 * 0.4 * 0.6)) < 1e-12 and got[0]["win"] == 1.0
+    assert t.trades(rows, {(0, "model"): 0.66}, {}, "model", 0.05, "ask") == []     # the margin is not cleared
+    src = (ROOT / "tools" / "p310_s10_after_costs.py").read_text()
+    assert "prices_at(rows, after=True)" in src and "book_asks(rows)" in src
