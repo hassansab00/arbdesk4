@@ -180,7 +180,10 @@ MEASURED_MINUTES = {
     # 27 Sep 6 min 45 s (billed 7); 28 Sep 10 min 43 s (billed 11), when the
     # training record ran into its 5-minute step timeout on Open-Meteo read
     # timeouts. That timeout bounds the job, so 11 is its worst case.
-    "archive_observations.yml": 11.0,
+    # 13 from 28 Sep: the ensemble record (plan v2.4 P2.10 part 1) adds a step
+    # bounded at 2 minutes (a 90 s deadline). Worst case 11 + 2; re-measure
+    # after its first nights and lower it if the step runs short.
+    "archive_observations.yml": 13.0,
     "paper_trade_log.yml": 1.5,
     # 1.5 measured before 2026-09-22; the wind-direction backfill added a
     # step that reads 22k cache rows and scans ~415k archived observations

@@ -279,6 +279,20 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
+      # THE ENSEMBLE RECORD (plan v2.4 P2.10 part 1): each ensemble's members'
+      # daily maxima for the next days, with the run's initialisation and
+      # publication times, appended to data/training/ensembles. Open-Meteo
+      # keeps ensemble members for about four days, so this record cannot be
+      # made afterwards. 96 requests (~480 weighted Open-Meteo calls); a 90 s
+      # deadline inside a 2-minute step (the Actions minute budget).
+      - name: Append the ensemble record
+        if: always()
+        timeout-minutes: 2
+        run: PYTHONPATH=scripts python scripts/ensemble_record.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
       # `if: always()`: a table that failed must not strand the ones that were
       # written and verified - the manifest is saved after every table, so
       # what is on disk is exactly what it records.

@@ -82,6 +82,20 @@ Q6  One candidate, declared before it was run: the same recipe (the same
     from this record, so this is supporting evidence; the clean test is the
     live days after 28 Sep.
 
+ADDED 28 SEP AFTER Q1-Q6 AND P3.10 PARTS 2-4 WERE READ (Hassan: "new
+information first"); declared here before it was run
+-------------------------------------------------------------------------
+Q7  The day-ahead blend the engine prices from since 27 Sep 08:23Z: the mean
+    of P3.9's combination (as above) and P2.9's station model
+    (scripts/station_mos.py: a ridge on the seven models, the best_match run's
+    08:00 temperature and dewpoint, 09-17 dewpoint, cloud, wind, radiation,
+    rain, 08:00 pressure, the last known station maximum and the season). The
+    station model is refitted once a month with station_mos.choose_and_fit on
+    every lead-1 day before the month (its labels are the station labels, as
+    it runs live) and predicts the month. The width: sc.fit_width on the
+    blend's own out-of-sample errors of the WIDTH_DAYS before D. Scored as Q1
+    and Q3 on the same city-days; the verdict rule is the same.
+
 Inputs, all committed: data/training/market_history/ (market_history.py),
 data/training/previous_runs/models_daily.csv.gz, data/replay/
 inputs_2026-09-26/{labels_whole.json.gz,tz.json}, data/mirror/cities.
@@ -101,6 +115,8 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, "scripts")
 import station_correction as sc                              # noqa: E402
+import honest_record as hr                                   # noqa: E402
+import station_mos as sm                                     # noqa: E402
 from probability_engine import compute_band_probabilities   # noqa: E402
 
 MH = "data/training/market_history/"
@@ -275,6 +291,68 @@ class Model:
 
     def by_day_cities(self, day):
         return [(p[0],) for p in self.by_day.get(day, [])]
+
+    def ladder(self, e):
+        mu = self.centre(e["city"], e["date"])
+        if mu is None:
+            return None
+        sigma = self.width(e["city"], e["date"])
+        if sigma is None:
+            return None
+        probs = compute_band_probabilities(mu, sigma, e["unit"], e["bands"])
+        raw = [max(MODEL_FLOOR, p) for _b, p in probs]
+        s = sum(raw)
+        return [p / s for p in raw], mu, sigma
+
+
+
+class Blend:
+    """Q7: the mean of P3.9's combination and P2.9's station model, each month
+    fitted on the days before it; the width on the blend's own OOS errors."""
+
+    def __init__(self, p39, labels):
+        self.p39, self.labels = p39, labels
+        rows = sm.assemble(hr.read_rows(hr.BEST_MATCH_FILE), hr.read_rows(hr.MODELS_FILE), labels)[LEAD]
+        self.rows = {(r["city"], r["date"].isoformat()): r for r in rows}
+        self.train = sorted((r for r in rows if r["y"] is not None), key=lambda r: r["date"])
+        self.fits, self.centres, self.widths, self.chosen = {}, {}, {}, {}
+
+    def fit_for(self, month):
+        if month not in self.fits:
+            first = dt.date.fromisoformat(month + "-01")
+            train = [r for r in self.train if r["date"] < first]
+            if len(train) < 1000:
+                self.fits[month] = None
+            else:
+                praw, craw, chosen = sm.choose_and_fit(train)
+                self.fits[month] = (praw, craw)
+                self.chosen[month] = chosen
+        return self.fits[month]
+
+    def centre(self, city, day):
+        key = (city, day)
+        if key not in self.centres:
+            r, f39 = self.rows.get(key), self.p39.centre(city, day)
+            fitted = self.fit_for(day[:7]) if r is not None else None
+            if r is None or f39 is None or fitted is None:
+                self.centres[key] = None
+            else:
+                praw, craw = fitted
+                self.centres[key] = (sm.predict(craw.get(city, praw), r) + f39) / 2
+        return self.centres[key]
+
+    def width(self, city, day):
+        if day not in self.widths:
+            d0 = dt.date.fromisoformat(day)
+            errors = defaultdict(list)
+            for i in range(1, WIDTH_DAYS + 1):
+                d = (d0 - dt.timedelta(days=i)).isoformat()
+                for c in {k[0] for k in self.p39.by_day_cities(d)}:
+                    mu, y = self.centre(c, d), self.labels.get((c, d))
+                    if mu is not None and y is not None:
+                        errors[(LEAD, c)].append(y - mu)
+            self.widths[day] = sc.fit_width(errors)
+        return sc.width_for(self.widths[day], city, LEAD)
 
     def ladder(self, e):
         mu = self.centre(e["city"], e["date"])
@@ -716,6 +794,57 @@ def main():
         verdicts.append((f"`{k}`: the venue-truth model adds to the price (pooled beats recal)", g2))
         p(f"| {k} | {len(sc2):,} | {iv(g2, 4)} | "
           + ", ".join(f"{mo} {b:.3f}" for mo, _n, _a, _ap, b, _w in fits2) + " |")
+    p()
+
+    # ---------------- Q7: added after Q1-Q6 and P3.10 parts 2-4 (see the docstring) ----------------
+    p("## Q7. The blend the engine serves: P3.9 and P2.9's station model (added after Q1-Q6 were read)")
+    p()
+    p("Declared in the tool's docstring before it was run (Hassan, 28 Sep: new information first). The station "
+      "model adds the best_match run's heating variables (08:00 temperature and dewpoint, cloud, wind, radiation, "
+      "rain, pressure) to the seven models.")
+    p()
+    blend = Blend(model, labels)
+    p("| cutoff | n | log loss P3.9 / blend / market | blend minus P3.9 | blend minus market | "
+      "median bucket = winner, P3.9 / blend |")
+    p("|---|---|---|---|---|---|")
+    rows7 = {}
+    for k in CUTOFFS:
+        rs7 = []
+        for r in rows[k]:
+            m7 = blend.ladder(events[r["eid"]])
+            if m7 is not None:
+                rs7.append(dict(r, mdl7=m7[0]))
+        rows7[k] = rs7
+        if not rs7:
+            continue
+        n = len(rs7)
+        l1 = sum(logloss(r["mdl"], r["w"]) for r in rs7) / n
+        l7 = sum(logloss(r["mdl7"], r["w"]) for r in rs7) / n
+        lk = sum(logloss(r["mkt"], r["w"]) for r in rs7) / n
+        d71 = boot([(r["date"], logloss(r["mdl7"], r["w"]) - logloss(r["mdl"], r["w"])) for r in rs7])
+        d7k = boot([(r["date"], logloss(r["mdl7"], r["w"]) - logloss(r["mkt"], r["w"])) for r in rs7])
+        verdicts.append((f"`{k}`: the blend beats P3.9 alone (log loss lower)", (-d71[0], -d71[2], -d71[1])))
+        h1 = sum(median_index(r["mdl"]) == r["w"] for r in rs7) / n
+        h7 = sum(median_index(r["mdl7"]) == r["w"] for r in rs7) / n
+        p(f"| {k} | {n:,} | {f(l1)} / {f(l7)} / {f(lk)} | {iv(d71)} | {iv(d7k)} | "
+          f"{100 * h1:.1f}% / {100 * h7:.1f}% |")
+    p()
+    p("Q3 repeated with the blend (same folds):")
+    p()
+    p("| cutoff | scored | pooled over recal | pooled b by fold |")
+    p("|---|---|---|---|")
+    for k, rs7 in rows7.items():
+        sc7, fits7 = walk_forward([dict(r, mdl=r["mdl7"]) for r in rs7])
+        if not sc7:
+            continue
+        g7 = boot([(r['date'], r['ll_r'] - r['ll_p']) for r in sc7])
+        verdicts.append((f"`{k}`: the blend adds to the price (pooled beats recal)", g7))
+        p(f"| {k} | {len(sc7):,} | {iv(g7, 4)} | "
+          + ", ".join(f"{mo} {b:.3f}" for mo, _n, _a, _ap, b, _w in fits7) + " |")
+    p()
+    p("The station model's monthly fits: " + "; ".join(
+        f"{mo} {c['half_life_days']} d half-life, inner MAE {c['inner_mae']}" for mo, c in sorted(blend.chosen.items()))
+      + ".")
     p()
 
     p("## Verdicts under the plan's rule (P3.10: a gain counts only with its 90% interval above 0)")
