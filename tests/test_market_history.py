@@ -149,3 +149,23 @@ def test_the_cost_study_prices_after_the_decision_and_checks_real_asks():
     assert t.trades(rows, {(0, "model"): 0.66}, {}, "model", 0.05, "ask") == []     # the margin is not cleared
     src = (ROOT / "tools" / "p310_s10_after_costs.py").read_text()
     assert "prices_at(rows, after=True)" in src and "book_asks(rows)" in src
+
+
+def test_a_new_maximum_is_an_event_only_when_it_enters_a_higher_bucket():
+    r = _tool("p310_reaction")
+    bands = [{"band_id": 0, "band_lo": None, "band_hi": 20.0}, {"band_id": 1, "band_lo": 20.0, "band_hi": 21.0},
+             {"band_id": 2, "band_lo": 21.0, "band_hi": 22.0}, {"band_id": 3, "band_lo": 22.0, "band_hi": None}]
+    events = {"e1": {"city": "london", "date": "2026-06-01", "unit": "C", "bands": bands, "winner": 2}}
+    import datetime as dt
+    def at(h, m):
+        return int(dt.datetime(2026, 6, 1, h, m, tzinfo=dt.timezone.utc).timestamp())
+    obs = {("london", "2026-06-01"): [(at(7, 0), 19.0), (at(10, 20), 20.2), (at(10, 50), 20.4),
+                                      (at(12, 20), 21.0), (at(13, 20), 20.6), (at(15, 20), 21.4)]}
+    evs, controls = r.find_events(events, {"london": "UTC"}, obs)
+    # 07:00 is the first reading; 10:20 enters bucket 1; 10:50 stays in it; 12:20 enters 2; 15:20 rounds to 21: still 2
+    assert [(e[3], e[4]) for e in evs] == [(at(10, 20), 1), (at(12, 20), 2)]
+    assert len(controls) == 1 and all(abs(controls[0][3] - e[3]) >= r.CONTROL_GAP_MIN * 60 for e in evs)
+    assert r.venue_reading(21.5, "C") == 22 and r.venue_reading(22.8, "F") == 73   # 73.04 F
+    ps = [(100, 0.1), (160, 0.2), (220, 0.3)]
+    assert r.first_at_or_after(ps, 161) == 0.3 and r.last_at_or_before(ps, 161) == 0.2
+    assert r.first_at_or_after(ps, 221) is None

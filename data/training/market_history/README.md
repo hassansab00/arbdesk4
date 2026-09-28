@@ -61,4 +61,7 @@ The price fetch took 4,920 s for 106,868 buckets, with 0 failed requests.
 - `tools/p310_replay_inputs.py` → the S10 checkpoint replay's inputs → `docs/S10_VS_MARKET_RECORD_2026-09-28.md` and `data/replay/s10_market_record_2026-09-28.csv.gz`.
   - The inputs file itself is not committed: the builder rewrites it from these files.
   - That report prices the market BEFORE the decision, which leaks. The corrected run, `--market-at after`, is `docs/S10_VS_MARKET_RECORD_AFTER_2026-09-28.md`, with rows in `data/replay/s10_market_record_after_2026-09-28.csv.gz`.
+- `tools/p310_reaction.py` → `reaction_events.csv.gz`, `reaction_prices.csv.gz` and `reaction_meta.json` (one-minute prices, fetched 28 Sep) → `docs/MARKET_REACTION_2026-09-28.md`.
+  - Scope: 3,000 new daily maxima sampled from 28,079 (seed 7), plus 2,587 random-minute controls.
+  - Each sampled event carries 30 min of prices before the reading and 120 min after.
 - `tools/p310_s10_after_costs.py` → `docs/S10_AFTER_COSTS_2026-09-28.md`: S10's post-peak trades after the spread and the fee, including the archived books' real asks.
