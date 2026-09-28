@@ -163,6 +163,15 @@ select cron.schedule(
   'VACUUM (FULL, ANALYZE) public.edges'
 );
 
+-- Book proof (plan v2 P1.6 phase 1, 28 Sep): kept one day, so the archive
+-- sheds a day of it every night (~340 rows at ~6.4 KB). Daily at 03:25,
+-- between the trades and research backstops.
+select cron.schedule(
+  'ad4_reclaim_paper_book_evidence',
+  '25 3 * * *',
+  'VACUUM (FULL, ANALYZE) public.paper_book_evidence'
+);
+
 -- The decision log (plan v2 P5.11): about 2,600 rows a day, pruned past 30
 -- days. Small, so the rewrite is short; 03:55, behind edges, for the same
 -- one-rewrite-at-a-time reason.
@@ -222,7 +231,9 @@ as $$
 declare
   v_allowed constant text[] := array[
     'research_captures', 'paper_resolution_evidence', 'book_snapshots', 'edges',
-    'weather_observations', 'weather_forecasts', 'trades_observed', 'decisions'];
+    'weather_observations', 'weather_forecasts', 'trades_observed', 'decisions',
+    -- appended (28 Sep), so every table above keeps its two-minute slot
+    'paper_book_evidence'];
   v_now   timestamptz := now();
   v_hour  int := extract(hour from (v_now at time zone 'UTC'))::int;
   v_at    timestamptz;

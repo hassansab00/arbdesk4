@@ -279,6 +279,30 @@ TABLES = {
         "min_keep_days": 7,   # halves the window AND unpins 11,726 book snapshots held only by an edge older than a week
         "needs_feature_cache": False,
     },
+    # BOOK PROOF (plan v2 P1.6 phase 1, step 2, 28 Sep; Hassan approved it on
+    # condition that no collected data is lost). The order book behind every
+    # paper fill, ~6.4 KB a row, ~340 a day, 13 MB and never archived. Its
+    # readers - complete_paper_order and queue_automatic_paper_exit - take a
+    # proof no older than 900 s (120 by default), so one day is evidence at
+    # rest. The table is append-only; prune_book_evidence claims the same
+    # single-table archive exemption prune_research_captures does.
+    "book_evidence": {
+        "table": "paper_book_evidence",
+        "pk": "snapshot_id",
+        "cutoff_col": "captured_at",
+        "cutoff_is_date": False,
+        "prune_rpc": "prune_book_evidence",
+        "tag": "book-evidence-archive",
+        # snapshot_id IS EXPORTED: it is not a surrogate but a sha256 of the
+        # book itself, and paper_orders cite their proof by it
+        # (result->>snapshot_id), so it is what joins an order to its book.
+        "pk_is_exported_because": "paper_orders cite their proof by it (result->>snapshot_id), and it is a hash of the book, not a surrogate",
+        "columns": ["snapshot_id", "token_id", "observed_at", "captured_at", "payload"],
+        "bytes_per_row": 6400,
+        "keep_days": 1,
+        "min_keep_days": 1,
+        "needs_feature_cache": False,
+    },
     # THE DECISION LOG (plan v2 P5.11): one row per run, strategy and
     # city-day, about 2,600 a day at 48 city-days, 9 strategies and six runs
     # (measured 25 Sep). Nothing reads a decision older than 30 days from

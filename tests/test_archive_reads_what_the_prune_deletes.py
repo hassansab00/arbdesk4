@@ -106,6 +106,8 @@ EXPORT_SOURCE = {
     "decisions":    "decisions",
     # stamps, never deletes: the snapshots whose ladder the archive lacks (P5.13)
     "ladders":      "v_unarchived_ladders",
+    # the whole table older than a day: no reader looks back past 900 s (P1.6)
+    "book_evidence": "paper_book_evidence",
 }
 
 
