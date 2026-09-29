@@ -1616,6 +1616,15 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "paper_trades",
     "paper_accounts"
   ],
+  "v_run_arrivals": [
+    "anomalies",
+    "book_snapshots",
+    "ingest_log",
+    "bands",
+    "markets",
+    "trades_observed",
+    "weather_forecasts"
+  ],
   "v_settlement_agreement": [
     "bands",
     "markets",

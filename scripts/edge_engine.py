@@ -394,6 +394,10 @@ def main():
     bands = _bands_for_markets(market_ids)
     if not bands:
         print("no bands for upcoming markets - nothing to price")
+        # A run with nothing to price still says so: v_run_arrivals reads a
+        # dispatched run with no edge_engine row as one that never ran.
+        log_run("edge_engine", "ok", 0, {"bands": 0, "markets": len(markets),
+                                         "note": "no bands for upcoming markets"})
         return
     band_market = {b["band_id"]: b["market_id"] for b in bands}
     band_ids = [b["band_id"] for b in bands]

@@ -230,6 +230,7 @@ NOT_MIRRORED = {
     "desk_members": "auth user ids; no research content",
     "ad4_view_restore": "copies of view DDL whose source is sql/",
     "clock_schedule": "configuration seeded from its migration (20260926130000), which is its source",
+    "clock_expected_jobs": "configuration seeded from its migration (20260930001000), which is its source",
     "regimes": "empty (0 rows, 23 Sep); P1.6 may drop it",
     "ensemble_forecasts": "empty (0 rows, 23 Sep); P1.6 may drop it",
     "book_capture_attempts": "empty (0 rows, 23 Sep); P1.6 may drop it",

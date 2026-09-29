@@ -11,7 +11,10 @@
 --                           orders and positions, logs a summary
 --   P4.1 Health Watchdog    reads the newest book snapshot and forecast run,
 --                           failed ingest jobs and anomalies in the last 24 h
---                           and v_city_volume, logs a verdict (email is off)
+--                           and v_city_volume, logs a verdict (email is off);
+--                           since 30 Sep also the dispatched runs that never
+--                           logged (v_run_arrivals, migration
+--                           20260930001000) and partial/attention per job
 --
 -- So pg_cron runs them here, at the minutes n8n ran them in UTC (the n8n
 -- instance evaluates cron in UTC+3, so its '31 */6' fired at 03/09/15/21:31 UTC
@@ -83,6 +86,7 @@ declare
   v_checks jsonb := '{}';
   v_book timestamptz; v_fc timestamptz; v_age numeric;
   v_err int; v_jobs text; v_anom int;
+  v_missed int; v_missed_jobs text; v_not_ok jsonb;
   v_cities int; v_vol numeric; v_trades bigint;
   v_summary text; v_status text; v_detail jsonb;
 begin
@@ -112,6 +116,31 @@ begin
    where status = 'error' and job <> 'P4.1_health_watchdog' and logged_at > now() - interval '24 hours';
   v_checks := v_checks || jsonb_build_object('failed_jobs_24h', v_err);
   if v_err > 0 then v_failures := v_failures || format('%s failed ingest job(s) in 24h: %s', v_err, v_jobs); end if;
+
+  -- A RUN THAT NEVER LOGGED (audit repair 2): a crash before log_run, a step
+  -- timeout, a runner that never started. Counted from what the clock
+  -- dispatched, not from what the jobs chose to say about themselves.
+  if to_regclass('public.v_run_arrivals') is not null then
+    select coalesce(sum(n), 0), string_agg(format('%s x%s', job, n), ', ' order by n desc, job)
+      into v_missed, v_missed_jobs
+      from (select job, count(*) as n from public.v_run_arrivals
+             where state = 'missing' and due_by > now() - interval '24 hours'
+             group by job) m;
+    v_checks := v_checks || jsonb_build_object('missed_runs_24h', v_missed);
+    if v_missed > 0 then
+      v_failures := v_failures || format('%s dispatched run(s) never logged their job: %s', v_missed, v_missed_jobs);
+    end if;
+  end if;
+
+  -- Runs that logged 'partial' or 'attention': reported per job, not failed.
+  select jsonb_object_agg(job, counts order by job) into v_not_ok
+    from (select job, jsonb_build_object('partial', count(*) filter (where status = 'partial'),
+                                         'attention', count(*) filter (where status = 'attention')) as counts
+            from ingest_log
+           where status in ('partial', 'attention') and job <> 'P4.1_health_watchdog'
+             and logged_at > now() - interval '24 hours'
+           group by job) p;
+  v_checks := v_checks || jsonb_build_object('not_ok_24h', coalesce(v_not_ok, '{}'::jsonb));
 
   select count(*) into v_anom from anomalies where detected_at > now() - interval '24 hours';
   v_checks := v_checks || jsonb_build_object('anomalies_24h', v_anom);
