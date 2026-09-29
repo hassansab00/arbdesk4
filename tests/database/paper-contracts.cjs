@@ -117,9 +117,18 @@ const assert = require('node:assert/strict');
     -- production trap CLAUDE.md describes, arriving from the other side.
     -- prob_id, too: v_prunable_band_probabilities keeps every price an edge
     -- cites, through this live foreign key (no ON DELETE, 29 Sep).
+    -- market_price, too: v_hit_ladders (sql/ad4_88, applied below before the
+    -- migration that rebuilds v_hit_forecasts on it) reads the eve's price.
     create table public.edges(edge_id bigint primary key,band_id uuid,computed_at timestamptz default now(),
       side text,tradeable boolean default false,book_snapshot_id bigint,
-      prob_id bigint references public.band_probabilities(prob_id));
+      prob_id bigint references public.band_probabilities(prob_id),market_price numeric);
+    -- derived_climb_profile is created by sql/ad4_28_feature_cache.sql, which
+    -- this harness never applies; v_trajectory_evidence joins it
+    -- (20260929160000). The live shape (information_schema, 29 Sep).
+    create table public.derived_climb_profile(city_key text not null,local_hour integer not null,
+      n_days integer,typical_climb_left_c numeric,climb_left_sd_c numeric,climb_left_p10_c numeric,
+      climb_left_p90_c numeric,pct_already_peaked numeric,computed_at timestamptz not null default now(),
+      primary key(city_key,local_hour));
     create table public.live_weather(city_key text primary key,updated_at timestamptz,observed_at timestamptz);
     -- weather_forecast_features is created by sql/ad4_24_nws_gridpoint.sql,
     -- which this harness never applies - so a migration doing an ALTER TABLE
@@ -217,6 +226,14 @@ const assert = require('node:assert/strict');
         insert into public.bands(band_id,market_id,band_index,band_label,band_lo,band_hi,open_low,open_high,token_yes,token_no,condition_id)
         values('${historicBand}','${historicMarket}',1,'20C',20,20,false,false,'historic-yes','historic-no','historic-condition'),
               ('${historicTailBand}','${historicTailMarket}',1,'<29°F',29,29,false,false,'tail-yes','tail-no','tail-condition');`);
+    }
+    if (file==='20260929160000_the_evidence_outlasts_the_weather_tables.sql') {
+      // v_hit_ladders is created by sql/ad4_88_hit_tournament.sql, never by a
+      // migration; this one rebuilds v_hit_forecasts on it. The real view,
+      // from the file, over the migrations above - not a copy.
+      const hit = fs.readFileSync(path.resolve(__dirname,'../../sql/ad4_88_hit_tournament.sql'),'utf8');
+      const a = hit.indexOf('create or replace view public.v_hit_ladders as');
+      await db.exec(hit.slice(a, hit.indexOf('comment on view public.v_hit_ladders', a)));
     }
     await db.exec(fs.readFileSync(path.join(directory,file),'utf8'));
     if (file==='20260912083705_paper_accounts_and_research_history.sql') {

@@ -148,11 +148,15 @@ def test_the_cache_refresh_skips_retired_cities(monkeypatch):
     asked = []
     monkeypatch.setattr(common, "active_city_keys", lambda: {"nyc", "london"})
     monkeypatch.setattr(common, "rpc",
-                        lambda fn, params=None: asked.append((params or {}).get("p_city"))
+                        lambda fn, params=None: asked.append((fn, (params or {}).get("p_city")))
                         or {"ok": True, "city_days_touched": 1, "city_hours": 1,
                             "city_days_total": 1, "ms": 1})
     common.refresh_feature_cache(quiet=True)
-    assert sorted(asked) == ["london", "nyc"]
+    assert sorted(c for f, c in asked if f == "refresh_feature_cache") == ["london", "nyc"]
+    # The hours are the one exception, on purpose: prune_observations cuts
+    # every city's readings and refuses a day they do not hold, so they walk
+    # every city in one call (plan v2 P1.6 phase 2, step 6).
+    assert [c for f, c in asked if f == "refresh_city_day_hours"] == [None]
 
 
 def test_capacity_walks_active_cities_only(monkeypatch):

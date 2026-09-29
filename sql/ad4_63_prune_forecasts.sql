@@ -60,7 +60,7 @@ declare
   -- crossed the boundary while the export ran - unarchived.
   v_before date := coalesce(p_before, current_date - p_keep_days);
   v_doomed bigint; v_keep bigint; v_skill bigint; v_skill_at timestamptz;
-  v_newest_doomed date; v_freed text;
+  v_newest_doomed date; v_freed text; v_unfrozen bigint;
 begin
   if p_keep_days < 30 then
     return jsonb_build_object('ok', false,
@@ -106,6 +106,23 @@ begin
       'error', format('derived_forecast_skill was last computed %s, before the newest forecast being removed (%s). Their contribution was never measured. Run the daily pipeline first.',
                       coalesce(v_skill_at::date::text, 'never'), v_newest_doomed),
       'would_delete', v_doomed);
+  end if;
+
+  -- Every v_hit_forecasts row for the days going is frozen (plan v2 P1.6
+  -- phase 2): hit_tournament.py reads 120 days, the table keeps about 30.
+  select count(*) into v_unfrozen from (
+    select city_key, for_date, lane, model, forecast_max_c, known_at
+      from v_hit_forecasts_live where for_date < v_before
+    except
+    select city_key, for_date, lane, model, forecast_max_c, known_at
+      from derived_hit_forecasts where for_date < v_before
+  ) x;
+
+  if v_unfrozen > 0 then
+    return jsonb_build_object('ok', false,
+      'error', format('%s v_hit_forecasts row(s) dated before %s are not in derived_hit_forecasts. Run common.refresh_feature_cache first (it freezes them) - the hit tournament reads them after the prune.',
+                      v_unfrozen, v_before),
+      'unfrozen_rows', v_unfrozen, 'would_delete', v_doomed);
   end if;
 
   select count(*) into v_keep from weather_forecasts where for_date >= v_before;

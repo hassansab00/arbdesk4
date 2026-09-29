@@ -60,24 +60,90 @@ create index if not exists dtj_computed on derived_trajectory (computed_at desc)
 
 
 -- --------------------------------------------------------------------------
+-- EACH CITY'S HOURS, KEPT PAST THE OBSERVATIONS' KEEP (plan v2 P1.6 phase 2,
+-- step 6 part (b), 29 Sep). The evidence below reads 120 days
+-- (trajectory.py) and each day's climb as of the 30 days before it; the
+-- readings keep 30-odd days (step 5). So each city's local day is kept here
+-- as the highest reading in each local hour - 24 slots, slot h + 1 holding
+-- hour h, null where the hour had none - written by refresh_city_day_hours
+-- (sql/ad4_97) every night while the day is whole, and never rewritten once
+-- the prune has cut into it (the rule derived_city_day_features follows).
+-- One row a city-day, ~250 bytes. The evidence reads the readings for whole
+-- days and this for the rest.
+-- --------------------------------------------------------------------------
+create table if not exists derived_city_day_hours (
+  city_key    text        not null,
+  obs_date    date        not null,          -- the city's local date
+  temp_c      numeric[]   not null,          -- 24 slots: slot h + 1 is local hour h
+  n_hours     int         not null,          -- slots holding a reading
+  computed_at timestamptz not null default now(),
+  primary key (city_key, obs_date)
+);
+
+comment on table derived_city_day_hours is
+  'Per city and local day: the highest reading in each local hour (24 slots, slot h + 1 is hour h), cached from weather_observations while the day is whole and never rewritten once the prune has cut into it. What v_trajectory_evidence reads for the days the readings no longer hold (plan v2 P1.6 phase 2).';
+
+alter table derived_city_day_hours enable row level security;
+revoke all on derived_city_day_hours from anon, authenticated;
+grant select, insert, update, delete on derived_city_day_hours to service_role;
+
+
+-- --------------------------------------------------------------------------
 -- The evidence: one row per city, settled day and local hour.
 -- --------------------------------------------------------------------------
 create or replace view v_trajectory_evidence as
-with hourly as (
+with
+-- THE FIRST WHOLE DAY OF EACH CITY (plan v2 P1.6 phase 2). The prune cuts
+-- every city at one instant; a local day that began before the oldest
+-- reading held is cut (refresh_feature_cache's rule). From that day on the
+-- readings are whole and read directly; before it the day comes from
+-- derived_city_day_hours, written every night while it was whole.
+held as (
+  select min(valid_at) as oldest from weather_observations
+),
+whole_from as (
+  select c.city_key,
+         coalesce(case when ((h.oldest at time zone coalesce(c.timezone, 'UTC'))::date::timestamp
+                              at time zone coalesce(c.timezone, 'UTC')) < h.oldest
+                       then (h.oldest at time zone coalesce(c.timezone, 'UTC'))::date + 1
+                       else (h.oldest at time zone coalesce(c.timezone, 'UTC'))::date end,
+                  'infinity'::date) as first_whole
+  from cities c cross join held h
+),
+hourly as (
   select o.city_key,
          (o.valid_at at time zone coalesce(c.timezone, 'UTC'))::date            as local_date,
          extract(hour from o.valid_at at time zone coalesce(c.timezone, 'UTC'))::int as local_hour,
          max(o.temp_c)                                                          as temp_c
   from weather_observations o
   join cities c on c.city_key = o.city_key
+  join whole_from f on f.city_key = o.city_key
   where o.temp_c is not null
+    and (o.valid_at at time zone coalesce(c.timezone, 'UTC'))::date >= f.first_whole
   group by 1, 2, 3
+  union all
+  select d.city_key, d.obs_date, (s.slot - 1)::int, s.temp_c
+  from derived_city_day_hours d
+  join whole_from f on f.city_key = d.city_key
+  cross join lateral unnest(d.temp_c) with ordinality as s(temp_c, slot)
+  where d.obs_date < f.first_whole
+    and s.temp_c is not null
 ),
 -- THE CLIMB PROFILE AS OF THE DAY BEFORE (plan v2 P3.4). derived_climb_profile
 -- is measured over every day it has, the graded day included, so a
 -- trajectory fitted against it had already seen part of the answer. These
 -- columns carry the same statistic built only from the days BEFORE each row's
 -- date - the window stops one day short - and trajectory.py fits on them.
+--
+-- THE 30 DAYS BEFORE IT, as the profile the engine serves (29 Sep, plan v2
+-- P1.6 phase 2). This read every earlier day the readings held, which was
+-- whatever the prune left - 60 days lately, and it would have been the ~30
+-- of step 5 with no one choosing it. The served profile reads the last 30
+-- whole days because that window scored best out of sample (0.5359 CRPS
+-- against 0.5444 at 60 days, docs/HISTORY_WINDOWS_2026-09-29.md), so the
+-- evidence the trajectory is fitted on now describes the same statistic the
+-- engine prices with. On 29 Sep's 19,990 rows this moved the as-of climb
+-- by 0.226 C and its spread by 0.145 C on average; every row kept 20 days.
 ahead as (
   select city_key, local_date, local_hour,
          max(temp_c) over (partition by city_key, local_date order by local_hour
@@ -94,7 +160,7 @@ asof as (
   from ahead
   where n_hours >= 12
   window w as (partition by city_key, local_hour order by local_date
-               rows between unbounded preceding and 1 preceding)
+               range between interval '30 days' preceding and interval '1 day' preceding)
 ),
 walked as (
   select city_key, local_date, local_hour, temp_c,
@@ -159,7 +225,7 @@ select
   cp.n_days                                   as climb_n_days,
   p.centre_c                                  as forecast_c,
   p.sigma_c                                   as forecast_sigma_c,
-  -- as of the day before; null until 20 earlier days exist, as the profile's own floor
+  -- as of the 30 days before; null under 20 of them, as the profile's own floor
   case when a.climb_n_asof >= 20 then round(a.climb_left_asof_c::numeric, 2) end as climb_left_asof_c,
   case when a.climb_n_asof >= 20 then round(a.climb_sd_asof_c::numeric, 2) end   as climb_sd_asof_c,
   a.climb_n_asof::int                         as climb_n_asof
@@ -177,7 +243,7 @@ where w.n_hours >= 12
   and cp.climb_left_sd_c is not null;
 
 comment on view v_trajectory_evidence is
-  'One row per city, settled day and local hour: the reading and running maximum at that hour, what the climb profile says is still to come, what the desk actually published for that day, and what the day finally reached. The fitting set for scripts/trajectory.py.';
+  'One row per city, settled day and local hour: the reading and running maximum at that hour, what the climb profile says is still to come (now, and as of the 30 days before), what the desk actually published for that day, and what the day finally reached. Whole days from weather_observations, earlier ones from derived_city_day_hours. The fitting set for scripts/trajectory.py.';
 
 
 -- --------------------------------------------------------------------------

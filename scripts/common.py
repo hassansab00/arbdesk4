@@ -365,6 +365,18 @@ def refresh_feature_cache(days=None, quiet=False):
     for city in cities[1:]:
         results.append(rpc("refresh_feature_cache", {**params, "p_city": city}) or {})
 
+    # THE EVIDENCE THAT OUTLASTS THE WEATHER TABLES (plan v2 P1.6 phase 2,
+    # step 6): each city's hourly maxima for v_trajectory_evidence, and
+    # v_hit_forecasts frozen. EVERY CITY, retired ones too, in one call: the
+    # prune cuts every city's readings (5 retired cities held 7,279 on
+    # 29 Sep) and refuses a day these hours do not hold. Measured live on
+    # 29 Sep: 54 cities, 3,154 city-days in 3.4 s; the freeze, one query
+    # whichever city is asked for, 16,560 rows in 7.5 s - inside the service
+    # role's 180 s. Both raise like the rest: the archive does not prune on a
+    # partial cache.
+    hours = rpc("refresh_city_day_hours") or {}
+    frozen = rpc("freeze_hit_forecasts") or {}
+
     def total_of(key):
         return sum(int(r.get(key) or 0) for r in results)
 
@@ -377,6 +389,10 @@ def refresh_feature_cache(days=None, quiet=False):
         "refreshed_from": results[-1].get("refreshed_from"),
         "slowest_call_ms": max((int(r.get("ms") or 0) for r in results), default=0),
         "total_ms": total_of("ms"),
+        "day_hours_written": int(hours.get("days_written") or 0),
+        "day_hours_ms": int(hours.get("ms") or 0),
+        "hit_forecasts_frozen": int(frozen.get("rows_written") or 0),
+        "hit_forecasts_ms": int(frozen.get("ms") or 0),
     }
     if not quiet:
         print(f"feature cache: {out}")

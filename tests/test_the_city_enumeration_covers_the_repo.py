@@ -218,6 +218,11 @@ SQL_RECORD = {
     # and a retired city's settled prices are read like any other's - so its
     # readers' rows must be kept, not filtered out.
     "sql/ad4_96_prune_band_probabilities.sql",
+    # refresh_city_day_hours and freeze_hit_forecasts (P1.6 phase 2, step 6).
+    # RECORD, and deliberately every city: prune_observations cuts every
+    # city's readings - retired ones held 7,279 on 29 Sep - and refuses a day
+    # the hours cache does not hold, so an active-only walk would block it.
+    "sql/ad4_97_evidence_cache.sql",
 }
 
 # MIGRATIONS COUNT TOO. The first version of this file globbed sql/*.sql and
@@ -234,6 +239,10 @@ SQL_RECORD = {
 # rather than a bug. It is here because a blind spot is how the last four got
 # in.
 MIGRATION_RECORD = {
+    "supabase/migrations/20260929160000_the_evidence_outlasts_the_weather_tables.sql":
+        "v_trajectory_evidence, refresh_city_day_hours and prune_observations, as in "
+        "sql/ad4_86, ad4_97 and ad4_29 - cities.timezone to put readings on their "
+        "local day; the hours are the record, walked for every city a prune reaches",
     "supabase/migrations/20260929140000_the_prices_readers_use_stay.sql":
         "v_prunable_band_probabilities - cities.timezone only, to find each priced band's "
         "local day start and eve; it keeps the prices a retired city's readers select as "

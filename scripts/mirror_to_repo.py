@@ -150,6 +150,14 @@ TABLES = {
     "fact_forecast_outcome":         closed("for_date", "city_key", "for_date", "model", "lead_days"),
     "fact_signal_outcome":           closed("for_date", "signal_id"),
     "derived_city_day_features":     closed("obs_date", "city_key", "obs_date"),
+    # plan v2 P1.6 phase 2, step 6: what the trajectory evidence and the hit
+    # tournament read once the weather tables no longer hold the day. Both are
+    # rewritten while the day is held whole, so they are copied once it is
+    # past the weather tables' keep (60 days today; step 5 lowers it to about
+    # 30), and rows that change after that are re-copied by no one - noted.
+    "derived_city_day_hours":        closed("obs_date", "city_key", "obs_date", after_days=40),
+    "derived_hit_forecasts":         closed("for_date", "city_key", "for_date", "lane", "model",
+                                            "known_at", after_days=40),
     "derived_band_day_volume":       closed("trade_date", "band_id", "trade_date"),
     "derived_city_day_volume":       closed("trade_date", "city_key", "trade_date"),
     "markets":                       closed("resolution_date", "market_id"),

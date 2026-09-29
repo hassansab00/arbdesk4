@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 243 of them - and for each MISSING one names the
+-- and function the app reads - 246 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -43,12 +43,14 @@ with expected(rel, owner, used_by) as (values
     ('derived_city_climate', 'ad4_19_stats_cache.sql', ''),
     ('derived_city_correlation', 'ad4_phase2.sql', ''),
     ('derived_city_day_features', 'ad4_00_preflight.sql', ''),
+    ('derived_city_day_hours', 'ad4_86_trajectory.sql', ''),
     ('derived_city_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_climb_profile', 'ad4_28_feature_cache.sql', ''),
     ('derived_corrected_forecast', 'supabase/migrations/20260926120000_station_correction.sql', ''),
     ('derived_forecast_postprocess', 'ad4_83_forecast_postprocess.sql', ''),
     ('derived_forecast_skill', 'ad4_00_preflight.sql', '/analytics'),
     ('derived_forecast_skill_model', 'ad4_49_model_skill.sql', ''),
+    ('derived_hit_forecasts', 'ad4_88_hit_tournament.sql', ''),
     ('derived_hit_recipe', 'supabase/migrations/20260923210000_the_hit_tournament.sql', ''),
     ('derived_hit_summary', 'supabase/migrations/20260923210000_the_hit_tournament.sql', ''),
     ('derived_hit_tournament', 'supabase/migrations/20260923210000_the_hit_tournament.sql', ''),
@@ -181,6 +183,7 @@ with expected(rel, owner, used_by) as (values
     ('v_forecast_postprocess_applied', 'ad4_83_forecast_postprocess.sql', ''),
     ('v_forecast_postprocess_health', 'ad4_83_forecast_postprocess.sql', ''),
     ('v_hit_forecasts', 'ad4_88_hit_tournament.sql', ''),
+    ('v_hit_forecasts_live', 'ad4_88_hit_tournament.sql', ''),
     ('v_hit_ladders', 'ad4_88_hit_tournament.sql', ''),
     ('v_index_never_used', 'ad4_50_index_dedupe.sql', ''),
     ('v_jit_state', 'ad4_46_jit.sql', ''),
@@ -308,12 +311,14 @@ begin
     ('derived_city_climate', 'ad4_19_stats_cache.sql', ''),
     ('derived_city_correlation', 'ad4_phase2.sql', ''),
     ('derived_city_day_features', 'ad4_00_preflight.sql', ''),
+    ('derived_city_day_hours', 'ad4_86_trajectory.sql', ''),
     ('derived_city_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_climb_profile', 'ad4_28_feature_cache.sql', ''),
     ('derived_corrected_forecast', 'supabase/migrations/20260926120000_station_correction.sql', ''),
     ('derived_forecast_postprocess', 'ad4_83_forecast_postprocess.sql', ''),
     ('derived_forecast_skill', 'ad4_00_preflight.sql', '/analytics'),
     ('derived_forecast_skill_model', 'ad4_49_model_skill.sql', ''),
+    ('derived_hit_forecasts', 'ad4_88_hit_tournament.sql', ''),
     ('derived_hit_recipe', 'supabase/migrations/20260923210000_the_hit_tournament.sql', ''),
     ('derived_hit_summary', 'supabase/migrations/20260923210000_the_hit_tournament.sql', ''),
     ('derived_hit_tournament', 'supabase/migrations/20260923210000_the_hit_tournament.sql', ''),
@@ -446,6 +451,7 @@ begin
     ('v_forecast_postprocess_applied', 'ad4_83_forecast_postprocess.sql', ''),
     ('v_forecast_postprocess_health', 'ad4_83_forecast_postprocess.sql', ''),
     ('v_hit_forecasts', 'ad4_88_hit_tournament.sql', ''),
+    ('v_hit_forecasts_live', 'ad4_88_hit_tournament.sql', ''),
     ('v_hit_ladders', 'ad4_88_hit_tournament.sql', ''),
     ('v_index_never_used', 'ad4_50_index_dedupe.sql', ''),
     ('v_jit_state', 'ad4_46_jit.sql', ''),

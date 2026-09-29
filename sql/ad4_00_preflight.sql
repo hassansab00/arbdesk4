@@ -160,7 +160,10 @@ begin
       ('weather_forecast_features',  array['city_key','for_date','run_at'],            'captured_at'),
       ('fact_forecast_outcome',      array['city_key','for_date','model','lead_days'], 'captured_at'),
       ('derived_forecast_postprocess',array['city_key','lead_days'],                   'computed_at'),
-      ('derived_trajectory',          array['city_key','local_hour'],                  'computed_at')
+      ('derived_trajectory',          array['city_key','local_hour'],                  'computed_at'),
+      -- plan v2 P1.6 phase 2, step 6: the evidence that outlasts the weather tables
+      ('derived_city_day_hours',      array['city_key','obs_date'],                    'computed_at'),
+      ('derived_hit_forecasts',       array['city_key','for_date','lane','model','known_at'], 'frozen_at')
     ) as t(tbl, cols, newest)
   loop
     v_msg := ad4_ensure_natural_key(r.tbl, r.cols, r.newest);
