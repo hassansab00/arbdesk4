@@ -8,7 +8,8 @@ width the desk prices with), station_correction.py (75 days of
 `weather_forecast_models`, the centre it prices with) and regime.py (the
 tick's history of forecast disagreement; the backtest runner reads through
 it). Each got whatever retention left, 60 days lately, and phase 2 lowers
-the keep to 30.
+the keep to 30. The forecast ingest's gap check reads through it too (step
+3), so a day the archive holds is not fetched and written back.
 
 read() answers the read a job already makes: the database's rows, plus
 the rows the archive holds for the dates the database was cut below. When the
@@ -359,12 +360,13 @@ def sort_rows(rows, order):
 # the read
 # --------------------------------------------------------------------------
 
-def read(name, params, *, rest_fn=None, rest_all_fn=None, order=None, page_size=1000, root=ROOT):
+def read(name, params, *, rest_fn=None, rest_all_fn=None, order=None, page_size=1000, root=None):
     """What `rest_all_fn(name, params, order=, page_size=)` returns - or, with
     rest_all_fn None, `rest_fn(name, params)` - as if the database had never
     been pruned."""
     if rest_fn is None and rest_all_fn is None:
         raise ValueError("weather_history.read needs rest_fn or rest_all_fn")
+    root = root or ROOT
     spec = SOURCES[name]
     params = list(params.items()) if isinstance(params, dict) else list(params)
 
