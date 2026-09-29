@@ -89,7 +89,16 @@ TABLES = {
         "cutoff_col": "valid_at",
         "cutoff_is_date": False,
         "prune_rpc": "prune_observations",
-        "min_keep_days": 60,   # prune_observations refuses under 30; the fit trains on months
+        # 32 DAYS, WANTED AND FLOOR (plan v2 P1.6 phase 2, step 5, 29 Sep). The
+        # climb profile reads the 30 whole local days before today; the oldest
+        # of them can begin 14 hours before its UTC date (UTC+14) and the prune
+        # cuts part-way through a day, so the readings must reach 32 days back
+        # (tests/test_climb_profile_window.py). Every other reader of the
+        # readings reads a week or less, the caches (derived_city_day_features,
+        # _hours, derived_station_day_sources) or the repository
+        # (scripts/weather_history.py); prune_observations refuses under 32.
+        "keep_days": 32,
+        "min_keep_days": 32,
         "tag": "observations-archive",
         "columns": ["city_key", "station", "valid_at", "temp_c", "temp_f",
                     "dewpoint_c", "humidity", "wind_speed", "wind_dir_deg",
@@ -105,7 +114,12 @@ TABLES = {
         # by the time of day the job happened to run.
         "cutoff_is_date": True,
         "prune_rpc": "prune_forecasts",
-        "min_keep_days": 60,   # same shape, same fitter
+        # 30 DAYS, WANTED AND FLOOR (plan v2 P1.6 phase 2, step 5). The long
+        # readers read the repository (weather_history: skill, regime, the
+        # backtest, the ingest's gap check) or what the nightly freeze kept
+        # (v_hit_forecasts, v_forecast_latest); prune_forecasts refuses under 30.
+        "keep_days": 30,
+        "min_keep_days": 30,
         "tag": "forecasts-archive",
         "columns": ["city_key", "model", "run_at", "observed_at", "for_date",
                     "lead_days", "forecast_max_c", "variables", "source"],
@@ -376,8 +390,11 @@ TABLES = {
         "columns": ["city_key", "model", "run_at", "for_date", "lead_days",
                     "forecast_max_c", "source", "observed_at"],
         "bytes_per_row": 250,
-        "keep_days": 90,
-        "min_keep_days": 60,
+        # 30 DAYS, as weather_forecasts (plan v2 P1.6 phase 2, step 5): station
+        # correction reads 75 days through weather_history, the hit tournament
+        # its frozen rows; prune_forecast_models refuses under 30.
+        "keep_days": 30,
+        "min_keep_days": 30,
         "mirror_first": True,
         # The refresh freezes the hit tournament's forecasts, which read this
         # table (plan v2 P1.6 phase 2, step 6); prune_forecast_models refuses

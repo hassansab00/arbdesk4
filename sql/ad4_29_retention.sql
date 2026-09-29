@@ -314,11 +314,14 @@ declare
   v_doomed bigint; v_cached_before bigint; v_uncovered bigint; v_freed text;
   v_unkept bigint; v_unkept_station bigint;
 begin
-  if p_keep_days < 30 then
-    -- The model needs MIN_DAYS (120) to fit at all and the trend views need a
-    -- fortnight. Below a month there is nothing left to work with.
+  if p_keep_days < 32 then
+    -- The climb profile reads the 30 whole local days before today; the
+    -- oldest can begin 14 hours before its UTC date and the prune cuts part-
+    -- way through a day, so the readings must reach 32 days back (plan v2
+    -- P1.6 phase 2, step 5). Everything longer reads the caches or the
+    -- repository.
     return jsonb_build_object('ok', false,
-      'error', 'keep_days must be at least 30 - the model needs months, not days');
+      'error', 'keep_days must be at least 32 - the climb profile reads the 30 whole local days before today');
   end if;
 
   if not p_dry_run and p_expected_rows is null then

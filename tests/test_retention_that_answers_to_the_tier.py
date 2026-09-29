@@ -75,10 +75,11 @@ def test_a_floor_is_never_longer_than_the_window_it_floors(name):
 
 
 def test_the_observation_floor_clears_the_prunes_own_refusal():
-    # prune_observations refuses outright under 30 days. A floor below that
+    # prune_observations refuses outright under 32 days (plan v2 P1.6 phase 2,
+    # step 5: the climb profile's 30 whole local days). A floor below that
     # would make every pressured run fail instead of freeing anything.
-    assert arch.TABLES["observations"]["min_keep_days"] >= 30
-    assert "p_keep_days < 30" in (ROOT / "sql/ad4_29_retention.sql").read_text()
+    assert arch.TABLES["observations"]["min_keep_days"] >= 32
+    assert "p_keep_days < 32" in (ROOT / "sql/ad4_29_retention.sql").read_text()
 
 
 # --------------------------------------------------------------------------
