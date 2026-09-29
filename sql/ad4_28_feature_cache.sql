@@ -321,7 +321,26 @@ with hourly as (
   from weather_observations o
   join cities c on c.city_key = o.city_key
   where o.temp_c is not null
-    and o.valid_at > now() - interval '2 years'
+    -- THE LAST 30 WHOLE LOCAL DAYS (29 Sep, plan v2 P1.6 phase 2). This
+    -- said two years, and read whatever retention left - 60 days lately.
+    -- Scored out of sample on a year of the repository's raw readings
+    -- (tools/p16_history_windows.py, docs/HISTORY_WINDOWS_2026-09-29.md,
+    -- 259,715 city-day-hours): 30 days beats 60 by 0.0085 CRPS [0.0072,
+    -- 0.0098], in every quarter, and all the history is worse than 60 by
+    -- 0.032. The climb left in a day follows the season, so older days
+    -- only blur it. Stated here so the window no longer depends on how
+    -- long weather_observations is kept; the archive keeps at least 32
+    -- days (tests/test_climb_profile_window.py).
+    --
+    -- Today is left out, as it was in the scoring. The nightly refresh runs
+    -- near 05:00Z, when an Asian city's day has 14 or 15 hours (to 13:00 or
+    -- 14:00) and passes the 12-hour test, so any climb after that hour was
+    -- counted as none. The readings valid before the 29 Sep refresh (05:02Z)
+    -- give 16 cities such a day.
+    and o.valid_at > now() - interval '32 days'
+    and (o.valid_at at time zone coalesce(c.timezone, 'UTC'))::date
+        between (now() at time zone coalesce(c.timezone, 'UTC'))::date - 30
+            and (now() at time zone coalesce(c.timezone, 'UTC'))::date - 1
   group by 1, 2, 3
 ),
 counted as (
@@ -369,7 +388,7 @@ group by a.city_key, a.local_hour
 having count(*) >= 20;
 
 comment on view v_city_climb_profile_live is
-  'The live computation. Expensive by nature - two years of hourly observations windowed per city-day - so only refresh_feature_cache() reads it.';
+  'The live computation: the last 30 whole local days of hourly observations, windowed per city-day (the window measured best, 29 Sep). Only refresh_feature_cache() reads it; v_city_climb_profile serves the cache.';
 
 drop view if exists v_city_climb_profile cascade;
 create view v_city_climb_profile as
