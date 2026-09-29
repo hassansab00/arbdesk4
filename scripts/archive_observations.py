@@ -539,14 +539,17 @@ TABLES = {
                     "band_volume", "band_volume_24hr", "raw_book",
                     "no_best_bid", "no_best_ask", "no_book"],
         "bytes_per_row": 400,
-        # SEVEN DAYS AT FULL RESOLUTION, because v_band_price_history draws the
-        # monitor's chart from intra-day rows and a shorter window makes that
-        # chart sparse for storage not worth having.
-        "keep_days": 7,
-        # The floor costs that chart some resolution, which is exactly why it
-        # is a floor and not the default: it applies only while the database
-        # is over its high-water mark.
-        "min_keep_days": 4,
+        # THREE DAYS AT FULL RESOLUTION (P1.6 phase 3, step 3.2, 29 Sep; it
+        # was 7, and 4 while over the high-water mark). The intra-day readers
+        # in Postgres read 48 hours at most (v_band_price_history,
+        # v_opportunity_context; checked 29 Sep), and three days is the
+        # shortest prune_book_redundancy accepts. The one reader further back
+        # is the backtest, at 12:00 UTC on the day before each date, and it
+        # reads the pruned rows back from data/archive/books
+        # (scripts/book_history.py). Edges and signals still pin the books
+        # they cite until their own prune.
+        "keep_days": 3,
+        "min_keep_days": 3,
         "needs_feature_cache": False,
     },
 }

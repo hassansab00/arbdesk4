@@ -86,24 +86,28 @@ def test_the_observation_floor_clears_the_prunes_own_refusal():
 # 2. Which window a run picks.
 # --------------------------------------------------------------------------
 
+# A dataset whose floor is below its window, so the governor has a choice to
+# make. It was `books` until P1.6 phase 3, step 3.2 put both at 3 (29 Sep).
+FLOORED = next(n for n, s in sorted(arch.TABLES.items()) if s["min_keep_days"] < s.get("keep_days", 90))
+
 def test_under_pressure_a_dataset_drops_to_its_floor(monkeypatch):
     monkeypatch.setattr(arch, "_rpc", lambda *a, **k: {"over": True, "pct_of_tier": 105.9,
                                                        "db_mb": 529.4, "verdict": "x"})
-    days, why = arch.effective_keep_days(arch.TABLES["books"])
-    assert days == arch.TABLES["books"]["min_keep_days"]
+    days, why = arch.effective_keep_days(arch.TABLES[FLOORED])
+    assert days == arch.TABLES[FLOORED]["min_keep_days"]
     assert why["over"] is True and why["source"] == "floor"
 
 
 def test_with_room_to_spare_it_keeps_the_full_window(monkeypatch):
     monkeypatch.setattr(arch, "_rpc", lambda *a, **k: {"over": False, "pct_of_tier": 70.0})
-    days, why = arch.effective_keep_days(arch.TABLES["books"])
-    assert days == arch.TABLES["books"]["keep_days"]
+    days, why = arch.effective_keep_days(arch.TABLES[FLOORED])
+    assert days == arch.TABLES[FLOORED]["keep_days"]
     assert why["over"] is False
 
 
 def test_an_operators_number_beats_the_governor(monkeypatch):
     monkeypatch.setattr(arch, "_rpc", lambda *a, **k: {"over": True})
-    days, why = arch.effective_keep_days(arch.TABLES["books"], override=21)
+    days, why = arch.effective_keep_days(arch.TABLES[FLOORED], override=21)
     assert days == 21 and why["source"] == "--keep-days"
 
 
@@ -111,8 +115,8 @@ def test_an_unreadable_pressure_keeps_history_rather_than_dropping_it(monkeypatc
     def boom(*a, **k):
         raise RuntimeError("storage_pressure does not exist")
     monkeypatch.setattr(arch, "_rpc", boom)
-    days, why = arch.effective_keep_days(arch.TABLES["books"])
-    assert days == arch.TABLES["books"]["keep_days"], (
+    days, why = arch.effective_keep_days(arch.TABLES[FLOORED])
+    assert days == arch.TABLES[FLOORED]["keep_days"], (
         "shortening retention because a health check was unreachable is how "
         "you lose history to a network blip"
     )
