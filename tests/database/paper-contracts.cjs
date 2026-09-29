@@ -566,7 +566,12 @@ const assert = require('node:assert/strict');
   await db.query("select capture_research_state('run1','commit1')");
   await db.query("select capture_research_state('run1','commit1')");
   await db.query("select capture_research_state('run2','commit1')");
-  assert.equal((await db.query('select count(*)::int as n from research_captures')).rows[0].n,researchBefore+3);
+  // One row from each of the two views still captured, once: a repeat or a
+  // second command copies nothing. v_forecast_convergence is not copied since
+  // 20260929233000 (plan v2 P1.6 phase 3, step 3.3) - its inputs are in the repo.
+  assert.equal((await db.query('select count(*)::int as n from research_captures')).rows[0].n,researchBefore+2);
+  assert.equal((await db.query("select count(*)::int as n from research_captures where source_relation='v_forecast_convergence'")).rows[0].n,0,
+    'the convergence view is still copied into research_captures');
   await assert.rejects(db.query("delete from research_captures"),/permission denied|Append-only/);
   await assert.rejects(db.query("truncate research_captures"),/permission denied/);
   await db.exec('reset role;set role anon;');
