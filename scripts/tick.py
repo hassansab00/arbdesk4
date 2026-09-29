@@ -369,7 +369,14 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     # same-day city-days whose pick the station has passed since it was
     # priced are priced again now, after the due checkpoints, with the same
     # floors; every ladder this tick prices is published below.
+    t_select = time.monotonic()
     reprice, bands_by_market, current = _reprice(pe, current_ladder, market_of, floors, unit_of, days)
+    # the selection's own seconds (publish_s below times the publish). The
+    # first tick with this step took 37.0 s (22:36Z 29 Sep) against a 25.0 s
+    # maximum for 11 due checkpoints before. A re-priced city-day is priced
+    # in the pool beside the checkpoints, so its cost is in the tick's
+    # seconds, not in these two.
+    current["select_s"] = round(time.monotonic() - t_select, 2)
     detail["current"] = current
     if not due and not reprice:
         print(f"tick {now:%Y-%m-%d %H:%MZ}: nothing due ({len(held)} already written); "
@@ -454,6 +461,7 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
 
     # Every ladder this tick priced, as the city-day's current prediction
     # (plan v2.3 P4.9): one per city-day, the newest winning, never appended.
+    t_publish = time.monotonic()
     newest_checkpoint = {}
     for city, target, name, local in due:
         if (city, target) not in newest_checkpoint or local > newest_checkpoint[(city, target)][1]:
@@ -477,6 +485,7 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
             current["published"] = rpc("publish_current_ladders", {"p_rows": ladders})
         except Exception as e:
             current["error"] = f"publish_current_ladders: {type(e).__name__}: {str(e)[:160]}"
+    current["publish_s"] = round(time.monotonic() - t_publish, 2)
     # The remaining-day model's ladder beside each call, observe only (P7.4).
     s10_ladders = {}
     s10["shadow"] = s10_shadow.record(due, market_of, bands_by_market, tz_of, unit_of, dry_run,

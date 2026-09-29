@@ -492,6 +492,8 @@ def test_a_pick_the_station_passed_is_priced_again_and_published_beside_the_chec
     assert ladders[0]["priced_from"] == "nws:2026-09-24T12:00"
     assert out["current"]["reprice"] == ["nyc 2026-09-24"] and out["current"]["ladders"] == 2
     assert same_day["logged"][0][1] == "ok"
+    # the step's own cost is in the detail, apart from the tick's seconds
+    assert isinstance(out["current"]["select_s"], float) and isinstance(out["current"]["publish_s"], float)
 
 
 def test_a_pick_priced_with_that_reading_already_is_left_alone(same_day):
