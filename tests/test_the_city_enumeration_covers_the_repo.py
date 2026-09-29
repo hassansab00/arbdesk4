@@ -281,6 +281,10 @@ MIGRATION_RECORD = {
     "supabase/migrations/20260929010000_a_cut_day_keeps_its_cached_values.sql":
         "refresh_feature_cache, as in sql/ad4_28 and ad4_29 - the day-feature "
         "record, which must cover every city a prune reaches",
+    "supabase/migrations/20260929100000_the_climb_profile_reads_thirty_days.sql":
+        "v_city_climb_profile_live, as in sql/ad4_26 and ad4_28 - cities.timezone "
+        "only, to put each reading on its city's local day; the climb profile is "
+        "the record of how each city's days climbed, and only its window changed",
 }
 
 JOINS_CITIES = re.compile(r"(?:join|from)\s+(?:public\.)?cities(?:\s|$|,|\))", re.I)

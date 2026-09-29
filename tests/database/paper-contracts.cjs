@@ -27,8 +27,10 @@ const assert = require('node:assert/strict');
       timezone text,latitude numeric,longitude numeric,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now());
+    -- temp_c is live (numeric, nullable): 20260929100000 builds
+    -- v_city_climb_profile_live over it.
     create table public.weather_observations(obs_id bigint primary key,city_key text,valid_at timestamptz,
-      observed_at timestamptz);
+      observed_at timestamptz,temp_c numeric);
     -- observed_at, variables and source are live columns (timestamptz, jsonb,
     -- text): 20260923160000 builds v_forecast_issued over them.
     create table public.weather_forecasts(forecast_id bigint primary key,city_key text,model text,run_at timestamptz,
