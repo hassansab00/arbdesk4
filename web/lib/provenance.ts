@@ -1295,6 +1295,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_forecast_skill_model",
     "weather_forecasts"
   ],
+  "v_forecast_models_export": [
+    "weather_forecast_models"
+  ],
   "v_forecast_postprocess_applied": [
     "derived_forecast_postprocess"
   ],

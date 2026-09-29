@@ -165,7 +165,10 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
               # repo mirror copies a capture day after the prune (P1.6, 28 Sep)
               "forecast_features": 2,
               # signals' decision inputs: the plan's week; the rows stay (P1.6, 28 Sep)
-              "signal_inputs": 7}
+              "signal_inputs": 7,
+              # each model's forecasts: as weather_forecasts; phase 2 step 5 sets
+              # the window (P1.6, 29 Sep)
+              "forecast_models": 90}
     assert set(limits) == set(TABLES), (
         f"a dataset was added to the archive without a reasoned retention ceiling here: "
         f"{sorted(set(TABLES) ^ set(limits))}")

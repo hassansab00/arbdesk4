@@ -349,6 +349,38 @@ TABLES = {
         "mirror_first": True,
         "needs_feature_cache": False,
     },
+    # EACH MODEL'S PAST FORECASTS (plan v2 P1.6 phase 2, step 4, 29 Sep;
+    # Hassan: "Do phase 2 as planned"). Every Open-Meteo model's maximum for
+    # every city, day and lead: 99,292 rows from for_date 20 Aug, 24 MB (250
+    # bytes a row with its indexes, 125 in the heap), never pruned until now
+    # (measured 29 Sep). Pruned by for_date like weather_forecasts, and kept as
+    # long: 90 days, 60 under storage pressure; phase 2 step 5 sets the
+    # window. Readers below the keep: station_correction (75 days) reads the
+    # archive through weather_history, whose dataset name this is; the hit
+    # tournament's v_hit_forecasts is SQL and sees only what the table keeps.
+    # The key is four columns, so the export pages on
+    # v_forecast_models_export's joined text key. mirror_to_repo copies the
+    # table by observed_at after the prune; prune_forecast_models refuses a row
+    # observed since yesterday's midnight and this refuses to start while the
+    # mirror is behind it.
+    "forecast_models": {
+        "table": "weather_forecast_models",
+        "read_from": "v_forecast_models_export",
+        "pk": "model_key",
+        # the table's composite primary key, which the view joins into `pk`
+        "pk_joins": ["city_key", "model", "run_at", "for_date"],
+        "cutoff_col": "for_date",
+        "cutoff_is_date": True,
+        "prune_rpc": "prune_forecast_models",
+        "tag": "forecast-models-archive",
+        "columns": ["city_key", "model", "run_at", "for_date", "lead_days",
+                    "forecast_max_c", "source", "observed_at"],
+        "bytes_per_row": 250,
+        "keep_days": 90,
+        "min_keep_days": 60,
+        "mirror_first": True,
+        "needs_feature_cache": False,
+    },
     # A WEEK-OLD SIGNAL'S DECISION INPUTS (plan v2 P1.6 phase 1, step 4,
     # 28 Sep; approved on condition that no collected data is lost). The rows
     # stay - four tables hold foreign keys to them and the board reads every
