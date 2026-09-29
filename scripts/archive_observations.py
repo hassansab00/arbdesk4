@@ -232,10 +232,11 @@ TABLES = {
     # It is also the most valuable table here: those payloads are what make an
     # outcome admissible, and the whole of Phase 2A was about a running
     # maximum not being a settlement. So the read is from a VIEW, not the
-    # table. v_prunable_resolution_evidence is only the proofs whose band
-    # outcome is ALREADY FROZEN in fact_band_outcome - a proof for a band
-    # nobody has banked is the only copy of that answer and is never offered,
-    # at any age.
+    # table. v_prunable_resolution_evidence is only the proofs whose verdict
+    # (identity and winner) is already kept in resolution_verdicts, which is
+    # never pruned, and that no settlement cites: a proof a settlement paid out
+    # on is never offered, at any age (sql/ad4_74, 24 Sep; it was "outcome
+    # frozen in fact_band_outcome" before resolution_verdicts existed).
     #
     # Reading the same view the prune deletes from is what makes the count
     # contract hold: the rows uploaded ARE the rows removed, by construction,
