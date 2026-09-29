@@ -20,6 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 import requests
 from common import get_cities, upsert, rest, log_run, city_local_date
+import weather_history
 
 API = "https://previous-runs-api.open-meteo.com/v1/forecast"
 LEADS = [1, 2, 3, 4, 5, 6, 7]
@@ -254,11 +255,24 @@ def chunks(start, end, days):
 def existing_dates(city_key, start, end):
     # A date is complete only when every requested lead is present for this
     # specific source product. Other providers cannot satisfy this backfill.
+    #
+    # THE DATABASE AND THE ARCHIVE (plan v2 P1.6 phase 2, step 3). The
+    # catch-up window below is 35 days and the archive's keep is going to 30.
+    # Read from the table alone, the days it no longer holds would look
+    # missing, and missing_span would stretch from the oldest of them to
+    # today: every night, 36 days of best_match and seven models for every
+    # city - the cost missing_span was written to stop - and days 31-35
+    # written back into the database for the next prune to take out again.
+    # Through weather_history, a day the archive holds counts as present, and
+    # a real hole, missing from both, is still found and filled (its rows
+    # then leave with the next prune, into the archive). Above the newest
+    # prune this is the same read as before.
     from common import rest_all
-    rows = rest_all('weather_forecasts', [
+    rows = weather_history.read('weather_forecasts', [
         ('select', 'for_date,lead_days'), ('city_key', f'eq.{city_key}'),
         ('model', f'eq.{MODEL_LABEL}'), ('for_date', f'gte.{start.isoformat()}'),
-        ('for_date', f'lte.{end.isoformat()}')], order='for_date,lead_days,forecast_id')
+        ('for_date', f'lte.{end.isoformat()}')],
+        rest_fn=rest, rest_all_fn=rest_all, order='for_date,lead_days,forecast_id', page_size=500)
     leads = defaultdict(set)
     for row in rows:
         leads[row['for_date']].add(row['lead_days'])
