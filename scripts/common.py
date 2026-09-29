@@ -2,6 +2,7 @@
 import os, sys, time, json
 import requests
 import threading
+import traceback
 
 # ONE CONNECTION POOL FOR THE PROCESS (plan v2 P6.1). Every call used to be a
 # bare requests.get/post: a new TCP and TLS handshake per request. Measured on
@@ -424,6 +425,39 @@ def log_run(job, status, rows, detail):
         response.raise_for_status()
     except Exception as e:
         print(f"  ! log_ingest failed: {e}", file=sys.stderr)
+
+
+# A SCRIPT THAT DIES LEAVES A ROW (audit repair 2, 29 Sep). The watchdog counts
+# ingest_log rows with status 'error', and a script that raised before its own
+# log_run wrote nothing: paper_exits died on every intraday run from 27 Sep
+# 20:36Z to 29 Sep 20:36Z and all 8 watchdog runs said failed_jobs_24h 0. Any
+# uncaught exception in a script that imports this module now logs
+# 'crash:<script>' as an error first; the traceback is then printed and the
+# process exits 1 exactly as before. ingest_log is readable by anon, so the row
+# keeps the error and where it was raised (file, line, function), never source
+# lines. A crash that cannot log (the 401s of 29 Sep) still reads as a missing
+# run in v_run_arrivals.
+def _log_crash(exc_type, exc, tb,
+               _previous=(sys.excepthook if getattr(sys.excepthook, "__name__", "") != "_log_crash"
+                          else sys.__excepthook__)):
+    if not issubclass(exc_type, KeyboardInterrupt):
+        try:
+            script = os.path.basename(sys.argv[0] or "") or "python"
+            frames = [f"{os.path.basename(f.filename)}:{f.lineno} in {f.name}"
+                      for f in traceback.extract_tb(tb)[-4:]]
+            log_run(f"crash:{script}", "error", 0, {
+                "script": script,
+                "error": f"{exc_type.__name__}: {exc}"[:500],
+                "where": frames,
+                "github_run_id": os.environ.get("GITHUB_RUN_ID"),
+                "workflow": os.environ.get("GITHUB_WORKFLOW"),
+            })
+        except Exception:
+            pass
+    _previous(exc_type, exc, tb)
+
+
+sys.excepthook = _log_crash
 
 # ===========================================================================
 # THE DAY A READING BELONGS TO.
