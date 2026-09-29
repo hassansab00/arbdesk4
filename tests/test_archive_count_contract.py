@@ -40,3 +40,18 @@ def test_committed_prunes_require_and_lock_the_expected_count():
         assert f"lock table public.{table} in share row exclusive mode" in sql
     assert sql.count("p_expected_rows is required for a committed prune") == 2
     assert sql.count("v_doomed <> p_expected_rows") == 2
+
+
+def test_the_price_prune_locks_counts_and_rolls_back_a_different_delete():
+    """prune_band_probabilities (plan v2 P1.6 phase 2, step 6). The contract in
+    tests/database/band-probabilities.cjs runs everything but the lock, which a
+    single connection cannot race; the lock is pinned here. Its marks live in
+    fact_band_outcome and edges, which the lock does not hold, so the delete
+    also checks its own row count and rolls back on any difference."""
+    for path in (ROOT / "sql" / "ad4_96_prune_band_probabilities.sql",
+                 ROOT / "supabase" / "migrations" / "20260929140000_the_prices_readers_use_stay.sql"):
+        sql = _normalized(path)
+        assert "lock table public.band_probabilities in share row exclusive mode" in sql, path.name
+        assert "p_expected_rows is required for a committed prune" in sql, path.name
+        assert "v_doomed <> p_expected_rows" in sql, path.name
+        assert "get diagnostics v_gone = row_count" in sql and "if v_gone <> v_doomed then" in sql, path.name

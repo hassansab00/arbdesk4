@@ -381,6 +381,40 @@ TABLES = {
         "mirror_first": True,
         "needs_feature_cache": False,
     },
+    # EVERY PRICE A READER USES STAYS (plan v2 P1.6 phase 2, step 6, 29 Sep).
+    # band_probabilities' long-history readers each take one row per band,
+    # city-day or edge - the newest, the newest before the local day, the
+    # newest by the eve, the row a fact was priced at, the newest published
+    # one of the city-day, the one an edge cites. v_prunable_band_probabilities
+    # offers every other row with its market's resolution_date; a market 30
+    # days past its date sheds them here. Proven: at a 7-day cut the nine
+    # views that read the table return the same rows (sql/ad4_96). The key is
+    # exported because edges.prob_id - and so the edges archive - cites it.
+    # mirror_to_repo copies the table by computed_at after the prune;
+    # prune_band_probabilities refuses a row computed since yesterday's
+    # midnight.
+    "probabilities": {
+        "table": "band_probabilities",
+        "read_from": "v_prunable_band_probabilities",
+        "pk": "prob_id",
+        "cutoff_col": "resolution_date",
+        "cutoff_is_date": True,
+        "prune_rpc": "prune_band_probabilities",
+        "tag": "probabilities-archive",
+        "columns": ["prob_id", "band_id", "computed_at", "forecast_version", "calibration_version",
+                    "raw_prob", "calibrated_prob", "input_forecast_run", "input_book_snapshot",
+                    "forecast_max_c", "bias_applied_c", "sigma_c", "lead_days", "lattice_applied",
+                    "confidence", "regime_label", "skill_lead_days", "skill_proxy", "skill_source",
+                    "pricing_eligible", "pricing_block_reason", "observed_floor_c", "centre_c",
+                    "forecast_sigma_c", "station_width_c", "resolution_date"],
+        "pk_is_exported_because": "edges.prob_id cites it, and so does the edges archive",
+        # 30 MB over 102,678 rows, heap 20 MB (29 Sep)
+        "bytes_per_row": 300,
+        "keep_days": 30,
+        "min_keep_days": 30,
+        "mirror_first": True,
+        "needs_feature_cache": False,
+    },
     # A WEEK-OLD SIGNAL'S DECISION INPUTS (plan v2 P1.6 phase 1, step 4,
     # 28 Sep; approved on condition that no collected data is lost). The rows
     # stay - four tables hold foreign keys to them and the board reads every

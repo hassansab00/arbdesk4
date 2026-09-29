@@ -200,6 +200,16 @@ select cron.schedule(
   'VACUUM (FULL, ANALYZE) public.weather_forecast_models'
 );
 
+-- Prices no reader selects, 30 days past their market (plan v2 P1.6 phase 2,
+-- step 6, 29 Sep): the archive sheds about a day of them a night and asks for
+-- its own reclaim, so this is only the backstop - weekly, Monday 07:05, after
+-- the weather tables and outside the hourly tick (:36) and the engine runs.
+select cron.schedule(
+  'ad4_reclaim_band_probabilities',
+  '5 7 * * 1',
+  'VACUUM (FULL, ANALYZE) public.band_probabilities'
+);
+
 -- The decision log (plan v2 P5.11): about 2,600 rows a day, pruned past 30
 -- days. Small, so the rewrite is short; 03:55, behind edges, for the same
 -- one-rewrite-at-a-time reason.
@@ -263,7 +273,7 @@ declare
     -- appended (28 Sep), so every table above keeps its two-minute slot
     'paper_book_evidence', 'weather_forecast_features', 'signals',
     -- appended (29 Sep, P1.6 phase 2)
-    'weather_forecast_models'];
+    'weather_forecast_models', 'band_probabilities'];
   v_now   timestamptz := now();
   v_hour  int := extract(hour from (v_now at time zone 'UTC'))::int;
   v_at    timestamptz;

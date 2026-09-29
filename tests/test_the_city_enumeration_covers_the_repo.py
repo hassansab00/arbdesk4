@@ -212,6 +212,12 @@ SQL_RECORD = {
     # BEFORE deciding whether to bring it back, so filtering it out here would
     # destroy the one answer somebody would come looking for.
     "sql/ad4_85_city_hit_history.sql",
+    # v_prunable_band_probabilities (P1.6 phase 2, step 6). RECORD:
+    # cities.timezone only, to put each priced band's local day start and eve
+    # on its city's clock. It decides which old prices the archive may take,
+    # and a retired city's settled prices are read like any other's - so its
+    # readers' rows must be kept, not filtered out.
+    "sql/ad4_96_prune_band_probabilities.sql",
 }
 
 # MIGRATIONS COUNT TOO. The first version of this file globbed sql/*.sql and
@@ -228,6 +234,10 @@ SQL_RECORD = {
 # rather than a bug. It is here because a blind spot is how the last four got
 # in.
 MIGRATION_RECORD = {
+    "supabase/migrations/20260929140000_the_prices_readers_use_stay.sql":
+        "v_prunable_band_probabilities - cities.timezone only, to find each priced band's "
+        "local day start and eve; it keeps the prices a retired city's readers select as "
+        "it keeps any other's (sql/ad4_96)",
     "supabase/migrations/20260926100000_calibration_learns_frozen_calls.sql":
         "v_calibration_evidence - cities.timezone only, to find when each settled "
         "band's local day began; the record of what was forecast before it, and a "

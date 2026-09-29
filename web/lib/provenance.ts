@@ -1521,6 +1521,14 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "cities",
     "fact_band_outcome"
   ],
+  "v_prunable_band_probabilities": [
+    "band_probabilities",
+    "bands",
+    "cities",
+    "edges",
+    "fact_band_outcome",
+    "markets"
+  ],
   "v_prunable_book_redundancy": [
     "book_snapshots",
     "edges",

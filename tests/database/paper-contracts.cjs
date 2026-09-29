@@ -115,8 +115,11 @@ const assert = require('node:assert/strict');
     -- v_prunable_book_redundancy reads it to refuse anything an edge cites.
     -- Missing here, the view does not compile - the fixture-does-not-match-
     -- production trap CLAUDE.md describes, arriving from the other side.
+    -- prob_id, too: v_prunable_band_probabilities keeps every price an edge
+    -- cites, through this live foreign key (no ON DELETE, 29 Sep).
     create table public.edges(edge_id bigint primary key,band_id uuid,computed_at timestamptz default now(),
-      side text,tradeable boolean default false,book_snapshot_id bigint);
+      side text,tradeable boolean default false,book_snapshot_id bigint,
+      prob_id bigint references public.band_probabilities(prob_id));
     create table public.live_weather(city_key text primary key,updated_at timestamptz,observed_at timestamptz);
     -- weather_forecast_features is created by sql/ad4_24_nws_gridpoint.sql,
     -- which this harness never applies - so a migration doing an ALTER TABLE
