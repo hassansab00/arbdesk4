@@ -218,7 +218,7 @@ TABLES = {
 # TABLES nor here fails tests/test_every_table_has_a_home.py.
 NOT_MIRRORED = {
     "research_captures": "JSON copies of six mirrored tables; the archive exports it at 2 days",
-    "paper_resolution_evidence": "archived at 3 days once its outcome is frozen in fact_band_outcome",
+    "paper_resolution_evidence": "archived at 1 day once its verdict is in resolution_verdicts and no settlement cites it",
     "live_weather": "one row per city, overwritten every run; its readings are weather_observations",
     "book_ladder_cache": "a cache of book_snapshots, rebuilt by trigger",
     "archive_daily_city_presence": "rebuildable from data/archive; the prune's own coverage proof",
