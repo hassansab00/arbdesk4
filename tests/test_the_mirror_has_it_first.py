@@ -35,7 +35,7 @@ MIRRORED = sorted(n for n, s in ao.TABLES.items() if s.get("mirror_first"))
 
 
 def test_the_datasets_the_mirror_copies_by_day_are_marked():
-    assert MIRRORED == ["forecast_features", "forecast_models", "trades"]
+    assert MIRRORED == ["forecast_features", "forecast_models", "probabilities", "trades"]
     assert ao.TABLES["trades"]["mirrored_on"] == "ingested_at"
 
 
@@ -44,6 +44,7 @@ def test_the_datasets_the_mirror_copies_by_day_are_marked():
 REFUSES_UNMIRRORED = {
     "forecast_features": ("ad4_93_prune_forecast_features.sql", "captured_at"),
     "forecast_models": ("ad4_95_prune_forecast_models.sql", "observed_at"),
+    "probabilities": ("ad4_96_prune_band_probabilities.sql", "computed_at"),
 }
 
 
@@ -91,6 +92,7 @@ def test_the_midnight_each_prune_relies_on():
     assert ao.mirror_needs(ao.TABLES["trades"], cutoff, now) == dt.datetime(2026, 9, 28, tzinfo=UTC)
     assert ao.mirror_needs(ao.TABLES["forecast_features"], cutoff.date(), now) == dt.datetime(2026, 9, 28, tzinfo=UTC)
     assert ao.mirror_needs(ao.TABLES["forecast_models"], cutoff.date(), now) == dt.datetime(2026, 9, 28, tzinfo=UTC)
+    assert ao.mirror_needs(ao.TABLES["probabilities"], cutoff.date(), now) == dt.datetime(2026, 9, 28, tzinfo=UTC)
 
 
 def test_the_manifest_is_read_from_the_checkout(monkeypatch, tmp_path):

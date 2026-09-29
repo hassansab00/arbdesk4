@@ -114,6 +114,8 @@ EXPORT_SOURCE = {
     "signal_inputs": "v_signal_inputs_export",
     # the table with its four-column key joined into one to page on (P1.6 phase 2)
     "forecast_models": "v_forecast_models_export",
+    # the prices no reader selects, with their market's date (P1.6 phase 2)
+    "probabilities": "v_prunable_band_probabilities",
 }
 
 
@@ -172,6 +174,7 @@ def test_the_exported_columns_exist_on_whatever_is_read(name):
         "v_forecast_features_export":     "ad4_93_prune_forecast_features.sql",
         "v_signal_inputs_export":         "ad4_94_prune_signal_inputs.sql",
         "v_forecast_models_export":       "ad4_95_prune_forecast_models.sql",
+        "v_prunable_band_probabilities":  "ad4_96_prune_band_probabilities.sql",
     }
     assert source in defines, f"{source} has no SQL file registered here"
     sql = (Path(ao.__file__).resolve().parents[1]

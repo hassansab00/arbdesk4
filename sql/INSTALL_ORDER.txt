@@ -86,6 +86,7 @@ ad4_92_prune_book_evidence.sql
 ad4_93_prune_forecast_features.sql
 ad4_94_prune_signal_inputs.sql
 ad4_95_prune_forecast_models.sql
+ad4_96_prune_band_probabilities.sql
 ad4_68_prediction_ladder_outcomes.sql
 ad4_71_observation_health.sql
 ad4_72_model_promotion.sql

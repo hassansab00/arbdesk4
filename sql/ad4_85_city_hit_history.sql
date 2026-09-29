@@ -47,10 +47,11 @@
 --    engine reading the thermometer back, and the market's "call" the same.
 --
 -- THE CALL NOW IS THE LAST PROBABILITY COMPUTED BEFORE THE CITY'S LOCAL DAY
--- BEGAN - from band_probabilities, which keeps every pricing and is never
--- pruned - so it is a forecast in the only sense that matters: nothing that
--- happened on the day could have informed it. called_at and
--- hours_before_day say exactly when it was made.
+-- BEGAN - from band_probabilities, which keeps that row for every band at any
+-- age (the archive's prune never offers it, sql/ad4_96; the pricings no reader
+-- selects leave 30 days after the market, 29 Sep) - so it is a forecast in the
+-- only sense that matters: nothing that happened on the day could have
+-- informed it. called_at and hours_before_day say exactly when it was made.
 --
 -- THE MODEL IS SCORED ON ITS OWN, FOR EVERY CITY: the whole settled ladder,
 -- its pre-day probabilities renormalised over the bands it priced, and a band

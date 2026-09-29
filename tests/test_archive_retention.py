@@ -168,7 +168,10 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
               "signal_inputs": 7,
               # each model's forecasts: as weather_forecasts; phase 2 step 5 sets
               # the window (P1.6, 29 Sep)
-              "forecast_models": 90}
+              "forecast_models": 90,
+              # prices no reader selects: station_width_score reads 14 days of
+              # every price; older, readers take one row a band (P1.6, 29 Sep)
+              "probabilities": 30}
     assert set(limits) == set(TABLES), (
         f"a dataset was added to the archive without a reasoned retention ceiling here: "
         f"{sorted(set(TABLES) ^ set(limits))}")
