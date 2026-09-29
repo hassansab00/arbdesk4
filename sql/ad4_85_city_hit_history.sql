@@ -62,10 +62,12 @@
 -- THE MARKET IS COMPARED ONLY WHERE THE COMPARISON IS FAIR, as the original
 -- rule intended: its YES price at the same cutoff, from edges, on the bands
 -- BOTH sides priced before the day, each renormalised over that shared set,
--- and only when that set contains the winner. edges keeps fourteen days, so
--- head-to-head exists for recent days; older days carry the model's record
--- with the market columns empty and head_to_head false, rather than a price
--- taken after the fact.
+-- and only when that set contains the winner. That price is the band's 'day'
+-- mark, frozen into derived_edge_marks once the cutoff passed (sql/ad4_80,
+-- plan v2 P1.6 phase 3); the edges prune keeps two days and never takes a
+-- mark it has not copied. A day with no price before it still carries the
+-- model's record with the market columns empty and head_to_head false,
+-- rather than a price taken after the fact.
 --
 -- The winner and the observed maximum still come from fact_band_outcome,
 -- frozen after settlement against final station authority. Retired cities
@@ -111,7 +113,8 @@ priced as (
          p.prob          as p_pre,
          p.forecast_max_c, p.sigma_c, p.confidence, p.regime_label,
          p.computed_at   as priced_at,
-         e.market_price  as market_pre
+         case when k.band_id is not null then k.market_price
+              else e.market_price end as market_pre
     from ladder l
     join settled d on d.city_key = l.city_key and d.for_date = l.for_date
     -- The desk's probability as it stood before the day began: the one it
@@ -125,13 +128,17 @@ priced as (
        order by bp.computed_at desc, bp.prob_id desc
        limit 1
     ) p on true
-    -- The market's YES price at the same cutoff.
+    -- The market's YES price at the same cutoff: the frozen mark, else the
+    -- edge itself.
+    left join derived_edge_marks k
+           on k.band_id = l.band_id and k.mark = 'day' and k.cutoff_at = l.day_starts_at
     left join lateral (
       select x.market_price
         from edges x
        where x.band_id = l.band_id
          and x.side = 'YES'
          and x.computed_at < l.day_starts_at
+         and k.band_id is null
        order by x.computed_at desc
        limit 1
     ) e on true

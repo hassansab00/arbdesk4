@@ -184,6 +184,11 @@ SQL_RECORD = {
     # cutoff on each city's clock. A settled day in a city retired since is
     # still evidence of which recipe predicts the winning bucket.
     "sql/ad4_88_hit_tournament.sql",
+    # ad4_80 (plan v2 P1.6 phase 3, step 3.1): v_edge_marks_live -
+    # cities.timezone only, to put each band's eve and pre-day cutoffs on its
+    # city's clock. Every band's marks, a retired city's too: the edges prune
+    # must not take a price the settled record reads.
+    "sql/ad4_80_prune_edge_history.sql",
     "sql/ad4_16_nws.sql", "sql/ad4_17_city_stats.sql", "sql/ad4_19_stats_cache.sql",
     "sql/ad4_21_weather_features.sql", "sql/ad4_23_reasoning.sql",
     "sql/ad4_26_temp_trend.sql", "sql/ad4_28_feature_cache.sql",
@@ -239,6 +244,11 @@ SQL_RECORD = {
 # rather than a bug. It is here because a blind spot is how the last four got
 # in.
 MIGRATION_RECORD = {
+    "supabase/migrations/20260929220000_the_edges_keep_the_prices_the_record_reads.sql":
+        "v_edge_marks_live as in sql/ad4_80, v_city_hit_history_live as in "
+        "sql/ad4_85 - cities.timezone to put each band's eve and pre-day cutoffs "
+        "on its city's clock; every band's marks and every settled city-day, a "
+        "retired city's too, because they are the record",
     "supabase/migrations/20260929210000_the_weather_tables_keep_thirty_days.sql":
         "prune_observations, as in sql/ad4_29 - its guards put each reading on its "
         "city's local day; pruning must walk every city or a retired one's rows "

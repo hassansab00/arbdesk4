@@ -233,6 +233,12 @@ const assert = require('node:assert/strict');
       // v_hit_ladders is created by sql/ad4_88_hit_tournament.sql, never by a
       // migration; this one rebuilds v_hit_forecasts on it. The real view,
       // from the file, over the migrations above - not a copy.
+      // It reads derived_edge_marks since 20260929220000, which creates that
+      // table: the real one, from sql/ad4_80, goes in first (the migration's
+      // `if not exists` then leaves it).
+      const e80 = fs.readFileSync(path.resolve(__dirname,'../../sql/ad4_80_prune_edge_history.sql'),'utf8');
+      const t = e80.indexOf('create table if not exists public.derived_edge_marks');
+      await db.exec(e80.slice(t, e80.indexOf(');', t) + 2));
       const hit = fs.readFileSync(path.resolve(__dirname,'../../sql/ad4_88_hit_tournament.sql'),'utf8');
       const a = hit.indexOf('create or replace view public.v_hit_ladders as');
       await db.exec(hit.slice(a, hit.indexOf('comment on view public.v_hit_ladders', a)));

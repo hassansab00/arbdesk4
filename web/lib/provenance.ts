@@ -1114,6 +1114,14 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "fact_band_outcome"
   ],
+  "v_city_hit_history_live": [
+    "band_probabilities",
+    "cities",
+    "edges",
+    "bands",
+    "markets",
+    "fact_band_outcome"
+  ],
   "v_city_hit_summary": [
     "band_probabilities",
     "cities",
@@ -1222,6 +1230,12 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_desk_risk_state": [
     "paper_accounts",
     "paper_trades"
+  ],
+  "v_edge_marks_live": [
+    "bands",
+    "cities",
+    "edges",
+    "markets"
   ],
   "v_edge_realisation": [
     "fact_band_outcome",
@@ -1573,7 +1587,10 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "signals"
   ],
   "v_prunable_edge_history": [
-    "edges"
+    "edges",
+    "bands",
+    "cities",
+    "markets"
   ],
   "v_prunable_resolution_evidence": [
     "paper_position_settlements",

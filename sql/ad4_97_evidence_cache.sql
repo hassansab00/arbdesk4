@@ -44,6 +44,11 @@
 -- capacity.py and before every weather prune in archive_observations.py,
 -- which refuses to prune when they fail - and the three weather prunes each
 -- refuse to delete what these have not kept (sql/ad4_29, ad4_63, ad4_95).
+--
+-- Phase 3, step 3.1 (29 Sep) adds freeze_edge_marks, in the same call: each
+-- band's YES edge at the two cutoffs v_hit_ladders and v_city_hit_history
+-- read, into derived_edge_marks (sql/ad4_80), so the edges prune can keep two
+-- days. That prune's own view holds back every mark not copied yet.
 -- ===========================================================================
 
 create or replace function public.refresh_city_day_hours(p_city text default null)
@@ -233,3 +238,43 @@ comment on function public.freeze_forecast_latest() is
 
 revoke all on function public.freeze_forecast_latest() from public, anon, authenticated;
 grant execute on function public.freeze_forecast_latest() to service_role;
+
+
+-- ---------------------------------------------------------------------------
+-- THE MARKS (plan v2 P1.6 phase 3, step 3.1). Each band's YES edge at its eve
+-- and pre-day cutoffs, copied once the cutoff is six hours past - edge_engine
+-- stamps a run's rows with the moment the run began, so a row can land after
+-- the cutoff it is before - and never rewritten after. A band with no YES
+-- edge before a cutoff has nothing to copy, and both readers read nothing.
+-- ---------------------------------------------------------------------------
+create or replace function public.freeze_edge_marks()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $fn$
+declare
+  t0 timestamptz := clock_timestamp();
+  v_written int;
+begin
+  insert into derived_edge_marks (band_id, mark, cutoff_at, computed_at, market_price, edge_id, source)
+  select m.band_id, m.mark, m.cutoff_at, m.computed_at, m.market_price, m.edge_id, 'edges'
+    from v_edge_marks_live m
+   where m.cutoff_at < now() - interval '6 hours'
+     and not exists (select 1 from derived_edge_marks d
+                      where d.band_id = m.band_id and d.mark = m.mark)
+  on conflict (band_id, mark) do nothing;
+  get diagnostics v_written = row_count;
+
+  return jsonb_build_object(
+    'ok', true, 'rows_written', v_written,
+    'rows_total', (select count(*) from derived_edge_marks),
+    'ms', round(extract(epoch from (clock_timestamp() - t0)) * 1000));
+end;
+$fn$;
+
+comment on function public.freeze_edge_marks() is
+  'Copy each band''s YES edge at its eve and pre-day cutoffs (v_edge_marks_live) into derived_edge_marks once the cutoff is six hours past; a frozen mark is never rewritten (plan v2 P1.6 phase 3). Called once a night by common.refresh_feature_cache; the edges prune holds back every mark not copied yet.';
+
+revoke all on function public.freeze_edge_marks() from public, anon, authenticated;
+grant execute on function public.freeze_edge_marks() to service_role;

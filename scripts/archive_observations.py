@@ -298,8 +298,15 @@ TABLES = {
             "confidence", "regime_label", "tradeable", "block_reason",
         ],
         "bytes_per_row": 290,
-        "keep_days": 14,
-        "min_keep_days": 7,   # halves the window AND unpins 11,726 book snapshots held only by an edge older than a week
+        # TWO DAYS, prune_edge_history's own floor (plan v2 P1.6 phase 3, step
+        # 3.1, 29 Sep). The longest live window is the readiness views' twelve
+        # hours; the two readers of older rows take one row a band, frozen into
+        # derived_edge_marks, and v_prunable_edge_history never offers a mark
+        # not frozen yet. Measured 29 Sep: 54,428 of 97,414 rows older than two
+        # days, and with them cut both readers return the same rows
+        # (tools/p16_step31_proof.py).
+        "keep_days": 2,
+        "min_keep_days": 2,
         "needs_feature_cache": False,
     },
     # BOOK PROOF (plan v2 P1.6 phase 1, step 2, 28 Sep; Hassan approved it on
