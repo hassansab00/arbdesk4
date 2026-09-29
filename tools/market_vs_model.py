@@ -5,7 +5,8 @@ WHY
 ---
 Every live comparison so far says the market prices the venue's ladder better
 than the desk (fact_checkpoint_outcome, 24-27 Sep: morning log loss 1.846 vs
-1.140), but on a handful of days. tools/market_history.py fetched the venue's
+1.097 - first read as 1.140 from market columns scored before book_mark(), see
+v_checkpoint_outcome, 29 Sep), but on a handful of days. tools/market_history.py fetched the venue's
 own record: every "Highest temperature" event since Dec 2025, its ladder, its
 winner, and the hourly price of every bucket. With it, the question is asked
 on every city-day the market and the desk's day-before forecasts both cover.
