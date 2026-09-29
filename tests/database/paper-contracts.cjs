@@ -28,9 +28,11 @@ const assert = require('node:assert/strict');
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now());
     -- temp_c is live (numeric, nullable): 20260929100000 builds
-    -- v_city_climb_profile_live over it.
+    -- v_city_climb_profile_live over it. temp_f, source and station are live
+    -- too (numeric, text, text, nullable): 20260929180000 builds
+    -- v_station_day_max over them.
     create table public.weather_observations(obs_id bigint primary key,city_key text,valid_at timestamptz,
-      observed_at timestamptz,temp_c numeric);
+      observed_at timestamptz,temp_c numeric,temp_f numeric,source text,station text);
     -- observed_at, variables and source are live columns (timestamptz, jsonb,
     -- text): 20260923160000 builds v_forecast_issued over them.
     create table public.weather_forecasts(forecast_id bigint primary key,city_key text,model text,run_at timestamptz,
@@ -234,6 +236,14 @@ const assert = require('node:assert/strict');
       const hit = fs.readFileSync(path.resolve(__dirname,'../../sql/ad4_88_hit_tournament.sql'),'utf8');
       const a = hit.indexOf('create or replace view public.v_hit_ladders as');
       await db.exec(hit.slice(a, hit.indexOf('comment on view public.v_hit_ladders', a)));
+    }
+    if (file==='20260929180000_the_station_days_and_forecast_leads_outlast_the_keep.sql') {
+      // obs_primary_source() is created by sql/ad4_82_settlement_agreement.sql,
+      // never by a migration; this one rebuilds v_station_day_max on it. The
+      // real function, from the file - not a copy.
+      const sa = fs.readFileSync(path.resolve(__dirname,'../../sql/ad4_82_settlement_agreement.sql'),'utf8');
+      const a = sa.indexOf('create or replace function obs_primary_source()');
+      await db.exec(sa.slice(a, sa.indexOf('$$;', a) + 3));
     }
     await db.exec(fs.readFileSync(path.join(directory,file),'utf8'));
     if (file==='20260912083705_paper_accounts_and_research_history.sql') {

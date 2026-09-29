@@ -236,6 +236,47 @@ comment on view v_storage_report is
 
 
 -- --------------------------------------------------------------------------
+-- 2b. Each station's day, kept past the readings (plan v2 P1.6 phase 2,
+--     step 5). v_station_day_max (sql/ad4_82) is the station's daily maximum
+--     per city-day, and three records read it over every day it has: the
+--     settlement agreement that sets each city's observation trust, the
+--     settlement-gap report, and databank's late proofs. Once the readings
+--     keep about 30 days it would read about 30.
+--
+--     One row per city, local day and SOURCE, so v_station_day_max still
+--     applies obs_primary_source() when it is read: if P2.1 moves the primary
+--     source, the days before the readings' keep follow it like the rest.
+--     refresh_city_day_hours (sql/ad4_97) writes it every night while the day
+--     is whole and never rewrites a day the prune has cut into; the prune
+--     below refuses to delete a day it has not kept. Created here, not in
+--     ad4_82, because v_backtest_window (ad4_42) reads it first.
+-- --------------------------------------------------------------------------
+create table if not exists derived_station_day_sources (
+  city_key        text        not null,
+  obs_date        date        not null,   -- the city's local date
+  source          text        not null,   -- weather_observations.source, '' where it is null
+  max_c           numeric,
+  max_f           numeric,
+  n_readings      bigint      not null,   -- readings with a temperature
+  last_reading_at timestamptz not null,
+  station         text,                   -- min(station), as v_station_day_max takes it
+  computed_at     timestamptz not null default now(),
+  first_reading_at timestamptz,           -- where v_backtest_window says observations begin
+  primary key (city_key, obs_date, source)
+);
+
+-- Added the same evening (20260929190000): the table was first created without it.
+alter table derived_station_day_sources add column if not exists first_reading_at timestamptz;
+
+comment on table derived_station_day_sources is
+  'Per city, local day and source: the maximum in both units, the readings, the last reading and the station, cached from weather_observations while the day is whole and never rewritten once the prune has cut into it. What v_station_day_max reads for the days the readings no longer hold (plan v2 P1.6 phase 2).';
+
+alter table derived_station_day_sources enable row level security;
+revoke all on derived_station_day_sources from public, anon, authenticated;
+grant select, insert, update, delete on derived_station_day_sources to service_role;
+
+
+-- --------------------------------------------------------------------------
 -- 3. Prune, with the safety the whole design rests on.
 --
 --    REFUSES unless the cache already covers the rows about to be deleted.
@@ -271,7 +312,7 @@ declare
                                    (current_date - p_keep_days)::timestamptz);
   v_cut date := (v_before at time zone 'UTC')::date;
   v_doomed bigint; v_cached_before bigint; v_uncovered bigint; v_freed text;
-  v_unkept bigint;
+  v_unkept bigint; v_unkept_station bigint;
 begin
   if p_keep_days < 30 then
     -- The model needs MIN_DAYS (120) to fit at all and the trend views need a
@@ -354,6 +395,29 @@ begin
       'unkept_city_days', v_unkept);
   end if;
 
+  -- ...and in derived_station_day_sources, which v_station_day_max reads for
+  -- those days (plan v2 P1.6 phase 2, step 5): every source of every day.
+  select count(*) into v_unkept_station from (
+    select distinct
+           o.city_key,
+           (o.valid_at at time zone coalesce(c.timezone, 'UTC'))::date as d,
+           coalesce(o.source, '') as s
+      from weather_observations o
+      join cities c on c.city_key = o.city_key
+     where o.valid_at < v_before and o.temp_c is not null
+  ) x
+  where not exists (
+    select 1 from derived_station_day_sources k
+     where k.city_key = x.city_key and k.obs_date = x.d and k.source = x.s
+  );
+
+  if v_unkept_station > 0 then
+    return jsonb_build_object('ok', false,
+      'error', format('%s city-day source(s) older than %s are not in derived_station_day_sources. Run common.refresh_feature_cache first (it refreshes them) - the settlement agreement reads them after the prune.',
+                      v_unkept_station, v_cut),
+      'unkept_station_days', v_unkept_station);
+  end if;
+
   select count(*) into v_cached_before from derived_city_day_features;
 
   if p_dry_run then
@@ -372,7 +436,7 @@ end;
 $ad4$;
 
 comment on function prune_observations(int, boolean, timestamptz, bigint) is
-  'Delete raw observations older than p_before (or p_keep_days if not given). A committed prune requires p_expected_rows to equal the verified archive count, and refuses unless every affected city-local day is cached. Dry run by default.';
+  'Delete raw observations older than p_before (or p_keep_days if not given). A committed prune requires p_expected_rows to equal the verified archive count, and refuses unless every affected city-local day is cached - in derived_city_day_features, derived_city_day_hours and, per source, derived_station_day_sources. Dry run by default.';
 
 
 -- --------------------------------------------------------------------------

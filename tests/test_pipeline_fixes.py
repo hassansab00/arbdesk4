@@ -533,26 +533,44 @@ def test_the_evidence_caches_follow_the_features(rpc_calls):
     the hit tournament's frozen forecasts, after every feature call, so the
     archive's refresh before a prune covers all three. The hours are ONE call
     with no city: the prune cuts retired cities' readings too, and refuses a
-    day the hours do not hold - an active-only walk would block it."""
+    day the hours do not hold - an active-only walk would block it. Step 5
+    adds the forecast standing at each lead, for both convergence views; the
+    same hours call keeps each station's day (v_station_day_max)."""
     common.refresh_feature_cache(quiet=True)
     names = [c[0] for c in rpc_calls.calls]
-    assert names == ["refresh_feature_cache"] * 3 + ["refresh_city_day_hours", "freeze_hit_forecasts"]
+    assert names == ["refresh_feature_cache"] * 3 + ["refresh_city_day_hours", "freeze_hit_forecasts",
+                                                     "freeze_forecast_latest"]
     assert [c[1] for c in rpc_calls.calls if c[0] == "refresh_city_day_hours"] == [{}], (
         "every city, and every day the readings hold - never a city list or a days window")
     assert [c[1] for c in rpc_calls.calls if c[0] == "freeze_hit_forecasts"] == [{}]
+    assert [c[1] for c in rpc_calls.calls if c[0] == "freeze_forecast_latest"] == [{}]
 
 
-def test_a_failed_evidence_cache_fails_the_refresh(monkeypatch):
+@pytest.mark.parametrize("failing", ["refresh_city_day_hours", "freeze_hit_forecasts",
+                                     "freeze_forecast_latest"])
+def test_a_failed_evidence_cache_fails_the_refresh(monkeypatch, failing):
     """The archive does not prune on a partial cache; a freeze that failed
     must reach it as a failure, not a note."""
     def rpc(fn, params=None, **k):
-        if fn == "freeze_hit_forecasts":
+        if fn == failing:
             raise requests.HTTPError("boom")
         return {"ok": True}
     monkeypatch.setattr(common, "active_city_keys", lambda: {"nyc"})
     monkeypatch.setattr(common, "rpc", rpc)
     with pytest.raises(requests.HTTPError):
         common.refresh_feature_cache(quiet=True)
+
+
+def test_the_refresh_reports_what_each_cache_wrote(monkeypatch):
+    answers = {"refresh_feature_cache": {"ok": True, "ms": 5},
+               "refresh_city_day_hours": {"days_written": 7, "station_days_written": 9, "ms": 11},
+               "freeze_hit_forecasts": {"rows_written": 13, "ms": 17},
+               "freeze_forecast_latest": {"rows_written": 19, "ms": 23}}
+    monkeypatch.setattr(common, "active_city_keys", lambda: {"nyc"})
+    monkeypatch.setattr(common, "rpc", lambda fn, params=None, **k: answers[fn])
+    out = common.refresh_feature_cache(quiet=True)
+    assert (out["day_hours_written"], out["station_days_written"], out["hit_forecasts_frozen"],
+            out["forecast_latest_frozen"], out["forecast_latest_ms"]) == (7, 9, 13, 19, 23)
 
 
 def test_a_days_window_is_passed_through(rpc_calls):

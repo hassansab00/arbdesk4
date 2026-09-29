@@ -132,7 +132,9 @@ def test_the_hourly_columns_read_the_primary_source_and_no_minute_window():
     view = AGREE.read_text()
     view = view[view.index("create or replace view v_station_day_max"):]
     view = view[:view.index("comment on view v_station_day_max")]
-    assert view.count("o.source = obs_primary_source()") == 4, (
+    # After the per-source union (plan v2 P1.6 phase 2, step 5), so the days
+    # served from derived_station_day_sources are filtered the same way.
+    assert view.count("filter (where source = obs_primary_source())") == 4, (
         "station, max_c_hourly, max_f_hourly and n_hourly must all read the primary source")
     code = [line for line in view.splitlines() if not line.strip().startswith("--")]
     assert not any("report_minute" in line for line in code), (

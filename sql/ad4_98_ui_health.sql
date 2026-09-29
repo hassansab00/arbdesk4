@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 246 of them - and for each MISSING one names the
+-- and function the app reads - 250 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -47,6 +47,7 @@ with expected(rel, owner, used_by) as (values
     ('derived_city_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_climb_profile', 'ad4_28_feature_cache.sql', ''),
     ('derived_corrected_forecast', 'supabase/migrations/20260926120000_station_correction.sql', ''),
+    ('derived_forecast_latest', 'ad4_31_predictive.sql', ''),
     ('derived_forecast_postprocess', 'ad4_83_forecast_postprocess.sql', ''),
     ('derived_forecast_skill', 'ad4_00_preflight.sql', '/analytics'),
     ('derived_forecast_skill_model', 'ad4_49_model_skill.sql', ''),
@@ -60,6 +61,7 @@ with expected(rel, owner, used_by) as (values
     ('derived_mos_coefficients', 'supabase/migrations/20260926150000_the_honest_station_model.sql', ''),
     ('derived_mos_forecast', 'supabase/migrations/20260926150000_the_honest_station_model.sql', ''),
     ('derived_station_correction', 'supabase/migrations/20260926120000_station_correction.sql', ''),
+    ('derived_station_day_sources', 'ad4_29_retention.sql', ''),
     ('derived_station_width', 'supabase/migrations/20260927190000_the_width_around_the_corrected_centre.sql', ''),
     ('derived_trajectory', 'ad4_86_trajectory.sql', ''),
     ('derived_weather_model', 'ad4_21_weather_features.sql', ''),
@@ -172,12 +174,14 @@ with expected(rel, owner, used_by) as (values
     ('v_forecast_candidates', 'ad4_43_forecast_audit.sql', ''),
     ('v_forecast_convergence', 'ad4_31_predictive.sql', ''),
     ('v_forecast_convergence_all', 'ad4_62_settled_history_ungated.sql', '(CityCards), /predictive'),
+    ('v_forecast_convergence_all_live', 'supabase/migrations/20260929180000_the_station_days_and_forecast_leads_outlast_the_keep.sql', ''),
     ('v_forecast_coverage', 'ad4_30_open_meteo.sql', ''),
     ('v_forecast_divergence', 'ad4_16_nws.sql', ''),
     ('v_forecast_divergence_current', 'ad4_19_stats_cache.sql', ''),
     ('v_forecast_features', 'ad4_24_nws_gridpoint.sql', ''),
     ('v_forecast_features_export', 'ad4_93_prune_forecast_features.sql', ''),
     ('v_forecast_issued', 'supabase/migrations/20260923160000_when_was_the_forecast_issued.sql', ''),
+    ('v_forecast_latest', 'ad4_31_predictive.sql', ''),
     ('v_forecast_model_skill', 'ad4_49_model_skill.sql', ''),
     ('v_forecast_models_export', 'ad4_95_prune_forecast_models.sql', ''),
     ('v_forecast_postprocess_applied', 'ad4_83_forecast_postprocess.sql', ''),
@@ -315,6 +319,7 @@ begin
     ('derived_city_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_climb_profile', 'ad4_28_feature_cache.sql', ''),
     ('derived_corrected_forecast', 'supabase/migrations/20260926120000_station_correction.sql', ''),
+    ('derived_forecast_latest', 'ad4_31_predictive.sql', ''),
     ('derived_forecast_postprocess', 'ad4_83_forecast_postprocess.sql', ''),
     ('derived_forecast_skill', 'ad4_00_preflight.sql', '/analytics'),
     ('derived_forecast_skill_model', 'ad4_49_model_skill.sql', ''),
@@ -328,6 +333,7 @@ begin
     ('derived_mos_coefficients', 'supabase/migrations/20260926150000_the_honest_station_model.sql', ''),
     ('derived_mos_forecast', 'supabase/migrations/20260926150000_the_honest_station_model.sql', ''),
     ('derived_station_correction', 'supabase/migrations/20260926120000_station_correction.sql', ''),
+    ('derived_station_day_sources', 'ad4_29_retention.sql', ''),
     ('derived_station_width', 'supabase/migrations/20260927190000_the_width_around_the_corrected_centre.sql', ''),
     ('derived_trajectory', 'ad4_86_trajectory.sql', ''),
     ('derived_weather_model', 'ad4_21_weather_features.sql', ''),
@@ -440,12 +446,14 @@ begin
     ('v_forecast_candidates', 'ad4_43_forecast_audit.sql', ''),
     ('v_forecast_convergence', 'ad4_31_predictive.sql', ''),
     ('v_forecast_convergence_all', 'ad4_62_settled_history_ungated.sql', '(CityCards), /predictive'),
+    ('v_forecast_convergence_all_live', 'supabase/migrations/20260929180000_the_station_days_and_forecast_leads_outlast_the_keep.sql', ''),
     ('v_forecast_coverage', 'ad4_30_open_meteo.sql', ''),
     ('v_forecast_divergence', 'ad4_16_nws.sql', ''),
     ('v_forecast_divergence_current', 'ad4_19_stats_cache.sql', ''),
     ('v_forecast_features', 'ad4_24_nws_gridpoint.sql', ''),
     ('v_forecast_features_export', 'ad4_93_prune_forecast_features.sql', ''),
     ('v_forecast_issued', 'supabase/migrations/20260923160000_when_was_the_forecast_issued.sql', ''),
+    ('v_forecast_latest', 'ad4_31_predictive.sql', ''),
     ('v_forecast_model_skill', 'ad4_49_model_skill.sql', ''),
     ('v_forecast_models_export', 'ad4_95_prune_forecast_models.sql', ''),
     ('v_forecast_postprocess_applied', 'ad4_83_forecast_postprocess.sql', ''),

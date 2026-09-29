@@ -158,6 +158,11 @@ TABLES = {
     "derived_city_day_hours":        closed("obs_date", "city_key", "obs_date", after_days=40),
     "derived_hit_forecasts":         closed("for_date", "city_key", "for_date", "lane", "model",
                                             "known_at", after_days=40),
+    # step 5, the same way: each station's day per source (v_station_day_max)
+    # and the forecast standing at each lead (both convergence views).
+    "derived_station_day_sources":   closed("obs_date", "city_key", "obs_date", "source", after_days=40),
+    "derived_forecast_latest":       closed("for_date", "city_key", "for_date", "model", "lead_days",
+                                            after_days=40),
     "derived_band_day_volume":       closed("trade_date", "band_id", "trade_date"),
     "derived_city_day_volume":       closed("trade_date", "city_key", "trade_date"),
     "markets":                       closed("resolution_date", "market_id"),

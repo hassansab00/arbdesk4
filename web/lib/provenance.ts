@@ -934,8 +934,16 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_backtest_window": [
     "bands",
     "book_snapshots",
+    "cities",
+    "derived_city_day_features",
+    "derived_forecast_skill",
     "markets",
     "weather_forecasts",
+    "band_probabilities",
+    "edges",
+    "fact_band_outcome",
+    "weather_resolution_evidence",
+    "weather_forecast_models",
     "weather_observations"
   ],
   "v_band_book": [
@@ -1258,13 +1266,18 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_forecast_convergence": [
     "fact_forecast_outcome",
-    "weather_resolution_evidence",
-    "weather_forecasts"
+    "weather_forecasts",
+    "weather_resolution_evidence"
   ],
   "v_forecast_convergence_all": [
     "fact_forecast_outcome",
-    "weather_resolution_evidence",
-    "weather_forecasts"
+    "weather_forecasts",
+    "weather_resolution_evidence"
+  ],
+  "v_forecast_convergence_all_live": [
+    "fact_forecast_outcome",
+    "weather_forecasts",
+    "weather_resolution_evidence"
   ],
   "v_forecast_coverage": [
     "cities",
@@ -1288,6 +1301,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_forecast_issued": [
     "cities",
+    "weather_forecasts"
+  ],
+  "v_forecast_latest": [
     "weather_forecasts"
   ],
   "v_forecast_model_skill": [

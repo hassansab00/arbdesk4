@@ -54,6 +54,9 @@ function statement(file, opener, closer) {
   await db.exec(statement('ad4_34_trade_plan.sql', 'create or replace function band_contains(', '$ad4$;'));
   await db.exec(statement('ad4_82_settlement_agreement.sql', 'create or replace function obs_primary_source()', '$$;'));
   await db.exec(statement('ad4_82_settlement_agreement.sql', 'create or replace function venue_round(', '$$;'));
+  // The station's cached days (plan v2 P1.6 phase 2): empty here, so every
+  // day is read from the readings. station-days.cjs covers the cache.
+  await db.exec(statement('ad4_29_retention.sql', 'create table if not exists derived_station_day_sources (', ');'));
   await db.exec(statement('ad4_82_settlement_agreement.sql', 'create or replace view v_station_day_max as', 'group by 1, 2;'));
   await db.exec(statement('ad4_82_settlement_agreement.sql', 'create or replace view v_settlement_agreement as', 'group by city_key;'));
 

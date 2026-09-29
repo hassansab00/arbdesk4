@@ -50,6 +50,9 @@ def _run(monkeypatch, tmp_path, src, cities, workers=4):
     monkeypatch.setattr(f, "MODELS", ["m1"])
     monkeypatch.setattr(f, "fetch", src.fetch)
     monkeypatch.setattr(f, "fetch_current", src.fetch_current)
+    # The tables hold 30 days before the day asked for, so the window is not
+    # clamped (first_held_date, plan v2 P1.6 phase 2 step 5).
+    monkeypatch.setattr(f, "first_held_date", lambda: DAY - dt.timedelta(days=30))
 
     def build_rows(city_key, js, model=None, tz=None, first=None, last=None):
         if model:

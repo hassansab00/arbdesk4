@@ -91,13 +91,12 @@ comment on view v_prediction_scorecard_all is
 drop view if exists v_forecast_convergence_all;
 create view v_forecast_convergence_all as
 with latest as (
-  select distinct on (city_key, for_date, model, lead_days)
-         city_key, for_date, model, lead_days, forecast_max_c, run_at
-    from weather_forecasts
+  -- The forecast standing at each lead, past the forecast table's keep
+  -- (v_forecast_latest, sql/ad4_31; plan v2 P1.6 phase 2).
+  select city_key, for_date, model, lead_days, forecast_max_c, run_at
+    from v_forecast_latest
    where for_date >= current_date - 45
      and for_date <= current_date + 16
-     and forecast_max_c is not null
-   order by city_key, for_date, model, lead_days, run_at desc
 ),
 -- ONE VERIFICATION PER CITY-DAY VALUE, NOT PER FORECAST ROW. fact_forecast_
 -- outcome holds a row per model and lead for every city-day - 11,325 in the

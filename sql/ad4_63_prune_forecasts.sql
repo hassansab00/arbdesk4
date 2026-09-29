@@ -60,7 +60,7 @@ declare
   -- crossed the boundary while the export ran - unarchived.
   v_before date := coalesce(p_before, current_date - p_keep_days);
   v_doomed bigint; v_keep bigint; v_skill bigint; v_skill_at timestamptz;
-  v_newest_doomed date; v_freed text; v_unfrozen bigint;
+  v_newest_doomed date; v_freed text; v_unfrozen bigint; v_unfrozen_latest bigint;
 begin
   if p_keep_days < 30 then
     return jsonb_build_object('ok', false,
@@ -125,6 +125,27 @@ begin
       'unfrozen_rows', v_unfrozen, 'would_delete', v_doomed);
   end if;
 
+  -- ...and so is the forecast standing at each lead on those days (plan v2
+  -- P1.6 phase 2, step 5): both convergence views read 45 days back through
+  -- v_forecast_latest, which serves derived_forecast_latest for them.
+  select count(*) into v_unfrozen_latest from (
+    (select distinct on (city_key, for_date, model, lead_days)
+            city_key, for_date, model, lead_days, forecast_max_c, run_at
+       from weather_forecasts
+      where for_date < v_before and forecast_max_c is not null
+      order by city_key, for_date, model, lead_days, run_at desc)
+    except
+    select city_key, for_date, model, lead_days, forecast_max_c, run_at
+      from derived_forecast_latest where for_date < v_before
+  ) x;
+
+  if v_unfrozen_latest > 0 then
+    return jsonb_build_object('ok', false,
+      'error', format('%s forecast(s) standing at a lead on a day before %s are not in derived_forecast_latest. Run common.refresh_feature_cache first (it freezes them) - the convergence views read them after the prune.',
+                      v_unfrozen_latest, v_before),
+      'unfrozen_latest_rows', v_unfrozen_latest, 'would_delete', v_doomed);
+  end if;
+
   select count(*) into v_keep from weather_forecasts where for_date >= v_before;
 
   if p_dry_run then
@@ -146,7 +167,7 @@ end;
 $ad4$;
 
 comment on function public.prune_forecasts(integer, boolean, date, bigint) is
-  'Delete forecasts older than a cutoff only when p_expected_rows equals the verified archive count and derived_forecast_skill proves the rows were scored. Committed calls require the expected count.';
+  'Delete forecasts older than a cutoff only when p_expected_rows equals the verified archive count, derived_forecast_skill proves the rows were scored, and what v_hit_forecasts and v_forecast_latest read for the days going is frozen (derived_hit_forecasts, derived_forecast_latest). Committed calls require the expected count.';
 
 do $ad4$
 declare r text;

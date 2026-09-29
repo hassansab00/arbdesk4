@@ -28,6 +28,57 @@ $ad4$;
 
 
 -- --------------------------------------------------------------------------
+-- 0. THE FORECAST STANDING AT EACH LEAD, past the forecast table's keep
+--    (plan v2 P1.6 phase 2, step 5, 29 Sep).
+--
+--    Both convergence views (this one and v_forecast_convergence_all, ad4_62)
+--    read 45 days back; weather_forecasts keeps about 30. Neither needs every
+--    run - only the newest run standing at each lead, one row per (city, day,
+--    model, lead). derived_forecast_latest keeps that row for every day that
+--    has passed, frozen each night by freeze_forecast_latest (ad4_97) while
+--    the table still holds the day; prune_forecasts (ad4_63) refuses to delete
+--    a day it has not frozen. v_forecast_latest serves the table for the days
+--    it holds and the frozen rows before them.
+-- --------------------------------------------------------------------------
+create table if not exists derived_forecast_latest (
+  city_key       text        not null,
+  for_date       date        not null,
+  model          text        not null,
+  lead_days      int         not null,
+  forecast_max_c numeric     not null,
+  run_at         timestamptz,
+  frozen_at      timestamptz not null default now(),
+  primary key (city_key, for_date, model, lead_days)
+);
+
+comment on table derived_forecast_latest is
+  'The newest forecast with a maximum per city, day, model and lead, frozen from weather_forecasts each night for the days that have passed. What v_forecast_latest serves for the days the forecast table no longer holds (plan v2 P1.6 phase 2). Written by freeze_forecast_latest.';
+
+alter table derived_forecast_latest enable row level security;
+revoke all on derived_forecast_latest from public, anon, authenticated;
+grant select, insert, update, delete on derived_forecast_latest to service_role;
+
+create or replace view v_forecast_latest as
+-- The forecast STANDING at that lead, which is the one that could have been
+-- acted on. A later re-run of the same lead is hindsight. A filter on
+-- for_date reaches the index: it is a DISTINCT ON key, so Postgres applies it
+-- before the DISTINCT ON, and to both halves of the UNION.
+select l.city_key, l.for_date, l.model, l.lead_days, l.forecast_max_c, l.run_at
+  from (select distinct on (f.city_key, f.for_date, f.model, f.lead_days)
+               f.city_key, f.for_date, f.model, f.lead_days, f.forecast_max_c, f.run_at
+          from weather_forecasts f
+         where f.forecast_max_c is not null
+         order by f.city_key, f.for_date, f.model, f.lead_days, f.run_at desc) l
+union all
+select d.city_key, d.for_date, d.model, d.lead_days, d.forecast_max_c, d.run_at
+  from derived_forecast_latest d
+ where d.for_date < coalesce((select min(w.for_date) from weather_forecasts w), 'infinity'::date);
+
+comment on view v_forecast_latest is
+  'The newest forecast with a maximum per city, day, model and lead: from weather_forecasts for the days it holds, from derived_forecast_latest for the days before (plan v2 P1.6 phase 2). Both convergence views read it.';
+
+
+-- --------------------------------------------------------------------------
 -- 1. THE CONVERGENCE FUNNEL. One row per (city, day, model, lead).
 --
 --    A forecast is not one number, it is a sequence: what each model said
@@ -43,14 +94,12 @@ $ad4$;
 create or replace view v_forecast_convergence as
 with latest as (
   -- The forecast STANDING at that lead, which is the one that could have been
-  -- acted on. A later re-run of the same lead is hindsight.
-  select distinct on (city_key, for_date, model, lead_days)
-         city_key, for_date, model, lead_days, forecast_max_c, run_at
-    from weather_forecasts
+  -- acted on. A later re-run of the same lead is hindsight. v_forecast_latest
+  -- (section 0) picks it, past the forecast table's keep.
+  select city_key, for_date, model, lead_days, forecast_max_c, run_at
+    from v_forecast_latest
    where for_date >= current_date - 45
      and for_date <= current_date + 16
-     and forecast_max_c is not null
-   order by city_key, for_date, model, lead_days, run_at desc
 ),
 observed as (
   select city_key, for_date, max(observed_max_c) as observed_max_c
@@ -265,7 +314,7 @@ comment on view v_edge_scaling is
 do $ad4$
 declare r text; v text;
 begin
-  foreach v in array array['v_forecast_convergence', 'v_prediction_ladder',
+  foreach v in array array['v_forecast_latest', 'v_forecast_convergence', 'v_prediction_ladder',
                            'v_prediction_scorecard', 'v_bankroll_curve',
                            'v_edge_scaling'] loop
     foreach r in array array['anon', 'authenticated', 'service_role'] loop
