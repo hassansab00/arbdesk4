@@ -151,7 +151,8 @@ def test_the_tick_calls_it_and_keeps_its_budget():
     import tick
     src = open(tick.__file__).read()
     assert "s10_shadow.fetch_inputs(now, cities, dry_run, budget_s=S10_FETCH_S)" in src
-    assert src.index("s10_shadow.fetch_inputs") < src.index("if not due:")        # fetched even on a quiet hour
+    # fetched even on a quiet hour (the early return; P4.9 added its re-prices to it)
+    assert src.index("s10_shadow.fetch_inputs") < src.index("if not due and not reprice:")
     assert "s10_shadow.record(due, market_of, bands_by_market, tz_of, unit_of, dry_run," in src
     assert "ladders=s10_ladders)" in src          # the engine's S10 decisions read the same ladders
     assert src.index("s10_shadow.record(") < src.index("engine_shadow.record(")

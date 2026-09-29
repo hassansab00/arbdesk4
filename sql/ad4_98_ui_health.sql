@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 253 of them - and for each MISSING one names the
+-- and function the app reads - 255 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -34,6 +34,7 @@ with expected(rel, owner, used_by) as (values
     ('city_metadata_evidence', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', ''),
     ('clock_schedule', 'supabase/migrations/20260926130000_the_clock_moves_into_supabase.sql', ''),
     ('cost_params', 'ad4_phase2.sql', ''),
+    ('current_ladders', 'ad4_current_ladder.sql', ''),
     ('data_freshness_spec', 'ad4_39_freshness.sql', ''),
     ('decisions', 'supabase/migrations/20260925090000_decision_log.sql', ''),
     ('deployments', 'ad4_00_preflight.sql', ''),
@@ -161,6 +162,7 @@ with expected(rel, owner, used_by) as (values
     ('v_city_volume', 'ad4_13_reconcile.sql', '(GlobalBar), /, /live'),
     ('v_coherent_band_outcome', 'supabase/migrations/20260922120000_a_ladder_cannot_resolve_to_nothing.sql', ''),
     ('v_condition_skill', 'ad4_24_nws_gridpoint.sql', '(ModelAnalytics)'),
+    ('v_current_prediction', 'ad4_current_ladder.sql', '(CityCards)'),
     ('v_data_freshness', 'ad4_39_freshness.sql', ''),
     ('v_data_health', 'ad4_39_freshness.sql', ''),
     ('v_databank_coverage', 'ad4_18_databank.sql', '(DataBank)'),
@@ -309,6 +311,7 @@ begin
     ('city_metadata_evidence', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', ''),
     ('clock_schedule', 'supabase/migrations/20260926130000_the_clock_moves_into_supabase.sql', ''),
     ('cost_params', 'ad4_phase2.sql', ''),
+    ('current_ladders', 'ad4_current_ladder.sql', ''),
     ('data_freshness_spec', 'ad4_39_freshness.sql', ''),
     ('decisions', 'supabase/migrations/20260925090000_decision_log.sql', ''),
     ('deployments', 'ad4_00_preflight.sql', ''),
@@ -436,6 +439,7 @@ begin
     ('v_city_volume', 'ad4_13_reconcile.sql', '(GlobalBar), /, /live'),
     ('v_coherent_band_outcome', 'supabase/migrations/20260922120000_a_ladder_cannot_resolve_to_nothing.sql', ''),
     ('v_condition_skill', 'ad4_24_nws_gridpoint.sql', '(ModelAnalytics)'),
+    ('v_current_prediction', 'ad4_current_ladder.sql', '(CityCards)'),
     ('v_data_freshness', 'ad4_39_freshness.sql', ''),
     ('v_data_health', 'ad4_39_freshness.sql', ''),
     ('v_databank_coverage', 'ad4_18_databank.sql', '(DataBank)'),

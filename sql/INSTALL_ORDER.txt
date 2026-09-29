@@ -148,6 +148,10 @@ ad4_prune_dead_book_detail.sql
 # `canceling statement due to statement timeout (57014)` comes from. Measured
 # cold on a 650k-row archive: the whole set of queries the UI makes went from
 # 6.0s to 1.9s, and the worst single view from 2.6s to 42ms.
+# The current prediction between pricing runs (plan v2.3 P4.9): current_ladders,
+# publish_current_ladders, v_current_prediction. After markets, bands,
+# v_canonical_bands, band_probabilities and model_versions.
+ad4_current_ladder.sql
 
 # ---- read-only, run any time ----------------------------------------------
 # Not part of the install: these inspect a database rather than change one.

@@ -10,7 +10,7 @@ import { fmtPct, fmtPp, fmtPrice, pnlColor, regimeColor } from "@/lib/format";
 import { fmtTemp, fmtTempDelta } from "@/lib/units";
 import {
   buildCards, FORECASTS_DISAGREE_C,
-  type CityCard, type CityRow, type ForecastRow, type LadderRow,
+  type CityCard, type CityRow, type CurrentRow, type ForecastRow, type LadderRow,
   type LiveRow, type OwnModelRow,
 } from "@/lib/cityCards";
 import { fmtDateTime, fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
@@ -77,17 +77,28 @@ export default function CityCards({ onPick }: { onPick?: (city: string) => void 
       .select("city_key,local_date,temp_c,running_max_c,peak_window_state,day_decided,observed_at,source_kind"),
     []
   );
+  // The ladders the hourly tick priced since the pricing run (plan v2.3 P4.9):
+  // live, not the stored page rows, so a pick priced again at :36 shows now.
+  const currentQ = useQuery<CurrentRow[]>(
+    () => supabase.from("v_current_prediction")
+      .select("city_key,target_date,band_id,prob,priced_at,source,checkpoint,centre_c,sigma_c,observed_floor_c,priced_from,pricing_at")
+      .neq("source", "pricing").limit(3000),
+    [], undefined, 3000
+  );
 
-  const reload = () => { citiesQ.refresh(); ladderQ.refresh(); forecastQ.refresh(); ownQ.refresh(); liveQ.refresh(); };
+  const reload = () => {
+    citiesQ.refresh(); ladderQ.refresh(); forecastQ.refresh(); ownQ.refresh(); liveQ.refresh(); currentQ.refresh();
+  };
   const dates = useMemo(
     () => Array.from(new Set((ladderQ.data ?? []).map((r) => r.for_date))).sort(), [ladderQ.data]);
   const cards = useMemo(
     () => buildCards(citiesQ.data ?? [], ladderQ.data ?? [], forecastQ.data ?? [],
-                     ownQ.data ?? [], liveQ.data ?? [], pick),
-    [citiesQ.data, ladderQ.data, forecastQ.data, ownQ.data, liveQ.data, pick]);
+                     ownQ.data ?? [], liveQ.data ?? [], pick, currentQ.data ?? []),
+    [citiesQ.data, ladderQ.data, forecastQ.data, ownQ.data, liveQ.data, pick, currentQ.data]);
   // The side panels are extras: a card still shows its ladder if one fails,
   // and says which one did, rather than the whole section going red.
-  const sideErrors = [["forecasts", forecastQ.error], ["own model", ownQ.error], ["live weather", liveQ.error]]
+  const sideErrors = [["forecasts", forecastQ.error], ["own model", ownQ.error], ["live weather", liveQ.error],
+    ["prices since the pricing run", currentQ.error]]
     .filter(([, e]) => e) as Array<[string, string]>;
 
   return (
@@ -186,6 +197,19 @@ function Card({ c, onPick }: { c: CityCard; onPick?: (city: string) => void }) {
             : <span className="text-muted">no price</span>}
         </div>
       </div>
+      {/* PRICED AGAIN (plan v2.3 P4.9). The pick above is a ladder the hourly
+          tick priced after the pricing run, and says so: when, why, and that the
+          edges and the market's prices beside it are still the pricing run's. */}
+      {c.repriced && (
+        <div className="mt-1 text-[11px] text-accent">
+          Re-priced {fmtDateTime(c.repriced.at)}{" "}
+          {c.repriced.reason === "station_max"
+            ? "because the station passed the earlier pick"
+            : `at the ${c.repriced.checkpoint ?? "hourly"} checkpoint`}
+          {c.repriced.pricing_at ? <> (pricing run {fmtDateTime(c.repriced.pricing_at)})</> : null}; edges are
+          from the pricing run.
+        </div>
+      )}
       {/* OUT OF DATE (plan v2.3 P4.8). The pick is a price made at priced_at;
           when the station has since passed its bucket, say so rather than show
           it as current. The bucket is not swapped for another: a new pick

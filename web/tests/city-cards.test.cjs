@@ -186,4 +186,41 @@ assert.equal(buildCards(nyCity, fLadder(21.0), [], [], yesterday, 'soonest')[0].
 assert.equal(pickStanding(22.5, 'F', F.map(([id, lo, hi]) => ({ band_id: id, band_lo: lo, band_hi: hi })), 'f72'), 'open');
 assert.equal(pickStanding(null, 'C', [], 'x'), null);
 
-console.log('PASS: city cards - soonest open market, YES-price favourite, best tradeable edge, same-day live only, the priced centre, open tails, stale picks');
+// ---- PRICED AGAIN (plan v2.3 P4.9). The tick priced New York again at 13:36Z
+// because the station passed 70-71F: the pick, its time, floor, centre and path
+// are the tick's ladder, and the pick is no longer out of date. The edges and
+// the market's prices are still the pricing run's.
+const held = (at, source = 'station_max', floor = 22.5) => F.map(([id], i) => ({
+  city_key: 'nyc', target_date: '2026-09-27', band_id: id, prob: [0.0, 0.1, 0.7, 0.2][i],
+  priced_at: at, source, checkpoint: source === 'checkpoint' ? 'noon' : null, centre_c: 23.1, sigma_c: 0.7,
+  observed_floor_c: floor, priced_from: 'station_correction:v2', pricing_at: '2026-09-27T12:36:00Z' }));
+const again = buildCards(nyCity, fLadder(21.0), [], [], nyLive(22.5), 'soonest', held('2026-09-27T13:36:05Z'))[0];
+assert.equal(again.top_band, '72-73F');
+assert.equal(again.top_prob, 0.7);
+assert.equal(again.top_yes_price, 0.2, 'the market still charges the pricing run\'s price for it');
+assert.equal(again.stale, null, 'priced with the reading: not out of date');
+assert.deepEqual([again.priced_at, again.priced_floor_c, again.centre_c, again.sigma_c, again.priced_from],
+  ['2026-09-27T13:36:05Z', 22.5, 23.1, 0.7, 'station_correction:v2']);
+assert.deepEqual(again.repriced, { at: '2026-09-27T13:36:05Z', reason: 'station_max', checkpoint: null,
+  pricing_at: '2026-09-27T12:36:00Z' });
+// a tie goes to the lower band_id, as the tick and the view break it
+const tied = held('2026-09-27T13:36:05Z').map((r) => ({ ...r, prob: r.band_id === 'f70' || r.band_id === 'f72' ? 0.4 : 0.1 }));
+assert.equal(buildCards(nyCity, fLadder(21.0), [], [], nyLive(22.5), 'soonest', tied)[0].top_band, '70-71F');
+// a held ladder older than the ladder rows is not the newest price: the card is as before
+const older = buildCards(nyCity, fLadder(21.0), [], [], nyLive(22.5), 'soonest', held('2026-09-27T11:36:00Z'))[0];
+assert.deepEqual([older.top_band, older.repriced, older.stale.standing], ['70-71F', null, 'one_below']);
+// a pricing row the view returned is not a held ladder; nor is another city-day's
+assert.equal(buildCards(nyCity, fLadder(21.0), [], [], nyLive(22.5), 'soonest',
+  held('2026-09-27T13:36:05Z', 'pricing'))[0].repriced, null);
+assert.equal(buildCards(nyCity, fLadder(21.0), [], [], nyLive(22.5), 'soonest',
+  held('2026-09-27T13:36:05Z').map((r) => ({ ...r, target_date: '2026-09-28' })))[0].repriced, null);
+// a checkpoint ladder says which checkpoint; and a re-priced pick the station
+// has since passed again is out of date against its own floor
+const cp = buildCards(nyCity, fLadder(21.0), [], [], nyLive(24.0), 'soonest',
+  held('2026-09-27T13:36:05Z', 'checkpoint'))[0];
+assert.deepEqual([cp.repriced.reason, cp.repriced.checkpoint], ['checkpoint', 'noon']);
+assert.deepEqual(cp.stale, { standing: 'one_below', floor_c_then: 22.5, max_c_now: 24.0 });
+assert.deepEqual(buildCards(nyCity, fLadder(21.0), [], [], nyLive(22.5), 'soonest')[0],
+  buildCards(nyCity, fLadder(21.0), [], [], nyLive(22.5), 'soonest', [])[0], 'no held ladder, no change');
+
+console.log('PASS: city cards - soonest open market, YES-price favourite, best tradeable edge, same-day live only, the priced centre, open tails, stale picks, picks priced again');
