@@ -113,7 +113,7 @@ def anomaly_signals(anomaly_rows):
 # Strategy orchestration
 # --------------------------------------------------------------------------
 
-def run_strategies(ctx, strategy_configs, open_positions, portfolio=None, portfolios=None):
+def run_strategies(ctx, strategy_configs, open_positions, portfolio=None, portfolios=None, registry=None):
     """
     Runs every enabled strategy's entry+exit rules, sizes every ENTER
     signal via that strategy's own size(signal, portfolio) - entry_signals
@@ -132,9 +132,10 @@ def run_strategies(ctx, strategy_configs, open_positions, portfolio=None, portfo
     removing. A strategy with no ledger in `portfolios` sizes to zero: it has
     nowhere to trade.
     """
+    registry = REGISTRY if registry is None else registry
     all_entries, all_exits = [], []
     for cfg in strategy_configs:
-        cls = REGISTRY.get(cfg.strategy_id)
+        cls = registry.get(cfg.strategy_id)
         if cls is None or not cfg.enabled:
             continue
         strat = cls(cfg)

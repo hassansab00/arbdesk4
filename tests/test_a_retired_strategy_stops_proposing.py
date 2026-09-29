@@ -265,9 +265,16 @@ DECIDES_ON_THE_MODEL = {
 }
 
 
+def _strategy_source(sid):
+    """A strategy's file: s1 and s3-s9 moved to scripts/strategies/legacy/ when
+    their ids retired (plan v2 P8.2 step 5, 29 Sep); s2 stays."""
+    legacy = ROOT / f"scripts/strategies/legacy/{sid}.py"
+    return (legacy if legacy.exists() else ROOT / f"scripts/strategies/{sid}.py").read_text()
+
+
 @pytest.mark.parametrize("sid", RETIRED)
 def test_each_retired_strategy_decides_on_the_model(sid):
-    src = (ROOT / f"scripts/strategies/{sid}.py").read_text()
+    src = _strategy_source(sid)
     for line in DECIDES_ON_THE_MODEL[sid]:
         assert line in src, (
             f"{sid} was retired as a model-vs-price strategy on the strength of "
@@ -284,7 +291,7 @@ def test_the_retired_set_is_the_documented_set():
 @pytest.mark.parametrize("sid", ["s2_combination_arb", "s5_running_max_lock",
                                  "s7_pre_peak_gradient"])
 def test_the_kept_strategies_do_not_decide_on_the_model(sid):
-    src = (ROOT / f"scripts/strategies/{sid}.py").read_text()
+    src = _strategy_source(sid)
     gates = [l for l in src.splitlines()
              if re.match(r"\s*(if|elif|while)\b", l) and "edge_net_pp" in l]
     assert not gates, (
@@ -299,7 +306,7 @@ def test_recording_the_model_on_a_signal_is_not_deciding_on_it():
     # this test exists so the distinction is not lost the next time someone
     # greps for model_prob_yes and finds seven hits.
     for sid in ("s5_running_max_lock", "s7_pre_peak_gradient"):
-        src = (ROOT / f"scripts/strategies/{sid}.py").read_text()
+        src = _strategy_source(sid)
         assert "prob_at_fire=band.model_prob_yes" in src
 
 
