@@ -70,11 +70,13 @@ def test_the_migration_is_guarded_and_rerunnable():
 
 
 def test_the_card_centre_is_the_priced_centre_never_the_raw_forecast():
-    assert "const centre = any?.centre_c ?? null;" in CARDS
+    # the pricing run's centre, or the tick's newer ladder's (plan v2.3 P4.9) - a priced centre either way
+    assert "const centre = newest ? newest.centre_c : any?.centre_c ?? null;" in CARDS
     assert "predicted_c" not in CARDS and "predicted_c" not in CARD_UI
     assert "raw_forecast_c: any?.forecast_max_c ?? null" in CARDS
     assert "not recorded for this price" in CARD_UI                # no substitution when it is missing
-    assert "priced_at: any?.prob_at ?? null" in CARDS               # the pricing's own time, not the edge's
+    # the ladder's own time - the pricing run's, or the tick's newer ladder's (P4.9) - never the edge's
+    assert "priced_at: newest ? newest.priced_at : any?.prob_at ?? null" in CARDS
 
 
 def test_a_passed_pick_is_marked_not_relabelled():

@@ -185,7 +185,8 @@ def test_the_engine_names_the_forecast_it_priced_from():
 # --------------------------------------------------------------------------
 @pytest.fixture
 def world(monkeypatch):
-    w = {"written": [], "logged": [], "held": [], "delay": 0.0,
+    w = {"written": [], "logged": [], "held": [], "delay": 0.0, "picks": [], "running": [],
+         "published": [], "publish": None, "priced": [],
          "stations": {"rows": 12, "cities": 1, "silent": [], "error": None, "seconds": 0.1}}
     monkeypatch.setattr(tick, "read_stations", lambda now, dry_run=False: dict(w["stations"]))
     monkeypatch.setattr(tick, "get_cities", lambda **kw: [
@@ -199,15 +200,24 @@ def world(monkeypatch):
 
     def price(city, target, unit, bands, *a):
         import time as _t
-        _t.sleep(w["delay"])
-        return (_rows({"b1": 0.4, "b2": 0.6}), None, ["priced_from:nws:2026-09-24T12:00"])
+        w["priced"].append((city, str(target)))
+        _t.sleep(w["delay"].get((city, str(target)), 0) if isinstance(w["delay"], dict) else w["delay"])
+        probs = {str(b["band_id"]): 1 / len(bands) for b in bands} if bands else {"b1": 0.4, "b2": 0.6}
+        if [b["band_id"] for b in bands] == ["b1", "b2"]:
+            probs = {"b1": 0.4, "b2": 0.6}
+        return (_rows(probs, computed_at="2026-09-24T22:35:05+00:00"), None,
+                ["priced_from:nws:2026-09-24T12:00"])
     monkeypatch.setattr(pe, "process_city_day", price)
 
     def rest(path, params=None):
         if path == "derived_weather_peak":
             return [{"city_key": "nyc", "month": 9, "peak_hour_local": 15.5}]
         if path == "v_city_running_max":
-            return []
+            return list(w["running"])
+        if path == "v_current_prediction":
+            if isinstance(w["picks"], Exception):
+                raise w["picks"]
+            return list(w["picks"])
         if path == "bands":
             return [{"band_id": "b1", "token_yes": "T1"}, {"band_id": "b2", "token_yes": "T2"}]
         raise AssertionError(path)
@@ -220,6 +230,15 @@ def world(monkeypatch):
         w["written"].append((table, rows, on_conflict))
         return len(rows)
     monkeypatch.setattr(tick, "upsert", upsert)
+
+    def rpc(fn, params=None, **kw):
+        assert fn == "publish_current_ladders"
+        w["published"].append(params["p_rows"])
+        if isinstance(w["publish"], Exception):
+            raise w["publish"]
+        return w["publish"] or {"rows": len(params["p_rows"]), "written": len(params["p_rows"]),
+                                "not_newer": 0, "refused": []}
+    monkeypatch.setattr(tick, "rpc", rpc)
     monkeypatch.setattr(tick, "log_run", lambda *a: w["logged"].append(a))
     # The engine's step (P5.12 part 3a) has its own tests (test_engine_shadow);
     # here it only reports, and w["engine"] says what.
@@ -427,3 +446,107 @@ def test_a_dry_run_reads_but_writes_no_stations(monkeypatch):
     monkeypatch.setattr(io, "fetch_station", lambda *a, **k: _iem_csv(["LGA,2026-09-24 20:51,70.0,,,,,,,"]))
     monkeypatch.setattr(tick, "upsert", lambda *a: (_ for _ in ()).throw(AssertionError("wrote in a dry run")))
     assert tick.read_stations(at("2026-09-24T22:36"), dry_run=True)["rows"] == 1
+
+
+# --------------------------------------------------------------------------
+# the current prediction between pricing runs (plan v2.3 P4.9)
+# --------------------------------------------------------------------------
+F_BANDS = [
+    {"band_id": "c-lo", "market_id": "m0", "band_lo": None, "band_hi": 70, "open_low": True, "open_high": False},
+    {"band_id": "c70", "market_id": "m0", "band_lo": 70, "band_hi": 72, "open_low": False, "open_high": False},
+    {"band_id": "c72", "market_id": "m0", "band_lo": 72, "band_hi": 74, "open_low": False, "open_high": False},
+    {"band_id": "c-hi", "market_id": "m0", "band_lo": 74, "band_hi": None, "open_low": False, "open_high": True},
+]
+TODAY = {"market_id": "m0", "city_key": "nyc", "resolution_date": "2026-09-24", "unit": "F"}
+C_725F = (72.5 - 32) * 5 / 9
+
+
+@pytest.fixture
+def same_day(world, monkeypatch):
+    """nyc at 22:35Z on 24 Sep: 18:35 local. The d1_eve checkpoint for 25 Sep
+    is due; today's market is not, and its pick (70-71 F, priced before any
+    reading) has been passed by a 72.5 F reading."""
+    monkeypatch.setattr(pe, "_upcoming_markets", lambda: [MARKETS[0], TODAY])
+    monkeypatch.setattr(pe, "_bands_for_markets", lambda ids: (
+        [b for b in F_BANDS if "m0" in ids]
+        + ([{"band_id": "b1", "market_id": "m1"}, {"band_id": "b2", "market_id": "m1"}] if "m1" in ids else [])))
+    world["running"] = [{"city_key": "nyc", "local_date": "2026-09-24", "running_max_c": C_725F,
+                         "observed_max_today_c": C_725F, "live_source_kind": "station",
+                         "running_max_basis": "series", "latest_reading_at": "2026-09-24T22:10:00+00:00"}]
+    world["picks"] = [{"city_key": "nyc", "target_date": "2026-09-24", "market_id": "m0", "band_id": "c70",
+                       "observed_floor_c": None, "source": "pricing", "priced_at": "2026-09-24T20:37:00+00:00"}]
+    return world
+
+
+def test_a_pick_the_station_passed_is_priced_again_and_published_beside_the_checkpoint(same_day):
+    out = tick.run(now=at("2026-09-24T22:35"))
+    assert same_day["priced"] == [("nyc", "2026-09-25"), ("nyc", "2026-09-24")], "the checkpoint first"
+    (table, rows, _), = same_day["written"]
+    assert table == "prediction_checkpoints" and [r["target_date"] for r in rows] == ["2026-09-25"], (
+        "a re-price is not a checkpoint")
+    (ladders,) = same_day["published"]
+    assert [(r["target_date"], r["reason"], r["checkpoint"], r["market_id"]) for r in ladders] == [
+        ("2026-09-24", "station_max", None, "m0"), ("2026-09-25", "checkpoint", "d1_eve", "m1")]
+    assert ladders[0]["ladder"] == {"c-lo": 0.25, "c70": 0.25, "c72": 0.25, "c-hi": 0.25}
+    assert ladders[0]["priced_at"] == "2026-09-24T22:35:05+00:00"
+    assert ladders[0]["priced_from"] == "nws:2026-09-24T12:00"
+    assert out["current"]["reprice"] == ["nyc 2026-09-24"] and out["current"]["ladders"] == 2
+    assert same_day["logged"][0][1] == "ok"
+
+
+def test_a_pick_priced_with_that_reading_already_is_left_alone(same_day):
+    same_day["picks"][0]["observed_floor_c"] = C_725F
+    tick.run(now=at("2026-09-24T22:35"))
+    assert same_day["priced"] == [("nyc", "2026-09-25")]
+    assert [r["reason"] for r in same_day["published"][0]] == ["checkpoint"]
+
+
+def test_no_current_picks_readable_is_attention_and_the_checkpoints_still_written(same_day):
+    same_day["picks"] = RuntimeError("relation v_current_prediction does not exist")
+    out = tick.run(now=at("2026-09-24T22:35"))
+    assert [r["checkpoint"] for r in same_day["written"][0][1]] == ["d1_eve"]
+    assert same_day["logged"][0][1] == "attention" and "v_current_prediction" in out["current"]["error"]
+
+
+def test_a_publish_that_fails_or_is_refused_is_attention(same_day):
+    same_day["publish"] = RuntimeError("HTTPError: 500")
+    out = tick.run(now=at("2026-09-24T22:35"))
+    assert same_day["logged"][0][1] == "attention" and out["current"]["error"].startswith("publish_current_ladders")
+    same_day["logged"].clear(); same_day["written"].clear()
+    same_day["publish"] = {"rows": 2, "written": 1, "not_newer": 0,
+                           "refused": [{"city_key": "nyc", "target_date": "2026-09-24", "why": "x"}]}
+    tick.run(now=at("2026-09-24T22:35"))
+    assert same_day["logged"][0][1] == "attention"
+
+
+def test_a_dry_run_publishes_nothing(same_day):
+    out = tick.run(now=at("2026-09-24T22:35"), dry_run=True)
+    assert same_day["published"] == [] and out["current"]["ladders"] == 2
+
+
+def test_a_re_price_out_of_time_is_not_a_deferred_checkpoint(same_day, monkeypatch):
+    same_day["delay"] = {("nyc", "2026-09-24"): 3.0}
+    monkeypatch.setattr(tick.os, "_exit", lambda code: (_ for _ in ()).throw(SystemExit(code)))
+    with pytest.raises(SystemExit):
+        tick.run(now=at("2026-09-24T22:35"), budget_s=10.0)
+    status, detail = same_day["logged"][0][1], same_day["logged"][0][3]
+    assert detail["deferred"] == [] and detail["current"]["deferred"] == ["nyc 2026-09-24"]
+    assert status == "ok", "the checkpoint was written; the re-price waits for the next hour"
+    assert [r["reason"] for r in same_day["published"][0]] == ["checkpoint"]
+
+
+def test_a_same_day_re_price_runs_even_when_no_checkpoint_is_due(same_day):
+    same_day["held"] = [{"city_key": "nyc", "target_date": "2026-09-25", "checkpoint": "d1_eve"}]
+    out = tick.run(now=at("2026-09-24T22:35"))
+    assert out["due"] == 0 and same_day["priced"] == [("nyc", "2026-09-24")]
+    assert same_day["written"] == [] and [r["reason"] for r in same_day["published"][0]] == ["station_max"]
+
+
+def test_a_re_price_selection_that_breaks_never_costs_the_checkpoints(same_day, monkeypatch):
+    import current_ladder
+    monkeypatch.setattr(current_ladder, "reprice_targets", lambda *a, **k: 1 / 0)
+    out = tick.run(now=at("2026-09-24T22:35"))
+    assert [r["checkpoint"] for r in same_day["written"][0][1]] == ["d1_eve"]
+    assert out["current"]["error"].startswith("re-price selection: ZeroDivisionError")
+    assert same_day["logged"][0][1] == "attention"
+    assert [r["reason"] for r in same_day["published"][0]] == ["checkpoint"]

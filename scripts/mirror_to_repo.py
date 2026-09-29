@@ -95,6 +95,9 @@ TABLES = {
     # --- what the engine decided --------------------------------------------
     "band_probabilities":            append("computed_at", "prob_id"),
     "prediction_checkpoints":        append("decided_at", "checkpoint_id"),
+    # the newest ladder the tick priced per city-day (plan v2.3 P4.9); a row
+    # is rewritten while its day is open, so it is copied once the day closes
+    "current_ladders":               closed("target_date", "city_key", "target_date"),
     # S10 in shadow (plan v2 P7.4): the model's calls beside the engine's, and
     # the day-before inputs they were made from
     "s10_shadow_checkpoints":        append("decided_at", "checkpoint_id"),

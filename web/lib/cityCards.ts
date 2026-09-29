@@ -36,6 +36,19 @@ export interface LiveRow {
   source_kind: string | null;
 }
 
+/**
+ * A ladder the hourly tick priced since the pricing run (v_current_prediction,
+ * plan v2.3 P4.9), one row per band: at a due checkpoint, or because the
+ * station passed the pick. The view returns source "pricing" when the pricing
+ * run is the newer; the page asks for the others only.
+ */
+export interface CurrentRow {
+  city_key: string; target_date: string; band_id: string; prob: number;
+  priced_at: string; source: string; checkpoint: string | null;
+  centre_c: number | null; sigma_c: number | null; observed_floor_c: number | null;
+  priced_from: string | null; pricing_at: string | null;
+}
+
 /** One settled day-ahead call, from v_city_hit_history. */
 export interface HitRow {
   unit: string | null; model_call: string | null; market_call: string | null;
@@ -184,6 +197,14 @@ export interface CityCard {
    * card is not a same-day card or the reading cannot say.
    */
   stale: { standing: PickStanding; floor_c_then: number | null; max_c_now: number } | null;
+  /**
+   * THE PICK WAS PRICED AGAIN since the pricing run (plan v2.3 P4.9): the tick
+   * priced this city-day at a due checkpoint, or because the station passed the
+   * pick. The pick, its centre, floor, time and path above are that ladder's;
+   * the edges and the market's prices are still the pricing run's. null when
+   * the pricing run is the newest price.
+   */
+  repriced: { at: string; reason: string; checkpoint: string | null; pricing_at: string | null } | null;
   forecasts: Array<{ model: string; max_c: number; run_at: string | null }>;
   own: OwnModelRow | null; live: LiveRow | null;
 }
@@ -208,7 +229,7 @@ export interface CityCard {
  */
 export function buildCards(
   cities: CityRow[], ladder: LadderRow[], forecasts: ForecastRow[],
-  own: OwnModelRow[], live: LiveRow[], pick: string,
+  own: OwnModelRow[], live: LiveRow[], pick: string, current: CurrentRow[] = [],
 ): CityCard[] {
   const byCity = new Map<string, LadderRow[]>();
   for (const r of ladder) {
@@ -225,6 +246,21 @@ export function buildCards(
     const yes = day.filter((r) => r.side === "YES" && r.model_prob !== null);
     const top = yes.slice().sort((a, b) => (b.model_prob ?? 0) - (a.model_prob ?? 0))[0];
     const any = top ?? day[0];
+    // THE NEWEST PRICE (plan v2.3 P4.9): a ladder the tick priced after this
+    // pricing run supplies the pick, labelled with its time and why; the
+    // pricing run's pick is otherwise the pick, as before.
+    const held = current.filter((r) => r.city_key === c.city_key && r.target_date === for_date
+      && r.source !== "pricing" && r.priced_at);
+    const newest = held.length > 0 && (!any?.prob_at || Date.parse(held[0].priced_at) > Date.parse(any.prob_at))
+      ? held[0] : null;
+    const heldTop = newest
+      ? held.slice().sort((a, b) => (b.prob - a.prob) || (a.band_id < b.band_id ? -1 : a.band_id > b.band_id ? 1 : 0))[0]
+      : null;
+    const pickId = heldTop ? heldTop.band_id : top?.band_id ?? null;
+    const pickRow = pickId ? (day.find((r) => r.band_id === pickId && r.side === "YES")
+      ?? day.find((r) => r.band_id === pickId)) : undefined;
+    const pickProb = heldTop ? heldTop.prob : top?.model_prob ?? null;
+    const floorThen = newest ? newest.observed_floor_c : any?.observed_floor_c ?? null;
     const tradeable = day.filter((r) => r.tradeable === true && r.edge_net_pp !== null);
     const best = tradeable.slice().sort((a, b) => (b.edge_net_pp ?? 0) - (a.edge_net_pp ?? 0))[0];
     const reasons = new Map<string, number>();
@@ -242,24 +278,24 @@ export function buildCards(
     const unit = (c.unit === "F" ? "F" : "C") as Unit;
     const priced = yes.filter((r) => r.market_price !== null);
     const mkt = priced.slice().sort((a, b) => (b.market_price ?? 0) - (a.market_price ?? 0))[0];
-    const disagrees = !!(top && mkt && top.band_id !== mkt.band_id);
+    const disagrees = !!(pickId && mkt && pickId !== mkt.band_id);
     const fcVals = Array.from(latestByModel.values()).map((f) => f.forecast_max_c as number);
     const spread = fcVals.length >= 2 ? Math.max(...fcVals) - Math.min(...fcVals) : null;
     // THE CENTRE THE LADDER WAS PRICED ON, from the same row as its
     // probabilities. forecast_max_c is the public input before any correction.
-    const centre = any?.centre_c ?? null;
+    const centre = newest ? newest.centre_c : any?.centre_c ?? null;
     const outside = centre !== null && fcVals.length > 0
       && (centre > Math.max(...fcVals) + 0.5 || centre < Math.min(...fcVals) - 0.5);
     // OUT OF DATE: the station has moved past the pick since it was priced.
     let stale: CityCard["stale"] = null;
-    if (top && sameDay && sameDay.source_kind !== "model" && sameDay.running_max_c != null) {
+    if (pickId && sameDay && sameDay.source_kind !== "model" && sameDay.running_max_c != null) {
       const bounds = new Map<string, BandBounds>();
       for (const r of day) if (!bounds.has(r.band_id)) bounds.set(r.band_id, r);
       const ladderBounds = Array.from(bounds.values());
-      const now = pickStanding(sameDay.running_max_c, unit, ladderBounds, top.band_id);
-      const then = pickStanding(top.observed_floor_c ?? null, unit, ladderBounds, top.band_id) ?? "open";
+      const now = pickStanding(sameDay.running_max_c, unit, ladderBounds, pickId);
+      const then = pickStanding(floorThen, unit, ladderBounds, pickId) ?? "open";
       if (now && STANDING_RANK[now] > STANDING_RANK[then]) {
-        stale = { standing: now, floor_c_then: top.observed_floor_c ?? null, max_c_now: sameDay.running_max_c };
+        stale = { standing: now, floor_c_then: floorThen, max_c_now: sameDay.running_max_c };
       }
     }
     // AGAINST THE MARKET: YES on a bucket the market does not favour, or NO on
@@ -271,14 +307,14 @@ export function buildCards(
       city_key: c.city_key, name: c.display_name ?? c.city_key,
       unit, for_date,
       centre_c: centre, raw_forecast_c: any?.forecast_max_c ?? null,
-      priced_floor_c: any?.observed_floor_c ?? null, sigma_c: any?.sigma_c ?? null,
+      priced_floor_c: floorThen, sigma_c: newest ? newest.sigma_c : any?.sigma_c ?? null,
       confidence: any?.confidence ?? null, regime: any?.regime_label ?? null,
-      top_band: top?.band_label ?? null, top_prob: top?.model_prob ?? null,
-      top_yes_price: top?.market_price ?? null,
+      top_band: pickRow?.band_label ?? null, top_prob: pickProb,
+      top_yes_price: pickRow?.market_price ?? null,
       market_band: mkt?.band_label ?? null, market_price: mkt?.market_price ?? null,
       disagrees,
-      favourite_dead: !!(top && ((top.market_price !== null && top.market_price < 0.05)
-        || day.some((r) => r.band_id === top.band_id && r.block_reason === "dead_band"))),
+      favourite_dead: !!(pickRow && ((pickRow.market_price != null && pickRow.market_price < 0.05)
+        || day.some((r) => r.band_id === pickId && r.block_reason === "dead_band"))),
       forecast_spread_c: spread,
       centre_outside_forecasts: outside,
       best: best && (best.edge_net_pp ?? 0) > 0
@@ -286,11 +322,14 @@ export function buildCards(
             price: best.market_price, depth: best.depth_5c, against_market: againstMarket(best) }
         : null,
       blocked,
-      priced_at: any?.prob_at ?? null,
+      priced_at: newest ? newest.priced_at : any?.prob_at ?? null,
       edges_at: day.reduce<string | null>((m, r) => (r.edge_at && (!m || r.edge_at > m) ? r.edge_at : m), null),
-      priced_from: any?.priced_from ?? null,
-      priced_from_words: pricedFromWords(any?.priced_from),
+      priced_from: newest ? newest.priced_from : any?.priced_from ?? null,
+      priced_from_words: pricedFromWords(newest ? newest.priced_from : any?.priced_from),
       stale,
+      repriced: newest
+        ? { at: newest.priced_at, reason: newest.source, checkpoint: newest.checkpoint, pricing_at: any?.prob_at ?? null }
+        : null,
       forecasts: Array.from(latestByModel.values())
         .map((f) => ({ model: f.model, max_c: f.forecast_max_c as number, run_at: f.run_at }))
         .sort((a, b) => a.model.localeCompare(b.model)),

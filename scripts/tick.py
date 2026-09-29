@@ -35,7 +35,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, wait
 from zoneinfo import ZoneInfo
 
-from common import _post, get_cities, log_run, rest, rest_all, upsert
+from common import _post, get_cities, log_run, rest, rest_all, rpc, upsert
 
 CHECKPOINTS = ("d1_eve", "morning", "noon", "prepeak_2h", "prepeak_1h", "postpeak_1h")
 PEAK_OFFSETS_H = {"prepeak_2h": -2, "prepeak_1h": -1, "postpeak_1h": 1}
@@ -299,8 +299,34 @@ def read_stations(now, dry_run=False):
     return out
 
 
+def _reprice(pe, current_ladder, market_of, floors, unit_of, due_days):
+    """(city-days to price again now, their markets' bands, detail) - plan v2.3
+    P4.9. Never raises: a tick that cannot read the current picks prices its
+    checkpoints as before and says why."""
+    try:
+        picks = rest("v_current_prediction", {
+            "select": "city_key,target_date,market_id,band_id,observed_floor_c,source,priced_at",
+            "is_top": "eq.true"})
+    except Exception as e:
+        return [], {}, {"error": f"v_current_prediction: {type(e).__name__}: {str(e)[:160]}"}
+    try:
+        same_day = [p for p in picks
+                    if floors.get(p["city_key"]) and str(floors[p["city_key"]][0]) == str(p["target_date"])
+                    and (p["city_key"], str(p["target_date"])) in market_of]
+        markets = sorted({str(market_of[(p["city_key"], str(p["target_date"]))]["market_id"]) for p in same_day})
+        by_market = {}
+        for b in (pe._bands_for_markets(markets) if markets else []):
+            by_market.setdefault(b["market_id"], []).append(b)
+        targets = current_ladder.reprice_targets(same_day, floors, market_of, by_market, unit_of, skip=due_days)
+    except Exception as e:
+        return [], {}, {"picks": len(picks), "error": f"re-price selection: {type(e).__name__}: {str(e)[:160]}"}
+    return targets, by_market, {"picks": len(picks), "same_day": len(same_day),
+                                "reprice": [f"{c} {t}" for c, t in targets]}
+
+
 def run(now=None, budget_s=BUDGET_S, dry_run=False):
     import probability_engine as pe
+    import current_ladder
 
     t0 = time.monotonic()
     now = now or dt.datetime.now(dt.timezone.utc)
@@ -327,20 +353,8 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     due = [d for d in candidates if (d[0], d[1], d[2]) not in held]
     detail = {"engine_version": version, "due": len(due), "already_written": len(candidates) - len(due),
               "notes": notes[:20], "observations": stations, "s10": s10}
-    if not due:
-        print(f"tick {now:%Y-%m-%d %H:%MZ}: nothing due ({len(held)} already written); "
-              f"stations {stations['rows']} rows")
-        if not dry_run:
-            log_run("tick", "attention" if stations["error"] else "ok", 0,
-                    dict(detail, seconds=round(time.monotonic() - t0, 1)))
-        return detail
-
     market_of = {(m["city_key"], str(m["resolution_date"])): m for m in markets}
     days = sorted({(c, t) for c, t, _, _ in due})
-    bands = pe._bands_for_markets([market_of[d]["market_id"] for d in days])
-    bands_by_market = {}
-    for b in bands:
-        bands_by_market.setdefault(b["market_id"], []).append(b)
 
     running = {r["city_key"]: r for r in rest("v_city_running_max", {
         "select": "city_key,local_date,running_max_c,running_max_basis,observed_max_today_c,"
@@ -350,6 +364,24 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
         f = pe.measured_floor(r)
         if f is not None and r.get("local_date"):
             floors[city] = (str(r["local_date"]), f)
+
+    # THE CURRENT PREDICTION BETWEEN PRICING RUNS (plan v2.3 P4.9): the
+    # same-day city-days whose pick the station has passed since it was
+    # priced are priced again now, after the due checkpoints, with the same
+    # floors; every ladder this tick prices is published below.
+    reprice, bands_by_market, current = _reprice(pe, current_ladder, market_of, floors, unit_of, days)
+    detail["current"] = current
+    if not due and not reprice:
+        print(f"tick {now:%Y-%m-%d %H:%MZ}: nothing due ({len(held)} already written); "
+              f"stations {stations['rows']} rows")
+        if not dry_run:
+            log_run("tick", "attention" if stations["error"] or current.get("error") else "ok", 0,
+                    dict(detail, seconds=round(time.monotonic() - t0, 1)))
+        return detail
+
+    need = sorted({str(market_of[d]["market_id"]) for d in days} - set(map(str, bands_by_market)))
+    for b in (pe._bands_for_markets(need) if need else []):
+        bands_by_market.setdefault(b["market_id"], []).append(b)
     promoted = pe._promoted_models()
     model_forecasts = pe._model_forecasts(promoted)
     pe._warm_caches()
@@ -359,7 +391,9 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     workers = max(1, int(os.environ.get("ENGINE_WORKERS", "8")))
     pool = ThreadPoolExecutor(max_workers=workers)
     futures = {}
-    for city, target in days:
+    # Due checkpoints first: the pool takes them in order, and the record is
+    # what a checkpoint is for. A re-price that does not finish is not one.
+    for city, target in days + reprice:
         m = market_of[(city, target)]
         unit = m.get("unit") or unit_of.get(city, "C")
         band_rows = bands_by_market.get(m["market_id"], [])
@@ -370,9 +404,13 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
                             history_cache, floors, promoted, model_forecasts)] = (city, target)
     remaining = max(1.0, budget_s - 8.0 - (time.monotonic() - t0))   # 8 s kept for books + write
     done, not_done = wait(futures, timeout=remaining)
+    reprice_set = set(reprice)
     for f in not_done:
         f.cancel()
-        deferred.append("%s %s" % futures[f])
+        if futures[f] in reprice_set:
+            current.setdefault("deferred", []).append("%s %s" % futures[f])
+        else:
+            deferred.append("%s %s" % futures[f])
     for f in done:
         city, target = futures[f]
         try:
@@ -413,6 +451,32 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     written = 0
     if out and not dry_run:
         written = upsert("prediction_checkpoints", out, ON_CONFLICT)
+
+    # Every ladder this tick priced, as the city-day's current prediction
+    # (plan v2.3 P4.9): one per city-day, the newest winning, never appended.
+    newest_checkpoint = {}
+    for city, target, name, local in due:
+        if (city, target) not in newest_checkpoint or local > newest_checkpoint[(city, target)][1]:
+            newest_checkpoint[(city, target)] = (name, local)
+    ladders = []
+    for (city, target), (rows, _reg, reasons) in sorted(results.items()):
+        checkpoint = newest_checkpoint.get((city, target))
+        try:
+            row, why = current_ladder.ladder_row(
+                city, target, market_of[(city, target)]["market_id"], rows, reasons,
+                "checkpoint" if checkpoint else "station_max", checkpoint[0] if checkpoint else None, version)
+        except Exception as e:
+            row, why = None, f"{type(e).__name__}: {str(e)[:120]}"
+        if row is None:
+            current.setdefault("not_published", []).append(f"{city} {target}: {why}")
+        else:
+            ladders.append(row)
+    current["ladders"] = len(ladders)
+    if ladders and not dry_run:
+        try:
+            current["published"] = rpc("publish_current_ladders", {"p_rows": ladders})
+        except Exception as e:
+            current["error"] = f"publish_current_ladders: {type(e).__name__}: {str(e)[:160]}"
     # The remaining-day model's ladder beside each call, observe only (P7.4).
     s10_ladders = {}
     s10["shadow"] = s10_shadow.record(due, market_of, bands_by_market, tz_of, unit_of, dry_run,
@@ -435,14 +499,17 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     # engine's insert into decisions was refused and the tick still said "ok".
     engine_error = ((detail.get("engine") or {}).get("error")
                     or ((detail.get("engine") or {}).get("orders") or {}).get("error"))
-    status = "ok" if not failed and not deferred and not stations["error"] and not engine_error else "attention"
+    current_error = current.get("error") or ((current.get("published") or {}).get("refused") or None)
+    status = ("ok" if not failed and not deferred and not stations["error"] and not engine_error
+              and not current_error else "attention")
     print(f"tick {now:%Y-%m-%d %H:%MZ}: {len(due)} due, {len(out)} rows, "
+          f"{len(reprice)} re-priced, {len(ladders)} current ladders, "
           f"{len(deferred)} deferred, {len(failed)} failed, {detail['seconds']} s")
     for line in failed + [f"deferred: {d}" for d in deferred] + notes:
         print(f"  {line}")
     if not dry_run:
         log_run("tick", status, written, detail)
-    if deferred:
+    if not_done:
         # The deferred city-days are still running on pool threads the
         # interpreter would otherwise wait for; they wrote nothing and the
         # next tick picks them up. Leaving now is what keeps the budget.

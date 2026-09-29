@@ -117,6 +117,15 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "AD4 P1.3 - NWS Forecast"
     }
   ],
+  "current_ladders": [
+    {
+      "cadence": "hourly",
+      "file": "tick.yml",
+      "how": "scripts/tick.py",
+      "kind": "action",
+      "name": "Tick (hourly checkpoints)"
+    }
+  ],
   "decisions": [
     {
       "cadence": "several times a day",
@@ -1217,6 +1226,12 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_condition_skill": [
     "derived_city_day_features",
     "weather_forecast_features"
+  ],
+  "v_current_prediction": [
+    "band_probabilities",
+    "current_ladders",
+    "markets",
+    "bands"
   ],
   "v_databank_coverage": [
     "fact_band_outcome",

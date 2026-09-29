@@ -153,7 +153,11 @@ const assert = require('node:assert/strict');
       primary key (city_key, for_date, run_at));
     create table public.ingest_log(log_id bigint primary key,job text,started_at timestamptz,finished_at timestamptz,
       status text,rows_written integer,detail jsonb,rows integer,logged_at timestamptz default now());
-    create table public.model_versions(version_id uuid primary key,created_at timestamptz default now());
+    -- model_versions as live (29 Sep): v_current_prediction (P4.9) reads its label.
+    create table public.model_versions(version_id uuid primary key default gen_random_uuid(),
+      kind text not null, label text not null, config jsonb not null default '{}'::jsonb,
+      structural boolean not null default false, active boolean not null default false,
+      created_at timestamptz not null default now());
     -- anomalies is created by sql/ad4_00_preflight.sql, which this harness
     -- never applies. check_paper_desk_integrity() writes to it, so the table
     -- has to stand here or the function is tested against a database shape
