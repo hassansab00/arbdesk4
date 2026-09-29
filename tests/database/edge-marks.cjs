@@ -90,10 +90,27 @@ const OLD_LADDERS = undo(undo(
   left join public.derived_edge_marks k
          on k.band_id = o.band_id and k.mark = 'eve' and k.cutoff_at = d.cutoff_at;`, ';');
 
-const OLD_HISTORY = undo(undo(
+// The view before 3.1 had no priced centre either: audit repair 3 part 2
+// (20260930004500) appended it later, so its four edits come out first.
+const beforeCentre = (text) => undo(undo(undo(undo(text,
+  `         p.forecast_max_c, p.sigma_c, p.confidence, p.regime_label, p.centre_c,\n`,
+  `         p.forecast_max_c, p.sigma_c, p.confidence, p.regime_label,\n`),
+  `bp.regime_label, bp.computed_at, bp.centre_c\n`,
+  `bp.regime_label, bp.computed_at\n`),
+  `         -- THE CENTRE THE CALL WAS PRICED ON (audit repair 3): from the newest
+         -- row before the day, the same run as called_at - never the raw
+         -- forecast_max_c the engine started from.
+         (array_agg(m.centre_c order by m.priced_at desc nulls last, m.band_id))[1] as centre_c,\n`,
+  ``),
+  `  round(h.brier_uniform_common::numeric, 4)                                 as brier_uniform_common,
+  round(m.centre_c::numeric, 2)                                             as centre_c,
+  round((m.centre_c - m.observed_max_c)::numeric, 2)                        as centre_error_c\n`,
+  `  round(h.brier_uniform_common::numeric, 4)                                 as brier_uniform_common\n`);
+
+const OLD_HISTORY = undo(undo(beforeCentre(
   between(src('sql/ad4_85_city_hit_history.sql'), 'create view v_city_hit_history as',
           'order by m.for_date desc, m.city_key;')
-    .replace('create view v_city_hit_history as', 'create view public.v_city_hit_history_live as'),
+    .replace('create view v_city_hit_history as', 'create view public.v_city_hit_history_live as')),
   `         case when k.band_id is not null then k.market_price
               else e.market_price end as market_pre`,
   `         e.market_price  as market_pre`),
@@ -138,7 +155,7 @@ const at = (day, hhmm, tz) => `(((current_date + ${day})::timestamp + interval '
       select distinct on (band_id, side) * from public.edges order by band_id, side, computed_at desc;
     create table public.band_probabilities(prob_id bigserial primary key, band_id uuid not null,
       computed_at timestamptz not null, raw_prob numeric, calibrated_prob numeric, forecast_max_c numeric,
-      sigma_c numeric, confidence numeric, regime_label text);
+      sigma_c numeric, confidence numeric, regime_label text, centre_c numeric);
     create table public.v_fact_band_outcome_clean(city_key text, for_date date, band_id uuid, band_lo numeric,
       band_hi numeric, open_low boolean, open_high boolean, settled_yes boolean, observed_max_c numeric);
     create table public.v_canonical_bands(band_id uuid, market_id uuid, band_lo numeric, band_hi numeric,
@@ -179,9 +196,9 @@ const at = (day, hhmm, tz) => `(((current_date + ${day})::timestamp + interval '
       cross join (values ('YES'), ('NO')) s(side);
     update public.edges set market_price = edge_id / 100000.0 where side = 'YES';
     insert into public.band_probabilities(band_id, computed_at, raw_prob, calibrated_prob, forecast_max_c, sigma_c,
-                                          confidence, regime_label)
+                                          confidence, regime_label, centre_c)
     select e.band_id, e.computed_at, case b.band_index when 2 then 0.6 else 0.2 end,
-           case b.band_index when 2 then 0.6 else 0.2 end, 21, 1, 0.5, 'normal'
+           case b.band_index when 2 then 0.6 else 0.2 end, 21, 1, 0.5, 'normal', 21.4
       from public.edges e join public.bands b using (band_id) where e.side = 'YES';
   `);
   const q = async (sql) => (await db.query(sql)).rows;

@@ -24,6 +24,10 @@ import mirror_to_repo as mirror
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MIG = (ROOT / "supabase" / "migrations"
        / "20260929220000_the_edges_keep_the_prices_the_record_reads.sql").read_text(encoding="utf-8")
+# v_city_hit_history_live was redefined after 3.1 (audit repair 3 part 2 appended
+# the priced centre); the newest definition is the one sql/ad4_85 must equal.
+MIG_HISTORY = (ROOT / "supabase" / "migrations"
+               / "20260930004500_the_hit_record_shows_the_priced_centre.sql").read_text(encoding="utf-8")
 
 
 def _src(rel):
@@ -45,14 +49,15 @@ def test_the_migration_is_the_files_own_text():
         _between(e80, "create or replace view v_prunable_edge_history as", "and u.edge_id is null;"),
         _between(_src("sql/ad4_88_hit_tournament.sql"), "create or replace view public.v_hit_ladders as",
                  "and k.cutoff_at = d.cutoff_at;"),
-        _between(_src("sql/ad4_85_city_hit_history.sql"), "create view v_city_hit_history as",
-                 "order by m.for_date desc, m.city_key;").replace(
-            "create view v_city_hit_history as", "create or replace view public.v_city_hit_history_live as", 1),
         _between(_src("sql/ad4_97_evidence_cache.sql"), "create or replace function public.freeze_edge_marks()",
                  "grant execute on function public.freeze_edge_marks() to service_role;"),
     ]
     for piece in pieces:
         assert piece in MIG, f"the migration no longer carries sql/'s text for:\n{piece[:120]}"
+    history = _between(_src("sql/ad4_85_city_hit_history.sql"), "create view v_city_hit_history as",
+                       "order by m.for_date desc, m.city_key;").replace(
+        "create view v_city_hit_history as", "create or replace view public.v_city_hit_history_live as", 1)
+    assert history in MIG_HISTORY, "the newest migration of v_city_hit_history_live is not sql/ad4_85's text"
 
 
 def test_both_readers_take_the_frozen_mark_first_at_their_own_cutoff():

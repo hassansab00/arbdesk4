@@ -39,6 +39,8 @@ interface HitRow {
   for_date: string; ladder_bands: number; model_bands: number;
   observed_max_c: number | null; forecast_max_c: number | null; error_c: number | null;
   sigma_c: number | null; confidence: number | null; regime_label: string | null;
+  /** the centre the call's own pricing run integrated on, and its miss (null before 22 Sep 18:32Z) */
+  centre_c: number | null; centre_error_c: number | null;
   winner: string | null;
   model_call: string | null; model_call_prob: number | null; model_prob_on_winner: number | null;
   model_hit: boolean | null;
@@ -62,12 +64,15 @@ interface HitSummaryRow {
   h2h_days: number; h2h_model_hits: number; market_hits: number;
   market_hit_rate: number | null; brier_model_h2h: number | null; brier_market: number | null;
   days_we_beat_the_market: number; verdict: string;
+  /** mae_c and bias_c are the raw forecast input's; these are the priced centre's */
+  centre_days: number; centre_mae_c: number | null; centre_bias_c: number | null;
 }
 interface LadderRow {
   city_key: string; for_date: string; band_id: string; band_index: number | null;
   band_label: string | null; band_lo: number | null; band_hi: number | null;
   open_low: boolean | null; open_high: boolean | null; closed: boolean | null;
   won: boolean | null; model_prob: number | null; forecast_max_c: number | null;
+  centre_c: number | null;
   sigma_c: number | null; confidence: number | null; market_price: number | null;
   edge_net_pp: number | null; depth_5c: number | null; tradeable: boolean | null;
   side: string | null;
@@ -244,7 +249,7 @@ export default function PredictivePage() {
   const ladderQ = useQuery<LadderRow[]>(
     () => readAllRows<LadderRow>((from, to) =>
       supabase.from("v_prediction_ladder")
-        .select("city_key,for_date,band_id,band_index,band_label,band_lo,band_hi,open_low,open_high,closed,won,model_prob,forecast_max_c,sigma_c,confidence,market_price,edge_net_pp,depth_5c,tradeable,side")
+        .select("city_key,for_date,band_id,band_index,band_label,band_lo,band_hi,open_low,open_high,closed,won,model_prob,forecast_max_c,centre_c,sigma_c,confidence,market_price,edge_net_pp,depth_5c,tradeable,side")
         .gte("for_date", new Date().toISOString().slice(0, 10))
         .order("for_date").order("city_key").order("band_id").order("side")
         .range(from, to), LADDER_MAX),
@@ -332,6 +337,8 @@ export default function PredictivePage() {
           .sort((a, b) => (b.edge_net_pp ?? 0) - (a.edge_net_pp ?? 0))[0];
         return {
           city_key, for_date, n_bands: bands.length, n_priced: priced.length,
+          // the centre the ladder was integrated on; the raw input beside it (audit repair 3)
+          centre_c: best?.centre_c ?? null,
           forecast_max_c: best?.forecast_max_c ?? null,
           sigma_c: best?.sigma_c ?? null,
           best_band: best?.band_label ?? null,
@@ -519,7 +526,9 @@ export default function PredictivePage() {
         <p className="max-w-3xl text-xs leading-relaxed text-muted">
           One row per city-day still open. The bucket the model puts most weight on, what the
           market charges for that bucket, and the largest tradeable edge anywhere on the ladder.
-          A row with no probability has a forecast but no priced market yet.
+          A row with no probability has a forecast but no priced market yet. <b>Priced centre</b>{" "}
+          and σ are what the ladder was integrated on, after the station correction and the blend;
+          <b>raw forecast</b> is the public forecast the engine started from.
         </p>
         <DataState
           relation="v_prediction_ladder"
@@ -535,8 +544,9 @@ export default function PredictivePage() {
                 <tr>
                   <th className="px-2 py-1.5 text-left">City</th>
                   <th className="px-2 py-1.5 text-left">Resolves</th>
-                  <th className="px-2 py-1.5 text-right">Forecast</th>
+                  <th className="px-2 py-1.5 text-right">Priced centre</th>
                   <th className="px-2 py-1.5 text-right">σ</th>
+                  <th className="px-2 py-1.5 text-right text-muted">Raw forecast</th>
                   <th className="px-2 py-1.5 text-left">Most likely bucket</th>
                   <th className="px-2 py-1.5 text-right">Model</th>
                   <th className="px-2 py-1.5 text-right">Market</th>
@@ -553,10 +563,13 @@ export default function PredictivePage() {
                     </td>
                     <td className="px-2 py-1.5 text-muted">{fmtResolutionDate(r.for_date)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">
-                      {r.forecast_max_c === null ? "—" : fmtTemp(r.forecast_max_c, unitOf(r.city_key), 1)}
+                      {r.centre_c === null ? <span className="text-muted">not recorded</span> : fmtTemp(r.centre_c, unitOf(r.city_key), 1)}
                     </td>
                     <td className="px-2 py-1.5 text-right tabular-nums text-muted">
                       {r.sigma_c === null ? "—" : `±${fmtTempDelta(r.sigma_c, unitOf(r.city_key)).replace("+", "")}`}
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-muted">
+                      {r.forecast_max_c === null ? "—" : fmtTemp(r.forecast_max_c, unitOf(r.city_key), 1)}
                     </td>
                     <td className="px-2 py-1.5">{r.best_band ?? <span className="text-muted">not priced</span>}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmtPct(r.best_prob)}</td>
@@ -695,14 +708,24 @@ export default function PredictivePage() {
                       />
                     </>
                   ) : null}
-                  <Stat label="mean |error|" value={`${(hitSum.mae_c ?? 0).toFixed(2)} °C`} />
+                  {/* THE PRICED CENTRE'S MISS, NOT THE RAW INPUT'S (audit repair 3): the
+                      raw forecast is where the engine started; the centre is what it priced. */}
                   <Stat
-                    label="bias (forecast − actual)"
-                    value={`${(hitSum.bias_c ?? 0) > 0 ? "+" : ""}${(hitSum.bias_c ?? 0).toFixed(2)} °C`}
+                    label="priced centre, mean |error|"
+                    value={hitSum.centre_days > 0 && hitSum.centre_mae_c != null
+                      ? `${hitSum.centre_mae_c.toFixed(2)} °C` : "not recorded"}
+                  />
+                  <Stat
+                    label="priced centre, bias (centre − actual)"
+                    value={hitSum.centre_days > 0 && hitSum.centre_bias_c != null
+                      ? `${hitSum.centre_bias_c > 0 ? "+" : ""}${hitSum.centre_bias_c.toFixed(2)} °C` : "not recorded"}
                   />
                 </div>
                 <p className="mt-2 text-[11px] text-muted">
-                  Measured over {hitSum.first_day ?? "—"} → {hitSum.last_day ?? "—"}.
+                  Measured over {hitSum.first_day ?? "—"} → {hitSum.last_day ?? "—"}. The priced centre is
+                  recorded on {fmtInt(hitSum.centre_days)} of {fmtInt(hitSum.days)} days (from 23 Sep); the raw
+                  forecast input missed by {(hitSum.mae_c ?? 0).toFixed(2)} °C on average (bias{" "}
+                  {(hitSum.bias_c ?? 0) > 0 ? "+" : ""}{(hitSum.bias_c ?? 0).toFixed(2)} °C) over all {fmtInt(hitSum.days)}.
                 </p>
                 <p className="mt-3 text-[11px] text-muted">
                   <b>Verdict:</b> {hitSum.verdict}
@@ -716,8 +739,9 @@ export default function PredictivePage() {
                   <tr className="border-b border-border">
                     <th className="p-2 text-left">day</th>
                     <th className="p-2 text-right">actual</th>
-                    <th className="p-2 text-right">forecast</th>
+                    <th className="p-2 text-right">priced centre</th>
                     <th className="p-2 text-right">error</th>
+                    <th className="p-2 text-right text-muted">raw forecast</th>
                     <th className="p-2 text-left">paid</th>
                     <th className="p-2 text-left">we called</th>
                     <th className="p-2 text-right">our p on winner</th>
@@ -733,10 +757,13 @@ export default function PredictivePage() {
                     <tr key={`${r.city_key}:${r.for_date}`} className="border-b border-border/40">
                       <td className="p-2">{fmtResolutionDate(r.for_date)}</td>
                       <td className="p-2 text-right">{fmtTemp(r.observed_max_c, unit)}</td>
-                      <td className="p-2 text-right">{fmtTemp(r.forecast_max_c, unit)}</td>
-                      <td className="p-2 text-right" style={{ color: Math.abs(r.error_c ?? 0) > 1 ? "var(--c-bad)" : undefined }}>
-                        {r.error_c === null ? "—" : `${r.error_c > 0 ? "+" : ""}${r.error_c.toFixed(1)}`}
+                      <td className="p-2 text-right">
+                        {r.centre_c === null ? <span className="text-muted">not recorded</span> : fmtTemp(r.centre_c, unit)}
                       </td>
+                      <td className="p-2 text-right" style={{ color: Math.abs(r.centre_error_c ?? 0) > 1 ? "var(--c-bad)" : undefined }}>
+                        {r.centre_error_c === null ? "—" : `${r.centre_error_c > 0 ? "+" : ""}${r.centre_error_c.toFixed(1)}`}
+                      </td>
+                      <td className="p-2 text-right text-muted">{fmtTemp(r.forecast_max_c, unit)}</td>
                       <td className="p-2 font-medium">{r.winner ?? "—"}</td>
                       <td className="p-2" style={{ color: r.model_hit ? "var(--c-good)" : "var(--c-bad)" }}>
                         {r.model_hit ? "✓ " : "✗ "}{r.model_call ?? "—"}

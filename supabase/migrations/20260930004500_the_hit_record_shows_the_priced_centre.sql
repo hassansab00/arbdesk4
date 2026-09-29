@@ -1,84 +1,44 @@
 -- ===========================================================================
--- ad4_85_city_hit_history.sql - DID THIS CITY'S PREDICTION LAND, AND HOW OFTEN.
+-- THE HIT RECORD SHOWS THE PRICED CENTRE (audit repair 3, part 2, 29 Sep).
 --
--- The desk already measures forecast skill in degrees (derived_forecast_skill)
--- and probability honesty in aggregate (v_calibration). Neither answers the
--- question an operator actually asks about one city: on the days that have
--- settled, did the band we called turn out to be the band that paid, and how
--- did the market do on the same days?
+-- The Predictive page's hit-and-miss record graded the call by the ladder the
+-- engine priced, but its "forecast", "error", "mean |error|" and "bias" were
+-- band_probabilities.forecast_max_c: the public forecast the engine STARTED
+-- from, before the station correction, the MOS blend and the trajectory moved
+-- it. Measured 29 Sep with this view's own rule, on the 257 settled day-ahead
+-- calls (23-28 Sep) whose pricing run recorded a centre: the raw input missed
+-- by 1.117 C on average (bias +0.012), the centre that was priced by 1.051 C
+-- (bias +0.258), and 71 of the 257 differ by 1 C or more.
+-- v_prediction_hindsight mixed the two in one column: day-ahead rows the raw
+-- input, checkpoint rows the priced centre.
 --
--- WHY DEGREES ARE NOT ENOUGH. A mean absolute error of 1.0 C sounds good and
--- says nothing about money: on a 1 C ladder a 1 C error is a different bucket,
--- which is a total loss on the band that was called. Skill has to be read on
--- the ladder, in buckets, against what settled.
+--   v_city_hit_history_live   two columns appended: centre_c, the centre of
+--       the call's own pricing run (the newest row before the day, the run
+--       called_at names), and centre_error_c = centre_c - observed_max_c.
+--       band_probabilities.centre_c exists from 22 Sep 18:32Z (the first
+--       settled day with one is 23 Sep); before that both are null - "not
+--       recorded", never the raw input in its place. The 30 columns before
+--       them are unchanged: in one snapshot the new definition's 30 columns
+--       EXCEPT ALL the old view's gave 0 rows both ways (657 rows each), and
+--       the summary's 22 columns likewise.
+--   mv_city_hit_history       rebuilt with them (it cannot gain a column in
+--       place): the page reads the live view while it is rebuilt, then the
+--       stored copy again, as 20260927170000 did for mv_prediction_ladder.
+--   v_city_hit_summary        centre_days, centre_mae_c, centre_bias_c
+--       appended; mae_c and bias_c stay the raw input's, named as such on
+--       the page.
+--   v_prediction_hindsight    day-ahead rows take forecast_max_c and
+--       forecast_error_c from the priced centre, as the checkpoint rows
+--       always did.
 --
--- EVERYTHING HERE IS FROZEN EVIDENCE. fact_band_outcome is written by
--- databank.py only after a day has settled against final station authority,
--- and its rows are never updated - so this view cannot flatter itself by
--- re-scoring yesterday with today's knowledge.
---
--- THE MODEL AND THE MARKET ARE SCORED ON THE SAME BANDS. A city-day is only
--- counted when the winning band is present AND both sides priced it. Scoring
--- each side over whatever it happened to price is how the first cut of
--- docs/STRATEGY_EVIDENCE_2026-09-22.md flattered the market by selection: the
--- market quotes a median 6.8 of 11 bands, so filtering to ladders with a
--- winner silently keeps the ones it had priced.
---
--- RUN ORDER: after ad4_18_databank.sql. Views only - nothing to refresh.
+-- Guarded and re-runnable.
 -- ===========================================================================
 
--- ===========================================================================
--- REBUILT 2026-09-22: THE CALL AS IT STOOD BEFORE THE DAY BEGAN, FOR EVERY CITY.
---
--- Two things were wrong with the first version, and the second was worse.
---
--- 1. IT SHOWED ALMOST NOTHING. A city-day counted only when the market had
---    priced the winning band too, and the venue quotes few international
---    ladders: 98 of 394 scoreable days, 22 of 49 cities. The rest read "No
---    settled days for this city yet" beside a settled history of their own.
---
--- 2. WHAT IT DID SHOW WAS NOT A PREDICTION. It scored fact_band_outcome's
---    model_prob and market_price, which databank.py freezes from the LATEST
---    probability and the LATEST edge before settlement. Measured on the 493
---    winning bands that carry one: that probability was computed a median
---    25 hours after the city's local midnight on the day itself - after the
---    day was over - and the tenth percentile is 4 pm local on the day. By then
---    the engine has the running maximum; "we called it" was mostly the
---    engine reading the thermometer back, and the market's "call" the same.
---
--- THE CALL NOW IS THE LAST PROBABILITY COMPUTED BEFORE THE CITY'S LOCAL DAY
--- BEGAN - from band_probabilities, which keeps that row for every band at any
--- age (the archive's prune never offers it, sql/ad4_96; the pricings no reader
--- selects leave 30 days after the market, 29 Sep) - so it is a forecast in the
--- only sense that matters: nothing that happened on the day could have
--- informed it. called_at and hours_before_day say exactly when it was made.
---
--- THE MODEL IS SCORED ON ITS OWN, FOR EVERY CITY: the whole settled ladder,
--- its pre-day probabilities renormalised over the bands it priced, and a band
--- it did not price counted as zero - if the winner is one of those, that is a
--- miss, which is what it was. The uniform guess over the same ladder is the
--- floor it has to beat.
---
--- THE MARKET IS COMPARED ONLY WHERE THE COMPARISON IS FAIR, as the original
--- rule intended: its YES price at the same cutoff, from edges, on the bands
--- BOTH sides priced before the day, each renormalised over that shared set,
--- and only when that set contains the winner. That price is the band's 'day'
--- mark, frozen into derived_edge_marks once the cutoff passed (sql/ad4_80,
--- plan v2 P1.6 phase 3); the edges prune keeps two days and never takes a
--- mark it has not copied. A day with no price before it still carries the
--- model's record with the market columns empty and head_to_head false,
--- rather than a price taken after the fact.
---
--- The winner and the observed maximum still come from fact_band_outcome,
--- frozen after settlement against final station authority. Retired cities
--- stay: this is the record, not the desk.
--- ===========================================================================
-
--- The column set changed, so these are replaced, not appended to.
-drop view if exists v_city_hit_summary;
-drop view if exists v_city_hit_history;
-
-create view v_city_hit_history as
+do $mig$
+begin
+  if to_regclass('public.v_city_hit_history_live') is not null then
+    execute $v$
+create or replace view public.v_city_hit_history_live as
 with ladder as (
   select o.city_key, o.for_date, o.band_id,
          o.band_lo, o.band_hi, o.open_low, o.open_high,
@@ -251,16 +211,52 @@ left join h2h h on h.city_key = m.city_key and h.for_date = m.for_date
 left join cities c on c.city_key = m.city_key
 where m.winner is not null
 order by m.for_date desc, m.city_key;
+$v$;
+  end if;
+end $mig$;
 
-comment on view v_city_hit_history is
-  'One row per settled city-day the desk priced BEFORE the day began: the band it called then, the band that paid, and a multiclass Brier over the whole settled ladder beside a uniform guess. The market is compared only on days both sides priced the winner before the day (head_to_head), over the bands both priced. The call is the last probability computed before the city''s local midnight - never the post-settlement value fact_band_outcome freezes.';
+-- The stored copy, rebuilt once: skipped when it already has the columns.
+do $mig$
+begin
+  if to_regclass('public.mv_city_hit_history') is null or to_regclass('public.v_city_hit_history_live') is null then
+    raise notice 'mv_city_hit_history is not installed (sql/ad4_89): nothing to rebuild';
+    return;
+  end if;
+  if exists (select 1 from pg_attribute
+              where attrelid = 'public.mv_city_hit_history'::regclass
+                and attname = 'centre_error_c' and not attisdropped) then
+    return;
+  end if;
+  -- the page reads the live rows while the stored copy is rebuilt
+  execute $v$
+    create or replace view public.v_city_hit_history as
+    select city_key, display_name, unit, for_date, ladder_bands, model_bands, observed_max_c, forecast_max_c, error_c, sigma_c, confidence, regime_label, winner, model_call, model_call_prob, model_prob_on_winner, model_hit, brier_model, brier_uniform, called_at, hours_before_day, head_to_head, bands_scored, market_call, market_call_price, market_prob_on_winner, market_hit, brier_model_common, brier_market, brier_uniform_common
+      from public.v_city_hit_history_live
+  $v$;
+  drop materialized view public.mv_city_hit_history;
+  execute $v$
+    create materialized view public.mv_city_hit_history as
+    select v.* from public.v_city_hit_history_live v
+  $v$;
+  create unique index mv_city_hit_history_key on public.mv_city_hit_history (city_key, for_date);
+  revoke all on public.mv_city_hit_history from public, anon, authenticated;
+  grant select on public.mv_city_hit_history to service_role;
+  comment on materialized view public.mv_city_hit_history is
+    'Stored rows of v_city_hit_history_live, refreshed by refresh_page_cache() (plan v2 P6.5). The page reads v_city_hit_history, which selects from here.';
+  execute $v$
+    create or replace view public.v_city_hit_history as
+    select city_key, display_name, unit, for_date, ladder_bands, model_bands, observed_max_c, forecast_max_c, error_c, sigma_c, confidence, regime_label, winner, model_call, model_call_prob, model_prob_on_winner, model_hit, brier_model, brier_uniform, called_at, hours_before_day, head_to_head, bands_scored, market_call, market_call_price, market_prob_on_winner, market_hit, brier_model_common, brier_market, brier_uniform_common, centre_c, centre_error_c
+      from public.mv_city_hit_history
+  $v$;
+end $mig$;
 
-
--- --------------------------------------------------------------------------
--- The same thing summarised per city, which is what a picker needs beside
--- each name.
--- --------------------------------------------------------------------------
-create view v_city_hit_summary as
+do $mig$
+begin
+  if to_regclass('public.v_city_hit_summary') is null then
+    return;
+  end if;
+  execute $v$
+create or replace view public.v_city_hit_summary as
 select
   h.city_key,
   h.display_name,
@@ -276,7 +272,6 @@ select
   round(avg(h.hours_before_day), 1)                               as avg_hours_before_day,
   min(h.for_date)                                                 as first_day,
   max(h.for_date)                                                 as last_day,
-  -- Head to head, on the days it is fair.
   count(*) filter (where h.head_to_head)                          as h2h_days,
   count(*) filter (where h.head_to_head and h.model_hit)          as h2h_model_hits,
   count(*) filter (where h.head_to_head and h.market_hit)         as market_hits,
@@ -286,9 +281,6 @@ select
   round(avg(h.brier_market)       filter (where h.head_to_head), 4) as brier_market,
   count(*) filter (where h.head_to_head
                      and h.brier_model_common < h.brier_market)   as days_we_beat_the_market,
-  -- A VERDICT IN WORDS, on the two questions that decide whether a city is
-  -- worth trading: are we better than a coin, and are we better than the
-  -- price we would have to pay?
   case
     when count(*) < 5                                              then 'too few settled days to judge'
     when avg(h.brier_model) >= avg(h.brier_uniform)                then 'no better than guessing'
@@ -301,21 +293,61 @@ select
   count(h.centre_error_c)                                         as centre_days,
   round(avg(abs(h.centre_error_c)), 3)                            as centre_mae_c,
   round(avg(h.centre_error_c), 3)                                 as centre_bias_c
-from v_city_hit_history h
+from public.v_city_hit_history h
 group by h.city_key, h.display_name, h.unit
-order by days desc, h.city_key;
+order by days desc, h.city_key
+  $v$;
+end $mig$;
 
-comment on view v_city_hit_summary is
-  'Per city: how often the band called before the day began was the band that paid, the Brier of that call against a uniform guess, and - on the days both sides priced the winner before the day - the market beside it. Five settled days is the floor below which it says so rather than pretending.';
-
-do $ad4$
-declare r text;
+do $mig$
 begin
-  foreach r in array array['anon', 'authenticated', 'service_role'] loop
-    if exists (select 1 from pg_roles where rolname = r) then
-      execute format('grant select on v_city_hit_history to %I', r);
-      execute format('grant select on v_city_hit_summary to %I', r);
-    end if;
-  end loop;
-end
-$ad4$;
+  if to_regclass('public.v_prediction_hindsight') is null or to_regclass('public.v_checkpoint_calls') is null then
+    return;
+  end if;
+  execute $v$
+create or replace view public.v_prediction_hindsight as
+select h.city_key,
+       h.for_date,
+       h.model_call                                    as predicted_band,
+       round(100::numeric * h.model_call_prob, 1)      as predicted_pct,
+       h.winner                                        as actual_band,
+       round(h.observed_max_c, 1)                      as observed_max_c,
+       -- the priced centre, as the checkpoint rows below (audit repair 3)
+       round(h.centre_c, 1)                            as forecast_max_c,
+       round(h.observed_max_c - h.centre_c, 1)         as forecast_error_c,
+       h.model_hit                                     as hit,
+       round(h.sigma_c, 2)                             as stated_sigma_c,
+       h.regime_label,
+       'banked'::text                                  as outcome_source,
+       'day_ahead'::text                               as called_when,
+       0                                               as call_order,
+       false                                           as after_peak,
+       h.called_at,
+       h.market_call                                   as market_band,
+       h.market_hit
+  from public.v_city_hit_history h
+union all
+select c.city_key,
+       c.for_date,
+       c.called_band,
+       round(100::numeric * c.called_prob, 1),
+       c.winner_band,
+       round(o.observed_max_c, 1),
+       round(c.centre_c, 1),
+       round(o.observed_max_c - c.centre_c, 1),
+       c.hit,
+       round(c.sigma_c, 2),
+       null::text,
+       'venue'::text,
+       c.checkpoint,
+       c.checkpoint_order,
+       c.after_peak,
+       c.decided_at,
+       c.market_band,
+       c.market_hit
+  from public.v_checkpoint_calls c
+  left join public.v_city_hit_history o on o.city_key = c.city_key and o.for_date = c.for_date
+  $v$;
+  comment on view public.v_prediction_hindsight is
+    'Per settled city-day and per moment the call was frozen (called_when): the bucket the engine favoured and its stated probability, the market''s favourite, and the bucket that paid. day_ahead is the last pricing before the city''s local day began (v_city_hit_history); the checkpoints are prediction_checkpoints rows graded against the venue''s confirmed winner (v_checkpoint_calls). forecast_max_c is the centre that was priced in both halves (null where it was not recorded), never the raw forecast. Nothing here was priced after the moment it names. after_peak marks postpeak_1h. Read by the Predictive page.';
+end $mig$;
