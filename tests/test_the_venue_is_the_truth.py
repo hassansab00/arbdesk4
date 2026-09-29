@@ -139,6 +139,8 @@ def _run(monkeypatch, setting=None):
                     for c, d, s, l, fc, y in pairs]
         if path in ("weather_forecast_models", "derived_station_correction", "derived_station_width"):
             return []
+        if path == "ingest_log":
+            return []                    # weather_history: never pruned
         raise AssertionError(path)
     common.rest_all = rest_all
     common.day_had_ended = real_common.day_had_ended

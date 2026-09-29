@@ -327,6 +327,21 @@ def test_every_repo_file_the_tick_reads_is_checked_out():
     assert any(needed == p or needed.startswith(p.rstrip("/") + "/") for p in paths), needed
 
 
+def test_the_forecast_archive_regime_reads_is_checked_out():
+    """Every tick prices through regime.classify, whose history reads through
+    weather_history: below the database's keep it reads data/archive/forecasts
+    and refuses (StaleCheckout) when the newest prune's file is not there. At
+    a 60-day window and a 60-day keep it reads nothing from it; at 30 it
+    would refuse every hour without this path."""
+    import weather_history
+    step = next(s for s in next(iter(_tick_yml()["jobs"].values()))["steps"]
+                if str(s.get("uses", "")).startswith("actions/checkout"))
+    paths = step["with"]["sparse-checkout"].split()
+    dataset = weather_history.SOURCES["weather_forecasts"]["dataset"]
+    assert f"data/archive/{dataset}" in paths
+    assert weather_history.archive_files(dataset), "no forecast archive file is committed"
+
+
 def test_dispatch_inputs_never_reach_the_shell_line():
     for step in next(iter(_tick_yml()["jobs"].values()))["steps"]:
         assert "inputs." not in (step.get("run") or ""), step

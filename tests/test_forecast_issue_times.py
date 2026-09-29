@@ -27,12 +27,17 @@ def test_each_source_says_where_its_issue_time_came_from():
 
 
 def _capture(monkeypatch, attr):
+    """The reads regime makes through `attr`, less weather_history's look at
+    the newest prune (ingest_log; none here, so the read is the database's)."""
     seen = []
 
     def fake(path, params, **kw):
-        seen.append((path, dict(params)))
+        if path != "ingest_log":
+            seen.append((path, dict(params)))
         return []
-    monkeypatch.setattr(regime, attr, fake)
+    monkeypatch.setattr(regime, "rest", fake)
+    if attr != "rest":
+        monkeypatch.setattr(regime, attr, fake)
     return seen
 
 
@@ -80,5 +85,5 @@ def test_day_ahead_skill_drops_a_row_issued_on_the_day_it_forecasts():
 
 def test_skill_reads_the_view_that_knows_the_issue_date():
     src = (ROOT / "scripts/measure_skill.py").read_text()
-    assert 'rest_all("v_forecast_issued"' in src
+    assert 'weather_history.read("v_forecast_issued"' in src
     assert "one_row_per_run_key(day_ahead_only(fc))" in src

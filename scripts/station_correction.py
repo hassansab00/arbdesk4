@@ -328,13 +328,20 @@ def load_station_labels(rest_all, as_of):
 
 
 def load_fit_forecasts(rest_all, as_of):
-    """Each source's previous-runs maximum for every day in the window."""
-    return rest_all("weather_forecast_models",
-                    [("select", "city_key,model,for_date,lead_days,forecast_max_c"),
-                     ("source", f"eq.{FIT_SOURCE}"), ("lead_days", f"lte.{max(LEADS)}"),
-                     ("for_date", f"gte.{load_start(as_of)}"), ("for_date", f"lt.{as_of}"),
-                     ("forecast_max_c", "not.is.null")],
-                    order="city_key.asc,for_date.asc,model.asc,lead_days.asc")
+    """Each source's previous-runs maximum for every day in the window.
+
+    Through weather_history (plan v2 P1.6 phase 2): the window is 75 days and
+    the archive's keep is heading to 30, so the days the database no longer
+    holds come from the archive's forecast_models dataset once it has one
+    (step 4). Until the first prune this is the same read."""
+    import weather_history
+    return weather_history.read(
+        "weather_forecast_models",
+        [("select", "city_key,model,for_date,lead_days,forecast_max_c"),
+         ("source", f"eq.{FIT_SOURCE}"), ("lead_days", f"lte.{max(LEADS)}"),
+         ("for_date", f"gte.{load_start(as_of)}"), ("for_date", f"lt.{as_of}"),
+         ("forecast_max_c", "not.is.null")],
+        rest_all_fn=rest_all, order="city_key.asc,for_date.asc,model.asc,lead_days.asc", page_size=500)
 
 
 def pairs_from(fcs, y):
