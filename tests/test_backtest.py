@@ -176,7 +176,7 @@ def test_a_strategy_row_with_null_limits_still_builds_a_runnable_config():
     it the same way.
     """
     from backtest.runner import strategy_configs_from_rows
-    from strategies.s3_concentration import S3Concentration
+    from strategies.legacy.s3_concentration import S3Concentration
     from strategies.base import Signal
 
     cfg = strategy_configs_from_rows([{

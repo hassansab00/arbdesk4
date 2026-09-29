@@ -40,8 +40,14 @@ import paper_engine
 import probability_engine as pe
 from settlement import find_winning_band
 from strategy_rules import run_strategies
+from strategies import REGISTRY
+from strategies.legacy import LEGACY_REGISTRY
 from strategies.base import BandView, Context
 from strategies.conflicts import resolve_conflicts
+
+# A backtest may replay a retired strategy beside the live ones: comparing
+# against them is what their code was kept for (plan v2 P8.2 step 5).
+REPLAY_REGISTRY = {**REGISTRY, **LEGACY_REGISTRY}
 
 MAX_SLIPPAGE_DEFAULT = 0.05
 
@@ -124,7 +130,8 @@ def simulate_city_day(city_key, resolution_date, unit, bands, forecast_rows_as_o
         ))
 
     ctx = Context(bands=views, settings={}, now=as_of)
-    fired, blocked, conflict_rows = run_strategies(ctx, strategy_configs, open_positions, portfolio)
+    fired, blocked, conflict_rows = run_strategies(ctx, strategy_configs, open_positions, portfolio,
+                                                   registry=REPLAY_REGISTRY)
 
     trades = []
     for sig in fired:

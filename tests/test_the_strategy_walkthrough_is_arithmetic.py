@@ -73,7 +73,9 @@ def _fee(p):
 
 
 def test_every_registered_strategy_has_a_walkthrough():
-    from strategies import REGISTRY
+    from strategies import REGISTRY as LIVE
+    from strategies.legacy import LEGACY_REGISTRY
+    REGISTRY = {**LIVE, **LEGACY_REGISTRY}   # the page lists retired ids too
 
     described = set(re.findall(r"^\s{2}(s\d+_\w+):\s*\{", PANEL, re.M))
     missing = sorted(set(REGISTRY) - described)
@@ -84,7 +86,9 @@ def test_every_registered_strategy_has_a_walkthrough():
 
 
 def test_no_walkthrough_describes_a_strategy_that_does_not_exist():
-    from strategies import REGISTRY
+    from strategies import REGISTRY as LIVE
+    from strategies.legacy import LEGACY_REGISTRY
+    REGISTRY = {**LIVE, **LEGACY_REGISTRY}   # the page lists retired ids too
 
     described = set(re.findall(r"^\s{2}(s\d+_\w+):\s*\{", PANEL, re.M))
     stale = sorted(described - set(REGISTRY))

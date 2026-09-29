@@ -3,12 +3,12 @@ import datetime as dt
 import pytest
 
 from strategies.base import BandView, Context, StrategyConfig, Signal
-from strategies.s1_buy_low_sell_signal import S1BuyLowSellSignal
+from strategies.legacy.s1_buy_low_sell_signal import S1BuyLowSellSignal
 from strategies.s2_combination_arb import S2CombinationArb
-from strategies.s3_concentration import S3Concentration
-from strategies.s4_tail_fade import S4TailFade
-from strategies.s5_running_max_lock import S5RunningMaxLock
-from strategies.s6_anchor_insurance import S6AnchorInsurance
+from strategies.legacy.s3_concentration import S3Concentration
+from strategies.legacy.s4_tail_fade import S4TailFade
+from strategies.legacy.s5_running_max_lock import S5RunningMaxLock
+from strategies.legacy.s6_anchor_insurance import S6AnchorInsurance
 
 
 def make_band(band_id, city_key="paris", resolution_date="2026-08-30", **overrides):
@@ -40,14 +40,16 @@ def enabled_config(strategy_id, side="BOTH", extra=None):
 
 def test_all_strategies_default_disabled():
     from strategies import REGISTRY
-    for sid in sorted(REGISTRY):
+    from strategies.legacy import LEGACY_REGISTRY
+    everything = {**REGISTRY, **LEGACY_REGISTRY}
+    for sid in sorted(everything):
         cfg = StrategyConfig(strategy_id=sid, name=sid, side="BOTH", universe=["ALL"],
                               regime_filter=[], conflict_class="default", capital_cap_pct=5.0,
                               max_concurrent=1)
         assert cfg.enabled is False, sid
         # and the class refuses to fire while it is off
         # ...and the class refuses to fire while it is off
-        assert REGISTRY[sid](cfg).applies_to(make_band("b1")) is False, sid
+        assert everything[sid](cfg).applies_to(make_band("b1")) is False, sid
 
 
 # --------------------------------------------------------------------------
@@ -292,8 +294,8 @@ def test_s6_fires_and_computes_n_for_target_profit():
 # apart. 28.4C an hour before peak is a buy after 26.9 / 27.7 / 28.4 and a sell
 # after 29.1 / 28.8 / 28.4, and every test below is built on that pair.
 # ==========================================================================
-from strategies.s7_pre_peak_gradient import S7PrePeakGradient
-from strategies.s8_two_bucket_cover import S8TwoBucketCover, pair_fee
+from strategies.legacy.s7_pre_peak_gradient import S7PrePeakGradient
+from strategies.legacy.s8_two_bucket_cover import S8TwoBucketCover, pair_fee
 
 
 def climbing_band(**over):
@@ -589,7 +591,7 @@ def test_the_browsers_cover_arithmetic_matches_the_engines():
 # The general form of S8: any contiguous run of 2..N buckets, ranked by
 # expected return per dollar after fees rather than by a fixed price cap.
 # ==========================================================================
-from strategies.s9_ladder_basket import S9LadderBasket, basket_math, leg_fee
+from strategies.legacy.s9_ladder_basket import S9LadderBasket, basket_math, leg_fee
 
 
 def rung(i, price, prob, **over):

@@ -86,7 +86,9 @@ def test_the_lock_gate_is_a_conjunction_in_both():
 
 def test_every_registered_strategy_says_what_it_needs():
     """The silence this work removed must not come back for a tenth strategy."""
-    from strategies import REGISTRY
+    from strategies import REGISTRY as LIVE
+    from strategies.legacy import LEGACY_REGISTRY
+    REGISTRY = {**LIVE, **LEGACY_REGISTRY}   # the page lists retired ids too
 
     needs = set(re.findall(r"^\s{2}(s\d+_\w+):\s*\{", PAGE, re.M))
     missing = sorted(set(REGISTRY) - needs)
@@ -99,7 +101,9 @@ def test_every_registered_strategy_says_what_it_needs():
 def test_no_line_describes_a_strategy_that_does_not_exist():
     """The other direction: a NEEDS entry for a removed strategy is a promise
     about code that is gone."""
-    from strategies import REGISTRY
+    from strategies import REGISTRY as LIVE
+    from strategies.legacy import LEGACY_REGISTRY
+    REGISTRY = {**LIVE, **LEGACY_REGISTRY}   # the page lists retired ids too
 
     needs = set(re.findall(r"^\s{2}(s\d+_\w+):\s*\{", PAGE, re.M))
     stale = sorted(needs - set(REGISTRY))

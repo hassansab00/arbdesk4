@@ -78,6 +78,12 @@ def enabled_config(strategy_id, side="BOTH"):
                            capital_cap_pct=5.0, max_concurrent=10, enabled=True)
 
 
+# s3 and s4 retired on 29 Sep (plan v2 P8.2 step 5); a replay still runs them.
+from strategies import REGISTRY as _LIVE  # noqa: E402
+from strategies.legacy import LEGACY_REGISTRY as _LEGACY  # noqa: E402
+REPLAY = {**_LIVE, **_LEGACY}
+
+
 def test_run_strategies_applies_conflict_resolution():
     # s3 (YES) and s4 (NO) both want band b1 - opposite sides, same band -> blocked
     band = make_band("b1", band_lo=24, band_hi=25, open_low=False, open_high=False,
@@ -87,7 +93,7 @@ def test_run_strategies_applies_conflict_resolution():
     configs = [enabled_config("s3_concentration", side="YES"), enabled_config("s4_tail_fade", side="NO")]
 
     # Force b1 to look like a tail band too, so s4 considers it (band_lo=24 with no siblings -> tail by construction)
-    fired, blocked, conflicts = sg.run_strategies(ctx, configs, open_positions=[])
+    fired, blocked, conflicts = sg.run_strategies(ctx, configs, open_positions=[], registry=REPLAY)
     sides_fired = {s.side for s in fired if s.action == "ENTER"}
     assert len(sides_fired) <= 1  # never both sides on the same band at once
     if blocked:
@@ -102,3 +108,14 @@ def test_run_strategies_skips_disabled_and_unregistered():
                                capital_cap_pct=5.0, max_concurrent=1, enabled=False)
     fired, blocked, conflicts = sg.run_strategies(ctx, [disabled], open_positions=[])
     assert fired == [] and blocked == [] and conflicts == []
+
+
+def test_the_live_registry_runs_no_retired_strategy():
+    """An enabled config for a retired id proposes nothing through the live
+    registry (the database also keeps it disabled: retired is terminal)."""
+    band = make_band("b1", band_lo=24, band_hi=25, open_low=False, open_high=False,
+                     mae_bands=0.3, model_prob_yes=0.7, yes_edge_net_pp=0.15,
+                     no_price=0.05, no_edge_net_pp=0.02)
+    ctx = Context(bands=[band], settings={}, now=dt.datetime(2026, 8, 30, tzinfo=dt.timezone.utc))
+    configs = [enabled_config(sid) for sid in sorted(_LEGACY)]
+    assert sg.run_strategies(ctx, configs, open_positions=[]) == ([], [], [])
