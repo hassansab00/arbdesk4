@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 250 of them - and for each MISSING one names the
+-- and function the app reads - 253 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -47,6 +47,7 @@ with expected(rel, owner, used_by) as (values
     ('derived_city_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_climb_profile', 'ad4_28_feature_cache.sql', ''),
     ('derived_corrected_forecast', 'supabase/migrations/20260926120000_station_correction.sql', ''),
+    ('derived_edge_marks', 'ad4_80_prune_edge_history.sql', ''),
     ('derived_forecast_latest', 'ad4_31_predictive.sql', ''),
     ('derived_forecast_postprocess', 'ad4_83_forecast_postprocess.sql', ''),
     ('derived_forecast_skill', 'ad4_00_preflight.sql', '/analytics'),
@@ -144,6 +145,7 @@ with expected(rel, owner, used_by) as (values
     ('v_city_day_plan', 'ad4_34_trade_plan.sql', '/opportunities'),
     ('v_city_day_readiness', 'supabase/migrations/20260912234500_phase1c_operational_readiness.sql', ''),
     ('v_city_hit_history', 'ad4_85_city_hit_history.sql', '/predictive'),
+    ('v_city_hit_history_live', 'supabase/migrations/20260929220000_the_edges_keep_the_prices_the_record_reads.sql', ''),
     ('v_city_hit_summary', 'ad4_85_city_hit_history.sql', '/predictive'),
     ('v_city_metadata_health', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', '(CityReadiness)'),
     ('v_city_metadata_verification', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', ''),
@@ -164,6 +166,7 @@ with expected(rel, owner, used_by) as (values
     ('v_databank_coverage', 'ad4_18_databank.sql', '(DataBank)'),
     ('v_desk_equity_curve', 'ad4_84_risk_budget.sql', ''),
     ('v_desk_risk_state', 'ad4_84_risk_budget.sql', ''),
+    ('v_edge_marks_live', 'ad4_80_prune_edge_history.sql', ''),
     ('v_edge_realisation', 'ad4_18_databank.sql', '(DataBank), (ModelAnalytics)'),
     ('v_edge_scaling', 'ad4_31_predictive.sql', '/predictive'),
     ('v_execution_budget', 'ad4_20_schedules.sql', '(ScheduleControl)'),
@@ -319,6 +322,7 @@ begin
     ('derived_city_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_climb_profile', 'ad4_28_feature_cache.sql', ''),
     ('derived_corrected_forecast', 'supabase/migrations/20260926120000_station_correction.sql', ''),
+    ('derived_edge_marks', 'ad4_80_prune_edge_history.sql', ''),
     ('derived_forecast_latest', 'ad4_31_predictive.sql', ''),
     ('derived_forecast_postprocess', 'ad4_83_forecast_postprocess.sql', ''),
     ('derived_forecast_skill', 'ad4_00_preflight.sql', '/analytics'),
@@ -416,6 +420,7 @@ begin
     ('v_city_day_plan', 'ad4_34_trade_plan.sql', '/opportunities'),
     ('v_city_day_readiness', 'supabase/migrations/20260912234500_phase1c_operational_readiness.sql', ''),
     ('v_city_hit_history', 'ad4_85_city_hit_history.sql', '/predictive'),
+    ('v_city_hit_history_live', 'supabase/migrations/20260929220000_the_edges_keep_the_prices_the_record_reads.sql', ''),
     ('v_city_hit_summary', 'ad4_85_city_hit_history.sql', '/predictive'),
     ('v_city_metadata_health', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', '(CityReadiness)'),
     ('v_city_metadata_verification', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', ''),
@@ -436,6 +441,7 @@ begin
     ('v_databank_coverage', 'ad4_18_databank.sql', '(DataBank)'),
     ('v_desk_equity_curve', 'ad4_84_risk_budget.sql', ''),
     ('v_desk_risk_state', 'ad4_84_risk_budget.sql', ''),
+    ('v_edge_marks_live', 'ad4_80_prune_edge_history.sql', ''),
     ('v_edge_realisation', 'ad4_18_databank.sql', '(DataBank), (ModelAnalytics)'),
     ('v_edge_scaling', 'ad4_31_predictive.sql', '/predictive'),
     ('v_execution_budget', 'ad4_20_schedules.sql', '(ScheduleControl)'),

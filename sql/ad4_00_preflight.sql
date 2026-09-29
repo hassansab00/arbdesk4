@@ -166,7 +166,9 @@ begin
       ('derived_hit_forecasts',       array['city_key','for_date','lane','model','known_at'], 'frozen_at'),
       -- ...and step 5: the station's day per source, the forecast standing at each lead
       ('derived_station_day_sources', array['city_key','obs_date','source'],           'computed_at'),
-      ('derived_forecast_latest',     array['city_key','for_date','model','lead_days'], 'frozen_at')
+      ('derived_forecast_latest',     array['city_key','for_date','model','lead_days'], 'frozen_at'),
+      -- phase 3, step 3.1: each band's YES edge at its eve and pre-day cutoffs
+      ('derived_edge_marks',          array['band_id','mark'],                         'frozen_at')
     ) as t(tbl, cols, newest)
   loop
     v_msg := ad4_ensure_natural_key(r.tbl, r.cols, r.newest);

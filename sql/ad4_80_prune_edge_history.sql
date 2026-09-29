@@ -28,10 +28,29 @@
 -- which freeze what the desk showed at the time and are not touched here - so
 -- pruning superseded pricings cannot move a settled comparison.
 --
+-- THAT WAS WRONG BY 29 SEP, and the prune had been emptying two readers since
+-- they were written (plan v2 P1.6 phase 3, step 3.1). Both read the market's
+-- YES price from edges as it stood at a cutoff - one superseded row a band:
+--
+--   v_hit_ladders             the newest by 18:00 local on the eve (sql/ad4_88;
+--                             hit_tournament.py reads 120 days of it)
+--   v_city_hit_history_live   the newest before the local day (sql/ad4_85; the
+--                             hit-and-miss page, mv_city_hit_history, and the
+--                             edge engine's against-market gate, which reads
+--                             30 days)
+--
+-- Measured 29 Sep: no settled day before 22 Sep had a head-to-head left
+-- (0 of 335 city-days 13-21 Sep), and no hit ladder before 23 Sep a market
+-- price. Those two rows of every band - its "marks" - are now copied into
+-- derived_edge_marks (freeze_edge_marks, sql/ad4_97, nightly) once their
+-- cutoff has passed, both readers take the frozen price first, and the view
+-- below never offers a mark that has not been copied.
+--
 -- WHAT IS KEPT, therefore:
 --
 --   * the newest row of every band and side, whatever its age, which is what
 --     v_latest_edge reads and what every page is built on
+--   * each band's two marks until derived_edge_marks holds them
 --   * every row inside p_keep_days at full resolution, which covers the
 --     twelve-hour freshness windows many times over
 --
@@ -43,6 +62,67 @@
 -- RUN ORDER: after sql/ad4_phase2.sql, which creates edges and v_latest_edge.
 -- Re-runnable.
 -- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- THE MARKS (plan v2 P1.6 phase 3, step 3.1, 29 Sep). Each band's YES price at
+-- the two cutoffs the record reads, on its market's city clock:
+--   'eve'  the newest by 18:00 local the evening before (v_hit_ladders, <=)
+--   'day'  the newest before the local day began (v_city_hit_history, <)
+-- A frozen mark is never rewritten: freeze_edge_marks copies one only six
+-- hours after its cutoff, because edge_engine stamps every row of a run with
+-- the moment the run began. edge_id is NULL on a mark restored from
+-- data/archive/edges, which does not carry it; source says where it came from.
+-- ---------------------------------------------------------------------------
+create table if not exists public.derived_edge_marks (
+  band_id      uuid        not null,
+  mark         text        not null check (mark in ('eve', 'day')),
+  cutoff_at    timestamptz not null,
+  computed_at  timestamptz not null,
+  market_price numeric,
+  edge_id      bigint,
+  source       text        not null default 'edges',
+  frozen_at    timestamptz not null default now(),
+  primary key (band_id, mark)
+);
+
+comment on table public.derived_edge_marks is
+  'Each band''s YES edge at the two cutoffs the record reads - the newest by 18:00 local on the eve (mark eve, v_hit_ladders) and the newest before the local day (mark day, v_city_hit_history) - copied by freeze_edge_marks once the cutoff is six hours past, so the edges prune can take the rest. Never rewritten (plan v2 P1.6 phase 3).';
+
+alter table public.derived_edge_marks enable row level security;
+revoke all on public.derived_edge_marks from public, anon, authenticated;
+grant select, insert, update, delete on public.derived_edge_marks to service_role;
+
+-- Every band's marks as edges holds them now. What freeze_edge_marks copies,
+-- and what the view below holds back until it has.
+create or replace view public.v_edge_marks_live as
+select k.band_id, k.mark, k.cutoff_at, x.edge_id, x.computed_at, x.market_price
+  from (
+    select b.band_id, v.mark, v.cutoff_at
+      from public.bands b
+      join public.markets m on m.market_id = b.market_id
+      left join public.cities c on c.city_key = m.city_key
+      cross join lateral (values
+        ('eve'::text, (((m.resolution_date - 1)::timestamp + interval '18 hours')
+                        at time zone coalesce(c.timezone, 'UTC'))),
+        ('day'::text, (m.resolution_date::timestamp at time zone coalesce(c.timezone, 'UTC')))
+      ) v(mark, cutoff_at)
+     where m.resolution_date is not null
+  ) k
+  cross join lateral (
+    select e.edge_id, e.computed_at, e.market_price
+      from public.edges e
+     where e.band_id = k.band_id
+       and e.side = 'YES'
+       and e.computed_at <= k.cutoff_at
+       and (k.mark = 'eve' or e.computed_at < k.cutoff_at)
+     order by e.computed_at desc
+     limit 1) x;
+
+comment on view public.v_edge_marks_live is
+  'Each band''s YES edge at its two cutoffs as edges holds it now: the newest by 18:00 local on the eve (eve) and the newest before the local day (day). freeze_edge_marks copies it; v_prunable_edge_history holds each one back until it has (plan v2 P1.6 phase 3).';
+
+revoke all on public.v_edge_marks_live from public, anon, authenticated;
+grant select on public.v_edge_marks_live to service_role;
 
 create or replace view v_prunable_edge_history as
 with ranked as (
@@ -56,14 +136,25 @@ with ranked as (
          row_number() over (partition by e.band_id, e.side
                             order by e.computed_at desc) as rn
     from public.edges e
+),
+-- A mark derived_edge_marks does not hold yet, at the same cutoff: the
+-- readers match on it, so a frozen price for another cutoff serves nobody.
+unfrozen_marks as (
+  select m.edge_id
+    from public.v_edge_marks_live m
+   where not exists (select 1 from public.derived_edge_marks d
+                      where d.band_id = m.band_id and d.mark = m.mark
+                        and d.cutoff_at = m.cutoff_at)
 )
 select s.*
   from public.edges s
   join ranked r on r.edge_id = s.edge_id
- where r.rn > 1;
+  left join unfrozen_marks u on u.edge_id = s.edge_id
+ where r.rn > 1
+   and u.edge_id is null;
 
 comment on view v_prunable_edge_history is
-  'Edge rows that are not the newest pricing of their band and side. v_latest_edge takes exactly one row per band and side, every page is built on it, and nothing reads the table directly - so nothing here is read by a live caller. Age is applied by the caller.';
+  'Edge rows that are not the newest pricing of their band and side, nor a mark (v_edge_marks_live) derived_edge_marks does not hold yet. v_latest_edge takes exactly one row per band and side and every page is built on it; v_hit_ladders and v_city_hit_history read the marks, frozen first. Age is applied by the caller.';
 
 grant select on v_prunable_edge_history to service_role;
 

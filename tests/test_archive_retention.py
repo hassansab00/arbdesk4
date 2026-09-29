@@ -146,11 +146,14 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
     # and the backtest window never move. What it bounds is how long the
     # intra-day snapshots survive, and v_band_price_history draws the
     # monitor's chart from those, so it cannot be shorter than the chart.
-    # edges: 14, and like books this window does not bound HISTORY - every band
+    # edges: 2, prune_edge_history's own floor (P1.6 phase 3, step 3.1,
+    # 29 Sep), and like books this window does not bound HISTORY - every band
     # and side keeps its newest pricing at any age, which is the one row
-    # v_latest_edge reads and every page is built on. What it bounds is how long
-    # a SUPERSEDED pricing survives, and the longest window any live reader asks
-    # for is the twelve hours the readiness views and ad4_40 use.
+    # v_latest_edge reads and every page is built on, and each band's eve and
+    # pre-day YES price is frozen into derived_edge_marks for v_hit_ladders and
+    # v_city_hit_history. What it bounds is how long a SUPERSEDED pricing
+    # survives, and the longest window any live reader asks for is the twelve
+    # hours the readiness views and ad4_40 use.
     # decisions: 30, the plan's window for the decision log (P5.11). Every row
     # is also mirrored into the repository nightly, and nothing live reads a
     # decision older than that from Postgres.
@@ -164,7 +167,7 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
     # outrun (derived_city_day_features, _hours, derived_station_day_sources,
     # derived_hit_forecasts, derived_forecast_latest).
     limits = {"observations": 32, "forecasts": 30, "trades": 90, "research": 2,
-              "resolution": 1, "books": 7, "edges": 14, "decisions": 30, "ladders": 1,
+              "resolution": 1, "books": 7, "edges": 2, "decisions": 30, "ladders": 1,
               # book proof: its readers take proof no older than 900 s (P1.6, 28 Sep)
               "book_evidence": 1,
               # past forecast features: weather_model reads from today on, and the

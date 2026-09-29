@@ -317,8 +317,8 @@ def test_the_edge_view_protects_the_one_row_every_page_is_built_on():
     PGlite harness applies only supabase/migrations.
     """
     sql = (ROOT_SQL / "ad4_80_prune_edge_history.sql").read_text(encoding="utf-8")
-    view = sql[sql.index("create or replace view v_prunable_edge_history"):
-               sql.index("comment on view")]
+    start = sql.index("create or replace view v_prunable_edge_history")
+    view = sql[start:sql.index("comment on view", start)]
 
     partition = re.search(r"partition by\s+([^\n]+)", view)
     assert partition, "the view no longer ranks the rows at all"

@@ -46,16 +46,22 @@ select d.city_key, d.for_date, d.cutoff_at, o.band_id,
           from public.band_probabilities bp
          where bp.band_id = o.band_id and bp.computed_at <= d.cutoff_at
          order by bp.computed_at desc, bp.prob_id desc limit 1)          as live_prob,
-       (select e.market_price
-          from public.edges e
-         where e.band_id = o.band_id and e.side = 'YES' and e.computed_at <= d.cutoff_at
-         order by e.computed_at desc limit 1)                            as market_price
+       -- The eve's mark, frozen once its cutoff passed (derived_edge_marks,
+       -- sql/ad4_80), else the edge itself: the edges prune keeps two days
+       -- and never takes a mark it has not copied (plan v2 P1.6 phase 3).
+       case when k.band_id is not null then k.market_price
+            else (select e.market_price
+                    from public.edges e
+                   where e.band_id = o.band_id and e.side = 'YES' and e.computed_at <= d.cutoff_at
+                   order by e.computed_at desc limit 1) end               as market_price
   from day d
   join public.v_fact_band_outcome_clean o on o.city_key = d.city_key and o.for_date = d.for_date
   join public.v_canonical_bands cb on cb.band_id = o.band_id
   join public.v_canonical_markets cm on cm.market_id = cb.market_id
   left join public.v_verified_weather_outcomes v
-         on v.city_key = d.city_key and v.for_date = d.for_date;
+         on v.city_key = d.city_key and v.for_date = d.for_date
+  left join public.derived_edge_marks k
+         on k.band_id = o.band_id and k.mark = 'eve' and k.cutoff_at = d.cutoff_at;
 
 comment on view public.v_hit_ladders is
   'Every settled ladder bucket with the live price and market price as they stood at 18:00 local the evening before (plan v2.1 P3.8).';

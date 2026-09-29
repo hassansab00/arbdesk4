@@ -380,9 +380,14 @@ def refresh_feature_cache(days=None, quiet=False):
     # and freeze_forecast_latest keeps the forecast standing at each lead on
     # every day that has passed, for both convergence views. Their times are
     # measured after the first live run (docs/PLAN_PROGRESS.md), not here.
+    #
+    # Phase 3, step 3.1 (29 Sep): each band's YES edge at the two cutoffs
+    # v_hit_ladders and v_city_hit_history read, so the edges prune can keep
+    # two days. That prune's own view holds back every mark not copied yet.
     hours = rpc("refresh_city_day_hours") or {}
     frozen = rpc("freeze_hit_forecasts") or {}
     latest = rpc("freeze_forecast_latest") or {}
+    marks = rpc("freeze_edge_marks") or {}
 
     def total_of(key):
         return sum(int(r.get(key) or 0) for r in results)
@@ -403,6 +408,8 @@ def refresh_feature_cache(days=None, quiet=False):
         "station_days_written": int(hours.get("station_days_written") or 0),
         "forecast_latest_frozen": int(latest.get("rows_written") or 0),
         "forecast_latest_ms": int(latest.get("ms") or 0),
+        "edge_marks_frozen": int(marks.get("rows_written") or 0),
+        "edge_marks_ms": int(marks.get("ms") or 0),
     }
     if not quiet:
         print(f"feature cache: {out}")

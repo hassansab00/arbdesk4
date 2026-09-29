@@ -163,6 +163,11 @@ TABLES = {
     "derived_station_day_sources":   closed("obs_date", "city_key", "obs_date", "source", after_days=40),
     "derived_forecast_latest":       closed("for_date", "city_key", "for_date", "model", "lead_days",
                                             after_days=40),
+    # phase 3, step 3.1: each band's YES edge at its eve and pre-day cutoffs,
+    # which v_hit_ladders and v_city_hit_history read once edges keeps two
+    # days. A mark is written once and never rewritten, so it is copied the
+    # night after it is frozen.
+    "derived_edge_marks":            append("frozen_at", "band_id", "mark"),
     "derived_band_day_volume":       closed("trade_date", "band_id", "trade_date"),
     "derived_city_day_volume":       closed("trade_date", "city_key", "trade_date"),
     "markets":                       closed("resolution_date", "market_id"),
