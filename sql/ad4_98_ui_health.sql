@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 241 of them - and for each MISSING one names the
+-- and function the app reads - 242 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -177,6 +177,7 @@ with expected(rel, owner, used_by) as (values
     ('v_forecast_features_export', 'ad4_93_prune_forecast_features.sql', ''),
     ('v_forecast_issued', 'supabase/migrations/20260923160000_when_was_the_forecast_issued.sql', ''),
     ('v_forecast_model_skill', 'ad4_49_model_skill.sql', ''),
+    ('v_forecast_models_export', 'ad4_95_prune_forecast_models.sql', ''),
     ('v_forecast_postprocess_applied', 'ad4_83_forecast_postprocess.sql', ''),
     ('v_forecast_postprocess_health', 'ad4_83_forecast_postprocess.sql', ''),
     ('v_hit_forecasts', 'ad4_88_hit_tournament.sql', ''),
@@ -440,6 +441,7 @@ begin
     ('v_forecast_features_export', 'ad4_93_prune_forecast_features.sql', ''),
     ('v_forecast_issued', 'supabase/migrations/20260923160000_when_was_the_forecast_issued.sql', ''),
     ('v_forecast_model_skill', 'ad4_49_model_skill.sql', ''),
+    ('v_forecast_models_export', 'ad4_95_prune_forecast_models.sql', ''),
     ('v_forecast_postprocess_applied', 'ad4_83_forecast_postprocess.sql', ''),
     ('v_forecast_postprocess_health', 'ad4_83_forecast_postprocess.sql', ''),
     ('v_hit_forecasts', 'ad4_88_hit_tournament.sql', ''),

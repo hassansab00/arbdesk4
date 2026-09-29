@@ -35,8 +35,16 @@ MIRRORED = sorted(n for n, s in ao.TABLES.items() if s.get("mirror_first"))
 
 
 def test_the_datasets_the_mirror_copies_by_day_are_marked():
-    assert MIRRORED == ["forecast_features", "trades"]
+    assert MIRRORED == ["forecast_features", "forecast_models", "trades"]
     assert ao.TABLES["trades"]["mirrored_on"] == "ingested_at"
+
+
+# A dataset that refuses (rather than holds back) a row the mirror has not had:
+# the file its prune is written in, and the column the mirror copies it by.
+REFUSES_UNMIRRORED = {
+    "forecast_features": ("ad4_93_prune_forecast_features.sql", "captured_at"),
+    "forecast_models": ("ad4_95_prune_forecast_models.sql", "observed_at"),
+}
 
 
 @pytest.mark.parametrize("name", MIRRORED)
@@ -55,9 +63,10 @@ def test_the_mirror_copies_that_table_by_the_column_the_prune_bounds(name):
             "the mirror's bound")
         assert "not (traded_at < v_before and ingested_at < v_mirrored)" in sql, "the kept count"
     else:
-        assert m["time"] == "captured_at"
-        sql = (ROOT / "sql" / "ad4_93_prune_forecast_features.sql").read_text(encoding="utf-8")
-        assert "captured_at >= v_unmirrored" in sql
+        sql_file, column = REFUSES_UNMIRRORED[name]
+        assert m["time"] == column
+        sql = (ROOT / "sql" / sql_file).read_text(encoding="utf-8")
+        assert f"{column} >= v_unmirrored" in sql
 
 
 def test_the_export_takes_only_what_the_mirror_has(monkeypatch):
@@ -81,6 +90,7 @@ def test_the_midnight_each_prune_relies_on():
     now = dt.datetime(2026, 9, 29, 2, 41, tzinfo=UTC)
     assert ao.mirror_needs(ao.TABLES["trades"], cutoff, now) == dt.datetime(2026, 9, 28, tzinfo=UTC)
     assert ao.mirror_needs(ao.TABLES["forecast_features"], cutoff.date(), now) == dt.datetime(2026, 9, 28, tzinfo=UTC)
+    assert ao.mirror_needs(ao.TABLES["forecast_models"], cutoff.date(), now) == dt.datetime(2026, 9, 28, tzinfo=UTC)
 
 
 def test_the_manifest_is_read_from_the_checkout(monkeypatch, tmp_path):

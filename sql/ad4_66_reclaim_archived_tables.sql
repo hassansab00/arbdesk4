@@ -190,6 +190,16 @@ select cron.schedule(
   'VACUUM (FULL, ANALYZE) public.signals'
 );
 
+-- Each model's forecasts (plan v2 P1.6 phase 2, 29 Sep): pruned by for_date
+-- as weather_forecasts is, so reclaimed as it is - weekly, Monday 06:50,
+-- after the two other weather tables. Nothing writes the table then (the
+-- ingest runs at 03:36 and 04:36).
+select cron.schedule(
+  'ad4_reclaim_weather_forecast_models',
+  '50 6 * * 1',
+  'VACUUM (FULL, ANALYZE) public.weather_forecast_models'
+);
+
 -- The decision log (plan v2 P5.11): about 2,600 rows a day, pruned past 30
 -- days. Small, so the rewrite is short; 03:55, behind edges, for the same
 -- one-rewrite-at-a-time reason.
@@ -251,7 +261,9 @@ declare
     'research_captures', 'paper_resolution_evidence', 'book_snapshots', 'edges',
     'weather_observations', 'weather_forecasts', 'trades_observed', 'decisions',
     -- appended (28 Sep), so every table above keeps its two-minute slot
-    'paper_book_evidence', 'weather_forecast_features', 'signals'];
+    'paper_book_evidence', 'weather_forecast_features', 'signals',
+    -- appended (29 Sep, P1.6 phase 2)
+    'weather_forecast_models'];
   v_now   timestamptz := now();
   v_hour  int := extract(hour from (v_now at time zone 'UTC'))::int;
   v_at    timestamptz;

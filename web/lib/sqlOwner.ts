@@ -166,6 +166,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_forecast_features_export": "ad4_93_prune_forecast_features.sql",
   "v_forecast_issued": "supabase/migrations/20260923160000_when_was_the_forecast_issued.sql",
   "v_forecast_model_skill": "ad4_49_model_skill.sql",
+  "v_forecast_models_export": "ad4_95_prune_forecast_models.sql",
   "v_forecast_postprocess_applied": "ad4_83_forecast_postprocess.sql",
   "v_forecast_postprocess_health": "ad4_83_forecast_postprocess.sql",
   "v_hit_forecasts": "ad4_88_hit_tournament.sql",
