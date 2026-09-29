@@ -157,7 +157,13 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
     # ladders: 1, and nothing leaves Postgres with it - the row and its numbers
     # stay; the window is how long an unarchived ladder waits before the
     # nightly run takes it, and after that the hourly prune may null it (P5.13).
-    limits = {"observations": 90, "forecasts": 90, "trades": 90, "research": 2,
+    # observations: 32, forecasts and forecast_models: 30 (P1.6 phase 2, step
+    # 5, 29 Sep). The climb profile reads the 30 whole local days before today
+    # from the readings, which must reach 32 days back; every longer reader
+    # reads the repository (weather_history) or a cache the prunes refuse to
+    # outrun (derived_city_day_features, _hours, derived_station_day_sources,
+    # derived_hit_forecasts, derived_forecast_latest).
+    limits = {"observations": 32, "forecasts": 30, "trades": 90, "research": 2,
               "resolution": 1, "books": 7, "edges": 14, "decisions": 30, "ladders": 1,
               # book proof: its readers take proof no older than 900 s (P1.6, 28 Sep)
               "book_evidence": 1,
@@ -166,9 +172,8 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
               "forecast_features": 2,
               # signals' decision inputs: the plan's week; the rows stay (P1.6, 28 Sep)
               "signal_inputs": 7,
-              # each model's forecasts: as weather_forecasts; phase 2 step 5 sets
-              # the window (P1.6, 29 Sep)
-              "forecast_models": 90,
+              # each model's forecasts: as weather_forecasts (P1.6 phase 2, step 5)
+              "forecast_models": 30,
               # prices no reader selects: station_width_score reads 14 days of
               # every price; older, readers take one row a band (P1.6, 29 Sep)
               "probabilities": 30}

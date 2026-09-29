@@ -239,6 +239,10 @@ SQL_RECORD = {
 # rather than a bug. It is here because a blind spot is how the last four got
 # in.
 MIGRATION_RECORD = {
+    "supabase/migrations/20260929210000_the_weather_tables_keep_thirty_days.sql":
+        "prune_observations, as in sql/ad4_29 - its guards put each reading on its "
+        "city's local day; pruning must walk every city or a retired one's rows "
+        "would never be aged out",
     "supabase/migrations/20260929190000_the_backtest_counts_what_it_counted.sql":
         "refresh_city_day_hours as in sql/ad4_97, and a one-off fill of each cached "
         "station day's first reading - cities.timezone to put readings on their local "

@@ -362,5 +362,15 @@ const MIG2 = read('20260929190000_the_backtest_counts_what_it_counted.sql')
   }
   assert.equal((await one(`select has_function_privilege('service_role', 'public.freeze_forecast_latest()', 'execute') as ok`)).ok, true);
 
-  console.log('PASS: station-days: after the weather tables are pruned at 30 days v_station_day_max (under either primary source), both convergence views and the page cache return every row and column they returned before, and the backtest window and readiness see the same days; the new views equal the old before the first refresh; each prune refuses until the refresh has kept what it deletes; a cut day keeps its cached values; v_forecast_convergence stays security_invoker and anon reads it; service role only; re-runnable');
+  // STEP 5 PART (B): the observations prune now refuses under 32 days - the
+  // climb profile's 30 whole local days - and still goes through at 32.
+  const KEEP = read('20260929210000_the_weather_tables_keep_thirty_days.sql');
+  await db.exec(KEEP);
+  await db.exec(KEEP);                                           // re-runnable
+  const f31 = (await one(`select public.prune_observations(31, true) as r`)).r;
+  assert.equal(f31.ok, false, JSON.stringify(f31));
+  assert.match(f31.error, /at least 32/);
+  assert.equal((await one(`select public.prune_observations(32, true) as r`)).r.ok, true);
+
+  console.log('PASS: station-days: after the weather tables are pruned at 30 days v_station_day_max (under either primary source), both convergence views and the page cache return every row and column they returned before, and the backtest window and readiness see the same days; the new views equal the old before the first refresh; each prune refuses until the refresh has kept what it deletes; a cut day keeps its cached values; v_forecast_convergence stays security_invoker and anon reads it; service role only; re-runnable; the observations prune refuses under 32 days');
 })().catch((e) => { console.error(e); process.exit(1); });
