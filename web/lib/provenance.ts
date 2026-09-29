@@ -1054,6 +1054,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "fact_checkpoint_outcome",
     "prediction_checkpoints"
   ],
+  "v_checkpoint_outcome": [
+    "fact_checkpoint_outcome"
+  ],
   "v_checkpoint_scoreboard": [
     "bands",
     "fact_checkpoint_outcome",

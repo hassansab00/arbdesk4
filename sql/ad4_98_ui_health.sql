@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 257 of them - and for each MISSING one names the
+-- and function the app reads - 259 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -75,6 +75,7 @@ with expected(rel, owner, used_by) as (values
     ('fact_band_outcome_exclusions', 'supabase/migrations/20260924010000_quarantine_the_early_record.sql', ''),
     ('fact_band_outcome_venue_rebuilt', 'supabase/migrations/20260924010000_quarantine_the_early_record.sql', ''),
     ('fact_checkpoint_outcome', 'supabase/migrations/20260924020000_checkpoint_outcomes.sql', ''),
+    ('fact_checkpoint_outcome_market_fix', 'supabase/migrations/20260930003000_the_market_scores_banked_before_the_fix.sql', ''),
     ('fact_forecast_outcome', 'ad4_18_databank.sql', ''),
     ('fact_signal_outcome', 'ad4_18_databank.sql', ''),
     ('fact_station_width_score', 'supabase/migrations/20260927200000_the_width_scored_forward.sql', ''),
@@ -136,6 +137,7 @@ with expected(rel, owner, used_by) as (values
     ('v_canonical_bands', 'supabase/migrations/20260912230000_phase1_canonical_contracts.sql', ''),
     ('v_canonical_markets', 'supabase/migrations/20260912230000_phase1_canonical_contracts.sql', ''),
     ('v_checkpoint_calls', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', ''),
+    ('v_checkpoint_outcome', 'supabase/migrations/20260930003000_the_market_scores_banked_before_the_fix.sql', ''),
     ('v_checkpoint_scoreboard', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', ''),
     ('v_city_climate', 'ad4_17_city_stats.sql', ''),
     ('v_city_climb_profile', 'ad4_26_temp_trend.sql', '(ModelAnalytics)'),
@@ -354,6 +356,7 @@ begin
     ('fact_band_outcome_exclusions', 'supabase/migrations/20260924010000_quarantine_the_early_record.sql', ''),
     ('fact_band_outcome_venue_rebuilt', 'supabase/migrations/20260924010000_quarantine_the_early_record.sql', ''),
     ('fact_checkpoint_outcome', 'supabase/migrations/20260924020000_checkpoint_outcomes.sql', ''),
+    ('fact_checkpoint_outcome_market_fix', 'supabase/migrations/20260930003000_the_market_scores_banked_before_the_fix.sql', ''),
     ('fact_forecast_outcome', 'ad4_18_databank.sql', ''),
     ('fact_signal_outcome', 'ad4_18_databank.sql', ''),
     ('fact_station_width_score', 'supabase/migrations/20260927200000_the_width_scored_forward.sql', ''),
@@ -415,6 +418,7 @@ begin
     ('v_canonical_bands', 'supabase/migrations/20260912230000_phase1_canonical_contracts.sql', ''),
     ('v_canonical_markets', 'supabase/migrations/20260912230000_phase1_canonical_contracts.sql', ''),
     ('v_checkpoint_calls', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', ''),
+    ('v_checkpoint_outcome', 'supabase/migrations/20260930003000_the_market_scores_banked_before_the_fix.sql', ''),
     ('v_checkpoint_scoreboard', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', ''),
     ('v_city_climate', 'ad4_17_city_stats.sql', ''),
     ('v_city_climb_profile', 'ad4_26_temp_trend.sql', '(ModelAnalytics)'),
