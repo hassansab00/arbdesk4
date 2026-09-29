@@ -1,0 +1,54 @@
+name: Restore Edge Marks (one-off)
+
+# Plan v2 P1.6 phase 3, step 3.1b. Until 20260929220000 froze them, the edges
+# prune took each band's eve and pre-day YES price like any superseded
+# pricing, after the archive had exported it to data/archive/edges. This sends
+# those files back to restore_edge_marks (sql/ad4_97), which writes each
+# band's missing mark into derived_edge_marks and nothing else - never over a
+# frozen mark, never where edges still holds it. Manual only: there is no
+# schedule, and there never should be.
+#
+# A dry run unless `mode` is `commit`. A commit run writes, checks every
+# restored mark against the files, refreshes the page cache and dry-runs
+# again, which must find nothing left to write.
+#
+# It needs the service key, which lives only in this repo's secrets - which is
+# why it is a workflow and not something run from a laptop or a session.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'dry-run counts only; commit writes the marks'
+        required: true
+        default: 'dry-run'
+        type: choice
+        options: ['dry-run', 'commit']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: restore-edge-marks
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11', cache: 'pip', cache-dependency-path: 'requirements.runtime.txt' }
+      - run: pip install -r requirements.runtime.txt
+
+      - name: Restore the marks from data/archive/edges
+        run: |
+          if [ "${{ github.event.inputs.mode }}" = "commit" ]; then
+            python tools/restore_edge_marks.py run --commit
+          else
+            python tools/restore_edge_marks.py run
+          fi
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
