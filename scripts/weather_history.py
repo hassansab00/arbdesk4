@@ -90,13 +90,14 @@ def _first(rest_fn, rest_all_fn, path, params, order):
     return rest_all_fn(path, list(params), order=order, page_size=1000)[:1]
 
 
-def prune_boundary(dataset, rest_fn=None, rest_all_fn=None):
+def prune_boundary(dataset, rest_fn=None, rest_all_fn=None, fresh=False):
     """{'before': 'YYYY-MM-DD', 'file': path} from the newest logged prune of
     `dataset`, or None if it has never been pruned (nothing deletes from
     ingest_log). Once per process: the clock starts the archive and the tick
     together at :36 and the tick is done before the prune (~02:40Z); no
-    pipeline runs across it."""
-    if dataset not in _boundary:
+    pipeline runs across it. `fresh` asks the log again, for a job that can
+    run across a prune (the backtest, book_history.confirm_cut)."""
+    if fresh or dataset not in _boundary:
         rows = _first(rest_fn, rest_all_fn, "ingest_log", [
             ("select", "finished_at,detail"), ("job", f"eq.archive_{dataset}"),
             ("status", "eq.ok"), ("detail->>archived_through", "not.is.null")], "finished_at.desc")

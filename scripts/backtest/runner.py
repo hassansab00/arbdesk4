@@ -26,6 +26,7 @@ from collections import defaultdict
 
 from common import rest, rest_all, insert, rpc, _cfg, _headers
 import requests
+import book_history
 import paper_engine
 import regime
 from strategies import StrategyConfig
@@ -264,6 +265,8 @@ def run(run_id, deadline=None):
                 return _pause(run_id, completed_through, portfolio, signal_counts,
                               len(dates), total_dates)
 
+            # Not banked if the nightly books prune ran while it was read.
+            book_history.confirm_cut(rest)
             if day_trades:
                 insert("backtest_trades", [{**t, "run_id": run_id} for t in day_trades])
             _merge_counts(signal_counts, metrics.signal_frequency(day_signals))
@@ -275,6 +278,8 @@ def run(run_id, deadline=None):
                 "signal_counts": signal_counts,
             }})
 
+        print(f"books, this process: {book_history.stats['bands']} band reads, "
+              f"{book_history.stats['from_archive']} answered from data/archive/books")
         _finish(run_id, starting_budget, signal_counts)
 
     except Exception as e:
@@ -341,11 +346,15 @@ def _simulate_date(markets, cities_meta, tz_of, start, end, evaluation_lead_days
         # bands that sorted last with no book at all. book_as_of does
         # `distinct on (band_id)` in the database, which is both complete and
         # bounded, and PostgREST cannot express it.
+        #
+        # AND AS IF NOTHING HAD BEEN PRUNED (P1.6 phase 3, step 3.2): the
+        # books prune takes every intra-day snapshot beyond its keep, and at
+        # 12:00 UTC the newest book is an intra-day one. book_history makes
+        # this same call and, below the prune's cut, takes the archive's row
+        # in data/archive/books where it is newer.
         book_by_band = {}
-        for row in rpc("book_as_of", {
-            "p_band_ids": [b["band_id"] for b in bands],
-            "p_as_of": as_of.isoformat(),
-        }) or []:
+        for row in book_history.as_of([b["band_id"] for b in bands], as_of,
+                                      rpc_fn=rpc, rest_fn=rest):
             book_by_band[row["band_id"]] = row
 
         result = simulate_city_day(

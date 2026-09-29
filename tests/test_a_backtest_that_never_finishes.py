@@ -237,10 +237,13 @@ def test_one_failing_run_does_not_stop_the_queue(monkeypatch):
 
 def test_the_book_is_read_for_the_whole_ladder_at_once():
     src = (ROOT / "scripts/backtest/runner.py").read_text()
-    assert 'rpc("book_as_of"' in src
-    assert '"p_band_ids": [b["band_id"] for b in bands]' in src, (
+    # Through book_history since P1.6 phase 3, step 3.2: the same call, plus
+    # the archive's rows below the prune's cut.
+    assert 'book_history.as_of([b["band_id"] for b in bands], as_of,' in src, (
         "the point is the whole ladder in one call"
     )
+    reader = (ROOT / "scripts/book_history.py").read_text()
+    assert reader.count('rpc_fn("book_as_of", {"p_band_ids": band_ids,') == 1
     assert '("band_id", f"eq.{b[\'band_id\']}")' not in src, (
         "the per-band loop is what cost 26 minutes before a trade was simulated"
     )

@@ -167,7 +167,7 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
     # outrun (derived_city_day_features, _hours, derived_station_day_sources,
     # derived_hit_forecasts, derived_forecast_latest).
     limits = {"observations": 32, "forecasts": 30, "trades": 90, "research": 2,
-              "resolution": 1, "books": 7, "edges": 2, "decisions": 30, "ladders": 1,
+              "resolution": 1, "books": 3, "edges": 2, "decisions": 30, "ladders": 1,
               # book proof: its readers take proof no older than 900 s (P1.6, 28 Sep)
               "book_evidence": 1,
               # past forecast features: weather_model reads from today on, and the
