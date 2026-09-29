@@ -263,10 +263,10 @@ def existing_dates(city_key, start, end):
     # today: every night, 36 days of best_match and seven models for every
     # city - the cost missing_span was written to stop - and days 31-35
     # written back into the database for the next prune to take out again.
-    # Through weather_history, a day the archive holds counts as present, and
-    # a real hole, missing from both, is still found and filled (its rows
-    # then leave with the next prune, into the archive). Above the newest
-    # prune this is the same read as before.
+    # Through weather_history, a day the archive holds counts as present.
+    # main() no longer reaches below the oldest day the tables hold
+    # (first_held_date, step 5), so this is the same read as before; a hole
+    # older than that day is no longer fetched.
     from common import rest_all
     rows = weather_history.read('weather_forecasts', [
         ('select', 'for_date,lead_days'), ('city_key', f'eq.{city_key}'),
@@ -303,6 +303,31 @@ def missing_span(have, cs, ce):
             last = d
         d += dt.timedelta(days=1)
     return (first, last) if first else None
+
+
+def first_held_date():
+    """The oldest for_date both forecast tables still hold, or None.
+
+    NOTHING IS WRITTEN BELOW IT (plan v2 P1.6 phase 2, step 5). The prune cuts
+    both tables by date, so from this day on they hold every row they were
+    given, and v_forecast_latest, v_hit_forecasts and their nightly freezes
+    (sql/ad4_31, ad4_88, ad4_97) read the table for exactly those days and the
+    frozen rows before. A fetch below it wrote whole days back into a table
+    that no longer held them: missing_span runs from the first missing day to
+    today, so one hole 33 days back re-fetched days 31-32 too, from the
+    previous-runs API, with other run_at values than the rows already in
+    data/archive - which weather_history keys on, so both would be read."""
+    held = []
+    for table in ("weather_forecasts", "weather_forecast_models"):
+        rows = rest(table, [("select", "for_date"), ("order", "for_date.asc"), ("limit", "1")])
+        if rows:
+            held.append(dt.date.fromisoformat(str(rows[0]["for_date"])[:10]))
+    return max(held) if held else None
+
+
+def catchup_start(start, first_held):
+    """The window's first day, never below what the tables still hold."""
+    return max(start, first_held) if first_held else start
 
 
 def chunk_is_covered(have, cs, ce):
@@ -347,9 +372,20 @@ def main():
         start = end - dt.timedelta(
             days=int(os.environ.get("FORECAST_CATCHUP_DAYS", "35")))
 
-    t0 = time.monotonic()
+    # A day the prune has taken is in data/archive, not the tables: it is not
+    # fetched again, whoever asked for it (first_held_date says why).
     if start > end:
         raise ValueError('start must be on or before end')
+    first_held = first_held_date()
+    if catchup_start(start, first_held) != start:
+        if first_held > end:
+            raise ValueError(f"{start} to {end} is older than {first_held}, the oldest day both "
+                             f"forecast tables hold: those days are in data/archive")
+        print(f"window starts {first_held}, the oldest day both forecast tables hold "
+              f"(asked from {start}; the days before are archived)")
+        start = catchup_start(start, first_held)
+
+    t0 = time.monotonic()
     all_cities = get_cities(require_coords=True)
     windows = chunks(start, end, CHUNK_DAYS)
     total_days = (end - start).days + 1

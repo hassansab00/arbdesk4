@@ -26,10 +26,24 @@
 -- derived_hit_forecasts (sql/ad4_88) for every day both forecast tables still
 -- hold; v_hit_forecasts serves the frozen rows for the days before.
 --
--- Both run inside common.refresh_feature_cache - every night in capacity.py
--- and before every weather prune in archive_observations.py, which refuses to
--- prune when they fail - and the three weather prunes each refuse to delete
--- what these have not kept (sql/ad4_29, ad4_63, ad4_95).
+-- Step 5 (29 Sep) adds the last two long readers:
+--
+--   v_station_day_max      the settlement agreement (each city's observation
+--                          trust), the settlement-gap report and databank's
+--                          late proofs read every day it has, off
+--                          weather_observations only.
+--   v_forecast_convergence and v_forecast_convergence_all read 45 days of
+--                          the forecast standing at each lead.
+--
+-- refresh_city_day_hours also keeps each city's local day per source in
+-- derived_station_day_sources (sql/ad4_29) under the same rule, and
+-- freeze_forecast_latest copies the forecast standing at each lead on every
+-- day that has passed into derived_forecast_latest (sql/ad4_31).
+--
+-- All three run inside common.refresh_feature_cache - every night in
+-- capacity.py and before every weather prune in archive_observations.py,
+-- which refuses to prune when they fail - and the three weather prunes each
+-- refuse to delete what these have not kept (sql/ad4_29, ad4_63, ad4_95).
 -- ===========================================================================
 
 create or replace function public.refresh_city_day_hours(p_city text default null)
@@ -46,6 +60,7 @@ declare
   v_first   date;
   v_n       int;
   v_written int := 0;
+  v_station int := 0;
   v_cities  int := 0;
 begin
   select min(valid_at) into v_oldest from weather_observations;
@@ -87,18 +102,41 @@ begin
      where excluded.obs_date >= v_first;
     get diagnostics v_n = row_count;
     v_written := v_written + v_n;
+
+    -- The same days per source, for v_station_day_max (sql/ad4_82): the
+    -- maximum in both units, the readings, the first and last one and the
+    -- station. A null source is kept as ''; the view's primary-source test
+    -- is false for both.
+    insert into derived_station_day_sources
+           (city_key, obs_date, source, max_c, max_f, n_readings, last_reading_at, station, computed_at,
+            first_reading_at)
+    select v_city, (o.valid_at at time zone v_tz)::date, coalesce(o.source, ''),
+           max(o.temp_c), max(o.temp_f), count(*), max(o.valid_at), min(o.station), now(),
+           min(o.valid_at)
+      from weather_observations o
+     where o.city_key = v_city and o.temp_c is not null
+     group by 2, 3
+    on conflict (city_key, obs_date, source) do update
+       set max_c = excluded.max_c, max_f = excluded.max_f, n_readings = excluded.n_readings,
+           last_reading_at = excluded.last_reading_at, station = excluded.station, computed_at = now(),
+           first_reading_at = excluded.first_reading_at
+     where excluded.obs_date >= v_first;
+    get diagnostics v_n = row_count;
+    v_station := v_station + v_n;
+
     v_cities := v_cities + 1;
   end loop;
 
   return jsonb_build_object(
     'ok', true, 'city', p_city, 'cities', v_cities, 'days_written', v_written,
+    'station_days_written', v_station,
     'whole_from_instant', v_oldest,
     'ms', round(extract(epoch from (clock_timestamp() - t0)) * 1000));
 end;
 $fn$;
 
 comment on function public.refresh_city_day_hours(text) is
-  'Write each city''s local days as 24 hourly maxima into derived_city_day_hours: every day the readings hold whole, and a cut day only if it was never cached (plan v2 P1.6 phase 2). Called once a night for every city - retired ones too, since the prune cuts theirs - by common.refresh_feature_cache.';
+  'Write each city''s local days as 24 hourly maxima into derived_city_day_hours, and per source into derived_station_day_sources: every day the readings hold whole, and a cut day only if it was never cached (plan v2 P1.6 phase 2). Called once a night for every city - retired ones too, since the prune cuts theirs - by common.refresh_feature_cache.';
 
 revoke all on function public.refresh_city_day_hours(text) from public, anon, authenticated;
 grant execute on function public.refresh_city_day_hours(text) to service_role;
@@ -147,3 +185,51 @@ comment on function public.freeze_hit_forecasts() is
 
 revoke all on function public.freeze_hit_forecasts() from public, anon, authenticated;
 grant execute on function public.freeze_hit_forecasts() to service_role;
+
+
+create or replace function public.freeze_forecast_latest()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $fn$
+declare
+  t0 timestamptz := clock_timestamp();
+  v_from    date;
+  v_removed int;
+  v_written int;
+begin
+  -- The oldest for_date the forecast table holds: from it on the table's days
+  -- are whole (the prune cuts by date and the ingest writes nothing older -
+  -- scripts/ingest_forecasts.py), and they replace what was frozen for them.
+  select min(for_date) into v_from from weather_forecasts;
+  if v_from is null then
+    return jsonb_build_object('ok', true, 'rows_written', 0,
+                              'note', 'weather_forecasts holds no row');
+  end if;
+
+  delete from derived_forecast_latest where for_date >= v_from;
+  get diagnostics v_removed = row_count;
+
+  -- Days that have passed: a day still ahead is read from the table.
+  insert into derived_forecast_latest (city_key, for_date, model, lead_days, forecast_max_c, run_at, frozen_at)
+  select distinct on (city_key, for_date, model, lead_days)
+         city_key, for_date, model, lead_days, forecast_max_c, run_at, now()
+    from weather_forecasts
+   where forecast_max_c is not null
+     and for_date < current_date
+   order by city_key, for_date, model, lead_days, run_at desc;
+  get diagnostics v_written = row_count;
+
+  return jsonb_build_object(
+    'ok', true, 'from', v_from, 'rows_replaced', v_removed, 'rows_written', v_written,
+    'rows_total', (select count(*) from derived_forecast_latest),
+    'ms', round(extract(epoch from (clock_timestamp() - t0)) * 1000));
+end;
+$fn$;
+
+comment on function public.freeze_forecast_latest() is
+  'Copy the forecast standing at each lead - the newest run per city, day, model and lead - into derived_forecast_latest for every day weather_forecasts holds that has passed, replacing what was frozen for them; the days before are left as frozen (plan v2 P1.6 phase 2). Called once a night by common.refresh_feature_cache.';
+
+revoke all on function public.freeze_forecast_latest() from public, anon, authenticated;
+grant execute on function public.freeze_forecast_latest() to service_role;

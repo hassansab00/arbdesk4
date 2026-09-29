@@ -374,8 +374,15 @@ def refresh_feature_cache(days=None, quiet=False):
     # whichever city is asked for, 16,560 rows in 7.5 s - inside the service
     # role's 180 s. Both raise like the rest: the archive does not prune on a
     # partial cache.
+    #
+    # Step 5 adds the rest (29 Sep): the same call keeps each city's day per
+    # source for v_station_day_max (the settlement agreement and databank),
+    # and freeze_forecast_latest keeps the forecast standing at each lead on
+    # every day that has passed, for both convergence views. Their times are
+    # measured after the first live run (docs/PLAN_PROGRESS.md), not here.
     hours = rpc("refresh_city_day_hours") or {}
     frozen = rpc("freeze_hit_forecasts") or {}
+    latest = rpc("freeze_forecast_latest") or {}
 
     def total_of(key):
         return sum(int(r.get(key) or 0) for r in results)
@@ -393,6 +400,9 @@ def refresh_feature_cache(days=None, quiet=False):
         "day_hours_ms": int(hours.get("ms") or 0),
         "hit_forecasts_frozen": int(frozen.get("rows_written") or 0),
         "hit_forecasts_ms": int(frozen.get("ms") or 0),
+        "station_days_written": int(hours.get("station_days_written") or 0),
+        "forecast_latest_frozen": int(latest.get("rows_written") or 0),
+        "forecast_latest_ms": int(latest.get("ms") or 0),
     }
     if not quiet:
         print(f"feature cache: {out}")

@@ -1,51 +1,46 @@
 -- ===========================================================================
--- ad4_42_backtest.sql - SAY WHETHER A BACKTEST CAN WORK BEFORE IT IS RUN.
+-- THE BACKTEST COUNTS WHAT IT COUNTED (plan v2 P1.6 phase 2, step 5 part (a),
+-- 29 Sep, the same evening as 20260929180000)
 --
--- WHAT WAS WRONG
--- --------------
--- Queueing a backtest was free and told you nothing. You picked a window,
--- pressed Queue, went to GitHub, pressed Run, waited, and got back either
--- "0 trades" or a failure - and neither told you the actual reason, which is
--- almost always the same one: THE WINDOW HAS NO DATA IN IT.
+-- 20260929180000 let v_backtest_window and backtest_readiness read the new
+-- caches. Checked live after it was applied (14:48:26Z) and the caches
+-- first filled (14:49:06Z), two answers moved on days the weather tables
+-- still hold:
 --
--- scripts/backtest/runner.py needs four things to exist for a city-day before
--- it can simulate it, and it skips silently when any is missing:
+--   v_backtest_window.obs_from   31 Jul -> 30 Jul. It took the first cached
+--                                LOCAL date; the readings' first UTC date is
+--                                31 Jul (02:45Z), which is what it said before.
+--   backtest_readiness, the 40 days to 28 Sep: with an observation 1,823 ->
+--                                1,824. Taipei 21 Sep has 8 readings, the
+--                                last at 07:00 local (20 Sep 23:00Z; none
+--                                again before 22 Sep 16:00Z), none on the UTC date,
+--                                and no verified outcome - the runner skips
+--                                it; the cached local day counted it.
 --
---   a market with bands on that date        (else there is nothing to price)
---   an observation of what the day did      (else the trade cannot be scored)
---   a forecast made before the entry point  (else there is nothing to trade on)
---   a book snapshot at or before that point (else there is no price to pay)
+-- So: derived_station_day_sources keeps each day's first reading, and
+-- obs_from is the UTC date of the first reading the readings or the cache
+-- hold; readiness consults the caches only for days before the first day
+-- the tables hold. Days the tables hold are counted exactly as before.
 --
--- Book depth history is the binding one and always will be: Polymarket
--- publishes no depth history, so the desk's own book archive starts the day
--- P0.3 was first run. Forecast accuracy can be backtested over years; strategy
--- profitability cannot be backtested earlier than that date, and no amount of
--- picking a longer window changes it.
---
--- WHAT THIS ADDS
--- --------------
--- backtest_readiness(start, end, cities) - counts each of the four, per the
--- exact window about to be queued, and returns the first thing that would
--- make the run empty. The page calls it as the dates change, so the answer
--- arrives before the run rather than twenty minutes after it.
---
--- v_backtest_window - the widest window that could possibly work, so the
--- form can default to something that returns trades instead of to a date
--- somebody typed once.
---
--- RUN ORDER: after ad4_00_preflight.sql. Re-runnable. Creates a function and
--- a view; writes nothing.
+-- first_reading_at is filled from the readings for every cached row: none
+-- has been pruned since the cache was first filled (14:49:06Z). The bodies are
+-- sql/ad4_29_retention.sql, ad4_42_backtest.sql and ad4_97_evidence_cache.sql.
+-- Re-runnable.
 -- ===========================================================================
+alter table derived_station_day_sources add column if not exists first_reading_at timestamptz;
 
-drop view if exists v_backtest_window cascade;
+update derived_station_day_sources k
+   set first_reading_at = x.first_at
+  from (select o.city_key, (o.valid_at at time zone coalesce(c.timezone, 'UTC'))::date as d,
+               coalesce(o.source, '') as s, min(o.valid_at) as first_at
+          from weather_observations o
+          join cities c on c.city_key = o.city_key
+         where o.temp_c is not null
+         group by 1, 2, 3) x
+ where k.city_key = x.city_key and k.obs_date = x.d and k.source = x.s
+   and k.first_reading_at is null;
 
--- --------------------------------------------------------------------------
--- 1. The widest window with any chance of producing trades.
---
---    Bounded by the book archive, because that is the one input with no
---    history before this desk started collecting it.
--- --------------------------------------------------------------------------
-create view v_backtest_window as
+create or replace view v_backtest_window as
 -- NO FULL COUNTS. This counted every row of book_snapshots (192,000) and
 -- weather_observations (146,000) to draw one line of text on the Backtest
 -- page: 3.8 s cold on 22 Sep, and nothing on the page needs the exact number.
@@ -113,17 +108,6 @@ from b, o, m;
 comment on view v_backtest_window is
   'The widest date range that could produce trades, and the first reason it could not. Bounded by the book archive: Polymarket publishes no depth history, so strategy profitability cannot be tested earlier than the day P0.3 first ran.';
 
-
--- --------------------------------------------------------------------------
--- 2. Readiness for THE window about to be queued.
---
---    A function rather than a view because the window is an argument, and a
---    view would mean the browser fetching every city-day to count them.
---
---    Every count below is the same condition runner.py uses to decide whether
---    to skip a city-day, so a green answer here means the run will do work -
---    not that it will be profitable, which is what the run is for.
--- --------------------------------------------------------------------------
 create or replace function backtest_readiness(
   p_start date,
   p_end   date,
@@ -140,15 +124,10 @@ declare
   v_with_book   int;
   v_days        int := greatest(1, (p_end - p_start) + 1);
   v_blocked     text;
-  -- The first days the weather tables hold whole (plan v2 P1.6 phase 2,
-  -- step 5): a day from them on is counted from the tables, as it always
-  -- was; a day before them also from what the caches kept of it. The
-  -- readings are cut at an instant, so the UTC day it falls in is part-held:
-  -- Panama City's one reading on 30 Aug is at 00:00Z, and a cut at 14:00Z
-  -- would have lost the day.
-  v_obs_held    date := coalesce((select case when min(valid_at) = date_trunc('day', min(valid_at))
-                                              then min(valid_at)::date else min(valid_at)::date + 1 end
-                                    from weather_observations), 'infinity'::date);
+  -- The first days the weather tables hold (plan v2 P1.6 phase 2, step 5):
+  -- a day from them on is counted from the tables, as it always was; a day
+  -- before them from what the caches kept of it.
+  v_obs_held    date := coalesce((select min(valid_at) from weather_observations)::date, 'infinity'::date);
   v_fc_held     date := coalesce((select min(for_date) from weather_forecasts), 'infinity'::date);
 begin
   if p_start is null or p_end is null or p_end < p_start then
@@ -235,32 +214,100 @@ $ad4$;
 comment on function backtest_readiness(date, date, text[]) is
   'Counts, for the exact window about to be queued, how many market-days have buckets, an observation, a forecast and a book snapshot - and returns the first thing that would make the run come back empty. Called as the dates change so the answer arrives before the run, not after it.';
 
+grant select on v_backtest_window to anon, authenticated, service_role;
+grant execute on function backtest_readiness(date, date, text[]) to anon, authenticated, service_role;
 
--- --------------------------------------------------------------------------
--- 3. Grants. The readiness check is read-only and the form needs it on every
---    keystroke, so anon may call it.
--- --------------------------------------------------------------------------
-do $ad4$
-declare r text;
+create or replace function public.refresh_city_day_hours(p_city text default null)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $fn$
+declare
+  t0 timestamptz := clock_timestamp();
+  v_oldest  timestamptz;
+  v_city    text;
+  v_tz      text;
+  v_first   date;
+  v_n       int;
+  v_written int := 0;
+  v_station int := 0;
+  v_cities  int := 0;
 begin
-  foreach r in array array['anon', 'authenticated', 'service_role'] loop
-    if exists (select 1 from pg_roles where rolname = r) then
-      execute format('grant select on v_backtest_window to %I', r);
-      execute format('grant execute on function backtest_readiness(date, date, text[]) to %I', r);
-    end if;
-  end loop;
-end
-$ad4$;
-
-do $ad4$
-declare v record;
-begin
-  select * into v from v_backtest_window;
-  if v.blocked_because is not null then
-    raise notice 'ad4_42: backtesting is not possible yet - %', v.blocked_because;
-  else
-    raise notice 'ad4_42: usable backtest window is % to % (% book snapshot(s), % market(s))',
-      v.usable_from, v.usable_to, v.n_books, v.n_markets;
+  select min(valid_at) into v_oldest from weather_observations;
+  if v_oldest is null then
+    return jsonb_build_object('ok', true, 'city', p_city, 'days_written', 0,
+                              'note', 'weather_observations holds no readings');
   end if;
-end
-$ad4$;
+
+  for v_city, v_tz in
+    select city_key, coalesce(timezone, 'UTC') from cities
+     where p_city is null or city_key = p_city
+     order by city_key
+  loop
+    -- The first whole local day: the one the oldest reading held falls on,
+    -- unless it began before that reading (refresh_feature_cache's rule).
+    v_first := (v_oldest at time zone v_tz)::date;
+    if (v_first::timestamp at time zone v_tz) < v_oldest then
+      v_first := v_first + 1;
+    end if;
+
+    -- Every local day the readings hold, as 24 slots of hourly maxima. A cut
+    -- day is inserted when it was never cached and never updated.
+    insert into derived_city_day_hours (city_key, obs_date, temp_c, n_hours, computed_at)
+    select v_city, x.d, array_agg(h.temp_c order by g.slot), count(h.temp_c)::int, now()
+      from (select distinct (o.valid_at at time zone v_tz)::date as d
+              from weather_observations o
+             where o.city_key = v_city and o.temp_c is not null) x
+      cross join generate_series(0, 23) as g(slot)
+      left join (select (o.valid_at at time zone v_tz)::date as d,
+                        extract(hour from o.valid_at at time zone v_tz)::int as hr,
+                        max(o.temp_c) as temp_c
+                   from weather_observations o
+                  where o.city_key = v_city and o.temp_c is not null
+                  group by 1, 2) h
+        on h.d = x.d and h.hr = g.slot
+     group by x.d
+    on conflict (city_key, obs_date) do update
+       set temp_c = excluded.temp_c, n_hours = excluded.n_hours, computed_at = now()
+     where excluded.obs_date >= v_first;
+    get diagnostics v_n = row_count;
+    v_written := v_written + v_n;
+
+    -- The same days per source, for v_station_day_max (sql/ad4_82): the
+    -- maximum in both units, the readings, the first and last one and the
+    -- station. A null source is kept as ''; the view's primary-source test
+    -- is false for both.
+    insert into derived_station_day_sources
+           (city_key, obs_date, source, max_c, max_f, n_readings, last_reading_at, station, computed_at,
+            first_reading_at)
+    select v_city, (o.valid_at at time zone v_tz)::date, coalesce(o.source, ''),
+           max(o.temp_c), max(o.temp_f), count(*), max(o.valid_at), min(o.station), now(),
+           min(o.valid_at)
+      from weather_observations o
+     where o.city_key = v_city and o.temp_c is not null
+     group by 2, 3
+    on conflict (city_key, obs_date, source) do update
+       set max_c = excluded.max_c, max_f = excluded.max_f, n_readings = excluded.n_readings,
+           last_reading_at = excluded.last_reading_at, station = excluded.station, computed_at = now(),
+           first_reading_at = excluded.first_reading_at
+     where excluded.obs_date >= v_first;
+    get diagnostics v_n = row_count;
+    v_station := v_station + v_n;
+
+    v_cities := v_cities + 1;
+  end loop;
+
+  return jsonb_build_object(
+    'ok', true, 'city', p_city, 'cities', v_cities, 'days_written', v_written,
+    'station_days_written', v_station,
+    'whole_from_instant', v_oldest,
+    'ms', round(extract(epoch from (clock_timestamp() - t0)) * 1000));
+end;
+$fn$;
+
+comment on function public.refresh_city_day_hours(text) is
+  'Write each city''s local days as 24 hourly maxima into derived_city_day_hours, and per source into derived_station_day_sources: every day the readings hold whole, and a cut day only if it was never cached (plan v2 P1.6 phase 2). Called once a night for every city - retired ones too, since the prune cuts theirs - by common.refresh_feature_cache.';
+
+revoke all on function public.refresh_city_day_hours(text) from public, anon, authenticated;
+grant execute on function public.refresh_city_day_hours(text) to service_role;

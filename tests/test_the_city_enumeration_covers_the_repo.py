@@ -239,6 +239,15 @@ SQL_RECORD = {
 # rather than a bug. It is here because a blind spot is how the last four got
 # in.
 MIGRATION_RECORD = {
+    "supabase/migrations/20260929190000_the_backtest_counts_what_it_counted.sql":
+        "refresh_city_day_hours as in sql/ad4_97, and a one-off fill of each cached "
+        "station day's first reading - cities.timezone to put readings on their local "
+        "day; the record of every city the prune reaches, retired ones too",
+    "supabase/migrations/20260929180000_the_station_days_and_forecast_leads_outlast_the_keep.sql":
+        "v_station_day_max, refresh_city_day_hours and prune_observations, as in "
+        "sql/ad4_82, ad4_97 and ad4_29 - cities.timezone to put readings on their "
+        "local day; each station's day is the record of what it read, kept for every "
+        "city a prune reaches, and the settlement agreement reads a retired city's too",
     "supabase/migrations/20260929160000_the_evidence_outlasts_the_weather_tables.sql":
         "v_trajectory_evidence, refresh_city_day_hours and prune_observations, as in "
         "sql/ad4_86, ad4_97 and ad4_29 - cities.timezone to put readings on their "

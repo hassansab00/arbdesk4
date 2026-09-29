@@ -6,6 +6,8 @@ step 19 more, because a 36-day chunk with ONE missing date was fetched whole.
 """
 import datetime as dt
 
+import pytest
+
 import ingest_forecasts as f
 
 D = dt.date
@@ -109,3 +111,76 @@ def test_a_real_hole_below_the_keep_is_still_found(monkeypatch, tmp_path):
     have = f.existing_dates("nyc", start, TODAY)
     assert hole.isoformat() not in have
     assert f.missing_span(have, start, TODAY) == (hole, TODAY)
+
+
+# --------------------------------------------------------------------------
+# NOTHING BELOW THE OLDEST DAY THE TABLES HOLD (plan v2 P1.6 phase 2, step 5).
+# The test above is the gap reader: it still sees a hole the archive has. The
+# night no longer fetches it. missing_span runs from the first missing day to
+# today, so fetching that hole wrote days 31-32 back into a table that had
+# archived them, with the previous-runs API's run_at values rather than the
+# archived rows' - and the table's days are whole from its oldest one only
+# while nothing is written below it (v_forecast_latest, v_hit_forecasts).
+# --------------------------------------------------------------------------
+def _drive(monkeypatch, tmp_path, first_held, argv=None):
+    asked = []
+
+    def fetch(lat, lon, start, end, label, models=None):
+        asked.append((start, end))
+        return None, "refused"
+    monkeypatch.setattr(f, "WORKERS", 1)
+    monkeypatch.setattr(f, "PAUSE", 0)
+    monkeypatch.setattr(f, "MODELS", [])
+    monkeypatch.setattr(f, "first_held_date", lambda: first_held)
+    monkeypatch.setattr(f, "fetch", fetch)
+    monkeypatch.setattr(f, "existing_dates", lambda c, s, e: set())      # every day missing
+    monkeypatch.setattr(f, "get_cities", lambda require_coords=True: [
+        {"city_key": "nyc", "latitude": 0.0, "longitude": 0.0, "timezone": "UTC"}])
+    monkeypatch.setattr(f, "log_run", lambda *a, **k: None)
+    monkeypatch.setenv("FORECAST_RESULT_PATH", str(tmp_path / "result.json"))
+    monkeypatch.setattr(sys, "argv", argv or ["ingest_forecasts.py"])
+    f.main()
+    return asked
+
+
+def test_the_night_never_fetches_below_the_oldest_day_held(monkeypatch, tmp_path):
+    today = dt.datetime.now(dt.timezone.utc).date()
+    held_from = today - dt.timedelta(days=30)
+    asked = _drive(monkeypatch, tmp_path, held_from)
+    assert asked, "nothing was fetched"
+    assert min(s for s, _ in asked) == held_from, asked     # not today - 35
+
+
+def test_a_window_inside_what_is_held_is_unchanged(monkeypatch, tmp_path):
+    today = dt.datetime.now(dt.timezone.utc).date()
+    for held_from in (today - dt.timedelta(days=60), None):
+        asked = _drive(monkeypatch, tmp_path, held_from)
+        assert min(s for s, _ in asked) == today - dt.timedelta(days=35), (held_from, asked)
+
+
+def test_a_window_the_archive_has_is_refused_not_fetched(monkeypatch, tmp_path):
+    held_from = D(2026, 9, 1)
+    with pytest.raises(ValueError, match="data/archive"):
+        _drive(monkeypatch, tmp_path, held_from, ["ingest_forecasts.py", "2026-08-01", "2026-08-10"])
+
+
+def test_a_manual_window_across_the_cut_starts_at_it(monkeypatch, tmp_path):
+    asked = _drive(monkeypatch, tmp_path, D(2026, 9, 1), ["ingest_forecasts.py", "2026-08-25", "2026-09-05"])
+    assert min(s for s, _ in asked) == D(2026, 9, 1), asked
+
+
+def test_the_oldest_day_held_is_the_later_of_both_tables(monkeypatch):
+    oldest = {"weather_forecasts": "2026-08-30", "weather_forecast_models": "2026-09-01"}
+    seen = []
+
+    def rest(table, params=None):
+        seen.append((table, params))
+        return [{"for_date": oldest[table]}]
+    monkeypatch.setattr(f, "rest", rest)
+    assert f.first_held_date() == D(2026, 9, 1)
+    assert [t for t, _ in seen] == ["weather_forecasts", "weather_forecast_models"]
+    assert all(("order", "for_date.asc") in p and ("limit", "1") in p for _, p in seen)
+    monkeypatch.setattr(f, "rest", lambda table, params=None: [])
+    assert f.first_held_date() is None                        # an empty database clamps nothing
+    assert f.catchup_start(D(2026, 8, 1), None) == D(2026, 8, 1)
+

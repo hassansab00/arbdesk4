@@ -102,14 +102,63 @@ $$;
 --    Celsius - the fitter, the feature cache - is not forced through F.
 -- --------------------------------------------------------------------------
 create or replace view v_station_day_max as
+with
+-- THE FIRST WHOLE DAY OF EACH CITY (plan v2 P1.6 phase 2, step 5). The prune
+-- cuts every city at one instant; a local day that began before the oldest
+-- reading held is cut. From that day on the readings are whole and read
+-- directly; before it each source's day comes from derived_station_day_sources
+-- (sql/ad4_29), written every night while it was whole - the rule
+-- v_trajectory_evidence and refresh_feature_cache follow. A source's day
+-- before it that was never cached is read from the readings: the prune
+-- deletes no reading of a day it has not cached, so they are all there.
+held as (
+  select min(valid_at) as oldest from weather_observations
+),
+whole_from as (
+  select c.city_key,
+         coalesce(case when ((h.oldest at time zone coalesce(c.timezone, 'UTC'))::date::timestamp
+                              at time zone coalesce(c.timezone, 'UTC')) < h.oldest
+                       then (h.oldest at time zone coalesce(c.timezone, 'UTC'))::date + 1
+                       else (h.oldest at time zone coalesce(c.timezone, 'UTC'))::date end,
+                  'infinity'::date) as first_whole
+  from cities c cross join held h
+),
+-- Each source's day, so the primary source is chosen below, when the view is
+-- read, for the cached days as for the rest.
+by_source as (
+  select o.city_key,
+         (o.valid_at at time zone coalesce(c.timezone, 'UTC'))::date  as for_date,
+         o.source,
+         max(o.temp_c)    as max_c,
+         max(o.temp_f)    as max_f,
+         count(*)         as n_readings,
+         max(o.valid_at)  as last_reading_at,
+         min(o.station)   as station
+  from weather_observations o
+  join cities c on c.city_key = o.city_key
+  join whole_from f on f.city_key = o.city_key
+  where o.temp_c is not null
+    and ((o.valid_at at time zone coalesce(c.timezone, 'UTC'))::date >= f.first_whole
+         or not exists (
+              select 1 from derived_station_day_sources k
+               where k.city_key = o.city_key
+                 and k.obs_date = (o.valid_at at time zone coalesce(c.timezone, 'UTC'))::date
+                 and k.source = coalesce(o.source, '')))
+  group by 1, 2, 3
+  union all
+  select d.city_key, d.obs_date, d.source, d.max_c, d.max_f, d.n_readings, d.last_reading_at, d.station
+  from derived_station_day_sources d
+  join whole_from f on f.city_key = d.city_key
+  where d.obs_date < f.first_whole
+)
 select
-  o.city_key,
-  (o.valid_at at time zone coalesce(c.timezone, 'UTC'))::date  as for_date,
-  max(o.temp_c)                                                as max_c,
-  max(o.temp_f)                                                as max_f,
-  count(*)                                                     as n_readings,
-  max(o.valid_at)                                              as last_reading_at,
-  min(o.station) filter (where o.source = obs_primary_source()) as station,
+  city_key,
+  for_date,
+  max(max_c)                                                   as max_c,
+  max(max_f)                                                   as max_f,
+  sum(n_readings)::bigint                                      as n_readings,
+  max(last_reading_at)                                         as last_reading_at,
+  min(station) filter (where source = obs_primary_source())    as station,
   -- THE PRIMARY SOURCE ONLY (plan v2 P2.2), which carries the reports the
   -- station itself filed and that the venue settles on. This was a minute
   -- window around report_minute over EVERY source, which let the NWS
@@ -117,16 +166,14 @@ select
   -- routine 99.0F). 20260922180000_the_venue_reads_the_hourly_column.sql is
   -- why the five-minute feed must stay out; the window was the wrong way to
   -- keep it out, because it also drops the half-hourly and special reports.
-  max(o.temp_c) filter (where o.source = obs_primary_source())   as max_c_hourly,
-  max(o.temp_f) filter (where o.source = obs_primary_source())   as max_f_hourly,
-  count(*) filter (where o.source = obs_primary_source())        as n_hourly
-from weather_observations o
-join cities c on c.city_key = o.city_key
-where o.temp_c is not null
+  max(max_c) filter (where source = obs_primary_source())      as max_c_hourly,
+  max(max_f) filter (where source = obs_primary_source())      as max_f_hourly,
+  coalesce(sum(n_readings) filter (where source = obs_primary_source()), 0)::bigint as n_hourly
+from by_source
 group by 1, 2;
 
 comment on view v_station_day_max is
-  'The station feed''s daily maximum per city-day, in both units. max_f is the station''s native reading; max_c is the conversion. Comparing an F market''s bands against max_f rather than against a Celsius round trip is worth 2.9 points of settlement agreement.';
+  'The station feed''s daily maximum per city-day, in both units. max_f is the station''s native reading; max_c is the conversion. Comparing an F market''s bands against max_f rather than against a Celsius round trip is worth 2.9 points of settlement agreement. Whole days from weather_observations, the days before from derived_station_day_sources (plan v2 P1.6 phase 2).';
 
 
 -- --------------------------------------------------------------------------
