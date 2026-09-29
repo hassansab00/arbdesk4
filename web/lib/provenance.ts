@@ -1296,6 +1296,14 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_forecasts"
   ],
   "v_forecast_models_export": [
+    "cities",
+    "weather_forecasts",
+    "band_probabilities",
+    "edges",
+    "bands",
+    "markets",
+    "fact_band_outcome",
+    "weather_resolution_evidence",
     "weather_forecast_models"
   ],
   "v_forecast_postprocess_applied": [
@@ -1305,6 +1313,20 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_forecast_postprocess"
   ],
   "v_hit_forecasts": [
+    "cities",
+    "derived_city_day_features",
+    "derived_forecast_skill",
+    "weather_forecasts",
+    "band_probabilities",
+    "edges",
+    "bands",
+    "markets",
+    "fact_band_outcome",
+    "weather_resolution_evidence",
+    "weather_forecast_models",
+    "weather_observations"
+  ],
+  "v_hit_forecasts_live": [
     "cities",
     "weather_forecasts",
     "band_probabilities",

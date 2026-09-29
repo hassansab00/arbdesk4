@@ -75,6 +75,7 @@ declare
   v_doomed bigint;
   v_keep   bigint;
   v_young  bigint;
+  v_unfrozen bigint;
 begin
   -- THIRTY DAYS, as weather_forecasts: station correction fits on 45 days and
   -- scores on 30 more, and below the keep it reads the archive, not this.
@@ -129,6 +130,27 @@ begin
                               'note', format('nothing dated before %s', v_before));
   end if;
 
+  -- Every v_hit_forecasts row for the days going is frozen (plan v2 P1.6
+  -- phase 2, step 6): hit_tournament.py reads 120 days, the table keeps less.
+  select count(*) into v_unfrozen from (
+    select city_key, for_date, lane, model, forecast_max_c, known_at
+      from public.v_hit_forecasts_live where for_date < v_before
+    except
+    select city_key, for_date, lane, model, forecast_max_c, known_at
+      from public.derived_hit_forecasts where for_date < v_before
+  ) x;
+
+  if v_unfrozen > 0 then
+    return jsonb_build_object(
+      'ok', false,
+      'error', format('%s v_hit_forecasts row(s) dated before %s are not in derived_hit_forecasts. Run '
+                      'common.refresh_feature_cache first (it freezes them) - the hit tournament reads '
+                      'them after the prune.', v_unfrozen, v_before),
+      'unfrozen_rows', v_unfrozen,
+      'would_delete', v_doomed
+    );
+  end if;
+
   select count(*) into v_keep
     from public.weather_forecast_models where for_date >= v_before;
 
@@ -162,4 +184,4 @@ revoke execute on function public.prune_forecast_models(integer, boolean, date, 
 grant execute on function public.prune_forecast_models(integer, boolean, date, bigint) to service_role;
 
 comment on function public.prune_forecast_models(integer, boolean, date, bigint) is
-  'Delete weather_forecast_models rows dated before the cutoff (at least 30 days back), only when the caller''s count read back from the committed archive file matches exactly and none was observed since yesterday''s UTC midnight (the repo mirror copies those after the prune).';
+  'Delete weather_forecast_models rows dated before the cutoff (at least 30 days back), only when the caller''s count read back from the committed archive file matches exactly, none was observed since yesterday''s UTC midnight (the repo mirror copies those after the prune), and every v_hit_forecasts row for those days is frozen in derived_hit_forecasts.';

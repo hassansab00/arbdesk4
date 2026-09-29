@@ -520,16 +520,45 @@ def rpc_calls(monkeypatch):
 
 def test_the_cache_refresh_is_one_call_per_city(rpc_calls):
     out = common.refresh_feature_cache(quiet=True)
-    assert [c[1].get("p_city") for c in rpc_calls.calls] == ["austin", "chicago", "nyc"]
+    features = [c for c in rpc_calls.calls if c[0] == "refresh_feature_cache"]
+    assert [c[1].get("p_city") for c in features] == ["austin", "chicago", "nyc"]
     assert out["cities"] == 3
     assert out["city_days_touched"] == 2400, "per-city counts are summed, not overwritten"
     assert out["city_hours"] == 72
     assert out["slowest_call_ms"] == 200
 
 
+def test_the_evidence_caches_follow_the_features(rpc_calls):
+    """Plan v2 P1.6 phase 2, step 6: the hours for the trajectory evidence and
+    the hit tournament's frozen forecasts, after every feature call, so the
+    archive's refresh before a prune covers all three. The hours are ONE call
+    with no city: the prune cuts retired cities' readings too, and refuses a
+    day the hours do not hold - an active-only walk would block it."""
+    common.refresh_feature_cache(quiet=True)
+    names = [c[0] for c in rpc_calls.calls]
+    assert names == ["refresh_feature_cache"] * 3 + ["refresh_city_day_hours", "freeze_hit_forecasts"]
+    assert [c[1] for c in rpc_calls.calls if c[0] == "refresh_city_day_hours"] == [{}], (
+        "every city, and every day the readings hold - never a city list or a days window")
+    assert [c[1] for c in rpc_calls.calls if c[0] == "freeze_hit_forecasts"] == [{}]
+
+
+def test_a_failed_evidence_cache_fails_the_refresh(monkeypatch):
+    """The archive does not prune on a partial cache; a freeze that failed
+    must reach it as a failure, not a note."""
+    def rpc(fn, params=None, **k):
+        if fn == "freeze_hit_forecasts":
+            raise requests.HTTPError("boom")
+        return {"ok": True}
+    monkeypatch.setattr(common, "active_city_keys", lambda: {"nyc"})
+    monkeypatch.setattr(common, "rpc", rpc)
+    with pytest.raises(requests.HTTPError):
+        common.refresh_feature_cache(quiet=True)
+
+
 def test_a_days_window_is_passed_through(rpc_calls):
     common.refresh_feature_cache(days=7, quiet=True)
-    assert all(c[1]["p_days"] == 7 for c in rpc_calls.calls)
+    features = [c for c in rpc_calls.calls if c[0] == "refresh_feature_cache"]
+    assert features and all(c[1]["p_days"] == 7 for c in features)
 
 
 def test_an_rpc_failure_carries_the_servers_own_message(monkeypatch):

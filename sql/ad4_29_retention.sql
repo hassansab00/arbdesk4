@@ -271,6 +271,7 @@ declare
                                    (current_date - p_keep_days)::timestamptz);
   v_cut date := (v_before at time zone 'UTC')::date;
   v_doomed bigint; v_cached_before bigint; v_uncovered bigint; v_freed text;
+  v_unkept bigint;
 begin
   if p_keep_days < 30 then
     -- The model needs MIN_DAYS (120) to fit at all and the trend views need a
@@ -328,6 +329,29 @@ begin
       'error', format('%s city-day(s) older than %s are not in derived_city_day_features. Run select refresh_feature_cache(); first - pruning now would destroy them.',
                       v_uncovered, v_cut),
       'uncovered_city_days', v_uncovered);
+  end if;
+
+  -- ...and in derived_city_day_hours, which v_trajectory_evidence reads for
+  -- every day the readings no longer hold (plan v2 P1.6 phase 2). A day with
+  -- no temperature has no hours to keep.
+  select count(*) into v_unkept from (
+    select distinct
+           o.city_key,
+           (o.valid_at at time zone coalesce(c.timezone, 'UTC'))::date as d
+      from weather_observations o
+      join cities c on c.city_key = o.city_key
+     where o.valid_at < v_before and o.temp_c is not null
+  ) x
+  where not exists (
+    select 1 from derived_city_day_hours h
+     where h.city_key = x.city_key and h.obs_date = x.d
+  );
+
+  if v_unkept > 0 then
+    return jsonb_build_object('ok', false,
+      'error', format('%s city-day(s) older than %s are not in derived_city_day_hours. Run common.refresh_feature_cache first (it refreshes the hours) - the trajectory evidence reads them after the prune.',
+                      v_unkept, v_cut),
+      'unkept_city_days', v_unkept);
   end if;
 
   select count(*) into v_cached_before from derived_city_day_features;

@@ -379,7 +379,10 @@ TABLES = {
         "keep_days": 90,
         "min_keep_days": 60,
         "mirror_first": True,
-        "needs_feature_cache": False,
+        # The refresh freezes the hit tournament's forecasts, which read this
+        # table (plan v2 P1.6 phase 2, step 6); prune_forecast_models refuses
+        # a day whose rows are not frozen.
+        "needs_feature_cache": True,
     },
     # EVERY PRICE A READER USES STAYS (plan v2 P1.6 phase 2, step 6, 29 Sep).
     # band_probabilities' long-history readers each take one row per band,
