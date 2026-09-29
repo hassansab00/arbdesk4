@@ -30,4 +30,6 @@ def venue_round(value_c, unit):
     """The whole degree the venue reads for a Celsius value, in the market's unit."""
     if value_c is None:
         return None
-    return venue_read(value_c * 9.0 / 5.0 + 32.0 if unit == "F" else float(value_c))
+    # float first: Decimal * 9.0 raises (paper_exits.to_band_unit, 29 Sep)
+    value_c = float(value_c)
+    return venue_read(value_c * 9.0 / 5.0 + 32.0 if unit == "F" else value_c)

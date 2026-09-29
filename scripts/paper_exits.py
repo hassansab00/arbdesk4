@@ -50,10 +50,20 @@ def _book_or_reason(capture_book, order):
 
 
 def to_band_unit(temp_c, unit):
-    """live_weather keeps Celsius; a US band is labelled in Fahrenheit."""
+    """live_weather keeps Celsius; a US band is labelled in Fahrenheit.
+
+    A temperature is a float here, whatever type it arrives as. cycle() once
+    handed this the money helper's Decimal, and Decimal * 9.0 raises TypeError
+    on any Fahrenheit position. All 13 intraday runs from 27 Sep 20:36Z to
+    29 Sep 20:36Z failed in this step (the five tracebacks read all end on
+    this line), and paper_exits logged no run after 25 Sep 12:38Z. Sources:
+    the pipeline_intraday run list and job logs (runs 110-122), and
+    ingest_log's newest paper_exits row, both read 29 Sep.
+    """
     if temp_c is None:
         return None
-    return temp_c * 9.0 / 5.0 + 32.0 if str(unit or "C").upper() == "F" else temp_c
+    t = float(temp_c)
+    return t * 9.0 / 5.0 + 32.0 if str(unit or "C").upper() == "F" else t
 
 
 def band_contains(band, value):
@@ -118,6 +128,7 @@ def cycle(budget_seconds=60):
     from paper_worker import capture_book
     started, queued = time.monotonic(), 0
     skipped = {}
+    errors, first_errors = {}, []
     exits_on_outcome = 0
     _markets, _weathers = {}, {}
 
@@ -148,71 +159,94 @@ def cycle(budget_seconds=60):
                   'lost_held_to_settlement': exits_on_outcome}
         if skipped:
             detail['skipped'] = dict(sorted(skipped.items()))
-        log_run('paper_exits', 'ok', queued, detail)
-        return {'exits_queued': queued, 'skipped': dict(sorted(skipped.items()))}
+        if errors:
+            detail['errors'] = dict(sorted(errors.items()))
+            detail['first_errors'] = first_errors
+        log_run('paper_exits', 'error' if errors else 'ok', queued, detail)
+        return {'exits_queued': queued, 'skipped': dict(sorted(skipped.items())),
+                'errors': dict(sorted(errors.items()))}
     accounts=rest_all('paper_accounts',{'mode':'eq.automatic','policy->>auto_exit_enabled':'eq.true'},order='account_id')
     for account in accounts:
         positions=rest_all('paper_positions',{'account_id':'eq.'+account['account_id'],'shares':'gt.0'},order='band_id,side')
         for pos in positions:
             if time.monotonic()-started>budget_seconds:
                 return done(f'reached the {budget_seconds}s budget')
-            if number(pos['cost_basis'])<=0:
-                continue
-            pending=rest('paper_orders',{'account_id':'eq.'+account['account_id'],'band_id':'eq.'+pos['band_id'],
-                'side':'eq.'+pos['side'],'status':'in.(queued,working)','select':'order_id','limit':'1'})
-            if pending:
-                continue
-            bands=rest('v_canonical_bands',{'band_id':'eq.'+pos['band_id'],
-                'select':'token_yes,token_no,band_lo,band_hi,open_low,open_high,market_id'})
-            if not bands:
-                continue
-            band=bands[0]
-            order={'band_id':pos['band_id'],'side':pos['side'],'token_id':band['token_yes' if pos['side']=='YES' else 'token_no']}
-            # HAS THIS ONE ALREADY LOST? A daily maximum only goes up, so that can
-            # be certain hours before the venue resolves - see certainly_lost.
-            # The live row must describe the SAME day the band resolves, or a
-            # max set today would retire a position on tomorrow's ladder.
-            lost=False
-            market=_market(band.get('market_id'))
-            if market:
-                weather=_weather(market.get('city_key'))
-                if weather and str(weather.get('local_date') or '')==str(market.get('resolution_date') or ''):
-                    lost=certainly_lost(band, number(weather['running_max_c']) if weather.get('running_max_c') is not None else None,
-                                        pos['side'], market.get('unit'), bool(weather.get('day_decided')))
-            # A LOSER IS HELD TO SETTLEMENT (Hassan, 24 Sep). Once the day has
-            # peaked and the venue's book has settled on one bucket, nobody
-            # buys the dead one: there is no bid worth crossing, and
-            # queue_automatic_paper_exit refuses the sale anyway unless the
-            # stop-loss is hit, which raised and ended the whole cycle. So the
-            # position is counted and left for venue settlement to close.
-            if lost:
-                exits_on_outcome += 1
-                skipped['lost_hold_to_settlement'] = skipped.get('lost_hold_to_settlement', 0) + 1
-                continue
-            book, reason = _book_or_reason(capture_book, order)
-            if book is None:
-                skipped[reason] = skipped.get(reason, 0) + 1
-                continue
-            if not book.get('bids'):
-                skipped['no_bids'] = skipped.get('no_bids', 0) + 1
-                continue
-            limit=min(number(x['price']) for x in book['bids'])
-            now=dt.datetime.now(dt.timezone.utc)
-            preview=simulate({**order,'action':'SELL','shares':pos['shares'],'limit_price':str(limit),'share_step':'.01',
-                'max_book_age_seconds':120,'expires_at':(now+dt.timedelta(minutes=30)).isoformat()},book,now=now)
-            if preview['status']!='filled':
-                continue
-            limit=min(number(x['price']) for x in preview['fills'])
-            gain=(number(preview['notional'])-number(preview['fee']))/number(pos['cost_basis'])-1
-            policy=account['policy']
-            if -number(policy['stop_loss_fraction'])<gain<number(policy['take_profit_fraction']):
-                continue
-            identity=f"{account['account_id']}:{pos['band_id']}:{pos['side']}:{pos['shares']}:{pos['cost_basis']}:{book['snapshot_id']}:{account['policy_version']}"
-            rpc('queue_automatic_paper_exit',{'p_account':account['account_id'],'p_command':str(uuid.uuid5(uuid.NAMESPACE_URL,identity)),
-                'p_band':pos['band_id'],'p_side':pos['side'],'p_limit':str(limit),'p_evidence':{**preview,'exit_reason':'threshold'},'p_policy_version':account['policy_version']})
-            queued+=1
+            # ONE POSITION CANNOT END THE CYCLE FOR THE REST. A Decimal met a
+            # float in to_band_unit on the first Fahrenheit position, and every
+            # position after it, in every account, went unchecked for days while
+            # nothing was logged. What raises is counted with its reason, the
+            # rest get their turn, and the run is logged as an error.
+            try:
+                if number(pos['cost_basis'])<=0:
+                    continue
+                pending=rest('paper_orders',{'account_id':'eq.'+account['account_id'],'band_id':'eq.'+pos['band_id'],
+                    'side':'eq.'+pos['side'],'status':'in.(queued,working)','select':'order_id','limit':'1'})
+                if pending:
+                    continue
+                bands=rest('v_canonical_bands',{'band_id':'eq.'+pos['band_id'],
+                    'select':'token_yes,token_no,band_lo,band_hi,open_low,open_high,market_id'})
+                if not bands:
+                    continue
+                band=bands[0]
+                order={'band_id':pos['band_id'],'side':pos['side'],'token_id':band['token_yes' if pos['side']=='YES' else 'token_no']}
+                # HAS THIS ONE ALREADY LOST? A daily maximum only goes up, so that can
+                # be certain hours before the venue resolves - see certainly_lost.
+                # The live row must describe the SAME day the band resolves, or a
+                # max set today would retire a position on tomorrow's ladder.
+                lost=False
+                market=_market(band.get('market_id'))
+                if market:
+                    weather=_weather(market.get('city_key'))
+                    if weather and str(weather.get('local_date') or '')==str(market.get('resolution_date') or ''):
+                        lost=certainly_lost(band, float(weather['running_max_c']) if weather.get('running_max_c') is not None else None,
+                                            pos['side'], market.get('unit'), bool(weather.get('day_decided')))
+                # A LOSER IS HELD TO SETTLEMENT (Hassan, 24 Sep). Once the day has
+                # peaked and the venue's book has settled on one bucket, nobody
+                # buys the dead one: there is no bid worth crossing, and
+                # queue_automatic_paper_exit refuses the sale anyway unless the
+                # stop-loss is hit, which raised and ended the whole cycle. So the
+                # position is counted and left for venue settlement to close.
+                if lost:
+                    exits_on_outcome += 1
+                    skipped['lost_hold_to_settlement'] = skipped.get('lost_hold_to_settlement', 0) + 1
+                    continue
+                book, reason = _book_or_reason(capture_book, order)
+                if book is None:
+                    skipped[reason] = skipped.get(reason, 0) + 1
+                    continue
+                if not book.get('bids'):
+                    skipped['no_bids'] = skipped.get('no_bids', 0) + 1
+                    continue
+                limit=min(number(x['price']) for x in book['bids'])
+                now=dt.datetime.now(dt.timezone.utc)
+                preview=simulate({**order,'action':'SELL','shares':pos['shares'],'limit_price':str(limit),'share_step':'.01',
+                    'max_book_age_seconds':120,'expires_at':(now+dt.timedelta(minutes=30)).isoformat()},book,now=now)
+                if preview['status']!='filled':
+                    continue
+                limit=min(number(x['price']) for x in preview['fills'])
+                gain=(number(preview['notional'])-number(preview['fee']))/number(pos['cost_basis'])-1
+                policy=account['policy']
+                if -number(policy['stop_loss_fraction'])<gain<number(policy['take_profit_fraction']):
+                    continue
+                identity=f"{account['account_id']}:{pos['band_id']}:{pos['side']}:{pos['shares']}:{pos['cost_basis']}:{book['snapshot_id']}:{account['policy_version']}"
+                rpc('queue_automatic_paper_exit',{'p_account':account['account_id'],'p_command':str(uuid.uuid5(uuid.NAMESPACE_URL,identity)),
+                    'p_band':pos['band_id'],'p_side':pos['side'],'p_limit':str(limit),'p_evidence':{**preview,'exit_reason':'threshold'},'p_policy_version':account['policy_version']})
+                queued+=1
+            except Exception as exc:
+                errors[type(exc).__name__] = errors.get(type(exc).__name__, 0) + 1
+                if len(first_errors) < 5:
+                    first_errors.append({'account_id': account['account_id'], 'band_id': pos.get('band_id'),
+                                         'side': pos.get('side'), 'error': f'{type(exc).__name__}: {exc}'[:300]})
     return done('considered every position')
 
 
+def main():
+    """0 when every position was considered cleanly, 1 when any raised: the
+    run is logged either way, and the workflow step stays red on a real error."""
+    out = cycle()
+    print(out)
+    return 1 if out.get('errors') else 0
+
+
 if __name__=='__main__':
-    print(cycle())
+    raise SystemExit(main())

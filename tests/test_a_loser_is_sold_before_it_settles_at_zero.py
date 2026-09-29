@@ -133,3 +133,101 @@ def test_a_lost_position_is_held_to_settlement_not_sold(monkeypatch):
     assert out["exits_queued"] == 0
     assert out["skipped"] == {"lost_hold_to_settlement": 1}
     assert logged["lost_held_to_settlement"] == 1
+
+
+# --- 29 Sep: a Decimal on a Fahrenheit band ended every cycle ------------------
+#
+# cycle() passed live_weather.running_max_c through paper_execution.number(),
+# the money helper, which returns a Decimal; to_band_unit then did
+# Decimal * 9.0 and raised TypeError. All 13 intraday runs from 27 Sep 20:36Z
+# to 29 Sep 20:36Z failed in this step (the five tracebacks read end on that
+# line), and since the whole cycle died, no position after the first
+# Fahrenheit one was ever considered. (GitHub Actions: pipeline_intraday runs
+# 110-122 and their job logs, read 29 Sep; ingest_log's newest paper_exits row
+# is 25 Sep 12:38Z.) The tests above only passed floats and only drove cycle()
+# on a Celsius market, so all of them passed.
+
+from decimal import Decimal
+
+import venue
+
+F_84_85 = {"band_lo": 84, "band_hi": 86, "open_low": False, "open_high": False}
+
+
+def test_a_fahrenheit_band_reads_a_decimal_like_a_float():
+    for reading in (26.67, Decimal("26.67")):
+        assert abs(px.to_band_unit(reading, "F") - 80.006) < 1e-9
+        assert px.certainly_lost(CLOSED, reading, "YES", "F", day_decided=False)
+    assert px.to_band_unit(Decimal("23.6"), "C") == 23.6
+    assert venue.venue_round(Decimal("26.67"), "F") == 80
+    assert venue.venue_round(Decimal("23.6"), "C") == 24
+
+
+def _run_cycle(monkeypatch, positions, *, unit, running_max_c, bands_raise=()):
+    """cycle() against a fake desk: one account, the given positions, every band
+    on one market in `unit`, and the city's live row on that market's day."""
+    import paper_worker
+
+    account = {"account_id": "a1", "policy_version": 1,
+               "policy": {"stop_loss_fraction": 0.5, "take_profit_fraction": 0.5}}
+
+    def rest_all(table, params, order=None):
+        return {"paper_accounts": [account], "paper_positions": positions}[table]
+
+    def rest(table, params):
+        if table == "v_canonical_bands" and params["band_id"][3:] in bands_raise:
+            raise RuntimeError("the band read failed")
+        return {
+            "paper_orders": [],
+            "v_canonical_bands": [{"token_yes": "ty", "token_no": "tn", **F_84_85, "market_id": "m1"}],
+            "v_canonical_markets": [{"city_key": "miami", "resolution_date": "2026-09-29", "unit": unit}],
+            "live_weather": [{"running_max_c": running_max_c, "day_decided": False, "local_date": "2026-09-29"}],
+        }[table]
+
+    calls = {"book": 0, "rpc": 0}
+    logged = {}
+    monkeypatch.setattr(px, "rest_all", rest_all)
+    monkeypatch.setattr(px, "rest", rest)
+    monkeypatch.setattr(px, "rpc", lambda *a, **k: calls.__setitem__("rpc", calls["rpc"] + 1))
+    monkeypatch.setattr(px, "log_run",
+                        lambda job, status, n, detail: logged.update(detail, status=status, job=job))
+    def capture_book(order):
+        calls["book"] += 1
+        return {"bids": [], "snapshot_id": "s1"}      # a real book with nobody bidding
+
+    monkeypatch.setattr(paper_worker, "capture_book", capture_book)
+    return px.cycle(), logged, calls
+
+
+def _pos(band_id):
+    return {"account_id": "a1", "band_id": band_id, "side": "YES", "shares": 10, "cost_basis": 3}
+
+
+def test_the_cycle_reads_a_fahrenheit_market(monkeypatch):
+    # 28.9 C is 84.02 F, read by the venue as 84: still inside 84-85 F, day open
+    out, logged, calls = _run_cycle(monkeypatch, [_pos("b1")], unit="F", running_max_c=28.9)
+    assert out["errors"] == {} and logged["status"] == "ok"
+    assert calls["book"] == 1, "an open position on a Fahrenheit market is priced for an exit"
+    assert out["skipped"] == {"no_bids": 1}
+    # 30.0 C is 86 F: past 84-85 F, so the YES has lost and is held to settlement
+    out, logged, calls = _run_cycle(monkeypatch, [_pos("b1")], unit="F", running_max_c=30.0)
+    assert out["skipped"] == {"lost_hold_to_settlement": 1} and out["errors"] == {}
+    assert calls == {"book": 0, "rpc": 0}
+
+
+def test_one_position_that_raises_does_not_cost_the_others_their_turn(monkeypatch):
+    out, logged, calls = _run_cycle(monkeypatch, [_pos("b1"), _pos("b2"), _pos("b3")],
+                                    unit="F", running_max_c=30.0, bands_raise=("b2",))
+    assert out["skipped"] == {"lost_hold_to_settlement": 2}, "b1 and b3 were still considered"
+    assert out["errors"] == {"RuntimeError": 1}
+    assert logged["status"] == "error", "a position that raised makes the run an error, not ok"
+    assert logged["job"] == "paper_exits"
+    assert logged["first_errors"] == [{"account_id": "a1", "band_id": "b2", "side": "YES",
+                                       "error": "RuntimeError: the band read failed"}]
+
+
+def test_the_step_goes_red_only_after_every_position_had_its_turn(monkeypatch):
+    monkeypatch.setattr(px, "cycle", lambda: {"exits_queued": 0, "skipped": {}, "errors": {"TypeError": 1}})
+    assert px.main() == 1
+    monkeypatch.setattr(px, "cycle", lambda: {"exits_queued": 0, "skipped": {}, "errors": {}})
+    assert px.main() == 0
