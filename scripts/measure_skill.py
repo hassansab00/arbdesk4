@@ -16,7 +16,8 @@ so "bands of error" is computed per city in its own unit.
 """
 import sys, json, datetime as dt
 from collections import defaultdict
-from common import rest_all, upsert, log_run, get_cities
+from common import rest, rest_all, upsert, log_run, get_cities
+import weather_history
 
 VERIFIED_EVIDENCE_SCOPE = "verified_outcomes_v1"
 
@@ -120,12 +121,19 @@ def forecasts(city_key, start, end):
     """
     # v_forecast_issued, not the table: it carries same_day_issue, the one
     # thing day_ahead_only() needs (plan v2 P2.6).
-    return rest_all("v_forecast_issued", [
+    #
+    # THROUGH weather_history (plan v2 P1.6 phase 2): skill scores every
+    # verified outcome since the first (24 Aug), and the forecasts behind the
+    # oldest leave the database with the archive's keep. Below the newest
+    # prune the rows come from data/archive/forecasts, with the view's columns
+    # computed as the view computes them; above it this is the same read.
+    return weather_history.read("v_forecast_issued", [
         ("select", "for_date,lead_days,forecast_max_c,model,run_at,same_day_issue"),
         ("city_key", f"eq.{city_key}"),
         ("for_date", f"gte.{start.isoformat()}"),
         ("for_date", f"lte.{end.isoformat()}"),
-    ], order="for_date.asc,lead_days.asc,model.asc,run_at.asc", page_size=1000)
+    ], rest_fn=rest, rest_all_fn=rest_all,
+        order="for_date.asc,lead_days.asc,model.asc,run_at.asc", page_size=1000)
 
 
 def day_ahead_only(rows):

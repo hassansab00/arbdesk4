@@ -119,6 +119,8 @@ def test_a_run_writes_cells_and_open_days_and_logs(monkeypatch):
             return []
         if path == "derived_station_correction":
             return []
+        if path == "ingest_log":
+            return []                    # weather_history: never pruned
         raise AssertionError(path)
     common.rest_all = rest_all
     common.day_had_ended = real_common.day_had_ended
@@ -169,6 +171,8 @@ def test_every_row_written_carries_this_runs_computed_at(monkeypatch):
             return []
         if path == "derived_station_correction":
             return []
+        if path == "ingest_log":
+            return []                    # weather_history: never pruned
         raise AssertionError(path)
     common.rest_all = rest_all
     common.day_had_ended = real_common.day_had_ended
@@ -243,6 +247,8 @@ def _run_against(stored, pairs, as_of, monkeypatch):
             return []
         if path == "derived_station_correction":
             return [dict(r) for r in stored]
+        if path == "ingest_log":
+            return []                    # weather_history: never pruned
         raise AssertionError(path)
     common.rest_all = rest_all
     common.day_had_ended = real_common.day_had_ended
@@ -394,6 +400,8 @@ def _width_run(stored_widths, pairs, as_of, monkeypatch, width_boom=False):
             if width_boom:
                 raise RuntimeError("relation derived_station_width does not exist")
             return [dict(r) for r in stored_widths]
+        if path == "ingest_log":
+            return []                    # weather_history: never pruned
         raise AssertionError(path)
     common.rest_all = rest_all
     common.day_had_ended = real_common.day_had_ended

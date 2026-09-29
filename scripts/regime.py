@@ -35,11 +35,20 @@ from collections import defaultdict
 
 from common import rest, get_cities
 from common import rest_all
+import weather_history
 
 STALE_FORECAST_HOURS = 12          # matches anomaly_rules.stale_forecast
 SEASONAL_WINDOW_GATE_HOURS = 12    # spec §0.4 / Task 5: "~12h" is given verbatim
 MIN_HISTORY_DAYS = 20              # below this, per spec: confidence low, label UNCERTAIN
-LOOKBACK_DAYS = 120
+# 60 DAYS, WHAT IT HAS READ (29 Sep, plan v2 P1.6 phase 2). This said 120, and
+# got it only while weather_forecasts held that much: the archive's prunes
+# left about 90 days from 16 Sep and 60 from 25 Sep (ingest_log,
+# archive_forecasts). Phase 2 lowers that keep to 30; the reads below now
+# reach the archive for what the database no longer holds, so the window is
+# stated rather than left to the keep. 60 is what the labels have been built
+# on since 25 Sep. Whether 120 labels better is not measured - the thresholds
+# and multipliers are provisional (see below).
+LOOKBACK_DAYS = 60
 
 # PROVISIONAL - claude_invented, no evidential basis. UI/settings-settable
 # once there is realised P&L to tune against. These translate the discrete
@@ -72,10 +81,12 @@ def _forecasts_for_date(city_key, for_date, as_of=None):
         ("for_date", f"eq.{for_date}"),
         ("order", "lead_days.asc"),
     ]
+    # weather_history: a backtest's day older than the database's keep is read
+    # from the archive; a live day is the same read as before.
     if as_of is not None:
         params.append(("issued_at", f"lte.{as_of.isoformat()}"))
-        return rest("v_forecast_issued", params)
-    return rest("weather_forecasts", params)
+        return weather_history.read("v_forecast_issued", params, rest_fn=rest)
+    return weather_history.read("weather_forecasts", params, rest_fn=rest)
 
 
 def _disagreement_proxy(rows):
@@ -124,11 +135,12 @@ def _history_disagreement(city_key, before_date, lookback_days=LOOKBACK_DAYS, as
         # Issued, not run_at: see _forecasts_for_date.
         params.append(("issued_at", f"lte.{as_of.isoformat()}"))
         table = "v_forecast_issued"
-    # 120 days x several models x 8 leads is more than the 1,000-row cap a
+    # 60 days x several models x 8 leads is more than the 1,000-row cap a
     # bare read returns; the percentile threshold was being built on a
     # truncated history.
-    rows = rest_all(table, params,
-                    order="for_date.asc,lead_days.asc,model.asc,run_at.asc", page_size=1000)
+    # Below the database's keep the rows come from the archive (weather_history).
+    rows = weather_history.read(table, params, rest_fn=rest, rest_all_fn=rest_all,
+                                order="for_date.asc,lead_days.asc,model.asc,run_at.asc", page_size=1000)
     by_date = defaultdict(list)
     for r in rows:
         by_date[r["for_date"]].append(r)

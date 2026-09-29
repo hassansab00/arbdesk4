@@ -13,7 +13,7 @@ name: Tick (hourly checkpoints)
 # every four hours until its stages move into the tick.
 #
 # Built for the minute: one job, no matrix, a shallow sparse checkout of the
-# two paths it needs, and a cached virtualenv so a warm run installs nothing.
+# paths it needs, and a cached virtualenv so a warm run installs nothing.
 
 on:
   # NO GITHUB CRON: n8n's "AD4 P6.1 - Clock" dispatches this every hour at
@@ -55,10 +55,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
+          # data/archive/forecasts: regime's history reaches below the
+          # database's keep there (scripts/weather_history.py, P1.6 phase 2).
           sparse-checkout: |
             scripts
             requirements.runtime.txt
             data/models/remaining_day/current.json
+            data/archive/forecasts
           sparse-checkout-cone-mode: false
       - id: py
         uses: actions/setup-python@v5
