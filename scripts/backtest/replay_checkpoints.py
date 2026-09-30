@@ -36,6 +36,10 @@ d1_eve (18:00 the day before) is not scored: stage 1 needs the day's readings.
 The first run's inputs are kept in data/replay/inputs_2026-09-26 (README there):
 replay_inputs is tools/p73_replay_inputs.sql's answer; the others are
 tools/experiments_p72_stage1.py's (labels whole days only).
+
+The second run (30 Sep, audit repair 6) changes only the labels, to
+$I/labels_whole_repaired.json.gz (the 29 Sep day-features repair), and writes
+data/replay/s10_replay_2026-09-30.csv.gz and docs/S10_REPLAY_2026-09-30.md.
 """
 import argparse
 import bisect
