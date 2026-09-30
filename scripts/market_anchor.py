@@ -24,14 +24,28 @@ RULE 11. w has
   - hard bounds:      [0, 1];
   - a minimum sample: a scope moves off its prior only with MIN_DAYS settled
                       days of evidence;
-  - evidence to move: the gain in log loss of the chosen w over w = 0 must have
-                      a day-block bootstrap lower 90% bound above zero;
+  - evidence to move, walking forward: on every settled day with MIN_DAYS
+                      earlier days, the w those earlier days alone choose is
+                      scored on the day against w = 0. Over at least MIN_DAYS
+                      such days the gain must have a day-block bootstrap lower
+                      90% bound above zero, and the latest RECENT_DAYS of them
+                      must gain too. So a scope moves no sooner than 2 x
+                      MIN_DAYS settled days;
   - a maximum step:   a refit moves w at most MAX_STEP from the previous version;
   - a version:        fit() stamps one; every decision records it.
 It is never evaluated on its own training data: fit() takes `as_of` and learns
-only from dates strictly before it. MIN_DAYS is the replay contract's floor
-(walk_forward.MIN_GATE_DAYS, 20); MAX_STEP and the grid are this module's
-priors, recorded in every fitted table.
+only from dates strictly before it, and no day scores a w chosen with it.
+MIN_DAYS is the replay contract's floor (walk_forward.MIN_GATE_DAYS, 20);
+MAX_STEP, RECENT_DAYS and the grid are this module's priors, recorded in every
+fitted table.
+
+WHY FORWARD (29 Sep audit, repair 4). Until 30 Sep the gate took the w with
+the lowest log loss over every settled day and bootstrapped its gain over
+those same days. A bootstrap that never re-picks w keeps the selection's
+optimism, and w = 0 is on the grid, so the in-sample gain could never be
+negative. Simulated, a model informative for 20 days and then not for 10
+passed that gate in 60 of 60 trials and lost on the last 10 days in all 60.
+The gate never ran live: every scope had 2-5 of its 20 days.
 
 SCOPES. A weight belongs to one view source and one checkpoint class: the
 engine's ladder may earn none while S10's late-day ladder earns some (the P7.3
@@ -71,6 +85,7 @@ W_BOUNDS = (0.0, 1.0)
 W_GRID = tuple(i / 100 for i in range(101))
 MIN_DAYS = 20
 MAX_STEP = 0.05
+RECENT_DAYS = 10             # the latest forward days must gain too: an edge that fades shows there first
 BOOT_N = 2000
 BOOT_LOWER = 0.05             # the lower end of a two-sided 90% interval
 P_FLOOR = 1e-6
@@ -225,6 +240,41 @@ def _family(by_day):
     return _verdict(per), per_city
 
 
+def _forward(by_day):
+    """The walk-forward test of a scope's pooled fit: {day: (the day's summed gain, its rows)}.
+
+    On each settled day with MIN_DAYS earlier days, the w with the lowest
+    total log loss over those earlier days alone is scored on the day against
+    the prior; the gain is the prior's log loss minus that w's. Only then is
+    the day learned from.
+    """
+    i0 = _ix(W_PRIOR)
+    totals = [0.0] * len(W_GRID)
+    per = {}
+    for n, d in enumerate(sorted(by_day)):
+        rows = by_day[d]
+        if n >= MIN_DAYS:
+            i = _best(totals)
+            per[d] = (sum(g[i0] - g[i] for g, _c in rows), len(rows))
+        for g, _c in rows:
+            _add(totals, g)
+    return per
+
+
+def _forward_verdict(per):
+    """_verdict of the forward gains, which also holds when the latest
+    RECENT_DAYS of them do not gain."""
+    out = _verdict(per)
+    if len(per) < MIN_DAYS:
+        return out
+    recent = sorted(per)[-RECENT_DAYS:]
+    gain = sum(per[d][0] for d in recent) / sum(per[d][1] for d in recent)
+    out["recent_days"], out["recent_gain"] = len(recent), round(gain, 5)
+    if out["passed"] and not gain > 0:
+        out["passed"], out["held"] = False, f"no gain over the latest {RECENT_DAYS} days scored forward"
+    return out
+
+
 def _verdict(per):
     """{days, rows, gain, gain_lower90, passed} for walk-forward gains {day: (sum, rows)}."""
     if len(per) < MIN_DAYS:
@@ -299,19 +349,22 @@ def fit(rows, as_of, previous=None):
             weights[sc] = start
             evidence[sc] = {"days": len(by_day), "held": f"fewer than {MIN_DAYS} settled days"}
         else:
+            # best: what every day before as_of chooses, the w a pass moves
+            # toward. forward: whether choosing that way has paid on days it
+            # had not seen (_forward); the choice is never scored on its own days.
             best = W_GRID[i]
-            mean, lower = (_interval({d: (sum(g[0] - g[i] for g, _c in rs), len(rs)) for d, rs in by_day.items()})
-                           if best > 0 else (0.0, 0.0))
-            target = best if (best > 0 and lower > 0) else W_PRIOR
+            forward = _forward_verdict(_forward(by_day))
+            target = best if (best > 0 and forward["passed"]) else W_PRIOR
             step = max(-MAX_STEP, min(MAX_STEP, target - start))
             weights[sc] = round(min(max(start + step, W_BOUNDS[0]), W_BOUNDS[1]), 4)
-            evidence[sc] = {"days": len(by_day), "rows": n_rows, "best_w": best, "gain": round(mean, 5),
-                            "gain_lower90": round(lower, 5), "target": target}
+            evidence[sc] = {"days": len(by_day), "rows": n_rows, "best_w": best, "forward": forward,
+                            "target": target}
         cw, city_evidence[sc] = _fit_cities(by_day, i, weights[sc], prev_city.get(sc) or {})
         if cw:
             city_weights[sc] = cw
     body = {"as_of": str(as_of), "w_prior": W_PRIOR, "bounds": list(W_BOUNDS), "min_days": MIN_DAYS,
-            "max_step": MAX_STEP, "previous": (previous or {}).get("version"), "weights": weights,
+            "max_step": MAX_STEP, "recent_days": RECENT_DAYS, "previous": (previous or {}).get("version"),
+            "weights": weights,
             "evidence": evidence, "city_min_days": CITY_MIN_DAYS, "city_k": CITY_K,
             "city_weights": city_weights, "city_evidence": city_evidence}
     digest = hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()
