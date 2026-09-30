@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = (ROOT / "supabase" / "migrations" / "20260930004500_the_hit_record_shows_the_priced_centre.sql").read_text()
 AD4_85 = (ROOT / "sql" / "ad4_85_city_hit_history.sql").read_text()
 PAGE = (ROOT / "web" / "app" / "predictive" / "page.tsx").read_text()
+FORWARD_LIB = (ROOT / "web" / "lib" / "predictive.ts").read_text()
 HINDSIGHT = (ROOT / "web" / "components" / "PredictionHindsight.tsx").read_text()
 
 OLD_30 = ("city_key, display_name, unit, for_date, ladder_bands, model_bands, observed_max_c, forecast_max_c, "
@@ -87,7 +88,9 @@ def test_the_stored_copy_is_rebuilt_once_under_its_own_name():
 def test_the_page_shows_the_priced_centre_and_names_the_raw_input():
     # the forward table
     assert "forecast_max_c,centre_c,sigma_c" in PAGE
-    assert "centre_c: best?.centre_c ?? null" in PAGE
+    # the forward rows are built in web/lib/predictive.ts since 30 Sep (handoff F2)
+    assert "forwardRows(" in PAGE
+    assert "centre_c: best?.centre_c ?? null" in FORWARD_LIB
     assert ">Priced centre</th>" in PAGE and ">Raw forecast</th>" in PAGE
     assert 'r.centre_c === null ? <span className="text-muted">not recorded</span>' in PAGE, (
         "a missing centre says so; the raw input never stands in for it")

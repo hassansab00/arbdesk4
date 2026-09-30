@@ -18,6 +18,7 @@
     "../lib/operatorAuth.ts",
     "../lib/n8nWebhook.ts",
     "../lib/cityCards.ts",
+    "../lib/predictive.ts",
     "../app/api/operator/route.ts",
     "../app/api/paper-desk/route.ts",
     "../app/api/paper-run/route.ts",

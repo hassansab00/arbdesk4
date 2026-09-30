@@ -14,6 +14,10 @@ import Convergence3D, { type ConvergencePoint } from "@/components/Convergence3D
 import { fmtInt, fmtPct, fmtPp, fmtPrice, fmtUsd, pnlColor } from "@/lib/format";
 import { fmtTemp, fmtTempDelta, type Unit } from "@/lib/units";
 import { fmtResolutionDate } from "@/lib/time";
+import {
+  forwardRows, groupScorecard, pendingDays, largestLeans,
+  type ForwardLadderRow, type MarketDay, type PendingDay,
+} from "@/lib/predictive";
 
 /**
  * PREDICTIVE - the same question asked in both directions.
@@ -92,7 +96,11 @@ interface ScalingRow {
   claimed_edge_pp: number; realised_pp: number;
   settled_yes_pct: number; mean_model_prob_pct: number;
 }
-interface CityRow { city_key: string; display_name: string | null; unit: string | null }
+interface CityRow {
+  city_key: string; display_name: string | null; unit: string | null;
+  /** the settlement station and the city's clock: what a day and a reading mean here */
+  timezone: string | null; icao: string | null; station_name: string | null;
+}
 /**
  * How many settled outcomes exist, and how many have survived verification.
  *
@@ -125,7 +133,7 @@ export default function PredictivePage() {
   const citiesQ = useQuery<CityRow[]>(
     // Active only: a retired city keeps every row it ever wrote, so without
     // this filter the desk would go on listing cities it has stopped trading.
-    () => supabase.from("cities").select("city_key,display_name,unit")
+    () => supabase.from("cities").select("city_key,display_name,unit,timezone,icao,station_name")
       .eq("status", "active").order("city_key"), []
   );
   const evidenceQ = useQuery<EvidenceHealth[]>(
@@ -260,11 +268,23 @@ export default function PredictivePage() {
             .eq("city_key", active).limit(1000),
     [active], 120000, 1000
   );
+  // ORDERED BEFORE ANY CAP, AND READ A PAGE AT A TIME (handoff F2). This was
+  // `.limit(4000)` with no order, rendered `.slice(0, 120)`: 120 of 797 rows in
+  // whatever order Postgres returned them, 6 C cities and 2 of 11 US cities
+  // (30 Sep, as anon). PostgREST also returns at most 1,000 rows a request
+  // however large the limit, so a bigger view would have been cut silently.
+  const SCORE_MAX = 4000;
   const scoreQ = useQuery<ScoreRow[]>(
-    () => supabase.from("v_prediction_scorecard_all").select("*")
-            .in("city_key", activeKeys).limit(4000),
-    [activeKeys.join(",")], undefined, 4000
+    () => readAllRows<ScoreRow>((from, to) =>
+      supabase.from("v_prediction_scorecard_all")
+        .select("city_key,model,lead_days,n_days,mae_c,bias_c,error_sd_c,worst_c,hit_rate_pct,within_1c_pct")
+        .in("city_key", activeKeys)
+        .order("city_key").order("model").order("lead_days")
+        .range(from, to), SCORE_MAX),
+    [activeKeys.join(",")], undefined, SCORE_MAX
   );
+  const [scoreCity, setScoreCity] = useState<string>("");
+  const [allLeans, setAllLeans] = useState(false);
   const bankQ = useQuery<BankrollRow[]>(
     () => supabase.from("v_bankroll_curve").select("*").limit(2000), [], undefined, 2000
   );
@@ -276,6 +296,17 @@ export default function PredictivePage() {
     () => supabase.from("v_city_hit_history").select("*")
             .eq("city_key", active).order("for_date", { ascending: false }).limit(400),
     [active], 300000, 400
+  );
+  // THE CITY'S RECENT DAYS NOT IN THE RECORD YET, and why (handoff F1/F2): a
+  // day missing from the table is pending - its local day has not ended, the
+  // venue has not confirmed the whole ladder, or it is confirmed and waiting
+  // for the record - never a miss.
+  const recentMarketsQ = useQuery<MarketDay[]>(
+    () => supabase.from("markets").select("resolution_date,resolution_verified_at")
+            .eq("city_key", active)
+            .gte("resolution_date", new Date(Date.now() - 4 * 86400000).toISOString().slice(0, 10))
+            .order("resolution_date", { ascending: false }).limit(10),
+    [active], 300000
   );
   const hitSumQ = useQuery<HitSummaryRow[]>(
     () => supabase.from("v_city_hit_summary").select("*").limit(200), [], 300000, 200
@@ -291,6 +322,12 @@ export default function PredictivePage() {
   const unitOf = (key: string) => (cities.find((c) => c.city_key === key)?.unit === "F" ? "F" : "C") as Unit;
 
   const hits = hitQ.data ?? [];
+  const activeCity = cities.find((c) => c.city_key === active) ?? null;
+  const pending = useMemo<PendingDay[]>(
+    () => pendingDays(recentMarketsQ.data ?? [], new Set(hits.map((h) => h.for_date)),
+                      activeCity?.timezone ?? null, Date.now()),
+    [recentMarketsQ.data, hits, activeCity?.timezone]
+  );
   const hitSum = (hitSumQ.data ?? []).find((r) => r.city_key === active) ?? null;
 
   /* ------------------------------------------------- the convergence funnel */
@@ -315,43 +352,14 @@ export default function PredictivePage() {
   }, [cityLadderQ.data]);
 
   /* --------------------------------------------------------------- forward */
-  const forward = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    const rows = (ladderQ.data ?? []).filter((r) => r.for_date >= today && !r.closed);
-    const byCityDay = new Map<string, LadderRow[]>();
-    for (const r of rows) {
-      const k = `${r.city_key}|${r.for_date}`;
-      if (!byCityDay.has(k)) byCityDay.set(k, []);
-      byCityDay.get(k)!.push(r);
-    }
-    return Array.from(byCityDay.entries())
-      .map(([k, bands]) => {
-        const [city_key, for_date] = k.split("|");
-        // model_prob is the YES probability on both rows of a band, and
-        // market_price is the price of the row's OWN side - so only the YES
-        // row's price is "what the market charges for this bucket".
-        const priced = bands.filter((b) => b.model_prob !== null && b.side === "YES");
-        const best = priced.slice().sort((a, b) => (b.model_prob ?? 0) - (a.model_prob ?? 0))[0];
-        const bestEdge = bands
-          .filter((b) => b.edge_net_pp !== null && b.tradeable === true)
-          .sort((a, b) => (b.edge_net_pp ?? 0) - (a.edge_net_pp ?? 0))[0];
-        return {
-          city_key, for_date, n_bands: bands.length, n_priced: priced.length,
-          // the centre the ladder was integrated on; the raw input beside it (audit repair 3)
-          centre_c: best?.centre_c ?? null,
-          forecast_max_c: best?.forecast_max_c ?? null,
-          sigma_c: best?.sigma_c ?? null,
-          best_band: best?.band_label ?? null,
-          best_prob: best?.model_prob ?? null,
-          best_price: best?.market_price ?? null,
-          top_edge_pp: bestEdge?.edge_net_pp ?? null,
-          top_edge_band: bestEdge?.band_label ?? null,
-        };
-      })
-      .sort((a, b) => (a.for_date === b.for_date
-        ? (b.top_edge_pp ?? -99) - (a.top_edge_pp ?? -99)
-        : a.for_date.localeCompare(b.for_date)));
-  }, [ladderQ.data]);
+  // Every open city-day (96 on 30 Sep; the table used to render 60 of them).
+  // The bucket shown is the published distribution's peak, which is not
+  // necessarily the bucket holding the centre (lib/predictive.ts).
+  const forward = useMemo(
+    () => forwardRows((ladderQ.data ?? []) as ForwardLadderRow[], new Date().toISOString().slice(0, 10)),
+    [ladderQ.data]
+  );
+  const forwardCities = useMemo(() => new Set(forward.map((r) => r.city_key)).size, [forward]);
 
   /* -------------------------------------------------- actual vs predicted */
   const settled = settledQ.data ?? [];
@@ -386,7 +394,7 @@ export default function PredictivePage() {
     const n = rows.length;
     if (!n) {
       return {
-        n: 0, nCities: 0, mae: 0, bias: 0, within1: 0, worst: 0, worstWhere: null as string | null,
+        n: 0, nCities: 0, nCityDays: 0, models: [] as string[], mae: 0, bias: 0, within1: 0, worst: 0, worstWhere: null as string | null,
         hotPct: 50, byCity: [] as Array<{ city: string; bias: number; n: number }>, maxCityBias: 1,
         verdict: "Nothing has settled yet, so there is nothing to score.",
         verdictTone: "text-muted",
@@ -438,7 +446,9 @@ export default function PredictivePage() {
       verdict = `No systematic lean, but only ${(within1 * 100).toFixed(0)}% of days land within a bucket. The direction is honest and the sharpness is not — edges here will be real but small.`;
       verdictTone = "text-muted";
     }
-    return { n, nCities: per.size, mae, bias, within1, worst, worstWhere, hotPct, byCity, maxCityBias, verdict, verdictTone };
+    const nCityDays = new Set(rows.map((r) => `${r.city_key}|${r.for_date}`)).size;
+    const models = Array.from(new Set(rows.map((r) => r.model))).sort();
+    return { n, nCities: per.size, nCityDays, models, mae, bias, within1, worst, worstWhere, hotPct, byCity, maxCityBias, verdict, verdictTone };
   }, [settled]);
 
   const errByLead = useMemo(() => {
@@ -528,8 +538,20 @@ export default function PredictivePage() {
           market charges for that bucket, and the largest tradeable edge anywhere on the ladder.
           A row with no probability has a forecast but no priced market yet. <b>Priced centre</b>{" "}
           and σ are what the ladder was integrated on, after the station correction and the blend;
-          <b>raw forecast</b> is the public forecast the engine started from.
+          <b>raw forecast</b> is the public forecast the engine started from. The <b>most likely
+          bucket</b> is the peak of the published distribution, which need not be the bucket the
+          centre falls in (a centre held at the day&apos;s observed maximum can sit below the peak).
         </p>
+        {forward.length > 0 && (
+          <p className="text-[11px] text-muted">
+            All {fmtInt(forward.length)} open city-days across {fmtInt(forwardCities)} cities, soonest
+            day first, then the largest tradeable edge.
+            {forward.some((r) => r.incomplete) ? (
+              <> <span className="text-warn">⚠</span> marks a ladder only partly priced or whose
+              probabilities do not sum to 1 (±2 pp).</>
+            ) : null}
+          </p>
+        )}
         <DataState
           relation="v_prediction_ladder"
           truncated={ladderQ.truncated}
@@ -554,7 +576,7 @@ export default function PredictivePage() {
                 </tr>
               </thead>
               <tbody>
-                {forward.slice(0, 60).map((r) => (
+                {forward.map((r) => (
                   <tr key={`${r.city_key}|${r.for_date}`} className="border-t border-border">
                     <td className="px-2 py-1.5">
                       <button className="text-accent hover:underline" onClick={() => setCity(r.city_key)}>
@@ -571,7 +593,12 @@ export default function PredictivePage() {
                     <td className="px-2 py-1.5 text-right tabular-nums text-muted">
                       {r.forecast_max_c === null ? "—" : fmtTemp(r.forecast_max_c, unitOf(r.city_key), 1)}
                     </td>
-                    <td className="px-2 py-1.5">{r.best_band ?? <span className="text-muted">not priced</span>}</td>
+                    <td className="px-2 py-1.5">
+                      {r.best_band ?? <span className="text-muted">not priced</span>}
+                      {r.incomplete ? (
+                        <span className="ml-1 text-warn" title={`${r.n_priced} of ${r.n_bands} buckets priced; probabilities sum to ${r.prob_sum === null ? "—" : r.prob_sum.toFixed(3)}`}>⚠</span>
+                      ) : null}
+                    </td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmtPct(r.best_prob)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmtPrice(r.best_price)}</td>
                     <td className={`px-2 py-1.5 text-right tabular-nums ${pnlColor(r.top_edge_pp)}`}>
@@ -660,6 +687,29 @@ export default function PredictivePage() {
           the day, scored on the buckets both priced, each renormalised over that set — scoring
           each side over whatever it happened to price flatters whichever priced less.
         </p>
+        {activeCity && (
+          <p className="text-[11px] text-muted">
+            Settles on{" "}
+            <span className="text-text">{activeCity.station_name ?? "its station"}{activeCity.icao ? ` (${activeCity.icao})` : ""}</span>,
+            local day on {activeCity.timezone ?? "an unknown clock"}; buckets in °{unit}
+            {unit === "F" ? " (2 °F wide)" : " (one whole degree)"}. Temperatures and errors below are in °{unit}; error is priced centre − actual.
+          </p>
+        )}
+        {pending.length > 0 && (
+          <div className="rounded border border-border bg-panel2/40 px-3 py-2 text-[11px] leading-relaxed">
+            <span className="font-semibold text-text">Not in the record yet — pending, not missed:</span>{" "}
+            {pending.map((p, i) => (
+              <span key={p.date}>
+                {i > 0 ? "; " : ""}
+                <span className="text-text">{fmtResolutionDate(p.date)}</span>{" "}
+                {p.state === "awaiting_venue"
+                  ? "day ended, the venue has not confirmed the whole ladder yet"
+                  : "confirmed by the venue, waiting for the record (banked and shown by the next intraday run)"}
+              </span>
+            ))}
+            .
+          </div>
+        )}
         <DataState
           relation="v_city_hit_history"
           truncated={hitQ.truncated}
@@ -713,19 +763,19 @@ export default function PredictivePage() {
                   <Stat
                     label="priced centre, mean |error|"
                     value={hitSum.centre_days > 0 && hitSum.centre_mae_c != null
-                      ? `${hitSum.centre_mae_c.toFixed(2)} °C` : "not recorded"}
+                      ? fmtTempDelta(hitSum.centre_mae_c, unit, 2).replace("+", "") : "not recorded"}
                   />
                   <Stat
                     label="priced centre, bias (centre − actual)"
                     value={hitSum.centre_days > 0 && hitSum.centre_bias_c != null
-                      ? `${hitSum.centre_bias_c > 0 ? "+" : ""}${hitSum.centre_bias_c.toFixed(2)} °C` : "not recorded"}
+                      ? fmtTempDelta(hitSum.centre_bias_c, unit, 2) : "not recorded"}
                   />
                 </div>
                 <p className="mt-2 text-[11px] text-muted">
                   Measured over {hitSum.first_day ?? "—"} → {hitSum.last_day ?? "—"}. The priced centre is
                   recorded on {fmtInt(hitSum.centre_days)} of {fmtInt(hitSum.days)} days (from 23 Sep); the raw
-                  forecast input missed by {(hitSum.mae_c ?? 0).toFixed(2)} °C on average (bias{" "}
-                  {(hitSum.bias_c ?? 0) > 0 ? "+" : ""}{(hitSum.bias_c ?? 0).toFixed(2)} °C) over all {fmtInt(hitSum.days)}.
+                  forecast input missed by {fmtTempDelta(hitSum.mae_c ?? 0, unit, 2).replace("+", "")} on average (bias{" "}
+                  {fmtTempDelta(hitSum.bias_c ?? 0, unit, 2)}) over all {fmtInt(hitSum.days)}.
                 </p>
                 <p className="mt-3 text-[11px] text-muted">
                   <b>Verdict:</b> {hitSum.verdict}
@@ -761,7 +811,8 @@ export default function PredictivePage() {
                         {r.centre_c === null ? <span className="text-muted">not recorded</span> : fmtTemp(r.centre_c, unit)}
                       </td>
                       <td className="p-2 text-right" style={{ color: Math.abs(r.centre_error_c ?? 0) > 1 ? "var(--c-bad)" : undefined }}>
-                        {r.centre_error_c === null ? "—" : `${r.centre_error_c > 0 ? "+" : ""}${r.centre_error_c.toFixed(1)}`}
+                        {/* centre - actual, in the city's unit (it was °C with no unit beside °F readings) */}
+                        {r.centre_error_c === null ? "—" : fmtTempDelta(r.centre_error_c, unit)}
                       </td>
                       <td className="p-2 text-right text-muted">{fmtTemp(r.forecast_max_c, unit)}</td>
                       <td className="p-2 font-medium">{r.winner ?? "—"}</td>
@@ -824,8 +875,9 @@ export default function PredictivePage() {
           </span>
         </div>
         <p className="max-w-3xl text-xs leading-relaxed text-muted">
-          Every settled day, one dot: what was forecast a day out against what the day actually
-          did. On the diagonal is a perfect call; above it the day came in hotter than said, below
+          Every settled day, one dot per public forecast model (the raw forecasts the engine starts
+          from — {accuracy.models.length ? accuracy.models.join(", ") : "nws and Open-Meteo"} — not
+          the priced centre): what each said a day out against what the day actually did. On the diagonal is a perfect call; above it the day came in hotter than said, below
           it cooler. Green is within 1 °C, which is roughly one bucket — the resolution the market
           actually pays at, so a dot being green matters more than it being close.{" "}
           <strong className="text-text">Bias and error are read separately</strong>: a forecast that
@@ -869,9 +921,9 @@ export default function PredictivePage() {
               {/* ---- the six numbers the cloud of dots is hiding ---------- */}
               <div className="grid grid-cols-2 gap-2">
                 <Readout
-                  label="Days scored"
+                  label="Forecasts scored"
                   value={fmtInt(accuracy.n)}
-                  sub={`${accuracy.nCities} cit${accuracy.nCities === 1 ? "y" : "ies"}`}
+                  sub={`${fmtInt(accuracy.nCityDays)} city-days × ${accuracy.models.length} model${accuracy.models.length === 1 ? "" : "s"}, ${accuracy.nCities} cit${accuracy.nCities === 1 ? "y" : "ies"}`}
                 />
                 <Readout
                   label="Within 1 °C"
@@ -922,11 +974,21 @@ export default function PredictivePage() {
               {/* ---- and where the misses are concentrated --------------- */}
               {accuracy.byCity.length > 1 && (
                 <div className="rounded border border-border bg-panel/60 p-2.5">
-                  <div className="text-[10px] uppercase tracking-wide text-muted">
-                    Lean per city — bars right of the line ran hotter than forecast
+                  <div className="flex items-baseline justify-between gap-2">
+                    <div className="text-[10px] uppercase tracking-wide text-muted">
+                      {allLeans
+                        ? `Lean per city, all ${largestLeans(accuracy.byCity, 0).total}`
+                        : `The ${Math.min(8, accuracy.byCity.length)} of ${accuracy.byCity.length} cities with the largest lean`}
+                      {" "}— bars right of the line ran hotter than forecast
+                    </div>
+                    {accuracy.byCity.length > 8 && (
+                      <button className="text-[10px] text-accent hover:underline" onClick={() => setAllLeans(!allLeans)}>
+                        {allLeans ? "largest 8" : `show all ${accuracy.byCity.length}`}
+                      </button>
+                    )}
                   </div>
                   <div className="mt-1.5 space-y-1">
-                    {accuracy.byCity.slice(0, 8).map((c) => (
+                    {largestLeans(accuracy.byCity, allLeans ? 0 : 8).shown.map((c) => (
                       <BiasBar key={c.city} city={c.city} bias={c.bias} n={c.n} max={accuracy.maxCityBias} />
                     ))}
                   </div>
@@ -981,60 +1043,99 @@ export default function PredictivePage() {
 
       {/* ------------------------------------------------ the scorecard table */}
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold">Hit rate, per city, per lead</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold">Raw forecast accuracy, per city, per model, per lead</h2>
+          <select
+            value={scoreCity} onChange={(e) => setScoreCity(e.target.value)}
+            className="rounded border border-border bg-panel2 px-2 py-1 text-xs"
+          >
+            <option value="">All {fmtInt(cities.length)} cities</option>
+            {cities.map((c) => (
+              <option key={c.city_key} value={c.city_key}>{c.display_name ?? c.city_key}</option>
+            ))}
+          </select>
+        </div>
         <p className="max-w-3xl text-xs leading-relaxed text-muted">
-          <strong className="text-text">Bias</strong> is kept separate from error on purpose: a
-          model 1.5 °C hot every single day is fixable, one that is 1.5 °C off in random directions
-          is not, and pooling them into &ldquo;1.5 °C error&rdquo; throws away which you have.
-          <strong className="text-text"> Hit rate</strong> is the only accuracy the market pays
-          for — did the day land in the bucket the forecast pointed at.
+          Each public forecast model at each lead, against the day&apos;s observed maximum, in °C for
+          every city. <strong className="text-text">Bias</strong> is kept separate from error on
+          purpose: a model 1.5 °C hot every single day is fixable, one that is 1.5 °C off in random
+          directions is not. <strong className="text-text">Same whole °C</strong> is whether the
+          forecast and the observed maximum share a whole degree Celsius. That is a Celsius
+          city&apos;s bucket, but <em>not</em> a Fahrenheit city&apos;s: those settle on 2 °F buckets,
+          so read the settlement-bucket record in <b>Hit and miss</b> above. A city needs at least 5
+          settled days per model and lead to get a row.
         </p>
         <DataState
           relation="v_prediction_scorecard"
+          truncated={scoreQ.truncated}
           loading={scoreQ.loading || citiesQ.loading || activeKeys.length === 0}
           error={scoreQ.error} isEmpty={(scoreQ.data ?? []).length === 0}
           emptyTitle={unverified ? "No verified days yet" : "Nothing scored yet"}
           emptyBody={unverified ?? "Needs at least 5 settled days per city, model and lead."}
           onRetry={scoreQ.refresh}
         >
-          <div className="overflow-x-auto rounded border border-border">
-            <table className="w-full text-xs">
-              <thead className="bg-panel2 text-muted">
-                <tr>
-                  <th className="px-2 py-1.5 text-left">City</th>
-                  <th className="px-2 py-1.5 text-left">Model</th>
-                  <th className="px-2 py-1.5 text-right">Lead</th>
-                  <th className="px-2 py-1.5 text-right">Days</th>
-                  <th className="px-2 py-1.5 text-right">MAE</th>
-                  <th className="px-2 py-1.5 text-right">Bias</th>
-                  <th className="px-2 py-1.5 text-right">Worst</th>
-                  <th className="px-2 py-1.5 text-right">Hit rate</th>
-                  <th className="px-2 py-1.5 text-right">Within 1 °C</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(scoreQ.data ?? []).slice(0, 120).map((r) => (
-                  <tr key={`${r.city_key}|${r.model}|${r.lead_days}`} className="border-t border-border">
-                    <td className="px-2 py-1.5">{r.city_key}</td>
-                    <td className="px-2 py-1.5 text-muted">{r.model}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{r.lead_days}d</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-muted">{fmtInt(r.n_days)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{r.mae_c.toFixed(2)}</td>
-                    <td className={`px-2 py-1.5 text-right tabular-nums ${Math.abs(r.bias_c) > 0.5 ? "text-warn" : "text-muted"}`}>
-                      {r.bias_c > 0 ? "+" : ""}{r.bias_c.toFixed(2)}
-                    </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-muted">{r.worst_c.toFixed(1)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">
-                      {r.hit_rate_pct === null ? "—" : `${r.hit_rate_pct.toFixed(0)}%`}
-                    </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-muted">
-                      {r.within_1c_pct === null ? "—" : `${r.within_1c_pct.toFixed(0)}%`}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {(() => {
+            const sc = groupScorecard(scoreQ.data ?? [], cities.map((c) => c.city_key), scoreCity);
+            return (
+              <div className="space-y-2">
+                <p className="text-[11px] text-muted">
+                  {scoreCity
+                    ? `${fmtInt(sc.shownRows)} rows for ${scoreCity}.`
+                    : `All ${fmtInt(sc.totalRows)} rows: ${fmtInt(sc.citiesWithRows)} of ${fmtInt(cities.length)} active cities, by city, then model, then lead.`}
+                  {sc.missing.length > 0 ? (
+                    <> No row yet (fewer than 5 settled days per model and lead):{" "}
+                      <span className="text-text">{sc.missing.join(", ")}</span>.</>
+                  ) : null}
+                </p>
+                <div className="max-h-[36rem] overflow-auto rounded border border-border">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-panel2 text-muted">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left">City</th>
+                        <th className="px-2 py-1.5 text-left">Model</th>
+                        <th className="px-2 py-1.5 text-right">Lead</th>
+                        <th className="px-2 py-1.5 text-right">Days</th>
+                        <th className="px-2 py-1.5 text-right">MAE °C</th>
+                        <th className="px-2 py-1.5 text-right">Bias °C</th>
+                        <th className="px-2 py-1.5 text-right">Worst °C</th>
+                        <th className="px-2 py-1.5 text-right">Same whole °C</th>
+                        <th className="px-2 py-1.5 text-right">Within 1 °C</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sc.groups.flatMap((g) => g.rows.map((r, i) => (
+                        <tr key={`${r.city_key}|${r.model}|${r.lead_days}`}
+                            className={i === 0 ? "border-t-2 border-border" : "border-t border-border/40"}>
+                          <td className="px-2 py-1.5">
+                            {i === 0 ? (
+                              <span>
+                                {r.city_key}
+                                <span className="ml-1 text-muted">{unitOf(r.city_key) === "F" ? "°F city" : ""}</span>
+                              </span>
+                            ) : null}
+                          </td>
+                          <td className="px-2 py-1.5 text-muted">{r.model}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{r.lead_days}d</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-muted">{fmtInt(r.n_days)}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{Number(r.mae_c).toFixed(2)}</td>
+                          <td className={`px-2 py-1.5 text-right tabular-nums ${Math.abs(r.bias_c) > 0.5 ? "text-warn" : "text-muted"}`}>
+                            {r.bias_c > 0 ? "+" : ""}{Number(r.bias_c).toFixed(2)}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-muted">{Number(r.worst_c).toFixed(1)}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {r.hit_rate_pct === null ? "—" : `${Number(r.hit_rate_pct).toFixed(0)}%`}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-muted">
+                            {r.within_1c_pct === null ? "—" : `${Number(r.within_1c_pct).toFixed(0)}%`}
+                          </td>
+                        </tr>
+                      )))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
         </DataState>
       </section>
 
