@@ -531,8 +531,11 @@ def select_features(train, target):
     while remaining:
         scored = []
         for f in remaining:
-            usable = [r for r in inner if r.get(f) is not None]
-            if len(usable) < len(inner):
+            # EVERY training day, the validation slice included: the trial is
+            # scored on `val`, and fit_city refits on all of `train`. Checking
+            # `inner` alone crashed the 28 Sep refit on float(None) - cape_town's
+            # wind vector was missing on 2 validation days and no inner one.
+            if any(r.get(f) is None for r in train):
                 notes.append((f, "not present on every training day"))
                 continue
             if not varying(inner, [f])[0]:
