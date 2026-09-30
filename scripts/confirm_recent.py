@@ -27,8 +27,12 @@ import time
 
 JOB = "P4.7_confirm_recent"
 HOURS_UTC = tuple(range(24))        # eligibility is local (confirm_queue.queue_order)
-BUDGET_S = 12.0
-RESERVE_S = 8.0                     # leaves the trade step its own few seconds
+# Started beside the checkpoints since 30 Sep (tick.yml), so it has the tick's
+# whole window, not what the other steps leave: up to 25 s, ending RESERVE_S
+# before TICK_DEADLINE; a ladder is not started with under 2 s left
+# (confirm_queue.MIN_LEFT_S), and tick.yml's `timeout 40` is the backstop.
+BUDGET_S = 25.0
+RESERVE_S = 8.0
 DAYS_BACK = 3
 # The venue answers in about half a second a call (tested 30 Sep: 0.66 s for an
 # 11-band Gamma request, 0.64 s for one CLOB market). A call that has not

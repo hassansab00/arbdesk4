@@ -508,7 +508,7 @@ def main():
 
     # EVERY CITY'S CURRENT RUN, whatever the loop above skipped: a city complete
     # for best_match still needs today's forecasts of the days ahead.
-    current_rows, current_failed = 0, defaultdict(int)
+    current_rows, current_failed, current_missing = 0, defaultdict(int), []
 
     def one_current(c):
         if (time.monotonic() - t0) / 60 > SOFT_DEADLINE_MIN + 2:
@@ -533,13 +533,15 @@ def main():
             current_rows += sum(n for _, _, n in results)
             hung = [c for c, out, _ in results if out == "unreached"]
             if attempt == 2 or not hung or (time.monotonic() - t0) / 60 > SOFT_DEADLINE_MIN + 2:
-                for _, out, _ in results:
+                for c, out, _ in results:
                     if out != "ok":
                         current_failed[out] += 1
+                        current_missing.append(c["city_key"])
                 break
-            for _, out, _ in results:
+            for c, out, _ in results:
                 if out not in ("ok", "unreached"):
                     current_failed[out] += 1
+                    current_missing.append(c["city_key"])
             todo = hung
         print(f"current runs: {current_rows} row(s)"
               + (f"; failed {dict(current_failed)}" if current_failed else ""))
@@ -563,14 +565,21 @@ def main():
     if result_path:
         with open(result_path, 'w') as handle:
             json.dump(result, handle)
-    log_run("ingest_forecasts", "partial" if incomplete else "ok", total,
+    # A CITY WITHOUT TODAY'S CURRENT RUN IS A PARTIAL COLLECTION (30 Sep). The
+    # runs of 29-30 Sep logged 'ok' with current_failed unreached 1-4: those
+    # cities priced on an older run and the log read healthy. It does not
+    # make the run `incomplete` - that chains another billed link, and the
+    # current runs are fetched again next night - but it is reported.
+    status = "partial" if (incomplete or current_failed) else "ok"
+    log_run("ingest_forecasts", status, total,
             {"start": str(start), "end": str(end), "leads": LEADS,
              "chunk_days": CHUNK_DAYS, "ran_out": ran_out,
              "refused_chunks": missing_chunks, "unreached_chunks": unreached_chunks,
              "models": MODELS, "model_rows": dict(model_rows),
              "model_requests_failed": dict(model_failed),
              "models_without_rows": sorted(model_empty),
-             "current_rows": current_rows, "current_failed": dict(current_failed)})
+             "current_rows": current_rows, "current_failed": dict(current_failed),
+             "current_cities_missing": sorted(set(current_missing))})
 
 if __name__ == "__main__":
     main()

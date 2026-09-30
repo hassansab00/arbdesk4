@@ -204,3 +204,69 @@ def test_the_width_factor_reaches_its_coverage_target_on_the_inner_days():
         rd.MIN_TRAIN_ROWS, rd.MIN_INNER_ROWS = old
     assert n == len([r for r in rows if r["date"] >= sorted({r["date"] for r in rows})[120]])
     assert cover >= rd.TARGET_COVER or k == rd.WIDEN_GRID[-1]
+
+
+# ---------------------------------------------------------------------------
+# Challenger A: the readings received by the decision time (rd2, 30 Sep;
+# docs/CHALLENGER_A_PREREG.md). A separate feature contract.
+# ---------------------------------------------------------------------------
+import datetime as _dt
+
+
+def _day_inputs():
+    forecast = {h: (15.0 + 8 * math.sin(math.pi * max(0, h - 6) / 14), 40.0, 300.0) for h in range(24)}
+    readings = [(h + m / 60, 15.0 + 8 * math.sin(math.pi * max(0, h + m / 60 - 6) / 14))
+                for h in range(24) for m in (0, 30)]
+    return forecast, readings
+
+
+def test_rd2_is_a_separate_contract():
+    assert rd.VERSION_PREFIX_AT == "rd2" != rd.VERSION_PREFIX
+    assert rd.FEATURES_AT[:len(rd.FEATURES)] == rd.FEATURES
+    assert rd.FEATURES_AT[len(rd.FEATURES):] == ["obs_age_h", "min_frac"]
+    assert rd.version_of({13: {"last_date": "2026-07-31"}}, prefix="rd2").startswith("rd2:2026-07-31:")
+
+
+def test_a_reading_after_the_hour_reaches_the_decision_only_through_rd2():
+    """13:36 decision, a reading at 13:30 already received: rd1 cuts at 13:00."""
+    forecast, readings = _day_inputs()
+    day = _dt.date(2026, 7, 15)
+    avail = rd.available(readings, 13.6, lag_h=0)
+    assert max(t for t, _ in avail) == 13.5
+    a = rd.features_at(avail, forecast, 13.6, day, 1.0)
+    b = rd.features(avail, forecast, 13, day, 1.0)
+    assert a["latest_at"] == 13.5 and abs(a["obs_age_h"] - 0.1) < 1e-9
+    assert a["now"] != b["now"], "rd1 reads the 13:00 reading, rd2 the 13:30 one"
+
+
+def test_a_later_reading_cannot_change_an_earlier_prediction():
+    forecast, readings = _day_inputs()
+    day = _dt.date(2026, 7, 15)
+    base = rd.features_at(rd.available(readings, 12.6), forecast, 12.6, day, 1.0)
+    later = readings + [(12.95, 40.0), (15.0, 45.0)]      # a spike after the decision
+    again = rd.features_at(rd.available(later, 12.6), forecast, 12.6, day, 1.0)
+    assert base == again
+
+
+def test_a_reading_not_yet_received_is_not_available():
+    """Received 10 min after its valid time (the historical rule): at 13:36 the
+    13:30 reading is not in, the 13:00 one is."""
+    _, readings = _day_inputs()
+    avail = rd.available(readings, 13.6)
+    assert max(t for t, _ in avail) == 13.0
+
+
+def test_a_stale_latest_reading_gives_no_prediction():
+    forecast, readings = _day_inputs()
+    old = [p for p in readings if p[0] <= 11.0]
+    assert rd.features_at(old, forecast, 12.6, _dt.date(2026, 7, 15), 1.0) is None, "1.6 h old"
+    assert rd.features_at(old, forecast, 12.4, _dt.date(2026, 7, 15), 1.0) is not None, "1.4 h old"
+
+
+def test_the_forecast_is_read_between_hours_and_the_rest_after_the_decision():
+    forecast, readings = _day_inputs()
+    assert abs(rd._fc_at(forecast, 13.5) - (forecast[13][0] + forecast[14][0]) / 2) < 1e-9
+    a = rd.features_at(rd.available(readings, 13.6, 0), forecast, 13.6, _dt.date(2026, 7, 15), 1.0)
+    rest = max(forecast[h][0] for h in range(14, 24))
+    assert abs(a["x"][0] - (rest - a["now"])) < 1e-9
+    assert abs(a["x"][-1] - 0.6) < 1e-9, "min_frac"

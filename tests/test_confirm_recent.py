@@ -76,15 +76,20 @@ def test_the_venue_calls_are_short(monkeypatch):
     assert calls["get"] is cr.quick_json and cr.REQUEST_TIMEOUT_S == 5
 
 
-def test_the_tick_runs_it_with_a_backstop_and_the_trades_do_not_wait_for_it():
-    """confirm_recent keeps its 20 s backstop. The trade prints no longer run
-    after it on what is left (27-28 Sep: under 5 s in 15 of 27 ticks); they start in
-    the background before the checkpoints and are collected in the last step."""
+def test_the_tick_starts_it_beside_the_checkpoints_with_a_backstop():
+    """30 Sep: run after the other steps it had 0.0 s at 10:36Z and skipped (10
+    ticks in three days). It starts in the background before the checkpoints,
+    like the trade prints, with its budget cut from the same deadline, and the
+    last steps collect both."""
     wf = (ROOT / ".github" / "workflows" / "tick.yml").read_text()
-    assert "timeout 20 .venv/bin/python scripts/confirm_recent.py" in wf
+    assert "timeout 40 .venv/bin/python scripts/confirm_recent.py" in wf
     run = lambda script: wf.index(f".venv/bin/python scripts/{script}")
-    assert run("ingest_trades.py") < run("tick.py") < run("confirm_recent.py")
-    assert wf.rindex("trades.rc") > run("confirm_recent.py")
+    assert run("confirm_recent.py") < run("tick.py")
+    assert run("ingest_trades.py") < run("tick.py")
+    assert wf.index('"$RUNNER_TEMP/confirm.rc"') < run("tick.py")
+    assert wf.rindex("confirm.rc") > run("tick.py"), "collected after the checkpoints"
+    assert wf.rindex("trades.rc") > run("tick.py")
+    assert cr.BUDGET_S + cr.RESERVE_S < 48, "inside TICK_DEADLINE"
 
 
 def test_the_ledger_is_asked_only_about_the_candidates(monkeypatch):
@@ -130,3 +135,29 @@ def test_the_sweep_says_how_long_it_read_before_asking(monkeypatch):
     monkeypatch.setattr(paper_worker, "public_json", lambda url, params: [])
     d = settlement.cycle(budget_seconds=5, days_back=2, unconfirmed_only=True)
     assert d["scope"] == "unconfirmed" and d["prep_s"] >= 0
+
+
+def test_the_background_confirmations_never_hold_or_fail_the_job(tmp_path):
+    """Under the runner's own shell flags: the start step returns at once, and
+    the collecting step waits for the run, prints its log and never fails the
+    job (the run's own log row carries its status)."""
+    import os
+    import stat
+    import subprocess
+    import time
+    import yaml
+    steps = yaml.safe_load((ROOT / ".github" / "workflows" / "tick.yml").read_text())["jobs"]["tick"]["steps"]
+    start = next(s for s in steps if s.get("id") == "confirm")["run"]
+    collect = next(s for s in steps if s.get("name") == "Venue confirmations, collected (P4.7)")["run"]
+    fake = tmp_path / ".venv" / "bin" / "python"
+    fake.parent.mkdir(parents=True)
+    fake.write_text("#!/bin/bash\nsleep 1\necho fake confirmations\nexit 3\n")
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    env = {**os.environ, "RUNNER_TEMP": str(tmp_path)}
+    t0 = time.monotonic()
+    subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", start],
+                   cwd=tmp_path, env=env, check=True, timeout=10)
+    assert time.monotonic() - t0 < 0.9
+    done = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", collect],
+                          cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0 and "fake confirmations" in done.stdout

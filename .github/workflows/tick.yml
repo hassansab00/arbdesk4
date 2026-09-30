@@ -95,6 +95,23 @@ jobs:
             .venv/bin/python scripts/ingest_trades.py --budget 30 > "$RUNNER_TEMP/trades.log" 2>&1
             echo $? > "$RUNNER_TEMP/trades.rc"
           ) < /dev/null > /dev/null 2>&1 &
+      - name: Venue confirmations, started beside the other steps (P4.7)
+        # IN THE BACKGROUND, NOT AFTER THE OTHERS (30 Sep). Run after tick.py and
+        # the NWS steps, it got what they left before TICK_DEADLINE: the first
+        # tick after #290 (10:36Z 30 Sep) had 0.0 s and skipped, as 10 ticks had
+        # in the three days before. It waits on the venue and PostgREST, not
+        # the CPU, so it runs beside the checkpoints with its budget still cut
+        # from the same deadline (confirm_recent.budget): one billed minute.
+        # `timeout` is the backstop; the last step collects its log. Not on a
+        # rehearsal: dry_run writes nothing.
+        id: confirm
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          (
+            set +e
+            timeout 40 .venv/bin/python scripts/confirm_recent.py > "$RUNNER_TEMP/confirm.log" 2>&1
+            echo $? > "$RUNNER_TEMP/confirm.rc"
+          ) < /dev/null > /dev/null 2>&1 &
       - name: Checkpoints
         # Inputs reach the script through the environment, never the shell
         # line, and tick.py parses --at as a timestamp or refuses it.
@@ -113,12 +130,15 @@ jobs:
         # (ingest_nws_monitor.py HOURS_UTC).
         if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
         run: .venv/bin/python scripts/ingest_nws_monitor.py
-      # Plan v2.2 P4.7: US city-days confirmed and scored the same morning.
-      # Only at 06-17Z, with a budget cut from the deadline; `timeout` is the
-      # backstop that keeps the job inside its one billed minute.
-      - name: Venue confirmations for days that just ended
-        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
-        run: timeout 20 .venv/bin/python scripts/confirm_recent.py || echo "confirm_recent stopped at its 20 s backstop"
+      - name: Venue confirmations, collected (P4.7)
+        # Waits for the run started above (its budget ends before
+        # TICK_DEADLINE). It never fails the job: a failure is in its own log
+        # row (P4.7_confirm_recent) and in the crash row common.py writes.
+        if: ${{ !cancelled() && steps.confirm.outcome == 'success' }}
+        run: |
+          for i in $(seq 1 90); do [ -f "$RUNNER_TEMP/confirm.rc" ] && break; sleep 0.5; done
+          cat "$RUNNER_TEMP/confirm.log" 2>/dev/null || true
+          [ -f "$RUNNER_TEMP/confirm.rc" ] || echo "confirm_recent still running after 45 s; its timeout ends it"
       - name: Trade prints, collected
         # Waits for the run started above: it stops starting batches at its
         # budget and before TICK_DEADLINE, so it has normally finished by now.
