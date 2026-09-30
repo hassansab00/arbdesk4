@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 259 of them - and for each MISSING one names the
+-- and function the app reads - 260 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -84,6 +84,7 @@ with expected(rel, owner, used_by) as (values
     ('live_weather', 'ad4_live_weather.sql', '(CityCards), (GlobalBar), (RightRail), /board, /live, /opportunities'),
     ('markets', 'ad4_00_preflight.sql', '(Header)'),
     ('model_versions', 'ad4_00_preflight.sql', ''),
+    ('mv_city_hit_history', 'supabase/migrations/20260930004500_the_hit_record_shows_the_priced_centre.sql', ''),
     ('mv_prediction_ladder', 'supabase/migrations/20260927170000_the_card_shows_what_was_priced.sql', ''),
     ('mv_venue_band_resolution', 'ad4_68_prediction_ladder_outcomes.sql', ''),
     ('paper_accounts', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),
@@ -365,6 +366,7 @@ begin
     ('live_weather', 'ad4_live_weather.sql', '(CityCards), (GlobalBar), (RightRail), /board, /live, /opportunities'),
     ('markets', 'ad4_00_preflight.sql', '(Header)'),
     ('model_versions', 'ad4_00_preflight.sql', ''),
+    ('mv_city_hit_history', 'supabase/migrations/20260930004500_the_hit_record_shows_the_priced_centre.sql', ''),
     ('mv_prediction_ladder', 'supabase/migrations/20260927170000_the_card_shows_what_was_priced.sql', ''),
     ('mv_venue_band_resolution', 'ad4_68_prediction_ladder_outcomes.sql', ''),
     ('paper_accounts', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),

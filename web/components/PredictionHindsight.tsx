@@ -189,8 +189,8 @@ export default function PredictionHindsight() {
           </div>
           <div className="text-xs text-muted">{s.marketDays} city-days both called</div>
         </div>
-        <div title="Positive means the day came out warmer than the forecast the engine priced from.">
-          <div className="text-xs text-muted">Forecast error</div>
+        <div title="Positive means the day came out warmer than the centre the engine priced (recorded from 23 Sep; days without one are left out).">
+          <div className="text-xs text-muted">Priced centre error</div>
           <div className="font-mono text-xl">{s.mae === null ? "—" : `${s.mae.toFixed(2)}°C`}</div>
           <div className="text-xs text-muted">
             mean absolute{s.bias === null ? "" : `; bias ${s.bias > 0 ? "+" : ""}${s.bias.toFixed(2)}°C`}
@@ -253,7 +253,7 @@ export default function PredictionHindsight() {
       <div className="overflow-x-auto rounded border border-border">
         <table className="w-full text-xs">
           <thead className="bg-panel2 text-muted"><tr>
-            {["Day", "City", "Engine called", "Sure", "Market called", "Actual", "Observed", "Forecast", "Error", "", "Source"]
+            {["Day", "City", "Engine called", "Sure", "Market called", "Actual", "Observed", "Priced centre", "Error", "", "Source"]
               .map((h, i) => <th key={i} className="px-2 py-1.5 text-left font-normal">{h}</th>)}
           </tr></thead>
           <tbody>
@@ -267,7 +267,8 @@ export default function PredictionHindsight() {
               </td>
               <td className="px-2 py-1">{r.actual_band ?? "—"}</td>
               <td className="px-2 py-1 font-mono">{r.observed_max_c === null ? "—" : `${r.observed_max_c}°C`}</td>
-              <td className="px-2 py-1 font-mono text-muted">{r.forecast_max_c === null ? "—" : `${r.forecast_max_c}°C`}</td>
+              {/* the centre that was priced, in every row (v_prediction_hindsight, audit repair 3) */}
+              <td className="px-2 py-1 font-mono text-muted">{r.forecast_max_c === null ? "not recorded" : `${r.forecast_max_c}°C`}</td>
               <td className={`px-2 py-1 font-mono ${Math.abs(n(r.forecast_error_c) ?? 0) > 2 ? "text-warn" : "text-muted"}`}>
                 {r.forecast_error_c === null ? "—" : `${n(r.forecast_error_c)! > 0 ? "+" : ""}${r.forecast_error_c}`}
               </td>

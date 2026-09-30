@@ -244,6 +244,11 @@ SQL_RECORD = {
 # rather than a bug. It is here because a blind spot is how the last four got
 # in.
 MIGRATION_RECORD = {
+    "supabase/migrations/20260930004500_the_hit_record_shows_the_priced_centre.sql":
+        "v_city_hit_history_live as in sql/ad4_85 (the priced centre appended) - "
+        "cities.timezone to put each call's cutoff on its city's clock and the "
+        "display name; every settled city-day, a retired city's too, because it "
+        "is the record",
     "supabase/migrations/20260929230000_the_marks_the_prune_took_come_back.sql":
         "restore_edge_marks as in sql/ad4_97 - cities.timezone to put each band's "
         "eve and pre-day cutoffs on its city's clock; every archived band's marks, a "
