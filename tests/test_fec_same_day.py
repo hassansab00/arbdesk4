@@ -55,3 +55,55 @@ def test_a_wilson_interval():
     lo, hi = F.wilson(50, 100)
     assert lo < 0.5 < hi and abs((lo + hi) / 2 - 0.5) < 1e-9
     assert F.wilson(0, 0) is None
+
+
+def test_the_day_ahead_lane_scores_identical_rows(tmp_path):
+    """tools/fec_day_ahead.py: the engine, the raw forecast's bucket and the
+    priced centre on the same rows; the market only on head-to-head rows."""
+    import gzip
+    import fec_day_ahead as DA
+    head = ("city_key,unit,for_date,hours_before_day,model_hit,model_prob_on_winner,brier_model,"
+            "brier_uniform,head_to_head,market_hit,market_prob_on_winner,brier_model_common,brier_market,"
+            "observed_max_c,forecast_max_c,centre_c,raw_hit,centre_hit")
+    rows = ["a,C,2026-09-24,3,1,0.5,0.4,0.9,1,1,0.6,0.4,0.3,20,21,20.2,0,1",
+            "b,F,2026-09-24,3,0,0.1,0.9,0.9,0,,,,,25,24,,1,",
+            "a,C,2026-09-25,3,0,0.0,1.0,0.9,1,0,0.2,1.0,0.8,20,20,,1,"]
+    p = tmp_path / "da_rows_x.csv.gz"
+    with gzip.open(p, "wt") as f:
+        f.write(head + "\n" + "\n".join(rows) + "\n")
+    b = DA.block(DA.load(str(p)))
+    assert b["n"] == 3 and b["dates"] == 2
+    assert b["engine"]["top1"] == round(1 / 3, 4) and b["raw_forecast"]["top1"] == round(2 / 3, 4)
+    assert abs(b["engine"]["logloss"] - round((-math.log(0.5) - math.log(0.1) - math.log(1e-6)) / 3, 4)) < 1e-9
+    assert b["priced_centre_subset"]["n"] == 1 and b["priced_centre_subset"]["centre_top1"] == 1.0
+    assert b["head_to_head"]["n"] == 2, "the market only where both priced the winner before the day"
+
+
+def test_the_models_column_is_the_whole_day_unless_a_sensitivity_run_asks(tmp_path, monkeypatch):
+    """rd3's pre-registered input is tmax_c; tmax_00_17_c (no hour after 17:00,
+    so no run that could be published after a morning decision) is a
+    sensitivity reading only."""
+    import gzip
+    p = tmp_path / "models_daily.csv.gz"
+    with gzip.open(p, "wt") as f:
+        f.write("city_key,lead_days,model,for_date,tmax_c,tmax_00_17_c\n"
+                "a,1,gfs,2026-08-01,25.0,24.0\n"
+                "a,2,gfs,2026-08-01,26.0,26.0\n"
+                "a,1,icon,2026-08-01,23.5,23.5\n")
+    monkeypatch.setitem(F.INPUTS, "models", str(p))
+    monkeypatch.setattr(F, "G", {})
+    assert F.load_models() == {("a", "2026-08-01"): {"gfs": 25.0, "icon": 23.5}}, "lead 1 only, whole day"
+    F.G["models_col"] = "tmax_00_17_c"
+    assert F.load_models() == {("a", "2026-08-01"): {"gfs": 24.0, "icon": 23.5}}
+
+
+def test_a_sensitivity_run_is_never_an_acceptance_test():
+    src = open(os.path.join(ROOT, "tools", "fec_same_day.py")).read()
+    assert '"sensitivity only (not an acceptance test)"' in src
+    assert '"_m0017" if sensitivity' in src, "its outputs never overwrite the acceptance run's"
+    try:
+        F.main(["--period", "holdout", "--challenger", "rd2", "--models-column", "tmax_00_17_c"])
+    except SystemExit as e:
+        assert e.code == 2, "the option is refused for rd2 before anything runs"
+    else:
+        raise AssertionError("rd2 with a models column must be refused")

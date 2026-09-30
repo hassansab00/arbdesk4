@@ -165,9 +165,19 @@ rd2 does not replace rd1.
   - larger morning regressions: 7h -0.0211, 8h -0.0163, 9h -0.0144.
 
   Not accepted, by the same rule (`sd_holdout_lag0.json`).
-- **20 min:** to be added (running when this was written).
+- **20 min:**
+  - pooled +0.0008 (90%: -0.0001, +0.0016), so insufficient evidence;
+  - 7h +0.0019 and 8h +0.0017 (both intervals above 0);
+  - 17h -0.0035 (-0.0057, -0.0015) (`sd_holdout_lag20.json`).
 
-The morning regression grows as more recent readings are allowed in. So it is a property of the
-rd2 fit in the morning, not of the lag assumption. Why is not diagnosed here, and rd2 is not
-being tuned on this window.
+**What the three lags show.** The size and even the sign of the effect by hour depend on how
+recent a reading is assumed to have been received:
+- At 0-10 min, a half-hourly report at `H:20`/`H:30` enters, and the morning hours regress.
+- At 20 min it mostly does not, and they do not.
+
+The same-day gain from decision-time readings is real in the afternoon at 0-10 min. It is not
+robust enough to promote. The pre-registered verdict (10 min) stands: **not accepted**. The
+honest test of any successor is forward, with real receipt times. Those are recorded in
+`weather_observations.observed_at` and its nightly mirror, `data/mirror/weather_observations`.
+rd2 is not tuned further on this window.
 
