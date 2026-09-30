@@ -240,3 +240,24 @@ def test_the_rows_carry_the_city_the_call_was_for():
     rows = sl.market_rows(cps, [_out(0), _out(1)], s10)
     assert [(r[1], r[5]) for r in rows] == [("engine:midday", "nyc"), ("engine:midday", "tel-aviv"),
                                             ("s10:midday", "tel-aviv")]
+
+
+def test_the_s10_weight_reads_the_incumbents_rows_only(monkeypatch):
+    """A challenger in forward shadow (rd3, 30 Sep) writes s10_shadow_checkpoints
+    under its own version; only rd1's rows - the ladders the engine's S10
+    decisions read - may move S10's market weight."""
+    import remaining_day as rd
+    assert sl.S10_INCUMBENT == f"like.{rd.VERSION_PREFIX}:*"
+    db = _DB([_cp(1, "2026-09-24")], [_out(1)])
+    seen = {}
+    m = db.module()
+    inner = m.rest_all
+
+    def rest_all(path, params=None, **k):
+        seen[path] = dict(params or {})
+        return inner(path, params, **k)
+    m.rest_all = rest_all
+    monkeypatch.setitem(sys.modules, "common", m)
+    monkeypatch.setattr(sl, "cluster_inputs", lambda rest_all: ([], {}, []))
+    sl.main(["--as-of", "2026-09-26", "--dry-run"])
+    assert seen["s10_shadow_checkpoints"]["model_version"] == "like.rd1:*"

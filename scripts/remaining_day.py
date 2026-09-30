@@ -237,8 +237,10 @@ def features_at(seen, forecast, t, day, spread):
 # Challenger C: the individual models' day-before maxima, bias-corrected
 # (30 Sep; docs/CHALLENGER_C_PREREG.md). A separate contract, `rd3`: rd1's
 # features plus three summaries of the models. Rule 11: the bias has a prior
-# (0), shrinkage (MODEL_BIAS_PRIOR_DAYS), bounds (MODEL_BIAS_BOUND_C) and is
-# fitted only on training days.
+# (0), shrinkage (MODEL_BIAS_PRIOR_DAYS), a minimum sample (MIN_BIAS_DAYS),
+# bounds (MODEL_BIAS_BOUND_C), is fitted only on training days, and its table
+# is in the version (version_of_c). It moves only when the file is refitted
+# (tools/fit_remaining_day.py --challenger rd3), never nightly.
 # ---------------------------------------------------------------------------
 VERSION_PREFIX_C = "rd3"
 FEATURES_C = FEATURES + ["models_rise_c", "models_frac_up", "models_n"]
@@ -246,6 +248,10 @@ MIN_MODELS_C = 4
 MODEL_BIAS_PRIOR_DAYS = 30.0
 MODEL_BIAS_BOUND_C = 4.0
 MODEL_RISE_MARGIN_C = 0.5
+# Added 30 Sep after the scored runs, a no-op on every one of them: the
+# smallest (model, city) sample at any evaluated cutoff was 161 days
+# (ecmwf_ifs025 at denver, 1 Jan 2026) and the smallest pooled one 7,837.
+MIN_BIAS_DAYS = 30
 
 
 def fit_model_bias(pairs):
@@ -257,12 +263,44 @@ def fit_model_bias(pairs):
         by_model.setdefault(m, []).append(e)
         by_mc.setdefault((m, c), []).append(e)
     clip = lambda v: max(-MODEL_BIAS_BOUND_C, min(MODEL_BIAS_BOUND_C, v))
-    pooled = {m: clip(sum(v) / len(v) * len(v) / (len(v) + MODEL_BIAS_PRIOR_DAYS)) for m, v in by_model.items()}
+    pooled = {m: (clip(sum(v) / len(v) * len(v) / (len(v) + MODEL_BIAS_PRIOR_DAYS))
+                  if len(v) >= MIN_BIAS_DAYS else 0.0) for m, v in by_model.items()}
     out = {}
     for (m, c), v in by_mc.items():
+        if len(v) < MIN_BIAS_DAYS:
+            out[(m, c)] = pooled[m]           # too few days: the prior stands
+            continue
         w = len(v) / (len(v) + MODEL_BIAS_PRIOR_DAYS)
         out[(m, c)] = clip(w * (sum(v) / len(v)) + (1 - w) * pooled[m])
     return out, pooled
+
+
+def bias_to_json(bias, pooled):
+    """The bias table as JSON-safe dicts: {"model|city": C}, {model: C}."""
+    return ({f"{m}|{c}": round(v, 6) for (m, c), v in sorted(bias.items())},
+            {m: round(v, 6) for m, v in sorted(pooled.items())})
+
+
+def bias_from_json(bias_js, pooled_js):
+    return ({tuple(k.split("|", 1)): float(v) for k, v in (bias_js or {}).items()},
+            {m: float(v) for m, v in (pooled_js or {}).items()})
+
+
+def version_of_c(params, bias_js, pooled_js):
+    """rd3:<last training date>:<hash of the hours AND the bias table>."""
+    blob = json.dumps({"hours": {str(h): p for h, p in sorted(params.items())},
+                       "bias": bias_js, "pooled": pooled_js}, sort_keys=True, default=str)
+    last = max((p["last_date"] for p in params.values()), default="none")
+    return f"{VERSION_PREFIX_C}:{last}:{hashlib.sha256(blob.encode()).hexdigest()[:10]}"
+
+
+def row_c(row, models, city, bias, pooled):
+    """rd1's feature row with the models' three summaries appended, or None
+    with fewer than MIN_MODELS_C models (then rd3 says nothing)."""
+    extra = models_features(models, row["R"], city, bias, pooled)
+    if extra is None:
+        return None
+    return dict(row, x=list(row["x"]) + extra)
 
 
 def models_features(models, R, city, bias, pooled):

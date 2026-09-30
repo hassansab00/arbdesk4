@@ -281,16 +281,37 @@ def test_rd3_is_a_separate_contract_with_three_more_inputs():
 
 
 def test_the_model_bias_shrinks_to_the_pool_and_the_pool_to_zero():
-    # a model 2 C warm everywhere over 30 days; one city seen 3 days, 5 C warm
-    pairs = [("gfs", "a", 2.0)] * 30 + [("gfs", "b", 5.0)] * 3
+    # a model 2 C warm everywhere over 60 days; one city seen 40 days, 5 C warm
+    pairs = [("gfs", "a", 2.0)] * 60 + [("gfs", "b", 5.0)] * 40
     bias, pooled = rd.fit_model_bias(pairs)
-    n = 33
+    n = 100
     assert abs(pooled["gfs"] - (sum(e for *_, e in pairs) / n) * n / (n + 30)) < 1e-9
-    wb = 3 / 33
+    wb = 40 / 70
     assert abs(bias[("gfs", "b")] - (wb * 5.0 + (1 - wb) * pooled["gfs"])) < 1e-9
-    assert bias[("gfs", "b")] < 5.0, "three days do not move it all the way"
+    assert bias[("gfs", "b")] < 5.0, "forty days do not move it all the way"
     big, _ = rd.fit_model_bias([("x", "c", 50.0)] * 1000)
     assert big[("x", "c")] == rd.MODEL_BIAS_BOUND_C, "bounded"
+
+
+def test_under_the_minimum_sample_the_prior_stands():
+    """Rule 11: a city seen fewer than MIN_BIAS_DAYS days takes its model's
+    pooled bias; a model seen fewer takes 0."""
+    few = rd.MIN_BIAS_DAYS - 1
+    bias, pooled = rd.fit_model_bias([("gfs", "a", 2.0)] * 60 + [("gfs", "b", 5.0)] * few)
+    assert bias[("gfs", "b")] == pooled["gfs"]
+    bias, pooled = rd.fit_model_bias([("jma", "a", 3.0)] * few)
+    assert pooled["jma"] == 0.0 and bias[("jma", "a")] == 0.0
+
+
+def test_the_bias_table_round_trips_and_is_in_the_version():
+    bias, pooled = rd.fit_model_bias([("gfs", "a", 2.0)] * 60)
+    bj, pj = rd.bias_to_json(bias, pooled)
+    assert rd.bias_from_json(bj, pj) == ({k: round(v, 6) for k, v in bias.items()},
+                                         {k: round(v, 6) for k, v in pooled.items()})
+    params = {11: {"last_date": "2026-09-25", "mu": [0.0]}}
+    v1 = rd.version_of_c(params, bj, pj)
+    v2 = rd.version_of_c(params, {"gfs|a": 0.0}, pj)
+    assert v1.startswith("rd3:2026-09-25:") and v1 != v2, "a different bias table is a different version"
 
 
 def test_models_summaries_and_the_missing_provider_fallback():

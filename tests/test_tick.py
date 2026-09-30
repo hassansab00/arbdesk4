@@ -341,9 +341,10 @@ def test_every_repo_file_the_tick_reads_is_checked_out():
                 if str(s.get("uses", "")).startswith("actions/checkout"))
     paths = step["with"]["sparse-checkout"].split()
     root = pathlib.Path(__file__).resolve().parents[1]
-    needed = pathlib.Path(s10_shadow.PARAMS_PATH).resolve().relative_to(root).as_posix()
-    assert (root / needed).exists()
-    assert any(needed == p or needed.startswith(p.rstrip("/") + "/") for p in paths), needed
+    for path in (s10_shadow.PARAMS_PATH, s10_shadow.CHALLENGER_PATH):   # rd1, and rd3's forward shadow
+        needed = pathlib.Path(path).resolve().relative_to(root).as_posix()
+        assert (root / needed).exists()
+        assert any(needed == p or needed.startswith(p.rstrip("/") + "/") for p in paths), needed
 
 
 def test_the_forecast_archive_regime_reads_is_checked_out():
