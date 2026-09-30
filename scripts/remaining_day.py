@@ -145,6 +145,101 @@ def features(readings, forecast, hour, day, spread):
 
 
 # ---------------------------------------------------------------------------
+# features at the DECISION TIME, not the whole hour (Challenger A, 30 Sep;
+# docs/CHALLENGER_A_PREREG.md). A SEPARATE CONTRACT with its own version
+# prefix: parameters fitted on `features` must never read these.
+#
+# WHY. `features` reads readings at or before the integer local hour, and the
+# tick decides at H:36 local (H:06 on a half-hour zone). Measured on the 673
+# live S10 decisions of 27-30 Sep: they came a mean 46 min after the hour, 202
+# of them (30%) had already received a reading after H:00 that the model
+# discarded, and the newest reading received was a median 36.6 min old.
+#
+# WHAT IS AVAILABLE. A reading counts only if it had been RECEIVED by the
+# decision. Live, that is weather_observations.observed_at <= decided_at.
+# History has no receipt times, so `available()` takes valid time <= decision
+# less a lag; 10 min matches what the live tick received (by reading age at
+# decision, 27-30 Sep: under 10 min 7.7% received, 10-20 min 87.9%, older
+# 92-100%). A result built that way is an approximate as-of backtest and says so.
+# ---------------------------------------------------------------------------
+VERSION_PREFIX_AT = "rd2"
+FEATURES_AT = FEATURES + ["obs_age_h", "min_frac"]
+MAX_OBS_AGE_H = 1.5          # older than this, the latest reading is stale: no row
+RECEIPT_LAG_H = 10 / 60      # historical availability, see above
+
+
+def available(readings, t, lag_h=RECEIPT_LAG_H):
+    """Readings (local hour float, temp C) with valid time <= t - lag_h."""
+    return sorted(p for p in readings if p[0] <= t - lag_h)
+
+
+def _fc_at(forecast, x):
+    """The hourly forecast linearly interpolated at local hour x, or None."""
+    h0 = int(math.floor(x))
+    a, b = forecast.get(h0), forecast.get(h0 + 1)
+    if a is None:
+        return None
+    if b is None or x == h0:
+        return a[0]
+    return a[0] + (b[0] - a[0]) * (x - h0)
+
+
+def features_at(seen, forecast, t, day, spread):
+    """The Challenger A feature row at decision time `t` (local hour as a
+    float), or None.
+
+    seen:     the readings AVAILABLE at t, [(local hour float, temp C)] of that
+              local day (the caller applies `available()` or, live, receipt
+              times); nothing later than t is read here either.
+    forecast: {local hour: (temp C, cloud %, shortwave W/m2)}, a run issued
+              before the day (unchanged: Challenger B is the freshness test).
+
+    Same twelve inputs as `features`, anchored at the LATEST reading instead of
+    the whole hour, plus how old that reading is and where in the hour the
+    decision falls. A latest reading older than MAX_OBS_AGE_H gives no row:
+    the explicit stale-input fallback is "no prediction", never an old one."""
+    seen = sorted(p for p in seen if p[0] <= t)
+    if len(seen) < MIN_READINGS or len(forecast) < MIN_FORECAST_HOURS:
+        return None
+    tl, now = seen[-1]
+    age = t - tl
+    if age > MAX_OBS_AGE_H:
+        return None
+    R = max(v for _, v in seen)
+    h1, h3 = nearest(seen, tl - 1, 0.75), nearest(seen, tl - 3, 0.75)
+    if h1 is None or h3 is None:
+        return None
+    first_rest = int(math.floor(t)) + 1
+    rest = [forecast[h][0] for h in range(first_rest, 24) if h in forecast]
+    if len(rest) < MIN_REST_HOURS:
+        return None
+    f_now = _fc_at(forecast, tl)
+    if f_now is None:
+        return None
+    errs = []
+    for x in (tl - 2, tl - 1, tl):
+        f = _fc_at(forecast, x)
+        o = nearest(seen, x, 0.5)
+        if f is not None and o is not None:
+            errs.append(o - f)
+    cloud = [forecast[h][1] for h in range(first_rest, 18) if h in forecast and forecast[h][1] is not None]
+    sw = [forecast[h][2] for h in range(first_rest, 18) if h in forecast and forecast[h][2] is not None]
+    doy = 2 * math.pi * day.timetuple().tm_yday / 365.25
+    fc_day = max(v[0] for v in forecast.values())
+    x = [max(rest) - now, now - R, now - f_now, sum(errs) / len(errs) if errs else 0.0,
+         now - h1, now - h3, fc_day - R, sum(cloud) / len(cloud) if cloud else DEFAULT_CLOUD,
+         sum(sw) if sw else 0.0, math.sin(doy), math.cos(doy), float(spread),
+         age, t - math.floor(t)]
+    return {"R": R, "now": now, "fc_day": fc_day, "x": x, "obs_age_h": age, "latest_at": tl}
+
+
+def fit_at(rows_by_hour):
+    """{hour: parameters} and the rd2 version naming them (same form as fit)."""
+    params = {h: p for h, p in ((h, fit_hour(rs)) for h, rs in sorted(rows_by_hour.items())) if p}
+    return params, version_of(params, prefix=VERSION_PREFIX_AT)
+
+
+# ---------------------------------------------------------------------------
 # the fit (pure Python)
 # ---------------------------------------------------------------------------
 def _standardiser(xs):
@@ -296,10 +391,10 @@ def fit(rows_by_hour):
     return params, version_of(params)
 
 
-def version_of(params):
+def version_of(params, prefix=VERSION_PREFIX):
     blob = json.dumps({str(h): p for h, p in sorted(params.items())}, sort_keys=True, default=str)
     last = max((p["last_date"] for p in params.values()), default="none")
-    return f"{VERSION_PREFIX}:{last}:{hashlib.sha256(blob.encode()).hexdigest()[:10]}"
+    return f"{prefix}:{last}:{hashlib.sha256(blob.encode()).hexdigest()[:10]}"
 
 
 # ---------------------------------------------------------------------------

@@ -90,6 +90,7 @@ def rest(path, params=None, tries=4):
     and report success.
     """
     url = f"{_cfg()['url']}/rest/v1/{path}"
+    auth_retried = False
     for attempt in range(tries):
         last = attempt == tries - 1
         try:
@@ -107,6 +108,33 @@ def rest(path, params=None, tries=4):
         if r.status_code < 400:
             return r.json()
 
+        # ONE RETRY OF A READ REFUSED WITH PGRST303 (audit repair 7's 401s,
+        # diagnosed 30 Sep from the API gateway's own log). Every 401 of
+        # 29 Sep 12:36Z - 30 Sep 09:36Z - seven, all GET - was PostgREST
+        # refusing the claims of the token the gateway mints for the secret
+        # key (proxy-status "PostgREST; error=PGRST303"), in the first seconds
+        # of a :36 process, answered in 0.8-1.2 s, while the same key hash
+        # succeeded on the next requests. Two crashed the tick's trade prints
+        # (07:36Z and 09:36Z on 30 Sep). A refused request never reached the
+        # database and a read is safe to repeat, so a GET gets ONE retry after
+        # 2 s. Writes and RPCs keep their own policy (_post_batch). Any other
+        # 401 - a wrong or revoked key - still fails at once. The key is never
+        # printed.
+        if r.status_code == 401 and not auth_retried and _is_claims_refusal(r):
+            auth_retried = True
+            print(f"  . GET {path} 401 PGRST303 (token claims refused), retrying once in "
+                  f"{AUTH_RETRY_DELAY_S:.0f}s", file=sys.stderr)
+            time.sleep(AUTH_RETRY_DELAY_S)
+            try:
+                r = _get(url, headers=_headers(), params=params or {}, timeout=90)
+            except (requests.ConnectionError, requests.Timeout,
+                    requests.exceptions.ChunkedEncodingError):
+                if last:
+                    raise
+                continue
+            if r.status_code < 400:
+                return r.json()
+
         if r.status_code not in TRANSIENT_WRITE_STATUS or last:
             r.raise_for_status()
 
@@ -116,6 +144,21 @@ def rest(path, params=None, tries=4):
         print(f"  . GET {path} {r.status_code}, retrying in {delay:.0f}s "
               f"({attempt + 1}/{tries}): {r.text[:120]}", file=sys.stderr)
         time.sleep(min(delay, 120))
+
+AUTH_RETRY_DELAY_S = 2.0
+
+
+def _is_claims_refusal(resp):
+    """True for PostgREST's PGRST303 (JWT claims validation), read from the
+    gateway's proxy-status header or the error body - never from the key."""
+    if "PGRST303" in (resp.headers.get("proxy-status") or ""):
+        return True
+    try:
+        body = resp.json()
+    except Exception:
+        return False
+    return isinstance(body, dict) and body.get("code") == "PGRST303"
+
 
 def rest_all(path, params=None, *, order, page_size=500):
     """Read a bounded scope completely, including under smaller server caps.
