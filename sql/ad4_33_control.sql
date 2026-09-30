@@ -90,7 +90,7 @@ create or replace view public.v_signal_mark as
 -- 3,624 marks and the board's 10 rows, none differing in either direction -
 -- and the board fell to 54,184 buffers.
 with raw as materialized (
-  select f.signal_id, f.strategy_id, f.side, f.price_at_fire, f.band_id,
+  select f.signal_id, f.strategy_id, f.side, f.price_at_fire, f.band_id, f.fired_at,
          s.payload ? 'band_ids'     as has_band_ids,
          s.payload ? 'basket_group' as has_basket_group,
          s.payload -> 'band_ids'    as band_ids
@@ -115,7 +115,8 @@ shaped as (
               else 1 end                                            as legs,
          case when r.has_band_ids and not r.has_basket_group
               then r.band_ids
-              else to_jsonb(array[r.band_id::text]) end             as leg_ids
+              else to_jsonb(array[r.band_id::text]) end             as leg_ids,
+         r.fired_at
     from raw r
 ),
 counted as (
@@ -150,12 +151,16 @@ select c.signal_id,
              - c.price_at_fire
              - case when c.summed then 0
                     else 0.05 * c.price_at_fire * (1 - c.price_at_fire) end, 6)
-                                                                    as mark_net_per_share
+                                                                    as mark_net_per_share,
+       -- When it fired: signal_engine._earned_weights reads the last 45 days
+       -- by it, and got HTTP 400 on every run while the view had no such
+       -- column (29 Sep audit, repair 5). Last, so no column before it moves.
+       c.fired_at
   from counted c
  where c.legs_settled = c.legs;
 
 comment on view public.v_signal_mark is
-  'What ONE share of each settled signal, taken at the price that justified it, returned at settlement net of the venue fee. Desk-independent: no account, no cash, no approval. A signal whose legs have not all settled is absent rather than zero.';
+  'What ONE share of each settled signal, taken at the price that justified it, returned at settlement net of the venue fee, and when it fired. Desk-independent: no account, no cash, no approval. A signal whose legs have not all settled is absent rather than zero.';
 
 revoke all on public.v_signal_mark from anon, authenticated;
 grant select on public.v_signal_mark to service_role;

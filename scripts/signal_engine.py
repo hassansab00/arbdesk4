@@ -588,7 +588,7 @@ def _enrich(sig, decision_bands, cycle_id, now):
     return sig
 
 
-def _earned_weights(days=45):
+def _earned_weights(days=45, errors=None):
     """What each strategy's own settled record says it should be given.
 
     Reads one return per settled signal from v_signal_mark and hands them to
@@ -604,6 +604,11 @@ def _earned_weights(days=45):
     to the per-signal Kelly in base.size(). The gate is there to hold money
     back from strategies that have earned nothing, not to become a single
     point of failure that stops the desk.
+
+    BUT IT IS NOT SILENT. The failure goes into `errors`, and the caller turns
+    the run 'attention'. Until 30 Sep this read asked for a column the view
+    did not have and got HTTP 400 on every run, logged 'ok' (29 Sep audit,
+    repair 5).
     """
     since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).date().isoformat()
     try:
@@ -614,6 +619,8 @@ def _earned_weights(days=45):
     except Exception as e:
         print(f"  note: no signal marks ({e}); every strategy keeps full weight",
               file=sys.stderr)
+        if errors is not None:
+            errors.append(f"{type(e).__name__}: {str(e)[:300]}")
         return {}
 
     by_strategy = {}
@@ -819,7 +826,10 @@ def main():
     # ledger's. On a shadow ledger it only starves a weak strategy of the
     # evidence that would show whether it is weak; P5.2 suspends a strategy
     # whose record says it loses. The weights are still computed and logged.
-    earned = _earned_weights()
+    weights_errors = []
+    earned = _earned_weights(errors=weights_errors)
+    if weights_errors:
+        counts["earned_weights_error"] = weights_errors[0]
     risks = _risk_states(ledgers)
     corr = _correlations({v.city_key for v in views if v.city_key})
     by_strategy = defaultdict(list)
@@ -869,7 +879,8 @@ def main():
               f"{s.suggested_shares:.0f}sh @ {s.price_at_fire} - {s.reason}")
     print(f"signals: {counts['written']} written, {counts['deduped']} deduped, "
           f"{counts['blocked']} blocked by conflict rules, over {counts['bands']} bands")
-    log_run("signal_engine", "attention" if held or not decisions_ok else "ok", counts["written"], counts)
+    log_run("signal_engine", "attention" if held or not decisions_ok or weights_errors else "ok",
+            counts["written"], counts)
     return 0
 
 

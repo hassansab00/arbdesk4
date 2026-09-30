@@ -99,6 +99,32 @@ def test_a_missing_view_does_not_size_the_desk_to_zero(monkeypatch):
     )
 
 
+def test_a_failed_read_is_reported_to_the_caller(monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("400 Client Error: column v_signal_mark.fired_at does not exist")
+    monkeypatch.setattr(se, "rest_all", boom)
+    errors = []
+    assert se._earned_weights(errors=errors) == {}
+    assert errors == ["RuntimeError: 400 Client Error: column v_signal_mark.fired_at does not exist"]
+
+
+def test_the_read_filters_on_a_column_the_view_has():
+    """The read filters v_signal_mark on fired_at; the view's last column is
+    fired_at, in the install file and in the migration production applied."""
+    import pathlib
+    import re
+    root = pathlib.Path(__file__).resolve().parents[1]
+    src = (root / "scripts" / "signal_engine.py").read_text()
+    body = src[src.index("def _earned_weights"):src.index("def _allocate_ladders")]
+    assert '("fired_at", f"gte.{since}")' in body
+    for rel in ("sql/ad4_33_control.sql", "supabase/migrations/20260930010000_the_mark_says_when_it_fired.sql"):
+        code = re.sub(r"--[^\n]*", "", (root / rel).read_text())
+        view = code[code.index("create or replace view public.v_signal_mark as"):]
+        view = view[:view.index(";")]
+        assert re.search(r"as mark_net_per_share,\s*c\.fired_at\s+from counted c", view), rel
+        assert "f.band_id, f.fired_at," in view and "r.fired_at" in view, rel
+
+
 def test_a_signal_with_no_stake_is_not_a_return(monkeypatch):
     # A return per dollar needs a dollar. None of these three rows carries
     # one, so the strategy contributes no evidence and does not appear - and

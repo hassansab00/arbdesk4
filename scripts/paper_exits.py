@@ -130,6 +130,11 @@ def cycle(budget_seconds=60):
     skipped = {}
     errors, first_errors = {}, []
     exits_on_outcome = 0
+    # Every position the loop reaches ends in exactly one of: queued, a
+    # skipped reason, an error. The log says how many it reached, so a reader
+    # can check that sum (30 Sep: 16 open, 11 in the log - the positions held
+    # inside the policy's thresholds were counted nowhere).
+    considered = 0
     _markets, _weathers = {}, {}
 
     def _market(market_id):
@@ -155,7 +160,7 @@ def cycle(budget_seconds=60):
         log_run sat only at the bottom, so the budget exit returned without
         writing anything and the desk page showed a stale 'Exits' tile.
         """
-        detail = {'exits_queued': queued, 'stopped': note,
+        detail = {'positions': considered, 'exits_queued': queued, 'stopped': note,
                   'lost_held_to_settlement': exits_on_outcome}
         if skipped:
             detail['skipped'] = dict(sorted(skipped.items()))
@@ -163,7 +168,7 @@ def cycle(budget_seconds=60):
             detail['errors'] = dict(sorted(errors.items()))
             detail['first_errors'] = first_errors
         log_run('paper_exits', 'error' if errors else 'ok', queued, detail)
-        return {'exits_queued': queued, 'skipped': dict(sorted(skipped.items())),
+        return {'positions': considered, 'exits_queued': queued, 'skipped': dict(sorted(skipped.items())),
                 'errors': dict(sorted(errors.items()))}
     accounts=rest_all('paper_accounts',{'mode':'eq.automatic','policy->>auto_exit_enabled':'eq.true'},order='account_id')
     for account in accounts:
@@ -171,6 +176,7 @@ def cycle(budget_seconds=60):
         for pos in positions:
             if time.monotonic()-started>budget_seconds:
                 return done(f'reached the {budget_seconds}s budget')
+            considered += 1
             # ONE POSITION CANNOT END THE CYCLE FOR THE REST. A Decimal met a
             # float in to_band_unit on the first Fahrenheit position, and every
             # position after it, in every account, went unchecked for days while
@@ -178,14 +184,17 @@ def cycle(budget_seconds=60):
             # rest get their turn, and the run is logged as an error.
             try:
                 if number(pos['cost_basis'])<=0:
+                    skipped['zero_cost_basis'] = skipped.get('zero_cost_basis', 0) + 1
                     continue
                 pending=rest('paper_orders',{'account_id':'eq.'+account['account_id'],'band_id':'eq.'+pos['band_id'],
                     'side':'eq.'+pos['side'],'status':'in.(queued,working)','select':'order_id','limit':'1'})
                 if pending:
+                    skipped['exit_order_pending'] = skipped.get('exit_order_pending', 0) + 1
                     continue
                 bands=rest('v_canonical_bands',{'band_id':'eq.'+pos['band_id'],
                     'select':'token_yes,token_no,band_lo,band_hi,open_low,open_high,market_id'})
                 if not bands:
+                    skipped['no_band'] = skipped.get('no_band', 0) + 1
                     continue
                 band=bands[0]
                 order={'band_id':pos['band_id'],'side':pos['side'],'token_id':band['token_yes' if pos['side']=='YES' else 'token_no']}
@@ -222,11 +231,13 @@ def cycle(budget_seconds=60):
                 preview=simulate({**order,'action':'SELL','shares':pos['shares'],'limit_price':str(limit),'share_step':'.01',
                     'max_book_age_seconds':120,'expires_at':(now+dt.timedelta(minutes=30)).isoformat()},book,now=now)
                 if preview['status']!='filled':
+                    skipped['sell_preview_not_filled'] = skipped.get('sell_preview_not_filled', 0) + 1
                     continue
                 limit=min(number(x['price']) for x in preview['fills'])
                 gain=(number(preview['notional'])-number(preview['fee']))/number(pos['cost_basis'])-1
                 policy=account['policy']
                 if -number(policy['stop_loss_fraction'])<gain<number(policy['take_profit_fraction']):
+                    skipped['within_policy_thresholds'] = skipped.get('within_policy_thresholds', 0) + 1
                     continue
                 identity=f"{account['account_id']}:{pos['band_id']}:{pos['side']}:{pos['shares']}:{pos['cost_basis']}:{book['snapshot_id']}:{account['policy_version']}"
                 rpc('queue_automatic_paper_exit',{'p_account':account['account_id'],'p_command':str(uuid.uuid5(uuid.NAMESPACE_URL,identity)),
