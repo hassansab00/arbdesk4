@@ -84,6 +84,7 @@ insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plai
   ('derived_mos_forecast',      'computed_at',    30, 'model',     'The open days'' maximum from the honest station model, and its blend with the station-corrected combination.'),
   ('prediction_checkpoints',    'decided_at',      2, 'model',     'The ladder the engine published at each fixed moment on a city''s own clock, with the market beside it - the record the scoreboard grades.'),
   ('current_ladders',           'published_at',    2, 'model',     'The newest ladder the hourly tick priced for each city-day - at a checkpoint, or after the station passed the pick - shown on the city cards until the next pricing run.'),
+  ('market_confirmation_attempts','last_asked_at', 26, 'databank',  'Each ended market''s ladder as the confirmation queue last asked the venue about it: how often, what it found, and when the venue closed it.'),
   ('fact_checkpoint_outcome',   'banked_at',      30, 'databank',  'Each checkpoint call scored against the winner the venue confirmed: whether the desk and the market picked it, and by how much.'),
   ('fact_station_width_score',  'scored_at',      30, 'databank',  'Each settled market''s day-ahead ladder as served, against the same ladder with the station width fitted to the corrected forecast''s own errors: which one the venue''s answer favoured.'),
   ('weather_forecast_features', 'run_at',         12, 'weather',   'Hour-by-hour forecast detail: cloud, wind, humidity.'),

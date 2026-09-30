@@ -54,6 +54,8 @@ SCRIPT_RAW_READS = {
     "scripts/export_paper_trades.py": "bands: band_id -> band_label for the export",
     "scripts/paper_settlement.py": "markets: ids and dates; bands: condition and token ids "
                                    "the venue is asked about",
+    "scripts/confirm_queue.py": "markets: ids and dates of ladders not yet confirmed; bands: "
+                                "condition and token ids the venue is asked about; no bounds",
     "scripts/paper_worker.py": "bands: condition_id for an order",
     "scripts/verify_resolution_source.py": "markets: city and date only",
     "scripts/weather_outcomes.py": "markets: rules_text and last_seen_at, which the canonical "
