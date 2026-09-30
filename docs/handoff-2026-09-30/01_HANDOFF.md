@@ -4,12 +4,16 @@ Written for a new session because Hassan asked for one. It opens with his three 
 
 **Read in this order:**
 
-1. `CLAUDE.md`: Hassan's standing rules. They override everything, including this file.
-2. **This file.**
-3. `docs/PLAN_PROGRESS.md`: the per-step record. The audit table at its top covers 29–30 Sep.
-4. `docs/AD4_IMPROVEMENT_PLAN.md`: the plan (v2 to v2.4).
+1. `CLAUDE.md`: Hassan's standing rules. They override everything, including this folder.
+2. `00_START_HERE.md`: how to start the new session.
+3. **This file.**
+4. `02_FIX_SPECS.md`: the work, specified.
+5. `03_CHECKS_DUE.md`: the dated checks.
+6. `04_VERIFY_QUERIES.sql`: every number here, reproducible.
+7. `docs/PLAN_PROGRESS.md`: the per-step record. The audit table at its top covers 29–30 Sep.
+8. `docs/AD4_IMPROVEMENT_PLAN.md`: the plan (v2 to v2.4).
 
-`main` is at **`ac51db2`** (#288). There are **no open PRs** (GitHub, 30 Sep ~08:50Z). Every number below names its source. Where something was not measured, this file says so.
+`main` was at **`ac51db2`** (#288) when this was written, with one open PR, #289, which adds this folder. Every number below names its source. Where something was not measured, this file says so.
 
 ---
 
@@ -29,7 +33,7 @@ Partly, yes. 70 PRs were merged between 27 Sep 13:05Z (#219) and 30 Sep 08:28Z (
 | Check-ins and handoffs | #223, #236, #238, #251, #260, #286 | No |
 
 **The honest reading:**
-- Most of the effort went into keeping the platform alive and into measuring. The database was at 688 MB on 28 Sep and is at 529 MB now (`pg_database_size`, 30 Sep 08:2xZ). Several jobs had been crashing.
+- Most of the effort went into keeping the platform alive and into measuring. The database was at 688 MB on 28 Sep; on 30 Sep `pg_database_size` read 529 MB at ~08:20Z and `storage_pressure()` read 537.6 MB (107.5% of the 500 MB tier) at ~09:00Z. Several jobs had been crashing.
 - It did not go into the two things Hassan sees on /predictive: US cities missing from the hit/miss view, and the prediction being worse than the market.
 - The US-cities problem was measured, written down and **not fixed** (§1.3). That is the failure behind "I told you a hundred times".
 
@@ -63,7 +67,7 @@ Partly, yes. 70 PRs were merged between 27 Sep 13:05Z (#219) and 30 Sep 08:28Z (
 - **Until 29 Sep 23:46Z,** the forward table and the hit/miss error columns showed the raw public forecast, not the centre the ladder was priced on.
   - Measured on 257 days: 71 differ by 1 °C or more.
   - Fixed by #283 (migration `20260929234616`). Days before 23 Sep have no recorded centre and show "not recorded".
-- **The station column.** On days when the forecasts disagree, the engine's ladder is too narrow around one model.
+- **The width when the forecasts disagree.** On such days the engine's ladder can be too narrow around one model.
   - Hassan's San Francisco case of 24 Sep: 81 °F favoured at 2c while NWS said 73.4 °F; the engine put 0.1% on the bucket the market favoured.
   - The engine has a disagreement multiplier (`v_forecast_divergence`, `scripts/probability_engine.py` ~L645 and ~L1410). It is **not applied** on the post-processed path, nor when the width is "measured": the reason `measured_width_kept:…_not_applied_to_sigma` records that.
   - How many of today's ladders take each path was not measured in this session. Count the reasons first.
@@ -79,7 +83,7 @@ There are two separate causes. Both are real and both are unfixed.
 - **Before 25 Sep,** US days were banked a median of 4.4–6.2 h after their day ended.
 - **From 25 Sep,** a median of 24.0 h, every day.
 - Celsius days take 10–13 h.
-- On 30 Sep at 08:4xZ, as the browser role (`anon`), every US city's latest row is 28 Sep and every Celsius city's is 29 Sep.
+- On 30 Sep at 08:4xZ, as the browser role (`anon`), every US city's latest row is 28 Sep. 35 of the 37 Celsius cities' latest is 29 Sep; mexico_city and panama_city are on 28 Sep.
 
 *The cause:*
 - The table reads `v_city_hit_history`, built on `fact_band_outcome`.
@@ -87,10 +91,21 @@ There are two separate causes. Both are real and both are unfixed.
 - Since 25 Sep, n8n's P6.1 clock dispatches `pipeline_daily` at **04:36Z** (`n8n/P6.1_clock.template.json`, `pipeline_daily.yml "hours_utc": [4]`). Before that it ran around 09:24–11:14Z (the banked times above).
 - A US local day ends 04:00–07:00Z, and the venue confirms it later still. So every US day misses that morning's run and waits for the next one.
 
+*The confirmation is late too, not only the banking.* Measured later on 30 Sep:
+- `markets.resolution_verified_at` for US markets came a median of 22.8–24.1 h after the local day ended (25–28 Sep). C markets took 10.3–13.0 h.
+- The tick's P4.7 step verified only the first one or two US markets per day, at 10:36Z, 11:36Z or 13:36Z.
+- The rest were verified by the next 04:4xZ daily run.
+- The tick step is starved. Its `P4.7_confirm_recent` rows for 29 Sep 06:36Z to 30 Sep 08:36Z (15 runs):
+  - 4 were skipped with a budget under 1 s;
+  - the others reached 2–34 of about 150 candidates each (123–156 "unreached");
+  - evidence captured was 0–8 per run.
+
+So a fix must both **confirm** the US ladders and **bank** them. See `02_FIX_SPECS.md` F1.
+
 *Why it was never fixed:*
 - P4.7 (26 Sep, 6e314cb) found exactly this; the plan (v2.2) says "The Hit and Miss table, sorted newest first, therefore shows only C cities on its latest date".
 - The P4.7 fix moved only the intraday **checkpoint** record into the hourly tick (`scripts/confirm_recent.py`).
-- Its own progress note says: "The day-ahead record (`fact_band_outcome`, databank) still banks US days on the next daily run". Nobody acted on that line. The P4.7 row still says its acceptance was never re-checked.
+- Its own progress note says: "The day-ahead record (`fact_band_outcome`, databank) still banks US days on the next daily run". Nobody acted on that line. The P4.7 row said its acceptance was never re-checked; this PR marks it not accepted.
 
 **(b) "Hit rate, per city, per lead" shows 8 of 48 cities.**
 - `web/app/predictive/page.tsx` renders `(scoreQ.data ?? []).slice(0, 120)` of `v_prediction_scorecard_all`, which is fetched with no `order`.
@@ -98,7 +113,7 @@ There are two separate causes. Both are real and both are unfixed.
 - The first 120 cover 6 °C cities and 2 of 11 US cities; the other 40 cities are cut with no warning.
 - Which 8 appear depends on the row order Postgres happens to return.
 
-**Not a cause:** the data itself. As `anon`, all 11 US cities have 14 settled days in `v_city_hit_history` and a row in `v_city_hit_summary`.
+**Not a cause:** the data itself. As `anon`, all 11 US cities have 14–15 settled days in `v_city_hit_history` and a row in `v_city_hit_summary`.
 
 A third, smaller item is in the same section. "Actual against predicted" lists only the 8 cities with the largest bias (`accuracy.byCity.slice(0, 8)`). That is by design but not labelled as such.
 
@@ -106,90 +121,27 @@ A third, smaller item is in the same section. "Actual against predicted" lists o
 
 ## 2. Fix these first, in this order
 
-### F1. US days in the hit/miss table the same morning (regression, §1.3a)
+The full specifications are in **`02_FIX_SPECS.md`**: root cause, evidence, design, files and lines, tests, acceptance, and the queries to prove each one. In short:
 
-- **Goal:** a US city-day is in `fact_band_outcome`, and so on /predictive, within a few hours of the venue confirming it, as C days are. It should not wait for the next 04:36Z run.
-- **Measure first** (the P4.7 notes have the start of this):
-  - When does the venue confirm each US market? `markets.resolution_verified_at` against the local day end, last 7 days.
-  - How long does `databank.py` take for one ended day's unbanked city-days?
-- **Options, cheapest first. Rule 7: no new schedule.**
-  1. After `confirm_recent` in the tick (06–17Z), bank the day-ahead record for markets it just confirmed. That means a small `databank` entry point for "ended, verified, not yet in `fact_band_outcome`", reusing databank's own freeze logic, not a copy. It must fit the tick's minute. `P4.7_confirm_recent` has a budget of at most 12 s; measure before adding.
-  2. A `databank --days 2` step in an existing later run, e.g. the intraday pipeline, whose hours are in `n8n/P6.1_clock.template.json`. Measure its minutes and put them in `MEASURED_MINUTES`.
-- **Do not** move `pipeline_daily` later without checking everything that depends on its 04:36Z start: the archive at 02:36Z, the morning learners, and the 05:30Z check-ins. The P6.1 row in PLAN_PROGRESS lists the stagger.
-- **Tests:**
-  - databank's freeze stays immutable: never update a banked row (`fact_band_outcome` is append-only by design).
-  - A rerun banks nothing twice.
-  - A market the venue has not confirmed is not banked.
-- **Acceptance:**
-  - Three consecutive days with the US days' `captured_at` lag measured, °C and °F. The query in §1.3a is the one to rerun.
-  - As `anon`, each US city's latest `for_date` equals yesterday by ~12:00Z.
-  - Then mark P4.7 accepted in PLAN_PROGRESS.
-
-### F2. Show every city in "Hit rate, per city, per lead" (§1.3b)
-
-- **Change** in `web/app/predictive/page.tsx`: order the query (`.order("city_key").order("model").order("lead_days")`) and either render all rows or add a city filter.
-  - 797 rows is small; grouping per city with the existing selector is clearer.
-  - Never slice silently: if anything is capped, say so on the page, as `DataState`'s `truncated` does elsewhere.
-- **Label** "Actual against predicted" as "the 8 cities with the largest bias", or show all cities.
-- **Web checks:** `cd web && ./node_modules/.bin/tsc --noEmit && npm run test:routes && ./node_modules/.bin/next build`.
-- **Acceptance:** all 48 active cities appear, including all 11 US ones, checked in the built page or by a route test.
-
-### F3. After F1 and F2: make the prediction better, where the evidence points
-
-These are ordered by measured evidence. None is proven to beat the market day-ahead.
-
-- **°F day-ahead: the forecast tournament's champion beats the live engine.**
-  - `derived_hit_summary`, 30 Sep 05:06Z, as-of lane, 121 days: log loss 1.670 against the engine's 1.785; gain +0.115 [+0.026, +0.251].
-  - It still trails the market by −0.282 [−0.339, −0.197].
-  - For °C it does not beat the engine: −0.022 [−0.068, +0.060].
-  - Per city, no recipe can go live yet: at most 12 settled days against the live engine, and the gate needs 20 (`derived_hit_recipe`, 0 of 49 would pass). The earliest is about 8 Oct.
-  - This is P3.8 part 2: the engine reads `live` recipes, `recipe_version` goes on `band_probabilities`, and reasons are stored once per ladder, not per band row. That is 517 ladders against 5,687 rows in the last 24 h, which matters while the database is over its cap.
-- **After the peak, S10 beats the market.** `docs/S10_REPLAY_2026-09-30.md`: postpeak_1h top-1 +15.6 pts [+11.2, +22.2] over 23 days on the rows both priced.
-  - Its morning is worse than the market's: −9.1 pts.
-  - #242 found no edge after trading costs post-peak (a leak was corrected).
-  - This is where the evidence is least weak, but it is not a tradeable edge yet.
-- **The width must grow when the forecasts disagree** (§1.2, San Francisco).
-  - The engine's own disagreement multiplier is bypassed on the post-processed and measured-width paths. Measure how often from the ladders' reasons, and whether applying it improves settled log loss, before changing anything.
-  - The tournament's `1.0+spread`/`1.25+spread` widths are the scored alternative. They reach prices only through P3.8 part 2.
+- **F1. US days in the hit/miss table the same day.**
+  - Confirm recently ended US ladders with a real time budget, in a run that already exists.
+  - Then bank them with databank's own logic and refresh the page cache.
+  - The tick cannot do it (starved, §1.3a). `pipeline_intraday` (00:36, 04:36, 08:36, 12:36, 16:36, 20:36Z) is the natural home.
+- **F2. Every city in "Hit rate, per city, per lead".** Order the query, show every row or group by city, and never slice silently.
+- **F3. Then the prediction itself**, where the evidence points: the forecast tournament for °F (P3.8 part 2), the width that grows with disagreement, and S10 after the peak. Nothing here is proven to beat the market day-ahead.
 
 ---
 
 ## 3. Scheduled checks — do these by hand in the new session
 
-This old session had two reminders that would have fired into it. They are deleted (§3.3), so they cannot run twice. Run the checks yourself.
+Step by step in **`03_CHECKS_DUE.md`**:
+- **1 Oct 05:30Z:** the books archive proof (P1.6 step 3.2) and the night's archive.
+- **5 Oct 08:52Z:** the first weekly weather-model refit after the fix, and the city-clusters refit.
 
-### 3.1 1 Oct 05:30Z — P1.6 step 3.2, the books (#276)
-
-1. `git pull`. Tonight's `archive_books` dataset (`ingest_log`) should show:
-   - `keep_days` 3;
-   - `archived_through` about 28 Sep 02:36Z;
-   - exported = expected = deleted;
-   - `band_days_before` = `band_days_after`;
-   - its file in `data/archive/books`.
-2. Check the reference rows in `tools/p16_step32_reference.json`: `book_as_of` at 12:00Z on 25 and 26 Sep, bands whose id starts 0 or 1; 52 and 62 rows, all cited by edges on 29 Sep 20:07Z.
-   - How many are no longer in `book_snapshots`?
-   - Are those in tonight's file?
-3. Run `python3 tools/p16_step32_proof.py check --sql-dir <scratch>`, then the SQL it writes.
-   - Expect `same = true` for 2026-09-26 and 2026-09-27, with `from_archive` equal to the number of reference rows the prune took.
-   - Any `false`: find the bands and report. Do not call 3.2 done.
-4. Rerun `past` (cut = tonight's `archived_through` date and file) and its SQL. Expect 34 groups equal, 0 differ.
-5. Record `book_snapshots` rows and size, and the database size and `storage_pressure()` against the 450 MB acceptance.
-
-The same night, 1 Oct 02:36Z, the archive also moves 5,871 held trades and freezes 55 edge marks that the 6 h lag held back on 30 Sep. Check `exported = expected = deleted` for every dataset, as on 30 Sep (#286).
-
-### 3.2 5 Oct 08:52Z — the first weekly weather-model refit after the fix (#288)
-
-- n8n dispatches `weather_model.yml` Mondays at 08:36Z. Check:
-  - the run's conclusion;
-  - that every active city is fitted with no traceback;
-  - that cape_town's `wind_u_mean`/`wind_v_mean` verdicts say "not present on every training day";
-  - that `derived_weather_model` has new rows with `fitted_at` on 5 Oct.
-- Check `city_clusters` refitted: `strategy_params` with `param = 'city_clusters'` and `as_of >= 2026-10-05`. Its 28 Sep fit predates the label repair.
-- Record in audit rows 6 and 7.
-
-### 3.3 Reminders deleted
-
-`trig_01T2ZhvBugbgzJQMgmmb22jp` (1 Oct) and `trig_01Fq6KAS11o5WihcBfE34nvm` (5 Oct) were deleted on 30 Sep so this old session cannot act beside the new one. Their full text is in §3.1 and §3.2.
+Every reminder this old session had is deleted, so nothing will act beside the new session:
+- `trig_01T2ZhvBugbgzJQMgmmb22jp` (1 Oct);
+- `trig_01Fq6KAS11o5WihcBfE34nvm` (5 Oct);
+- `trig_017xLmFFuXrcJK75tLRbiDpC` (merge #289).
 
 ---
 
@@ -199,16 +151,20 @@ The same night, 1 Oct 02:36Z, the archive also moves 5,871 held trades and freez
    - Six refusals since 29 Sep 12:00Z. Each was the first request of a new process at :36, and three of them failed tick runs.
    - Facts are in audit row 7. The retry was proposed, not built.
 2. **The edge gate's anchor (`tradeability_yes`, origin Hassan).**
-   - Today `far_from_forecast` measures from `forecast_max_c − bias_applied_c`. Switching to the ladder's peak, `greatest(centre_c, observed_floor_c)`, gives 12 and 6 misses but lets 118 more losing rows through.
+   - Today `far_from_forecast` measures from `forecast_max_c − bias_applied_c`.
+   - On the settled YES edge rows of 23–29 Sep, the winner sits more than 4 bands from that anchor on 18 day-ahead and 6 same-day rows.
+   - The ladder's peak, `greatest(centre_c, observed_floor_c)`, gives 12 and 6 but lets 118 more losing rows through (of 23,189).
    - Numbers are in audit row 3.
-3. **Getting under 450 MB (P1.6).** The structural step is moving closed markets (bands, verdicts and what other tables keep for them) to the repository, as phase 2 did for weather. The mapping is in PLAN_PROGRESS P1.6, step 3.4. The database is at 529 MB, 105.8% of the 500 MB tier.
+3. **Getting under 450 MB (P1.6).** The structural step is moving closed markets (bands, verdicts and what other tables keep for them) to the repository, as phase 2 did for weather. The mapping is in PLAN_PROGRESS P1.6, step 3.4. `storage_pressure()` read 537.6 MB, 107.5% of the 500 MB tier, at ~09:00Z on 30 Sep.
 4. **The verdict ledger's size** (`resolution_verdicts`, 19 MB, of which 9 MB is the primary key): see the same step 3.4 notes.
 
 ---
 
 ## 5. What is live now
 
-- **Pricing** (`scripts/probability_engine.py`): four-hourly at :36 (00:36 … 20:36Z), centre = public forecast plus P2.9 MOS blend plus P3.9 station correction.
+- **Pricing** (`scripts/probability_engine.py`, in `pipeline_intraday`): four-hourly at :36 (00:36 … 20:36Z).
+  - The centre stacks the public forecast with the P2.9 MOS blend and the P3.9 station correction.
+  - Each ladder's reasons name the layers actually applied; they were not re-read on 30 Sep.
   - The ladder is `compute_band_probabilities` with the P3.1 floor atom on the same day.
   - P4.9 publishes the current prediction between runs.
 - **Tick** (hourly at :36): stations, checkpoints, S10 shadow, `confirm_recent` (P4.7, 06–17Z), the engine's decisions (shadow), exits and trade prints.
