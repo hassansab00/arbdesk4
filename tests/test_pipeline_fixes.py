@@ -564,6 +564,19 @@ def test_a_failed_evidence_cache_fails_the_refresh(monkeypatch, failing):
         common.refresh_feature_cache(quiet=True)
 
 
+def test_the_refresh_reports_the_cut_days_it_left_as_cached(monkeypatch):
+    """refresh_feature_cache (SQL) returns cut_days_left_as_cached per city;
+    the summary sums it, so a run's log says whether a cut day was kept."""
+    per_city = {"austin": 1, "chicago": 0, "nyc": 1}
+    def rpc(fn, params=None, **k):
+        if fn == "refresh_feature_cache":
+            return {"ok": True, "ms": 5, "cut_days_left_as_cached": per_city[params["p_city"]]}
+        return {"ok": True}
+    monkeypatch.setattr(common, "active_city_keys", lambda: set(per_city))
+    monkeypatch.setattr(common, "rpc", rpc)
+    assert common.refresh_feature_cache(quiet=True)["cut_days_left_as_cached"] == 2
+
+
 def test_the_refresh_reports_what_each_cache_wrote(monkeypatch):
     answers = {"refresh_feature_cache": {"ok": True, "ms": 5},
                "refresh_city_day_hours": {"days_written": 7, "station_days_written": 9, "ms": 11},
