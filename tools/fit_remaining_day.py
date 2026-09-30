@@ -5,13 +5,15 @@ parameters the tick's shadow step reads (scripts/s10_shadow.py, P7.4 part 1).
     python tools/fit_remaining_day.py \
         data/training/previous_runs/best_match_hourly_day1_utc.csv.gz \
         data/replay/inputs_2026-09-26/obs_utc.csv.gz \
-        data/replay/inputs_2026-09-26/labels_whole.json.gz \
+        data/replay/inputs_2026-09-26/labels_whole_repaired.json.gz \
         data/replay/inputs_2026-09-26/units.json data/replay/inputs_2026-09-26/tz.json \
         data/training/previous_runs/models_daily.csv.gz \
         --out data/models/remaining_day/current.json
 
 The same loaders as the walk-forward (tools/experiments_p72_stage1.py), so the
 fitted model is the one that was measured. Labels must be whole days only.
+Since 30 Sep (audit repair 6) the labels are labels_whole_repaired: the 29 Sep
+day-features repair raised 140 of the maxima the first fit trained on.
 Needs no numpy (remaining_day is pure Python).
 """
 import argparse
