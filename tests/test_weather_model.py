@@ -431,6 +431,26 @@ def test_selection_never_looks_at_the_holdout():
     assert fa["features"] == fb["features"], (fa["features"], fb["features"])
 
 
+def test_a_feature_missing_on_a_validation_day_is_refused_not_a_crash():
+    """The weekly refit of 28 Sep died here (weather_model.py:405, float(None)).
+
+    select_features checked a candidate on the inner three quarters of the
+    training window and then scored it on the validation quarter. cape_town's
+    wind_u_mean/wind_v_mean were present on all 243 inner days and missing on
+    2 validation days (31 May-8 Jun 2026; live table, 30 Sep), so the scoring
+    met a None and the whole run stopped - no city was refitted. A candidate
+    has to be present on every TRAINING day, validation slice included, as its
+    verdict already says."""
+    rows = synth_plus(400, humidity_effect=0.12, noise=0.3)
+    # train is the first 300 (HOLDOUT 0.25), its validation slice rows 225-299
+    for i in (250, 260):
+        rows[i]["morning_humidity"] = None
+    fit, _ = wm.fit_city(rows, wm.BASE_FEATURES)
+    assert fit is not None
+    assert "morning_humidity" not in fit["features"]
+    assert verdicts(fit)["morning_humidity"] == "not present on every training day"
+
+
 def test_a_leaky_feature_is_refused_loudly():
     """diurnal_range_c is max_c - min_c. A model using it reports a spectacular
     error and is worth nothing forward, and the number that would give it away
