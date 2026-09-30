@@ -133,8 +133,17 @@ decision never stops a forecast being recorded.
 
 ## 9. Reproduce
 
-`tools/fec_same_day.py` (SD lane) writes its report, the per-row scores and
-the inputs' checksums; running it again on the committed inputs gives the same
-bytes. `tools/market_vs_model.py` and `v_city_hit_history` hold the DA lane's
-existing measurements. The DA lane's harness under this contract is not built
-yet (section 1's incumbent is scored daily on the page).
+- **SD lane:** `tools/fec_same_day.py` writes its report, the per-row scores and the inputs'
+  checksums. Running it again on the committed inputs gives the same bytes (checked 30 Sep for
+  `sd_holdout_lag10_rd3`). `--challenger rd2|rd3` picks Challenger A or C. A sensitivity run
+  (`--models-column tmax_00_17_c`) writes under its own name, and its verdict field says
+  "sensitivity only": it is never an acceptance test.
+- **DA lane:** `tools/fec_day_ahead.py` scores a frozen export of `v_city_hit_history`, read as
+  anon. The export takes the winner's bucket from `fact_band_outcome`, and each forecast's
+  bucket from the database's `venue_round()`; it is committed beside its report as
+  `data/eval/fec_v1/da_rows_*.csv.gz`.
+  - Its first export covers 13-29 Sep 2026: 706 city-days, 17 dates.
+  - The DA incumbent has no probability history for the raw forecast, so the raw forecast is
+    compared on top-1 only (as `s10-contract-v1` §6 does).
+- **Wider history:** `tools/market_vs_model.py` holds the DA lane's longer comparison on the
+  venue's record (`docs/MODEL_VS_MARKET_2026-09-28.md`).

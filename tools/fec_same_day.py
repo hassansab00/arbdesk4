@@ -8,6 +8,7 @@ each cutoff on identical training rows, with a date-clustered bootstrap.
     python tools/fec_same_day.py --period dev      # test months Jan-Jul 2026
     python tools/fec_same_day.py --period holdout  # 1 Aug - 25 Sep 2026, run once
     python tools/fec_same_day.py --period holdout --lag-min 0   # sensitivity
+    python tools/fec_same_day.py --period dev --challenger rd3  # Challenger C
 
 Inputs (committed; their sha256 is written into the output):
   data/training/previous_runs/best_match_hourly_day1_utc.csv.gz  day-before hourly forecast
@@ -209,6 +210,25 @@ def load_prices(event_ids):
     return series
 
 
+MODELS_COLUMNS = ("tmax_c", "tmax_00_17_c")
+
+
+def load_models():
+    """{(city, date iso): {model: lead-1 day max C}} from models_daily.
+
+    tmax_c (the default, as pre-registered) is the whole day's maximum; its
+    hours after 17:00 come from runs started up to midnight the day before, so
+    one published late could be out after a morning decision.
+    tmax_00_17_c stops at 17:00 local: a sensitivity run that cannot see them."""
+    col = G.get("models_col", "tmax_c")
+    out = defaultdict(dict)
+    with gzip.open(INPUTS["models"], "rt") as f:
+        for r in csv.DictReader(f):
+            if r["lead_days"] == "1" and r[col]:
+                out[(r["city_key"], r["for_date"])][r["model"]] = float(r[col])
+    return out
+
+
 def _labels_file():
     out = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
     with gzip.open(INPUTS["labels"], "rt") as f:
@@ -223,9 +243,11 @@ def _labels_file():
 G = {}
 
 
-def build(lag_min):
+def build(lag_min, challenger="rd2"):
     fc, obs, Y, unit, spread, med = E.load(INPUTS["fc"], INPUTS["obs"], _labels_file(),
                                            INPUTS["units"], INPUTS["tz"], INPUTS["models"])
+    models = load_models() if challenger == "rd3" else {}
+    G["Y"] = Y
     tz = json.load(open(INPUTS["tz"]))
     lag = lag_min / 60
     rows = defaultdict(list)          # H -> [row]
@@ -247,19 +269,56 @@ def build(lag_min):
                 t, tick = dtm
                 avail = rd.available(series, t, lag)
                 inc = rd.features(avail, f, H, day, sp)
-                ch = rd.features_at(avail, f, t, day, sp)
+                if challenger == "rd2":
+                    ch = rd.features_at(avail, f, t, day, sp)
+                else:
+                    # rd3: rd1's row plus the models, whose bias is fitted per
+                    # cutoff (ch_x below); fewer than MIN_MODELS_C -> no row
+                    m = models.get((c, d)) or {}
+                    ch = ({"R": inc["R"], "x": inc["x"], "models": m, "obs_age_h": 0.0}
+                          if inc is not None and len(m) >= rd.MIN_MODELS_C else None)
                 if inc is None or ch is None:
-                    counts[f"no_row_{'both' if inc is None and ch is None else ('rd1' if inc is None else 'rd2')}"] += 1
+                    counts[f"no_row_{'both' if inc is None and ch is None else ('rd1' if inc is None else challenger)}"] += 1
                     continue
                 rows[H].append({"city": c, "date": day, "y": y, "t": t, "tick": int(tick.timestamp()),
                                 "inc": inc, "ch": ch, "unit": unit.get(c, "C")})
     return rows, dict(counts)
 
 
+def CH():
+    """The challenger's name in the summary's keys (rd2 or rd3)."""
+    return G.get("challenger", "rd2")
+
+
+def GAIN():
+    return f"gain_rd1_minus_{CH()}"
+
+
+def ch_x(r, cutoff):
+    """The challenger's feature vector for row r at a cutoff (rd3's model bias
+    is fitted on the days before the cutoff only)."""
+    if G.get("challenger") != "rd3":
+        return r["ch"]["x"]
+    bias, pooled = G["bias"][cutoff]
+    return r["ch"]["x"] + rd.models_features(r["ch"]["models"], r["ch"]["R"], r["city"], bias, pooled)
+
+
+def fit_biases(cutoffs):
+    """{cutoff: (bias, pooled)} from training city-days (label known, before the cutoff)."""
+    models = load_models()
+    out = {}
+    for cut in cutoffs:
+        pairs = [(m, c, v - G["Y"][(c, d)]) for (c, d), ms in models.items()
+                 if (c, d) in G["Y"] and dt.date.fromisoformat(d) < cut for m, v in ms.items()]
+        out[cut] = rd.fit_model_bias(pairs)
+    return out
+
+
 def _fit(task):
     H, cutoff, which = task
     tr = [r for r in G["rows"][H] if r["date"] < cutoff and r["y"] is not None]
-    feed = [{"city": r["city"], "x": r[which]["x"], "R": r[which]["R"], "y": r["y"], "date": r["date"]} for r in tr]
+    feed = [{"city": r["city"], "x": (r["inc"]["x"] if which == "inc" else ch_x(r, cutoff)),
+             "R": r[which]["R"], "y": r["y"], "date": r["date"]} for r in tr]
     return task, rd.fit_hour(feed)
 
 
@@ -281,7 +340,8 @@ def _score(task):
                "unit": v["unit"], "y_c": r["y"], "obs_age_h": round(r["ch"]["obs_age_h"], 3),
                "R_inc": r["inc"]["R"], "R_ch": r["ch"]["R"]}
         for name, p, feat in (("inc", pi, r["inc"]), ("ch", pc, r["ch"])):
-            d = rd.distribution(p, r["city"], feat["x"], feat["R"])
+            x = feat["x"] if name == "inc" else ch_x(r, cutoff)
+            d = rd.distribution(p, r["city"], x, feat["R"])
             probs = dict(rd.ladder_probabilities(d, v["unit"], bands, pe.DEFAULT_Q_DOWN, pe.DEFAULT_Q_UP))
             ll, hit, brier = score(probs, v["winner"], order)
             med, q10, q90 = rd.median(d), rd.quantile(d, 0.1), rd.quantile(d, 0.9)
@@ -304,8 +364,8 @@ def summarise(recs):
         gain = cluster_boot([(r["date"], r["inc_ll"] - r["ch_ll"]) for r in rs])
         out = {"n": n, "dates": len({r["date"] for r in rs}), "cities": len({r["city"] for r in rs}),
                "logloss": {"rd1": round(sum(r["inc_ll"] for r in rs) / n, 4),
-                           "rd2": round(sum(r["ch_ll"] for r in rs) / n, 4)},
-               "gain_rd1_minus_rd2": gain}
+                           CH(): round(sum(r["ch_ll"] for r in rs) / n, 4)},
+               GAIN(): gain}
         for m in ("inc", "ch"):
             k = sum(r[f"{m}_hit"] for r in rs)
             out[m] = {"top1": round(k / n, 4), "top1_wilson95": wilson(k, n),
@@ -318,18 +378,18 @@ def summarise(recs):
         if mk:
             out["market_subset"] = {"n": len(mk), "dates": len({r["date"] for r in mk}),
                                     "logloss": {"rd1": round(sum(r["inc_ll"] for r in mk) / len(mk), 4),
-                                                "rd2": round(sum(r["ch_ll"] for r in mk) / len(mk), 4),
+                                                CH(): round(sum(r["ch_ll"] for r in mk) / len(mk), 4),
                                                 "market": round(sum(r["mkt_ll"] for r in mk) / len(mk), 4)},
                                     "top1": {"rd1": round(sum(r["inc_hit"] for r in mk) / len(mk), 4),
-                                             "rd2": round(sum(r["ch_hit"] for r in mk) / len(mk), 4),
+                                             CH(): round(sum(r["ch_hit"] for r in mk) / len(mk), 4),
                                              "market": round(sum(r["mkt_hit"] for r in mk) / len(mk), 4)},
-                                    "gain_rd2_minus_market": cluster_boot([(r["date"], r["mkt_ll"] - r["ch_ll"]) for r in mk])}
+                                    f"gain_{CH()}_minus_market": cluster_boot([(r["date"], r["mkt_ll"] - r["ch_ll"]) for r in mk])}
         return out
     by_hour = {str(H): block([r for r in recs if r["hour"] == H]) for H in HOURS}
     after_hour = [r for r in recs if r["obs_age_h"] < (r["t"] - math.floor(r["t"]))]
-    return {"pooled": block(recs), "by_hour": by_hour,
-            "rows_with_a_reading_after_the_hour": block(after_hour),
-            "by_city": {c: {"n": b["n"], "gain": b["gain_rd1_minus_rd2"]["mean"]}
+    extra = {"rows_with_a_reading_after_the_hour": block(after_hour)} if CH() == "rd2" else {}
+    return {"pooled": block(recs), "by_hour": by_hour, **extra,
+            "by_city": {c: {"n": b["n"], "gain": b[GAIN()]["mean"]}
                         for c in sorted({r["city"] for r in recs})
                         for b in [block([r for r in recs if r["city"] == c])]}}
 
@@ -337,11 +397,11 @@ def summarise(recs):
 def verdict(s):
     """fec-v1 §7, applied to the pooled block."""
     p = s["pooled"]
-    g = p["gain_rd1_minus_rd2"]
+    g = p[GAIN()]
     checks = {
         "gain_ci90_above_0": g["ci90"][0] > 0,
         "at_least_20_dates": p["dates"] >= 20,
-        "no_hour_ci90_below_0": all(b.get("n", 0) == 0 or b["gain_rd1_minus_rd2"]["ci90"][1] >= 0
+        "no_hour_ci90_below_0": all(b.get("n", 0) == 0 or b[GAIN()]["ci90"][1] >= 0
                                     for b in s["by_hour"].values()),
         "top1_not_lower_beyond_wilson": p["ch"]["top1"] >= p["inc"]["top1_wilson95"][0],
         "cover80_in_0.75_0.88": 0.75 <= p["ch"]["cover80"] <= 0.88,
@@ -359,11 +419,20 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--period", choices=["dev", "holdout"], required=True)
     ap.add_argument("--lag-min", type=float, default=10.0)
+    ap.add_argument("--challenger", choices=["rd2", "rd3"], default="rd2",
+                    help="rd2: Challenger A (docs/CHALLENGER_A_PREREG.md); "
+                         "rd3: Challenger C (docs/CHALLENGER_C_PREREG.md)")
+    ap.add_argument("--models-column", choices=MODELS_COLUMNS, default="tmax_c",
+                    help="rd3 only: tmax_00_17_c is a sensitivity run, never an acceptance test")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--out-dir", default=P("data/eval/fec_v1"))
     a = ap.parse_args(argv)
+    sensitivity = a.models_column != "tmax_c"
+    if sensitivity and a.challenger != "rd3":
+        ap.error("--models-column applies to rd3 only")
 
-    rows, counts = build(a.lag_min)
+    G["challenger"], G["models_col"] = a.challenger, a.models_column
+    rows, counts = build(a.lag_min, a.challenger)
     venue, excluded = load_venue()
     G["rows"], G["venue"] = rows, venue
     if a.period == "dev":
@@ -372,6 +441,8 @@ def main(argv=None):
     else:
         windows = [HOLDOUT]
     cutoffs = sorted({lo for lo, _ in windows})
+    if a.challenger == "rd3":
+        G["bias"] = fit_biases(cutoffs)
     G["prices"] = load_prices({v["event_id"] for (c, d), v in venue.items()
                                if any(lo <= dt.date.fromisoformat(d) <= hi for lo, hi in windows)})
     tasks = [(H, c, w) for H in HOURS for c in cutoffs for w in ("inc", "ch")]
@@ -384,8 +455,10 @@ def main(argv=None):
     recs.sort(key=lambda r: (r["date"], r["city"], r["hour"]))
     s = summarise(recs)
     v, checks = verdict(s)
-    tag = f"sd_{a.period}_lag{int(a.lag_min)}"
-    versions = {f"{H}:{c.isoformat()}:{w}": (rd.version_of({H: p}, prefix="rd1" if w == "inc" else rd.VERSION_PREFIX_AT) if p else None)
+    tag = (f"sd_{a.period}_lag{int(a.lag_min)}" + ("" if a.challenger == "rd2" else f"_{a.challenger}")
+           + ("_m0017" if sensitivity else ""))
+    ch_prefix = rd.VERSION_PREFIX_AT if a.challenger == "rd2" else rd.VERSION_PREFIX_C
+    versions = {f"{H}:{c.isoformat()}:{w}": (rd.version_of({H: p}, prefix="rd1" if w == "inc" else ch_prefix) if p else None)
                 for (H, c, w), p in sorted(G["params"].items())}
     out = {"contract": CONTRACT, "period": a.period, "windows": [[lo.isoformat(), hi.isoformat()] for lo, hi in windows],
            "receipt_lag_min": a.lag_min, "as_of": "approximate (valid time <= decision - lag; no historical receipt times)",
@@ -394,6 +467,11 @@ def main(argv=None):
            "row_counts": counts, "venue_excluded": excluded, "venue_city_days": len(venue),
            "fits": versions, "summary": s, "verdict": v if a.period == "holdout" else "development only",
            "checks": checks}
+    if a.challenger != "rd2":        # rd2's outputs keep the bytes they were committed with
+        out["challenger"] = a.challenger
+    if sensitivity:                  # a robustness reading, never the acceptance test
+        out["models_column"] = a.models_column
+        out["verdict"] = "sensitivity only (not an acceptance test)"
     os.makedirs(a.out_dir, exist_ok=True)
     with open(os.path.join(a.out_dir, tag + ".json"), "w") as f:
         json.dump(out, f, indent=1, sort_keys=True, default=str)
@@ -409,7 +487,7 @@ def main(argv=None):
             gz.write(buf.getvalue().encode("utf-8"))
     p = s["pooled"]
     print(json.dumps({"period": a.period, "lag_min": a.lag_min, "n": p.get("n"), "dates": p.get("dates"),
-                      "logloss": p.get("logloss"), "gain": p.get("gain_rd1_minus_rd2"),
+                      "logloss": p.get("logloss"), "gain": p.get(GAIN()),
                       "top1": {m: p[m]["top1"] for m in ("inc", "ch")} if p.get("n") else None,
                       "verdict": out["verdict"], "checks": checks}, indent=1))
 

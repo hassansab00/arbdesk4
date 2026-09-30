@@ -270,3 +270,33 @@ def test_the_forecast_is_read_between_hours_and_the_rest_after_the_decision():
     rest = max(forecast[h][0] for h in range(14, 24))
     assert abs(a["x"][0] - (rest - a["now"])) < 1e-9
     assert abs(a["x"][-1] - 0.6) < 1e-9, "min_frac"
+
+
+# ---------------------------------------------------------------------------
+# Challenger C: the models' bias-corrected day-before maxima (rd3, 30 Sep).
+# ---------------------------------------------------------------------------
+def test_rd3_is_a_separate_contract_with_three_more_inputs():
+    assert rd.VERSION_PREFIX_C == "rd3"
+    assert rd.FEATURES_C == rd.FEATURES + ["models_rise_c", "models_frac_up", "models_n"]
+
+
+def test_the_model_bias_shrinks_to_the_pool_and_the_pool_to_zero():
+    # a model 2 C warm everywhere over 30 days; one city seen 3 days, 5 C warm
+    pairs = [("gfs", "a", 2.0)] * 30 + [("gfs", "b", 5.0)] * 3
+    bias, pooled = rd.fit_model_bias(pairs)
+    n = 33
+    assert abs(pooled["gfs"] - (sum(e for *_, e in pairs) / n) * n / (n + 30)) < 1e-9
+    wb = 3 / 33
+    assert abs(bias[("gfs", "b")] - (wb * 5.0 + (1 - wb) * pooled["gfs"])) < 1e-9
+    assert bias[("gfs", "b")] < 5.0, "three days do not move it all the way"
+    big, _ = rd.fit_model_bias([("x", "c", 50.0)] * 1000)
+    assert big[("x", "c")] == rd.MODEL_BIAS_BOUND_C, "bounded"
+
+
+def test_models_summaries_and_the_missing_provider_fallback():
+    models = {"a": 25.0, "b": 24.0, "c": 23.0, "d": 20.0}
+    f = rd.models_features(models, 22.0, "x", {}, {})
+    assert f == [(3.0 + 2.0 + 1.0 + 0.0) / 4, 3 / 4, 4.0]
+    f2 = rd.models_features(models, 22.0, "x", {("a", "x"): 3.0}, {})
+    assert f2[0] == (0.0 + 2.0 + 1.0 + 0.0) / 4, "a 3 C warm model's rise is taken off"
+    assert rd.models_features({"a": 25.0, "b": 24.0, "c": 23.0}, 22.0, "x", {}, {}) is None

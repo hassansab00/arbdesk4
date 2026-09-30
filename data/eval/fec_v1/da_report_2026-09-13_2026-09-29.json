@@ -1,0 +1,254 @@
+{
+ "C": {
+  "cities": 38,
+  "dates": 16,
+  "engine": {
+   "brier": 0.7871,
+   "logloss": 1.7793,
+   "top1": 0.3466,
+   "top1_wilson95": [
+    0.3081,
+    0.3873
+   ]
+  },
+  "engine_minus_raw_top1": {
+   "ci90": [
+    -0.0017,
+    0.0916
+   ],
+   "ci95": [
+    -0.0095,
+    0.1007
+   ],
+   "dates": 16,
+   "mean": 0.0454,
+   "n": 551
+  },
+  "head_to_head": {
+   "brier_engine_minus_market": {
+    "ci90": [
+     0.1191,
+     0.1592
+    ],
+    "ci95": [
+     0.1154,
+     0.1628
+    ],
+    "dates": 16,
+    "mean": 0.138,
+    "n": 540
+   },
+   "dates": 16,
+   "engine_brier_shared": 0.7863,
+   "engine_logloss_full_ladder": 1.7573,
+   "engine_top1": 0.3481,
+   "market_brier_shared": 0.6483,
+   "market_logloss": 1.3055,
+   "market_top1": 0.4667,
+   "n": 540
+  },
+  "n": 551,
+  "priced_centre_subset": {
+   "centre_bias_c": 0.307,
+   "centre_mae_c": 0.974,
+   "centre_top1": 0.3917,
+   "dates": 7,
+   "engine_top1": 0.3833,
+   "n": 240,
+   "raw_mae_c": 1.122,
+   "raw_minus_centre_abs_error": {
+    "ci90": [
+     0.0482,
+     0.2542
+    ],
+    "ci95": [
+     0.0357,
+     0.2734
+    ],
+    "dates": 7,
+    "mean": 0.1477,
+    "n": 240
+   },
+   "raw_top1": 0.3167
+  },
+  "raw_forecast": {
+   "bias_c": -0.235,
+   "mae_c": 1.21,
+   "top1": 0.3013,
+   "top1_wilson95": [
+    0.2644,
+    0.3408
+   ]
+  },
+  "uniform_brier": 0.9091
+ },
+ "F": {
+  "cities": 11,
+  "dates": 15,
+  "engine": {
+   "brier": 0.7911,
+   "logloss": 1.7303,
+   "top1": 0.2903,
+   "top1_wilson95": [
+    0.2246,
+    0.3662
+   ]
+  },
+  "engine_minus_raw_top1": {
+   "ci90": [
+    -0.0848,
+    0.0424
+   ],
+   "ci95": [
+    -0.1032,
+    0.0552
+   ],
+   "dates": 15,
+   "mean": -0.0258,
+   "n": 155
+  },
+  "head_to_head": {
+   "brier_engine_minus_market": {
+    "ci90": [
+     0.0921,
+     0.1524
+    ],
+    "ci95": [
+     0.0887,
+     0.1595
+    ],
+    "dates": 15,
+    "mean": 0.1206,
+    "n": 153
+   },
+   "dates": 15,
+   "engine_brier_shared": 0.7879,
+   "engine_logloss_full_ladder": 1.7226,
+   "engine_top1": 0.2941,
+   "market_brier_shared": 0.6673,
+   "market_logloss": 1.3694,
+   "market_top1": 0.4771,
+   "n": 153
+  },
+  "n": 155,
+  "priced_centre_subset": {
+   "centre_bias_c": 0.018,
+   "centre_mae_c": 1.072,
+   "centre_top1": 0.3485,
+   "dates": 6,
+   "engine_top1": 0.3182,
+   "n": 66,
+   "raw_mae_c": 1.169,
+   "raw_minus_centre_abs_error": {
+    "ci90": [
+     -0.0959,
+     0.2818
+    ],
+    "ci95": [
+     -0.1412,
+     0.3235
+    ],
+    "dates": 6,
+    "mean": 0.0971,
+    "n": 66
+   },
+   "raw_top1": 0.3485
+  },
+  "raw_forecast": {
+   "bias_c": 0.053,
+   "mae_c": 1.214,
+   "top1": 0.3161,
+   "top1_wilson95": [
+    0.2481,
+    0.393
+   ]
+  },
+  "uniform_brier": 0.9091
+ },
+ "all": {
+  "cities": 49,
+  "dates": 17,
+  "engine": {
+   "brier": 0.788,
+   "logloss": 1.7685,
+   "top1": 0.3343,
+   "top1_wilson95": [
+    0.3005,
+    0.3699
+   ]
+  },
+  "engine_minus_raw_top1": {
+   "ci90": [
+    -0.0071,
+    0.0671
+   ],
+   "ci95": [
+    -0.0154,
+    0.0737
+   ],
+   "dates": 17,
+   "mean": 0.0297,
+   "n": 706
+  },
+  "head_to_head": {
+   "brier_engine_minus_market": {
+    "ci90": [
+     0.1186,
+     0.1524
+    ],
+    "ci95": [
+     0.1167,
+     0.1581
+    ],
+    "dates": 17,
+    "mean": 0.1342,
+    "n": 693
+   },
+   "dates": 17,
+   "engine_brier_shared": 0.7866,
+   "engine_logloss_full_ladder": 1.7497,
+   "engine_top1": 0.3362,
+   "market_brier_shared": 0.6525,
+   "market_logloss": 1.3196,
+   "market_top1": 0.469,
+   "n": 693
+  },
+  "n": 706,
+  "priced_centre_subset": {
+   "centre_bias_c": 0.245,
+   "centre_mae_c": 0.995,
+   "centre_top1": 0.3824,
+   "dates": 7,
+   "engine_top1": 0.3693,
+   "n": 306,
+   "raw_mae_c": 1.132,
+   "raw_minus_centre_abs_error": {
+    "ci90": [
+     0.0479,
+     0.2277
+    ],
+    "ci95": [
+     0.0362,
+     0.2496
+    ],
+    "dates": 7,
+    "mean": 0.1368,
+    "n": 306
+   },
+   "raw_top1": 0.3235
+  },
+  "raw_forecast": {
+   "bias_c": -0.172,
+   "mae_c": 1.211,
+   "top1": 0.3045,
+   "top1_wilson95": [
+    0.2717,
+    0.3395
+   ]
+  },
+  "uniform_brier": 0.9091
+ },
+ "contract": "fec-v1",
+ "lane": "DA",
+ "source": "da_rows_2026-09-13_2026-09-29.csv.gz"
+}

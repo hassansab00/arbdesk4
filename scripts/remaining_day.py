@@ -233,6 +233,49 @@ def features_at(seen, forecast, t, day, spread):
     return {"R": R, "now": now, "fc_day": fc_day, "x": x, "obs_age_h": age, "latest_at": tl}
 
 
+# ---------------------------------------------------------------------------
+# Challenger C: the individual models' day-before maxima, bias-corrected
+# (30 Sep; docs/CHALLENGER_C_PREREG.md). A separate contract, `rd3`: rd1's
+# features plus three summaries of the models. Rule 11: the bias has a prior
+# (0), shrinkage (MODEL_BIAS_PRIOR_DAYS), bounds (MODEL_BIAS_BOUND_C) and is
+# fitted only on training days.
+# ---------------------------------------------------------------------------
+VERSION_PREFIX_C = "rd3"
+FEATURES_C = FEATURES + ["models_rise_c", "models_frac_up", "models_n"]
+MIN_MODELS_C = 4
+MODEL_BIAS_PRIOR_DAYS = 30.0
+MODEL_BIAS_BOUND_C = 4.0
+MODEL_RISE_MARGIN_C = 0.5
+
+
+def fit_model_bias(pairs):
+    """{(model, city): bias C} and {model: pooled bias C} from training
+    (model, city, forecast max - station max) triples. A city's bias shrinks
+    to its model's pooled bias, the pooled bias to 0, each by n / (n + prior)."""
+    by_model, by_mc = {}, {}
+    for m, c, e in pairs:
+        by_model.setdefault(m, []).append(e)
+        by_mc.setdefault((m, c), []).append(e)
+    clip = lambda v: max(-MODEL_BIAS_BOUND_C, min(MODEL_BIAS_BOUND_C, v))
+    pooled = {m: clip(sum(v) / len(v) * len(v) / (len(v) + MODEL_BIAS_PRIOR_DAYS)) for m, v in by_model.items()}
+    out = {}
+    for (m, c), v in by_mc.items():
+        w = len(v) / (len(v) + MODEL_BIAS_PRIOR_DAYS)
+        out[(m, c)] = clip(w * (sum(v) / len(v)) + (1 - w) * pooled[m])
+    return out, pooled
+
+
+def models_features(models, R, city, bias, pooled):
+    """[models_rise_c, models_frac_up, models_n] from {model: day max C}, or
+    None with fewer than MIN_MODELS_C models (the explicit fallback: no row)."""
+    if not models or len(models) < MIN_MODELS_C:
+        return None
+    adj = [v - bias.get((m, city), pooled.get(m, 0.0)) for m, v in models.items()]
+    rise = sum(max(0.0, a - R) for a in adj) / len(adj)
+    up = sum(1 for a in adj if a > R + MODEL_RISE_MARGIN_C) / len(adj)
+    return [rise, up, float(len(adj))]
+
+
 def fit_at(rows_by_hour):
     """{hour: parameters} and the rd2 version naming them (same form as fit)."""
     params = {h: p for h, p in ((h, fit_hour(rs)) for h, rs in sorted(rows_by_hour.items())) if p}
