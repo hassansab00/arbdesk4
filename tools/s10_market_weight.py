@@ -99,14 +99,18 @@ def report(ladders, rows, dropped, ll, fits):
         best = min(GRID, key=lambda w: (v["ll"][w], w))
         lines.append(f"| {sc} | {v['n']} | {v['days']} | " + " | ".join(f"{v['ll'][w]:.3f}" for w in GRID)
                      + f" | {best:.1f} |")
-    lines += ["", "The nightly fit (`market_anchor.fit`: 20 settled days before a scope moves, a day-block "
-              "bootstrap lower 90% bound on the gain above zero, at most 0.05 a refit), walk-forward, refitted "
-              "each Monday from the days before it:", "",
-              "| as of | scope | days | rows | best w | gain per row | lower 90% | weight |", "|---|---|---|---|---|---|---|---|"]
+    lines += ["", "The nightly fit (`market_anchor.fit`: 20 settled days before a scope moves; on every day with 20 "
+              "earlier days the w those days chose is scored forward, and over at least 20 such days the gain needs "
+              "a day-block bootstrap lower 90% bound above zero and a gain on the latest 10; at most 0.05 a refit), "
+              "refitted each Monday from the days before it:", "",
+              "| as of | scope | days | rows | best w | days scored forward | forward gain per row | lower 90% | "
+              "latest 10 days | weight |", "|---|---|---|---|---|---|---|---|---|---|"]
     for t in fits:
         for sc, e in sorted(t["evidence"].items()):
+            f = e.get("forward") or {}
             lines.append(f"| {t['as_of']} | {sc} | {e.get('days')} | {e.get('rows', '')} | {e.get('best_w', '')} | "
-                         f"{e.get('gain', '')} | {e.get('gain_lower90', '')} | {t['weights'].get(sc)} |")
+                         f"{f.get('days', '')} | {f.get('gain', '')} | {f.get('gain_lower90', '')} | "
+                         f"{f.get('recent_gain', '')} | {t['weights'].get(sc)} |")
     return "\n".join(lines) + "\n"
 
 

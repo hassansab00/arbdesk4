@@ -1,5 +1,6 @@
 """The market-anchored belief (plan v2 P5.3 as amended by Hassan on 27 Sep):
 p = p_market + w (p_model - p_market), w learned under Rule 11."""
+import datetime as dt
 import random
 
 import market_anchor as ma
@@ -28,11 +29,15 @@ def test_the_scope_is_the_view_source_and_the_checkpoint_class():
     assert ma.weight(None, "engine:pre_day") == (0.0, "prior")
 
 
-def _rows(days, model_better, scope="engine:midday", seed=1):
+def _date(d):
+    return (dt.date(2026, 9, 1) + dt.timedelta(days=d)).isoformat()
+
+
+def _rows(days, model_better, scope="engine:midday", seed=1, start=0):
     rng = random.Random(seed)
     rows = []
-    for d in range(days):
-        date = f"2026-09-{d + 1:02d}"
+    for d in range(start, start + days):
+        date = _date(d)
         for _ in range(8):
             truth = {"a": 0.6, "b": 0.3, "c": 0.1}
             winner = rng.choices(list(truth), weights=list(truth.values()))[0]
@@ -43,16 +48,21 @@ def _rows(days, model_better, scope="engine:midday", seed=1):
 
 
 def test_the_model_earns_weight_only_on_evidence_and_one_step_a_night():
-    t = ma.fit(_rows(25, model_better=True), as_of="2026-09-26")
+    t = ma.fit(_rows(45, model_better=True), as_of=_date(45))
     assert t["weights"]["engine:midday"] == ma.MAX_STEP                   # the target is higher; one step
-    t2 = ma.fit(_rows(25, model_better=True), as_of="2026-09-26", previous=t)
+    t2 = ma.fit(_rows(45, model_better=True), as_of=_date(45), previous=t)
     assert t2["weights"]["engine:midday"] == 2 * ma.MAX_STEP
-    assert t["version"].startswith("market-anchor:2026-09-26:") and t2["previous"] == t["version"]
+    assert t["version"].startswith(f"market-anchor:{_date(45)}:") and t2["previous"] == t["version"]
+    fwd = t["evidence"]["engine:midday"]["forward"]
+    assert fwd["passed"] and fwd["days"] == 45 - ma.MIN_DAYS and fwd["gain_lower90"] > 0
+    assert fwd["recent_days"] == ma.RECENT_DAYS and fwd["recent_gain"] > 0
+    assert t["recent_days"] == ma.RECENT_DAYS
 
 
 def test_a_model_the_market_beats_stays_at_zero():
-    t = ma.fit(_rows(25, model_better=False), as_of="2026-09-26")
+    t = ma.fit(_rows(45, model_better=False), as_of=_date(45))
     assert t["weights"]["engine:midday"] == 0.0
+    assert not t["evidence"]["engine:midday"]["forward"]["passed"]
 
 
 def test_too_few_days_keep_the_prior_and_the_future_is_never_read():
@@ -66,6 +76,82 @@ def test_a_weight_that_loses_its_evidence_steps_back_toward_the_market():
     prev = {"version": "market-anchor:x", "weights": {"engine:midday": 0.3}}
     t = ma.fit(_rows(25, model_better=False), as_of="2026-09-26", previous=prev)
     assert t["weights"]["engine:midday"] == 0.3 - ma.MAX_STEP
+
+
+# --------------------------------------------------------------------------
+# The scope's gate walks forward (29 Sep audit, repair 4): the w it moves
+# toward is never scored on the days that chose it.
+# --------------------------------------------------------------------------
+
+def test_a_scope_is_scored_forward_only_after_min_days_and_needs_min_days_of_that():
+    # 39 days: 19 scored forward, one short - held however good the model is
+    t = ma.fit(_rows(39, model_better=True), as_of=_date(39))
+    ev = t["evidence"]["engine:midday"]
+    assert ev["best_w"] > 0 and t["weights"]["engine:midday"] == 0.0 and ev["target"] == 0.0
+    assert ev["forward"]["days"] == 39 - ma.MIN_DAYS and "fewer than" in ev["forward"]["held"]
+    t = ma.fit(_rows(40, model_better=True), as_of=_date(40))
+    assert t["evidence"]["engine:midday"]["forward"]["days"] == ma.MIN_DAYS
+    assert t["weights"]["engine:midday"] == ma.MAX_STEP
+
+
+def test_each_forward_day_scores_the_w_the_days_before_it_chose():
+    by_day = {}
+    for r in _rows(30, model_better=True) + _rows(15, model_better=False, start=30, seed=2):
+        by_day.setdefault(r[0], []).append((ma._ll_grid(*r[2:5]), None))
+    per = ma._forward(by_day)
+    days = sorted(by_day)
+    assert sorted(per) == days[ma.MIN_DAYS:]
+    for k, d in enumerate(days[ma.MIN_DAYS:], start=ma.MIN_DAYS):
+        totals = [0.0] * len(ma.W_GRID)
+        for e in days[:k]:
+            for g, _c in by_day[e]:
+                ma._add(totals, g)
+        i = ma._best(totals)
+        assert per[d] == (sum(g[0] - g[i] for g, _c in by_day[d]), len(by_day[d])), d
+    # the model turned bad on day 30: the w chosen before it loses there, in total
+    assert sum(per[d][0] for d in days[30:]) < 0
+
+
+def test_an_edge_that_fades_is_held_by_the_latest_days():
+    rows = _rows(40, model_better=True) + _rows(12, model_better=False, start=40, seed=2)
+    t = ma.fit(rows, as_of=_date(52))
+    ev = t["evidence"]["engine:midday"]
+    fwd = ev["forward"]
+    assert ev["best_w"] > 0, "over every day the model still looks worth weight"
+    assert fwd["gain_lower90"] > 0 and fwd["recent_gain"] < 0 and not fwd["passed"]
+    assert "latest" in fwd["held"] and t["weights"]["engine:midday"] == 0.0
+    # the gate this replaced passed it: the chosen w, bootstrapped over the days that chose it
+    by_day = {}
+    for r in rows:
+        by_day.setdefault(r[0], []).append(ma._ll_grid(*r[2:5]))
+    i = ma._ix(ev["best_w"])
+    _mean, lower = ma._interval({d: (sum(g[0] - g[i] for g in gs), len(gs)) for d, gs in by_day.items()})
+    assert lower > 0
+
+
+def test_a_model_with_nothing_beyond_the_price_never_moves_the_scope():
+    """The model is the market plus noise: every w above 0 is chance. Over
+    many worlds the in-sample best w is often above 0; the forward gate
+    passes none of them."""
+    above = 0
+    for seed in range(20):
+        rng = random.Random(seed)
+        rows = []
+        for d in range(45):
+            for _ in range(8):
+                truth = [rng.random() ** 2 + 0.02 for _b in range(5)]
+                tot = sum(truth)
+                truth = [x / tot for x in truth]
+                bands = [f"b{i}" for i in range(5)]
+                winner = rng.choices(bands, weights=truth)[0]
+                noise = [x * (0.5 + rng.random()) for x in truth]
+                tot = sum(noise)
+                rows.append((_date(d), "engine:midday", dict(zip(bands, [x / tot for x in noise])),
+                             dict(zip(bands, truth)), winner))
+        t = ma.fit(rows, as_of=_date(45))
+        above += t["evidence"]["engine:midday"]["best_w"] > 0
+        assert t["weights"]["engine:midday"] == 0.0, seed
+    assert above > 0, "the worlds must tempt an in-sample choice, or this proves nothing"
 
 
 # --------------------------------------------------------------------------
@@ -150,7 +236,7 @@ def test_the_cities_never_read_the_night_they_are_fitted_for():
 
 
 def test_rows_without_a_city_are_the_scopes_alone():
-    t = ma.fit(_rows(25, model_better=True), as_of="2026-09-26")
+    t = ma.fit(_rows(45, model_better=True), as_of=_date(45))
     assert t["city_weights"] == {} and t["city_evidence"]["engine:midday"]["cities"] == 0
     assert t["weights"]["engine:midday"] == ma.MAX_STEP
 

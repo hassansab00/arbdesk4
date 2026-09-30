@@ -28,8 +28,10 @@ WHAT IT FITS NOW
            (s10_shadow_checkpoints), each against the book the tick recorded
            beside the engine's call, scored on the venue's winner
            (fact_checkpoint_outcome). market_anchor.fit holds a scope at 0
-           until it has MIN_DAYS settled days and a gain whose bootstrap lower
-           bound is above zero, and moves it at most MAX_STEP a night. Under
+           until the w chosen from each day's earlier days alone has gained on
+           that day, over at least MIN_DAYS days scored forward (a bootstrap
+           lower bound above zero, and a gain on the latest RECENT_DAYS), and
+           moves it at most MAX_STEP a night. Under
            each scope a city may earn its own weight (28 Sep, after P3.10 Q8):
            its shrunk difference from the pooled fit, only when the cities'
            differences beat the pooled fit walking forward, as a family and in
@@ -179,7 +181,8 @@ def market_weight_row(rows, as_of, previous=None):
         "n": sum(1 for r in rows if str(r[0]) < str(as_of)),
         "as_of": str(as_of),
         "prior": {"w": market_anchor.W_PRIOR, "min_days": market_anchor.MIN_DAYS,
-                  "max_step": market_anchor.MAX_STEP, "boot_n": market_anchor.BOOT_N,
+                  "max_step": market_anchor.MAX_STEP, "recent_days": market_anchor.RECENT_DAYS,
+                  "boot_n": market_anchor.BOOT_N,
                   "boot_lower": market_anchor.BOOT_LOWER, "city_min_days": market_anchor.CITY_MIN_DAYS,
                   "city_k": market_anchor.CITY_K},
         "bounds": {"w": list(market_anchor.W_BOUNDS)},
