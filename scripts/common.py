@@ -397,6 +397,10 @@ def refresh_feature_cache(days=None, quiet=False):
         "cities": len(cities),
         "city_days_touched": total_of("city_days_touched"),
         "city_hours": total_of("city_hours"),
+        # The cut day of each city, left as cached rather than rebuilt from the
+        # readings a prune left (20260929010000). Summed per city; the 30 Sep
+        # check-in could not read it because the summary dropped it.
+        "cut_days_left_as_cached": total_of("cut_days_left_as_cached"),
         # city_days_total is a count of the whole cache, the same on every call
         "city_days_total": int(results[-1].get("city_days_total") or 0),
         "refreshed_from": results[-1].get("refreshed_from"),
