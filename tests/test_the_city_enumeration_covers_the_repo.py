@@ -244,6 +244,10 @@ SQL_RECORD = {
 # rather than a bug. It is here because a blind spot is how the last four got
 # in.
 MIGRATION_RECORD = {
+    "supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql":
+        "v_outcome_pipeline - cities.timezone to put each market's day end on its city's "
+        "clock, and the unit; every market of the window, a retired city's too, because "
+        "the lag it measures is the record's",
     "supabase/migrations/20260930004500_the_hit_record_shows_the_priced_centre.sql":
         "v_city_hit_history_live as in sql/ad4_85 (the priced centre appended) - "
         "cities.timezone to put each call's cutoff on its city's clock and the "

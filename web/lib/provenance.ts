@@ -430,6 +430,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/databank.py",
       "kind": "action",
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
+    {
+      "cadence": "several times a day",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/databank.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "fact_checkpoint_outcome": [
@@ -439,6 +446,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/databank.py",
       "kind": "action",
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
+    {
+      "cadence": "several times a day",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/databank.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     },
     {
       "cadence": "hourly",
@@ -455,6 +469,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/databank.py",
       "kind": "action",
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
+    {
+      "cadence": "several times a day",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/databank.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "fact_signal_outcome": [
@@ -464,6 +485,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/databank.py",
       "kind": "action",
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
+    {
+      "cadence": "several times a day",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/databank.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "fact_station_width_score": [
@@ -514,6 +542,15 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "AD4 P1.5 - Open-Meteo Global"
     }
   ],
+  "market_confirmation_attempts": [
+    {
+      "cadence": "several times a day",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/confirm_queue.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
+    }
+  ],
   "markets": [
     {
       "cadence": "whenever its n8n schedule fires",
@@ -555,7 +592,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
     {
       "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
-      "how": "scripts/paper_exits.py",
+      "how": "scripts/confirm_queue.py",
       "kind": "action",
       "name": "Intraday Pipeline (model, probabilities, edges)"
     },
@@ -603,7 +640,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
     {
       "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
-      "how": "scripts/paper_settlement.py",
+      "how": "scripts/confirm_queue.py",
       "kind": "action",
       "name": "Intraday Pipeline (model, probabilities, edges)"
     }
@@ -635,7 +672,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
     {
       "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
-      "how": "scripts/paper_settlement.py",
+      "how": "scripts/confirm_queue.py",
       "kind": "action",
       "name": "Intraday Pipeline (model, probabilities, edges)"
     }
@@ -1514,6 +1551,14 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "resolution_verdicts",
     "markets",
     "weather_resolution_evidence"
+  ],
+  "v_outcome_pipeline": [
+    "bands",
+    "cities",
+    "fact_band_outcome",
+    "ingest_log",
+    "market_confirmation_attempts",
+    "markets"
   ],
   "v_paper_desk_integrity": [
     "anomalies",

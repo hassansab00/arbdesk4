@@ -8,9 +8,10 @@ import paper_settlement as settlement
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
-def test_only_the_hours_after_us_days_end():
-    for h in (0, 3, 5, 18, 23):
-        assert cr.main(now=dt.datetime(2026, 9, 27, h, 36, tzinfo=dt.timezone.utc)) == {}
+def test_it_runs_every_hour_now_that_eligibility_is_local():
+    """30 Sep: a Tokyo day ends at 15:00Z and a London one at 23:00Z; the queue
+    decides eligibility from each city's own clock, so every tick asks."""
+    assert cr.HOURS_UTC == tuple(range(24))
 
 
 def test_the_budget_is_cut_from_the_tick_deadline():
@@ -20,44 +21,59 @@ def test_the_budget_is_cut_from_the_tick_deadline():
     assert cr.budget(1000.0, now_epoch=900.0) == cr.BUDGET_S
 
 
-def _wire(monkeypatch, deadline_left):
+def _wire(monkeypatch, deadline_left, sweep=None):
     calls, logged = {}, []
-    import common
+    import importlib
+    common = importlib.import_module("common")
+    confirm_queue = importlib.import_module("confirm_queue")
     monkeypatch.setattr(common, "rpc", lambda fn, args=None: calls.setdefault("rpc", []).append(fn) or 7)
     monkeypatch.setattr(common, "log_run",
                         lambda job, status, rows, detail: logged.append((job, status, rows, detail)))
 
-    def cycle(budget_seconds, days_back, max_new_evidence, unconfirmed_only=False):
-        calls["cycle"] = (budget_seconds, days_back, max_new_evidence)
-        calls["unconfirmed_only"] = unconfirmed_only
-        return {"evidence_captured": 11, "candidates": 30, "unreached": 19, "skips": {}, "failed": 0}
-    monkeypatch.setattr(settlement, "cycle", cycle)
+    def run(budget_seconds, days_back, now, get, trigger, log):
+        calls["run"] = (budget_seconds, days_back, trigger, log)
+        calls["get"] = get
+        return dict({"evidence_captured": 11, "due": 5, "asked": 4, "completed": 3,
+                     "unreached": 0, "failed": 0, "pending_after": 2}, **(sweep or {}))
+    monkeypatch.setattr(confirm_queue, "run", run)
+    monkeypatch.setattr(settlement, "cycle", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("the tick no longer walks bands")))
     now = dt.datetime(2026, 9, 27, 9, 36, tzinfo=dt.timezone.utc)
     return calls, logged, now, now.timestamp() + deadline_left
 
 
-def test_a_run_sweeps_two_days_and_banks(monkeypatch):
+def test_a_run_asks_the_queue_and_banks(monkeypatch):
     calls, logged, now, deadline = _wire(monkeypatch, 60)
     d = cr.main(now=now, deadline=deadline)
-    assert calls["cycle"][1:] == (2, cr.MAX_EVIDENCE) and 0 < calls["cycle"][0] <= cr.BUDGET_S
-    assert calls["unconfirmed_only"] is True
+    budget, days_back, trigger, log = calls["run"]
+    assert 0 < budget <= cr.BUDGET_S and days_back == cr.DAYS_BACK == 3
+    assert trigger == "tick" and log is False, "the tick logs its own P4.7 row only"
     assert calls["rpc"] == ["bank_checkpoint_outcomes"]
     assert d["banked_checkpoints"] == 7 and logged[0][:3] == ("P4.7_confirm_recent", "ok", 18)
+    assert logged[0][3]["pending_after"] == 2
+
+
+def test_a_run_out_of_budget_with_ladders_due_is_partial(monkeypatch):
+    calls, logged, now, deadline = _wire(monkeypatch, 60, sweep={"unreached": 3})
+    cr.main(now=now, deadline=deadline)
+    assert logged[0][1] == "partial"
+    calls, logged, now, deadline = _wire(monkeypatch, 60, sweep={"failed": 1})
+    cr.main(now=now, deadline=deadline)
+    assert logged[0][1] == "attention"
 
 
 def test_no_time_left_skips_rather_than_overrunning_the_tick(monkeypatch):
     calls, logged, now, deadline = _wire(monkeypatch, 9)
     d = cr.main(now=now, deadline=deadline)
-    assert "cycle" not in calls and logged[0][1] == "skipped" and d["skipped"]
+    assert "run" not in calls and logged[0][1] == "skipped" and d["skipped"]
 
 
 def test_the_venue_calls_are_short(monkeypatch):
     """paper_worker waits 20 s a call; inside the tick that would bill a second
-    minute. confirm_recent swaps in a 5-second call for its sweep."""
-    import paper_worker
+    minute. confirm_recent hands the queue a 5-second call."""
     calls, logged, now, deadline = _wire(monkeypatch, 60)
     cr.main(now=now, deadline=deadline)
-    assert paper_worker.public_json is cr.quick_json and cr.REQUEST_TIMEOUT_S == 5
+    assert calls["get"] is cr.quick_json and cr.REQUEST_TIMEOUT_S == 5
 
 
 def test_the_tick_runs_it_with_a_backstop_and_the_trades_do_not_wait_for_it():

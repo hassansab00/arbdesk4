@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 260 of them - and for each MISSING one names the
+-- and function the app reads - 262 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -82,6 +82,7 @@ with expected(rel, owner, used_by) as (values
     ('ingest_log', 'ad4_00_preflight.sql', '(PaperPipelineStatus), (PipelineStatus)'),
     ('ledger', 'ad4_00_preflight.sql', ''),
     ('live_weather', 'ad4_live_weather.sql', '(CityCards), (GlobalBar), (RightRail), /board, /live, /opportunities'),
+    ('market_confirmation_attempts', 'supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql', ''),
     ('markets', 'ad4_00_preflight.sql', '(Header)'),
     ('model_versions', 'ad4_00_preflight.sql', ''),
     ('mv_city_hit_history', 'supabase/migrations/20260930004500_the_hit_record_shows_the_priced_centre.sql', ''),
@@ -216,6 +217,7 @@ with expected(rel, owner, used_by) as (values
     ('v_opportunities', 'ad4_13_reconcile.sql', '(Header), (ModelAnalytics), /, /analytics, /board, /globe, /goals, /live, /monitor'),
     ('v_opportunity_context', 'ad4_22_opportunity_context.sql', '/opportunities'),
     ('v_outcome_evidence_health', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', '(DataBank), /predictive, /synthesis'),
+    ('v_outcome_pipeline', 'supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql', ''),
     ('v_paper_desk_integrity', 'ad4_81_paper_desk_integrity.sql', ''),
     ('v_paper_desks', 'ad4_59_paper_desks.sql', ''),
     ('v_peak_hour_coverage', 'ad4_37_peak_hour.sql', '/globe'),
@@ -364,6 +366,7 @@ begin
     ('ingest_log', 'ad4_00_preflight.sql', '(PaperPipelineStatus), (PipelineStatus)'),
     ('ledger', 'ad4_00_preflight.sql', ''),
     ('live_weather', 'ad4_live_weather.sql', '(CityCards), (GlobalBar), (RightRail), /board, /live, /opportunities'),
+    ('market_confirmation_attempts', 'supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql', ''),
     ('markets', 'ad4_00_preflight.sql', '(Header)'),
     ('model_versions', 'ad4_00_preflight.sql', ''),
     ('mv_city_hit_history', 'supabase/migrations/20260930004500_the_hit_record_shows_the_priced_centre.sql', ''),
@@ -498,6 +501,7 @@ begin
     ('v_opportunities', 'ad4_13_reconcile.sql', '(Header), (ModelAnalytics), /, /analytics, /board, /globe, /goals, /live, /monitor'),
     ('v_opportunity_context', 'ad4_22_opportunity_context.sql', '/opportunities'),
     ('v_outcome_evidence_health', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', '(DataBank), /predictive, /synthesis'),
+    ('v_outcome_pipeline', 'supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql', ''),
     ('v_paper_desk_integrity', 'ad4_81_paper_desk_integrity.sql', ''),
     ('v_paper_desks', 'ad4_59_paper_desks.sql', ''),
     ('v_peak_hour_coverage', 'ad4_37_peak_hour.sql', '/globe'),

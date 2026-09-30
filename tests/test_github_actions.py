@@ -156,6 +156,14 @@ MEASURED_MINUTES = {
     # thread pool): the first run on it, 24 Sep 10:37Z, took 1 min 48 s -
     # "Band probabilities" 34 s for 96 city-days, where 04:43Z took 231 s for
     # 65. Billed per job in whole minutes, so 2.0.
+    # RE-MEASURED 30 Sep, NOT APPLIED HERE: 39 runs 23-30 Sep 09:00Z, job
+    # median 227 s, 4.31 billed minutes a run (each job rounded up; Actions
+    # jobs API). The other scheduled workflows measured the same way are also
+    # above their figures here (pipeline_daily 38.9, forecasts 17.0 a run), so
+    # the measured scheduled total, about 4,440 a month, is past
+    # SCHEDULED_MINUTE_BUDGET. Only P6.1 may move the budget, and the spend is
+    # Hassan's decision: docs/PLAN_PROGRESS.md, P6.1 row. The P4.7 queue and
+    # bands-only banking (30 Sep) add to this job; measure them on real runs.
     "pipeline_intraday.yml": 2.0,
     # The hourly checkpoint tick (plan v2 P6.1 / P4.2). Dispatched 24 Sep:
     # 35 s with a cold venv cache, 21 s warm (7 checkpoints, script 11.8 s).

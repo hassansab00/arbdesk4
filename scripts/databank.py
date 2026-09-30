@@ -269,14 +269,6 @@ def bank_bands(observed, days_back, force, late_markets=()):
     """
     since = (dt.date.today() - dt.timedelta(days=days_back)).isoformat()
     until = dt.date.today().isoformat()
-    done = set()
-    if not force:
-        try:
-            rows = rest_all("fact_band_outcome", [("select", "band_id")],
-                            order="band_id.asc", page_size=1000)
-            done = {r["band_id"] for r in rows}
-        except Exception:
-            pass
 
     markets = rest_all("markets", [("select", "market_id,city_key,resolution_date"),
                                     ("resolution_date", f"gte.{since}"),
@@ -289,6 +281,25 @@ def bank_bands(observed, days_back, force, late_markets=()):
     if not markets:
         return []
     by_market = {m["market_id"]: m for m in markets}
+
+    # WHAT IS ALREADY BANKED, FOR THESE MARKETS' DATES ONLY (30 Sep). This read
+    # every band_id ever banked - 22,022 rows, 23 pages - on every run, to
+    # skip bands no older than the window's oldest market could contain. The
+    # skip is an optimisation: upsert() ignores a duplicate, so a banked row is
+    # never rewritten either way. The oldest date among the markets (late
+    # proofs included) bounds every band this run can offer, so the skip-list
+    # is the same set it was, read in a page or two - which is what lets the
+    # intraday pipeline bank a just-confirmed ladder (plan v2.2 P4.7).
+    done = set()
+    if not force:
+        oldest = min(str(m["resolution_date"])[:10] for m in markets)
+        try:
+            rows = rest_all("fact_band_outcome", [("select", "band_id"),
+                                                  ("for_date", f"gte.{oldest}")],
+                            order="band_id.asc", page_size=1000)
+            done = {r["band_id"] for r in rows}
+        except Exception:
+            pass
 
     # CHUNKED. This used to put every market id of the window into ONE
     # market_id=in.(...) filter - about 1,000 UUIDs, a 37 KB URL - and PostgREST
@@ -598,7 +609,14 @@ def main():
     ap.add_argument("--proof-days", type=int, default=30,
                     help="also bank ladders whose venue proof arrived in this many days, "
                          "however old their date (plan v2 P4.5)")
+    ap.add_argument("--bands-only", action="store_true",
+                    help="bank only the ladder record (fact_band_outcome) and the checkpoints: "
+                         "the intraday pipeline's pass after the venue confirmations "
+                         "(plan v2.2 P4.7). Forecast and signal outcomes stay with the daily run. "
+                         "Logged as databank_bands, so the daily run's databank row is not masked")
     args = ap.parse_args()
+    if args.bands_only:
+        return bank_bands_only(args)
 
     late = _late_proof_markets(args.proof_days, args.days)
     # The observation context has to reach back as far as the oldest late
@@ -664,6 +682,53 @@ def main():
     log_run("databank", "ok", n_fc + n_bd + n_sg + n_cp,
             {"forecasts": n_fc, "bands": n_bd, "signals": n_sg, "checkpoints": n_cp,
              "late_proof_markets": len(late), "summary": summary})
+
+
+class _LazyObservations(dict):
+    """observed_with_fallback(), read the first time a key is asked for."""
+
+    def __init__(self, load):
+        super().__init__()
+        self._load, self._loaded = load, False
+
+    def get(self, key, default=None):
+        if not self._loaded:
+            self.update(self._load())
+            self._loaded = True
+        return super().get(key, default)
+
+
+def bank_bands_only(args):
+    """The ladder record alone, for ladders the venue has just confirmed.
+
+    Same bank_bands(), same whole-ladder-or-nothing rule, same observation
+    context as the daily run; only forecast and signal outcomes are left to
+    it. Returns the detail it logs."""
+    import time
+    t0 = time.monotonic()
+    late = _late_proof_markets(args.proof_days, args.days)
+    span = args.days
+    if late:
+        oldest = min(dt.date.fromisoformat(str(m["resolution_date"])) for m in late)
+        span = max(args.days, (dt.date.today() - oldest).days + 1)
+    # Read only when a ladder is actually bankable: bank_bands asks for an
+    # observed maximum only after the whole-ladder check passes, and most
+    # intraday runs have nothing new (the station maxima read is ~1.3 s).
+    banded = _LazyObservations(lambda: observed_with_fallback(span))
+    bd = bank_bands(banded, args.days, args.force, late_markets=late)
+    n_bd = upsert("fact_band_outcome", bd, "band_id") if bd else 0
+    try:
+        n_cp = int(rpc("bank_checkpoint_outcomes") or 0)
+    except Exception as e:
+        n_cp = 0
+        print(f"  ! checkpoint outcomes not banked: {str(e)[:200]}", file=sys.stderr)
+    days = sorted({(b["city_key"], b["for_date"]) for b in bd})
+    detail = {"bands": n_bd, "checkpoints": n_cp, "city_days": len(days),
+              "days": sorted({d for _, d in days}), "late_proof_markets": len(late),
+              "window_days": args.days, "seconds": round(time.monotonic() - t0, 1)}
+    print(f"banked {n_bd} band outcome(s) over {len(days)} city-day(s), {n_cp} checkpoint(s)")
+    log_run("databank_bands", "ok", n_bd + n_cp, detail)
+    return detail
 
 
 if __name__ == "__main__":

@@ -162,6 +162,26 @@ jobs:
         timeout-minutes: 6
         run: python scripts/paper_settlement.py --holdings-only --budget-seconds 60 --max-evidence 100
 
+      # LADDERS WHOSE DAY HAS ENDED, CONFIRMED AND BANKED IN THIS RUN (plan
+      # v2.2 P4.7, finished 30 Sep; handoff F1). /predictive's hit/miss record
+      # is fact_band_outcome, which only pipeline_daily (04:36Z) wrote: a US day
+      # ends 04:00-07:00Z, so it waited a full day (median 24.0 h from 25 Sep),
+      # although the venue closed US ladders a median 1.2-1.4 h after the day
+      # ended. The tick asks the queue every hour inside its own minute; this
+      # asks again with a longer budget (the queue's backoff skips what the
+      # tick just asked), then banks what is now confirmed - the same
+      # bank_bands(), whole ladder or nothing - so the refresh below shows it.
+      # Not gated on PAPER_TRADES_ENABLED: this is the outcome record, not
+      # trading. Minutes: measured on the first real runs, see MEASURED_MINUTES.
+      - name: Venue confirmations, ladder by ladder (P4.7 queue)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 3
+        run: python scripts/confirm_queue.py --budget-seconds 60 --days-back 3
+      - name: Bank the ladders just confirmed (P4.7, bands only)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 3
+        run: python scripts/databank.py --bands-only --days 3 --proof-days 3
+
       # THE PAGES READ STORED ROWS (plan v2 P6.5): refresh them now that this
       # run has written, rather than at the next :12 / :42 of pg_cron.
       # CONCURRENTLY, so a page open during the refresh keeps reading.
