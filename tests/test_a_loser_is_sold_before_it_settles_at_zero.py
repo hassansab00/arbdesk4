@@ -226,6 +226,18 @@ def test_one_position_that_raises_does_not_cost_the_others_their_turn(monkeypatc
                                        "error": "RuntimeError: the band read failed"}]
 
 
+def test_every_position_reached_is_counted_once(monkeypatch):
+    """30 Sep 00:36Z: 16 positions open, 11 in the log - the ones held inside
+    the policy's thresholds were counted nowhere. The log now says how many
+    positions it reached, and each is queued, skipped for a reason or an error."""
+    free = {**_pos("b1"), "cost_basis": 0}
+    out, logged, _calls = _run_cycle(monkeypatch, [free, _pos("b2"), _pos("b3")],
+                                     unit="F", running_max_c=28.9, bands_raise=("b2",))
+    assert out["skipped"] == {"zero_cost_basis": 1, "no_bids": 1} and out["errors"] == {"RuntimeError": 1}
+    assert out["positions"] == logged["positions"] == 3
+    assert out["positions"] == out["exits_queued"] + sum(out["skipped"].values()) + sum(out["errors"].values())
+
+
 def test_the_step_goes_red_only_after_every_position_had_its_turn(monkeypatch):
     monkeypatch.setattr(px, "cycle", lambda: {"exits_queued": 0, "skipped": {}, "errors": {"TypeError": 1}})
     assert px.main() == 1

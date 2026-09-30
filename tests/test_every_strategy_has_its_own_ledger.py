@@ -189,7 +189,7 @@ class _W:
         self.weight, self.reason = weight, "test"
 
 
-def _run_main(monkeypatch, fired, ledgers, earned):
+def _run_main(monkeypatch, fired, ledgers, earned, weights_error=None):
     monkeypatch.setattr(se, "_enabled_strategies", lambda: [object()])
     monkeypatch.setattr(se, "_open_positions", lambda: [])
     monkeypatch.setattr(se, "_band_views", lambda: [_band()])
@@ -202,11 +202,17 @@ def _run_main(monkeypatch, fired, ledgers, earned):
 
     monkeypatch.setattr(se, "run_strategies", fake_run)
     monkeypatch.setattr(se, "_ledgers", lambda: ledgers)
-    monkeypatch.setattr(se, "_earned_weights", lambda: earned)
+    def earned_weights(errors=None):
+        if weights_error and errors is not None:
+            errors.append(weights_error)
+        return earned
+
+    monkeypatch.setattr(se, "_earned_weights", earned_weights)
     monkeypatch.setattr(se, "_risk_states", lambda l: {sid: (None, None, 0.0) for sid in l})
     monkeypatch.setattr(se, "_correlations", lambda cities: {})
     monkeypatch.setattr(se, "_recently_fired", lambda now: set())
-    monkeypatch.setattr(se, "log_run", lambda *a, **k: None)
+    seen["logged"] = []
+    monkeypatch.setattr(se, "log_run", lambda *a, **k: seen["logged"].append(a))
     written = {}
     monkeypatch.setattr(se, "insert", lambda table, rows: written.setdefault(table, rows))
     assert se.main() == 0
@@ -235,6 +241,22 @@ def test_the_earned_weight_does_not_starve_a_shadow_ledger(monkeypatch):
     fired = [_signal("sA", "YES")]
     ledgers = {"sA": {"account_id": "a1", "cash": 1000, "reserved_cash": 0}}
     _, rows = _run_main(monkeypatch, fired, ledgers, {"sA": _W(0.0)})
+    assert rows[("sA", "YES")]["suggested_shares"] > 0
+
+
+def test_a_weights_read_that_fails_marks_the_run_attention(monkeypatch):
+    """29 Sep audit, repair 5: the read asked v_signal_mark for a column it did
+    not have, got HTTP 400 on every run, and every run logged 'ok'. The desk
+    still sizes and writes its signals; the run says what it could not read."""
+    fired = [_signal("sA", "YES")]
+    ledgers = {"sA": {"account_id": "a1", "cash": 1000, "reserved_cash": 0}}
+    seen, rows = _run_main(monkeypatch, fired, ledgers, {})
+    assert [(j, st) for j, st, _n, _c in seen["logged"]] == [("signal_engine", "ok")]
+    err = "HTTPError: 400 Client Error: column v_signal_mark.fired_at does not exist"
+    seen, rows = _run_main(monkeypatch, fired, ledgers, {}, weights_error=err)
+    [(job, status, _n, counts)] = seen["logged"]
+    assert (job, status) == ("signal_engine", "attention")
+    assert counts["earned_weights_error"] == err
     assert rows[("sA", "YES")]["suggested_shares"] > 0
 
 
