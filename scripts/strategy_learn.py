@@ -65,6 +65,8 @@ import city_clusters
 import market_anchor
 
 JOB = "P5.8_strategy_learn"
+# PostgREST filter: the S10 rows of remaining_day.VERSION_PREFIX (rd1) only
+S10_INCUMBENT = "like.rd1:*"
 
 NOT_FITTED = {
     "p_fill_touch_1h": "needs maker orders and fills; the maker path is P5.12",
@@ -217,8 +219,12 @@ def main(argv=None, today=None):
     row, table = belief_row(checkpoints, outcomes, as_of, previous)
 
     # Nightly: how far each view may move the belief off the market (P5.3 amended).
+    # Only the incumbent's rows (rd1): they are the ladders the engine's S10
+    # decisions read. A challenger in forward shadow (rd3, 30 Sep) writes to
+    # the same table under its own version and must not move S10's weight.
     s10_rows = rest_all("s10_shadow_checkpoints",
-                        {"select": "city_key,target_date,checkpoint,probs", "target_date": f"lt.{as_of}"},
+                        {"select": "city_key,target_date,checkpoint,probs", "target_date": f"lt.{as_of}",
+                         "model_version": S10_INCUMBENT},
                         order="checkpoint_id.asc")
     prev_w = previous_belief(rest, "market_weight", as_of)
     m_rows = market_rows(checkpoints, outcomes, s10_rows)

@@ -23,6 +23,15 @@ TWO STEPS, both inside the hourly tick and inside its budget:
 
 A row can be skipped (no inputs yet, too few readings, an hour the model has
 no fit for); the reason is counted in the tick's log, never raised.
+
+CHALLENGER C (rd3, docs/CHALLENGER_C_PREREG.md; accepted 30 Sep as a better
+forecast on the untouched window, research only). When CHALLENGER_PATH holds
+fitted parameters, each due checkpoint also gets an rd3 row under rd3's own
+model_version, from the same readings and the same inputs row plus its
+`models` (the seven day-before maxima, fetched at 07-09 local, so as of the
+decision). This is its forward, as-of test (fec-v1 section 8). Its rows never
+reach `ladders` - the engine's S10 decisions read rd1 only - and no failure of
+it touches rd1's rows.
 """
 import datetime as dt
 import json
@@ -45,6 +54,7 @@ MAX_FETCH_PER_TICK = 12
 TIMEOUT_S = 12
 PARAMS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                            "data", "models", "remaining_day", "current.json")
+CHALLENGER_PATH = os.path.join(os.path.dirname(PARAMS_PATH), "challenger_rd3.json")
 CHECKPOINTS = ("morning", "noon", "prepeak_2h", "prepeak_1h", "postpeak_1h")
 MIN_HOURLY = 20
 
@@ -61,6 +71,21 @@ def load_params(path=PARAMS_PATH):
         return None, None, None
     hours = {int(h): p for h, p in blob["hours"].items()}
     return hours, blob["version"], blob.get("spread_median_c")
+
+
+def load_challenger(path=CHALLENGER_PATH):
+    """Challenger C's fit: {"hours", "version", "spread", "bias", "pooled"},
+    or None (no file, unreadable, or not an rd3 fit)."""
+    try:
+        with open(path) as f:
+            blob = json.load(f)
+        if not str(blob.get("version", "")).startswith(rd.VERSION_PREFIX_C + ":"):
+            return None
+        bias, pooled = rd.bias_from_json(blob.get("bias"), blob.get("pooled"))
+        return {"hours": {int(h): p for h, p in blob["hours"].items()}, "version": blob["version"],
+                "spread": blob.get("spread_median_c"), "bias": bias, "pooled": pooled}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
 
 
 def local_hours(times, tz):
@@ -131,10 +156,11 @@ def readings_for(obs, tz, day):
 
 
 def shadow_rows(due, params, version, inputs, obs_by_city, tz_of, unit_of, bands_of,
-                q_down, q_up, spread_fallback):
+                q_down, q_up, spread_fallback, challenger=None):
     """(rows, skipped reasons). due: [(city, target iso, checkpoint, local naive
     datetime)]; inputs: {(city, date iso): s10_day1_inputs row};
-    bands_of: {(city, target iso): [band dicts]}."""
+    bands_of: {(city, target iso): [band dicts]}. challenger: load_challenger()'s
+    dict to write rd3's rows (its bias table appends the models' summaries)."""
     rows, skipped = [], {}
 
     def skip(why):
@@ -165,6 +191,13 @@ def shadow_rows(due, params, version, inputs, obs_by_city, tz_of, unit_of, bands
         if feat is None:
             skip("too few readings or forecast hours")
             continue
+        names = rd.FEATURES
+        if challenger is not None:
+            feat = rd.row_c(feat, row_in.get("models"), city, challenger["bias"], challenger["pooled"])
+            if feat is None:
+                skip(f"fewer than {rd.MIN_MODELS_C} models")
+                continue
+            names = rd.FEATURES_C
         d = rd.distribution(p, city, feat["x"], feat["R"])
         probs = dict(rd.ladder_probabilities(d, unit_of.get(city, "C"), bands, q_down, q_up))
         ranked = sorted(probs.items(), key=lambda kv: (-kv[1], str(kv[0])))
@@ -176,7 +209,7 @@ def shadow_rows(due, params, version, inputs, obs_by_city, tz_of, unit_of, bands
             "top_band_id": str(ranked[0][0]), "top_prob": round(ranked[0][1], 6),
             "median_c": round(rd.median(d), 3), "q10_c": round(rd.quantile(d, 0.1), 3),
             "q90_c": round(rd.quantile(d, 0.9), 3), "running_max_c": round(feat["R"], 2),
-            "inputs": {"x": [round(v, 4) for v in feat["x"]], "features": rd.FEATURES,
+            "inputs": {"x": [round(v, 4) for v in feat["x"]], "features": names,
                        "readings": len(readings), "spread_from": "models" if row_in.get(
                            "models_spread_c") is not None else "fallback"},
         })
@@ -263,7 +296,7 @@ def record(due, market_of, bands_by_market, tz_of, unit_of, dry_run=False, ladde
         cities = sorted({d[0] for d in todo})
         dates = sorted({d[1] for d in todo})
         inputs = {(r["city_key"], str(r["local_date"])): r for r in rest_all(
-            "s10_day1_inputs", [("select", "city_key,local_date,hourly,models_spread_c"),
+            "s10_day1_inputs", [("select", "city_key,local_date,hourly,models,models_spread_c"),
                                 ("city_key", f"in.({','.join(cities)})"),
                                 ("local_date", f"in.({','.join(dates)})")],
             order="city_key.asc,local_date.asc")}
@@ -291,7 +324,31 @@ def record(due, market_of, bands_by_market, tz_of, unit_of, dry_run=False, ladde
         elif rows:
             out["would_write"] = len(rows)
         out["version"] = version
+        out["challenger"] = _challenger(todo, inputs, obs_by_city, tz_of, unit_of, bands_of, dry_run)
     except Exception as e:
         out["error"] = f"{type(e).__name__}: {str(e)[:160]}"
     out["seconds"] = round(time.monotonic() - t0, 1)
+    return out
+
+
+def _challenger(todo, inputs, obs_by_city, tz_of, unit_of, bands_of, dry_run):
+    """Challenger C's rows for the same checkpoints, written on their own
+    (after rd1's, which never wait on or depend on them). Never raises."""
+    from common import upsert
+    import probability_engine as pe
+    out = {}
+    try:
+        ch = load_challenger()
+        if ch is None:
+            return {"error": "no rd3 parameters at " + os.path.relpath(CHALLENGER_PATH)}
+        rows, skipped = shadow_rows(todo, ch["hours"], ch["version"], inputs, obs_by_city, tz_of, unit_of,
+                                    bands_of, pe.DEFAULT_Q_DOWN, pe.DEFAULT_Q_UP, ch["spread"], challenger=ch)
+        out = {"version": ch["version"], "skipped": skipped}
+        if dry_run:
+            out["would_write"] = len(rows)
+        else:
+            out["written"] = upsert("s10_shadow_checkpoints", rows,
+                                    "city_key,target_date,checkpoint,model_version") if rows else 0
+    except Exception as e:
+        out["error"] = f"{type(e).__name__}: {str(e)[:160]}"
     return out

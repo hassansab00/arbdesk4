@@ -195,3 +195,52 @@ says "sensitivity only").
 So the result does not rest on the late hours. The afternoon gains shrink slightly (16-17h),
 which is where a late peak would matter. The forward shadow must use the maxima as they
 are actually known at each decision, whichever form the live record stores.
+
+## Forward shadow (fixed 30 Sep 2026, before rd3's first forward row)
+
+**What runs.** `data/models/remaining_day/challenger_rd3.json`, version `rd3:2026-09-25:555719d4a1`:
+
+- **Fitted by** `tools/fit_remaining_day.py --challenger rd3` on the same six inputs and labels as the live
+  rd1 file. The same run refits rd1 to its live version, `rd1:2026-09-25:f5372ebb05`, with identical hours.
+- **Bias table:** 336 model-city biases from 142,776 pairs. Models run cold against the station maxima:
+  pooled from -0.29 °C (GFS) to -1.47 °C (JMA). One cell sits at the -4 °C bound (JMA at jeddah).
+
+**Where it runs.** At every tick checkpoint S10 records, `s10_shadow.record` writes an rd3 row beside
+rd1's, under rd3's own `model_version`. The inputs are the same:
+
+- the IEM readings, cut at the whole hour;
+- the `s10_day1_inputs` row fetched at 07-09 local, whose `models` are the whole-day lead-1 maxima,
+  the `tmax_c` this was scored on.
+
+**What it cannot touch.**
+- rd3 rows never reach the `ladders` the engine's S10 decisions read.
+- `strategy_learn` reads rd1's rows only (`model_version like 'rd1:*'`).
+- A failure in rd3 never touches rd1's rows.
+
+**Replay check.** Three live rd1 rows of 30 Sep (noon, ankara, helsinki and moscow, tick 09:36:40Z),
+replayed from the database's own inputs and receipts, match the stored rows exactly: top bucket, top
+probability, median and all 12 inputs. rd3 on the same inputs gave:
+- ankara: the same top bucket, 0.565 → 0.427;
+- helsinki: the same top bucket, 0.332 → 0.363;
+- moscow: the same top bucket, 0.514 → 0.506.
+
+**The forward rule (fixed now).**
+
+- **Rows:** pairs of rd1 and rd3 rows for the same city, date and checkpoint, both recorded live. They
+  are scored against the venue winner of `v_checkpoint_outcome`, on the full ladder: log loss with p
+  floored at 1e-6, and top-1. The 80% interval (`q10_c`..`q90_c`) is checked against the settled
+  station maximum.
+- **Looks:** the first at 20 settled dates. Only if the pooled interval there spans 0, one final
+  look at 40.
+- **Accepted,** that is, S10's shadow ladders switch from rd1 to rd3, only if all of these hold:
+  1. the pooled log-loss gain (rd1 minus rd3) has a 90% date-clustered interval above 0;
+  2. no checkpoint's 90% interval lies wholly below 0;
+  3. rd3's top-1 is not below rd1's beyond the Wilson 95% interval;
+  4. rd3's 80% coverage is within 0.75-0.88.
+- **Rejected** on a significant pooled regression, at either look: rd3 is then removed from the tick.
+  **Insufficient evidence** if the interval still spans 0 at 40: rd3 stays in shadow and changes nothing.
+- **Fixed during the test:** neither file is refitted. A refit of either is a new version and starts a
+  new pair and a new count.
+- **What acceptance does not do.** It changes no trading weight and no capital. The engine's belief
+  keeps its own gate (P5.3: w at its prior 0 until a scope passes its forward test), and the market
+  still leads rd3 by -0.29 in log loss on the historical window.

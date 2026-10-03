@@ -157,3 +157,136 @@ def test_the_tick_calls_it_and_keeps_its_budget():
     assert "ladders=s10_ladders)" in src          # the engine's S10 decisions read the same ladders
     assert src.index("s10_shadow.record(") < src.index("engine_shadow.record(")
     assert tick.S10_FETCH_S <= 10 and s.TIMEOUT_S <= 15
+
+
+# ---------------------------------------------------------------------------
+# Challenger C (rd3) in forward shadow (30 Sep): its own model_version, the
+# same readings plus the day's models, never the engine's ladders.
+# ---------------------------------------------------------------------------
+MODELS7 = {m: 21.0 + 0.3 * k for k, m in enumerate(s.MODELS)}
+
+
+@pytest.fixture(scope="module")
+def challenger():
+    """A small real rd3 fit for hour 11 on synthetic days, with a bias table."""
+    rng = random.Random(11)
+    rows = []
+    bias, pooled = {("gfs_seamless", "london"): 1.0}, {"gfs_seamless": 0.5}
+    for c in ("london", "paris", "rome", "oslo"):
+        for k in range(150):
+            day = dt.date(2026, 1, 1) + dt.timedelta(days=k)
+            peak = 16 + 8 * rng.random()
+            fc = {h: (peak - 0.12 * (h - 15) ** 2, 40.0, 300.0) for h in range(24)}
+            readings = [(h + m / 60, peak - 9 + 0.6 * (h + m / 60) + rng.gauss(0, 0.3))
+                        for h in range(12) for m in (0, 30)]
+            f = rd.features(readings, fc, 11, day, 1.0)
+            models = {m: peak + rng.gauss(0, 0.7) for m in s.MODELS}
+            f = rd.row_c(f, models, c, bias, pooled)
+            f.update(city=c, date=day, y=max(f["R"], peak + rng.gauss(0, 0.8)))
+            rows.append(f)
+    old = rd.MIN_TRAIN_ROWS
+    rd.MIN_TRAIN_ROWS = 100
+    try:
+        p = rd.fit_hour(rows)
+    finally:
+        rd.MIN_TRAIN_ROWS = old
+    return {"hours": {11: p}, "version": "rd3:test", "spread": 1.0, "bias": bias, "pooled": pooled}
+
+
+def _inputs(models):
+    return {("london", DAY.isoformat()): {
+        "hourly": {str(h): [20 - 0.12 * (h - 15) ** 2, 40.0, 300.0] for h in range(24)},
+        "models_spread_c": 1.2, "models": models}}
+
+
+def test_the_challenger_row_is_its_own_version_with_the_models(challenger):
+    morning = [(h + m / 60, 12 + 0.5 * h) for h in range(12) for m in (0, 30)]
+    due = [("london", DAY.isoformat(), "noon", dt.datetime(2026, 9, 27, 11, 0))]
+    rows, skipped = s.shadow_rows(due, challenger["hours"], challenger["version"], _inputs(MODELS7),
+                                  {"london": _obs(morning)}, {"london": "Europe/London"}, {"london": "C"},
+                                  {("london", DAY.isoformat()): LADDER}, 0.02, 0.05, 1.0, challenger=challenger)
+    assert skipped == {} and len(rows) == 1
+    r = rows[0]
+    assert r["model_version"] == "rd3:test" and r["inputs"]["features"] == rd.FEATURES_C
+    assert len(r["inputs"]["x"]) == len(rd.FEATURES_C)
+    assert abs(sum(r["probs"].values()) - 1) < 1e-4
+    # the models' summaries use the bias table: gfs at london is taken 1 C down
+    raw = rd.models_features(MODELS7, r["running_max_c"], "london", {}, {})
+    assert r["inputs"]["x"][-3] < round(raw[0], 4) or raw[0] == 0.0
+
+
+def test_a_day_with_too_few_models_gets_no_challenger_row(challenger):
+    morning = [(h + m / 60, 12 + 0.5 * h) for h in range(12) for m in (0, 30)]
+    due = [("london", DAY.isoformat(), "noon", dt.datetime(2026, 9, 27, 11, 0))]
+    three = dict(list(MODELS7.items())[:3])
+    for models in (three, None):
+        rows, skipped = s.shadow_rows(due, challenger["hours"], "rd3:test", _inputs(models),
+                                      {"london": _obs(morning)}, {"london": "Europe/London"}, {"london": "C"},
+                                      {("london", DAY.isoformat()): LADDER}, 0.02, 0.05, 1.0,
+                                      challenger=challenger)
+        assert rows == [] and skipped == {f"fewer than {rd.MIN_MODELS_C} models": 1}
+
+
+def _fake_db(monkeypatch, models, upsert_fails_for=None):
+    import common
+    written = []
+    morning = [(h + m / 60, 12 + 0.5 * h) for h in range(12) for m in (0, 30)]
+
+    def rest_all(path, params=None, **k):
+        if path == "s10_day1_inputs":
+            row = dict(_inputs(models)[("london", DAY.isoformat())], city_key="london", local_date=DAY.isoformat())
+            return [row]
+        if path == "weather_observations":
+            return [dict(o, city_key="london") for o in _obs(morning)]
+        raise AssertionError(path)
+
+    def upsert(table, rows, on_conflict, **k):
+        assert table == "s10_shadow_checkpoints" and on_conflict == "city_key,target_date,checkpoint,model_version"
+        if upsert_fails_for and rows[0]["model_version"].startswith(upsert_fails_for):
+            raise RuntimeError("refused")
+        written.append(rows)
+        return len(rows)
+    monkeypatch.setattr(common, "rest_all", rest_all)
+    monkeypatch.setattr(common, "upsert", upsert)
+    return written
+
+
+def _record(monkeypatch, params, challenger, models, **kw):
+    monkeypatch.setattr(s, "load_params", lambda: (params, "rd1:test", 1.0))
+    monkeypatch.setattr(s, "load_challenger", lambda: challenger)
+    written = _fake_db(monkeypatch, models, **kw)
+    ladders = {}
+    out = s.record([("london", DAY.isoformat(), "noon", dt.datetime(2026, 9, 27, 11, 0))],
+                   {("london", DAY.isoformat()): {"market_id": "m1"}}, {"m1": LADDER},
+                   {"london": "Europe/London"}, {"london": "C"}, ladders=ladders)
+    return out, written, ladders
+
+
+def test_the_engine_reads_rd1_only_and_rd3_is_written_on_its_own(monkeypatch, params, challenger):
+    out, written, ladders = _record(monkeypatch, params, challenger, MODELS7)
+    assert [[r["model_version"] for r in batch] for batch in written] == [["rd1:test"], ["rd3:test"]]
+    assert out["written"] == 1 and out["challenger"]["written"] == 1 and out["challenger"]["version"] == "rd3:test"
+    assert ladders == {("london", DAY.isoformat(), "noon"): written[0][0]["probs"]}, "the engine's ladders are rd1's"
+
+
+def test_a_failing_challenger_never_touches_rd1(monkeypatch, params, challenger):
+    out, written, ladders = _record(monkeypatch, params, challenger, MODELS7, upsert_fails_for="rd3")
+    assert out["written"] == 1 and "error" not in out and "RuntimeError" in out["challenger"]["error"]
+    assert len(ladders) == 1
+    out, written, _ = _record(monkeypatch, params, None, MODELS7)
+    assert out["written"] == 1 and "no rd3 parameters" in out["challenger"]["error"]
+    assert [[r["model_version"] for r in b] for b in written] == [["rd1:test"]]
+
+
+def test_the_committed_challenger_serves_every_hour():
+    ch = s.load_challenger()
+    assert ch is not None, "data/models/remaining_day/challenger_rd3.json is missing"
+    assert sorted(ch["hours"]) == list(rd.HOURS)
+    assert ch["version"].startswith(rd.VERSION_PREFIX_C + ":") and ch["spread"] > 0
+    assert all(len(p["mu"]) == len(rd.FEATURES_C) for p in ch["hours"].values())
+    assert {m for m, _ in ch["bias"]} == set(s.MODELS), "every model the inputs row stores has a bias"
+    assert all(abs(v) <= rd.MODEL_BIAS_BOUND_C for v in list(ch["bias"].values()) + list(ch["pooled"].values()))
+    import json
+    blob = json.load(open(s.CHALLENGER_PATH))
+    assert blob["features"] == rd.FEATURES_C and blob["models_column"] == "tmax_c"
+    assert rd.version_of_c({int(h): p for h, p in blob["hours"].items()}, blob["bias"], blob["pooled"]) == blob["version"]

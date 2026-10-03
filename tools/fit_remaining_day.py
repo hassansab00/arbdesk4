@@ -10,6 +10,18 @@ parameters the tick's shadow step reads (scripts/s10_shadow.py, P7.4 part 1).
         data/training/previous_runs/models_daily.csv.gz \
         --out data/models/remaining_day/current.json
 
+Challenger C (rd3, docs/CHALLENGER_C_PREREG.md, accepted 30 Sep as a better
+forecast, research only) is fitted the same way with --challenger rd3 and
+written beside it for the tick's forward shadow, which never prices from it:
+
+    python tools/fit_remaining_day.py <the same six inputs> --challenger rd3 \
+        --out data/models/remaining_day/challenger_rd3.json
+
+rd3 adds the seven models' lead-1 whole-day maxima (tmax_c, as scored and as
+s10_day1_inputs.models stores them), bias-corrected per model and city on every
+labelled day (remaining_day.fit_model_bias); the table is in the file and in
+its version.
+
 The same loaders as the walk-forward (tools/experiments_p72_stage1.py), so the
 fitted model is the one that was measured. Labels must be whole days only.
 Since 30 Sep (audit repair 6) the labels are labels_whole_repaired: the 29 Sep
@@ -42,16 +54,52 @@ def _labels_path(path):
     return out.name
 
 
+def load_models(path):
+    """{(city, date iso): {model: lead-1 whole-day max C}} (models_daily tmax_c)."""
+    import csv
+    out = {}
+    with gzip.open(path, "rt") as f:
+        for r in csv.DictReader(f):
+            if r["lead_days"] == "1" and r["tmax_c"]:
+                out.setdefault((r["city_key"], r["for_date"]), {})[r["model"]] = float(r["tmax_c"])
+    return out
+
+
+def challenger_rows(rows_by_hour, models, Y):
+    """(rows_by_hour with rd3's inputs, bias JSON, pooled JSON, pairs used).
+    The bias is fitted on every labelled city-day; a row whose day has fewer
+    than MIN_MODELS_C models is dropped, as in the evaluation."""
+    pairs = [(m, c, v - Y[(c, d)]) for (c, d), ms in models.items() if (c, d) in Y for m, v in ms.items()]
+    bias, pooled = rd.fit_model_bias(pairs)
+    out = {}
+    for h, rows in rows_by_hour.items():
+        out[h] = [x for x in (rd.row_c(r, models.get((r["city"], r["date"].isoformat())), r["city"], bias, pooled)
+                              for r in rows) if x is not None]
+    bias_js, pooled_js = rd.bias_to_json(bias, pooled)
+    return out, bias_js, pooled_js, len(pairs)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     for name in ("fc", "obs", "labels", "units", "tz", "models"):
         ap.add_argument(name)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--challenger", choices=["rd3"], help="fit Challenger C instead of rd1")
     a = ap.parse_args(argv)
     fc, obs, Y, unit, spread, med = E.load(a.fc, a.obs, _labels_path(a.labels), a.units, a.tz, a.models)
     rows_by_hour = {h: E.rows_for(h, fc, obs, Y, spread, med) for h in rd.HOURS}
-    params, version = rd.fit(rows_by_hour)
+    extra = {}
+    if a.challenger == "rd3":
+        rows_by_hour, bias_js, pooled_js, n_pairs = challenger_rows(rows_by_hour, load_models(a.models), Y)
+        params = {h: p for h, p in ((h, rd.fit_hour(rs)) for h, rs in sorted(rows_by_hour.items())) if p}
+        version = rd.version_of_c(params, bias_js, pooled_js)
+        extra = {"features": rd.FEATURES_C, "bias": bias_js, "pooled": pooled_js, "bias_pairs": n_pairs,
+                 "models_column": "tmax_c", "min_models": rd.MIN_MODELS_C,
+                 "prereg": "docs/CHALLENGER_C_PREREG.md"}
+    else:
+        params, version = rd.fit(rows_by_hour)
     blob = json.loads(rd.to_json(params, version))
+    blob.update(extra)
     blob["spread_median_c"] = round(med, 4)
     blob["rows_by_hour"] = {str(h): len(r) for h, r in rows_by_hour.items()}
     os.makedirs(os.path.dirname(a.out), exist_ok=True)
