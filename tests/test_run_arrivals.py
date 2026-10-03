@@ -22,6 +22,10 @@ import common
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MIGRATION = (ROOT / "supabase" / "migrations" / "20260930001000_a_dispatched_run_that_never_logged.sql").read_text()
+# expectations added after the seed, once the code they expect had run for a day
+ADDED = [(ROOT / "supabase" / "migrations" / name).read_text() for name in (
+    "20261003170000_the_ladder_queue_is_expected_to_log.sql",   # P4.7: 3 days measured
+)]
 AD4_91 = (ROOT / "sql" / "ad4_91_database_jobs.sql").read_text()
 WORKFLOWS = ROOT / ".github" / "workflows"
 
@@ -33,10 +37,19 @@ INDIRECT = {
 }
 
 
-def _expected():
-    block = MIGRATION[MIGRATION.index("insert into public.clock_expected_jobs"):]
+def _rows(text):
+    block = text[text.index("insert into public.clock_expected_jobs"):]
     block = block[:block.index("on conflict")]
     return re.findall(r"\('([a-z_]+\.yml)',\s*'([A-Za-z0-9_.]+)',\s*(\d+),", block)
+
+
+def _expected():
+    """The seed only (what was measured 21-29 Sep)."""
+    return _rows(MIGRATION)
+
+
+def _all_expected():
+    return _expected() + [r for text in ADDED for r in _rows(text)]
 
 
 def _scripts(workflow_text):
@@ -58,7 +71,7 @@ def test_the_seed_is_what_was_measured():
 
 
 def test_every_expected_job_is_written_by_a_script_its_workflow_runs():
-    for file, job, _ in _expected():
+    for file, job, _ in _all_expected():
         wf = (WORKFLOWS / file).read_text()
         scripts = _scripts(wf)
         assert scripts, file
@@ -73,7 +86,7 @@ def test_every_expected_job_is_written_by_a_script_its_workflow_runs():
 
 
 def test_every_window_covers_the_workflow_s_own_timeout():
-    for file, job, within in _expected():
+    for file, job, within in _all_expected():
         wf = (WORKFLOWS / file).read_text()
         job_timeout = int(re.search(r"^    timeout-minutes: (\d+)", wf, re.M).group(1))
         assert int(within) >= job_timeout + 10, (file, job, within, job_timeout)
@@ -172,3 +185,14 @@ def test_the_edge_engine_logs_a_run_with_nothing_to_price(monkeypatch):
     edge_engine.main()
     assert [(j, s, n) for j, s, n, _ in logged] == [("edge_engine", "ok", 0)], (
         "a dispatched intraday run with no edge_engine row reads as missing")
+
+
+def test_the_ladder_queue_jobs_are_expected_once_and_idempotently():
+    """P4.7 (3 Oct): added after three days of runs, never in the seed's own
+    migration (tests/database/confirm-queue.cjs holds that one adds none)."""
+    added = _rows(ADDED[0])
+    assert {(f, j) for f, j, _ in added} == {("tick.yml", "P4.7_confirm_recent"),
+                                              ("pipeline_intraday.yml", "venue_confirm_queue"),
+                                              ("pipeline_intraday.yml", "databank_bands")}
+    assert not {(f, j) for f, j, _ in added} & {(f, j) for f, j, _ in _expected()}
+    assert "on conflict (file, job) do nothing" in ADDED[0]
