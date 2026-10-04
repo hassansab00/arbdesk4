@@ -45,32 +45,28 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
       ('calibration_map', '{"T": 1.141003, "applies": false, "fitted_at": "2026-09-29T04:59:20Z", "settlement_dates": 16}');
   `);
   for (const f of ORDER) await db.exec(MIG(f));
-  // The nightly fits' current versions, as the derived tables hold them.
-  // Fill only the NOT NULL columns each table demands (read from the table, not restated).
-  const put = async (table, version) => {
-    const need = (await db.query(`select column_name, data_type from information_schema.columns
-                                   where table_name = $1 and is_nullable = 'NO' and column_default is null`, [table])).rows;
-    const vals = need.map((c) => c.column_name === 'version' ? `'${version}'`
-      : c.column_name === 'city_key' ? `'london'`
-      : /timestamp/.test(c.data_type) ? 'now()' : c.data_type === 'date' ? 'current_date'
-      : /int|numeric|real|double/.test(c.data_type) ? '1' : c.data_type === 'boolean' ? 'true'
-      : c.data_type === 'jsonb' ? `'{}'` : `'x'`);
-    await db.exec(`delete from public.${table}`);
-    await db.exec(`insert into public.${table} (${need.map((c) => c.column_name).join(',')}) values (${vals.join(',')})`);
-    const hasVersion = need.some((c) => c.column_name === 'version');
-    if (!hasVersion) await db.exec(`update public.${table} set version = '${version}'`);
-    await db.exec(`update public.${table} set computed_at = now(), as_of = current_date`);
+  // A night's fit as the engine prices from it: the forward rows
+  // (derived_corrected_forecast, derived_mos_forecast), not the coefficients.
+  const night = async (day, { corr, width, mos, mosFrom, ageH = 0 }) => {
+    if (corr) {
+      await db.query(`insert into public.derived_corrected_forecast (city_key, for_date, lead_days, combined_c, n_sources,
+          sources, version, width_c, width_version, computed_at) values ('london', current_date + $1::int, 1, 20, 3, '{}', $2,
+          case when $3::text is null then null else 1.2 end, $3, now() - $4::int * interval '1 hour')`, [day, corr, width || null, ageH]);
+    }
+    if (mos) {
+      await db.query(`insert into public.derived_mos_forecast (city_key, for_date, lead_days, mos_c, base_c, blend_c, inputs,
+          p39_version, version, computed_at) values ('london', current_date + $1::int, 1, 20, 20, 20, '{}', $2, $3,
+          now() - $4::int * interval '1 hour')`, [day, mosFrom || corr, mos, ageH]);
+    }
   };
-  await put('derived_station_correction', 'station-correction:d1:aaa');
-  await put('derived_mos_coefficients', 'station-mos:d1:bbb');
-  await put('derived_station_width', 'station-width:d1:ccc');
+  await night(1, { corr: 'station-correction:d1:aaa', width: 'station-width:d1:ccc', mos: 'station-mos:d1:bbb', ageH: 2 });
 
   await db.exec(PART3);
   await db.exec(PART3);   // re-runnable: constraints, view, function, events once
 
   // ---------------------------------------------------------------- the registry
   const latest = async () => Object.fromEntries((await db.query(
-    `select family || '|' || version || '|' || horizon k, state, rollback_to, evidence from public.v_model_registry`)).rows
+    `select family || '|' || version || '|' || horizon k, state, rollback_to, evidence, decided_by from public.v_model_registry`)).rows
     .map((r) => [r.k, r]));
   let reg = await latest();
   assert.equal(reg['station_correction|station-correction:d1:aaa|lead >= 1'].state, 'served', 'served by Hassan\'s decision');
@@ -78,20 +74,43 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   assert.equal(reg['station_width|station-width:d1:ccc|lead <= 1'].state, 'shadow', 'the width switch is off');
   assert.equal(reg['calibration|temperature:T=1.141|all checkpoints'].state, 'fitted', 'the name part 1 seeded: no new event');
   assert.equal((await db.query(`select count(*)::int n from public.model_registry where family = 'calibration'`)).rows[0].n, 1);
-  assert.ok(/cells, as of .* settings.station_correction_pricing.enabled = true/.test(
+  assert.ok(/^1 forward rows, newest computed .* settings.station_correction_pricing.enabled = true$/.test(
     reg['station_correction|station-correction:d1:aaa|lead >= 1'].evidence));
+  assert.ok(/made from station-correction:d1:aaa; settings.station_mos_pricing.enabled = true; correction serving: station-correction:d1:aaa/.test(
+    reg['station_mos|station-mos:d1:bbb|lead >= 1'].evidence));
   const run = async () => (await db.query('select public.record_model_versions() r')).rows[0].r;
   assert.deepEqual([(await run()).appended, (await run()).retired], [0, 0], 'idempotent');
 
-  // The next night: a new correction fit serves, yesterday's retires, and the rollback is named.
-  await put('derived_station_correction', 'station-correction:d2:ddd');
+  // A fit that wrote its coefficients and never its forward rows prices
+  // nothing, and is recorded as nothing (review of #306).
+  const need = async (t) => (await db.query(`select column_name, data_type from information_schema.columns
+      where table_name = $1 and is_nullable = 'NO' and column_default is null`, [t])).rows;
+  for (const [t, v] of [['derived_station_correction', 'station-correction:d9:phantom'],
+                        ['derived_mos_coefficients', 'station-mos:d9:phantom'],
+                        ['derived_station_width', 'station-width:d9:phantom']]) {
+    const cols = await need(t);
+    const vals = cols.map((c) => c.column_name === 'version' ? `'${v}'` : c.column_name === 'city_key' ? `'london'`
+      : /timestamp/.test(c.data_type) ? 'now()' : c.data_type === 'date' ? 'current_date'
+      : /int|numeric|real|double/.test(c.data_type) ? '1' : c.data_type === 'boolean' ? 'true'
+      : c.data_type === 'jsonb' ? `'{}'` : `'x'`);
+    await db.exec(`insert into public.${t} (${cols.map((c) => c.column_name).join(',')}) values (${vals.join(',')})`);
+    if (!cols.some((c) => c.column_name === 'version')) await db.exec(`update public.${t} set version = '${v}'`);
+  }
+  assert.deepEqual([(await run()).appended, (await run()).retired], [0, 0], 'a coefficient version alone is no event');
+  assert.equal((await db.query(`select count(*)::int n from public.model_registry where version like '%phantom%'`)).rows[0].n, 0);
+
+  // The next night: each fit serves, yesterday's retires, and the rollback is named.
+  await night(2, { corr: 'station-correction:d2:ddd', width: 'station-width:d2:eee', mos: 'station-mos:d2:fff' });
   let r = await run();
-  assert.deepEqual([r.appended, r.retired], [1, 1]);
+  assert.deepEqual([r.appended, r.retired], [3, 3]);
   reg = await latest();
   assert.equal(reg['station_correction|station-correction:d2:ddd|lead >= 1'].state, 'served');
   assert.equal(reg['station_correction|station-correction:d2:ddd|lead >= 1'].rollback_to, 'station-correction:d1:aaa');
   assert.equal(reg['station_correction|station-correction:d1:aaa|lead >= 1'].state, 'retired');
   assert.ok(reg['station_correction|station-correction:d1:aaa|lead >= 1'].evidence.startsWith('superseded by station-correction:d2:ddd'));
+  assert.deepEqual([reg['station_mos|station-mos:d2:fff|lead >= 1'].state, reg['station_mos|station-mos:d1:bbb|lead >= 1'].state,
+                    reg['station_width|station-width:d2:eee|lead <= 1'].state, reg['station_width|station-width:d1:ccc|lead <= 1'].state],
+                   ['served', 'retired', 'shadow', 'retired']);
 
   // The horizon moves: the same fit at the new horizon, and retired at the old one.
   await db.exec(`update public.settings set value = value || '{"min_lead_days": 2}' where key = 'station_correction_pricing'`);
@@ -105,33 +124,50 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   await db.exec(`update public.settings set value = value || '{"enabled": false}' where key = 'station_mos_pricing'`);
   r = await run();
   reg = await latest();
-  assert.equal(reg['station_width|station-width:d1:ccc|lead <= 1'].state, 'served');
-  assert.equal(reg['station_mos|station-mos:d1:bbb|lead >= 1'].state, 'fitted');
+  assert.equal(reg['station_width|station-width:d2:eee|lead <= 1'].state, 'served');
+  assert.equal(reg['station_mos|station-mos:d2:fff|lead >= 1'].state, 'fitted');
+  assert.equal(reg['station_mos|station-mos:d2:fff|lead >= 1'].decided_by, 'rule:nightly refit; the switch is off, so it does not serve');
 
   // The MOS blend and the width are applied inside the correction's branch
   // (probability_engine): with the correction off, neither serves, whatever
-  // its own switch says (review of #306).
+  // its own switch says (review of #306). An event is a change of state: the
+  // width moved (served -> shadow) and says why; MOS was already fitted.
   await db.exec(`update public.settings set value = value || '{"enabled": false}' where key = 'station_correction_pricing'`);
   await db.exec(`update public.settings set value = value || '{"enabled": true}' where key = 'station_mos_pricing'`);
   r = await run();
   reg = await latest();
   assert.equal(reg['station_correction|station-correction:d2:ddd|lead >= 2'].state, 'fitted');
-  assert.equal(reg['station_mos|station-mos:d1:bbb|lead >= 1'].state, 'fitted', 'its switch is on, the correction off');
-  assert.equal(reg['station_width|station-width:d1:ccc|lead <= 1'].state, 'shadow', 'not served without the correction');
-  assert.ok(/station correction is off, so it does not serve/.test(
-    (await db.query(`select decided_by from public.v_model_registry where family = 'station_width'
-                      and version = 'station-width:d1:ccc'`)).rows[0].decided_by));
-  // An event is a change of state: the width moved (served -> shadow) and its
-  // event says why; MOS was already fitted, so nothing new is written for it.
-  assert.ok(/settings.station_correction_pricing.enabled = false/.test(
-    (await db.query(`select evidence from public.v_model_registry where family = 'station_width'
-                      and version = 'station-width:d1:ccc'`)).rows[0].evidence));
+  assert.equal(reg['station_mos|station-mos:d2:fff|lead >= 1'].state, 'fitted', 'its switch is on, the correction off');
+  const w = reg['station_width|station-width:d2:eee|lead <= 1'];
+  assert.deepEqual([w.state, w.decided_by], ['shadow', 'rule:nightly refit; station correction is off, so it does not serve']);
+  assert.ok(/correction serving: none$/.test(w.evidence));
   await db.exec(`update public.settings set value = value || '{"enabled": true}' where key = 'station_correction_pricing'`);
   r = await run();
   reg = await latest();
   assert.deepEqual([reg['station_correction|station-correction:d2:ddd|lead >= 2'].state,
-                    reg['station_mos|station-mos:d1:bbb|lead >= 1'].state,
-                    reg['station_width|station-width:d1:ccc|lead <= 1'].state], ['served', 'served', 'served']);
+                    reg['station_mos|station-mos:d2:fff|lead >= 1'].state,
+                    reg['station_width|station-width:d2:eee|lead <= 1'].state], ['served', 'served', 'served']);
+
+  // A blend made from another correction than the one serving is not blended.
+  await night(3, { mos: 'station-mos:d3:ggg', mosFrom: 'station-correction:d1:aaa' });
+  r = await run();
+  reg = await latest();
+  assert.equal(reg['station_mos|station-mos:d3:ggg|lead >= 1'].state, 'fitted');
+  assert.equal(reg['station_mos|station-mos:d3:ggg|lead >= 1'].decided_by,
+    'rule:nightly refit; it was made from station-correction:d1:aaa, not the correction serving (station-correction:d2:ddd), so it does not serve');
+
+  // Rows older than max_age_hours are not read: nothing of the family serves.
+  await db.exec(`update public.derived_corrected_forecast set computed_at = computed_at - interval '40 hours'`);
+  r = await run();
+  reg = await latest();
+  assert.equal(reg['station_correction|station-correction:d2:ddd|lead >= 2'].state, 'fitted');
+  assert.ok(/its newest rows \(.*\) are older than 36 h, so it does not serve$/.test(
+    reg['station_correction|station-correction:d2:ddd|lead >= 2'].decided_by));
+  assert.equal(reg['station_width|station-width:d2:eee|lead <= 1'].state, 'shadow', 'the width rides on the correction\'s rows');
+  await db.exec(`update public.derived_corrected_forecast set computed_at = computed_at + interval '40 hours'`);
+  r = await run();
+  reg = await latest();
+  assert.equal(reg['station_correction|station-correction:d2:ddd|lead >= 2'].state, 'served');
 
   // A new calibration temperature: a new version, the old one retired.
   await db.exec(`update public.settings set value = value || '{"T": 1.2}' where key = 'calibration_map'`);

@@ -42,18 +42,16 @@
 --    is no longer silent. record_model_versions() appends a model_registry
 --    event for each version it has not recorded, in the state its switch
 --    gives it, and retires the version it supersedes:
---      station_correction   derived_station_correction.version,
---                           settings.station_correction_pricing.enabled
---                           -> served (Hassan's decision) or fitted
---      station_mos          derived_mos_coefficients.version,
---                           settings.station_mos_pricing.enabled and the
---                           correction's -> served, else fitted
---      station_width        derived_station_width.version,
---                           settings.station_width_pricing.enabled and the
---                           correction's -> served, else shadow
---                           (P3.9_width_score scores it nightly)
---    Both are applied inside the correction's branch of the pricing path, so
---    neither serves while the correction is off (review of #306).
+--      station_correction   the newest derived_corrected_forecast.version
+--      station_mos          the newest derived_mos_forecast.version (blended)
+--      station_width        the newest derived_corrected_forecast.width_version
+--    - read from the forward rows the engine prices from, not the fitted
+--    coefficients (review of #306). Each is served only when its switch is on,
+--    its rows are within max_age_hours, and, for the MOS blend and the width,
+--    the correction is on, serving, and the one they were made from (both are
+--    applied inside its branch); otherwise fitted (the width: shadow), and the
+--    event says why. Hassan's decision makes a served version serve the
+--    morning after its fit.
 --      calibration          settings.calibration_map (T to 3 decimals, the
 --                           name part 1 seeded), applies -> served or fitted
 --      s10, engine_variant  a model or variant version first written in the
@@ -153,45 +151,63 @@ language plpgsql
 set search_path = ''
 as $fn$
 declare
-  appended  integer := 0;
-  retired   integer := 0;
-  seen      jsonb := '[]'::jsonb;
-  f         record;
-  cur       record;
-  old       record;
-  sw        jsonb;
-  prev      text;
-  st        text;
-  hz        text;
-  by_       text;
-  own_on    boolean;
-  corr_on   boolean := false;
+  appended      integer := 0;
+  retired       integer := 0;
+  seen          jsonb := '[]'::jsonb;
+  f             record;
+  cur           record;
+  old           record;
+  sw            jsonb;
+  corr_sw       jsonb;
+  prev          text;
+  st            text;
+  hz            text;
+  by_           text;
+  why_not       text;
+  own_on        boolean;
+  fresh         boolean;
+  max_age       numeric;
+  corr_on       boolean := false;
+  corr_serving  text;
 begin
-  -- The MOS blend and the station width are applied inside the station
-  -- correction's branch (probability_engine._station_corrected_for): with the
-  -- correction off neither serves, whatever its own switch says (review of
-  -- #306).
   if to_regclass('public.settings') is not null then
-    select coalesce((value ->> 'enabled')::boolean, false) into corr_on
-      from public.settings where key = 'station_correction_pricing';
-    corr_on := coalesce(corr_on, false);
+    select value into corr_sw from public.settings where key = 'station_correction_pricing';
+    corr_on := coalesce((corr_sw ->> 'enabled')::boolean, false);
   end if;
-
-  -- The nightly fits: one current version per family, from its own table.
+  -- WHAT PRICES, NOT WHAT WAS FITTED (review of #306). probability_engine
+  -- prices from the forward rows - derived_corrected_forecast (its version,
+  -- and width_version for the width) and derived_mos_forecast (blended only
+  -- where its p39_version is the correction row's version) - and only rows
+  -- within max_age_hours. The fits write their coefficient tables first and
+  -- the forward rows in a later request, so a coefficient version may never
+  -- price. The current version of each family is the newest in its forward
+  -- rows, and it is served only when everything the engine checks holds;
+  -- otherwise the event says what does not. The correction comes first: the
+  -- MOS blend and the width are applied inside its branch
+  -- (probability_engine._station_corrected_for), so neither serves without it.
   for f in
     select * from (values
-      ('station_correction', 'public.derived_station_correction', 'station_correction_pricing', 'station-correction:%', 'min'),
-      ('station_mos',        'public.derived_mos_coefficients',   'station_mos_pricing',        'station-mos:%',        'min'),
-      ('station_width',      'public.derived_station_width',      'station_width_pricing',      'station-width:%',      'max')
-    ) as v(family, tbl, setting, pattern, lead_kind)
+      (1, 'station_correction', 'station_correction_pricing', 'station-correction:%', 'min',
+       'select version, null::text as made_from, max(computed_at) as computed_at, count(*) as n
+          from public.derived_corrected_forecast where version is not null
+         group by version order by max(computed_at) desc, version desc limit 1'),
+      (2, 'station_mos', 'station_mos_pricing', 'station-mos:%', 'min',
+       'select version, p39_version as made_from, max(computed_at) as computed_at, count(*) as n
+          from public.derived_mos_forecast where version is not null and blend_c is not null
+         group by version, p39_version order by max(computed_at) desc, version desc limit 1'),
+      (3, 'station_width', 'station_width_pricing', 'station-width:%', 'max',
+       'select width_version as version, version as made_from, max(computed_at) as computed_at, count(*) as n
+          from public.derived_corrected_forecast where width_version is not null
+         group by width_version, version order by max(computed_at) desc, width_version desc limit 1')
+    ) as v(ord, family, setting, pattern, lead_kind, q)
+    order by ord
   loop
-    if to_regclass(f.tbl) is null or to_regclass('public.settings') is null then
+    if to_regclass('public.settings') is null
+       or to_regclass(case when f.family = 'station_mos' then 'public.derived_mos_forecast'
+                           else 'public.derived_corrected_forecast' end) is null then
       continue;
     end if;
-    execute format('select version, max(as_of)::text as as_of, max(computed_at)::text as computed_at, count(*) as n
-                      from %s where version is not null group by version
-                     order by max(computed_at) desc nulls last, version desc limit 1', f.tbl)
-      into cur;
+    execute f.q into cur;
     if cur.version is null then
       continue;
     end if;
@@ -202,17 +218,22 @@ begin
       hz := 'lead <= ' || coalesce(sw ->> 'max_lead_days', '1');
     end if;
     own_on := coalesce((sw ->> 'enabled')::boolean, false);
-    if own_on and (f.family = 'station_correction' or corr_on) then
-      st := 'served';
-      by_ := 'rule:nightly refit (Rule 11); Hassan 4 Oct';
-    elsif f.family = 'station_width' then
-      st := 'shadow';
-      by_ := case when own_on then 'rule:nightly refit; its switch is on, but station correction is off, so it does not serve'
-                  else 'rule:nightly refit; the switch is off, scored nightly by P3.9_width_score' end;
-    else
-      st := 'fitted';
-      by_ := case when own_on then 'rule:nightly refit; its switch is on, but station correction is off, so it does not serve'
-                  else 'rule:nightly refit; the switch is off' end;
+    -- the width rides on the correction's rows, so their age is the correction's
+    max_age := coalesce(((case when f.family = 'station_width' then corr_sw else sw end) ->> 'max_age_hours')::numeric, 36);
+    fresh := cur.computed_at >= now() - max_age * interval '1 hour';
+    why_not := case
+      when not own_on then 'the switch is off'
+      when not fresh then format('its newest rows (%s) are older than %s h', cur.computed_at, max_age)
+      when f.family <> 'station_correction' and not corr_on then 'station correction is off'
+      when f.family <> 'station_correction' and corr_serving is distinct from cur.made_from
+        then format('it was made from %s, not the correction serving (%s)',
+                    coalesce(cur.made_from, 'none'), coalesce(corr_serving, 'none'))
+      end;
+    st := case when why_not is null then 'served' when f.family = 'station_width' then 'shadow' else 'fitted' end;
+    by_ := case when why_not is null then 'rule:nightly refit (Rule 11); Hassan 4 Oct'
+                else 'rule:nightly refit; ' || why_not || ', so it does not serve' end;
+    if f.family = 'station_correction' then
+      corr_serving := case when st = 'served' then cur.version end;
     end if;
     seen := seen || jsonb_build_object('family', f.family, 'version', cur.version, 'horizon', hz, 'state', st);
     -- Already the latest state of this version at this horizon: nothing to add.
@@ -225,10 +246,12 @@ begin
      order by r.decided_at desc, r.event_id desc limit 1;
     insert into public.model_registry (family, version, horizon, state, decided_by, evidence, rollback_to, note)
     values (f.family, cur.version, hz, st, by_,
-            format('%s: %s cells, as of %s, computed %s; settings.%s.enabled = %s%s',
-                   f.tbl, cur.n, cur.as_of, cur.computed_at, f.setting, coalesce(sw ->> 'enabled', 'absent'),
+            format('%s forward rows, newest computed %s%s; settings.%s.enabled = %s%s',
+                   cur.n, cur.computed_at,
+                   case when cur.made_from is not null then format(', made from %s', cur.made_from) else '' end,
+                   f.setting, coalesce(sw ->> 'enabled', 'absent'),
                    case when f.family <> 'station_correction'
-                        then format('; settings.station_correction_pricing.enabled = %s', corr_on::text) else '' end),
+                        then format('; correction serving: %s', coalesce(corr_serving, 'none')) else '' end),
             prev,
             case when st = 'served' then 'Served the morning after its fit, by Hassan''s decision of 4 Oct (docs/P22_PREDICTION_CONTRACT.md).' end);
     appended := appended + 1;

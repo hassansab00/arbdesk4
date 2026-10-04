@@ -223,14 +223,19 @@ silent. `record_model_versions()` appends a `model_registry` event for each vers
 recorded, in the state its switch gives it, and retires the version it supersedes. Each served
 event names the version it replaced as its rollback.
 
-| Family | Version from | State |
+| Family | Version from (the newest forward rows) | Served when, else |
 |---|---|---|
-| `station_correction` | `derived_station_correction` | `settings.station_correction_pricing.enabled`: served, else fitted |
-| `station_mos` | `derived_mos_coefficients` | `settings.station_mos_pricing.enabled` and the correction's: served, else fitted |
-| `station_width` | `derived_station_width` | `settings.station_width_pricing.enabled` and the correction's: served, else shadow (scored nightly) |
+| `station_correction` | `derived_corrected_forecast.version` | its switch is on and its rows are within `max_age_hours`; else fitted |
+| `station_mos` | `derived_mos_forecast.version` (blended rows) | as above, and the correction serves and is the version the blend was made from (`p39_version`); else fitted |
+| `station_width` | `derived_corrected_forecast.width_version` | its switch is on and the correction serves (the width rides on its rows); else shadow (scored nightly) |
 | `calibration` | `settings.calibration_map` (T to 3 decimals, part 1's name) | `applies`: served, else fitted |
 | `s10`, `engine_variant` | a version first written in the last two days | shadow, once; its test is registered by hand |
 
+- **What prices, not what was fitted.** `probability_engine` prices from the forward rows, and only
+  rows within `max_age_hours`. The fits write their coefficient tables first and the forward rows in a
+  later request, so a coefficient version may never price. Reading the coefficients would record a
+  version that failed between the two writes, or that the :50 run caught between them, as served, and
+  no later event would correct it (review of #306).
 - **The MOS blend and the width serve only with the correction.** `probability_engine` applies both
   inside the station correction's branch, so with the correction off neither serves, whatever its own
   switch says (review of #306).

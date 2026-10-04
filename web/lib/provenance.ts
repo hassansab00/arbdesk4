@@ -1295,6 +1295,8 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_decision_prediction": [
     "decisions",
+    "derived_corrected_forecast",
+    "derived_mos_forecast",
     "prediction_checkpoints"
   ],
   "v_desk_equity_curve": [

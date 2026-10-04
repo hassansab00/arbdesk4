@@ -59,11 +59,20 @@ def test_a_served_nightly_fit_follows_its_switch_and_hassan_s_decision():
     for family, setting in (("station_correction", "station_correction_pricing"),
                             ("station_mos", "station_mos_pricing"),
                             ("station_width", "station_width_pricing")):
-        assert f"('{family}'," in MIG and f"'{setting}'" in MIG, family
-    assert "by_ := 'rule:nightly refit (Rule 11); Hassan 4 Oct';" in MIG
+        assert f"'{family}', '{setting}'," in MIG, family
+    assert "by_ := case when why_not is null then 'rule:nightly refit (Rule 11); Hassan 4 Oct'" in MIG
     # the MOS blend and the width are applied inside the correction's branch
     # (probability_engine._station_corrected_for; review of #306)
-    assert "if own_on and (f.family = 'station_correction' or corr_on) then" in MIG
+    fn = MIG[MIG.index("create or replace function public.record_model_versions()"):MIG.index("comment on function")]
+    # what prices, not what was fitted (review of #306): the forward rows the
+    # engine reads, never the coefficient tables written before them
+    for table in ("derived_corrected_forecast", "derived_mos_forecast"):
+        assert f"from public.{table}" in fn, table
+    for table in ("derived_station_correction", "derived_mos_coefficients", "derived_station_width"):
+        assert table not in fn, f"{table} holds what was fitted, which may never price"
+    assert "fresh := cur.computed_at >= now() - max_age * interval '1 hour';" in fn
+    assert "when f.family <> 'station_correction' and not corr_on then 'station correction is off'" in fn
+    assert "when f.family <> 'station_correction' and corr_serving is distinct from cur.made_from" in fn
     engine = (ROOT / "scripts" / "probability_engine.py").read_text()
     branch = engine[engine.index("def _station_corrected_for("):engine.index("def _blend_station_model(")]
     assert branch.index('if cfg.get("enabled") is True:') < branch.index("_blend_station_model(_station_cache)")
