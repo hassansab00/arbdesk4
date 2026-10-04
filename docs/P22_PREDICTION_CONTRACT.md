@@ -235,8 +235,8 @@ have:
 
 | State | When |
 |---|---|
-| served | priced in the last 36 h (`band_probabilities` -> `model_versions.label`, and the tick's `priced_from`), no newer version of the family first priced after its last price, and its switches on (the MOS blend and the width also need the correction's). Two versions pricing side by side are both served. |
-| retired | at once when a switch goes off; or superseded (a newer version first priced after its last price); or not priced for 36 h. Versions retiring in one run are written in the order they first priced, so the newer fit gets the later `event_id`. |
+| served | priced in the last 36 h (`band_probabilities` -> `model_versions.label`, and the tick's `priced_from`), no newer version of the family first priced after its last price, its switches on (the MOS blend and the width also need the correction's), and forward rows younger than the switch's `max_age_hours`, as `probability_engine` reads them. The width rides on the correction's rows; a MOS row counts only over a fresh correction row of its city-day made by its `p39_version`. Two versions pricing side by side are both served. |
+| retired | at once when a switch goes off or its forward rows expire; or superseded (a newer version first priced after its last price); or not priced for 36 h. Versions retiring in one run are written in the order they first priced, so the newer fit gets the later `event_id`. |
 | fitted (the width: shadow) | the newest fit in the forward rows that has not priced, recorded once with the reason: the switch is off, the correction is off, or it has not priced yet. An older fit that never priced is retired once a newer fit supersedes it, so each family keeps one candidate, not one a night. |
 
 **Calibration** and new **S10 / variant** versions are recorded as before:

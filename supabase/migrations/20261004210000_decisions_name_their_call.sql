@@ -48,9 +48,10 @@
 --    the correction, `+station-mos:` when the blend applied, `+station-width:`
 --    when the width priced) - and no newer version of its family first priced
 --    after its last price, while its switches are on (the MOS blend and the
---    width also need the correction's). Versions pricing side by side are
---    both served. It is retired at once when a switch goes off, and once
---    superseded or unpriced for 36 h. The newest fit in the
+--    width also need the correction's) and it has forward rows younger than
+--    the switch's max_age_hours, as the engine reads them. Versions pricing
+--    side by side are both served. It is retired at once when a switch goes
+--    off or its rows expire, and once superseded or unpriced for 36 h. The newest fit in the
 --    forward rows that has not priced is
 --    recorded once as fitted (the width: shadow), with the reason, and an
 --    older fit that never priced is retired as superseded by it. Hassan's
@@ -124,10 +125,14 @@ declare
   own_on        boolean;
   may_serve     boolean;
   corr_on       boolean := false;
+  max_age       numeric;
+  corr_age      numeric := 36;
+  fresh         jsonb;
 begin
   if to_regclass('public.settings') is not null then
     select value into corr_sw from public.settings where key = 'station_correction_pricing';
     corr_on := coalesce((corr_sw ->> 'enabled')::boolean, false);
+    corr_age := coalesce((corr_sw ->> 'max_age_hours')::numeric, 36);
   end if;
   -- SERVED MEANS PRICED (review of #306). Whether a version serves depends on
   -- which rows are fresh, which city-days a fit rewrote, each call's lead and
@@ -146,14 +151,23 @@ begin
     select * from (values
       (1, 'station_correction', 'station_correction_pricing', 'station-correction:[0-9-]+:[0-9a-f]+', 'station-correction:%', 'min',
        'select version, max(computed_at) as computed_at from public.derived_corrected_forecast where version is not null
-         group by version order by max(computed_at) desc, version desc limit 1'),
+         group by version order by max(computed_at) desc, version desc limit 1',
+       'select distinct version from public.derived_corrected_forecast
+         where version is not null and computed_at >= now() - $1 * interval ''1 hour'''),
       (2, 'station_mos', 'station_mos_pricing', 'station-mos:[0-9-]+:[0-9a-f]+', 'station-mos:%', 'min',
        'select version, max(computed_at) as computed_at from public.derived_mos_forecast where version is not null and blend_c is not null
-         group by version order by max(computed_at) desc, version desc limit 1'),
+         group by version order by max(computed_at) desc, version desc limit 1',
+       'select distinct m.version from public.derived_mos_forecast m
+         where m.version is not null and m.blend_c is not null and m.computed_at >= now() - $1 * interval ''1 hour''
+           and exists (select 1 from public.derived_corrected_forecast c
+                        where c.city_key = m.city_key and c.for_date = m.for_date and c.version = m.p39_version
+                          and c.computed_at >= now() - $2 * interval ''1 hour'')'),
       (3, 'station_width', 'station_width_pricing', 'station-width:[0-9-]+:[0-9a-f]+', 'station-width:%', 'max',
        'select width_version as version, max(computed_at) as computed_at from public.derived_corrected_forecast where width_version is not null
-         group by width_version order by max(computed_at) desc, width_version desc limit 1')
-    ) as v(ord, family, setting, rx, pattern, lead_kind, newest_fit)
+         group by width_version order by max(computed_at) desc, width_version desc limit 1',
+       'select distinct width_version from public.derived_corrected_forecast
+         where width_version is not null and computed_at >= now() - $1 * interval ''1 hour''')
+    ) as v(ord, family, setting, rx, pattern, lead_kind, newest_fit, fresh_q)
     order by ord
   loop
     if to_regclass('public.settings') is null then
@@ -174,6 +188,19 @@ begin
     -- blend and the width only inside the correction's branch: prices made
     -- before a switch went off do not keep it serving (review of #306).
     may_serve := own_on and (f.family = 'station_correction' or corr_on);
+    -- And only from forward rows younger than its switch's max_age_hours, as
+    -- probability_engine reads them (review of #306): a version priced before
+    -- its rows expired cannot price again. The width rides on the
+    -- correction's rows, so the correction's age; a MOS row blends only into
+    -- a fresh correction row of its city-day made by its p39_version
+    -- (_blend_station_model). 36 is the engine's default (STATION_MAX_AGE_HOURS).
+    max_age := case when f.family = 'station_mos' then coalesce((sw ->> 'max_age_hours')::numeric, 36) else corr_age end;
+    fresh := '{}'::jsonb;
+    if to_regclass('public.derived_corrected_forecast') is not null
+       and (f.family <> 'station_mos' or to_regclass('public.derived_mos_forecast') is not null) then
+      execute 'select coalesce(jsonb_object_agg(v, true), ''{}''::jsonb) from (' || f.fresh_q || ') x(v)'
+        into fresh using max_age, corr_age;
+    end if;
 
     -- What this family priced in the window, per version: {version: {first, last, n}}.
     sources := '';
@@ -194,7 +221,7 @@ begin
         into priced;
     end if;
 
-    -- Served: priced, not superseded, and its switches on.
+    -- Served: priced, not superseded, its switches on and its rows fresh.
     for cur in
       select k as version, (val ->> 'first')::timestamptz as first_at, (val ->> 'last')::timestamptz as last_at,
              (val ->> 'n')::bigint as n
@@ -203,7 +230,7 @@ begin
     loop
       select k into newer from jsonb_each(priced) as e(k, val)
        where (val ->> 'first')::timestamptz > cur.last_at order by (val ->> 'first')::timestamptz limit 1;
-      if newer is not null or not may_serve then
+      if newer is not null or not may_serve or not fresh ? cur.version then
         continue;
       end if;
       seen := seen || jsonb_build_object('family', f.family, 'version', cur.version, 'horizon', hz, 'state', 'served');
@@ -238,7 +265,7 @@ begin
         select k into newer from jsonb_each(priced) as e(k, val)
          where (val ->> 'first')::timestamptz > (priced -> old.version ->> 'last')::timestamptz
          order by (val ->> 'first')::timestamptz limit 1;
-        if newer is null then
+        if newer is null and fresh ? old.version then
           continue;
         end if;
       end if;
@@ -249,6 +276,12 @@ begin
                    when newer is not null
                    then format('superseded by %s, first priced %s, after this one''s last price %s',
                                newer, priced -> newer ->> 'first', priced -> old.version ->> 'last')
+                   when priced ? old.version and f.family = 'station_mos'
+                   then format('no forward row it can price from: its rows older than %s h (settings.station_mos_pricing.max_age_hours) or the correction rows they were made from older than %s h (settings.station_correction_pricing.max_age_hours)',
+                               max_age, corr_age)
+                   when priced ? old.version
+                   then format('its forward rows are older than %s h (settings.station_correction_pricing.max_age_hours), so it cannot price',
+                               max_age)
                    else format('not priced in the last %s h', window_h) end);
       retired := retired + 1;
     end loop;
@@ -262,6 +295,7 @@ begin
         why_not := case
           when not own_on then 'the switch is off'
           when f.family <> 'station_correction' and not corr_on then 'station correction is off'
+          when not fresh ? cur.version then 'it has no forward row young enough to price from'
           else 'it has not priced yet' end;
         st := case when f.family = 'station_width' then 'shadow' else 'fitted' end;
         seen := seen || jsonb_build_object('family', f.family, 'version', cur.version, 'horizon', hz, 'state', st);

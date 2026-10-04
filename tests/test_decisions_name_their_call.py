@@ -77,7 +77,15 @@ def test_a_served_nightly_fit_follows_its_switch_and_hassan_s_decision():
     assert "where (val ->> 'first')::timestamptz > cur.last_at" in fn
     # served only while its switches are on; retired at once when one goes off
     assert "may_serve := own_on and (f.family = 'station_correction' or corr_on);" in fn
-    assert "if newer is not null or not may_serve then" in fn
+    assert "if newer is not null or not may_serve or not fresh ? cur.version then" in fn
+    # ...and while it has forward rows younger than the switch's max age, as
+    # probability_engine filters them; a MOS row only over a fresh correction
+    # row of its city-day made by its p39_version (review of #306)
+    assert "max_age := case when f.family = 'station_mos' then coalesce((sw ->> 'max_age_hours')::numeric, 36) else corr_age end;" in fn
+    assert "c.city_key = m.city_key and c.for_date = m.for_date and c.version = m.p39_version" in fn
+    engine = (ROOT / "scripts" / "probability_engine.py").read_text()
+    assert "STATION_MAX_AGE_HOURS = 36.0" in engine, "the function's default max age is the engine's"
+    assert 'm.get("p39_version") != row.get("version")' in engine
     # one run's retirements in the order the versions first priced, so the
     # page's tie-break on event_id leaves the newer fit newest (review of #306)
     assert "order by (priced -> r.version ->> 'first')::timestamptz nulls first, r.decided_at, r.event_id" in fn

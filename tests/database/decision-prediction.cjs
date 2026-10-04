@@ -5,7 +5,7 @@
 //   signal_path); the two new columns are named together; decisions stay
 //   append-only; anon reads none of it.
 //   record_model_versions() records each nightly version in the state its
-//   switches and its prices give, retires what it supersedes (in the order
+//   switches, its prices and its forward rows' age give, retires what it supersedes (in the order
 //   the versions first priced, so the page's newest retired is the newer
 //   fit) and an older fit that never priced, names the rollback, registers a
 //   new shadow version, and is idempotent. v_learning_status marks each
@@ -200,6 +200,35 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   assert.deepEqual([st(reg, `station_correction|${C2}|as priced`), st(reg, `station_mos|${M2}|as priced`),
                     st(reg, `station_width|${W2}|as priced`)], ['served', 'served', 'served']);
 
+  // The forward rows expire under the switch's max_age_hours: nothing can
+  // price again, though the prices are still in the 36 h window (review of
+  // #306). The width rides on the correction's rows, and a MOS row blends only
+  // into a fresh correction row, so its own fresh rows do not keep it serving.
+  await db.exec(`update public.settings set value = value || '{"max_age_hours": 24}' where key = 'station_correction_pricing'`);
+  await db.exec(`update public.derived_corrected_forecast set computed_at = computed_at - interval '30 hours'`);
+  r = await run();
+  reg = await latest();
+  assert.deepEqual([st(reg, `station_correction|${C2}|as priced`), reg[`station_correction|${C2}|as priced`].evidence],
+    ['retired', 'its forward rows are older than 24 h (settings.station_correction_pricing.max_age_hours), so it cannot price']);
+  assert.equal(st(reg, `station_width|${W2}|as priced`), 'retired', 'the width rides on the correction rows');
+  assert.equal(st(reg, `station_mos|${M2}|as priced`), 'retired', 'no fresh correction row to blend into');
+  assert.match(reg[`station_mos|${M2}|as priced`].evidence, /^no forward row it can price from/);
+  assert.deepEqual([(await run()).appended, (await run()).retired], [0, 0], 'expired, nothing more to record');
+  await db.exec(`update public.derived_corrected_forecast set computed_at = computed_at + interval '30 hours'`);
+  r = await run();
+  reg = await latest();
+  assert.deepEqual([st(reg, `station_correction|${C2}|as priced`), st(reg, `station_mos|${M2}|as priced`),
+                    st(reg, `station_width|${W2}|as priced`)], ['served', 'served', 'served'], 'fresh again: served again');
+  // The MOS rows' own age, under their own switch.
+  await db.exec(`update public.settings set value = value || '{"max_age_hours": 24}' where key = 'station_mos_pricing'`);
+  await db.exec(`update public.derived_mos_forecast set computed_at = computed_at - interval '30 hours'`);
+  r = await run();
+  reg = await latest();
+  assert.deepEqual([st(reg, `station_correction|${C2}|as priced`), st(reg, `station_mos|${M2}|as priced`)], ['served', 'retired']);
+  await db.exec(`update public.derived_mos_forecast set computed_at = computed_at + interval '30 hours'`);
+  r = await run();
+  assert.equal(st(await latest(), `station_mos|${M2}|as priced`), 'served');
+
   // Not priced for 36 hours: nothing of it serves.
   await db.exec(`update public.band_probabilities set computed_at = computed_at - interval '40 hours'`);
   r = await run();
@@ -225,6 +254,7 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   // run. The order is by first price, not by name or scan order, so C2 (first
   // priced later) is the newest retired version (review of #306).
   const C3 = 'station-correction:2026-10-02:fff0000003';
+  await night(3, { corr: C3 });             // a forward row to price from (review of #306)
   await price(0.1, C3);
   await price(0, C3);
   r = await run();
