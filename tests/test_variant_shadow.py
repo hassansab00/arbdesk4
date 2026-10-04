@@ -285,3 +285,10 @@ def test_the_pre_registration_names_what_the_code_does():
     assert "seed 11, 1,000" in head and "at least 20 dates" in head
     assert "Hassan" in head, "a verdict proposes; it does not serve"
     assert "`variant_shadow.ladder`" in head
+
+
+def test_lost_names_failures_and_the_clock_not_the_registered_exclusions():
+    assert vs.lost(None) is None and vs.lost({"skipped": {}}) is None
+    assert vs.lost({"skipped": {"no_day_ahead_call": 4, "no_bands": 1}}) is None
+    assert vs.lost({"error": "RuntimeError: refused"}) == "RuntimeError: refused"
+    assert vs.lost({"skipped": {"out_of_time": 2, "no_bands": 1}}) == "rows not captured: {'out_of_time': 2}"

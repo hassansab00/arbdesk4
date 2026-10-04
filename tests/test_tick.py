@@ -253,9 +253,11 @@ def world(monkeypatch):
     import variant_shadow
     w["variants"] = []
 
+    w["variant_counts"] = {"version": variant_shadow.VERSION, "due": 0, "written": 0, "skipped": {}}
+
     def variants(out, results, *a, **k):
         w["variants"].append((list(out), dict(results), k))
-        return {"version": variant_shadow.VERSION, "due": 0, "written": 0, "skipped": {}}
+        return dict(w["variant_counts"])
     monkeypatch.setattr(variant_shadow, "record", variants)
     return w
 
@@ -281,6 +283,20 @@ def test_the_variant_shadow_gets_the_rows_written_and_the_engine_s_reasons(world
     assert kw["dry_run"] is False and kw["deadline"] is not None
     assert out["variants"]["version"] == "da_floor:v1"
     assert world["logged"][0][3]["variants"]["version"] == "da_floor:v1"
+
+
+@pytest.mark.parametrize("counts, status", [
+    ({"error": "HTTPError: 503"}, "attention"),
+    ({"skipped": {"out_of_time": 2}}, "attention"),
+    ({"skipped": {"error": 1}}, "attention"),
+    ({"skipped": {"no_day_ahead_call": 3}}, "ok"),     # a pre-registered exclusion
+])
+def test_a_lost_capture_turns_the_tick_to_attention(world, counts, status):
+    """Codex on #303: the checkpoint is written, so no later tick retries
+    its shadow row; a row lost to a failure or the clock must show."""
+    world["variant_counts"] = dict(world["variant_counts"], **counts)
+    tick.run(now=at("2026-09-24T22:35"))
+    assert world["logged"][0][1] == status
 
 
 def test_a_checkpoint_already_held_is_not_priced(world):

@@ -95,6 +95,20 @@ def build_row(served, call, bands, unit, q, calibrated):
     }, None
 
 
+# Skips that lose a row the test should have (a failure, the clock), as
+# against the exclusions the pre-registration counts (no day-ahead call, ...).
+LOST = ("error", "out_of_time")
+
+
+def lost(counts):
+    """Why this run lost capture rows, or None: the tick's status reads it."""
+    counts = counts or {}
+    if counts.get("error"):
+        return counts["error"]
+    n = {k: v for k, v in (counts.get("skipped") or {}).items() if k in LOST and v}
+    return f"rows not captured: {n}" if n else None
+
+
 # ---------------------------------------------------------------------------
 # I/O
 # ---------------------------------------------------------------------------
