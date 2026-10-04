@@ -1,4 +1,4 @@
-# P2.2: one prediction contract and a version registry (part 1, 4 Oct 2026)
+# P2.2: one prediction contract and a version registry (parts 1 and 2, 4 Oct 2026)
 
 **The source.** The external improvement plan of 4 Oct, item P2.2 ("Unify forecast output and
 controlled learning"), reviewed in `docs/EXTERNAL_PLAN_REVIEW_2026-10-04.md`. It asks for:
@@ -87,6 +87,7 @@ stay null):
 | forecast_postprocess | the P3.4 bias and width cells | per city and lead | served | `v_forecast_postprocess_applied`: 1 cell (1 city, lead 4), applied since its gate passed on 3 Oct |
 | trajectory | P3.4 trajectory | same day | fitted | `applied: 0` (gate unmet) |
 | weather_model | per-city fits | per city and lead | shadow | `model_promotion`: 0 promoted, 195 shadow, 189 stale (4 Oct) |
+| s10 | `rd1:2026-09-25:389620c0d9` | same day | retired | added in part 2 (part 1 missed it): S10's first file wrote the shadow rows of 27 Sep 12:36Z - 30 Sep 07:36Z (656, live) until the same fit on the repaired labels replaced it (`docs/PLAN_PROGRESS.md`, check 6) |
 
 ## Decided by Hassan, 4 Oct: the nightly refits stay automatic
 The plan asks that a refit create a candidate and never silently replace the incumbent. Three
@@ -105,9 +106,60 @@ The candidate step P2.2 asks for still applies to everything else: a new model, 
 a variant like `da_floor`, or switching on a fitted map. Those move only on a pre-registered result
 and a recorded decision.
 
-## Next parts
-- **Part 2:** the page reads `v_prediction_contract` and `v_model_registry`. It shows main, S10
-  and challengers apart, and the learning status in the four plan words.
+## Part 2: the page reads the contract
+Migration `20261004200000_the_page_reads_the_contract.sql`. The panel is
+`web/components/PredictionLineup.tsx`, on /predictive under "Was it right?".
+
+**Two views the browser reads (as `anon`):**
+- `v_learning_status` gives every version's latest registry state in the plan's words:
+  - `captured` → data capture;
+  - `fitted` → candidate fitting;
+  - `shadow` and `eligible` → evaluation;
+  - `served` → serving;
+  - `retired` → retired.
+- `v_prediction_lineup` holds the calls of the last 8 target dates, one row per predictor and
+  checkpoint, with the venue's winner once settled.
+  - The page reads one date and one checkpoint at a time: at most 144 rows on the live data of
+    4 Oct, against 4,197 in the whole window.
+  - Each date and checkpoint shows as a line per city, with one column each for the served engine,
+    each S10 version and each variant.
+
+**Both views run with the owner's rights.**
+- Part 1's `v_prediction_contract` and `v_model_registry` turn from `security_invoker` to the
+  owner's rights.
+- Read through a page view, a `security_invoker` view checks as `anon`. `anon` can read none of
+  the tables under them (CLAUDE.md, 23 Sep).
+- The two part-1 views stay granted to the service role alone.
+
+**The engine counts once per checkpoint.**
+- It re-captures a checkpoint when its version changes mid-day: 72 second captures in the 8 days
+  to 4 Oct.
+- The lineup keeps the first capture, the rule `v_checkpoint_calls.first_call` grades by.
+- Checked live on 4 Oct, before applying: the lineup's 2,010 graded engine calls equal the 2,010
+  first calls of `v_checkpoint_calls` on city, date, checkpoint, called label, winner and hit,
+  with `EXCEPT ALL` returning 0 rows in both directions.
+
+**A blinded version shows no past call.**
+- `model_registry` gains `blind`. Two versions are under pre-registered forward tests that compute
+  and report no score before their first look:
+  - rd3 (`docs/CHALLENGER_C_PREREG.md`);
+  - `da_floor:v1` (`docs/P11_DA_FLOOR_PREREG.md`).
+- A lineup row puts each call beside the day's winner. So a blinded version's call is withheld once
+  its day is past or settled, and it never gets a winner, hit or probability on the winner. Its
+  calls for today show.
+- The first look unblinds it with a new event (`blind = false`).
+- Live before applying: rd3 withheld on 71 rows (3 Oct), shown on 175 (4 Oct); `da_floor` shown on
+  13 (4 Oct).
+
+**The page.**
+- "Where each predictor stands" lists each version with its stage, its evidence and its rollback
+  target.
+- "Who called what" puts the calls side by side with each column's record on that date and
+  checkpoint, and S10's record against the engine on the same city-days.
+- A blinded column is labelled as such and never tallied (`web/lib/lineup.ts`,
+  `web/tests/lineup.test.cjs`).
+
+## Next part
 - **Part 3:** the paper decisions and the evaluation name the contract's identity
   (`decisions.checkpoint_id` already points at the engine's call; S10's decisions need theirs),
   and a refit writes a `fitted` event instead of serving.
