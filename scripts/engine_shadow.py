@@ -157,15 +157,22 @@ def after_sale(lg, band_id, side, shares, proceeds):
     return out
 
 
-def decision_row(run_id, decided_at, checkpoint_id, strategy_id, city, target, d=None, why=None):
-    """One decisions row from decide's output, or from the reason there was none."""
+def decision_row(run_id, decided_at, checkpoint_id, strategy_id, city, target, d=None, why=None,
+                 prediction=None):
+    """One decisions row from decide's output, or from the reason there was none.
+
+    prediction: (prediction_id, recorded_in) of the call the strategy acted
+    on, as v_prediction_contract names it (P2.2 part 3) - the engine's
+    checkpoint for S11/S12, the stored S10 row for S10 - or None when it acted
+    on none (no ladder) or the call is not in the record."""
+    pid, source = prediction if prediction and prediction[0] else (None, None)
     if d is None:
         action = s10_action(why) if strategy_id in S10 else "NONE"
         return {"run_id": run_id, "tick_id": run_id, "decided_at": decided_at, "checkpoint_id": checkpoint_id,
                 "strategy_id": strategy_id, "city_key": city, "resolution_date": str(target),
                 "action": action, "reason_code": reason_code(why), "g_now": None, "g_wait": None,
                 "binding": [], "target_usd": None, "held_usd": None, "n_signals": 0,
-                "params_version": None}
+                "params_version": None, "prediction_id": pid, "prediction_source": source}
     return {"run_id": run_id, "tick_id": run_id, "decided_at": decided_at, "checkpoint_id": checkpoint_id,
             "strategy_id": strategy_id, "city_key": city, "resolution_date": str(target),
             "action": d["action"], "reason_code": reason_code(d.get("reason_code")),
@@ -173,7 +180,18 @@ def decision_row(run_id, decided_at, checkpoint_id, strategy_id, city, target, d
             "binding": [str(b)[:40] for b in (d.get("binding") or [])],
             "target_usd": _num(d.get("target_usd")), "held_usd": _num(d.get("held_usd")),
             "n_signals": len(d.get("orders") or []),
-            "params_version": json.dumps(d.get("versions") or {}, sort_keys=True, default=str)}
+            "params_version": json.dumps(d.get("versions") or {}, sort_keys=True, default=str),
+            "prediction_id": pid, "prediction_source": source}
+
+
+def s10_call(entry):
+    """(probs, prediction) from an s10_ladders value: s10_shadow.record gives
+    {"probs", "id"} (the stored row); a bare ladder (the replay's, or a dry
+    run's) names no call."""
+    if isinstance(entry, dict) and "probs" in entry:
+        rid = entry.get("id")
+        return entry.get("probs"), ((rid, "s10_shadow_checkpoints") if rid else None)
+    return entry, None
 
 
 def stamp_s10(row, trace):
@@ -249,11 +267,15 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
         reading_age_min = reading_age(floor[3] if today and len(floor) > 3 else None, decided_at)
         book = engine_book(row.get("market"))
         for sid in STRATEGIES:
-            probs = s10_ladders.get((city, target, name)) if sid in S10 else row.get("probs")
+            if sid in S10:
+                probs, call = s10_call(s10_ladders.get((city, target, name)))
+            else:
+                probs = row.get("probs")
+                call = (checkpoint_id, "prediction_checkpoints") if checkpoint_id else None
             led = ledgers.get(sid)
             if led is None:
                 rows.append(decision_row(run_id, decided_at, checkpoint_id, sid, city, target,
-                                         why="no ledger"))
+                                         why="no ledger", prediction=call))
                 continue
             lg = led(city, target)
             if not probs:
@@ -273,23 +295,25 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
             s10d = (trace or {}).get("s10") or {}
             if view is None and s10d.get("action") in ("SELL", "SWITCH") and held_s10:
                 row_out, ex = exit_of(sid, s10d, held_s10, book, ebook, lg, trace, params,
-                                      run_id, decided_at, checkpoint_id, city, target)
+                                      run_id, decided_at, checkpoint_id, city, target, prediction=call)
                 rows.append(stamp_s10(row_out, trace))
                 if exits is not None and ex is not None:
                     exits.append(ex)
                 continue
             if view is None:
-                rows.append(stamp_s10(decision_row(run_id, decided_at, checkpoint_id, sid, city, target, why=why),
-                                      trace))
+                rows.append(stamp_s10(decision_row(run_id, decided_at, checkpoint_id, sid, city, target, why=why,
+                                                   prediction=call), trace))
                 continue
             d = de.decide(view, book=ebook, ledger=lg, params=params)
-            rows.append(stamp_s10(decision_row(run_id, decided_at, checkpoint_id, sid, city, target, d=d), trace))
+            rows.append(stamp_s10(decision_row(run_id, decided_at, checkpoint_id, sid, city, target, d=d,
+                                               prediction=call), trace))
             if buys is not None and d.get("action") == "BUY":
                 buys.append((rows[-1], d, checkpoint_id))
     return rows, {"city_days": len(checkpoints), "reached": reached, "out_of_time": skipped}
 
 
-def exit_of(sid, s10d, held, book, ebook, lg, trace, params, run_id, decided_at, checkpoint_id, city, target):
+def exit_of(sid, s10d, held, book, ebook, lg, trace, params, run_id, decided_at, checkpoint_id, city, target,
+            prediction=None):
     """(decisions row, exit or None) for S10's own SELL or SWITCH (plan v2
     P5.12 part 3b, step 3).
 
@@ -307,7 +331,8 @@ def exit_of(sid, s10d, held, book, ebook, lg, trace, params, run_id, decided_at,
     bid = (book.get(band) or {}).get("bid")
     sell = {"band_id": band, "side": "YES", "shares": shares, "limit_price": None if bid is None else float(bid)}
     if s10d["action"] == "SELL":
-        row = decision_row(run_id, decided_at, checkpoint_id, sid, city, target, why=f"s10 SELL: {s10d.get('reason')}")
+        row = decision_row(run_id, decided_at, checkpoint_id, sid, city, target, why=f"s10 SELL: {s10d.get('reason')}",
+                           prediction=prediction)
         row["n_signals"] = 1
         return row, {"kind": "SELL", "row": row, "sell": sell, "buy": None, "checkpoint_id": checkpoint_id}
     net_bid = s10m._net_bid(book, band)
@@ -317,11 +342,12 @@ def exit_of(sid, s10d, held, book, ebook, lg, trace, params, run_id, decided_at,
         d_buy = de.decide(view, book=ebook, ledger=after_sale(lg, band, "YES", shares, shares * net_bid),
                           params=params)
     if d_buy is None or d_buy.get("action") != "BUY":
-        row = decision_row(run_id, decided_at, checkpoint_id, sid, city, target, d=d_buy) if d_buy else \
-            decision_row(run_id, decided_at, checkpoint_id, sid, city, target, why="switch_unsized")
+        row = decision_row(run_id, decided_at, checkpoint_id, sid, city, target, d=d_buy, prediction=prediction) \
+            if d_buy else decision_row(run_id, decided_at, checkpoint_id, sid, city, target, why="switch_unsized",
+                                       prediction=prediction)
         row.update(action="HOLD", reason_code="switch_unsized", n_signals=0)
         return row, None
-    row = decision_row(run_id, decided_at, checkpoint_id, sid, city, target, d=d_buy)
+    row = decision_row(run_id, decided_at, checkpoint_id, sid, city, target, d=d_buy, prediction=prediction)
     row.update(action="SWITCH", reason_code="own_rule_switch", n_signals=1 + len(d_buy.get("orders") or []))
     return row, {"kind": "SWITCH", "row": row, "sell": sell, "buy": d_buy, "checkpoint_id": checkpoint_id}
 

@@ -6,7 +6,7 @@ import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
 import { MOMENT } from "@/components/PredictionHindsight";
 import {
-  CHECKPOINTS, FAMILY, learningStatus, lineupDates, lineupTable, num, shortVersion, utcDate,
+  CHECKPOINTS, FAMILY, compactRetired, learningStatus, lineupDates, lineupTable, num, shortVersion, utcDate,
   type LineupRow, type StatusRow,
 } from "@/lib/lineup";
 
@@ -58,8 +58,8 @@ export default function PredictionLineup() {
   }, []);
 
   const sq = useQuery<StatusRow[]>(
-    () => supabase.from("v_learning_status").select("*").limit(200),
-    [], 300000, 200);
+    () => supabase.from("v_learning_status").select("*").order("decided_at", { ascending: false }).limit(1000),
+    [], 300000, 1000);
   const lq = useQuery<LineupRow[]>(
     () => date
       ? supabase.from("v_prediction_lineup").select("*")
@@ -69,7 +69,8 @@ export default function PredictionLineup() {
       : Promise.resolve({ data: [] as LineupRow[], error: null }),
     [date, checkpoint], 120000, 1000);
 
-  const status = useMemo(() => learningStatus(sq.data ?? []), [sq.data]);
+  const all = useMemo(() => learningStatus(sq.data ?? []), [sq.data]);
+  const { rows: status, hidden: hiddenRetired } = useMemo(() => compactRetired(all), [all]);
   const table = useMemo(() => lineupTable(lq.data ?? [], sq.data ?? []), [lq.data, sq.data]);
   const blindCols = table.columns.filter((c) => c.blind);
 
@@ -81,8 +82,9 @@ export default function PredictionLineup() {
         desk, <strong>evaluation</strong> is recorded beside it and scored forward,{" "}
         <strong>candidate fitting</strong> has a fit that applies to nothing yet, and{" "}
         <strong>data capture</strong> is recording inputs only. A version moves only by a new event
-        naming its evidence; the nightly station-correction and MOS refits serve automatically,
-        bounded by Rule 11 (Hassan, 4 Oct).
+        naming its evidence. The nightly station-correction and MOS refits serve automatically,
+        bounded by Rule 11 (Hassan, 4 Oct), and each one is recorded here as it serves, with the
+        version it replaced as its rollback.
       </p>
     </div>
     <DataState
@@ -127,6 +129,10 @@ export default function PredictionLineup() {
           </tbody>
         </table>
       </div>
+      {hiddenRetired > 0 && <p className="text-xs text-muted">
+        {hiddenRetired} earlier retired version{hiddenRetired === 1 ? "" : "s"} not listed: the newest
+        retired version of each family is shown, and every one stays in the registry.
+      </p>}
     </DataState>
 
     <div className="pt-2">

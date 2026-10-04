@@ -276,10 +276,37 @@ def fetch_inputs(now, cities, dry_run=False, budget_s=10.0):
     return out
 
 
+def stored_calls(rows, version, rest_all):
+    """{(city, target, checkpoint): {"probs", "id"}} - the rows as stored.
+
+    The engine's S10 decisions act on the S10 call the record holds and name
+    it (decisions.prediction_id, P2.2 part 3). The write ignores a duplicate,
+    so a key already held keeps its first ladder: until 4 Oct S10 decided on
+    the ladder it had just computed, and 30 of its decisions (on the engine's
+    second captures, 25 Sep - 1 Oct) acted on one no row holds."""
+    if not rows:
+        return {}
+    keys = {(r["city_key"], str(r["target_date"]), r["checkpoint"]) for r in rows}
+    out = {}
+    for r in rest_all("s10_shadow_checkpoints", [
+            ("select", "checkpoint_id,city_key,target_date,checkpoint,probs"),
+            ("model_version", f"eq.{version}"),
+            ("city_key", f"in.({','.join(sorted({k[0] for k in keys}))})"),
+            ("target_date", f"in.({','.join(sorted({k[1] for k in keys}))})")],
+            order="checkpoint_id.asc"):
+        k = (r["city_key"], str(r["target_date"]), r["checkpoint"])
+        if k in keys:
+            out[k] = {"probs": r["probs"], "id": r["checkpoint_id"]}
+    return out
+
+
 def record(due, market_of, bands_by_market, tz_of, unit_of, dry_run=False, ladders=None):
     """Write the shadow ladders for the tick's due checkpoints. ladders, when
-    given, is filled with {(city, target, checkpoint): probs} for the engine's
-    S10 decisions in the same tick (engine_shadow)."""
+    given, is filled with {(city, target, checkpoint): {"probs", "id"}} for
+    the engine's S10 decisions in the same tick (engine_shadow): the stored
+    row's ladder and checkpoint_id, read back after the write. A dry run, or a
+    row that cannot be read back, gives the computed ladder and no id
+    (counted as `unrecorded`)."""
     from common import rest_all, upsert
     import probability_engine as pe
     t0 = time.monotonic()
@@ -315,14 +342,27 @@ def record(due, market_of, bands_by_market, tz_of, unit_of, dry_run=False, ladde
         rows, skipped = shadow_rows(todo, params, version, inputs, obs_by_city, tz_of, unit_of,
                                     bands_of, pe.DEFAULT_Q_DOWN, pe.DEFAULT_Q_UP, spread_fallback)
         out["skipped"] = skipped
-        if ladders is not None:
-            for r in rows:
-                ladders[(r["city_key"], str(r["target_date"]), r["checkpoint"])] = r["probs"]
         if rows and not dry_run:
             out["written"] = upsert("s10_shadow_checkpoints", rows,
                                     "city_key,target_date,checkpoint,model_version")
         elif rows:
             out["would_write"] = len(rows)
+        if ladders is not None and rows:
+            stored = {}
+            if not dry_run:
+                try:
+                    stored = stored_calls(rows, version, rest_all)
+                except Exception as e:           # noqa: BLE001 - the computed ladder, unnamed
+                    out["read_back_error"] = f"{type(e).__name__}: {str(e)[:120]}"
+            unrecorded = 0
+            for r in rows:
+                k = (r["city_key"], str(r["target_date"]), r["checkpoint"])
+                s = stored.get(k)
+                if s is None:
+                    unrecorded += 1
+                ladders[k] = s if s is not None else {"probs": r["probs"], "id": None}
+            if not dry_run:                      # a dry run writes nothing to name
+                out["unrecorded"] = unrecorded
         out["version"] = version
         out["challenger"] = _challenger(todo, inputs, obs_by_city, tz_of, unit_of, bands_of, dry_run)
     except Exception as e:

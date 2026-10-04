@@ -1,4 +1,4 @@
-# P2.2: one prediction contract and a version registry (parts 1 and 2, 4 Oct 2026)
+# P2.2: one prediction contract and a version registry (parts 1 to 3, 4 Oct 2026)
 
 **The source.** The external improvement plan of 4 Oct, item P2.2 ("Unify forecast output and
 controlled learning"), reviewed in `docs/EXTERNAL_PLAN_REVIEW_2026-10-04.md`. It asks for:
@@ -167,7 +167,84 @@ Migration `20261004200000_the_page_reads_the_contract.sql`. The panel is
 - A blinded column is labelled as such and never tallied (`web/lib/lineup.ts`,
   `web/tests/lineup.test.cjs`).
 
-## Next part
-- **Part 3:** the paper decisions and the evaluation name the contract's identity
-  (`decisions.checkpoint_id` already points at the engine's call; S10's decisions need theirs),
-  and a refit writes a `fitted` event instead of serving.
+## Part 3: decisions name their call, and no refit serves unrecorded
+Migration `20261004210000_decisions_name_their_call.sql`. The plan's acceptance: the page's calls,
+the paper decisions and the recorded evaluation name the same forecast identity, and a refit does
+not silently replace the incumbent.
+
+### 1. Each decision names the call it acted on
+**The gap, live on 4 Oct.**
+- The engine's six strategies write one `decisions` row per city-day, and `checkpoint_id` names
+  the engine's checkpoint.
+- S11 and S12 decide on that call's ladder, so for them it is the right call.
+- S10's three strategies decide on S10's own ladder (`s10_shadow_checkpoints`). Yet all 1,833 of
+  their rows with a checkpoint named the engine's call, and none named the S10 row or the S10
+  version they acted on.
+
+**From this PR on, the tick writes the call.**
+- `decisions.prediction_id` and `decisions.prediction_source` name it as the contract does: its
+  `prediction_id` and `recorded_in`. The two are set together, or both left null.
+- S11 and S12 name the engine checkpoint.
+- S10 names the stored S10 row and acts on that row's ladder:
+  - `scripts/s10_shadow.py` reads the rows back after its write.
+  - The write ignores a duplicate key, so a recomputed ladder was never stored. Until now S10
+    decided on it anyway: 30 of its decisions acted on a ladder no row holds.
+  - If the read-back fails, the decision keeps the computed ladder and names no call. The tick
+    counts it as `unrecorded` and logs `attention`, as it does for a lost `da_floor` capture.
+  - If the write fails, S10 has no ladder and decides `NONE`.
+
+**`v_decision_prediction` resolves every decision, the older ones too, and says how (`link`).**
+Counts are from the live dry run on 4 Oct (33,497 decisions):
+
+| `link` | Meaning | Live, 4 Oct |
+|---|---|---|
+| `recorded` | `prediction_id` written by the tick | from this PR on |
+| `checkpoint` | S11 and S12: the engine's checkpoint is their call | `s11_ladder` 1,844 |
+| `same_tick` | an S10 decision before this PR: the rd1 row written in the same tick (within 60 s; the measured gaps run to 38.7 s, and none lies between 60 s and 10 min) | `s10_winner` 1,470 |
+| `not_recorded` | an S10 decision on a ladder no stored row holds (the engine's second captures, 25 Sep - 1 Oct) | `s10_winner` 30 |
+| `no_call` | decided without a ladder (S10 has no evening-before call), or without a checkpoint (27 Sep) | `s10_winner` 344, `s11_ladder` 78 |
+| `signal_path` | s1-s9: they decided on the old signal path, which is not a recorded call | `s1` 2,133 |
+
+**The evaluation names the same identity.**
+- The engine's grading (`fact_checkpoint_outcome`) is keyed by `checkpoint_id`, its
+  `prediction_id`.
+- S10's forward scoring (`tools/fec_s10_forward.py`) names city, date, checkpoint and both model
+  versions. That key is unique in `s10_shadow_checkpoints`, so it names one row; the
+  pre-registered tool is left unchanged.
+- A paper order carries its `decision_id` (`engine_orders`), and through it the call.
+
+### 2. The nightly refits are recorded as they serve
+Hassan's decision stands: they serve automatically. What changes is that a refit is no longer
+silent. `record_model_versions()` appends a `model_registry` event for each version not yet
+recorded, in the state its switch gives it, and retires the version it supersedes. Each served
+event names the version it replaced as its rollback.
+
+| Family | Version from | State |
+|---|---|---|
+| `station_correction` | `derived_station_correction` | `settings.station_correction_pricing.enabled`: served, else fitted |
+| `station_mos` | `derived_mos_coefficients` | `settings.station_mos_pricing.enabled`: served, else fitted |
+| `station_width` | `derived_station_width` | `settings.station_width_pricing.enabled`: served, else shadow (scored nightly) |
+| `calibration` | `settings.calibration_map` (T to 3 decimals, part 1's name) | `applies`: served, else fitted |
+| `s10`, `engine_variant` | a version first written in the last two days | shadow, once; its test is registered by hand |
+
+- **The horizon comes from the switch** (`min_lead_days`, `max_lead_days`). A changed horizon is a
+  new event, and the same fit is retired at the old one: noon does not authorise the morning.
+- **It runs in the database.** pg_cron calls it hourly at :50, which costs no Actions minutes
+  (Rule 7). It also runs once in the migration.
+- **What it would record live** (the dry run on 4 Oct, rolled back):
+  - `station-correction:2026-10-04:da319e41d6`, served at lead >= 1;
+  - `station-mos:2026-10-04:0656cd4985`, served at lead >= 1;
+  - `station-width:2026-10-04:d8fd4f2746`, shadow at lead <= 1;
+  - nothing for calibration, whose version is already recorded.
+
+  A second run appended nothing.
+
+**On the page:** the learning status lists the newest retired version of each family and counts
+the rest, since every nightly fit now retires the one before it.
+
+### Not done here
+- The P3.4 forecast post-processing promotes per cell, and the trajectory and the per-city weather
+  models fit per cell or per city. They keep their family rows from part 1; a version per cell
+  would be 195 rows.
+- The replay (`engine_replay_live.py`) still matches S10 by key and version. It could use the
+  decisions' `prediction_id` from now on.

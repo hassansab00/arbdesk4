@@ -626,3 +626,17 @@ def test_a_re_price_selection_that_breaks_never_costs_the_checkpoints(same_day, 
     assert out["current"]["error"].startswith("re-price selection: ZeroDivisionError")
     assert same_day["logged"][0][1] == "attention"
     assert [r["reason"] for r in same_day["published"][0]] == ["checkpoint"]
+
+
+def test_an_s10_decision_that_cannot_name_its_call_is_attention(world, monkeypatch):
+    """P2.2 part 3: S10 acts on the stored row and names it. A row it cannot
+    read back leaves its decisions naming no call, and that must show."""
+    import s10_shadow
+    monkeypatch.setattr(s10_shadow, "record", lambda *a, **k: {"due": 1, "written": 1, "unrecorded": 0})
+    tick.run(now=at("2026-09-24T22:35"))
+    assert world["logged"][0][1] == "ok"
+    world["logged"].clear(); world["written"].clear()
+    monkeypatch.setattr(s10_shadow, "record", lambda *a, **k: {"due": 1, "written": 1, "unrecorded": 1,
+                                                               "read_back_error": "HTTPError"})
+    tick.run(now=at("2026-09-24T22:35"))
+    assert world["logged"][0][1] == "attention"

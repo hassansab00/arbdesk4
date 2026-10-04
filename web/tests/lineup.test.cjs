@@ -103,3 +103,25 @@ assert.equal(only.lines[0].winner_label, null);
 assert.deepEqual(lineupTable([], status), { columns: [], lines: [], tallies: {} });
 
 console.log('lineup: the plan\'s stages in order; tomorrow to 7 days back, UTC; the engine once, S10 by version, the variants; blinded columns never tallied');
+
+// ------------------------------------------------------------ retired versions (P2.2 part 3)
+{
+  const { compactRetired } = require(path.join(__dirname, '..', '.route-test', 'lib', 'lineup.js'));
+  const at = (d) => `2026-10-${d}T05:00:00Z`;
+  const rows = [
+    { ...st('station_correction', 'station-correction:2026-10-07:c', 'served', 'serving'), decided_at: at('07') },
+    { ...st('station_correction', 'station-correction:2026-10-06:b', 'retired', 'retired'), decided_at: at('07') },
+    { ...st('station_correction', 'station-correction:2026-10-05:a', 'retired', 'retired'), decided_at: at('06') },
+    { ...st('station_mos', 'station-mos:2026-10-06:y', 'retired', 'retired'), decided_at: at('07') },
+    { ...st('station_mos', 'station-mos:2026-10-05:x', 'retired', 'retired'), decided_at: at('06') },
+    st('s10', 'rd1:2026-09-25:389620c0d9', 'retired', 'retired'),
+    st('engine_variant', 'da_floor:v1', 'shadow', 'evaluation', true),
+  ];
+  const c = compactRetired(rows);
+  assert.equal(c.hidden, 2, 'one retired line per family; the older ones counted');
+  assert.deepEqual(c.rows.filter((r) => r.stage === 'retired').map((r) => r.version),
+    ['station-correction:2026-10-06:b', 'station-mos:2026-10-06:y', 'rd1:2026-09-25:389620c0d9'], 'the newest retired of each');
+  assert.equal(c.rows.filter((r) => r.stage !== 'retired').length, 2, 'nothing standing is ever hidden');
+  assert.deepEqual(compactRetired([]), { rows: [], hidden: 0 });
+}
+console.log('lineup: retired versions compacted to the newest per family, the rest counted');

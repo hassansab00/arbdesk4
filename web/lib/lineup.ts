@@ -81,6 +81,23 @@ export function learningStatus(rows: StatusRow[]): StatusRow[] {
     || a.family.localeCompare(b.family) || a.version.localeCompare(b.version));
 }
 
+/**
+ * The retired versions worth a line: the most recent per family, the rest
+ * counted. From P2.2 part 3 every nightly fit is a version and retires the
+ * one before (record_model_versions), so the station correction and the MOS
+ * blend each add a retired row a night.
+ */
+export function compactRetired(rows: StatusRow[]): { rows: StatusRow[]; hidden: number } {
+  const newest = new Map<string, StatusRow>();
+  for (const r of rows) {
+    if (r.stage !== "retired") continue;
+    const cur = newest.get(r.family);
+    if (!cur || r.decided_at > cur.decided_at) newest.set(r.family, r);
+  }
+  const kept = rows.filter((r) => r.stage !== "retired" || newest.get(r.family) === r);
+  return { rows: kept, hidden: rows.length - kept.length };
+}
+
 /** A UTC date (the database's clock) `offset` days from now's. */
 export function utcDate(now: Date, offset = 0): string {
   const base = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
