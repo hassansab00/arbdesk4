@@ -95,7 +95,7 @@ def test_a_served_nightly_fit_follows_its_switch_and_hassan_s_decision():
     # part 1's width placeholder, once a width version is registered
     # (review of #306)
     assert "not like f.pattern" not in fn
-    assert "where r.family = 'station_width' and r.version = 'W2 per-city width' and r.state <> 'retired'" in fn
+    assert "where r.family = 'station_width' and r.version = 'W2 per-city width' and r.horizon = 'day ahead'" in fn
     # the view marks each family's newest retired version and counts the rest,
     # appended after event_id; the page fetches the standing rows and those only
     view = MIG[MIG.index("create or replace view public.v_learning_status as"):]

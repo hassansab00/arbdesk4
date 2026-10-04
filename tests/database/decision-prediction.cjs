@@ -112,7 +112,8 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   // hourly function's: it stands (review of #306).
   await db.query(`insert into public.model_registry (family, version, horizon, state, decided_by, evidence)
                   values ('station_correction', 'hand candidate', 'day ahead', 'shadow', 'hassan', 'registered by hand'),
-                         ('station_width', 'hand width candidate', 'day ahead', 'shadow', 'hassan', 'registered by hand')`);
+                         ('station_width', 'hand width candidate', 'day ahead', 'shadow', 'hassan', 'registered by hand'),
+                         ('station_width', 'W2 per-city width', 'same day', 'shadow', 'hassan', 'the method name at another horizon')`);
   assert.deepEqual([(await run()).appended, (await run()).retired], [0, 0], 'a hand-registered candidate is no event');
   assert.equal(st(await latest(), 'station_correction|hand candidate|day ahead'), 'shadow');
 
@@ -318,6 +319,7 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   reg = await latest();
   assert.deepEqual([st(reg, 'station_width|W2 per-city width|day ahead'), r.retired], ['retired', 1]);
   assert.equal(st(reg, 'station_width|hand width candidate|day ahead'), 'shadow');
+  assert.equal(st(reg, 'station_width|W2 per-city width|same day'), 'shadow', 'only the seeded horizon: (family, version, horizon) is the identity');
   assert.match(reg['station_width|W2 per-city width|day ahead'].evidence, /the newest is station-width:/);
 
   // ---------------------------------------------------------------- the decisions

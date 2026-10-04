@@ -330,7 +330,8 @@ begin
     end if;
 
     -- Part 1 seeded the width's method row (station_width 'W2 per-city
-    -- width', shadow) before the nightly width versions were recorded. Once
+    -- width' at 'day ahead', shadow) before the nightly width versions were
+    -- recorded. Once
     -- one is registered - at the first run, or whenever the first width fit
     -- arrives - that row is retired. Only that row: every other row
     -- registered by hand is left alone (review of #306). Its events stay.
@@ -340,7 +341,8 @@ begin
          cross join lateral (select v.version from public.v_model_registry v
                               where v.family = 'station_width' and v.version like 'station-width:%'
                               order by v.decided_at desc, v.event_id desc limit 1) n
-         where r.family = 'station_width' and r.version = 'W2 per-city width' and r.state <> 'retired'
+         where r.family = 'station_width' and r.version = 'W2 per-city width' and r.horizon = 'day ahead'
+           and r.state <> 'retired'
       loop
         insert into public.model_registry (family, version, horizon, state, decided_by, evidence)
         values ('station_width', old.version, old.horizon, 'retired', 'rule:nightly refit',
