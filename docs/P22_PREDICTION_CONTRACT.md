@@ -236,8 +236,8 @@ have:
 | State | When |
 |---|---|
 | served | priced in the last 36 h (`band_probabilities` -> `model_versions.label`, and the tick's `priced_from`), no newer version of the family first priced after its last price, and its switches on (the MOS blend and the width also need the correction's). Two versions pricing side by side are both served. |
-| retired | at once when a switch goes off; or superseded (a newer version first priced after its last price); or not priced for 36 h |
-| fitted (the width: shadow) | the newest fit in the forward rows that has not priced, recorded once with the reason: the switch is off, the correction is off, or it has not priced yet |
+| retired | at once when a switch goes off; or superseded (a newer version first priced after its last price); or not priced for 36 h. Versions retiring in one run are written in the order they first priced, so the newer fit gets the later `event_id`. |
+| fitted (the width: shadow) | the newest fit in the forward rows that has not priced, recorded once with the reason: the switch is off, the correction is off, or it has not priced yet. An older fit that never priced is retired once a newer fit supersedes it, so each family keeps one candidate, not one a night. |
 
 **Calibration** and new **S10 / variant** versions are recorded as before:
 - calibration: `settings.calibration_map`, served if `applies`, else fitted;
@@ -268,10 +268,17 @@ The price labels are the engine's own record of what served.
   - the 3 Oct versions priced until 04:37Z and were then superseded, so they get no event;
   - a second run appended nothing.
 
-**On the page:** the learning status lists the newest retired version of each family and counts
-the rest, since every nightly fit now retires the one before it. The events of one run share a
-time, so the newest is chosen by time and then by `event_id`, appended to `v_learning_status`
-(review of #306).
+**On the page:** the learning status lists the standing versions and the newest retired version of
+each family, and counts the rest, since every nightly fit now retires the one before it.
+`v_learning_status` has three columns appended:
+- `event_id`: the events of one run share a time, so the newest is chosen by time, then by `event_id`;
+- `newest_retired`: marks that row;
+- `retired_in_family`: counts the family's retired versions.
+
+The page asks for the standing rows and the marked ones only. A row cap therefore never drops a
+standing version, and the count covers rows the page never fetched. The lineup looks up its own
+versions' states separately, so an older retired S10 version still reads as retired there (review
+of #306).
 
 ### Not done here
 - The P3.4 forecast post-processing promotes per cell, and the trajectory and the per-city weather

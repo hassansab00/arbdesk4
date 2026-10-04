@@ -132,5 +132,18 @@ console.log('lineup: the plan\'s stages in order; tomorrow to 7 days back, UTC; 
   for (const order of [tie, [...tie].reverse()]) {
     assert.deepEqual(compactRetired(order).rows.map((r) => r.version), ['station-correction:2026-10-06:b']);
   }
+  // The page fetches the standing rows and each family's newest retired one;
+  // the view counts the family's retired versions, so the note counts the
+  // rows never fetched (review of #306: a row cap dropped them).
+  const served = [
+    { ...st('station_correction', 'station-correction:2027-01-07:c', 'served', 'serving'), decided_at: at('07') },
+    { ...st('station_correction', 'station-correction:2027-01-06:b', 'retired', 'retired'), decided_at: at('07'),
+      newest_retired: true, retired_in_family: 400 },
+    { ...st('calibration', 'temperature:T=1.141', 'retired', 'retired'), newest_retired: true, retired_in_family: '1' },
+    st('engine_variant', 'da_floor:v1', 'shadow', 'evaluation', true),
+  ];
+  const s = compactRetired(served);
+  assert.equal(s.hidden, 399, 'the 399 older correction versions the page never fetched are counted');
+  assert.equal(s.rows.length, 4, 'every fetched row is listed');
 }
-console.log('lineup: retired versions compacted to the newest per family, the rest counted');
+console.log('lineup: retired versions compacted to the newest per family, the rest counted, those never fetched too');

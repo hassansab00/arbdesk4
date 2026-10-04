@@ -5,9 +5,11 @@
 //   signal_path); the two new columns are named together; decisions stay
 //   append-only; anon reads none of it.
 //   record_model_versions() records each nightly version in the state its
-//   switch gives, retires what it supersedes (yesterday's fit, or the same fit
-//   at a horizon the switch no longer gives), names the rollback, registers a
-//   new shadow version, and is idempotent.
+//   switches and its prices give, retires what it supersedes (in the order
+//   the versions first priced, so the page's newest retired is the newer
+//   fit) and an older fit that never priced, names the rollback, registers a
+//   new shadow version, and is idempotent. v_learning_status marks each
+//   family's newest retired version and counts the rest for the page.
 // ===========================================================================
 const { PGlite } = require('@electric-sql/pglite');
 const fs = require('fs');
@@ -125,6 +127,11 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
                     st(reg, `station_width|${W2}|as priced`)], ['fitted', 'fitted', 'shadow']);
   assert.equal(reg[`station_correction|${C2}|as priced`].decided_by, 'rule:nightly refit; it has not priced yet');
   assert.equal(st(reg, `station_correction|${C1}|as priced`), 'served', 'the incumbent until the fit prices');
+  // Yesterday's width never priced (its switch is off): superseded by the
+  // newer fit, so one candidate stands, not one a night (review of #306).
+  assert.deepEqual([st(reg, `station_width|${W1}|as priced`), reg[`station_width|${W1}|as priced`].evidence],
+                   ['retired', `superseded by the newer fit ${W2} before it priced`]);
+  assert.equal(r.retired, 1, 'only the superseded width: the served correction and MOS stand until the fit prices');
 
   // It prices: served, the rollback named, and yesterday's superseded.
   await price(1, C2, M2);
@@ -174,6 +181,18 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   assert.deepEqual([st(reg, `station_mos|${M2}|as priced`), reg[`station_mos|${M2}|as priced`].evidence],
                    ['retired', 'station correction is off'], 'the blend serves only inside the correction');
   assert.equal(st(reg, `station_width|${W2}|as priced`), 'retired');
+  // C1 and C2 served side by side and retire in one run, at one decided_at:
+  // the newer fit (first priced later) is retired last, so it is the newest
+  // retired version the page shows (review of #306).
+  const ret = (await db.query(`select version, event_id from public.model_registry
+                                 where family = 'station_correction' and state = 'retired'
+                                   and decided_at = (select max(decided_at) from public.model_registry)
+                                 order by event_id`)).rows.map((x) => x.version);
+  assert.deepEqual(ret, [C1, C2], 'retired oldest fit first');
+  const newest = async () => (await db.query(`select family, version, retired_in_family::int n from public.v_learning_status
+                                               where newest_retired order by family`)).rows;
+  assert.deepEqual((await newest()).find((x) => x.family === 'station_correction'),
+                   { family: 'station_correction', version: C2, n: 2 });
   assert.deepEqual([(await run()).appended, (await run()).retired], [0, 0], 'switched off, nothing more to record');
   await db.exec(`update public.settings set value = value || '{"enabled": true}' where key = 'station_correction_pricing'`);
   r = await run();
@@ -200,6 +219,26 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   r = await run();
   reg = await latest();
   assert.deepEqual([st(reg, `station_correction|${C2}|as priced`), st(reg, `station_mos|${M2}|as priced`)], ['served', 'served']);
+
+  // A same-day refit whose name sorts after C2's but which first priced
+  // before C2's latest call: the two serve side by side, then retire in one
+  // run. The order is by first price, not by name or scan order, so C2 (first
+  // priced later) is the newest retired version (review of #306).
+  const C3 = 'station-correction:2026-10-02:fff0000003';
+  await price(0.1, C3);
+  await price(0, C3);
+  r = await run();
+  reg = await latest();
+  assert.deepEqual([st(reg, `station_correction|${C2}|as priced`), st(reg, `station_correction|${C3}|as priced`)], ['served', 'served']);
+  await db.exec(`update public.settings set value = value || '{"enabled": false}' where key = 'station_correction_pricing'`);
+  r = await run();
+  assert.deepEqual((await db.query(`select version from public.model_registry
+                                     where family = 'station_correction' and state = 'retired'
+                                       and decided_at = (select max(decided_at) from public.model_registry)
+                                     order by event_id`)).rows.map((x) => x.version), [C3, C2]);
+  assert.equal((await newest()).find((x) => x.family === 'station_correction').version, C2);
+  await db.exec(`update public.settings set value = value || '{"enabled": true}' where key = 'station_correction_pricing'`);
+  r = await run();
 
   // A new calibration temperature: a new version, the old one retired.
   await db.exec(`update public.settings set value = value || '{"T": 1.2}' where key = 'calibration_map'`);
@@ -282,8 +321,19 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   await assert.rejects(db.query(`update public.decisions set prediction_id = $1 where decision_id = $2`, [cp, ids.s10_old]));
 
   // The page breaks ties between one run's events on event_id (review of #306).
+  // The page asks for the standing rows and each family's newest retired one
+  // (state.neq.retired or newest_retired); the view counts the rest.
   await db.exec('set role anon');
   assert.ok((await db.query('select event_id from public.v_learning_status order by event_id desc limit 1')).rows[0].event_id);
+  const page = (await db.query(`select family, state, newest_retired, retired_in_family::int n from public.v_learning_status
+                                 where state <> 'retired' or newest_retired`)).rows;
+  const all = (await db.query(`select family, state from public.v_learning_status`)).rows;
+  assert.equal(page.filter((x) => x.state !== 'retired').length, all.filter((x) => x.state !== 'retired').length,
+               'every standing version is fetched');
+  const fams = new Set(all.filter((x) => x.state === 'retired').map((x) => x.family));
+  assert.equal(page.filter((x) => x.state === 'retired').length, fams.size, 'one retired row per family');
+  assert.equal(page.filter((x) => x.newest_retired).reduce((n, x) => n + x.n, 0),
+               all.filter((x) => x.state === 'retired').length, 'the counts cover every retired version');
   await db.exec('reset role');
 
   // anon reads none of it.
@@ -294,5 +344,5 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   await assert.rejects(db.query('select public.record_model_versions()'), /permission denied/);
   await db.exec('reset role');
 
-  console.log('decision-prediction: every decision resolves to the call it acted on (recorded, checkpoint, same_tick, not_recorded, no_call, signal_path); a nightly version is served while it prices and is not superseded (side by side too), retired when switched off, superseded or unpriced; the unpriced fit recorded once with its reason; idempotent; anon reads none of it');
+  console.log('decision-prediction: every decision resolves to the call it acted on (recorded, checkpoint, same_tick, not_recorded, no_call, signal_path); a nightly version is served while it prices and is not superseded (side by side too), retired when switched off, superseded or unpriced, oldest first; the unpriced fit recorded once with its reason, an older one retired; the newest retired per family and the counts for the page; idempotent; anon reads none of it');
 })().catch((e) => { console.error(e); process.exit(1); });

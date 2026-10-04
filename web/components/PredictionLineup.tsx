@@ -57,8 +57,12 @@ export default function PredictionLineup() {
     setDate(utcDate(now, -1));
   }, []);
 
+  // The standing versions and each family's newest retired one: the view
+  // marks it and counts the rest, so the cap never drops a standing version
+  // as retired ones pile up a night at a time (review of #306).
   const sq = useQuery<StatusRow[]>(
-    () => supabase.from("v_learning_status").select("*").order("decided_at", { ascending: false }).limit(1000),
+    () => supabase.from("v_learning_status").select("*").or("state.neq.retired,newest_retired.is.true")
+      .order("decided_at", { ascending: false }).order("event_id", { ascending: false }).limit(1000),
     [], 300000, 1000);
   const lq = useQuery<LineupRow[]>(
     () => date
@@ -71,7 +75,16 @@ export default function PredictionLineup() {
 
   const all = useMemo(() => learningStatus(sq.data ?? []), [sq.data]);
   const { rows: status, hidden: hiddenRetired } = useMemo(() => compactRetired(all), [all]);
-  const table = useMemo(() => lineupTable(lq.data ?? [], sq.data ?? []), [lq.data, sq.data]);
+  // The lineup names its own versions' registry state, an older retired one too.
+  const versions = useMemo(() => Array.from(new Set((lq.data ?? [])
+    .filter((r) => r.model_family !== "engine" && r.version).map((r) => r.version))).sort(), [lq.data]);
+  const vq = useQuery<StatusRow[]>(
+    () => versions.length
+      ? supabase.from("v_learning_status").select("*").in("version", versions).limit(1000)
+      : Promise.resolve({ data: [] as StatusRow[], error: null }),
+    [versions.join("|")], 300000, 1000);
+  const table = useMemo(() => lineupTable(lq.data ?? [], [...(sq.data ?? []), ...(vq.data ?? [])]),
+    [lq.data, sq.data, vq.data]);
   const blindCols = table.columns.filter((c) => c.blind);
 
   return <section className="space-y-3">

@@ -52,7 +52,8 @@
 --    both served. It is retired at once when a switch goes off, and once
 --    superseded or unpriced for 36 h. The newest fit in the
 --    forward rows that has not priced is
---    recorded once as fitted (the width: shadow), with the reason. Hassan's
+--    recorded once as fitted (the width: shadow), with the reason, and an
+--    older fit that never priced is retired as superseded by it. Hassan's
 --    decision makes a fit serve the morning after; this records when it did.
 --      calibration          settings.calibration_map (T to 3 decimals, the
 --                           name part 1 seeded), applies -> served or fitted
@@ -223,9 +224,14 @@ begin
     end loop;
 
     -- Retired: a served version switched off, superseded, or no longer priced.
+    -- Oldest first, by first price as "superseded" reads it: the events of one
+    -- run share decided_at, so event_id is the page's tie-break, and two
+    -- versions retiring together leave the newer fit the newest retired one
+    -- (review of #306).
     for old in
       select r.version, r.horizon from public.v_model_registry r
        where r.family = f.family and r.state = 'served' and r.version like f.pattern
+       order by (priced -> r.version ->> 'first')::timestamptz nulls first, r.decided_at, r.event_id
     loop
       newer := null;
       if may_serve and priced ? old.version then
@@ -267,6 +273,22 @@ begin
                             then format('; settings.station_correction_pricing.enabled = %s', corr_on::text) else '' end));
         appended := appended + 1;
       end if;
+      -- An older fit that never served is superseded by the newest one before
+      -- it priced: retired, so the registry holds one candidate per family,
+      -- not one a night (the width's switch is off: a new shadow each night).
+      if cur.version is not null then
+        for old in
+          select r.version, r.horizon from public.v_model_registry r
+           where r.family = f.family and r.version like f.pattern and r.version <> cur.version
+             and r.state in ('fitted', 'shadow')
+           order by r.decided_at, r.event_id
+        loop
+          insert into public.model_registry (family, version, horizon, state, decided_by, evidence)
+          values (f.family, old.version, old.horizon, 'retired', 'rule:nightly refit',
+                  format('superseded by the newer fit %s before it priced', cur.version));
+          retired := retired + 1;
+        end loop;
+      end if;
     end if;
   end loop;
 
@@ -295,6 +317,7 @@ begin
           select r.version from public.v_model_registry r
            where r.family = 'calibration' and r.horizon = 'all checkpoints' and r.version <> cur.version
              and r.version like 'temperature:%' and r.state <> 'retired'
+           order by r.decided_at, r.event_id
         loop
           insert into public.model_registry (family, version, horizon, state, decided_by, evidence)
           values ('calibration', old.version, 'all checkpoints', 'retired', 'settings.calibration_map',
@@ -402,10 +425,15 @@ comment on view public.v_decision_prediction is
 revoke all on public.v_decision_prediction from public, anon, authenticated;
 grant select on public.v_decision_prediction to service_role;
 
--- The page names the newest retired version of a family; events of one run
--- share decided_at (now() is the transaction's), so it breaks the tie on
--- event_id (review of #306). Appended as the last column: the view's other
--- columns, its rows and its grants are unchanged.
+-- The page lists the standing versions and the newest retired one of each
+-- family, and counts the rest. The registry gains retired versions every
+-- night, so the view marks the newest (newest_retired) and counts each
+-- family's retired versions (retired_in_family), and the page asks for just
+-- those rows: a row cap can no longer drop a standing version or the count
+-- (review of #306). Events of one run share decided_at (now() is the
+-- transaction's), so the tie breaks on event_id, which the page reads too.
+-- Appended as the last three columns: the view's other columns, its rows and
+-- its grants are unchanged.
 create or replace view public.v_learning_status as
 select r.family,
        r.version,
@@ -424,5 +452,9 @@ select r.family,
        r.evidence,
        r.rollback_to,
        r.note,
-       r.event_id
+       r.event_id,
+       r.state = 'retired'
+         and row_number() over (partition by r.family, r.state = 'retired'
+                                order by r.decided_at desc, r.event_id desc) = 1 as newest_retired,
+       count(*) filter (where r.state = 'retired') over (partition by r.family)  as retired_in_family
   from public.v_model_registry r;

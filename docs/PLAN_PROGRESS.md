@@ -126,6 +126,7 @@ PR that advances a step.
       - Live dry run, 19:30Z: the correction `da319e41d6` served (priced 1,574 times), MOS `0656cd4985` served (1,541), the width `d8fd4f2746` shadow (switch off, never priced); a second run appended 0.
       - The review of #306 found the function reading proxies for serving four times: the coefficient tables, the dependent switches, the forward rows' concurrency, and the horizon. Reading the price labels answers all four. A label names no lead, so the nightly versions' horizon is "as priced", with the switch's lead setting in the evidence.
       - The review's fifth round found two more gaps, both now fixed. A version whose switch is turned off is now retired at the next run, not 36 h later. The MOS blend and the width are now retired with the correction when it is off. On the page, two retirements written in one run now break their tie on `event_id`, which is appended to `v_learning_status`.
+      - The sixth round: versions retiring in one run are now written in the order they first priced. An older fit that never priced (each night's width while its switch is off) is now retired once a newer fit supersedes it. `v_learning_status` marks each family's newest retired version and counts the rest, and the page fetches only the standing rows and those, so the 1,000-row cap cannot drop a standing version.
     - The decisions archive now keeps every column, `decision_id` and the call included (review of #306).
     - Next: P2.2 is complete with this part. Open beside it: the replay could match S10 by `prediction_id`.
 

@@ -78,8 +78,19 @@ def test_a_served_nightly_fit_follows_its_switch_and_hassan_s_decision():
     # served only while its switches are on; retired at once when one goes off
     assert "may_serve := own_on and (f.family = 'station_correction' or corr_on);" in fn
     assert "if newer is not null or not may_serve then" in fn
-    # the page breaks one run's ties on event_id, appended to v_learning_status
-    assert "       r.note,\n       r.event_id\n  from public.v_model_registry r;" in MIG
+    # one run's retirements in the order the versions first priced, so the
+    # page's tie-break on event_id leaves the newer fit newest (review of #306)
+    assert "order by (priced -> r.version ->> 'first')::timestamptz nulls first, r.decided_at, r.event_id" in fn
+    # an older fit that never priced is retired once a newer fit supersedes it
+    assert "format('superseded by the newer fit %s before it priced', cur.version)" in fn
+    # the view marks each family's newest retired version and counts the rest,
+    # appended after event_id; the page fetches the standing rows and those only
+    view = MIG[MIG.index("create or replace view public.v_learning_status as"):]
+    assert "       r.note,\n       r.event_id,\n" in view
+    assert "order by r.decided_at desc, r.event_id desc) = 1 as newest_retired" in view
+    assert "count(*) filter (where r.state = 'retired') over (partition by r.family)  as retired_in_family" in view
+    page = (ROOT / "web" / "components" / "PredictionLineup.tsx").read_text()
+    assert '.or("state.neq.retired,newest_retired.is.true")' in page
     assert "## Decided by Hassan, 4 Oct: the nightly refits stay automatic" in DOC
 
 
