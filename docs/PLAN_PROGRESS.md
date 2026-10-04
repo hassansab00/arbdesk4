@@ -35,9 +35,13 @@ PR that advances a step.
     - On 30 Sep - 2 Oct the US label differed from the settlement on 22 of 36 city-days; it now differs on 0.
     - station_mos and station_correction use it from their next run; the 5 Oct weather fit is the first on it.
     - S10's file (rd1 and rd3) keeps 111 old labels of 22,484. It is not refitted during rd3's forward test; the dated note is in `docs/CHALLENGER_C_PREREG.md`.
-  - **Seen, not changed:**
-    - `v_city_day_features` picks the morning reading arbitrarily among same-hour ties: 253 of 402 US city-days have tied readings with different temperatures.
-    - `v_city_climb_profile_live` takes hourly maxima over every source.
+  - **The morning reading, fixed 4 Oct (this PR, applied live as `one_morning_reading`).**
+    - `v_city_day_features` chose it among same-hour ties arbitrarily. 253 of 402 US city-days and 431 of 1,220 others had tied readings with different temperatures.
+    - Now: the settlement feed first, then nearest 08:00 by the minute, then the earlier.
+    - Proof: the 17 other columns were identical on 1,658 city-days.
+    - The cache from 2 Sep was recomputed, md5-checked before and after (`data/repairs/2026-10-04-morning-reading`): only morning columns moved, on 722 rows. `morning_temp_c` moved by 1.23 °C on average in the US and 1.61 °C elsewhere.
+    - Days before 2 Sep keep their old pick (raw readings no longer held). The 5 Oct weekly fit is the first on these features.
+  - **Seen, not changed:** `v_city_climb_profile_live` takes hourly maxima over every source.
 - **External improvement plan of 4 Oct: reviewed in `docs/EXTERNAL_PLAN_REVIEW_2026-10-04.md`.** It aligns with fec-v1 on every principle.
   - **P0.1, this PR.** One call per checkpoint.
     - Cause: the tick's 75-minute window overlaps the next tick, and `engine_version` is the commit, which the nightly bots change.
