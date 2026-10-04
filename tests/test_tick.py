@@ -137,6 +137,22 @@ def _rows(probs, **extra):
 LOCAL = dt.datetime(2026, 9, 24, 18, 0)
 
 
+def test_a_row_names_its_full_artifact_version_and_its_raw_forecast():
+    """P2.2 (4 Oct): the prediction contract needs the label the call was
+    priced from in full - model_path and forecast_model are cut from it - and
+    the forecast before correction."""
+    label = ("station_correction:station-correction:2026-10-04:da319e41d6+station-mos:"
+             "2026-10-04:0656cd4985:open_meteo_forecast:2026-10-04T12:54:43.624+00:00")
+    rows = _rows({"b1": 0.4, "b2": 0.6}, forecast_max_c=22.37)
+    row, _ = tick.build_row("nyc", "2026-09-25", "d1_eve", LOCAL, rows,
+                            ["measurement_layer:q_down0.0200_q_up0.0500:city", "priced_from:" + label],
+                            {}, None, "git:abc")
+    assert row["priced_from"] == label and row["raw_forecast_c"] == 22.37
+    bare, _ = tick.build_row("nyc", "2026-09-25", "d1_eve", LOCAL, _rows({"b1": 0.4, "b2": 0.6}), [],
+                             {}, None, "git:abc")
+    assert bare["priced_from"] is None and bare["raw_forecast_c"] is None
+
+
 def test_a_row_carries_the_ladder_the_top_pick_and_the_market():
     rows = _rows({"b1": 0.2, "b2": 0.5, "b3": 0.3})
     books = {"b1": {"bid": 0.30, "ask": 0.34, "last": 0.3}, "b2": {"bid": 0.2, "ask": 0.24, "last": 0.2}}

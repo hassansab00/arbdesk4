@@ -206,6 +206,11 @@ def _path_and_model(reasons):
     return path, model
 
 
+def _priced_from(reasons):
+    """The full label the engine priced from (its reasons' priced_from:...), or None."""
+    return next((r[len("priced_from:"):] for r in reasons or [] if r.startswith("priced_from:")), None) or None
+
+
 def build_row(city, target, checkpoint, local_time, rows, reasons, books, reading, version):
     """One prediction_checkpoints row, or (None, why) when it cannot be one.
 
@@ -243,6 +248,11 @@ def build_row(city, target, checkpoint, local_time, rows, reasons, books, readin
                                if priced else None),
         "inputs_ok": inputs_ok,
         "block_reason": None if inputs_ok else (head.get("pricing_block_reason") or "pricing_ineligible"),
+        # P2.2 (4 Oct): the call's artifact version in full, and the forecast
+        # before any correction - the prediction contract's two engine fields
+        # the row did not keep (docs/P22_PREDICTION_CONTRACT.md).
+        "priced_from": _priced_from(reasons),
+        "raw_forecast_c": head.get("forecast_max_c"),
     }
     return row, None
 

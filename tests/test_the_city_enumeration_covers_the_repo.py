@@ -345,6 +345,10 @@ MIGRATION_RECORD = {
     "supabase/migrations/20260929010000_a_cut_day_keeps_its_cached_values.sql":
         "refresh_feature_cache, as in sql/ad4_28 and ad4_29 - the day-feature "
         "record, which must cover every city a prune reaches",
+    "supabase/migrations/20261004190000_one_prediction_contract.sql":
+        "v_prediction_contract (P2.2) - cities.icao only, the station of each call, by a LEFT "
+        "join off the calls already recorded; every recorded call, a retired city's too, "
+        "because it is the record",
     "supabase/migrations/20261004160000_one_morning_reading.sql":
         "v_city_day_features again, as in sql/ad4_21 - cities.timezone only, to put each reading "
         "on its city's local day; the day-feature record, which must cover every city a prune reaches",
