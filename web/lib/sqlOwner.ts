@@ -260,6 +260,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_workflow_gate_health": "ad4_14_workflows.sql",
   "v_workflow_runs": "ad4_14_workflows.sql",
   "v_write_access": "ad4_38_grants.sql",
+  "variant_shadow_checkpoints": "supabase/migrations/20261004180000_engine_variants_in_shadow.sql",
   "weather_events": "ad4_live_weather.sql",
   "weather_forecast_features": "ad4_24_nws_gridpoint.sql",
   "weather_forecast_models": "supabase/migrations/20260923190000_every_forecast_model.sql",

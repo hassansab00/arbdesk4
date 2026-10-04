@@ -509,6 +509,15 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     detail["engine"] = engine_shadow.record(out, s10_ladders, bands_by_market,
                                             market_of, unit_of, engine_floors, now,
                                             deadline=t0 + budget_s, dry_run=dry_run)
+    # P1.1's candidate beside each same-day call, observe only
+    # (docs/P11_DA_FLOOR_PREREG.md). After the engine's decisions, which act
+    # on this tick; in what is left of the budget, 2 s kept for the log row.
+    # Measured 2-4 Oct (72 ticks): the whole tick took 26.5 s at the median and
+    # 38.4 s at most, the engine's step 3.7 s and 7.3 s. Never raises.
+    import variant_shadow
+    detail["variants"] = variant_shadow.record(out, results, market_of, bands_by_market, tz_of,
+                                               unit_of, dry_run=dry_run,
+                                               deadline=t0 + budget_s - 2.0)
     detail.update({"written": written if not dry_run else 0, "would_write": len(out),
                    "deferred": deferred, "failed": failed[:30],
                    "books": len(books), "seconds": round(time.monotonic() - t0, 1)})
@@ -517,8 +526,11 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     engine_error = ((detail.get("engine") or {}).get("error")
                     or ((detail.get("engine") or {}).get("orders") or {}).get("error"))
     current_error = current.get("error") or ((current.get("published") or {}).get("refused") or None)
+    # A capture the pre-registered test loses is attention too (Codex on
+    # #303): the checkpoint is written, so no later tick retries its row.
+    variant_lost = variant_shadow.lost(detail.get("variants"))
     status = ("ok" if not failed and not deferred and not stations["error"] and not engine_error
-              and not current_error else "attention")
+              and not current_error and not variant_lost else "attention")
     print(f"tick {now:%Y-%m-%d %H:%MZ}: {len(due)} due, {len(out)} rows, "
           f"{len(reprice)} re-priced, {len(ladders)} current ladders, "
           f"{len(deferred)} deferred, {len(failed)} failed, {detail['seconds']} s")
