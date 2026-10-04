@@ -542,8 +542,11 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     # A capture the pre-registered test loses is attention too (Codex on
     # #303): the checkpoint is written, so no later tick retries its row.
     variant_lost = variant_shadow.lost(detail.get("variants"))
+    # So is an S10 ladder the engine acted on that the record does not hold
+    # (P2.2 part 3): its decisions are written naming no call.
+    s10_unnamed = bool((s10.get("shadow") or {}).get("unrecorded"))
     status = ("ok" if not failed and not deferred and not stations["error"] and not engine_error
-              and not current_error and not variant_lost else "attention")
+              and not current_error and not variant_lost and not s10_unnamed else "attention")
     print(f"tick {now:%Y-%m-%d %H:%MZ}: {len(due)} due, {len(out)} rows, "
           f"{len(reprice)} re-priced, {len(ladders)} current ladders, "
           f"{len(deferred)} deferred, {len(failed)} failed, {detail['seconds']} s")

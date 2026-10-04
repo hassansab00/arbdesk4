@@ -103,3 +103,47 @@ assert.equal(only.lines[0].winner_label, null);
 assert.deepEqual(lineupTable([], status), { columns: [], lines: [], tallies: {} });
 
 console.log('lineup: the plan\'s stages in order; tomorrow to 7 days back, UTC; the engine once, S10 by version, the variants; blinded columns never tallied');
+
+// ------------------------------------------------------------ retired versions (P2.2 part 3)
+{
+  const { compactRetired } = require(path.join(__dirname, '..', '.route-test', 'lib', 'lineup.js'));
+  const at = (d) => `2026-10-${d}T05:00:00Z`;
+  const rows = [
+    { ...st('station_correction', 'station-correction:2026-10-07:c', 'served', 'serving'), decided_at: at('07') },
+    { ...st('station_correction', 'station-correction:2026-10-06:b', 'retired', 'retired'), decided_at: at('07') },
+    { ...st('station_correction', 'station-correction:2026-10-05:a', 'retired', 'retired'), decided_at: at('06') },
+    { ...st('station_mos', 'station-mos:2026-10-06:y', 'retired', 'retired'), decided_at: at('07') },
+    { ...st('station_mos', 'station-mos:2026-10-05:x', 'retired', 'retired'), decided_at: at('06') },
+    st('s10', 'rd1:2026-09-25:389620c0d9', 'retired', 'retired'),
+    st('engine_variant', 'da_floor:v1', 'shadow', 'evaluation', true),
+  ];
+  const c = compactRetired(rows);
+  assert.equal(c.hidden, 2, 'one retired line per family; the older ones counted');
+  assert.deepEqual(c.rows.filter((r) => r.stage === 'retired').map((r) => r.version),
+    ['station-correction:2026-10-06:b', 'station-mos:2026-10-06:y', 'rd1:2026-09-25:389620c0d9'], 'the newest retired of each');
+  assert.equal(c.rows.filter((r) => r.stage !== 'retired').length, 2, 'nothing standing is ever hidden');
+  assert.deepEqual(compactRetired([]), { rows: [], hidden: 0 });
+  // One run retires two versions at the same decided_at: the later event wins,
+  // whatever order the rows arrive in (review of #306).
+  const tie = [
+    { ...st('station_correction', 'station-correction:2026-10-05:a', 'retired', 'retired'), decided_at: at('08'), event_id: 41 },
+    { ...st('station_correction', 'station-correction:2026-10-06:b', 'retired', 'retired'), decided_at: at('08'), event_id: 42 },
+  ];
+  for (const order of [tie, [...tie].reverse()]) {
+    assert.deepEqual(compactRetired(order).rows.map((r) => r.version), ['station-correction:2026-10-06:b']);
+  }
+  // The page fetches the standing rows and each family's newest retired one;
+  // the view counts the family's retired versions, so the note counts the
+  // rows never fetched (review of #306: a row cap dropped them).
+  const served = [
+    { ...st('station_correction', 'station-correction:2027-01-07:c', 'served', 'serving'), decided_at: at('07') },
+    { ...st('station_correction', 'station-correction:2027-01-06:b', 'retired', 'retired'), decided_at: at('07'),
+      newest_retired: true, retired_in_family: 400 },
+    { ...st('calibration', 'temperature:T=1.141', 'retired', 'retired'), newest_retired: true, retired_in_family: '1' },
+    st('engine_variant', 'da_floor:v1', 'shadow', 'evaluation', true),
+  ];
+  const s = compactRetired(served);
+  assert.equal(s.hidden, 399, 'the 399 older correction versions the page never fetched are counted');
+  assert.equal(s.rows.length, 4, 'every fetched row is listed');
+}
+console.log('lineup: retired versions compacted to the newest per family, the rest counted, those never fetched too');

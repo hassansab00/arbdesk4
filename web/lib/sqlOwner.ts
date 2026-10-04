@@ -161,6 +161,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_data_freshness": "ad4_39_freshness.sql",
   "v_data_health": "ad4_39_freshness.sql",
   "v_databank_coverage": "ad4_18_databank.sql",
+  "v_decision_prediction": "supabase/migrations/20261004210000_decisions_name_their_call.sql",
   "v_desk_equity_curve": "ad4_84_risk_budget.sql",
   "v_desk_risk_state": "ad4_84_risk_budget.sql",
   "v_edge_marks_live": "ad4_80_prune_edge_history.sql",

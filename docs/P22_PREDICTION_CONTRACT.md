@@ -1,4 +1,4 @@
-# P2.2: one prediction contract and a version registry (parts 1 and 2, 4 Oct 2026)
+# P2.2: one prediction contract and a version registry (parts 1 to 3, 4 Oct 2026)
 
 **The source.** The external improvement plan of 4 Oct, item P2.2 ("Unify forecast output and
 controlled learning"), reviewed in `docs/EXTERNAL_PLAN_REVIEW_2026-10-04.md`. It asks for:
@@ -83,7 +83,7 @@ stay null):
 | s10 | `rd3:2026-09-25:555719d4a1` | same day | shadow | accepted on the holdout (`docs/CHALLENGER_C_PREREG.md`); forward first look from 25 Oct |
 | engine_variant | `da_floor:v1` | same day | shadow | `docs/P11_DA_FLOOR_PREREG.md`; first look about 25 Oct |
 | calibration | `temperature:T=1.141` | all checkpoints | fitted | `settings.calibration_map.applies` is false |
-| station_width | W2 per-city width | day-ahead | shadow | the switch `station_width_pricing` is off; scored by `P3.9_width_score` (5 dates of the 7 needed, 4 Oct) |
+| station_width | W2 per-city width | day-ahead | shadow | the switch `station_width_pricing` is off; scored by `P3.9_width_score` (5 dates of the 7 needed, 4 Oct). Part 3 retires this row once a nightly width version is registered (live, at its first run): from then on each nightly width fit is its own version (review of #306). |
 | forecast_postprocess | the P3.4 bias and width cells | per city and lead | served | `v_forecast_postprocess_applied`: 1 cell (1 city, lead 4), applied since its gate passed on 3 Oct |
 | trajectory | P3.4 trajectory | same day | fitted | `applied: 0` (gate unmet) |
 | weather_model | per-city fits | per city and lead | shadow | `model_promotion`: 0 promoted, 195 shadow, 189 stale (4 Oct) |
@@ -167,7 +167,122 @@ Migration `20261004200000_the_page_reads_the_contract.sql`. The panel is
 - A blinded column is labelled as such and never tallied (`web/lib/lineup.ts`,
   `web/tests/lineup.test.cjs`).
 
-## Next part
-- **Part 3:** the paper decisions and the evaluation name the contract's identity
-  (`decisions.checkpoint_id` already points at the engine's call; S10's decisions need theirs),
-  and a refit writes a `fitted` event instead of serving.
+## Part 3: decisions name their call, and no refit serves unrecorded
+Migration `20261004210000_decisions_name_their_call.sql`. The plan's acceptance: the page's calls,
+the paper decisions and the recorded evaluation name the same forecast identity, and a refit does
+not silently replace the incumbent.
+
+### 1. Each decision names the call it acted on
+**The gap, live on 4 Oct.**
+- The engine's six strategies write one `decisions` row per city-day, and `checkpoint_id` names
+  the engine's checkpoint.
+- S11 and S12 decide on that call's ladder, so for them it is the right call.
+- S10's three strategies decide on S10's own ladder (`s10_shadow_checkpoints`). Yet all 1,833 of
+  their rows with a checkpoint named the engine's call, and none named the S10 row or the S10
+  version they acted on.
+
+**From this PR on, the tick writes the call.**
+- `decisions.prediction_id` and `decisions.prediction_source` name it as the contract does: its
+  `prediction_id` and `recorded_in`. The two are set together, or both left null.
+- S11 and S12 name the engine checkpoint.
+- S10 names the stored S10 row and acts on that row's ladder:
+  - `scripts/s10_shadow.py` reads the rows back after its write.
+  - The write ignores a duplicate key, so a recomputed ladder was never stored. Until now S10
+    decided on it anyway: 30 of its decisions acted on a ladder no row holds.
+  - If the read-back fails, the decision keeps the computed ladder and names no call. The tick
+    counts it as `unrecorded` and logs `attention`, as it does for a lost `da_floor` capture.
+  - If the write fails, S10 has no ladder and decides `NONE`.
+
+**`v_decision_prediction` resolves every decision, the older ones too, and says how (`link`).**
+Counts are from the live dry run on 4 Oct (33,497 decisions):
+
+| `link` | Meaning | Live, 4 Oct |
+|---|---|---|
+| `recorded` | `prediction_id` written by the tick | from this PR on |
+| `checkpoint` | S11 and S12: the engine's checkpoint is their call | `s11_ladder` 1,844 |
+| `same_tick` | an S10 decision before this PR: the rd1 row written in the same tick (within 60 s; the measured gaps run to 38.7 s, and none lies between 60 s and 10 min) | `s10_winner` 1,470 |
+| `not_recorded` | an S10 decision on a ladder no stored row holds (the engine's second captures, 25 Sep - 1 Oct) | `s10_winner` 30 |
+| `no_call` | decided without a ladder (S10 has no evening-before call), or without a checkpoint (27 Sep) | `s10_winner` 344, `s11_ladder` 78 |
+| `signal_path` | s1-s9: they decided on the old signal path, which is not a recorded call | `s1` 2,133 |
+
+**The evaluation names the same identity.**
+- The engine's grading (`fact_checkpoint_outcome`) is keyed by `checkpoint_id`, its
+  `prediction_id`.
+- S10's forward scoring (`tools/fec_s10_forward.py`) names city, date, checkpoint and both model
+  versions. That key is unique in `s10_shadow_checkpoints`, so it names one row; the
+  pre-registered tool is left unchanged.
+- A paper order carries its `decision_id` (`engine_orders`), and through it the call.
+- **The archive keeps the link.** `archive_observations` exports `decisions` from a fixed column list
+  and then prunes at 30 days. The list now holds every column of the table: `decision_id` (the key,
+  until now used only to page) and the two new ones. A test holds the list to the table, as the
+  migrations declare it (review of #306). The first decisions are due for the archive about 25 Oct.
+
+### 2. The nightly refits are recorded as they serve
+Hassan's decision stands: they serve automatically. What changes is that a refit is no longer
+silent. `record_model_versions()` appends a `model_registry` event whenever a version's state
+changes.
+
+**Served means priced.** Whether a version serves depends on several things:
+- which forward rows are fresh;
+- which city-days a fit rewrote (the engine reads every fresh row, whatever its version);
+- each call's lead;
+- the switches. The MOS blend and the width apply only inside the station correction's branch.
+
+The engine records the answer on every price it makes. The label names the correction version,
+then `+station-mos:` when the blend applied and `+station-width:` when the width priced
+(`forecast_provenance`). So the function reads what priced, rather than re-deriving what could
+have:
+
+| State | When |
+|---|---|
+| served | priced in the last 36 h (`band_probabilities` -> `model_versions.label`, and the tick's `priced_from`), no newer version of the family first priced after its last price, its switches on (the MOS blend and the width also need the correction's), and forward rows younger than the switch's `max_age_hours`, as `probability_engine` reads them. The width rides on the correction's rows; a MOS row counts only over a fresh correction row of its city-day made by its `p39_version`. Two versions pricing side by side are both served. |
+| retired | at once when a switch goes off or its forward rows expire; or superseded (a newer version first priced after its last price); or not priced for 36 h. Versions retiring in one run are written in the order they first priced, so the newer fit gets the later `event_id`. |
+| fitted (the width: shadow) | the newest fit in the forward rows that has not priced, recorded once with the reason: the switch is off, the correction is off, or it has not priced yet. An older fit that never priced is retired once a newer fit supersedes it, so each family keeps one candidate, not one a night. A row registered by hand is left alone, except part 1's `W2 per-city width`, retired once a nightly width version is registered. |
+
+**Calibration** and new **S10 / variant** versions are recorded as before:
+- calibration: `settings.calibration_map`, served if `applies`, else fitted;
+- S10 and variants: a version first written in the last two days is recorded once as shadow.
+
+**Each served event names its rollback,** the version served before it.
+
+**How this answered the review of #306:** each round found the function reading a proxy for
+serving.
+- First the coefficient tables, which may never price.
+- Then the forward rows, where several versions are fresh at once and horizons apply.
+- Then a horizon taken from the switch, which the prices can't confirm.
+
+The price labels are the engine's own record of what served.
+
+- **One horizon, "as priced".** A price label names the versions, not the lead, so which leads a
+  nightly version served can't be told from its prices. The switch's lead setting goes in the
+  evidence. Per-horizon promotion is for candidates, which move by a decision; the nightly fits serve
+  by Hassan's rule, wherever the engine prices with them (review of #306).
+- **It runs in the database.** pg_cron calls it hourly at :50, which costs no Actions minutes
+  (Rule 7). It also runs once in the migration.
+- **Live dry run, 4 Oct 19:30Z, rolled back:**
+  - the correction `station-correction:2026-10-04:da319e41d6` is served, priced 1,574 times from
+    08:36Z to 17:36Z;
+  - MOS `station-mos:2026-10-04:0656cd4985` is served, priced 1,541 times;
+  - the width `station-width:2026-10-04:d8fd4f2746` is shadow: its switch is off, and it never
+    priced;
+  - the 3 Oct versions priced until 04:37Z and were then superseded, so they get no event;
+  - a second run appended nothing.
+
+**On the page:** the learning status lists the standing versions and the newest retired version of
+each family, and counts the rest, since every nightly fit now retires the one before it.
+`v_learning_status` has three columns appended:
+- `event_id`: the events of one run share a time, so the newest is chosen by time, then by `event_id`;
+- `newest_retired`: marks that row;
+- `retired_in_family`: counts the family's retired versions.
+
+The page asks for the standing rows and the marked ones only. A row cap therefore never drops a
+standing version, and the count covers rows the page never fetched. The lineup looks up its own
+versions' states separately, so an older retired S10 version still reads as retired there (review
+of #306).
+
+### Not done here
+- The P3.4 forecast post-processing promotes per cell, and the trajectory and the per-city weather
+  models fit per cell or per city. They keep their family rows from part 1; a version per cell
+  would be 195 rows.
+- The replay (`engine_replay_live.py`) still matches S10 by key and version. It could use the
+  decisions' `prediction_id` from now on.

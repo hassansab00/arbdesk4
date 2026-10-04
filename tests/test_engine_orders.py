@@ -213,12 +213,14 @@ def _exit(action, trace_extra=None, decide=None, monkeypatch=None):
         monkeypatch.setattr(de, "decide", decide)
     trace = dict({"s10": {"action": action, "reason": "because", "target": "b1"}}, **(trace_extra or {}))
     return es.exit_of("s10_winner", trace["s10"], HELD, BOOK, BOOK, LG, trace, {}, "run", "2026-09-28T13:36:00+00:00",
-                      "cp", "london", "2026-09-28")
+                      "cp", "london", "2026-09-28", prediction=("s10-row", "s10_shadow_checkpoints"))
 
 
 def test_a_certainly_lost_bucket_is_sold_at_the_bid():
     row, ex = _exit("SELL")
     assert (row["action"], row["reason_code"], row["n_signals"]) == ("SELL", "own_rule_sell", 1)
+    assert (row["prediction_id"], row["prediction_source"]) == ("s10-row", "s10_shadow_checkpoints"), \
+        "an exit names the S10 call it acted on (P2.2 part 3)"
     assert ex["kind"] == "SELL" and ex["buy"] is None
     assert ex["sell"] == {"band_id": "b2", "side": "YES", "shares": 60.0, "limit_price": 0.18}
 
@@ -233,6 +235,7 @@ def test_a_switch_is_a_sale_and_a_buy_sized_on_the_ledger_after_the_sale(monkeyp
                 "binding": [], "target_usd": 13.2, "held_usd": 0.0, "versions": {"engine": "engine-v1"}}
     row, ex = _exit("SWITCH", {"switch_view": {"probs": {}}}, decide, monkeypatch)
     assert (row["action"], row["reason_code"], row["n_signals"]) == ("SWITCH", "own_rule_switch", 2)
+    assert row["prediction_id"] == "s10-row"
     assert ex["kind"] == "SWITCH" and ex["buy"]["orders"][0]["band_id"] == "b1"
     from strategies.s10_max_temp_winner import _net_bid
     assert seen["ledger"]["held"] == {} and seen["ledger"]["cash_usd"] == pytest.approx(970 + 60 * _net_bid(BOOK, "b2"))

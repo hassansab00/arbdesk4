@@ -243,3 +243,49 @@ def test_yesterdays_reading_vouches_for_nothing_today(monkeypatch):
 def test_the_tick_hands_the_engine_the_readings_time():
     src = (ROOT / "scripts" / "tick.py").read_text()
     assert '(running.get(c) or {}).get("latest_reading_at")) for c, (d, f) in floors.items()}' in src
+
+
+# --------------------------------------------------------------------------
+# P2.2 part 3: each decision names the call it acted on
+# --------------------------------------------------------------------------
+def _decide(s10_ladders, checkpoint_id="cp1"):
+    ledgers = {sid: flat for sid in es.STRATEGIES}
+    rows, _ = es.decide_all([(checkpoint_id, ROW)], s10_ladders, {("london", "2026-09-28"): BANDS},
+                            {"london": "C"}, {}, ledgers, {}, None, time.monotonic() + 60, "run-1",
+                            "2026-09-28T11:36:00+00:00")
+    return {r["strategy_id"]: r for r in rows}
+
+
+def test_s11_and_s12_name_the_engine_call_and_s10_the_stored_s10_row():
+    """Live on 4 Oct, every S10 decision with a checkpoint (1,833) named the
+    engine's call, though S10 acts on its own ladder."""
+    by = _decide({("london", "2026-09-28", "noon"): {"probs": PROBS, "id": "s10-row-1"}})
+    for sid in ("s11_ladder", "s11_lock", "s12_no"):
+        assert (by[sid]["prediction_id"], by[sid]["prediction_source"]) == ("cp1", "prediction_checkpoints"), sid
+    for sid in es.S10:
+        assert (by[sid]["prediction_id"], by[sid]["prediction_source"]) == ("s10-row-1", "s10_shadow_checkpoints"), sid
+        assert by[sid]["checkpoint_id"] == "cp1", "checkpoint_id still names the tick's checkpoint"
+
+
+def test_a_call_the_record_does_not_hold_is_not_named():
+    bare = _decide({("london", "2026-09-28", "noon"): PROBS})              # the replay's shape
+    unread = _decide({("london", "2026-09-28", "noon"): {"probs": PROBS, "id": None}})
+    for by in (bare, unread):
+        for sid in es.S10:
+            assert (by[sid]["prediction_id"], by[sid]["prediction_source"]) == (None, None), sid
+            assert by[sid]["reason_code"].startswith("own_rule_"), "it still decides on the ladder it has"
+    none = _decide({})
+    for sid in es.S10:
+        assert none[sid]["reason_code"] == "no_ladder" and none[sid]["prediction_id"] is None
+    assert _decide({}, checkpoint_id=None)["s11_ladder"]["prediction_id"] is None
+
+
+def test_the_two_columns_are_named_together_as_the_table_requires():
+    """decisions_prediction_named: prediction_id and prediction_source are
+    both set or both null (20261004210000)."""
+    for by in (_decide({("london", "2026-09-28", "noon"): {"probs": PROBS, "id": "x"}}), _decide({})):
+        for r in by.values():
+            assert (r["prediction_id"] is None) == (r["prediction_source"] is None), r
+            assert r["prediction_source"] in (None, "prediction_checkpoints", "s10_shadow_checkpoints")
+    mig = (ROOT / "supabase" / "migrations" / "20261004210000_decisions_name_their_call.sql").read_text()
+    assert "check\n      ((prediction_id is null) = (prediction_source is null))" in mig

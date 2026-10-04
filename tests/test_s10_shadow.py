@@ -227,9 +227,15 @@ def test_a_day_with_too_few_models_gets_no_challenger_row(challenger):
         assert rows == [] and skipped == {f"fewer than {rd.MIN_MODELS_C} models": 1}
 
 
-def _fake_db(monkeypatch, models, upsert_fails_for=None):
+def _fake_db(monkeypatch, models, upsert_fails_for=None, held=None, read_fails=False):
+    """The table as PostgREST serves it: the write ignores a duplicate key
+    (common.upsert), and the read-back returns what is stored. held: rows
+    already stored before the tick."""
     import common
     written = []
+    stored = {}
+    for r in held or []:
+        stored[(r["city_key"], r["target_date"], r["checkpoint"], r["model_version"])] = dict(r)
     morning = [(h + m / 60, 12 + 0.5 * h) for h in range(12) for m in (0, 30)]
 
     def rest_all(path, params=None, **k):
@@ -238,6 +244,11 @@ def _fake_db(monkeypatch, models, upsert_fails_for=None):
             return [row]
         if path == "weather_observations":
             return [dict(o, city_key="london") for o in _obs(morning)]
+        if path == "s10_shadow_checkpoints":
+            if read_fails:
+                raise RuntimeError("read refused")
+            version = dict(params)["model_version"].removeprefix("eq.")
+            return [r for r in stored.values() if r["model_version"] == version]
         raise AssertionError(path)
 
     def upsert(table, rows, on_conflict, **k):
@@ -245,6 +256,9 @@ def _fake_db(monkeypatch, models, upsert_fails_for=None):
         if upsert_fails_for and rows[0]["model_version"].startswith(upsert_fails_for):
             raise RuntimeError("refused")
         written.append(rows)
+        for r in rows:
+            key = (r["city_key"], r["target_date"], r["checkpoint"], r["model_version"])
+            stored.setdefault(key, dict(r, checkpoint_id=f"id-{len(stored) + 1}"))
         return len(rows)
     monkeypatch.setattr(common, "rest_all", rest_all)
     monkeypatch.setattr(common, "upsert", upsert)
@@ -262,11 +276,44 @@ def _record(monkeypatch, params, challenger, models, **kw):
     return out, written, ladders
 
 
+KEY = ("london", DAY.isoformat(), "noon")
+
+
 def test_the_engine_reads_rd1_only_and_rd3_is_written_on_its_own(monkeypatch, params, challenger):
     out, written, ladders = _record(monkeypatch, params, challenger, MODELS7)
     assert [[r["model_version"] for r in batch] for batch in written] == [["rd1:test"], ["rd3:test"]]
     assert out["written"] == 1 and out["challenger"]["written"] == 1 and out["challenger"]["version"] == "rd3:test"
-    assert ladders == {("london", DAY.isoformat(), "noon"): written[0][0]["probs"]}, "the engine's ladders are rd1's"
+    assert ladders == {KEY: {"probs": written[0][0]["probs"], "id": "id-1"}}, \
+        "the engine's ladders are rd1's, as stored, with the row that holds them"
+    assert out["unrecorded"] == 0
+
+
+def test_a_held_key_keeps_its_first_ladder_and_the_engine_acts_on_it(monkeypatch, params, challenger):
+    """P2.2 part 3. The write ignores a duplicate key, so a recomputed ladder
+    is not stored. Until 4 Oct the engine decided on it anyway: 30 S10
+    decisions (25 Sep - 1 Oct) acted on a ladder no row holds. Now it acts on
+    the stored call and names it."""
+    first = {b: (1.0 if b == "b18" else 0.0) for b in ("lo", "b15", "b16", "b17", "b18", "b19", "b20", "hi")}
+    held = [{"checkpoint_id": "held-1", "city_key": "london", "target_date": DAY.isoformat(), "checkpoint": "noon",
+             "model_version": "rd1:test", "probs": first}]
+    out, written, ladders = _record(monkeypatch, params, challenger, MODELS7, held=held)
+    assert written[0][0]["probs"] != first, "this tick computed a different ladder"
+    assert ladders == {KEY: {"probs": first, "id": "held-1"}}
+    assert out["unrecorded"] == 0
+
+
+def test_a_failed_read_back_names_no_call_and_is_counted(monkeypatch, params, challenger):
+    out, written, ladders = _record(monkeypatch, params, challenger, MODELS7, read_fails=True)
+    assert ladders == {KEY: {"probs": written[0][0]["probs"], "id": None}}
+    assert out["unrecorded"] == 1 and "read refused" in out["read_back_error"]
+    assert "error" not in out, "the tick's S10 step still succeeds"
+
+
+def test_a_failed_write_gives_the_engine_no_ladder(monkeypatch, params, challenger):
+    """Nothing stored, nothing to act on: S10 decides NONE (no ladder) rather
+    than on a ladder the record does not hold."""
+    out, written, ladders = _record(monkeypatch, params, challenger, MODELS7, upsert_fails_for="rd1")
+    assert ladders == {} and "RuntimeError" in out["error"]
 
 
 def test_a_failing_challenger_never_touches_rd1(monkeypatch, params, challenger):

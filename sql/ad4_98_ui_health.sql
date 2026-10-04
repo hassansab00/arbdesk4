@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 268 of them - and for each MISSING one names the
+-- and function the app reads - 269 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -172,6 +172,7 @@ with expected(rel, owner, used_by) as (values
     ('v_data_freshness', 'ad4_39_freshness.sql', ''),
     ('v_data_health', 'ad4_39_freshness.sql', ''),
     ('v_databank_coverage', 'ad4_18_databank.sql', '(DataBank)'),
+    ('v_decision_prediction', 'supabase/migrations/20261004210000_decisions_name_their_call.sql', ''),
     ('v_desk_equity_curve', 'ad4_84_risk_budget.sql', ''),
     ('v_desk_risk_state', 'ad4_84_risk_budget.sql', ''),
     ('v_edge_marks_live', 'ad4_80_prune_edge_history.sql', ''),
@@ -462,6 +463,7 @@ begin
     ('v_data_freshness', 'ad4_39_freshness.sql', ''),
     ('v_data_health', 'ad4_39_freshness.sql', ''),
     ('v_databank_coverage', 'ad4_18_databank.sql', '(DataBank)'),
+    ('v_decision_prediction', 'supabase/migrations/20261004210000_decisions_name_their_call.sql', ''),
     ('v_desk_equity_curve', 'ad4_84_risk_budget.sql', ''),
     ('v_desk_risk_state', 'ad4_84_risk_budget.sql', ''),
     ('v_edge_marks_live', 'ad4_80_prune_edge_history.sql', ''),

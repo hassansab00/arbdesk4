@@ -33,6 +33,12 @@ export interface StatusRow {
   family: string; version: string; horizon: string; state: string; stage: string;
   blind: boolean; decided_at: string; decided_by: string; evidence: string;
   rollback_to: string | null; note: string | null;
+  /** the registry event; breaks a tie between events of one run (same decided_at) */
+  event_id?: number | string | null;
+  /** the view marks each family's newest retired version, so the page fetches only it */
+  newest_retired?: boolean | null;
+  /** the family's retired versions, counted by the view: rows the page never fetched included */
+  retired_in_family?: number | string | null;
 }
 
 /** The plan's words, in the order a version moves through them. */
@@ -79,6 +85,34 @@ export function learningStatus(rows: StatusRow[]): StatusRow[] {
   return [...rows].sort((a, b) =>
     stage(a.stage) - stage(b.stage) || fam(a.family) - fam(b.family)
     || a.family.localeCompare(b.family) || a.version.localeCompare(b.version));
+}
+
+/**
+ * The retired versions worth a line: the most recent per family, the rest
+ * counted. From P2.2 part 3 every nightly fit is a version and retires the
+ * one before (record_model_versions), so the station correction and the MOS
+ * blend each add a retired row a night. The page asks the view for the
+ * standing rows and each family's newest retired one only (review of #306),
+ * so the count comes from the view's retired_in_family; rows without it are
+ * counted here.
+ */
+export function compactRetired(rows: StatusRow[]): { rows: StatusRow[]; hidden: number } {
+  // Newest by time, then by event: the events of one run share decided_at.
+  const later = (a: StatusRow, b: StatusRow) =>
+    a.decided_at > b.decided_at || (a.decided_at === b.decided_at && Number(a.event_id ?? 0) > Number(b.event_id ?? 0));
+  const newest = new Map<string, StatusRow>();
+  for (const r of rows) {
+    if (r.stage !== "retired") continue;
+    const cur = newest.get(r.family);
+    if (!cur || later(r, cur)) newest.set(r.family, r);
+  }
+  const kept = rows.filter((r) => r.stage !== "retired" || newest.get(r.family) === r);
+  let hidden = 0;
+  for (const r of newest.values()) {
+    const fetched = rows.filter((x) => x.stage === "retired" && x.family === r.family).length;
+    hidden += Math.max(Number(r.retired_in_family ?? 0), fetched) - 1;
+  }
+  return { rows: kept, hidden };
 }
 
 /** A UTC date (the database's clock) `offset` days from now's. */

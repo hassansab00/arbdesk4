@@ -98,13 +98,38 @@ PR that advances a step.
       - `anon` refused (42501); the service role reads 4,742 and 9.
     - Its review's last finding (the decision text would not reach a registry seeded earlier) did not apply: nothing had been seeded live.
     - **First tick on it, 17:36Z (`git:461377be047e`):** status ok, 10 calls. All 10 carry `priced_from`, `raw_forecast_c` and `station`, and each station equals the city's ICAO; the contract reads them as `recorded`. London's evening-before label names its corrections in full (`station_correction:station-correction:2026-10-04:da319e41d6+station-mos:2026-10-04:0656cd4985:open_meteo_forecast:…`). The 9 same-day calls name only the forecast run, because lead 0 gets neither correction (P1.1). All 9 `da_floor` rows carry the served call's station.
-  - **P2.2 part 2 (4 Oct, this PR):** /predictive shows main, S10 and the challengers apart, and the learning status in the plan's words (`docs/P22_PREDICTION_CONTRACT.md`, part 2).
+  - **P2.2 part 2 ([#305](https://github.com/hassansab00/arbdesk4/pull/305), merged 4 Oct 18:08Z):** /predictive shows main, S10 and the challengers apart, and the learning status in the plan's words (`docs/P22_PREDICTION_CONTRACT.md`, part 2).
     - Two owner-rights views read as `anon`: `v_learning_status` and `v_prediction_lineup` (the calls from 7 target dates ago on, one row per predictor and checkpoint, the venue's winner once settled). The page offers tomorrow too, the evening-before call's date (review of #305). Part 1's two views run as owner so the page views can read them, and stay the service role's.
     - The engine counts once per checkpoint, its first capture. Live before applying, its 2,010 graded calls equal `v_checkpoint_calls`' 2,010 first calls (EXCEPT ALL 0 both ways).
     - **Blinded versions show no past call.** rd3 and `da_floor:v1` are under pre-registered tests that report no score before their first look, so the registry gains `blind`. Their calls show only while the city's own day runs (its local date, not UTC's: the review of #305), never with a winner, and are never tallied. Live before applying (17:47Z): rd3 withheld on 61 of 61 calls for 3 Oct and 75 of 194 for 4 Oct; 45 of those 75 are in cities whose 4 Oct had ended unbanked, which the UTC rule would have shown.
     - Found: part 1's seed missed S10's first file, `rd1:2026-09-25:389620c0d9` (656 shadow rows, 27-30 Sep). It is appended as retired.
     - The panel reads one date and checkpoint at a time: at most 144 rows live, against 4,197 in the window.
-    - Next: part 3, decisions and evaluation name the contract's identity.
+    - **Its review, two findings, both fixed before merge:**
+      - A blinded call's day is over on the city's own clock, not UTC's. At 17:47Z, 45 rd3 calls were in cities whose 4 Oct had ended, and the UTC rule would have shown them.
+      - The page offers tomorrow, the evening-before call's date (31 such calls for 5 Oct at 17:59Z).
+    - **Live, 18:06-18:07Z:** applied statement by statement and recorded as migration `20261004180811`. Read back:
+      - 12 registry rows;
+      - part 1's views now run with owner rights, and `anon` is refused them (42501);
+      - as `anon`, `v_learning_status` has 10 rows and `v_prediction_lineup` 4,234 (at most 144 per date and checkpoint, 31 for tomorrow), with 0 blinded rows carrying an outcome and 0 withheld rows carrying a call;
+      - its 2,034 graded engine calls equal `v_checkpoint_calls`' first calls, `EXCEPT ALL` 0 both ways in one REPEATABLE READ snapshot.
+
+      Production deploy of 45a0a8a: Ready.
+  - **P2.2 part 3 (4 Oct, this PR):** decisions name their call, and no refit serves unrecorded (`docs/P22_PREDICTION_CONTRACT.md`, part 3).
+    - **Found live:** every S10 decision with a checkpoint (1,833) named the engine's call, though S10 decides on its own ladder.
+      - `decisions.prediction_id` and `prediction_source` now name the call each decision acted on.
+      - The tick reads S10's rows back and acts on the stored ladder: 30 S10 decisions (25 Sep - 1 Oct) had acted on a recomputed ladder no row holds.
+    - `v_decision_prediction` resolves all 33,497 decisions (live dry run):
+      - `s10_winner`: 1,470 same tick, 30 not recorded, 344 no call;
+      - `s11_ladder`: 1,844 by checkpoint, 78 no call;
+      - s1-s9: on the old signal path.
+    - `record_model_versions()` (pg_cron hourly at :50, no Actions minutes) records when each nightly version serves, from what the engine priced: every price's label names the correction, MOS and width versions behind it. A version is served while priced in the last 36 h and not superseded, and retired once superseded or unpriced. The newest unpriced fit is recorded as fitted, with the reason. The nightly refits stay automatic (Hassan, 4 Oct); they are no longer silent.
+      - Live dry run, 19:30Z: the correction `da319e41d6` served (priced 1,574 times), MOS `0656cd4985` served (1,541), the width `d8fd4f2746` shadow (switch off, never priced); a second run appended 0.
+      - The review of #306 found the function reading proxies for serving four times: the coefficient tables, the dependent switches, the forward rows' concurrency, and the horizon. Reading the price labels answers all four. A label names no lead, so the nightly versions' horizon is "as priced", with the switch's lead setting in the evidence.
+      - The review's fifth round found two more gaps, both now fixed. A version whose switch is turned off is now retired at the next run, not 36 h later. The MOS blend and the width are now retired with the correction when it is off. On the page, two retirements written in one run now break their tie on `event_id`, which is appended to `v_learning_status`.
+      - The sixth round: versions retiring in one run are now written in the order they first priced. An older fit that never priced (each night's width while its switch is off) is now retired once a newer fit supersedes it. `v_learning_status` marks each family's newest retired version and counts the rest, and the page fetches only the standing rows and those, so the 1,000-row cap cannot drop a standing version.
+      - The seventh round: a version serves only while it has forward rows younger than its switch's `max_age_hours`, as the engine reads them. A MOS row counts only over a fresh correction row it was made from. Live, both switches set 36 h. Part 1's hand-seeded `W2 per-city width` row is retired once a nightly width version is registered, since those are now recorded one by one; the hourly function leaves every other row registered by hand alone.
+    - The decisions archive now keeps every column, `decision_id` and the call included (review of #306).
+    - Next: P2.2 is complete with this part. Open beside it: the replay could match S10 by `prediction_id`.
 
 **State on 28 Sep (read this before the checklist; every number is from the live database that day).**
 - **No trading edge yet.** The engine's published ladders against the market on the same settled rows (24-27 Sep, `fact_checkpoint_outcome`, 3-4 dates): log loss worse at every checkpoint (morning 1.846 vs 1.097, one hour after the peak 1.180 vs 0.245); top-pick hit rate worse at every checkpoint (morning 0.321 vs 0.500, after the peak 0.642 vs 0.884). The day-ahead record (`derived_hit_summary`, 359 C days): market 0.451, live engine 0.338, tournament champion 0.292; gain vs market -0.254 [-0.406, 0.052]. Calibration (P3.6) is not the fix on its own: its fit made the held-out dates worse. **(Corrected 29 Sep, audit repair 3. The market figures first written here, log loss 1.140 and 0.652, hit rate 0.464 and 0.653, read the stored market columns, which the 98 rows banked 25 Sep 11:14Z-26 Sep 05:15Z scored before `book_mark()`: 5 market hits stored where the fixed rule gives 86. The figures above are the same 548 rows (target dates 24-27 Sep, banked before 28 Sep 12:00Z, market ladder whole) with the market scored by `book_mark()`, as `v_checkpoint_outcome` serves them.)**
