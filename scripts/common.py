@@ -245,12 +245,28 @@ def _post_batch(url, headers, params, batch, table, verb, tries=4):
     Giving up still raises. A write that silently returns after failing would
     be a far worse bug than the one being fixed: the run would go green having
     persisted nothing.
+
+    ONE RETRY OF A WRITE REFUSED WITH PGRST303 (4 Oct). The 1 Oct 03:49Z crash
+    of ingest_forecasts was a POST to weather_forecast_models answered 401,
+    the gateway's log says "PostgREST; error=PGRST303", while a POST with the
+    same key succeeded in the same millisecond. That refusal is PostgREST
+    rejecting the token's claims before any statement runs, so nothing was
+    written and sending the batch again cannot apply it twice. It gets the
+    same single retry a read does; any other 401 still fails at once.
     """
+    auth_retried = False
     for attempt in range(tries):
         last = attempt == tries - 1
         try:
             r = _post(url, headers=headers, params=params or {},
                               data=json.dumps(batch), timeout=120)
+            if r.status_code == 401 and not auth_retried and _is_claims_refusal(r):
+                auth_retried = True
+                print(f"  . {table} {verb} 401 PGRST303 (token claims refused, nothing written), "
+                      f"retrying once in {AUTH_RETRY_DELAY_S:.0f}s", file=sys.stderr)
+                time.sleep(AUTH_RETRY_DELAY_S)
+                r = _post(url, headers=headers, params=params or {},
+                                  data=json.dumps(batch), timeout=120)
         except (requests.ConnectionError, requests.Timeout,
                 requests.exceptions.ChunkedEncodingError) as e:
             if last:
