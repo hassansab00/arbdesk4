@@ -18,9 +18,10 @@
 -- compute and report no score before their first look. A lineup row puts each
 -- call beside the day's winner, so a blinded version's settled call on this
 -- page would be its score read early. model_registry gains `blind`; while a
--- version's latest event is blind, its calls show only for today and later,
--- and never with a winner, hit or probability on the winner. The first look
--- unblinds it with a new event.
+-- version's latest event is blind, its calls show only while the city's own
+-- local day is not over and its winner not banked, and never with a winner,
+-- hit or probability on the winner. The first look unblinds it with a new
+-- event.
 --
 -- ONE CALL PER PREDICTOR PER CHECKPOINT. The engine re-captures a checkpoint
 -- when its version changes mid-day (72 second captures in the 8 days to 4 Oct,
@@ -38,7 +39,7 @@
 alter table public.model_registry add column if not exists blind boolean not null default false;
 
 comment on column public.model_registry.blind is
-  'True while the version is under a pre-registered test that reports no score before its first look: the page shows its calls for today only, never a past call or an outcome. A new event unblinds it.';
+  'True while the version is under a pre-registered test that reports no score before its first look: the page shows its calls only until the city''s local day ends, never a past call or an outcome. A new event unblinds it.';
 
 -- OWNER RIGHTS, STILL THE SERVICE ROLE'S. Part 1's two views were
 -- security_invoker; read through the page's owner-rights views below they
@@ -120,10 +121,14 @@ winner as (
 shown as (
   select c.*,
          (b.version is not null)                                    as blind,
+         -- past means past in the city: target_date is its local date, and in
+         -- a city ahead of UTC the day ends hours before UTC's (review of #305)
          (b.version is not null
-          and (c.target_date < current_date or w.winner_band_id is not null)) as withheld,
+          and (c.target_date < (now() at time zone coalesce(ci.timezone, 'UTC'))::date
+               or w.winner_band_id is not null))                    as withheld,
          w.winner_band_id
     from calls c
+    left join public.cities ci on ci.city_key = c.city_key
     left join blinded b on b.family = c.model_family and b.version = c.artifact_version
     left join winner w on w.city_key = c.city_key and w.target_date = c.target_date
    where c.nth = 1
@@ -155,7 +160,7 @@ select s.city_key,
   left join public.v_canonical_bands wb on wb.band_id::text = s.winner_band_id;
 
 comment on view public.v_prediction_lineup is
-  'P2.2 part 2: the last 8 target dates'' calls side by side - the served engine (its first capture of each checkpoint), S10 and the engine variants - with version, role, top bucket and the venue''s winner once settled. A blinded version (model_registry.blind) shows its calls for today and later only, and never an outcome. Owner rights, read by /predictive.';
+  'P2.2 part 2: the last 8 target dates'' calls side by side - the served engine (its first capture of each checkpoint), S10 and the engine variants - with version, role, top bucket and the venue''s winner once settled. A blinded version (model_registry.blind) shows its calls only until the city''s local day ends or its winner is banked, and never an outcome. Owner rights, read by /predictive.';
 
 revoke all on public.v_learning_status, public.v_prediction_lineup from public, anon, authenticated;
 grant select on public.v_learning_status, public.v_prediction_lineup to anon, authenticated, service_role;

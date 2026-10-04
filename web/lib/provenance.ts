@@ -1641,9 +1641,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "fact_band_outcome"
   ],
   "v_prediction_lineup": [
+    "cities",
     "fact_checkpoint_outcome",
     "bands",
-    "cities",
     "prediction_checkpoints"
   ],
   "v_prediction_scorecard": [

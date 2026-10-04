@@ -145,11 +145,16 @@ Migration `20261004200000_the_page_reads_the_contract.sql`. The panel is
   - rd3 (`docs/CHALLENGER_C_PREREG.md`);
   - `da_floor:v1` (`docs/P11_DA_FLOOR_PREREG.md`).
 - A lineup row puts each call beside the day's winner. So a blinded version's call is withheld once
-  its day is past or settled, and it never gets a winner, hit or probability on the winner. Its
-  calls for today show.
+  the city's local day is over or its winner is banked, and it never gets a winner, hit or
+  probability on the winner. While the city's day runs, its calls show.
+- Past means past on the city's clock: `target_date` is its local date, and a city ahead of UTC ends
+  its day hours before UTC does (the review of #305; the first draft compared with UTC's date).
 - The first look unblinds it with a new event (`blind = false`).
-- Live before applying: rd3 withheld on 71 rows (3 Oct), shown on 175 (4 Oct); `da_floor` shown on
-  13 (4 Oct).
+- Live before applying, 17:47Z:
+  - rd3 on 3 Oct: 61 of 61 calls withheld.
+  - rd3 on 4 Oct: 75 of 194 withheld. 45 of the 75 are in cities whose 4 Oct had already ended with
+    no winner banked yet; the UTC rule of the first draft would have shown them.
+  - `da_floor` on 4 Oct: 22 shown.
 
 **The page.**
 - "Where each predictor stands" lists each version with its stage, its evidence and its rollback

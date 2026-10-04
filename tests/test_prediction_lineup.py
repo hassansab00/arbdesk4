@@ -57,7 +57,11 @@ def test_the_stage_is_the_plan_s_four_words():
 
 def test_a_blinded_version_shows_no_past_call_and_no_outcome():
     view = _view("v_prediction_lineup")
-    assert "and (c.target_date < current_date or w.winner_band_id is not null)) as withheld" in view
+    # past on the city's own clock, not UTC's (review of #305)
+    assert "and (c.target_date < (now() at time zone coalesce(ci.timezone, 'UTC'))::date" in view
+    assert "or w.winner_band_id is not null))" in view
+    assert "left join public.cities ci on ci.city_key = c.city_key" in view
+    assert "current_date or" not in view
     for col in ("top_band_id", "top_label", "top_prob", "priced_centre_c", "uncertainty_c"):
         assert re.search(rf"case when not s\.withheld then \S+ end\s+as {col}", view), col
     for col in ("winner_band_id", "winner_label"):

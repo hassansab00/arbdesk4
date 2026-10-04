@@ -24,8 +24,8 @@ import {
  *                                 predictor, the venue's winner once settled
  *
  * A blinded version (under a pre-registered test, before its first look) shows
- * its calls for today only and is never graded here: a past call beside the
- * winner would be its score read early. The lib (web/lib/lineup.ts) holds the
+ * its calls only while the city's own day runs and is never graded here: a past
+ * call beside the winner would be its score read early. The lib (web/lib/lineup.ts) holds the
  * table logic and its tests.
  */
 
@@ -136,8 +136,8 @@ export default function PredictionLineup() {
         cell is the predictor&apos;s top bucket and the probability it gave it, green when the venue
         paid that bucket. The engine counts once per checkpoint, its first capture, as in the record
         above. A <strong>blinded</strong> version is under a pre-registered test and shows its calls
-        for today only, never graded: a past call beside the winner would be its score read before
-        the first look.
+        only while the city&apos;s own day runs, never graded: a past call beside the winner would be
+        its score read before the first look.
       </p>
     </div>
     <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -188,7 +188,7 @@ export default function PredictionLineup() {
                 if (!cell) return <td key={c.key} className="px-2 py-1 text-muted">—</td>;
                 if (cell.withheld) {
                   return <td key={c.key} className="px-2 py-1 text-muted"
-                             title="blinded: a past call is not shown before the first look">blinded</td>;
+                             title="blinded: the city's day is over, and a past call is not shown before the first look">blinded</td>;
                 }
                 const tone = cell.hit === null ? "" : cell.hit ? "text-good" : "text-bad";
                 return <td key={c.key} className={`whitespace-nowrap px-2 py-1 ${tone}`}
