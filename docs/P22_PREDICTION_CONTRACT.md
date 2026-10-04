@@ -212,6 +212,10 @@ Counts are from the live dry run on 4 Oct (33,497 decisions):
   versions. That key is unique in `s10_shadow_checkpoints`, so it names one row; the
   pre-registered tool is left unchanged.
 - A paper order carries its `decision_id` (`engine_orders`), and through it the call.
+- **The archive keeps the link.** `archive_observations` exports `decisions` from a fixed column list
+  and then prunes at 30 days. The list now holds every column of the table: `decision_id` (the key,
+  until now used only to page) and the two new ones. A test holds the list to the table, as the
+  migrations declare it (review of #306). The first decisions are due for the archive about 25 Oct.
 
 ### 2. The nightly refits are recorded as they serve
 Hassan's decision stands: they serve automatically. What changes is that a refit is no longer
@@ -222,11 +226,14 @@ event names the version it replaced as its rollback.
 | Family | Version from | State |
 |---|---|---|
 | `station_correction` | `derived_station_correction` | `settings.station_correction_pricing.enabled`: served, else fitted |
-| `station_mos` | `derived_mos_coefficients` | `settings.station_mos_pricing.enabled`: served, else fitted |
-| `station_width` | `derived_station_width` | `settings.station_width_pricing.enabled`: served, else shadow (scored nightly) |
+| `station_mos` | `derived_mos_coefficients` | `settings.station_mos_pricing.enabled` and the correction's: served, else fitted |
+| `station_width` | `derived_station_width` | `settings.station_width_pricing.enabled` and the correction's: served, else shadow (scored nightly) |
 | `calibration` | `settings.calibration_map` (T to 3 decimals, part 1's name) | `applies`: served, else fitted |
 | `s10`, `engine_variant` | a version first written in the last two days | shadow, once; its test is registered by hand |
 
+- **The MOS blend and the width serve only with the correction.** `probability_engine` applies both
+  inside the station correction's branch, so with the correction off neither serves, whatever its own
+  switch says (review of #306).
 - **The horizon comes from the switch** (`min_lead_days`, `max_lead_days`). A changed horizon is a
   new event, and the same fit is retired at the old one: noon does not authorise the morning.
 - **It runs in the database.** pg_cron calls it hourly at :50, which costs no Actions minutes

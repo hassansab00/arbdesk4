@@ -61,6 +61,13 @@ def test_a_served_nightly_fit_follows_its_switch_and_hassan_s_decision():
                             ("station_width", "station_width_pricing")):
         assert f"('{family}'," in MIG and f"'{setting}'" in MIG, family
     assert "by_ := 'rule:nightly refit (Rule 11); Hassan 4 Oct';" in MIG
+    # the MOS blend and the width are applied inside the correction's branch
+    # (probability_engine._station_corrected_for; review of #306)
+    assert "if own_on and (f.family = 'station_correction' or corr_on) then" in MIG
+    engine = (ROOT / "scripts" / "probability_engine.py").read_text()
+    branch = engine[engine.index("def _station_corrected_for("):engine.index("def _blend_station_model(")]
+    assert branch.index('if cfg.get("enabled") is True:') < branch.index("_blend_station_model(_station_cache)")
+    assert branch.index('if cfg.get("enabled") is True:') < branch.index("_station_width_cfg = _station_width_switch()")
     assert "## Decided by Hassan, 4 Oct: the nightly refits stay automatic" in DOC
 
 
@@ -79,3 +86,27 @@ def test_the_tick_writes_the_call_each_decision_acted_on():
 def test_the_suites_run_the_new_test():
     db = json.loads((ROOT / "tests" / "database" / "package.json").read_text())["scripts"]["test"]
     assert "node decision-prediction.cjs" in db
+
+
+def test_the_decisions_archive_keeps_every_column_of_the_table():
+    """Review of #306: archive_observations exports `decisions` from a fixed
+    list and then prunes. A column the list leaves out is lost from the
+    Release the day its rows are pruned - here the call each decision acted
+    on, and the decision_id a paper order names."""
+    import sys
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import archive_observations as ao
+    declared = set()
+    for f in sorted((ROOT / "supabase" / "migrations").glob("*.sql")):
+        sql = f.read_text()
+        m = re.search(r"create table if not exists public\.decisions \((.*?)\n\);", sql, re.S)
+        if m:
+            for line in m.group(1).splitlines():
+                w = line.strip().split()
+                if w and not w[0].startswith(("constraint", "--", "unique", "primary")):
+                    declared.add(w[0])
+        declared |= set(re.findall(r"alter table public\.decisions add column if not exists (\w+)", sql))
+    spec = ao.TABLES["decisions"]
+    assert {"decision_id", "prediction_id", "prediction_source"} <= declared
+    assert declared <= set(spec["columns"]), sorted(declared - set(spec["columns"]))
+    assert spec["pk"] in spec["columns"], "the key is written to the file, not only paged on"

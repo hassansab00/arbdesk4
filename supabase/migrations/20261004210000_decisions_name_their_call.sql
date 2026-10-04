@@ -46,11 +46,14 @@
 --                           settings.station_correction_pricing.enabled
 --                           -> served (Hassan's decision) or fitted
 --      station_mos          derived_mos_coefficients.version,
---                           settings.station_mos_pricing.enabled -> served
---                           or fitted
+--                           settings.station_mos_pricing.enabled and the
+--                           correction's -> served, else fitted
 --      station_width        derived_station_width.version,
---                           settings.station_width_pricing.enabled -> served,
---                           else shadow (P3.9_width_score scores it nightly)
+--                           settings.station_width_pricing.enabled and the
+--                           correction's -> served, else shadow
+--                           (P3.9_width_score scores it nightly)
+--    Both are applied inside the correction's branch of the pricing path, so
+--    neither serves while the correction is off (review of #306).
 --      calibration          settings.calibration_map (T to 3 decimals, the
 --                           name part 1 seeded), applies -> served or fitted
 --      s10, engine_variant  a model or variant version first written in the
@@ -161,7 +164,19 @@ declare
   st        text;
   hz        text;
   by_       text;
+  own_on    boolean;
+  corr_on   boolean := false;
 begin
+  -- The MOS blend and the station width are applied inside the station
+  -- correction's branch (probability_engine._station_corrected_for): with the
+  -- correction off neither serves, whatever its own switch says (review of
+  -- #306).
+  if to_regclass('public.settings') is not null then
+    select coalesce((value ->> 'enabled')::boolean, false) into corr_on
+      from public.settings where key = 'station_correction_pricing';
+    corr_on := coalesce(corr_on, false);
+  end if;
+
   -- The nightly fits: one current version per family, from its own table.
   for f in
     select * from (values
@@ -186,15 +201,18 @@ begin
     else
       hz := 'lead <= ' || coalesce(sw ->> 'max_lead_days', '1');
     end if;
-    if coalesce((sw ->> 'enabled')::boolean, false) then
+    own_on := coalesce((sw ->> 'enabled')::boolean, false);
+    if own_on and (f.family = 'station_correction' or corr_on) then
       st := 'served';
       by_ := 'rule:nightly refit (Rule 11); Hassan 4 Oct';
     elsif f.family = 'station_width' then
       st := 'shadow';
-      by_ := 'rule:nightly refit; the switch is off, scored nightly by P3.9_width_score';
+      by_ := case when own_on then 'rule:nightly refit; its switch is on, but station correction is off, so it does not serve'
+                  else 'rule:nightly refit; the switch is off, scored nightly by P3.9_width_score' end;
     else
       st := 'fitted';
-      by_ := 'rule:nightly refit; the switch is off';
+      by_ := case when own_on then 'rule:nightly refit; its switch is on, but station correction is off, so it does not serve'
+                  else 'rule:nightly refit; the switch is off' end;
     end if;
     seen := seen || jsonb_build_object('family', f.family, 'version', cur.version, 'horizon', hz, 'state', st);
     -- Already the latest state of this version at this horizon: nothing to add.
@@ -207,8 +225,10 @@ begin
      order by r.decided_at desc, r.event_id desc limit 1;
     insert into public.model_registry (family, version, horizon, state, decided_by, evidence, rollback_to, note)
     values (f.family, cur.version, hz, st, by_,
-            format('%s: %s cells, as of %s, computed %s; settings.%s.enabled = %s',
-                   f.tbl, cur.n, cur.as_of, cur.computed_at, f.setting, coalesce(sw ->> 'enabled', 'absent')),
+            format('%s: %s cells, as of %s, computed %s; settings.%s.enabled = %s%s',
+                   f.tbl, cur.n, cur.as_of, cur.computed_at, f.setting, coalesce(sw ->> 'enabled', 'absent'),
+                   case when f.family <> 'station_correction'
+                        then format('; settings.station_correction_pricing.enabled = %s', corr_on::text) else '' end),
             prev,
             case when st = 'served' then 'Served the morning after its fit, by Hassan''s decision of 4 Oct (docs/P22_PREDICTION_CONTRACT.md).' end);
     appended := appended + 1;

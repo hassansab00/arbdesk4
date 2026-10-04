@@ -480,10 +480,19 @@ TABLES = {
         "cutoff_is_date": False,
         "prune_rpc": "prune_decisions",
         "tag": "decisions-archive",
-        "columns": ["run_id", "decided_at", "tick_id", "checkpoint_id", "strategy_id",
+        "pk_is_exported_because": "an engine plan cites it (evidence.decision_id, publish_engine_plan) and so does "
+                                  "paper_positions.entry_decision_id; the repo mirror keys decisions by it",
+        # Every column of the table, the key included: a paper order names its
+        # decision_id, and a decision names the call it acted on
+        # (prediction_id, prediction_source; P2.2 part 3). An archive without
+        # them could not link a pruned decision to either.
+        "columns": ["decision_id", "run_id", "decided_at", "tick_id", "checkpoint_id", "strategy_id",
                     "city_key", "resolution_date", "action", "reason_code", "g_now", "g_wait",
-                    "binding", "target_usd", "held_usd", "n_signals", "params_version"],
-        "bytes_per_row": 150,
+                    "binding", "target_usd", "held_usd", "n_signals", "params_version",
+                    "prediction_id", "prediction_source"],
+        # Measured 4 Oct: 301 bytes a row for the columns before P2.2 (4,070
+        # rows of the last two days); the three it adds are about 67 more.
+        "bytes_per_row": 368,
         "keep_days": 30,
         "min_keep_days": 14,
         "needs_feature_cache": False,
@@ -694,7 +703,7 @@ def export_cold(spec, cutoff):
     n, after, lo, hi = 0, None, None, None
     while True:
         params = [
-            ("select", ",".join([pk] + cols)),
+            ("select", ",".join([pk] + [c for c in cols if c != pk])),
             (cut_col, f"lt.{cutoff.isoformat()}"),
             ("order", f"{pk}.asc"),
             ("limit", str(PAGE)),

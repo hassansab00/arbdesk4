@@ -108,6 +108,31 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   assert.equal(reg['station_width|station-width:d1:ccc|lead <= 1'].state, 'served');
   assert.equal(reg['station_mos|station-mos:d1:bbb|lead >= 1'].state, 'fitted');
 
+  // The MOS blend and the width are applied inside the correction's branch
+  // (probability_engine): with the correction off, neither serves, whatever
+  // its own switch says (review of #306).
+  await db.exec(`update public.settings set value = value || '{"enabled": false}' where key = 'station_correction_pricing'`);
+  await db.exec(`update public.settings set value = value || '{"enabled": true}' where key = 'station_mos_pricing'`);
+  r = await run();
+  reg = await latest();
+  assert.equal(reg['station_correction|station-correction:d2:ddd|lead >= 2'].state, 'fitted');
+  assert.equal(reg['station_mos|station-mos:d1:bbb|lead >= 1'].state, 'fitted', 'its switch is on, the correction off');
+  assert.equal(reg['station_width|station-width:d1:ccc|lead <= 1'].state, 'shadow', 'not served without the correction');
+  assert.ok(/station correction is off, so it does not serve/.test(
+    (await db.query(`select decided_by from public.v_model_registry where family = 'station_width'
+                      and version = 'station-width:d1:ccc'`)).rows[0].decided_by));
+  // An event is a change of state: the width moved (served -> shadow) and its
+  // event says why; MOS was already fitted, so nothing new is written for it.
+  assert.ok(/settings.station_correction_pricing.enabled = false/.test(
+    (await db.query(`select evidence from public.v_model_registry where family = 'station_width'
+                      and version = 'station-width:d1:ccc'`)).rows[0].evidence));
+  await db.exec(`update public.settings set value = value || '{"enabled": true}' where key = 'station_correction_pricing'`);
+  r = await run();
+  reg = await latest();
+  assert.deepEqual([reg['station_correction|station-correction:d2:ddd|lead >= 2'].state,
+                    reg['station_mos|station-mos:d1:bbb|lead >= 1'].state,
+                    reg['station_width|station-width:d1:ccc|lead <= 1'].state], ['served', 'served', 'served']);
+
   // A new calibration temperature: a new version, the old one retired.
   await db.exec(`update public.settings set value = value || '{"T": 1.2}' where key = 'calibration_map'`);
   r = await run();
