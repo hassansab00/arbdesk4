@@ -400,7 +400,7 @@ def _observed_floors():
     floors = {}
     for row in rest("v_city_running_max",
                     {"select": "city_key,local_date,running_max_c,running_max_basis,"
-                               "observed_max_today_c,live_source_kind"}):
+                               "observed_max_today_c,live_source_kind,settlement_max_today_c"}):
         floor = measured_floor(row)
         if floor is None or not row.get("local_date"):
             continue
@@ -420,7 +420,17 @@ def measured_floor(row):
     model values out; this is the second lock, so a view that regresses cannot
     reach a price: a maximum above the station series is accepted only when the
     live row behind it is a station's.
+
+    THE SETTLEMENT FEED FIRST (4 Oct). When the row carries today's maximum
+    from the routine reports the venue settles on (source 'IEM'), that is the
+    floor, whatever any other feed read: 19 of 450 US checkpoint calls
+    (24 Sep - 2 Oct) had a floor above the winning bucket, every one from an
+    NWS five-minute reading, and the IEM maximum at the same instants was
+    above it 0 times. The view (ad4_71) says the same; this is the second lock.
     """
+    settled = row.get("settlement_max_today_c")
+    if settled is not None:
+        return float(settled)
     top = row.get("running_max_c")
     if top is None:
         return None

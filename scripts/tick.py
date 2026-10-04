@@ -358,7 +358,7 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
 
     running = {r["city_key"]: r for r in rest("v_city_running_max", {
         "select": "city_key,local_date,running_max_c,running_max_basis,observed_max_today_c,"
-                  "live_source_kind,latest_reading_at"})}
+                  "live_source_kind,latest_reading_at,settlement_max_today_c"})}
     floors = {}
     for city, r in running.items():
         f = pe.measured_floor(r)

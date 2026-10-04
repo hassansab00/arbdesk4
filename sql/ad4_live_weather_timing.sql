@@ -56,8 +56,17 @@ begin
       from v_trade_timing t
   ),
   today as (
-    select r.city_key, r.valid_at, r.temp_c
+    select r.city_key, r.valid_at, r.temp_c, r.source
       from v_city_today_readings r
+  ),
+  -- THE SETTLEMENT FEED (4 Oct; ad4_71's v_city_running_max reads the same).
+  -- The venue settles on the routine reports (source 'IEM'). A US city's NWS
+  -- five-minute readings run warm of them, and their maximum was outside the
+  -- venue's winning bucket on 84 of 297 US city-days (5 Sep - 2 Oct).
+  settle as (
+    select distinct on (city_key) city_key, temp_c as settle_max_c, valid_at as settle_max_at
+      from today where source = 'IEM'
+     order by city_key, temp_c desc, valid_at asc
   ),
   cnt as (
     select city_key, count(*)::int as readings_today from today group by city_key
@@ -111,6 +120,7 @@ begin
            tm.local_hour, tm.window_opens_hour, tm.window_closes_hour,
            coalesce(cn.readings_today, 0) as readings_today,
            p.series_max_c, p.series_max_at, l.series_min_c,
+           st.settle_max_c, st.settle_max_at,
            nw.latest_temp_c,
            -- A stored extreme counts only while the reading it came from
            -- belongs to this city's current local day.
@@ -150,18 +160,22 @@ begin
       left join timing tm on tm.city_key = k.city_key
       left join cnt cn    on cn.city_key = k.city_key
       left join peak p    on p.city_key = k.city_key
+      left join settle st on st.city_key = k.city_key
       left join low l     on l.city_key = k.city_key
       left join newest nw on nw.city_key = k.city_key
       left join lag1 l1   on l1.city_key = k.city_key
       left join lag3 l3   on l3.city_key = k.city_key
       left join prev pv   on pv.city_key = k.city_key
   ),
-  -- THE INVARIANT, in one place: a maximum is never below anything measured
-  -- today, and a minimum is never above it. greatest()/least() ignore nulls,
-  -- so a city with only one of the three still gets the one it has.
+  -- THE INVARIANT, in one place: a maximum is never below anything the
+  -- settlement feed measured today; with no settlement reading today, never
+  -- below anything measured today. A minimum is never above anything measured
+  -- today. greatest()/least() ignore nulls, so a city with only one of the
+  -- three still gets the one it has.
   final as (
     select c.*,
-           greatest(c.series_max_c, c.kept_max_c, c.live_temp_c) as max_c,
+           case when c.settle_max_c is not null then c.settle_max_c
+                else greatest(c.series_max_c, c.kept_max_c, c.live_temp_c) end as max_c,
            least(c.series_min_c, c.kept_min_c, c.live_temp_c)    as min_c
       from calc c
   )
@@ -179,6 +193,7 @@ begin
          -- the better provenance even at the same temperature.
          running_max_at    = case
              when f.max_c is null then null
+             when f.settle_max_c is not null then f.settle_max_at
              when f.series_max_c is not null and f.series_max_c = f.max_c then f.series_max_at
              when f.kept_max_c   is not null and f.kept_max_c   = f.max_c then f.kept_max_at
              else f.live_at end,
@@ -201,7 +216,7 @@ end;
 $$;
 
 comment on function public.refresh_live_weather_timing() is
-  'Fills live_weather timing columns (minutes_to_peak, peak_window_state, day_decided, running max/min and what they rest on, 1h/3h change, trend, local_date) from v_trade_timing, today''s observation series AND the live thermometer - so the running maximum is never below anything measured today. Called by the live_weather statement trigger and by pg_cron every 10 minutes.';
+  'Fills live_weather timing columns (minutes_to_peak, peak_window_state, day_decided, running max/min and what they rest on, 1h/3h change, trend, local_date) from v_trade_timing, today''s observation series AND the live thermometer. The running maximum is the settlement feed''s (IEM routine reports) when today has any, else never below anything measured today. Called by the live_weather statement trigger and by pg_cron every 10 minutes.';
 
 revoke all on function public.refresh_live_weather_timing() from public;
 revoke all on function public.refresh_live_weather_timing() from anon;
