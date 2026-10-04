@@ -24,7 +24,11 @@ PR that advances a step.
     - Old columns were identical in the proof; `running_max_c` moved on 6 cities, every one with settlement readings.
     - After applying: 45 of 48 rows `settlement_feed`, view = stored on all 48, anon 48/48.
     - `probability_engine.measured_floor` prefers `settlement_max_today_c` as a second lock.
-    - **Pending:** the next real tick's `running_max_source` and floors.
+    - **Follow-up (#297's review, after it merged; applied live as `the_basis_is_the_feeds`, proof in one REPEATABLE READ snapshot).**
+      - `running_max_basis` now counts the settlement readings when the maximum is theirs. Los Angeles, San Francisco and Seattle had 1 IEM reading against 17-19 in all and read `series`; they now read `floor_only`.
+      - `stored_max_below_latest` flags only a reading the maximum is built from: a settlement reading received at least 15 minutes ago (pg_cron runs every 10), or, on a day without one, a station reading. It had flagged 8 cities: 3 for an NWS reading, and 5 for a model value, a leftover from P2.7. The 15-minute case came from a second review round on #299.
+      - After applying, as anon: the basis equals the view on 48 of 48 cities, and 0 are flagged.
+    - **First tick, 08:36Z:** `git:18244ddcfb69`, ok, 6 checkpoints, all non-US. **Pending:** the US floors on a priced call (check scheduled 21:50Z).
   - **Label.** `derived_city_day_features.max_c`, which every model trains on, took the all-source value. Fixed by `20261004130000_the_label_is_what_the_venue_reads.sql`, applied live as `20261004080628` after a REPEATABLE READ proof (only `max_c` and its four derived terms moved, 180 US rows, never raised).
     - The cached rows from 2 Sep were recomputed while the readings were still held. The record, md5-checked before and after, is `data/repairs/2026-10-04-settlement-max`.
     - 152 settled US city-days were lowered: mean 0.559 °C, at most 2.11 °C.

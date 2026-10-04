@@ -64,7 +64,8 @@ begin
   -- five-minute readings run warm of them, and their maximum was outside the
   -- venue's winning bucket on 84 of 297 US city-days (5 Sep - 2 Oct).
   settle as (
-    select distinct on (city_key) city_key, temp_c as settle_max_c, valid_at as settle_max_at
+    select distinct on (city_key) city_key, temp_c as settle_max_c, valid_at as settle_max_at,
+           count(*) over (partition by city_key)::int as settle_readings
       from today where source = 'IEM'
      order by city_key, temp_c desc, valid_at asc
   ),
@@ -120,7 +121,7 @@ begin
            tm.local_hour, tm.window_opens_hour, tm.window_closes_hour,
            coalesce(cn.readings_today, 0) as readings_today,
            p.series_max_c, p.series_max_at, l.series_min_c,
-           st.settle_max_c, st.settle_max_at,
+           st.settle_max_c, st.settle_max_at, st.settle_readings,
            nw.latest_temp_c,
            -- A stored extreme counts only while the reading it came from
            -- belongs to this city's current local day.
@@ -201,8 +202,11 @@ begin
          readings_today    = f.readings_today,
          -- The provenance travels with the number, so a consumer that needs a
          -- settled maximum (s5) can refuse a floor instead of trading on it.
+         -- Counted over the feed the maximum came from (4 Oct), as ad4_71's
+         -- view does: one routine report is a floor whatever else arrived.
          running_max_basis = public.ad4_running_max_basis(
-                               f.readings_today,
+                               case when f.settle_max_c is not null then f.settle_readings
+                                    else f.readings_today end,
                                coalesce(f.live_temp_c, f.latest_temp_c)),
          temp_change_1h    = f.temp_change_1h,
          temp_change_3h    = f.temp_change_3h,

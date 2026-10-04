@@ -141,7 +141,9 @@ export default function CityWeatherHealth() {
               {" "}
               <span className="text-bad">
                 {impossible} {impossible === 1 ? "city has" : "cities have"} a stored maximum below
-                the current reading, which is arithmetically impossible — run{" "}
+                a reading of today it should already hold (a settlement report received over 15
+                minutes ago, or the station&rsquo;s live reading on a day without one), which is
+                arithmetically impossible — run{" "}
                 <code className="rounded bg-panel2 px-1">
                   select public.refresh_live_weather_timing()
                 </code>

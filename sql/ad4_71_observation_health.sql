@@ -194,6 +194,22 @@ settled as (
   from v_city_today_readings r
   where r.source = 'IEM'
   group by r.city_key
+),
+-- ...and the part of it the refresh has had time to take in: readings known
+-- (observed_at, when we received them) at least 15 minutes ago, since pg_cron
+-- refreshes every 10 and a new reading does not trigger one. A stored maximum
+-- below these is stale, not merely behind.
+settled_due as (
+  select o.city_key,
+         max(o.temp_c)                                                  as settlement_max_due_c
+  from weather_observations o
+  join tz t on t.city_key = o.city_key
+  where o.source = 'IEM'
+    and o.temp_c is not null
+    and o.valid_at > now() - interval '36 hours'
+    and (o.valid_at at time zone t.timezone)::date = t.local_date
+    and o.observed_at <= now() - interval '15 minutes'
+  group by o.city_key
 )
 select
   t.city_key,
@@ -232,18 +248,31 @@ select
        then lw.running_max_c end                                        as stored_running_max_c,
 
   -- ---- can the running maximum be believed? -----------------------------
+  -- Counted over the feed the maximum is taken from (4 Oct): when today has
+  -- settlement readings the maximum is theirs, so ONE routine report beside
+  -- sixty NWS readings is a floor, not a series - s5 must not lock on it.
   public.ad4_running_max_basis(
-    coalesce(d.readings_today, 0)::integer,
+    case when s.settlement_max_today_c is not null then s.settlement_readings_today
+         else coalesce(d.readings_today, 0) end::integer,
     case when lw.source_kind is not distinct from 'station'
           and (lw.observed_at at time zone t.timezone)::date = t.local_date
          then lw.temp_c end)                                            as running_max_basis,
 
   -- The stored field disagreeing with a reading from the SAME day is its own
-  -- fault and worth naming, because it is silent everywhere else.
-  (lw.running_max_c is not null
-     and (lw.observed_at at time zone t.timezone)::date = t.local_date
-     and lw.temp_c is not null
-     and lw.temp_c > lw.running_max_c)                                  as stored_max_below_latest,
+  -- fault and worth naming, because it is silent everywhere else. Only a
+  -- reading the maximum is built from can expose it (4 Oct): a settlement
+  -- reading the refresh has had time to take in, or, on a day the settlement
+  -- feed has not reported, a station's live reading. A model's value has been
+  -- kept out of the maximum since P2.7, and beside settlement readings a
+  -- warmer NWS reading is expected, so neither is "impossible".
+  ((sd.settlement_max_due_c is not null
+      and (lw.running_max_c is null or sd.settlement_max_due_c > lw.running_max_c))
+   or (lw.running_max_c is not null
+       and lw.source_kind is not distinct from 'station'
+       and s.settlement_max_today_c is null
+       and (lw.observed_at at time zone t.timezone)::date = t.local_date
+       and lw.temp_c is not null
+       and lw.temp_c > lw.running_max_c))                               as stored_max_below_latest,
 
   -- ---- the one question every consumer is really asking -----------------
   -- Two readings make a slope; ninety minutes is s7's own staleness gate.
@@ -285,6 +314,7 @@ left join newest n         on n.city_key  = t.city_key
 left join today d          on d.city_key  = t.city_key
 left join feed f           on f.city_key  = t.city_key
 left join settled s        on s.city_key  = t.city_key
+left join settled_due sd   on sd.city_key = t.city_key
 left join live_weather lw  on lw.city_key = t.city_key;
 
 comment on view v_city_observation_health is

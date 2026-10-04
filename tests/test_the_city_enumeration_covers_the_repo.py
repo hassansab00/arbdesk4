@@ -171,6 +171,9 @@ SQL_FILTERS = {
     "supabase/migrations/20261004120000_the_floor_is_what_the_venue_reads.sql":
         "v_city_observation_health, v_city_running_max and refresh_live_weather_timing, as in "
         "sql/ad4_71 and ad4_live_weather_timing - the floor the engine prices from",
+    "supabase/migrations/20261004150000_the_basis_is_the_feeds.sql":
+        "v_city_observation_health and refresh_live_weather_timing again, as in sql/ad4_71 and "
+        "ad4_live_weather_timing - the basis counted over the feed the maximum came from",
     # v_city_trajectory_now prices the rest of TODAY for cities the desk is
     # trading, and filters to active on its own. The evidence view beside it
     # joins cities only for the timezone that turns a timestamp into a local

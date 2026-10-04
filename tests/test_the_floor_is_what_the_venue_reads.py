@@ -28,18 +28,18 @@ def _stmt(text, opener, closer):
 
 
 def test_the_migration_carries_the_shipped_statements_verbatim():
+    """v_city_running_max is this migration's, verbatim. The other two
+    statements it carried were replaced the same day by
+    20261004150000_the_basis_is_the_feeds.sql (the basis counted over the
+    feed the maximum came from), which tests/test_the_basis_is_the_feeds.py
+    holds to the shipped files; here they need only keep the settlement feed
+    first, below."""
     mig = _read("supabase", "migrations", os.path.basename(MIGRATION))
     ad4_71 = _read("sql", "ad4_71_observation_health.sql")
-    timing = _read("sql", "ad4_live_weather_timing.sql")
-    pairs = [
-        (_stmt(ad4_71, "create view v_city_observation_health as", "left join live_weather lw  on lw.city_key = t.city_key;")
-         .replace("create view v_city_observation_health as", "create or replace view public.v_city_observation_health as", 1)),
-        (_stmt(ad4_71, "create view v_city_running_max as", "from v_city_observation_health h;")
-         .replace("create view v_city_running_max as", "create or replace view public.v_city_running_max as", 1)),
-        _stmt(timing, "create or replace function public.refresh_live_weather_timing()", "\nend;\n$$;"),
-    ]
-    for p in pairs:
-        assert p in mig, p.splitlines()[0]
+    running_max = (_stmt(ad4_71, "create view v_city_running_max as", "from v_city_observation_health h;")
+                   .replace("create view v_city_running_max as", "create or replace view public.v_city_running_max as", 1))
+    assert running_max in mig
+    assert "where r.source = 'IEM'" in mig and "from today where source = 'IEM'" in mig
 
 
 def test_both_halves_take_the_settlement_feed_first():
