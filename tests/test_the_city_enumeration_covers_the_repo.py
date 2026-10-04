@@ -349,6 +349,10 @@ MIGRATION_RECORD = {
         "v_prediction_contract (P2.2) - cities.icao only, the station of each call, by a LEFT "
         "join off the calls already recorded; every recorded call, a retired city's too, "
         "because it is the record",
+    "supabase/migrations/20261004200000_the_page_reads_the_contract.sql":
+        "v_prediction_lineup (P2.2 part 2) - cities.timezone only, to tell whether a blinded "
+        "call's city-day is over on its own clock, by a LEFT join off the calls already recorded; "
+        "every recorded call, a retired city's too, because it is the record",
     "supabase/migrations/20261004160000_one_morning_reading.sql":
         "v_city_day_features again, as in sql/ad4_21 - cities.timezone only, to put each reading "
         "on its city's local day; the day-feature record, which must cover every city a prune reaches",

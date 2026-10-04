@@ -6,6 +6,7 @@ import { useQuery } from "@/lib/useQuery";
 import { readAllRows } from "@/lib/readAll";
 import { DataState } from "@/components/DataState";
 import PredictionHindsight from "@/components/PredictionHindsight";
+import PredictionLineup from "@/components/PredictionLineup";
 import CityCards from "@/components/CityCards";
 import CalibrationStatus from "@/components/CalibrationStatus";
 import { Freshness, FreshnessRow } from "@/components/Provenance";
@@ -621,6 +622,8 @@ export default function PredictivePage() {
           track record are one thought, and separating them is how a desk
           keeps believing a number nothing has checked. */}
       <PredictionHindsight />
+
+      <PredictionLineup />
 
       {/* ==================================================== 2. THE FUNNEL == */}
       <section className="space-y-2">

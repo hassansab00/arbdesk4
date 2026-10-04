@@ -1640,6 +1640,12 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "markets",
     "fact_band_outcome"
   ],
+  "v_prediction_lineup": [
+    "cities",
+    "fact_checkpoint_outcome",
+    "bands",
+    "prediction_checkpoints"
+  ],
   "v_prediction_scorecard": [
     "fact_forecast_outcome",
     "weather_resolution_evidence"
