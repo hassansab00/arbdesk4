@@ -88,7 +88,7 @@ stay null):
 | trajectory | P3.4 trajectory | same day | fitted | `applied: 0` (gate unmet) |
 | weather_model | per-city fits | per city and lead | shadow | `model_promotion`: 0 promoted, 195 shadow, 189 stale (4 Oct) |
 
-## For Hassan: refits that already serve without a candidate step
+## Decided by Hassan, 4 Oct: the nightly refits stay automatic
 The plan asks that a refit create a candidate and never silently replace the incumbent. Three
 nightly fits replace what serves today:
 - **The P3.9 station correction and the P2.9 MOS blend** are refitted every night and served the
@@ -97,8 +97,13 @@ nightly fits replace what serves today:
 - **The P3.4 forecast post-processing** promotes a cell by its own gate. It did so for one cell on
   3 Oct.
 
-Part 1 records these as served, with their own rule as the evidence. Whether each should go
-through a candidate and promotion step is your decision, not this PR's.
+**Hassan's decision, 4 Oct: "keep nightly automatic".** The three nightly fits keep serving the
+morning after they are fitted, bounded by Rule 11 and their own gates. The registry records them as
+served, with their rule and this decision as the evidence.
+
+The candidate step P2.2 asks for still applies to everything else: a new model, a new version of S10,
+a variant like `da_floor`, or switching on a fitted map. Those move only on a pre-registered result
+and a recorded decision.
 
 ## Next parts
 - **Part 2:** the page reads `v_prediction_contract` and `v_model_registry`. It shows main, S10

@@ -90,7 +90,7 @@ PR that advances a step.
     - `v_prediction_contract`: every recorded call (the engine's served checkpoints, S10 rd1 and rd3, `da_floor`) in one shape. Fields: family, artifact and code version, role, station, target date, as-of, input provenance, raw forecast, priced centre, uncertainty, ladder, top, fallback state.
     - The engine's checkpoint now keeps the two fields it dropped: `priced_from` (the full label naming the station-correction, MOS and width versions) and `raw_forecast_c`.
     - `model_registry` (append-only events; states captured / fitted / shadow / eligible / served / retired, per horizon, with evidence and a rollback target) and `v_model_registry`. Seeded with 9 rows, each measured on 4 Oct. One is a find: the P3.4 forecast post-processing promoted itself by its own gate on 3 Oct, for 1 cell (1 city, lead 4).
-    - **For Hassan:** the P3.9 station correction and the P2.9 MOS blend are refitted nightly and served the next morning without a candidate step (bounded by Rule 11). P2.2 asks for a candidate step; the design note leaves that decision to you.
+    - **Decided (Hassan, 4 Oct: "keep nightly automatic"):** the nightly fits keep serving the morning after, bounded by Rule 11 and their own gates. That covers the P3.9 station correction, the P2.9 MOS blend and the P3.4 post-processing gate. Everything else (a new model, an S10 version, a variant, switching on a fitted map) moves only on a pre-registered result and a recorded decision.
     - Next: part 2, the page reads the contract and the registry; part 3, decisions and evaluation name the contract's identity.
 
 **State on 28 Sep (read this before the checklist; every number is from the live database that day).**

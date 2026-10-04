@@ -92,9 +92,9 @@ grant select on public.v_model_registry to service_role;
 insert into public.model_registry (family, version, horizon, state, decided_by, evidence, rollback_to, note)
 select v.family, v.version, v.horizon, v.state, v.decided_by, v.evidence, v.rollback_to, v.note
   from (values
-    ('engine', 'station-corrected forecast path', 'all checkpoints', 'served', 'rule:nightly refit (Rule 11)',
+    ('engine', 'station-corrected forecast path', 'all checkpoints', 'served', 'rule:nightly refit (Rule 11); Hassan 4 Oct',
      'prediction_checkpoints: P3.9 station correction with the P2.9 MOS blend at lead >= 1, the bias-corrected forecast at lead 0, the observed floor through the P3.1 atom',
-     null, 'The nightly refits serve without a candidate step; whether they should go through one is Hassan''s decision (docs/P22_PREDICTION_CONTRACT.md).'),
+     null, 'The nightly refits serve without a candidate step, by Hassan''s decision of 4 Oct: they stay automatic, bounded by Rule 11 (docs/P22_PREDICTION_CONTRACT.md).'),
     ('s10', 'rd1:2026-09-25:f5372ebb05', 'same day', 'shadow', 'plan v2 P7.4',
      's10_shadow_checkpoints since 27 Sep; P1.1 (docs/P11_INTRADAY_DIAGNOSIS_2026-10-04.md): better than the served ladder from noon on',
      null, 'Serving it is Hassan''s decision (P7.6/P7.7).'),
@@ -110,9 +110,9 @@ select v.family, v.version, v.horizon, v.state, v.decided_by, v.evidence, v.roll
     ('station_width', 'W2 per-city width', 'day ahead', 'shadow', 'settings.station_width_pricing',
      'the switch is off; P3.9_width_score had 5 of the 7 dates it needs on 4 Oct',
      null, null),
-    ('forecast_postprocess', 'P3.4 bias and width cells', 'per city and lead', 'served', 'rule:P3.4 gate',
+    ('forecast_postprocess', 'P3.4 bias and width cells', 'per city and lead', 'served', 'rule:P3.4 gate; Hassan 4 Oct',
      'v_forecast_postprocess_applied: 1 cell (1 city, lead 4), applied since its gate passed on 3 Oct',
-     null, 'Promoted by its own gate, without a candidate step.'),
+     null, 'Promoted by its own nightly gate, without a candidate step; nightly fits stay automatic (Hassan, 4 Oct).'),
     ('trajectory', 'P3.4 trajectory', 'same day', 'fitted', 'rule:P3.4 gate',
      'applied = 0: the gate is unmet (ingest_log trajectory, 4 Oct)',
      null, null),

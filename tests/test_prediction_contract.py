@@ -91,9 +91,10 @@ def test_the_seed_is_the_design_note_s_table():
     assert "where not exists (select 1 from public.model_registry r" in seed, "the seed is written once"
 
 
-def test_the_note_puts_the_silent_refits_to_hassan():
-    assert "## For Hassan: refits that already serve without a candidate step" in DOC
-    assert "is your decision, not this PR's" in DOC
+def test_the_note_records_hassan_s_decision_on_the_nightly_refits():
+    assert "## Decided by Hassan, 4 Oct: the nightly refits stay automatic" in DOC
+    assert '"keep nightly automatic"' in DOC
+    assert "by Hassan''s decision of 4 Oct" in MIG
 
 
 def test_every_registry_row_reaches_the_repository():
