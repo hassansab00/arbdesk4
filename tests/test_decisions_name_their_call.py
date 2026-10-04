@@ -91,10 +91,11 @@ def test_a_served_nightly_fit_follows_its_switch_and_hassan_s_decision():
     assert "order by (priced -> r.version ->> 'first')::timestamptz nulls first, r.decided_at, r.event_id" in fn
     # an older fit that never priced is retired once a newer fit supersedes it
     assert "format('superseded by the newer fit %s before it priced', cur.version)" in fn
-    # a row registered by hand is never the hourly function's to retire; part
-    # 1's width placeholder is retired once, by the migration (review of #306)
+    # a row registered by hand is never the hourly function's to retire, but
+    # part 1's width placeholder, once a width version is registered
+    # (review of #306)
     assert "not like f.pattern" not in fn
-    assert "where r.family = 'station_width' and r.version = 'W2 per-city width' and r.state <> 'retired';" in MIG
+    assert "where r.family = 'station_width' and r.version = 'W2 per-city width' and r.state <> 'retired'" in fn
     # the view marks each family's newest retired version and counts the rest,
     # appended after event_id; the page fetches the standing rows and those only
     view = MIG[MIG.index("create or replace view public.v_learning_status as"):]

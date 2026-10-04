@@ -94,9 +94,9 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   assert.equal(st(reg, `station_correction|${C1}|as priced`), 'served', 'priced, so served (Hassan\'s decision)');
   assert.equal(st(reg, `station_mos|${M1}|as priced`), 'served');
   assert.equal(st(reg, `station_width|${W1}|as priced`), 'shadow', 'never priced: the width switch is off');
-  // Part 1's hand-seeded width row gives way to the recorded versions, once,
-  // in the migration: one candidate per family (review of #306). Its seeded
-  // event stays, and a second apply appends nothing.
+  // Part 1's hand-seeded width row gives way once a nightly width version is
+  // registered: one candidate per family (review of #306). Its seeded event
+  // stays, and a second apply appends nothing.
   assert.deepEqual([st(reg, 'station_width|W2 per-city width|day ahead'), reg['station_width|W2 per-city width|day ahead'].evidence],
     ['retired', `the nightly station_width versions are recorded one by one from P2.2 part 3; the newest is ${W1}`]);
   assert.equal((await db.query(`select count(*)::int n from public.model_registry where version = 'W2 per-city width'`)).rows[0].n, 2,
@@ -111,7 +111,8 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   // A candidate registered by hand in a nightly family is the hand's, not the
   // hourly function's: it stands (review of #306).
   await db.query(`insert into public.model_registry (family, version, horizon, state, decided_by, evidence)
-                  values ('station_correction', 'hand candidate', 'day ahead', 'shadow', 'hassan', 'registered by hand')`);
+                  values ('station_correction', 'hand candidate', 'day ahead', 'shadow', 'hassan', 'registered by hand'),
+                         ('station_width', 'hand width candidate', 'day ahead', 'shadow', 'hassan', 'registered by hand')`);
   assert.deepEqual([(await run()).appended, (await run()).retired], [0, 0], 'a hand-registered candidate is no event');
   assert.equal(st(await latest(), 'station_correction|hand candidate|day ahead'), 'shadow');
 
@@ -307,6 +308,17 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   assert.deepEqual([(await run()).appended, (await run()).retired], [0, 0], 'still idempotent');
   assert.equal(st(await latest(), 'station_correction|hand candidate|day ahead'), 'shadow',
                'every refit, switch, expiry and supersession above left the hand-registered candidate alone');
+  assert.equal(st(await latest(), 'station_width|hand width candidate|day ahead'), 'shadow',
+               'in the width family too: only part 1\'s placeholder is retired');
+  // The placeholder standing again (as on an install whose first run had no
+  // width fit yet): the next run retires it, naming the newest width version.
+  await db.query(`insert into public.model_registry (family, version, horizon, state, decided_by, evidence)
+                  values ('station_width', 'W2 per-city width', 'day ahead', 'shadow', 'settings.station_width_pricing', 'seeded')`);
+  r = await run();
+  reg = await latest();
+  assert.deepEqual([st(reg, 'station_width|W2 per-city width|day ahead'), r.retired], ['retired', 1]);
+  assert.equal(st(reg, 'station_width|hand width candidate|day ahead'), 'shadow');
+  assert.match(reg['station_width|W2 per-city width|day ahead'].evidence, /the newest is station-width:/);
 
   // ---------------------------------------------------------------- the decisions
   // One tick at T: the engine's noon call; S10's rd1 row 20 s later (same tick).

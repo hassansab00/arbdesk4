@@ -55,8 +55,8 @@
 --    forward rows that has not priced is
 --    recorded once as fitted (the width: shadow), with the reason, and an
 --    older fit that never priced is retired as superseded by it. A row
---    registered by hand is left alone; part 1's 'W2 per-city width' is
---    retired once, below the first run. Hassan's
+--    registered by hand is left alone, except part 1's 'W2 per-city
+--    width', retired once a nightly width version is registered. Hassan's
 --    decision makes a fit serve the morning after; this records when it did.
 --      calibration          settings.calibration_map (T to 3 decimals, the
 --                           name part 1 seeded), applies -> served or fitted
@@ -328,6 +328,26 @@ begin
         end loop;
       end if;
     end if;
+
+    -- Part 1 seeded the width's method row (station_width 'W2 per-city
+    -- width', shadow) before the nightly width versions were recorded. Once
+    -- one is registered - at the first run, or whenever the first width fit
+    -- arrives - that row is retired. Only that row: every other row
+    -- registered by hand is left alone (review of #306). Its events stay.
+    if f.family = 'station_width' then
+      for old in
+        select r.version, r.horizon, n.version as newest from public.v_model_registry r
+         cross join lateral (select v.version from public.v_model_registry v
+                              where v.family = 'station_width' and v.version like 'station-width:%'
+                              order by v.decided_at desc, v.event_id desc limit 1) n
+         where r.family = 'station_width' and r.version = 'W2 per-city width' and r.state <> 'retired'
+      loop
+        insert into public.model_registry (family, version, horizon, state, decided_by, evidence)
+        values ('station_width', old.version, old.horizon, 'retired', 'rule:nightly refit',
+                format('the nightly station_width versions are recorded one by one from P2.2 part 3; the newest is %s', old.newest));
+        retired := retired + 1;
+      end loop;
+    end if;
   end loop;
 
   -- The calibration map: one version, named by its temperature (as part 1 seeded it).
@@ -399,20 +419,6 @@ revoke all on function public.record_model_versions() from public, anon, authent
 grant execute on function public.record_model_versions() to service_role;
 
 select public.record_model_versions();
-
--- Part 1 seeded the width's method row (station_width 'W2 per-city width',
--- shadow) before the nightly width versions were recorded. Once the first run
--- has recorded one, that row is retired, once, here - not by the hourly
--- function, which leaves every row registered by hand alone (review of #306).
--- Its events stay in the registry.
-insert into public.model_registry (family, version, horizon, state, decided_by, evidence)
-select r.family, r.version, r.horizon, 'retired', 'P2.2 part 3 (20261004210000)',
-       format('the nightly station_width versions are recorded one by one from P2.2 part 3; the newest is %s', n.version)
-  from public.v_model_registry r
-  cross join lateral (select v.version from public.v_model_registry v
-                       where v.family = 'station_width' and v.version like 'station-width:%'
-                       order by v.decided_at desc, v.event_id desc limit 1) n
- where r.family = 'station_width' and r.version = 'W2 per-city width' and r.state <> 'retired';
 
 do $$
 begin
