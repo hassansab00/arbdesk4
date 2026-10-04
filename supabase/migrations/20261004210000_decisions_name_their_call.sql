@@ -48,17 +48,19 @@
 --    the correction, `+station-mos:` when the blend applied, `+station-width:`
 --    when the width priced) - and no newer version of its family first priced
 --    after its last price. Versions pricing side by side are both served. It
---    is retired once superseded, unpriced for 36 h, or priced at another
---    horizon. The newest fit in the forward rows that has not priced is
+--    is retired once superseded or unpriced for 36 h. The newest fit in the
+--    forward rows that has not priced is
 --    recorded once as fitted (the width: shadow), with the reason. Hassan's
 --    decision makes a fit serve the morning after; this records when it did.
 --      calibration          settings.calibration_map (T to 3 decimals, the
 --                           name part 1 seeded), applies -> served or fitted
 --      s10, engine_variant  a model or variant version first written in the
 --                           last two days -> shadow (never retired here)
---    The horizon comes from the switch (min_lead_days / max_lead_days), so a
---    change of horizon is a new event too: noon does not authorise the
---    morning. Each served event names the version it replaced as its
+--    The three nightly families have one horizon, "as priced": a price
+--    label names the versions, not the
+--    lead, so the switch's lead setting goes in the evidence. Per-horizon
+--    promotion is for candidates, which move by a decision. Each served event
+--    names the version it replaced as its
 --    rollback target. pg_cron runs it hourly at :50 (database-side: no
 --    Actions minutes); it also runs once here.
 --
@@ -163,6 +165,7 @@ declare
   prev          text;
   st            text;
   hz            text;
+  leads         text;
   why_not       text;
   sources       text;
   priced        jsonb;
@@ -205,11 +208,15 @@ begin
       continue;
     end if;
     select value into sw from public.settings where key = f.setting;
-    if f.lead_kind = 'min' then
-      hz := 'lead >= ' || coalesce(sw ->> 'min_lead_days', '1');
-    else
-      hz := 'lead <= ' || coalesce(sw ->> 'max_lead_days', '1');
-    end if;
+    -- ONE HORIZON, "as priced" (review of #306). A price label names the
+    -- versions, not the lead, so which leads a nightly version served cannot
+    -- be told from its prices; the switch's lead setting goes in the evidence
+    -- instead. Per-horizon promotion is for candidates, which move by a
+    -- decision; the nightly fits serve by Hassan's rule, where the engine
+    -- prices with them.
+    hz := 'as priced';
+    leads := case when f.lead_kind = 'min' then 'min_lead_days = ' || coalesce(sw ->> 'min_lead_days', '1')
+                  else 'max_lead_days = ' || coalesce(sw ->> 'max_lead_days', '1') end;
     own_on := coalesce((sw ->> 'enabled')::boolean, false);
 
     -- What this family priced in the window, per version: {version: {first, last, n}}.
@@ -253,14 +260,14 @@ begin
        order by r.decided_at desc, r.event_id desc limit 1;
       insert into public.model_registry (family, version, horizon, state, decided_by, evidence, rollback_to, note)
       values (f.family, cur.version, hz, 'served', 'rule:nightly refit (Rule 11); Hassan 4 Oct',
-              format('priced %s times, %s to %s (band_probabilities, prediction_checkpoints); settings.%s.enabled = %s',
-                     cur.n, cur.first_at, cur.last_at, f.setting, coalesce(sw ->> 'enabled', 'absent')),
+              format('priced %s times, %s to %s (band_probabilities, prediction_checkpoints); settings.%s.enabled = %s, %s',
+                     cur.n, cur.first_at, cur.last_at, f.setting, coalesce(sw ->> 'enabled', 'absent'), leads),
               prev,
               'Served the morning after its fit, by Hassan''s decision of 4 Oct (docs/P22_PREDICTION_CONTRACT.md).');
       appended := appended + 1;
     end loop;
 
-    -- Retired: a served version superseded, no longer priced, or priced at another horizon now.
+    -- Retired: a served version superseded, or no longer priced.
     for old in
       select r.version, r.horizon from public.v_model_registry r
        where r.family = f.family and r.state = 'served' and r.version like f.pattern
@@ -270,7 +277,7 @@ begin
         select k into newer from jsonb_each(priced) as e(k, val)
          where (val ->> 'first')::timestamptz > (priced -> old.version ->> 'last')::timestamptz
          order by (val ->> 'first')::timestamptz limit 1;
-        if newer is null and old.horizon = hz then
+        if newer is null then
           continue;
         end if;
       end if;
@@ -279,7 +286,6 @@ begin
               case when newer is not null
                    then format('superseded by %s, first priced %s, after this one''s last price %s',
                                newer, priced -> newer ->> 'first', priced -> old.version ->> 'last')
-                   when priced ? old.version then format('priced at %s now', hz)
                    else format('not priced in the last %s h', window_h) end);
       retired := retired + 1;
     end loop;
@@ -298,8 +304,8 @@ begin
         seen := seen || jsonb_build_object('family', f.family, 'version', cur.version, 'horizon', hz, 'state', st);
         insert into public.model_registry (family, version, horizon, state, decided_by, evidence)
         values (f.family, cur.version, hz, st, 'rule:nightly refit; ' || why_not,
-                format('newest forward rows computed %s; not priced in the last %s h; settings.%s.enabled = %s%s',
-                       cur.computed_at, window_h, f.setting, coalesce(sw ->> 'enabled', 'absent'),
+                format('newest forward rows computed %s; not priced in the last %s h; settings.%s.enabled = %s, %s%s',
+                       cur.computed_at, window_h, f.setting, coalesce(sw ->> 'enabled', 'absent'), leads,
                        case when f.family <> 'station_correction'
                             then format('; settings.station_correction_pricing.enabled = %s', corr_on::text) else '' end));
         appended := appended + 1;

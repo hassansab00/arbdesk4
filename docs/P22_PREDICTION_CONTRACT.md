@@ -236,7 +236,7 @@ have:
 | State | When |
 |---|---|
 | served | priced in the last 36 h (`band_probabilities` -> `model_versions.label`, and the tick's `priced_from`), and no newer version of the family first priced after its last price. Two versions pricing side by side are both served. |
-| retired | superseded (a newer version first priced after its last price), not priced for 36 h, or priced at another horizon than its switch now gives |
+| retired | superseded (a newer version first priced after its last price), or not priced for 36 h |
 | fitted (the width: shadow) | the newest fit in the forward rows that has not priced, recorded once with the reason: the switch is off, the correction is off, or it has not priced yet |
 
 **Calibration** and new **S10 / variant** versions are recorded as before:
@@ -249,11 +249,14 @@ have:
 serving.
 - First the coefficient tables, which may never price.
 - Then the forward rows, where several versions are fresh at once and horizons apply.
+- Then a horizon taken from the switch, which the prices can't confirm.
 
 The price labels are the engine's own record of what served.
 
-- **The horizon comes from the switch** (`min_lead_days`, `max_lead_days`). When it changes, the
-  version is served at the new horizon and retired at the old one.
+- **One horizon, "as priced".** A price label names the versions, not the lead, so which leads a
+  nightly version served can't be told from its prices. The switch's lead setting goes in the
+  evidence. Per-horizon promotion is for candidates, which move by a decision; the nightly fits serve
+  by Hassan's rule, wherever the engine prices with them (review of #306).
 - **It runs in the database.** pg_cron calls it hourly at :50, which costs no Actions minutes
   (Rule 7). It also runs once in the migration.
 - **Live dry run, 4 Oct 19:30Z, rolled back:**

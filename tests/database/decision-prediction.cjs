@@ -89,14 +89,14 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
     .map((r) => [r.k, r]));
   const st = (reg, k) => (reg[k] || {}).state;
   let reg = await latest();
-  assert.equal(st(reg, `station_correction|${C1}|lead >= 1`), 'served', 'priced, so served (Hassan\'s decision)');
-  assert.equal(st(reg, `station_mos|${M1}|lead >= 1`), 'served');
-  assert.equal(st(reg, `station_width|${W1}|lead <= 1`), 'shadow', 'never priced: the width switch is off');
-  assert.equal(reg[`station_width|${W1}|lead <= 1`].decided_by, 'rule:nightly refit; the switch is off');
+  assert.equal(st(reg, `station_correction|${C1}|as priced`), 'served', 'priced, so served (Hassan\'s decision)');
+  assert.equal(st(reg, `station_mos|${M1}|as priced`), 'served');
+  assert.equal(st(reg, `station_width|${W1}|as priced`), 'shadow', 'never priced: the width switch is off');
+  assert.equal(reg[`station_width|${W1}|as priced`].decided_by, 'rule:nightly refit; the switch is off');
   assert.equal(st(reg, 'calibration|temperature:T=1.141|all checkpoints'), 'fitted', 'the name part 1 seeded: no new event');
   assert.equal((await db.query(`select count(*)::int n from public.model_registry where family = 'calibration'`)).rows[0].n, 1);
-  assert.ok(/^priced 2 times, .* \(band_probabilities, prediction_checkpoints\); settings.station_correction_pricing.enabled = true$/.test(
-    reg[`station_correction|${C1}|lead >= 1`].evidence));
+  assert.ok(/^priced 2 times, .* \(band_probabilities, prediction_checkpoints\); settings.station_correction_pricing.enabled = true, min_lead_days = 1$/.test(
+    reg[`station_correction|${C1}|as priced`].evidence));
   const run = async () => (await db.query('select public.record_model_versions() r')).rows[0].r;
   assert.deepEqual([(await run()).appended, (await run()).retired], [0, 0], 'idempotent');
 
@@ -121,20 +121,20 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   await night(2, { corr: C2, width: W2, mos: M2 });
   let r = await run();
   reg = await latest();
-  assert.deepEqual([st(reg, `station_correction|${C2}|lead >= 1`), st(reg, `station_mos|${M2}|lead >= 1`),
-                    st(reg, `station_width|${W2}|lead <= 1`)], ['fitted', 'fitted', 'shadow']);
-  assert.equal(reg[`station_correction|${C2}|lead >= 1`].decided_by, 'rule:nightly refit; it has not priced yet');
-  assert.equal(st(reg, `station_correction|${C1}|lead >= 1`), 'served', 'the incumbent until the fit prices');
+  assert.deepEqual([st(reg, `station_correction|${C2}|as priced`), st(reg, `station_mos|${M2}|as priced`),
+                    st(reg, `station_width|${W2}|as priced`)], ['fitted', 'fitted', 'shadow']);
+  assert.equal(reg[`station_correction|${C2}|as priced`].decided_by, 'rule:nightly refit; it has not priced yet');
+  assert.equal(st(reg, `station_correction|${C1}|as priced`), 'served', 'the incumbent until the fit prices');
 
   // It prices: served, the rollback named, and yesterday's superseded.
   await price(1, C2, M2);
   r = await run();
   reg = await latest();
-  assert.equal(st(reg, `station_correction|${C2}|lead >= 1`), 'served');
-  assert.equal(reg[`station_correction|${C2}|lead >= 1`].rollback_to, C1);
-  assert.equal(st(reg, `station_correction|${C1}|lead >= 1`), 'retired');
-  assert.ok(reg[`station_correction|${C1}|lead >= 1`].evidence.startsWith(`superseded by ${C2}, first priced`));
-  assert.deepEqual([st(reg, `station_mos|${M2}|lead >= 1`), st(reg, `station_mos|${M1}|lead >= 1`)], ['served', 'retired']);
+  assert.equal(st(reg, `station_correction|${C2}|as priced`), 'served');
+  assert.equal(reg[`station_correction|${C2}|as priced`].rollback_to, C1);
+  assert.equal(st(reg, `station_correction|${C1}|as priced`), 'retired');
+  assert.ok(reg[`station_correction|${C1}|as priced`].evidence.startsWith(`superseded by ${C2}, first priced`));
+  assert.deepEqual([st(reg, `station_mos|${M2}|as priced`), st(reg, `station_mos|${M1}|as priced`)], ['served', 'retired']);
   assert.deepEqual([(await run()).appended, (await run()).retired], [0, 0], 'no churn: a superseded version priced earlier stays retired');
 
   // Side by side: yesterday's fit still prices a city-day the new one did not
@@ -142,34 +142,36 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   await price(0.5, C1, M1);
   r = await run();
   reg = await latest();
-  assert.deepEqual([st(reg, `station_correction|${C1}|lead >= 1`), st(reg, `station_correction|${C2}|lead >= 1`)],
+  assert.deepEqual([st(reg, `station_correction|${C1}|as priced`), st(reg, `station_correction|${C2}|as priced`)],
                    ['served', 'served']);
   assert.deepEqual([(await run()).appended, (await run()).retired], [0, 0]);
 
-  // The horizon moves: served at the new one, retired at the old one.
+  // A lead setting changes: no event. A price label names the version, not
+  // the lead, so the nightly versions' horizon is "as priced" and the setting
+  // goes in the evidence (review of #306).
   await db.exec(`update public.settings set value = value || '{"min_lead_days": 2}' where key = 'station_correction_pricing'`);
   r = await run();
-  reg = await latest();
-  assert.equal(st(reg, `station_correction|${C2}|lead >= 2`), 'served');
-  assert.equal(st(reg, `station_correction|${C2}|lead >= 1`), 'retired', 'noon does not authorise the morning');
-  assert.equal(reg[`station_correction|${C2}|lead >= 1`].evidence, 'priced at lead >= 2 now');
+  assert.deepEqual([r.appended, r.retired], [0, 0]);
+  await price(0.3, C2, M2);
+  r = await run();
+  assert.deepEqual([r.appended, r.retired], [0, 0], 'a new price of a served version is no event either');
 
   // The width serves when it prices: its switch on, the label names it.
   await db.exec(`update public.settings set value = value || '{"enabled": true}' where key = 'station_width_pricing'`);
   await price(0.2, C2, M2, W2);
   r = await run();
   reg = await latest();
-  assert.equal(st(reg, `station_width|${W2}|lead <= 1`), 'served');
+  assert.equal(st(reg, `station_width|${W2}|as priced`), 'served');
 
   // Not priced for 36 hours: nothing of it serves.
   await db.exec(`update public.band_probabilities set computed_at = computed_at - interval '40 hours'`);
   r = await run();
   reg = await latest();
-  for (const k of [`station_correction|${C1}|lead >= 2`, `station_correction|${C2}|lead >= 2`, `station_mos|${M2}|lead >= 1`,
-                   `station_width|${W2}|lead <= 1`]) {
+  for (const k of [`station_correction|${C1}|as priced`, `station_correction|${C2}|as priced`, `station_mos|${M2}|as priced`,
+                   `station_width|${W2}|as priced`]) {
     if (reg[k]) assert.equal(reg[k].state, 'retired', k);
   }
-  assert.equal(reg[`station_correction|${C2}|lead >= 2`].evidence, 'not priced in the last 36 h');
+  assert.equal(reg[`station_correction|${C2}|as priced`].evidence, 'not priced in the last 36 h');
   assert.equal((await db.query(`select count(*)::int n from public.v_model_registry
                                   where state = 'served' and family like 'station\\_%'`)).rows[0].n, 0, 'no nightly version serves');
   // And priced again by the tick: the checkpoint's priced_from counts too.
@@ -179,7 +181,7 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
     [`station_correction:${C2}+${M2}:open_meteo_forecast:2026-10-04T00:00`]);
   r = await run();
   reg = await latest();
-  assert.deepEqual([st(reg, `station_correction|${C2}|lead >= 2`), st(reg, `station_mos|${M2}|lead >= 1`)], ['served', 'served']);
+  assert.deepEqual([st(reg, `station_correction|${C2}|as priced`), st(reg, `station_mos|${M2}|as priced`)], ['served', 'served']);
 
   // A new calibration temperature: a new version, the old one retired.
   await db.exec(`update public.settings set value = value || '{"T": 1.2}' where key = 'calibration_map'`);
@@ -269,5 +271,5 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   await assert.rejects(db.query('select public.record_model_versions()'), /permission denied/);
   await db.exec('reset role');
 
-  console.log('decision-prediction: every decision resolves to the call it acted on (recorded, checkpoint, same_tick, not_recorded, no_call, signal_path); a nightly version is served while it prices and is not superseded (side by side too), retired when superseded, unpriced or moved; the unpriced fit recorded once with its reason; idempotent; anon reads none of it');
+  console.log('decision-prediction: every decision resolves to the call it acted on (recorded, checkpoint, same_tick, not_recorded, no_call, signal_path); a nightly version is served while it prices and is not superseded (side by side too), retired when superseded or unpriced; the unpriced fit recorded once with its reason; idempotent; anon reads none of it');
 })().catch((e) => { console.error(e); process.exit(1); });

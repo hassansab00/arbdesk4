@@ -124,7 +124,7 @@ PR that advances a step.
       - s1-s9: on the old signal path.
     - `record_model_versions()` (pg_cron hourly at :50, no Actions minutes) records when each nightly version serves, from what the engine priced: every price's label names the correction, MOS and width versions behind it. A version is served while priced in the last 36 h and not superseded, and retired once superseded or unpriced. The newest unpriced fit is recorded as fitted, with the reason. The nightly refits stay automatic (Hassan, 4 Oct); they are no longer silent.
       - Live dry run, 19:30Z: the correction `da319e41d6` served (priced 1,574 times), MOS `0656cd4985` served (1,541), the width `d8fd4f2746` shadow (switch off, never priced); a second run appended 0.
-      - The review of #306 found the function reading proxies for serving four times: the coefficient tables, the dependent switches, the forward rows' concurrency, and the horizon. Reading the price labels answers all four.
+      - The review of #306 found the function reading proxies for serving four times: the coefficient tables, the dependent switches, the forward rows' concurrency, and the horizon. Reading the price labels answers all four. A label names no lead, so the nightly versions' horizon is "as priced", with the switch's lead setting in the evidence.
     - The decisions archive now keeps every column, `decision_id` and the call included (review of #306).
     - Next: P2.2 is complete with this part. Open beside it: the replay could match S10 by `prediction_id`.
 

@@ -71,6 +71,8 @@ def test_a_served_nightly_fit_follows_its_switch_and_hassan_s_decision():
     for rx in ("station-correction:[0-9-]+:[0-9a-f]+", "station-mos:[0-9-]+:[0-9a-f]+", "station-width:[0-9-]+:[0-9a-f]+"):
         assert rx in fn, rx
     assert "window_h      constant numeric := 36;" in fn
+    # one horizon: a price label names versions, not leads (review of #306)
+    assert "hz := 'as priced';" in fn and "'lead >= '" not in fn
     # superseded only by a version first priced after this one's last price
     assert "where (val ->> 'first')::timestamptz > cur.last_at" in fn
     assert "## Decided by Hassan, 4 Oct: the nightly refits stay automatic" in DOC
