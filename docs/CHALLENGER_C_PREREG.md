@@ -265,6 +265,18 @@ probability, median and all 12 inputs. rd3 on the same inputs gave:
      settlement comes from °F reports. On 1 Oct at houston the label was 33 °C and the
      settlement 31.67 °C.
    - The settlement figure is reported beside the label and never used for the check.
+   - **4 Oct, 08:06Z: the label's US definition changed. No forward date had been scored yet.**
+     - The column is the same, but its value now comes from the feed the venue settles on.
+     - The houston gap above was the cause. The label took the maximum over every reading, and
+       from 5 Sep that includes the NWS five-minute feed, which runs warm.
+     - Now `max_c` is the routine reports' (IEM) maximum
+       (`20261004130000_the_label_is_what_the_venue_reads.sql`), and the cached rows from 2 Sep
+       were recomputed (`data/repairs/2026-10-04-settlement-max`).
+     - On 30 Sep – 2 Oct the US label differed from the settlement on 22 of 36 city-days. It now
+       differs on 0. Houston on 1 Oct is 31.67 °C.
+     - The change applies to rd1 and rd3 alike. Both were fitted on the old label, which is too
+       warm on 111 of the S10 file's 22,484 rows (11 – 25 Sep), and neither is refitted.
+     - It narrows what the coverage check measures; it does not loosen the check.
 2. **A date is settled** once it is at least 3 days before the export date. From 30 Sep to 2 Oct,
    every market reached the page within 13.7 h of its local day end. Pairs on a settled date
    without exactly one winner are left out and counted.

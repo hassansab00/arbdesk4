@@ -1233,7 +1233,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_city_running_max": [
     "cities",
     "live_weather",
-    "weather_observations"
+    "weather_observations",
+    "derived_weather_peak",
+    "derived_climb_profile"
   ],
   "v_city_stats": [
     "cities",
@@ -1263,6 +1265,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_climb_profile",
     "live_weather",
     "weather_observations",
+    "derived_weather_peak",
     "derived_trajectory"
   ],
   "v_city_volume": [
