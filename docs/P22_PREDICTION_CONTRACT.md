@@ -219,37 +219,51 @@ Counts are from the live dry run on 4 Oct (33,497 decisions):
 
 ### 2. The nightly refits are recorded as they serve
 Hassan's decision stands: they serve automatically. What changes is that a refit is no longer
-silent. `record_model_versions()` appends a `model_registry` event for each version not yet
-recorded, in the state its switch gives it, and retires the version it supersedes. Each served
-event names the version it replaced as its rollback.
+silent. `record_model_versions()` appends a `model_registry` event whenever a version's state
+changes.
 
-| Family | Version from (the newest forward rows) | Served when, else |
-|---|---|---|
-| `station_correction` | `derived_corrected_forecast.version` | its switch is on and its rows are within `max_age_hours`; else fitted |
-| `station_mos` | `derived_mos_forecast.version` (blended rows) | as above, and the correction serves and is the version the blend was made from (`p39_version`); else fitted |
-| `station_width` | `derived_corrected_forecast.width_version` | its switch is on and the correction serves (the width rides on its rows); else shadow (scored nightly) |
-| `calibration` | `settings.calibration_map` (T to 3 decimals, part 1's name) | `applies`: served, else fitted |
-| `s10`, `engine_variant` | a version first written in the last two days | shadow, once; its test is registered by hand |
+**Served means priced.** Whether a version serves depends on several things:
+- which forward rows are fresh;
+- which city-days a fit rewrote (the engine reads every fresh row, whatever its version);
+- each call's lead;
+- the switches. The MOS blend and the width apply only inside the station correction's branch.
 
-- **What prices, not what was fitted.** `probability_engine` prices from the forward rows, and only
-  rows within `max_age_hours`. The fits write their coefficient tables first and the forward rows in a
-  later request, so a coefficient version may never price. Reading the coefficients would record a
-  version that failed between the two writes, or that the :50 run caught between them, as served, and
-  no later event would correct it (review of #306).
-- **The MOS blend and the width serve only with the correction.** `probability_engine` applies both
-  inside the station correction's branch, so with the correction off neither serves, whatever its own
-  switch says (review of #306).
-- **The horizon comes from the switch** (`min_lead_days`, `max_lead_days`). A changed horizon is a
-  new event, and the same fit is retired at the old one: noon does not authorise the morning.
+The engine records the answer on every price it makes. The label names the correction version,
+then `+station-mos:` when the blend applied and `+station-width:` when the width priced
+(`forecast_provenance`). So the function reads what priced, rather than re-deriving what could
+have:
+
+| State | When |
+|---|---|
+| served | priced in the last 36 h (`band_probabilities` -> `model_versions.label`, and the tick's `priced_from`), and no newer version of the family first priced after its last price. Two versions pricing side by side are both served. |
+| retired | superseded (a newer version first priced after its last price), not priced for 36 h, or priced at another horizon than its switch now gives |
+| fitted (the width: shadow) | the newest fit in the forward rows that has not priced, recorded once with the reason: the switch is off, the correction is off, or it has not priced yet |
+
+**Calibration** and new **S10 / variant** versions are recorded as before:
+- calibration: `settings.calibration_map`, served if `applies`, else fitted;
+- S10 and variants: a version first written in the last two days is recorded once as shadow.
+
+**Each served event names its rollback,** the version served before it.
+
+**How this answered the review of #306:** each round found the function reading a proxy for
+serving.
+- First the coefficient tables, which may never price.
+- Then the forward rows, where several versions are fresh at once and horizons apply.
+
+The price labels are the engine's own record of what served.
+
+- **The horizon comes from the switch** (`min_lead_days`, `max_lead_days`). When it changes, the
+  version is served at the new horizon and retired at the old one.
 - **It runs in the database.** pg_cron calls it hourly at :50, which costs no Actions minutes
   (Rule 7). It also runs once in the migration.
-- **What it would record live** (the dry run on 4 Oct, rolled back):
-  - `station-correction:2026-10-04:da319e41d6`, served at lead >= 1;
-  - `station-mos:2026-10-04:0656cd4985`, served at lead >= 1;
-  - `station-width:2026-10-04:d8fd4f2746`, shadow at lead <= 1;
-  - nothing for calibration, whose version is already recorded.
-
-  A second run appended nothing.
+- **Live dry run, 4 Oct 19:30Z, rolled back:**
+  - the correction `station-correction:2026-10-04:da319e41d6` is served, priced 1,574 times from
+    08:36Z to 17:36Z;
+  - MOS `station-mos:2026-10-04:0656cd4985` is served, priced 1,541 times;
+  - the width `station-width:2026-10-04:d8fd4f2746` is shadow: its switch is off, and it never
+    priced;
+  - the 3 Oct versions priced until 04:37Z and were then superseded, so they get no event;
+  - a second run appended nothing.
 
 **On the page:** the learning status lists the newest retired version of each family and counts
 the rest, since every nightly fit now retires the one before it.
