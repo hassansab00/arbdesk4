@@ -38,7 +38,7 @@
 alter table public.model_registry add column if not exists blind boolean not null default false;
 
 comment on column public.model_registry.blind is
-  'True while the version is under a pre-registered test that reads no score before its first look: the page shows its calls, never their outcome. A new event unblinds it.';
+  'True while the version is under a pre-registered test that reports no score before its first look: the page shows its calls for today only, never a past call or an outcome. A new event unblinds it.';
 
 -- OWNER RIGHTS, STILL THE SERVICE ROLE'S. Part 1's two views were
 -- security_invoker; read through the page's owner-rights views below they
