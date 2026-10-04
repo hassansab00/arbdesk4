@@ -45,6 +45,10 @@ def test_both_sides_count_the_settlement_readings_when_the_maximum_is_theirs():
 def test_only_a_reading_the_maximum_is_built_from_can_be_impossible():
     ad4_71 = _read("sql", "ad4_71_observation_health.sql")
     flag = ad4_71[:ad4_71.index("as stored_max_below_latest")]
-    flag = flag[flag.rindex("(lw.running_max_c is not null"):]
+    flag = flag[flag.rindex("((sd.settlement_max_due_c is not null"):]
     assert "lw.source_kind is not distinct from 'station'" in flag
     assert "s.settlement_max_today_c is null" in flag
+    # ...and a stale stored maximum still shows beside settlement readings,
+    # once the refresh has had time to take them in (pg_cron every 10 min)
+    assert "sd.settlement_max_due_c > lw.running_max_c" in flag
+    assert "o.observed_at <= now() - interval '15 minutes'" in ad4_71

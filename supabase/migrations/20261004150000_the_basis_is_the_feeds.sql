@@ -18,8 +18,10 @@
 --     readings a warmer NWS reading is expected, and a model's value has been
 --     kept out of the maximum since P2.7. Live at 08:50Z: 8 cities flagged -
 --     san_francisco, seattle and denver for an NWS reading, buenos_aires,
---     chongqing, karachi, panama_city and tokyo for a model value. Now only a
---     station's reading on a day the settlement feed has not reported counts.
+--     chongqing, karachi, panama_city and tokyo for a model value. Now it is
+--     raised by a reading the maximum is built from: a settlement reading the
+--     refresh has had 15 minutes to take in (observed_at; pg_cron runs every
+--     10), or, on a day without one, the station's live reading.
 --
 -- The statements are sql/ad4_71's v_city_observation_health and
 -- sql/ad4_live_weather_timing's function, verbatim
@@ -84,6 +86,22 @@ settled as (
   from v_city_today_readings r
   where r.source = 'IEM'
   group by r.city_key
+),
+-- ...and the part of it the refresh has had time to take in: readings known
+-- (observed_at, when we received them) at least 15 minutes ago, since pg_cron
+-- refreshes every 10 and a new reading does not trigger one. A stored maximum
+-- below these is stale, not merely behind.
+settled_due as (
+  select o.city_key,
+         max(o.temp_c)                                                  as settlement_max_due_c
+  from weather_observations o
+  join tz t on t.city_key = o.city_key
+  where o.source = 'IEM'
+    and o.temp_c is not null
+    and o.valid_at > now() - interval '36 hours'
+    and (o.valid_at at time zone t.timezone)::date = t.local_date
+    and o.observed_at <= now() - interval '15 minutes'
+  group by o.city_key
 )
 select
   t.city_key,
@@ -134,16 +152,19 @@ select
 
   -- The stored field disagreeing with a reading from the SAME day is its own
   -- fault and worth naming, because it is silent everywhere else. Only a
-  -- reading the maximum is built from can expose it: a station's, on a day the
-  -- settlement feed has not reported (4 Oct). A model's value has been kept out
-  -- of the maximum since P2.7, and beside settlement readings a warmer NWS
-  -- reading is expected, so neither is "impossible".
-  (lw.running_max_c is not null
-     and lw.source_kind is not distinct from 'station'
-     and s.settlement_max_today_c is null
-     and (lw.observed_at at time zone t.timezone)::date = t.local_date
-     and lw.temp_c is not null
-     and lw.temp_c > lw.running_max_c)                                  as stored_max_below_latest,
+  -- reading the maximum is built from can expose it (4 Oct): a settlement
+  -- reading the refresh has had time to take in, or, on a day the settlement
+  -- feed has not reported, a station's live reading. A model's value has been
+  -- kept out of the maximum since P2.7, and beside settlement readings a
+  -- warmer NWS reading is expected, so neither is "impossible".
+  ((sd.settlement_max_due_c is not null
+      and (lw.running_max_c is null or sd.settlement_max_due_c > lw.running_max_c))
+   or (lw.running_max_c is not null
+       and lw.source_kind is not distinct from 'station'
+       and s.settlement_max_today_c is null
+       and (lw.observed_at at time zone t.timezone)::date = t.local_date
+       and lw.temp_c is not null
+       and lw.temp_c > lw.running_max_c))                               as stored_max_below_latest,
 
   -- ---- the one question every consumer is really asking -----------------
   -- Two readings make a slope; ninety minutes is s7's own staleness gate.
@@ -185,6 +206,7 @@ left join newest n         on n.city_key  = t.city_key
 left join today d          on d.city_key  = t.city_key
 left join feed f           on f.city_key  = t.city_key
 left join settled s        on s.city_key  = t.city_key
+left join settled_due sd   on sd.city_key = t.city_key
 left join live_weather lw  on lw.city_key = t.city_key;$oh$;
   end if;
   if to_regprocedure('public.refresh_live_weather_timing()') is not null then

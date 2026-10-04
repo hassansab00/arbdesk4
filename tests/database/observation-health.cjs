@@ -72,7 +72,7 @@ function middayZone() {
     create table public.cities(city_key text primary key, display_name text, unit text,
       status text, timezone text, latitude numeric, longitude numeric);
     create table public.weather_observations(obs_id bigserial primary key, city_key text,
-      valid_at timestamptz, temp_c numeric, source text);
+      valid_at timestamptz, observed_at timestamptz default now(), temp_c numeric, source text);
     create table public.live_weather(city_key text primary key, updated_at timestamptz,
       observed_at timestamptz, temp_c numeric, running_max_c numeric,
       running_max_at timestamptz, running_min_c numeric, temp_change_1h numeric,
@@ -260,6 +260,20 @@ function middayZone() {
     assert.equal(rows[city].stored_max_below_latest, false,
       `${city}: a reading the maximum is not built from was called impossible`);
   }
+  // A settlement report the refresh has had 15 minutes to take in, above the
+  // stored maximum, IS a stale maximum; one received two minutes ago is only
+  // waiting for the next refresh (pg_cron, every 10 minutes).
+  await db.exec(`
+    insert into public.weather_observations(city_key, valid_at, observed_at, temp_c, source) values
+      ('us_city',         now() - interval '40 minutes', now() - interval '20 minutes', 32.22, 'IEM'),
+      ('one_report_city', now() - interval '15 minutes', now() - interval '2 minutes',  20.56, 'IEM')`);
+  const stale = Object.fromEntries((await db.query(`select city_key, stored_max_below_latest from public.v_city_observation_health
+                                                     where city_key in ('us_city', 'one_report_city')`)).rows
+    .map(r => [r.city_key, r.stored_max_below_latest]));
+  assert.deepEqual(stale, { us_city: true, one_report_city: false });
+  await db.query('select public.refresh_live_weather_timing()');
+  const fresh = (await db.query(`select count(*)::int n from public.v_city_observation_health where stored_max_below_latest`)).rows[0].n;
+  assert.equal(fresh, 0, 'the refresh took the settlement reports in and the flag cleared');
 
   // ---- 2. nothing anywhere breaks the arithmetic --------------------------
   // A maximum is never below a reading of the settlement feed today; with no
