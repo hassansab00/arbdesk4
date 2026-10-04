@@ -54,8 +54,9 @@
 --    off or its rows expire, and once superseded or unpriced for 36 h. The newest fit in the
 --    forward rows that has not priced is
 --    recorded once as fitted (the width: shadow), with the reason, and an
---    older fit that never priced is retired as superseded by it, as is a
---    row seeded by hand for the family (part 1's 'W2 per-city width'). Hassan's
+--    older fit that never priced is retired as superseded by it. A row
+--    registered by hand is left alone; part 1's 'W2 per-city width' is
+--    retired once, below the first run. Hassan's
 --    decision makes a fit serve the morning after; this records when it did.
 --      calibration          settings.calibration_map (T to 3 decimals, the
 --                           name part 1 seeded), applies -> served or fitted
@@ -325,21 +326,6 @@ begin
                   format('superseded by the newer fit %s before it priced', cur.version));
           retired := retired + 1;
         end loop;
-        -- A row seeded by hand for the family before its nightly versions were
-        -- recorded (part 1: station_width 'W2 per-city width', shadow) is
-        -- superseded by them, so it does not stand beside them for good
-        -- (review of #306). Its events stay in the registry.
-        for old in
-          select r.version, r.horizon from public.v_model_registry r
-           where r.family = f.family and r.version not like f.pattern and r.state <> 'retired'
-           order by r.decided_at, r.event_id
-        loop
-          insert into public.model_registry (family, version, horizon, state, decided_by, evidence)
-          values (f.family, old.version, old.horizon, 'retired', 'rule:nightly refit',
-                  format('the nightly %s versions are recorded one by one from P2.2 part 3; the newest fit is %s',
-                         f.family, cur.version));
-          retired := retired + 1;
-        end loop;
       end if;
     end if;
   end loop;
@@ -413,6 +399,20 @@ revoke all on function public.record_model_versions() from public, anon, authent
 grant execute on function public.record_model_versions() to service_role;
 
 select public.record_model_versions();
+
+-- Part 1 seeded the width's method row (station_width 'W2 per-city width',
+-- shadow) before the nightly width versions were recorded. Once the first run
+-- has recorded one, that row is retired, once, here - not by the hourly
+-- function, which leaves every row registered by hand alone (review of #306).
+-- Its events stay in the registry.
+insert into public.model_registry (family, version, horizon, state, decided_by, evidence)
+select r.family, r.version, r.horizon, 'retired', 'P2.2 part 3 (20261004210000)',
+       format('the nightly station_width versions are recorded one by one from P2.2 part 3; the newest is %s', n.version)
+  from public.v_model_registry r
+  cross join lateral (select v.version from public.v_model_registry v
+                       where v.family = 'station_width' and v.version like 'station-width:%'
+                       order by v.decided_at desc, v.event_id desc limit 1) n
+ where r.family = 'station_width' and r.version = 'W2 per-city width' and r.state <> 'retired';
 
 do $$
 begin

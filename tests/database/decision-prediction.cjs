@@ -94,12 +94,13 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   assert.equal(st(reg, `station_correction|${C1}|as priced`), 'served', 'priced, so served (Hassan\'s decision)');
   assert.equal(st(reg, `station_mos|${M1}|as priced`), 'served');
   assert.equal(st(reg, `station_width|${W1}|as priced`), 'shadow', 'never priced: the width switch is off');
-  // Part 1's hand-seeded width row gives way to the recorded versions: one
-  // candidate per family, not a placeholder beside them (review of #306).
+  // Part 1's hand-seeded width row gives way to the recorded versions, once,
+  // in the migration: one candidate per family (review of #306). Its seeded
+  // event stays, and a second apply appends nothing.
   assert.deepEqual([st(reg, 'station_width|W2 per-city width|day ahead'), reg['station_width|W2 per-city width|day ahead'].evidence],
-    ['retired', `the nightly station_width versions are recorded one by one from P2.2 part 3; the newest fit is ${W1}`]);
+    ['retired', `the nightly station_width versions are recorded one by one from P2.2 part 3; the newest is ${W1}`]);
   assert.equal((await db.query(`select count(*)::int n from public.model_registry where version = 'W2 per-city width'`)).rows[0].n, 2,
-               'its seeded event stays, the retirement appended');
+               'its seeded event stays, the retirement appended once');
   assert.equal(reg[`station_width|${W1}|as priced`].decided_by, 'rule:nightly refit; the switch is off');
   assert.equal(st(reg, 'calibration|temperature:T=1.141|all checkpoints'), 'fitted', 'the name part 1 seeded: no new event');
   assert.equal((await db.query(`select count(*)::int n from public.model_registry where family = 'calibration'`)).rows[0].n, 1);
@@ -107,6 +108,12 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
     reg[`station_correction|${C1}|as priced`].evidence));
   const run = async () => (await db.query('select public.record_model_versions() r')).rows[0].r;
   assert.deepEqual([(await run()).appended, (await run()).retired], [0, 0], 'idempotent');
+  // A candidate registered by hand in a nightly family is the hand's, not the
+  // hourly function's: it stands (review of #306).
+  await db.query(`insert into public.model_registry (family, version, horizon, state, decided_by, evidence)
+                  values ('station_correction', 'hand candidate', 'day ahead', 'shadow', 'hassan', 'registered by hand')`);
+  assert.deepEqual([(await run()).appended, (await run()).retired], [0, 0], 'a hand-registered candidate is no event');
+  assert.equal(st(await latest(), 'station_correction|hand candidate|day ahead'), 'shadow');
 
   // A fit that wrote its coefficients and nothing the engine reads is no event.
   const need = async (t) => (await db.query(`select column_name, data_type from information_schema.columns
@@ -298,6 +305,8 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   assert.equal(reg['s10|rd9:test:new|same day'].state, 'shadow');
   assert.equal((await db.query(`select count(*)::int n from public.model_registry where version = 'rd1:2026-09-25:f5372ebb05'`)).rows[0].n, 1);
   assert.deepEqual([(await run()).appended, (await run()).retired], [0, 0], 'still idempotent');
+  assert.equal(st(await latest(), 'station_correction|hand candidate|day ahead'), 'shadow',
+               'every refit, switch, expiry and supersession above left the hand-registered candidate alone');
 
   // ---------------------------------------------------------------- the decisions
   // One tick at T: the engine's noon call; S10's rd1 row 20 s later (same tick).
