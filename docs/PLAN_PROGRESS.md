@@ -17,6 +17,7 @@ PR that advances a step.
 - **401s (F4), production:** since #292 merged, 78 of 78 tick runs succeeded (Actions, 30 Sep 11:36Z - 3 Oct 16:36Z), against 9 failures in 83 runs 27-30 Sep, each the trade prints' first GET answered 401 PGRST303. The other non-ok rows in those days are external: `P0.4_trade_history` attention 6 times (the venue's data API answering 429), two tick attention rows (IEM's station API answering 503).
 - **Minutes (F4, awaiting Hassan):** Actions jobs API, 23-30 Sep 09:00Z, each job rounded up: 2,453 billed minutes in 7 days (CI tests.yml 1,131 + web.yml 281; scheduled 1,036). The scheduled work alone projects to ~4,440 a month against `SCHEDULED_MINUTE_BUDGET` 3,000 and the 2,000 CLAUDE.md names. Plan and billing endpoints refuse this session (403), so the entitlement is not measured.
 - **Minutes, decided (4 Oct, P6.1, [#302](https://github.com/hassansab00/arbdesk4/pull/302); migration applied live 13:14:57Z as `the_minutes_fit_the_pro_plan`).** Read back live: intraday due at 02/08/14/20 UTC, `forecasts.yml` never due, `pipeline_daily` expected to log `ingest_forecasts`. Hassan: GitHub Pro, 3,000 minutes a month, keep the total under it. CLAUDE.md, the plan's rule 7 and `docs/compute_budget.md` say so.
+  - **Checked 21:50Z:** after the merge (12:50Z) the clock dispatched `pipeline_intraday` at 14:36 and 20:36 only (not 16:36), and `forecasts.yml` not at all.
   - **Measured** (Actions jobs API, each job rounded up):
     - Scheduled, full days 1-3 Oct: 114, 116 and 101 billed minutes, about 3,310 a month. Per run: pipeline_daily 29.0, pipeline_intraday 3.95 (21 runs), tick 1.01 (83 runs), forecasts 15-25 a night (2-3 links), archive_observations 13.5, observations and paper_trade_log 1.0 each.
     - CI, 4 Sep - 3 Oct: 2,240 (tests.yml 1,532 over 749 runs; web.yml 708). The last 20 green test runs had a median job of 274 s (pytest 148 s, contracts 105 s), billed 5.
@@ -46,7 +47,8 @@ PR that advances a step.
       - `running_max_basis` now counts the settlement readings when the maximum is theirs. Los Angeles, San Francisco and Seattle had 1 IEM reading against 17-19 in all and read `series`; they now read `floor_only`.
       - `stored_max_below_latest` flags only a reading the maximum is built from: a settlement reading received at least 15 minutes ago (pg_cron runs every 10), or, on a day without one, a station reading. It had flagged 8 cities: 3 for an NWS reading, and 5 for a model value, a leftover from P2.7. The 15-minute case came from a second review round on #299.
       - After applying, as anon: the basis equals the view on 48 of 48 cities, and 0 are flagged.
-    - **First tick, 08:36Z:** `git:18244ddcfb69`, ok, 6 checkpoints, all non-US. **Pending:** the US floors on a priced call (check scheduled 21:50Z).
+    - **First tick, 08:36Z:** `git:18244ddcfb69`, ok, 6 checkpoints, all non-US.
+    - **The US floors on priced calls (checked 21:50Z):** 49 same-day US calls, 12:00-21:36Z, in all 11 cities. Every one had a settlement (IEM) maximum at decision time, and its floor equals it, 49 of 49; none above it. In 23 another feed read warmer and did not move the floor.
   - **Label.** `derived_city_day_features.max_c`, which every model trains on, took the all-source value. Fixed by `20261004130000_the_label_is_what_the_venue_reads.sql`, applied live as `20261004080628` after a REPEATABLE READ proof (only `max_c` and its four derived terms moved, 180 US rows, never raised).
     - The cached rows from 2 Sep were recomputed while the readings were still held. The record, md5-checked before and after, is `data/repairs/2026-10-04-settlement-max`.
     - 152 settled US city-days were lowered: mean 0.559 °C, at most 2.11 °C.
@@ -67,6 +69,7 @@ PR that advances a step.
     - Fix: `v_checkpoint_calls.first_call`, which keeps every row. The scoreboard, hindsight and summary count first calls only, and the tick no longer writes a checkpoint any version holds.
     - Applied live as `one_call_per_checkpoint` after a REPEATABLE READ proof: old columns identical, exactly those 81 rows left the panel.
     - Read as anon afterwards: 2,417 calls, no duplicates.
+    - After the merge ([#298](https://github.com/hassansab00/arbdesk4/pull/298), 08:42Z), checked 21:50Z: 160 calls written to 21:36Z, 160 distinct city, date and checkpoint. None twice.
   - **P0.2, this PR.** The selector names what it picks and gives the selected moment's own record. Each row shows its scheduled local time and its capture time. Pending is never shown as "miss".
   - **P0.3, this PR.** The 1 Oct `weather_forecast_models` 401 was PGRST303, per the gateway log. A write refused that way gets one retry; any other 401 still fails at once.
   - **P1.1 (4 Oct, this PR):** the component diagnosis is in `docs/P11_INTRADAY_DIAGNOSIS_2026-10-04.md` (`tools/p11_intraday_ablation.py`).
@@ -82,6 +85,7 @@ PR that advances a step.
       - Bounded: it stops 6 s before the tick's budget, counts every skip by reason and never raises.
       - **Live ([#303](https://github.com/hassansab00/arbdesk4/pull/303), merged 4 Oct 16:22Z).** Its review moved the capture after the engine's decisions, with one bounded write, and made a lost row turn the tick to attention. The table is live as migration `20261004162148`, applied statement by statement through `execute_sql` after `apply_migration` timed out four times with nothing applied. Read back: 22 columns, 10 constraints, 2 triggers, RLS on, service role only.
       - **First tick, 16:36Z (`git:0eea54c818c8`):** status ok, 20 calls written, 13 of them same-day. 13 shadow rows written, 0 skipped, in 1.35 s; the tick took 29.7 s. Every row's floor equals its served call's; the top bucket agrees on 8 of 13. Atlanta's stored ladder recomputed from its stored inputs exactly (largest difference 0.0).
+      - **To 21:36Z (checked 21:50Z):** 6 ticks, every one ok. 57 shadow rows for the 57 same-day engine calls, tick by tick (13, 9, 12, 11, 8, 4), none skipped and none twice. Atlanta's 21:36Z post-peak row again recomputed exactly (largest difference 0.0).
     - S10 rd1 is better than both from noon on.
   - **P1.3:** done (rd3 in forward shadow).
   - **P1.2, P1.4:** aligned, no change.
@@ -114,7 +118,7 @@ PR that advances a step.
       - its 2,034 graded engine calls equal `v_checkpoint_calls`' first calls, `EXCEPT ALL` 0 both ways in one REPEATABLE READ snapshot.
 
       Production deploy of 45a0a8a: Ready.
-  - **P2.2 part 3 (4 Oct, this PR):** decisions name their call, and no refit serves unrecorded (`docs/P22_PREDICTION_CONTRACT.md`, part 3).
+  - **P2.2 part 3 ([#306](https://github.com/hassansab00/arbdesk4/pull/306), merged 4 Oct 21:30Z):** decisions name their call, and no refit serves unrecorded (`docs/P22_PREDICTION_CONTRACT.md`, part 3).
     - **Found live:** every S10 decision with a checkpoint (1,833) named the engine's call, though S10 decides on its own ladder.
       - `decisions.prediction_id` and `prediction_source` now name the call each decision acted on.
       - The tick reads S10's rows back and acts on the stored ladder: 30 S10 decisions (25 Sep - 1 Oct) had acted on a recomputed ladder no row holds.
@@ -129,7 +133,26 @@ PR that advances a step.
       - The sixth round: versions retiring in one run are now written in the order they first priced. An older fit that never priced (each night's width while its switch is off) is now retired once a newer fit supersedes it. `v_learning_status` marks each family's newest retired version and counts the rest, and the page fetches only the standing rows and those, so the 1,000-row cap cannot drop a standing version.
       - The seventh round: a version serves only while it has forward rows younger than its switch's `max_age_hours`, as the engine reads them. A MOS row counts only over a fresh correction row it was made from. Live, both switches set 36 h. Part 1's hand-seeded `W2 per-city width` row is retired once a nightly width version is registered, since those are now recorded one by one; the hourly function leaves every other row registered by hand alone.
     - The decisions archive now keeps every column, `decision_id` and the call included (review of #306).
-    - Next: P2.2 is complete with this part. Open beside it: the replay could match S10 by `prediction_id`.
+    - **Live, 21:27-21:30Z:** applied statement by statement through `execute_sql`, recorded as migration `20261004213013`. Three rolled-back dry runs came first (19:30Z, 20:26Z, 20:52Z). Read back:
+      - the two `decisions` columns (uuid, text) and both constraints, validated;
+      - `record_model_versions()`: its body's md5 equals the file's. The first run appended 3 and retired 1:
+        - the correction `da319e41d6` served (priced 1,926 times, 08:36-20:36Z);
+        - MOS `0656cd4985` served (1,893);
+        - the width `d8fd4f2746` shadow (its switch is off);
+        - part 1's `W2 per-city width` retired.
+      - pg_cron job 133 at :50; its 21:50Z run succeeded in 2 s and appended nothing;
+      - both views' normalized definitions (`pg_get_viewdef`) equal the file's in PGlite;
+      - `v_learning_status`: its old columns equal before and after, `EXCEPT ALL` 0 both ways in one REPEATABLE READ snapshot;
+      - as `anon`: `v_learning_status` reads 13 rows, and the page's filter returns all 13. `anon` is refused `v_decision_prediction`, `decisions` and the function (42501);
+      - links:
+        - `s10_winner`: same tick 1,488, not recorded 30, no call 344;
+        - `s11_ladder`: checkpoint 1,862, no call 78.
+    - **First tick on it, 21:36Z (ed9ab95):** status ok, S10 `unrecorded` 0.
+      - 30 decisions name their call, and every one is found in `v_prediction_contract`: 18 engine checkpoints and 12 S10 rows (rd1 `f5372ebb05`).
+      - The 6 S10 decisions without a ladder name none.
+      - The contract's `prediction_id` is text: join on `prediction_id::text`.
+      - Production deploy of ed9ab95: Ready.
+    - **P2.2 is complete.** Open beside it: the replay could match S10 by `prediction_id`.
 
 **State on 28 Sep (read this before the checklist; every number is from the live database that day).**
 - **No trading edge yet.** The engine's published ladders against the market on the same settled rows (24-27 Sep, `fact_checkpoint_outcome`, 3-4 dates): log loss worse at every checkpoint (morning 1.846 vs 1.097, one hour after the peak 1.180 vs 0.245); top-pick hit rate worse at every checkpoint (morning 0.321 vs 0.500, after the peak 0.642 vs 0.884). The day-ahead record (`derived_hit_summary`, 359 C days): market 0.451, live engine 0.338, tournament champion 0.292; gain vs market -0.254 [-0.406, 0.052]. Calibration (P3.6) is not the fix on its own: its fit made the held-out dates worse. **(Corrected 29 Sep, audit repair 3. The market figures first written here, log loss 1.140 and 0.652, hit rate 0.464 and 0.653, read the stored market columns, which the 98 rows banked 25 Sep 11:14Z-26 Sep 05:15Z scored before `book_mark()`: 5 market hits stored where the fixed rule gives 86. The figures above are the same 548 rows (target dates 24-27 Sep, banked before 28 Sep 12:00Z, market ladder whole) with the market scored by `book_mark()`, as `v_checkpoint_outcome` serves them.)**
