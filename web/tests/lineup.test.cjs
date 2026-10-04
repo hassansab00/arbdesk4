@@ -123,5 +123,14 @@ console.log('lineup: the plan\'s stages in order; tomorrow to 7 days back, UTC; 
     ['station-correction:2026-10-06:b', 'station-mos:2026-10-06:y', 'rd1:2026-09-25:389620c0d9'], 'the newest retired of each');
   assert.equal(c.rows.filter((r) => r.stage !== 'retired').length, 2, 'nothing standing is ever hidden');
   assert.deepEqual(compactRetired([]), { rows: [], hidden: 0 });
+  // One run retires two versions at the same decided_at: the later event wins,
+  // whatever order the rows arrive in (review of #306).
+  const tie = [
+    { ...st('station_correction', 'station-correction:2026-10-05:a', 'retired', 'retired'), decided_at: at('08'), event_id: 41 },
+    { ...st('station_correction', 'station-correction:2026-10-06:b', 'retired', 'retired'), decided_at: at('08'), event_id: 42 },
+  ];
+  for (const order of [tie, [...tie].reverse()]) {
+    assert.deepEqual(compactRetired(order).rows.map((r) => r.version), ['station-correction:2026-10-06:b']);
+  }
 }
 console.log('lineup: retired versions compacted to the newest per family, the rest counted');

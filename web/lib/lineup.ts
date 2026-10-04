@@ -33,6 +33,8 @@ export interface StatusRow {
   family: string; version: string; horizon: string; state: string; stage: string;
   blind: boolean; decided_at: string; decided_by: string; evidence: string;
   rollback_to: string | null; note: string | null;
+  /** the registry event; breaks a tie between events of one run (same decided_at) */
+  event_id?: number | string | null;
 }
 
 /** The plan's words, in the order a version moves through them. */
@@ -88,11 +90,14 @@ export function learningStatus(rows: StatusRow[]): StatusRow[] {
  * blend each add a retired row a night.
  */
 export function compactRetired(rows: StatusRow[]): { rows: StatusRow[]; hidden: number } {
+  // Newest by time, then by event: the events of one run share decided_at.
+  const later = (a: StatusRow, b: StatusRow) =>
+    a.decided_at > b.decided_at || (a.decided_at === b.decided_at && Number(a.event_id ?? 0) > Number(b.event_id ?? 0));
   const newest = new Map<string, StatusRow>();
   for (const r of rows) {
     if (r.stage !== "retired") continue;
     const cur = newest.get(r.family);
-    if (!cur || r.decided_at > cur.decided_at) newest.set(r.family, r);
+    if (!cur || later(r, cur)) newest.set(r.family, r);
   }
   const kept = rows.filter((r) => r.stage !== "retired" || newest.get(r.family) === r);
   return { rows: kept, hidden: rows.length - kept.length };

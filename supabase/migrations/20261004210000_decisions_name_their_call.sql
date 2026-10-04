@@ -47,8 +47,10 @@
 --    (band_probabilities -> model_versions.label; the tick's priced_from:
 --    the correction, `+station-mos:` when the blend applied, `+station-width:`
 --    when the width priced) - and no newer version of its family first priced
---    after its last price. Versions pricing side by side are both served. It
---    is retired once superseded or unpriced for 36 h. The newest fit in the
+--    after its last price, while its switches are on (the MOS blend and the
+--    width also need the correction's). Versions pricing side by side are
+--    both served. It is retired at once when a switch goes off, and once
+--    superseded or unpriced for 36 h. The newest fit in the
 --    forward rows that has not priced is
 --    recorded once as fitted (the width: shadow), with the reason. Hassan's
 --    decision makes a fit serve the morning after; this records when it did.
@@ -87,62 +89,10 @@ begin
   end if;
 end $$;
 
-create or replace view public.v_decision_prediction as
-with d as (
-  select d.decision_id, d.run_id, d.decided_at, d.strategy_id, d.city_key, d.resolution_date,
-         d.action, d.reason_code, d.checkpoint_id, d.prediction_id, d.prediction_source,
-         d.strategy_id in ('s10_winner', 's10_growth', 's10_lock')                  as reads_s10,
-         d.strategy_id in ('s10_winner', 's10_growth', 's10_lock',
-                           's11_ladder', 's11_lock', 's12_no')                       as engine_strategy
-    from public.decisions d
-),
-r as (
-  select d.*,
-         t.checkpoint_id                                                             as s10_row
-    from d
-    left join public.prediction_checkpoints p on p.checkpoint_id = d.checkpoint_id
-    -- Before this PR every S10 decision read rd1, written in the same tick:
-    -- the nearest rd1 row at the call's city, date and checkpoint within 60 s.
-    left join lateral (
-      select s.checkpoint_id from public.s10_shadow_checkpoints s
-       where d.reads_s10 and d.prediction_id is null
-         and s.city_key = p.city_key and s.target_date = p.target_date and s.checkpoint = p.checkpoint
-         and s.model_version like 'rd1:%'
-         and abs(extract(epoch from s.decided_at - d.decided_at)) < 60
-       order by abs(extract(epoch from s.decided_at - d.decided_at)), s.checkpoint_id
-       limit 1) t on true
-)
-select r.decision_id,
-       r.run_id,
-       r.decided_at,
-       r.strategy_id,
-       r.city_key,
-       r.resolution_date,
-       r.action,
-       r.reason_code,
-       case when r.prediction_id is not null                        then 'recorded'
-            when not r.engine_strategy                              then 'signal_path'
-            when r.reason_code = 'no_ladder' or r.checkpoint_id is null then 'no_call'
-            when not r.reads_s10                                    then 'checkpoint'
-            when r.s10_row is not null                              then 'same_tick'
-            else 'not_recorded' end                                 as link,
-       coalesce(r.prediction_source,
-                case when r.engine_strategy and r.reason_code <> 'no_ladder' and r.checkpoint_id is not null
-                     then case when r.reads_s10
-                               then case when r.s10_row is not null then 's10_shadow_checkpoints' end
-                               else 'prediction_checkpoints' end end)              as recorded_in,
-       coalesce(r.prediction_id,
-                case when r.engine_strategy and r.reason_code <> 'no_ladder'
-                     then case when r.reads_s10 then r.s10_row else r.checkpoint_id end end) as prediction_id,
-       r.checkpoint_id                                              as engine_checkpoint_id
-  from r;
-
-comment on view public.v_decision_prediction is
-  'P2.2 part 3: every decision resolved to the call it acted on (prediction_id and recorded_in, as v_prediction_contract names them) and how: recorded, checkpoint, same_tick, not_recorded, no_call, signal_path. The service role''s.';
-
-revoke all on public.v_decision_prediction from public, anon, authenticated;
-grant select on public.v_decision_prediction to service_role;
-
+-- The function comes before the views: tools/gen_provenance.py credits a
+-- view with every table named after it up to the next view, so a view
+-- followed by this function would be listed as reading the tables the
+-- function reads.
 -- ---------------------------------------------------------------------------
 -- Every version a nightly fit serves or holds, recorded; the superseded one
 -- retired. Returns what it appended.
@@ -171,6 +121,7 @@ declare
   priced        jsonb;
   newer         text;
   own_on        boolean;
+  may_serve     boolean;
   corr_on       boolean := false;
 begin
   if to_regclass('public.settings') is not null then
@@ -218,6 +169,10 @@ begin
     leads := case when f.lead_kind = 'min' then 'min_lead_days = ' || coalesce(sw ->> 'min_lead_days', '1')
                   else 'max_lead_days = ' || coalesce(sw ->> 'max_lead_days', '1') end;
     own_on := coalesce((sw ->> 'enabled')::boolean, false);
+    -- The engine uses a version only while its switch is on, and the MOS
+    -- blend and the width only inside the correction's branch: prices made
+    -- before a switch went off do not keep it serving (review of #306).
+    may_serve := own_on and (f.family = 'station_correction' or corr_on);
 
     -- What this family priced in the window, per version: {version: {first, last, n}}.
     sources := '';
@@ -238,7 +193,7 @@ begin
         into priced;
     end if;
 
-    -- Served: priced, and not superseded.
+    -- Served: priced, not superseded, and its switches on.
     for cur in
       select k as version, (val ->> 'first')::timestamptz as first_at, (val ->> 'last')::timestamptz as last_at,
              (val ->> 'n')::bigint as n
@@ -247,7 +202,7 @@ begin
     loop
       select k into newer from jsonb_each(priced) as e(k, val)
        where (val ->> 'first')::timestamptz > cur.last_at order by (val ->> 'first')::timestamptz limit 1;
-      if newer is not null then
+      if newer is not null or not may_serve then
         continue;
       end if;
       seen := seen || jsonb_build_object('family', f.family, 'version', cur.version, 'horizon', hz, 'state', 'served');
@@ -267,13 +222,13 @@ begin
       appended := appended + 1;
     end loop;
 
-    -- Retired: a served version superseded, or no longer priced.
+    -- Retired: a served version switched off, superseded, or no longer priced.
     for old in
       select r.version, r.horizon from public.v_model_registry r
        where r.family = f.family and r.state = 'served' and r.version like f.pattern
     loop
       newer := null;
-      if priced ? old.version then
+      if may_serve and priced ? old.version then
         select k into newer from jsonb_each(priced) as e(k, val)
          where (val ->> 'first')::timestamptz > (priced -> old.version ->> 'last')::timestamptz
          order by (val ->> 'first')::timestamptz limit 1;
@@ -283,7 +238,9 @@ begin
       end if;
       insert into public.model_registry (family, version, horizon, state, decided_by, evidence)
       values (f.family, old.version, old.horizon, 'retired', 'rule:nightly refit',
-              case when newer is not null
+              case when not own_on then format('settings.%s.enabled is off', f.setting)
+                   when not may_serve then 'station correction is off'
+                   when newer is not null
                    then format('superseded by %s, first priced %s, after this one''s last price %s',
                                newer, priced -> newer ->> 'first', priced -> old.version ->> 'last')
                    else format('not priced in the last %s h', window_h) end);
@@ -388,3 +345,84 @@ begin
     perform cron.schedule('ad4_record_model_versions', '50 * * * *', 'select public.record_model_versions()');
   end if;
 end $$;
+
+create or replace view public.v_decision_prediction as
+with d as (
+  select d.decision_id, d.run_id, d.decided_at, d.strategy_id, d.city_key, d.resolution_date,
+         d.action, d.reason_code, d.checkpoint_id, d.prediction_id, d.prediction_source,
+         d.strategy_id in ('s10_winner', 's10_growth', 's10_lock')                  as reads_s10,
+         d.strategy_id in ('s10_winner', 's10_growth', 's10_lock',
+                           's11_ladder', 's11_lock', 's12_no')                       as engine_strategy
+    from public.decisions d
+),
+r as (
+  select d.*,
+         t.checkpoint_id                                                             as s10_row
+    from d
+    left join public.prediction_checkpoints p on p.checkpoint_id = d.checkpoint_id
+    -- Before this PR every S10 decision read rd1, written in the same tick:
+    -- the nearest rd1 row at the call's city, date and checkpoint within 60 s.
+    left join lateral (
+      select s.checkpoint_id from public.s10_shadow_checkpoints s
+       where d.reads_s10 and d.prediction_id is null
+         and s.city_key = p.city_key and s.target_date = p.target_date and s.checkpoint = p.checkpoint
+         and s.model_version like 'rd1:%'
+         and abs(extract(epoch from s.decided_at - d.decided_at)) < 60
+       order by abs(extract(epoch from s.decided_at - d.decided_at)), s.checkpoint_id
+       limit 1) t on true
+)
+select r.decision_id,
+       r.run_id,
+       r.decided_at,
+       r.strategy_id,
+       r.city_key,
+       r.resolution_date,
+       r.action,
+       r.reason_code,
+       case when r.prediction_id is not null                        then 'recorded'
+            when not r.engine_strategy                              then 'signal_path'
+            when r.reason_code = 'no_ladder' or r.checkpoint_id is null then 'no_call'
+            when not r.reads_s10                                    then 'checkpoint'
+            when r.s10_row is not null                              then 'same_tick'
+            else 'not_recorded' end                                 as link,
+       coalesce(r.prediction_source,
+                case when r.engine_strategy and r.reason_code <> 'no_ladder' and r.checkpoint_id is not null
+                     then case when r.reads_s10
+                               then case when r.s10_row is not null then 's10_shadow_checkpoints' end
+                               else 'prediction_checkpoints' end end)              as recorded_in,
+       coalesce(r.prediction_id,
+                case when r.engine_strategy and r.reason_code <> 'no_ladder'
+                     then case when r.reads_s10 then r.s10_row else r.checkpoint_id end end) as prediction_id,
+       r.checkpoint_id                                              as engine_checkpoint_id
+  from r;
+
+comment on view public.v_decision_prediction is
+  'P2.2 part 3: every decision resolved to the call it acted on (prediction_id and recorded_in, as v_prediction_contract names them) and how: recorded, checkpoint, same_tick, not_recorded, no_call, signal_path. The service role''s.';
+
+revoke all on public.v_decision_prediction from public, anon, authenticated;
+grant select on public.v_decision_prediction to service_role;
+
+-- The page names the newest retired version of a family; events of one run
+-- share decided_at (now() is the transaction's), so it breaks the tie on
+-- event_id (review of #306). Appended as the last column: the view's other
+-- columns, its rows and its grants are unchanged.
+create or replace view public.v_learning_status as
+select r.family,
+       r.version,
+       r.horizon,
+       r.state,
+       case r.state
+         when 'captured' then 'data capture'
+         when 'fitted'   then 'candidate fitting'
+         when 'shadow'   then 'evaluation'
+         when 'eligible' then 'evaluation'
+         when 'served'   then 'serving'
+         else 'retired' end                                      as stage,
+       r.blind,
+       r.decided_at,
+       r.decided_by,
+       r.evidence,
+       r.rollback_to,
+       r.note,
+       r.event_id
+  from public.v_model_registry r;

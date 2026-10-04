@@ -163,6 +163,24 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   reg = await latest();
   assert.equal(st(reg, `station_width|${W2}|as priced`), 'served');
 
+  // A switch goes off: retired at once, though its prices are still in the
+  // window - the engine can no longer use it (review of #306). On again: its
+  // prices serve it again.
+  await db.exec(`update public.settings set value = value || '{"enabled": false}' where key = 'station_correction_pricing'`);
+  r = await run();
+  reg = await latest();
+  assert.deepEqual([st(reg, `station_correction|${C2}|as priced`), reg[`station_correction|${C2}|as priced`].evidence],
+                   ['retired', 'settings.station_correction_pricing.enabled is off']);
+  assert.deepEqual([st(reg, `station_mos|${M2}|as priced`), reg[`station_mos|${M2}|as priced`].evidence],
+                   ['retired', 'station correction is off'], 'the blend serves only inside the correction');
+  assert.equal(st(reg, `station_width|${W2}|as priced`), 'retired');
+  assert.deepEqual([(await run()).appended, (await run()).retired], [0, 0], 'switched off, nothing more to record');
+  await db.exec(`update public.settings set value = value || '{"enabled": true}' where key = 'station_correction_pricing'`);
+  r = await run();
+  reg = await latest();
+  assert.deepEqual([st(reg, `station_correction|${C2}|as priced`), st(reg, `station_mos|${M2}|as priced`),
+                    st(reg, `station_width|${W2}|as priced`)], ['served', 'served', 'served']);
+
   // Not priced for 36 hours: nothing of it serves.
   await db.exec(`update public.band_probabilities set computed_at = computed_at - interval '40 hours'`);
   r = await run();
@@ -263,6 +281,11 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
     [R(9), cp]), /decisions_prediction_source/);
   await assert.rejects(db.query(`update public.decisions set prediction_id = $1 where decision_id = $2`, [cp, ids.s10_old]));
 
+  // The page breaks ties between one run's events on event_id (review of #306).
+  await db.exec('set role anon');
+  assert.ok((await db.query('select event_id from public.v_learning_status order by event_id desc limit 1')).rows[0].event_id);
+  await db.exec('reset role');
+
   // anon reads none of it.
   await db.exec('set role anon');
   for (const t of ['v_decision_prediction', 'decisions', 'model_registry']) {
@@ -271,5 +294,5 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   await assert.rejects(db.query('select public.record_model_versions()'), /permission denied/);
   await db.exec('reset role');
 
-  console.log('decision-prediction: every decision resolves to the call it acted on (recorded, checkpoint, same_tick, not_recorded, no_call, signal_path); a nightly version is served while it prices and is not superseded (side by side too), retired when superseded or unpriced; the unpriced fit recorded once with its reason; idempotent; anon reads none of it');
+  console.log('decision-prediction: every decision resolves to the call it acted on (recorded, checkpoint, same_tick, not_recorded, no_call, signal_path); a nightly version is served while it prices and is not superseded (side by side too), retired when switched off, superseded or unpriced; the unpriced fit recorded once with its reason; idempotent; anon reads none of it');
 })().catch((e) => { console.error(e); process.exit(1); });

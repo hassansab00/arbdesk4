@@ -75,6 +75,11 @@ def test_a_served_nightly_fit_follows_its_switch_and_hassan_s_decision():
     assert "hz := 'as priced';" in fn and "'lead >= '" not in fn
     # superseded only by a version first priced after this one's last price
     assert "where (val ->> 'first')::timestamptz > cur.last_at" in fn
+    # served only while its switches are on; retired at once when one goes off
+    assert "may_serve := own_on and (f.family = 'station_correction' or corr_on);" in fn
+    assert "if newer is not null or not may_serve then" in fn
+    # the page breaks one run's ties on event_id, appended to v_learning_status
+    assert "       r.note,\n       r.event_id\n  from public.v_model_registry r;" in MIG
     assert "## Decided by Hassan, 4 Oct: the nightly refits stay automatic" in DOC
 
 

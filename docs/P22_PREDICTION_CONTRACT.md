@@ -235,8 +235,8 @@ have:
 
 | State | When |
 |---|---|
-| served | priced in the last 36 h (`band_probabilities` -> `model_versions.label`, and the tick's `priced_from`), and no newer version of the family first priced after its last price. Two versions pricing side by side are both served. |
-| retired | superseded (a newer version first priced after its last price), or not priced for 36 h |
+| served | priced in the last 36 h (`band_probabilities` -> `model_versions.label`, and the tick's `priced_from`), no newer version of the family first priced after its last price, and its switches on (the MOS blend and the width also need the correction's). Two versions pricing side by side are both served. |
+| retired | at once when a switch goes off; or superseded (a newer version first priced after its last price); or not priced for 36 h |
 | fitted (the width: shadow) | the newest fit in the forward rows that has not priced, recorded once with the reason: the switch is off, the correction is off, or it has not priced yet |
 
 **Calibration** and new **S10 / variant** versions are recorded as before:
@@ -269,7 +269,9 @@ The price labels are the engine's own record of what served.
   - a second run appended nothing.
 
 **On the page:** the learning status lists the newest retired version of each family and counts
-the rest, since every nightly fit now retires the one before it.
+the rest, since every nightly fit now retires the one before it. The events of one run share a
+time, so the newest is chosen by time and then by `event_id`, appended to `v_learning_status`
+(review of #306).
 
 ### Not done here
 - The P3.4 forecast post-processing promotes per cell, and the trajectory and the per-city weather
