@@ -51,7 +51,12 @@ PR that advances a step.
     - Read as anon afterwards: 2,417 calls, no duplicates.
   - **P0.2, this PR.** The selector names what it picks and gives the selected moment's own record. Each row shows its scheduled local time and its capture time. Pending is never shown as "miss".
   - **P0.3, this PR.** The 1 Oct `weather_forecast_models` 401 was PGRST303, per the gateway log. A write refused that way gets one retry; any other 401 still fails at once.
-  - **P1.1:** the floor cause is fixed (#297), and the component ablation is not built.
+  - **P1.1 (4 Oct, this PR):** the component diagnosis is in `docs/P11_INTRADAY_DIAGNOSIS_2026-10-04.md` (`tools/p11_intraday_ablation.py`).
+    - The replay reproduces all 1,649 served ladders to within 0.000046 a bucket, on 27 Sep - 3 Oct (7 dates, about 290 matched city-days per checkpoint).
+    - The floor helps at every checkpoint.
+    - Switching at local midnight to the same-day centre and width hurts every pre-peak checkpoint, by 0.110-0.297 log loss (90% date-clustered intervals exclude 0). Most of that is the width: about 26% narrower than the day-ahead, on a centre that is no better. Lead 0 gets neither P3.9 nor the MOS blend.
+    - Candidate, not served: the day-ahead centre and width plus the checkpoint floor. It needs pre-registration and a forward shadow test.
+    - S10 rd1 is better than both from noon on.
   - **P1.3:** done (rd3 in forward shadow).
   - **P1.2, P1.4:** aligned, no change.
   - **P2.1, P2.2:** not started.
