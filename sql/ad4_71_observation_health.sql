@@ -179,6 +179,21 @@ feed as (
            where o.city_key = t.city_key
              and o.temp_c is not null)                                  as newest_reading
   from tz t
+),
+-- THE SETTLEMENT FEED (4 Oct). The venue settles on the station's routine
+-- reports, which is what source 'IEM' holds. The US cities also carry NWS
+-- five-minute readings (whole C, about 270 a day), whose maximum runs warm of
+-- the reports the venue reads: on 5 Sep - 2 Oct the IEM daily maximum was in
+-- the venue's winning bucket on 286 of 297 US city-days and the maximum over
+-- every source on 213. Houston on 1 Oct: IEM 31.67 C (89 F, the winner's
+-- bucket 88-90 F), NWS 33 C at 20:25Z.
+settled as (
+  select r.city_key,
+         count(*)                                                       as settlement_readings_today,
+         max(r.temp_c)                                                  as settlement_max_today_c
+  from v_city_today_readings r
+  where r.source = 'IEM'
+  group by r.city_key
 )
 select
   t.city_key,
@@ -261,11 +276,15 @@ select
   end                                                                   as note,
   -- Appended (plan v2 P3.3).
   n.latest_reading_at,
-  n.latest_reading_c
+  n.latest_reading_c,
+  -- Appended (4 Oct): today's maximum from the settlement feed alone.
+  s.settlement_max_today_c,
+  coalesce(s.settlement_readings_today, 0)                              as settlement_readings_today
 from tz t
 left join newest n         on n.city_key  = t.city_key
 left join today d          on d.city_key  = t.city_key
 left join feed f           on f.city_key  = t.city_key
+left join settled s        on s.city_key  = t.city_key
 left join live_weather lw  on lw.city_key = t.city_key;
 
 comment on view v_city_observation_health is
@@ -291,9 +310,18 @@ select
   h.local_date,
   h.running_max_basis,
   h.timing_trustworthy,
+  -- THE SETTLEMENT FEED FIRST (4 Oct). When today has readings from the feed
+  -- the venue settles on, the maximum is theirs: a warmer reading from another
+  -- feed is not what the venue will read, and as a floor it leaves no
+  -- probability on the bucket that wins. On 24 Sep - 2 Oct 19 of 450 US
+  -- checkpoint calls had a floor above the winning bucket, every one from a
+  -- non-IEM reading; the IEM maximum at the same instants was above it 0 times.
+  -- A lower floor only spreads probability over buckets the day can still
+  -- reach. With no settlement reading today, the rule is as before:
   -- greatest() ignores nulls, so a city with only one of the three still gets
   -- the one it has - and every one of the three is about TODAY.
-  greatest(h.observed_max_today_c, h.stored_running_max_c, h.latest_temp_today_c) as running_max_c,
+  coalesce(h.settlement_max_today_c,
+           greatest(h.observed_max_today_c, h.stored_running_max_c, h.latest_temp_today_c)) as running_max_c,
   h.observed_max_today_c,
   h.stored_running_max_c,
   h.latest_temp_today_c,
@@ -306,11 +334,18 @@ select
   h.live_source_kind,
   -- Appended (plan v2 P3.3): the newest station reading of today and its time.
   h.latest_reading_at,
-  h.latest_reading_c
+  h.latest_reading_c,
+  -- Appended (4 Oct): the settlement feed's maximum, the maximum over every
+  -- source as it was used before, and which of them running_max_c is.
+  h.settlement_max_today_c,
+  greatest(h.observed_max_today_c, h.stored_running_max_c, h.latest_temp_today_c) as all_sources_max_c,
+  case when h.settlement_max_today_c is not null then 'settlement_feed'
+       when greatest(h.observed_max_today_c, h.stored_running_max_c, h.latest_temp_today_c) is not null
+       then 'all_sources' end                                           as running_max_source
 from v_city_observation_health h;
 
 comment on view v_city_running_max is
-  'The running maximum a consumer should use, guaranteed never below the latest reading of the same day, with the basis it rests on. running_max_basis = series means a real maximum; floor_only means the day reached at least this and possibly much more; absent means nothing is known about today.';
+  'The running maximum a consumer should use, with the basis it rests on. From the settlement feed (IEM routine reports) when today has any, else never below the latest reading of the same day; running_max_source says which. running_max_basis = series means a real maximum; floor_only means the day reached at least this and possibly much more; absent means nothing is known about today.';
 
 grant select on v_city_observation_health to anon, authenticated, service_role;
 grant select on v_city_running_max        to anon, authenticated, service_role;

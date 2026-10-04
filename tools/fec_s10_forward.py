@@ -23,7 +23,9 @@ THE RULE (as fixed; nothing here may loosen it)
             day (fixed 4 Oct, before any rd3 forward score was computed: on
             602 rd1 pairs of 30 Sep - 2 Oct it differs from the settlement's
             observed_max_c by more than 0.05 C on 108; that value is exported
-            and reported beside it, never used for the check)
+            and reported beside it, never used for the check). On 4 Oct 08:06Z,
+            before any forward date was scored, the US label became the
+            settlement feed's maximum (data/repairs/2026-10-04-settlement-max)
   looks     the first 20 settled dates, and only if the pooled interval there
             spans 0, the first 40. A look is a fixed set of dates, so running
             this before, between or after the looks cannot change a verdict;

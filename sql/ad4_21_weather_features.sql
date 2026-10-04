@@ -68,7 +68,7 @@ with obs as not materialized (
     (o.valid_at at time zone coalesce(c.timezone, 'UTC'))::date            as obs_date,
     extract(hour from (o.valid_at at time zone coalesce(c.timezone, 'UTC'))) as local_hour,
     o.temp_c, o.dewpoint_c, o.humidity, o.wind_speed, o.precip,
-    o.cloud_cover, o.pressure_hpa, o.wind_dir_deg
+    o.cloud_cover, o.pressure_hpa, o.wind_dir_deg, o.source
   from weather_observations o
   left join cities c on c.city_key = o.city_key
   where o.temp_c is not null
@@ -76,7 +76,17 @@ with obs as not materialized (
 daily as (
   select
     city_key, obs_date,
-    max(temp_c)                                       as max_c,
+    -- THE SETTLEMENT FEED'S MAXIMUM (4 Oct). This is the label every model
+    -- trains on, and the venue settles on the station's routine reports
+    -- (source 'IEM', obs_primary_source()). From 5 Sep the US cities also
+    -- carry NWS five-minute readings (whole C), whose maximum runs warm: on
+    -- 5 Sep - 2 Oct the IEM maximum was in the venue's winning bucket on 286
+    -- of 297 US city-days and the maximum over every source on 213. Before
+    -- 5 Sep every reading was IEM, so those days are unchanged. A day the
+    -- settlement feed missed keeps the maximum over what was measured.
+    coalesce(max(temp_c) filter (where source = 'IEM'), max(temp_c)) as max_c,
+    max(temp_c)                                       as max_c_all_sources,
+    count(*) filter (where source = 'IEM')            as n_settlement,
     min(temp_c)                                       as min_c,
     count(*)::int                                     as n_obs,
     -- daytime cloud and wind: what the sun had to work through
@@ -178,7 +188,11 @@ select
   case when d.wd_n >= 3 and d.wd_scalar > 0
        then round((d.wd_su / d.wd_scalar)::numeric, 4) end   as wind_u_mean,
   case when d.wd_n >= 3 and d.wd_scalar > 0
-       then round((d.wd_sv / d.wd_scalar)::numeric, 4) end   as wind_v_mean
+       then round((d.wd_sv / d.wd_scalar)::numeric, 4) end   as wind_v_mean,
+  -- Appended (4 Oct): the maximum over every source, as max_c was before, and
+  -- which of the two max_c is.
+  d.max_c_all_sources,
+  case when d.n_settlement > 0 then 'settlement_feed' else 'all_sources' end as max_c_source
 from daily d
 left join morning m on m.city_key = d.city_key and m.obs_date = d.obs_date;
 

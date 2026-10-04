@@ -165,6 +165,12 @@ SQL_FILTERS = {
     "sql/ad4_71_observation_health.sql":        "is the DESK's data healthy - operational, not the record",
     "sql/ad4_75_probability_reliability.sql":   "the measured haircut, applied to live prices",
     "sql/ad4_live_weather_timing.sql":          "refresh_live_weather_timing - only worth computing for a live city",
+    # The 4 Oct floor fix re-issues ad4_71's two views and the timing function
+    # verbatim (the settlement feed's maximum first). Same roster rule as the
+    # files it carries: FILTERS.
+    "supabase/migrations/20261004120000_the_floor_is_what_the_venue_reads.sql":
+        "v_city_observation_health, v_city_running_max and refresh_live_weather_timing, as in "
+        "sql/ad4_71 and ad4_live_weather_timing - the floor the engine prices from",
     # v_city_trajectory_now prices the rest of TODAY for cities the desk is
     # trading, and filters to active on its own. The evidence view beside it
     # joins cities only for the timezone that turns a timestamp into a local
@@ -336,6 +342,10 @@ MIGRATION_RECORD = {
     "supabase/migrations/20260929010000_a_cut_day_keeps_its_cached_values.sql":
         "refresh_feature_cache, as in sql/ad4_28 and ad4_29 - the day-feature "
         "record, which must cover every city a prune reaches",
+    "supabase/migrations/20261004130000_the_label_is_what_the_venue_reads.sql":
+        "v_city_day_features, as in sql/ad4_21 - cities.timezone only, to put each reading on "
+        "its city's local day; the day-feature record, which must cover every city a prune "
+        "reaches",
     "supabase/migrations/20260929100000_the_climb_profile_reads_thirty_days.sql":
         "v_city_climb_profile_live, as in sql/ad4_26 and ad4_28 - cities.timezone "
         "only, to put each reading on its city's local day; the climb profile is "

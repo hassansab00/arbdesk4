@@ -108,21 +108,33 @@ function middayZone() {
       ('stale_live_city', 'Stale live',  'active', '${TZ}'),
       ('one_reading_city','One reading', 'active', '${TZ}'),
       ('model_city',      'Model live',  'active', '${TZ}'),
-      ('model_only_city', 'Model only',  'active', '${TZ}');
+      ('model_only_city', 'Model only',  'active', '${TZ}'),
+      ('us_city',         'Houston-like','active', '${TZ}'),
+      ('nws_only_city',   'NWS only',    'active', '${TZ}');
 
     -- A city the archive covers: three readings today, peaking at 22.0.
     insert into public.weather_observations(city_key, valid_at, temp_c, source) values
-      ('series_city', now() - interval '2 hours',  18.0, 'iem'),
-      ('series_city', now() - interval '1 hour',   22.0, 'iem'),
-      ('series_city', now() - interval '10 minutes', 20.0, 'iem'),
+      ('series_city', now() - interval '2 hours',  18.0, 'IEM'),
+      ('series_city', now() - interval '1 hour',   22.0, 'IEM'),
+      ('series_city', now() - interval '10 minutes', 20.0, 'IEM'),
       -- and one reading today for the city that has exactly one
-      ('one_reading_city', now() - interval '30 minutes', 19.0, 'iem'),
+      ('one_reading_city', now() - interval '30 minutes', 19.0, 'IEM'),
       -- SEOUL, 23 Sep (plan v2 P2.7): the station has measured 21.0 today
-      ('model_city', now() - interval '2 hours', 20.0, 'iem'),
-      ('model_city', now() - interval '1 hour',  21.0, 'iem'),
+      ('model_city', now() - interval '2 hours', 20.0, 'IEM'),
+      ('model_city', now() - interval '1 hour',  21.0, 'IEM'),
       -- yesterday's archive for the two cities the feed runs a day behind on
-      ('floor_city',      now() - interval '30 hours', 12.0, 'iem'),
-      ('stale_live_city', now() - interval '30 hours', 27.0, 'iem');
+      ('floor_city',      now() - interval '30 hours', 12.0, 'IEM'),
+      ('stale_live_city', now() - interval '30 hours', 27.0, 'IEM'),
+      -- HOUSTON, 1 Oct (4 Oct): the routine reports peak at 31.67 C (89 F, the
+      -- venue's winning bucket 88-90 F) while the NWS five-minute feed reads
+      -- 33 C; the live station row carries the five-minute value too.
+      ('us_city', now() - interval '3 hours', 30.0, 'IEM'),
+      ('us_city', now() - interval '2 hours', 31.67, 'IEM'),
+      ('us_city', now() - interval '125 minutes', 33.0, 'NWS'),
+      ('us_city', now() - interval '20 minutes', 32.0, 'NWS'),
+      -- a city whose settlement feed has nothing today: the rule is as before
+      ('nws_only_city', now() - interval '2 hours', 24.0, 'NWS'),
+      ('nws_only_city', now() - interval '1 hour',  25.0, 'NWS');
 
     insert into public.live_weather(city_key, updated_at, observed_at, temp_c,
                                     running_max_c, running_max_at, running_min_c, source_kind)
@@ -147,17 +159,23 @@ function middayZone() {
       ('stale_live_city', now(), now() - interval '14 hours', 28.7,
         null, null, null, 'model'),
       ('one_reading_city', now(), now() - interval '30 minutes', 19.0,
+        null, null, null, 'station'),
+      ('us_city', now(), now() - interval '20 minutes', 33.0,
+        33.0, now() - interval '125 minutes', 28.0, 'station'),
+      ('nws_only_city', now(), now() - interval '1 hour', 25.0,
         null, null, null, 'station');
   `);
 
   const refreshed = (await db.query('select public.refresh_live_weather_timing() as n')).rows[0].n;
-  assert.equal(refreshed, 6, 'the refresh did not touch every city');
+  assert.equal(refreshed, 8, 'the refresh did not touch every city');
 
   const rows = Object.fromEntries((await db.query(`
     select lw.city_key, lw.running_max_c::float8 as running_max_c,
            lw.running_min_c::float8 as running_min_c, lw.readings_today,
            lw.running_max_basis, lw.running_max_at, lw.local_date::text as local_date,
            r.running_max_c::float8 as view_max_c, r.running_max_basis as view_basis,
+           r.running_max_source, r.all_sources_max_c::float8 as all_sources_max_c,
+           r.settlement_max_today_c::float8 as settlement_max_today_c,
            h.timing_trustworthy, h.stored_max_below_latest, h.note
       from public.live_weather lw
       join public.v_city_running_max r using (city_key)
@@ -198,7 +216,24 @@ function middayZone() {
   assert.equal(rows.model_only_city.running_max_basis, 'absent');
   assert.match(rows.model_only_city.note, /model output, not a measurement/);
 
+  // ---- 1c. the settlement feed first (4 Oct) --------------------------------
+  assert.equal(rows.us_city.running_max_c, 31.67,
+    'the NWS five-minute 33 C became the maximum: the venue settles on the routine '
+    + 'reports (31.67 C, 89 F), and a floor at 33 C leaves nothing on the winning bucket');
+  assert.equal(rows.us_city.view_max_c, 31.67);
+  assert.equal(rows.us_city.running_max_source, 'settlement_feed');
+  assert.equal(rows.us_city.all_sources_max_c, 33.0, 'the old rule stays visible beside it');
+  assert.equal(rows.nws_only_city.running_max_c, 25.0,
+    'no settlement reading today: the maximum is still built from what was measured');
+  assert.equal(rows.nws_only_city.running_max_source, 'all_sources');
+  assert.equal(rows.series_city.running_max_source, 'settlement_feed');
+  assert.equal(rows.floor_city.running_max_source, 'all_sources',
+    "the feed is a day behind for this city, so today's live station reading still lifts it");
+
   // ---- 2. nothing anywhere breaks the arithmetic --------------------------
+  // A maximum is never below a reading of the settlement feed today; with no
+  // settlement reading today, never below a station reading. A minimum is
+  // never above a station reading.
   const impossible = (await db.query(`
     select lw.city_key, lw.running_max_c, lw.running_min_c, lw.temp_c
       from public.live_weather lw
@@ -207,11 +242,19 @@ function middayZone() {
          = (now() at time zone c.timezone)::date
        -- a reading: a model's temp_c is not one, and may sit anywhere
        and lw.source_kind = 'station'
-       and ( (lw.running_max_c is not null and lw.temp_c > lw.running_max_c)
+       and ( (lw.running_max_c is not null and lw.temp_c > lw.running_max_c
+              and not exists (select 1 from public.v_city_today_readings r
+                               where r.city_key = lw.city_key and r.source = 'IEM'))
           or (lw.running_min_c is not null and lw.temp_c < lw.running_min_c) )
+    union all
+    select r.city_key, lw.running_max_c, lw.running_min_c, r.temp_c
+      from public.v_city_today_readings r
+      join public.live_weather lw using (city_key)
+     where r.source = 'IEM' and (lw.running_max_c is null or r.temp_c > lw.running_max_c)
   `)).rows;
   assert.deepEqual(impossible, [],
-    'a maximum below - or a minimum above - a reading of the same day');
+    'a maximum below a settlement reading (or, without one, below a station reading) '
+    + 'of the same day, or a minimum above a reading');
 
   // ---- 3. the view and the stored row cannot drift ------------------------
   //
@@ -241,6 +284,6 @@ function middayZone() {
       `${city} is stamped with a day that is not its own`);
   }
 
-  console.log(`observation-health: 5 contracts hold (zone ${TZ}, local ${localToday})`);
+  console.log(`observation-health: 6 contracts hold, the settlement feed first (zone ${TZ}, local ${localToday})`);
   await db.close();
 })().catch(err => { console.error(err); process.exit(1); });

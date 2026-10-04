@@ -38,7 +38,8 @@ const viewText = (file, name) => {
     create table cities (city_key text primary key, timezone text);
     create table weather_observations (obs_id bigserial primary key, city_key text, station text,
       valid_at timestamptz, temp_c numeric, dewpoint_c numeric, humidity numeric, wind_speed numeric,
-      wind_dir_deg numeric, precip numeric, cloud_cover numeric, pressure_hpa numeric);
+      wind_dir_deg numeric, precip numeric, cloud_cover numeric, pressure_hpa numeric,
+      source text not null);
     create table derived_city_day_features (city_key text, obs_date date, max_c numeric, min_c numeric,
       diurnal_range_c numeric, n_obs int, prev_max_c numeric, delta_max_c numeric, morning_temp_c numeric,
       morning_dewpoint_c numeric, dewpoint_depression_c numeric, morning_humidity numeric,
@@ -59,8 +60,8 @@ const viewText = (file, name) => {
   // 15:00 local at 20 + days since 30 Jun, and cools 0.8 C an hour either side, so
   // a day's evening alone reads several degrees under its maximum.
   await db.exec(`
-    insert into weather_observations (city_key, valid_at, temp_c, dewpoint_c, pressure_hpa)
-    select c.city_key, t,
+    insert into weather_observations (city_key, valid_at, source, temp_c, dewpoint_c, pressure_hpa)
+    select c.city_key, t, 'IEM',
            20 + ((t at time zone c.timezone)::date - date '2026-06-30')
               - 0.8 * abs(extract(hour from (t at time zone c.timezone)) - 15),
            10, 1010 + ((t at time zone c.timezone)::date - date '2026-06-30')
@@ -119,5 +120,23 @@ const viewText = (file, name) => {
   const after = (await db.query(`select md5(string_agg(row(city_key, obs_date, max_c, n_obs, prev_max_c, delta_max_c)::text, '|' order by city_key, obs_date)) as h from derived_city_day_features`)).rows[0].h;
   assert.equal(after, before, 'a second refresh changed the cache');
 
-  console.log("PASS: feature-cache-cut-day: a day the prune cut into keeps the values it was cached with (nyc's evening, tokyo's afternoon), the first whole day's prev_max_c/delta/pressure change come from the cached day before, whole days match the view, a never-cached first day is still cached for the prune's guard, a rerun changes nothing, re-runnable");
+  // THE LABEL IS THE SETTLEMENT FEED'S MAXIMUM (4 Oct, 20261004130000).
+  // A five-minute NWS reading warmer than the routine reports does not move
+  // max_c; max_c_all_sources keeps it. A day the routine feed missed keeps
+  // the maximum over what was measured.
+  await db.exec(`
+    insert into weather_observations (city_key, valid_at, source, temp_c) values
+      ('nyc', timestamptz '2026-07-04 19:35+00', 'NWS', 26),
+      ('nyc', timestamptz '2026-07-06 16:00+00', 'NWS', 30)`);
+  const lab = async (d) => (await db.query(
+    `select max_c::float as max_c, max_c_all_sources::float as all_src, max_c_source as src
+       from v_city_day_features where city_key = 'nyc' and obs_date = '${d}'`)).rows[0];
+  assert.deepEqual(await lab('2026-07-04'), { max_c: 24, all_src: 26, src: 'settlement_feed' },
+    'a five-minute reading moved the label');
+  assert.deepEqual(await lab('2026-07-06'), { max_c: 30, all_src: 30, src: 'all_sources' });
+  await refresh();
+  assert.deepEqual(await day('nyc', '2026-07-04'), { n_obs: 25, max_c: 24, prev: 23, delta: 1, dp: 1 },
+    'the cache took the five-minute maximum');
+
+  console.log("PASS: feature-cache-cut-day: a day the prune cut into keeps the values it was cached with (nyc's evening, tokyo's afternoon), the first whole day's prev_max_c/delta/pressure change come from the cached day before, whole days match the view, the label is the settlement feed's maximum, a never-cached first day is still cached for the prune's guard, a rerun changes nothing, re-runnable");
 })().catch((e) => { console.error(e); process.exit(1); });
