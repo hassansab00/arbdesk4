@@ -31,6 +31,13 @@ import { DataState } from "@/components/DataState";
  *
  * The totals are added up in the database (v_prediction_hindsight_summary):
  * PostgREST returns at most 1,000 rows, and the row view passes that in days.
+ *
+ * ONE CALL PER CHECKPOINT (4 Oct). A checkpoint captured by two engine
+ * versions counts once, the first capture (v_checkpoint_calls.first_call);
+ * 81 second captures had been counted as city-days. The selector below picks
+ * the detail table AND the summary line above it; the headline stays the
+ * day-ahead call and says so. Each row shows the checkpoint's scheduled local
+ * time beside the moment it was actually captured.
  */
 
 type Summary = {
@@ -48,6 +55,7 @@ type Row = {
   forecast_max_c: number | null; forecast_error_c: number | null;
   hit: boolean | null; market_band: string | null; market_hit: boolean | null;
   outcome_source: string | null;
+  scheduled_local: string | null; engine_version: string | null;
 };
 
 const n = (v: unknown) => {
@@ -100,6 +108,19 @@ export function summarise(s: Summary) {
 
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 
+/** "2026-10-03 09:00" from a timestamp without a zone (the city's local clock). */
+export const localClock = (v: string | null) => (v ? v.replace("T", " ").slice(0, 16) : "—");
+
+/** "09:36 UTC" from a timestamptz. */
+export const utcClock = (v: string | null) => {
+  if (!v) return "—";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? "—" : `${d.toISOString().slice(11, 16)} UTC`;
+};
+
+/** A row's verdict; a call not yet graded is pending, never a miss. */
+export const verdict = (hit: boolean | null) => (hit === null ? "pending" : hit ? "hit" : "miss");
+
 export default function PredictionHindsight() {
   const [moment, setMoment] = useState("day_ahead");
   const sq = useQuery<Summary[]>(
@@ -107,7 +128,7 @@ export default function PredictionHindsight() {
     [], 60000, 50);
   const rq = useQuery<Row[]>(
     () => supabase.from("v_prediction_hindsight")
-      .select("city_key,for_date,called_when,called_at,predicted_band,predicted_pct,actual_band,observed_max_c,forecast_max_c,forecast_error_c,hit,market_band,market_hit,outcome_source")
+      .select("city_key,for_date,called_when,called_at,predicted_band,predicted_pct,actual_band,observed_max_c,forecast_max_c,forecast_error_c,hit,market_band,market_hit,outcome_source,scheduled_local,engine_version")
       .eq("called_when", moment)
       .order("for_date", { ascending: false }).order("city_key")
       .limit(300),
@@ -119,6 +140,10 @@ export default function PredictionHindsight() {
     const d = summaries.find(x => x.called_when === "day_ahead");
     return d ? summarise(d) : null;
   }, [summaries]);
+  const chosen = useMemo(() => {
+    const d = summaries.find(x => x.called_when === moment);
+    return d ? summarise(d) : null;
+  }, [summaries, moment]);
   const before = summaries.filter(x => !x.after_peak);
   const after = summaries.filter(x => x.after_peak);
   const s = head;
@@ -235,13 +260,22 @@ export default function PredictionHindsight() {
     </DataState>
 
     <div className="flex flex-wrap items-center gap-2 pt-2 text-xs">
-      <span className="text-muted">Calls frozen at</span>
+      <span className="text-muted">Show the calls frozen at</span>
       {Object.keys(MOMENT).map(k =>
         <button key={k} onClick={() => setMoment(k)}
           className={`rounded border px-2 py-0.5 ${moment === k ? "border-accent text-accent" : "border-border text-muted"}`}>
           {MOMENT[k]}
         </button>)}
     </div>
+    <p className="text-xs text-muted">
+      <strong>{MOMENT[moment] ?? moment}</strong>: {WHEN[moment] ?? ""}.{" "}
+      {chosen
+        ? <>Right on {chosen.hits} of {chosen.days} city-days ({pct(chosen.actual)}), claiming {pct(chosen.claimed)}
+          {chosen.marketRate === null ? "" : `; the market's favourite ${pct(chosen.marketRate)} against the engine's ${pct(chosen.modelRateOnMarketDays ?? 0)} on the ${chosen.marketDays} city-days both called`}.
+          {moment !== "day_ahead" && " One call per city-day: the checkpoint's first capture."}</>
+        : "Nothing settled at this moment yet."}
+      {moment !== "day_ahead" && " The headline above is the day-ahead call, not this one."}
+    </p>
     <DataState
       relation="v_prediction_hindsight"
       truncated={false}
@@ -253,13 +287,21 @@ export default function PredictionHindsight() {
       <div className="overflow-x-auto rounded border border-border">
         <table className="w-full text-xs">
           <thead className="bg-panel2 text-muted"><tr>
-            {["Day", "City", "Engine called", "Sure", "Market called", "Actual", "Observed", "Priced centre", "Error", "", "Source"]
+            {["Day", "City", "Scheduled (local)", "Captured", "Engine called", "Sure", "Market called", "Actual", "Observed", "Priced centre", "Error", "", "Source"]
               .map((h, i) => <th key={i} className="px-2 py-1.5 text-left font-normal">{h}</th>)}
           </tr></thead>
           <tbody>
-            {rows.map(r => <tr key={`${r.city_key}-${r.for_date}`} className="border-t border-border">
-              <td className="whitespace-nowrap px-2 py-1" title={r.called_at ? `called ${r.called_at}` : ""}>{r.for_date}</td>
+            {rows.map(r => <tr key={`${r.city_key}-${r.for_date}-${r.called_when}`} className="border-t border-border">
+              <td className="whitespace-nowrap px-2 py-1">{r.for_date}</td>
               <td className="px-2 py-1">{r.city_key}</td>
+              <td className="whitespace-nowrap px-2 py-1 font-mono text-muted"
+                  title={r.scheduled_local ? "the checkpoint's time on the city's own clock" : "the day-ahead call has no fixed time: it is the last pricing before the local day began"}>
+                {r.scheduled_local ? localClock(r.scheduled_local) : "before the day"}
+              </td>
+              <td className="whitespace-nowrap px-2 py-1 font-mono text-muted"
+                  title={`${r.called_at ?? ""}${r.engine_version ? ` - engine ${r.engine_version}` : ""}`}>
+                {utcClock(r.called_at)}
+              </td>
               <td className="px-2 py-1">{r.predicted_band ?? "—"}</td>
               <td className="px-2 py-1 font-mono">{r.predicted_pct === null ? "—" : `${r.predicted_pct}%`}</td>
               <td className={`px-2 py-1 ${r.market_hit === null ? "text-muted" : r.market_hit ? "text-good" : "text-bad"}`}>
@@ -272,7 +314,7 @@ export default function PredictionHindsight() {
               <td className={`px-2 py-1 font-mono ${Math.abs(n(r.forecast_error_c) ?? 0) > 2 ? "text-warn" : "text-muted"}`}>
                 {r.forecast_error_c === null ? "—" : `${n(r.forecast_error_c)! > 0 ? "+" : ""}${r.forecast_error_c}`}
               </td>
-              <td className={`px-2 py-1 ${r.hit ? "text-good" : "text-bad"}`}>{r.hit ? "hit" : "miss"}</td>
+              <td className={`px-2 py-1 ${r.hit === null ? "text-muted" : r.hit ? "text-good" : "text-bad"}`}>{verdict(r.hit)}</td>
               <td className="px-2 py-1 text-muted" title={r.outcome_source === "venue"
                 ? "The venue confirmed which contract paid."
                 : "Banked from the weather outcome after the day ended."}>

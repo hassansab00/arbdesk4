@@ -117,5 +117,31 @@ const near = (a, b, why) => assert.ok(Math.abs(Number(a) - b) < 1e-6, `${why}: $
 
   // re-runnable
   await db.exec(MIG('20260926090000_hit_and_miss_scores_frozen_calls.sql'));
-  console.log('frozen-calls: one-sided books held inside their quote, old and new rows graded alike, scoreboard adds up');
+
+  // ONE CALL PER CHECKPOINT (4 Oct, 20261004140000). A second engine version
+  // captures nyc 25 Sep noon an hour late and calls the wrong bucket. Both
+  // rows stay in v_checkpoint_calls; the scoreboard counts the first.
+  await db.exec(MIG('20261004140000_one_call_per_checkpoint.sql'));
+  await db.query(`insert into public.prediction_checkpoints
+      (city_key, target_date, checkpoint, decided_at, local_decision_time, engine_version, model_path,
+       probs, top_band_id, top_prob, market, market_top_band_id)
+      values ('nyc', '2026-09-25', 'noon', now() + interval '1 hour', '2026-09-25 12:00', 'v2', 'forecast',
+              $1::jsonb, $2, 0.6, $3::jsonb, $4)`,
+    [JSON.stringify({ [B(1)]: 0.6, [B(2)]: 0.3, [B(3)]: 0.1 }), B(1), deadBook, B(2)]);
+  assert.equal((await db.query('select public.bank_checkpoint_outcomes() n')).rows[0].n, 1);
+  const all3 = (await db.query(`select engine_version, first_call, calls_at_checkpoint, hit
+      from public.v_checkpoint_calls order by for_date, decided_at`)).rows;
+  assert.deepEqual(all3.map((r) => [r.engine_version, r.first_call, r.calls_at_checkpoint, r.hit]),
+    [['v1', true, 1, true], ['v1', true, 2, true], ['v2', false, 2, false]],
+    'every capture stays, and the first one is the call');
+  const board2 = (await db.query(`select * from public.v_checkpoint_scoreboard where city_key = 'all'`)).rows[0];
+  assert.equal(Number(board2.city_days), 2, 'a second capture is not a second city-day');
+  assert.equal(Number(board2.model_hits), 2, 'and its wrong call is not scored');
+  near(board2.brier_model, 0.04 + 0.25 + 0.09, 'the engine Brier of the first calls');
+  await db.exec('set role anon');
+  assert.equal((await db.query('select count(*)::int n from public.v_checkpoint_calls')).rows[0].n, 3);
+  assert.equal((await db.query('select count(*)::int n from public.v_checkpoint_scoreboard')).rows[0].n, 2);
+  await db.exec('reset role');
+  await db.exec(MIG('20261004140000_one_call_per_checkpoint.sql'));   // re-runnable
+  console.log('frozen-calls: one-sided books held inside their quote, old and new rows graded alike, scoreboard adds up, one call per checkpoint (a second capture stays and is not scored)');
 })().catch((e) => { console.error(e); process.exit(1); });
