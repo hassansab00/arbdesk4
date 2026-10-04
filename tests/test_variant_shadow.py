@@ -117,14 +117,19 @@ def io(monkeypatch):
             return Answer(w["calls"])
         return Answer([w["calls"][ids[0]]] if ids[0] in w["calls"] else [])
 
-    def upsert(table, rows, on_conflict, chunk=500):
-        w["written"].append((table, rows, on_conflict))
-        return len(rows)
+    def post(url, headers=None, params=None, data=None, timeout=None):
+        assert url.startswith("https://x.supabase.co/rest/v1/")
+        assert headers["Prefer"] == "resolution=ignore-duplicates,return=minimal"
+        assert 1.0 <= timeout <= 8.0, "one attempt, never longer than the time left"
+        if isinstance(w.get("post"), Exception):
+            return Answer(w["post"])
+        w["written"].append((url.rsplit("/", 1)[1], json.loads(data), params["on_conflict"]))
+        return Answer(None)
     # the `common` variant_shadow will import now: other tests reload it
     live = importlib.import_module("common")
     monkeypatch.setattr(live, "_get", get)
     monkeypatch.setattr(live, "_cfg", lambda: {"url": "https://x.supabase.co", "key": "k"})
-    monkeypatch.setattr(live, "upsert", upsert)
+    monkeypatch.setattr(live, "_post", post)
     monkeypatch.setattr(pe, "_measurement_layer_for",
                         lambda city: (0.03, 0.06) if city == "london" else None)
     return w
@@ -199,12 +204,29 @@ def test_a_refused_read_is_counted_and_never_raised(io):
     assert counts["skipped"] == {"error": 1} and io["written"] == []
 
 
-def test_a_refused_write_is_reported_and_never_raised(io, monkeypatch):
-    def refused(*a, **k):
-        raise RuntimeError("the insert was refused")
-    monkeypatch.setattr(importlib.import_module("common"), "upsert", refused)
+def test_a_refused_write_is_reported_and_never_raised(io):
+    io["post"] = RuntimeError("the insert was refused")
     counts = _record(io, [_served("london", "noon")])
     assert counts["error"].startswith("RuntimeError: the insert was refused")
+
+
+def test_no_write_starts_with_under_a_second_left(io, monkeypatch):
+    """Codex on #303: common.upsert waits up to 120 s and retries four times,
+    which could run past the deadline. The write is one bounded request, and
+    with under a second left it is not started; the rows are counted."""
+    def lookup(*a, **k):
+        time.sleep(0.3)
+        return io["calls"]["b1"]
+    monkeypatch.setattr(vs, "day_ahead_call", lookup)
+    counts = _record(io, [_served("london", "noon")], deadline=time.monotonic() + 1.2)
+    assert io["written"] == [] and counts["skipped"] == {"out_of_time": 1} and counts["written"] == 0
+
+
+def test_the_tick_records_the_candidate_after_the_engine_decides():
+    """The engine's decisions act on this tick; the candidate only observes."""
+    src = (ROOT / "scripts" / "tick.py").read_text()
+    assert src.index("engine_shadow.record(") < src.index("variant_shadow.record(")
+    assert "deadline=t0 + budget_s - 2.0" in src[src.index("variant_shadow.record("):]
 
 
 def test_no_lookup_starts_past_the_deadline(io):

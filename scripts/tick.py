@@ -498,13 +498,6 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     s10_ladders = {}
     s10["shadow"] = s10_shadow.record(due, market_of, bands_by_market, tz_of, unit_of, dry_run,
                                       ladders=s10_ladders)
-    # P1.1's candidate beside each same-day call, observe only
-    # (docs/P11_DA_FLOOR_PREREG.md). Bounded, never raises; it stops 6 s
-    # before the tick's budget so the engine's decisions below keep theirs.
-    import variant_shadow
-    detail["variants"] = variant_shadow.record(out, results, market_of, bands_by_market, tz_of,
-                                               unit_of, dry_run=dry_run,
-                                               deadline=t0 + budget_s - 6.0)
     # The one engine decides for its strategies on what this tick wrote,
     # recorded in `decisions`, ordering nothing (P5.12 part 3a). Bounded by
     # the tick's own budget; never raises.
@@ -516,6 +509,15 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     detail["engine"] = engine_shadow.record(out, s10_ladders, bands_by_market,
                                             market_of, unit_of, engine_floors, now,
                                             deadline=t0 + budget_s, dry_run=dry_run)
+    # P1.1's candidate beside each same-day call, observe only
+    # (docs/P11_DA_FLOOR_PREREG.md). After the engine's decisions, which act
+    # on this tick; in what is left of the budget, 2 s kept for the log row.
+    # Measured 2-4 Oct (72 ticks): the whole tick took 26.5 s at the median and
+    # 38.4 s at most, the engine's step 3.7 s and 7.3 s. Never raises.
+    import variant_shadow
+    detail["variants"] = variant_shadow.record(out, results, market_of, bands_by_market, tz_of,
+                                               unit_of, dry_run=dry_run,
+                                               deadline=t0 + budget_s - 2.0)
     detail.update({"written": written if not dry_run else 0, "would_write": len(out),
                    "deferred": deferred, "failed": failed[:30],
                    "books": len(books), "seconds": round(time.monotonic() - t0, 1)})

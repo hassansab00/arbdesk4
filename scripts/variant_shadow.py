@@ -21,13 +21,17 @@ this run (first captures only: the tick writes a checkpoint no version holds):
     each bucket clamped and rounded as the served ladder is, no calibration.
 One row per city, day, checkpoint and variant, append-only.
 
-BOUNDED AND NEVER RAISES: it runs inside the tick's minute. Each day-ahead
-lookup is one indexed read (36 ms in the database for an 11-bucket market,
-4 Oct), one attempt with a timeout no longer than the time left; they run on a
-small pool and stop at the deadline. A row it cannot build is counted by
+BOUNDED AND NEVER RAISES: it runs inside the tick's minute, after the
+engine's decisions (it observes; they act). Each day-ahead lookup is one
+indexed read (36 ms in the database for an 11-bucket market, 4 Oct), one
+attempt with a timeout no longer than the time left; they run on a small pool
+and stop at the deadline. The write is one request the same way, and is not
+started with under a second left (common.upsert waits up to 120 s and retries
+four times; Codex on #303). A row it cannot build or write is counted by
 reason in the tick's log.
 """
 import datetime as dt
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
 from zoneinfo import ZoneInfo
@@ -94,6 +98,19 @@ def build_row(served, call, bands, unit, q, calibrated):
 # ---------------------------------------------------------------------------
 # I/O
 # ---------------------------------------------------------------------------
+def write(rows, timeout_s):
+    """One insert of every row, duplicates ignored (first capture wins), one
+    attempt, never longer than timeout_s."""
+    import common
+    headers = common._headers()
+    headers["Prefer"] = "resolution=ignore-duplicates,return=minimal"
+    r = common._post(f"{common._cfg()['url']}/rest/v1/{TABLE}", headers=headers,
+                     params={"on_conflict": ON_CONFLICT}, data=json.dumps(rows),
+                     timeout=max(1.0, timeout_s))
+    r.raise_for_status()
+    return len(rows)
+
+
 def day_ahead_call(band_ids, starts_at, timeout_s=8.0):
     """The last pricing of these buckets before starts_at, or None.
 
@@ -126,7 +143,6 @@ def record(out, results, market_of, bands_by_market, tz_of, unit_of, dry_run=Fal
         counts["skipped"][why] = counts["skipped"].get(why, 0) + 1
 
     try:
-        from common import upsert
         import probability_engine as pe
         todo = [r for r in out if r.get("checkpoint") in CHECKPOINTS]
         counts["due"] = len(todo)
@@ -187,10 +203,13 @@ def record(out, results, market_of, bands_by_market, tz_of, unit_of, dry_run=Fal
                 skip(why)
                 continue
             rows.append(row)
-        if rows and not dry_run:
-            counts["written"] = upsert(TABLE, rows, ON_CONFLICT)
-        elif rows:
+        left = (deadline - time.monotonic()) if deadline else 10.0
+        if rows and dry_run:
             counts["would_write"] = len(rows)
+        elif rows and left < 1.0:
+            counts["skipped"]["out_of_time"] = counts["skipped"].get("out_of_time", 0) + len(rows)
+        elif rows:
+            counts["written"] = write(rows, min(8.0, left))
     except Exception as e:
         counts["error"] = f"{type(e).__name__}: {str(e)[:160]}"
     counts["seconds"] = round(time.monotonic() - t0, 2)
