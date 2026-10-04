@@ -35,6 +35,7 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 INDIRECT = {
     ("archive_observations.yml", "archive_observations"): ("archive_observations.py", 'f"archive_{name}"'),
     ("forecasts.yml", "ingest_forecasts"): ("forecast_backfill_job.py", "scripts/ingest_forecasts.py"),
+    ("pipeline_daily.yml", "ingest_forecasts"): ("forecast_nightly.py", "scripts/ingest_forecasts.py"),
 }
 
 

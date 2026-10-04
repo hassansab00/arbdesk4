@@ -184,10 +184,13 @@ MEASURED_MINUTES = {
     # ingest took 276 s a run and wrote 0 archive rows on each of the 7 nights
     # 28 Sep - 4 Oct (ingest_log), because forecasts.yml had written them an
     # hour before. From 4 Oct that step IS the night's ingest (forecasts.yml is
-    # started by hand), so it does what forecasts.yml's first link did:
-    # 597-799 s of script on 1-4 Oct, against the 276 s it replaces.
-    # 29.0 + (799 - 276) / 60 = 37.7 on the slowest of those nights, rounded up
-    # to 38. Re-measure after a week of runs and lower it if the step is shorter.
+    # started by hand), so it does what forecasts.yml's first link did: 597-799
+    # s of script on 1-4 Oct (mean 667), against the 276 s it replaces. The
+    # chain's second link (210-346 s a job, mostly fetching all 48 current runs
+    # again) becomes a pass inside the step that asks only for what is still
+    # missing (scripts/forecast_nightly.py): about a minute, not measured yet.
+    # 29.0 + (667 - 276) / 60 + 1 = 36.5 on the means; 38 leaves room for a
+    # slower night (1 Oct's daily run billed 33). Re-measure after a week.
     "pipeline_daily.yml": 38.0,
     # Measured per night, every chained link included (the clock dispatches
     # one run; an incomplete ingest chains the next). 27 Sep, before the
@@ -485,7 +488,7 @@ def test_forecasts_run_inside_the_daily_pipeline_now():
     doc = dict(workflows())["pipeline_daily.yml"]
     steps = [st for st in next(iter(doc["jobs"].values()))["steps"] if "run" in st]
     first = next(st for st in steps if "pip install" not in st["run"])
-    assert first["run"].strip() == "python scripts/ingest_forecasts.py", first
+    assert first["run"].strip() == "python scripts/forecast_nightly.py", first
 
 
 def test_the_run_count_is_still_capped_too():

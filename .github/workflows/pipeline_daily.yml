@@ -66,12 +66,15 @@ jobs:
       #    THE NIGHT'S INGEST from 4 Oct (P6.1, 20261004170000): forecasts.yml
       #    left the clock, so this step writes the archive rows it used to find
       #    already written (0 on each of the 7 nights 28 Sep - 4 Oct), and the
-      #    night's current-run snapshot. tests/test_github_actions.py holds it
-      #    first.
+      #    night's current-run snapshot. The wrapper runs
+      #    scripts/ingest_forecasts.py (provenance source) and keeps the chain's
+      #    second pass for timed-out cities inside this step (bounded: at most
+      #    three passes, none started after 26 minutes, the last ending by 36).
+      #    tests/test_github_actions.py holds it first.
       - name: Ingest forecasts (last 10 days)
         if: ${{ !cancelled() }}
-        timeout-minutes: 30
-        run: python scripts/ingest_forecasts.py
+        timeout-minutes: 40
+        run: python scripts/forecast_nightly.py
 
       # 2. Capture the exact final station evidence named in each market's
       #    saved rules. No estimate or running maximum may cross this gate.

@@ -88,7 +88,8 @@ def test_a_city_that_hung_once_is_finished_in_the_same_run(monkeypatch, tmp_path
     src = Source(hang_first=CITIES[:4])
     result, (status, detail), _ = _run(monkeypatch, tmp_path, src, CITIES)
     assert result == {"incomplete": False, "rows_offered": 12 * (len(f.LEADS) + 1),
-                      "missing_chunks": 0, "unreached_chunks": 0, "completed_dates": 12}
+                      "missing_chunks": 0, "unreached_chunks": 0, "completed_dates": 12,
+                      "current_cities_missing": []}
     assert status == "ok" and all(src.calls[(c, False)] == 2 for c in CITIES[:4])
     assert all(src.calls[(c, False)] == 1 for c in CITIES[4:])
 
@@ -120,3 +121,22 @@ def test_hangs_overlap_instead_of_queueing(monkeypatch, tmp_path):
 
 def test_a_hang_costs_at_most_two_short_waits():
     assert f.TIMEOUT <= 20 and f.TRIES == 2 and f.RETRY_WAIT <= 2 and 1 <= f.WORKERS <= 8
+
+
+def test_a_continuation_pass_fetches_only_the_current_runs_it_is_given(monkeypatch, tmp_path):
+    """scripts/forecast_nightly.py's second pass (4 Oct, P6.1) names the cities
+    whose current run the first pass missed; every other city's is not asked
+    for again, and the cities still missing come back in the result."""
+    asked = []
+
+    class Missing(Source):
+        def fetch_current(self, lat, lon, label):
+            city = label.split()[0]
+            asked.append(city)
+            return (None, "unreached") if city == "c02" else ({"ok": True}, "ok")
+
+    monkeypatch.setattr(f, "CURRENT_CITIES", {"c01", "c02"})
+    result, (status, detail), _ = _run(monkeypatch, tmp_path, Missing(), CITIES)
+    assert sorted(set(asked)) == ["c01", "c02"]
+    assert result["current_cities_missing"] == ["c02"] and detail["current_cities_missing"] == ["c02"]
+    assert detail["current_rows"] == 1 and status == "partial"

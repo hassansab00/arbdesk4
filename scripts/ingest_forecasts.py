@@ -61,6 +61,12 @@ RETRY_WAIT = 2
 # Four requests in flight is far under Open-Meteo's free per-minute limit.
 WORKERS    = max(1, int(os.environ.get("FORECAST_WORKERS", "4")))
 SOFT_DEADLINE_MIN = min(20, max(1, int(os.environ.get('FORECAST_DEADLINE_MINUTES', '20'))))
+# Whose current run to fetch: unset = every city, a comma list (empty = none)
+# = only those. scripts/forecast_nightly.py sets it on a continuation pass to
+# the cities its first pass missed, so a second pass does not fetch 48 current
+# runs again (about 3.6 minutes, 28 Sep) to fill a few archive chunks (4 Oct).
+_CURRENT_ONLY = os.environ.get("FORECAST_CURRENT_CITIES")
+CURRENT_CITIES = None if _CURRENT_ONLY is None else {c for c in _CURRENT_ONLY.split(",") if c.strip()}
 
 def fetch(lat, lon, start, end, label, models=None):
     fields = ["temperature_2m"] + [f"temperature_2m_previous_day{d}" for d in LEADS]
@@ -526,7 +532,7 @@ def main():
         return c, "ok", n
 
     if MODELS:
-        todo = list(all_cities)
+        todo = [c for c in all_cities if CURRENT_CITIES is None or c["city_key"] in CURRENT_CITIES]
         for attempt in (1, 2):
             with ThreadPoolExecutor(WORKERS) as pool:
                 results = list(pool.map(one_current, todo))
@@ -560,7 +566,8 @@ def main():
     # missing_chunks is refusals ONLY. An unreached chunk leaves the run
     # incomplete so it is asked for again, but it is not evidence of a gap.
     result = {'incomplete': incomplete, 'rows_offered': total, 'missing_chunks': missing_chunks,
-              'unreached_chunks': unreached_chunks, 'completed_dates': completed_dates}
+              'unreached_chunks': unreached_chunks, 'completed_dates': completed_dates,
+              'current_cities_missing': sorted(set(current_missing))}
     result_path = os.environ.get('FORECAST_RESULT_PATH')
     if result_path:
         with open(result_path, 'w') as handle:

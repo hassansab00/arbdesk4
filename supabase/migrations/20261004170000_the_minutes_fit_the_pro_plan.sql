@@ -16,8 +16,11 @@
 --    (28 Sep - 4 Oct, ingest_log) that step wrote 0 archive rows: the 03:36
 --    chain had already written them. The chain cost 15-25 billed minutes a
 --    night (1-4 Oct: 15, 25, 16, 15). The daily step now does that work and
---    still takes the night's newest current-run snapshot. forecasts.yml stays
---    for a backfill started by hand.
+--    still takes the night's newest current-run snapshot. The chain's second
+--    link (150-400 archive rows a night, for cities whose first pass timed
+--    out) becomes a bounded second pass inside the step
+--    (scripts/forecast_nightly.py). forecasts.yml stays for a backfill
+--    started by hand.
 --    An empty hours_utc is never due (clock_due: = any('{}') is false), and
 --    the row stays because clock_expected_jobs references it.
 --
