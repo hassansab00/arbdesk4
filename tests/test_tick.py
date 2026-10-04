@@ -148,6 +148,10 @@ def test_a_row_names_its_full_artifact_version_and_its_raw_forecast():
                             ["measurement_layer:q_down0.0200_q_up0.0500:city", "priced_from:" + label],
                             {}, None, "git:abc")
     assert row["priced_from"] == label and row["raw_forecast_c"] == 22.37
+    assert row["station"] is None, "no station given, none recorded"
+    with_station, _ = tick.build_row("nyc", "2026-09-25", "d1_eve", LOCAL, rows, [], {}, None, "git:abc",
+                                     station="KLGA")
+    assert with_station["station"] == "KLGA"
     bare, _ = tick.build_row("nyc", "2026-09-25", "d1_eve", LOCAL, _rows({"b1": 0.4, "b2": 0.6}), [],
                              {}, None, "git:abc")
     assert bare["priced_from"] is None and bare["raw_forecast_c"] is None

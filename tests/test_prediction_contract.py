@@ -106,6 +106,9 @@ def test_every_registry_row_reaches_the_repository():
 def test_the_checkpoint_keeps_the_two_fields_the_contract_needs():
     assert "alter table public.prediction_checkpoints add column if not exists priced_from text;" in MIG
     assert "alter table public.prediction_checkpoints add column if not exists raw_forecast_c numeric;" in MIG
+    assert "alter table public.prediction_checkpoints add column if not exists station text;" in MIG
+    assert "alter table public.variant_shadow_checkpoints add column if not exists station text;" in MIG
     tick = (ROOT / "scripts" / "tick.py").read_text()
     assert '"priced_from": _priced_from(reasons),' in tick
     assert '"raw_forecast_c": head.get("forecast_max_c"),' in tick
+    assert 'station=station_of.get(city)' in tick, "the station as it stood at the decision"

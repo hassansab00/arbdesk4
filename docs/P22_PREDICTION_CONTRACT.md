@@ -42,7 +42,7 @@ One row per recorded call, from the three checkpoint records, in one shape.
 | artifact version | `priced_from` (new, below); before it, `model_path:forecast_model` | `model_version` | `variant_version` |
 | code version | `engine_version` | `contract` | `engine_version` |
 | serving role | `served` | `shadow` | `shadow` |
-| station | `cities.icao` | `cities.icao` | `cities.icao` |
+| station | `station` (new): `cities.icao` as it stood at the decision | the served call's `station` at the same city, date and checkpoint | `station` (new), copied from the served call |
 | target local date, checkpoint | `target_date`, `checkpoint` | same | same |
 | as-of time | `decided_at` | `decided_at` | `decided_at` |
 | input provenance | forecast run and model, the reading and its source, the floor | `inputs`, the floor | the day-ahead pricing's time and lead, the floor, q |
@@ -52,8 +52,12 @@ One row per recorded call, from the three checkpoint records, in one shape.
 | full ladder, predicted top | `probs`, `top_band_id`, `top_prob` | same | same |
 | fallback state | `block_reason` when `inputs_ok` is false; the pricing path (`model_path`) | none recorded | none recorded |
 
-**Two fields the engine did not keep,** recorded from this PR on (nullable columns, older rows
+**Fields the records did not keep,** recorded from this PR on (nullable columns, older rows
 stay null):
+- `station` on the engine's checkpoint and on the variant row: the settlement station as it stood
+  when the call was made. `cities` keeps no history, so read through the current row a corrected
+  station would rewrite every past call's. For a call from before 4 Oct the contract can only give
+  today's station; `station_source` says which (`recorded`, `served_call`, `cities_now`).
 - `priced_from`: the full label the call was priced from. It names the station-correction, MOS
   and width versions behind the centre. The checkpoint row kept only `model_path` and
   `forecast_model`, cut from it.

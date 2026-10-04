@@ -65,10 +65,11 @@ async function refused(db, sql, params, why) {
   // One call of each kind, read back in one shape.
   await db.query(`insert into public.prediction_checkpoints
       (city_key, target_date, checkpoint, local_decision_time, engine_version, model_path, probs, top_band_id, top_prob,
-       centre_c, sigma_c, running_max_c, forecast_model, priced_from, raw_forecast_c, decided_at)
+       centre_c, sigma_c, running_max_c, forecast_model, priced_from, raw_forecast_c, station, decided_at)
       values ('london', '2026-10-05', 'noon', '2026-10-05 12:00', 'git:abc', 'forecast', '{"b1":0.2,"b2":0.5,"b3":0.3}',
               'b2', 0.5, 21.8, 0.9, 20.4, 'open_meteo_forecast',
-              'station_correction:station-correction:2026-10-04:da319e41d6:open_meteo_forecast', 21.2, '2026-10-05T11:36:30Z')`);
+              'station_correction:station-correction:2026-10-04:da319e41d6:open_meteo_forecast', 21.2, 'EGLL',
+              '2026-10-05T11:36:30Z')`);
   await db.query(`insert into public.prediction_checkpoints
       (city_key, target_date, checkpoint, local_decision_time, engine_version, model_path, probs, top_band_id, top_prob,
        inputs_ok, block_reason)
@@ -81,9 +82,9 @@ async function refused(db, sql, params, why) {
               '{"b1":0.1,"b2":0.6,"b3":0.3}', 'b2', 0.6, 21.5, 20.5, 23.0, 20.4, '{"hour": 12}', '2026-10-05T11:36:40Z')`);
   await db.query(`insert into public.variant_shadow_checkpoints
       (city_key, target_date, checkpoint, variant, variant_version, engine_version, day_ahead_centre_c, day_ahead_sigma_c,
-       day_ahead_priced_at, floor_c, q_down, q_up, unit, probs, top_band_id, top_prob, decided_at)
+       day_ahead_priced_at, floor_c, q_down, q_up, unit, probs, top_band_id, top_prob, station, decided_at)
       values ('london', '2026-10-05', 'noon', 'da_floor', 'da_floor:v1', 'git:abc', 21.2, 1.4, '2026-10-04T20:40:00Z',
-              20.4, 0.02, 0.05, 'C', '{"b1":0.05,"b2":0.55,"b3":0.4}', 'b2', 0.55, '2026-10-05T11:36:50Z')`);
+              20.4, 0.02, 0.05, 'C', '{"b1":0.05,"b2":0.55,"b3":0.4}', 'b2', 0.55, 'EGLL', '2026-10-05T11:36:50Z')`);
 
   const rows = await one(`select * from public.v_prediction_contract order by recorded_in, city_key`);
   assert.equal(rows.length, 4);
@@ -92,7 +93,11 @@ async function refused(db, sql, params, why) {
   assert.equal(eng.serving_role, 'served');
   assert.equal(eng.artifact_version, 'station_correction:station-correction:2026-10-04:da319e41d6:open_meteo_forecast');
   assert.equal(eng.code_version, 'git:abc');
-  assert.equal(eng.station, 'EGLC');
+  // The station recorded with the call, not today's cities row (EGLC): a
+  // corrected station must not rewrite the past.
+  assert.deepEqual([eng.station, eng.station_source], ['EGLL', 'recorded']);
+  assert.deepEqual([by['engine|nyc'].station, by['engine|nyc'].station_source], ['KLGA', 'cities_now'],
+    'a call from before 4 Oct names the station as it stands now, and says so');
   assert.equal(Number(eng.raw_forecast_c), 21.2);
   assert.equal(Number(eng.priced_centre_c), 21.8);
   assert.equal(Number(eng.uncertainty_c), 0.9);
@@ -106,10 +111,12 @@ async function refused(db, sql, params, why) {
   assert.equal(Number(s10.uncertainty_c), Number((2.5 / 2.5631).toFixed(4)));
   assert.equal(s10.uncertainty_kind, 'q10_q90_as_sigma');
   assert.equal(s10.input_provenance.hour, 12);
+  assert.deepEqual([s10.station, s10.station_source], ['EGLL', 'served_call'], 'S10 takes the served call\'s station');
   const v = by['engine_variant|london'];
   assert.deepEqual([v.serving_role, v.artifact_version], ['shadow', 'da_floor:v1']);
   assert.equal(Number(v.priced_centre_c), 21.2);
   assert.equal(v.input_provenance.q_down, 0.02);
+  assert.deepEqual([v.station, v.station_source], ['EGLL', 'recorded']);
   for (const r of rows) assert.ok(r.prediction_id && r.as_of && r.probs && r.top_band_id, r.recorded_in);
 
   const g = (await one(`select

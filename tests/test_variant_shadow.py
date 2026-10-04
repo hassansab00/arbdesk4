@@ -88,7 +88,8 @@ TZ = {"london": "Europe/London", "paris": "Europe/Paris"}
 
 def _served(city, checkpoint, floor=20.4):
     return {"city_key": city, "target_date": "2026-10-05", "checkpoint": checkpoint,
-            "engine_version": "git:abc", "running_max_c": floor, "centre_c": 21.8, "sigma_c": 0.9}
+            "engine_version": "git:abc", "running_max_c": floor, "centre_c": 21.8, "sigma_c": 0.9,
+            "station": "EGLL"}
 
 
 @pytest.fixture
@@ -152,6 +153,7 @@ def test_one_row_per_same_day_call_with_the_inputs_it_was_built_from(io):
     assert (row["day_ahead_centre_c"], row["day_ahead_sigma_c"], row["floor_c"]) == (21.2, 1.4, 20.4)
     assert (row["q_down"], row["q_up"]) == (0.03, 0.06), "the q the engine read for the city"
     assert row["served_calibrated"] is False and row["engine_version"] == "git:abc"
+    assert row["station"] == "EGLL", "the served call's station, recorded beside it"
     assert row["probs"] == vs.ladder(21.2, 1.4, "C", BANDS, 20.4, 0.03, 0.06)
     # the floor (20.4 C, in b2) rules out b1, except the measurement layer's
     # q_down share of the floor bucket's mass (P3.1)

@@ -10,9 +10,15 @@
 -- changes here.
 --
 --   prediction_checkpoints.priced_from     the full label the call was priced
---   prediction_checkpoints.raw_forecast_c  from, and the forecast maximum
---                                          before correction. Nullable; the
---                                          tick fills them from this PR on.
+--   prediction_checkpoints.raw_forecast_c  from, the forecast maximum before
+--   prediction_checkpoints.station         correction, and the station
+--   variant_shadow_checkpoints.station     (cities.icao) as it stood at the
+--                                          decision. Nullable; the tick fills
+--                                          them from this PR on. No history
+--                                          of cities exists, so an older call's
+--                                          station can only be today's, and
+--                                          the contract says so
+--                                          (station_source; Codex on #304).
 --   model_registry      append-only events: a family and version moving to a
 --                       state for a horizon, with evidence and a rollback.
 --   v_model_registry    the latest state of each family, version and horizon.
@@ -25,11 +31,17 @@
 
 alter table public.prediction_checkpoints add column if not exists priced_from text;
 alter table public.prediction_checkpoints add column if not exists raw_forecast_c numeric;
+alter table public.prediction_checkpoints add column if not exists station text;
+alter table public.variant_shadow_checkpoints add column if not exists station text;
 
 comment on column public.prediction_checkpoints.priced_from is
   'The full label the engine priced this call from (probability_engine reasons priced_from:...), naming the station-correction, MOS and width versions behind the centre. From 4 Oct (P2.2); null before.';
 comment on column public.prediction_checkpoints.raw_forecast_c is
   'The forecast maximum before any correction (the engine''s forecast_max_c). From 4 Oct (P2.2); null before.';
+comment on column public.prediction_checkpoints.station is
+  'The settlement station (cities.icao) as it stood when the call was made. From 4 Oct (P2.2); null before.';
+comment on column public.variant_shadow_checkpoints.station is
+  'The station of the served call this row sits beside, as recorded on it. From 4 Oct (P2.2); null before.';
 
 create table if not exists public.model_registry (
   event_id     bigint generated always as identity primary key,
@@ -121,7 +133,8 @@ select p.checkpoint_id::text                                  as prediction_id,
        p.engine_version                                       as code_version,
        'served'::text                                         as serving_role,
        p.city_key,
-       c.icao                                                 as station,
+       coalesce(p.station, c.icao)                            as station,
+       case when p.station is not null then 'recorded' else 'cities_now' end as station_source,
        p.target_date,
        p.checkpoint,
        p.decided_at                                           as as_of,
@@ -145,7 +158,9 @@ select p.checkpoint_id::text                                  as prediction_id,
 union all
 select s.checkpoint_id::text, 's10_shadow_checkpoints', 's10',
        s.model_version, s.contract, 'shadow',
-       s.city_key, c.icao, s.target_date, s.checkpoint, s.decided_at,
+       s.city_key, coalesce(e.station, c.icao),
+       case when e.station is not null then 'served_call' else 'cities_now' end,
+       s.target_date, s.checkpoint, s.decided_at,
        jsonb_strip_nulls(coalesce(s.inputs, '{}'::jsonb) || jsonb_build_object('floor_c', s.running_max_c)),
        null::numeric,
        s.median_c,
@@ -155,10 +170,19 @@ select s.checkpoint_id::text, 's10_shadow_checkpoints', 's10',
        null::text
   from public.s10_shadow_checkpoints s
   left join public.cities c on c.city_key = s.city_key
+  -- S10 rows keep no station of their own: the served call's, recorded at
+  -- the same city, date and checkpoint (any version holds the same station).
+  left join lateral (
+    select p.station from public.prediction_checkpoints p
+     where p.city_key = s.city_key and p.target_date = s.target_date
+       and p.checkpoint = s.checkpoint and p.station is not null
+     order by p.decided_at limit 1) e on true
 union all
 select v.shadow_id::text, 'variant_shadow_checkpoints', 'engine_variant',
        v.variant_version, v.engine_version, 'shadow',
-       v.city_key, c.icao, v.target_date, v.checkpoint, v.decided_at,
+       v.city_key, coalesce(v.station, c.icao),
+       case when v.station is not null then 'recorded' else 'cities_now' end,
+       v.target_date, v.checkpoint, v.decided_at,
        jsonb_strip_nulls(jsonb_build_object(
          'day_ahead_priced_at', v.day_ahead_priced_at,
          'day_ahead_lead_days', v.day_ahead_lead_days,
