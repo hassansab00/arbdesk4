@@ -48,16 +48,18 @@ const STEPS = [
 type Detail = Record<string, number | undefined>;
 type Run = { job: string; started_at: string; status: string; detail: Detail | null };
 
-// pipeline_intraday.yml: '15 0,4,8,12,16,20 * * *'. Stated here so the page can
-// say when the next cycle is due rather than leaving the owner to guess - but
-// stated as SCHEDULED, because GitHub delays cron under load by anything from
-// thirty minutes to three hours and this page must not imply a promise the
-// runner does not make.
-const CYCLE_HOURS = [0, 4, 8, 12, 16, 20];
+// pipeline_intraday.yml, as the clock (public.clock_schedule) starts it: :36
+// past 02, 08, 14 and 20 UTC from 4 Oct (plan v2 P6.1, 20261004170000).
+// tests/test_paper_desk_ui.py holds these to the clock. Stated here so the page
+// can say when the next cycle is due rather than leaving the owner to guess -
+// but stated as SCHEDULED, because a dispatch can be late and this page must
+// not imply a promise the runner does not make.
+const CYCLE_HOURS = [2, 8, 14, 20];
+const CYCLE_MINUTE = 36;
 
 export function nextCycle(now: Date): Date {
   const next = new Date(now);
-  next.setUTCMinutes(15, 0, 0);
+  next.setUTCMinutes(CYCLE_MINUTE, 0, 0);
   for (const h of CYCLE_HOURS) {
     next.setUTCHours(h);
     if (next > now) return next;
@@ -113,7 +115,7 @@ export default function PaperPipelineStatus({ refresh }: { refresh: () => void }
     <div className="flex flex-wrap items-baseline justify-between gap-2">
       <h2 className="font-semibold">Automation</h2>
       <div className="text-xs text-muted">
-        Runs in GitHub Actions every four hours · next scheduled{" "}
+        Runs in GitHub Actions every six hours · next scheduled{" "}
         <span className="text-text">{due.toISOString().slice(11, 16)}Z</span>
         <span title="GitHub delays scheduled workflows under load, by anything from thirty minutes to three hours. This is when it is due, not a promise.">
           {" "}(often late)

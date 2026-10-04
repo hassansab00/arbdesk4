@@ -25,6 +25,7 @@ MIGRATION = (ROOT / "supabase" / "migrations" / "20260930001000_a_dispatched_run
 # expectations added after the seed, once the code they expect had run for a day
 ADDED = [(ROOT / "supabase" / "migrations" / name).read_text() for name in (
     "20261003170000_the_ladder_queue_is_expected_to_log.sql",   # P4.7: 3 days measured
+    "20261004170000_the_minutes_fit_the_pro_plan.sql",          # P6.1: daily runs the forecast ingest
 )]
 AD4_91 = (ROOT / "sql" / "ad4_91_database_jobs.sql").read_text()
 WORKFLOWS = ROOT / ".github" / "workflows"
@@ -34,6 +35,7 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 INDIRECT = {
     ("archive_observations.yml", "archive_observations"): ("archive_observations.py", 'f"archive_{name}"'),
     ("forecasts.yml", "ingest_forecasts"): ("forecast_backfill_job.py", "scripts/ingest_forecasts.py"),
+    ("pipeline_daily.yml", "ingest_forecasts"): ("forecast_nightly.py", "scripts/ingest_forecasts.py"),
 }
 
 
@@ -196,3 +198,13 @@ def test_the_ladder_queue_jobs_are_expected_once_and_idempotently():
                                               ("pipeline_intraday.yml", "databank_bands")}
     assert not {(f, j) for f, j, _ in added} & {(f, j) for f, j, _ in _expected()}
     assert "on conflict (file, job) do nothing" in ADDED[0]
+
+
+def test_the_daily_run_owes_the_forecast_ingest_now():
+    """4 Oct (P6.1): forecasts.yml left the clock and pipeline_daily's first
+    step is the night's ingest. It logged ingest_forecasts within 105 minutes
+    of each of its 7 dispatches 28 Sep - 4 Oct, so expecting it reports no past
+    run missing; and the row is added once, never rewritten."""
+    added = _rows(ADDED[1])
+    assert added == [("pipeline_daily.yml", "ingest_forecasts", "105")]
+    assert "on conflict (file, job) do nothing" in ADDED[1]

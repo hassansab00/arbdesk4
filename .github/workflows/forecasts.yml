@@ -2,6 +2,12 @@ name: Forecasts (Open-Meteo Previous Runs)
 # Each resumable link is bounded to 25 job minutes, including setup.
 # The wrapper invokes scripts/ingest_forecasts.py (provenance source).
 on:
+  # STARTED BY HAND AGAIN FROM 4 OCT (plan v2 P6.1, 20261004170000). The clock
+  # no longer dispatches this: pipeline_daily's first step runs the same
+  # ingest_forecasts.py an hour later, and on each of the 7 nights 28 Sep -
+  # 4 Oct it found nothing left to write (0 archive rows), while this chain
+  # cost 15-25 billed minutes a night. What follows is the history.
+  #
   # IT RUNS ON ITS OWN NOW.
   #
   # This was workflow_dispatch only, so the forecast archive was never

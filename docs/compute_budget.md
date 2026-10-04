@@ -253,6 +253,10 @@ Hassan decided on 23 Sep (plan v2, step P0.2) that the repo stays **private**.
 `GET /repos/hassansab00/arbdesk4` returns `"private": true`. Public repos get
 free, unlimited Actions minutes, but that option is closed: the budget is
 **2,000 minutes a month on the free plan**, and it is a hard limit.
+(4 Oct: the account is on GitHub Pro, 3,000 minutes a month for scheduled
+work and CI together. `tests/test_github_actions.py` carries the measured
+figures and the budget; `SCHEDULED_MINUTE_BUDGET` keeps part of the 3,000
+for CI.)
 
 What this means for the work:
 - Only plan step P6.1 changes `SCHEDULED_MINUTE_BUDGET` /
