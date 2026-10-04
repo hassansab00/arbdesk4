@@ -27,8 +27,12 @@ is the table at 02:43Z on D, so a decision before 05:07Z on D read D's snapshot
 and one after read D+1's. Every recomputed variant uses that same q.
 
 Scores: log loss on the winner (p floored at 1e-6, as fec-v1) and top-1.
-Intervals: fec-v1's date-clustered bootstrap (tools/fec_same_day.cluster_boot,
-seed 11, 1,000 resamples), on per-row differences.
+Intervals (fec-v1 section 5): log loss and its paired differences by the
+date-clustered bootstrap (tools/fec_same_day.cluster_boot, seed 11, 1,000
+resamples); top-1 by its Wilson 95% interval. The market is compared on the
+rows where its book was whole, with every variant scored on those same rows
+(fec-v1 section 6), as paired differences. Rows, dates, cities and the rows
+left out, by reason, are reported per checkpoint.
 
 Inputs: data/eval/p11/rows_<date>.json.gz, one per target date, each the
 result of EXPORT_SQL below with :D the date, run through the Supabase SQL tool
@@ -53,7 +57,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
 sys.path.insert(0, HERE)
 
 import probability_engine as pe            # noqa: E402
-from fec_same_day import cluster_boot      # noqa: E402
+from fec_same_day import cluster_boot, wilson   # noqa: E402
 
 FLOOR = 1e-6
 Q_REFIT_UTC = dt.time(5, 7)           # refresh_observation_trust, inside pipeline_daily
@@ -198,26 +202,46 @@ def run(rows):
         per[r["cp"]].append(r)
     for cp in ORDER:
         rs = per.get(cp, [])
-        full = [r for r in rs if r.get("da_centre") is not None and r.get("da_sigma") is not None and r.get("s10")]
-        sc = defaultdict(list)          # variant -> [(date, ll, hit)]
-        mkt = []
-        for r in full:
+        no_da = [r for r in rs if r.get("da_centre") is None or r.get("da_sigma") is None]
+        no_s10 = [r for r in rs if r not in no_da and not r.get("s10")]
+        full = [r for r in rs if r not in no_da and r.get("s10")]
+        sc = defaultdict(list)          # variant -> [(date, ll, hit, has_market)]
+        mkt = []                        # [(index into full, date, ll, hit)]
+        for idx, r in enumerate(full):
             v = variants(r)
             for name in VARIANTS:
                 ll, hit = score(v[name], r["winner"])
                 sc[name].append((r["date"], ll, hit))
             if r.get("mkt_p") is not None:
-                mkt.append((r["date"], -math.log(max(float(r["mkt_p"]), FLOOR)), 1.0 if r.get("mkt_hit") else 0.0))
-        out = {"rows": len(rs), "matched": len(full), "dates": len({r["date"] for r in full}), "variants": {}}
+                mkt.append((idx, r["date"], -math.log(max(float(r["mkt_p"]), FLOOR)),
+                            1.0 if r.get("mkt_hit") else 0.0))
+
+        def top1(hits):
+            k, n = int(sum(hits)), len(hits)
+            return {"rate": round(k / n, 4) if n else None, "hits": k, "n": n, "wilson95": wilson(k, n)}
+
+        out = {"rows": len(rs), "matched": len(full), "dates": len({r["date"] for r in full}),
+               "cities": len({r["city"] for r in full}),
+               "left_out": {"no_day_ahead_centre_or_width": len(no_da), "no_s10_ladder": len(no_s10)},
+               "variants": {}}
         for name in VARIANTS:
             out["variants"][name] = {
                 "log_loss": cluster_boot([(d, ll) for d, ll, _ in sc[name]]),
-                "top1": cluster_boot([(d, h) for d, _, h in sc[name]]),
+                "top1": top1([h for _, _, h in sc[name]]),
             }
         if mkt:
-            out["market"] = {"rows": len(mkt),
-                             "log_loss": cluster_boot([(d, ll) for d, ll, _ in mkt]),
-                             "top1": cluster_boot([(d, h) for d, _, h in mkt])}
+            idxs = [i for i, *_ in mkt]
+            out["market"] = {
+                "rows": len(mkt), "left_out_no_whole_book": len(full) - len(mkt),
+                "log_loss": cluster_boot([(d, ll) for _, d, ll, _ in mkt]),
+                "top1": top1([h for *_, h in mkt]),
+                # every variant on the market's rows, and market minus variant, paired
+                "variants_on_market_rows": {
+                    name: {"log_loss": cluster_boot([(sc[name][i][0], sc[name][i][1]) for i in idxs]),
+                           "top1": top1([sc[name][i][2] for i in idxs])} for name in VARIANTS},
+                "market_minus_variant_log_loss": {
+                    name: cluster_boot([(d, ll - sc[name][i][1]) for i, d, ll, _ in mkt]) for name in VARIANTS},
+            }
         # Differences on the same rows, positive = the first is WORSE (higher log loss).
         def diff(a, b):
             return cluster_boot([(sa[0], sa[1] - sb[1]) for sa, sb in zip(sc[a], sc[b])])

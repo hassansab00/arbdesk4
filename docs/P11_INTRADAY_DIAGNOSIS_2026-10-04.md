@@ -48,25 +48,49 @@ capture (`v_checkpoint_calls.first_call`). Each is matched on the city-day to:
 - **The floor** is applied at every same-day checkpoint. In this window it is the floor from
   before #297, which still took NWS readings.
 
-## Log loss on the winner (lower is better)
+## Rows, dates, cities and what was left out
 
-| Checkpoint | City-days (dates) | Served | Day-ahead carried | Day-ahead + floor | Same-day centre, day-ahead width | Day-ahead centre, same-day width | S10 rd1 | Market (city-days) |
-|---|---|---|---|---|---|---|---|---|
-| Morning (09:00) | 298 (7) | 1.847 | 1.599 | **1.550** | 1.663 | 1.652 | 1.608 | 1.150 (247) |
-| Noon | 296 (7) | 1.478 | 1.591 | **1.339** | 1.376 | 1.454 | 1.163 | 0.877 (249) |
-| 2 h before peak | 297 (7) | 1.569 | 1.596 | **1.432** | 1.466 | 1.568 | 1.249 | 0.929 (246) |
-| 1 h before peak | 292 (7) | 1.364 | 1.606 | **1.254** | 1.271 | 1.399 | 1.102 | 0.784 (245) |
-| 1 h after peak | 288 (7) | 1.051 | 1.599 | **1.018** | 1.013 | 1.097 | 0.559 | 0.255 (240) |
+| Checkpoint | Rows | Matched (dates, cities) | Left out: no day-ahead centre or width | Left out: no S10 ladder | Market rows (no whole book) |
+|---|---|---|---|---|---|
+| Morning (09:00) | 331 | 298 (7, 48) | 1 | 32 | 247 (51) |
+| Noon | 329 | 296 (7, 48) | 1 | 32 | 249 (47) |
+| 2 h before peak | 331 | 297 (7, 48) | 1 | 33 | 246 (51) |
+| 1 h before peak | 328 | 292 (7, 48) | 1 | 35 | 245 (47) |
+| 1 h after peak | 330 | 288 (7, 47) | 1 | 41 | 240 (48) |
 
-## Top pick right
+## Log loss on the winner (lower is better; the matched rows)
 
-| Checkpoint | Served | Day-ahead carried | Day-ahead + floor | Same-day centre, day-ahead width | Day-ahead centre, same-day width | S10 rd1 | Market |
+| Checkpoint | Served | Day-ahead carried | Day-ahead + floor | Same-day centre, day-ahead width | Day-ahead centre, same-day width | S10 rd1 |
+|---|---|---|---|---|---|---|
+| Morning (09:00) | 1.847 | 1.599 | **1.550** | 1.663 | 1.652 | 1.608 |
+| Noon | 1.478 | 1.591 | **1.339** | 1.376 | 1.454 | 1.163 |
+| 2 h before peak | 1.569 | 1.596 | **1.432** | 1.466 | 1.568 | 1.249 |
+| 1 h before peak | 1.364 | 1.606 | **1.254** | 1.271 | 1.399 | 1.102 |
+| 1 h after peak | 1.051 | 1.599 | **1.018** | 1.013 | 1.097 | 0.559 |
+
+## Top pick right (rate and Wilson 95% interval, the matched rows)
+
+| Checkpoint | Served | Day-ahead carried | Day-ahead + floor | S10 rd1 |
+|---|---|---|---|---|
+| Morning (09:00) | 0.332 [0.281, 0.388] | 0.403 [0.349, 0.459] | 0.372 [0.320, 0.429] | 0.346 [0.294, 0.401] |
+| Noon | 0.429 [0.374, 0.486] | 0.405 [0.351, 0.462] | 0.415 [0.361, 0.472] | 0.524 [0.467, 0.580] |
+| 2 h before peak | 0.384 [0.330, 0.440] | 0.404 [0.350, 0.461] | 0.384 [0.330, 0.440] | 0.495 [0.439, 0.551] |
+| 1 h before peak | 0.469 [0.413, 0.526] | 0.394 [0.340, 0.451] | 0.476 [0.419, 0.533] | 0.531 [0.474, 0.587] |
+| 1 h after peak | 0.736 [0.682, 0.784] | 0.399 [0.344, 0.457] | 0.760 [0.708, 0.806] | 0.799 [0.749, 0.841] |
+
+## Against the market, on identical rows
+
+Only the rows where the market's book was whole, every variant scored on those same rows
+(fec-v1 section 6). The paired differences have 90% date-clustered intervals; negative means
+the market is better.
+
+| Checkpoint (market rows) | Market | Served | Day-ahead + floor | S10 rd1 | Market minus served | Market minus day-ahead + floor | Market minus S10 |
 |---|---|---|---|---|---|---|---|
-| Morning (09:00) | 0.332 | 0.403 | 0.372 | 0.319 | 0.399 | 0.346 | 0.502 |
-| Noon | 0.429 | 0.405 | 0.415 | 0.405 | 0.422 | 0.524 | 0.626 |
-| 2 h before peak | 0.384 | 0.404 | 0.384 | 0.367 | 0.391 | 0.495 | 0.589 |
-| 1 h before peak | 0.469 | 0.394 | 0.476 | 0.452 | 0.456 | 0.531 | 0.649 |
-| 1 h after peak | 0.736 | 0.399 | 0.760 | 0.767 | 0.733 | 0.799 | 0.925 |
+| Morning (09:00) (247) | 1.150 | 1.854 | 1.547 | 1.603 | -0.704 [-0.876, -0.561] | -0.397 [-0.450, -0.330] | -0.453 [-0.497, -0.417] |
+| Noon (249) | 0.877 | 1.490 | 1.320 | 1.177 | -0.613 [-0.761, -0.457] | -0.443 [-0.538, -0.331] | -0.300 [-0.358, -0.260] |
+| 2 h before peak (246) | 0.929 | 1.555 | 1.417 | 1.278 | -0.626 [-0.788, -0.475] | -0.488 [-0.588, -0.363] | -0.348 [-0.363, -0.338] |
+| 1 h before peak (245) | 0.784 | 1.351 | 1.219 | 1.107 | -0.567 [-0.712, -0.462] | -0.434 [-0.532, -0.328] | -0.323 [-0.391, -0.258] |
+| 1 h after peak (240) | 0.255 | 1.108 | 1.040 | 0.564 | -0.854 [-1.022, -0.748] | -0.785 [-0.938, -0.649] | -0.310 [-0.399, -0.232] |
 
 ## Which component does what
 
@@ -100,7 +124,9 @@ capture (`v_checkpoint_calls.first_call`). Each is matched on the city-day to:
 
    S10 rd1 is better still from noon on (1.163 at noon, 0.559 after the peak), but not at the
    morning checkpoint (1.608).
-5. **The market is ahead of every variant at every checkpoint.** Nothing here is an edge.
+5. **The market is ahead of every variant at every checkpoint.** On identical rows, market minus
+   variant is negative with the interval excluding 0 for the served ladder, the day-ahead + floor
+   ladder and S10 at every checkpoint. Nothing here is an edge.
 6. **Near-zero calls in the US (the "39 unexplained" of earlier).**
 
 | Checkpoint | Floor above the winning bucket | Centre 2.5 widths or more from the settled maximum |
@@ -149,4 +175,7 @@ capture (`v_checkpoint_calls.first_call`). Each is matched on the city-day to:
 - The floor in this window took NWS readings (fixed in #297 on 4 Oct). Finding 6's first column
   counts that bug.
 - The trajectory never applied, so its contribution cannot be measured from these rows.
-- The market comparison covers only the rows whose book was whole (240 – 249 per checkpoint).
+- The market comparison covers only the rows whose book was whole (240 – 249 per checkpoint);
+  its table scores every variant on those rows.
+- 32 – 41 rows per checkpoint have no S10 ladder and 1 has no day-ahead centre; they are left
+  out of every column (Rows table).
