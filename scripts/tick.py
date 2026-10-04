@@ -498,6 +498,13 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     s10_ladders = {}
     s10["shadow"] = s10_shadow.record(due, market_of, bands_by_market, tz_of, unit_of, dry_run,
                                       ladders=s10_ladders)
+    # P1.1's candidate beside each same-day call, observe only
+    # (docs/P11_DA_FLOOR_PREREG.md). Bounded, never raises; it stops 6 s
+    # before the tick's budget so the engine's decisions below keep theirs.
+    import variant_shadow
+    detail["variants"] = variant_shadow.record(out, results, market_of, bands_by_market, tz_of,
+                                               unit_of, dry_run=dry_run,
+                                               deadline=t0 + budget_s - 6.0)
     # The one engine decides for its strategies on what this tick wrote,
     # recorded in `decisions`, ordering nothing (P5.12 part 3a). Bounded by
     # the tick's own budget; never raises.

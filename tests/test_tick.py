@@ -248,6 +248,15 @@ def world(monkeypatch):
     import engine_shadow
     w["engine"] = {"strategies": 6, "written": 0, "city_days": 0}
     monkeypatch.setattr(engine_shadow, "record", lambda *a, **k: dict(w["engine"]))
+    # P1.1's candidate in shadow has its own tests (test_variant_shadow); here
+    # it only records what the tick handed it.
+    import variant_shadow
+    w["variants"] = []
+
+    def variants(out, results, *a, **k):
+        w["variants"].append((list(out), dict(results), k))
+        return {"version": variant_shadow.VERSION, "due": 0, "written": 0, "skipped": {}}
+    monkeypatch.setattr(variant_shadow, "record", variants)
     return w
 
 
@@ -258,6 +267,20 @@ def test_a_tick_writes_one_row_per_due_checkpoint(world):
     assert [(r["city_key"], r["checkpoint"], r["top_band_id"], r["market_top_band_id"]) for r in rows] == [
         ("nyc", "d1_eve", "b2", "b1")]
     assert out["written"] == 1 and world["logged"][0][1] == "ok"
+
+
+def test_the_variant_shadow_gets_the_rows_written_and_the_engine_s_reasons(world):
+    """P1.1's candidate (docs/P11_DA_FLOOR_PREREG.md) is built beside each
+    call from the row the tick writes and the pricing behind it, inside the
+    tick's budget, and its counts go into the tick's log."""
+    out = tick.run(now=at("2026-09-24T22:35"))
+    (rows, results, kw), = world["variants"]
+    assert [(r["city_key"], r["checkpoint"]) for r in rows] == [("nyc", "d1_eve")]
+    assert set(results) == {("nyc", "2026-09-25")}
+    assert results[("nyc", "2026-09-25")][2] == ["priced_from:nws:2026-09-24T12:00"]
+    assert kw["dry_run"] is False and kw["deadline"] is not None
+    assert out["variants"]["version"] == "da_floor:v1"
+    assert world["logged"][0][3]["variants"]["version"] == "da_floor:v1"
 
 
 def test_a_checkpoint_already_held_is_not_priced(world):

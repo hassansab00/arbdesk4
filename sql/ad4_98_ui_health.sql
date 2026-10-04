@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 262 of them - and for each MISSING one names the
+-- and function the app reads - 263 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -271,6 +271,7 @@ with expected(rel, owner, used_by) as (values
     ('v_workflow_gate_health', 'ad4_14_workflows.sql', ''),
     ('v_workflow_runs', 'ad4_14_workflows.sql', '/workflows'),
     ('v_write_access', 'ad4_38_grants.sql', ''),
+    ('variant_shadow_checkpoints', 'supabase/migrations/20261004180000_engine_variants_in_shadow.sql', ''),
     ('weather_events', 'ad4_live_weather.sql', '(RightRail), /live'),
     ('weather_forecast_features', 'ad4_24_nws_gridpoint.sql', ''),
     ('weather_forecast_models', 'supabase/migrations/20260923190000_every_forecast_model.sql', ''),
@@ -555,6 +556,7 @@ begin
     ('v_workflow_gate_health', 'ad4_14_workflows.sql', ''),
     ('v_workflow_runs', 'ad4_14_workflows.sql', '/workflows'),
     ('v_write_access', 'ad4_38_grants.sql', ''),
+    ('variant_shadow_checkpoints', 'supabase/migrations/20261004180000_engine_variants_in_shadow.sql', ''),
     ('weather_events', 'ad4_live_weather.sql', '(RightRail), /live'),
     ('weather_forecast_features', 'ad4_24_nws_gridpoint.sql', ''),
     ('weather_forecast_models', 'supabase/migrations/20260923190000_every_forecast_model.sql', ''),

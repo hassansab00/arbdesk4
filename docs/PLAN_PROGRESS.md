@@ -74,6 +74,12 @@ PR that advances a step.
     - The floor helps at every checkpoint.
     - Switching at local midnight to the same-day centre and width hurts every pre-peak checkpoint, by 0.110-0.297 log loss (90% date-clustered intervals exclude 0). Most of that is the width: about 26% narrower than the day-ahead, on a centre that is no better. Lead 0 gets neither P3.9 nor the MOS blend.
     - Candidate, not served: the day-ahead centre and width plus the checkpoint floor. It needs pre-registration and a forward shadow test.
+    - **Pre-registered and in shadow (this PR, 4 Oct).**
+      - The rule: `docs/P11_DA_FLOOR_PREREG.md`, written before any forward row. It compares with the served first call on fec-v1 scores and requires at least 20 dates. The first look is about 25 Oct. Acceptance is a proposal to Hassan, never a switch.
+      - The capture: `scripts/variant_shadow.py`, run inside the hourly tick after S10's shadow. It writes `da_floor:v1` beside each same-day call into `variant_shadow_checkpoints` (append-only, service role, mirrored nightly). Each row carries the inputs the ladder was built from.
+      - **Held to the research definition:** on the 1,644 P1.1 rows with a day-ahead call, its ladder equals `tools/p11_intraday_ablation.py`'s `da_floor` to the served rounding (at most 5.0e-7).
+      - **Held to the graded call:** live, on all 186 graded city-days of 30 Sep - 3 Oct, its lookup returns `v_city_hit_history`'s pricing row (same time and width; the centre equal to the view's 0.01 °C rounding).
+      - Bounded: it stops 6 s before the tick's budget, counts every skip by reason and never raises.
     - S10 rd1 is better than both from noon on.
   - **P1.3:** done (rd3 in forward shadow).
   - **P1.2, P1.4:** aligned, no change.
