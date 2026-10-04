@@ -244,3 +244,43 @@ probability, median and all 12 inputs. rd3 on the same inputs gave:
 - **What acceptance does not do.** It changes no trading weight and no capital. The engine's belief
   keeps its own gate (P5.3: w at its prior 0 until a scope passes its forward test), and the market
   still leads rd3 by -0.29 in log loss on the historical window.
+
+### Scoring (built 4 Oct 2026, before any rd3 forward score was computed)
+
+`tools/fec_s10_forward.py` applies the rule above.
+- `sql --export-date D` writes the export statement. Run it through the Supabase SQL tool: the
+  table is the service role's, so not as anon.
+- `score` reads the gzipped export and writes the report.
+- On 4 Oct the export for the real pair returned no rows: rd3's first rows are 3 Oct, which was
+  not yet settled. So no rd3 score existed when the four points below were fixed. They make
+  precise what the rule left open. None of them loosens it.
+
+1. **"The settled station maximum" for the coverage check means the label the model is trained,
+   and its 80% interval calibrated, on:** `derived_city_day_features.max_c`, the station's
+   whole-day maximum.
+   - The settlement's `fact_band_outcome.observed_max_c` is a different series.
+   - On 602 rd1 pairs (30 Sep - 2 Oct, the live rd1 version's first three dates) the two differ by more than 0.05 °C on 108 pairs (mean
+     absolute 0.112 °C).
+   - Most of those are US cities, where the label is the whole-°C METAR maximum and the
+     settlement comes from °F reports. On 1 Oct at houston the label was 33 °C and the
+     settlement 31.67 °C.
+   - The settlement figure is reported beside the label and never used for the check.
+2. **A date is settled** once it is at least 3 days before the export date. From 30 Sep to 2 Oct,
+   every market reached the page within 13.7 h of its local day end. Pairs on a settled date
+   without exactly one winner are left out and counted.
+3. **A look is a fixed set of dates:** the first 20 (and, if needed, the first 40) settled dates
+   from rd3's first. So when the tool is run cannot change a verdict. Below 20 dates it reports
+   counts only and computes no comparison.
+4. **A cross-check stops the scoring.** If any scored pair's winner (`v_checkpoint_outcome`)
+   disagrees with `fact_band_outcome`'s settled band, no look is computed until that is
+   explained.
+   - The plumbing check run on 4 Oct, rd1 paired with itself for 1 Oct (234 pairs), returned exactly
+     one agreeing winner on every pair. Five of its rows, verbatim, are the tests' fixture, which
+     scores a gain of exactly 0.
+   - On 30 Sep - 2 Oct the two sources agreed on all 602 pairs.
+
+The market (`v_checkpoint_outcome`, only when its ladder is complete and its decision is within
+15 minutes of rd1's row) is reported for information. It is not part of the rule.
+
+**When the first look can run.** rd3's 20th date is 22 Oct, which is settled from an export on
+25 Oct.

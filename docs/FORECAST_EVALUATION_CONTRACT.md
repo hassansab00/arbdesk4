@@ -145,5 +145,9 @@ decision never stops a forecast being recorded.
   - Its first export covers 13-29 Sep 2026: 706 city-days, 17 dates.
   - The DA incumbent has no probability history for the raw forecast, so the raw forecast is
     compared on top-1 only (as `s10-contract-v1` §6 does).
+- **SD lane, forward:** `tools/fec_s10_forward.py` scores a challenger's live shadow rows against
+  the incumbent's on the same checkpoints. It works on an export of `s10_shadow_checkpoints`
+  (service role), uses fixed looks and the challenger's pre-registered rule, and computes no
+  comparison before the first look. The first use is Challenger C (`docs/CHALLENGER_C_PREREG.md`).
 - **Wider history:** `tools/market_vs_model.py` holds the DA lane's longer comparison on the
   venue's record (`docs/MODEL_VS_MARKET_2026-09-28.md`).
