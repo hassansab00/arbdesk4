@@ -110,7 +110,8 @@ function middayZone() {
       ('model_city',      'Model live',  'active', '${TZ}'),
       ('model_only_city', 'Model only',  'active', '${TZ}'),
       ('us_city',         'Houston-like','active', '${TZ}'),
-      ('nws_only_city',   'NWS only',    'active', '${TZ}');
+      ('nws_only_city',   'NWS only',    'active', '${TZ}'),
+      ('one_report_city', 'LA-like',     'active', '${TZ}');
 
     -- A city the archive covers: three readings today, peaking at 22.0.
     insert into public.weather_observations(city_key, valid_at, temp_c, source) values
@@ -134,7 +135,13 @@ function middayZone() {
       ('us_city', now() - interval '20 minutes', 32.0, 'NWS'),
       -- a city whose settlement feed has nothing today: the rule is as before
       ('nws_only_city', now() - interval '2 hours', 24.0, 'NWS'),
-      ('nws_only_city', now() - interval '1 hour',  25.0, 'NWS');
+      ('nws_only_city', now() - interval '1 hour',  25.0, 'NWS'),
+      -- LOS ANGELES at 01:00, 4 Oct: ONE routine report today beside the
+      -- five-minute feed. The maximum is that report's - a floor, not a series.
+      ('one_report_city', now() - interval '50 minutes', 20.0, 'IEM'),
+      ('one_report_city', now() - interval '40 minutes', 21.0, 'NWS'),
+      ('one_report_city', now() - interval '25 minutes', 22.0, 'NWS'),
+      ('one_report_city', now() - interval '10 minutes', 21.0, 'NWS');
 
     insert into public.live_weather(city_key, updated_at, observed_at, temp_c,
                                     running_max_c, running_max_at, running_min_c, source_kind)
@@ -163,11 +170,21 @@ function middayZone() {
       ('us_city', now(), now() - interval '20 minutes', 33.0,
         33.0, now() - interval '125 minutes', 28.0, 'station'),
       ('nws_only_city', now(), now() - interval '1 hour', 25.0,
+        null, null, null, 'station'),
+      ('one_report_city', now(), now() - interval '10 minutes', 22.0,
         null, null, null, 'station');
   `);
 
+  // Before the refresh: the Munich row (a station's thermometer at 21.5 over a
+  // stored 9.0, nothing from the settlement feed today) IS impossible, and
+  // the flag says so.
+  const before = (await db.query(`select city_key, stored_max_below_latest from public.v_city_observation_health
+                                   where city_key in ('floor_city', 'model_city')`)).rows;
+  assert.deepEqual(Object.fromEntries(before.map(r => [r.city_key, r.stored_max_below_latest])),
+    { floor_city: true, model_city: false });
+
   const refreshed = (await db.query('select public.refresh_live_weather_timing() as n')).rows[0].n;
-  assert.equal(refreshed, 8, 'the refresh did not touch every city');
+  assert.equal(refreshed, 9, 'the refresh did not touch every city');
 
   const rows = Object.fromEntries((await db.query(`
     select lw.city_key, lw.running_max_c::float8 as running_max_c,
@@ -230,6 +247,20 @@ function middayZone() {
   assert.equal(rows.floor_city.running_max_source, 'all_sources',
     "the feed is a day behind for this city, so today's live station reading still lifts it");
 
+  // ---- 1d. the basis is counted over the feed the maximum came from --------
+  assert.equal(rows.one_report_city.running_max_c, 20.0);
+  assert.equal(rows.one_report_city.readings_today, 4, 'every reading is still counted as a reading');
+  assert.equal(rows.one_report_city.running_max_basis, 'floor_only',
+    'ONE routine report beside three NWS readings was called a series: the maximum rests on '
+    + 'that one report, and s5 must not lock on it');
+  assert.equal(rows.us_city.running_max_basis, 'series', 'two routine reports are a series');
+  // ...and a warmer reading from a feed the maximum is not built from is
+  // expected, not impossible.
+  for (const city of ['us_city', 'one_report_city', 'model_city']) {
+    assert.equal(rows[city].stored_max_below_latest, false,
+      `${city}: a reading the maximum is not built from was called impossible`);
+  }
+
   // ---- 2. nothing anywhere breaks the arithmetic --------------------------
   // A maximum is never below a reading of the settlement feed today; with no
   // settlement reading today, never below a station reading. A minimum is
@@ -284,6 +315,6 @@ function middayZone() {
       `${city} is stamped with a day that is not its own`);
   }
 
-  console.log(`observation-health: 6 contracts hold, the settlement feed first (zone ${TZ}, local ${localToday})`);
+  console.log(`observation-health: 6 contracts hold, the settlement feed first and the basis counted over it (zone ${TZ}, local ${localToday})`);
   await db.close();
 })().catch(err => { console.error(err); process.exit(1); });

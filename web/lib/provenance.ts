@@ -1197,7 +1197,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_city_observation_health": [
     "cities",
     "live_weather",
-    "weather_observations"
+    "weather_observations",
+    "derived_weather_peak",
+    "derived_climb_profile"
   ],
   "v_city_peak_approach": [
     "derived_climb_profile",

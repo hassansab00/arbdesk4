@@ -232,15 +232,25 @@ select
        then lw.running_max_c end                                        as stored_running_max_c,
 
   -- ---- can the running maximum be believed? -----------------------------
+  -- Counted over the feed the maximum is taken from (4 Oct): when today has
+  -- settlement readings the maximum is theirs, so ONE routine report beside
+  -- sixty NWS readings is a floor, not a series - s5 must not lock on it.
   public.ad4_running_max_basis(
-    coalesce(d.readings_today, 0)::integer,
+    case when s.settlement_max_today_c is not null then s.settlement_readings_today
+         else coalesce(d.readings_today, 0) end::integer,
     case when lw.source_kind is not distinct from 'station'
           and (lw.observed_at at time zone t.timezone)::date = t.local_date
          then lw.temp_c end)                                            as running_max_basis,
 
   -- The stored field disagreeing with a reading from the SAME day is its own
-  -- fault and worth naming, because it is silent everywhere else.
+  -- fault and worth naming, because it is silent everywhere else. Only a
+  -- reading the maximum is built from can expose it: a station's, on a day the
+  -- settlement feed has not reported (4 Oct). A model's value has been kept out
+  -- of the maximum since P2.7, and beside settlement readings a warmer NWS
+  -- reading is expected, so neither is "impossible".
   (lw.running_max_c is not null
+     and lw.source_kind is not distinct from 'station'
+     and s.settlement_max_today_c is null
      and (lw.observed_at at time zone t.timezone)::date = t.local_date
      and lw.temp_c is not null
      and lw.temp_c > lw.running_max_c)                                  as stored_max_below_latest,
