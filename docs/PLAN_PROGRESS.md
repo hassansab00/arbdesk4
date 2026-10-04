@@ -25,7 +25,8 @@ PR that advances a step.
       - at most 3 passes;
       - none started after 26 minutes;
       - a pass only after an incomplete one that refused nothing and made progress (the backfill job's own rule);
-      - current runs fetched again only for the cities the first pass missed (`FORECAST_CURRENT_CITIES`).
+      - current runs fetched again only for the cities the first pass missed (`FORECAST_CURRENT_CITIES`);
+      - the step goes red where the chain did (Codex's second finding): a refused chunk, a last pass that completed no date, or a pass that crashed or timed out. A pause after progress stays green.
     - pipeline_intraday runs every 6 hours (02, 08, 14, 20 UTC). The checkpoint record does not depend on it: the tick prices every checkpoint itself, and `v_model_promoted` is empty. The day-ahead hit record does, because its call is the last `band_probabilities` pricing before local midnight, and only this job writes that table. The hours are chosen for it. Arithmetic from the 48 cities' midnights on 10 Oct, with a pricing landing 4 min after the dispatch: the call's mean age falls from 2.01 h (six runs) to 1.64 h (median 2.33 -> 1.33 h; oldest 3.33 -> 4.33 h: karachi and the US west coast). 00/06/12/18 would have made it 3.14 h. Decisions (8 h), edges and band_probabilities (12 h) stay inside their freshness limits.
     - pipeline_daily is expected to log `ingest_forecasts`; it did, within 105 min, on each of its 7 dispatches since 28 Sep.
     - tests.yml runs pytest and the database contracts side by side. Every test still runs. On two cores locally the pair took 174 s. The first run on GitHub (this PR, 4 Oct) took 170 s and billed 3 minutes, where the median was 274 s billed 5.

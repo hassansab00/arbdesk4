@@ -73,16 +73,30 @@ def test_a_complete_first_pass_is_the_only_pass():
     _result(incomplete=True, missing_chunks=1, completed_dates=40),   # refused: asking again won't close it
     _result(incomplete=True, unreached_chunks=2, completed_dates=0),  # no progress
 ])
-def test_it_stops_where_the_chain_stopped(result):
+def test_it_stops_and_goes_red_where_the_chain_did(result):
+    """Codex on #302: forecast_backfill_job.py raised for a refusal and for no
+    progress, so the night's run went red; the daily step must too."""
     runs = Runs([result, _result()])
-    fn.main(run=runs)
+    assert fn.main(run=runs) == 1
     assert len(runs.envs) == 1
 
 
-def test_at_most_three_passes():
+def test_a_continuation_that_makes_no_progress_goes_red():
+    runs = Runs([_result(incomplete=True, unreached_chunks=3, completed_dates=40),
+                 _result(incomplete=True, unreached_chunks=3, completed_dates=0)])
+    assert fn.main(run=runs) == 1 and len(runs.envs) == 2
+
+
+def test_a_refusal_in_a_later_pass_goes_red():
+    runs = Runs([_result(incomplete=True, unreached_chunks=3, completed_dates=40),
+                 _result(incomplete=True, missing_chunks=1, completed_dates=2)])
+    assert fn.main(run=runs) == 1
+
+
+def test_at_most_three_passes_and_a_pause_with_progress_is_not_a_failure():
     stuck = _result(incomplete=True, unreached_chunks=1, completed_dates=1)
     runs = Runs([stuck] * 5)
-    fn.main(run=runs)
+    assert fn.main(run=runs) == 0
     assert len(runs.envs) == fn.MAX_PASSES == 3
 
 
@@ -93,9 +107,10 @@ def test_no_pass_starts_after_26_minutes():
     assert len(runs.envs) == 1
 
 
-def test_a_failed_continuation_does_not_fail_the_night():
-    runs = Runs([_result(incomplete=True, unreached_chunks=1, completed_dates=40)], codes=[0, "timeout"])
-    assert fn.main(run=runs) == 0 and len(runs.envs) == 2
+def test_a_continuation_that_crashes_or_times_out_goes_red():
+    for code in ("timeout", 1):
+        runs = Runs([_result(incomplete=True, unreached_chunks=1, completed_dates=40)], codes=[0, code])
+        assert fn.main(run=runs) == 1 and len(runs.envs) == 2
 
 
 def test_a_failed_first_pass_fails_the_step():

@@ -19,8 +19,14 @@ setup and without fetching every city's current run again:
 
 At most MAX_PASSES (the chain's own bound: 75 job-minutes over 25-minute
 links), and no pass starts after START_BY_MIN minutes, so the step stays
-inside its timeout. Each pass logs its own ingest_forecasts row. The step's
-exit code is the first pass's: a failed continuation does not fail the night.
+inside its timeout. Each pass logs its own ingest_forecasts row.
+
+THE STEP GOES RED WHEN THE CHAIN WOULD HAVE (forecast_backfill_job.py): a pass
+that crashed or timed out, a source that refused a chunk (asking again will
+not close it), or a last pass that left the run incomplete having completed
+no date. A run left incomplete by the bounds after making progress is a pause,
+as the chain's "Paused with progress": the next night asks again. The other
+steps of pipeline_daily run either way (`if: !cancelled()`).
 """
 import json
 import os
@@ -74,8 +80,28 @@ def main(run=subprocess.run, clock=time.monotonic):
         if not should_continue(result):
             break
     print("passes: " + json.dumps(passes))
-    first = passes[0]["exit"] if passes else 1
-    return 0 if first == 0 else 1
+    why = verdict(passes)
+    if why:
+        print(f"::error::the night's forecast ingest failed: {why}")
+        return 1
+    return 0
+
+
+def verdict(passes):
+    """Why the step fails, or None. The chain's rule (forecast_backfill_job)."""
+    if not passes:
+        return "no pass ran"
+    for p in passes:
+        if p["exit"] != 0 or p["result"] is None:
+            return f"pass {p['pass']} ended with {p['exit']} and no result"
+    last = passes[-1]["result"]
+    refused = sum(p["result"].get("missing_chunks", 0) for p in passes)
+    if refused:
+        return (f"{refused} chunk(s) refused: the source answered and declined that window, "
+                "and asking again will not close it")
+    if last.get("incomplete") and last.get("completed_dates", 0) == 0:
+        return f"pass {passes[-1]['pass']} completed no date and left the run incomplete"
+    return None
 
 
 if __name__ == "__main__":
