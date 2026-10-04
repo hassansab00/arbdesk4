@@ -63,6 +63,11 @@ jobs:
       # 1. Yesterday's Open-Meteo runs, so skill has something to score.
       #    A BACKFILL over a date range is not this - it is forecasts.yml,
       #    which stays a manual workflow because it can run for hours.
+      #    THE NIGHT'S INGEST from 4 Oct (P6.1, 20261004170000): forecasts.yml
+      #    left the clock, so this step writes the archive rows it used to find
+      #    already written (0 on each of the 7 nights 28 Sep - 4 Oct), and the
+      #    night's current-run snapshot. tests/test_github_actions.py holds it
+      #    first.
       - name: Ingest forecasts (last 10 days)
         if: ${{ !cancelled() }}
         timeout-minutes: 30

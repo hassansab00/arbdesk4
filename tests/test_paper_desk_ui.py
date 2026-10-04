@@ -407,3 +407,24 @@ def test_archiving_is_reversible_from_the_page_that_offers_it():
     src = PAGE.read_text(encoding="utf-8")
     assert "p_archived:false" in src, "nothing restores an archived desk"
     assert "Archived desks (" in src, "the restore list has no heading to find it by"
+
+
+def test_the_next_cycle_is_the_clocks():
+    """The page names the next intraday cycle. It said :15 every four hours
+    long after the clock moved to :36, and every six hours from 4 Oct
+    (P6.1): the hours and minute it states are the clock's."""
+    import json
+    import re
+    import test_github_actions as gha
+    src = STATUS.read_text()
+    hours = json.loads(re.search(r"const CYCLE_HOURS = (\[[^\]]*\]);", src).group(1))
+    minute = int(re.search(r"const CYCLE_MINUTE = (\d+);", src).group(1))
+    entries = {}
+    for name in [gha.CLOCK_MIGRATION] + gha.CLOCK_CHANGES:
+        sql = (ROOT / "supabase" / "migrations" / name).read_text()
+        lit = re.search(r"jsonb_to_recordset\(\s*'(\[.*?\])'::jsonb", sql, re.S).group(1)
+        for e in json.loads(lit):
+            entries.setdefault(e["file"], {}).update(e)
+    assert hours == sorted(entries["pipeline_intraday.yml"]["hours_utc"])
+    assert minute == gha.CLOCK_MINUTE
+    assert "every six hours" in src and len(hours) == 4

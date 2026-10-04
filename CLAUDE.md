@@ -56,8 +56,9 @@ work, not just to plan steps:
   `shadow` mode without asking. Anything that puts capital on the
   **portfolio** account needs Hassan's approval: turning allocation on, the
   bankroll, and the fixed safety rails.
-- **Rule 7: Actions minutes are a hard budget.** The repo is private, with
-  2,000 minutes a month on the free plan. Only plan step P6.1 changes
+- **Rule 7: Actions minutes are a hard budget.** The repo is private, and
+  the account is on GitHub Pro: 3,000 minutes a month (Hassan, 4 Oct), which
+  scheduled work and CI share; keep the total under it. Only plan step P6.1 changes
   `SCHEDULED_MINUTE_BUDGET` / `SCHEDULED_RUN_BUDGET`, and it writes the
   reason into the constant. Every workflow's measured minutes go into
   `MEASURED_MINUTES`. No new scheduled workflow is added outside P6.1.

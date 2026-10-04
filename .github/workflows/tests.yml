@@ -35,11 +35,31 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.11', cache: 'pip' }
       - run: pip install -r requirements.txt
-      - run: PYTHONPATH=scripts python -m pytest tests/ -q
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
           cache-dependency-path: tests/database/package-lock.json
-      - name: Paper database transaction contracts
-        run: npm ci --prefix tests/database --ignore-scripts && npm test --prefix tests/database
+      - run: npm ci --prefix tests/database --ignore-scripts
+      # BOTH SUITES AT ONCE (plan v2 P6.1, 4 Oct). Run one after the other they
+      # took 148 s (pytest) + 105 s (the database contracts) of a 274 s job, the
+      # median of the last 20 green runs: five billed minutes, and CI comes out
+      # of the same 3,000 a month as the schedule. The runner has two cores
+      # and each suite uses one, so they run side by side: on two cores locally
+      # the pair took 174 s instead of 156 + 105. Every test still runs. The job
+      # fails if either suite fails, and the contracts' log is printed after
+      # pytest's so the two do not interleave.
+      - name: pytest and the paper database transaction contracts, side by side
+        run: |
+          set +e
+          npm test --prefix tests/database > "$RUNNER_TEMP/contracts.log" 2>&1 &
+          contracts=$!
+          PYTHONPATH=scripts python -m pytest tests/ -q
+          py=$?
+          wait "$contracts"
+          db=$?
+          echo "----- paper database transaction contracts (exit $db) -----"
+          cat "$RUNNER_TEMP/contracts.log"
+          [ "$db" -eq 0 ] || echo "::error::the paper database transaction contracts failed (exit $db)"
+          [ "$py" -eq 0 ] || echo "::error::pytest failed (exit $py)"
+          [ "$py" -eq 0 ] && [ "$db" -eq 0 ]
