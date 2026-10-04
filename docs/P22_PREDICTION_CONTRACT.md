@@ -117,10 +117,13 @@ Migration `20261004200000_the_page_reads_the_contract.sql`. The panel is
   - `shadow` and `eligible` → evaluation;
   - `served` → serving;
   - `retired` → retired.
-- `v_prediction_lineup` holds the calls of the last 8 target dates, one row per predictor and
+- `v_prediction_lineup` holds the calls from 7 target dates ago on, one row per predictor and
   checkpoint, with the venue's winner once settled.
   - The page reads one date and one checkpoint at a time: at most 144 rows on the live data of
     4 Oct, against 4,197 in the whole window.
+  - It offers tomorrow to 7 days back (UTC dates). Tomorrow is the evening-before call's date, and
+    a city ahead of UTC starts its day first: at 17:59Z on 4 Oct the view held 31 evening-before
+    calls for 5 Oct (review of #305).
   - Each date and checkpoint shows as a line per city, with one column each for the served engine,
     each S10 version and each variant.
 

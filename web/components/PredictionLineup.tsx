@@ -6,7 +6,7 @@ import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
 import { MOMENT } from "@/components/PredictionHindsight";
 import {
-  CHECKPOINTS, FAMILY, learningStatus, lineupDates, lineupTable, num, shortVersion,
+  CHECKPOINTS, FAMILY, learningStatus, lineupDates, lineupTable, num, shortVersion, utcDate,
   type LineupRow, type StatusRow,
 } from "@/lib/lineup";
 
@@ -52,9 +52,9 @@ export default function PredictionLineup() {
   // The dates follow the database's clock (UTC) and are set after mount, so the
   // prerendered page and the browser agree.
   useEffect(() => {
-    const d = lineupDates(new Date());
-    setDates(d);
-    setDate(d[1]);
+    const now = new Date();
+    setDates(lineupDates(now));
+    setDate(utcDate(now, -1));
   }, []);
 
   const sq = useQuery<StatusRow[]>(

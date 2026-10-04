@@ -7,7 +7,7 @@
  * (20261004200000_the_page_reads_the_contract.sql):
  *
  *   v_learning_status    each predictor version's latest registry state
- *   v_prediction_lineup  every recorded call of the last 8 target dates, one
+ *   v_prediction_lineup  every recorded call from 7 target dates ago on, one
  *                        row per predictor and checkpoint, with the venue's
  *                        winner once settled
  *
@@ -81,10 +81,21 @@ export function learningStatus(rows: StatusRow[]): StatusRow[] {
     || a.family.localeCompare(b.family) || a.version.localeCompare(b.version));
 }
 
-/** The target dates the lineup holds: today (UTC, the database's clock) and the 7 before it. */
-export function lineupDates(now: Date, days = 8): string[] {
+/** A UTC date (the database's clock) `offset` days from now's. */
+export function utcDate(now: Date, offset = 0): string {
   const base = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  return Array.from({ length: days }, (_, i) => new Date(base - i * 86_400_000).toISOString().slice(0, 10));
+  return new Date(base + offset * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * The target dates the lineup holds, newest first: tomorrow, today and the 7
+ * before it (the view's current_date - 7 on). Tomorrow, because the evening-
+ * before call is written for it, and a city ahead of UTC starts its day
+ * before UTC does (review of #305: 31 evening-before calls for 5 Oct stood
+ * in the view at 17:59Z on 4 Oct with no button to show them).
+ */
+export function lineupDates(now: Date): string[] {
+  return Array.from({ length: 9 }, (_, i) => utcDate(now, 1 - i));
 }
 
 export interface Column {

@@ -8,7 +8,7 @@
 --   v_learning_status    each predictor version's latest registry state, in
 --                        the plan's four words: data capture, candidate
 --                        fitting, evaluation, serving (and retired).
---   v_prediction_lineup  the last 8 target dates' calls side by side - the
+--   v_prediction_lineup  the calls from 7 target dates ago on, side by side - the
 --                        served engine, S10 rd1 and rd3, the da_floor variant
 --                        - each with its version, role, top bucket and centre,
 --                        and the venue's winner once settled.
@@ -160,7 +160,7 @@ select s.city_key,
   left join public.v_canonical_bands wb on wb.band_id::text = s.winner_band_id;
 
 comment on view public.v_prediction_lineup is
-  'P2.2 part 2: the last 8 target dates'' calls side by side - the served engine (its first capture of each checkpoint), S10 and the engine variants - with version, role, top bucket and the venue''s winner once settled. A blinded version (model_registry.blind) shows its calls only until the city''s local day ends or its winner is banked, and never an outcome. Owner rights, read by /predictive.';
+  'P2.2 part 2: the calls from 7 target dates ago on (tomorrow''s evening-before calls included), side by side - the served engine (its first capture of each checkpoint), S10 and the engine variants - with version, role, top bucket and the venue''s winner once settled. A blinded version (model_registry.blind) shows its calls only until the city''s local day ends or its winner is banked, and never an outcome. Owner rights, read by /predictive.';
 
 revoke all on public.v_learning_status, public.v_prediction_lineup from public, anon, authenticated;
 grant select on public.v_learning_status, public.v_prediction_lineup to anon, authenticated, service_role;

@@ -4,7 +4,7 @@
 // Run with: npm run test:routes
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { learningStatus, lineupDates, lineupTable, shortVersion, STAGES } =
+const { learningStatus, lineupDates, lineupTable, shortVersion, utcDate, STAGES } =
   require(path.join(__dirname, '..', '.route-test', 'lib', 'lineup.js'));
 
 // ------------------------------------------------------------ the status
@@ -29,10 +29,13 @@ assert.equal(status[0].stage, 'retired', 'sorting copies; the query result is no
 
 // ------------------------------------------------------------ the dates
 assert.deepEqual(lineupDates(new Date('2026-10-04T23:59:00Z')),
-  ['2026-10-04', '2026-10-03', '2026-10-02', '2026-10-01', '2026-09-30', '2026-09-29', '2026-09-28', '2026-09-27'],
-  "today and the 7 before it, on the database's clock (the view's current_date - 7)");
-assert.equal(lineupDates(new Date('2026-10-05T00:30:00Z'))[0], '2026-10-05', 'UTC, not the browser zone');
-assert.equal(lineupDates(new Date('2026-03-01T12:00:00Z'))[1], '2026-02-28', 'across a month end');
+  ['2026-10-05', '2026-10-04', '2026-10-03', '2026-10-02', '2026-10-01', '2026-09-30', '2026-09-29', '2026-09-28', '2026-09-27'],
+  "tomorrow (the evening-before call's date), today and the 7 before it, on the database's clock (the view's current_date - 7 on)");
+assert.equal(lineupDates(new Date('2026-10-04T18:00:00Z'))[0], '2026-10-05',
+  'at 18:00Z the evening-before calls for tomorrow are already written (31 live on 4 Oct, review of #305)');
+assert.equal(lineupDates(new Date('2026-10-05T00:30:00Z'))[1], '2026-10-05', 'UTC, not the browser zone');
+assert.equal(lineupDates(new Date('2026-03-01T12:00:00Z'))[2], '2026-02-28', 'across a month end');
+assert.equal(utcDate(new Date('2026-10-04T23:59:00Z'), -1), '2026-10-03', 'the default date: yesterday, mostly settled');
 
 assert.equal(shortVersion('rd1:2026-09-25:f5372ebb05'), 'rd1 f5372eb');
 assert.equal(shortVersion('da_floor:v1'), 'da_floor v1');
@@ -99,4 +102,4 @@ assert.equal(only.lines[0].winner_label, null);
 
 assert.deepEqual(lineupTable([], status), { columns: [], lines: [], tallies: {} });
 
-console.log('lineup: the plan\'s stages in order; 8 UTC dates; the engine once, S10 by version, the variants; blinded columns never tallied');
+console.log('lineup: the plan\'s stages in order; tomorrow to 7 days back, UTC; the engine once, S10 by version, the variants; blinded columns never tallied');
