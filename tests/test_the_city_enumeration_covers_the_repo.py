@@ -345,6 +345,9 @@ MIGRATION_RECORD = {
     "supabase/migrations/20260929010000_a_cut_day_keeps_its_cached_values.sql":
         "refresh_feature_cache, as in sql/ad4_28 and ad4_29 - the day-feature "
         "record, which must cover every city a prune reaches",
+    "supabase/migrations/20261004160000_one_morning_reading.sql":
+        "v_city_day_features again, as in sql/ad4_21 - cities.timezone only, to put each reading "
+        "on its city's local day; the day-feature record, which must cover every city a prune reaches",
     "supabase/migrations/20261004130000_the_label_is_what_the_venue_reads.sql":
         "v_city_day_features, as in sql/ad4_21 - cities.timezone only, to put each reading on "
         "its city's local day; the day-feature record, which must cover every city a prune "

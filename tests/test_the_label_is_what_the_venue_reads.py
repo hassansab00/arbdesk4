@@ -30,14 +30,14 @@ def _read(*p):
     return open(os.path.join(ROOT, *p)).read()
 
 
-def test_the_migration_carries_the_shipped_view_verbatim():
-    ad4_21 = _read("sql", "ad4_21_weather_features.sql")
-    i = ad4_21.index("create or replace view v_city_day_features as")
-    end = "left join morning m on m.city_key = d.city_key and m.obs_date = d.obs_date;"
-    stmt = ad4_21[i:ad4_21.index(end, i) + len(end)]
-    stmt = stmt.replace("create or replace view v_city_day_features as",
-                        "create or replace view public.v_city_day_features as", 1)
-    assert "$v$" + stmt + "$v$" in _read(*MIGRATION)
+def test_the_migration_carries_the_label_rule():
+    """The view this migration carried was replaced the same day by
+    20261004160000_one_morning_reading.sql (the morning reading chosen one
+    way), which tests/test_one_morning_reading.py holds to the shipped file.
+    Here the migration need only carry the label rule it introduced."""
+    mig = _read(*MIGRATION)
+    assert "coalesce(max(temp_c) filter (where source = 'IEM'), max(temp_c)) as max_c," in mig
+    assert "then 'settlement_feed' else 'all_sources' end as max_c_source" in mig
 
 
 def test_max_c_is_the_settlement_feed_first_and_the_old_value_stays_visible():

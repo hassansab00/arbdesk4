@@ -138,5 +138,21 @@ const viewText = (file, name) => {
   assert.deepEqual(await day('nyc', '2026-07-04'), { n_obs: 25, max_c: 24, prev: 23, delta: 1, dp: 1 },
     'the cache took the five-minute maximum');
 
-  console.log("PASS: feature-cache-cut-day: a day the prune cut into keeps the values it was cached with (nyc's evening, tokyo's afternoon), the first whole day's prev_max_c/delta/pressure change come from the cached day before, whole days match the view, the label is the settlement feed's maximum, a never-cached first day is still cached for the prune's guard, a rerun changes nothing, re-runnable");
+  // ONE MORNING READING (4 Oct, 20261004160000). nyc 5 Jul's 08:xx readings
+  // are an NWS reading at 08:00 (99) and a routine report at 08:40 (50); the
+  // routine report nearest 08:00 is at 07:55 (18.0). Ordered by the whole hour
+  // the two 08:xx readings tied and 07:55 could never be chosen; now the
+  // settlement feed comes first and the minute decides.
+  await db.exec(`
+    delete from weather_observations where city_key = 'nyc' and valid_at = timestamptz '2026-07-05 12:00+00';
+    insert into weather_observations (city_key, valid_at, source, temp_c, dewpoint_c, pressure_hpa) values
+      ('nyc', timestamptz '2026-07-05 12:00+00', 'NWS', 99, 10, 900),
+      ('nyc', timestamptz '2026-07-05 12:40+00', 'IEM', 50, 10, 900),
+      ('nyc', timestamptz '2026-07-05 11:55+00', 'IEM', 18, 10, 1001)`);
+  const morning = (await db.query(
+    `select morning_temp_c::float as t, morning_pressure_hpa::float as p
+       from v_city_day_features where city_key = 'nyc' and obs_date = '2026-07-05'`)).rows[0];
+  assert.deepEqual(morning, { t: 18, p: 1001 }, 'the morning reading is not the settlement feed\'s nearest to 08:00');
+
+  console.log("PASS: feature-cache-cut-day: a day the prune cut into keeps the values it was cached with (nyc's evening, tokyo's afternoon), the first whole day's prev_max_c/delta/pressure change come from the cached day before, whole days match the view, the label is the settlement feed's maximum, the morning reading is chosen one way, a never-cached first day is still cached for the prune's guard, a rerun changes nothing, re-runnable");
 })().catch((e) => { console.error(e); process.exit(1); });
