@@ -11,7 +11,7 @@ Each run:
 
   1. works out which checkpoints are DUE: a decision time in the last
      GRACE_MIN minutes, for a market the engine may still price, not already
-     written by this engine version;
+     written by any engine version (4 Oct: one capture per checkpoint);
   2. prices those city-days only, with the same process_city_day the intraday
      pipeline uses (same caches, same floors, same thread pool);
   3. reads every due band's CLOB book in ONE request;
@@ -250,15 +250,23 @@ def build_row(city, target, checkpoint, local_time, rows, reasons, books, readin
 # --------------------------------------------------------------------------
 # the run
 # --------------------------------------------------------------------------
-def _written(version, keys):
-    """The (city, target, checkpoint) this version already holds among keys."""
+def _written(keys):
+    """The (city, target, checkpoint) already held among keys, under ANY
+    engine version (4 Oct).
+
+    The version is the commit the tick runs on, and the nightly archive and
+    mirror commit to main. A checkpoint whose time falls in the 15 minutes two
+    ticks share (GRACE_MIN 75, hourly ticks) is due in both, and asking only
+    about this version let the second tick write it again an hour after its
+    time: 81 second captures on 25 Sep - 3 Oct, 19 with a different top
+    bucket. The table still takes a deliberate correction under a new version;
+    the tick is not the place that makes one."""
     if not keys:
         return set()
     cities = sorted({k[0] for k in keys})
     dates = sorted({k[1] for k in keys})
     rows = rest_all("prediction_checkpoints", [
         ("select", "city_key,target_date,checkpoint"),
-        ("engine_version", f"eq.{version}"),
         ("city_key", f"in.({','.join(cities)})"),
         ("target_date", f"in.({','.join(dates)})"),
     ], order="checkpoint_id.asc", page_size=1000)
@@ -349,7 +357,7 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     s10 = {"inputs": s10_shadow.fetch_inputs(now, cities, dry_run, budget_s=S10_FETCH_S)}
 
     candidates, notes = due_checkpoints(now, markets, tz_of, peak_of, written=set())
-    held = _written(version, {(c, t, k) for c, t, k, _ in candidates})
+    held = _written({(c, t, k) for c, t, k, _ in candidates})
     due = [d for d in candidates if (d[0], d[1], d[2]) not in held]
     detail = {"engine_version": version, "due": len(due), "already_written": len(candidates) - len(due),
               "notes": notes[:20], "observations": stations, "s10": s10}

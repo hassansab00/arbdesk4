@@ -4,7 +4,9 @@ The API gateway's log for 29 Sep 12:36Z - 30 Sep 09:36Z holds seven 401s,
 every one a GET, every one "PostgREST; error=PGRST303" in the first seconds of
 a :36 process, the same key succeeding on the next request. Two crashed the
 tick's trade prints. A refused request never reached the database and a read
-is safe to repeat; a write, an RPC, or any other 401 keeps its old behaviour.
+is safe to repeat. Since 4 Oct a write refused the same way gets the same one
+retry (refused before any statement ran, so nothing was written); an RPC, or
+any other 401, keeps its old behaviour.
 """
 import pytest
 import requests
@@ -69,7 +71,51 @@ def test_any_other_401_fails_at_once(wired):
     assert len(calls) == 1 and sleeps == []
 
 
-def test_writes_and_rpcs_are_not_given_this_retry():
+def test_rpcs_are_not_given_this_retry():
     import inspect
-    assert "_is_claims_refusal" not in inspect.getsource(common._post_batch)
     assert "_is_claims_refusal" not in inspect.getsource(common.rpc)
+
+
+# ---------------------------------------------------------------------------
+# A WRITE REFUSED WITH PGRST303 (4 Oct). The gateway's log for the 1 Oct
+# 03:49Z ingest_forecasts crash: POST weather_forecast_models 401, "PostgREST;
+# error=PGRST303", a POST with the same key answered 201 in the same
+# millisecond. PostgREST refuses those claims before any statement runs.
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def posting(monkeypatch):
+    calls, sleeps = [], []
+    monkeypatch.setattr(common, "_cfg", lambda: {"url": "https://x.supabase.co", "key": "k"})
+    monkeypatch.setattr(common.time, "sleep", lambda s: sleeps.append(s))
+
+    def script(responses):
+        it = iter(responses)
+        monkeypatch.setattr(common, "_post", lambda url, **kw: calls.append(kw.get("data")) or next(it))
+    return script, calls, sleeps
+
+
+ROWS = [{"city_key": "nyc", "model": "gfs", "run_at": "2026-10-01T00:00Z", "for_date": "2026-10-02", "tmax_c": 20}]
+
+
+def test_a_write_refused_with_pgrst303_is_sent_once_more(posting):
+    script, calls, sleeps = posting
+    script([Resp(401, {"code": "PGRST303"}, proxy_status="PostgREST; error=PGRST303"), Resp(201)])
+    assert common.upsert("weather_forecast_models", ROWS, "city_key,model,run_at,for_date") == 1
+    assert len(calls) == 2 and calls[0] == calls[1], "the same batch, sent twice"
+    assert sleeps == [common.AUTH_RETRY_DELAY_S]
+
+
+def test_a_write_refused_twice_still_raises(posting):
+    script, calls, _ = posting
+    script([Resp(401, {"code": "PGRST303"}), Resp(401, {"code": "PGRST303"})])
+    with pytest.raises(requests.HTTPError):
+        common.upsert("weather_forecast_models", ROWS, "city_key,model,run_at,for_date")
+    assert len(calls) == 2
+
+
+def test_any_other_401_on_a_write_fails_at_once(posting):
+    script, calls, sleeps = posting
+    script([Resp(401, {"code": "PGRST301", "message": "No suitable key"})])
+    with pytest.raises(requests.HTTPError):
+        common.insert("ingest_log", [{"job": "x"}])
+    assert len(calls) == 1 and sleeps == []

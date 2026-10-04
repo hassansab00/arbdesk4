@@ -185,7 +185,7 @@ def test_the_engine_names_the_forecast_it_priced_from():
 # --------------------------------------------------------------------------
 @pytest.fixture
 def world(monkeypatch):
-    w = {"written": [], "logged": [], "held": [], "delay": 0.0, "picks": [], "running": [],
+    w = {"written": [], "logged": [], "held": [], "asked": [], "delay": 0.0, "picks": [], "running": [],
          "published": [], "publish": None, "priced": [],
          "stations": {"rows": 12, "cities": 1, "silent": [], "error": None, "seconds": 0.1}}
     monkeypatch.setattr(tick, "read_stations", lambda now, dry_run=False: dict(w["stations"]))
@@ -222,7 +222,10 @@ def world(monkeypatch):
             return [{"band_id": "b1", "token_yes": "T1"}, {"band_id": "b2", "token_yes": "T2"}]
         raise AssertionError(path)
     monkeypatch.setattr(tick, "rest", rest)
-    monkeypatch.setattr(tick, "rest_all", lambda path, params, **kw: w["held"])
+    def rest_all(path, params, **kw):
+        w["asked"].append((path, params))
+        return w["held"]
+    monkeypatch.setattr(tick, "rest_all", rest_all)
     monkeypatch.setattr(tick, "fetch_books", lambda tokens: {
         "b1": {"bid": 0.5, "ask": 0.52, "last": 0.5}})
 
@@ -257,10 +260,21 @@ def test_a_tick_writes_one_row_per_due_checkpoint(world):
     assert out["written"] == 1 and world["logged"][0][1] == "ok"
 
 
-def test_a_checkpoint_this_version_already_holds_is_not_priced(world):
+def test_a_checkpoint_already_held_is_not_priced(world):
     world["held"] = [{"city_key": "nyc", "target_date": "2026-09-25", "checkpoint": "d1_eve"}]
     out = tick.run(now=at("2026-09-24T22:35"))
     assert world["written"] == [] and out["due"] == 0 and out["already_written"] == 1
+
+
+def test_a_checkpoint_another_version_holds_is_not_written_again(world):
+    """4 Oct: the version is the commit, and a commit between two ticks that
+    share a checkpoint's window let the second write it again an hour late.
+    The question asked of the table names no version."""
+    world["held"] = [{"city_key": "nyc", "target_date": "2026-09-25", "checkpoint": "d1_eve"}]
+    tick.run(now=at("2026-09-24T22:35"))
+    (path, params), = [a for a in world["asked"] if a[0] == "prediction_checkpoints"]
+    assert not any(k == "engine_version" for k, _ in params), params
+    assert world["written"] == []
 
 
 def test_work_past_the_budget_is_deferred_and_logged_not_dropped(world, monkeypatch):
