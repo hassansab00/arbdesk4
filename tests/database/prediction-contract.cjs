@@ -86,9 +86,25 @@ async function refused(db, sql, params, why) {
       values ('london', '2026-10-05', 'noon', 'da_floor', 'da_floor:v1', 'git:abc', 21.2, 1.4, '2026-10-04T20:40:00Z',
               20.4, 0.02, 0.05, 'C', '{"b1":0.05,"b2":0.55,"b3":0.4}', 'b2', 0.55, 'EGLL', '2026-10-05T11:36:50Z')`);
 
-  const rows = await one(`select * from public.v_prediction_contract order by recorded_in, city_key`);
-  assert.equal(rows.length, 4);
+  // nyc: the S10 row sits beside a served call from before 4 Oct (no station);
+  // a later call that does carry one must not lend it its station.
+  await db.query(`insert into public.s10_shadow_checkpoints
+      (city_key, target_date, checkpoint, local_decision_time, model_hour, model_version, contract,
+       probs, top_band_id, top_prob, median_c, q10_c, q90_c, running_max_c, decided_at)
+      values ('nyc', '2026-10-05', 'noon', '2026-10-05 12:00', 12, 'rd1:2026-09-25:f5372ebb05', 's10-contract-v1',
+              '{"b1":0.5,"b2":0.5}', 'b1', 0.5, 18.0, 17.0, 19.0, 17.2, now() + interval '1 minute')`);
+  await db.query(`insert into public.prediction_checkpoints
+      (city_key, target_date, checkpoint, local_decision_time, engine_version, model_path, probs, top_band_id, top_prob,
+       station, decided_at)
+      values ('nyc', '2026-10-05', 'noon', '2026-10-05 12:00', 'git:later', 'forecast', '{"b1":0.5,"b2":0.5}',
+              'b1', 0.5, 'KJFK', now() + interval '1 hour')`);
+
+  const rows = await one(`select * from public.v_prediction_contract where code_version is distinct from 'git:later'
+                           order by recorded_in, city_key`);
+  assert.equal(rows.length, 5);
   const by = Object.fromEntries(rows.map((r) => [`${r.model_family}|${r.city_key}`, r]));
+  assert.deepEqual([by['s10|nyc'].station, by['s10|nyc'].station_source], ['KLGA', 'cities_now'],
+    'a served call recorded after the S10 row lends it nothing');
   const eng = by['engine|london'];
   assert.equal(eng.serving_role, 'served');
   assert.equal(eng.artifact_version, 'station_correction:station-correction:2026-10-04:da319e41d6:open_meteo_forecast');

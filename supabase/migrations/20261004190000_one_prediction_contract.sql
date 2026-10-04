@@ -171,12 +171,14 @@ select s.checkpoint_id::text, 's10_shadow_checkpoints', 's10',
   from public.s10_shadow_checkpoints s
   left join public.cities c on c.city_key = s.city_key
   -- S10 rows keep no station of their own: the served call's, recorded at
-  -- the same city, date and checkpoint (any version holds the same station).
+  -- the same city, date and checkpoint, and decided no later than the S10
+  -- row - the nearest before it. A call recorded afterwards cannot lend a
+  -- past row its station (review of #304).
   left join lateral (
     select p.station from public.prediction_checkpoints p
      where p.city_key = s.city_key and p.target_date = s.target_date
-       and p.checkpoint = s.checkpoint and p.station is not null
-     order by p.decided_at limit 1) e on true
+       and p.checkpoint = s.checkpoint and p.decided_at <= s.decided_at
+     order by p.decided_at desc limit 1) e on true
 union all
 select v.shadow_id::text, 'variant_shadow_checkpoints', 'engine_variant',
        v.variant_version, v.engine_version, 'shadow',
