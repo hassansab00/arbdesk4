@@ -23,8 +23,9 @@ const assert = require('node:assert/strict');
     -- 2026-09-19 retirement migration does exactly that. See CLAUDE.md: the
     -- fixture has to match the live shape or the contracts pass against a
     -- database that does not exist.
+    -- icao is live (text, nullable): 20261004190000 builds v_prediction_contract over it.
     create table public.cities(city_key text primary key,display_name text,unit text,status text,
-      timezone text,latitude numeric,longitude numeric,
+      timezone text,latitude numeric,longitude numeric,icao text,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now());
     -- temp_c is live (numeric, nullable): 20260929100000 builds

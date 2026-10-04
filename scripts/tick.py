@@ -206,7 +206,12 @@ def _path_and_model(reasons):
     return path, model
 
 
-def build_row(city, target, checkpoint, local_time, rows, reasons, books, reading, version):
+def _priced_from(reasons):
+    """The full label the engine priced from (its reasons' priced_from:...), or None."""
+    return next((r[len("priced_from:"):] for r in reasons or [] if r.startswith("priced_from:")), None) or None
+
+
+def build_row(city, target, checkpoint, local_time, rows, reasons, books, reading, version, station=None):
     """One prediction_checkpoints row, or (None, why) when it cannot be one.
 
     Checked here against the table's own constraints, because one row the
@@ -243,6 +248,13 @@ def build_row(city, target, checkpoint, local_time, rows, reasons, books, readin
                                if priced else None),
         "inputs_ok": inputs_ok,
         "block_reason": None if inputs_ok else (head.get("pricing_block_reason") or "pricing_ineligible"),
+        # P2.2 (4 Oct): the call's artifact version in full, and the forecast
+        # before any correction - the prediction contract's two engine fields
+        # the row did not keep (docs/P22_PREDICTION_CONTRACT.md).
+        "priced_from": _priced_from(reasons),
+        "raw_forecast_c": head.get("forecast_max_c"),
+        # the settlement station as it stands now: cities keeps no history
+        "station": station,
     }
     return row, None
 
@@ -344,6 +356,7 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     stations = read_stations(now, dry_run)
     cities = get_cities(require_coords=False)
     tz_of = {c["city_key"]: c.get("timezone") for c in cities}
+    station_of = {c["city_key"]: c.get("icao") for c in cities}
     unit_of = {c["city_key"]: (c.get("unit") or "C") for c in cities}
     markets = pe._upcoming_markets()
     peak_of = {(r["city_key"], int(r["month"])): r["peak_hour_local"]
@@ -457,7 +470,7 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
             continue
         rows, _reg, reasons = res
         row, why = build_row(city, target, name, local, rows, reasons, books,
-                             running.get(city), version)
+                             running.get(city), version, station=station_of.get(city))
         if row is None:
             failed.append(f"{city} {target} {name}: {why}")
             continue

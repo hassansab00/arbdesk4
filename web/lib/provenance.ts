@@ -1587,6 +1587,10 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "cities",
     "weather_observations"
   ],
+  "v_prediction_contract": [
+    "cities",
+    "prediction_checkpoints"
+  ],
   "v_prediction_hindsight": [
     "bands",
     "fact_checkpoint_outcome",

@@ -41,7 +41,7 @@ and C pre-registrations.
 | **P1.3** S10 freshness and challengers | **Done.** rd2 (decision-time observations) was rejected. rd3 (day-before model maxima, bias-corrected) was accepted on the holdout and has been in forward shadow since 3 Oct. | `docs/CHALLENGER_A_PREREG.md`, `docs/CHALLENGER_C_PREREG.md`, #293 – #296. The first forward look is from 25 Oct, by the pre-registered rule. |
 | **P1.4** Calibration by horizon | **Aligned; no change.** P3.6 keeps the identity transform when a fitted one scores worse on held-out dates. | P3.6 row of `PLAN_PROGRESS.md`. |
 | **P2.1** Compare all seven entry times on executable prices | **Not started**, after P0 and P1 as the plan itself orders. | Each checkpoint stores the top of book (bid, ask, last), not depth. A fill-realistic comparison needs depth or a stated fill assumption. |
-| **P2.2** One versioned prediction contract | **Not started.** `prediction_checkpoints` already records `engine_version`, `model_path`, inputs and the full ladder. S10 and its challengers are recorded separately in `s10_shadow_checkpoints`. | |
+| **P2.2** One versioned prediction contract | **Part 1 (4 Oct):** `v_prediction_contract` and `model_registry`, read-only (`docs/P22_PREDICTION_CONTRACT.md`). Parts 2 (the page) and 3 (decisions, evaluation, refits as candidates) follow. Before that: **Not started.** `prediction_checkpoints` already records `engine_version`, `model_path`, inputs and the full ladder. S10 and its challengers are recorded separately in `s10_shadow_checkpoints`. | |
 
 ## Found while checking (not in the plan)
 - **#297.** From 5 Sep, the pricing floor and the station label every model trains on took the

@@ -83,6 +83,7 @@ def build_row(served, call, bands, unit, q, calibrated):
         "city_key": served["city_key"], "target_date": str(served["target_date"]),
         "checkpoint": served["checkpoint"], "variant": VARIANT, "variant_version": VERSION,
         "engine_version": served["engine_version"],
+        "station": served.get("station"),
         "day_ahead_centre_c": float(centre), "day_ahead_sigma_c": float(sigma),
         "day_ahead_priced_at": call["computed_at"],
         "day_ahead_lead_days": call.get("lead_days"),
