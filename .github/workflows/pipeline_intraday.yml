@@ -21,12 +21,16 @@ name: Intraday Pipeline (model, probabilities, edges)
 
 on:
   # EVERY SIX HOURS FROM 4 OCT (plan v2 P6.1, 20261004170000): the clock
-  # (public.clock_tick) dispatches this at 00:36, 06:36, 12:36 and 18:36 UTC.
+  # (public.clock_tick) dispatches this at 02:36, 08:36, 14:36 and 20:36 UTC.
   # The Pro plan's 3,000 minutes a month cover CI as well, and this job bills
   # about 4 a run (3.95, 1-4 Oct). The hourly tick prices every checkpoint and
-  # re-prices same-day ladders itself, so the scored record does not depend on
-  # this cadence; this refreshes the rest of the board, the edges and the
-  # paper cycle, inside their freshness limits (decisions 8 h, edges 12 h).
+  # re-prices same-day ladders itself, so the checkpoint record does not
+  # depend on this cadence. The day-ahead hit record does (its call is the
+  # last band_probabilities pricing before local midnight, written only here),
+  # and these hours put that call 1.64 h before midnight on average over the 48
+  # cities, against 2.01 h on the six runs before (the migration has the
+  # arithmetic). The board, the edges and the paper cycle stay inside their
+  # freshness limits (decisions 8 h, edges 12 h).
   #
   # (Before that:) NO GITHUB CRON: n8n's "AD4 P6.1 - Clock" dispatches this at 00:36, 04:36,
   # 08:36, 12:36, 16:36 and 20:36 UTC. On 24 Sep GitHub's cron started none of

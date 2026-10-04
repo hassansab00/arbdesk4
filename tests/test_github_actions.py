@@ -168,7 +168,7 @@ MEASURED_MINUTES = {
     # bands-only banking (30 Sep) add to this job; measure them on real runs.
     # MEASURED 1-4 Oct, with the queue and the banking in it: 21 runs, 83
     # billed minutes, 3.95 a run (job 156-249 s; Actions jobs API, each job
-    # rounded up). Every 6 hours from 4 Oct (20261004170000).
+    # rounded up). Every 6 hours from 4 Oct, at 02/08/14/20 UTC (20261004170000).
     "pipeline_intraday.yml": 4.0,
     # The hourly checkpoint tick (plan v2 P6.1 / P4.2). Dispatched 24 Sep:
     # 35 s with a cold venv cache, 21 s warm (7 checkpoints, script 11.8 s).
@@ -240,8 +240,9 @@ DEFAULT_MINUTES = 5.0
 # and runs pipeline_intraday every 6 hours instead of every 4. With the
 # figures above, rounded up where a job has not yet run in its new shape, the
 # scheduled total is 2,835 (on the measured means, about 2,750). That leaves
-# 150 to 250 a month for CI. tests.yml bills about 4 minutes a run once its two
-# suites run side by side, so roughly 40-60 runs a month. A month of
+# 150 to 250 a month for CI. With its two suites side by side, tests.yml's
+# first run (PR #302, 4 Oct) took 170 s, 3 billed minutes against 5 before, so
+# roughly 50-80 runs a month. A month of
 # development busier than that goes over 3,000, and the next lever (a cadence
 # or a step) is chosen and written down here.
 #

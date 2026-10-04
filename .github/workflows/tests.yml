@@ -48,7 +48,8 @@ jobs:
       # and each suite uses one, so they run side by side: on two cores locally
       # the pair took 174 s instead of 156 + 105. Every test still runs. The job
       # fails if either suite fails, and the contracts' log is printed after
-      # pytest's so the two do not interleave.
+      # pytest's so the two do not interleave. First run (PR #302, 4 Oct): the
+      # job took 170 s, three billed minutes.
       - name: pytest and the paper database transaction contracts, side by side
         run: |
           set +e

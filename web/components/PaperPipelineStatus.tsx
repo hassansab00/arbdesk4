@@ -49,12 +49,12 @@ type Detail = Record<string, number | undefined>;
 type Run = { job: string; started_at: string; status: string; detail: Detail | null };
 
 // pipeline_intraday.yml, as the clock (public.clock_schedule) starts it: :36
-// past 00, 06, 12 and 18 UTC from 4 Oct (plan v2 P6.1, 20261004170000).
+// past 02, 08, 14 and 20 UTC from 4 Oct (plan v2 P6.1, 20261004170000).
 // tests/test_paper_desk_ui.py holds these to the clock. Stated here so the page
 // can say when the next cycle is due rather than leaving the owner to guess -
 // but stated as SCHEDULED, because a dispatch can be late and this page must
 // not imply a promise the runner does not make.
-const CYCLE_HOURS = [0, 6, 12, 18];
+const CYCLE_HOURS = [2, 8, 14, 20];
 const CYCLE_MINUTE = 36;
 
 export function nextCycle(now: Date): Date {

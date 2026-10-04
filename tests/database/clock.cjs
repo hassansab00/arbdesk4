@@ -45,13 +45,13 @@ const MIG = fs.readFileSync(path.join(__dirname, '..', '..', 'supabase', 'migrat
   const once = await stamp();
   await db.exec(PRO);
   assert.deepEqual(await stamp(), once, 'a second run touches no row');
-  assert.deepEqual(await due('2026-10-05T04:36:00Z'), ['pipeline_daily.yml', 'tick.yml']);
+  assert.deepEqual(await due('2026-10-05T04:36:00Z'), ['pipeline_daily.yml', 'tick.yml'], 'intraday no longer beside the daily run');
   assert.deepEqual(await due('2026-10-05T03:36:00Z'), ['tick.yml'], 'forecasts.yml is started by hand now');
-  assert.deepEqual(await due('2026-10-05T06:36:00Z'), ['pipeline_intraday.yml', 'tick.yml']);
-  for (const h of ['00', '12', '18']) {
+  assert.deepEqual(await due('2026-10-05T02:36:00Z'), ['archive_observations.yml', 'pipeline_intraday.yml', 'tick.yml']);
+  for (const h of ['08', '14', '20']) {
     assert.ok((await due(`2026-10-05T${h}:36:00Z`)).includes('pipeline_intraday.yml'), h);
   }
-  for (const h of ['04', '08', '16', '20']) {
+  for (const h of ['00', '04', '06', '12', '16', '18']) {
     assert.ok(!(await due(`2026-10-05T${h}:36:00Z`)).includes('pipeline_intraday.yml'), h);
   }
   let forecastsDue = 0;
