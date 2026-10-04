@@ -97,20 +97,33 @@ def io(monkeypatch):
         "b1": {"band_id": "b1", "centre_c": 21.2, "sigma_c": 1.4,
                "computed_at": "2026-10-04T20:40:00+00:00", "lead_days": 1}}}
 
-    def rest(path, params=None, tries=4):
-        assert path == "band_probabilities"
-        w["asked"].append(params)
+    class Answer:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def raise_for_status(self):
+            if isinstance(self.rows, Exception):
+                raise self.rows
+
+        def json(self):
+            return self.rows
+
+    def get(url, headers=None, params=None, timeout=None):
+        assert url == "https://x.supabase.co/rest/v1/band_probabilities"
+        assert headers["apikey"] == "k" and 1.0 <= timeout <= 8.0
+        w["asked"].append(dict(params, _timeout=timeout))
         ids = params["band_id"][len("in.("):-1].split(",")
         if isinstance(w["calls"], Exception):
-            raise w["calls"]
-        return [w["calls"][ids[0]]] if ids[0] in w["calls"] else []
+            return Answer(w["calls"])
+        return Answer([w["calls"][ids[0]]] if ids[0] in w["calls"] else [])
 
     def upsert(table, rows, on_conflict, chunk=500):
         w["written"].append((table, rows, on_conflict))
         return len(rows)
     # the `common` variant_shadow will import now: other tests reload it
     live = importlib.import_module("common")
-    monkeypatch.setattr(live, "rest", rest)
+    monkeypatch.setattr(live, "_get", get)
+    monkeypatch.setattr(live, "_cfg", lambda: {"url": "https://x.supabase.co", "key": "k"})
     monkeypatch.setattr(live, "upsert", upsert)
     monkeypatch.setattr(pe, "_measurement_layer_for",
                         lambda city: (0.03, 0.06) if city == "london" else None)
@@ -148,6 +161,7 @@ def test_one_row_per_same_day_call_with_the_inputs_it_was_built_from(io):
     assert asked["computed_at"] == "lt.2026-10-04T23:00:00+00:00"
     assert asked["order"] == "computed_at.desc,prob_id.desc" and asked["limit"] == "1"
     assert asked["band_id"] == "in.(b1,b2,b3,b4)"
+    assert asked["_timeout"] == 8.0, "one attempt, never longer than the time left"
 
 
 def test_the_pooled_q_where_the_city_has_none_and_no_q_without_a_floor(io):
@@ -172,6 +186,11 @@ def test_every_skip_is_counted_by_reason(io):
     assert io["written"] == []
     assert counts["skipped"] == {"no_day_ahead_call": 1, "no_market_or_timezone": 1}
     assert counts["due"] == 2 and counts["written"] == 0
+
+
+def test_the_lookup_timeout_is_cut_to_the_time_left(io):
+    _record(io, [_served("london", "noon")], deadline=time.monotonic() + 3.0)
+    assert 1.0 <= io["asked"][0]["_timeout"] <= 3.0
 
 
 def test_a_refused_read_is_counted_and_never_raised(io):

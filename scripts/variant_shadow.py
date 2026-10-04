@@ -23,8 +23,9 @@ One row per city, day, checkpoint and variant, append-only.
 
 BOUNDED AND NEVER RAISES: it runs inside the tick's minute. Each day-ahead
 lookup is one indexed read (36 ms in the database for an 11-bucket market,
-4 Oct); they run on a small pool and stop at the deadline. A row it cannot
-build is counted by reason in the tick's log.
+4 Oct), one attempt with a timeout no longer than the time left; they run on a
+small pool and stop at the deadline. A row it cannot build is counted by
+reason in the tick's log.
 """
 import datetime as dt
 import time
@@ -93,15 +94,23 @@ def build_row(served, call, bands, unit, q, calibrated):
 # ---------------------------------------------------------------------------
 # I/O
 # ---------------------------------------------------------------------------
-def day_ahead_call(band_ids, starts_at):
-    """The last pricing of these buckets before starts_at, or None."""
-    from common import rest
-    rows = rest("band_probabilities", {
-        "select": "band_id,centre_c,sigma_c,computed_at,lead_days",
-        "band_id": f"in.({','.join(str(b) for b in band_ids)})",
-        "computed_at": f"lt.{starts_at.isoformat()}",
-        "order": "computed_at.desc,prob_id.desc",
-        "limit": "1"})
+def day_ahead_call(band_ids, starts_at, timeout_s=8.0):
+    """The last pricing of these buckets before starts_at, or None.
+
+    ONE attempt, with a timeout no longer than the time left: common.rest()
+    waits up to 90 s and retries four times, and a lookup thread still running
+    at the end would hold the tick's process open past its billed minute. A
+    lookup that fails is counted and the row is skipped."""
+    import common
+    r = common._get(f"{common._cfg()['url']}/rest/v1/band_probabilities",
+                    headers=common._headers(), timeout=max(1.0, timeout_s), params={
+                        "select": "band_id,centre_c,sigma_c,computed_at,lead_days",
+                        "band_id": f"in.({','.join(str(b) for b in band_ids)})",
+                        "computed_at": f"lt.{starts_at.isoformat()}",
+                        "order": "computed_at.desc,prob_id.desc",
+                        "limit": "1"})
+    r.raise_for_status()
+    rows = r.json()
     return rows[0] if rows else None
 
 
@@ -138,7 +147,8 @@ def record(out, results, market_of, bands_by_market, tz_of, unit_of, dry_run=Fal
             calls = {key: "out_of_time" for key in days}
         elif days:
             pool = ThreadPoolExecutor(max_workers=WORKERS)
-            futures = {pool.submit(day_ahead_call, [b["band_id"] for b in bands], starts): key
+            futures = {pool.submit(day_ahead_call, [b["band_id"] for b in bands], starts,
+                                   min(8.0, left)): key
                        for key, (bands, starts) in days.items() if bands}
             done, not_done = wait(futures, timeout=max(0.0, left))
             for f in not_done:
