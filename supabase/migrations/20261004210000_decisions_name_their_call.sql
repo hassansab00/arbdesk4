@@ -54,7 +54,8 @@
 --    off or its rows expire, and once superseded or unpriced for 36 h. The newest fit in the
 --    forward rows that has not priced is
 --    recorded once as fitted (the width: shadow), with the reason, and an
---    older fit that never priced is retired as superseded by it. Hassan's
+--    older fit that never priced is retired as superseded by it, as is a
+--    row seeded by hand for the family (part 1's 'W2 per-city width'). Hassan's
 --    decision makes a fit serve the morning after; this records when it did.
 --      calibration          settings.calibration_map (T to 3 decimals, the
 --                           name part 1 seeded), applies -> served or fitted
@@ -142,11 +143,13 @@ begin
   -- version is served while it priced in the last window_h hours
   -- (band_probabilities -> model_versions.label, and the tick's checkpoints,
   -- priced_from) and no newer version of its family first priced after its
-  -- last price. Two versions pricing side by side - a city-day the new fit
-  -- did not rewrite - are both served. It is retired once superseded, or not
-  -- priced for window_h hours, or priced at another horizon than its switch
-  -- now gives. The newest fit in the forward rows that has not priced is
-  -- recorded once, as fitted (the width: shadow), with the reason.
+  -- last price, while the engine can still price with it (its switches on,
+  -- its forward rows fresh). Two versions pricing side by side - a city-day
+  -- the new fit did not rewrite - are both served. It is retired once
+  -- superseded, not priced for window_h hours, switched off or its rows
+  -- expired. The newest fit in the forward rows that has not priced is
+  -- recorded once, as fitted (the width: shadow), with the reason; an older
+  -- fit that never priced is retired as superseded by it.
   for f in
     select * from (values
       (1, 'station_correction', 'station_correction_pricing', 'station-correction:[0-9-]+:[0-9a-f]+', 'station-correction:%', 'min',
@@ -320,6 +323,21 @@ begin
           insert into public.model_registry (family, version, horizon, state, decided_by, evidence)
           values (f.family, old.version, old.horizon, 'retired', 'rule:nightly refit',
                   format('superseded by the newer fit %s before it priced', cur.version));
+          retired := retired + 1;
+        end loop;
+        -- A row seeded by hand for the family before its nightly versions were
+        -- recorded (part 1: station_width 'W2 per-city width', shadow) is
+        -- superseded by them, so it does not stand beside them for good
+        -- (review of #306). Its events stay in the registry.
+        for old in
+          select r.version, r.horizon from public.v_model_registry r
+           where r.family = f.family and r.version not like f.pattern and r.state <> 'retired'
+           order by r.decided_at, r.event_id
+        loop
+          insert into public.model_registry (family, version, horizon, state, decided_by, evidence)
+          values (f.family, old.version, old.horizon, 'retired', 'rule:nightly refit',
+                  format('the nightly %s versions are recorded one by one from P2.2 part 3; the newest fit is %s',
+                         f.family, cur.version));
           retired := retired + 1;
         end loop;
       end if;

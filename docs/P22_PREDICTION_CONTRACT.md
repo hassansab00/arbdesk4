@@ -83,7 +83,7 @@ stay null):
 | s10 | `rd3:2026-09-25:555719d4a1` | same day | shadow | accepted on the holdout (`docs/CHALLENGER_C_PREREG.md`); forward first look from 25 Oct |
 | engine_variant | `da_floor:v1` | same day | shadow | `docs/P11_DA_FLOOR_PREREG.md`; first look about 25 Oct |
 | calibration | `temperature:T=1.141` | all checkpoints | fitted | `settings.calibration_map.applies` is false |
-| station_width | W2 per-city width | day-ahead | shadow | the switch `station_width_pricing` is off; scored by `P3.9_width_score` (5 dates of the 7 needed, 4 Oct) |
+| station_width | W2 per-city width | day-ahead | shadow | the switch `station_width_pricing` is off; scored by `P3.9_width_score` (5 dates of the 7 needed, 4 Oct). Part 3's first run retires this row: from then on each nightly width fit is its own version (review of #306). |
 | forecast_postprocess | the P3.4 bias and width cells | per city and lead | served | `v_forecast_postprocess_applied`: 1 cell (1 city, lead 4), applied since its gate passed on 3 Oct |
 | trajectory | P3.4 trajectory | same day | fitted | `applied: 0` (gate unmet) |
 | weather_model | per-city fits | per city and lead | shadow | `model_promotion`: 0 promoted, 195 shadow, 189 stale (4 Oct) |
@@ -237,7 +237,7 @@ have:
 |---|---|
 | served | priced in the last 36 h (`band_probabilities` -> `model_versions.label`, and the tick's `priced_from`), no newer version of the family first priced after its last price, its switches on (the MOS blend and the width also need the correction's), and forward rows younger than the switch's `max_age_hours`, as `probability_engine` reads them. The width rides on the correction's rows; a MOS row counts only over a fresh correction row of its city-day made by its `p39_version`. Two versions pricing side by side are both served. |
 | retired | at once when a switch goes off or its forward rows expire; or superseded (a newer version first priced after its last price); or not priced for 36 h. Versions retiring in one run are written in the order they first priced, so the newer fit gets the later `event_id`. |
-| fitted (the width: shadow) | the newest fit in the forward rows that has not priced, recorded once with the reason: the switch is off, the correction is off, or it has not priced yet. An older fit that never priced is retired once a newer fit supersedes it, so each family keeps one candidate, not one a night. |
+| fitted (the width: shadow) | the newest fit in the forward rows that has not priced, recorded once with the reason: the switch is off, the correction is off, or it has not priced yet. An older fit that never priced is retired once a newer fit supersedes it, so each family keeps one candidate, not one a night. So is a row seeded by hand for the family before its versions were recorded (part 1's `W2 per-city width`). |
 
 **Calibration** and new **S10 / variant** versions are recorded as before:
 - calibration: `settings.calibration_map`, served if `applies`, else fitted;

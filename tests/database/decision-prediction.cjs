@@ -94,6 +94,12 @@ const PART3 = MIG('20261004210000_decisions_name_their_call.sql');
   assert.equal(st(reg, `station_correction|${C1}|as priced`), 'served', 'priced, so served (Hassan\'s decision)');
   assert.equal(st(reg, `station_mos|${M1}|as priced`), 'served');
   assert.equal(st(reg, `station_width|${W1}|as priced`), 'shadow', 'never priced: the width switch is off');
+  // Part 1's hand-seeded width row gives way to the recorded versions: one
+  // candidate per family, not a placeholder beside them (review of #306).
+  assert.deepEqual([st(reg, 'station_width|W2 per-city width|day ahead'), reg['station_width|W2 per-city width|day ahead'].evidence],
+    ['retired', `the nightly station_width versions are recorded one by one from P2.2 part 3; the newest fit is ${W1}`]);
+  assert.equal((await db.query(`select count(*)::int n from public.model_registry where version = 'W2 per-city width'`)).rows[0].n, 2,
+               'its seeded event stays, the retirement appended');
   assert.equal(reg[`station_width|${W1}|as priced`].decided_by, 'rule:nightly refit; the switch is off');
   assert.equal(st(reg, 'calibration|temperature:T=1.141|all checkpoints'), 'fitted', 'the name part 1 seeded: no new event');
   assert.equal((await db.query(`select count(*)::int n from public.model_registry where family = 'calibration'`)).rows[0].n, 1);
