@@ -1080,9 +1080,9 @@ Updated in every PR.
 | D4 (interim engine patch) | **none** (Hassan, 5 Oct: "no interim patch to the engine") | chat, 5 Oct |
 | D8 (the engine strategies' desks) | **keep them running as they are until G5**; they are 5.6's comparison. Their share of the minutes is measured in A.1 (tick: 0 billed; intraday: about 1 of 4 billed a run) and goes to Hassan in A.5 if it matters | chat, 5 Oct; section 3.6 |
 | D1 (minutes) | **wave A first; overage allowed up to 400 minutes in October as insurance, the goal still under 3,000** (Hassan, 5 Oct). 941 billed to 5 Oct 16:04Z by the jobs API; GitHub showed 1,065 of 3,000 | chat, 5 Oct; jobs API |
-| Wave A (A.1-A.7, the Actions revamp) | **A.1 done 5 Oct**: every step classified (section 3.6, "A.1 result"). Five stops for A.3 (promotion, calibration, strategy learning, trajectory, hit tournament: about 6-7 billed a night, estimated); skill and the engine replay kept. A.2's contracts half measured at about 7 s a run (not the 105 s assumed). A.2-A.7 todo | section 3.6 |
+| Wave A (A.1-A.7, the Actions revamp) | **A.1 done 5 Oct** (section 3.6). **A.2: PR #315, CI green** (a docs-only PR skips the suite; replay over October's 72 runs: 4 skipped, all `PLAN_PROGRESS`-only; 0 code runs skipped); waits on Hassan's merge, then 10 PR runs measured. The contracts half (A.2a) not built: about 7 s a run (put to Hassan). **A.3: built and tested, not pushed** (local `3b19be9`): the five stops, migration `20261005190000`, `stopped` calibration state; waits on a branch / #315's merge. A.4-A.7 todo | section 3.6; #315 |
 | Wave 0 (0.1-0.4) | **0.1-0.3 done 5 Oct**: R16, R18, R19, R21, R29 closed on their own acceptance, live; R40's F4 holds; R2, R20, R22, R31 re-measured (section 3); `PLAN_PROGRESS` corrected: P0.3, P1.2, P1.3, P1.5, P2.2 done, and the five stale "PR open" rows (P2.7, P3.5, P3.7, P4.3, P6.5) were merged #117, #129, #130, #138, #141. 0.4: D0, D1, D3, D4, D5, D8 decided by Hassan 5 Oct; D2 (G1), D6 and D7 remain | section 3; `PLAN_PROGRESS` |
-| Wave P (P.1-P.5, the paper desks) | **P.1 done 5 Oct 17:59Z**: re-measured, nothing changed in substance (0 BUY in 11,645 decisions since 30 Sep; the page's API still opens on s8, 0 trades). P.2-P.5 todo | section 3.7 |
+| Wave P (P.1-P.5, the paper desks) | **P.1 done 5 Oct 17:59Z** (nothing changed in substance). **P.2 built and tested, not pushed** (local `c7f81b5`: `retire --strategies`, refusals by name, no strategy switch; the whole-desk mode must not be run: it would switch off s2); waits on a branch, then merge, then the run. P.3-P.5 wait on P.2's checkpoint | section 3.7 |
 | D5 (the eight flat ledgers) | **retire s1, s3-s9, export first, through P.2's targeted mode; never the desks of s2, s10, s11, s12 or the Portfolio desk** (Hassan, 5 Oct). All eight passed the refusal checks on 5 Oct | chat, 5 Oct; section 3.7 |
 | Phase 1 (sources, table) | built, PR #314 open, CI green on `b80b2a7` | `docs/WXPREDICT.md`, `table_meta.json` |
 | 1.1 (R37: 2 review findings) | todo (verified: 89 of 24,518 station days fail the rule) | |
@@ -1099,4 +1099,4 @@ Updated in every PR.
 | Full testing (7.1-7.7) | todo | |
 | Dated: rd3 / `da_floor` / `sd_corr` first looks | ~25 Oct, as pre-registered | |
 | Dated: P3.10 ensemble test | ~29 Oct | |
-| CI minutes used by this build | #314 so far: 4 CI runs (pytest 3.5-5.0 min each) | jobs API |
+| CI minutes used by this build | #314: 4 CI runs before 5 Oct ~17:30Z (pytest 3.5-5.0 min each); 0 since (three `[skip ci]` docs pushes). #315: 1 run, 305 s, 6 billed (jobs API) | jobs API |
