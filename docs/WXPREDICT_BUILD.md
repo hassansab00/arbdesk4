@@ -1,6 +1,10 @@
 # WXPredict: the build document
 
-**Status: v2.1, the final build document, 5 Oct 2026 ~17:00Z, awaiting Hassan's approval; v2.1 adds wave A (the Actions revamp, which Hassan approved). Nothing beyond phase 1 is built until he approves it.**
+**Status: v2.2, the final build document, 5 Oct 2026 ~17:30Z, awaiting Hassan's approval.**
+- v2.1 added wave A, the Actions revamp, which Hassan approved.
+- v2.2 adds wave P (section 3.7): the paper desks, which Hassan reported on 5 Oct are not visible or working.
+
+Nothing beyond phase 1 is built until he approves this document.
 
 This document governs two things: the WXPredict build, and the completion of every other open item on the platform.
 - **Section 3** is the register of every open item, measured on 5 Oct.
@@ -80,6 +84,7 @@ The edge check covered 2,315 calls, 24 Sep - 4 Oct, 48 cities.
 | Adapts to rises and falls | 1 h / 3 h changes, observed minus forecast now and 3 h ago, the running maximum and its age, the remaining forecast curve | phase 3.2, phase 3.6 (post-peak check) |
 | Predicts the max from all weather permutations | One gradient-boosted model over all inputs together, so interactions are learned, not hand-coded | phase 3.2 |
 | Reflected in the current UI | `/predictive` (the lineup and a WXPredict scoreboard), `v_prediction_contract`, the model registry | phase 5.4, phase 5.5 |
+| Paper trades visible and working (5 Oct) | The page opens on a desk with trades, shows every desk's trades, and says why a desk is idle. The eight retired ledgers are retired. WXPredict trades its own shadow desk once it has a measured edge | wave P, phase 5.6 |
 
 ---
 
@@ -152,6 +157,7 @@ The edge check covered 2,315 calls, 24 Sep - 4 Oct, 48 cities.
 | Weather-model fit (scikit-learn, 25 classes) | 179-404 s a month uncontended, on 260,000-630,000 rows |
 | Python suite | ~2.5 min locally; the CI pytest job took 3.5-5.0 min on #314's three pushes (database contracts locally: not timed) |
 | The tick | 45 s budget; ~1.01 billed min a run; no numpy or scikit-learn in its runtime (`requirements.runtime.txt` has `requests` only) |
+| The production site and the database from this sandbox | **refused**: `arbdesk4-flame.vercel.app` and `jittmxhzgqpifitwupss.supabase.co` both answered 403 to CONNECT (the agent proxy's status, 5 Oct ~16:50Z). Production is read through the Vercel tool (`web_fetch_vercel_url`, which returns the HTML or JSON but runs no JavaScript) and the Supabase tool. A page is rendered here only on a local build, with recorded responses (wave P.3). |
 
 ---
 
@@ -200,7 +206,7 @@ Only one PR is open on GitHub (#314). **Every "PR open" in the record is stale.*
 | R14 | P6.3 watchdog | todo | `P4.1_health_watchdog` runs, and every run is "attention" | The plan's spec: alert on the age of each job's last `ok` against a per-job SLA, and separate warnings from information. **Email stays disabled** (Hassan's standing rule), so it speaks on the board only. `log_run` raises if its own write fails. | 2 |
 | R15 | P6.5 slow views | first cut, PR open | PR merged (not open); 49 timeouts in 24 h | R11 | 2 |
 | R16 | P0.3 retire the paper desks | doing; Hassan must start `retire_desks.yml` | `retire_desks.yml` ran on 23 Sep (success). **0 open paper positions** (`paper_trades`): s1 107 closed (−$825.17), s3 41 (−$96.97), s4 49 (+$121.51), s12 1 ($0.00) | Verify each desk's state, then close the step in the record. | 0 |
-| R17 | P8.2 retire the eight old ledgers once flat | "not yet" | **they are flat now** (0 open positions) | Retire them through `paper_desk_retire`. This is covered by Hassan's 29 Sep "Retire all of s1, s3-s9", but confirm in section 9, D5. | 2 |
+| R17 | P8.2 retire the eight old ledgers once flat | "not yet" | **they are flat now**: 0 open positions; and on 5 Oct, 0 live orders and 0 open plans | Retire them through `paper_desk_retire`, with the export first. This is covered by Hassan's 29 Sep "Retire all of s1, s3-s9", but confirm in section 9, D5. `retire_desks.py` as it stands would retire every desk (section 3.7). | P |
 | R18 | P1.2 UI writes behind auth | doing | CLAUDE.md: every browser write goes through the operator route; sign-in off by Hassan | Verify the RPC revoke is live (anon cannot call a write RPC), then close. | 0 |
 | R19 | P1.3, P1.5 archiver floors and the push guard | doing; "the next archive run must log ok" | every `archive_*` job ok on 2 of 2 runs in 48 h (research, resolution, trades included) | Check the specific acceptance in each row, then close. | 0 |
 | R20 | P1.7 mirror | live; 63 of 75 tables (per the record, 28 Sep) | `mirror_to_repo` ok on 2 of 2 runs | Re-count the coverage; decide on the 12 tables not mirrored (each named). | 2 |
@@ -275,6 +281,32 @@ Only one PR is open on GitHub (#314). **Every "PR open" in the record is stale.*
 
 **What improves accuracy** is WXPredict (phases 2-5). The revamp moves minutes from things nothing uses to the build, and never makes a served price worse.
 
+### 3.7 The paper desks: not visible, not trading
+
+Hassan, 5 Oct: "the paper trades aren't even visible or functional in arbdesk4 ... they haven't been for days, so we need to fix this too".
+
+Measured 5 Oct, 16:45-17:10Z, from the live database (Supabase tool) and the production API (Vercel tool).
+
+**What works:**
+- `GET /api/paper-desk?resource=accounts` on `arbdesk4-flame.vercel.app` answers 200 with 16 desks.
+- The repository's trade log, `/paper-trades/index.json`, answers 200 with 198 trades (generated 1 Oct 05:36Z).
+- `anon` reads all 198 rows of `paper_trades`.
+- Every paper job ran `ok` in the 48 h to 5 Oct ~16:50Z: `paper_plans` 10 runs, `paper_worker` 10, `paper_exits` 10, `paper_settlement` 12, `signal_engine` 10.
+
+The pipe is not broken. What is wrong is what the page shows and what reaches the pipe:
+
+| id | item | measured | what is done | wave |
+|---|---|---|---|---|
+| R41 | **The page opens on an empty desk** | `page.tsx` picks the first "live" desk (automatic and not paused). All 15 shadow desks are live, and the counts that would break the tie are absent on this path (the route reads `paper_accounts`; `route.ts` says why). The first desk in the API's answer on 5 Oct was "Shadow: s8_two_bucket_cover": 0 trades, 0 orders, 0 plans. Nine of the 16 desks have never traded. Nine desks share the same `created_at` (24 Sep 20:30:32.309906), so which one opens is not even fixed. The 198 trades sit on s1 (43), s3 (41), s4 (43), s12 (1) and the archived "Wide edge, all US" (70). No view shows every desk's trades together. | P.3 | P |
+| R42 | **The page says "Running" for desks that can never trade** | `deskState` (`PaperDeskControl.tsx`) reads the desk's mode, pause, policy and cash, never its strategy. The eight desks of s1 and s3-s9 (strategies `enabled` false since 29 Sep, migration `20260929080000`) all show "Running on its own. Eligible proposals are queued and filled". For the seven desks whose strategies are switched on, nothing says why they have not traded. | P.4 | P |
+| R43 | **No paper trade has opened since 29 Sep 22:36Z** (s12_no, Seattle, closed 30 Sep, net −$0.0037) | **Cause 1:** on 29 Sep Hassan retired s1 and s3-s9 ("Retire all of s1, s3-s9", P8.2 step 5). Their last decisions were at 04:37Z. They made 197 of the 198 trades in Postgres (the 70 on the archived desk included). **Cause 2:** since 30 Sep 00:00Z the switched-on strategies made 11,591 decisions and **0 BUY**: s10 ×3 1,461 each (1,420 NONE and 41 WAIT, the last WAIT on 1 Oct 14:36Z); s11 ×2 1,461 each, all NONE; s12 1,461 (1 HOLD, the rest NONE); s2 2,825 NONE. Reasons, s10_winner over 7 days: `own_rule_none` 1,386, `no_ladder` 334 (all 48 cities), `own_rule_wait` 60, `no_trade_band` 12, `against_market` 1. Reasons over 48 h: s11_lock `no_trade_band` 506; s11_ladder `no_trade_band` 471, `nothing_tradeable` 32, `against_market` 3; s12 `no_trade_band` 478, `nothing_tradeable` 25, `against_market` 3; s2 `no_signal` 851. They decide on the engine's prices (`prediction_source`: `prediction_checkpoints` or `s10_shadow_checkpoints`), which the market beats every day (section 1). A strategy that finds no edge at those prices doing nothing is the decision engine working as designed. | P.5, then 5.6 | P, 5 |
+| R44 | **Is each NONE right?** | **Not verified.** The nightly `engine_replay` proves the decisions are reproducible (ok, 2 of 2 runs), not that each was correct. `no_ladder` on 334 of s10_winner's decisions in 7 days, across all 48 cities, is not explained. | P.5 | P |
+| R45 | **Trades resume on an edge, not on a looser rule** | Loosening a threshold so that trades appear would bet on prices measured worse than the market (section 1). That is the corner Hassan said not to cut. | WXPredict gets its own shadow desk once G4 shows an edge (5.6, Rule 6: shadow is free). The old engine strategies run on as D8 decides. | 5 |
+
+**R17 moves to wave P.** `tools/retire_desks.py retire` retires **every** desk in `paper_accounts`, and then switches off s1-s9. It was built for P0.3 on 23 Sep, before the 24 Sep shadow desks existed. Run as it is today, it would also retire the seven desks of switched-on strategies and the Portfolio desk. Step P.2 therefore adds a targeted mode first.
+
+All eight ledgers pass `paper_desk_retire`'s refusal checks today (5 Oct): 0 positions with shares, 0 queued or working orders, and 0 plans pending approval or queued.
+
 
 ---
 
@@ -321,8 +353,9 @@ This becomes `docs/WXPREDICT_PREREG.md` in step 3.0. It is committed before any 
 ```
 Wave A   the Actions revamp (section 3.6)                   (first: minutes limit everything)
 Wave 0   put the record straight; decisions D1-D8 asked     (read-only + one docs PR)
+Wave P   the paper desks: seen, honest, explained (3.7)     (while wave A waits on its nights)
 Phase 1  finish #314                                        -> G1 merge
-Wave 2   the operations WXPredict depends on (R2-R11, R13-R15, R17, R20, R22, R28, R31)
+Wave 2   the operations WXPredict depends on (R2-R11, R13-R15, R20, R22, R28, R31)
 Phase 2  the market and the inputs, fresh at the decision   -> G2
 Phase 3  the model, development months only                 -> G3
 Phase 4  the sealed test, once                              -> G4
@@ -454,6 +487,113 @@ Hassan, 5 Oct: revamp the useless and inaccurate workflows, "as long as we maint
 
 **Evidence:** one docs PR. It carries no code, so it can ride phase 1.1's push and avoid a CI run of its own.
 
+### Wave P: the paper desks, seen, honest and explained (section 3.7)
+
+**When:** after wave 0, while wave A's steps wait on their nights. It touches no workflow's schedule, so it cannot disturb wave A's measurements. Its pushes count against the build's CI budget (R1).
+
+**What it does not do:**
+- loosen any strategy's rule to make trades appear (R45);
+- touch the Portfolio desk (Rule 6);
+- delete a row.
+
+**P.1 Re-measure at the start (read-only)**
+
+- **What:** re-run section 3.7's measurements:
+  - desks, trades, orders and plans per desk;
+  - decisions per strategy and action since 30 Sep;
+  - reason codes per strategy over 48 h and 7 days;
+  - the paper jobs in `ingest_log`;
+  - the API's answer.
+- **Checkpoint:** the numbers are in section 3.7, dated. Anything that has changed since 5 Oct is explained before P.2 starts.
+
+**P.2 Retire the eight flat ledgers (R17, after D5)**
+
+- **What:** retire the desks of s1, s3, s4, s5, s6, s7, s8 and s9. Nothing else.
+- **How:**
+  1. `tools/retire_desks.py` gains `--strategies s1_buy_low_sell_signal,...`. With it, `retire` touches only the desks whose `strategy_id` is in the list **and** whose strategy is `enabled` false. A listed strategy that is switched on is refused, by name.
+  2. The export stage is unchanged: every desk's rows go to `data/archive/paper_desks/<date>/`, are verified and are pushed. `retire` refuses until they are on `origin/main`.
+  3. The step that switches strategies off (`set_strategies_enabled`) is skipped in this mode: these eight have been off since 29 Sep.
+  4. `retire_desks.yml` takes the list as an input, beside `confirm: RETIRE`.
+  5. Run once, by hand. About 1-2 billed minutes; the measured number goes into `MEASURED_MINUTES`.
+- **Tests** (`tests/test_retire_desks.py`, before the run):
+  - only the listed desks are retired;
+  - a listed strategy that is switched on is refused, and nothing is retired;
+  - with no list, today's behaviour is unchanged (the existing tests still pass);
+  - the strategy switch is not called in this mode.
+- **Verification (live), in one before/after query:**
+  - each of the 8 desks has `status` `retired`, `archived_at` set and its reason on record;
+  - the other 8 desks are untouched;
+  - `paper_trades`, `paper_orders`, `paper_trade_plans`, `paper_activity` and `paper_positions` have the same row count per desk before and after: nothing was deleted;
+  - `anon` still reads all 198 trades;
+  - the API lists 8 desks: Portfolio, s2, s10 ×3, s11 ×2 and s12;
+  - the 8 retired desks appear in the page's archived list as "Kept as history".
+- **Checkpoint:** all of the above, quoted in the PR.
+
+**P.3 The page opens on a desk with something to show, and shows every desk's trades (R41)**
+
+- **What:**
+  1. The route's `accounts` answer gains, per desk:
+     - its trade count;
+     - its last trade time;
+     - its open positions;
+     - its strategy's state (switched on, or retired, and when).
+  2. These are computed in the route from `paper_trades`, `paper_positions` and `strategies` with the service key. They are **not** computed from `v_paper_desk_activity`, the view whose use emptied the desk list once and was reverted blind (`route.ts`). P.3 finds out why that happened before choosing (the view read as `anon` and as the service role, and the route's answer with it), and writes the reason down.
+  3. The page opens on the desk with the most recent trade. Ties are broken by trade count, then by name, so the choice is fixed.
+  4. An **"All desks"** choice shows `PaperTradeHistory` with no account filter (it supports this already) and a one-line summary per desk: desk, strategy state, trades, net P&L, last trade. Archived and retired desks are included and marked.
+- **Tests:**
+  - `test:routes` cases for the new fields, in both sign-in modes;
+  - a route test that a failing count query still returns the desk list, with no counts (the list is never emptied for a nicety again);
+  - `tsc` and `next build`.
+- **Render test:** this sandbox cannot reach the site or the database (section 2.4), so the page is rendered on a local `next start`.
+  - Playwright (`/opt/pw-browsers/chromium`) serves every `/api/paper-desk` and Supabase request from responses recorded that day through the Vercel and Supabase tools.
+  - It asserts that the page opens on a desk with trades.
+  - It asserts that "All desks" shows 198 trades, and a net P&L equal to the SQL sum.
+  - It takes a screenshot, which is attached to the PR.
+- **Verification (live):**
+  - after the deploy, the API's answer is read through the Vercel tool, and the counts equal SQL for every desk;
+  - Hassan looks at the page. His word is the acceptance.
+- **Checkpoint:** all of the above.
+
+**P.4 The status line tells the truth (R42)**
+
+- **What:** `deskState` learns two more cases.
+  - **Retired, or switched off.** The desk's strategy is retired or `enabled` false: "Strategy retired on <date>: this desk never trades again" (or "switched off"). It is never "Running".
+  - **Running, with nothing to buy.** The strategy is switched on but has no trade in 24 h: "Running. <N> decisions in the last 24 h, 0 buys. Most often: <reason in plain words> (<count>)".
+- **How:**
+  - The counts come through the paper-desk route (service key), from `decisions`.
+  - Each reason code's plain words are taken from the code that emits it (`decision_engine.py`, the strategy modules, s2's rule), quoted in the PR. They are not written from memory. `own_rule_none` and `no_ladder` are read in their source first.
+- **Tests:**
+  - a unit test of `deskState` for every case, the old ones included;
+  - the route test for the counts;
+  - the render test of P.3 extended to a retired desk and to a running desk with no buys.
+- **Verification:** the page's counts equal a SQL count over the same 24 h, on one desk, written down.
+- **Checkpoint:** all of the above, with the screenshot.
+
+**P.5 Is each NONE right? (R43, R44)**
+
+- **What:** an independent check, not a replay.
+  - For the last 7 days of s11_ladder, s11_lock and s12_no decisions, read the inputs that `engine_replay_live.py` reads:
+    - the ladder and the book from the `prediction_checkpoints` row that each decision names (`checkpoint_id`);
+    - the ledgers from the tick's `engine.inputs` detail.
+  - Compute the posterior with the same `ladder_posterior`.
+  - Count the bands where the posterior minus the ask minus the worst fee (`engine_orders.worst_fee_per_share`) is above 0, and where it clears the no-trade band `h`.
+  - **If none clears it,** NONE is right, and the numbers say so.
+  - **If some do,** trace each one to the rule that stopped it: the against-market gate, `h`, a rail, timing or the minimum order. Report them.
+  - **Any change to a rule is Hassan's decision.**
+- **And:**
+  - trace s10's `no_ladder`: which checkpoints, which cities, and whether a ladder was listed and priced at that moment (`markets`, `bands`, the book). A real gap becomes a fix step with its own test. An expected case (e.g. d1_eve before the venue lists the day) becomes a plain-words reason in P.4;
+  - the same for s2's `no_signal`: the smallest ladder ask sum in the period against $1 plus fees.
+- **Verification:** the queries and their answers in the PR. Every number is re-runnable.
+- **Checkpoint:** each reason code is either confirmed by its inputs, or has a fix step, or is a named question for Hassan.
+
+**Evidence for wave P:**
+- one PR for P.2's code (the run follows its merge);
+- one PR for P.3 with P.4 (web, route and tests);
+- P.5's report in the second PR, or in its own docs PR if it finishes first;
+- section 3.7 and the status table updated in each.
+
+**Gate:** D5 before P.2 runs. Hassan's look at the page for P.3 and P.4. Nothing about capital.
+
 ### Phase 1: finish (PR #314)
 
 **1.1 The two open review findings**
@@ -517,11 +657,16 @@ Each item is one small PR, or a batch of related ones, with its own measured bef
 - **What:** name the 49 queries, then fix them.
 - **Verification:** each changed view proven equal (REPEATABLE READ, `EXCEPT ALL` both ways) and read as `anon`; 0 timeouts in 24 h.
 
-**2.F The remaining record items (R17, R20, R28, R31, R13)**
+**2.F The remaining record items (R20, R28, R31, R13)**
 
-- **What:** retire the flat ledgers (after D5); mirror coverage; the hit-history repoint (with its equivalence check); n8n executions; the US re-measure at 7 graded days after the fix.
+- **What:**
+  - mirror coverage;
+  - the hit-history repoint (with its equivalence check);
+  - n8n executions;
+  - the US re-measure at 7 graded days after the fix.
+- The flat ledgers (R17) moved to wave P.2.
 
-**Gate:** wave 2 needs no Hassan gate, beyond D1 for minutes and D5 for the ledgers. Phase 2 starts when 2.A and 2.B have passed their checkpoints. 2.C-2.F may overlap phase 2.
+**Gate:** wave 2 needs no Hassan gate beyond D1, for minutes. Phase 2 starts when 2.A and 2.B have passed their checkpoints. 2.C-2.F may overlap phase 2.
 
 ### Phase 2: the market and the inputs, fresh at the decision
 
@@ -730,6 +875,27 @@ Each item is one small PR, or a batch of related ones, with its own measured bef
 - Pre-registered before shadow starts: section 4's rule on the first 20 graded shadow days.
 - Reported as it stands each week. No change to v1 during the period.
 
+**5.6 WXPredict's own shadow desk (R43, R45)**
+
+- **Only if G4 showed an edge over the market.** A desk trading on prices that are measured no better than the market teaches nothing; that is the case today (section 1).
+- **What:**
+  - one new strategy in `shadow` (Rule 6: shadow is free; the Portfolio desk is untouched);
+  - it decides with the same `decision_engine.decide` (Kelly book, no-trade band, rails, against-market gate), on WXPredict's shadow ladder from 5.1 instead of the engine's;
+  - its BUYs go through the same path as the engine strategies' (`engine_orders`, `publish_engine_plan`, the fill simulator) onto its own shadow desk;
+  - every decision row names WXPredict's version (`prediction_source`, `params_version`).
+- **How:**
+  - the strategy row and its desk through the existing lifecycle functions, in a migration with a `tests/database` contract;
+  - the strategy id is chosen in this step after reading P8.1's numbering, and written down.
+- **Tests:**
+  - the decision on a recorded WXPredict ladder equals a hand-computed one;
+  - a BUY becomes exactly one plan on this desk and on no other;
+  - with no WXPredict row for a city, the decision is NONE with its own reason code, never an exception.
+- **Verification:**
+  - 3 real ticks: decisions written, the tick inside 45 s and one billed minute;
+  - any BUY becomes a plan, then an order, then a fill, then a trade on this desk;
+  - the page (P.3, P.4) shows it, with its reason when it does not trade.
+- **Judged on settled outcomes, not on what the desk filled.** Hassan's rule: the paper desks are examples, not the truth.
+
 **G5 (Hassan):** whether WXPredict serves any price. Anything about capital stays his alone.
 
 ---
@@ -743,6 +909,8 @@ Each item is one small PR, or a batch of related ones, with its own measured bef
 | serving (phases 2, 5) | parity against the builder; pure-Python against scikit-learn; tick budget; recorded API answers | every push, plus 3 real days |
 | database | a contract per migration in `tests/database` (RLS, grants, re-runnable, `anon` reads views only) | every push |
 | web | `tsc`, `test:routes`, `next build`, plus a by-hand number check | every web PR |
+| paper page (wave P) | `deskState` unit tests; route tests for the counts, in both sign-in modes; a Playwright render on a local build with recorded responses, with a screenshot | P.3, P.4 |
+| paper desks (P.2, 5.6) | `tests/test_retire_desks.py` for the targeted mode; a `tests/database` contract for the WXPredict desk's migration | P.2, 5.6 |
 | live | each change checked on its next real run: tick logs, row counts, view as `anon` | after each merge |
 
 ---
@@ -783,6 +951,7 @@ Over 7 consecutive days:
 - the nightly refit runs inside `pipeline_daily`, and its minutes match `MEASURED_MINUTES`;
 - no new warning appears in `ingest_log`, and the watchdog (R14) shows green or names the cause;
 - the scoreboard's numbers equal the view's on 2 days, checked by hand.
+- the paper page's per-desk counts and reasons equal SQL on 2 days, and WXPredict's desk (5.6, if G4 allowed it) shows every decision's outcome or its reason.
 
 ### 7.5 Failure drills (each a test, plus one live dry run)
 
@@ -821,6 +990,8 @@ Over 7 consecutive days:
 | scikit-learn version drift | Pinned versions; the exported trees are the served artifact, so the tick does not depend on it. |
 | A blind test's integrity | WXPredict is never compared with rd3 / `da_floor` / `sd_corr` before their first look. |
 | Context loss across sessions | This document plus `PLAN_PROGRESS`, updated in every PR, and the status table below. |
+| The paper desks stay empty until 5.6 | The page says why, with the counts (P.4), so an empty desk is explained and not mistaken for a broken one. No rule is loosened to fill it (R45). |
+| A page change verified only on a local build (this sandbox cannot reach production) | The render test uses responses recorded from production that day. The API is read through the Vercel tool after the deploy, and Hassan's own look is the acceptance (P.3). |
 
 ---
 
@@ -830,11 +1001,11 @@ Over 7 consecutive days:
 |---|---|---|---|
 | D0 | Approve this document (or say what to change) | the plan | everything |
 | D1 | October's minutes (R1). **Hassan, 5 Oct: revamp the Actions first (wave A), keeping quality and improving the engines' accuracy.** Still open: whether to allow paid overage as a margin (suggested: up to 400 minutes in October); GitHub showed 1,065 of 3,000 used on 5 Oct | Rule 7, and spending | the overage part only |
-| D8 | Whether the paper desks keep trading on the engine's prices until G5 (A.5) | the desks | A.5 |
+| D8 | Whether the engine strategies' desks (s2, s10 ×3, s11 ×2, s12) keep deciding on the engine's prices until G5 (A.5). Measured 5 Oct: 0 BUY in 11,591 decisions since 30 Sep (section 3.7), so this is about the tick's work and the record, not about trades they are making | the desks | A.5 |
 | D2 | G1: merge #314 after phase 1.1 | merging | wave 2 onward |
 | D3 | Allow `single-runs-api.open-meteo.com` in the environment's network access (the history of same-day runs) | network access | phase 2.5's faster path; optional |
 | D4 | Any interim fix to the served engine before WXPredict (e.g. use the evening-before corrected centre on the same day). Default: none; WXPredict replaces it | prices served | none |
-| D5 | Retire the eight flat ledgers now (R17); 29 Sep's "Retire all of s1, s3-s9" appears to cover it | the desks | 2.F |
+| D5 | Retire the eight flat ledgers now (R17); 29 Sep's "Retire all of s1, s3-s9" appears to cover it. Retiring deletes nothing: the trades stay readable, and the desks move to the page's archived list | the desks | P.2 |
 | D6 | After rd3's first look (~25 Oct): S10's future (R33) | strategy | none |
 | D7 | When to schedule the trading machinery (R35) and `settlement_verified` (R36) | capital and payouts | none |
 | G3-G5 | as in section 5 | the model's use | their phases |
@@ -851,6 +1022,8 @@ Updated in every PR.
 | D1 (minutes) | revamp first (Hassan, 5 Oct); overage margin still open. 941 billed to 5 Oct 16:04Z by the jobs API; GitHub showed 1,065 of 3,000 | jobs API; GitHub billing, 5 Oct |
 | Wave A (A.1-A.7, the Actions revamp) | todo (approved by Hassan 5 Oct; costs measured in section 3.6) | |
 | Wave 0 (0.1-0.4) | todo | |
+| Wave P (P.1-P.5, the paper desks) | todo. Diagnosis measured 5 Oct: the API works; the page opens on an empty desk; 0 BUY in 11,591 decisions since 30 Sep | section 3.7 |
+| D5 (the eight flat ledgers) | waiting; all eight pass the refusal checks on 5 Oct | section 3.7 |
 | Phase 1 (sources, table) | built, PR #314 open, CI green on `b80b2a7` | `docs/WXPREDICT.md`, `table_meta.json` |
 | 1.1 (R37: 2 review findings) | todo (verified: 89 of 24,518 station days fail the rule) | |
 | G1 / D2 | waiting | |
@@ -861,7 +1034,7 @@ Updated in every PR.
 | G3 | | |
 | Phase 4 (4.1-4.3) | todo (sealed test untouched) | |
 | G4 | | |
-| Phase 5 (5.1-5.5) | todo | |
+| Phase 5 (5.1-5.6) | todo (5.6 only if G4 shows an edge) | |
 | G5 | | |
 | Full testing (7.1-7.7) | todo | |
 | Dated: rd3 / `da_floor` / `sd_corr` first looks | ~25 Oct, as pre-registered | |
