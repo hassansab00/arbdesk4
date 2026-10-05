@@ -87,6 +87,15 @@ PR that advances a step.
       - **First tick, 16:36Z (`git:0eea54c818c8`):** status ok, 20 calls written, 13 of them same-day. 13 shadow rows written, 0 skipped, in 1.35 s; the tick took 29.7 s. Every row's floor equals its served call's; the top bucket agrees on 8 of 13. Atlanta's stored ladder recomputed from its stored inputs exactly (largest difference 0.0).
       - **To 21:36Z (checked 21:50Z):** 6 ticks, every one ok. 57 shadow rows for the 57 same-day engine calls, tick by tick (13, 9, 12, 11, 8, 4), none skipped and none twice. Atlanta's 21:36Z post-peak row again recomputed exactly (largest difference 0.0).
     - S10 rd1 is better than both from noon on.
+    - **A second candidate, `sd_corr` (5 Oct, this PR; Hassan: "go with option 2, build the same day candidate").**
+      - **What it is:** the engine's own station-corrected path kept on the day itself. The centre and the station width are those live at the checkpoint, cut by the served floor. Nothing new is fitted.
+      - **Why:** the audit of 4 Oct, checked on the live database. On 350 settled city-days (27 Sep - 4 Oct), the same-day morning centre missed the high by 0.97 °C against 0.84 the evening before, and 13.7% of morning calls missed by more than two widths.
+      - **Design replay** (`docs/SD_CORR_REPLAY_2026-10-05.md`, `tools/sd_corrected_replay.py`): P1.1's rows of 28 Sep - 3 Oct, with the corrected rows that were live, read from the mirror's nightly snapshots and frozen into `data/eval/sd_corr`. Six dates, 1,343 rows.
+        - Better than served at every checkpoint (+0.044 to +0.481 log loss, every 90% interval above 0).
+        - Better than `da_floor` before the peak (+0.090 to +0.203); pooled +0.119 [+0.083, +0.156].
+        - Most of it is the station width: on these rows it is well calibrated, with 69.8% within one width and 3.6% beyond two.
+        - The market is still ahead at every checkpoint.
+      - **Pre-registered** (`docs/SD_CORR_PREREG.md`) before any forward row. The first look is at 20 scored dates, and it is compared with both the served ladder and `da_floor`. **Next:** the capture in the tick (`sd_corr:v1`, beside `da_floor:v1`).
   - **P1.3:** done (rd3 in forward shadow).
   - **P1.2, P1.4:** aligned, no change.
   - **P2.1:** not started (it needs depth, or a stated fill assumption; checkpoints store the top of book only).

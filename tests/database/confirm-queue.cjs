@@ -102,7 +102,8 @@ const B = (n) => `20000000-0000-0000-0000-0000000000${String(n).padStart(2, '0')
   await db.exec(`
     insert into public.markets values
       ('${M(1)}', 'nyc',   current_date - 1, now() - interval '2 hours'),   -- proof complete, banked
-      ('${M(2)}', 'la',    current_date - 1, null),                         -- asked, failed: awaiting venue
+      ('${M(2)}', 'la',    current_date - 2, null),                         -- asked, failed: awaiting venue
+                                                                                -- (two days back: yesterday has not ended in LA before 07:00Z)
       ('${M(4)}', 'tokyo', current_date - 1, now() - interval '1 hour'),    -- proof complete, not banked
       ('${M(5)}', 'paris', current_date + 0, null),                         -- day not ended (for most of the day)
       ('${M(6)}', 'paris', current_date - 30, null);                        -- outside the window
