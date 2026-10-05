@@ -13,8 +13,9 @@ name: Paper Trade Log
 # would be six deploys to publish a handful of rows. Trades close when their
 # market resolves, which is a daily event on a daily temperature band.
 #
-# [skip ci] on the commit keeps tests.yml and web.yml - both push-triggered -
-# from re-running on a generated data file. Vercel deploys from its own git
+# [skip ci] on the commit keeps CI from running on a generated data file
+# (tests.yml and web.yml no longer run on pushes to main since 5 Oct; the
+# marker stays for any workflow that does). Vercel deploys from its own git
 # integration and is unaffected, which is the point: the page updates, the CI
 # minutes are not spent.
 #
