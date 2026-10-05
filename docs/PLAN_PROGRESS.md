@@ -96,13 +96,24 @@ PR that advances a step.
         - Most of it is the station width: on these rows it is well calibrated, with 69.8% within one width and 3.6% beyond two.
         - The market is still ahead at every checkpoint.
       - **Pre-registered** (`docs/SD_CORR_PREREG.md`) before any forward row. The first look is at 20 scored dates, and it is compared with both the served ladder and `da_floor`.
-      - **The capture (this PR):** `scripts/variant_shadow.py` writes `sd_corr:v1` beside `da_floor:v1`, in its own insert after `da_floor`'s, so a refused `sd_corr` row never costs `da_floor` its rows.
+      - **The capture (#309, merged `c6d35a1`):** `scripts/variant_shadow.py` writes `sd_corr:v1` beside `da_floor:v1`, in its own insert after `da_floor`'s, so a refused `sd_corr` row never costs `da_floor` its rows.
         - It reads the corrected row and its max age, two bounded reads, whatever the pricing switches say.
         - Its losses count separately and turn the tick to attention. Its registered exclusions do not.
         - `variant_shadow_checkpoints` names each variant's own inputs and none of the other's (`20261005090000_the_same_day_corrected_candidate.sql`).
         - The contract reads `sd_corr`'s own centre, width and provenance, and every earlier row is unchanged.
         - The registry holds `sd_corr:v1` blind from its first row.
         - **Held to the research definition:** on P1.1's rows it gives the same verdict as the replay on all 1,644 rows with a day-ahead call, and the same ladder on the 1,343 it scores (at most 5.0e-7).
+      - **Live (5 Oct):**
+        - **Migration:** applied 07:29Z as `20261005072938` with `execute_sql`, after a dry run that was rolled back. The file text ran as one literal, and its md5 `7497babb…` was checked in the transaction.
+        - **The contract:** in one REPEATABLE READ snapshot, it returned all 5,288 earlier rows unchanged (EXCEPT ALL 0/0 both ways).
+        - **Registry:** event 52, shadow and blind.
+        - **As `anon`:** the lineup reads 4,375 rows; the contract and the table are refused.
+        - **First tick, 07:36Z (`git:c6d35a1851bf`):** `da_floor:v1` 13 written and `sd_corr:v1` 13 written, 0 skipped, status `ok`, 1.8 s for both variants.
+          - On all 13 `sd_corr` rows, the centre, width, both fit versions and `computed_at` equal their `derived_corrected_forecast` row: lead 0, 7 sources, 2.57 h old.
+          - The floor equals the served call's, and q equals `da_floor`'s. The buckets are `da_floor`'s.
+          - The engine recomputes every ladder exactly: 0 difference over 143 buckets.
+          - `anon` sees the 13 rows blind, with no outcome.
+        - **Next:** counts only, until 20 target dates are scored (about 26 Oct).
   - **P1.3:** done (rd3 in forward shadow).
   - **P1.2, P1.4:** aligned, no change.
   - **P2.1:** not started (it needs depth, or a stated fill assumption; checkpoints store the top of book only).
