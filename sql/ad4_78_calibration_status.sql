@@ -25,7 +25,7 @@
 -- reaching 30 dates is necessary and not sufficient. Reporting only the
 -- countdown would promise something the measurement does not support.
 --
--- STATE, NOT A COLOUR. Six of them, because "red" cannot distinguish a job
+-- STATE, NOT A COLOUR. Seven of them, because "red" cannot distinguish a job
 -- that has never run from one that ran and correctly declined:
 --
 --   never_run            no calibration run is on record at all
@@ -37,12 +37,21 @@
 --   fitted_not_applied   gates met, fit made, and it STILL does not apply -
 --                        the validation gain was not there
 --   applied              in force and pricing
+--   stopped              switched off on purpose: the nightly refit no longer
+--                        runs (WXPredict build, wave A.3; no refit had
+--                        applied since 19 Sep, ingest_log). Known because
+--                        pipeline_daily is no longer expected to log
+--                        `calibration` (clock_expected_jobs),
+--                        which is the record of what a dispatched run owes.
+--                        Without it the page would read "stale" in red over a
+--                        step stopped on purpose.
 --
 -- Reads ingest_log because that is where calibration.py records what it did.
 -- No second opinion about whether a map applies: `applies` is the flag the
 -- fitting run itself wrote.
 --
--- RUN ORDER: after ad4_00_preflight.sql (ingest_log). Re-runnable.
+-- RUN ORDER: after ad4_00_preflight.sql (ingest_log) and migration
+-- 20260930001000 (clock_expected_jobs). Re-runnable.
 -- ===========================================================================
 
 create or replace view public.v_calibration_status as
@@ -74,6 +83,9 @@ select
     when l.detail ? 'validation_brier_after'                then false
   end                                                    as validation_improves,
   case
+    when not exists (select 1 from public.clock_expected_jobs e
+                      where e.file = 'pipeline_daily.yml' and e.job = 'calibration')
+                                                                     then 'stopped'
     when l.status = 'attention'                                      then 'failed'
     when l.logged_at < now() - interval '36 hours'                   then 'stale'
     when coalesce((l.detail ->> 'applies')::boolean, false)          then 'applied'

@@ -59,6 +59,11 @@ const LOOK: Record<string, { label: string; tone: string; means: string }> = {
     tone: "text-bad border-bad/40",
     means: "It has not run since yesterday — look at the daily pipeline, not the map.",
   },
+  stopped: {
+    label: "Stopped",
+    tone: "text-muted border-border",
+    means: "The nightly refit was switched off by the WXPredict build (wave A.3). No refit had applied since 19 Sep (the last map in force was a Platt fit, 16-19 Sep), so raw probabilities price, as they did before. WXPredict calibrates itself.",
+  },
   never_run: {
     label: "Never run",
     tone: "text-muted border-border",
