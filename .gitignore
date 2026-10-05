@@ -16,3 +16,6 @@ supabase/.temp/
 .venv*/
 data/archive/.pending.json
 data/training/neighbours/cache/
+data/training/wxpredict/table/
+.wxpredict_cache/
+.market_history_cache/

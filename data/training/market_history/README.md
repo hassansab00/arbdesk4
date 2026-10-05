@@ -30,18 +30,35 @@ MARKET_HISTORY_CACHE=<dir> python tools/market_history.py write
 
 The price fetch took 4,920 s for 106,868 buckets, with 0 failed requests.
 
+**Refreshed 5 Oct 2026** (WXPredict phase 1) through the events listed by then:
+`seed` put the committed record's finished series into the cache (every
+bucket of the 9,728 events resolved with one winner and dated by 25 Sep:
+106,112 buckets, 6,158,143 points), `index` re-read Gamma (10,331 events) and
+`prices` fetched the other 4,995 buckets in 240 s. Checked against the record
+before it: all 9,977 events, 108,841 buckets and 107,215 price series are
+still there and unchanged, except the 143 events that closed since (`closed`
+0 -> 1) and their 1,573 buckets' `winner` ('' -> 0/1).
+
+```bash
+MARKET_HISTORY_CACHE=<empty dir> python tools/market_history.py seed     # finished series -> cache
+MARKET_HISTORY_CACHE=<dir> python tools/market_history.py index
+MARKET_HISTORY_CACHE=<dir> python tools/market_history.py prices
+MARKET_HISTORY_CACHE=<dir> python tools/market_history.py write
+```
+
 ## Files
 
 | file | rows | one row per |
 |---|---|---|
-| `events.csv.gz` | 9,977 | event: `event_id, slug, city_slug, city_key, date, unit, resolution_source, station_icao, station_text, created_at, closed, listing` |
-| `bands.csv.gz` | 108,841 | bucket: `event_id, band_index, label, band_lo, band_hi, open_low, open_high, token_yes, winner` |
-| `prices.csv.gz` | 6,230,133 | hourly price: `event_id, band_index, t` (unix seconds), `p` (the YES price) |
+| `events.csv.gz` | 10,325 | event: `event_id, slug, city_slug, city_key, date, unit, resolution_source, station_icao, station_text, created_at, closed, listing` |
+| `bands.csv.gz` | 112,669 | bucket: `event_id, band_index, label, band_lo, band_hi, open_low, open_high, token_yes, winner` |
+| `prices.csv.gz` | 6,473,670 | hourly price: `event_id, band_index, t` (unix seconds), `p` (the YES price) |
 
-- **Dates:** events run from 2025-12-30 to 2026-09-30.
-  - 9,834 were resolved when fetched.
-  - The winner is `1` on 9,832 buckets, `0` on 97,419, and empty on the 1,590 buckets of unresolved events.
-- **Units:** C 7,677 events, F 2,300.
+- **Dates:** events run from 2025-12-30 to 2026-10-07 (the refresh of 5 Oct; 9,977 events to 2026-09-30 before it).
+  - 10,183 were closed when fetched.
+  - The winner is `1` on 10,181 buckets, `0` on 100,919, and empty on the 1,569 buckets of unresolved events.
+- **Units:** C 7,945 events, F 2,380.
+- **Price stamps:** every point is stamped 0-59 s past the hour (all 6,473,670): the series is an hourly snapshot.
 - **Buckets** follow the half-open convention of `v_canonical_bands`: `[band_lo, band_hi)` in whole units of the market's unit.
   - "16°C or below" is `(, 17)` with `open_low`.
   - "60-61°F" is `[60, 62)`.

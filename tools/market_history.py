@@ -39,6 +39,7 @@ bands.csv.gz   one row per bucket: event_id, band_index (lowest first), label,
 prices.csv.gz  event_id, band_index, t (unix seconds), p (YES price)
 
     python tools/market_history.py index            # Gamma -> cache
+    python tools/market_history.py seed             # the committed record's finished series -> cache
     python tools/market_history.py prices [--limit N]   # CLOB -> cache (resumable)
     python tools/market_history.py write            # cache -> data/training/market_history
 """
@@ -312,6 +313,48 @@ def cmd_prices(args):
     print(f"prices: fetched {n} in {time.time() - t0:.0f} s", file=sys.stderr)
 
 
+def cmd_seed(args):
+    """Put the committed record's finished price series into the cache, so a
+    refresh fetches only what is new (WXPredict phase 1, 5 Oct 2026: the first
+    fetch took 4,920 s for 106,868 buckets).
+
+    Seeded: every bucket of an event that was resolved with exactly one winner
+    when the record was written and whose day is on or before --seed-before,
+    early enough that its series had run to 36 h after the event's end when it
+    was fetched (28 Sep 2026). Everything else is fetched again by `prices`.
+    A seeded bucket keeps exactly the points the record holds, none included."""
+    path = os.path.join(cache_dir(args), "prices.jsonl")
+    if os.path.exists(path):
+        raise SystemExit(f"{path} exists: seed only into an empty cache")
+    last = dt.date.fromisoformat(args.seed_before)
+    ev = {}
+    with gzip.open(os.path.join(OUT, "events.csv.gz"), "rt", newline="") as f:
+        for r in csv.DictReader(f):
+            if r["closed"] == "1" and r["date"] <= last.isoformat():
+                ev[r["event_id"]] = []
+    with gzip.open(os.path.join(OUT, "bands.csv.gz"), "rt", newline="") as f:
+        for r in csv.DictReader(f):
+            if r["event_id"] in ev:
+                ev[r["event_id"]].append((int(r["band_index"]), r["winner"]))
+    keep = {e for e, bands in ev.items()
+            if bands and all(w in ("0", "1") for _, w in bands) and sum(w == "1" for _, w in bands) == 1}
+    points = {}
+    with gzip.open(os.path.join(OUT, "prices.csv.gz"), "rt", newline="") as f:
+        for r in csv.DictReader(f):
+            if r["event_id"] in keep:
+                p = int(r["p"]) if re.fullmatch(r"-?\d+", r["p"]) else float(r["p"])   # written back as read
+                points.setdefault((r["event_id"], int(r["band_index"])), []).append([int(r["t"]), p])
+    n = 0
+    with open(path, "w") as out:
+        for e in sorted(keep):
+            for i, _ in sorted(ev[e]):
+                out.write(json.dumps({"event_id": e, "band_index": i, "points": points.get((e, i), [])}) + "\n")
+                n += 1
+    print(json.dumps({"events_seeded": len(keep), "buckets_seeded": n,
+                      "points_seeded": sum(len(v) for v in points.values()),
+                      "left_to_fetch_events": len(ev) - len(keep)}), file=sys.stderr)
+
+
 def cmd_write(args):
     events = load_index(args)
     os.makedirs(OUT, exist_ok=True)
@@ -367,11 +410,12 @@ def cmd_write(args):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["index", "prices", "write"])
+    ap.add_argument("cmd", choices=["index", "seed", "prices", "write"])
     ap.add_argument("--cache", default=os.environ.get("MARKET_HISTORY_CACHE", ".market_history_cache"))
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--seed-before", default="2026-09-25")
     args = ap.parse_args()
-    {"index": cmd_index, "prices": cmd_prices, "write": cmd_write}[args.cmd](args)
+    {"index": cmd_index, "seed": cmd_seed, "prices": cmd_prices, "write": cmd_write}[args.cmd](args)
 
 
 if __name__ == "__main__":
