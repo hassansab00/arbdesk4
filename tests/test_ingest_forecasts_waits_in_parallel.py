@@ -44,7 +44,7 @@ class Source:
         return {"ok": True}, "ok"
 
 
-def _run(monkeypatch, tmp_path, src, cities, workers=4):
+def _run(monkeypatch, tmp_path, src, cities, workers=4, first_held=None):
     monkeypatch.setattr(f, "WORKERS", workers)
     monkeypatch.setattr(f, "PAUSE", 0)
     monkeypatch.setattr(f, "MODELS", ["m1"])
@@ -52,7 +52,7 @@ def _run(monkeypatch, tmp_path, src, cities, workers=4):
     monkeypatch.setattr(f, "fetch_current", src.fetch_current)
     # The tables hold 30 days before the day asked for, so the window is not
     # clamped (first_held_date, plan v2 P1.6 phase 2 step 5).
-    monkeypatch.setattr(f, "first_held_date", lambda: DAY - dt.timedelta(days=30))
+    monkeypatch.setattr(f, "first_held_date", first_held or (lambda: DAY - dt.timedelta(days=30)))
 
     def build_rows(city_key, js, model=None, tz=None, first=None, last=None):
         if model:
@@ -172,7 +172,11 @@ def test_current_runs_only_asks_for_no_archive(monkeypatch, tmp_path):
     monkeypatch.setattr(f, "ARCHIVE", False)
     monkeypatch.setattr(f, "CURRENT_CITIES", {"c02", "c09"})
     monkeypatch.setattr(f, "coverage_count", lambda c, s, e: covered.append(c) or 0)
-    result, (status, detail), _ = _run(monkeypatch, tmp_path, src, CITIES)
+
+    def archive_down():
+        raise RuntimeError("weather_forecasts read timed out")
+    # the archive's oldest-held-day read is not made: it failing costs nothing (review of #311)
+    result, (status, detail), _ = _run(monkeypatch, tmp_path, src, CITIES, first_held=archive_down)
     assert sorted(asked) == ["c02", "c09"] and not src.calls and covered == []
     assert not src.store, "no city's coverage was read (existing_dates reads src.store)"
     assert result == {"incomplete": False, "rows_offered": 0, "missing_chunks": 0, "unreached_chunks": 0,

@@ -412,10 +412,13 @@ def main():
             days=int(os.environ.get("FORECAST_CATCHUP_DAYS", "35")))
 
     # A day the prune has taken is in data/archive, not the tables: it is not
-    # fetched again, whoever asked for it (first_held_date says why).
+    # fetched again, whoever asked for it (first_held_date says why). A
+    # current-only pass reads neither archive table: a slow or failed read
+    # there must not cost it the current runs it exists to retry (review of
+    # #311).
     if start > end:
         raise ValueError('start must be on or before end')
-    first_held = first_held_date()
+    first_held = first_held_date() if ARCHIVE else start
     if catchup_start(start, first_held) != start:
         if first_held > end:
             raise ValueError(f"{start} to {end} is older than {first_held}, the oldest day both "
