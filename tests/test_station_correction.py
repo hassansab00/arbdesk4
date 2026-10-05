@@ -454,3 +454,68 @@ def test_a_failed_width_read_costs_the_width_not_the_correction(monkeypatch):
     assert all(f["width_c"] is None and f["width_version"] is None for f in written["derived_corrected_forecast"])
     job, status, _n, detail = logged[0]
     assert status == "attention" and "derived_station_width" in detail["width"]["error"]
+
+
+# ---------------------------------------------------------------------------
+# The inputs' age travels with the row (audit P3, 5 Oct): computed_at says
+# when the nightly fit combined the runs, not how old the runs were. A city
+# whose current run the ingest missed is combined from the night before's,
+# and only these say so.
+# ---------------------------------------------------------------------------
+def test_each_model_s_newest_run_and_its_time_are_what_the_row_combines():
+    rows = [{"city_key": "hot", "model": m, "for_date": "2026-10-05", "lead_days": lead,
+             "forecast_max_c": fc, "run_at": at}
+            for m, lead, fc, at in (("m1", 0, 21.0, "2026-10-05T04:46:52+00:00"),
+                                    ("m1", 1, 20.0, "2026-10-04T04:40:30+00:00"),   # older run of m1
+                                    ("m2", 1, 22.0, "2026-10-04T04:40:30Z"))]       # m2 missed tonight
+    # as the query orders them: model ascending, newest run first
+    ordered = sorted(rows, key=lambda r: (r["model"], -dt.datetime.fromisoformat(
+        r["run_at"].replace("Z", "+00:00")).timestamp()))
+    fwd = sc.load_forward(lambda path, params, order=None: ordered, dt.date(2026, 10, 5))
+    lead, fcs, runs = fwd[("hot", "2026-10-05")]
+    assert fcs == {"m1": 21.0, "m2": 22.0} and lead == 0
+    assert runs == {"m1": "2026-10-05T04:46:52+00:00", "m2": "2026-10-04T04:40:30Z"}
+    assert sc.input_runs(runs, ["m1", "m2"]) == ("2026-10-04T04:40:30+00:00", "2026-10-05T04:46:52+00:00")
+    # only the sources the combination used count
+    assert sc.input_runs(runs, ["m1"]) == ("2026-10-05T04:46:52+00:00", "2026-10-05T04:46:52+00:00")
+
+
+def test_every_corrected_row_carries_its_inputs_run_times(monkeypatch):
+    import sys
+    import types
+    import common as real_common
+    pairs = _pairs(days=30)
+    written = {}
+    common = types.ModuleType("common")
+    run_of = {s: f"2026-09-2{6 if s != 'm3' else 5}T04:4{i}:00+00:00" for i, s in enumerate(SOURCES)}
+
+    def rest_all(path, params=None, **k):
+        p = dict(params)
+        if path == "cities":
+            return [{"city_key": c, "timezone": "UTC"} for c in {q[0] for q in pairs}]
+        if path == "derived_city_day_features":
+            return [{"city_key": c, "obs_date": d, "max_c": y, "computed_at": "2026-09-26T05:00:00+00:00"}
+                    for c, d, s, l, fc, y in pairs if s == "m1" and l == 1]
+        if path == "weather_forecast_models" and p.get("source") == f"eq.{sc.FIT_SOURCE}":
+            return [{"city_key": c, "model": s, "for_date": d, "lead_days": l, "forecast_max_c": fc}
+                    for c, d, s, l, fc, y in pairs]
+        if path == "weather_forecast_models":
+            return [{"city_key": "hot", "model": s, "for_date": "2026-09-27", "lead_days": 1,
+                     "forecast_max_c": 25.0, "run_at": run_of[s]} for s in SOURCES]
+        if path == "settings":
+            return [{"value": {"source": "station"}}]
+        if path in ("v_venue_truth", "derived_station_correction", "ingest_log"):
+            return []
+        raise AssertionError(path)
+    common.rest_all = rest_all
+    common.day_had_ended = real_common.day_had_ended
+    common.get_cities = lambda **k: []
+    common.upsert_replace = lambda t, rows, key: (written.setdefault(t, rows), len(rows))[1]
+    common.log_run = lambda *a, **k: None
+    monkeypatch.setitem(sys.modules, "common", common)
+    sc.main(["--as-of", "2026-09-26"])
+    (row,) = written["derived_corrected_forecast"]
+    assert set(row["sources"]) == set(SOURCES)
+    assert (row["inputs_oldest_run_at"], row["inputs_newest_run_at"]) == (
+        "2026-09-25T04:42:00+00:00", "2026-09-26T04:44:00+00:00"), "m3's run was the night before's"
+    assert row["inputs_oldest_run_at"] < row["computed_at"]

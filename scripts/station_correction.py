@@ -363,7 +363,10 @@ def load_pairs(rest_all, as_of, y=None):
 
 
 def load_forward(rest_all, as_of):
-    """{(city, for_date): (lead, {source: max})} from each model's latest run."""
+    """{(city, for_date): (lead, {source: max}, {source: run_at})} from each
+    model's latest run, whatever its age: the run times travel with the row
+    (inputs_oldest_run_at / inputs_newest_run_at) so a reader can see how old
+    the inputs were, not only when they were combined (audit P3, 5 Oct)."""
     rows = rest_all("weather_forecast_models",
                     [("select", "city_key,model,for_date,lead_days,forecast_max_c,run_at"),
                      ("source", f"eq.{FORWARD_SOURCE}"), ("for_date", f"gte.{as_of - dt.timedelta(days=1)}"),
@@ -375,10 +378,18 @@ def load_forward(rest_all, as_of):
         if k in seen:
             continue                        # newest run first
         seen.add(k)
-        lead, fcs = out.setdefault((r["city_key"], str(r["for_date"])), [int(r["lead_days"]), {}])
+        lead, fcs, runs = out.setdefault((r["city_key"], str(r["for_date"])), [int(r["lead_days"]), {}, {}])
         fcs[r["model"]] = float(r["forecast_max_c"])
+        runs[r["model"]] = r["run_at"]
         out[(r["city_key"], str(r["for_date"]))][0] = min(lead, int(r["lead_days"]))
     return out
+
+
+def input_runs(runs, used):
+    """(oldest, newest) run_at, as ISO UTC, of the sources the combination used."""
+    at = sorted(dt.datetime.fromisoformat(str(runs[s]).replace("Z", "+00:00")).astimezone(dt.timezone.utc)
+                for s in used)
+    return at[0].isoformat(), at[-1].isoformat()
 
 
 def anchor_before(row, as_of, value="bias_c", prev="prev_bias_c"):
@@ -510,17 +521,19 @@ def main(argv=None, today=None):
                       for (lead, city), (w, fitted, n, mae) in sorted(wtable["cells"].items())]
 
     fwd_rows = []
-    for (city, day), (lead, fcs) in sorted(forward.items()):
+    for (city, day), (lead, fcs, runs) in sorted(forward.items()):
         out = combine(fcs, table, city, lead)
         if out is None:
             continue
         mean, spread, used = out
+        oldest, newest = input_runs(runs, used)
         width = width_for(wtable, city, lead) if wversion else None
         fwd_rows.append({"city_key": city, "for_date": day, "lead_days": lead, "combined_c": round(mean, 3),
                          "spread_c": round(spread, 3) if spread is not None else None,
                          "n_sources": len(used), "sources": used, "version": version,
                          "width_c": round(width, 4) if width is not None else None,
                          "width_version": wversion if width is not None else None,
+                         "inputs_oldest_run_at": oldest, "inputs_newest_run_at": newest,
                          "computed_at": computed_at})
 
     written = 0

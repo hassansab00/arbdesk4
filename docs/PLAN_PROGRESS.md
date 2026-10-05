@@ -42,7 +42,20 @@ PR that advances a step.
         - None is started after 26 minutes.
         - Their results never enter the archive's verdict; a crash still fails the step.
       - **What is left is named:** the ingest's row is `partial` and lists each city still missing with the newest run it holds (`current_snapshot_of`, one 10 s read per city). The step prints a `::warning::` naming them. It does not go red: the archive's verdict is unchanged, and the next night asks again.
-      - **Not done:** tracking model-input freshness separately from the main forecast's (the audit's last sentence).
+    - **The model inputs' freshness, tracked apart from the main forecast's (audit P3's last sentence, 5 Oct, the PR after #311; Hassan: "do the freshness tracking too").**
+      - **Two clocks** (measured 5 Oct):
+        - The main forecast (`weather_forecasts`) is fetched every 3.00 h for all 48 cities: 768 runs in 48 h, the largest gap 3.00 h. Each call records its age (`forecast_issued_at`).
+        - The seven models' current run is fetched once a night. From 28 Sep to 5 Oct every city got one each night, with all 7 models, and the cities' newest runs were at most 0.94 h apart.
+      - **The gap:** the model inputs reach pricing through `derived_corrected_forecast` (and the MOS blend that reads it). That row is stamped when the fit combined them (`computed_at`, which the engine's 36 h check reads). The fit takes each model's newest run whatever its age, so a city combined from the night before's run looked fresh. `v_data_freshness` judges each table by its newest row.
+      - **Recorded:** `scripts/station_correction.py` writes `inputs_oldest_run_at` and `inputs_newest_run_at` on each corrected row, from the runs the combination used. The fit of 6 Oct is the first. Earlier rows are not backfilled: they read `not_recorded`.
+      - **Judged per city:** `v_city_forecast_inputs` (`20261005110000_the_model_inputs_have_their_own_freshness.sql`).
+        - **Main forecast:** the one the engine picks for today. Stale past 8 h (the freshness spec's).
+        - **Model inputs:** the newest current run and its model count. Stale past 36 h (the spec's). `behind` when it is more than 6 h older than the newest any city has, meaning a missed nightly fetch (6 times the measured spread).
+        - **Today's and tomorrow's corrected rows:** `earlier_run` when an input was more than 6 h older than the newest run at the fit.
+        - **Access:** ages and counts only. It is the owner's view (as `v_city_observation_health`), read as `anon`; `weather_forecast_models` and `derived_corrected_forecast` stay closed to `anon`.
+      - **Shown:** on `/live`, under the observation panel (`CityForecastInputs`).
+      - **Dry run on production** (rolled back, 08:2xZ): 48 cities; main forecasts 1.42 h old at most; model inputs 3.55–3.62 h old, 7 models each; every city fresh on both clocks. The corrected rows were judged on a reconstruction made for the dry run only (each model's newest run before the fit), and all read `current`. About 150 ms a read as `anon`.
+      - **Not changed:** what prices. The engine's check still reads `computed_at`. Gating on the inputs' age would change served prices, which is Hassan's decision.
     - tests.yml runs pytest and the database contracts side by side. Every test still runs. On two cores locally the pair took 174 s. The first run on GitHub (this PR, 4 Oct) took 170 s and billed 3 minutes, where the median was 274 s billed 5.
     - /paper-trades states the cycle as the clock's (:36, every six hours); it said :15 every four hours.
   - **Budget:** `SCHEDULED_MINUTE_BUDGET` 2,850 and `MEASURED_MINUTES` from the runs above. pipeline_daily is set at 38 until its new shape is measured (29.0 plus the slowest first forecast link, 799 s, less the 276 s step it replaces). The scheduled projection is 2,835 (about 2,750 on the means), leaving 150-250 a month for CI. `SCHEDULED_RUN_BUDGET` is 1,000 (964 runs).
