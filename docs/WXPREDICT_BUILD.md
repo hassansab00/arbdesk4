@@ -1,9 +1,13 @@
 # WXPredict: the build document
 
-**Status: v1, written 5 Oct 2026 ~16:00Z, awaiting Hassan's approval. Nothing beyond phase 1 is built until he approves it.**
+**Status: v2, the final build document, 5 Oct 2026 ~16:30Z, awaiting Hassan's approval. Nothing beyond phase 1 is built until he approves it.**
 
-This document governs the WXPredict build. A new session resumes from it and
-from `docs/PLAN_PROGRESS.md`.
+This document governs two things: the WXPredict build, and the completion of every other open item on the platform.
+- **Section 3** is the register of every open item, measured on 5 Oct.
+- **Section 5** puts all the work in one order.
+- **Section 7** is the full test that ends the build.
+
+A new session resumes from this document and from `docs/PLAN_PROGRESS.md`.
 
 ## How to use it
 
@@ -26,16 +30,16 @@ These come from CLAUDE.md and Hassan's messages, restated so nothing is lost.
 | Don't break what works | Before a live view is replaced: equivalence in one REPEATABLE READ snapshot, `EXCEPT ALL` both ways. A changed browser view is read as `anon`. After a change, check the next real run. |
 | Never delete data | Rows leave Postgres only through the archive. Nothing here deletes. |
 | Shadow is free, capital is Hassan's (Rule 6) | WXPredict may run in shadow without asking. Serving it, or anything touching the portfolio account, is Hassan's decision (G5). |
-| Actions minutes are a hard budget (Rule 7) | 3,000 a month, CI included; October was at 890 billed by 5 Oct 09:00Z. No new scheduled workflow (only P6.1 may add one). Every change to a scheduled job's runtime is measured before merge and written into `MEASURED_MINUTES`. |
+| Actions minutes are a hard budget (Rule 7) | 3,000 a month, CI included; October was at 941 billed by 5 Oct 16:04Z (R1). No new scheduled workflow (only P6.1 may add one). Every change to a scheduled job's runtime is measured before merge and written into `MEASURED_MINUTES`. |
 | Adaptive never means unbounded (Rule 11) | Every learned parameter has a prior, hard bounds, a minimum sample, a maximum change per nightly update, and a version on every decision that used it. Nothing is evaluated on data it learned from. |
 | Blind tests stay blind | rd3, `da_floor:v1` and `sd_corr:v1` are pre-registered. Their scores are not read before their first look (about 25 Oct; `docs/CHALLENGER_C_PREREG.md`, `docs/P11_DA_FLOOR_PREREG.md`, `docs/SD_CORR_PREREG.md`). WXPredict is compared with the market and the served engine, never with them, until they are unblinded. |
-| The sealed test stays sealed | 1 Sep - 4 Oct 2026, and every listed day after it, is WXPredict's final test (section 3). No model output on those days is scored or looked at before G4. |
+| The sealed test stays sealed | 1 Sep - 4 Oct 2026, and every listed day after it, is WXPredict's final test (section 4). No model output on those days is scored or looked at before G4. |
 | Both suites before every push | `PYTHONPATH=scripts python -m pytest tests/ -q`; `npm ci --prefix tests/database --ignore-scripts && npm test --prefix tests/database`. For web changes also: `cd web && ./node_modules/.bin/tsc --noEmit && npm run test:routes && ./node_modules/.bin/next build`. |
 | Generated files are regenerated | `python3 tools/gen_provenance.py && python3 tools/gen_sql_owner.py`. They are never edited by hand. |
 | Few pushes | One validated push beats three speculative ones. Progress notes ride the work's PR. |
 | Merging | Merge when CI is green on the PR's head and Hassan has said to merge. Codex's review is read and every finding is answered, but it does not hold a merge Hassan has ordered. |
 | Secrets | No key value is ever printed. The Supabase secret key never goes in `NEXT_PUBLIC_*` or an n8n Config node. Email workflows stay disabled. |
-| Focus | Only WXPredict. Anything else noticed is mentioned in one line and not worked on. |
+| Focus | Only this document's work: WXPredict and the register's items (section 3), in section 5's order. Anything new that is noticed goes into the register, measured, and is not worked on out of order. |
 
 ---
 
@@ -58,7 +62,8 @@ The edge check covered 2,315 calls, 24 Sep - 4 Oct, 48 cities.
    - No fitted model is promoted, and `strategy_learning` is off.
 5. **US near-impossible misses.**
    - On 64 of 555 US calls the engine gave the winning bucket less than 1%; the market did so twice.
-   - The likely cause is the floor read from the NWS five-minute feed. That was fixed 4 Oct (#297) and is not yet confirmed on a graded day.
+   - The likely cause is the floor read from the NWS five-minute feed. That was fixed 4 Oct (#297).
+   - Re-measured on the first graded day after the fix: 3 of 66 (R13). Not yet confirmed.
 6. **Too many half-built models.** The engine, S10 (rd1/rd3), `da_floor`, `sd_corr`, MOS, the weather model, the trajectory, the hit tournament and the post-processing fit are each partly wired, and nothing combines them.
 
 **WXPredict is the one model that replaces this patchwork as the same-day predictor.** The old paths keep running untouched until Hassan decides otherwise (G5). Nothing is retired or deleted by this build.
@@ -67,18 +72,18 @@ The edge check covered 2,315 calls, 24 Sep - 4 Oct, 48 cities.
 
 | requirement (Hassan, 5 Oct) | design | verified in |
 |---|---|---|
-| Beat the market | Model A (weather) fused with the market (C), judged on the venue's winner against the market's own price at the same instant | 3.4, 4.1 |
-| The market is a datapoint, and must be fresh | The market's price at the decision is an input. Training uses the venue's hourly snapshot at the decision instant. Serving reads the live price at the tick (phase 2) | 1.x (table), 2.1-2.3 |
-| City-specific | City is a learned categorical input; per-city error and peak-hour history; per-city calibration checked | 3.2 ablation B, 3.5 |
-| Market activity by time and date | Local hour, weekday, day of year; the market's moves over 1/3/6 h; bucket-hours that moved (an activity proxy); volume once a history exists | 3.2 ablation E, 2.4 |
-| All weather parameters | Every field the station reports, plus the hourly forecast's temperature, dew point, cloud, sunshine, wind, rain and pressure, and the seven models | 3.2 ablations |
-| Adapts to rises and falls | 1 h / 3 h changes, observed minus forecast now and 3 h ago, the running maximum and its age, the remaining forecast curve | 3.2, 3.6 (post-peak check) |
-| Predicts the max from all weather permutations | One gradient-boosted model over all inputs together, so interactions are learned, not hand-coded | 3.2 |
-| Reflected in the current UI | `/predictive` (the lineup and a WXPredict scoreboard), `v_prediction_contract`, the model registry | 5.4, 5.5 |
+| Beat the market | Model A (weather) fused with the market (C), judged on the venue's winner against the market's own price at the same instant | phase 3.4, phase 4.1 |
+| The market is a datapoint, and must be fresh | The market's price at the decision is an input. Training uses the venue's hourly snapshot at the decision instant. Serving reads the live price at the tick (phase 2) | phase 1 (the table), phase 2.1-2.3 |
+| City-specific | City is a learned categorical input; per-city error and peak-hour history; per-city calibration checked | phase 3.2 ablation B, phase 3.5 |
+| Market activity by time and date | Local hour, weekday, day of year; the market's moves over 1/3/6 h; bucket-hours that moved (an activity proxy); volume once a history exists | phase 3.2 ablation E, phase 2.4 |
+| All weather parameters | Every field the station reports, plus the hourly forecast's temperature, dew point, cloud, sunshine, wind, rain and pressure, and the seven models | phase 3.2 ablations |
+| Adapts to rises and falls | 1 h / 3 h changes, observed minus forecast now and 3 h ago, the running maximum and its age, the remaining forecast curve | phase 3.2, phase 3.6 (post-peak check) |
+| Predicts the max from all weather permutations | One gradient-boosted model over all inputs together, so interactions are learned, not hand-coded | phase 3.2 |
+| Reflected in the current UI | `/predictive` (the lineup and a WXPredict scoreboard), `v_prediction_contract`, the model registry | phase 5.4, phase 5.5 |
 
 ---
 
-## 2. Where we are (5 Oct ~16:00Z)
+## 2. Where we are (5 Oct ~16:30Z)
 
 ### 2.1 Phase 1 is built: [#314](https://github.com/hassansab00/arbdesk4/pull/314), open
 
@@ -150,7 +155,84 @@ The edge check covered 2,315 calls, 24 Sep - 4 Oct, 48 cities.
 
 ---
 
-## 3. The evaluation contract: frozen before any model is judged
+## 3. Every open item (the register)
+
+Each row gives an item's state, **measured on 5 Oct 2026 unless it says "per the record"**: the record is a `PLAN_PROGRESS` row that has not been re-measured.
+- **Wave** says where it is done (section 5).
+- **"Hassan"** means it waits on his decision (section 9).
+- **"Fold"** means WXPredict replaces it.
+- **"Close"** means verified done, and only the record needs correcting.
+
+### 3.1 Budget and storage: these come first
+
+| id | item | state | what remains | wave |
+|---|---|---|---|---|
+| R1 | **Actions minutes, October** (Rule 7) | 941 billed minutes from 1 Oct to 5 Oct 16:04Z, over 283 runs (jobs API, each job rounded up). **CI: 419** (tests 331, web 88). **Scheduled: 522** (pipeline_daily 153, tick 113, intraday 105, forecasts 71 before it left the clock on 4 Oct, archive 69, other 11). The cadence since 4 Oct costs about 91 a day at the per-run costs measured 1-5 Oct (tick 24 × 1, intraday 4 × 4, pipeline_daily ~37, archive ~14). That projects to about **3,300 by 31 Oct with no CI at all, over the 3,000 budget**. | Hassan chooses: cut cadence (only P6.1 may), allow paid overage, or both. Then the build's own CI is capped (one push per step, about 25 pushes in total, which is about 125-150 CI minutes, measured as it goes). | 0, Hassan |
+| R2 | **Database size** (P1.6) | **575 MB, 114.9% of the 500 MB tier** (`pg_database_size`, 5 Oct). P1.6's record says phases 1-2 done and 3.1-3.3 live. | Measure the largest tables; finish P1.6 phase 3 through the archive (export, verify, commit, prune: never delete); get under the cap with headroom. WXPredict's shadow table must fit the plan. | 2 |
+
+### 3.2 Jobs warning in the last 48 h (`ingest_log`, 5 Oct ~16:00Z)
+
+| id | job | not ok in 48 h | latest reason | what remains | wave |
+|---|---|---|---|---|---|
+| R3 | `P2.9_honest_record` (the nightly forecast record WXPredict trains and serves on) | 2 of 2 partial | 5 Oct: 12 cities unreached (Open-Meteo refusals). The committed file is whole to 3 Oct, but 4 Oct has 40 of 48 cities. | It re-asks the last 10 days nightly, so check that 4 Oct fills tonight. Add the paced retry that `ingest_forecasts` got in #311 (one request at a time, measured pause). WXPredict's live inputs need every city every night. | 2 |
+| R4 | `P2.10_ensemble_record` | 2 of 2 partial | unreached cities (ECMWF / GFS ensembles) | The same pacing; measure. | 2 |
+| R5 | `ingest_forecasts` | 3 of 5 partial | model rows uneven (Météo-France 114, the others 228-266) | Read why per model; the #311 retry covers current runs; measure tonight. | 2 |
+| R6 | `P4.7_confirm_recent` | 12 of 47 not ok (partial) | the tick's 25 s budget: due 10, asked 7, unreached 3. One 5 Oct 08:36Z row is missing: killed by its 40 s timeout, per the record. | Size the budget to the due queue, or carry the rest to the next run; log the exit code. | 2 |
+| R7 | `P0.2_market_discovery` | 8 of 8 attention | 2 of 96 slugs not found: Zhengzhou, 5 and 6 Oct | Check whether the venue lists Zhengzhou under another slug. If it is delisted, record it as retired the normal way. | 2 |
+| R8 | `P0.4_trade_history` | 3 of 48 attention | data-api 429 on one batch | Back off and resume (it already keeps a cursor); measure. | 2 |
+| R9 | `P4.1_health_watchdog` | 8 of 8 attention | it sums the warnings above | Becomes meaningful with P6.3 (R14). | 2 |
+| R10 | `edge_engine` | 3 attention | the against-market gate blocks the engine where the market is better (109 bands on 4 Oct). This is the gate working. | Nothing; it is "informational" under P6.3. | n/a |
+| R11 | **Statement timeouts** (P6.5) | 49 `canceling statement due to statement timeout` in the 24 h to 5 Oct ~16:00Z (postgres log) | the queries are not named in that log | Name them from the API gateway log, then fix them the P6.5 way (stored rows behind views). Acceptance: 0 in 24 h. | 2 |
+
+### 3.3 The served engine's defects (section 1)
+
+| id | defect | state (5 Oct) | decision | wave |
+|---|---|---|---|---|
+| R12 | Post-peak collapse; morning centre; learning not reaching the price; too many partial models (defects 2, 3, 4, 6) | as in section 1 | **Fold**: WXPredict is the one same-day model. The old paths keep running untouched until G5. No interim patch to the engine unless Hassan asks for one (section 9, D4). | 3-6 |
+| R13 | US near-impossible misses (defect 5) | **One graded day after the 4 Oct fix**: 3 of 66 US calls gave the winner under 1% (market 0). Before the fix: 71 of 617 (market 2), 10 dates (`v_checkpoint_outcome`). | Re-measure at 7 graded days after the fix; each remaining case is traced to its input. WXPredict's US check is in section 4. | 0 → 2 |
+
+### 3.4 Plan steps not finished (from `PLAN_PROGRESS`; stale lines re-checked where possible)
+
+Only one PR is open on GitHub (#314). **Every "PR open" in the record is stale.**
+
+| id | step | record says | measured now | what remains | wave |
+|---|---|---|---|---|---|
+| R14 | P6.3 watchdog | todo | `P4.1_health_watchdog` runs, and every run is "attention" | The plan's spec: alert on the age of each job's last `ok` against a per-job SLA, and separate warnings from information. **Email stays disabled** (Hassan's standing rule), so it speaks on the board only. `log_run` raises if its own write fails. | 2 |
+| R15 | P6.5 slow views | first cut, PR open | PR merged (not open); 49 timeouts in 24 h | R11 | 2 |
+| R16 | P0.3 retire the paper desks | doing; Hassan must start `retire_desks.yml` | `retire_desks.yml` ran on 23 Sep (success). **0 open paper positions** (`paper_trades`): s1 107 closed (−$825.17), s3 41 (−$96.97), s4 49 (+$121.51), s12 1 ($0.00) | Verify each desk's state, then close the step in the record. | 0 |
+| R17 | P8.2 retire the eight old ledgers once flat | "not yet" | **they are flat now** (0 open positions) | Retire them through `paper_desk_retire`. This is covered by Hassan's 29 Sep "Retire all of s1, s3-s9", but confirm in section 9, D5. | 2 |
+| R18 | P1.2 UI writes behind auth | doing | CLAUDE.md: every browser write goes through the operator route; sign-in off by Hassan | Verify the RPC revoke is live (anon cannot call a write RPC), then close. | 0 |
+| R19 | P1.3, P1.5 archiver floors and the push guard | doing; "the next archive run must log ok" | every `archive_*` job ok on 2 of 2 runs in 48 h (research, resolution, trades included) | Check the specific acceptance in each row, then close. | 0 |
+| R20 | P1.7 mirror | live; 63 of 75 tables (per the record, 28 Sep) | `mirror_to_repo` ok on 2 of 2 runs | Re-count the coverage; decide on the 12 tables not mirrored (each named). | 2 |
+| R21 | P2.2 station agreement view | doing | not re-measured | Verify `sql/ad4_82` is applied, then close or finish. | 0 |
+| R22 | P2.8 every forecast model | live; acceptance ≥5 models with lead 1 for every date of the last 7 days | the committed record has 7 models × 48 cities through 3 Oct, and 4 Oct has 280 of 336 rows (R3) | Close once R3 holds for 7 nights. | 2 |
+| R23 | P2.10 / P3.10 test (the ensemble record's first 30 days) | waits for 30 days of record | first night 29 Sep → about 29 Oct | Run as planned. | dated |
+| R24 | P3.4 forward-only fits | live; applied 0 | trajectory 1,152 cells, applied 0; post-processing 399 cells, applied 2 (27 days) | **Fold**: WXPredict learns these inside one model. The fits keep running for the record. | n/a |
+| R25 | P3.6 calibration | doing | `calibration_map`: T fitted 1.264, not applied (`applies: false`), because validation got worse (log loss 1.6822 → 1.6901). 16 settlement dates; the full refit needs 30. Next weekly update 6 Oct. | **Fold** for WXPredict (its own calibration, section 5 phase 3.5). The engine's map runs on as recorded. | n/a |
+| R26 | P3.8 hit tournament part 2 | todo | v1 in shadow, nightly ok | **Fold**: WXPredict's scoreboard (phase 5.4) is the per-city learning loop. | n/a |
+| R27 | P3.9 the width served | off; on when the forward score's lower bound is above 0 | `station_width_pricing` enabled false | **Fold** (WXPredict's width is learned). The engine's flag stays as is. | n/a |
+| R28 | P4.3 repoint `v_city_hit_history` | waits for a week of checkpoints | 12 graded dates (24 Sep - 5 Oct) | Repoint with the equivalence check, or decide not to; this is the hit/miss page. | 2 |
+| R29 | P4.5 restore the archived verdicts | pending (10,690) | `restore_verdicts` ok on 2 of 2 runs | Count the restored rows against 10,690, then close. | 0 |
+| R30 | P4.6 part 2 (public-forecast hit rate and reliability bins per checkpoint) | not done | not re-measured | **Fold** into the WXPredict scoreboard (phase 5.4). | 5 |
+| R31 | P6.2 n8n under 2,000 executions | doing | not re-measured | Count this month's executions; close or finish. | 2 |
+| R32 | P6.6 docs clean-up | todo | stale lines found in `PLAN_PROGRESS` today (R15-R19, R29) | Wave 0 corrects the record. The wider clean-up comes at the end (section 7). | 0, 7 |
+| R33 | P7.2-P7.9 S10 (rd1/rd3): shadow, portfolio, board, chain | 7.6-7.9 todo | rd1 and S10 run in shadow; **rd3 is blind until its first look, about 25 Oct** (trigger `trig_019QK37oqwVbAMcVWYnRQCVF`) | **Fold**: WXPredict generalises the remaining-day model. S10 keeps running in shadow and rd3's first look runs as pre-registered. After it, Hassan decides whether S10 is retired (section 9, D6). P7.7 (portfolio) is Hassan's (capital). | dated, Hassan |
+| R34 | `da_floor:v1`, `sd_corr:v1` | blind, in shadow | first looks about 25 Oct | Run as pre-registered. Not read before then. | dated |
+| R35 | P5.5-P5.12 part 2s, P8.3, P8.4 (the trading machinery: solver, timing, fills, learning, rails, the decision log, suite acceptance, conflict rules) | partial | trading only; nothing about forecasting | **Not in this build.** Listed so nothing is lost. They touch capital and trading, so they are Hassan's to schedule after G5 (section 9, D7). | Hassan |
+| R36 | `settlement_verified` false | the gate for auto-settlement; `docs/settlement_verification.md` unmeasured | not changed | Hassan's (it pays out); listed only. | Hassan |
+
+### 3.5 This session's own items
+
+| id | item | state | wave |
+|---|---|---|---|
+| R37 | #314: two Codex findings on `b80b2a7` (the whole-day rule; `decision_local` at hh:01) | verified real (89 of 24,518 station days fail the rule); fix designed (phase 1.1) | 1 |
+| R38 | Exploratory model code (`tools/wxpredict/dataset.py`, `model.py`, `walk_forward.py`), outside git | locally excluded, backed up in the scratchpad | 3 (rewritten with tests) |
+| R39 | `single-runs-api.open-meteo.com` refused by the network policy | 403 measured | Hassan (D3) |
+| R40 | F3-A, dated checks, F4 (the 30 Sep handoff's items) | **F3-A:** `fec-v1` exists; WXPredict's contract (section 4) extends it. **Dated check B** (1 Oct archive) done 3 Oct per the record. **F4:** the 401s fixed (#292) and minutes decided (#302); the rest are R1-R11 above. | 0 (record) |
+
+---
+
+## 4. The evaluation contract: frozen before any model is judged
 
 This becomes `docs/WXPREDICT_PREREG.md` in step 3.0. It is committed before any fold of the development run is scored.
 
@@ -177,7 +259,7 @@ This becomes `docs/WXPREDICT_PREREG.md` in step 3.0. It is committed before any 
 - (c) the gain over the *recalibrated* market is reported beside it. That is the part that is weather, not market sharpening.
 
 **Named checks**, reported whatever the verdict:
-- **Post-peak** (the engine's defect 1): D rows from 2 h after the city's typical peak where the running maximum already sits in the winning bucket. WXPredict's mean probability on the winner against the market's and the engine's (0.621).
+- **Post-peak** (the engine's defect 2): D rows from 2 h after the city's typical peak where the running maximum already sits in the winning bucket. WXPredict's mean probability on the winner against the market's and the engine's (0.621).
 - **Morning centre** (defect 3): mean absolute error of WXPredict's expected maximum at 09:00, against the engine's raw centre (0.99) and the corrected one (0.77) on the same days.
 - **US** (defect 5): the number of US rows where WXPredict gave the winner under 1%, against the market's count.
 - **Per city:** gain and interval for every city with 20 or more scored dates.
@@ -186,7 +268,54 @@ This becomes `docs/WXPREDICT_PREREG.md` in step 3.0. It is committed before any 
 
 ---
 
-## 4. The build, step by step
+## 5. The build, in order
+
+**The order.** Every item in section 3 has a place in it. A gate is Hassan's decision.
+
+```
+Wave 0   put the record straight; decisions D1-D7 asked     (read-only + one docs PR)
+Phase 1  finish #314                                        -> G1 merge
+Wave 2   the operations WXPredict depends on (R2-R11, R13-R15, R17, R20, R22, R28, R31)
+Phase 2  the market and the inputs, fresh at the decision   -> G2
+Phase 3  the model, development months only                 -> G3
+Phase 4  the sealed test, once                              -> G4
+Phase 5  shadow, the nightly cycle, the board               -> G5
+Section 7  full testing                                     -> "complete"
+Dated (run on their dates, inside whatever wave is current):
+         rd3 / da_floor / sd_corr first looks (~25 Oct)
+         the P3.10 ensemble test (~29 Oct)
+```
+
+**Minutes discipline across all of it (R1):**
+- one push per step, validated locally first;
+- docs-only changes ride the next code push;
+- every PR states its CI minutes;
+- the running total is kept in the status table (section 10).
+
+### Wave 0: put the record straight (read-only, then one docs PR)
+
+**0.1 Verify and close the stale steps**
+
+- **What:** R16 (P0.3), R18 (P1.2), R19 (P1.3/P1.5), R21 (P2.2), R29 (P4.5), R40.
+- **How:** each step's own acceptance, as written in its `PLAN_PROGRESS` row, checked against the live system. One query or log read per item, quoted.
+- **Verification:** the measured answer, written beside the step.
+- **Checkpoint:** every one of them is either closed with evidence, or moved to wave 2 with what remains.
+
+**0.2 Re-measure what the register marks "not re-measured"**
+
+- **What:** R20 (mirror coverage), R31 (n8n executions), R22 (models per day), the biggest tables for R2.
+- **Checkpoint:** each number is in the register.
+
+**0.3 Correct `PLAN_PROGRESS`**
+
+- **What:** every "PR open" or "pending merge" line that GitHub contradicts is corrected to what is measured. This is the first part of R32. Nothing else changes.
+- **Checkpoint:** the doc diff contains only status corrections, each with its evidence.
+
+**0.4 Put decisions D1-D7 (section 9) to Hassan**
+
+- Only R1 (minutes) blocks the build. A wave that adds CI or scheduled minutes does not start before D1 is answered.
+
+**Evidence:** one docs PR. It carries no code, so it can ride phase 1.1's push and avoid a CI run of its own.
 
 ### Phase 1: finish (PR #314)
 
@@ -211,6 +340,51 @@ This becomes `docs/WXPREDICT_PREREG.md` in step 3.0. It is committed before any 
 - **Evidence:** the commit message, the PR thread replies, and `table_meta.json`.
 
 **G1 (Hassan): merge #314.**
+
+### Wave 2: the operations WXPredict depends on
+
+Each item is one small PR, or a batch of related ones, with its own measured before and after. **In order:**
+
+**2.A Storage (R2)**
+
+- **What:** get under the 500 MB tier with headroom, by the archive cycle only.
+- **How:** P1.6 phase 3's remaining steps: name the largest tables (sizes measured), then export, verify, commit and prune. Every pruned row stays readable from the archive.
+- **Verification:**
+  - `pg_database_size` before and after;
+  - the archive's exported = expected = deleted counts per dataset;
+  - a sample of pruned rows read back from the repository.
+- **Checkpoint:** under 90% of the tier, and the nightly archive keeps it there for 3 nights.
+
+**2.B The nightly forecast record and its siblings (R3, R4, R5, R22)**
+
+- **What:** every city, every night.
+- **How:** the paced retry pattern from #311 (requests one at a time, a measured pause, a bounded second pass inside the step's deadline) for `honest_record` and the ensemble record.
+- **Verification:** unit tests like #311's; then 3 nights with 48 of 48 cities, read from `ingest_log` and the committed files.
+- **Checkpoint:** 3 consecutive whole nights, and the step's minutes measured into `MEASURED_MINUTES`.
+
+**2.C The tick's confirmations (R6)**
+
+- **What:** no killed run, no growing queue.
+- **Verification:** 48 h with no killed run and `pending_after` not growing.
+
+**2.D Discovery, trade prints and the watchdog (R7, R8, R9, R14)**
+
+- **What:**
+  - Zhengzhou's slugs explained;
+  - a back-off on the 429s;
+  - the P6.3 watchdog (the age of each job's last ok against an SLA, on the board, no email).
+- **Verification:** each job's next 24 h. The watchdog is tested by stopping a job's ok in a fixture (`tests/database` contract).
+
+**2.E Timeouts (R11, R15)**
+
+- **What:** name the 49 queries, then fix them.
+- **Verification:** each changed view proven equal (REPEATABLE READ, `EXCEPT ALL` both ways) and read as `anon`; 0 timeouts in 24 h.
+
+**2.F The remaining record items (R17, R20, R28, R31, R13)**
+
+- **What:** retire the flat ledgers (after D5); mirror coverage; the hit-history repoint (with its equivalence check); n8n executions; the US re-measure at 7 graded days after the fix.
+
+**Gate:** wave 2 needs no Hassan gate, beyond D1 for minutes and D5 for the ledgers. Phase 2 starts when 2.A and 2.B have passed their checkpoints. 2.C-2.F may overlap phase 2.
 
 ### Phase 2: the market and the inputs, fresh at the decision
 
@@ -275,7 +449,7 @@ This becomes `docs/WXPREDICT_PREREG.md` in step 3.0. It is committed before any 
 
 **3.0 Pre-register**
 
-- **What:** `docs/WXPREDICT_PREREG.md`, holding section 3 verbatim plus:
+- **What:** `docs/WXPREDICT_PREREG.md`, holding section 4 verbatim plus:
   - the model families;
   - the feature groups;
   - the ablations;
@@ -300,7 +474,7 @@ This becomes `docs/WXPREDICT_PREREG.md` in step 3.0. It is committed before any 
 **3.2 A, the weather model, and its ablations**
 
 - **What:** gradient-boosted classes of the day's maximum in the market's unit, as offsets from an anchor (the running maximum, or the forecast), with city as a category. Trained on every whole station day, listed or not.
-- **Ablations**, each walk-forward on the development months and scored by section 3's metric against the market:
+- **Ablations**, each walk-forward on the development months and scored by section 4's metric against the market:
   - **A** station now only;
   - **B** + city;
   - **C** + day-ahead forecasts;
@@ -334,7 +508,7 @@ This becomes `docs/WXPREDICT_PREREG.md` in step 3.0. It is committed before any 
 
 **3.6 The named checks on development months**
 
-- Post-peak, morning centre and US, as in section 3. Each is reported with its numbers.
+- Post-peak, morning centre and US, as in section 4. Each is reported with its numbers.
 - A failure is explained before going on, not tuned away on the sealed test.
 
 **3.7 Cost**
@@ -351,7 +525,7 @@ This becomes `docs/WXPREDICT_PREREG.md` in step 3.0. It is committed before any 
 
 **4.1 Score it**
 
-- **What:** v1 exactly as frozen (its commit hash), walk-forward through 1 Sep - 4 Oct (and later listed days), scored by section 3.
+- **What:** v1 exactly as frozen (its commit hash), walk-forward through 1 Sep - 4 Oct (and later listed days), scored by section 4.
 - **Evidence:**
   - `docs/WXPREDICT_RESULT_<date>.md`, generated by the tool from committed inputs only;
   - the scored rows in `data/eval/wxpredict_<date>.csv.gz`.
@@ -364,7 +538,7 @@ This becomes `docs/WXPREDICT_PREREG.md` in step 3.0. It is committed before any 
 
 **4.3 The verdict**
 
-- Pass or fail by section 3's rule, as written.
+- Pass or fail by section 4's rule, as written.
 - No re-run with changes. A failed v1 is reported as failed, and any v2 needs a new pre-registration and a new sealed period (the days after 4 Oct).
 
 **G4 (Hassan):** the result; whether WXPredict goes into shadow.
@@ -416,14 +590,14 @@ This becomes `docs/WXPREDICT_PREREG.md` in step 3.0. It is committed before any 
 
 **5.5 Shadow acceptance**
 
-- Pre-registered before shadow starts: section 3's rule on the first 20 graded shadow days.
+- Pre-registered before shadow starts: section 4's rule on the first 20 graded shadow days.
 - Reported as it stands each week. No change to v1 during the period.
 
 **G5 (Hassan):** whether WXPredict serves any price. Anything about capital stays his alone.
 
 ---
 
-## 5. Testing, all in one place
+## 6. Testing, at every step
 
 | layer | tests | when |
 |---|---|---|
@@ -436,7 +610,67 @@ This becomes `docs/WXPREDICT_PREREG.md` in step 3.0. It is committed before any 
 
 ---
 
-## 6. Risks, and what is done about each
+## 7. Full testing: what "complete" means
+
+After phase 5 and before anything is called complete, every item below passes. **A failure goes back to its wave, never into a note.**
+
+### 7.1 Reproducibility, end to end
+
+- From a clean checkout of `main`, rebuild the table from the committed sources. The sha256 must equal `table_meta.json`'s.
+- Refit v1 from the committed table. The exported model's hash must equal the committed artifact's.
+- Re-score the sealed test. The report must equal the committed one byte for byte.
+
+### 7.2 Both suites, and the web, on `main`
+
+- `pytest`: green, with the count written down.
+- The database contracts: green.
+- Web: `tsc`, `test:routes`, `next build`.
+- The CI run on the final PR: green.
+
+### 7.3 Leak audit by hand
+
+100 rows drawn at random (seed written down) from the sealed period. For each, every input is traced to its raw source:
+- the report's valid time, at least 20 min before the decision;
+- the forecast hour's run assumption;
+- the price's stamp, at or before the decision;
+- the past days, whole before the decision.
+
+The table of all 100 is committed. **Any violation fails the build.**
+
+### 7.4 A 7-day live soak, in shadow
+
+Over 7 consecutive days:
+- every due city gets a WXPredict row at every checkpoint, or a logged reason;
+- the ladders sum to 1;
+- the tick stays inside 45 s and one billed minute (from the jobs API);
+- the nightly refit runs inside `pipeline_daily`, and its minutes match `MEASURED_MINUTES`;
+- no new warning appears in `ingest_log`, and the watchdog (R14) shows green or names the cause;
+- the scoreboard's numbers equal the view's on 2 days, checked by hand.
+
+### 7.5 Failure drills (each a test, plus one live dry run)
+
+- IEM down, CLOB down, Open-Meteo 429: the tick writes a logged skip, never an exception, and the served engine is untouched.
+- The model file missing or corrupt: the tick logs it and writes nothing.
+- A refit that is worse: refused (phase 5.3), with the registry showing why.
+- Rollback: the registry's rollback restores the previous version, and the next tick uses it.
+
+### 7.6 The database
+
+- Every view changed in the build: equivalence proven at the time, and re-read as `anon` once more.
+- The storage stays under the cap through the soak (R2).
+- No row deleted outside the archive: the archive's counts for the soak week are written down.
+
+### 7.7 Minutes and the record
+
+- October's and November's billed minutes measured against the budget Hassan set (D1).
+- `PLAN_PROGRESS` and this document's status table match the live system line by line. This finishes R32.
+- Every register row (section 3) is closed with evidence, or is a named Hassan decision.
+
+**Then:** the result is reported to Hassan as **"complete"**, with the 7.1-7.7 evidence.
+
+---
+
+## 8. Risks, and what is done about each
 
 | risk | handling |
 |---|---|
@@ -444,25 +678,53 @@ This becomes `docs/WXPREDICT_PREREG.md` in step 3.0. It is committed before any 
 | Training/serving skew | The parity test (2.3) with one shared feature module. |
 | A leak in features | Leak-plant tests per input; Codex review; the sealed test. |
 | Over-fitting the development months | The sealed test is scored once (phase 4); ablations are kept small and pre-registered. |
-| Actions minutes | Pure-Python tick inference; the fit inside the existing nightly job; every change's minutes measured before merge. |
+| Actions minutes (R1: on course for about 3,300 in October before CI) | D1 first. Then pure-Python tick inference, the fit inside the existing nightly job, one validated push per step, and every change's minutes measured before merge, with the running total in section 10. |
+| Storage over the cap (R2: 575 MB, 114.9%) | Wave 2.A, through the archive only, before the shadow table adds rows. |
+| Stale records mislead the next session | Wave 0 corrects them; section 7.7 checks the record against the live system line by line. |
 | scikit-learn version drift | Pinned versions; the exported trees are the served artifact, so the tick does not depend on it. |
 | A blind test's integrity | WXPredict is never compared with rd3 / `da_floor` / `sd_corr` before their first look. |
 | Context loss across sessions | This document plus `PLAN_PROGRESS`, updated in every PR, and the status table below. |
 
 ---
 
-## 7. Status
+## 9. Decisions only Hassan can make
+
+| id | decision | why it is his | blocks |
+|---|---|---|---|
+| D0 | Approve this document (or say what to change) | the plan | everything |
+| D1 | October's minutes (R1): cut a cadence (which one; only P6.1 may), allow paid overage, or both | Rule 7, and spending | waves that add minutes |
+| D2 | G1: merge #314 after phase 1.1 | merging | wave 2 onward |
+| D3 | Allow `single-runs-api.open-meteo.com` in the environment's network access (the history of same-day runs) | network access | phase 2.5's faster path; optional |
+| D4 | Any interim fix to the served engine before WXPredict (e.g. use the evening-before corrected centre on the same day). Default: none; WXPredict replaces it | prices served | none |
+| D5 | Retire the eight flat ledgers now (R17); 29 Sep's "Retire all of s1, s3-s9" appears to cover it | the desks | 2.F |
+| D6 | After rd3's first look (~25 Oct): S10's future (R33) | strategy | none |
+| D7 | When to schedule the trading machinery (R35) and `settlement_verified` (R36) | capital and payouts | none |
+| G3-G5 | as in section 5 | the model's use | their phases |
+
+---
+
+## 10. Status
+
+Updated in every PR.
 
 | step | state | evidence |
 |---|---|---|
-| 1 (sources, table) | built, PR #314 open, CI green on `b80b2a7` | `docs/WXPREDICT.md`, `table_meta.json` |
-| 1.1 (2 review findings) | todo (findings verified: 89 of 24,518 station days fail the rule) | |
-| G1 | waiting | |
-| 2.1 - 2.5 | todo | |
+| D0 (this document) | waiting for Hassan | |
+| D1 (minutes) | waiting; 941 billed to 5 Oct 16:04Z, projected ~3,300 by 31 Oct without CI | jobs API, 5 Oct |
+| Wave 0 (0.1-0.4) | todo | |
+| Phase 1 (sources, table) | built, PR #314 open, CI green on `b80b2a7` | `docs/WXPREDICT.md`, `table_meta.json` |
+| 1.1 (R37: 2 review findings) | todo (verified: 89 of 24,518 station days fail the rule) | |
+| G1 / D2 | waiting | |
+| Wave 2 (2.A-2.F) | todo | |
+| Phase 2 (2.1-2.5) | todo | |
 | G2 | | |
-| 3.0 - 3.7 | todo (exploratory first look in section 2.2 only) | |
+| Phase 3 (3.0-3.7) | todo (exploratory first look in section 2.2 only) | |
 | G3 | | |
-| 4.1 - 4.3 | todo (sealed test untouched) | |
+| Phase 4 (4.1-4.3) | todo (sealed test untouched) | |
 | G4 | | |
-| 5.1 - 5.5 | todo | |
+| Phase 5 (5.1-5.5) | todo | |
 | G5 | | |
+| Full testing (7.1-7.7) | todo | |
+| Dated: rd3 / `da_floor` / `sd_corr` first looks | ~25 Oct, as pre-registered | |
+| Dated: P3.10 ensemble test | ~29 Oct | |
+| CI minutes used by this build | #314 so far: 4 CI runs (pytest 3.5-5.0 min each) | jobs API |
