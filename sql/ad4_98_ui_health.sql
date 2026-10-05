@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 269 of them - and for each MISSING one names the
+-- and function the app reads - 270 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -151,6 +151,7 @@ with expected(rel, owner, used_by) as (values
     ('v_city_day_features', 'ad4_21_weather_features.sql', ''),
     ('v_city_day_plan', 'ad4_34_trade_plan.sql', '/opportunities'),
     ('v_city_day_readiness', 'supabase/migrations/20260912234500_phase1c_operational_readiness.sql', ''),
+    ('v_city_forecast_inputs', 'supabase/migrations/20261005110000_the_model_inputs_have_their_own_freshness.sql', '(CityForecastInputs)'),
     ('v_city_hit_history', 'ad4_85_city_hit_history.sql', '/predictive'),
     ('v_city_hit_history_live', 'supabase/migrations/20260929220000_the_edges_keep_the_prices_the_record_reads.sql', ''),
     ('v_city_hit_summary', 'ad4_85_city_hit_history.sql', '/predictive'),
@@ -442,6 +443,7 @@ begin
     ('v_city_day_features', 'ad4_21_weather_features.sql', ''),
     ('v_city_day_plan', 'ad4_34_trade_plan.sql', '/opportunities'),
     ('v_city_day_readiness', 'supabase/migrations/20260912234500_phase1c_operational_readiness.sql', ''),
+    ('v_city_forecast_inputs', 'supabase/migrations/20261005110000_the_model_inputs_have_their_own_freshness.sql', '(CityForecastInputs)'),
     ('v_city_hit_history', 'ad4_85_city_hit_history.sql', '/predictive'),
     ('v_city_hit_history_live', 'supabase/migrations/20260929220000_the_edges_keep_the_prices_the_record_reads.sql', ''),
     ('v_city_hit_summary', 'ad4_85_city_hit_history.sql', '/predictive'),

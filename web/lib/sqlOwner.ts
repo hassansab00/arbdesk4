@@ -140,6 +140,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_city_day_features": "ad4_21_weather_features.sql",
   "v_city_day_plan": "ad4_34_trade_plan.sql",
   "v_city_day_readiness": "supabase/migrations/20260912234500_phase1c_operational_readiness.sql",
+  "v_city_forecast_inputs": "supabase/migrations/20261005110000_the_model_inputs_have_their_own_freshness.sql",
   "v_city_hit_history": "ad4_85_city_hit_history.sql",
   "v_city_hit_history_live": "supabase/migrations/20260929220000_the_edges_keep_the_prices_the_record_reads.sql",
   "v_city_hit_summary": "ad4_85_city_hit_history.sql",

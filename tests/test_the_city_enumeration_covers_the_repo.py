@@ -174,6 +174,11 @@ SQL_FILTERS = {
     "supabase/migrations/20261004150000_the_basis_is_the_feeds.sql":
         "v_city_observation_health and refresh_live_weather_timing again, as in sql/ad4_71 and "
         "ad4_live_weather_timing - the basis counted over the feed the maximum came from",
+    # The model inputs' freshness beside the main forecast's (audit P3, 5 Oct):
+    # operational, like v_city_observation_health - is the desk's input fresh
+    # for a city it prices - not the record.
+    "supabase/migrations/20261005110000_the_model_inputs_have_their_own_freshness.sql":
+        "v_city_forecast_inputs - the main forecast's and the model inputs' age per live city",
     # v_city_trajectory_now prices the rest of TODAY for cities the desk is
     # trading, and filters to active on its own. The evidence view beside it
     # joins cities only for the timezone that turns a timestamp into a local

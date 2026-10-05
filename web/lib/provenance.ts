@@ -1164,6 +1164,12 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "markets",
     "weather_forecasts"
   ],
+  "v_city_forecast_inputs": [
+    "cities",
+    "derived_corrected_forecast",
+    "weather_forecast_models",
+    "weather_forecasts"
+  ],
   "v_city_hit_history": [
     "band_probabilities",
     "cities",

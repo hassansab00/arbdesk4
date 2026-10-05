@@ -7,6 +7,7 @@ import { useQuery } from "@/lib/useQuery";
 import { DataState, ErrorBox, InlineError, Loading } from "@/components/DataState";
 import WeatherIcon from "@/components/WeatherIcon";
 import CityWeatherHealth from "@/components/CityWeatherHealth";
+import CityForecastInputs from "@/components/CityForecastInputs";
 import { fmtAge, fmtCompactUsd, severityColor } from "@/lib/format";
 import { fmtTemp, fmtTempDelta, fmtBandRange, toDisplay, type Unit } from "@/lib/units";
 import { fmtTime, fmtCityHour, shortZone } from "@/lib/time";
@@ -316,6 +317,9 @@ export default function LiveWeatherPage() {
             station is reporting - and says nothing about the forty cities
             whose feed is a day behind. */}
         <CityWeatherHealth />
+        {/* The forecasts' two clocks per city (audit P3): the main forecast,
+            fetched every 3 h, and the models' nightly run, judged apart. */}
+        <CityForecastInputs />
 
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
           <input

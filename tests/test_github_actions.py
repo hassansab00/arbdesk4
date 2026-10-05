@@ -217,8 +217,9 @@ MEASURED_MINUTES = {
     # 13 from 28 Sep: the ensemble record (plan v2.4 P2.10 part 1) adds a step
     # bounded at 2 minutes (a 90 s deadline). Worst case 11 + 2; re-measure
     # after its first nights and lower it if the step runs short.
-    # Measured 1-4 Oct: 14, 13, 13 and 14 billed (759-793 s).
-    "archive_observations.yml": 13.5,
+    # Measured 1-4 Oct: 14, 13, 13 and 14 billed (759-793 s). 29 Sep - 5 Oct,
+    # seven nights: 14, 14, 14, 13, 13, 14 and 15, mean 13.86 (checked 5 Oct).
+    "archive_observations.yml": 13.9,
     # Measured 1-4 Oct: 1 billed minute on each of 4 runs.
     "paper_trade_log.yml": 1.0,
     # 1.5 measured before 2026-09-22; the wind-direction backfill added a
