@@ -1,6 +1,6 @@
 # WXPredict: the build document
 
-**Status: v2.2, the final build document, 5 Oct 2026 ~17:30Z, awaiting Hassan's approval.**
+**Status: v2.2, the final build document, 5 Oct 2026 ~17:30Z. Approved by Hassan 5 Oct (D0), with his decisions D1, D3, D4, D5 and D8 recorded in section 10.**
 - v2.1 added wave A, the Actions revamp, which Hassan approved.
 - v2.2 adds wave P (section 3.7): the paper desks, which Hassan reported on 5 Oct are not visible or working.
 
@@ -280,6 +280,56 @@ Only one PR is open on GitHub (#314). **Every "PR open" in the record is stale.*
 - change a served price without the evidence and the gate that any price change needs.
 
 **What improves accuracy** is WXPredict (phases 2-5). The revamp moves minutes from things nothing uses to the build, and never makes a served price worse.
+
+#### A.1 result: every step classified (measured 5 Oct, 17:00-18:30Z)
+
+**Sources.** Step times: the jobs API, `pipeline_daily` runs 36522348364, 36669569909, 36815869294, 36965258009, 37097080037, 37177477832 and 37264229685 (29 Sep - 5 Oct); `pipeline_intraday` runs 37256039636, 37284638004 and 37326006256 (5 Oct); `archive_observations` run 37256039634. The tick's own time: `ingest_log` job `tick`, `detail.seconds` and `detail.engine.seconds`, 24 runs 4 Oct 17:36Z - 5 Oct 16:36Z. Live state: the Supabase tool. Readers: a code search of `scripts/`, `web/`, `n8n/`, `sql/` and `supabase/migrations`, and `pg_depend` on the live database. Dispatchers: `clock_schedule`, `cron.job`, the n8n API and the web app's routes.
+
+**Who starts what.** The clock is pg_cron `ad4_clock` in Supabase (`20260926130000`), at :36. The n8n workflow "AD4 P6.1 - Clock" is inactive. n8n "AD4 P2.1 - Relearn" (active, webhook only) can dispatch `pipeline_daily`, `weather_model`, `pipeline_intraday`, `observations`, `backtest`, `archive_observations` and `forecasts` when a Run button on the site asks; it logged `P2.1_relearn` twice, last on 26 Sep. The web app also dispatches `pipeline_intraday` (`/api/paper-run`) and `paper_fill` (`/api/paper-cycle`) directly.
+
+**`pipeline_daily`: 24-37 billed a night, mean 31.0 (7 nights).** Seconds are the median of the 7 nights, with 5 Oct beside it.
+
+| step | s (5 Oct) | class | evidence |
+|---|---|---|---|
+| Ingest forecasts | 284 (627) | keep, **trim (A.4)** | Feeds the station correction and MOS, both `enabled` (settings, live). 5 Oct was its first night as the whole ingest: pass 1 logged at 04:46:36Z, about 608 s after the step began, 1,949 rows, 3 chunks unreached; pass 2 took 18 s for 150 rows. Where pass 1's time goes: not measured yet. |
+| Weather outcome evidence | 138 | keep | the truth labels |
+| Venue-confirmed settlement sweep | 271 | keep | settlement and evidence (901 s on 29 and 30 Sep, its budget) |
+| Measure forecast skill | 45 | **keep** | The engine prices on the newest `derived_forecast_skill` row per city and lead, with no switch and no age limit (`probability_engine.py:1126-1134`): bias, width and whether a band may trade. `prune_forecasts` refuses to prune when skill is older than what it would delete. |
+| Promote or shadow the fitted models | 20 | **stop (fold)** | The price reads only `v_model_promoted` (`state = 'promoted'`, `probability_engine.py:485`). Live: 392 rows, 0 promoted (197 stale, 195 shadow). Nothing can be promoted while `TRAINS_ONLY_ON_ADVANCE_INFORMATION = False` (`weather_model.py:282`, `model_promotion.py:280`). The pages that show a city's promotion state (`v_model_disagreement`: `CityCards.tsx`, `Reasoning.tsx`) would keep showing the last night's state. |
+| Rebuild the early record | 5 | keep | |
+| Freeze settled city-days | 95 | keep | scoring |
+| Re-fit calibration map | 22 | **stop (fold)** | The price applies the map only when `applies` is true (`probability_engine.py:124-127`). Live: `applies` false, T 1.141. **The fit sets `applies` itself when its own validation passes** (`calibration.py:434`), so stopping it also stops an automatic path to the price. WXPredict calibrates itself (R25, phase 3.5). |
+| Learn strategy parameters | 9 | **stop (fold)** | Every loader returns before reading `strategy_params` while `strategy_learning.enabled` is false (`learned.py`, `city_clusters.py:262`, `market_anchor.py:384`, `belief.py:255`). Live: false. s2 and s10 do not read the table. |
+| Fit forecast post-processing | 15 | keep | 2 of 399 cells applied (live), so it reaches the price |
+| Fit the intraday trajectory | 153 | **stop (fold)** | The price reads `v_city_trajectory_now` where `trajectory_applied` (`probability_engine.py:739-746`). Live: 0 of 1,176 cells applied. **A cell is applied by the fit's own walk-forward gate, with no switch** (`trajectory.py`, `walk_forward.gate`), so stopping it also stops an automatic path to the price. |
+| Derived recompute | 89 | keep | |
+| Station correction per model | 31 | keep | `station_correction_pricing` enabled |
+| The honest station model | 293 (297) | keep, **trim (wave 2)** | `station_mos_pricing` enabled. 23-26 s on 3 nights, 293-313 s on 4; on 1 and 4 Oct it hit its 5-minute timeout and failed the job (its Open-Meteo current-run reads). |
+| Score the station width forward | 15 | keep | the evidence `station_width_pricing` (off) waits on |
+| Replay yesterday's engine decisions | 42 | **keep (Hassan may decide)** | It writes one `ingest_log` row and no program reads it, so by A.3's rule it could stop. It is the nightly live acceptance check of the decision engine (P5.12), and stopping a check is the corner Hassan said not to cut. |
+| Refresh observation trust | 4 | keep | |
+| The hit tournament | 162 | **stop (fold)** | Writes `derived_hit_*` only. Readers: `v_data_freshness` and the mirror; RLS keeps them from the browser; the engine does not read them (`hit_tournament.py`). |
+| Strategy lifecycle, meta-allocator, queued backtests | 3, 3, 1 | keep | The meta-allocator touches the portfolio account: not this build's to change (Rule 6). |
+| Refresh the stored page rows | 14 | keep | |
+
+**What stopping a step also needs.** All five are rows in `clock_expected_jobs` (`measure_skill` too), so a stopped step would read `missing` on every run and turn the watchdog to attention (`20260930001000`: "A step switched off on purpose must have its rows removed here"). Their tables have freshness limits in `ad4_39_freshness.sql` (48 h, 30 h, 200 h), so the docs page would call them stale. A.3 handles both.
+
+**The five stops together:** 366 s a night on the medians (432 s on 5 Oct), about 6-7 billed minutes a night. Estimated; measured after.
+
+**`pipeline_intraday`: 200-228 s, 4 billed a run (3 runs).** Every step keeps a price, the edges, the board or the paper desks. Seconds (median of 3): model forecast 9, band probabilities 40, edges 32, evidence capture 7, paper exits 3, **strategy signals 53**, paper plans 2, paper fill 1, paper settlement 0, confirmations 2, bank ladders 24, page rows 18. The paper-desk steps (exits, signals, plans, fill, settlement) are about 60 s of a run: about one billed minute in four (A.5, D8).
+
+**`tick`: one billed minute a run.** `tick.py` took 20.6-34.4 s; the engine strategies' decisions (the desks of s2, s10, s11, s12) took 2.6-9.6 s of it. Removing them would not change the billed minute (D8).
+
+**`archive_observations`: 885 s, 15 billed (5 Oct).** Every step keeps the archive (the never-delete rule), the mirror or the training record. Longest: export 250 s and the honest training record 244 s; the ensemble record 92 s. Keep; the two records' Open-Meteo waits are wave 2.B.
+
+**`weather_model` (Mondays): 1 billed (5 Oct, 55 s).** Keep: it feeds the engine's model forecast.
+
+**Workflows the clock does not start (A.6).** `paper_fill` (web app), `backtest` and `forecasts` (n8n Relearn, a Run button), `retire_desks` (P.2 needs it), `restore_edge_marks` (a one-off, ran twice on 29 Sep), `live_weather` (last run 5 Sep, no dispatcher found), `verify_resolution_source` (never run, no dispatcher found). A workflow nobody starts bills nothing, so A.6 saves 0 minutes: it is housekeeping only.
+
+**CI (A.2), measured.** October to 5 Oct 16:43Z: `tests.yml` 72 runs, 347 billed (53 pull request, 19 push to main before #313); `web.yml` 44 runs, 88 billed. Replaying the path rules over the 72 test runs with local git (each PR run's diff from its merge base, each push's own commit):
+- **(b) docs only:** 2 PR runs (10 billed) and 2 pushes (11 billed) touched nothing a test reads. The suite reads 8 files under `docs/` (traced, below); not `PLAN_PROGRESS.md`, this document or the root `*.md`.
+- **(a) the contracts:** 12 of the 51 code PR runs touched nothing the contracts read. **But since #302 the contracts run beside pytest, and pytest is the longer leg** (job 111872816946: the paired step 211 s; setup-node 6 s and `npm ci` 1 s). Skipping them saves about 7 s a run, which rarely changes a billed minute. The ~105 s this step assumed is the job before #302.
+- **What the suites read, traced:** pytest with an audit hook (3,429 passed, 155 s locally) opened 1,675 repo files, 8 of them in `docs/`. The contracts with an `fs` hook read 299 paths, all under `supabase/migrations`, `sql`, `tests/database` and `data/repairs/2026-09-29-day-features`.
 
 ### 3.7 The paper desks: not visible, not trading
 
@@ -1018,12 +1068,15 @@ Updated in every PR.
 
 | step | state | evidence |
 |---|---|---|
-| D0 (this document) | waiting for Hassan | |
-| D1 (minutes) | revamp first (Hassan, 5 Oct); overage margin still open. 941 billed to 5 Oct 16:04Z by the jobs API; GitHub showed 1,065 of 3,000 | jobs API; GitHub billing, 5 Oct |
-| Wave A (A.1-A.7, the Actions revamp) | todo (approved by Hassan 5 Oct; costs measured in section 3.6) | |
+| D0 (this document) | **approved** (Hassan, 5 Oct: "D0: approved.") | chat, 5 Oct |
+| D3 (`single-runs-api.open-meteo.com`) | **allowed** (Hassan, 5 Oct). One request from this sandbox, 5 Oct ~17:00Z: HTTP 200 in 0.81 s, ECMWF IFS 0.25 run 4 Oct 00Z at Heathrow, hourly from the run time | curl, 5 Oct |
+| D4 (interim engine patch) | **none** (Hassan, 5 Oct: "no interim patch to the engine") | chat, 5 Oct |
+| D8 (the engine strategies' desks) | **keep them running as they are until G5**; they are 5.6's comparison. Their share of the minutes is measured in A.1 (tick: 0 billed; intraday: about 1 of 4 billed a run) and goes to Hassan in A.5 if it matters | chat, 5 Oct; section 3.6 |
+| D1 (minutes) | **wave A first; overage allowed up to 400 minutes in October as insurance, the goal still under 3,000** (Hassan, 5 Oct). 941 billed to 5 Oct 16:04Z by the jobs API; GitHub showed 1,065 of 3,000 | chat, 5 Oct; jobs API |
+| Wave A (A.1-A.7, the Actions revamp) | **A.1 done 5 Oct**: every step classified (section 3.6, "A.1 result"). Five stops for A.3 (promotion, calibration, strategy learning, trajectory, hit tournament: about 6-7 billed a night, estimated); skill and the engine replay kept. A.2's contracts half measured at about 7 s a run (not the 105 s assumed). A.2-A.7 todo | section 3.6 |
 | Wave 0 (0.1-0.4) | todo | |
 | Wave P (P.1-P.5, the paper desks) | todo. Diagnosis measured 5 Oct: the API works; the page opens on an empty desk; 0 BUY in 11,591 decisions since 30 Sep | section 3.7 |
-| D5 (the eight flat ledgers) | waiting; all eight pass the refusal checks on 5 Oct | section 3.7 |
+| D5 (the eight flat ledgers) | **retire s1, s3-s9, export first, through P.2's targeted mode; never the desks of s2, s10, s11, s12 or the Portfolio desk** (Hassan, 5 Oct). All eight passed the refusal checks on 5 Oct | chat, 5 Oct; section 3.7 |
 | Phase 1 (sources, table) | built, PR #314 open, CI green on `b80b2a7` | `docs/WXPREDICT.md`, `table_meta.json` |
 | 1.1 (R37: 2 review findings) | todo (verified: 89 of 24,518 station days fail the rule) | |
 | G1 / D2 | waiting | |
