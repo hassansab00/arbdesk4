@@ -13,6 +13,11 @@ Three stages, in this order, never fused:
     python tools/retire_desks.py retire    # only if the export is on origin/main: retire each
                                            # desk, then disable s1-s9 with the reason on record
 
+    python tools/retire_desks.py retire --strategies s1_x,s3_y
+                                           # TARGETED (WXPredict build P.2): retire only the
+                                           # desks of the listed strategies, each of which must
+                                           # already be switched off; nothing else is touched
+
 `retire` refuses unless the manifest and every file it names are on the
 remote branch. A local commit is not an archive: the runner that made it can
 be discarded (plan P1.5 found exactly that gap in the observation archive).
@@ -196,7 +201,7 @@ def verify(directory, against_live=True):
     return not problems
 
 
-def retire(directory, reason):
+def retire(directory, reason, strategies=None):
     from common import rest, rpc
     manifest, problems = check_manifest(directory)
     if problems:
@@ -205,6 +210,8 @@ def retire(directory, reason):
     paths = [f"{rel}/{MANIFEST}"] + [f"{rel}/{e['file']}" for e in manifest["files"].values()]
     if not on_remote(paths):
         raise SystemExit("the export is not on origin/main yet; nothing retired")
+    if strategies is not None:
+        return retire_listed(strategies, reason, rest, rpc)
 
     desks = rest("paper_accounts", [("select", "account_id,name,status"), ("order", "created_at")])
     for d in desks:
@@ -224,12 +231,74 @@ def retire(directory, reason):
         raise SystemExit("acceptance failed")
 
 
+# A strategy id as the strategies table spells it: s1_buy_low_sell_signal.
+STRATEGY_ID = re.compile(r"^s[0-9]+_[a-z0-9_]+$")
+
+
+def parse_strategies(text):
+    """The --strategies list: comma-separated ids, each well formed, no repeats."""
+    ids = [s.strip() for s in (text or "").split(",") if s.strip()]
+    bad = [s for s in ids if not STRATEGY_ID.match(s)]
+    if not ids or bad:
+        raise SystemExit(f"--strategies needs comma-separated strategy ids; refused: {bad or 'an empty list'}")
+    if len(set(ids)) != len(ids):
+        raise SystemExit(f"--strategies names a strategy twice: {ids}")
+    return ids
+
+
+def retire_listed(strategies, reason, rest, rpc):
+    """WXPredict build P.2 (D5, Hassan 5 Oct): retire the desks of the listed
+    strategies and nothing else.
+
+    Every listed strategy must exist and already be switched off; one that is
+    switched on is refused by name and NOTHING is retired. The strategies are
+    left as they are (no set_strategies_enabled: they are off already), and
+    every other desk - the Portfolio desk, the desks of the strategies still
+    running - must read the same status afterwards as before.
+    """
+    known = {s["strategy_id"]: s["enabled"]
+             for s in rest("strategies", [("select", "strategy_id,enabled")])}
+    unknown = [s for s in strategies if s not in known]
+    switched_on = [s for s in strategies if known.get(s)]
+    if unknown or switched_on:
+        raise SystemExit("refused, nothing retired: "
+                         + "; ".join(x for x in (f"no such strategy {unknown}" if unknown else "",
+                                                 f"switched on {switched_on}" if switched_on else "") if x))
+
+    desks = rest("paper_accounts", [("select", "account_id,name,status,strategy_id"), ("order", "created_at")])
+    listed = [d for d in desks if d.get("strategy_id") in strategies]
+    without = [s for s in strategies if not any(d.get("strategy_id") == s for d in listed)]
+    if without:
+        raise SystemExit(f"refused, nothing retired: no desk for {without}")
+    others = {d["account_id"]: d["status"] for d in desks if d.get("strategy_id") not in strategies}
+
+    for d in listed:
+        out = rpc("paper_desk_retire", {"p_account_id": d["account_id"], "p_reason": reason})
+        print(f"{d['name']}: {'already retired' if out.get('already') else 'retired'}")
+
+    after = rest("paper_accounts", [("select", "account_id,name,status,strategy_id")])
+    left = [d["name"] for d in after if d.get("strategy_id") in strategies and d["status"] != "retired"]
+    moved = [d["name"] for d in after if d["account_id"] in others and d["status"] != others[d["account_id"]]]
+    ids = {d["account_id"] for d in listed}
+    live = [o for o in rest("paper_orders", [("select", "order_id,account_id"), ("status", "in.(queued,working)")])
+            if o.get("account_id") in ids]
+    print(f"acceptance: {len(listed) - len(left)} of {len(listed)} listed desk(s) retired, "
+          f"{len(moved)} other desk(s) changed, {len(live)} live order(s) on the listed desks")
+    if left or moved or live:
+        raise SystemExit(f"acceptance failed: not retired {left}; other desks changed {moved}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("stage", choices=["export", "verify", "retire"])
     ap.add_argument("--dir", help="export directory (default: the newest under data/archive/paper_desks)")
     ap.add_argument("--reason", default=REASON)
+    ap.add_argument("--strategies", help="retire only these strategies' desks (comma-separated ids, "
+                                         "each switched off already); the strategies are left as they are")
     args = ap.parse_args()
+    strategies = parse_strategies(args.strategies) if args.strategies is not None else None
+    if strategies is not None and args.stage != "retire":
+        raise SystemExit("--strategies applies to retire only: the export is always every desk's record")
     if args.stage == "export":
         directory = export(dt.date.today().isoformat())
         if not verify(directory):
@@ -240,7 +309,7 @@ def main():
         raise SystemExit(f"no export under {OUT}")
     if args.stage == "verify":
         raise SystemExit(0 if verify(directory) else 1)
-    retire(directory, args.reason)
+    retire(directory, args.reason, strategies)
 
 
 if __name__ == "__main__":
