@@ -159,10 +159,11 @@ python3 tools/gen_provenance.py
 python3 tools/gen_sql_owner.py
 ```
 
-The `paths:` block of `.github/workflows/tests.yml` is generated too: a pull
-request that changes only documents no test reads does not run the suite. If
-a test starts reading a document, `tests/conftest.py` fails the run; then run
-`python3 tools/ci_paths.py --write` and commit `tests.yml` with the change.
+`.github/ci-paths.txt` is generated too: a pull request that changes only
+documents no test reads skips the suites (the `pytest` job still reports). If a
+test, or a process it starts, reads a document on that list,
+`tests/conftest.py` fails the run; then run `python3 tools/ci_paths.py --write`
+and commit `.github/ci-paths.txt` with the change.
 
 ## Every .sql file must be listed in sql/INSTALL_ORDER.txt
 
