@@ -31,7 +31,27 @@
 -- 3. v_calibration_status gains 'stopped' (sql/ad4_78_calibration_status.sql):
 --    without it the Predictive page would read "Stale" in red over a step
 --    stopped on purpose. It is known from clock_expected_jobs, the record of
---    what a dispatched run owes. The view stays owner-rights, as before.
+--    what a dispatched run owes, and it is never shown while the stored map
+--    still claims `applies`. The view stays owner-rights, as before.
+-- 4. and 5. STOPPING A FITTER DOES NOT STOP WHAT IT LAST WROTE (Codex on #316).
+--    Two of the five write a switch the price reads on its own, with no
+--    setting between them and the engine:
+--      calibration  settings.calibration_map.applies (probability_engine
+--                   ._calibration_map applies the stored map while it is true)
+--      trajectory   derived_trajectory.applied (v_trajectory_applied ->
+--                   v_city_trajectory_now, read with trajectory_applied=true)
+--    Both were off when this was written (5 Oct 20:20Z: applies false, 0 of
+--    1,176 cells applied), but a night that runs before this lands could turn
+--    one on and nothing would ever turn it off. So whatever is on is switched
+--    off here, in the same transaction, and the row says so: the map keeps
+--    every field and records `stopped` (by, at, applies_before); each cell's
+--    reason is prefixed. Nothing is deleted. A restarted step decides afresh
+--    on its next fit (calibration.py rewrites the map; trajectory.py
+--    overwrites every cell with upsert_replace). The other three have no
+--    such path, read live 5 Oct 20:22Z: v_model_promoted has 0 rows and
+--    nothing can be promoted while TRAINS_ONLY_ON_ADVANCE_INFORMATION is
+--    False; settings.strategy_learning is {"enabled": false} and no script
+--    writes it; nothing that prices reads derived_hit_*.
 --
 -- Re-runnable. tests/database/stopped-fits.cjs holds it.
 
@@ -64,11 +84,22 @@ with latest as (
    where l.job = 'calibration'
    order by l.logged_at desc
    limit 1
+),
+-- Stopped: not expected to run, and no stored map claiming `applies` (any
+-- value but false or null counts as claiming it).
+fitter as (
+  select not exists (select 1 from public.clock_expected_jobs e
+                      where e.file = 'pipeline_daily.yml' and e.job = 'calibration')
+     and not exists (select 1 from public.settings s
+                      where s.key = 'calibration_map'
+                        and coalesce(s.value -> 'applies', 'false'::jsonb)
+                            not in ('false'::jsonb, 'null'::jsonb))   as stopped
 )
 select
   l.logged_at                                            as last_run_at,
   l.status                                               as run_status,
-  coalesce((l.detail ->> 'applies')::boolean, false)     as applies,
+  coalesce((l.detail ->> 'applies')::boolean, false)
+    and not f.stopped                                    as applies,
   l.detail ->> 'method'                                  as method,
   (l.detail ->> 'settlement_dates')::integer             as settlement_dates,
   (l.detail ->> 'complete_ladders')::integer             as complete_ladders,
@@ -86,9 +117,7 @@ select
     when l.detail ? 'validation_brier_after'                then false
   end                                                    as validation_improves,
   case
-    when not exists (select 1 from public.clock_expected_jobs e
-                      where e.file = 'pipeline_daily.yml' and e.job = 'calibration')
-                                                                     then 'stopped'
+    when f.stopped                                                   then 'stopped'
     when l.status = 'attention'                                      then 'failed'
     when l.logged_at < now() - interval '36 hours'                   then 'stale'
     when coalesce((l.detail ->> 'applies')::boolean, false)          then 'applied'
@@ -97,6 +126,7 @@ select
     else 'fitted_not_applied'
   end                                                    as state
 from latest l
+cross join fitter f
 union all
 -- A desk that has never calibrated must say so rather than return no rows,
 -- because an empty result and a healthy one look identical to a page that
@@ -109,3 +139,31 @@ comment on view public.v_calibration_status is
   'One row: what the newest calibration run did, whether its map is in force, and what it is waiting on. Distinguishes a job that never ran from one that ran and correctly declined to apply.';
 
 grant select on public.v_calibration_status to anon, authenticated, service_role;
+
+-- 4. -------------------------------------------------------------------------
+-- settings is created by sql/ad4_00_preflight.sql; the view above reads it, so
+-- it is required here too (the paper contracts' fixture carries it).
+update public.settings
+   set value = value || jsonb_build_object(
+         'applies', false,
+         'stopped', jsonb_build_object(
+           'by', 'WXPredict build, wave A.3 (migration 20261005190000): the nightly refit was switched off',
+           'at', now(),
+           'applies_before', value -> 'applies')),
+       updated_at = now()
+ where key = 'calibration_map'
+   and coalesce(value -> 'applies', 'false'::jsonb) not in ('false'::jsonb, 'null'::jsonb);
+
+-- 5. -------------------------------------------------------------------------
+-- derived_trajectory is created by sql/ad4_86_trajectory.sql, which the paper
+-- contracts never apply.
+do $$
+begin
+  if to_regclass('public.derived_trajectory') is not null then
+    update public.derived_trajectory
+       set applied = false,
+           reason  = 'Stopped (WXPredict build, wave A.3): applied when its nightly fit was switched off, so no longer priced. '
+                     || reason
+     where applied;
+  end if;
+end $$;

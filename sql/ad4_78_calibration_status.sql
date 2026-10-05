@@ -37,20 +37,27 @@
 --   fitted_not_applied   gates met, fit made, and it STILL does not apply -
 --                        the validation gain was not there
 --   applied              in force and pricing
---   stopped              switched off on purpose: the nightly refit no longer
---                        runs (WXPredict build, wave A.3; no refit had
---                        applied since 19 Sep, ingest_log). Known because
---                        pipeline_daily is no longer expected to log
---                        `calibration` (clock_expected_jobs),
---                        which is the record of what a dispatched run owes.
---                        Without it the page would read "stale" in red over a
---                        step stopped on purpose.
+--   stopped              switched off on purpose, and no map in force: the
+--                        nightly refit no longer runs (WXPredict build, wave
+--                        A.3) - pipeline_daily is no longer expected to log
+--                        `calibration` (clock_expected_jobs, the record of
+--                        what a dispatched run owes) - AND the stored map in
+--                        settings.calibration_map does not claim `applies`.
+--                        Both, because stopping the fitter does not stop the
+--                        last map it wrote: probability_engine reads the
+--                        stored map, not this job (Codex on #316). A stored
+--                        map still claiming `applies` is reported by the
+--                        states above, exactly as before the stop, never as
+--                        "stopped". Without this state the page would read
+--                        "stale" in red over a step stopped on purpose.
 --
 -- Reads ingest_log because that is where calibration.py records what it did.
 -- No second opinion about whether a map applies: `applies` is the flag the
--- fitting run itself wrote.
+-- fitting run itself wrote. The one exception is 'stopped', which reads the
+-- stored map as well, so a stopped refit is never shown over a map in force;
+-- in that state `applies` is false, because 'stopped' requires it.
 --
--- RUN ORDER: after ad4_00_preflight.sql (ingest_log) and migration
+-- RUN ORDER: after ad4_00_preflight.sql (ingest_log, settings) and migration
 -- 20260930001000 (clock_expected_jobs). Re-runnable.
 -- ===========================================================================
 
@@ -61,11 +68,22 @@ with latest as (
    where l.job = 'calibration'
    order by l.logged_at desc
    limit 1
+),
+-- Stopped: not expected to run, and no stored map claiming `applies` (any
+-- value but false or null counts as claiming it).
+fitter as (
+  select not exists (select 1 from public.clock_expected_jobs e
+                      where e.file = 'pipeline_daily.yml' and e.job = 'calibration')
+     and not exists (select 1 from public.settings s
+                      where s.key = 'calibration_map'
+                        and coalesce(s.value -> 'applies', 'false'::jsonb)
+                            not in ('false'::jsonb, 'null'::jsonb))   as stopped
 )
 select
   l.logged_at                                            as last_run_at,
   l.status                                               as run_status,
-  coalesce((l.detail ->> 'applies')::boolean, false)     as applies,
+  coalesce((l.detail ->> 'applies')::boolean, false)
+    and not f.stopped                                    as applies,
   l.detail ->> 'method'                                  as method,
   (l.detail ->> 'settlement_dates')::integer             as settlement_dates,
   (l.detail ->> 'complete_ladders')::integer             as complete_ladders,
@@ -83,9 +101,7 @@ select
     when l.detail ? 'validation_brier_after'                then false
   end                                                    as validation_improves,
   case
-    when not exists (select 1 from public.clock_expected_jobs e
-                      where e.file = 'pipeline_daily.yml' and e.job = 'calibration')
-                                                                     then 'stopped'
+    when f.stopped                                                   then 'stopped'
     when l.status = 'attention'                                      then 'failed'
     when l.logged_at < now() - interval '36 hours'                   then 'stale'
     when coalesce((l.detail ->> 'applies')::boolean, false)          then 'applied'
@@ -94,6 +110,7 @@ select
     else 'fitted_not_applied'
   end                                                    as state
 from latest l
+cross join fitter f
 union all
 -- A desk that has never calibrated must say so rather than return no rows,
 -- because an empty result and a healthy one look identical to a page that

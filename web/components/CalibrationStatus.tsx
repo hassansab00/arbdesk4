@@ -62,7 +62,7 @@ const LOOK: Record<string, { label: string; tone: string; means: string }> = {
   stopped: {
     label: "Stopped",
     tone: "text-muted border-border",
-    means: "The nightly refit was switched off by the WXPredict build (wave A.3). No refit had applied since 19 Sep (the last map in force was a Platt fit, 16-19 Sep), so raw probabilities price, as they did before. WXPredict calibrates itself.",
+    means: "The nightly refit was switched off by the WXPredict build (wave A.3), and no fitted map is in force, so raw probabilities price. WXPredict calibrates itself.",
   },
   never_run: {
     label: "Never run",
