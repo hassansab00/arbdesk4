@@ -109,9 +109,24 @@ def io(monkeypatch):
         def json(self):
             return self.rows
 
+    w["corrected"] = {}             # (city, date) -> derived_corrected_forecast row; none by default
+    w["settings"] = []              # settings rows for station_correction_pricing
+    w["sd_asked"] = []
+
     def get(url, headers=None, params=None, timeout=None):
-        assert url == "https://x.supabase.co/rest/v1/band_probabilities"
         assert headers["apikey"] == "k" and 1.0 <= timeout <= 8.0
+        table = url.rsplit("/", 1)[1]
+        if table in ("derived_corrected_forecast", "settings"):
+            w["sd_asked"].append(dict(params, _table=table, _timeout=timeout))
+            data = w["corrected"] if table == "derived_corrected_forecast" else w["settings"]
+            if isinstance(data, Exception):
+                return Answer(data)
+            if table == "settings":
+                return Answer(data)
+            cities = params["city_key"][len("in.("):-1].split(",")
+            dates = params["for_date"][len("in.("):-1].split(",")
+            return Answer([r for (c, d), r in data.items() if c in cities and d in dates])
+        assert url == "https://x.supabase.co/rest/v1/band_probabilities"
         w["asked"].append(dict(params, _timeout=timeout))
         ids = params["band_id"][len("in.("):-1].split(",")
         if isinstance(w["calls"], Exception):
@@ -162,7 +177,10 @@ def test_one_row_per_same_day_call_with_the_inputs_it_was_built_from(io):
     assert row["probs"]["b1"] == round(0.03 * atom, 6)
     assert abs(sum(row["probs"].values()) - 1) < 1e-4 and row["top_band_id"] in row["probs"]
     assert counts == {"version": "da_floor:v1", "due": 1, "written": 1, "skipped": {},
-                      "seconds": counts["seconds"]}
+                      "seconds": counts["seconds"],
+                      "sd_corr": {"version": "sd_corr:v1", "due": 1, "written": 0,
+                                  "skipped": {"no_live_corrected_row": 1}}}
+    assert all(row[k] is None for k in vs.CORRECTED_INPUTS), "a da_floor row names no corrected inputs"
     # the last pricing before London's own midnight (BST: 23:00Z the day before)
     (asked,) = io["asked"]
     assert asked["computed_at"] == "lt.2026-10-04T23:00:00+00:00"
@@ -193,6 +211,7 @@ def test_every_skip_is_counted_by_reason(io):
     assert io["written"] == []
     assert counts["skipped"] == {"no_day_ahead_call": 1, "no_market_or_timezone": 1}
     assert counts["due"] == 2 and counts["written"] == 0
+    assert counts["sd_corr"]["skipped"] == {"no_live_corrected_row": 1, "no_market_or_timezone": 1}
 
 
 def test_the_lookup_timeout_is_cut_to_the_time_left(io):
@@ -294,3 +313,243 @@ def test_lost_names_failures_and_the_clock_not_the_registered_exclusions():
     assert vs.lost({"skipped": {"no_day_ahead_call": 4, "no_bands": 1}}) is None
     assert vs.lost({"error": "RuntimeError: refused"}) == "RuntimeError: refused"
     assert vs.lost({"skipped": {"out_of_time": 2, "no_bands": 1}}) == "rows not captured: {'out_of_time': 2}"
+    # sd_corr's own losses count too; its registered exclusions do not
+    sd_excluded = {"no_live_corrected_row": 3, "corrected_row_older_than_max_age": 1, "live_row_without_width": 1}
+    assert vs.lost({"skipped": {}, "sd_corr": {"skipped": sd_excluded}}) is None
+    assert vs.lost({"skipped": {}, "sd_corr": {"error": "RuntimeError: 401"}}) == "sd_corr:v1: RuntimeError: 401"
+    assert vs.lost({"skipped": {}, "sd_corr": {"skipped": {"out_of_time": 2}}}) == \
+        "rows not captured: {'sd_corr:out_of_time': 2}"
+
+
+# --------------------------------------------------------------------------
+# sd_corr:v1, the engine's station-corrected path on the day itself
+# (docs/SD_CORR_PREREG.md)
+# --------------------------------------------------------------------------
+SD_PREREG = ROOT / "docs" / "SD_CORR_PREREG.md"
+
+
+def _corrected(city="london", hours_ago=3.0, centre=21.6, width=0.9, lead=0):
+    at = (dt.datetime.now(UTC) - dt.timedelta(hours=hours_ago)).isoformat()
+    return {"city_key": city, "for_date": "2026-10-05", "lead_days": lead, "combined_c": centre,
+            "width_c": width, "version": "station-correction:2026-10-05:aaa0000001",
+            "width_version": "station-width:2026-10-05:bbb0000001", "computed_at": at, "n_sources": 7}
+
+
+def test_sd_corr_one_row_beside_da_floor_with_the_live_corrected_inputs(io):
+    io["corrected"][("london", "2026-10-05")] = live = _corrected()
+    counts = _record(io, [_served("london", "noon")])
+    (_t, da_rows, _c), (table, sd_rows, conflict) = io["written"]
+    assert ([r["variant"] for r in da_rows], [r["variant"] for r in sd_rows]) == (["da_floor"], ["sd_corr"]), \
+        "one insert per variant, da_floor's first"
+    assert (table, conflict) == (vs.TABLE, vs.ON_CONFLICT)
+    by = {"da_floor": da_rows[0], "sd_corr": sd_rows[0]}
+    assert set(by["da_floor"]) == set(by["sd_corr"]), "each names the other's inputs, as null"
+    assert all(by["da_floor"][k] is None for k in vs.CORRECTED_INPUTS)
+    sd = by["sd_corr"]
+    assert sd["variant_version"] == "sd_corr:v1" and sd["engine_version"] == "git:abc" and sd["station"] == "EGLL"
+    assert (sd["corrected_centre_c"], sd["corrected_width_c"], sd["floor_c"]) == (21.6, 0.9, 20.4)
+    assert (sd["corrected_version"], sd["corrected_width_version"], sd["corrected_computed_at"],
+            sd["corrected_lead_days"], sd["corrected_n_sources"]) == (
+        live["version"], live["width_version"], live["computed_at"], 0, 7)
+    assert all(sd[k] is None for k in vs.DAY_AHEAD_INPUTS)
+    assert (sd["q_down"], sd["q_up"]) == (0.03, 0.06), "the same q as the served call"
+    assert sd["probs"] == vs.ladder(21.6, 0.9, "C", BANDS, 20.4, 0.03, 0.06)
+    assert counts["sd_corr"] == {"version": "sd_corr:v1", "due": 1, "written": 1, "skipped": {}}
+    # two reads: the corrected rows and their max age, each one bounded attempt
+    assert [a["_table"] for a in io["sd_asked"]] == ["derived_corrected_forecast", "settings"]
+    first = io["sd_asked"][0]
+    assert (first["select"], first["city_key"], first["for_date"]) == (
+        vs.CORRECTED_SELECT, "in.(london)", "in.(2026-10-05)")
+    assert io["sd_asked"][1]["key"] == "eq.station_correction_pricing"
+
+
+def test_sd_corr_reads_the_row_at_the_engine_s_max_age_whatever_the_switch_says(io):
+    io["settings"] = [{"value": {"enabled": False, "max_age_hours": 6}}]
+    io["corrected"][("london", "2026-10-05")] = _corrected(hours_ago=7)
+    counts = _record(io, [_served("london", "noon")])
+    assert counts["sd_corr"]["skipped"] == {"corrected_row_older_than_max_age": 1}
+    io["settings"] = [{"value": {"enabled": False, "max_age_hours": 8}}]
+    counts = _record(io, [_served("london", "morning")])
+    assert counts["sd_corr"]["written"] == 1, "the pricing switch off does not stop the test"
+    # absent: the engine's default, 36 h
+    io["settings"] = []
+    io["corrected"][("london", "2026-10-05")] = _corrected(hours_ago=35.9)
+    assert _record(io, [_served("london", "prepeak_2h")])["sd_corr"]["written"] == 1
+    io["corrected"][("london", "2026-10-05")] = _corrected(hours_ago=36.1)
+    assert _record(io, [_served("london", "prepeak_1h")])["sd_corr"]["skipped"] == {
+        "corrected_row_older_than_max_age": 1}
+
+
+def test_sd_corr_skips_are_counted_by_reason(io):
+    io["corrected"][("london", "2026-10-05")] = dict(_corrected(), width_c=None, width_version=None)
+    io["corrected"][("paris", "2026-10-05")] = _corrected(city="paris", hours_ago=-1)   # computed after now
+    counts = _record(io, [_served("london", "noon"), _served("paris", "noon"),
+                          dict(_served("london", "noon"), city_key="rome")])
+    assert counts["sd_corr"]["skipped"] == {"live_row_without_width": 1, "no_live_corrected_row": 1,
+                                            "no_market_or_timezone": 1}
+    assert counts["sd_corr"]["due"] == 3 and vs.lost(counts) is None, "registered exclusions, not losses"
+
+
+def test_the_live_row_rule():
+    now = dt.datetime(2026, 10, 5, 12, tzinfo=UTC)
+    row = {"combined_c": 20.0, "width_c": 1.0, "width_version": "w", "computed_at": "2026-10-04T05:00:00+00:00"}
+    assert vs.corrected_live(row, now, 36) == (row, None)                       # 31 h old
+    assert vs.corrected_live(row, now, 30) == (None, "corrected_row_older_than_max_age")
+    assert vs.corrected_live(None, now) == (None, "no_live_corrected_row")
+    assert vs.corrected_live(dict(row, computed_at="2026-10-05T12:00:01+00:00"), now) == (
+        None, "no_live_corrected_row")
+    assert vs.corrected_live(dict(row, width_c=0), now) == (None, "live_row_without_width")
+    assert vs.corrected_live(dict(row, width_version=None), now) == (None, "live_row_without_width")
+
+
+def test_a_failed_corrected_read_loses_sd_corr_s_rows_and_never_da_floor_s(io):
+    io["corrected"] = RuntimeError("401 PGRST303")
+    counts = _record(io, [_served("london", "noon")])
+    (table, rows, conflict), = io["written"]
+    assert [r["variant"] for r in rows] == ["da_floor"]
+    assert counts["sd_corr"]["error"] == "RuntimeError: 401 PGRST303"
+    assert vs.lost(counts) == "sd_corr:v1: RuntimeError: 401 PGRST303", "the tick turns to attention"
+    # the max age is read, never guessed: a failed settings read loses the rows too
+    io["corrected"] = {("london", "2026-10-05"): _corrected()}
+    io["settings"] = RuntimeError("read timed out")
+    counts = _record(io, [_served("london", "morning")])
+    assert counts["sd_corr"]["error"] == "RuntimeError: read timed out"
+
+
+def test_a_refused_write_of_one_variant_never_costs_the_other_its_rows(io, monkeypatch):
+    """da_floor's test was running before sd_corr's: an sd_corr row the table
+    refuses must not take da_floor's rows with it (nor the other way)."""
+    io["corrected"][("london", "2026-10-05")] = _corrected()
+    common = importlib.import_module("common")
+    inner = common._post
+
+    def refusing(variant):
+        def post(url, headers=None, params=None, data=None, timeout=None):
+            if any(r["variant"] == variant for r in json.loads(data)):
+                raise RuntimeError("new row violates check constraint")
+            return inner(url, headers=headers, params=params, data=data, timeout=timeout)
+        return post
+
+    monkeypatch.setattr(common, "_post", refusing("sd_corr"))
+    counts = _record(io, [_served("london", "noon")])
+    assert [[r["variant"] for r in rows] for _t, rows, _c in io["written"]] == [["da_floor"]]
+    assert counts["written"] == 1 and "error" not in counts
+    assert counts["sd_corr"]["written"] == 0
+    assert counts["sd_corr"]["error"] == "RuntimeError: new row violates check constraint"
+    assert vs.lost(counts) == "sd_corr:v1: RuntimeError: new row violates check constraint"
+
+    io["written"].clear()
+    monkeypatch.setattr(common, "_post", refusing("da_floor"))
+    counts = _record(io, [_served("london", "morning")])
+    assert [[r["variant"] for r in rows] for _t, rows, _c in io["written"]] == [["sd_corr"]]
+    assert counts["error"] == "RuntimeError: new row violates check constraint"
+    assert counts["written"] == 0 and counts["sd_corr"]["written"] == 1
+
+
+def test_the_sd_corr_write_is_not_started_with_under_a_second_left(io, monkeypatch):
+    io["corrected"][("london", "2026-10-05")] = _corrected()
+    inner = vs.write
+
+    def slow(rows, timeout_s):
+        n = inner(rows, timeout_s)
+        time.sleep(1.7)
+        return n
+    monkeypatch.setattr(vs, "write", slow)
+    counts = _record(io, [_served("london", "noon")], deadline=time.monotonic() + 2.5)
+    assert [[r["variant"] for r in rows] for _t, rows, _c in io["written"]] == [["da_floor"]]
+    assert counts["written"] == 1 and counts["sd_corr"]["skipped"] == {"out_of_time": 1}
+    assert vs.lost(counts) == "rows not captured: {'sd_corr:out_of_time': 1}"
+
+
+def test_sd_corr_reads_stop_short_of_the_deadline(io, monkeypatch):
+    def lookup(*a, **k):
+        time.sleep(0.3)
+        return io["calls"]["b1"]
+    monkeypatch.setattr(vs, "day_ahead_call", lookup)
+    io["corrected"][("london", "2026-10-05")] = _corrected()
+    counts = _record(io, [_served("london", "noon")], deadline=time.monotonic() + 2.1)
+    assert io["sd_asked"] == [] and counts["sd_corr"]["skipped"] == {"out_of_time": 1}
+    assert vs.lost(counts) == "rows not captured: {'sd_corr:out_of_time': 1}"
+    _record(io, [_served("london", "morning")], deadline=time.monotonic() + 4.0)
+    assert io["sd_asked"] and all(1.0 <= a["_timeout"] <= 3.0 for a in io["sd_asked"])
+
+
+def test_a_dry_run_writes_neither_variant(io):
+    io["corrected"][("london", "2026-10-05")] = _corrected()
+    counts = _record(io, [_served("london", "noon")], dry_run=True)
+    assert io["written"] == [] and counts["would_write"] == 1 and counts["sd_corr"]["would_write"] == 1
+
+
+def test_the_live_sd_corr_ladder_is_the_replay_s_on_every_recorded_row():
+    """On P1.1's rows, the row the capture would have read at each decision
+    (the newest computation before it, as the table held it) gives the same
+    verdict as tools/sd_corrected_replay.live_row, and the same ladder as its
+    sd_corr to the served rounding."""
+    import sd_corrected_replay as sdr
+    frozen = sdr.corrected_rows(sdr.load_frozen(ROOT / "data" / "eval" / "sd_corr" / "corrected_rows.json.gz"))
+    same = {"no_row_computed_before": "no_live_corrected_row",
+            "row_older_than_max_age": "corrected_row_older_than_max_age"}
+    compared = excluded = 0
+    for r in _p11_rows():
+        if r.get("da_centre") is None or r.get("da_sigma") is None:
+            continue
+        at = sdr._ts(r["decided_at"])
+        held = [x for x in frozen.get((r["city"], r["date"]), []) if x["computed_at"] <= at]
+        table_row = None
+        if held:
+            b = max(held, key=lambda x: x["computed_at"])
+            table_row = {"combined_c": b["centre"], "width_c": b["width"], "width_version": b["width_version"],
+                         "version": b["version"], "computed_at": b["computed_at"].isoformat(),
+                         "lead_days": b["lead"], "n_sources": b["n_sources"]}
+        got, why = vs.corrected_live(table_row, at, vs.SD_MAX_AGE_H)
+        live, rwhy = sdr.live_row(frozen.get((r["city"], r["date"]), []), r["decided_at"])
+        if live is None:
+            assert got is None and why == same[rwhy], (r["city"], r["date"], r["cp"])
+            excluded += 1
+            continue
+        if live["width"] is None:
+            assert why == "live_row_without_width"
+            excluded += 1
+            continue
+        research = sdr.candidate_variants(r, live)["sd_corr"]
+        q = p11.q_at(r)
+        if q is None:
+            q = ((float(r["q_down"]), float(r["q_up"])) if r.get("q_down") is not None
+                 and r.get("q_up") is not None else (pe.DEFAULT_Q_DOWN, pe.DEFAULT_Q_UP))
+        lad = vs.ladder(got["combined_c"], got["width_c"], r["unit"], r["bands"], r["floor"], *q)
+        assert set(lad) == set(research)
+        assert max(abs(lad[b] - research[b]) for b in lad) <= 5e-7, (r["city"], r["date"], r["cp"])
+        compared += 1
+    assert compared == 1343 and excluded == 301, (compared, excluded)
+
+
+def test_the_sd_corr_pre_registration_names_what_the_code_does():
+    doc = SD_PREREG.read_text()
+    head = doc[:doc.index("## Result")]
+    assert "**Written 5 Oct 2026, before any forward row of this candidate existed.**" in head
+    assert "`sd_corr:v1`" in head and vs.SD_VERSION == "sd_corr:v1" and vs.SD_VARIANT == "sd_corr"
+    assert "`settings.station_correction_pricing.max_age_hours` (36 when absent)" in head
+    assert vs.SD_MAX_AGE_H == 36.0
+    assert "`combined_c`" in head and "`width_c`" in head
+    assert "whatever the pricing switches say" in head
+    assert "`tools/sd_corrected_replay.py`" in head
+
+
+def test_the_table_holds_each_variant_to_its_own_inputs():
+    """tests/database/sd-corr-shadow.cjs runs it; these pin the clauses a review
+    would look for."""
+    sql = (ROOT / "supabase" / "migrations" / "20261005090000_the_same_day_corrected_candidate.sql").read_text()
+    assert "a check\n-- that evaluates to null passes" in sql
+    assert "coalesce(case variant" in sql and "else true end, false));" in sql
+    assert "and corrected_computed_at is not null and corrected_computed_at <= decided_at" in sql
+    for col in vs.CORRECTED_INPUTS:
+        assert f"add column if not exists {col} " in sql, col
+    for col in ("day_ahead_centre_c", "day_ahead_sigma_c", "day_ahead_priced_at"):
+        assert f"alter column {col} drop not null;" in sql
+    # the contract: the variant's own centre and width, still the owner's view
+    assert "coalesce(v.day_ahead_centre_c, v.corrected_centre_c)," in sql
+    assert "coalesce(v.day_ahead_sigma_c, v.corrected_width_c)," in sql
+    assert "create or replace view public.v_prediction_contract with (security_invoker = false) as" in sql
+    assert "'engine_variant', 'sd_corr:v1', 'same day', 'shadow', 'docs/SD_CORR_PREREG.md'" in sql
+    db = json.loads((ROOT / "tests" / "database" / "package.json").read_text())["scripts"]["test"]
+    assert "node sd-corr-shadow.cjs" in db

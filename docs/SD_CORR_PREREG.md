@@ -1,7 +1,8 @@
 # The engine's station-corrected path on the day itself (`sd_corr`): forward test, pre-registration
 
-**Written 5 Oct 2026, before any forward row of this candidate existed.** The capture is not
-built yet; it comes in the next pull request and does what this file says. Scored under
+**Written 5 Oct 2026, before any forward row of this candidate existed.** The capture,
+`scripts/variant_shadow.py` (`sd_corr:v1`, beside `da_floor:v1` in `variant_shadow_checkpoints`), was
+built after this file and before any row, and does what this file says. Scored under
 `fec-v1` (`docs/FORECAST_EVALUATION_CONTRACT.md`), beside `da_floor:v1`
 (`docs/P11_DA_FLOOR_PREREG.md`), whose test this does not change.
 
