@@ -1,6 +1,6 @@
 # WXPredict: the build document
 
-**Status: v2, the final build document, 5 Oct 2026 ~16:30Z, awaiting Hassan's approval. Nothing beyond phase 1 is built until he approves it.**
+**Status: v2.1, the final build document, 5 Oct 2026 ~17:00Z, awaiting Hassan's approval; v2.1 adds wave A (the Actions revamp, which Hassan approved). Nothing beyond phase 1 is built until he approves it.**
 
 This document governs two things: the WXPredict build, and the completion of every other open item on the platform.
 - **Section 3** is the register of every open item, measured on 5 Oct.
@@ -167,7 +167,7 @@ Each row gives an item's state, **measured on 5 Oct 2026 unless it says "per the
 
 | id | item | state | what remains | wave |
 |---|---|---|---|---|
-| R1 | **Actions minutes, October** (Rule 7) | 941 billed minutes from 1 Oct to 5 Oct 16:04Z, over 283 runs (jobs API, each job rounded up). **CI: 419** (tests 331, web 88). **Scheduled: 522** (pipeline_daily 153, tick 113, intraday 105, forecasts 71 before it left the clock on 4 Oct, archive 69, other 11). The cadence since 4 Oct costs about 91 a day at the per-run costs measured 1-5 Oct (tick 24 × 1, intraday 4 × 4, pipeline_daily ~37, archive ~14). That projects to about **3,300 by 31 Oct with no CI at all, over the 3,000 budget**. | Hassan chooses: cut cadence (only P6.1 may), allow paid overage, or both. Then the build's own CI is capped (one push per step, about 25 pushes in total, which is about 125-150 CI minutes, measured as it goes). | 0, Hassan |
+| R1 | **Actions minutes, October** (Rule 7) | 941 billed minutes from 1 Oct to 5 Oct 16:04Z, over 283 runs (jobs API, each job rounded up). **CI: 419** (tests 331, web 88). **Scheduled: 522** (pipeline_daily 153, tick 113, intraday 105, forecasts 71 before it left the clock on 4 Oct, archive 69, other 11). The cadence since 4 Oct costs about 91 a day at the per-run costs measured 1-5 Oct (tick 24 × 1, intraday 4 × 4, pipeline_daily ~37, archive ~14). That projects to about **3,300 by 31 Oct with no CI at all, over the 3,000 budget**. | **Hassan, 5 Oct: revamp the Actions first** (wave A, section 3.6), keeping quality and improving the engines' accuracy. The overage margin is still his to decide (D1). The build's own CI is capped: one push per step, about 25 pushes in total, which is about 125-150 CI minutes, measured as it goes. | A, Hassan |
 | R2 | **Database size** (P1.6) | **575 MB, 114.9% of the 500 MB tier** (`pg_database_size`, 5 Oct). P1.6's record says phases 1-2 done and 3.1-3.3 live. | Measure the largest tables; finish P1.6 phase 3 through the archive (export, verify, commit, prune: never delete); get under the cap with headroom. WXPredict's shadow table must fit the plan. | 2 |
 
 ### 3.2 Jobs warning in the last 48 h (`ingest_log`, 5 Oct ~16:00Z)
@@ -230,6 +230,52 @@ Only one PR is open on GitHub (#314). **Every "PR open" in the record is stale.*
 | R39 | `single-runs-api.open-meteo.com` refused by the network policy | 403 measured | Hassan (D3) |
 | R40 | F3-A, dated checks, F4 (the 30 Sep handoff's items) | **F3-A:** `fec-v1` exists; WXPredict's contract (section 4) extends it. **Dated check B** (1 Oct archive) done 3 Oct per the record. **F4:** the 401s fixed (#292) and minutes decided (#302); the rest are R1-R11 above. | 0 (record) |
 
+### 3.6 The Actions revamp (Hassan, 5 Oct: "revamp the useless inaccurate actions and workflows ... as long as we maintain quality, don't cut corners, and improve the accuracy of the engines")
+
+**What each scheduled workflow costs.** Measured 5 Oct: step times from each workflow's latest successful run (jobs API), schedule from `public.clock_schedule`.
+
+| workflow | when (UTC) | cost | what its output feeds |
+|---|---|---|---|
+| CI `tests.yml` | every push to a PR | ~5 billed min a run (pytest ~148 s + database contracts ~105 s, median of 20 runs, 4 Oct); **331 billed in 1-5 Oct (69 runs)** | quality. It also runs on docs-only and data-only pushes. |
+| CI `web.yml` | PR pushes touching `web/**` | 88 billed in 1-5 Oct (44 runs) | quality |
+| `pipeline_daily` | 04:00 | **36.0 min a run** (run 37264229685) | mixed, see below |
+| `archive_observations` | 02:00 | 14.7 min | the archive before every prune (the never-delete rule); the forecast record WXPredict trains on; the mirror |
+| `pipeline_intraday` | 02, 08, 14, 20 | 3.3 min a run | the engine's prices (behind the market every day, section 1), the paper desks on them, the edges, the confirmations, the page refresh |
+| `tick` | hourly | 0.7 min (billed 1) | checkpoint capture, the blind tests, WXPredict's shadow later |
+| `observations`, `paper_trade_log` | 05:00 | about 1 each | observations, the trade log |
+| `weather_model` | Mondays 08:00 | about 1 | the old desk weather model. **It feeds the engine's prices** (`probability_engine.py` and `tick.py` read it), so it stays until G5. |
+
+`pipeline_daily`'s steps, the longest first (seconds):
+
+| step | s | does its output reach a price or a page? (5 Oct) |
+|---|---|---|
+| Ingest forecasts | 627 | Yes: the current runs feed the day-ahead station correction and MOS (both on). Its archive passes wrote 0 rows on 7 nights (per the record), so most of the time is probably waiting on Open-Meteo. **Not measured.** |
+| The honest station model | 297 | yes (MOS, on) |
+| Venue-confirmed settlement sweep | 260 | yes (settlement and evidence) |
+| The hit tournament | 185 | **no**: shadow only |
+| Fit the intraday trajectory | 177 | **no**: 0 of 1,152 cells applied |
+| Authoritative weather outcome evidence | 138 | yes (truth labels) |
+| Derived recompute | 107 | yes |
+| Freeze settled city-days | 94 | yes (scoring) |
+| Measure forecast skill | 54 | not verified (a page may read it) |
+| Replay yesterday's engine decisions | 41 | not verified |
+| Station correction per model | 31 | yes (on) |
+| Re-fit calibration map | 25 | **no**: `applies: false` |
+| Promote or shadow fitted models | 23 | **no**: 0 promoted ever |
+| Learn strategy parameters | 22 | **no**: `strategy_learning` off |
+
+**Workflows nothing schedules:** `backtest`, `live_weather`, `verify_resolution_source`, `paper_fill`, `retire_desks`, `restore_edge_marks`, `forecasts` (off the clock since 4 Oct).
+- **`paper_fill.yml` is dispatched by the web app** (`web/app/api`), so it is in use.
+- Whether n8n dispatches any of the others is **not measured**.
+
+**What the revamp must not do** (Hassan's conditions):
+- remove, skip or weaken a test;
+- delete data;
+- change a served price without the evidence and the gate that any price change needs.
+
+**What improves accuracy** is WXPredict (phases 2-5). The revamp moves minutes from things nothing uses to the build, and never makes a served price worse.
+
+
 ---
 
 ## 4. The evaluation contract: frozen before any model is judged
@@ -273,7 +319,8 @@ This becomes `docs/WXPREDICT_PREREG.md` in step 3.0. It is committed before any 
 **The order.** Every item in section 3 has a place in it. A gate is Hassan's decision.
 
 ```
-Wave 0   put the record straight; decisions D1-D7 asked     (read-only + one docs PR)
+Wave A   the Actions revamp (section 3.6)                   (first: minutes limit everything)
+Wave 0   put the record straight; decisions D1-D8 asked     (read-only + one docs PR)
 Phase 1  finish #314                                        -> G1 merge
 Wave 2   the operations WXPredict depends on (R2-R11, R13-R15, R17, R20, R22, R28, R31)
 Phase 2  the market and the inputs, fresh at the decision   -> G2
@@ -291,6 +338,96 @@ Dated (run on their dates, inside whatever wave is current):
 - docs-only changes ride the next code push;
 - every PR states its CI minutes;
 - the running total is kept in the status table (section 10).
+
+### Wave A: the Actions revamp (first: minutes limit everything else)
+
+Hassan, 5 Oct: revamp the useless and inaccurate workflows, "as long as we maintain quality, don't cut corners, and improve the accuracy of the engines".
+
+**Rules for every change in this wave:**
+- (1) It is **reversible**: a step or workflow is disabled with a comment naming this document, never deleted, and the code and its data stay.
+- (2) Its billed minutes are **measured before and after** (jobs API, at least 3 runs each).
+- (3) **No test is removed, skipped or weakened**, and CI still runs every test whenever anything a test reads changes.
+- (4) **No served price changes**. Each change carries the proof that nothing priced reads what it stops.
+- (5) Any schedule change goes through **P6.1**, the only step allowed to change the clock, with the reason written into `SCHEDULED_MINUTE_BUDGET` / `MEASURED_MINUTES`.
+
+**A.1 Inventory and dependency map (read-only)**
+
+- **What:** every workflow, and every step of the four scheduled ones, gets its cost, what it writes, and who reads it.
+- **How:**
+  - the jobs API over 7 runs;
+  - a code search of `scripts/`, `web/` and `n8n/`;
+  - database view dependencies (`pg_depend`);
+  - `clock_schedule`;
+  - the web app's dispatches;
+  - n8n's workflows, read through its API.
+- **Checkpoint:** each step is classified, with evidence, as one of:
+  - **keep** (it feeds a price, a page, the archive or a blind test);
+  - **trim** (needed, but slower than it must be);
+  - **stop** (its output reaches nothing);
+  - **fold** (WXPredict replaces it at G5).
+
+  The table goes into section 3.6.
+
+**A.2 CI, with the same coverage**
+
+- **What:**
+  - **(a)** the database contracts run when anything they read changes: `supabase/migrations/`, `sql/`, `tests/database/`, the package files or the workflow itself. They are skipped otherwise (~105 s of a ~5-minute job).
+  - **(b)** a push touching only files that no test reads skips pytest.
+- **How:** both lists are generated by a script and held by a test.
+  - The test fails if a test file starts reading a path on the skip list.
+  - It also fails if a migration can change without the contracts running.
+- **Verification:** replay the path filter over October's 69 test runs: how many would have run, and that every run touching code or SQL still runs (count written down). Then the next 10 PR runs measured.
+- **Checkpoint:** CI minutes per code push unchanged or lower, and 0 code-or-SQL pushes skipped.
+
+**A.3 Stop the fits whose output reaches nothing**
+
+- **What:** in `pipeline_daily`:
+  - the hit tournament (185 s);
+  - the trajectory fit (177 s);
+  - the calibration refit (25 s);
+  - model promotion (23 s);
+  - strategy learning (22 s);
+  - plus skill measurement (54 s) and the engine replay (41 s) **only if A.1 shows nothing reads them**.
+
+  Together that is about 527 s a night, about 270 billed minutes a month (estimated from one run; measured after).
+- **Proof for each, before stopping:**
+  - the setting that keeps its output out of the price (`applies: false`, `strategy_learning` off, 0 promoted, 0 of 1,152 applied, shadow only), read live;
+  - the code path that reads it (named);
+  - the pages that read it (view dependencies).
+
+  Its last output stays in the database and the archive.
+- **Verification:** the next 3 intraday runs' priced ladders carry no version from a stopped fit (`priced_from`), and their prices are what the code would have priced with the fits running. Both paths read only the flags shown above.
+- **Checkpoint:** 3 nights of `pipeline_daily` green, shorter by the measured amount, and every page that read one of these outputs still renders (read as `anon`).
+
+**A.4 Trim the forecast ingest (627 s)**
+
+- **What:** measure where its 10.5 minutes go (each pass's time, rows written, Open-Meteo refusals), then trim the waiting, not the coverage.
+- **Verification:** the same rows written (count per city and model) in less time, over 3 nights.
+- **Checkpoint:** row counts equal or higher, and minutes lower, both measured.
+
+**A.5 The intraday cadence (option B) and the paper desks**
+
+- **What:** every 12 h instead of every 6 h, through P6.1. Stopping the paper desks from trading on the engine's prices is Hassan's call (D8).
+- **Verification:**
+  - the day-ahead hit record's call-to-midnight distance, before and after (the arithmetic of migration `20261004170000`);
+  - the board's freshness limits (decisions 8 h, edges 12 h) still met, or each limit changed with Hassan's word;
+  - 3 days of runs.
+- **Checkpoint:** minutes measured, the day-ahead record whole, and the board inside its limits.
+
+**A.6 Workflows nothing dispatches**
+
+- **What:** disable (not delete) each manual-only workflow that A.1 shows nothing dispatches: not the clock, not the web app, not n8n. `paper_fill.yml` is in use (the web app).
+- **Checkpoint:** the list, with its evidence, in section 3.6.
+
+**A.7 Measure the result**
+
+- **What:** 7 days of billed minutes after A.2-A.6; the October and November projection, CI included.
+- **Checkpoint:** the projection under 3,000, written into `MEASURED_MINUTES`. If it is not under, the gap goes to Hassan with the options.
+
+**Evidence:**
+- one PR per change (A.2, A.3, A.4, A.5, A.6), each with its before and after;
+- section 3.6 updated;
+- the status table.
 
 ### Wave 0: put the record straight (read-only, then one docs PR)
 
@@ -311,9 +448,9 @@ Dated (run on their dates, inside whatever wave is current):
 - **What:** every "PR open" or "pending merge" line that GitHub contradicts is corrected to what is measured. This is the first part of R32. Nothing else changes.
 - **Checkpoint:** the doc diff contains only status corrections, each with its evidence.
 
-**0.4 Put decisions D1-D7 (section 9) to Hassan**
+**0.4 Put the open decisions (section 9) to Hassan**
 
-- Only R1 (minutes) blocks the build. A wave that adds CI or scheduled minutes does not start before D1 is answered.
+- Wave A goes first (Hassan's D1). A wave that adds scheduled minutes waits until A.7's measurement shows room for it, or until Hassan allows overage.
 
 **Evidence:** one docs PR. It carries no code, so it can ride phase 1.1's push and avoid a CI run of its own.
 
@@ -692,7 +829,8 @@ Over 7 consecutive days:
 | id | decision | why it is his | blocks |
 |---|---|---|---|
 | D0 | Approve this document (or say what to change) | the plan | everything |
-| D1 | October's minutes (R1): cut a cadence (which one; only P6.1 may), allow paid overage, or both | Rule 7, and spending | waves that add minutes |
+| D1 | October's minutes (R1). **Hassan, 5 Oct: revamp the Actions first (wave A), keeping quality and improving the engines' accuracy.** Still open: whether to allow paid overage as a margin (suggested: up to 400 minutes in October); GitHub showed 1,065 of 3,000 used on 5 Oct | Rule 7, and spending | the overage part only |
+| D8 | Whether the paper desks keep trading on the engine's prices until G5 (A.5) | the desks | A.5 |
 | D2 | G1: merge #314 after phase 1.1 | merging | wave 2 onward |
 | D3 | Allow `single-runs-api.open-meteo.com` in the environment's network access (the history of same-day runs) | network access | phase 2.5's faster path; optional |
 | D4 | Any interim fix to the served engine before WXPredict (e.g. use the evening-before corrected centre on the same day). Default: none; WXPredict replaces it | prices served | none |
@@ -710,7 +848,8 @@ Updated in every PR.
 | step | state | evidence |
 |---|---|---|
 | D0 (this document) | waiting for Hassan | |
-| D1 (minutes) | waiting; 941 billed to 5 Oct 16:04Z, projected ~3,300 by 31 Oct without CI | jobs API, 5 Oct |
+| D1 (minutes) | revamp first (Hassan, 5 Oct); overage margin still open. 941 billed to 5 Oct 16:04Z by the jobs API; GitHub showed 1,065 of 3,000 | jobs API; GitHub billing, 5 Oct |
+| Wave A (A.1-A.7, the Actions revamp) | todo (approved by Hassan 5 Oct; costs measured in section 3.6) | |
 | Wave 0 (0.1-0.4) | todo | |
 | Phase 1 (sources, table) | built, PR #314 open, CI green on `b80b2a7` | `docs/WXPREDICT.md`, `table_meta.json` |
 | 1.1 (R37: 2 review findings) | todo (verified: 89 of 24,518 station days fail the rule) | |
