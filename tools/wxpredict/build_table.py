@@ -656,7 +656,8 @@ def obs_features(v, rep, t, d0, off, tz, unit, bands, sdays, day):
     six = [r[13] for j, r in enumerate(recs) if r[13] is not None and rep.t[a + j] - 6 * 3600 >= d0]
     v["rmax6_c"] = max(six) if six else None
     v["tmin_today_c"] = min(r[0] for r in recs)
-    j = rep.at_or_before(d0 + 6 * 3600, b)
+    at_six = int(dt.datetime.combine(day, dt.time(6), tz).timestamp())      # 06:00 on the wall clock
+    j = rep.at_or_before(at_six, b)
     if j is not None and j >= a:
         v["t_0600_c"] = rep.rec[j][0]
 

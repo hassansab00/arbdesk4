@@ -107,6 +107,18 @@ def test_the_running_maximum_is_todays_and_lands_in_its_bucket():
                                        .replace(tzinfo=dt.timezone.utc).timestamp() + bt.REPORT_LAG_S <= t)
 
 
+def test_the_six_oclock_reading_is_six_on_the_wall_clock_on_a_daylight_saving_day():
+    spring = dt.date(2026, 3, 29)                 # London: 01:00 GMT -> 02:00 BST
+    start, end = common.local_day_bounds(spring, LONDON)
+    rows = []
+    for u in range(start, end + 3600, 1800):
+        local = dt.datetime.fromtimestamp(u, dt.timezone.utc).astimezone(LONDON)
+        rows.append(_report(u, float(local.hour)))  # each report reads its own local hour
+    v = {}
+    bt.obs_features(v, bt.Reports(rows), _unix(spring, 12), start, 0, LONDON, "C", BANDS, {}, spring)
+    assert round(v["t_0600_c"], 6) == 6.0         # midnight + 6 h would have been 07:00 BST
+
+
 def test_the_day_before_has_no_running_maximum_of_d():
     v = {}
     t = _unix(DAY - dt.timedelta(days=1), 15) + bt.SNAPSHOT_S
@@ -293,6 +305,29 @@ def test_the_daily_reduction_takes_the_local_day_and_the_first_time_at_the_maxim
     d = days[("EGLC", DAY)]
     assert d["n"] == 3 and d["tmax_at"] == dt.datetime(2026, 7, 15, 12, 20, tzinfo=utc)
     assert math.isclose(d["tmax_c"], 24.0) and ("EGLC", DAY + dt.timedelta(days=1)) in days
+
+
+def test_the_station_days_have_no_hole_where_the_climate_fetch_hands_over(tmp_path, monkeypatch):
+    cache, reports = tmp_path / "cache", tmp_path / "reports"
+    cache.mkdir()
+    reports.mkdir()
+    (cache / "climate_2025-04-01_2025-06-01.csv").write_text(
+        "station,valid,tmpf\nEGLC,2025-05-31 12:20,60.8\n")
+    rows = [_report(int(dt.datetime(2025, 6, 1, h, 20, tzinfo=dt.timezone.utc).timestamp()), 15.0 + h)
+            for h in range(0, 24)]
+    common.write_csv(str(reports / "EGLC.csv.gz"), fo.REPORT_HEADER, [[r[k] for k in fo.REPORT_HEADER] for r in rows])
+    monkeypatch.setattr(common, "REPORTS", str(reports))
+    monkeypatch.setattr(common, "STATION_DAILY", str(tmp_path / "daily.csv.gz"))
+    monkeypatch.setattr(common, "event_stations", lambda: {"EGLC": "london"})
+
+    class A:
+        pass
+    A.cache = str(cache)
+    fo.cmd_daily(A)
+    days = {r["local_date"]: r for r in common.read_csv(str(tmp_path / "daily.csv.gz"))}
+    # every report of 1 Jun (UTC) is counted: 22 on the local 1st (from 00:20Z = 01:20 BST), 2 on the 2nd
+    assert int(days["2025-06-01"]["n_reports"]) == 23 and float(days["2025-06-01"]["tmax_c"]) == 37.0
+    assert int(days["2025-05-31"]["n_reports"]) == 1
 
 
 def test_a_refetched_forecast_value_is_written_as_the_record_writes_it():

@@ -247,7 +247,7 @@ def cmd_daily(args):
                     if st is None:
                         continue
                     valid = parse_valid(rec["valid"])
-                    if valid.date() >= REPORTS_FROM + dt.timedelta(days=1):
+                    if valid.date() >= REPORTS_FROM:
                         continue          # the reports carry these days, with the T group
                     yield st, valid, num(rec.get("tmpf")), None
         for st in stations:
@@ -256,8 +256,8 @@ def cmd_daily(args):
                 continue
             for r in common.read_csv(path):
                 valid = parse_valid(r["valid"])
-                if valid.date() < REPORTS_FROM + dt.timedelta(days=1):
-                    continue
+                if valid.date() < REPORTS_FROM:
+                    continue              # the climate fetch ends where the reports begin (review of #314)
                 yield st, valid, num(r["tmpf"]), num(r["t10_c"])
 
     days = reduce_daily(readings(), tz_of)

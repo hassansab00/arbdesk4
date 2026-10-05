@@ -118,7 +118,7 @@ station label.
 
 #### Columns
 
-**Built 5 Oct 2026** (`table_meta.json`, sha256 `b67e4b9d2cce...`). Two builds
+**Built 5 Oct 2026** (`table_meta.json`, sha256 `c4d1bf8a85b3...`). Two builds
 gave identical bytes. Each build takes about 7 minutes.
 
 - **Rows:** 686,111, from 21,441 events in 48 cities, local days 15 Jul 2025 - 4 Oct 2026.
