@@ -50,7 +50,7 @@ PR that advances a step.
       - **Recorded:** `scripts/station_correction.py` writes `inputs_oldest_run_at` and `inputs_newest_run_at` on each corrected row, from the runs the combination used. The fit of 6 Oct is the first. Earlier rows are not backfilled: they read `not_recorded`.
       - **Judged per city:** `v_city_forecast_inputs` (`20261005110000_the_model_inputs_have_their_own_freshness.sql`).
         - **Main forecast:** the one the engine picks for today. Stale past 8 h (the freshness spec's).
-        - **Model inputs:** the newest current run and its model count. Stale past 36 h (the spec's). `behind` when it is more than 6 h older than the newest any city has, meaning a missed nightly fetch (6 times the measured spread).
+        - **Model inputs:** the newest current run and its model count. Stale past 36 h (the spec's). `behind` when it is more than 6 h older than the newest any city has, meaning a missed nightly fetch (6 times the measured spread). `partial` when it holds fewer than the 7 models the ingest asks for: under 4 the correction combines nothing (review of #312).
         - **Today's and tomorrow's corrected rows:** `earlier_run` when an input was more than 6 h older than the newest run at the fit.
         - **Access:** ages and counts only. It is the owner's view (as `v_city_observation_health`), read as `anon`; `weather_forecast_models` and `derived_corrected_forecast` stay closed to `anon`.
       - **Shown:** on `/live`, under the observation panel (`CityForecastInputs`).

@@ -50,3 +50,15 @@ def test_the_corrected_row_records_what_it_combined():
     assert '"inputs_oldest_run_at": oldest, "inputs_newest_run_at": newest,' in src
     assert "add column if not exists inputs_oldest_run_at timestamptz" in MIG
     assert "add column if not exists inputs_newest_run_at timestamptz" in MIG
+
+
+def test_a_run_short_of_the_ingest_s_models_is_partial():
+    """Review of #312: a current run that answers with fewer model series is
+    not fresh - under station_correction.MIN_SOURCES it combines nothing. The
+    expected count is the ingest's default list, which no workflow overrides."""
+    assert len([m for m in ingest_forecasts.DEFAULT_MODELS.split(",") if m.strip()]) == 7
+    assert "when md.n_models < 7 then 'partial'" in MIG
+    assert station_correction.MIN_SOURCES <= 7
+    import glob
+    for wf in glob.glob(os.path.join(ROOT, ".github", "workflows", "*.yml")):
+        assert "FORECAST_MODELS" not in open(wf).read(), wf

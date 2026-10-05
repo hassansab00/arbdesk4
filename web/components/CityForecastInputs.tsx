@@ -32,7 +32,7 @@ interface Row {
   n_models: number | null;
   models_age_h: number | null;
   models_behind_h: number | null;
-  models_verdict: "fresh" | "behind" | "stale" | "absent";
+  models_verdict: "fresh" | "partial" | "behind" | "stale" | "absent";
   today_inputs_behind_h: number | null;
   today_inputs_verdict: Corrected;
   tomorrow_inputs_behind_h: number | null;
@@ -45,6 +45,7 @@ const TONE: Record<string, string> = {
   fresh: "text-good",
   current: "text-good",
   behind: "text-warn",
+  partial: "text-warn",
   earlier_run: "text-warn",
   stale: "text-bad",
   absent: "text-bad",
@@ -57,6 +58,7 @@ const LABEL: Record<string, string> = {
   stale: "stale",
   absent: "none",
   behind: "missed last night",
+  partial: "models missing",
   current: "tonight's runs",
   earlier_run: "an earlier run",
   not_recorded: "not recorded",
@@ -79,7 +81,7 @@ function corrected(v: Corrected, behind: number | null) {
   );
 }
 
-const BAD = { stale: 2, absent: 2, behind: 1, earlier_run: 1 } as Record<string, number>;
+const BAD = { stale: 2, absent: 2, behind: 1, partial: 1, earlier_run: 1 } as Record<string, number>;
 
 export default function CityForecastInputs() {
   const q = useQuery<Row[]>(() => supabase.from("v_city_forecast_inputs").select("*"), [], 120000);
@@ -126,7 +128,8 @@ export default function CityForecastInputs() {
           what today&rsquo;s price starts from; it is stale past 8 hours. The <b>model inputs</b> are the
           seven named models&rsquo; current run, fetched once a night; they feed the station-corrected
           forecast. A city whose nightly run was missed is <i>missed last night</i> (more than 6 hours
-          behind the newest any city has), stale past 36 hours. The corrected columns say whether
+          behind the newest any city has), stale past 36 hours; a run holding fewer than the seven
+          models is <i>models missing</i> (under four, the corrected forecast combines nothing). The corrected columns say whether
           that city&rsquo;s combination used tonight&rsquo;s runs or an earlier one; rows computed
           before 6 Oct did not record it.
         </p>
@@ -157,7 +160,7 @@ export default function CityForecastInputs() {
                   <span className="text-muted">
                     {" "}
                     · {hours(r.models_age_h)}
-                    {r.n_models !== null && ` · ${r.n_models} models`}
+                    {r.n_models !== null && ` · ${r.n_models} of 7 models`}
                   </span>
                 </td>
                 <td className="py-1 pr-2 tabular-nums">{corrected(r.today_inputs_verdict, r.today_inputs_behind_h)}</td>

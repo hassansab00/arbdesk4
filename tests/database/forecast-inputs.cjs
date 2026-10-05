@@ -42,7 +42,7 @@ const MODELS = ['ecmwf_ifs025', 'gfs_seamless', 'icon_seamless', 'ukmo_seamless'
     revoke all on public.weather_forecast_models from public, anon, authenticated;
     insert into public.cities (city_key, display_name, timezone, status) values
       ('fresh', 'Fresh', 'UTC', 'active'), ('missed', 'Missed', 'UTC', 'active'),
-      ('stale', 'Stale', 'UTC', 'active'), ('absent', 'Absent', 'UTC', 'active'),
+      ('stale', 'Stale', 'UTC', 'active'), ('absent', 'Absent', 'UTC', 'active'), ('thin', 'Thin', 'UTC', 'active'),
       ('gone', 'Gone', 'UTC', 'retired');
   `);
   await db.exec(P39);
@@ -62,7 +62,7 @@ const MODELS = ['ecmwf_ifs025', 'gfs_seamless', 'icon_seamless', 'ukmo_seamless'
   const run = (city, h, models = MODELS, source = 'open-meteo-models-current') =>
     models.map((m) => `('${city}', 'open_meteo_${m}', ${ago(h)}, ${today}, 0, 20, '${source}')`).join(',');
   await db.exec(`insert into public.weather_forecast_models (city_key, model, run_at, for_date, lead_days, forecast_max_c, source) values
-    ${run('fresh', 3)}, ${run('missed', 27)}, ${run('stale', 40, MODELS.slice(0, 5))},
+    ${run('fresh', 3)}, ${run('missed', 27)}, ${run('stale', 40, MODELS.slice(0, 5))}, ${run('thin', 3, MODELS.slice(0, 3))},
     ${run('missed', 1, MODELS, 'open-meteo-previous-runs')}`);
   // What the corrected rows were combined from.
   await db.exec(`insert into public.derived_corrected_forecast (city_key, for_date, lead_days, combined_c, n_sources, sources,
@@ -74,7 +74,7 @@ const MODELS = ['ecmwf_ifs025', 'gfs_seamless', 'icon_seamless', 'ukmo_seamless'
   await db.exec('set role anon');
   const rows = (await db.query(`select * from public.v_city_forecast_inputs order by city_key`)).rows;
   const by = Object.fromEntries(rows.map((r) => [r.city_key, r]));
-  assert.deepEqual(Object.keys(by).sort(), ['absent', 'fresh', 'missed', 'stale'], 'active cities only');
+  assert.deepEqual(Object.keys(by).sort(), ['absent', 'fresh', 'missed', 'stale', 'thin'], 'active cities only');
 
   // The main forecast's clock.
   assert.deepEqual([by.fresh.main_verdict, Number(by.fresh.main_age_h)], ['fresh', 1], 'the shortest lead, not the newest row');
@@ -88,6 +88,8 @@ const MODELS = ['ecmwf_ifs025', 'gfs_seamless', 'icon_seamless', 'ukmo_seamless'
                    ['behind', 24, 27], 'a missed nightly fetch, though its main forecast is fresh');
   assert.deepEqual([by.stale.models_verdict, by.stale.n_models], ['stale', 5]);
   assert.deepEqual([by.absent.models_verdict, by.absent.models_run_at], ['absent', null]);
+  assert.deepEqual([by.thin.models_verdict, by.thin.n_models], ['partial', 3],
+                   'a fresh run missing models is not healthy: under 4 the correction combines nothing (review of #312)');
 
   // What the corrected rows were combined from.
   assert.deepEqual([by.fresh.today_inputs_verdict, Number(by.fresh.today_inputs_behind_h)], ['current', 0]);

@@ -40,6 +40,11 @@
 --   models 'behind'    more than 6 h older than the newest current run any
 --                      city has: the city missed the last nightly fetch
 --                      (6 x the largest spread measured within one night).
+--   models 'partial'   the newest run holds fewer than the 7 models the
+--                      ingest asks for (ingest_forecasts.DEFAULT_MODELS; no
+--                      workflow sets FORECAST_MODELS): a source missing, and
+--                      under 4 the station correction combines nothing
+--                      (station_correction.MIN_SOURCES; review of #312).
 --   corrected 'earlier_run'  the row's oldest input more than 6 h older than
 --                      the newest current run any city had when it was
 --                      combined: a model's run came from an earlier night.
@@ -137,6 +142,7 @@ select k.city_key,
        case when md.run_at is null then 'absent'
             when now() - md.run_at > interval '36 hours' then 'stale'
             when b.newest - md.run_at > interval '6 hours' then 'behind'
+            when md.n_models < 7 then 'partial'
             else 'fresh' end                                           as models_verdict,
        t.computed_at                                                   as today_corrected_at,
        t.inputs_oldest_run_at                                          as today_inputs_oldest_at,
@@ -153,7 +159,7 @@ select k.city_key,
   left join judged t on t.city_key = k.city_key and t.for_date = k.local_date
   left join judged n on n.city_key = k.city_key and n.for_date = k.local_date + 1$v$;
     execute $c$comment on view public.v_city_forecast_inputs is
-  'Per active city, the main forecast''s freshness and the model inputs'' freshness, judged separately (audit P3): the main forecast the engine reads for today (weather_forecasts, stale past 8 h); the seven models'' newest current run (stale past 36 h, behind when more than 6 h older than the newest any city has: a missed nightly fetch); and what today''s and tomorrow''s station-corrected rows were combined from (earlier_run when an input was more than 6 h older than the newest run at the fit). Ages and counts only.'$c$;
+  'Per active city, the main forecast''s freshness and the model inputs'' freshness, judged separately (audit P3): the main forecast the engine reads for today (weather_forecasts, stale past 8 h); the seven models'' newest current run (stale past 36 h, behind when more than 6 h older than the newest any city has: a missed nightly fetch, partial when it holds fewer than the 7 models); and what today''s and tomorrow''s station-corrected rows were combined from (earlier_run when an input was more than 6 h older than the newest run at the fit). Ages and counts only.'$c$;
     execute 'revoke all on public.v_city_forecast_inputs from public, anon, authenticated';
     execute 'grant select on public.v_city_forecast_inputs to anon, service_role';
   else
