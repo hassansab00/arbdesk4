@@ -66,9 +66,19 @@ def fetch(city, start, end):
 
 
 def rows_of(city_key, answer):
-    """[(city_key, utc stamp, values...)] from one answer."""
+    """[(city_key, utc stamp, values...)] from one answer.
+
+    With timezone=auto Open-Meteo returns the whole range at ONE fixed offset,
+    the city's offset when asked (P2.9, 26 Sep; and 5 Oct across Wellington's
+    27 Sep switch: 72 hours at +13, each matching a timezone=GMT answer value
+    for value), so that one offset converts every stamp. An answer whose hours
+    are not evenly spaced (a daylight-saving step) is refused, not converted
+    (review of #314)."""
     h = answer["hourly"]
     off = dt.timedelta(seconds=answer["utc_offset_seconds"])
+    stamps = [dt.datetime.fromisoformat(t) for t in h["time"]]
+    if any((b - a) != dt.timedelta(hours=1) for a, b in zip(stamps, stamps[1:])):
+        raise ValueError(f"{city_key}: the answer's hours are not evenly spaced; one offset cannot convert them")
     out = []
     for i, t in enumerate(h["time"]):
         utc = (dt.datetime.fromisoformat(t) - off).strftime("%Y-%m-%dT%H:%M")

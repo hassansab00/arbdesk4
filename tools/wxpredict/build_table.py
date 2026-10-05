@@ -296,6 +296,26 @@ class Reports:
                              num(r["p01i"]), mslp, num(r["vsby"]), oktas, ceiling, num(r["max6_c"]),
                              wx_bits(r["wxcodes"])))
 
+        minutes = collections.Counter((u // 60) % 60 for u in self.t)
+        self.routine_minute = minutes.most_common(1)[0][0] if minutes else 0
+
+    def precip_since(self, since, end):
+        """Precipitation (in) over (since, the end-th report]: the report's
+        one-hour amount (p01i) accumulates from the last routine report, so the
+        greatest p01i in each routine-to-routine period is that period's total,
+        and the periods are summed (review of #314: the maximum alone took one
+        hour of a three-hour fall). The station's routine minute is its most
+        common report minute."""
+        per = {}
+        r0 = self.routine_minute * 60
+        for k in range(bisect.bisect_right(self.t, since, 0, end), end):
+            x = self.rec[k][8]
+            if x is None:
+                continue
+            period = -((r0 - self.t[k]) // 3600)          # the routine report that closes it
+            per[period] = max(per.get(period, 0.0), x)
+        return sum(per.values()) if per else None
+
     def known(self, t):
         """Index one past the newest report known at t."""
         return bisect.bisect_right(self.t, t - REPORT_LAG_S)
@@ -514,6 +534,23 @@ COLUMNS = [
 ]
 
 
+def decision_instants(day, tz):
+    """[(day offset, aware local datetime)]: the real instants of D-1 and D
+    whose local time is on a decision hour, walked hour by hour in UTC from
+    each local midnight. A spring-forward day has 23 (the missing hour is not
+    invented), a fall-back day 25 (the repeated hour is there twice, as its two
+    instants) - review of #314: attaching the zone to each nominal hour gave
+    London's 29 Mar 2026 two rows at one instant and dropped an hour in October."""
+    out = []
+    for off, hours in ((-1, EVE_HOURS), (0, DAY_HOURS)):
+        start, end = common.local_day_bounds(day + dt.timedelta(days=off), tz)
+        for u in range(start, end, 3600):
+            local = dt.datetime.fromtimestamp(u, common.UTC).astimezone(tz)
+            if local.minute == 0 and local.hour in hours:
+                out.append((off, local))
+    return out
+
+
 def venue_label(st_max_unit, winner, lo, hi):
     """The day's maximum in the market's unit as the venue read it: the
     station's maximum when it lies in the winning bucket, else the value of the
@@ -551,9 +588,8 @@ def build_event(e, rep, sdays, bm, md, hourly, prices, tz):
     label = venue_label(st_max_unit, e["winner"], wlo, whi)
     series = prices.get(e["event_id"]) or []
     rows = []
-    times = [(-1, h) for h in EVE_HOURS] + [(0, h) for h in DAY_HOURS]
-    for off, hour in times:
-        local = dt.datetime.combine(day + dt.timedelta(days=off), dt.time(hour), tz)
+    for off, local in decision_instants(day, tz):
+        hour = local.hour
         t = int(local.timestamp()) + SNAPSHOT_S
         v = collections.OrderedDict()
         v["event_id"], v["source"], v["city_key"], v["station"], v["date"], v["unit"] = \
@@ -561,7 +597,7 @@ def build_event(e, rep, sdays, bm, md, hourly, prices, tz):
         v["n_bands"] = len(bands)
         v["bands_lo"] = ";".join("" if lo is None else fmt(lo) for lo, _ in bands)
         v["bands_hi"] = ";".join("" if hi is None else fmt(hi) for _, hi in bands)
-        v["decision_utc"], v["decision_local"] = t, local.strftime("%Y-%m-%dT%H:%M")
+        v["decision_utc"], v["decision_local"] = t, local.isoformat(timespec="minutes")
         v["day_offset"], v["local_hour"], v["weekday"] = off, hour, local.weekday()
         doy = day.timetuple().tm_yday
         v["doy_sin"], v["doy_cos"] = math.sin(2 * math.pi * doy / 365.25), math.cos(2 * math.pi * doy / 365.25)
@@ -597,9 +633,7 @@ def obs_features(v, rep, t, d0, off, tz, unit, bands, sdays, day):
                     v["dtd_3h"] = now[2] - rep.rec[j][2]
                 if now[9] is not None and rep.rec[j][9] is not None:
                     v["dmslp_3h"] = now[9] - rep.rec[j][9]
-    j0 = bisect.bisect_left(rep.t, rep.t[i] - 3 * 3600, 0, end)
-    pr = [rep.rec[k][8] for k in range(j0, end) if rep.rec[k][8] is not None]
-    v["precip_3h_in"] = max(pr) if pr else None
+    v["precip_3h_in"] = rep.precip_since(rep.t[i] - 3 * 3600, end)
     # yesterday: the whole local day before the decision's own day, once it has ended
     dday = day + dt.timedelta(days=off)
     yday = sdays.get((dday - dt.timedelta(days=1)).isoformat())

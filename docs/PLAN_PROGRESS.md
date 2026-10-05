@@ -10,7 +10,7 @@ PR that advances a step.
   - **Market record:** refreshed to 7 Oct (`tools/market_history.py seed`). All 9,977 old events, 108,841 buckets and 107,215 price series are unchanged, except the 143 events that closed since.
   - **Station reports:** every report of the 50 settlement stations with every field, 1 Jun 2025 - 5 Oct 2026 (902,238 rows), plus station days back to 2020 for climatology (`tools/wxpredict/fetch_obs.py`).
   - **Hourly forecast record:** extended to 4 Oct (`tools/wxpredict/fetch_forecasts.py`). The 10,368 hours are new; the 2,304 overlapping hours matched exactly.
-  - **The table:** `tools/wxpredict/build_table.py` gives 686,112 rows, 9,586 listed events and 11,855 unlisted station days. Two builds gave identical bytes (sha256 `354f5ade56f6...` in `data/training/wxpredict/table_meta.json`).
+  - **The table:** `tools/wxpredict/build_table.py` gives 686,111 rows, 9,586 listed events and 11,855 unlisted station days. Two builds gave identical bytes (sha256 `b67e4b9d2cce...` in `data/training/wxpredict/table_meta.json`).
   - **Leak rules:** a report counts from valid + 20 min, measured against IEM; a forecast hour counts from H - 17 h (P2.9's assumption); the market is the hour's own snapshot, stamped 0-59 s past the hour; past days count only once whole.
   - **Label:** the venue's winner. The station's maximum agrees on 9,410 of 9,586 listed days; 118 of the 176 that disagree are Shenzhen's, Mar - Aug.
   - **Tests:** `tests/test_wxpredict_table.py`.

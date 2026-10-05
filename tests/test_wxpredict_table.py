@@ -302,6 +302,38 @@ def test_a_refetched_forecast_value_is_written_as_the_record_writes_it():
     assert ff.rows_of("lucknow", ans)[0][:3] == ["lucknow", "2026-09-25T18:30", "1.5"]
 
 
+def test_an_answer_with_a_daylight_saving_step_is_refused():
+    ans = {"utc_offset_seconds": 46800, "hourly": {"time": ["2026-09-27T01:00", "2026-09-27T03:00"],
+                                                   **{f"{v}_previous_day1": [1.0, 2.0] for v in ff.VARS.values()}}}
+    with pytest.raises(ValueError):
+        ff.rows_of("wellington", ans)
+
+
+def test_a_daylight_saving_day_has_its_real_instants_once_each():
+    spring, autumn = dt.date(2026, 3, 29), dt.date(2026, 10, 25)
+    for day, n_day in ((spring, 23), (autumn, 25), (DAY, 24)):
+        inst = bt.decision_instants(day, LONDON)
+        stamps = [int(x.timestamp()) for _, x in inst]
+        assert len(stamps) == len(set(stamps)) and stamps == sorted(stamps)
+        assert sum(1 for off, _ in inst if off == 0) == n_day
+        assert all(x.minute == 0 for _, x in inst)
+    hours = [x.hour for off, x in bt.decision_instants(autumn, LONDON) if off == 0]
+    assert hours.count(1) == 2 and 1 not in [x.hour for off, x in bt.decision_instants(spring, LONDON) if off == 0]
+    # a half-hour zone's decisions are on its own whole hours
+    assert all(x.minute == 0 for _, x in bt.decision_instants(DAY, ZoneInfo("Asia/Kolkata")))
+
+
+def test_three_hours_of_rain_are_summed_period_by_period():
+    base = _unix(DAY, 9, 51)
+    rows = [_report(base, 15.0, p01i="0.10"), _report(base + 1200, 15.0, p01i="0.05"),       # special, 10:11
+            _report(base + 3600, 15.0, p01i="0.20"), _report(base + 2 * 3600, 15.0, p01i="0.30")]
+    rep = bt.Reports(rows)
+    assert rep.routine_minute == 51
+    # periods closing 10:51, 11:51 and 12:51: 0.20 (the special's 0.05 is inside it) + 0.30; 09:51 is before
+    assert math.isclose(rep.precip_since(base, len(rows)), 0.50)
+    assert math.isclose(rep.precip_since(base - 1, len(rows)), 0.60)
+
+
 def test_the_market_seed_keeps_only_finished_series(tmp_path, monkeypatch):
     import importlib.util
     spec = importlib.util.spec_from_file_location("market_history", ROOT / "tools" / "market_history.py")

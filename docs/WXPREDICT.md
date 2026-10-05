@@ -67,6 +67,8 @@ committed, with the row count, every column's fill and the content's sha256.
 - **Rows.** One per (event, decision time). Decisions are taken every hour of the
   event's local day D and every three hours of D-1, each 60 s after the hour,
   on the venue's own snapshot of the market.
+  - The hours are real instants: a spring-forward day has 23, and a fall-back day has 25, with the repeated hour once per instant.
+  - `decision_local` carries the offset.
 - **Venue rows** are the listed events. The filters match the study's:
   - the city is active;
   - the event is closed, with exactly one winner;
@@ -116,12 +118,12 @@ station label.
 
 #### Columns
 
-**Built 5 Oct 2026** (`table_meta.json`, sha256 `354f5ade56f6...`). Two builds
+**Built 5 Oct 2026** (`table_meta.json`, sha256 `b67e4b9d2cce...`). Two builds
 gave identical bytes. Each build takes about 7 minutes.
 
-- **Rows:** 686,112, from 21,441 events in 48 cities, local days 15 Jul 2025 - 4 Oct 2026.
-- **Venue events:** 9,586 (306,752 rows).
-- **Station days:** 11,855 (379,360 rows).
+- **Rows:** 686,111, from 21,441 events in 48 cities, local days 15 Jul 2025 - 4 Oct 2026.
+- **Venue events:** 9,586 (306,738 rows).
+- **Station days:** 11,855 (379,373 rows).
 - **Units:** C 16,528 events, F 4,913.
 - **Left out of the venue's events:**
   - city not active 553;
@@ -129,7 +131,7 @@ gave identical bytes. Each build takes about 7 minutes.
   - an "arch-" twin of a main listing 46;
   - not exactly one winner 3;
   - a ladder with a gap 1.
-- **Market:** the whole ladder was priced at the decision on 247,751 rows, 80.8% of the venue rows.
+- **Market:** the whole ladder was priced at the decision on 247,736 rows, 80.8% of the venue rows.
 
 The table has 118 columns:
 
@@ -137,7 +139,7 @@ The table has 118 columns:
 |---|---|---|
 | identity and clock | event, source (venue / station), city, station, date, unit, ladder, decision time (UTC and local), D-1 or D, local hour, weekday, day of year | 100% |
 | labels | `winner` (venue rows), `label_unit`, the station's maximum (unit and C), whether they agree | `label_unit` 100% |
-| the station now | age of the newest report, temperature, dew point, humidity, wind, gust, direction, pressure, visibility, sky, ceiling, five present-weather flags, 1 h / 3 h changes, precipitation | 100% (sky 75%, the rest per the table above) |
+| the station now | age of the newest report, temperature, dew point, humidity, wind, gust, direction, pressure, visibility, sky, ceiling, five present-weather flags, 1 h / 3 h changes, precipitation over 3 h (each routine period's total, summed) | 100% (sky 75%, the rest per the table above) |
 | the station today (D rows) | running maximum (C, unit, its bucket, its age), 6-hour-group maximum, today's minimum, 06:00 reading; yesterday's maximum | running maximum 71.1% (D rows with reports), yesterday 93.7% |
 | day-ahead forecasts | which daily row was known (lead 1 whole day / 00-17, lead 2), best_match max, the seven models (each, mean, spread, range), best_match cloud, sunshine, wind, rain, dew point | 99.9-100% (UKMO 93.6%) |
 | the hourly forecast | known hours, the day's forecast max and its hour, now, the rest of the day's max, the next 3 h, the rest of the day's cloud / sunshine / wind / rain; observed minus forecast now and 3 h ago (temperature, dew point, pressure) | 75-90% |
