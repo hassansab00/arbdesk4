@@ -522,8 +522,9 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     detail["engine"] = engine_shadow.record(out, s10_ladders, bands_by_market,
                                             market_of, unit_of, engine_floors, now,
                                             deadline=t0 + budget_s, dry_run=dry_run)
-    # P1.1's candidate beside each same-day call, observe only
-    # (docs/P11_DA_FLOOR_PREREG.md). After the engine's decisions, which act
+    # The same-day candidates beside each same-day call, observe only:
+    # da_floor (docs/P11_DA_FLOOR_PREREG.md) and sd_corr
+    # (docs/SD_CORR_PREREG.md). After the engine's decisions, which act
     # on this tick; in what is left of the budget, 2 s kept for the log row.
     # Measured 2-4 Oct (72 ticks): the whole tick took 26.5 s at the median and
     # 38.4 s at most, the engine's step 3.7 s and 7.3 s. Never raises.

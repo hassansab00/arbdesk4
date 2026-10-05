@@ -27,7 +27,7 @@ changes. The page (part 2) and the paper decisions (part 3) move onto it next.
 |---|---|---|
 | `prediction_checkpoints` | The engine's call at each checkpoint: ladder, top, centre, width, floor, the reading and the forecast run behind it, `model_path`, `forecast_model`, `engine_version` (the commit). | served |
 | `s10_shadow_checkpoints` | S10 rd1 and rd3 (`model_version`) at the same checkpoints: ladder, median, q10/q90, inputs. | shadow |
-| `variant_shadow_checkpoints` | `da_floor:v1` beside each same-day call, with its inputs (#303). | shadow |
+| `variant_shadow_checkpoints` | `da_floor:v1` (#303) and `sd_corr:v1` (5 Oct) beside each same-day call, with their inputs. | shadow |
 | `current_ladders` | The newest ladder per open city-day, with `priced_from`. | served (current) |
 | `band_probabilities` | Every intraday pricing; `forecast_version` / `calibration_version` point to `model_versions`. The day-ahead hit record reads the last one before local midnight. | served |
 | `model_versions` | 237 forecast, 24 calibration and 1 cost version. All 262 read `active`, so the table says what existed, not what served. | — |
@@ -45,10 +45,10 @@ One row per recorded call, from the three checkpoint records, in one shape.
 | station | `station` (new): `cities.icao` as it stood at the decision | the served call's `station` at the same city, date and checkpoint | `station` (new), copied from the served call |
 | target local date, checkpoint | `target_date`, `checkpoint` | same | same |
 | as-of time | `decided_at` | `decided_at` | `decided_at` |
-| input provenance | forecast run and model, the reading and its source, the floor | `inputs`, the floor | the day-ahead pricing's time and lead, the floor, q |
+| input provenance | forecast run and model, the reading and its source, the floor | `inputs`, the floor | `da_floor`: the day-ahead pricing's time and lead; `sd_corr`: the corrected row's versions, time, lead and sources; the floor, q |
 | raw forecast | `raw_forecast_c` (new, below) | none (S10 has no single raw forecast) | none |
-| priced centre | `centre_c` | `median_c` | `day_ahead_centre_c` |
-| uncertainty | `sigma_c` | (q90 - q10) / 2.5631, the normal-equivalent width | `day_ahead_sigma_c` |
+| priced centre | `centre_c` | `median_c` | `day_ahead_centre_c` (`da_floor`), `corrected_centre_c` (`sd_corr`) |
+| uncertainty | `sigma_c` | (q90 - q10) / 2.5631, the normal-equivalent width | `day_ahead_sigma_c` (`da_floor`), `corrected_width_c` (`sd_corr`) |
 | full ladder, predicted top | `probs`, `top_band_id`, `top_prob` | same | same |
 | fallback state | `block_reason` when `inputs_ok` is false; the pricing path (`model_path`) | none recorded | none recorded |
 
@@ -146,7 +146,8 @@ Migration `20261004200000_the_page_reads_the_contract.sql`. The panel is
 - `model_registry` gains `blind`. Two versions are under pre-registered forward tests that compute
   and report no score before their first look:
   - rd3 (`docs/CHALLENGER_C_PREREG.md`);
-  - `da_floor:v1` (`docs/P11_DA_FLOOR_PREREG.md`).
+  - `da_floor:v1` (`docs/P11_DA_FLOOR_PREREG.md`);
+  - `sd_corr:v1` (`docs/SD_CORR_PREREG.md`), blind from its first row (5 Oct).
 - A lineup row puts each call beside the day's winner. So a blinded version's call is withheld once
   the city's local day is over or its winner is banked, and it never gets a winner, hit or
   probability on the winner. While the city's day runs, its calls show.
