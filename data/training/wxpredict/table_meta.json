@@ -234,7 +234,7 @@
   "station_max_c": 686111,
   "station_max_unit": 686111,
   "station_reports_day": 686111,
-  "t_0600_c": 487962,
+  "t_0600_c": 364344,
   "t_now_c": 686111,
   "td_now_c": 686106,
   "tmin_today_c": 488060,
@@ -266,7 +266,7 @@
  "rows": 686111,
  "rows_market_complete": 247736,
  "rows_on_d": 514583,
- "sha256": "c4d1bf8a85b322b472fa1484cb23e1507b52bab6ac52ad8f5c9ab5f8cbd1879c",
+ "sha256": "097799a77116e7511856cb141ce3503bdcc4b7cf69aabf694f4900639577bd3d",
  "snapshot_s": 60,
  "station_max_in_winner": {
   "agree": 9410,

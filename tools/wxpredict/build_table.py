@@ -350,10 +350,13 @@ def load_station_daily():
     return out
 
 
-def climatology(days, day):
+def climatology(days, day, before=None):
     """(mean, sd, n, median peak hour) of the station's maximum in C on days
-    within CLIM_HALF_WINDOW of `day`'s day of year, every year, before `day`
-    - 1 (a day ends before it is a past day)."""
+    within CLIM_HALF_WINDOW of `day`'s day of year, every year, before the
+    date `before` (default `day` - 1). A row passes the newest day it may
+    know (clim_for: review of #314, the D-1 00:01 decision must not count D-2,
+    which ended a minute earlier)."""
+    before = before or day - dt.timedelta(days=1)
     vals, peaks = [], []
     for y in range(2019, day.year + 1):
         try:
@@ -362,7 +365,7 @@ def climatology(days, day):
             centre = day.replace(year=y, day=28)
         for k in range(-CLIM_HALF_WINDOW, CLIM_HALF_WINDOW + 1):
             d = centre + dt.timedelta(days=k)
-            if d >= day - dt.timedelta(days=1):
+            if d >= before:
                 continue
             v = days.get(d.isoformat())
             if v is not None and v[3] >= 12:
@@ -583,7 +586,10 @@ def build_event(e, rep, sdays, bm, md, hourly, prices, tz):
     st_max_unit = max((unit_reading(r[0], r[1], unit) for r in day_recs), default=None)
     st_in_win = None if st_max_unit is None or e["winner"] is None else \
         bucket_of(st_max_unit, bands) == e["winner"]
-    clim = climatology(sdays, day)
+    # D-2 is whole REPORT_LAG_S after D-1 begins; every later decision may count it
+    clim_with = climatology(sdays, day)
+    clim_without = climatology(sdays, day, before=day - dt.timedelta(days=2))
+    dm2_known_from = common.local_day_bounds(day - dt.timedelta(days=2), tz)[1] + REPORT_LAG_S
     wlo, whi = bands[e["winner"]] if e["winner"] is not None else (None, None)
     label = venue_label(st_max_unit, e["winner"], wlo, whi)
     series = prices.get(e["event_id"]) or []
@@ -607,7 +613,8 @@ def build_event(e, rep, sdays, bm, md, hourly, prices, tz):
         v["label_unit"] = label
         obs_features(v, rep, t, d0, off, tz, unit, bands, sdays, day)
         fc_features(v, e["city"], day, t, tz, bm, md, hourly, rep)
-        v["clim_mean_c"], v["clim_sd_c"], v["clim_n"], v["clim_peak_hour"] = clim
+        v["clim_mean_c"], v["clim_sd_c"], v["clim_n"], v["clim_peak_hour"] = \
+            clim_with if t >= dm2_known_from else clim_without
         bias_features(v, e["city"], e["station"], day, t, tz, sdays, bm, md)
         market_features(v, series, bands, t)
         rows.append(v)
@@ -657,9 +664,10 @@ def obs_features(v, rep, t, d0, off, tz, unit, bands, sdays, day):
     v["rmax6_c"] = max(six) if six else None
     v["tmin_today_c"] = min(r[0] for r in recs)
     at_six = int(dt.datetime.combine(day, dt.time(6), tz).timestamp())      # 06:00 on the wall clock
-    j = rep.at_or_before(at_six, b)
-    if j is not None and j >= a:
-        v["t_0600_c"] = rep.rec[j][0]
+    if t - REPORT_LAG_S >= at_six:          # only once every report up to 06:00 is known (review of #314)
+        j = rep.at_or_before(at_six, b)
+        if j is not None and j >= a:
+            v["t_0600_c"] = rep.rec[j][0]
 
 
 def fc_features(v, city, day, t, tz, bm, md, hourly, rep):

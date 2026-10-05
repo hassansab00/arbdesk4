@@ -188,6 +188,28 @@ def test_climatology_reads_only_days_before_the_day_before():
     assert n == 4 * (2 * bt.CLIM_HALF_WINDOW + 1) - 0     # the four past years' windows
 
 
+def test_no_row_counts_a_day_in_climatology_before_that_day_is_whole():
+    days = {}
+    for k in range(1, 60):
+        days[(DAY - dt.timedelta(days=k)).isoformat()] = (20.0, 68.0, 14.0, 24)
+    days[(DAY - dt.timedelta(days=2)).isoformat()] = (40.0, 104.0, 14.0, 24)     # D-2 stands out
+    e = {"event_id": "1", "source": "station", "city": "london", "date": DAY.isoformat(), "unit": "C",
+         "station": "EGLC", "bands": [], "winner": None}
+    rows = bt.build_event(e, bt.Reports([]), days, {}, {}, {}, {}, LONDON)
+    first = rows[0]                                 # D-1 00:01: D-2 ended a minute ago
+    assert first["day_offset"] == -1 and first["local_hour"] == 0 and first["clim_mean_c"] == 20.0
+    assert all(r["clim_mean_c"] > 20.0 for r in rows[1:])     # from D-1 03:01 on, D-2 counts
+
+
+def test_the_six_oclock_reading_is_empty_until_six_has_been_reported():
+    rows = _day_reports()
+    d0 = common.local_day_bounds(DAY, LONDON)[0]
+    early, late = {}, {}
+    bt.obs_features(early, bt.Reports(rows), _unix(DAY, 5) + bt.SNAPSHOT_S, d0, 0, LONDON, "C", BANDS, {}, DAY)
+    bt.obs_features(late, bt.Reports(rows), _unix(DAY, 7) + bt.SNAPSHOT_S, d0, 0, LONDON, "C", BANDS, {}, DAY)
+    assert "t_0600_c" not in early and "t_0600_c" in late
+
+
 def test_the_forecasts_recent_error_reads_only_whole_past_days():
     bm, sdays = {}, {}
     for k in range(1, 40):
