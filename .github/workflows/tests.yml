@@ -10,13 +10,18 @@ name: Tests
 # and at ~100 commits a month that duplication alone was ~600 of the 2,000
 # in the free allowance.
 #
-# Now: a pull request is checked (that is the review gate), and main is
-# checked (that is what deploys). A push to a feature branch with no PR open
-# is not - run `pytest` locally, which is what it is for, or start the run by
-# hand from the Actions tab.
+# Now: a pull request is checked (that is the review gate). A push to a
+# feature branch with no PR open is not - run `pytest` locally, which is what
+# it is for, or start the run by hand from the Actions tab.
+#
+# MAIN IS NOT CHECKED AGAIN AFTER A MERGE (Hassan, 5 Oct). The pull request's
+# run already tested the branch merged into main, and the squash lands that
+# same tree; the push to main ran it a second time. 4 Oct 13:21Z - 5 Oct
+# 08:41Z that was 10 of 41 test runs, while October was already over the
+# 3,000-minute allowance's pace (890 billed by 5 Oct 09:00Z, CI 379). A push
+# straight to main is not tested by itself: start the run from the Actions
+# tab. Generated commits from the scheduled jobs carry [skip ci] anyway.
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch: {}
 

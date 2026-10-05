@@ -48,6 +48,7 @@ PR that advances a step.
           - fewer pushes and PRs (progress records ride the work's PR);
           - not re-running the suite on main for a squash of a green PR;
           - intraday every 8 hours (-120 a month).
+        - **Taken (Hassan, 5 Oct: "stop rerunning test on main after merge"):** `tests.yml` and `web.yml` no longer run on pushes to main, only on pull requests and by hand. The PR's run is the check, and the squash lands the same tree. Pinned by `test_ci_does_not_run_again_on_main_after_a_merge`. The first lever applies from this session on; intraday's cadence is unchanged.
     - **The wrapper's first scheduled night (5 Oct, `ingest_log`):** pass 1 logged 04:46:36Z `partial`, with 3 archive chunks unreached and Milan's current run missing. Pass 2 logged 04:46:54Z `ok`: 150 archive rows and Milan's current run (21 rows). The archive was incomplete, so its continuation carried Milan.
     - **A missed current run retried on its own (audit P3, 5 Oct, this PR; Hassan: "fix the nightly run and retry gap").**
       - **The gap:** a missed current run is not `incomplete`, so a night whose archive was complete stopped after one pass and stayed green. Since 4 Oct nothing else fetches a current run, so a missed city stays on the night before's.

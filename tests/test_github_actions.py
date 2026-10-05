@@ -256,6 +256,11 @@ DEFAULT_MINUTES = 5.0
 #
 # (Until 4 Oct this was 3,000, "where the desk actually is" against the free
 # plan's 2,000, with the scheduled work measured at about 2,940.)
+#
+# CI RAN HOT (measured 5 Oct): October to 5 Oct 09:00Z billed 890, CI 379 of
+# them, 302 on 4 Oct alone. The lever chosen (Hassan, 5 Oct): CI no longer
+# re-runs on main after a merge (10 of 41 test runs 4 Oct 13:21Z - 5 Oct
+# 08:41Z); see test_ci_does_not_run_again_on_main_after_a_merge.
 SCHEDULED_MINUTE_BUDGET = 2850
 
 # The account's monthly allowance, for the messages below.
@@ -545,6 +550,19 @@ def test_no_workflow_bills_the_same_commit_twice():
             f"{name} runs on every push AND on pull_request, so every commit on a "
             f"branch with a PR open is billed at least twice. Restrict the push "
             f"trigger to the branches that matter (branches: [main]).")
+
+
+def test_ci_does_not_run_again_on_main_after_a_merge():
+    """Hassan, 5 Oct: the pull request's run is the check; the squash lands
+    the same tree on main, so running the suite and the web build again there
+    paid twice for one answer (10 of 41 test runs, 4 Oct 13:21Z - 5 Oct
+    08:41Z), with October already past the allowance's pace. A manual run
+    stays available."""
+    docs = dict(workflows())
+    for name in ("tests.yml", "web.yml"):
+        t = triggers(docs[name])
+        assert "push" not in t, f"{name} runs again on push - a merged PR is billed twice"
+        assert "pull_request" in t and "workflow_dispatch" in t, name
 
 
 def test_ci_workflows_cancel_a_superseded_run():
