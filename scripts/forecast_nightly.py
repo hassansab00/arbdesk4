@@ -21,6 +21,25 @@ At most MAX_PASSES (the chain's own bound: 75 job-minutes over 25-minute
 links), and no pass starts after START_BY_MIN minutes, so the step stays
 inside its timeout. Each pass logs its own ingest_forecasts row.
 
+A MISSED CURRENT RUN HAS ITS OWN RETRY (5 Oct, audit P3). The passes above
+continue for the archive only: a missed current run is not `incomplete`, so a
+night whose archive was complete stopped after one pass, green, and a city
+whose current run it missed stayed on the night before's (from 4 Oct nothing
+else fetches one). Misses are common: 10 of the 13 passes of 1-5 Oct that
+asked for every city's current run missed 1-4 cities, 3 of them with the
+archive complete (ingest_log). When the archive's passes end, by whatever
+rule, and cities are still missing their current run:
+
+  current  FORECAST_ARCHIVE=0: no archive window, no coverage reads, only the
+           current runs of the cities still missing. At most
+           MAX_CURRENT_PASSES, soft deadline CURRENT_DEADLINE_MIN, none
+           started after START_BY_MIN minutes. Its result never enters the
+           archive's verdict below.
+
+A city still missing after them is the step's warning, not its failure: the
+ingest's row is 'partial' and names it with the newest current run it holds
+(current_snapshot_of), and the next night asks again.
+
 THE STEP GOES RED WHEN THE CHAIN WOULD HAVE (forecast_backfill_job.py): a pass
 that crashed or timed out, a source that refused a chunk (asking again will
 not close it), or a last pass that left the run incomplete having completed
@@ -41,6 +60,13 @@ NEXT_DEADLINE_MIN = 6
 START_BY_MIN = 26
 FIRST_TIMEOUT_S = 23 * 60      # forecast_backfill_job.py's own bound on a link
 NEXT_TIMEOUT_S = 10 * 60       # so the step ends inside 26 + 10 minutes
+# Current runs only: one request per city, which costs at most 2 x 20 s + 2 s
+# when it hangs and is asked once more inside the pass (ingest_forecasts
+# TIMEOUT, TRIES, RETRY_WAIT), four cities at a time. The 5 Oct second pass,
+# which also read the archive window, logged 18 s after the first.
+MAX_CURRENT_PASSES = 2
+CURRENT_DEADLINE_MIN = 2
+CURRENT_TIMEOUT_S = 5 * 60     # inside the 26 + 10 above
 
 
 def should_continue(result):
@@ -53,33 +79,48 @@ def main(run=subprocess.run, clock=time.monotonic):
     result_path = Path(os.environ.get("RUNNER_TEMP", "/tmp")) / "arbdesk-forecast-nightly.json"
     missing_current = None          # None: every city's current run
     passes = []
-    for n in range(1, MAX_PASSES + 1):
+    archive = True                  # the next pass carries the archive
+    for n in range(1, MAX_PASSES + MAX_CURRENT_PASSES + 1):
         if n > 1 and (clock() - t0) / 60 > START_BY_MIN:
             print(f"pass {n} not started: {START_BY_MIN} minutes have gone")
             break
         result_path.unlink(missing_ok=True)
+        deadline = FIRST_DEADLINE_MIN if n == 1 else NEXT_DEADLINE_MIN if archive else CURRENT_DEADLINE_MIN
         env = {**os.environ, "FORECAST_RESULT_PATH": str(result_path),
-               "FORECAST_DEADLINE_MINUTES": str(FIRST_DEADLINE_MIN if n == 1 else NEXT_DEADLINE_MIN)}
+               "FORECAST_DEADLINE_MINUTES": str(deadline)}
         if missing_current is not None:
             env["FORECAST_CURRENT_CITIES"] = ",".join(missing_current)
-        print(f"--- pass {n}" + ("" if missing_current is None
-                                  else f" (current runs for {len(missing_current)} city(ies))"), flush=True)
+        if not archive:
+            env["FORECAST_ARCHIVE"] = "0"
+        print(f"--- pass {n}" + ("" if archive else " (current runs only)")
+              + ("" if missing_current is None
+                 else f" (current runs for {len(missing_current)} city(ies))"), flush=True)
         try:
             proc = run([sys.executable, "scripts/ingest_forecasts.py"], env=env,
-                       timeout=FIRST_TIMEOUT_S if n == 1 else NEXT_TIMEOUT_S)
+                       timeout=FIRST_TIMEOUT_S if n == 1 else NEXT_TIMEOUT_S if archive else CURRENT_TIMEOUT_S)
             code = proc.returncode
         except subprocess.TimeoutExpired:
             code = "timeout"
         result = None
         if code == 0 and result_path.exists():
             result = json.loads(result_path.read_text())
-        passes.append({"pass": n, "exit": code, "result": result})
+        passes.append({"pass": n, "archive": archive, "exit": code, "result": result})
         if code != 0 or result is None:
             break
         missing_current = list(result.get("current_cities_missing") or [])
-        if not should_continue(result):
-            break
+        archive_passes = sum(1 for p in passes if p["archive"])
+        current_passes = len(passes) - archive_passes
+        if archive and should_continue(result) and archive_passes < MAX_PASSES:
+            continue
+        if missing_current and current_passes < MAX_CURRENT_PASSES:
+            archive = False
+            continue
+        break
     print("passes: " + json.dumps(passes))
+    left = current_left(passes)
+    if left:
+        print("::warning::no current run tonight for " + ", ".join(
+            f"{c} (newest current run: {at})" for c, at in sorted(left.items())))
     why = verdict(passes)
     if why:
         print(f"::error::the night's forecast ingest failed: {why}")
@@ -88,20 +129,34 @@ def main(run=subprocess.run, clock=time.monotonic):
 
 
 def verdict(passes):
-    """Why the step fails, or None. The chain's rule (forecast_backfill_job)."""
+    """Why the step fails, or None. The chain's rule (forecast_backfill_job),
+    on the archive's passes: a current-only pass enters it only if it crashed."""
     if not passes:
         return "no pass ran"
     for p in passes:
         if p["exit"] != 0 or p["result"] is None:
             return f"pass {p['pass']} ended with {p['exit']} and no result"
-    last = passes[-1]["result"]
-    refused = sum(p["result"].get("missing_chunks", 0) for p in passes)
+    archive = [p for p in passes if p.get("archive", True)]
+    last = archive[-1]["result"]
+    refused = sum(p["result"].get("missing_chunks", 0) for p in archive)
     if refused:
         return (f"{refused} chunk(s) refused: the source answered and declined that window, "
                 "and asking again will not close it")
     if last.get("incomplete") and last.get("completed_dates", 0) == 0:
-        return f"pass {passes[-1]['pass']} completed no date and left the run incomplete"
+        return f"pass {archive[-1]['pass']} completed no date and left the run incomplete"
     return None
+
+
+def current_left(passes):
+    """{city: its newest current run} for the cities the last pass that answered
+    still had no current run for (each pass asks for the ones the pass before
+    it missed), or {}."""
+    for p in reversed(passes):
+        if p["result"] is not None:
+            missing = p["result"].get("current_cities_missing") or []
+            snap = p["result"].get("current_snapshot_of") or {}
+            return {c: snap.get(c, "not read") for c in missing}
+    return {}
 
 
 if __name__ == "__main__":

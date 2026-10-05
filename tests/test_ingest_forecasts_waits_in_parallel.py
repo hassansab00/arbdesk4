@@ -44,7 +44,7 @@ class Source:
         return {"ok": True}, "ok"
 
 
-def _run(monkeypatch, tmp_path, src, cities, workers=4):
+def _run(monkeypatch, tmp_path, src, cities, workers=4, first_held=None):
     monkeypatch.setattr(f, "WORKERS", workers)
     monkeypatch.setattr(f, "PAUSE", 0)
     monkeypatch.setattr(f, "MODELS", ["m1"])
@@ -52,7 +52,7 @@ def _run(monkeypatch, tmp_path, src, cities, workers=4):
     monkeypatch.setattr(f, "fetch_current", src.fetch_current)
     # The tables hold 30 days before the day asked for, so the window is not
     # clamped (first_held_date, plan v2 P1.6 phase 2 step 5).
-    monkeypatch.setattr(f, "first_held_date", lambda: DAY - dt.timedelta(days=30))
+    monkeypatch.setattr(f, "first_held_date", first_held or (lambda: DAY - dt.timedelta(days=30)))
 
     def build_rows(city_key, js, model=None, tz=None, first=None, last=None):
         if model:
@@ -71,6 +71,8 @@ def _run(monkeypatch, tmp_path, src, cities, workers=4):
     monkeypatch.setattr(f, "existing_dates", lambda c, s, e: {dt.date.fromisoformat(d) for d in src.store[c]})
     monkeypatch.setattr(f, "get_cities", lambda require_coords=True: [
         {"city_key": c, "latitude": 0.0, "longitude": 0.0, "timezone": "UTC"} for c in cities])
+    monkeypatch.setattr(f, "current_snapshot_of",
+                        lambda cities: {c: "2026-09-25T04:41:00+00:00" for c in sorted(set(cities))})
     logged = []
     monkeypatch.setattr(f, "log_run", lambda job, status, rows, detail: logged.append((status, detail)))
     out = tmp_path / "result.json"
@@ -89,7 +91,7 @@ def test_a_city_that_hung_once_is_finished_in_the_same_run(monkeypatch, tmp_path
     result, (status, detail), _ = _run(monkeypatch, tmp_path, src, CITIES)
     assert result == {"incomplete": False, "rows_offered": 12 * (len(f.LEADS) + 1),
                       "missing_chunks": 0, "unreached_chunks": 0, "completed_dates": 12,
-                      "current_cities_missing": []}
+                      "current_cities_missing": [], "current_snapshot_of": {}, "archive": True}
     assert status == "ok" and all(src.calls[(c, False)] == 2 for c in CITIES[:4])
     assert all(src.calls[(c, False)] == 1 for c in CITIES[4:])
 
@@ -140,3 +142,44 @@ def test_a_continuation_pass_fetches_only_the_current_runs_it_is_given(monkeypat
     assert sorted(set(asked)) == ["c01", "c02"]
     assert result["current_cities_missing"] == ["c02"] and detail["current_cities_missing"] == ["c02"]
     assert detail["current_rows"] == 1 and status == "partial"
+
+
+def test_a_city_left_without_its_current_run_is_named_with_the_run_it_prices_on(monkeypatch, tmp_path):
+    """Audit P3: the cities still missing their current run are exposed, with
+    the newest run each still holds (current_snapshot_of)."""
+    class Missing(Source):
+        def fetch_current(self, lat, lon, label):
+            return (None, "unreached") if label.split()[0] == "c05" else ({"ok": True}, "ok")
+
+    result, (status, detail), _ = _run(monkeypatch, tmp_path, Missing(), CITIES)
+    assert result["current_cities_missing"] == ["c05"] and status == "partial"
+    assert result["current_snapshot_of"] == detail["current_snapshot_of"] == {"c05": "2026-09-25T04:41:00+00:00"}
+    assert result["incomplete"] is False, "the archive's verdict is the archive's"
+
+
+def test_current_runs_only_asks_for_no_archive(monkeypatch, tmp_path):
+    """FORECAST_ARCHIVE=0 (scripts/forecast_nightly.py's current-only pass):
+    no coverage read, no archive request, only the named cities' current runs,
+    and an archive verdict that cannot ask for another pass."""
+    asked, covered = [], []
+
+    class Current(Source):
+        def fetch_current(self, lat, lon, label):
+            asked.append(label.split()[0])
+            return {"ok": True}, "ok"
+
+    src = Current()
+    monkeypatch.setattr(f, "ARCHIVE", False)
+    monkeypatch.setattr(f, "CURRENT_CITIES", {"c02", "c09"})
+    monkeypatch.setattr(f, "coverage_count", lambda c, s, e: covered.append(c) or 0)
+
+    def archive_down():
+        raise RuntimeError("weather_forecasts read timed out")
+    # the archive's oldest-held-day read is not made: it failing costs nothing (review of #311)
+    result, (status, detail), _ = _run(monkeypatch, tmp_path, src, CITIES, first_held=archive_down)
+    assert sorted(asked) == ["c02", "c09"] and not src.calls and covered == []
+    assert not src.store, "no city's coverage was read (existing_dates reads src.store)"
+    assert result == {"incomplete": False, "rows_offered": 0, "missing_chunks": 0, "unreached_chunks": 0,
+                      "completed_dates": 0, "current_cities_missing": [], "current_snapshot_of": {},
+                      "archive": False}
+    assert status == "ok" and detail["archive"] is False and detail["current_rows"] == 2

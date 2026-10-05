@@ -69,7 +69,9 @@ jobs:
       #    night's current-run snapshot. The wrapper runs
       #    scripts/ingest_forecasts.py (provenance source) and keeps the chain's
       #    second pass for timed-out cities inside this step (bounded: at most
-      #    three passes, none started after 26 minutes, the last ending by 36).
+      #    three passes, none started after 26 minutes, the last ending by 36),
+      #    then up to two current-runs-only passes for the cities still
+      #    missing tonight's current run (audit P3, 5 Oct; same 26-minute rule).
       #    tests/test_github_actions.py holds it first.
       - name: Ingest forecasts (last 10 days)
         if: ${{ !cancelled() }}

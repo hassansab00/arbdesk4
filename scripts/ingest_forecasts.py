@@ -67,6 +67,17 @@ SOFT_DEADLINE_MIN = min(20, max(1, int(os.environ.get('FORECAST_DEADLINE_MINUTES
 # runs again (about 3.6 minutes, 28 Sep) to fill a few archive chunks (4 Oct).
 _CURRENT_ONLY = os.environ.get("FORECAST_CURRENT_CITIES")
 CURRENT_CITIES = None if _CURRENT_ONLY is None else {c for c in _CURRENT_ONLY.split(",") if c.strip()}
+# CURRENT RUNS ONLY (5 Oct, audit P3). A missed current run is not part of
+# `incomplete` (see the end of main), so scripts/forecast_nightly.py asked for
+# it again only while the archive still needed a pass. Misses are common: 10
+# of the 13 passes of 1-5 Oct that asked for every city's current run missed
+# 1-4 cities (ingest_log), and 3 of those (1, 3, 4 Oct, 04:4x) had a complete
+# archive. Those cities still had that night's 03:4x run from the old chain;
+# from 4 Oct nothing else fetches one, so a miss leaves a city on the night
+# before's. The wrapper now retries them on their own: "0" skips the catch-up
+# window, its coverage reads and its verdict, and asks only for the current
+# runs FORECAST_CURRENT_CITIES names.
+ARCHIVE = os.environ.get("FORECAST_ARCHIVE", "1") != "0"
 
 def fetch(lat, lon, start, end, label, models=None):
     fields = ["temperature_2m"] + [f"temperature_2m_previous_day{d}" for d in LEADS]
@@ -213,6 +224,28 @@ def fetch_current(lat, lon, label):
                 return None, "unreached"
             time.sleep(RETRY_WAIT)
     return None, "unreached"
+
+
+def current_snapshot_of(city_keys, timeout_s=10):
+    """{city: run_at of the newest current run it holds, or None}: the snapshot
+    a city whose current run was missed tonight is left on (audit P3).
+    One read per city, one attempt of at most timeout_s; a read that fails is
+    reported as "unread", never raised."""
+    from common import _cfg, _get, _headers
+    out = {}
+    for c in sorted(set(city_keys)):
+        try:
+            r = _get(f"{_cfg()['url']}/rest/v1/weather_forecast_models", headers=_headers(),
+                     timeout=timeout_s, params={"select": "run_at", "city_key": f"eq.{c}",
+                                                "source": f"eq.{CURRENT_SOURCE}",
+                                                "order": "run_at.desc", "limit": "1"})
+            r.raise_for_status()
+            rows = r.json()
+            out[c] = rows[0]["run_at"] if rows else None
+        except Exception as e:
+            print(f"  ! {c}: its newest current run was not read ({type(e).__name__})", file=sys.stderr)
+            out[c] = "unread"
+    return out
 
 
 CURRENT_LEADS = (0, 1, 2)
@@ -379,10 +412,13 @@ def main():
             days=int(os.environ.get("FORECAST_CATCHUP_DAYS", "35")))
 
     # A day the prune has taken is in data/archive, not the tables: it is not
-    # fetched again, whoever asked for it (first_held_date says why).
+    # fetched again, whoever asked for it (first_held_date says why). A
+    # current-only pass reads neither archive table: a slow or failed read
+    # there must not cost it the current runs it exists to retry (review of
+    # #311).
     if start > end:
         raise ValueError('start must be on or before end')
-    first_held = first_held_date()
+    first_held = first_held_date() if ARCHIVE else start
     if catchup_start(start, first_held) != start:
         if first_held > end:
             raise ValueError(f"{start} to {end} is older than {first_held}, the oldest day both "
@@ -393,17 +429,21 @@ def main():
 
     t0 = time.monotonic()
     all_cities = get_cities(require_coords=True)
+    archive_cities = all_cities if ARCHIVE else []
     windows = chunks(start, end, CHUNK_DAYS)
     total_days = (end - start).days + 1
 
-    print(f"cities: {len(all_cities)}  window: {start} -> {end}  chunks/city: {len(windows)}")
-    print("ranking cities by existing coverage (least first)...", flush=True)
+    if ARCHIVE:
+        print(f"cities: {len(all_cities)}  window: {start} -> {end}  chunks/city: {len(windows)}")
+        print("ranking cities by existing coverage (least first)...", flush=True)
+    else:
+        print("current runs only (FORECAST_ARCHIVE=0): the archive window is not asked for")
 
     # Coverage for every city at once; each city's known dates are kept, so
     # its fetch below does not read them a second time.
     with ThreadPoolExecutor(WORKERS) as pool:
-        haves = list(pool.map(lambda c: existing_dates(c["city_key"], start, end), all_cities))
-    ranked = sorted(((len(h), c, h) for c, h in zip(all_cities, haves)), key=lambda x: x[0])
+        haves = list(pool.map(lambda c: existing_dates(c["city_key"], start, end), archive_cities))
+    ranked = sorted(((len(h), c, h) for c, h in zip(archive_cities, haves)), key=lambda x: x[0])
     # LEAST covered first - always makes progress where it matters
 
     done_ct = sum(1 for n, _, _ in ranked if n >= total_days)
@@ -505,7 +545,7 @@ def main():
     missing_chunks += settled["missing"]
     unreached_chunks += settled["unreached"]
     with ThreadPoolExecutor(WORKERS) as pool:
-        after = list(pool.map(lambda c: coverage_count(c["city_key"], start, end), all_cities))
+        after = list(pool.map(lambda c: coverage_count(c["city_key"], start, end), archive_cities))
     completed_dates = sum(max(0, a - len(h)) for a, h in zip(after, haves))
     if ran_out:
         print(f"\n! soft deadline at {(time.monotonic() - t0) / 60:.0f} min. Re-run the identical "
@@ -551,6 +591,10 @@ def main():
             todo = hung
         print(f"current runs: {current_rows} row(s)"
               + (f"; failed {dict(current_failed)}" if current_failed else ""))
+    # The cities still without tonight's current run, and the newest each holds.
+    snapshot_of = current_snapshot_of(current_missing) if current_missing else {}
+    for c, at in snapshot_of.items():
+        print(f"  {c}: no current run tonight; its newest is {at}")
 
     print(f"\ntotal {total} forecast rows written this run")
     if MODELS:
@@ -567,7 +611,8 @@ def main():
     # incomplete so it is asked for again, but it is not evidence of a gap.
     result = {'incomplete': incomplete, 'rows_offered': total, 'missing_chunks': missing_chunks,
               'unreached_chunks': unreached_chunks, 'completed_dates': completed_dates,
-              'current_cities_missing': sorted(set(current_missing))}
+              'current_cities_missing': sorted(set(current_missing)),
+              'current_snapshot_of': snapshot_of, 'archive': ARCHIVE}
     result_path = os.environ.get('FORECAST_RESULT_PATH')
     if result_path:
         with open(result_path, 'w') as handle:
@@ -575,8 +620,10 @@ def main():
     # A CITY WITHOUT TODAY'S CURRENT RUN IS A PARTIAL COLLECTION (30 Sep). The
     # runs of 29-30 Sep logged 'ok' with current_failed unreached 1-4: those
     # cities priced on an older run and the log read healthy. It does not
-    # make the run `incomplete` - that chains another billed link, and the
-    # current runs are fetched again next night - but it is reported.
+    # make the run `incomplete` - that is the archive's verdict, and a missed
+    # current run says nothing about the archive - but it is reported, with
+    # the run the city is left on (current_snapshot_of), and
+    # scripts/forecast_nightly.py retries it in current-only passes (5 Oct).
     status = "partial" if (incomplete or current_failed) else "ok"
     log_run("ingest_forecasts", status, total,
             {"start": str(start), "end": str(end), "leads": LEADS,
@@ -586,7 +633,8 @@ def main():
              "model_requests_failed": dict(model_failed),
              "models_without_rows": sorted(model_empty),
              "current_rows": current_rows, "current_failed": dict(current_failed),
-             "current_cities_missing": sorted(set(current_missing))})
+             "current_cities_missing": sorted(set(current_missing)),
+             "current_snapshot_of": snapshot_of, "archive": ARCHIVE})
 
 if __name__ == "__main__":
     main()
