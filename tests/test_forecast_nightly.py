@@ -64,9 +64,71 @@ def test_no_current_run_is_fetched_again_when_none_was_missed():
     assert runs.envs[1]["FORECAST_CURRENT_CITIES"] == ""
 
 
-def test_a_complete_first_pass_is_the_only_pass():
-    runs = Runs([_result(completed_dates=48, current_cities_missing=["busan"])])
+def test_a_complete_first_pass_with_every_current_run_is_the_only_pass():
+    runs = Runs([_result(completed_dates=48)])
     assert fn.main(run=runs) == 0 and len(runs.envs) == 1
+
+
+def test_a_missed_current_run_is_asked_again_when_the_archive_is_complete(capsys):
+    """Audit P3 (4 Oct), its own reproduction: the archive complete, no date
+    completed, madrid's current run missing. It stopped after one pass, green;
+    now a current-only pass asks for madrid alone."""
+    runs = Runs([_result(current_cities_missing=["madrid"]),
+                 _result(current_cities_missing=[], archive=False)])
+    assert fn.main(run=runs) == 0 and len(runs.envs) == 2
+    second = runs.envs[1]
+    assert second["FORECAST_ARCHIVE"] == "0", "no archive window, no coverage reads"
+    assert second["FORECAST_CURRENT_CITIES"] == "madrid"
+    assert second["FORECAST_DEADLINE_MINUTES"] == "2" and second["_timeout"] == 5 * 60
+    assert "FORECAST_ARCHIVE" not in runs.envs[0]
+    assert "::warning::" not in capsys.readouterr().out
+
+
+def test_the_current_retry_is_bounded_and_what_is_left_is_named(capsys):
+    still = _result(current_cities_missing=["madrid"], archive=False,
+                    current_snapshot_of={"madrid": "2026-10-04T03:50:06+00:00"})
+    runs = Runs([_result(current_cities_missing=["madrid", "milan"]),
+                 _result(current_cities_missing=["madrid"], archive=False), still, still])
+    assert fn.main(run=runs) == 0, "a missed current run is a warning, not the step's failure"
+    assert len(runs.envs) == 1 + fn.MAX_CURRENT_PASSES == 3
+    assert [e.get("FORECAST_CURRENT_CITIES") for e in runs.envs] == [None, "madrid,milan", "madrid"]
+    out = capsys.readouterr().out
+    assert "::warning::no current run tonight for madrid (newest current run: 2026-10-04T03:50:06+00:00)" in out
+
+
+def test_the_current_retry_follows_the_archive_s_passes_whatever_ended_them():
+    # the archive paused at its bound after progress: still green, and madrid asked for alone
+    stuck = _result(incomplete=True, unreached_chunks=1, completed_dates=1, current_cities_missing=["madrid"])
+    runs = Runs([stuck, stuck, stuck, _result(archive=False)])
+    assert fn.main(run=runs) == 0
+    assert [e.get("FORECAST_ARCHIVE") for e in runs.envs] == [None, None, None, "0"]
+    # a refused chunk is still red, and the current run is still asked for
+    runs = Runs([_result(incomplete=True, missing_chunks=1, completed_dates=40, current_cities_missing=["busan"]),
+                 _result(archive=False)])
+    assert fn.main(run=runs) == 1
+    assert runs.envs[1]["FORECAST_ARCHIVE"] == "0" and runs.envs[1]["FORECAST_CURRENT_CITIES"] == "busan"
+
+
+def test_a_current_only_pass_never_enters_the_archive_s_verdict():
+    passes = [{"pass": 1, "archive": True, "exit": 0, "result": _result(completed_dates=3)},
+              {"pass": 2, "archive": False, "exit": 0,
+               "result": _result(incomplete=True, completed_dates=0, current_cities_missing=["x"])}]
+    assert fn.verdict(passes) is None
+    passes[1]["exit"] = 1
+    assert fn.verdict(passes) == "pass 2 ended with 1 and no result", "a crash is a crash"
+
+
+def test_a_current_only_pass_that_crashes_goes_red():
+    runs = Runs([_result(current_cities_missing=["madrid"])], codes=[0, "timeout"])
+    assert fn.main(run=runs) == 1 and len(runs.envs) == 2
+
+
+def test_no_current_only_pass_starts_after_26_minutes(capsys):
+    ticks = iter([0, 27 * 60, 27 * 60])
+    runs = Runs([_result(current_cities_missing=["madrid"],
+                         current_snapshot_of={"madrid": "2026-10-04T03:50:06+00:00"})])
+    assert fn.main(run=runs, clock=lambda: next(ticks)) == 0 and len(runs.envs) == 1
+    assert "::warning::no current run tonight for madrid" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("result", [
@@ -139,4 +201,16 @@ def test_the_ingest_reads_the_cities_whose_current_run_to_fetch(monkeypatch):
         importlib.reload(ingest_forecasts)
     src = open(ingest_forecasts.__file__).read()
     assert 'todo = [c for c in all_cities if CURRENT_CITIES is None or c["city_key"] in CURRENT_CITIES]' in src
-    assert "'current_cities_missing': sorted(set(current_missing))}" in src
+    assert "'current_cities_missing': sorted(set(current_missing))," in src
+
+
+def test_the_ingest_reads_whether_to_ask_for_the_archive(monkeypatch):
+    import ingest_forecasts
+    try:
+        monkeypatch.delenv("FORECAST_ARCHIVE", raising=False)
+        assert importlib.reload(ingest_forecasts).ARCHIVE is True
+        monkeypatch.setenv("FORECAST_ARCHIVE", "0")
+        assert importlib.reload(ingest_forecasts).ARCHIVE is False
+    finally:
+        monkeypatch.delenv("FORECAST_ARCHIVE", raising=False)
+        importlib.reload(ingest_forecasts)

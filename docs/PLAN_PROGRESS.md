@@ -30,6 +30,19 @@ PR that advances a step.
       - the step goes red where the chain did (Codex's second finding): a refused chunk, a last pass that completed no date, or a pass that crashed or timed out. A pause after progress stays green.
     - pipeline_intraday runs every 6 hours (02, 08, 14, 20 UTC). The checkpoint record does not depend on it: the tick prices every checkpoint itself, and `v_model_promoted` is empty. The day-ahead hit record does, because its call is the last `band_probabilities` pricing before local midnight, and only this job writes that table. The hours are chosen for it. Arithmetic from the 48 cities' midnights on 10 Oct, with a pricing landing 4 min after the dispatch: the call's mean age falls from 2.01 h (six runs) to 1.64 h (median 2.33 -> 1.33 h; oldest 3.33 -> 4.33 h: karachi and the US west coast). 00/06/12/18 would have made it 3.14 h. Decisions (8 h), edges and band_probabilities (12 h) stay inside their freshness limits.
     - pipeline_daily is expected to log `ingest_forecasts`; it did, within 105 min, on each of its 7 dispatches since 28 Sep.
+    - **The wrapper's first scheduled night (5 Oct, `ingest_log`):** pass 1 logged 04:46:36Z `partial`, with 3 archive chunks unreached and Milan's current run missing. Pass 2 logged 04:46:54Z `ok`: 150 archive rows and Milan's current run (21 rows). The archive was incomplete, so its continuation carried Milan.
+    - **A missed current run retried on its own (audit P3, 5 Oct, this PR; Hassan: "fix the nightly run and retry gap").**
+      - **The gap:** a missed current run is not `incomplete`, so a night whose archive was complete stopped after one pass and stayed green. Since 4 Oct nothing else fetches a current run, so a missed city stays on the night before's.
+      - **How often** (`ingest_log`, 1-5 Oct): 10 of the 13 passes that asked for every city's current run missed 1-4 cities.
+        - 3 of those had a complete archive: the 04:4x runs of 1, 3 and 4 Oct, with 4, 4 and 1 cities missed.
+        - Those 9 cities still had a run from 03:44-03:50Z the same night, from the old chain (`weather_forecast_models`). On 4 Oct that was Madrid at 03:50Z.
+        - On 5 Oct the first pass left the archive incomplete, so the archive's continuation carried the retry.
+      - **The fix:** when the archive's passes end, by whatever rule, the wrapper asks again for the current runs of only the cities still missing.
+        - Up to 2 current-only passes (`FORECAST_ARCHIVE=0`: no archive window, no coverage reads), with a 2-minute soft deadline and a 5-minute timeout.
+        - None is started after 26 minutes.
+        - Their results never enter the archive's verdict; a crash still fails the step.
+      - **What is left is named:** the ingest's row is `partial` and lists each city still missing with the newest run it holds (`current_snapshot_of`, one 10 s read per city). The step prints a `::warning::` naming them. It does not go red: the archive's verdict is unchanged, and the next night asks again.
+      - **Not done:** tracking model-input freshness separately from the main forecast's (the audit's last sentence).
     - tests.yml runs pytest and the database contracts side by side. Every test still runs. On two cores locally the pair took 174 s. The first run on GitHub (this PR, 4 Oct) took 170 s and billed 3 minutes, where the median was 274 s billed 5.
     - /paper-trades states the cycle as the clock's (:36, every six hours); it said :15 every four hours.
   - **Budget:** `SCHEDULED_MINUTE_BUDGET` 2,850 and `MEASURED_MINUTES` from the runs above. pipeline_daily is set at 38 until its new shape is measured (29.0 plus the slowest first forecast link, 799 s, less the 276 s step it replaces). The scheduled projection is 2,835 (about 2,750 on the means), leaving 150-250 a month for CI. `SCHEDULED_RUN_BUDGET` is 1,000 (964 runs).

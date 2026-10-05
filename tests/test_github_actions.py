@@ -189,6 +189,10 @@ MEASURED_MINUTES = {
     # chain's second link (210-346 s a job, mostly fetching all 48 current runs
     # again) becomes a pass inside the step that asks only for what is still
     # missing (scripts/forecast_nightly.py): about a minute, not measured yet.
+    # From 5 Oct (audit P3) up to two current-runs-only passes follow when a
+    # city's current run is still missing; not measured yet. Their bound: the
+    # 5 Oct second pass, which also read the archive window, logged 18 s after
+    # the first (ingest_log 04:46:36Z and 04:46:54Z).
     # 29.0 + (667 - 276) / 60 + 1 = 36.5 on the means; 38 leaves room for a
     # slower night (1 Oct's daily run billed 33). Re-measure after a week.
     "pipeline_daily.yml": 38.0,
