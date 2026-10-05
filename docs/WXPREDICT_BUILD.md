@@ -357,6 +357,13 @@ The pipe is not broken. What is wrong is what the page shows and what reaches th
 
 All eight ledgers pass `paper_desk_retire`'s refusal checks today (5 Oct): 0 positions with shares, 0 queued or working orders, and 0 plans pending approval or queued.
 
+**P.1, re-measured 5 Oct 17:58-17:59Z** (Supabase tool; the production API through the Vercel tool). Nothing has changed in substance since the measurements above; the counts grew with time only.
+- **Decisions since 30 Sep 00:00Z: 11,645, 0 BUY.** s10 x3: 1,429 NONE and 41 WAIT each; s11 x2: 1,470 NONE each; s12: 1,469 NONE and 1 HOLD; s2: 2,825 NONE. The last WAIT or HOLD: 1 Oct 14:36Z.
+- **Trades:** 198; the last opened 29 Sep 22:36:49Z; 0 open positions on 20 accounts. Orders: filled 186, expired 23, partial 13, rejected 4. Plans: filled 185, blocked 1,011, expired 78, partial 13, rejected 4.
+- **Reasons, 48 h:** s10 x3 `own_rule_none` 402-410, `no_ladder` 96 each, `no_trade_band` 8 (growth, winner); s11_lock `no_trade_band` 506; s11_ladder `no_trade_band` 471, `nothing_tradeable` 32, `against_market` 3; s12 `no_trade_band` 478, `nothing_tradeable` 25, `against_market` 3; s2 `no_signal` 851. **7 days:** s10_winner `own_rule_none` 1,384, `no_ladder` 334, `own_rule_wait` 60, `no_trade_band` 12, `against_market` 1.
+- **Paper jobs, 48 h, all `ok`:** `paper_plans` 10, `paper_worker` 10, `paper_exits` 10, `paper_settlement` 12, `signal_engine` 10, `P2.2_paper_maintenance` 8, `export_paper_trades` 4.
+- **The API:** `GET /api/paper-desk?resource=accounts` 200, 16 desks; the first is still "Shadow: s8_two_bucket_cover" (0 trades).
+
 
 ---
 
@@ -1075,7 +1082,7 @@ Updated in every PR.
 | D1 (minutes) | **wave A first; overage allowed up to 400 minutes in October as insurance, the goal still under 3,000** (Hassan, 5 Oct). 941 billed to 5 Oct 16:04Z by the jobs API; GitHub showed 1,065 of 3,000 | chat, 5 Oct; jobs API |
 | Wave A (A.1-A.7, the Actions revamp) | **A.1 done 5 Oct**: every step classified (section 3.6, "A.1 result"). Five stops for A.3 (promotion, calibration, strategy learning, trajectory, hit tournament: about 6-7 billed a night, estimated); skill and the engine replay kept. A.2's contracts half measured at about 7 s a run (not the 105 s assumed). A.2-A.7 todo | section 3.6 |
 | Wave 0 (0.1-0.4) | **0.1-0.3 done 5 Oct**: R16, R18, R19, R21, R29 closed on their own acceptance, live; R40's F4 holds; R2, R20, R22, R31 re-measured (section 3); `PLAN_PROGRESS` corrected: P0.3, P1.2, P1.3, P1.5, P2.2 done, and the five stale "PR open" rows (P2.7, P3.5, P3.7, P4.3, P6.5) were merged #117, #129, #130, #138, #141. 0.4: D0, D1, D3, D4, D5, D8 decided by Hassan 5 Oct; D2 (G1), D6 and D7 remain | section 3; `PLAN_PROGRESS` |
-| Wave P (P.1-P.5, the paper desks) | todo. Diagnosis measured 5 Oct: the API works; the page opens on an empty desk; 0 BUY in 11,591 decisions since 30 Sep | section 3.7 |
+| Wave P (P.1-P.5, the paper desks) | **P.1 done 5 Oct 17:59Z**: re-measured, nothing changed in substance (0 BUY in 11,645 decisions since 30 Sep; the page's API still opens on s8, 0 trades). P.2-P.5 todo | section 3.7 |
 | D5 (the eight flat ledgers) | **retire s1, s3-s9, export first, through P.2's targeted mode; never the desks of s2, s10, s11, s12 or the Portfolio desk** (Hassan, 5 Oct). All eight passed the refusal checks on 5 Oct | chat, 5 Oct; section 3.7 |
 | Phase 1 (sources, table) | built, PR #314 open, CI green on `b80b2a7` | `docs/WXPREDICT.md`, `table_meta.json` |
 | 1.1 (R37: 2 review findings) | todo (verified: 89 of 24,518 station days fail the rule) | |
