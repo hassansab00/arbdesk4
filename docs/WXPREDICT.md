@@ -174,6 +174,39 @@ The table has 118 columns:
 | the station's past | climatology of the day of year (mean, spread, count, typical peak hour, every year before), the day-ahead forecast's error over the last 7 and 30 whole days (best_match and the models' mean), its MAE | 99.9-100% |
 | the market | whole ladder priced, overround, implied mean / spread / top bucket / its price / entropy, price of the running maximum's bucket and of everything at or above it, the implied mean's change over 1 / 3 / 6 h, the top's change over 3 h, newest price's age, bucket-hours that moved in the last 1 / 6 h, every bucket's price and age | priced on 80.8% of venue rows |
 
+## Phase 2.1: what the record's price is (measured 6 Oct)
+
+The training table reads the venue's hourly `prices-history` point `p` as "the market at the decision". Before the live reader can read "the same thing", this measures what `p` is. The tool is `tools/wxpredict/what_is_p.py`; it reads committed files only, and every number below comes from it.
+
+**Method.**
+- Each archived book snapshot (`data/archive/books`, every 2 h at odd UTC hours, taken about 25 min past the hour) is matched to its bucket's `p` at the same hour (`data/training/market_history/prices`, stamped 0-59 s past the hour). The match goes through `band_id`, then `token_yes` (`data/mirror/bands`), then the record's bucket.
+- The snapshot is about 25 min after `p`'s point, so a moving price blurs the comparison. The **control** keeps only the hours where `p` did not move between hh:00 and hh+1:00.
+- The tick's own books (`data/mirror/prediction_checkpoints`: bid, ask and last at about hh:36) are checked the same way, to test the last trade too.
+
+| `p` against | pairs | median | 90th percentile | within 0.005 | within 0.01 |
+|---|---|---|---|---|---|
+| book mid, all hours | 146,494 | 0.0 | 0.015 | 75.3% | 85.0% |
+| **book mid, stable hours** | 54,686 | 0.0 | **0.0** | 95.6% | **98.5%** |
+| book best bid, stable hours | 54,686 | 0.005 | 0.015 | 53.4% | 77.5% |
+| book best ask, stable hours | 54,686 | 0.005 | 0.015 | 50.3% | 75.1% |
+| tick mid, stable hours, spread ≤ 0.10 | 669 | 0.0 | 0.005 | 90.4% | 95.7% |
+| tick last trade, stable hours, spread ≤ 0.10 | 669 | 0.005 | 0.99 | 50.2% | 61.6% |
+
+**Answer: for spreads up to 0.10, `p` is the book's midpoint.**
+- On stable hours with a spread up to 0.10 (54,415 pairs), it matches the mid at the 90th percentile exactly (98.6% within 0.01). The bid, the ask and the last trade are all further off.
+- The all-hours figure (0.015 at the 90th percentile) is the price moving in the 25 min between `p`'s point and the snapshot, not a different definition.
+- The live reader (2.2) reads each bucket's **midpoint at the decision instant**, and stores the spread with it, so the case below can be found live.
+
+**Still open: spreads over 0.10.** These are 271 of the 54,686 stable book pairs (0.5%) and 13 tick pairs.
+- Against the mid: 84.9% within 0.01, 90th percentile 0.02. That misses this step's tolerance (0.01 at the 90th percentile).
+- **The venue's display rule (the last trade when the spread is over 0.10) does not explain it.** Of the 271 pairs, 25 have an archived trade print at or before `p`'s own stamp (`data/archive/trades` is partial: the other 246 have none; 94 August prints carry no token id and cannot be placed). On those 25:
+  - the last trade is within 0.01 of `p` on 5 (20%), with a median gap of 0.079 and a 90th percentile of 0.15;
+  - the mid is within 0.01 on 15 (60%), with a median of 0.005 and a 90th percentile of 0.065;
+  - 5 pairs match neither.
+- On the 13 tick pairs, the mid is also closer than the last trade.
+- **The cause is not measured, and no definition tested meets the tolerance on these books.** The mid is the closest one measured, so 2.2 uses it for every bucket.
+- 2.3's parity test reports the buckets with a spread over 0.10 on their own, with each difference listed. A definition for them waits on that test. G2 sees the result.
+
 ## Gaps (Phase 1)
 
 - **Market activity is a proxy.** The venue's hourly price history has no volume. "Activity" is the number of
