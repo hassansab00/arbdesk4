@@ -138,9 +138,23 @@ const MIG = (f) => fs.readFileSync(path.join(__dirname, '..', '..', 'supabase', 
       has_table_privilege('service_role', 'public.city_status_rules', 'insert') si`)).rows[0];
   assert.deepEqual(grants, { v: true, r: true, ri: false, si: true });
 
+  // the universe the focus is judged against, frozen at registration (Codex on #327)
+  const uni = (await db.query(`select set_id, cardinality(city_keys)::int n, source_sha256 from public.focus_set_universes`)).rows;
+  assert.equal(uni.length, 1);
+  assert.equal(uni[0].set_id, 'seasonal-2026-10-06');
+  assert.equal(uni[0].n, 48);
+  assert.equal(uni[0].source_sha256, 'b02509634235cd25ef75310b8b89f2a046b178cf5c44946d7f95974f0d87655e');
+  for (const sql of [`update public.focus_set_universes set city_keys = array['x']`,
+                     `delete from public.focus_set_universes`]) {
+    await assert.rejects(db.exec(sql), /Append-only record/, sql);
+  }
+  const ug = (await db.query(`select has_table_privilege('anon', 'public.focus_set_universes', 'select') r,
+      has_table_privilege('anon', 'public.focus_set_universes', 'insert') w`)).rows[0];
+  assert.deepEqual(ug, { r: true, w: false });
+
   // re-runnable: the migration again changes nothing
   await db.exec(MIG('20261006180000_each_city_has_a_daily_status.sql'));
   assert.equal((await db.query(`select count(*)::int n from public.city_status_rules`)).rows[0].n, 2);
 
-  console.log('PASS: city-status: candidate, watch (disagreement, models not in), insufficient, unavailable (no market, closed, stale station); the worst wins with every reason kept; every active city today and tomorrow at seven moments; the newest rules version decides and is named; the rules are append-only and well-formed; anon reads, only the service role writes; re-runnable');
+  console.log('PASS: city-status: candidate, watch (disagreement, models not in), insufficient, unavailable (no market, closed, stale station); the worst wins with every reason kept; every active city today and tomorrow at seven moments; the newest rules version decides and is named; the rules are append-only and well-formed; anon reads, only the service role writes; the focus universe frozen (48, the hash of the study) and append-only; re-runnable');
 })().catch((e) => { console.error(e); process.exit(1); });

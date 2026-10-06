@@ -97,3 +97,25 @@ def test_the_page_reads_one_selection_for_every_panel():
         assert prop in page
     assert '.in("city_key", selected)' in page and '.in("city_key", activeKeys)' not in page
     assert "prob_on_winner" in page
+
+
+def test_the_focus_is_judged_against_the_universe_recorded_with_it():
+    """Codex on #327: today's roster would let a later retirement or activation
+    move a city's whole record in or out after the registration. The universe
+    is the study JSON's 6 Oct list, whose sha256 focus_sets already records."""
+    focus_json = os.path.join(ROOT, "data", "eval", "focus", "season_predictability_2026-10-06.json")
+    study = json.loads(_read(focus_json))
+    mig = _read(MIGRATION)
+    block = mig[mig.index("insert into public.focus_set_universes"):]
+    block = block[:block.index("on conflict")]
+    keys = re.findall(r"'([a-z_]+)'", block[block.index("array["):block.index("]")])
+    assert keys == study["universe"]["active"] and len(keys) == 48
+    sha = hashlib.sha256(open(focus_json, "rb").read()).hexdigest()
+    assert f"'{sha}'" in block
+    focus_mig = _read(os.path.join(ROOT, "supabase", "migrations", "20261006150000_the_focus_set_is_recorded.sql"))
+    assert f"'{sha}'" in focus_mig, "the same study the focus set names"
+    panel = _read(os.path.join(ROOT, "web", "components", "PredictionHindsight.tsx"))
+    assert "if (!focus || !universe) return null;" in panel
+    assert "focus.evaluate_from, focus.window_to" in panel, "nothing after the window is scored"
+    page = _read(os.path.join(ROOT, "web", "app", "predictive", "page.tsx"))
+    assert 'supabase.from("focus_set_universes")' in page

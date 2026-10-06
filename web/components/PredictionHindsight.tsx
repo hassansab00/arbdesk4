@@ -131,11 +131,13 @@ export const utcClock = (v: string | null) => {
 export const verdict = (hit: boolean | null) => (hit === null ? "pending" : hit ? "hit" : "miss");
 
 export default function PredictionHindsight({
-  rows: allRows, loading, error, truncated, onRetry, cities, active, focus, moment, setMoment,
+  rows: allRows, loading, error, truncated, onRetry, cities, active, focus, universe, moment, setMoment,
 }: {
   rows: HindsightRow[]; loading: boolean; error: string | null; truncated: boolean; onRetry: () => void;
-  /** the page's selection; `active` is every active city, the universe the focus is judged against */
+  /** the page's selection and every active city today */
   cities: string[]; active: string[]; focus: FocusSet | null;
+  /** the cities the focus is judged against, frozen when it was recorded (focus_set_universes) */
+  universe: string[] | null;
   moment: string; setMoment: (m: string) => void;
 }) {
   // The database's own total over every city, the reference the rows must add up to.
@@ -158,12 +160,14 @@ export default function PredictionHindsight({
   const rows = useMemo(() => shown.filter((r) => r.called_when === moment)
     .sort((a, b) => (a.for_date < b.for_date ? 1 : a.for_date > b.for_date ? -1 : a.city_key.localeCompare(b.city_key)))
     .slice(0, 300), [shown, moment]);
+  // Judged against the universe recorded with the set, never today's roster:
+  // a city retired or added later must not move its record in or out.
   const versus = useMemo(() => {
-    if (!focus) return null;
-    const universe = active;
+    if (!focus || !universe) return null;
     const members = focus.city_keys.filter((k) => universe.includes(k));
-    return compareFocus(allRows as HindsightRow[], members, universe, moment, focus.evaluate_from);
-  }, [allRows, focus, active, moment]);
+    return compareFocus(allRows as HindsightRow[], members, universe, moment,
+                        focus.evaluate_from, focus.window_to);
+  }, [allRows, focus, universe, moment]);
   const head = useMemo(() => {
     const d = summaries.find(x => x.called_when === "day_ahead");
     return d ? summarise(d) : null;
@@ -389,7 +393,7 @@ function FocusVersus({ v, focus }: { v: ReturnType<typeof compareFocus>; focus: 
     <td className="px-2 py-1 font-mono">{g.marketRate === null ? "—" : `${pct(g.marketRate)} (${g.marketN})`}</td>
   </>;
   return <div className="space-y-1 rounded border border-border bg-panel p-3 text-xs">
-    <div className="font-semibold">{focus.label} against every active city · {MOMENT[v.moment] ?? v.moment} · target dates from {v.from}</div>
+    <div className="font-semibold">{focus.label} against the cities active when it was recorded · {MOMENT[v.moment] ?? v.moment} · target dates {v.from} to {v.to}</div>
     {v.focus.n === 0
       ? <p className="text-muted">
           No settled call on a target date from {v.from} yet. The set was recorded on{" "}
@@ -405,13 +409,13 @@ function FocusVersus({ v, focus }: { v: ReturnType<typeof compareFocus>; focus: 
             </tr></thead>
             <tbody>
               <tr className="border-t border-border"><td className="px-2 py-1">{focus.label}</td>{cell(v.focus)}</tr>
-              <tr className="border-t border-border"><td className="px-2 py-1">Every active city</td>{cell(v.universe)}</tr>
+              <tr className="border-t border-border"><td className="px-2 py-1">Every city in the universe</td>{cell(v.universe)}</tr>
               <tr className="border-t border-border"><td className="px-2 py-1">The other cities</td>{cell(v.rest)}</tr>
             </tbody>
           </table>
         </div>
         <p className="text-muted">
-          Focus minus every city, per date then averaged: <b className="text-text">{pp(v.vsUniverse.mean)}</b>{" "}
+          Focus minus the universe, per date then averaged: <b className="text-text">{pp(v.vsUniverse.mean)}</b>{" "}
           (90% {v.vsUniverse.interval ? `${pp(v.vsUniverse.interval[0])} to ${pp(v.vsUniverse.interval[1])}` : "needs two dates"});
           minus the others: <b className="text-text">{pp(v.vsRest.mean)}</b>{" "}
           (90% {v.vsRest.interval ? `${pp(v.vsRest.interval[0])} to ${pp(v.vsRest.interval[1])}` : "needs two dates"}).

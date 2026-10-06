@@ -95,7 +95,7 @@ for (const c of ['chicago', 'lucknow']) {
   const r = cmpRows.find((x) => x.city_key === c && x.for_date === '2026-10-10');
   r.engine_version = 'git:b';
 }
-const cmp = compareFocus(cmpRows, ['chicago', 'lucknow', 'miami'], active, 'noon', '2026-10-08');
+const cmp = compareFocus(cmpRows, ['chicago', 'lucknow', 'miami'], active, 'noon', '2026-10-08', '2026-11-30');
 assert.equal(cmp.dates, 3, '7 Oct is before the evaluation start');
 assert.equal(cmp.focus.n, 3 + 3 + 1, 'the git:b rows on 10 Oct have no partner and are dropped');
 assert.equal(cmp.rest.n, 9);
@@ -105,10 +105,18 @@ assert.equal(cmp.focus.marketRate, 1);
 // focus rates per date: 8 Oct 3/3, 9 Oct 1/3, 10 Oct 1/1; the rest: 1/3 each day
 const want = ((1 - 1 / 3) + (1 / 3 - 1 / 3) + (1 - 1 / 3)) / 3;
 assert.ok(Math.abs(cmp.vsRest.mean - want) < 1e-12, `focus minus the rest per date: ${cmp.vsRest.mean} vs ${want}`);
-const again = compareFocus(cmpRows, ['chicago', 'lucknow', 'miami'], active, 'noon', '2026-10-08');
+const again = compareFocus(cmpRows, ['chicago', 'lucknow', 'miami'], active, 'noon', '2026-10-08', '2026-11-30');
 assert.deepEqual(again.vsRest.interval, cmp.vsRest.interval, 'seed 11: the same interval twice');
 assert.ok(cmp.vsRest.interval[0] <= cmp.vsRest.mean && cmp.vsRest.mean <= cmp.vsRest.interval[1]);
-const none = compareFocus(cmpRows, ['chicago'], active, 'noon', '2026-12-01');
+const none = compareFocus(cmpRows, ['chicago'], active, 'noon', '2026-12-01', '2026-12-31');
+// nothing after the registered window is scored (Codex on #327)
+const capped = compareFocus(cmpRows, ['chicago', 'lucknow', 'miami'], active, 'noon', '2026-10-08', '2026-10-09');
+assert.equal(capped.dates, 2, '10 Oct is after the window and never counts');
+assert.equal(capped.focus.n, 6);
+// the universe is the one passed in, never inferred: a city outside it counts in no group
+const frozen = compareFocus(cmpRows, ['chicago', 'lucknow', 'miami'], active.filter((c) => c !== 'tokyo'),
+  'noon', '2026-10-08', '2026-11-30');
+assert.equal(frozen.rest.n, 6, 'tokyo is outside the recorded universe');
 assert.equal(none.focus.n, 0);
 assert.equal(none.vsRest.mean, null);
 assert.equal(none.vsRest.interval, null);

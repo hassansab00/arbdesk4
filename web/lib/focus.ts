@@ -188,7 +188,7 @@ function score(rs: HindsightRow[]): GroupScore {
 }
 
 export type FocusComparison = {
-  moment: string; from: string; dates: number; keys: number;
+  moment: string; from: string; to: string; dates: number; keys: number;
   focus: GroupScore; universe: GroupScore; rest: GroupScore;
   /** focus minus the group, per date then averaged, with a 90% date-resampled interval */
   vsUniverse: { mean: number | null; interval: [number, number] | null };
@@ -235,17 +235,20 @@ function bootMean(diffs: number[], n = 1000, seed = 11): [number, number] | null
 
 /**
  * The focus set against the universe and against the rest, as
- * docs/FOCUS_PREREG.md fixes it: settled calls on target dates from `from`, at
- * one checkpoint; a row counts only where BOTH groups have rows for its date,
+ * docs/FOCUS_PREREG.md fixes it: settled calls on target dates from `from`
+ * through `to` (the registered window; nothing after it is scored), at one
+ * checkpoint, in the universe recorded at registration (focus_set_universes,
+ * never today's roster); a row counts only where BOTH groups have rows for its date,
  * checkpoint and predictor version; the difference is taken per date and
  * averaged, with a 90% interval from whole dates resampled (seed 11, 1,000
  * draws). This is the page's running view; the formal reading on 1 Dec is
  * tools/fec_same_day.cluster_boot over the whole window.
  */
 export function compareFocus(rows: HindsightRow[], focus: string[], universe: string[],
-                             moment: string, from: string): FocusComparison {
+                             moment: string, from: string, to: string): FocusComparison {
   const f = new Set(focus), u = new Set(universe);
-  const at = rows.filter((r) => r.called_when === moment && r.for_date >= from && r.hit !== null && u.has(r.city_key));
+  const at = rows.filter((r) => r.called_when === moment && r.for_date >= from && r.for_date <= to
+    && r.hit !== null && u.has(r.city_key));
   const inF = at.filter((r) => f.has(r.city_key));
   const inRest = at.filter((r) => !f.has(r.city_key));
   const fKeys = new Set(inF.map(key)), rKeys = new Set(inRest.map(key));
@@ -258,7 +261,7 @@ export function compareFocus(rows: HindsightRow[], focus: string[], universe: st
     return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
   };
   return {
-    moment, from, dates: new Set(U.map((r) => r.for_date)).size, keys: both.size,
+    moment, from, to, dates: new Set(U.map((r) => r.for_date)).size, keys: both.size,
     focus: score(F), universe: score(U), rest: score(R),
     vsUniverse: { mean: mean(dU), interval: bootMean([...dU.values()]) },
     vsRest: { mean: mean(dR), interval: bootMean([...dR.values()]) },

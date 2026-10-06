@@ -177,6 +177,14 @@ export default function PredictivePage() {
     []
   );
   const focus = (focusQ.data ?? [])[0] ?? null;
+  // The universe the focus is judged against, frozen when the set was recorded.
+  const universeQ = useQuery<Array<{ city_keys: string[] }>>(
+    () => focus
+      ? supabase.from("focus_set_universes").select("city_keys").eq("set_id", focus.set_id).limit(1)
+      : Promise.resolve({ data: [] as Array<{ city_keys: string[] }>, error: null }),
+    [focus?.set_id ?? ""]
+  );
+  const universe = (universeQ.data ?? [])[0]?.city_keys ?? null;
   const selected = useMemo(
     () => selectedKeys(scope, activeKeys, focus?.city_keys ?? [], custom),
     [scope, activeKeys, focus, custom]
@@ -263,7 +271,10 @@ export default function PredictivePage() {
 
   // Declared HERE, above the queries, because the convergence and ladder
   // queries are now filtered by it rather than filtered in the browser.
-  const active = city || selected[0] || cities[0]?.city_key || "";
+  // The detail panels show a city inside the selection only: a city picked
+  // earlier and then filtered out gives way to the first selected one, and an
+  // empty selection shows none (Codex on #327).
+  const active = (city && selectedSet.has(city) ? city : selected[0]) ?? "";
   /**
    * WHY THESE ARE SPLIT AND FILTERED, and why it was showing one city.
    *
@@ -295,7 +306,9 @@ export default function PredictivePage() {
     [active], 300000, 1000
   );
   const settledQ = useQuery<ConvRow[]>(
-    () => supabase.from("v_forecast_convergence_all").select("*")
+    // An empty selection asks for nothing: PostgREST refuses `in.()` (Codex on #327).
+    () => selected.length === 0 ? Promise.resolve({ data: [] as ConvRow[], error: null }) :
+      supabase.from("v_forecast_convergence_all").select("*")
             .eq("is_settled", true).eq("lead_days", 1)
             .in("city_key", selected)
             .order("for_date", { ascending: false }).limit(1000),
@@ -328,7 +341,8 @@ export default function PredictivePage() {
   // however large the limit, so a bigger view would have been cut silently.
   const SCORE_MAX = 4000;
   const scoreQ = useQuery<ScoreRow[]>(
-    () => readAllRows<ScoreRow>((from, to) =>
+    () => selected.length === 0 ? Promise.resolve({ data: [] as ScoreRow[], error: null }) :
+      readAllRows<ScoreRow>((from, to) =>
       supabase.from("v_prediction_scorecard_all")
         .select("city_key,model,lead_days,n_days,mae_c,bias_c,error_sd_c,worst_c,hit_rate_pct,within_1c_pct")
         .in("city_key", selected)
@@ -682,7 +696,8 @@ export default function PredictivePage() {
           keeps believing a number nothing has checked. */}
       <PredictionHindsight rows={hindsightQ.data ?? []} loading={hindsightQ.loading} error={hindsightQ.error}
         truncated={hindsightQ.truncated} onRetry={hindsightQ.refresh}
-        cities={selected} active={activeKeys} focus={focus} moment={moment} setMoment={setMoment} />
+        cities={selected} active={activeKeys} focus={focus} universe={universe}
+        moment={moment} setMoment={setMoment} />
 
       <PredictionLineup cities={selected} />
 
@@ -694,7 +709,7 @@ export default function PredictivePage() {
             value={active} onChange={(e) => setCity(e.target.value)}
             className="rounded border border-border bg-panel2 px-2 py-1 text-xs"
           >
-            {cities.map((c) => (
+            {cities.filter((c) => selectedSet.has(c.city_key)).map((c) => (
               <option key={c.city_key} value={c.city_key}>
                 {c.display_name ?? c.city_key}
               </option>
@@ -733,7 +748,7 @@ export default function PredictivePage() {
             value={active} onChange={(e) => setCity(e.target.value)}
             className="rounded border border-border bg-panel2 px-2 py-1 text-xs"
           >
-            {cities.map((c) => (
+            {cities.filter((c) => selectedSet.has(c.city_key)).map((c) => (
               <option key={c.city_key} value={c.city_key}>
                 {c.display_name ?? c.city_key}
               </option>

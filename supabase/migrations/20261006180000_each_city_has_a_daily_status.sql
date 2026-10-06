@@ -92,6 +92,58 @@ values ('status-v1',
 on conflict (version) do nothing;
 
 -- ---------------------------------------------------------------------------
+-- THE UNIVERSE THE FOCUS IS JUDGED AGAINST, FROZEN (F.5; Codex on #327).
+-- docs/FOCUS_PREREG.md compares the Seasonal Focus 10 with "the full active
+-- universe" and "the other 38": the 48 cities active on 6 Oct. cities.status
+-- has no history, so judging against today's roster would let a later
+-- retirement or activation add or remove a city's whole record after the
+-- registration. The 48 are already fixed in the study JSON whose sha256
+-- focus_sets carries (its "universe" key, from the 6 Oct cities mirror); this
+-- row copies them, append-only, so the page reads the registered universe.
+-- ---------------------------------------------------------------------------
+create table if not exists public.focus_set_universes (
+  set_id        text primary key,
+  city_keys     text[] not null check (cardinality(city_keys) between 1 and 200),
+  source_path   text not null,
+  source_sha256 text not null check (source_sha256 ~ '^[0-9a-f]{64}$'),
+  recorded_at   timestamptz not null default clock_timestamp()
+);
+
+comment on table public.focus_set_universes is
+  'The cities each focus set is judged against, frozen at registration (WXPredict build F.5): for seasonal-2026-10-06, the 48 cities active on 6 Oct 2026, copied from the study JSON whose sha256 focus_sets records. Append-only.';
+
+drop trigger if exists focus_set_universes_immutable on public.focus_set_universes;
+create trigger focus_set_universes_immutable before update or delete on public.focus_set_universes
+  for each row execute function arbdesk_private.immutable_record();
+drop trigger if exists focus_set_universes_no_truncate on public.focus_set_universes;
+create trigger focus_set_universes_no_truncate before truncate on public.focus_set_universes
+  for each statement execute function arbdesk_private.immutable_record();
+
+alter table public.focus_set_universes enable row level security;
+revoke all on public.focus_set_universes from public, anon, authenticated, service_role;
+grant select on public.focus_set_universes to anon, authenticated;
+grant select, insert on public.focus_set_universes to service_role;
+drop policy if exists focus_set_universes_read on public.focus_set_universes;
+create policy focus_set_universes_read on public.focus_set_universes for select
+  to anon, authenticated, service_role using (true);
+drop policy if exists focus_set_universes_insert on public.focus_set_universes;
+create policy focus_set_universes_insert on public.focus_set_universes for insert
+  to service_role with check (true);
+
+insert into public.focus_set_universes (set_id, city_keys, source_path, source_sha256)
+values ('seasonal-2026-10-06',
+   array[
+     'amsterdam', 'ankara', 'atlanta', 'austin', 'beijing', 'buenos_aires', 'busan', 'cape_town',
+     'chengdu', 'chicago', 'chongqing', 'dallas', 'denver', 'guangzhou', 'helsinki', 'houston',
+     'istanbul', 'jeddah', 'karachi', 'kuala_lumpur', 'london', 'los_angeles', 'lucknow', 'madrid',
+     'manila', 'mexico_city', 'miami', 'milan', 'moscow', 'munich', 'nyc', 'panama_city',
+     'paris', 'qingdao', 'san_francisco', 'sao_paulo', 'seattle', 'seoul', 'shanghai', 'shenzhen',
+     'singapore', 'tel_aviv', 'tokyo', 'toronto', 'warsaw', 'wellington', 'wuhan', 'zhengzhou'],
+   'data/eval/focus/season_predictability_2026-10-06.json',
+   'b02509634235cd25ef75310b8b89f2a046b178cf5c44946d7f95974f0d87655e')
+on conflict (set_id) do nothing;
+
+-- ---------------------------------------------------------------------------
 -- v_prediction_hindsight GAINS ONE COLUMN, appended (F.5). The focus
 -- comparison scores the mean probability each call put on the winning bucket
 -- (docs/FOCUS_PREREG.md, "Metrics"), and both halves of this view already

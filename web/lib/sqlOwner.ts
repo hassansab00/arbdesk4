@@ -69,6 +69,7 @@ export const SQL_OWNER: Record<string, string> = {
   "fact_forecast_outcome": "ad4_18_databank.sql",
   "fact_signal_outcome": "ad4_18_databank.sql",
   "fact_station_width_score": "supabase/migrations/20260927200000_the_width_scored_forward.sql",
+  "focus_set_universes": "supabase/migrations/20261006180000_each_city_has_a_daily_status.sql",
   "focus_sets": "supabase/migrations/20261006150000_the_focus_set_is_recorded.sql",
   "ingest_log": "ad4_00_preflight.sql",
   "ledger": "ad4_00_preflight.sql",
