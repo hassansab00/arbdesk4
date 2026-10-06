@@ -93,12 +93,18 @@ PR that advances a step.
           - A bucket's standing is its YES ask, or its YES bid when nobody sells YES. The decision engine and the edge engine read it the same way, from the top of the book (the edge engine through the rows' quoted prices, not the depth-weighted fill; Codex on #324).
           - Replayed on the 36 `against_market` refusals of 29 Sep - 6 Oct: 34 were false (the engine agreed with the bought-up leader); 2 (Austin, 1 Oct) now block on the real favourite.
           - Tests for both engines; a mutation back to asks only fails each.
-        - **P.5 question 3 fixed (this PR; Hassan, 6 Oct): S10 decides at each city's own peak, late hours included.**
+        - **P.5 question 3 fixed ([#325](https://github.com/hassansab00/arbdesk4/pull/325), merged as `4e8377f`; Hassan, 6 Oct). The registry row was applied live on 6 Oct: S10 decides at each city's own peak, late hours included.**
           - Measured 29 Sep - 6 Oct: the checkpoints follow each city's peak, at 9-18 local. Only Madrid's post-peak (18:xx, 7 checkpoints) fell outside rd1's hours 7-17.
           - rd1's hour 18 is fitted beside the served fit (`tools/fit_remaining_day.py --late-of`), under its own version `rd1:2026-09-25:66d6600c72` (`data/models/remaining_day/late_hours.json`, registered as shadow).
           - Walk-forward (each month fitted on the days before it), 15,695 city-days: log loss 0.122 against the floor-atom proxy's 1.491, gain 1.369 (95% 1.318-1.421). Hour 17 on the same data: +1.321.
           - `current.json` is byte-identical and its version `f5372ebb05` still names hours 7-17, so Challenger C's forward comparison (which selects by that version) is unchanged. A late hour never replaces a served one.
           - At 18:00 the rest of the day is every forecast hour left (19-23); the rule is unchanged for hours up to 17.
+        - **WXPredict build, 2.A group A (this PR): two keeps no reader needs, offloaded to the repository** (Hassan, 6 Oct: no subscription; offload recurrently).
+          - `decisions`: archive keep 30 -> 3 days, floor 14 -> 2. The longest reader needs one day.
+          - `band_probabilities`: keep and floor 30 -> 18 days. `station_width_score` reads markets of the last 14 days, priced from 3 days before.
+          - Measured 6 Oct: 33,056 decisions older than 2 days (11.1 MB) and 24,785 offered price rows (7.0 MB).
+          - `weather_forecast_models` moved to group B. The forecast ingest's catch-up window is the later of the two tables' oldest days, so the ingest needs a window per table first.
+          - The migration copies the live functions with only the floor changed; `sql/ad4_96` matches; the contracts check the new floors.
         - **WXPredict build, wave 2.A (#321): storage measured; the archive cycle alone cannot reach the checkpoint (`docs/WXPREDICT_BUILD.md` section 3.8, D9).**
           - 602,647,699 bytes (574.7 MiB) at 6 Oct 13:37Z; the gap to 450 MiB is 124.7 MiB; about 5 MiB a day of growth (readings 30 Sep - 6 Oct).
           - The project is on Supabase's Free plan; Supabase's docs put a Free project in read-only mode above 500 MB. It still accepts writes; why is not measured.

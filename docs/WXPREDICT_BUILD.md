@@ -408,11 +408,12 @@ All eight ledgers pass `paper_desk_retire`'s refusal checks today (5 Oct): 0 pos
 
 | cut | rows | MB | readers |
 |---|---|---|---|
-| `decisions`: 14 days (the floor under pressure) → 2 | 33,056 of 36,763 | 11.1 | The longest reader needs 1 day: `engine_replay_live.py` (yesterday) and the paper-desk API (24 h). `v_decision_prediction` reads every row, but no code reads it. |
-| `weather_forecast_models`: 30 → 7 days | 57,700 of 94,309 | 11.9 | `station_correction.py` reads 75 days through `weather_history`, which falls back to `data/archive`; pipeline_daily checks out the whole repo. Hit forecasts before the held range come from `derived_hit_forecasts`, frozen through 6 Oct 04:56Z. Every other reader reads the newest run. |
-| `band_probabilities`: 30 → 18 days | 24,785 of 139,275 | 7.0 | `station_width_score.py` reads about 17 days of every row, which is the floor's stated reason. So 18 days leaves one day of margin; at 21 days the cut is 5,689 rows, 1.6 MB. Longer readers use rows the prune keeps. |
+| `decisions`: keep 30 → 3 days, floor 14 → 2 (while the database is over its high-water mark the archive keeps the floor) | 33,056 of 36,763 at 2 days | 11.1 | The longest reader needs 1 day: `engine_replay_live.py` (yesterday) and the paper-desk API (24 h). The order and exit functions read the decision they are handed, minutes old. `v_decision_prediction` reads every row, but no code reads it. |
+| `band_probabilities`: keep and floor 30 → 18 days, by the market's date | 24,785 of 139,275 | 7.0 | `station_width_score.py` reads every price of the markets resolved in the last 14 days, priced from 3 days before; a market 18 days past its date is 4 days beyond that. Longer readers use rows the prune keeps. |
 
-Group A in total: **30.0 MB** (at 18 days).
+Group A in total: **18.1 MB**. This is the first PR (migration `20261006170000`): decisions keep 3 days with a floor of 2, and band probabilities keep 18 days.
+
+`weather_forecast_models` moved to group B when it was built. `ingest_forecasts.first_held_date` takes the later of the two forecast tables' oldest days, and nothing older is fetched. A 7-day keep would shrink the forecast ingest's catch-up window from about 30 days to 7 for both tables. The ingest must first keep a window per table.
 
 *Group B: a reader sees less, or needs a code change first.*
 
@@ -421,9 +422,10 @@ Group A in total: **30.0 MB** (at 18 days).
 | `derived_city_correlation`: keep the newest row per pair | 60,939 of 62,314 | 8.8 | `signal_engine` reads the newest row per pair, which stays. The plan-approval RPC's correlation warning (`sql/ad4_rpc.sql:480`) reads the 20 newest rows of any computation, so its warning can change. The table is mirrored, not archived, so this needs a new archive dataset and a reclaim job. |
 | `derived_model_forecast`: keep 7 days | 9,711 of 32,126 | 5.5 | Never pruned today. Model promotion read every row, and it is stopped (A.3). `v_model_forecast_skill` reads every row for the analytics page, which would show 7 days unless it reads the mirror. Needs a new archive dataset. |
 | `book_snapshots`: the closing books older than 3 days | 53,402 of 86,706 | 25.9 | Kept forever by design, and about 1,500 more a day. Two backtest readers read these rows, and both need a change first. (1) The book reader (`book_history.as_of`) assumes the last book of every band-day stays in the database; its proof (`tools/p16_step32_proof.py`) must be re-run. (2) The regime's book age (`regime.py` `_latest_book_age_minutes`) reads `book_snapshots` directly at `observed_at <= as_of`, so on a replayed date it would find no book and silently drop its `stale_book` downgrade (Codex, #321). |
+| `weather_forecast_models`: 30 → 7 days | 57,700 of 94,309 | 11.9 | `ingest_forecasts.first_held_date` is the later of the two tables' oldest days, and the catch-up never fetches below it. So a 7-day keep would shrink the forecast backfill's window to 7 days; the ingest first needs a window per table. Its other readers are covered: `station_correction.py` reads the archive, and the hit forecasts are frozen. |
 | `weather_forecasts`: 30 → 14 days | 31,994 of 97,748 | 15.4 | `recompute_correlation` reads 180 days straight from Postgres, with no archive, into `derived_city_correlation`, which s2's signal path reads. A shorter keep changes s2's inputs (D4, D8) unless that function first reads the archive. |
 
-Group B in total: **55.6 MB**.
+Group B in total: **67.5 MB**.
 
 **A and B together: 85.6 MB.** That is 45 MB short of the gap in MiB terms and 67 MB short in decimal, before growth.
 

@@ -438,8 +438,11 @@ TABLES = {
         "pk_is_exported_because": "edges.prob_id cites it, and so does the edges archive",
         # 30 MB over 102,678 rows, heap 20 MB (29 Sep)
         "bytes_per_row": 300,
-        "keep_days": 30,
-        "min_keep_days": 30,
+        # 18 DAYS (WXPredict build 2.A, group A): station_width_score reads
+        # every price of the markets resolved in the last 14 days, priced
+        # from 3 days before; prune_band_probabilities refuses under 18.
+        "keep_days": 18,
+        "min_keep_days": 18,
         "mirror_first": True,
         "needs_feature_cache": False,
     },
@@ -471,8 +474,11 @@ TABLES = {
     },
     # THE DECISION LOG (plan v2 P5.11): one row per run, strategy and
     # city-day, about 2,600 a day at 48 city-days, 9 strategies and six runs
-    # (measured 25 Sep). Nothing reads a decision older than 30 days from
-    # Postgres; the Release keeps every one. prune_decisions refuses under 14.
+    # (measured 25 Sep). 3 DAYS, 2 UNDER PRESSURE (WXPredict build 2.A, group
+    # A; Hassan, 6 Oct: offload to the repository): the longest reader of a
+    # stored decision needs one day (engine_replay_live.py, yesterday; the
+    # paper-desk API, 24 h). data/archive/decisions keeps every one.
+    # prune_decisions refuses under 2.
     "decisions": {
         "table": "decisions",
         "pk": "decision_id",
@@ -493,8 +499,8 @@ TABLES = {
         # Measured 4 Oct: 301 bytes a row for the columns before P2.2 (4,070
         # rows of the last two days); the three it adds are about 67 more.
         "bytes_per_row": 368,
-        "keep_days": 30,
-        "min_keep_days": 14,
+        "keep_days": 3,
+        "min_keep_days": 2,
         "needs_feature_cache": False,
     },
     # THE LADDERS, BEFORE THE HOURLY PRUNE EMPTIES THEM (plan v2 P5.13).
