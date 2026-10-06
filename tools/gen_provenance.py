@@ -49,7 +49,12 @@ def _yaml_workflows():
         crons = re.findall(r"cron:\s*['\"]([^'\"]+)['\"]", src)
         manual = "workflow_dispatch" in src
         scripts = set(re.findall(r"scripts/([a-z0-9_/]+)\.py", src))
-        out[base] = {"name": name, "crons": crons, "manual": manual, "scripts": sorted(scripts)}
+        # Turned off in the WXPredict build, wave A.6: the file stays, every job
+        # is `if: false` (tests/test_github_actions.py, TURNED_OFF_WORKFLOWS).
+        off = ("TURNED OFF by the WXPredict build, wave A.6" in src
+               and re.search(r"^    if: false$", src, re.M) is not None)
+        out[base] = {"name": name, "crons": crons, "manual": manual, "off": off,
+                     "scripts": sorted(scripts)}
     return out
 
 
@@ -233,7 +238,9 @@ CADENCE_WORDS = [
 ]
 
 
-def _cadence(crons, manual):
+def _cadence(crons, manual, off=False):
+    if off:
+        return "never - turned off (wave A.6)"
     if not crons:
         return "only when you run it" if manual else "never - it has no trigger"
     for c in crons:
@@ -289,7 +296,7 @@ def build():
         filled[table].append(entry)
 
     for base, wf in actions.items():
-        cadence = _cadence(wf["crons"], wf["manual"])
+        cadence = _cadence(wf["crons"], wf["manual"], wf.get("off", False))
         for stem in wf["scripts"]:
             w = scripts.get(stem)
             if not w:
