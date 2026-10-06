@@ -60,3 +60,17 @@ def test_when_the_engine_and_the_market_agree_nothing_is_against_the_market():
     rows = [_row("74", "YES", 0.5, 0.40), _row("74", "NO", 0.5, 0.62),
             _row("76", "YES", 0.3, 0.30), _row("76", "NO", 0.7, 0.72)]
     assert ee.against_market_rows(rows) == set()
+
+
+def test_a_bought_up_leader_is_the_favourite_through_its_no_price():
+    """The P.5 report, question 2 (Hassan, 6 Oct): the leader's YES had no ask
+    (bid 0.995), so it had no YES price at all, and the highest YES price left
+    was a 0.9c bucket. Its NO costs 1 - 0.995: the YES bid is still there."""
+    rows = [_row("70", "YES", 0.99, None), _row("70", "NO", 0.01, 0.005),
+            _row("72", "YES", 0.005, 0.009), _row("72", "NO", 0.995, 0.999),
+            _row("68", "YES", 0.005, 0.004), _row("68", "NO", 0.995, 0.998)]
+    assert ee._yes_standing(rows) == {"70": 0.995, "72": 0.009, "68": 0.004}
+    assert ee.against_market_rows(rows) == set(), "the engine agrees with the real favourite"
+    disagree = [dict(r, model_prob=p) for r, p in zip(rows, (0.30, 0.70, 0.60, 0.40, 0.10, 0.90))]
+    flagged = {(disagree[i]["band_id"], disagree[i]["side"]) for i in ee.against_market_rows(disagree)}
+    assert flagged == {("72", "YES"), ("68", "YES"), ("70", "NO")}

@@ -52,15 +52,31 @@ from belief import ladder_posterior
 ENGINE_VERSION = "engine-v1"
 
 
+def market_standing(q):
+    """A bucket's price for naming the market's favourite: its YES ask, or, when
+    nobody is selling YES, its YES bid. A leader bought up to 99c has a bid and
+    no ask; reading the asks alone named a 0.9c bucket the favourite instead
+    (all 36 against_market refusals of 29 Sep - 6 Oct; the P.5 report, question
+    2; Hassan, 6 Oct: "yes" to the highest bid standing in). None when the
+    bucket has neither."""
+    if not q:
+        return None
+    for key in ("ask", "bid"):
+        if q.get(key) is not None:
+            return float(q[key])
+    return None
+
+
 def against_market_assets(probs, book, allow):
     """Assets that back the view against the market's favourite (the platform's
     rule, edge_engine.against_market_rows; Hassan, 24 Sep: "never favour losing
     bets"): when the view's favourite bucket and the market's differ, YES on a
     bucket the market does not favour and NO on the one it does. Empty when
     they agree or either favourite cannot be named. The market's favourite is
-    the highest YES ask."""
+    the bucket with the highest market_standing: its YES ask, or its YES bid
+    when it has no ask."""
     priced = {b: p for b, p in probs.items() if p is not None}
-    quoted = {b: float(q["ask"]) for b, q in (book or {}).items() if q and q.get("ask") is not None}
+    quoted = {b: v for b, v in ((b, market_standing(q)) for b, q in (book or {}).items()) if v is not None}
     if not priced or not quoted:
         return set()
     view_fav = max(priced, key=lambda b: (priced[b], b))
