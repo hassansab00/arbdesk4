@@ -8,15 +8,20 @@ import PaperExit from '@/components/PaperExit';
 import PaperDeskControl from '@/components/PaperDeskControl';
 import PaperPipelineStatus from '@/components/PaperPipelineStatus';
 import PaperTradeHistory from '@/components/PaperTradeHistory';
+import PaperDeskSummary from '@/components/PaperDeskSummary';
+import { pickDesk, type DeskActivity } from '@/lib/paperDesks';
 import { paperAction, paperRead, runPaperWorker, describeWorker } from '@/lib/paperSupabase';
 import { supabase } from '@/lib/supabase';
 import { useQuery } from '@/lib/useQuery';
 import { fmtUsd, fmtPrice } from '@/lib/format';
 
 type Account = { account_id:string; name:string; cash:number; reserved_cash:number; mode:string; entries_paused:boolean; policy:{strategies?:string[];cities?:string[];max_plan_usd?:number;max_exposure_usd?:number;min_edge?:number}; policy_version:number;
-  // From v_paper_desk_activity. Absent when the desk list comes back through
-  // the edge gateway rather than the service key, so every use tolerates it.
-  trade_count?:number; open_positions?:number; live?:boolean };
+  // From the route's counts (WXPredict build P.3: paper_trades, paper_positions,
+  // strategies and decisions, read with the service key). Absent when the desk
+  // list comes back through the edge gateway, so every use tolerates it.
+  trade_count?:number; open_positions?:number; last_trade_at?:string|null; activity?:DeskActivity|null };
+// The switcher's "every desk" entry. Desk ids are uuids, so it cannot collide.
+const ALL='all';
 type Order = { order_id:string; band_id:string; side:string; action:string; origin:string; shares:number; limit_price:number; status:string; reason:string|null; requested_at:string; result:Record<string,unknown>|null };
 type Position = { band_id:string; side:string; shares:number; cost_basis:number; realized_pnl:number };
 type Event = { event_id:number; event_type:string; occurred_at:string; cash_delta:number; payload:Record<string,unknown> };
@@ -72,6 +77,8 @@ export default function PaperTradesPage() {
   const archived=useQuery<Array<{account_id:string;name:string;mode:string;archived_at:string|null;status:string|null}>>(
     ()=>supabase.from('v_paper_desks').select('account_id,name,mode,archived_at:created_at,status').eq('archived',true).order('name'),
     [],undefined);
+  // One desk's id for the per-desk reads, none in All desks mode.
+  const desk=account===ALL?'':account;
   // DO THIS DESK'S BOOKS BALANCE?
   //
   // v_paper_desk_integrity checks cash against the activity ledger, reserved
@@ -83,54 +90,50 @@ export default function PaperTradesPage() {
   // database would be able to say different things about the same number.
   const books=useQuery<Array<{ok:boolean;breaches:string[];unverifiable:string[];note:string}>>(
     async()=>{
-      if(!account) return {data:[],error:null};
+      if(!desk) return {data:[],error:null};
       return supabase.from('v_paper_desk_integrity')
-        .select('ok,breaches,unverifiable,note').eq('account_id',account);
-    },[account],60000);
+        .select('ok,breaches,unverifiable,note').eq('account_id',desk);
+    },[desk],60000);
   const [ticket,setTicket] = useState({band:'',side:'YES',shares:'',limit:'',ceiling:'',reason:''});
   // Stable across retry after an uncertain network response; reset only after success.
   const [command,setCommand] = useState<string|null>(null);
   useEffect(()=>{if(window.location.hash==='#automation')setTab('Settings');},[]);
+  // The route's answer also carries every desk's counts (desks, archived and
+  // retired included) for the All desks summary, and why they are missing
+  // when they are (activity_error).
+  const [desks,setDesks]=useState<DeskActivity[]|null>(null);
+  const [activityError,setActivityError]=useState<string|null>(null);
   const accounts=useQuery<Account[]>(async()=>{
-    return paperRead<Account[]>('accounts');
+    const r=await paperRead<Account[]>('accounts') as {data:Account[]|null;error:unknown;desks?:DeskActivity[]|null;activity_error?:string|null};
+    setDesks(r.desks??null);setActivityError(r.activity_error??null);
+    return r;
   },[],15000);
-  // OPEN ON THE DESK THAT IS TRADING, not the one created first.
+  // OPEN ON THE DESK WITH THE MOST RECENT TRADE (WXPredict build P.3, R41).
   //
-  // This was `accounts.data[0]` over a list ordered by created_at. On 16 Sep
-  // that was "Main paper account" - manual, paused, no trades, no positions -
-  // while "Wide edge, all US" held 10 trades and 9 open positions. So the page
-  // opened on an empty desk every time, with nothing saying a live one existed.
-  //
-  // Most open positions first, then most trades, then a desk that CAN act, and
-  // creation order last. Every term degrades to the old behaviour when the
-  // counts are absent, which they are on the edge-gateway path.
+  // This picked the first "live" desk (automatic and not paused). On 5 Oct all
+  // 15 shadow desks were live, the counts that would have broken the tie were
+  // absent, and the page opened on "Shadow: s8_two_bucket_cover": 0 trades,
+  // 0 orders, 0 plans. Nine desks shared one created_at, so which empty desk
+  // opened was not even fixed. pickDesk (lib/paperDesks.ts): the most recent
+  // trade, then the trade count, then the name. Without counts, a desk that
+  // can act, then the name.
   useEffect(()=>{
     if(account || !accounts.data?.length) return;
-    // mode and entries_paused only - both on paper_accounts since day one.
-    // The trade and position counts came from a view that is no longer in
-    // this request path, and a desk that CAN act is the distinction that
-    // actually mattered: it separates "Wide edge, all US" (automatic,
-    // running, 10 trades) from "Main paper account" (manual, paused, empty),
-    // which is the pair that made this page look broken.
-    const live=(a:Account)=>(a.mode==='automatic'||a.mode==='assisted')&&!a.entries_paused;
-    const best=[...accounts.data].sort((a,b)=>
-      Number(live(b))-Number(live(a))
-      || (b.open_positions??0)-(a.open_positions??0)
-      || (b.trade_count??0)-(a.trade_count??0));
-    setAccount(best[0].account_id);
+    const best=pickDesk(accounts.data);
+    if(best) setAccount(best);
   },[accounts.data,account]);
   const orders=useQuery<Order[]>(async()=>{
-    if(!account) return {data:[],error:null};
-    return paperRead<Order[]>('orders',account);
-  },[account],15000,100);
+    if(!desk) return {data:[],error:null};
+    return paperRead<Order[]>('orders',desk);
+  },[desk],15000,100);
   const positions=useQuery<Position[]>(async()=>{
-    if(!account) return {data:[],error:null};
-    return paperRead<Position[]>('positions',account);
-  },[account],15000,500);
+    if(!desk) return {data:[],error:null};
+    return paperRead<Position[]>('positions',desk);
+  },[desk],15000,500);
   const events=useQuery<Event[]>(async()=>{
-    if(!account) return {data:[],error:null};
-    return paperRead<Event[]>('activity',account);
-  },[account],15000,100);
+    if(!desk) return {data:[],error:null};
+    return paperRead<Event[]>('activity',desk);
+  },[desk],15000,100);
   const bands=useQuery<Band[]>(async()=>{
     const result=await supabase.from('bands').select('band_id,band_label,markets!inner(city_key,resolution_date,unit)')
       .eq('markets.closed',false).gte('markets.resolution_date',new Date().toISOString().slice(0,10))
@@ -181,7 +184,8 @@ export default function PaperTradesPage() {
     {issue&&<div role="alert" className="rounded border border-bad p-3 text-sm text-bad">{issue}</div>}
     {notice&&<div role="status" className={`text-sm ${noticeWarning?'text-warn':'text-good'}`}>{notice}</div>}
     <div className="flex flex-wrap items-center gap-3"><select disabled={busy} aria-label="Paper account" className="input max-w-sm" value={account} onChange={e=>{setAccount(e.target.value);setCommand(null);}}>
-      <option value="">Paper desk</option>{accounts.data?.map(a=><option key={a.account_id} value={a.account_id}>{a.name} — {a.mode}{a.entries_paused?' · paused':''}{a.open_positions?` · ${a.open_positions} open`:''}{a.trade_count?` · ${a.trade_count} trades`:''}</option>)}</select>
+      <option value="">Paper desk</option>{accounts.data?.map(a=><option key={a.account_id} value={a.account_id}>{a.name} — {a.mode}{a.entries_paused?' · paused':''}{a.open_positions?` · ${a.open_positions} open`:''}{a.trade_count?` · ${a.trade_count} trades`:''}</option>)}
+      {!!accounts.data?.length&&<option value={ALL}>All desks — every trade, archived and retired desks included</option>}</select>
       {/* Several desks, so a setting can be tried without disturbing the one
           already running. Each carries its own cash, strategies and cities -
           the Settings tab edits them per desk. */}
@@ -321,6 +325,11 @@ export default function PaperTradesPage() {
         {tab==='Activity'&&<div className={`${card} space-y-3`}>{events.data?.map(e=><details key={e.event_id} className="border-b border-border pb-2"><summary className="cursor-pointer text-sm">{new Date(e.occurred_at).toLocaleString()} · {e.event_type.replaceAll('_',' ')} · {fmtUsd(Number(e.cash_delta))}</summary><pre className="overflow-auto text-xs text-muted">{JSON.stringify(e.payload,null,2)}</pre></details>)}{events.truncated&&<p className="text-xs text-warn">Showing the latest 100 events; older history is retained.</p>}</div>}
         {tab==='Settings'&&<PaperAutomation key={selected.account_id+selected.policy_version} account={selected} refresh={refresh}/>}
       </>}
+
+    {account===ALL&&<>
+      <PaperDeskSummary desks={desks} error={activityError}/>
+      <PaperTradeHistory account="" deskName="All desks" bandName={name}/>
+    </>}
 
     {/* WHERE AN ARCHIVED DESK GOES, so archiving is a move and not a
         disappearance. Without this the route's archived_at filter would make
