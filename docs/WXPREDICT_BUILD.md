@@ -802,6 +802,49 @@ Each item is one small PR, or a batch of related ones, with its own measured bef
 
 **Gate:** wave 2 needs no Hassan gate beyond D1, for minutes. Phase 2 starts when 2.A and 2.B have passed their checkpoints. 2.C-2.F may overlap phase 2.
 
+### Wave F: the seasonal focus (Hassan, 6 Oct)
+
+Hassan, 6 Oct: a "Seasonal Focus 10" of the cities most predictable in their current local season, chosen by research and recorded before its outcomes. It is applied across Predictive, with a daily status per city and evidence on each card, and judged against the full universe. "Prioritise these cities without losing comparison data ... Preserve the existing separation between serving models, evaluation models and blinded challengers." **Seasonal membership never moves a probability.**
+
+**F.1 Choose and record the set (done 6 Oct)**
+- **What:** `tools/focus/season_predictability.py` ranks the 48 active cities by the bias-corrected day-ahead forecast's bucket hit rate over 6 Oct - 30 Nov of past years. It uses data before 2026-09-01 only and reads no blinded challenger.
+- **The record:** `docs/FOCUS_PREREG.md`, the study's JSON (sha256 `b0250963...`), and the append-only database row `focus_sets` `seasonal-2026-10-06` (migration `20261006150000`). The set is evaluated from 8 Oct.
+- **Checkpoint:** the three agree (`tests/test_focus_set.py`); the row cannot be changed (`tests/database/focus-set.cjs`); no script reads the set.
+
+**F.2 A daily status per city**
+- **What:** each active city, each day and checkpoint, gets one of four statuses and the reason in words:
+  - **Candidate:** fresh, complete data; suitable weather; enough model evidence at that checkpoint;
+  - **Watch:** the forecasts disagree, cloud clearance is uncertain, or the winds are changing;
+  - **Insufficient evidence:** too little settled history at this checkpoint;
+  - **Unavailable:** a market, the station's data or a usable forecast is missing.
+- **How:** one view over what the platform already records (freshness, the forecasts' spread, settled counts per checkpoint). Each threshold is stated, versioned, and has a prior and bounds (Rule 11). Cloud and wind inputs are used only where they are recorded; what is not recorded is said, not guessed.
+- **Checkpoint:** the status of every active city today, each reason readable; a contract test per status.
+
+**F.3 One city filter for all of Predictive**
+- **What:** "All active cities · Seasonal Focus 10 · Custom selection" controls the city cards, the forward predictions, the historical accuracy, "Who called what" and "Was it right?". Every total is recomputed from the visible rows.
+- **How:** per-city rows where today only an all-city summary exists (`v_prediction_hindsight_summary` has no city). The page holds one selection and passes it to each section.
+- **Checkpoint:** totals for "All" equal today's on the same rows; a filtered total equals the sum of its cities (unit tests).
+
+**F.4 Evidence on each city card**
+- **What:**
+  - the predicted bucket and probability;
+  - the hit rate at the selected checkpoint, with its settled city-days;
+  - the temperature error and the calibration gap;
+  - the market against the model on matching days;
+  - the executable price, the existing net edge, and data freshness.
+- Day ahead, noon and pre-peak are kept apart; post-peak is labelled separately.
+
+**F.5 "Was it right?": the focus against the universe**
+- **What:** both groups over the same dates, checkpoint and predictor version, from 8 Oct, as `docs/FOCUS_PREREG.md` fixes. The formal reading is on 1 Dec.
+
+**F.6 Priorities**
+- Analysis and model improvement go to the ten. The other cities keep basic collection where storage allows (2.A).
+- Serving, evaluation and blinded challengers stay separate.
+
+**F.7 Adaptive paper strategies (Hassan, 6 Oct)**
+- **What:** each strategy trades only cities whose status is Candidate, when its own conditions meet. It decides before and during each city's own peak, and on the market's move when the likely winner climbs fast.
+- **Bounds:** a strategy's city list is learned from its own settled results within Rule 11's bounds. Paper only; it never loosens a rule.
+
 ### Phase 2: the market and the inputs, fresh at the decision
 
 **2.1 What the record's price is**
@@ -1168,6 +1211,7 @@ Updated in every PR.
 | 1.1 (R37: 2 review findings) | **done 6 Oct**, both threads answered and resolved, CI green on `770c987` and on the merge with main (`25a9e32`). (a) One whole-day rule (`common.max_gap_h`, gaps of 3 h or less from midnight to midnight, and the reports must run past the day's end) everywhere a day's maximum is read. `station_daily` gains `max_gap_h`: a fresh fetch of the climate windows rebuilt the old file byte for byte, and the new file differs only in that column on all 123,452 rows. Table: 686,111 -> 684,990 rows. All 9,586 venue events are kept; 30 of them have no whole station day, so no station verdict. Unlisted station days 11,855 -> 11,820 (left out: 38 with a gap, 8 with no report, 1 not reported to its end). (b) `decision_local` is the decision instant (hh:01) and parses back on all 684,990 rows. Two builds are byte-identical (sha256 `d03b73e8...`); 8 mutations, each caught; both suites green | commit message; #314 threads; `table_meta.json` |
 | G1 / D2 | **passed 6 Oct**: Hassan, "merge 314"; merged `33d90d6` | chat, 6 Oct |
 | Wave 2 (2.A-2.F) | **2.A measured 6 Oct (section 3.8): the archive cycle alone cannot reach the checkpoint.** The project is on Supabase's Free plan (read-only above 500 MB, per its docs), at 574.7 MiB, growing about 5 MiB a day; the gap to 450 MiB is 124.7 MiB. Cuts that leave every reader whole: 30.0 MB. With readers changed (s2's correlation input, the plan-approval warning, the analytics page, the backtest's book reader and regime book age): 85.6 MB. Waits on D9 (recommended: the Pro plan). 2.B waits on A.3's checkpoint. 2.C-2.F todo | section 3.8; section 9 (D9) |
+| Wave F (F.1-F.7, the seasonal focus) | **F.1 done 6 Oct:** the Seasonal Focus 10 is lucknow, karachi, helsinki, wellington, tel_aviv, milan, chicago, moscow, miami, amsterdam. They were chosen on pre-cutoff data by `tools/focus/season_predictability.py` and recorded in `docs/FOCUS_PREREG.md` and `focus_sets`; the set is evaluated from 8 Oct. F.2-F.7 todo | `docs/FOCUS_PREREG.md`; `data/eval/focus/` |
 | Phase 2 (2.1-2.5) | **2.1, 6 Oct: up to a 0.10 spread, `p` is the book's midpoint; over 0.10 it is open.** On hours where `p` did not move and the spread is at most 0.10, the mid matches it at the 90th percentile exactly (54,415 pairs, 98.6% within 0.01). The bid, the ask and the last trade are each further off. **Spreads over 0.10 (271 pairs, 0.5%) miss the tolerance:** 84.9% within 0.01, 90th percentile 0.02. The venue's display rule (the last trade) does not explain them: on the 25 with an archived trade, it is within 0.01 on 5 against the mid's 15. Cause not measured. The live reader (2.2) reads the mid for every bucket, with the spread stored. 2.3 reports the wide buckets on their own, and G2 sees them. 2.2-2.5 todo | `docs/WXPREDICT.md` (Phase 2.1); `tools/wxpredict/what_is_p.py` |
 | G2 | | |
 | Phase 3 (3.0-3.7) | todo (exploratory first look in section 2.2 only) | |

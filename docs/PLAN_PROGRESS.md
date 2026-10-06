@@ -84,7 +84,12 @@ PR that advances a step.
             - **s2's `no_signal`** (3,329, the old signal path): each decision checked on its own book (the newest `book_snapshots` row per bucket at its time, as `v_opportunities` read it; Codex on #319). 2,112 had a complete YES basket, the cheapest 1.0026 at best asks; 160 a complete NO basket, the cheapest 0.0175 above its payout; the other 1,217 could not form a basket.
             - **Three questions for Hassan, no rule changed:** the market prior's normalisation makes the leader's NO look cheap (255 checkpoints; the one bought lost); the against-market gate takes the highest ask as the favourite, so all 36 of its refusals were books whose leader had no ask; S10 never decides Madrid after its peak (a refit, held by D8).
         - **WXPredict build, phase 1 merged (G1):** [#314](https://github.com/hassansab00/arbdesk4/pull/314) as `33d90d6` (6 Oct; Hassan: "merge 314"), after phase 1.1 (the whole-day rule and `decision_local` at hh:01; both Codex threads resolved; CI green on `770c987` and on the merge with main).
-        - **WXPredict build, wave 2.A (this PR): storage measured; the archive cycle alone cannot reach the checkpoint (`docs/WXPREDICT_BUILD.md` section 3.8, D9).**
+        - **WXPredict build, wave F.1 (this PR): the Seasonal Focus 10, recorded before its outcomes** (Hassan, 6 Oct).
+          - lucknow, karachi, helsinki, wellington, tel_aviv, milan, chicago, moscow, miami, amsterdam.
+          - Ranked by how often a bias-corrected day-ahead forecast lands in the venue's bucket over 6 Oct - 30 Nov 2025 (51-56 days each), on data before 2026-09-01 only, with no blinded challenger read.
+          - Recorded in `docs/FOCUS_PREREG.md`, the study's JSON (`data/eval/focus/`, sha256 `b0250963...`) and the append-only `focus_sets` row; evaluated from 8 Oct, read formally on 1 Dec.
+          - Membership never reaches a price (`tests/test_focus_set.py`).
+        - **WXPredict build, wave 2.A (#321): storage measured; the archive cycle alone cannot reach the checkpoint (`docs/WXPREDICT_BUILD.md` section 3.8, D9).**
           - 602,647,699 bytes (574.7 MiB) at 6 Oct 13:37Z; the gap to 450 MiB is 124.7 MiB; about 5 MiB a day of growth (readings 30 Sep - 6 Oct).
           - The project is on Supabase's Free plan; Supabase's docs put a Free project in read-only mode above 500 MB. It still accepts writes; why is not measured.
           - Cuts with every reader's window met (`decisions` to 2 days, `weather_forecast_models` to 7, `band_probabilities` to 18): 30.0 MB. With four more that change a reader (correlation history, model forecasts, old closing books, forecasts to 14 days): 85.6 MB.
