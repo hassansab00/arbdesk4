@@ -53,6 +53,18 @@ the comparison the engine used to read; it is not a training input.
 | `precip_00_17_mm` | 00-17 |
 | `n_hours` | hours with a temperature (days with fewer than 20 are left out) |
 
+`best_match_hourly_day1_utc.csv.gz` - Open-Meteo best_match `_previous_day1`,
+one row per (city, UTC hour): `t`, `td` (C), `cloud` (%), `sw` (W/m2), `wind`
+(km/h), `precip` (mm), `pmsl` (hPa). Built once on 26 Sep through pg_net
+(`timezone=auto`, each local hour turned back into UTC with the answer's fixed
+offset, so Lucknow's stamps sit at :30), local days 14 Jul 2025 - 25 Sep 2026,
+505,728 rows. The nightly append does not extend it. **Extended 5 Oct** by
+`tools/wxpredict/fetch_forecasts.py` the same way, local days 24 Sep - 4 Oct:
+10,368 new hours (48 cities x 216). The 2,304 hours that overlap the file
+were identical value for value. No existing row was rewritten: all 505,728
+are unchanged, and the file now holds 516,096 rows. An hour H's value comes from a run started at least 24 h
+before H (published, by the assumption above, by H - 17 h).
+
 `models_daily.csv.gz` - the seven models the desk combines (ECMWF IFS 0.25,
 GFS, ICON, UKMO, JMA, GEM, Meteo-France), one row per (city, lead, model, day):
 `tmax_c` (00-23) and `tmax_00_17_c`.
