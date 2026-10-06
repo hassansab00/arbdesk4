@@ -505,7 +505,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "ledger": [
     {
-      "cadence": "only when you run it",
+      "cadence": "never - turned off (wave A.6)",
       "file": "verify_resolution_source.yml",
       "how": "scripts/settlement.py",
       "kind": "action",
@@ -514,7 +514,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "live_weather": [
     {
-      "cadence": "only when you run it",
+      "cadence": "never - turned off (wave A.6)",
       "file": "live_weather.yml",
       "how": "scripts/live_weather.py",
       "kind": "action",
@@ -767,7 +767,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "weather_events": [
     {
-      "cadence": "only when you run it",
+      "cadence": "never - turned off (wave A.6)",
       "file": "live_weather.yml",
       "how": "scripts/live_weather.py",
       "kind": "action",
@@ -873,7 +873,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "weather_observations": [
     {
-      "cadence": "only when you run it",
+      "cadence": "never - turned off (wave A.6)",
       "file": "live_weather.yml",
       "how": "scripts/live_weather.py",
       "kind": "action",

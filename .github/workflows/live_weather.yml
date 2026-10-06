@@ -15,7 +15,17 @@ on:
   workflow_dispatch: {}
 
 jobs:
+  # TURNED OFF by the WXPredict build, wave A.6 (Hassan, 6 Oct: "do what's
+  # necessary as long as nothing's broken"; docs/WXPREDICT_BUILD.md section 3.6).
+  # Nothing starts this workflow: not the clock, the web app or n8n.
+  # The hourly tick does this job now: tick.yml's NWS monitor step
+  # (ingest_nws_monitor) writes live_weather and logs P1.2_nws_monitor (84 runs in the 7 days to
+  # 6 Oct 14:36Z). This manual fallback last ran 5 Sep.
+  # A dispatch now skips the job and bills nothing. To turn it back on, delete
+  # the `if: false` line below (restore_edge_marks: put back
+  # `if: github.ref_name == 'main'`).
   live_weather:
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

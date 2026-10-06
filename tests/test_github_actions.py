@@ -784,6 +784,44 @@ def test_the_stopped_steps_are_exactly_these():
         f"switched off: {sorted(found)}; expected exactly {sorted(STOPPED_STEPS)}")
 
 
+# WXPredict build, wave A.6 (Hassan, 6 Oct: "do what's necessary as long as
+# nothing's broken"): the manual workflows that neither the clock, the web app
+# nor n8n starts, and whose job something else now does. retire_desks is the
+# fourth that nothing starts; it stays on, because it is the only way to retire
+# a desk (the service key lives only in this repo's secrets).
+TURNED_OFF_WORKFLOWS = {
+    "live_weather.yml",
+    "verify_resolution_source.yml",
+    "restore_edge_marks.yml",
+}
+
+
+def test_the_turned_off_workflows_are_exactly_these():
+    """A turned-off workflow stays in the file, reversible: every job is
+    `if: false`, it can still only be started by hand, and a comment above the
+    job names the build document, why, and how to turn it back on."""
+    import glob
+
+    found = set()
+    for path in sorted(glob.glob(os.path.join(WF_DIR, "*.yml"))):
+        name = os.path.basename(path)
+        text = open(path).read()
+        doc = yaml.safe_load(text)
+        jobs = doc.get("jobs") or {}
+        off = [j for j in jobs.values() if j.get("if") is False]
+        if not off:
+            continue
+        found.add(name)
+        assert len(off) == len(jobs), f"{name}: every job is off, or none is"
+        assert list(triggers(doc)) == ["workflow_dispatch"], f"{name}: by hand only"
+        head = text[text.index("jobs:\n"):]
+        assert "TURNED OFF by the WXPredict build, wave A.6" in head, name
+        assert "docs/WXPREDICT_BUILD.md" in head and "To turn it back on" in head, name
+    assert found == TURNED_OFF_WORKFLOWS, (
+        f"turned off: {sorted(found)}; expected exactly {sorted(TURNED_OFF_WORKFLOWS)}")
+    assert "retire_desks.yml" not in found, "the only way to retire a desk stays on"
+
+
 def test_n8n_only_dispatches_workflows_that_exist():
     """P2.1 fires GitHub Actions by FILENAME, and nothing connected the two.
 

@@ -154,7 +154,10 @@ def test_the_workflow_is_manual_main_only_bounded_and_a_dry_run_by_default():
     mode = on["workflow_dispatch"]["inputs"]["mode"]
     assert mode["default"] == "dry-run" and mode["options"] == ["dry-run", "commit"]
     job = doc["jobs"]["restore"]
-    assert job["if"] == "github.ref_name == 'main'"
+    # Turned off by the WXPredict build, wave A.6 (6 Oct): its two recovery runs
+    # were on 29 Sep and the cause is fixed. Turning it back on restores the
+    # main-only condition (tests/test_github_actions.py, TURNED_OFF_WORKFLOWS).
+    assert job["if"] is False or job["if"] == "github.ref_name == 'main'"
     assert job["timeout-minutes"] <= 10
     run = job["steps"][-1]["run"]
     assert 'if [ "${{ github.event.inputs.mode }}" = "commit" ]' in run
