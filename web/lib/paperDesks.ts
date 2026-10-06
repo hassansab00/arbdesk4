@@ -26,6 +26,7 @@ export type AccountRow = {
   strategy_id?: string | null;
 };
 export type TradeRow = {
+  trade_id?: string;
   account_id: string | null;
   opened_at: string;
   closed_at: string | null;
@@ -98,6 +99,21 @@ export function decisionCounts(rows: DecisionRow[]): Map<string, Decisions24h> {
     reasons: [...e.by].map(([reason_code, n]) => ({ reason_code, n }))
       .sort((a, b) => b.n - a.n || a.reason_code.localeCompare(b.reason_code)),
   }]));
+}
+
+/**
+ * EVERY TRADE ONCE: the repository archive merged with Postgres by trade_id,
+ * the archive winning - the same rule as PaperTradeHistory's mergeTrades.
+ * paper_trade_log.yml prunes a closed trade from Postgres 30 days after it is
+ * committed to web/public/paper-trades (Codex on #318), so counts read from
+ * the table alone would lose history from mid-October.
+ */
+export function mergeTradeRows(archived: TradeRow[], live: TradeRow[]): TradeRow[] {
+  const byId = new Map<string, TradeRow>();
+  const loose: TradeRow[] = [];
+  for (const t of live) if (t.trade_id) byId.set(t.trade_id, t); else loose.push(t);
+  for (const t of archived) if (t.trade_id) byId.set(t.trade_id, t); else loose.push(t);
+  return [...byId.values(), ...loose];
 }
 
 /** One row per desk, every desk the accounts list holds, archived included. */

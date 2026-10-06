@@ -68,6 +68,13 @@ const DECISIONS = [
   ...dec('s12_no', 'no_trade_band', 234), ...dec('s12_no', 'nothing_tradeable', 16), ...dec('s12_no', 'against_market', 3),
   ...dec('s12_no', 'no_trade_band', 40, 'NONE', 30),      // older than 24 h: not counted
 ];
+// The repository archive (web/public/paper-trades): t2 again, as exported (the
+// archive wins), and t6, a trade already pruned from Postgres 30 days after
+// export (paper_trade_log.yml) - it must still count (Codex on #318).
+const ARCHIVED = [
+  { trade_id: 't2', account_id: 'a-s1', opened_at: '2026-09-25T10:00:00Z', closed_at: '2026-09-26T10:00:00Z', net_pnl: '2.0' },
+  { trade_id: 't6', account_id: 'a-s1', opened_at: '2026-09-20T10:00:00Z', closed_at: '2026-09-21T10:00:00Z', net_pnl: '-1' },
+];
 const TABLES = { paper_accounts: ACCOUNTS, paper_trades: TRADES, paper_positions: POSITIONS,
                  strategies: STRATEGIES, decisions: DECISIONS };
 
@@ -97,6 +104,11 @@ const get = async (query) => {
   assert.deepEqual(by['a-s12'].decisions_24h, { n: 253, buys: 0, reasons: [
     { reason_code: 'no_trade_band', n: 234 }, { reason_code: 'nothing_tradeable', n: 16 },
     { reason_code: 'against_market', n: 3 }] });
+  // Every trade once: the archive wins on an id both hold; each side's own rows stay.
+  const merged = lib.mergeTradeRows(ARCHIVED, TRADES);
+  assert.equal(merged.length, TRADES.length + 1);
+  assert.equal(merged.find((t) => t.trade_id === 't2').net_pnl, '2.0', 'the archive wins');
+  assert.ok(merged.some((t) => t.trade_id === 't6'), 'a trade pruned from Postgres still counts');
   assert.equal(lib.strategyState({ ...ACCOUNTS[2], strategy_id: 's1_buy_low_sell_signal' },
     new Map(STRATEGIES.map((s) => [s.strategy_id, s]))).state, 'off', 'a desk whose strategy is switched off');
 
@@ -156,6 +168,15 @@ const get = async (query) => {
   // 2. The route, against the fake, in both sign-in modes.
   // ---------------------------------------------------------------------
   for (const k of Object.keys(process.env)) if (/SUPABASE/i.test(k)) delete process.env[k];
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const archiveDir = (index, lines) => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-archive-'));
+    if (index !== undefined) fs.writeFileSync(path.join(d, 'index.json'), index);
+    if (lines) fs.writeFileSync(path.join(d, '2026-09.jsonl'), lines.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    return d;
+  };
+  process.env.PAPER_ARCHIVE_DIR = archiveDir(JSON.stringify({ generated_at: '2026-10-06T05:36:00Z', months: ['2026-09'] }), ARCHIVED);
   const db = await fakePostgrest({ tables: TABLES });
   process.env.NEXT_PUBLIC_SUPABASE_URL = db.url;
   process.env.SUPABASE_SERVICE_KEY = 'service-key-for-the-fake';
@@ -176,10 +197,26 @@ const get = async (query) => {
     assert.deepEqual(s2.decisions_24h, { n: 1250, buys: 0, reasons: [{ reason_code: 'no_signal', n: 1250 }] });
     const pages = db.requests.filter((r) => r.path === '/rest/v1/decisions').map((r) => r.params.get('offset'));
     assert.deepEqual(pages, ['0', '1000', '2000'], 'decisions are read a page at a time until a short page');
-    assert.equal(body.desks.reduce((t, d) => t + d.trade_count, 0), 4);
-    assert.equal(body.desks.find((d) => d.account_id === 'a-s1').strategy_state, 'retired');
+    // The archive merged in: t6 counts, t2 is counted once at its archived net.
+    assert.equal(body.desks.reduce((t, d) => t + d.trade_count, 0), 5);
+    const s1d = body.desks.find((d) => d.account_id === 'a-s1');
+    assert.deepEqual([s1d.trade_count, s1d.net_pnl, s1d.last_trade_at, s1d.strategy_state], [3, 0.5, '2026-09-27T10:00:00Z', 'retired']);
+    assert.deepEqual(body.archive, { trades: 2, generated_at: '2026-10-06T05:36:00Z', months: ['2026-09'] });
+    assert.equal(body.archive_error, null);
   }
   delete process.env.OPERATOR_SIGN_IN;
+  // No archive yet (nothing exported) is not an error: Postgres alone.
+  process.env.PAPER_ARCHIVE_DIR = archiveDir(undefined);
+  let r = (await get('resource=accounts')).body;
+  assert.equal(r.archive_error, null);
+  assert.equal(r.desks.reduce((t, d) => t + d.trade_count, 0), 4);
+  // An unreadable archive is said, never hidden, and never empties anything.
+  process.env.PAPER_ARCHIVE_DIR = archiveDir('{not json');
+  r = (await get('resource=accounts')).body;
+  assert.match(r.archive_error, /index could not be read/);
+  assert.equal(r.desks.reduce((t, d) => t + d.trade_count, 0), 4, 'Postgres counts still come back');
+  assert.deepEqual(r.data.map((a) => a.account_id), ['a-port', 'a-s2', 'a-s10', 'a-s11', 'a-s12']);
+  process.env.PAPER_ARCHIVE_DIR = archiveDir(JSON.stringify({ months: ['2026-09'] }), ARCHIVED);
   await db.close();
 
   // A failing count read never empties the list (P.3): the desks come back
@@ -210,5 +247,5 @@ const get = async (query) => {
   assert.deepEqual(viaEdge.body, { data: [ACCOUNTS[2]], error: null });
   await gw.close();
 
-  console.log('PASS: paper desks - per-desk trades, net P&L, open positions, strategy state and 24 h decisions from the tables (paged past 1,000 rows); the page opens on the newest trade, then trade count, then name; deskState covers every case including retired, switched off and running with nothing to buy; a failing count read leaves the desk list whole; both sign-in modes; the edge gateway path unchanged');
+  console.log('PASS: paper desks - per-desk trades (the repository archive merged with Postgres, the archive winning; an unreadable archive said, a missing one empty), net P&L, open positions, strategy state and 24 h decisions from the tables (paged past 1,000 rows); the page opens on the newest trade, then trade count, then name; deskState covers every case including retired, switched off and running with nothing to buy; a failing count read leaves the desk list whole; both sign-in modes; the edge gateway path unchanged');
 })().catch((e) => { console.error(e); process.exit(1); });

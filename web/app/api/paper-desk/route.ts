@@ -1,7 +1,9 @@
+import { promises as fs } from 'fs';
+import * as path from 'path';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { requireOperator } from '../../../lib/operatorAuth';
-import { deskActivity, type AccountRow, type DecisionRow, type DeskActivity, type PositionRow,
+import { deskActivity, mergeTradeRows, type AccountRow, type DecisionRow, type DeskActivity, type PositionRow,
   type StrategyRow, type TradeRow } from '../../../lib/paperDesks';
 
 export const runtime = 'nodejs';
@@ -53,12 +55,39 @@ async function readAll<T>(page:(from:number,to:number)=>PromiseLike<{data:unknow
   throw new Error(`more than ${size*maxPages} rows; the counts were not taken`);
 }
 
+// THE TRADE ARCHIVE, from this deployment's own files: web/public/paper-trades,
+// written and committed by paper_trade_log.yml, the same files the page's trade
+// history fetches. next.config.js ships them with this route
+// (outputFileTracingIncludes). No index means nothing exported yet, which is
+// not an error; PAPER_ARCHIVE_DIR points the route tests at fixtures.
+type Archive = { rows: TradeRow[]; generated_at: string | null; months: string[] };
+async function readArchive():Promise<Archive> {
+  const dir=process.env.PAPER_ARCHIVE_DIR||path.join(process.cwd(),'public','paper-trades');
+  let index:{months?:string[];generated_at?:string};
+  try { index=JSON.parse(await fs.readFile(path.join(dir,'index.json'),'utf8')); }
+  catch(e) {
+    if((e as {code?:string}).code==='ENOENT') return {rows:[],generated_at:null,months:[]};
+    throw new Error(`the trade archive's index could not be read: ${e instanceof Error?e.message:String(e)}`);
+  }
+  const months=Array.isArray(index.months)?index.months:[];
+  const rows:TradeRow[]=[];
+  for(const m of months) {
+    const text=await fs.readFile(path.join(dir,`${m}.jsonl`),'utf8');
+    for(const line of text.split('\n')) if(line.trim()) {
+      const t=JSON.parse(line) as TradeRow;
+      rows.push({trade_id:t.trade_id,account_id:t.account_id??null,opened_at:t.opened_at,closed_at:t.closed_at??null,net_pnl:t.net_pnl??null});
+    }
+  }
+  return {rows,generated_at:index.generated_at??null,months};
+}
+
 // WHAT EACH DESK HAS DONE (WXPredict build P.3, P.4), computed here from the
-// tables with the service key: trades and net P&L from paper_trades, open
+// tables with the service key: trades and net P&L from the archive merged with
+// paper_trades (pruned 30 days after export, so the table alone loses history), open
 // positions from paper_positions, the strategy's state from strategies, and
 // its last 24 h of decisions from decisions. Every desk, archived and retired
 // included, for the page's "All desks" summary.
-async function readActivity(client:ReturnType<typeof serverClient>):Promise<DeskActivity[]> {
+async function readActivity(client:ReturnType<typeof serverClient>,archived:TradeRow[]):Promise<DeskActivity[]> {
   const since=new Date(Date.now()-24*3600*1000).toISOString();
   const [accounts,trades,positions,strategies,decisions]=await Promise.all([
     readAll<AccountRow>((f,t)=>client.from('paper_accounts')
@@ -75,7 +104,7 @@ async function readActivity(client:ReturnType<typeof serverClient>):Promise<Desk
       .select('decision_id,strategy_id,action,reason_code').gte('decided_at',since)
       .order('decision_id').range(f,t)),
   ]);
-  return deskActivity(accounts,trades,positions,strategies,decisions);
+  return deskActivity(accounts,mergeTradeRows(archived,trades),positions,strategies,decisions);
 }
 
 export async function GET(request:Request) {
@@ -113,14 +142,21 @@ export async function GET(request:Request) {
       const result=await client.from('paper_accounts').select('*').eq('access_mode','single_desk').is('owner_id',null).is('archived_at',null).order('created_at').limit(50);
       if(result.error||!result.data) return NextResponse.json(result,{headers:{'Cache-Control':'no-store'}});
       let desks:DeskActivity[]|null=null;let activity_error:string|null=null;
-      try { desks=await readActivity(client); }
+      // An unreadable archive is reported, not hidden: the counts then cover
+      // Postgres only and archive_error says so.
+      let archive:Archive={rows:[],generated_at:null,months:[]};let archive_error:string|null=null;
+      try { archive=await readArchive(); }
+      catch(e) { archive_error=e instanceof Error?e.message:String(e); }
+      try { desks=await readActivity(client,archive.rows); }
       catch(e) { activity_error=e instanceof Error?e.message:String(e); }
       const byId=new Map((desks??[]).map(d=>[d.account_id,d]));
       const data=(result.data as Record<string,unknown>[]).map(a=>{
         const d=byId.get(String(a.account_id));
         return d?{...a,trade_count:d.trade_count,open_positions:d.open_positions,last_trade_at:d.last_trade_at,activity:d}:a;
       });
-      return NextResponse.json({...result,data,desks,activity_error},{headers:{'Cache-Control':'no-store'}});
+      return NextResponse.json({...result,data,desks,activity_error,archive_error,
+        archive:{trades:archive.rows.length,generated_at:archive.generated_at,months:archive.months}},
+        {headers:{'Cache-Control':'no-store'}});
     }
     if(!account||!await sharedAccount(client,account)) return NextResponse.json({data:null,error:{message:'Single paper desk unavailable.'}},{status:404});
     const queries:Record<string,()=>PromiseLike<{data:unknown;error:unknown}>>={

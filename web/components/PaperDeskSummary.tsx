@@ -18,9 +18,12 @@ import { strategyPhrase, type DeskActivity } from "@/lib/paperDesks";
  */
 const card = "rounded border border-border bg-panel p-4";
 
-export default function PaperDeskSummary({ desks, error }: {
+export default function PaperDeskSummary({ desks, error, archiveError = null }: {
   desks: DeskActivity[] | null;
   error: string | null;
+  /** The repository archive could not be read: the counts cover Postgres only,
+      which loses trades pruned 30 days after export. Said, not hidden. */
+  archiveError?: string | null;
 }) {
   if (!desks) {
     return <div className={`${card} text-sm text-muted`}>
@@ -37,6 +40,7 @@ export default function PaperDeskSummary({ desks, error }: {
       <h2 className="font-semibold">All desks</h2>
       <span className="text-xs text-muted">{rows.length} desks · {trades.toLocaleString("en-US")} trades · net {fmtUsd(net, { signed: true })} on closed trades</span>
     </div>
+    {archiveError && <p className="mb-2 text-xs text-warn">These counts cover Postgres only - the trade archive could not be read ({archiveError}), so trades pruned after export are missing.</p>}
     <table className="w-full text-left text-sm">
       <thead className="text-muted"><tr>
         {["Desk", "Strategy", "Trades", "Net P&L", "Last trade"].map(h => <th key={h} className="p-2 font-normal">{h}</th>)}

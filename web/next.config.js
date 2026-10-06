@@ -23,6 +23,11 @@ function localSha() {
 
 const nextConfig = {
   reactStrictMode: true,
+  // /api/paper-desk reads the committed trade archive from disk (WXPredict
+  // build P.3): ship those files with the route on Vercel.
+  experimental: {
+    outputFileTracingIncludes: { "/api/paper-desk": ["./public/paper-trades/**/*"] },
+  },
   env: {
     NEXT_PUBLIC_BUILD_SHA: (process.env.VERCEL_GIT_COMMIT_SHA || localSha()).slice(0, 7),
     NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),

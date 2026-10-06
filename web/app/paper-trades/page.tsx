@@ -103,9 +103,10 @@ export default function PaperTradesPage() {
   // when they are (activity_error).
   const [desks,setDesks]=useState<DeskActivity[]|null>(null);
   const [activityError,setActivityError]=useState<string|null>(null);
+  const [archiveError,setArchiveError]=useState<string|null>(null);
   const accounts=useQuery<Account[]>(async()=>{
-    const r=await paperRead<Account[]>('accounts') as {data:Account[]|null;error:unknown;desks?:DeskActivity[]|null;activity_error?:string|null};
-    setDesks(r.desks??null);setActivityError(r.activity_error??null);
+    const r=await paperRead<Account[]>('accounts') as {data:Account[]|null;error:unknown;desks?:DeskActivity[]|null;activity_error?:string|null;archive_error?:string|null};
+    setDesks(r.desks??null);setActivityError(r.activity_error??null);setArchiveError(r.archive_error??null);
     return r;
   },[],15000);
   // OPEN ON THE DESK WITH THE MOST RECENT TRADE (WXPredict build P.3, R41).
@@ -327,7 +328,7 @@ export default function PaperTradesPage() {
       </>}
 
     {account===ALL&&<>
-      <PaperDeskSummary desks={desks} error={activityError}/>
+      <PaperDeskSummary desks={desks} error={activityError} archiveError={archiveError}/>
       <PaperTradeHistory account="" deskName="All desks" bandName={name}/>
     </>}
 
