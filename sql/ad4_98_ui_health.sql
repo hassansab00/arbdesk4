@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 271 of them - and for each MISSING one names the
+-- and function the app reads - 273 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -32,6 +32,7 @@ with expected(rel, owner, used_by) as (values
     ('book_snapshots', 'ad4_00_preflight.sql', ''),
     ('cities', 'ad4_00_preflight.sql', '(CityCards), (Header), (ModelAnalytics), (RightRail), (ScopeControl), /, /campaigns, /live, /predictive'),
     ('city_metadata_evidence', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', ''),
+    ('city_status_rules', 'supabase/migrations/20261006180000_each_city_has_a_daily_status.sql', ''),
     ('clock_expected_jobs', 'supabase/migrations/20260930001000_a_dispatched_run_that_never_logged.sql', ''),
     ('clock_schedule', 'supabase/migrations/20260926130000_the_clock_moves_into_supabase.sql', ''),
     ('cost_params', 'ad4_phase2.sql', ''),
@@ -79,7 +80,7 @@ with expected(rel, owner, used_by) as (values
     ('fact_forecast_outcome', 'ad4_18_databank.sql', ''),
     ('fact_signal_outcome', 'ad4_18_databank.sql', ''),
     ('fact_station_width_score', 'supabase/migrations/20260927200000_the_width_scored_forward.sql', ''),
-    ('focus_sets', 'supabase/migrations/20261006150000_the_focus_set_is_recorded.sql', ''),
+    ('focus_sets', 'supabase/migrations/20261006150000_the_focus_set_is_recorded.sql', '/predictive'),
     ('ingest_log', 'ad4_00_preflight.sql', '(PaperPipelineStatus), (PipelineStatus)'),
     ('ledger', 'ad4_00_preflight.sql', ''),
     ('live_weather', 'ad4_live_weather.sql', '(CityCards), (GlobalBar), (RightRail), /board, /live, /opportunities'),
@@ -164,6 +165,7 @@ with expected(rel, owner, used_by) as (values
     ('v_city_reasoning', 'ad4_23_reasoning.sql', '(Reasoning)'),
     ('v_city_running_max', 'ad4_71_observation_health.sql', ''),
     ('v_city_stats', 'ad4_17_city_stats.sql', ''),
+    ('v_city_status', 'supabase/migrations/20261006180000_each_city_has_a_daily_status.sql', '/predictive'),
     ('v_city_temp_trend', 'ad4_26_temp_trend.sql', ''),
     ('v_city_today_readings', 'ad4_26_temp_trend.sql', '/monitor'),
     ('v_city_trajectory_now', 'ad4_86_trajectory.sql', ''),
@@ -229,7 +231,7 @@ with expected(rel, owner, used_by) as (values
     ('v_peak_hour_coverage', 'ad4_37_peak_hour.sql', '/globe'),
     ('v_persistence_skill', 'ad4_21_weather_features.sql', '(ModelAnalytics)'),
     ('v_prediction_contract', 'supabase/migrations/20261004190000_one_prediction_contract.sql', ''),
-    ('v_prediction_hindsight', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', '(PredictionHindsight)'),
+    ('v_prediction_hindsight', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', '/predictive'),
     ('v_prediction_hindsight_summary', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', '(PredictionHindsight)'),
     ('v_prediction_ladder', 'ad4_31_predictive.sql', '(CityCards), /predictive'),
     ('v_prediction_ladder_bands', 'ad4_68_prediction_ladder_outcomes.sql', ''),
@@ -325,6 +327,7 @@ begin
     ('book_snapshots', 'ad4_00_preflight.sql', ''),
     ('cities', 'ad4_00_preflight.sql', '(CityCards), (Header), (ModelAnalytics), (RightRail), (ScopeControl), /, /campaigns, /live, /predictive'),
     ('city_metadata_evidence', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', ''),
+    ('city_status_rules', 'supabase/migrations/20261006180000_each_city_has_a_daily_status.sql', ''),
     ('clock_expected_jobs', 'supabase/migrations/20260930001000_a_dispatched_run_that_never_logged.sql', ''),
     ('clock_schedule', 'supabase/migrations/20260926130000_the_clock_moves_into_supabase.sql', ''),
     ('cost_params', 'ad4_phase2.sql', ''),
@@ -372,7 +375,7 @@ begin
     ('fact_forecast_outcome', 'ad4_18_databank.sql', ''),
     ('fact_signal_outcome', 'ad4_18_databank.sql', ''),
     ('fact_station_width_score', 'supabase/migrations/20260927200000_the_width_scored_forward.sql', ''),
-    ('focus_sets', 'supabase/migrations/20261006150000_the_focus_set_is_recorded.sql', ''),
+    ('focus_sets', 'supabase/migrations/20261006150000_the_focus_set_is_recorded.sql', '/predictive'),
     ('ingest_log', 'ad4_00_preflight.sql', '(PaperPipelineStatus), (PipelineStatus)'),
     ('ledger', 'ad4_00_preflight.sql', ''),
     ('live_weather', 'ad4_live_weather.sql', '(CityCards), (GlobalBar), (RightRail), /board, /live, /opportunities'),
@@ -457,6 +460,7 @@ begin
     ('v_city_reasoning', 'ad4_23_reasoning.sql', '(Reasoning)'),
     ('v_city_running_max', 'ad4_71_observation_health.sql', ''),
     ('v_city_stats', 'ad4_17_city_stats.sql', ''),
+    ('v_city_status', 'supabase/migrations/20261006180000_each_city_has_a_daily_status.sql', '/predictive'),
     ('v_city_temp_trend', 'ad4_26_temp_trend.sql', ''),
     ('v_city_today_readings', 'ad4_26_temp_trend.sql', '/monitor'),
     ('v_city_trajectory_now', 'ad4_86_trajectory.sql', ''),
@@ -522,7 +526,7 @@ begin
     ('v_peak_hour_coverage', 'ad4_37_peak_hour.sql', '/globe'),
     ('v_persistence_skill', 'ad4_21_weather_features.sql', '(ModelAnalytics)'),
     ('v_prediction_contract', 'supabase/migrations/20261004190000_one_prediction_contract.sql', ''),
-    ('v_prediction_hindsight', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', '(PredictionHindsight)'),
+    ('v_prediction_hindsight', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', '/predictive'),
     ('v_prediction_hindsight_summary', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', '(PredictionHindsight)'),
     ('v_prediction_ladder', 'ad4_31_predictive.sql', '(CityCards), /predictive'),
     ('v_prediction_ladder_bands', 'ad4_68_prediction_ladder_outcomes.sql', ''),

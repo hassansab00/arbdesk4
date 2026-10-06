@@ -44,7 +44,12 @@ const pct = (v: unknown) => {
 
 const rate = (hits: number, n: number) => (n ? `${hits}/${n} (${Math.round((hits / n) * 100)}%)` : "—");
 
-export default function PredictionLineup() {
+/**
+ * `cities`: the page's one city selection (All active / Seasonal Focus 10 /
+ * Custom, wave F). Only those cities' calls are shown and tallied; every count
+ * below is taken from the visible rows. Undefined shows every city.
+ */
+export default function PredictionLineup({ cities }: { cities?: string[] } = {}) {
   const [dates, setDates] = useState<string[]>([]);
   const [date, setDate] = useState("");
   const [checkpoint, setCheckpoint] = useState("noon");
@@ -83,8 +88,13 @@ export default function PredictionLineup() {
       ? supabase.from("v_learning_status").select("*").in("version", versions).limit(1000)
       : Promise.resolve({ data: [] as StatusRow[], error: null }),
     [versions.join("|")], 300000, 1000);
-  const table = useMemo(() => lineupTable(lq.data ?? [], [...(sq.data ?? []), ...(vq.data ?? [])]),
-    [lq.data, sq.data, vq.data]);
+  const shown = useMemo(() => {
+    if (!cities) return lq.data ?? [];
+    const want = new Set(cities);
+    return (lq.data ?? []).filter((r) => want.has(r.city_key));
+  }, [lq.data, cities]);
+  const table = useMemo(() => lineupTable(shown, [...(sq.data ?? []), ...(vq.data ?? [])]),
+    [shown, sq.data, vq.data]);
   const blindCols = table.columns.filter((c) => c.blind);
 
   return <section className="space-y-3">

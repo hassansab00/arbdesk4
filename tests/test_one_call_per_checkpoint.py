@@ -94,7 +94,8 @@ def test_the_tick_asks_whether_any_version_holds_the_checkpoint():
 
 def test_the_panel_says_which_moment_it_shows_and_never_calls_pending_a_miss():
     src = _read("web", "components", "PredictionHindsight.tsx")
-    assert "scheduled_local,engine_version" in src
+    # the page reads the rows once for every panel since wave F (6 Oct)
+    assert "scheduled_local,engine_version" in _read("web", "app", "predictive", "page.tsx")
     assert "The headline above is the day-ahead call, not this one." in src
     assert '(hit === null ? "pending" : hit ? "hit" : "miss")' in src
     assert '{r.hit ? "hit" : "miss"}' not in src

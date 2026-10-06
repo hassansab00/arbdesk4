@@ -134,10 +134,21 @@ def test_the_market_favourite_is_priced_inside_its_quote():
 
 def test_the_panel_reads_totals_from_the_database():
     """PostgREST returns at most 1,000 rows; the row view passes that in days,
-    and a summary computed from a truncated read looks like an answer."""
+    and a summary computed from a truncated read looks like an answer.
+
+    Since wave F (6 Oct) the totals follow the page's city selection, so they
+    are added up from the rows (lib/focus.ts summariseByMoment, the view's own
+    filters). The rows are read a page at a time with a truncation flag, and
+    the database's total is still read: the same function over every row must
+    equal it, or the panel says the read is short."""
     src = PANEL.read_text(encoding="utf-8")
     assert "v_prediction_hindsight_summary" in src
+    assert "summariseByMoment(allRows as HindsightRow[])" in src
+    assert "do not add up to the database&apos;s own count" in src
     assert "create or replace view public.v_prediction_hindsight_summary" in frozen()
+    page = PAGE.read_text(encoding="utf-8")
+    assert 'readAllRows<HindsightRow>((from, to) =>\n      supabase.from("v_prediction_hindsight")' in page
+    assert "truncated={hindsightQ.truncated}" in page
 
 
 def test_hindsight_dedupes_by_band_rather_than_filtering_to_one_side():
@@ -184,7 +195,8 @@ def test_it_sits_under_the_claim_it_grades():
     """A claim and its track record are one thought. Separating them is how a
     desk keeps believing a number nothing has checked."""
     src = PAGE.read_text(encoding="utf-8")
-    assert "<PredictionHindsight />" in src
-    assert src.index("What the desk expects") < src.index("<PredictionHindsight />")
-    assert src.index("<PredictionHindsight />") < src.index("2. CONVERGENCE") \
+    # it takes the page's one selection and rows since wave F (6 Oct)
+    assert "<PredictionHindsight rows={hindsightQ.data" in src
+    assert src.index("What the desk expects") < src.index("<PredictionHindsight ")
+    assert src.index("<PredictionHindsight ") < src.index("2. CONVERGENCE") \
         if "2. CONVERGENCE" in src else True

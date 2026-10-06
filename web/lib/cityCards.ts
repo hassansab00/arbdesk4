@@ -50,6 +50,29 @@ export interface CurrentRow {
 }
 
 /** One settled day-ahead call, from v_city_hit_history. */
+/**
+ * A city's daily status (v_city_status, wave F step F.2): candidate, watch,
+ * insufficient or unavailable, for one target date and frozen moment, with
+ * every reason that applies and the rules version that decided it.
+ */
+export interface StatusRow {
+  city_key: string; target_date: string; checkpoint: string;
+  status: "candidate" | "watch" | "insufficient" | "unavailable";
+  reason: string; reasons: string[] | null;
+  station_age_h: number | null; forecast_run_at: string | null;
+  n_models: number | null; models_span_c: number | null; disagreement_c: number | null;
+  settled_days: number | null; min_settled_days: number | null; rules_version: string | null;
+}
+
+export const STATUS_WORDS: Record<StatusRow["status"], string> = {
+  candidate: "Candidate", watch: "Watch", insufficient: "Insufficient evidence", unavailable: "Unavailable",
+};
+
+/** The status row for a card's day at the chosen moment, or null. */
+export function statusFor(rows: StatusRow[], city: string, date: string, moment: string): StatusRow | null {
+  return rows.find((r) => r.city_key === city && r.target_date === date && r.checkpoint === moment) ?? null;
+}
+
 export interface HitRow {
   unit: string | null; model_call: string | null; market_call: string | null;
   model_hit: boolean | null; market_hit: boolean | null; head_to_head: boolean | null;

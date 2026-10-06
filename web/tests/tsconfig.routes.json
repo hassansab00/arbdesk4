@@ -20,6 +20,7 @@
     "../lib/cityCards.ts",
     "../lib/predictive.ts",
     "../lib/lineup.ts",
+    "../lib/focus.ts",
     "../lib/paperDesks.ts",
     "../app/api/operator/route.ts",
     "../app/api/paper-desk/route.ts",

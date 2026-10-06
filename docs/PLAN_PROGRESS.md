@@ -105,6 +105,12 @@ PR that advances a step.
           - Measured 6 Oct: 33,056 decisions older than 2 days (11.1 MB) and 24,785 offered price rows (7.0 MB).
           - `weather_forecast_models` moved to group B. The forecast ingest's catch-up window is the later of the two tables' oldest days, so the ingest needs a window per table first.
           - The migration copies the live functions with only the floor changed; `sql/ad4_96` matches; the contracts check the new floors.
+        - **WXPredict build, wave F.2-F.5 (this PR): one selection for Predictive, a measured daily status, the record on each card, the focus against all** (Hassan, 6 Oct).
+          - The Watch rule was measured on 19,227 pre-cutoff city-days by a rule fixed beforehand (`tools/focus/status_conditions.py`): the seven models' lead-1 span of 4.8 C or more is adopted (25.2% against 33.4%, -8.2 pp [-10.0, -5.9]); cloud near half cover, pressure change and wind change are tested and not adopted.
+          - `v_city_status` (migration `20261006180000`) with the append-only `city_status_rules` row `status-v1`; read live for 7 Oct, day-ahead: 35 candidate, 12 watch, 1 unavailable.
+          - All active cities · Seasonal Focus 10 · Custom selection, and the moment, drive every panel; totals come from the visible rows and are checked against the database's own total (equal at all seven moments on 6 Oct).
+          - Cards show the status, the 30-day record at the moment (hit rate with N, calibration gap, temperature error, market against model) and the inputs' freshness. "Was it right?" compares the focus with all cities and with the rest from 8 Oct, as `docs/FOCUS_PREREG.md` fixes.
+          - `v_prediction_hindsight` gains `prob_on_winner`; its other columns proven unchanged (4,122 rows, `EXCEPT ALL` 0 and 0). Status and membership reach no price (`tests/test_city_status.py`).
         - **WXPredict build, wave 2.A (#321): storage measured; the archive cycle alone cannot reach the checkpoint (`docs/WXPREDICT_BUILD.md` section 3.8, D9).**
           - 602,647,699 bytes (574.7 MiB) at 6 Oct 13:37Z; the gap to 450 MiB is 124.7 MiB; about 5 MiB a day of growth (readings 30 Sep - 6 Oct).
           - The project is on Supabase's Free plan; Supabase's docs put a Free project in read-only mode above 500 MB. It still accepts writes; why is not measured.

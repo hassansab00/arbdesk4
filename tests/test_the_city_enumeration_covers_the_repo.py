@@ -179,6 +179,10 @@ SQL_FILTERS = {
     # for a city it prices - not the record.
     "supabase/migrations/20261005110000_the_model_inputs_have_their_own_freshness.sql":
         "v_city_forecast_inputs - the main forecast's and the model inputs' age per live city",
+    # Each active city's daily status (WXPredict build F.2, 6 Oct): a question
+    # about the cities the desk trades today and tomorrow, so FILTERS.
+    "supabase/migrations/20261006180000_each_city_has_a_daily_status.sql":
+        "v_city_status - each active city's status for its local today and tomorrow",
     # v_city_trajectory_now prices the rest of TODAY for cities the desk is
     # trading, and filters to active on its own. The evidence view beside it
     # joins cities only for the timezone that turns a timestamp into a local

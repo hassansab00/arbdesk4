@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
+import { compareFocus, summariseByMoment, type HindsightRow } from "@/lib/focus";
+import type { FocusSet } from "@/components/FocusFilter";
 
 /**
  * WAS THE DESK RIGHT? - graded only on calls frozen before the answer.
@@ -29,8 +31,14 @@ import { DataState } from "@/components/DataState";
  * the realised frequency. The market's record on the same days sits beside
  * the engine's, because that is the price any edge has to beat.
  *
- * The totals are added up in the database (v_prediction_hindsight_summary):
- * PostgREST returns at most 1,000 rows, and the row view passes that in days.
+ * THE TOTALS FOLLOW THE PAGE'S CITY SELECTION (wave F, 6 Oct). The page reads
+ * every row of v_prediction_hindsight a page at a time (readAllRows, with a
+ * truncation flag) and passes them in; the totals below are added up from the
+ * visible rows by lib/focus.ts summariseByMoment, with the view's own filters.
+ * The database's total (v_prediction_hindsight_summary, every city ever
+ * traded) is still read: the same function over every row must equal it, and
+ * when it does not the panel says the rows are incomplete rather than show a
+ * total built on a short read.
  *
  * ONE CALL PER CHECKPOINT (4 Oct). A checkpoint captured by two engine
  * versions counts once, the first capture (v_checkpoint_calls.first_call);
@@ -56,6 +64,7 @@ type Row = {
   hit: boolean | null; market_band: string | null; market_hit: boolean | null;
   outcome_source: string | null;
   scheduled_local: string | null; engine_version: string | null;
+  call_order?: number | null; after_peak?: boolean | null; prob_on_winner?: number | string | null;
 };
 
 const n = (v: unknown) => {
@@ -121,21 +130,40 @@ export const utcClock = (v: string | null) => {
 /** A row's verdict; a call not yet graded is pending, never a miss. */
 export const verdict = (hit: boolean | null) => (hit === null ? "pending" : hit ? "hit" : "miss");
 
-export default function PredictionHindsight() {
-  const [moment, setMoment] = useState("day_ahead");
+export default function PredictionHindsight({
+  rows: allRows, loading, error, truncated, onRetry, cities, active, focus, moment, setMoment,
+}: {
+  rows: HindsightRow[]; loading: boolean; error: string | null; truncated: boolean; onRetry: () => void;
+  /** the page's selection; `active` is every active city, the universe the focus is judged against */
+  cities: string[]; active: string[]; focus: FocusSet | null;
+  moment: string; setMoment: (m: string) => void;
+}) {
+  // The database's own total over every city, the reference the rows must add up to.
   const sq = useQuery<Summary[]>(
     () => supabase.from("v_prediction_hindsight_summary").select("*").order("call_order"),
-    [], 60000, 50);
-  const rq = useQuery<Row[]>(
-    () => supabase.from("v_prediction_hindsight")
-      .select("city_key,for_date,called_when,called_at,predicted_band,predicted_pct,actual_band,observed_max_c,forecast_max_c,forecast_error_c,hit,market_band,market_hit,outcome_source,scheduled_local,engine_version")
-      .eq("called_when", moment)
-      .order("for_date", { ascending: false }).order("city_key")
-      .limit(300),
-    [moment], 60000, 300);
-
-  const summaries = useMemo(() => sq.data ?? [], [sq.data]);
-  const rows = useMemo(() => rq.data ?? [], [rq.data]);
+    [], 300000, 50);
+  const shown = useMemo(() => {
+    const want = new Set(cities);
+    return (allRows as Row[]).filter((r) => want.has(r.city_key));
+  }, [allRows, cities]);
+  const summaries = useMemo(() => summariseByMoment(shown as HindsightRow[]) as Summary[], [shown]);
+  // Every row, every city: must equal the database's summary, moment by moment.
+  const short = useMemo(() => {
+    const mine = new Map(summariseByMoment(allRows as HindsightRow[]).map((x) => [x.called_when, x]));
+    return (sq.data ?? []).filter((x) => {
+      const m = mine.get(x.called_when);
+      return !m || Number(m.days) !== Number(x.days) || Number(m.hits) !== Number(x.hits);
+    }).map((x) => x.called_when);
+  }, [allRows, sq.data]);
+  const rows = useMemo(() => shown.filter((r) => r.called_when === moment)
+    .sort((a, b) => (a.for_date < b.for_date ? 1 : a.for_date > b.for_date ? -1 : a.city_key.localeCompare(b.city_key)))
+    .slice(0, 300), [shown, moment]);
+  const versus = useMemo(() => {
+    if (!focus) return null;
+    const universe = active;
+    const members = focus.city_keys.filter((k) => universe.includes(k));
+    return compareFocus(allRows as HindsightRow[], members, universe, moment, focus.evaluate_from);
+  }, [allRows, focus, active, moment]);
   const head = useMemo(() => {
     const d = summaries.find(x => x.called_when === "day_ahead");
     return d ? summarise(d) : null;
@@ -178,16 +206,25 @@ export default function PredictionHindsight() {
       between what the desk claimed and what happened — a hit rate on its own says nothing, since
       eleven buckets means blind guessing scores about 9%.
     </p>
+    <p className="text-[11px] text-muted">
+      Totals for the {cities.length === active.length ? `${active.length} active cities` : `${cities.length} selected ${cities.length === 1 ? "city" : "cities"}`},
+      added up from the visible rows.
+    </p>
+    {short.length > 0 && !loading && !error && <p className="text-[11px] text-warn">
+      The rows read do not add up to the database&apos;s own count at {short.map((k) => MOMENT[k] ?? k).join(", ")}
+      (v_prediction_hindsight_summary): a day may have settled between the two reads, or the read is
+      short. Reload before relying on these totals.
+    </p>}
     <DataState
-      relation="v_prediction_hindsight_summary"
-      truncated={sq.truncated}
-      loading={sq.loading} error={sq.error} isEmpty={!summaries.length}
+      relation="v_prediction_hindsight"
+      truncated={truncated}
+      loading={loading} error={error} isEmpty={!summaries.length}
       emptyTitle="Nothing has settled yet"
       emptyBody={<>A day appears here once its outcome is banked - into{" "}
         <code className="rounded bg-panel2 px-1">fact_band_outcome</code> for the day-ahead call and{" "}
         <code className="rounded bg-panel2 px-1">fact_checkpoint_outcome</code> for the checkpoints -
         which the daily pipeline does after the day ends and the venue confirms the winner.</>}
-      onRetry={sq.refresh}
+      onRetry={onRetry}
     >
       {s && <div className="grid gap-3 rounded border border-border bg-panel p-4 sm:grid-cols-2 lg:grid-cols-5">
         <div>
@@ -259,6 +296,8 @@ export default function PredictionHindsight() {
       </p>
     </DataState>
 
+    {focus && versus && <FocusVersus v={versus} focus={focus} />}
+
     <div className="flex flex-wrap items-center gap-2 pt-2 text-xs">
       <span className="text-muted">Show the calls frozen at</span>
       {Object.keys(MOMENT).map(k =>
@@ -279,10 +318,10 @@ export default function PredictionHindsight() {
     <DataState
       relation="v_prediction_hindsight"
       truncated={false}
-      loading={rq.loading} error={rq.error} isEmpty={!rows.length}
+      loading={loading} error={error} isEmpty={!rows.length}
       emptyTitle="No settled calls at this moment yet"
       emptyBody={<>{WHEN[moment]}. Rows appear after the day ends and its outcome is banked.</>}
-      onRetry={rq.refresh}
+      onRetry={onRetry}
     >
       <div className="overflow-x-auto rounded border border-border">
         <table className="w-full text-xs">
@@ -330,3 +369,61 @@ export default function PredictionHindsight() {
     </DataState>
   </section>;
 }
+
+const ivl = (x: [number, number] | null) => (x ? `${pct(x[0])}–${pct(x[1])}` : "—");
+const pp = (x: number | null) => (x === null ? "—" : `${x > 0 ? "+" : ""}${(x * 100).toFixed(1)} pp`);
+
+/**
+ * THE SEASONAL FOCUS 10 AGAINST EVERY ACTIVE CITY (wave F, F.5). The rows
+ * docs/FOCUS_PREREG.md says count: settled calls on target dates from the
+ * set's evaluation start, at the chosen moment, where both groups have a call
+ * for the same date, moment and predictor version. A running view; the formal
+ * reading is on 1 Dec over the whole window.
+ */
+function FocusVersus({ v, focus }: { v: ReturnType<typeof compareFocus>; focus: FocusSet }) {
+  const cell = (g: typeof v.focus) => <>
+    <td className="px-2 py-1 font-mono">{g.n ? `${g.hits}/${g.n}` : "—"}</td>
+    <td className="px-2 py-1 font-mono">{g.rate === null ? "—" : pct(g.rate)}</td>
+    <td className="px-2 py-1 font-mono text-muted">{ivl(g.interval)}</td>
+    <td className="px-2 py-1 font-mono">{g.probOnWinner === null ? "—" : pct(g.probOnWinner)}</td>
+    <td className="px-2 py-1 font-mono">{g.marketRate === null ? "—" : `${pct(g.marketRate)} (${g.marketN})`}</td>
+  </>;
+  return <div className="space-y-1 rounded border border-border bg-panel p-3 text-xs">
+    <div className="font-semibold">{focus.label} against every active city · {MOMENT[v.moment] ?? v.moment} · target dates from {v.from}</div>
+    {v.focus.n === 0
+      ? <p className="text-muted">
+          No settled call on a target date from {v.from} yet. The set was recorded on{" "}
+          {focus.recorded_at.slice(0, 10)}, before any of these outcomes; the first one is graded after
+          {" "}{v.from} ends and the venue confirms the winner.
+        </p>
+      : <>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="text-muted"><tr>
+              {["Group", "Hits", "Hit rate", "95% (Wilson)", "Mean prob. on winner", "Market top-1, same rows"]
+                .map((h) => <th key={h} className="px-2 py-1 text-left font-normal">{h}</th>)}
+            </tr></thead>
+            <tbody>
+              <tr className="border-t border-border"><td className="px-2 py-1">{focus.label}</td>{cell(v.focus)}</tr>
+              <tr className="border-t border-border"><td className="px-2 py-1">Every active city</td>{cell(v.universe)}</tr>
+              <tr className="border-t border-border"><td className="px-2 py-1">The other cities</td>{cell(v.rest)}</tr>
+            </tbody>
+          </table>
+        </div>
+        <p className="text-muted">
+          Focus minus every city, per date then averaged: <b className="text-text">{pp(v.vsUniverse.mean)}</b>{" "}
+          (90% {v.vsUniverse.interval ? `${pp(v.vsUniverse.interval[0])} to ${pp(v.vsUniverse.interval[1])}` : "needs two dates"});
+          minus the others: <b className="text-text">{pp(v.vsRest.mean)}</b>{" "}
+          (90% {v.vsRest.interval ? `${pp(v.vsRest.interval[0])} to ${pp(v.vsRest.interval[1])}` : "needs two dates"}).
+          {" "}{v.dates} target {v.dates === 1 ? "date" : "dates"}; a call counts only where both groups have one for
+          the same date, moment and engine version ({v.versions} {v.versions === 1 ? "version" : "versions"}).
+        </p>
+        <p className="text-muted">
+          Running view, provisional. The reading that decides it is on 1 Dec over the whole window: focusing
+          is said to help only if the 90% interval of focus minus the others is above zero then
+          (docs/FOCUS_PREREG.md). A higher hit rate in easier cities is not a better predictor.
+        </p>
+      </>}
+  </div>;
+}
+
