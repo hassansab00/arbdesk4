@@ -158,6 +158,18 @@ const at = (day, hhmm, tz) => `(((current_date + ${day})::timestamp + interval '
   assert.equal(blind.ok, false);
   assert.match(blind.error, /p_expected_rows is required/);
 
+  // WXPredict build 2.A, group A (6 Oct): the floor is eighteen days, the
+  // function otherwise the one above. station_width_score's markets (the last
+  // 14 days, priced from 3 days before) are still never offered.
+  await db.exec(fs.readFileSync(path.join(MIGRATIONS, '20261006170000_two_keeps_no_reader_needs.sql'), 'utf-8'));
+  const short18 = await prune('17');
+  assert.equal(short18.ok, false);
+  assert.match(short18.error, /at least 18/);
+  assert.equal((await prune('18')).ok, true, 'eighteen days is a window the function accepts');
+  const blind18 = await prune('18, false');
+  assert.equal(blind18.ok, false);
+  assert.match(blind18.error, /p_expected_rows is required/);
+
   // Dry run: the six offered rows of the two old markets, nothing deleted.
   const dry = await prune('30, true');
   assert.equal(dry.ok, true, JSON.stringify(dry));
@@ -253,5 +265,5 @@ const at = (day, hhmm, tz) => `(((current_date + ${day})::timestamp + interval '
   await assert.rejects(db.query('select count(*) from public.v_prunable_band_probabilities'), /permission denied/);
   await db.exec('reset role');
 
-  console.log('PASS: band-probabilities: the newest, pre-day, eve (UTC without a zone, at the boundary), priced-at, city-day and edge-cited prices are never offered and every reader selects the same rows after the prune; a thirty-day floor, the exact verified count or nothing, never a row the repo mirror has not had, a delete that differs from its count rolls back, every band stays priced, an edge\'s price is released with the edge, request_reclaim and the weekly backstop take the table, service role only, re-runnable');
+  console.log('PASS: band-probabilities: the newest, pre-day, eve (UTC without a zone, at the boundary), priced-at, city-day and edge-cited prices are never offered and every reader selects the same rows after the prune; a thirty-day floor, eighteen from 2.A (6 Oct), the exact verified count or nothing, never a row the repo mirror has not had, a delete that differs from its count rolls back, every band stays priced, an edge\'s price is released with the edge, request_reclaim and the weekly backstop take the table, service role only, re-runnable');
 })().catch((e) => { console.error(e); process.exit(1); });

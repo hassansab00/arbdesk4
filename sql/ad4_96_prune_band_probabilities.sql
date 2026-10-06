@@ -135,13 +135,17 @@ declare
   v_bands  bigint;
   v_gone   bigint;
 begin
-  -- THIRTY DAYS. station_width_score reads 14 days of every price and the
-  -- analytics page reads open markets; everything older is read one row at a
-  -- time, and those rows are never offered.
-  if p_keep_days < 30 then
+  -- EIGHTEEN DAYS (WXPredict build 2.A, group A; Hassan, 6 Oct: offload to
+  -- the repository). The window is the market's resolution_date.
+  -- station_width_score reads every price of the markets resolved in the last
+  -- 14 days (LOOKBACK_DAYS), priced from 3 days before (PRICING_LOOKBACK_DAYS):
+  -- markets dated before current_date - 18 are four days past the oldest it
+  -- reads. The analytics page reads open markets; everything older is read
+  -- one row at a time, and those rows are never offered.
+  if p_keep_days < 18 then
     return jsonb_build_object(
       'ok', false,
-      'error', 'keep_days must be at least 30 - station_width_score reads every price of the last 14 days'
+      'error', 'keep_days must be at least 18 - station_width_score reads every price of the markets of the last 14 days'
     );
   end if;
 
@@ -236,4 +240,4 @@ revoke execute on function public.prune_band_probabilities(integer, boolean, dat
 grant execute on function public.prune_band_probabilities(integer, boolean, date, bigint) to service_role;
 
 comment on function public.prune_band_probabilities(integer, boolean, date, bigint) is
-  'Delete the band_probabilities rows v_prunable_band_probabilities offers for markets dated before the cutoff (at least 30 days back), only when the caller''s count read back from the committed archive file matches exactly and none was computed since yesterday''s UTC midnight (the repo mirror copies those after the prune). Every band keeps its newest row, so the bands priced cannot change.';
+  'Delete the band_probabilities rows v_prunable_band_probabilities offers for markets dated before the cutoff (at least 18 days back), only when the caller''s count read back from the committed archive file matches exactly and none was computed since yesterday''s UTC midnight (the repo mirror copies those after the prune). Every band keeps its newest row, so the bands priced cannot change.';

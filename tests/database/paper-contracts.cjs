@@ -2608,8 +2608,10 @@ const assert = require('node:assert/strict');
   await assert.rejects(db.query("delete from decisions where run_id=$1",[dRun]),/append-only/,
     'a decision left Postgres outside the archive');
   await db.exec('set role service_role;');
-  // The prune: never under 14 days, never without the verified count, never a different count.
-  assert.equal((await db.query("select prune_decisions(7,false,null,2) as r")).rows[0].r.ok,false);
+  // The prune: never under 2 days (WXPredict build 2.A, group A; 14 until 6 Oct), never without the
+  // verified count, never a different count.
+  const dShort=(await db.query("select prune_decisions(1,false,null,2) as r")).rows[0].r;
+  assert.equal(dShort.ok,false); assert.match(dShort.error,/at least 2/);
   assert.match((await db.query("select prune_decisions(30,false) as r")).rows[0].r.error,/p_expected_rows is required/);
   const dMis=(await db.query("select prune_decisions(30,false,null,5) as r")).rows[0].r;
   assert.equal(dMis.ok,false); assert.match(dMis.error,/verified 5 rows but prune would delete 2/);

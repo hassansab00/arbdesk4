@@ -84,6 +84,12 @@ PR that advances a step.
             - **s2's `no_signal`** (3,329, the old signal path): each decision checked on its own book (the newest `book_snapshots` row per bucket at its time, as `v_opportunities` read it; Codex on #319). 2,112 had a complete YES basket, the cheapest 1.0026 at best asks; 160 a complete NO basket, the cheapest 0.0175 above its payout; the other 1,217 could not form a basket.
             - **Three questions for Hassan, no rule changed:** the market prior's normalisation makes the leader's NO look cheap (255 checkpoints; the one bought lost); the against-market gate takes the highest ask as the favourite, so all 36 of its refusals were books whose leader had no ask; S10 never decides Madrid after its peak (a refit, held by D8).
         - **WXPredict build, phase 1 merged (G1):** [#314](https://github.com/hassansab00/arbdesk4/pull/314) as `33d90d6` (6 Oct; Hassan: "merge 314"), after phase 1.1 (the whole-day rule and `decision_local` at hh:01; both Codex threads resolved; CI green on `770c987` and on the merge with main).
+        - **WXPredict build, 2.A group A (this PR): two keeps no reader needs, offloaded to the repository** (Hassan, 6 Oct: no subscription; offload recurrently).
+          - `decisions`: archive keep 30 -> 3 days, floor 14 -> 2. The longest reader needs one day.
+          - `band_probabilities`: keep and floor 30 -> 18 days. `station_width_score` reads markets of the last 14 days, priced from 3 days before.
+          - Measured 6 Oct: 33,056 decisions older than 2 days (11.1 MB) and 24,785 offered price rows (7.0 MB).
+          - `weather_forecast_models` moved to group B. The forecast ingest's catch-up window is the later of the two tables' oldest days, so the ingest needs a window per table first.
+          - The migration copies the live functions with only the floor changed; `sql/ad4_96` matches; the contracts check the new floors.
         - **WXPredict build, wave 2.A (this PR): storage measured; the archive cycle alone cannot reach the checkpoint (`docs/WXPREDICT_BUILD.md` section 3.8, D9).**
           - 602,647,699 bytes (574.7 MiB) at 6 Oct 13:37Z; the gap to 450 MiB is 124.7 MiB; about 5 MiB a day of growth (readings 30 Sep - 6 Oct).
           - The project is on Supabase's Free plan; Supabase's docs put a Free project in read-only mode above 500 MB. It still accepts writes; why is not measured.
