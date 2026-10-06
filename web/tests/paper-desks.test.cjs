@@ -161,6 +161,14 @@ const get = async (query) => {
     assert.ok(!lib.reasonWords(code).startsWith('reason code'), `${code} has no plain words`);
   }
   assert.equal(lib.reasonWords('lock_breaks'), 'reason code lock_breaks');
+  // no_ladder means something else for S10 (P.5): its model never prices the evening before.
+  assert.match(lib.reasonWords('no_ladder', 's10_winner'), /^no S10 ladder .*never the evening before/);
+  assert.equal(lib.reasonWords('no_ladder', 's12_no'), lib.reasonWords('no_ladder'));
+  assert.equal(lib.reasonWords('own_rule_none', 's10_lock'), lib.reasonWords('own_rule_none'));
+  {
+    const ladderless = st(desk({}, { ...s12, strategy_id: 's10_lock', decisions_24h: { n: 48, buys: 0, reasons: [{ reason_code: 'no_ladder', n: 48 }] } }));
+    assert.match(ladderless.line, /Most often: no S10 ladder for that checkpoint/, 'the desk line uses S10\'s own words');
+  }
   assert.equal(lib.strategyPhrase(by['a-s1']), 'retired 5 Oct 2026');
   assert.equal(lib.strategyPhrase(by['a-port']), 'no strategy · suspended');
 

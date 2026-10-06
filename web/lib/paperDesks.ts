@@ -194,7 +194,19 @@ export const REASON_WORDS: Record<string, string> = {
   no_signal: "no signal fired",
 };
 
-export function reasonWords(code: string): string {
+/** S10's own meaning of a shared code (WXPredict build, P.5). Its ladder is
+    S10's remaining-day model, which scripts/s10_shadow.py writes only at the
+    same-day checkpoints (CHECKPOINTS: morning to an hour after the peak, local
+    hours 7-17 fitted), so the tick's evening-before checkpoint (d1_eve) never
+    has one. Measured 29 Sep - 6 Oct: 320 of s10_winner's 334 no_ladder
+    decisions were d1_eve; 7 were Madrid's post-peak at 18:xx local (no fit for
+    hour 18) and 7 had too few station readings. */
+const S10_REASON_WORDS: Record<string, string> = {
+  no_ladder: "no S10 ladder for that checkpoint (its model prices a day only from that morning, never the evening before)",
+};
+
+export function reasonWords(code: string, strategyId?: string | null): string {
+  if (strategyId?.startsWith("s10_") && S10_REASON_WORDS[code]) return S10_REASON_WORDS[code];
   return REASON_WORDS[code] ?? `reason code ${code}`;
 }
 
@@ -277,7 +289,7 @@ export function deskState(desk: Desk, available: number, now: number = Date.now(
     return {
       key: "ACTIVE", dot: "bg-good", text: "text-good",
       line: `Running. ${d.n.toLocaleString("en-US")} decision${d.n === 1 ? "" : "s"} in the last 24 h, 0 buys.`
-        + (top ? ` Most often: ${reasonWords(top.reason_code)} (${top.n.toLocaleString("en-US")}).` : ""),
+        + (top ? ` Most often: ${reasonWords(top.reason_code, act.strategy_id)} (${top.n.toLocaleString("en-US")}).` : ""),
     };
   }
   return {
