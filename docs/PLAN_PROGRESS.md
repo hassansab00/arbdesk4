@@ -89,10 +89,16 @@ PR that advances a step.
           - Ranked by how often a bias-corrected day-ahead forecast lands in the venue's bucket over 6 Oct - 30 Nov 2025 (51-56 days each), on data before 2026-09-01 only, with no blinded challenger read.
           - Recorded in `docs/FOCUS_PREREG.md`, the study's JSON (`data/eval/focus/`, sha256 `b0250963...`) and the append-only `focus_sets` row; evaluated from 8 Oct, read formally on 1 Dec.
           - Membership never reaches a price (`tests/test_focus_set.py`).
-        - **P.5 question 2 fixed (this PR; Hassan, 6 Oct: "yes"): the market's favourite when the leader has no ask.**
+        - **P.5 question 2 fixed ([#324](https://github.com/hassansab00/arbdesk4/pull/324), merged as `3aa74aa`; Hassan, 6 Oct: "yes"): the market's favourite when the leader has no ask.**
           - A bucket's standing is its YES ask, or its YES bid when nobody sells YES. The decision engine and the edge engine read it the same way, from the top of the book (the edge engine through the rows' quoted prices, not the depth-weighted fill; Codex on #324).
           - Replayed on the 36 `against_market` refusals of 29 Sep - 6 Oct: 34 were false (the engine agreed with the bought-up leader); 2 (Austin, 1 Oct) now block on the real favourite.
           - Tests for both engines; a mutation back to asks only fails each.
+        - **P.5 question 3 fixed (this PR; Hassan, 6 Oct): S10 decides at each city's own peak, late hours included.**
+          - Measured 29 Sep - 6 Oct: the checkpoints follow each city's peak, at 9-18 local. Only Madrid's post-peak (18:xx, 7 checkpoints) fell outside rd1's hours 7-17.
+          - rd1's hour 18 is fitted beside the served fit (`tools/fit_remaining_day.py --late-of`), under its own version `rd1:2026-09-25:66d6600c72` (`data/models/remaining_day/late_hours.json`, registered as shadow).
+          - Walk-forward (each month fitted on the days before it), 15,695 city-days: log loss 0.122 against the floor-atom proxy's 1.491, gain 1.369 (95% 1.318-1.421). Hour 17 on the same data: +1.321.
+          - `current.json` is byte-identical and its version `f5372ebb05` still names hours 7-17, so Challenger C's forward comparison (which selects by that version) is unchanged. A late hour never replaces a served one.
+          - At 18:00 the rest of the day is every forecast hour left (19-23); the rule is unchanged for hours up to 17.
         - **WXPredict build, wave 2.A (#321): storage measured; the archive cycle alone cannot reach the checkpoint (`docs/WXPREDICT_BUILD.md` section 3.8, D9).**
           - 602,647,699 bytes (574.7 MiB) at 6 Oct 13:37Z; the gap to 450 MiB is 124.7 MiB; about 5 MiB a day of growth (readings 30 Sep - 6 Oct).
           - The project is on Supabase's Free plan; Supabase's docs put a Free project in read-only mode above 500 MB. It still accepts writes; why is not measured.

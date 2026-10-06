@@ -55,6 +55,9 @@ TIMEOUT_S = 12
 PARAMS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                            "data", "models", "remaining_day", "current.json")
 CHALLENGER_PATH = os.path.join(os.path.dirname(PARAMS_PATH), "challenger_rd3.json")
+# rd1's late hours (the P.5 report, question 3; Hassan, 6 Oct): a fit of its
+# own beside current.json, for the local hours current.json does not serve.
+LATE_PATH = os.path.join(os.path.dirname(PARAMS_PATH), "late_hours.json")
 CHECKPOINTS = ("morning", "noon", "prepeak_2h", "prepeak_1h", "postpeak_1h")
 MIN_HOURLY = 20
 
@@ -71,6 +74,34 @@ def load_params(path=PARAMS_PATH):
         return None, None, None
     hours = {int(h): p for h, p in blob["hours"].items()}
     return hours, blob["version"], blob.get("spread_median_c")
+
+
+def load_late(served_version, path=LATE_PATH):
+    """({hour: parameters}, version) of rd1's late hours, or ({}, None): no
+    file, unreadable, not an rd1 fit, or fitted beside another served version.
+    Each late row records the late fit's own version, so a row from the served
+    hours keeps the served version (Challenger C's forward comparison selects
+    by it, tools/fec_s10_forward.py)."""
+    try:
+        with open(path) as f:
+            blob = json.load(f)
+        if (not str(blob.get("version", "")).startswith(rd.VERSION_PREFIX + ":")
+                or (blob.get("late_of") or {}).get("version") != served_version):
+            return {}, None
+        return {int(h): p for h, p in blob["hours"].items()}, blob["version"]
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return {}, None
+
+
+def with_late(params, version, late_params, late_version):
+    """The served hours with the late hours beside them, and {hour: version}.
+    A served hour is never replaced by a late one."""
+    merged = dict(params or {})
+    versions = {h: version for h in merged}
+    for h, p in (late_params or {}).items():
+        if h not in merged:
+            merged[h], versions[h] = p, late_version
+    return merged, versions
 
 
 def load_challenger(path=CHALLENGER_PATH):
@@ -204,7 +235,8 @@ def shadow_rows(due, params, version, inputs, obs_by_city, tz_of, unit_of, bands
         rows.append({
             "city_key": city, "target_date": target, "checkpoint": name,
             "local_decision_time": local.isoformat(timespec="minutes"),
-            "model_hour": hour, "model_version": version, "contract": CONTRACT,
+            "model_hour": hour, "contract": CONTRACT,
+            "model_version": version.get(hour) if isinstance(version, dict) else version,
             "probs": {str(k): round(v, 6) for k, v in probs.items()},
             "top_band_id": str(ranked[0][0]), "top_prob": round(ranked[0][1], 6),
             "median_c": round(rd.median(d), 3), "q10_c": round(rd.quantile(d, 0.1), 3),
@@ -276,7 +308,7 @@ def fetch_inputs(now, cities, dry_run=False, budget_s=10.0):
     return out
 
 
-def stored_calls(rows, version, rest_all):
+def stored_calls(rows, rest_all):
     """{(city, target, checkpoint): {"probs", "id"}} - the rows as stored.
 
     The engine's S10 decisions act on the S10 call the record holds and name
@@ -286,16 +318,19 @@ def stored_calls(rows, version, rest_all):
     second captures, 25 Sep - 1 Oct) acted on one no row holds."""
     if not rows:
         return {}
-    keys = {(r["city_key"], str(r["target_date"]), r["checkpoint"]) for r in rows}
+    # Each row under its own version: a late hour's row is rd1's late fit
+    # (load_late), every other row the served fit.
+    want = {(r["city_key"], str(r["target_date"]), r["checkpoint"]): r["model_version"] for r in rows}
+    versions = sorted(set(want.values()))
     out = {}
     for r in rest_all("s10_shadow_checkpoints", [
-            ("select", "checkpoint_id,city_key,target_date,checkpoint,probs"),
-            ("model_version", f"eq.{version}"),
-            ("city_key", f"in.({','.join(sorted({k[0] for k in keys}))})"),
-            ("target_date", f"in.({','.join(sorted({k[1] for k in keys}))})")],
+            ("select", "checkpoint_id,city_key,target_date,checkpoint,probs,model_version"),
+            ("model_version", "in.(" + ",".join(f'"{v}"' for v in versions) + ")"),
+            ("city_key", f"in.({','.join(sorted({k[0] for k in want}))})"),
+            ("target_date", f"in.({','.join(sorted({k[1] for k in want}))})")],
             order="checkpoint_id.asc"):
         k = (r["city_key"], str(r["target_date"]), r["checkpoint"])
-        if k in keys:
+        if want.get(k) == r["model_version"]:
             out[k] = {"probs": r["probs"], "id": r["checkpoint_id"]}
     return out
 
@@ -316,6 +351,8 @@ def record(due, market_of, bands_by_market, tz_of, unit_of, dry_run=False, ladde
         if not params:
             out["error"] = "no fitted parameters at " + os.path.relpath(PARAMS_PATH)
             return out
+        late_params, late_version = load_late(version)
+        params, versions = with_late(params, version, late_params, late_version)
         todo = [d for d in due if d[2] in CHECKPOINTS]
         out["due"] = len(todo)
         if not todo:
@@ -339,7 +376,7 @@ def record(due, market_of, bands_by_market, tz_of, unit_of, dry_run=False, ladde
             m = market_of.get((city, target))
             if m:
                 bands_of[(city, target)] = bands_by_market.get(m["market_id"], [])
-        rows, skipped = shadow_rows(todo, params, version, inputs, obs_by_city, tz_of, unit_of,
+        rows, skipped = shadow_rows(todo, params, versions, inputs, obs_by_city, tz_of, unit_of,
                                     bands_of, pe.DEFAULT_Q_DOWN, pe.DEFAULT_Q_UP, spread_fallback)
         out["skipped"] = skipped
         if rows and not dry_run:
@@ -351,7 +388,7 @@ def record(due, market_of, bands_by_market, tz_of, unit_of, dry_run=False, ladde
             stored = {}
             if not dry_run:
                 try:
-                    stored = stored_calls(rows, version, rest_all)
+                    stored = stored_calls(rows, rest_all)
                 except Exception as e:           # noqa: BLE001 - the computed ladder, unnamed
                     out["read_back_error"] = f"{type(e).__name__}: {str(e)[:120]}"
             unrecorded = 0
@@ -364,6 +401,8 @@ def record(due, market_of, bands_by_market, tz_of, unit_of, dry_run=False, ladde
             if not dry_run:                      # a dry run writes nothing to name
                 out["unrecorded"] = unrecorded
         out["version"] = version
+        if late_version and any(r["model_version"] == late_version for r in rows):
+            out["late_version"] = late_version
         out["challenger"] = _challenger(todo, inputs, obs_by_city, tz_of, unit_of, bands_of, dry_run)
     except Exception as e:
         out["error"] = f"{type(e).__name__}: {str(e)[:160]}"
