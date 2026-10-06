@@ -84,7 +84,12 @@ PR that advances a step.
             - **s2's `no_signal`** (3,329, the old signal path): each decision checked on its own book (the newest `book_snapshots` row per bucket at its time, as `v_opportunities` read it; Codex on #319). 2,112 had a complete YES basket, the cheapest 1.0026 at best asks; 160 a complete NO basket, the cheapest 0.0175 above its payout; the other 1,217 could not form a basket.
             - **Three questions for Hassan, no rule changed:** the market prior's normalisation makes the leader's NO look cheap (255 checkpoints; the one bought lost); the against-market gate takes the highest ask as the favourite, so all 36 of its refusals were books whose leader had no ask; S10 never decides Madrid after its peak (a refit, held by D8).
         - **WXPredict build, phase 1 merged (G1):** [#314](https://github.com/hassansab00/arbdesk4/pull/314) as `33d90d6` (6 Oct; Hassan: "merge 314"), after phase 1.1 (the whole-day rule and `decision_local` at hh:01; both Codex threads resolved; CI green on `770c987` and on the merge with main).
-        - **WXPredict build, phase 2.1 (this PR): up to a 0.10 spread, the record's `p` is the book's midpoint; over 0.10 it stays open.**
+        - **WXPredict build, wave 2.A (this PR): storage measured; the archive cycle alone cannot reach the checkpoint (`docs/WXPREDICT_BUILD.md` section 3.8, D9).**
+          - 602,647,699 bytes (574.7 MiB) at 6 Oct 13:37Z; the gap to 450 MiB is 124.7 MiB; about 5 MiB a day of growth (readings 30 Sep - 6 Oct).
+          - The project is on Supabase's Free plan; Supabase's docs put a Free project in read-only mode above 500 MB. It still accepts writes; why is not measured.
+          - Cuts with every reader's window met (`decisions` to 2 days, `weather_forecast_models` to 7, `band_probabilities` to 18): 30.0 MB. With four more that change a reader (correlation history, model forecasts, old closing books, forecasts to 14 days): 85.6 MB.
+          - Recommended to Hassan: the Pro plan ($25 a month, 8 GB). Nothing changed live.
+        - **WXPredict build, phase 2.1 (#320): up to a 0.10 spread, the record's `p` is the book's midpoint; over 0.10 it stays open.**
           - On hours where `p` did not move and the spread is at most 0.10, the archived books' mid matches it at the 90th percentile exactly: 54,415 pairs, 98.6% within 0.01.
           - The bid and the ask reach 0.015 at the 90th percentile, and the tick's last trade 0.99.
           - Spreads over 0.10 (271 pairs, 0.5%) miss the 0.01 tolerance: 90th percentile 0.02.

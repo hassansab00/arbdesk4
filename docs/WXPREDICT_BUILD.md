@@ -174,7 +174,7 @@ Each row gives an item's state, **measured on 5 Oct 2026 unless it says "per the
 | id | item | state | what remains | wave |
 |---|---|---|---|---|
 | R1 | **Actions minutes, October** (Rule 7) | 941 billed minutes from 1 Oct to 5 Oct 16:04Z, over 283 runs (jobs API, each job rounded up). **CI: 419** (tests 331, web 88). **Scheduled: 522** (pipeline_daily 153, tick 113, intraday 105, forecasts 71 before it left the clock on 4 Oct, archive 69, other 11). The cadence since 4 Oct costs about 91 a day at the per-run costs measured 1-5 Oct (tick 24 × 1, intraday 4 × 4, pipeline_daily ~37, archive ~14). That projects to about **3,300 by 31 Oct with no CI at all, over the 3,000 budget**. | **Hassan, 5 Oct: revamp the Actions first** (wave A, section 3.6), keeping quality and improving the engines' accuracy. The overage margin is still his to decide (D1). The build's own CI is capped: one push per step, about 25 pushes in total, which is about 125-150 CI minutes, measured as it goes. | A, Hassan |
-| R2 | **Database size** (P1.6) | **575 MB, 114.9% of the 500 MB tier** (`pg_database_size`, 5 Oct). P1.6's record says phases 1-2 done and 3.1-3.3 live. | Measure the largest tables; finish P1.6 phase 3 through the archive (export, verify, commit, prune: never delete); get under the cap with headroom. WXPredict's shadow table must fit the plan. **5 Oct ~18:30Z (wave 0.2): 606.7 MB (606,702,739 bytes; 578.6 MiB), 121.3% of the tier.** Largest: `trades_observed` 67.8 MB, `book_snapshots` 58.8, `weather_forecasts` 47.4, `band_probabilities` 38.6, `weather_observations` 33.5, `resolution_verdicts` 24.6, `bands` 21.0, `weather_forecast_models` 19.6, `edges` 18.2, `derived_model_forecast` 17.8 (`pg_total_relation_size`). | 2 |
+| R2 | **Database size** (P1.6) | **575 MB, 114.9% of the 500 MB tier** (`pg_database_size`, 5 Oct). P1.6's record says phases 1-2 done and 3.1-3.3 live. | Measure the largest tables; finish P1.6 phase 3 through the archive (export, verify, commit, prune: never delete); get under the cap with headroom. WXPredict's shadow table must fit the plan. **5 Oct ~18:30Z (wave 0.2): 606.7 MB (606,702,739 bytes; 578.6 MiB), 121.3% of the tier.** Largest: `trades_observed` 67.8 MB, `book_snapshots` 58.8, `weather_forecasts` 47.4, `band_probabilities` 38.6, `weather_observations` 33.5, `resolution_verdicts` 24.6, `bands` 21.0, `weather_forecast_models` 19.6, `edges` 18.2, `derived_model_forecast` 17.8 (`pg_total_relation_size`). **6 Oct 13:37Z: 602,647,699 bytes (574.7 MiB); measured cuts and the Free plan's read-only rule in section 3.8; D9.** | 2 |
 
 ### 3.2 Jobs warning in the last 48 h (`ingest_log`, 5 Oct ~16:00Z)
 
@@ -377,6 +377,64 @@ All eight ledgers pass `paper_desk_retire`'s refusal checks today (5 Oct): 0 pos
 - **Paper jobs, 48 h, all `ok`:** `paper_plans` 10, `paper_worker` 10, `paper_exits` 10, `paper_settlement` 12, `signal_engine` 10, `P2.2_paper_maintenance` 8, `export_paper_trades` 4.
 - **The API:** `GET /api/paper-desk?resource=accounts` 200, 16 desks; the first is still "Shadow: s8_two_bucket_cover" (0 trades).
 
+
+
+### 3.8 Storage (2.A), measured 6 Oct: the archive cycle alone cannot reach the checkpoint
+
+**Where it stands.**
+- `pg_database_size` read 602,647,699 bytes at 13:37Z and 13:47Z. That is 574.7 MiB, 114.9% of the tier in `storage_pressure()`'s unit (MiB).
+- **The project is on Supabase's Free plan** (`get_organization`: plan `free`). Supabase's docs ("Understanding Database and Disk Size", Free Plan behavior) say: "Free Plan projects enter read-only mode when your database size exceeds 500 MB".
+  - The database has been over 500 since at least 20 Sep (591 MB, in `tests/test_every_pruned_table_is_reclaimed.py`).
+  - It still accepts writes: the 13:36Z tick wrote trades and decisions.
+  - Why it is not read-only yet is not measured. Supabase's billing FAQ describes a notice and a grace period before restrictions.
+- **The checkpoint is under 90% of the tier.** P1.6's acceptance reads it as `storage_pressure()` under 450, which is 450 MiB.
+  - The gap now is **124.7 MiB** (130.8 MB).
+  - If Supabase counts the 500 MB in decimal, the gap to 450 MB is 152.6 MB. Which unit Supabase uses is not measured.
+- **It grows.** The readings were 542.2 MiB on 30 Sep, 558.9 on 3 Oct, 578.6 on 5 Oct ~18:30Z and 574.7 on 6 Oct 13:37Z.
+  - That is about 5 MiB a day over 6 days.
+  - The readings were taken at different times of day, and `trades_observed` swings by about a day of prints between prunes.
+  - Over the last 7 days, the tables that are never pruned added rows worth up to 9.2 MB a day (rows × the table's bytes per row). That is an upper bound, since some of them rewrite rows.
+- **Reclaim already works.** After each prune the archive asks for a VACUUM FULL (`request_reclaim`), so the size is live rows and their indexes. Every large index was scanned on 6 Oct, so dropping indexes is not a free cut.
+
+**What each cut gives.** Rows were counted 6 Oct ~13:45Z. MB is the rows' share of their table's measured size, weighted by `pg_column_size`.
+
+*Group A: the archive cycle only, and every reader's window is still met.* Each cut needs a migration to lower its prune function's floor, plus a before-and-after proof on its readers.
+
+| cut | rows | MB | readers |
+|---|---|---|---|
+| `decisions`: 14 days (the floor under pressure) → 2 | 33,056 of 36,763 | 11.1 | The longest reader needs 1 day: `engine_replay_live.py` (yesterday) and the paper-desk API (24 h). `v_decision_prediction` reads every row, but no code reads it. |
+| `weather_forecast_models`: 30 → 7 days | 57,700 of 94,309 | 11.9 | `station_correction.py` reads 75 days through `weather_history`, which falls back to `data/archive`; pipeline_daily checks out the whole repo. Hit forecasts before the held range come from `derived_hit_forecasts`, frozen through 6 Oct 04:56Z. Every other reader reads the newest run. |
+| `band_probabilities`: 30 → 18 days | 24,785 of 139,275 | 7.0 | `station_width_score.py` reads about 17 days of every row, which is the floor's stated reason. So 18 days leaves one day of margin; at 21 days the cut is 5,689 rows, 1.6 MB. Longer readers use rows the prune keeps. |
+
+Group A in total: **30.0 MB** (at 18 days).
+
+*Group B: a reader sees less, or needs a code change first.*
+
+| cut | rows | MB | what changes |
+|---|---|---|---|
+| `derived_city_correlation`: keep the newest row per pair | 60,939 of 62,314 | 8.8 | `signal_engine` reads the newest row per pair, which stays. The plan-approval RPC's correlation warning (`sql/ad4_rpc.sql:480`) reads the 20 newest rows of any computation, so its warning can change. The table is mirrored, not archived, so this needs a new archive dataset and a reclaim job. |
+| `derived_model_forecast`: keep 7 days | 9,711 of 32,126 | 5.5 | Never pruned today. Model promotion read every row, and it is stopped (A.3). `v_model_forecast_skill` reads every row for the analytics page, which would show 7 days unless it reads the mirror. Needs a new archive dataset. |
+| `book_snapshots`: the closing books older than 3 days | 53,402 of 86,706 | 25.9 | Kept forever by design, and about 1,500 more a day. The backtest's book reader (`book_history.as_of`) assumes the last book of every band-day stays in the database. It needs a change, and its proof (`tools/p16_step32_proof.py`) re-run. |
+| `weather_forecasts`: 30 → 14 days | 31,994 of 97,748 | 15.4 | `recompute_correlation` reads 180 days straight from Postgres, with no archive, into `derived_city_correlation`, which s2's signal path reads. A shorter keep changes s2's inputs (D4, D8) unless that function first reads the archive. |
+
+Group B in total: **55.6 MB**.
+
+**A and B together: 85.6 MB.** That is 45 MB short of the gap in MiB terms and 67 MB short in decimal, before growth.
+
+*Group C: beyond the archive cycle.*
+- **`trades_observed`.** It was 60.0 MB at 13:37Z, with 52,003 prints in the last 24 h.
+  - Its readers need 24 h (`v_band_volume`, `v_city_volume`).
+  - The nightly prune keeps everything from the previous UTC midnight, so the table holds 27-51 h of prints.
+  - Holding less needs a prune more often than nightly (a schedule, so Rule 7) or fewer bytes per print. Its indexes are 33.7 MB of the 60, the dedupe index alone 18.7 MB. What either would save is not measured.
+- **The Pro plan.**
+  - $25 a month (Supabase docs, "Your monthly invoice"), with an 8 GB disk.
+  - Its $10 compute credit covers one project on Nano or Micro compute. This project's compute size was not checked.
+  - It removes the 500 MB limit. It is spending, so it is Hassan's decision (D9).
+
+**Recommendation: the Pro plan (D9).**
+- The limit is the root cause: the database grows about 5 MiB a day, and WXPredict's shadow table is still to come.
+- Without Pro, groups A and B are several PRs, each with its own proof. Two of them change what s2 or a page reads, and together they still leave the gap open.
+- Group A changes nothing any reader sees, so it can go ahead either way if Hassan wants the room.
 
 ---
 
@@ -1079,6 +1137,7 @@ Over 7 consecutive days:
 | D5 | Retire the eight flat ledgers now (R17); 29 Sep's "Retire all of s1, s3-s9" appears to cover it. Retiring deletes nothing: the trades stay readable, and the desks move to the page's archived list | the desks | P.2 |
 | D6 | After rd3's first look (~25 Oct): S10's future (R33) | strategy | none |
 | D7 | When to schedule the trading machinery (R35) and `settlement_verified` (R36) | capital and payouts | none |
+| D9 | Storage (2.A, section 3.8). The project is on Supabase's Free plan, whose docs put a project in read-only mode above 500 MB; it is at 574.7 MiB and grows about 5 MiB a day. The archive cycle alone reaches 30 MB with no reader affected, or 85.6 MB if four readers change (s2's correlation input, the plan-approval warning, the analytics page, the backtest's book reader); the gap is 124.7 MiB. **Recommended: the Pro plan ($25 a month, 8 GB).** Otherwise: group A now, group B one PR at a time, and the gap stays open | spending | 2.A, so phase 2 from 2.2 |
 | G3-G5 | as in section 5 | the model's use | their phases |
 
 ---
@@ -1101,7 +1160,7 @@ Updated in every PR.
 | Phase 1 (sources, table) | **merged** as #314 (`33d90d6`, 6 Oct) | `docs/WXPREDICT.md`, `table_meta.json` |
 | 1.1 (R37: 2 review findings) | **done 6 Oct**, both threads answered and resolved, CI green on `770c987` and on the merge with main (`25a9e32`). (a) One whole-day rule (`common.max_gap_h`, gaps of 3 h or less from midnight to midnight, and the reports must run past the day's end) everywhere a day's maximum is read. `station_daily` gains `max_gap_h`: a fresh fetch of the climate windows rebuilt the old file byte for byte, and the new file differs only in that column on all 123,452 rows. Table: 686,111 -> 684,990 rows. All 9,586 venue events are kept; 30 of them have no whole station day, so no station verdict. Unlisted station days 11,855 -> 11,820 (left out: 38 with a gap, 8 with no report, 1 not reported to its end). (b) `decision_local` is the decision instant (hh:01) and parses back on all 684,990 rows. Two builds are byte-identical (sha256 `d03b73e8...`); 8 mutations, each caught; both suites green | commit message; #314 threads; `table_meta.json` |
 | G1 / D2 | **passed 6 Oct**: Hassan, "merge 314"; merged `33d90d6` | chat, 6 Oct |
-| Wave 2 (2.A-2.F) | todo | |
+| Wave 2 (2.A-2.F) | **2.A measured 6 Oct (section 3.8): the archive cycle alone cannot reach the checkpoint.** The project is on Supabase's Free plan (read-only above 500 MB, per its docs), at 574.7 MiB, growing about 5 MiB a day; the gap to 450 MiB is 124.7 MiB. Cuts that leave every reader whole: 30.0 MB. With four readers changed (s2's correlation input, the plan-approval warning, the analytics page, the backtest's book reader): 85.6 MB. Waits on D9 (recommended: the Pro plan). 2.B waits on A.3's checkpoint. 2.C-2.F todo | section 3.8; section 9 (D9) |
 | Phase 2 (2.1-2.5) | **2.1, 6 Oct: up to a 0.10 spread, `p` is the book's midpoint; over 0.10 it is open.** On hours where `p` did not move and the spread is at most 0.10, the mid matches it at the 90th percentile exactly (54,415 pairs, 98.6% within 0.01). The bid, the ask and the last trade are each further off. **Spreads over 0.10 (271 pairs, 0.5%) miss the tolerance:** 84.9% within 0.01, 90th percentile 0.02. The venue's display rule (the last trade) does not explain them: on the 25 with an archived trade, it is within 0.01 on 5 against the mid's 15. Cause not measured. The live reader (2.2) reads the mid for every bucket, with the spread stored. 2.3 reports the wide buckets on their own, and G2 sees them. 2.2-2.5 todo | `docs/WXPREDICT.md` (Phase 2.1); `tools/wxpredict/what_is_p.py` |
 | G2 | | |
 | Phase 3 (3.0-3.7) | todo (exploratory first look in section 2.2 only) | |
