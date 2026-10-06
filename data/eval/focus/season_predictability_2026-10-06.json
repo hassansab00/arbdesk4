@@ -1,0 +1,5331 @@
+{
+ "as_of": "2026-10-06",
+ "cutoff_exclusive": "2026-09-01",
+ "newest_date_used_per_source": {
+  "market ladders": "2026-08-31",
+  "market prices": "2026-08-31",
+  "market outcomes": "2026-08-31",
+  "venue winners (check)": "2026-08-30",
+  "station days": "2025-11-30",
+  "forecasts": "2025-11-30",
+  "station days (bias)": "2025-11-28",
+  "forecasts (bias)": "2025-11-28"
+ },
+ "method": "Analog window: calendar days 6 Oct - 30 Nov of every year before the cutoff\nthat has data. First half 6 Oct - 2 Nov, second half 3 - 30 Nov.\n\nObservation: the station maximum of a whole local day at the city's settlement\nstation today (data/training/wxpredict/station_daily.csv.gz, written by\ntools/wxpredict/fetch_obs.py: tmax_c is the greatest report in C, from the\nMETAR T group when present, else IEM's tmpf converted; tmax_f is the greatest\ntmpf). A day is whole when max_gap_h <= 3 and the station's reports run past\nthe day's end (tools/wxpredict/build_table.py `whole_day`; the newest report is\ntaken among pre-cutoff rows only). The venue's reading is whole degrees of the\nmarket's unit, rounded half up (build_table.py `unit_reading`): F from tmax_f,\nC from tmax_c.\n\nForecast (primary): Open-Meteo best_match, Previous Runs `_previous_day1`\n(lead_days = 1), field `tmax_00_17_c`: the maximum over local hours 00-17 of\nD, each hour from a run started at least 24 h before it\n(data/training/previous_runs/best_match_daily.csv.gz). By the builder's rule\n(`daily_known`) it is known from local midnight before D: an honest day-ahead\nnumber. Only 14 Jul 2025 - 4 Oct 2026 exists, so the window has forecasts in\n2025 only.\nSensitivity forecasts (reported, not ranked on): lead-1 whole-day `tmax_c`\n(known from D 06:00), lead-2 whole-day `tmax_c` (known from D-1 06:00), the\nmean of the seven models' lead-1 `tmax_00_17_c` (models_daily.csv.gz, at\nleast 4 models), and the primary with no bias correction.\n\n1. Error e = forecast - observed station maximum, in C (positive = forecast\n   too warm). Bias = mean e, SD = sample SD of e, MAE = mean |e|, over the\n   window days with a whole station day and a forecast.\n2. Bucket width in C (1 C; 2 F = 1.111 C, both verified on the pre-cutoff\n   ladders: every inner bucket of a C city is 1 wide, of an F city 2 wide\n   with an even lower edge). SD in buckets = error SD / width.\n   Bias-corrected forecast-bucket hit rate: the forecast minus the city's\n   trailing bias (mean e over whole days D-31 .. D-2 with a forecast; at\n   least 10 such days, else the day is not scored), converted to the unit,\n   rounded half up to a whole reading, put on the city's bucket grid\n   (C: [n, n+1); F: [2k, 2k+2)), against the bucket holding the venue's\n   reading of the observed maximum. An unbounded grid: Oct - Nov 2025 had no\n   listed ladders, so the open tails are not modelled. Wilson 95% interval.\n   D-2 is the newest whole day known at a call frozen at D-1 evening or at\n   local midnight (it ended a day earlier; build_table.py REPORT_LAG_S).\n3. Regime volatility: SD of the day-to-day change of the station maximum (C),\n   over pairs (D-1, D) with D in the window and both days whole, every year\n   2020 - 2025. Seasonal transition: error SD (primary, raw e) of the second\n   half minus the first half (2025), and the same change in the day-to-day\n   SD over 2020 - 2025.\n4. The market's skill: top-1 hit rate of the market's favourite bucket at\n   18:00 local on D-1 and 12:00 local on D, against the venue's winner. Prices\n   as tools/p310_midnight_favourite.py takes them: each bucket's FIRST price at\n   or after the decision, at most 60 min later; a city-day counts only when\n   every bucket has one; the favourite is the highest price (lowest index on\n   a tie). Events: tools/wxpredict/build_table.py's filters (active city,\n   closed, exactly one winner, a main listing over an arch twin, contiguous\n   ladder), dated in the window and before the cutoff. Supplementary, NOT the\n   window and NOT a ranking input: the same over every pre-cutoff event\n   (2025-12-30 - 2026-08-31), all seasons.\n5. Data sufficiency: window days with a whole station day and the primary\n   forecast; days scored for the hit rate (also need the trailing bias).\n\nChecks reported beside the result (not ranking inputs): the station reading's\nbucket against the venue's winner on every pre-cutoff listed day settled at\nthe city's station today; Spearman correlation and top-10 overlap of each\nsensitivity forecast's hit rate with the primary; a block bootstrap of the\nselection (7-day blocks of window dates, the same dates for every city, 2000\ndraws, seed 20261006, flags held fixed): the share of draws in which each city\nis in the Focus 10.",
+ "ranking_rule": "R1. Eligible: at least 40 scored analog days (item 5).\nR2. Order eligible cities by the bias-corrected forecast-bucket hit rate,\n    highest first. Ties (equal to 0.1 percentage point) go to the lower\n    day-to-day SD (2020 - 2025).\nR3. November-transition flag: the error SD rises from the first half to the\n    second by at least 0.5 C AND the 2020 - 2025 day-to-day SD also rises.\n    A flagged city enters the Focus 10 only if fewer than 10 unflagged\n    eligible cities remain; it keeps its place in the full ranked list.\nR4. The Focus 10 = the first 10 eligible cities in R2 order after R3.\nThe market's skill (4) is reported beside the ranking as a check; it is a\nranking input only for a city whose forecast measure is unavailable (none\nexpected: every active city has the record).",
+ "data_rules": "- CUTOFF = 2026-09-01. No outcome, market price, observation or forecast dated\n  on or after it is used: every loader drops such rows, and `guard()` asserts\n  on every row that enters a computation. 2026-09-01 onward is the sealed test\n  of a model under evaluation.\n- The blinded challengers (rd3, da_floor, sd_corr) and anything under\n  data/eval/fec_v1/ are not read.\n- The universe and each city's settlement station, unit and zone come from the\n  cities mirror of 6 Oct 2026 (metadata, not an outcome), `status = active`.",
+ "parameters": {
+  "window": "10-06..11-30",
+  "half2_from": "11-03",
+  "years": [
+   2020,
+   2021,
+   2022,
+   2023,
+   2024,
+   2025
+  ],
+  "whole_day_max_gap_h": 3,
+  "trailing_bias_days": [
+   2,
+   31
+  ],
+  "trailing_bias_min_n": 10,
+  "min_days": 40,
+  "tie_pp": 0.1,
+  "flag_err_sd_rise_c": 0.5,
+  "market_decisions_local": {
+   "d1_18": [
+    -1,
+    18
+   ],
+   "d0_12": [
+    0,
+    12
+   ]
+  },
+  "market_after_min": 60,
+  "bootstrap": {
+   "n": 2000,
+   "block_days": 7,
+   "seed": 20261006
+  }
+ },
+ "universe": {
+  "source": "data/mirror/cities/cities-2026-10-06.csv.gz",
+  "active": [
+   "amsterdam",
+   "ankara",
+   "atlanta",
+   "austin",
+   "beijing",
+   "buenos_aires",
+   "busan",
+   "cape_town",
+   "chengdu",
+   "chicago",
+   "chongqing",
+   "dallas",
+   "denver",
+   "guangzhou",
+   "helsinki",
+   "houston",
+   "istanbul",
+   "jeddah",
+   "karachi",
+   "kuala_lumpur",
+   "london",
+   "los_angeles",
+   "lucknow",
+   "madrid",
+   "manila",
+   "mexico_city",
+   "miami",
+   "milan",
+   "moscow",
+   "munich",
+   "nyc",
+   "panama_city",
+   "paris",
+   "qingdao",
+   "san_francisco",
+   "sao_paulo",
+   "seattle",
+   "seoul",
+   "shanghai",
+   "shenzhen",
+   "singapore",
+   "tel_aviv",
+   "tokyo",
+   "toronto",
+   "warsaw",
+   "wellington",
+   "wuhan",
+   "zhengzhou"
+  ]
+ },
+ "inputs_sha256": {
+  "data/mirror/cities/cities-2026-10-06.csv.gz": "88f18f749efb03a1ad9a55909edd6840a1151a7ae151dcc3989e45fd0ec23875",
+  "data/training/wxpredict/station_daily.csv.gz": "79b81452984b6184c19ae4bc2ad6379a7270616ce6d7d4c94ddf92c730a3b6fb",
+  "data/training/previous_runs/best_match_daily.csv.gz": "21e90b0c4a1438bf0f95f421afa8077933cc810de7421ce4710590c23201db3d",
+  "data/training/previous_runs/models_daily.csv.gz": "e554869a3ad6ce861c69f29f074062ff654c6a9d1c21faaee2fa04800c8ae344",
+  "data/training/market_history/events.csv.gz": "b5e903c9867fcf2e4520a518100c49d6028681f18a2bddb3da050adbed53ab7f",
+  "data/training/market_history/bands.csv.gz": "0112900afc7d46fdb897e78301b5a4f16b44014425823477b898fb877c355e1c",
+  "data/training/market_history/prices.csv.gz": "50efbb36d92aa3f4579b1d38c51bb2e3e0721ecba0479a446a48c4f383edaef5"
+ },
+ "market_events_left_out": {
+  "city not active": 450,
+  "arch twin of a main listing": 46,
+  "dated on/after the cutoff": 1868,
+  "not exactly one winner": 3,
+  "ladder not contiguous": 1
+ },
+ "focus_10": [
+  "lucknow",
+  "karachi",
+  "helsinki",
+  "wellington",
+  "tel_aviv",
+  "milan",
+  "chicago",
+  "moscow",
+  "miami",
+  "amsterdam"
+ ],
+ "top_10_by_hit_rate_alone": [
+  "lucknow",
+  "karachi",
+  "helsinki",
+  "wellington",
+  "tel_aviv",
+  "milan",
+  "chicago",
+  "moscow",
+  "miami",
+  "amsterdam"
+ ],
+ "ranked": [
+  "lucknow",
+  "karachi",
+  "helsinki",
+  "wellington",
+  "tel_aviv",
+  "milan",
+  "chicago",
+  "moscow",
+  "miami",
+  "amsterdam",
+  "istanbul",
+  "paris",
+  "madrid",
+  "warsaw",
+  "munich",
+  "houston",
+  "dallas",
+  "panama_city",
+  "buenos_aires",
+  "london",
+  "singapore",
+  "seattle",
+  "chongqing",
+  "ankara",
+  "atlanta",
+  "nyc",
+  "mexico_city",
+  "chengdu",
+  "los_angeles",
+  "austin",
+  "toronto",
+  "shanghai",
+  "tokyo",
+  "seoul",
+  "san_francisco",
+  "denver",
+  "jeddah",
+  "manila",
+  "cape_town",
+  "busan",
+  "qingdao",
+  "shenzhen",
+  "guangzhou",
+  "wuhan",
+  "beijing",
+  "kuala_lumpur",
+  "zhengzhou",
+  "sao_paulo"
+ ],
+ "not_eligible": [],
+ "sensitivity": {
+  "l1_whole_day": {
+   "spearman_vs_primary": 0.9867,
+   "top10_by_hit_overlap_with_primary_top10_by_hit": 9,
+   "top10_by_hit": [
+    "lucknow",
+    "helsinki",
+    "karachi",
+    "wellington",
+    "tel_aviv",
+    "chicago",
+    "milan",
+    "moscow",
+    "warsaw",
+    "miami"
+   ],
+   "n_cities": 48
+  },
+  "l2_whole_day": {
+   "spearman_vs_primary": 0.634,
+   "top10_by_hit_overlap_with_primary_top10_by_hit": 6,
+   "top10_by_hit": [
+    "lucknow",
+    "helsinki",
+    "madrid",
+    "miami",
+    "karachi",
+    "wellington",
+    "amsterdam",
+    "busan",
+    "warsaw",
+    "istanbul"
+   ],
+   "n_cities": 48
+  },
+  "models_mean_l1_00_17": {
+   "spearman_vs_primary": 0.5837,
+   "top10_by_hit_overlap_with_primary_top10_by_hit": 5,
+   "top10_by_hit": [
+    "seattle",
+    "miami",
+    "wellington",
+    "helsinki",
+    "karachi",
+    "lucknow",
+    "cape_town",
+    "nyc",
+    "austin",
+    "mexico_city"
+   ],
+   "n_cities": 48
+  },
+  "primary_no_bias_correction": {
+   "spearman_vs_primary": 0.4289,
+   "top10_by_hit_overlap_with_primary_top10_by_hit": 5,
+   "top10_by_hit": [
+    "london",
+    "paris",
+    "helsinki",
+    "moscow",
+    "miami",
+    "karachi",
+    "jeddah",
+    "tel_aviv",
+    "nyc",
+    "dallas"
+   ],
+   "n_cities": 48
+  }
+ },
+ "market_check_all_season": {
+  "d1_18": {
+   "spearman_hit_bc_vs_market_all_season": 0.5297,
+   "n_cities": 47
+  },
+  "d0_12": {
+   "spearman_hit_bc_vs_market_all_season": 0.4619,
+   "n_cities": 47
+  }
+ },
+ "station_reading_in_venue_winner_pre_cutoff_total": {
+  "agree": 7661,
+  "n": 7825
+ },
+ "climate_notes_web_sourced_not_measured": {
+  "_about": "Climatology context for the Seasonal Focus 10 report (6 Oct 2026). Web-sourced, NOT measured, NOT a ranking input: written after the ranking to explain it. 'verified' = the page was opened and the claim read on it; 'search summary' = the claim is the web-search tool's summary of the page, which could not be opened from the sandbox (egress proxy blocked the domain).",
+  "lucknow": {
+   "note": "Post-monsoon season (Oct-Nov) follows the SW monsoon's end in September; calm and very light winds are most frequent in this season.",
+   "source": "https://mausam.imd.gov.in/lucknow/mcdata/climatology_lucknow.pdf",
+   "verification": "search summary"
+  },
+  "karachi": {
+   "note": "October is a transition month after the monsoon withdraws in September; in November dry continental winds set up over Pakistan, and October-November bring very little rain to Sindh.",
+   "source": "https://cdpc.pmd.gov.pk/Pakistan_Monthly_Climate_Summary_November_2022.pdf",
+   "verification": "search summary"
+  },
+  "helsinki": {
+   "note": "Cloud cover is abundant in Finland in autumn and winter (about 65-85% of the sky); clear days are least frequent in November and December.",
+   "source": "https://en.ilmatieteenlaitos.fi/climate-elements",
+   "verification": "search summary"
+  },
+  "wellington": {
+   "note": "Southern Hemisphere spring; spring is consistently Wellington's windiest season.",
+   "source": "https://niwa.co.nz/sites/default/files/Wellington_Climate_WEB.pdf",
+   "verification": "search summary"
+  },
+  "tel_aviv": {
+   "note": "Start of the rainy season: early-season rain in Israel is localized (rainy spots beside dry areas); the main rainy season runs November-April.",
+   "source": "https://ims.gov.il/en/node/2292",
+   "verification": "search summary"
+  },
+  "milan": {
+   "note": "October and November are among Lombardy's rainiest months; frequent fog in the plain under anticyclones after wet spells (ARPA Lombardia news on Oct 2024).",
+   "source": "https://www.arpalombardia.it/agenda/notizie/2024/meteo-arpa-lombardia-ottobre-2024-fra-i-piu-piovosi-sulle-province-orientali-mai-cosi-tanta-pioggia-a-milano-nei-primi-dieci-mesi-dell-anno/",
+   "verification": "search summary"
+  },
+  "chicago": {
+   "note": "Continental climate with frequent short fluctuations in temperature; Chicago lies close to well-defined storm tracks.",
+   "source": "https://climate.isws.illinois.edu/statecli/General/chicago-climate-narrative.htm",
+   "verification": "search summary"
+  },
+  "moscow": {
+   "note": "No climatology source could be opened or found at an official domain in this session; the reason rests on the numbers only.",
+   "source": null,
+   "verification": "none"
+  },
+  "miami": {
+   "note": "End of the wet (summer) season: NWS Miami gives a median end date of 17 October (earliest 24 Sep, latest 1 Nov) over 42 years.",
+   "source": "https://www.weather.gov/mfl/summer_season",
+   "verification": "verified"
+  },
+  "amsterdam": {
+   "note": "The Dutch storm season starts in September and runs through the winter half; the first storm often comes in autumn.",
+   "source": "https://www.knmi.nl/over-het-knmi/nieuws/herfststormen",
+   "verification": "search summary"
+  },
+  "cape_town": {
+   "note": "Southern Hemisphere spring; warm sunny weather returns with the prevailing south-easterly ('Cape doctor').",
+   "source": "https://capetown.gov.za/_documents/resource.capetown.gov.za/documentcentre/Documents/Graphics%20and%20educational%20material/CCT_Beaches_-_a_diversity_of_coastal_treasures_2009.pdf",
+   "verification": "search summary"
+  },
+  "busan": {
+   "note": "East Asian winter monsoon onset: cold-surge frequency peaks in November (and March).",
+   "source": "https://journals.ametsoc.org/view/journals/mwre/125/10/1520-0493_1997_125_2605_caivot_2.0.co_2.xml",
+   "verification": "search summary"
+  },
+  "qingdao": {
+   "note": "East Asian winter monsoon onset: cold-surge frequency peaks in November (and March).",
+   "source": "https://journals.ametsoc.org/view/journals/mwre/125/10/1520-0493_1997_125_2605_caivot_2.0.co_2.xml",
+   "verification": "search summary"
+  },
+  "beijing": {
+   "note": "East Asian winter monsoon onset: cold-surge frequency peaks in November (and March); cold anomalies of some outbreak types exceed -8 C in northern China.",
+   "source": "https://journals.ametsoc.org/view/journals/mwre/125/10/1520-0493_1997_125_2605_caivot_2.0.co_2.xml",
+   "verification": "search summary"
+  },
+  "zhengzhou": {
+   "note": "East Asian winter monsoon onset: cold-surge frequency peaks in November (and March).",
+   "source": "https://journals.ametsoc.org/view/journals/mwre/125/10/1520-0493_1997_125_2605_caivot_2.0.co_2.xml",
+   "verification": "search summary"
+  },
+  "wuhan": {
+   "note": "East Asian winter monsoon onset: cold-surge frequency peaks in November (and March).",
+   "source": "https://journals.ametsoc.org/view/journals/mwre/125/10/1520-0493_1997_125_2605_caivot_2.0.co_2.xml",
+   "verification": "search summary"
+  },
+  "shenzhen": {
+   "note": "Northeast monsoon onset: from early October the subtropical ridge retreats south and dry, cold northern air frequently reaches the south China coast.",
+   "source": "https://www.hko.gov.hk/en/education/weather/monsoons/00071-the-northeast-monsoon-and-its-effects-to-the-weather-of-southern-china-in-autumn.html",
+   "verification": "search summary"
+  },
+  "guangzhou": {
+   "note": "Northeast monsoon onset: from early October the subtropical ridge retreats south and dry, cold northern air frequently reaches the south China coast.",
+   "source": "https://www.hko.gov.hk/en/education/weather/monsoons/00071-the-northeast-monsoon-and-its-effects-to-the-weather-of-southern-china-in-autumn.html",
+   "verification": "search summary"
+  },
+  "kuala_lumpur": {
+   "note": "Inter-monsoon (October-November): light variable winds, usually clear mornings, and thunderstorms in the afternoon and early evening.",
+   "source": "https://www.met.gov.my/en/pendidikan/fenomena-cuaca/",
+   "verification": "search summary"
+  },
+  "sao_paulo": {
+   "note": "Southern Hemisphere spring is a transition season (cold dry winter to warm wet summer); the rainy season begins in October, and cold fronts bring sharp temperature drops.",
+   "source": "https://portal.inmet.gov.br/uploads/notastecnicas/BoletimSP_inverno_prog_primavera_2021_final.pdf",
+   "verification": "search summary"
+  }
+ },
+ "cities": {
+  "amsterdam": {
+   "unit": "C",
+   "station": "EHAM",
+   "timezone": "Europe/Amsterdam",
+   "latitude": 52.312,
+   "longitude": 4.756,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": 0.2446,
+   "err_sd_c": 1.1001,
+   "mae_c": 0.8446,
+   "corrected_err_mean_c": -0.2077,
+   "corrected_err_sd_c": 1.1013,
+   "corrected_mae_c": 0.8339,
+   "err_sd_in_buckets": 1.1001,
+   "hits": 22,
+   "hit_bc": 0.3929,
+   "hit_bc_wilson95": [
+    0.2758,
+    0.5237
+   ],
+   "hit_raw": 0.3393,
+   "dd_sd_c": 2.1411,
+   "dd_n": 336,
+   "dd_sd_2025_c": 1.8808,
+   "dd_sd_h1_c": 1.8727,
+   "dd_sd_h2_c": 2.3842,
+   "dd_sd_change_c": 0.5115,
+   "err_sd_h1_c": 0.8182,
+   "err_sd_h2_c": 1.3136,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": 0.4953,
+   "mae_h1_c": 0.7,
+   "mae_h2_c": 0.9893,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 60,
+     "n": 129,
+     "rate": 0.4651
+    },
+    "d0_12": {
+     "hits": 52,
+     "n": 116,
+     "rate": 0.4483
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 150,
+    "n": 150
+   },
+   "rank": 10,
+   "in_focus_10": true,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.375,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.4107,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4464,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.3393,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.4215,
+   "reason_numbers": "hit 39% (22/56, 95% 28-52); error SD 1.10 C = 1.10 buckets, bias +0.24 C; day-to-day SD 2.14 C; error SD Oct->Nov +0.50 C, day-to-day SD +0.51 C"
+  },
+  "ankara": {
+   "unit": "C",
+   "station": "LTAC",
+   "timezone": "Europe/Istanbul",
+   "latitude": 40.1281,
+   "longitude": 32.9951,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -1.0893,
+   "err_sd_c": 1.2123,
+   "mae_c": 1.3857,
+   "corrected_err_mean_c": 0.0258,
+   "corrected_err_sd_c": 1.2824,
+   "corrected_mae_c": 0.9811,
+   "err_sd_in_buckets": 1.2123,
+   "hits": 18,
+   "hit_bc": 0.3214,
+   "hit_bc_wilson95": [
+    0.214,
+    0.4518
+   ],
+   "hit_raw": 0.1964,
+   "dd_sd_c": 2.7894,
+   "dd_n": 336,
+   "dd_sd_2025_c": 2.6614,
+   "dd_sd_h1_c": 2.7577,
+   "dd_sd_h2_c": 2.8287,
+   "dd_sd_change_c": 0.0711,
+   "err_sd_h1_c": 1.2639,
+   "err_sd_h2_c": 1.1205,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.1434,
+   "mae_h1_c": 1.5786,
+   "mae_h2_c": 1.1929,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 74,
+     "n": 155,
+     "rate": 0.4774
+    },
+    "d0_12": {
+     "hits": 85,
+     "n": 130,
+     "rate": 0.6538
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 193,
+    "n": 193
+   },
+   "rank": 24,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3214,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.2679,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4286,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.1964,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0815,
+   "reason_numbers": "hit 32% (18/56, 95% 21-45); error SD 1.21 C = 1.21 buckets, bias -1.09 C; day-to-day SD 2.79 C; error SD Oct->Nov -0.14 C, day-to-day SD +0.07 C"
+  },
+  "atlanta": {
+   "unit": "F",
+   "station": "KATL",
+   "timezone": "America/New_York",
+   "latitude": 33.6268,
+   "longitude": -84.4188,
+   "bucket_width_unit": 2.0,
+   "bucket_width_c": 1.1111,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -1.0054,
+   "err_sd_c": 1.6803,
+   "mae_c": 1.5696,
+   "corrected_err_mean_c": -0.3129,
+   "corrected_err_sd_c": 1.7169,
+   "corrected_mae_c": 1.2548,
+   "err_sd_in_buckets": 1.5123,
+   "hits": 18,
+   "hit_bc": 0.3214,
+   "hit_bc_wilson95": [
+    0.214,
+    0.4518
+   ],
+   "hit_raw": 0.1786,
+   "dd_sd_c": 3.5303,
+   "dd_n": 336,
+   "dd_sd_2025_c": 3.8824,
+   "dd_sd_h1_c": 3.1992,
+   "dd_sd_h2_c": 3.8427,
+   "dd_sd_change_c": 0.6435,
+   "err_sd_h1_c": 1.7642,
+   "err_sd_h2_c": 1.5667,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.1976,
+   "mae_h1_c": 1.4286,
+   "mae_h2_c": 1.7107,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 80,
+     "n": 170,
+     "rate": 0.4706
+    },
+    "d0_12": {
+     "hits": 78,
+     "n": 140,
+     "rate": 0.5571
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 193,
+    "n": 194
+   },
+   "rank": 25,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3214,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.3036,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3214,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.1786,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0005,
+   "reason_numbers": "hit 32% (18/56, 95% 21-45); error SD 1.68 C = 1.51 buckets, bias -1.01 C; day-to-day SD 3.53 C; error SD Oct->Nov -0.20 C, day-to-day SD +0.64 C"
+  },
+  "austin": {
+   "unit": "F",
+   "station": "KAUS",
+   "timezone": "America/Chicago",
+   "latitude": 30.1892,
+   "longitude": -97.6604,
+   "bucket_width_unit": 2.0,
+   "bucket_width_c": 1.1111,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -1.1571,
+   "err_sd_c": 1.2672,
+   "mae_c": 1.3107,
+   "corrected_err_mean_c": -0.2315,
+   "corrected_err_sd_c": 1.3386,
+   "corrected_mae_c": 0.9907,
+   "err_sd_in_buckets": 1.1405,
+   "hits": 17,
+   "hit_bc": 0.3036,
+   "hit_bc_wilson95": [
+    0.199,
+    0.4334
+   ],
+   "hit_raw": 0.2679,
+   "dd_sd_c": 4.2503,
+   "dd_n": 336,
+   "dd_sd_2025_c": 3.9539,
+   "dd_sd_h1_c": 3.9726,
+   "dd_sd_h2_c": 4.5228,
+   "dd_sd_change_c": 0.5502,
+   "err_sd_h1_c": 1.3899,
+   "err_sd_h2_c": 1.1527,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.2372,
+   "mae_h1_c": 1.3929,
+   "mae_h2_c": 1.2286,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 84,
+     "n": 136,
+     "rate": 0.6176
+    },
+    "d0_12": {
+     "hits": 66,
+     "n": 108,
+     "rate": 0.6111
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 156,
+    "n": 156
+   },
+   "rank": 30,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3036,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.2679,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4643,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.2679,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0035,
+   "reason_numbers": "hit 30% (17/56, 95% 20-43); error SD 1.27 C = 1.14 buckets, bias -1.16 C; day-to-day SD 4.25 C; error SD Oct->Nov -0.24 C, day-to-day SD +0.55 C"
+  },
+  "beijing": {
+   "unit": "C",
+   "station": "ZBAA",
+   "timezone": "Asia/Shanghai",
+   "latitude": 40.1054,
+   "longitude": 116.5966,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -2.0071,
+   "err_sd_c": 1.4829,
+   "mae_c": 2.1321,
+   "corrected_err_mean_c": -0.3517,
+   "corrected_err_sd_c": 1.5295,
+   "corrected_mae_c": 1.2875,
+   "err_sd_in_buckets": 1.4829,
+   "hits": 11,
+   "hit_bc": 0.1964,
+   "hit_bc_wilson95": [
+    0.1134,
+    0.3184
+   ],
+   "hit_raw": 0.0714,
+   "dd_sd_c": 3.4131,
+   "dd_n": 336,
+   "dd_sd_2025_c": 3.4366,
+   "dd_sd_h1_c": 2.9801,
+   "dd_sd_h2_c": 3.8033,
+   "dd_sd_change_c": 0.8232,
+   "err_sd_h1_c": 1.5607,
+   "err_sd_h2_c": 1.4122,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.1485,
+   "mae_h1_c": 2.0607,
+   "mae_h2_c": 2.2036,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 46,
+     "n": 143,
+     "rate": 0.3217
+    },
+    "d0_12": {
+     "hits": 61,
+     "n": 132,
+     "rate": 0.4621
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 163,
+    "n": 163
+   },
+   "rank": 45,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.1964,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.1071,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.25,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.0714,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0,
+   "reason_numbers": "hit 20% (11/56, 95% 11-32); error SD 1.48 C = 1.48 buckets, bias -2.01 C; day-to-day SD 3.41 C; error SD Oct->Nov -0.15 C, day-to-day SD +0.82 C"
+  },
+  "buenos_aires": {
+   "unit": "C",
+   "station": "SAEZ",
+   "timezone": "America/Argentina/Buenos_Aires",
+   "latitude": -34.8222,
+   "longitude": -58.5358,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 55,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 1,
+   "bias_c": -1.1232,
+   "err_sd_c": 1.4271,
+   "mae_c": 1.4232,
+   "corrected_err_mean_c": 0.0795,
+   "corrected_err_sd_c": 1.4873,
+   "corrected_mae_c": 1.1148,
+   "err_sd_in_buckets": 1.4271,
+   "hits": 20,
+   "hit_bc": 0.3571,
+   "hit_bc_wilson95": [
+    0.2446,
+    0.4881
+   ],
+   "hit_raw": 0.2143,
+   "dd_sd_c": 4.0556,
+   "dd_n": 334,
+   "dd_sd_2025_c": 4.1247,
+   "dd_sd_h1_c": 4.1165,
+   "dd_sd_h2_c": 4.0048,
+   "dd_sd_change_c": -0.1117,
+   "err_sd_h1_c": 1.1977,
+   "err_sd_h2_c": 1.641,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": 0.4433,
+   "mae_h1_c": 1.3893,
+   "mae_h2_c": 1.4571,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 80,
+     "n": 160,
+     "rate": 0.5
+    },
+    "d0_12": {
+     "hits": 72,
+     "n": 141,
+     "rate": 0.5106
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 192,
+    "n": 192
+   },
+   "rank": 19,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3571,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.2321,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4286,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.2143,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.1385,
+   "reason_numbers": "hit 36% (20/56, 95% 24-49); error SD 1.43 C = 1.43 buckets, bias -1.12 C; day-to-day SD 4.06 C; error SD Oct->Nov +0.44 C, day-to-day SD -0.11 C"
+  },
+  "busan": {
+   "unit": "C",
+   "station": "RKPK",
+   "timezone": "Asia/Seoul",
+   "latitude": 35.2,
+   "longitude": 128.9375,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": 0.0946,
+   "err_sd_c": 1.1805,
+   "mae_c": 0.9125,
+   "corrected_err_mean_c": 0.0599,
+   "corrected_err_sd_c": 1.232,
+   "corrected_mae_c": 0.9724,
+   "err_sd_in_buckets": 1.1805,
+   "hits": 12,
+   "hit_bc": 0.2143,
+   "hit_bc_wilson95": [
+    0.1271,
+    0.3382
+   ],
+   "hit_raw": 0.3393,
+   "dd_sd_c": 2.5987,
+   "dd_n": 336,
+   "dd_sd_2025_c": 2.6885,
+   "dd_sd_h1_c": 2.2894,
+   "dd_sd_h2_c": 2.88,
+   "dd_sd_change_c": 0.5906,
+   "err_sd_h1_c": 1.1319,
+   "err_sd_h2_c": 1.2073,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": 0.0753,
+   "mae_h1_c": 0.9571,
+   "mae_h2_c": 0.8679,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 42,
+     "n": 127,
+     "rate": 0.3307
+    },
+    "d0_12": {
+     "hits": 60,
+     "n": 104,
+     "rate": 0.5769
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 149,
+    "n": 149
+   },
+   "rank": 40,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.2321,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.375,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4286,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.3393,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0,
+   "reason_numbers": "hit 21% (12/56, 95% 13-34); error SD 1.18 C = 1.18 buckets, bias +0.09 C; day-to-day SD 2.60 C; error SD Oct->Nov +0.08 C, day-to-day SD +0.59 C"
+  },
+  "cape_town": {
+   "unit": "C",
+   "station": "FACT",
+   "timezone": "Africa/Johannesburg",
+   "latitude": -33.9192,
+   "longitude": 18.6284,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 53,
+    "2024": 55,
+    "2025": 55
+   },
+   "n_window_days_whole_station_and_forecast": 55,
+   "n_scored": 55,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 5,
+   "bias_c": 1.5673,
+   "err_sd_c": 1.6174,
+   "mae_c": 1.6909,
+   "corrected_err_mean_c": 0.8206,
+   "corrected_err_sd_c": 1.947,
+   "corrected_mae_c": 1.5552,
+   "err_sd_in_buckets": 1.6174,
+   "hits": 12,
+   "hit_bc": 0.2182,
+   "hit_bc_wilson95": [
+    0.1295,
+    0.3437
+   ],
+   "hit_raw": 0.1455,
+   "dd_sd_c": 3.7631,
+   "dd_n": 326,
+   "dd_sd_2025_c": 4.2709,
+   "dd_sd_h1_c": 3.921,
+   "dd_sd_h2_c": 3.6038,
+   "dd_sd_change_c": -0.3172,
+   "err_sd_h1_c": 1.4091,
+   "err_sd_h2_c": 1.8234,
+   "n_h1": 28,
+   "n_h2": 27,
+   "err_sd_change_c": 0.4143,
+   "mae_h1_c": 1.4857,
+   "mae_h2_c": 1.9037,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 47,
+     "n": 126,
+     "rate": 0.373
+    },
+    "d0_12": {
+     "hits": 50,
+     "n": 110,
+     "rate": 0.4545
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 142,
+    "n": 142
+   },
+   "rank": 39,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.2182,
+     "n": 55
+    },
+    "l2_whole_day": {
+     "hit": 0.2364,
+     "n": 55
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4727,
+     "n": 55
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.1455,
+     "n": 55
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0035,
+   "reason_numbers": "hit 22% (12/55, 95% 13-34); error SD 1.62 C = 1.62 buckets, bias +1.57 C; day-to-day SD 3.76 C; error SD Oct->Nov +0.41 C, day-to-day SD -0.32 C"
+  },
+  "chengdu": {
+   "unit": "C",
+   "station": "ZUUU",
+   "timezone": "Asia/Shanghai",
+   "latitude": 30.5448,
+   "longitude": 103.9765,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.6411,
+   "err_sd_c": 1.4835,
+   "mae_c": 1.1661,
+   "corrected_err_mean_c": -0.1092,
+   "corrected_err_sd_c": 1.526,
+   "corrected_mae_c": 1.162,
+   "err_sd_in_buckets": 1.4835,
+   "hits": 17,
+   "hit_bc": 0.3036,
+   "hit_bc_wilson95": [
+    0.199,
+    0.4334
+   ],
+   "hit_raw": 0.3571,
+   "dd_sd_c": 2.4571,
+   "dd_n": 336,
+   "dd_sd_2025_c": 2.5275,
+   "dd_sd_h1_c": 2.4048,
+   "dd_sd_h2_c": 2.5129,
+   "dd_sd_change_c": 0.108,
+   "err_sd_h1_c": 1.2488,
+   "err_sd_h2_c": 1.6674,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": 0.4186,
+   "mae_h1_c": 0.9071,
+   "mae_h2_c": 1.425,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 43,
+     "n": 143,
+     "rate": 0.3007
+    },
+    "d0_12": {
+     "hits": 52,
+     "n": 118,
+     "rate": 0.4407
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 162,
+    "n": 162
+   },
+   "rank": 28,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3036,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.25,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.25,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.3571,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.1605,
+   "reason_numbers": "hit 30% (17/56, 95% 20-43); error SD 1.48 C = 1.48 buckets, bias -0.64 C; day-to-day SD 2.46 C; error SD Oct->Nov +0.42 C, day-to-day SD +0.11 C"
+  },
+  "chicago": {
+   "unit": "F",
+   "station": "KORD",
+   "timezone": "America/Chicago",
+   "latitude": 41.9797,
+   "longitude": -87.8903,
+   "bucket_width_unit": 2.0,
+   "bucket_width_c": 1.1111,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.5625,
+   "err_sd_c": 1.2066,
+   "mae_c": 1.0339,
+   "corrected_err_mean_c": -0.2942,
+   "corrected_err_sd_c": 1.2872,
+   "corrected_mae_c": 0.9618,
+   "err_sd_in_buckets": 1.0859,
+   "hits": 24,
+   "hit_bc": 0.4286,
+   "hit_bc_wilson95": [
+    0.3077,
+    0.5586
+   ],
+   "hit_raw": 0.2857,
+   "dd_sd_c": 4.382,
+   "dd_n": 336,
+   "dd_sd_2025_c": 3.7269,
+   "dd_sd_h1_c": 4.2026,
+   "dd_sd_h2_c": 4.5669,
+   "dd_sd_change_c": 0.3643,
+   "err_sd_h1_c": 1.133,
+   "err_sd_h2_c": 1.2968,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": 0.1638,
+   "mae_h1_c": 0.975,
+   "mae_h2_c": 1.0929,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 88,
+     "n": 167,
+     "rate": 0.5269
+    },
+    "d0_12": {
+     "hits": 69,
+     "n": 115,
+     "rate": 0.6
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 192,
+    "n": 192
+   },
+   "rank": 7,
+   "in_focus_10": true,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.4464,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.3571,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4107,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.2857,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.5535,
+   "reason_numbers": "hit 43% (24/56, 95% 31-56); error SD 1.21 C = 1.09 buckets, bias -0.56 C; day-to-day SD 4.38 C; error SD Oct->Nov +0.16 C, day-to-day SD +0.36 C"
+  },
+  "chongqing": {
+   "unit": "C",
+   "station": "ZUCK",
+   "timezone": "Asia/Shanghai",
+   "latitude": 29.7715,
+   "longitude": 106.6202,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": 0.8589,
+   "err_sd_c": 1.3877,
+   "mae_c": 1.2946,
+   "corrected_err_mean_c": 0.2615,
+   "corrected_err_sd_c": 1.3902,
+   "corrected_mae_c": 1.0554,
+   "err_sd_in_buckets": 1.3877,
+   "hits": 18,
+   "hit_bc": 0.3214,
+   "hit_bc_wilson95": [
+    0.214,
+    0.4518
+   ],
+   "hit_raw": 0.2143,
+   "dd_sd_c": 2.6734,
+   "dd_n": 335,
+   "dd_sd_2025_c": 2.9418,
+   "dd_sd_h1_c": 2.7049,
+   "dd_sd_h2_c": 2.6468,
+   "dd_sd_change_c": -0.0581,
+   "err_sd_h1_c": 1.6015,
+   "err_sd_h2_c": 1.0988,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.5027,
+   "mae_h1_c": 1.2321,
+   "mae_h2_c": 1.3571,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 50,
+     "n": 143,
+     "rate": 0.3497
+    },
+    "d0_12": {
+     "hits": 62,
+     "n": 116,
+     "rate": 0.5345
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 163,
+    "n": 163
+   },
+   "rank": 23,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3214,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.3393,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3393,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.2143,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0275,
+   "reason_numbers": "hit 32% (18/56, 95% 21-45); error SD 1.39 C = 1.39 buckets, bias +0.86 C; day-to-day SD 2.67 C; error SD Oct->Nov -0.50 C, day-to-day SD -0.06 C"
+  },
+  "dallas": {
+   "unit": "F",
+   "station": "KDAL",
+   "timezone": "America/Chicago",
+   "latitude": 32.8389,
+   "longitude": -96.867,
+   "bucket_width_unit": 2.0,
+   "bucket_width_c": 1.1111,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -1.0911,
+   "err_sd_c": 1.7915,
+   "mae_c": 1.4554,
+   "corrected_err_mean_c": -0.5208,
+   "corrected_err_sd_c": 1.743,
+   "corrected_mae_c": 1.2677,
+   "err_sd_in_buckets": 1.6124,
+   "hits": 21,
+   "hit_bc": 0.375,
+   "hit_bc_wilson95": [
+    0.2601,
+    0.5059
+   ],
+   "hit_raw": 0.3929,
+   "dd_sd_c": 4.1142,
+   "dd_n": 336,
+   "dd_sd_2025_c": 3.894,
+   "dd_sd_h1_c": 3.9254,
+   "dd_sd_h2_c": 4.3059,
+   "dd_sd_change_c": 0.3805,
+   "err_sd_h1_c": 1.9393,
+   "err_sd_h2_c": 1.6341,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.3052,
+   "mae_h1_c": 1.3571,
+   "mae_h2_c": 1.5536,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 82,
+     "n": 169,
+     "rate": 0.4852
+    },
+    "d0_12": {
+     "hits": 77,
+     "n": 128,
+     "rate": 0.6016
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 195,
+    "n": 195
+   },
+   "rank": 17,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3571,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.2857,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3929,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.3929,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.317,
+   "reason_numbers": "hit 38% (21/56, 95% 26-51); error SD 1.79 C = 1.61 buckets, bias -1.09 C; day-to-day SD 4.11 C; error SD Oct->Nov -0.31 C, day-to-day SD +0.38 C"
+  },
+  "denver": {
+   "unit": "F",
+   "station": "KBKF",
+   "timezone": "America/Denver",
+   "latitude": 39.7082,
+   "longitude": -104.7368,
+   "bucket_width_unit": 2.0,
+   "bucket_width_c": 1.1111,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 55
+   },
+   "n_window_days_whole_station_and_forecast": 55,
+   "n_scored": 55,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 1,
+   "bias_c": -0.6527,
+   "err_sd_c": 2.4027,
+   "mae_c": 1.9436,
+   "corrected_err_mean_c": 0.0467,
+   "corrected_err_sd_c": 2.4996,
+   "corrected_mae_c": 1.7969,
+   "err_sd_in_buckets": 2.1624,
+   "hits": 14,
+   "hit_bc": 0.2545,
+   "hit_bc_wilson95": [
+    0.1581,
+    0.383
+   ],
+   "hit_raw": 0.1091,
+   "dd_sd_c": 6.3344,
+   "dd_n": 334,
+   "dd_sd_2025_c": 6.5824,
+   "dd_sd_h1_c": 6.1831,
+   "dd_sd_h2_c": 6.4962,
+   "dd_sd_change_c": 0.3131,
+   "err_sd_h1_c": 2.852,
+   "err_sd_h2_c": 1.9269,
+   "n_h1": 27,
+   "n_h2": 28,
+   "err_sd_change_c": -0.9251,
+   "mae_h1_c": 2.1926,
+   "mae_h2_c": 1.7036,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 80,
+     "n": 134,
+     "rate": 0.597
+    },
+    "d0_12": {
+     "hits": 56,
+     "n": 107,
+     "rate": 0.5234
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 141,
+    "n": 144
+   },
+   "rank": 36,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.2545,
+     "n": 55
+    },
+    "l2_whole_day": {
+     "hit": 0.1455,
+     "n": 55
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.2727,
+     "n": 55
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.1091,
+     "n": 55
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0,
+   "reason_numbers": "hit 25% (14/55, 95% 16-38); error SD 2.40 C = 2.16 buckets, bias -0.65 C; day-to-day SD 6.33 C; error SD Oct->Nov -0.93 C, day-to-day SD +0.31 C"
+  },
+  "guangzhou": {
+   "unit": "C",
+   "station": "ZGGG",
+   "timezone": "Asia/Shanghai",
+   "latitude": 23.3743,
+   "longitude": 113.2563,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.6268,
+   "err_sd_c": 1.9974,
+   "mae_c": 1.7304,
+   "corrected_err_mean_c": 0.3505,
+   "corrected_err_sd_c": 2.3404,
+   "corrected_mae_c": 1.9256,
+   "err_sd_in_buckets": 1.9974,
+   "hits": 11,
+   "hit_bc": 0.1964,
+   "hit_bc_wilson95": [
+    0.1134,
+    0.3184
+   ],
+   "hit_raw": 0.1964,
+   "dd_sd_c": 2.7434,
+   "dd_n": 336,
+   "dd_sd_2025_c": 2.9549,
+   "dd_sd_h1_c": 2.6052,
+   "dd_sd_h2_c": 2.8814,
+   "dd_sd_change_c": 0.2762,
+   "err_sd_h1_c": 1.9711,
+   "err_sd_h2_c": 1.9524,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.0187,
+   "mae_h1_c": 1.7,
+   "mae_h2_c": 1.7607,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 43,
+     "n": 130,
+     "rate": 0.3308
+    },
+    "d0_12": {
+     "hits": 43,
+     "n": 107,
+     "rate": 0.4019
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 138,
+    "n": 138
+   },
+   "rank": 43,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.1964,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.1071,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.1071,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.1964,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0,
+   "reason_numbers": "hit 20% (11/56, 95% 11-32); error SD 2.00 C = 2.00 buckets, bias -0.63 C; day-to-day SD 2.74 C; error SD Oct->Nov -0.02 C, day-to-day SD +0.28 C"
+  },
+  "helsinki": {
+   "unit": "C",
+   "station": "EFHK",
+   "timezone": "Europe/Helsinki",
+   "latitude": 60.3172,
+   "longitude": 24.9633,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.1429,
+   "err_sd_c": 0.8619,
+   "mae_c": 0.675,
+   "corrected_err_mean_c": -0.1963,
+   "corrected_err_sd_c": 0.9106,
+   "corrected_mae_c": 0.7087,
+   "err_sd_in_buckets": 0.8619,
+   "hits": 27,
+   "hit_bc": 0.4821,
+   "hit_bc_wilson95": [
+    0.3567,
+    0.6099
+   ],
+   "hit_raw": 0.4643,
+   "dd_sd_c": 2.5906,
+   "dd_n": 336,
+   "dd_sd_2025_c": 2.4452,
+   "dd_sd_h1_c": 2.2634,
+   "dd_sd_h2_c": 2.8876,
+   "dd_sd_change_c": 0.6243,
+   "err_sd_h1_c": 0.7123,
+   "err_sd_h2_c": 1.0003,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": 0.2881,
+   "mae_h1_c": 0.5929,
+   "mae_h2_c": 0.7571,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 48,
+     "n": 127,
+     "rate": 0.378
+    },
+    "d0_12": {
+     "hits": 57,
+     "n": 103,
+     "rate": 0.5534
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 150,
+    "n": 150
+   },
+   "rank": 3,
+   "in_focus_10": true,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.5179,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.4821,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.5893,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.4643,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.9435,
+   "reason_numbers": "hit 48% (27/56, 95% 36-61); error SD 0.86 C = 0.86 buckets, bias -0.14 C; day-to-day SD 2.59 C; error SD Oct->Nov +0.29 C, day-to-day SD +0.62 C"
+  },
+  "houston": {
+   "unit": "F",
+   "station": "KHOU",
+   "timezone": "America/Chicago",
+   "latitude": 29.632,
+   "longitude": -95.266,
+   "bucket_width_unit": 2.0,
+   "bucket_width_c": 1.1111,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.7625,
+   "err_sd_c": 1.5348,
+   "mae_c": 1.2304,
+   "corrected_err_mean_c": -0.4096,
+   "corrected_err_sd_c": 1.6176,
+   "corrected_mae_c": 1.1628,
+   "err_sd_in_buckets": 1.3813,
+   "hits": 21,
+   "hit_bc": 0.375,
+   "hit_bc_wilson95": [
+    0.2601,
+    0.5059
+   ],
+   "hit_raw": 0.3214,
+   "dd_sd_c": 3.464,
+   "dd_n": 336,
+   "dd_sd_2025_c": 3.3652,
+   "dd_sd_h1_c": 3.2054,
+   "dd_sd_h2_c": 3.7141,
+   "dd_sd_change_c": 0.5087,
+   "err_sd_h1_c": 1.554,
+   "err_sd_h2_c": 1.5401,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.0139,
+   "mae_h1_c": 1.1893,
+   "mae_h2_c": 1.2714,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 70,
+     "n": 136,
+     "rate": 0.5147
+    },
+    "d0_12": {
+     "hits": 61,
+     "n": 105,
+     "rate": 0.581
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 158,
+    "n": 158
+   },
+   "rank": 16,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.375,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.375,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4286,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.3214,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.294,
+   "reason_numbers": "hit 38% (21/56, 95% 26-51); error SD 1.53 C = 1.38 buckets, bias -0.76 C; day-to-day SD 3.46 C; error SD Oct->Nov -0.01 C, day-to-day SD +0.51 C"
+  },
+  "istanbul": {
+   "unit": "C",
+   "station": "LTFM",
+   "timezone": "Europe/Istanbul",
+   "latitude": 41.25,
+   "longitude": 28.75,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.9661,
+   "err_sd_c": 1.0701,
+   "mae_c": 1.2518,
+   "corrected_err_mean_c": -0.198,
+   "corrected_err_sd_c": 1.1211,
+   "corrected_mae_c": 0.8711,
+   "err_sd_in_buckets": 1.0701,
+   "hits": 22,
+   "hit_bc": 0.3929,
+   "hit_bc_wilson95": [
+    0.2758,
+    0.5237
+   ],
+   "hit_raw": 0.125,
+   "dd_sd_c": 2.8178,
+   "dd_n": 336,
+   "dd_sd_2025_c": 2.8568,
+   "dd_sd_h1_c": 2.6165,
+   "dd_sd_h2_c": 3.0135,
+   "dd_sd_change_c": 0.397,
+   "err_sd_h1_c": 1.1364,
+   "err_sd_h2_c": 1.0185,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.1179,
+   "mae_h1_c": 1.25,
+   "mae_h2_c": 1.2536,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 73,
+     "n": 127,
+     "rate": 0.5748
+    },
+    "d0_12": {
+     "hits": 69,
+     "n": 97,
+     "rate": 0.7113
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 154,
+    "n": 154
+   },
+   "rank": 11,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3929,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.375,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3929,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.125,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.35,
+   "reason_numbers": "hit 39% (22/56, 95% 28-52); error SD 1.07 C = 1.07 buckets, bias -0.97 C; day-to-day SD 2.82 C; error SD Oct->Nov -0.12 C, day-to-day SD +0.40 C"
+  },
+  "jeddah": {
+   "unit": "C",
+   "station": "OEJN",
+   "timezone": "Asia/Riyadh",
+   "latitude": 21.6872,
+   "longitude": 39.1906,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.6804,
+   "err_sd_c": 1.1856,
+   "mae_c": 1.0161,
+   "corrected_err_mean_c": 0.4055,
+   "corrected_err_sd_c": 1.4519,
+   "corrected_mae_c": 1.2323,
+   "err_sd_in_buckets": 1.1856,
+   "hits": 13,
+   "hit_bc": 0.2321,
+   "hit_bc_wilson95": [
+    0.141,
+    0.3577
+   ],
+   "hit_raw": 0.3929,
+   "dd_sd_c": 1.7103,
+   "dd_n": 336,
+   "dd_sd_2025_c": 1.8485,
+   "dd_sd_h1_c": 1.7947,
+   "dd_sd_h2_c": 1.6229,
+   "dd_sd_change_c": -0.1718,
+   "err_sd_h1_c": 1.3255,
+   "err_sd_h2_c": 0.9712,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.3543,
+   "mae_h1_c": 0.9143,
+   "mae_h2_c": 1.1179,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 54,
+     "n": 127,
+     "rate": 0.4252
+    },
+    "d0_12": {
+     "hits": 45,
+     "n": 98,
+     "rate": 0.4592
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 144,
+    "n": 144
+   },
+   "rank": 37,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.2321,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.3214,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3929,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.3929,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0035,
+   "reason_numbers": "hit 23% (13/56, 95% 14-36); error SD 1.19 C = 1.19 buckets, bias -0.68 C; day-to-day SD 1.71 C; error SD Oct->Nov -0.35 C, day-to-day SD -0.17 C"
+  },
+  "karachi": {
+   "unit": "C",
+   "station": "OPKC",
+   "timezone": "Asia/Karachi",
+   "latitude": 24.9209,
+   "longitude": 67.1613,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.1679,
+   "err_sd_c": 0.8138,
+   "mae_c": 0.65,
+   "corrected_err_mean_c": 0.0996,
+   "corrected_err_sd_c": 0.8304,
+   "corrected_mae_c": 0.6761,
+   "err_sd_in_buckets": 0.8138,
+   "hits": 27,
+   "hit_bc": 0.4821,
+   "hit_bc_wilson95": [
+    0.3567,
+    0.6099
+   ],
+   "hit_raw": 0.3929,
+   "dd_sd_c": 1.4541,
+   "dd_n": 336,
+   "dd_sd_2025_c": 1.3131,
+   "dd_sd_h1_c": 1.4334,
+   "dd_sd_h2_c": 1.4696,
+   "dd_sd_change_c": 0.0361,
+   "err_sd_h1_c": 0.909,
+   "err_sd_h2_c": 0.7228,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.1861,
+   "mae_h1_c": 0.7714,
+   "mae_h2_c": 0.5286,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 63,
+     "n": 129,
+     "rate": 0.4884
+    },
+    "d0_12": {
+     "hits": 54,
+     "n": 95,
+     "rate": 0.5684
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 138,
+    "n": 138
+   },
+   "rank": 2,
+   "in_focus_10": true,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.4821,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.4286,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.5,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.3929,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.8805,
+   "reason_numbers": "hit 48% (27/56, 95% 36-61); error SD 0.81 C = 0.81 buckets, bias -0.17 C; day-to-day SD 1.45 C; error SD Oct->Nov -0.19 C, day-to-day SD +0.04 C"
+  },
+  "kuala_lumpur": {
+   "unit": "C",
+   "station": "WMKK",
+   "timezone": "Asia/Kuala_Lumpur",
+   "latitude": 2.7456,
+   "longitude": 101.7072,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.4857,
+   "err_sd_c": 1.6115,
+   "mae_c": 1.3429,
+   "corrected_err_mean_c": -0.5327,
+   "corrected_err_sd_c": 1.7374,
+   "corrected_mae_c": 1.5111,
+   "err_sd_in_buckets": 1.6115,
+   "hits": 10,
+   "hit_bc": 0.1786,
+   "hit_bc_wilson95": [
+    0.1,
+    0.2984
+   ],
+   "hit_raw": 0.2143,
+   "dd_sd_c": 1.6875,
+   "dd_n": 336,
+   "dd_sd_2025_c": 2.0268,
+   "dd_sd_h1_c": 1.7055,
+   "dd_sd_h2_c": 1.6739,
+   "dd_sd_change_c": -0.0317,
+   "err_sd_h1_c": 1.4607,
+   "err_sd_h2_c": 1.7749,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": 0.3143,
+   "mae_h1_c": 1.1893,
+   "mae_h2_c": 1.4964,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 59,
+     "n": 134,
+     "rate": 0.4403
+    },
+    "d0_12": {
+     "hits": 53,
+     "n": 100,
+     "rate": 0.53
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 150,
+    "n": 150
+   },
+   "rank": 46,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.1786,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.1607,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3036,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.2143,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0,
+   "reason_numbers": "hit 18% (10/56, 95% 10-30); error SD 1.61 C = 1.61 buckets, bias -0.49 C; day-to-day SD 1.69 C; error SD Oct->Nov +0.31 C, day-to-day SD -0.03 C"
+  },
+  "london": {
+   "unit": "C",
+   "station": "EGLC",
+   "timezone": "Europe/London",
+   "latitude": 51.5077,
+   "longitude": 0.0424,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.1304,
+   "err_sd_c": 1.1315,
+   "mae_c": 0.8589,
+   "corrected_err_mean_c": -0.1237,
+   "corrected_err_sd_c": 1.1816,
+   "corrected_mae_c": 0.934,
+   "err_sd_in_buckets": 1.1315,
+   "hits": 19,
+   "hit_bc": 0.3393,
+   "hit_bc_wilson95": [
+    0.2292,
+    0.47
+   ],
+   "hit_raw": 0.4821,
+   "dd_sd_c": 2.2033,
+   "dd_n": 336,
+   "dd_sd_2025_c": 2.0039,
+   "dd_sd_h1_c": 2.0614,
+   "dd_sd_h2_c": 2.3427,
+   "dd_sd_change_c": 0.2814,
+   "err_sd_h1_c": 1.1744,
+   "err_sd_h2_c": 1.0698,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.1046,
+   "mae_h1_c": 0.8857,
+   "mae_h2_c": 0.8321,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 70,
+     "n": 168,
+     "rate": 0.4167
+    },
+    "d0_12": {
+     "hits": 56,
+     "n": 119,
+     "rate": 0.4706
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 194,
+    "n": 195
+   },
+   "rank": 20,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3214,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.3571,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3036,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.4821,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.1455,
+   "reason_numbers": "hit 34% (19/56, 95% 23-47); error SD 1.13 C = 1.13 buckets, bias -0.13 C; day-to-day SD 2.20 C; error SD Oct->Nov -0.10 C, day-to-day SD +0.28 C"
+  },
+  "los_angeles": {
+   "unit": "F",
+   "station": "KLAX",
+   "timezone": "America/Los_Angeles",
+   "latitude": 33.9454,
+   "longitude": -118.4022,
+   "bucket_width_unit": 2.0,
+   "bucket_width_c": 1.1111,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.6143,
+   "err_sd_c": 1.9959,
+   "mae_c": 1.475,
+   "corrected_err_mean_c": -0.1105,
+   "corrected_err_sd_c": 2.0632,
+   "corrected_mae_c": 1.417,
+   "err_sd_in_buckets": 1.7963,
+   "hits": 17,
+   "hit_bc": 0.3036,
+   "hit_bc_wilson95": [
+    0.199,
+    0.4334
+   ],
+   "hit_raw": 0.25,
+   "dd_sd_c": 2.8561,
+   "dd_n": 336,
+   "dd_sd_2025_c": 2.5499,
+   "dd_sd_h1_c": 2.5473,
+   "dd_sd_h2_c": 3.1407,
+   "dd_sd_change_c": 0.5934,
+   "err_sd_h1_c": 2.0826,
+   "err_sd_h2_c": 1.896,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.1866,
+   "mae_h1_c": 1.5536,
+   "mae_h2_c": 1.3964,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 74,
+     "n": 141,
+     "rate": 0.5248
+    },
+    "d0_12": {
+     "hits": 77,
+     "n": 104,
+     "rate": 0.7404
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 158,
+    "n": 158
+   },
+   "rank": 29,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3036,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.1429,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3571,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.25,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0095,
+   "reason_numbers": "hit 30% (17/56, 95% 20-43); error SD 2.00 C = 1.80 buckets, bias -0.61 C; day-to-day SD 2.86 C; error SD Oct->Nov -0.19 C, day-to-day SD +0.59 C"
+  },
+  "lucknow": {
+   "unit": "C",
+   "station": "VILK",
+   "timezone": "Asia/Kolkata",
+   "latitude": 26.7487,
+   "longitude": 80.8407,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 53,
+    "2023": 56,
+    "2024": 45,
+    "2025": 51
+   },
+   "n_window_days_whole_station_and_forecast": 51,
+   "n_scored": 51,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 19,
+   "bias_c": -0.8922,
+   "err_sd_c": 0.6832,
+   "mae_c": 0.9549,
+   "corrected_err_mean_c": -0.0377,
+   "corrected_err_sd_c": 0.7139,
+   "corrected_mae_c": 0.5056,
+   "err_sd_in_buckets": 0.6832,
+   "hits": 31,
+   "hit_bc": 0.6078,
+   "hit_bc_wilson95": [
+    0.4708,
+    0.7297
+   ],
+   "hit_raw": 0.2353,
+   "dd_sd_c": 1.5554,
+   "dd_n": 309,
+   "dd_sd_2025_c": 1.4822,
+   "dd_sd_h1_c": 1.6689,
+   "dd_sd_h2_c": 1.4236,
+   "dd_sd_change_c": -0.2453,
+   "err_sd_h1_c": 0.7053,
+   "err_sd_h2_c": 0.6644,
+   "n_h1": 27,
+   "n_h2": 24,
+   "err_sd_change_c": -0.0408,
+   "mae_h1_c": 0.8778,
+   "mae_h2_c": 1.0417,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 72,
+     "n": 151,
+     "rate": 0.4768
+    },
+    "d0_12": {
+     "hits": 99,
+     "n": 156,
+     "rate": 0.6346
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 175,
+    "n": 175
+   },
+   "rank": 1,
+   "in_focus_10": true,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.6078,
+     "n": 51
+    },
+    "l2_whole_day": {
+     "hit": 0.5294,
+     "n": 51
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4902,
+     "n": 51
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.2353,
+     "n": 51
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.9945,
+   "reason_numbers": "hit 61% (31/51, 95% 47-73); error SD 0.68 C = 0.68 buckets, bias -0.89 C; day-to-day SD 1.56 C; error SD Oct->Nov -0.04 C, day-to-day SD -0.25 C"
+  },
+  "madrid": {
+   "unit": "C",
+   "station": "LEMD",
+   "timezone": "Europe/Madrid",
+   "latitude": 40.5,
+   "longitude": -3.5625,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.1446,
+   "err_sd_c": 1.1878,
+   "mae_c": 0.9339,
+   "corrected_err_mean_c": 0.111,
+   "corrected_err_sd_c": 1.2002,
+   "corrected_mae_c": 0.9193,
+   "err_sd_in_buckets": 1.1878,
+   "hits": 21,
+   "hit_bc": 0.375,
+   "hit_bc_wilson95": [
+    0.2601,
+    0.5059
+   ],
+   "hit_raw": 0.375,
+   "dd_sd_c": 2.6601,
+   "dd_n": 335,
+   "dd_sd_2025_c": 2.5725,
+   "dd_sd_h1_c": 2.5698,
+   "dd_sd_h2_c": 2.7524,
+   "dd_sd_change_c": 0.1826,
+   "err_sd_h1_c": 1.2185,
+   "err_sd_h2_c": 1.1436,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.0749,
+   "mae_h1_c": 0.9929,
+   "mae_h2_c": 0.875,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 72,
+     "n": 134,
+     "rate": 0.5373
+    },
+    "d0_12": {
+     "hits": 86,
+     "n": 143,
+     "rate": 0.6014
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 166,
+    "n": 167
+   },
+   "rank": 13,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.375,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.4643,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.375,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.375,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.225,
+   "reason_numbers": "hit 38% (21/56, 95% 26-51); error SD 1.19 C = 1.19 buckets, bias -0.14 C; day-to-day SD 2.66 C; error SD Oct->Nov -0.07 C, day-to-day SD +0.18 C"
+  },
+  "manila": {
+   "unit": "C",
+   "station": "RPLL",
+   "timezone": "Asia/Manila",
+   "latitude": 14.5086,
+   "longitude": 121.0194,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -1.0357,
+   "err_sd_c": 1.3157,
+   "mae_c": 1.4071,
+   "corrected_err_mean_c": 0.1817,
+   "corrected_err_sd_c": 1.3844,
+   "corrected_mae_c": 1.1037,
+   "err_sd_in_buckets": 1.3157,
+   "hits": 13,
+   "hit_bc": 0.2321,
+   "hit_bc_wilson95": [
+    0.141,
+    0.3577
+   ],
+   "hit_raw": 0.2321,
+   "dd_sd_c": 1.9554,
+   "dd_n": 336,
+   "dd_sd_2025_c": 1.9906,
+   "dd_sd_h1_c": 2.1787,
+   "dd_sd_h2_c": 1.7094,
+   "dd_sd_change_c": -0.4693,
+   "err_sd_h1_c": 1.2648,
+   "err_sd_h2_c": 1.3861,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": 0.1213,
+   "mae_h1_c": 1.4,
+   "mae_h2_c": 1.4143,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 51,
+     "n": 130,
+     "rate": 0.3923
+    },
+    "d0_12": {
+     "hits": 47,
+     "n": 98,
+     "rate": 0.4796
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 137,
+    "n": 137
+   },
+   "rank": 38,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.25,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.3393,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3571,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.2321,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.005,
+   "reason_numbers": "hit 23% (13/56, 95% 14-36); error SD 1.32 C = 1.32 buckets, bias -1.04 C; day-to-day SD 1.96 C; error SD Oct->Nov +0.12 C, day-to-day SD -0.47 C"
+  },
+  "mexico_city": {
+   "unit": "C",
+   "station": "MMMX",
+   "timezone": "America/Mexico_City",
+   "latitude": 19.4376,
+   "longitude": -99.1072,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 53,
+    "2021": 44,
+    "2022": 55,
+    "2023": 54,
+    "2024": 56,
+    "2025": 55
+   },
+   "n_window_days_whole_station_and_forecast": 55,
+   "n_scored": 55,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 19,
+   "bias_c": 0.22,
+   "err_sd_c": 1.1337,
+   "mae_c": 0.9036,
+   "corrected_err_mean_c": 0.0202,
+   "corrected_err_sd_c": 1.2591,
+   "corrected_mae_c": 1.0207,
+   "err_sd_in_buckets": 1.1337,
+   "hits": 17,
+   "hit_bc": 0.3091,
+   "hit_bc_wilson95": [
+    0.2028,
+    0.4403
+   ],
+   "hit_raw": 0.3818,
+   "dd_sd_c": 2.7473,
+   "dd_n": 309,
+   "dd_sd_2025_c": 2.4373,
+   "dd_sd_h1_c": 3.2139,
+   "dd_sd_h2_c": 2.1815,
+   "dd_sd_change_c": -1.0324,
+   "err_sd_h1_c": 1.2865,
+   "err_sd_h2_c": 0.9826,
+   "n_h1": 27,
+   "n_h2": 28,
+   "err_sd_change_c": -0.3038,
+   "mae_h1_c": 1.1259,
+   "mae_h2_c": 0.6893,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 73,
+     "n": 130,
+     "rate": 0.5615
+    },
+    "d0_12": {
+     "hits": 45,
+     "n": 100,
+     "rate": 0.45
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 151,
+    "n": 152
+   },
+   "rank": 27,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3091,
+     "n": 55
+    },
+    "l2_whole_day": {
+     "hit": 0.2727,
+     "n": 55
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4545,
+     "n": 55
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.3818,
+     "n": 55
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0425,
+   "reason_numbers": "hit 31% (17/55, 95% 20-44); error SD 1.13 C = 1.13 buckets, bias +0.22 C; day-to-day SD 2.75 C; error SD Oct->Nov -0.30 C, day-to-day SD -1.03 C"
+  },
+  "miami": {
+   "unit": "F",
+   "station": "KMIA",
+   "timezone": "America/New_York",
+   "latitude": 25.7877,
+   "longitude": -80.2846,
+   "bucket_width_unit": 2.0,
+   "bucket_width_c": 1.1111,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.6946,
+   "err_sd_c": 1.0015,
+   "mae_c": 0.8875,
+   "corrected_err_mean_c": 0.5139,
+   "corrected_err_sd_c": 1.0135,
+   "corrected_mae_c": 0.9095,
+   "err_sd_in_buckets": 0.9014,
+   "hits": 22,
+   "hit_bc": 0.3929,
+   "hit_bc_wilson95": [
+    0.2758,
+    0.5237
+   ],
+   "hit_raw": 0.4464,
+   "dd_sd_c": 1.6579,
+   "dd_n": 336,
+   "dd_sd_2025_c": 1.9504,
+   "dd_sd_h1_c": 1.6158,
+   "dd_sd_h2_c": 1.7033,
+   "dd_sd_change_c": 0.0875,
+   "err_sd_h1_c": 1.0034,
+   "err_sd_h2_c": 0.957,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.0464,
+   "mae_h1_c": 1.0071,
+   "mae_h2_c": 0.7679,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 88,
+     "n": 169,
+     "rate": 0.5207
+    },
+    "d0_12": {
+     "hits": 67,
+     "n": 116,
+     "rate": 0.5776
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 191,
+    "n": 192
+   },
+   "rank": 9,
+   "in_focus_10": true,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3929,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.4464,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.5893,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.4464,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.4265,
+   "reason_numbers": "hit 39% (22/56, 95% 28-52); error SD 1.00 C = 0.90 buckets, bias -0.69 C; day-to-day SD 1.66 C; error SD Oct->Nov -0.05 C, day-to-day SD +0.09 C"
+  },
+  "milan": {
+   "unit": "C",
+   "station": "LIMC",
+   "timezone": "Europe/Rome",
+   "latitude": 45.64,
+   "longitude": 8.72,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 55,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 1,
+   "bias_c": -0.6696,
+   "err_sd_c": 1.0376,
+   "mae_c": 0.9839,
+   "corrected_err_mean_c": -0.1095,
+   "corrected_err_sd_c": 1.0879,
+   "corrected_mae_c": 0.811,
+   "err_sd_in_buckets": 1.0376,
+   "hits": 25,
+   "hit_bc": 0.4464,
+   "hit_bc_wilson95": [
+    0.3239,
+    0.5759
+   ],
+   "hit_raw": 0.3036,
+   "dd_sd_c": 2.4585,
+   "dd_n": 334,
+   "dd_sd_2025_c": 2.4988,
+   "dd_sd_h1_c": 2.292,
+   "dd_sd_h2_c": 2.6163,
+   "dd_sd_change_c": 0.3243,
+   "err_sd_h1_c": 0.7814,
+   "err_sd_h2_c": 1.2571,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": 0.4758,
+   "mae_h1_c": 0.7929,
+   "mae_h2_c": 1.175,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 62,
+     "n": 133,
+     "rate": 0.4662
+    },
+    "d0_12": {
+     "hits": 64,
+     "n": 112,
+     "rate": 0.5714
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 165,
+    "n": 165
+   },
+   "rank": 6,
+   "in_focus_10": true,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.4286,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.25,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4107,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.3036,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.662,
+   "reason_numbers": "hit 45% (25/56, 95% 32-58); error SD 1.04 C = 1.04 buckets, bias -0.67 C; day-to-day SD 2.46 C; error SD Oct->Nov +0.48 C, day-to-day SD +0.32 C"
+  },
+  "moscow": {
+   "unit": "C",
+   "station": "UUWW",
+   "timezone": "Europe/Moscow",
+   "latitude": 55.5915,
+   "longitude": 37.2615,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.5,
+   "err_sd_c": 1.0094,
+   "mae_c": 0.8286,
+   "corrected_err_mean_c": -0.0511,
+   "corrected_err_sd_c": 1.0498,
+   "corrected_mae_c": 0.8334,
+   "err_sd_in_buckets": 1.0094,
+   "hits": 23,
+   "hit_bc": 0.4107,
+   "hit_bc_wilson95": [
+    0.2917,
+    0.5412
+   ],
+   "hit_raw": 0.4643,
+   "dd_sd_c": 2.8102,
+   "dd_n": 336,
+   "dd_sd_2025_c": 2.6862,
+   "dd_sd_h1_c": 2.8731,
+   "dd_sd_h2_c": 2.7545,
+   "dd_sd_change_c": -0.1185,
+   "err_sd_h1_c": 1.0846,
+   "err_sd_h2_c": 0.9479,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.1367,
+   "mae_h1_c": 0.8893,
+   "mae_h2_c": 0.7679,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 47,
+     "n": 128,
+     "rate": 0.3672
+    },
+    "d0_12": {
+     "hits": 60,
+     "n": 102,
+     "rate": 0.5882
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 142,
+    "n": 153
+   },
+   "rank": 8,
+   "in_focus_10": true,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.4286,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.25,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4286,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.4643,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.4685,
+   "reason_numbers": "hit 41% (23/56, 95% 29-54); error SD 1.01 C = 1.01 buckets, bias -0.50 C; day-to-day SD 2.81 C; error SD Oct->Nov -0.14 C, day-to-day SD -0.12 C"
+  },
+  "munich": {
+   "unit": "C",
+   "station": "EDDM",
+   "timezone": "Europe/Berlin",
+   "latitude": 48.36,
+   "longitude": 11.78,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.2946,
+   "err_sd_c": 1.3074,
+   "mae_c": 0.9982,
+   "corrected_err_mean_c": -0.0077,
+   "corrected_err_sd_c": 1.3337,
+   "corrected_mae_c": 0.9464,
+   "err_sd_in_buckets": 1.3074,
+   "hits": 21,
+   "hit_bc": 0.375,
+   "hit_bc_wilson95": [
+    0.2601,
+    0.5059
+   ],
+   "hit_raw": 0.3214,
+   "dd_sd_c": 2.9416,
+   "dd_n": 336,
+   "dd_sd_2025_c": 3.0071,
+   "dd_sd_h1_c": 3.1474,
+   "dd_sd_h2_c": 2.7227,
+   "dd_sd_change_c": -0.4247,
+   "err_sd_h1_c": 1.485,
+   "err_sd_h2_c": 1.0876,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.3974,
+   "mae_h1_c": 0.9821,
+   "mae_h2_c": 1.0143,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 62,
+     "n": 137,
+     "rate": 0.4526
+    },
+    "d0_12": {
+     "hits": 71,
+     "n": 126,
+     "rate": 0.5635
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 177,
+    "n": 177
+   },
+   "rank": 15,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3571,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.2857,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3571,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.3214,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.235,
+   "reason_numbers": "hit 38% (21/56, 95% 26-51); error SD 1.31 C = 1.31 buckets, bias -0.29 C; day-to-day SD 2.94 C; error SD Oct->Nov -0.40 C, day-to-day SD -0.42 C"
+  },
+  "nyc": {
+   "unit": "F",
+   "station": "KLGA",
+   "timezone": "America/New_York",
+   "latitude": 40.7681,
+   "longitude": -73.8628,
+   "bucket_width_unit": 2.0,
+   "bucket_width_c": 1.1111,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.9696,
+   "err_sd_c": 1.2021,
+   "mae_c": 1.1768,
+   "corrected_err_mean_c": -0.6093,
+   "corrected_err_sd_c": 1.2336,
+   "corrected_mae_c": 1.0235,
+   "err_sd_in_buckets": 1.0819,
+   "hits": 18,
+   "hit_bc": 0.3214,
+   "hit_bc_wilson95": [
+    0.214,
+    0.4518
+   ],
+   "hit_raw": 0.3929,
+   "dd_sd_c": 3.7278,
+   "dd_n": 336,
+   "dd_sd_2025_c": 2.9398,
+   "dd_sd_h1_c": 3.3774,
+   "dd_sd_h2_c": 4.0568,
+   "dd_sd_change_c": 0.6794,
+   "err_sd_h1_c": 1.2414,
+   "err_sd_h2_c": 1.1384,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.103,
+   "mae_h1_c": 0.9786,
+   "mae_h2_c": 1.375,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 77,
+     "n": 170,
+     "rate": 0.4529
+    },
+    "d0_12": {
+     "hits": 63,
+     "n": 115,
+     "rate": 0.5478
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 196,
+    "n": 196
+   },
+   "rank": 26,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3214,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.3393,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4643,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.3929,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0145,
+   "reason_numbers": "hit 32% (18/56, 95% 21-45); error SD 1.20 C = 1.08 buckets, bias -0.97 C; day-to-day SD 3.73 C; error SD Oct->Nov -0.10 C, day-to-day SD +0.68 C"
+  },
+  "panama_city": {
+   "unit": "C",
+   "station": "MPMG",
+   "timezone": "America/Panama",
+   "latitude": 8.9733,
+   "longitude": -79.5556,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 55,
+    "2021": 56,
+    "2022": 49,
+    "2023": 54,
+    "2024": 42,
+    "2025": 55
+   },
+   "n_window_days_whole_station_and_forecast": 55,
+   "n_scored": 55,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 22,
+   "bias_c": -0.9564,
+   "err_sd_c": 1.3568,
+   "mae_c": 1.4145,
+   "corrected_err_mean_c": -0.0722,
+   "corrected_err_sd_c": 1.4076,
+   "corrected_mae_c": 1.0694,
+   "err_sd_in_buckets": 1.3568,
+   "hits": 20,
+   "hit_bc": 0.3636,
+   "hit_bc_wilson95": [
+    0.2493,
+    0.4958
+   ],
+   "hit_raw": 0.2,
+   "dd_sd_c": 1.6339,
+   "dd_n": 301,
+   "dd_sd_2025_c": 2.0832,
+   "dd_sd_h1_c": 1.6395,
+   "dd_sd_h2_c": 1.6336,
+   "dd_sd_change_c": -0.0059,
+   "err_sd_h1_c": 1.045,
+   "err_sd_h2_c": 1.63,
+   "n_h1": 28,
+   "n_h2": 27,
+   "err_sd_change_c": 0.5849,
+   "mae_h1_c": 1.2071,
+   "mae_h2_c": 1.6296,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 56,
+     "n": 127,
+     "rate": 0.4409
+    },
+    "d0_12": {
+     "hits": 47,
+     "n": 95,
+     "rate": 0.4947
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 145,
+    "n": 145
+   },
+   "rank": 18,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3636,
+     "n": 55
+    },
+    "l2_whole_day": {
+     "hit": 0.3455,
+     "n": 55
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3091,
+     "n": 55
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.2,
+     "n": 55
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.1175,
+   "reason_numbers": "hit 36% (20/55, 95% 25-50); error SD 1.36 C = 1.36 buckets, bias -0.96 C; day-to-day SD 1.63 C; error SD Oct->Nov +0.58 C, day-to-day SD -0.01 C"
+  },
+  "paris": {
+   "unit": "C",
+   "station": "LFPB",
+   "timezone": "Europe/Paris",
+   "latitude": 48.9694,
+   "longitude": 2.4414,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 55,
+    "2021": 55,
+    "2022": 55,
+    "2023": 55,
+    "2024": 56,
+    "2025": 51
+   },
+   "n_window_days_whole_station_and_forecast": 51,
+   "n_scored": 51,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 9,
+   "bias_c": 0.3098,
+   "err_sd_c": 1.1918,
+   "mae_c": 0.9137,
+   "corrected_err_mean_c": 0.1046,
+   "corrected_err_sd_c": 1.2614,
+   "corrected_mae_c": 0.9567,
+   "err_sd_in_buckets": 1.1918,
+   "hits": 20,
+   "hit_bc": 0.3922,
+   "hit_bc_wilson95": [
+    0.2703,
+    0.5292
+   ],
+   "hit_raw": 0.4706,
+   "dd_sd_c": 2.47,
+   "dd_n": 320,
+   "dd_sd_2025_c": 2.3193,
+   "dd_sd_h1_c": 2.4008,
+   "dd_sd_h2_c": 2.5386,
+   "dd_sd_change_c": 0.1377,
+   "err_sd_h1_c": 1.33,
+   "err_sd_h2_c": 1.0769,
+   "n_h1": 23,
+   "n_h2": 28,
+   "err_sd_change_c": -0.2532,
+   "mae_h1_c": 1.0826,
+   "mae_h2_c": 0.775,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 71,
+     "n": 152,
+     "rate": 0.4671
+    },
+    "d0_12": {
+     "hits": 81,
+     "n": 137,
+     "rate": 0.5912
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 134,
+    "n": 134
+   },
+   "rank": 12,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3922,
+     "n": 51
+    },
+    "l2_whole_day": {
+     "hit": 0.2157,
+     "n": 51
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3529,
+     "n": 51
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.4706,
+     "n": 51
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.4125,
+   "reason_numbers": "hit 39% (20/51, 95% 27-53); error SD 1.19 C = 1.19 buckets, bias +0.31 C; day-to-day SD 2.47 C; error SD Oct->Nov -0.25 C, day-to-day SD +0.14 C"
+  },
+  "qingdao": {
+   "unit": "C",
+   "station": "ZSQD",
+   "timezone": "Asia/Shanghai",
+   "latitude": 36.3614,
+   "longitude": 120.0864,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.1125,
+   "err_sd_c": 1.4229,
+   "mae_c": 1.1661,
+   "corrected_err_mean_c": -0.1307,
+   "corrected_err_sd_c": 1.5298,
+   "corrected_mae_c": 1.2655,
+   "err_sd_in_buckets": 1.4229,
+   "hits": 12,
+   "hit_bc": 0.2143,
+   "hit_bc_wilson95": [
+    0.1271,
+    0.3382
+   ],
+   "hit_raw": 0.1607,
+   "dd_sd_c": 3.1171,
+   "dd_n": 336,
+   "dd_sd_2025_c": 3.2023,
+   "dd_sd_h1_c": 2.3775,
+   "dd_sd_h2_c": 3.7096,
+   "dd_sd_change_c": 1.332,
+   "err_sd_h1_c": 1.4312,
+   "err_sd_h2_c": 0.8821,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.5491,
+   "mae_h1_c": 1.2714,
+   "mae_h2_c": 1.0607,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 42,
+     "n": 123,
+     "rate": 0.3415
+    },
+    "d0_12": {
+     "hits": 59,
+     "n": 108,
+     "rate": 0.5463
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 126,
+    "n": 126
+   },
+   "rank": 41,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.2143,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.1429,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3393,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.1607,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0,
+   "reason_numbers": "hit 21% (12/56, 95% 13-34); error SD 1.42 C = 1.42 buckets, bias -0.11 C; day-to-day SD 3.12 C; error SD Oct->Nov -0.55 C, day-to-day SD +1.33 C"
+  },
+  "san_francisco": {
+   "unit": "F",
+   "station": "KSFO",
+   "timezone": "America/Los_Angeles",
+   "latitude": 37.6261,
+   "longitude": -122.4002,
+   "bucket_width_unit": 2.0,
+   "bucket_width_c": 1.1111,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.3304,
+   "err_sd_c": 1.4427,
+   "mae_c": 1.2232,
+   "corrected_err_mean_c": -0.1757,
+   "corrected_err_sd_c": 1.5689,
+   "corrected_mae_c": 1.2785,
+   "err_sd_in_buckets": 1.2984,
+   "hits": 15,
+   "hit_bc": 0.2679,
+   "hit_bc_wilson95": [
+    0.1696,
+    0.3959
+   ],
+   "hit_raw": 0.25,
+   "dd_sd_c": 2.4252,
+   "dd_n": 336,
+   "dd_sd_2025_c": 2.381,
+   "dd_sd_h1_c": 2.8315,
+   "dd_sd_h2_c": 1.9442,
+   "dd_sd_change_c": -0.8873,
+   "err_sd_h1_c": 1.1924,
+   "err_sd_h2_c": 1.6747,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": 0.4823,
+   "mae_h1_c": 1.0286,
+   "mae_h2_c": 1.4179,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 65,
+     "n": 140,
+     "rate": 0.4643
+    },
+    "d0_12": {
+     "hits": 43,
+     "n": 100,
+     "rate": 0.43
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 158,
+    "n": 158
+   },
+   "rank": 35,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.2679,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.2143,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4107,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.25,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0,
+   "reason_numbers": "hit 27% (15/56, 95% 17-40); error SD 1.44 C = 1.30 buckets, bias -0.33 C; day-to-day SD 2.43 C; error SD Oct->Nov +0.48 C, day-to-day SD -0.89 C"
+  },
+  "sao_paulo": {
+   "unit": "C",
+   "station": "SBGR",
+   "timezone": "America/Sao_Paulo",
+   "latitude": -23.4446,
+   "longitude": -46.4669,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.1929,
+   "err_sd_c": 2.1616,
+   "mae_c": 1.5464,
+   "corrected_err_mean_c": -0.1121,
+   "corrected_err_sd_c": 2.2357,
+   "corrected_mae_c": 1.5957,
+   "err_sd_in_buckets": 2.1616,
+   "hits": 8,
+   "hit_bc": 0.1429,
+   "hit_bc_wilson95": [
+    0.0742,
+    0.2574
+   ],
+   "hit_raw": 0.2679,
+   "dd_sd_c": 4.249,
+   "dd_n": 335,
+   "dd_sd_2025_c": 4.9064,
+   "dd_sd_h1_c": 4.7538,
+   "dd_sd_h2_c": 3.6704,
+   "dd_sd_change_c": -1.0834,
+   "err_sd_h1_c": 2.6887,
+   "err_sd_h2_c": 1.5008,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -1.1879,
+   "mae_h1_c": 1.825,
+   "mae_h2_c": 1.2679,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 71,
+     "n": 160,
+     "rate": 0.4437
+    },
+    "d0_12": {
+     "hits": 67,
+     "n": 135,
+     "rate": 0.4963
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 188,
+    "n": 190
+   },
+   "rank": 48,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.1429,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.2679,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3036,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.2679,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0,
+   "reason_numbers": "hit 14% (8/56, 95% 7-26); error SD 2.16 C = 2.16 buckets, bias -0.19 C; day-to-day SD 4.25 C; error SD Oct->Nov -1.19 C, day-to-day SD -1.08 C"
+  },
+  "seattle": {
+   "unit": "F",
+   "station": "KSEA",
+   "timezone": "America/Los_Angeles",
+   "latitude": 47.4601,
+   "longitude": -122.3099,
+   "bucket_width_unit": 2.0,
+   "bucket_width_c": 1.1111,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -1.0143,
+   "err_sd_c": 1.1745,
+   "mae_c": 1.3429,
+   "corrected_err_mean_c": -0.1939,
+   "corrected_err_sd_c": 1.2502,
+   "corrected_mae_c": 0.9697,
+   "err_sd_in_buckets": 1.057,
+   "hits": 18,
+   "hit_bc": 0.3214,
+   "hit_bc_wilson95": [
+    0.214,
+    0.4518
+   ],
+   "hit_raw": 0.25,
+   "dd_sd_c": 2.6152,
+   "dd_n": 336,
+   "dd_sd_2025_c": 2.234,
+   "dd_sd_h1_c": 2.8365,
+   "dd_sd_h2_c": 2.3821,
+   "dd_sd_change_c": -0.4544,
+   "err_sd_h1_c": 1.2947,
+   "err_sd_h2_c": 1.0644,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.2303,
+   "mae_h1_c": 1.425,
+   "mae_h2_c": 1.2607,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 85,
+     "n": 177,
+     "rate": 0.4802
+    },
+    "d0_12": {
+     "hits": 63,
+     "n": 127,
+     "rate": 0.4961
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 194,
+    "n": 194
+   },
+   "rank": 22,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.2857,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.3214,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.6071,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.25,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.1565,
+   "reason_numbers": "hit 32% (18/56, 95% 21-45); error SD 1.17 C = 1.06 buckets, bias -1.01 C; day-to-day SD 2.62 C; error SD Oct->Nov -0.23 C, day-to-day SD -0.45 C"
+  },
+  "seoul": {
+   "unit": "C",
+   "station": "RKSI",
+   "timezone": "Asia/Seoul",
+   "latitude": 37.4602,
+   "longitude": 126.4407,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.6911,
+   "err_sd_c": 1.1981,
+   "mae_c": 1.1625,
+   "corrected_err_mean_c": -0.051,
+   "corrected_err_sd_c": 1.2276,
+   "corrected_mae_c": 0.9784,
+   "err_sd_in_buckets": 1.1981,
+   "hits": 16,
+   "hit_bc": 0.2857,
+   "hit_bc_wilson95": [
+    0.1842,
+    0.4148
+   ],
+   "hit_raw": 0.1964,
+   "dd_sd_c": 3.187,
+   "dd_n": 336,
+   "dd_sd_2025_c": 3.1933,
+   "dd_sd_h1_c": 2.3892,
+   "dd_sd_h2_c": 3.8247,
+   "dd_sd_change_c": 1.4356,
+   "err_sd_h1_c": 1.1122,
+   "err_sd_h2_c": 1.2125,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": 0.1003,
+   "mae_h1_c": 0.9964,
+   "mae_h2_c": 1.3286,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 61,
+     "n": 165,
+     "rate": 0.3697
+    },
+    "d0_12": {
+     "hits": 55,
+     "n": 107,
+     "rate": 0.514
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 170,
+    "n": 194
+   },
+   "rank": 34,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.2321,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.2857,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3571,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.1964,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0035,
+   "reason_numbers": "hit 29% (16/56, 95% 18-41); error SD 1.20 C = 1.20 buckets, bias -0.69 C; day-to-day SD 3.19 C; error SD Oct->Nov +0.10 C, day-to-day SD +1.44 C"
+  },
+  "shanghai": {
+   "unit": "C",
+   "station": "ZSPD",
+   "timezone": "Asia/Shanghai",
+   "latitude": 31.1775,
+   "longitude": 121.7836,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.2125,
+   "err_sd_c": 1.2566,
+   "mae_c": 0.9804,
+   "corrected_err_mean_c": -0.0692,
+   "corrected_err_sd_c": 1.2823,
+   "corrected_mae_c": 0.9851,
+   "err_sd_in_buckets": 1.2566,
+   "hits": 16,
+   "hit_bc": 0.2857,
+   "hit_bc_wilson95": [
+    0.1842,
+    0.4148
+   ],
+   "hit_raw": 0.3571,
+   "dd_sd_c": 2.6982,
+   "dd_n": 336,
+   "dd_sd_2025_c": 2.7903,
+   "dd_sd_h1_c": 2.1832,
+   "dd_sd_h2_c": 3.1356,
+   "dd_sd_change_c": 0.9525,
+   "err_sd_h1_c": 1.3116,
+   "err_sd_h2_c": 1.1649,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.1467,
+   "mae_h1_c": 0.9893,
+   "mae_h2_c": 0.9714,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 60,
+     "n": 150,
+     "rate": 0.4
+    },
+    "d0_12": {
+     "hits": 66,
+     "n": 98,
+     "rate": 0.6735
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 170,
+    "n": 170
+   },
+   "rank": 32,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.2857,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.3393,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3036,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.3571,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.024,
+   "reason_numbers": "hit 29% (16/56, 95% 18-41); error SD 1.26 C = 1.26 buckets, bias -0.21 C; day-to-day SD 2.70 C; error SD Oct->Nov -0.15 C, day-to-day SD +0.95 C"
+  },
+  "shenzhen": {
+   "unit": "C",
+   "station": "ZGSZ",
+   "timezone": "Asia/Shanghai",
+   "latitude": 22.6393,
+   "longitude": 113.8108,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": 0.825,
+   "err_sd_c": 1.6275,
+   "mae_c": 1.4214,
+   "corrected_err_mean_c": 0.3429,
+   "corrected_err_sd_c": 1.9388,
+   "corrected_mae_c": 1.5185,
+   "err_sd_in_buckets": 1.6275,
+   "hits": 11,
+   "hit_bc": 0.1964,
+   "hit_bc_wilson95": [
+    0.1134,
+    0.3184
+   ],
+   "hit_raw": 0.2321,
+   "dd_sd_c": 2.2591,
+   "dd_n": 336,
+   "dd_sd_2025_c": 2.7638,
+   "dd_sd_h1_c": 2.2831,
+   "dd_sd_h2_c": 2.2401,
+   "dd_sd_change_c": -0.0431,
+   "err_sd_h1_c": 1.3655,
+   "err_sd_h2_c": 1.8074,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": 0.4419,
+   "mae_h1_c": 1.3821,
+   "mae_h2_c": 1.4607,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 51,
+     "n": 143,
+     "rate": 0.3566
+    },
+    "d0_12": {
+     "hits": 49,
+     "n": 98,
+     "rate": 0.5
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 45,
+    "n": 163
+   },
+   "rank": 42,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.1964,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.125,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3571,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.2321,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0,
+   "reason_numbers": "hit 20% (11/56, 95% 11-32); error SD 1.63 C = 1.63 buckets, bias +0.83 C; day-to-day SD 2.26 C; error SD Oct->Nov +0.44 C, day-to-day SD -0.04 C"
+  },
+  "singapore": {
+   "unit": "C",
+   "station": "WSSS",
+   "timezone": "Asia/Singapore",
+   "latitude": 1.3708,
+   "longitude": 103.9447,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -1.1911,
+   "err_sd_c": 0.9826,
+   "mae_c": 1.2982,
+   "corrected_err_mean_c": -0.2242,
+   "corrected_err_sd_c": 1.0945,
+   "corrected_mae_c": 0.9171,
+   "err_sd_in_buckets": 0.9826,
+   "hits": 18,
+   "hit_bc": 0.3214,
+   "hit_bc_wilson95": [
+    0.214,
+    0.4518
+   ],
+   "hit_raw": 0.25,
+   "dd_sd_c": 1.7121,
+   "dd_n": 336,
+   "dd_sd_2025_c": 1.5432,
+   "dd_sd_h1_c": 1.6101,
+   "dd_sd_h2_c": 1.8131,
+   "dd_sd_change_c": 0.203,
+   "err_sd_h1_c": 1.0957,
+   "err_sd_h2_c": 0.8751,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.2205,
+   "mae_h1_c": 1.3464,
+   "mae_h2_c": 1.25,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 72,
+     "n": 150,
+     "rate": 0.48
+    },
+    "d0_12": {
+     "hits": 70,
+     "n": 97,
+     "rate": 0.7216
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 170,
+    "n": 170
+   },
+   "rank": 21,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3214,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.3393,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4107,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.25,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0675,
+   "reason_numbers": "hit 32% (18/56, 95% 21-45); error SD 0.98 C = 0.98 buckets, bias -1.19 C; day-to-day SD 1.71 C; error SD Oct->Nov -0.22 C, day-to-day SD +0.20 C"
+  },
+  "tel_aviv": {
+   "unit": "C",
+   "station": "LLBG",
+   "timezone": "Asia/Jerusalem",
+   "latitude": 32.0,
+   "longitude": 34.875,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 54,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 2,
+   "bias_c": -0.4643,
+   "err_sd_c": 1.1559,
+   "mae_c": 0.9143,
+   "corrected_err_mean_c": -0.2255,
+   "corrected_err_sd_c": 1.1349,
+   "corrected_mae_c": 0.8699,
+   "err_sd_in_buckets": 1.1559,
+   "hits": 25,
+   "hit_bc": 0.4464,
+   "hit_bc_wilson95": [
+    0.3239,
+    0.5759
+   ],
+   "hit_raw": 0.3929,
+   "dd_sd_c": 2.2333,
+   "dd_n": 332,
+   "dd_sd_2025_c": 2.7307,
+   "dd_sd_h1_c": 1.8922,
+   "dd_sd_h2_c": 2.5278,
+   "dd_sd_change_c": 0.6356,
+   "err_sd_h1_c": 0.9736,
+   "err_sd_h2_c": 1.2081,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": 0.2346,
+   "mae_h1_c": 0.7536,
+   "mae_h2_c": 1.075,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 88,
+     "n": 144,
+     "rate": 0.6111
+    },
+    "d0_12": {
+     "hits": 76,
+     "n": 103,
+     "rate": 0.7379
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 173,
+    "n": 173
+   },
+   "rank": 5,
+   "in_focus_10": true,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.4464,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.3393,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4286,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.3929,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.6995,
+   "reason_numbers": "hit 45% (25/56, 95% 32-58); error SD 1.16 C = 1.16 buckets, bias -0.46 C; day-to-day SD 2.23 C; error SD Oct->Nov +0.23 C, day-to-day SD +0.64 C"
+  },
+  "tokyo": {
+   "unit": "C",
+   "station": "RJTT",
+   "timezone": "Asia/Tokyo",
+   "latitude": 35.55,
+   "longitude": 139.75,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.4464,
+   "err_sd_c": 1.3523,
+   "mae_c": 1.1464,
+   "corrected_err_mean_c": 0.006,
+   "corrected_err_sd_c": 1.3877,
+   "corrected_mae_c": 1.0701,
+   "err_sd_in_buckets": 1.3523,
+   "hits": 16,
+   "hit_bc": 0.2857,
+   "hit_bc_wilson95": [
+    0.1842,
+    0.4148
+   ],
+   "hit_raw": 0.2143,
+   "dd_sd_c": 2.9597,
+   "dd_n": 336,
+   "dd_sd_2025_c": 2.9232,
+   "dd_sd_h1_c": 2.7474,
+   "dd_sd_h2_c": 3.166,
+   "dd_sd_change_c": 0.4187,
+   "err_sd_h1_c": 1.5469,
+   "err_sd_h2_c": 1.1338,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.4131,
+   "mae_h1_c": 1.275,
+   "mae_h2_c": 1.0179,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 61,
+     "n": 146,
+     "rate": 0.4178
+    },
+    "d0_12": {
+     "hits": 56,
+     "n": 96,
+     "rate": 0.5833
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 173,
+    "n": 173
+   },
+   "rank": 33,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.2679,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.375,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4286,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.2143,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0195,
+   "reason_numbers": "hit 29% (16/56, 95% 18-41); error SD 1.35 C = 1.35 buckets, bias -0.45 C; day-to-day SD 2.96 C; error SD Oct->Nov -0.41 C, day-to-day SD +0.42 C"
+  },
+  "toronto": {
+   "unit": "C",
+   "station": "CYYZ",
+   "timezone": "America/Toronto",
+   "latitude": 43.6777,
+   "longitude": -79.6248,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 54,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 2,
+   "bias_c": -0.9018,
+   "err_sd_c": 1.1743,
+   "mae_c": 1.1625,
+   "corrected_err_mean_c": -0.4801,
+   "corrected_err_sd_c": 1.1877,
+   "corrected_mae_c": 0.9833,
+   "err_sd_in_buckets": 1.1743,
+   "hits": 17,
+   "hit_bc": 0.3036,
+   "hit_bc_wilson95": [
+    0.199,
+    0.4334
+   ],
+   "hit_raw": 0.2857,
+   "dd_sd_c": 4.2889,
+   "dd_n": 332,
+   "dd_sd_2025_c": 3.6074,
+   "dd_sd_h1_c": 4.2055,
+   "dd_sd_h2_c": 4.3788,
+   "dd_sd_change_c": 0.1733,
+   "err_sd_h1_c": 1.2559,
+   "err_sd_h2_c": 1.0472,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.2088,
+   "mae_h1_c": 1.0893,
+   "mae_h2_c": 1.2357,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 69,
+     "n": 171,
+     "rate": 0.4035
+    },
+    "d0_12": {
+     "hits": 56,
+     "n": 120,
+     "rate": 0.4667
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 194,
+    "n": 195
+   },
+   "rank": 31,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.3214,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.3571,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.3571,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.2857,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0005,
+   "reason_numbers": "hit 30% (17/56, 95% 20-43); error SD 1.17 C = 1.17 buckets, bias -0.90 C; day-to-day SD 4.29 C; error SD Oct->Nov -0.21 C, day-to-day SD +0.17 C"
+  },
+  "warsaw": {
+   "unit": "C",
+   "station": "EPWA",
+   "timezone": "Europe/Warsaw",
+   "latitude": 52.1644,
+   "longitude": 20.9696,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.8196,
+   "err_sd_c": 1.2739,
+   "mae_c": 1.1196,
+   "corrected_err_mean_c": -0.1729,
+   "corrected_err_sd_c": 1.4207,
+   "corrected_mae_c": 1.0197,
+   "err_sd_in_buckets": 1.2739,
+   "hits": 21,
+   "hit_bc": 0.375,
+   "hit_bc_wilson95": [
+    0.2601,
+    0.5059
+   ],
+   "hit_raw": 0.3214,
+   "dd_sd_c": 2.7178,
+   "dd_n": 336,
+   "dd_sd_2025_c": 2.3285,
+   "dd_sd_h1_c": 2.9625,
+   "dd_sd_h2_c": 2.4512,
+   "dd_sd_change_c": -0.5113,
+   "err_sd_h1_c": 1.3434,
+   "err_sd_h2_c": 1.0597,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.2838,
+   "mae_h1_c": 1.375,
+   "mae_h2_c": 0.8643,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 60,
+     "n": 134,
+     "rate": 0.4478
+    },
+    "d0_12": {
+     "hits": 49,
+     "n": 108,
+     "rate": 0.4537
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 167,
+    "n": 167
+   },
+   "rank": 14,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.4107,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.375,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.4286,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.3214,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.3265,
+   "reason_numbers": "hit 38% (21/56, 95% 26-51); error SD 1.27 C = 1.27 buckets, bias -0.82 C; day-to-day SD 2.72 C; error SD Oct->Nov -0.28 C, day-to-day SD -0.51 C"
+  },
+  "wellington": {
+   "unit": "C",
+   "station": "NZWN",
+   "timezone": "Pacific/Auckland",
+   "latitude": -41.3005,
+   "longitude": 174.7059,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -1.3714,
+   "err_sd_c": 0.7137,
+   "mae_c": 1.3821,
+   "corrected_err_mean_c": -0.0791,
+   "corrected_err_sd_c": 0.7252,
+   "corrected_mae_c": 0.5886,
+   "err_sd_in_buckets": 0.7137,
+   "hits": 26,
+   "hit_bc": 0.4643,
+   "hit_bc_wilson95": [
+    0.3402,
+    0.593
+   ],
+   "hit_raw": 0.1607,
+   "dd_sd_c": 2.3202,
+   "dd_n": 336,
+   "dd_sd_2025_c": 1.5616,
+   "dd_sd_h1_c": 2.3368,
+   "dd_sd_h2_c": 2.3104,
+   "dd_sd_change_c": -0.0264,
+   "err_sd_h1_c": 0.5555,
+   "err_sd_h2_c": 0.8273,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": 0.2718,
+   "mae_h1_c": 1.2464,
+   "mae_h2_c": 1.5179,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 96,
+     "n": 167,
+     "rate": 0.5749
+    },
+    "d0_12": {
+     "hits": 69,
+     "n": 102,
+     "rate": 0.6765
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 192,
+    "n": 192
+   },
+   "rank": 4,
+   "in_focus_10": true,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.4821,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.4286,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.5893,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.1607,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.765,
+   "reason_numbers": "hit 46% (26/56, 95% 34-59); error SD 0.71 C = 0.71 buckets, bias -1.37 C; day-to-day SD 2.32 C; error SD Oct->Nov +0.27 C, day-to-day SD -0.03 C"
+  },
+  "wuhan": {
+   "unit": "C",
+   "station": "ZHHH",
+   "timezone": "Asia/Shanghai",
+   "latitude": 30.7557,
+   "longitude": 114.2267,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": 0.2393,
+   "err_sd_c": 2.0785,
+   "mae_c": 1.6143,
+   "corrected_err_mean_c": -0.2974,
+   "corrected_err_sd_c": 2.1016,
+   "corrected_mae_c": 1.6688,
+   "err_sd_in_buckets": 2.0785,
+   "hits": 11,
+   "hit_bc": 0.1964,
+   "hit_bc_wilson95": [
+    0.1134,
+    0.3184
+   ],
+   "hit_raw": 0.1607,
+   "dd_sd_c": 2.9146,
+   "dd_n": 335,
+   "dd_sd_2025_c": 3.1686,
+   "dd_sd_h1_c": 2.9927,
+   "dd_sd_h2_c": 2.828,
+   "dd_sd_change_c": -0.1646,
+   "err_sd_h1_c": 2.2969,
+   "err_sd_h2_c": 1.2746,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -1.0224,
+   "mae_h1_c": 1.9821,
+   "mae_h2_c": 1.2464,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 48,
+     "n": 143,
+     "rate": 0.3357
+    },
+    "d0_12": {
+     "hits": 58,
+     "n": 116,
+     "rate": 0.5
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 163,
+    "n": 163
+   },
+   "rank": 44,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.1964,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.1607,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.2321,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.1607,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0,
+   "reason_numbers": "hit 20% (11/56, 95% 11-32); error SD 2.08 C = 2.08 buckets, bias +0.24 C; day-to-day SD 2.91 C; error SD Oct->Nov -1.02 C, day-to-day SD -0.16 C"
+  },
+  "zhengzhou": {
+   "unit": "C",
+   "station": "ZHCC",
+   "timezone": "Asia/Shanghai",
+   "latitude": 34.5197,
+   "longitude": 113.8408,
+   "bucket_width_unit": 1.0,
+   "bucket_width_c": 1.0,
+   "grid_verified_on_pre_cutoff_ladders": true,
+   "forecast_years": [
+    2025
+   ],
+   "station_years_whole_days": {
+    "2020": 56,
+    "2021": 56,
+    "2022": 56,
+    "2023": 56,
+    "2024": 56,
+    "2025": 56
+   },
+   "n_window_days_whole_station_and_forecast": 56,
+   "n_scored": 56,
+   "n_no_trailing_bias": 0,
+   "station_days_not_whole_in_window": 0,
+   "bias_c": -0.3893,
+   "err_sd_c": 1.7298,
+   "mae_c": 1.4464,
+   "corrected_err_mean_c": -0.3974,
+   "corrected_err_sd_c": 1.6849,
+   "corrected_mae_c": 1.4485,
+   "err_sd_in_buckets": 1.7298,
+   "hits": 8,
+   "hit_bc": 0.1429,
+   "hit_bc_wilson95": [
+    0.0742,
+    0.2574
+   ],
+   "hit_raw": 0.2679,
+   "dd_sd_c": 3.3693,
+   "dd_n": 335,
+   "dd_sd_2025_c": 3.2079,
+   "dd_sd_h1_c": 2.8852,
+   "dd_sd_h2_c": 3.7742,
+   "dd_sd_change_c": 0.889,
+   "err_sd_h1_c": 1.3702,
+   "err_sd_h2_c": 1.3194,
+   "n_h1": 28,
+   "n_h2": 28,
+   "err_sd_change_c": -0.0508,
+   "mae_h1_c": 1.2179,
+   "mae_h2_c": 1.675,
+   "nov_flag": false,
+   "market_window": {
+    "d1_18": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    },
+    "d0_12": {
+     "hits": 0,
+     "n": 0,
+     "rate": null
+    }
+   },
+   "market_all_pre_cutoff_supplementary": {
+    "d1_18": {
+     "hits": 12,
+     "n": 23,
+     "rate": 0.5217
+    },
+    "d0_12": {
+     "hits": 20,
+     "n": 25,
+     "rate": 0.8
+    }
+   },
+   "station_reading_in_venue_winner_pre_cutoff": {
+    "agree": 24,
+    "n": 24
+   },
+   "rank": 47,
+   "in_focus_10": false,
+   "hit_sensitivity": {
+    "l1_whole_day": {
+     "hit": 0.1429,
+     "n": 56
+    },
+    "l2_whole_day": {
+     "hit": 0.2321,
+     "n": 56
+    },
+    "models_mean_l1_00_17": {
+     "hit": 0.2679,
+     "n": 56
+    },
+    "primary_no_bias_correction": {
+     "hit": 0.2679,
+     "n": 56
+    }
+   },
+   "bootstrap_share_in_focus_10": 0.0,
+   "reason_numbers": "hit 14% (8/56, 95% 7-26); error SD 1.73 C = 1.73 buckets, bias -0.39 C; day-to-day SD 3.37 C; error SD Oct->Nov -0.05 C, day-to-day SD +0.89 C"
+  }
+ }
+}

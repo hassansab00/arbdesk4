@@ -60,3 +60,30 @@ def test_when_the_engine_and_the_market_agree_nothing_is_against_the_market():
     rows = [_row("74", "YES", 0.5, 0.40), _row("74", "NO", 0.5, 0.62),
             _row("76", "YES", 0.3, 0.30), _row("76", "NO", 0.7, 0.72)]
     assert ee.against_market_rows(rows) == set()
+
+
+def test_a_bought_up_leader_is_the_favourite_through_its_no_price():
+    """The P.5 report, question 2 (Hassan, 6 Oct): the leader's YES had no ask
+    (bid 0.995), so it had no YES price at all, and the highest YES price left
+    was a 0.9c bucket. Its NO costs 1 - 0.995: the YES bid is still there."""
+    rows = [_row("70", "YES", 0.99, None), _row("70", "NO", 0.01, 0.005),
+            _row("72", "YES", 0.005, 0.009), _row("72", "NO", 0.995, 0.999),
+            _row("68", "YES", 0.005, 0.004), _row("68", "NO", 0.995, 0.998)]
+    assert ee._yes_standing(rows) == {"70": 0.995, "72": 0.009, "68": 0.004}
+    assert ee.against_market_rows(rows) == set(), "the engine agrees with the real favourite"
+    disagree = [dict(r, model_prob=p) for r, p in zip(rows, (0.30, 0.70, 0.60, 0.40, 0.10, 0.90))]
+    flagged = {(disagree[i]["band_id"], disagree[i]["side"]) for i in ee.against_market_rows(disagree)}
+    assert flagged == {("72", "YES"), ("68", "YES"), ("70", "NO")}
+
+
+def test_the_favourite_is_read_from_the_top_of_the_book():
+    """Codex on #324: market_price is the depth-weighted fill for $100. On a
+    shallow book a bought-up leader's NO fills at 6c on average though it is
+    quoted at 0.3c (bid 0.997), and 1 - 0.06 = 0.94 is below another bucket's
+    ask of 0.95: the favourite must come from quoted_price, the top of book."""
+    rows = [dict(_row("70", "YES", 0.99, None), quoted_price=None),
+            dict(_row("70", "NO", 0.01, 0.06), quoted_price=0.003),
+            dict(_row("72", "YES", 0.005, 0.96), quoted_price=0.95),
+            dict(_row("72", "NO", 0.995, 0.10), quoted_price=0.07)]
+    assert ee._yes_standing(rows) == {"70": 0.997, "72": 0.95}
+    assert ee.against_market_rows(rows) == set(), "the engine agrees with the real leader"

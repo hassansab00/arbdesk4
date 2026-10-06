@@ -139,3 +139,23 @@ def test_a_lock_is_still_a_lock_while_other_ladders_hold_money():
     assert d["action"] == "BUY", d["reason_code"]
     paid = _paid(d["orders"])
     assert min(_payout_by_outcome(d["orders"], probs).values()) >= paid - 0.05
+
+
+def test_a_leader_with_no_ask_is_still_the_markets_favourite():
+    """The P.5 report, question 2 (Hassan, 6 Oct: "yes"): all 36 against_market
+    refusals of 29 Sep - 6 Oct were books whose leader was bought up (bid at
+    least 0.991) with nobody selling. Reading asks alone named a 0.9c bucket
+    the favourite and fired the gate on a disagreement that was not there."""
+    probs = {"a": 0.005, "b": 0.99, "c": 0.005}
+    book = {"a": {"ask": 0.009, "bid": 0.001}, "b": {"bid": 0.995}, "c": {"ask": 0.004, "bid": 0.001}}
+    assert de.market_standing(book["b"]) == 0.995
+    assert de.market_standing(book["a"]) == 0.009, "an ask is read before a bid"
+    assert de.market_standing({}) is None and de.market_standing({"last": 0.5}) is None
+    # the view agrees with the bought-up leader: nothing is against the market
+    assert de.against_market_assets(probs, book, ("YES", "NO")) == set()
+    # a view that backs another bucket IS against the leader, NO on the leader included
+    other = {"a": 0.60, "b": 0.35, "c": 0.05}
+    assert de.against_market_assets(other, book, ("YES", "NO")) == {"a:YES", "c:YES", "b:NO"}
+    # a bucket with neither price never becomes the favourite
+    thin = {"a": {"ask": 0.30}, "b": {}, "c": {"ask": 0.20}}
+    assert de.against_market_assets({"a": 0.5, "b": 0.3, "c": 0.2}, thin, ("YES",)) == set()
