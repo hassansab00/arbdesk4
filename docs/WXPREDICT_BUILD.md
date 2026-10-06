@@ -326,7 +326,7 @@ Only one PR is open on GitHub (#314). **Every "PR open" in the record is stale.*
 
 **Workflows the clock does not start (A.6).** `paper_fill` (web app), `backtest` and `forecasts` (n8n Relearn, a Run button), `retire_desks` (P.2 needs it), `restore_edge_marks` (a one-off, ran twice on 29 Sep), `live_weather` (last run 5 Sep, no dispatcher found), `verify_resolution_source` (never run, no dispatcher found). A workflow nobody starts bills nothing, so A.6 saves 0 minutes: it is housekeeping only.
 
-**A.6 (6 Oct): the list is made; the disabling is not done.** The step's rule disables each workflow that neither the clock, the web app nor n8n starts. Re-checked against the repository:
+**A.6 (6 Oct): the list.** The step's rule disables each workflow that neither the clock, the web app nor n8n starts. Re-checked against the repository:
 - **Started by something, so kept:**
   - `paper_fill` by the web app (`web/app/api/paper-cycle/route.ts`);
   - `backtest` by n8n's Relearn and a `repository_dispatch`;
@@ -337,7 +337,13 @@ Only one PR is open on GitHub (#314). **Every "PR open" in the record is stale.*
   - `live_weather`: its own file says it is "kept as a manual run: it is the fallback when n8n is down";
   - `verify_resolution_source`: the improvement plan says "Keep `backtest.yml` and `verify_resolution_source`", and `docs/settlement_verification.md` calls it the one-button check.
 
-**This session cannot disable a workflow.** Its GitHub tool can run, re-run and cancel workflows, not disable them, and its Actions writes return 403. Disabling is one click per workflow in the repository's Actions page (the workflow's "..." menu, "Disable workflow"). It does not delete the file, and "Enable workflow" undoes it. **A.6 stays open until Hassan disables the four, or says which to keep.** Each saves 0 minutes, and a disabled fallback needs one click before it can run.
+**A.6 done 6 Oct: two turned off in the repository; `retire_desks` and `verify_resolution_source` kept on.** Hassan, 6 Oct, asked what replaces each, then: "do what's necessary as long as nothing's broken". This session cannot press GitHub's "Disable workflow" (no tool for it; Actions writes return 403), so each of the two jobs is `if: false` in its file, with the reason and how to turn it back on. A dispatch skips the job and bills nothing. What does each job now:
+- `live_weather`: the hourly tick's NWS monitor step (`tick.yml`, `ingest_nws_monitor`) writes `live_weather`; it logged `P1.2_nws_monitor` 84 times in the 7 days to 6 Oct 14:36Z.
+- `restore_edge_marks`: its two recovery runs were on 29 Sep, and the cause is fixed (`20260929220000` freezes the marks before the prune).
+- `retire_desks` stays on: it is the only way to retire a desk, since the service key lives only in the repository's secrets.
+- `verify_resolution_source` stays on (Codex on #322). It has never run, but it is the only test of the weather.gov timeseries parser (`settlement.fetch_resolution_source_reading`), which `settlement_verified` depends on (`docs/settlement_verification.md`; D7, R36). pipeline_daily's nightly trust refresh compares our stored station maxima with the venue's verdicts. It does not exercise that parser, so it is not a replacement.
+
+`tests/test_github_actions.py` (`TURNED_OFF_WORKFLOWS`) pins exactly these two, and `tools/gen_provenance.py` now describes a turned-off workflow as "never - turned off (wave A.6)".
 
 **CI (A.2), measured.** October to 5 Oct 16:43Z: `tests.yml` 72 runs, 347 billed (53 pull request, 19 push to main before #313); `web.yml` 44 runs, 88 billed. Replaying the path rules over the 72 test runs with local git (each PR run's diff from its merge base, each push's own commit):
 - **(b) docs only:** 2 PR runs (10 billed) and 2 pushes (11 billed) touched nothing a test reads. The suite reads 8 files under `docs/` (traced, below); not `PLAN_PROGRESS.md`, this document or the root `*.md`.
@@ -798,6 +804,49 @@ Each item is one small PR, or a batch of related ones, with its own measured bef
 
 **Gate:** wave 2 needs no Hassan gate beyond D1, for minutes. Phase 2 starts when 2.A and 2.B have passed their checkpoints. 2.C-2.F may overlap phase 2.
 
+### Wave F: the seasonal focus (Hassan, 6 Oct)
+
+Hassan, 6 Oct: a "Seasonal Focus 10" of the cities most predictable in their current local season, chosen by research and recorded before its outcomes. It is applied across Predictive, with a daily status per city and evidence on each card, and judged against the full universe. "Prioritise these cities without losing comparison data ... Preserve the existing separation between serving models, evaluation models and blinded challengers." **Seasonal membership never moves a probability.**
+
+**F.1 Choose and record the set (done 6 Oct)**
+- **What:** `tools/focus/season_predictability.py` ranks the 48 active cities by the bias-corrected day-ahead forecast's bucket hit rate over 6 Oct - 30 Nov of past years. It uses data before 2026-09-01 only and reads no blinded challenger.
+- **The record:** `docs/FOCUS_PREREG.md`, the study's JSON (sha256 `b0250963...`), and the append-only database row `focus_sets` `seasonal-2026-10-06` (migration `20261006150000`). The set is evaluated from 8 Oct.
+- **Checkpoint:** the three agree (`tests/test_focus_set.py`); the row cannot be changed (`tests/database/focus-set.cjs`); no script reads the set.
+
+**F.2 A daily status per city**
+- **What:** each active city, each day and checkpoint, gets one of four statuses and the reason in words:
+  - **Candidate:** fresh, complete data; suitable weather; enough model evidence at that checkpoint;
+  - **Watch:** the forecasts disagree, cloud clearance is uncertain, or the winds are changing;
+  - **Insufficient evidence:** too little settled history at this checkpoint;
+  - **Unavailable:** a market, the station's data or a usable forecast is missing.
+- **How:** one view over what the platform already records (freshness, the forecasts' spread, settled counts per checkpoint). Each threshold is stated, versioned, and has a prior and bounds (Rule 11). Cloud and wind inputs are used only where they are recorded; what is not recorded is said, not guessed.
+- **Checkpoint:** the status of every active city today, each reason readable; a contract test per status.
+
+**F.3 One city filter for all of Predictive**
+- **What:** "All active cities · Seasonal Focus 10 · Custom selection" controls the city cards, the forward predictions, the historical accuracy, "Who called what" and "Was it right?". Every total is recomputed from the visible rows.
+- **How:** per-city rows where today only an all-city summary exists (`v_prediction_hindsight_summary` has no city). The page holds one selection and passes it to each section.
+- **Checkpoint:** totals for "All" equal today's on the same rows; a filtered total equals the sum of its cities (unit tests).
+
+**F.4 Evidence on each city card**
+- **What:**
+  - the predicted bucket and probability;
+  - the hit rate at the selected checkpoint, with its settled city-days;
+  - the temperature error and the calibration gap;
+  - the market against the model on matching days;
+  - the executable price, the existing net edge, and data freshness.
+- Day ahead, noon and pre-peak are kept apart; post-peak is labelled separately.
+
+**F.5 "Was it right?": the focus against the universe**
+- **What:** both groups over the same dates, checkpoint and predictor version, from 8 Oct, as `docs/FOCUS_PREREG.md` fixes. The formal reading is on 1 Dec.
+
+**F.6 Priorities**
+- Analysis and model improvement go to the ten. The other cities keep basic collection where storage allows (2.A).
+- Serving, evaluation and blinded challengers stay separate.
+
+**F.7 Adaptive paper strategies (Hassan, 6 Oct)**
+- **What:** each strategy trades only cities whose status is Candidate, when its own conditions meet. It decides before and during each city's own peak, and on the market's move when the likely winner climbs fast.
+- **Bounds:** a strategy's city list is learned from its own settled results within Rule 11's bounds. Paper only; it never loosens a rule.
+
 ### Phase 2: the market and the inputs, fresh at the decision
 
 **2.1 What the record's price is**
@@ -1139,7 +1188,8 @@ Over 7 consecutive days:
 | D5 | Retire the eight flat ledgers now (R17); 29 Sep's "Retire all of s1, s3-s9" appears to cover it. Retiring deletes nothing: the trades stay readable, and the desks move to the page's archived list | the desks | P.2 |
 | D6 | After rd3's first look (~25 Oct): S10's future (R33) | strategy | none |
 | D7 | When to schedule the trading machinery (R35) and `settlement_verified` (R36) | capital and payouts | none |
-| D9 | Storage (2.A, section 3.8). The project is on Supabase's Free plan, whose docs put a project in read-only mode above 500 MB; it is at 574.7 MiB and grows about 5 MiB a day. The archive cycle alone reaches 30 MB with no reader affected, or 85.6 MB if readers change (s2's correlation input, the plan-approval warning, the analytics page, the backtest's book reader and regime book age); the gap is 124.7 MiB. **Recommended: the Pro plan ($25 a month, 8 GB).** Otherwise: group A now, group B one PR at a time, and the gap stays open | spending | 2.A, so phase 2 from 2.2 |
+| D9 | Storage (2.A, section 3.8). **Hassan, 6 Oct: no subscription; offload the data to the repository, recurrently.** So 2.A is the archive cycle: group A first, then group B with each reader moved to read the repository, then trades offloaded more often than nightly and the never-offloaded tables moved to the repository with their readers. Gap 124.7 MiB, growth about 5 MiB a day | decided | 2.A, so phase 2 from 2.2 |
+| D10 | The P.5 report's three questions. **Hassan, 6 Oct:** (1) the market prior's "cheap NO" edges: yes, left to WXPredict, no change; (2) the against-market gate's favourite when the leader has no ask: yes, fix it (the highest bid stands in); (3) S10's model must cover every local hour a city's own peak-relative checkpoint falls on, not only 7-17 (measured 29 Sep - 6 Oct: only Madrid's post-peak, at 18:xx, fell outside). He adds: strategies decide before and during each city's own peak, and on the market's move when the likely winner climbs fast | decided | (2) and (3) are rule changes, each its own PR with tests |
 | G3-G5 | as in section 5 | the model's use | their phases |
 
 ---
@@ -1155,7 +1205,7 @@ Updated in every PR.
 | D4 (interim engine patch) | **none** (Hassan, 5 Oct: "no interim patch to the engine") | chat, 5 Oct |
 | D8 (the engine strategies' desks) | **keep them running as they are until G5**; they are 5.6's comparison. Their share of the minutes is measured in A.1 (tick: 0 billed; intraday: about 1 of 4 billed a run) and goes to Hassan in A.5 if it matters | chat, 5 Oct; section 3.6 |
 | D1 (minutes) | **wave A first; overage allowed up to 400 minutes in October as insurance, the goal still under 3,000** (Hassan, 5 Oct). 941 billed to 5 Oct 16:04Z by the jobs API; GitHub showed 1,065 of 3,000 | chat, 5 Oct; jobs API |
-| Wave A (A.1-A.7, the Actions revamp) | **A.1 done 5 Oct** (section 3.6). **A.2 merged** as #315, 5 Oct 20:07:42Z (Hassan: "merge 315"): a docs-only PR skips the suites, the `pytest` job still reports; checkpoint open (the next 10 PR runs measured). The contracts half (A.2a) not built: about 7 s a run (put to Hassan). **A.3 merged** as #316 (5 Oct 21:38Z, `250e8c8`, after Hassan re-ran the CI the runner shortage had cancelled) **and live 6 Oct**: the migration's `DELETE` waited on the Supabase tool's confirmation, which never reached Hassan, so he ran the file in the SQL editor at about 06:58Z. Checked at 06:59:07Z against the 06:19Z snapshot: the calibration status reads `stopped`; `clock_expected_jobs` 41 -> 36 (`pipeline_daily` 17 -> 12); the six spec rows changed and every other row is identical; `settings` and `derived_trajectory` are unchanged (both were already off). `v_data_freshness` rebuilt with its `EXCEPT ALL` proof, 66 -> 68 rows; anon reads 68. Night 1 (6 Oct 04:36Z): 1,667 s, 28 billed, the five steps skipped, every other step green. The checkpoint is nights 2 and 3 plus 3 intraday runs. **A.6 open 6 Oct:** the list is made (section 3.6). The rule disables four workflows nothing starts (`retire_desks`, `restore_edge_marks`, `live_weather`, `verify_resolution_source`). This session cannot disable a workflow, so they wait on Hassan's click or his word to keep them; each saves 0 minutes. A.4, A.5 and A.7 todo; A.4 and A.5 wait on A.3's checkpoint, because both change what it measures | section 3.6; #315; #316; `PLAN_PROGRESS` |
+| Wave A (A.1-A.7, the Actions revamp) | **A.1 done 5 Oct** (section 3.6). **A.2 merged** as #315, 5 Oct 20:07:42Z (Hassan: "merge 315"): a docs-only PR skips the suites, the `pytest` job still reports; checkpoint open (the next 10 PR runs measured). The contracts half (A.2a) not built: about 7 s a run (put to Hassan). **A.3 merged** as #316 (5 Oct 21:38Z, `250e8c8`, after Hassan re-ran the CI the runner shortage had cancelled) **and live 6 Oct**: the migration's `DELETE` waited on the Supabase tool's confirmation, which never reached Hassan, so he ran the file in the SQL editor at about 06:58Z. Checked at 06:59:07Z against the 06:19Z snapshot: the calibration status reads `stopped`; `clock_expected_jobs` 41 -> 36 (`pipeline_daily` 17 -> 12); the six spec rows changed and every other row is identical; `settings` and `derived_trajectory` are unchanged (both were already off). `v_data_freshness` rebuilt with its `EXCEPT ALL` proof, 66 -> 68 rows; anon reads 68. Night 1 (6 Oct 04:36Z): 1,667 s, 28 billed, the five steps skipped, every other step green. The checkpoint is nights 2 and 3 plus 3 intraday runs. **A.6 done 6 Oct** (Hassan: "do what's necessary as long as nothing's broken"): `live_weather` and `restore_edge_marks` are `if: false` in their files, because the tick and a fixed root cause do their jobs. `retire_desks` and `verify_resolution_source` stay on, because nothing else does theirs (section 3.6). A.4, A.5 and A.7 todo; A.4 and A.5 wait on A.3's checkpoint, because both change what it measures | section 3.6; #315; #316; `PLAN_PROGRESS` |
 | Wave 0 (0.1-0.4) | **0.1-0.3 done 5 Oct**: R16, R18, R19, R21, R29 closed on their own acceptance, live; R40's F4 holds; R2, R20, R22, R31 re-measured (section 3); `PLAN_PROGRESS` corrected: P0.3, P1.2, P1.3, P1.5, P2.2 done, and the five stale "PR open" rows (P2.7, P3.5, P3.7, P4.3, P6.5) were merged #117, #129, #130, #138, #141. 0.4: D0, D1, D3, D4, D5, D8 decided by Hassan 5 Oct; D2 (G1), D6 and D7 remain | section 3; `PLAN_PROGRESS` |
 | Wave P (P.1-P.5, the paper desks) | **P.1 done 5 Oct 17:59Z** (nothing changed in substance). **P.2 done 5 Oct 21:19Z.** #317 merged (`eecc50f`); Hassan ran `retire_desks.yml` (attempt 1 never got a runner and changed nothing; attempt 2 ran 43 s, 1 billed). Export `35bb52d` (`data/archive/paper_desks/2026-10-05/`, row counts equal the snapshot); the eight desks retired with the D5 reason, each gaining only its `account_retired` row; the other 12 desks' rows identical by md5; anon reads 198 trades; the API lists 8 desks; the archived list shows 12 retired. Checkpoint quoted on #317. The whole-desk mode must still never be run (it would switch off s2). **P.3 + P.4 merged** as #318 (`a39c84f`, 6 Oct; Hassan: "merge 318"): the page opens on the desk with the newest trade, All desks lists every desk and every trade (Postgres merged with the trade archive), and a running strategy that buys nothing says so and why. Live 6 Oct 09:00:29Z: the production API equals SQL on all 20 desks (trades, closed, net, last trade, open positions) and on all seven running strategies' 24 h decision counts and reasons. Hassan's look at the page is the acceptance. **P.5 done 6 Oct** (`docs/P5_EACH_NONE_2026-10-06.md`, R44): each NONE is right by the engine's rules; three named questions for Hassan; S10's `no_ladder` now has its own words on the page | section 3.7; #317; #318; the P.5 report |
 | D5 (the eight flat ledgers) | **retire s1, s3-s9, export first, through P.2's targeted mode; never the desks of s2, s10, s11, s12 or the Portfolio desk** (Hassan, 5 Oct). **Done 5 Oct 21:19Z** (P.2): the eight retired, the others untouched | chat, 5 Oct; section 3.7; #317 |
@@ -1163,6 +1213,7 @@ Updated in every PR.
 | 1.1 (R37: 2 review findings) | **done 6 Oct**, both threads answered and resolved, CI green on `770c987` and on the merge with main (`25a9e32`). (a) One whole-day rule (`common.max_gap_h`, gaps of 3 h or less from midnight to midnight, and the reports must run past the day's end) everywhere a day's maximum is read. `station_daily` gains `max_gap_h`: a fresh fetch of the climate windows rebuilt the old file byte for byte, and the new file differs only in that column on all 123,452 rows. Table: 686,111 -> 684,990 rows. All 9,586 venue events are kept; 30 of them have no whole station day, so no station verdict. Unlisted station days 11,855 -> 11,820 (left out: 38 with a gap, 8 with no report, 1 not reported to its end). (b) `decision_local` is the decision instant (hh:01) and parses back on all 684,990 rows. Two builds are byte-identical (sha256 `d03b73e8...`); 8 mutations, each caught; both suites green | commit message; #314 threads; `table_meta.json` |
 | G1 / D2 | **passed 6 Oct**: Hassan, "merge 314"; merged `33d90d6` | chat, 6 Oct |
 | Wave 2 (2.A-2.F) | **2.A measured 6 Oct (section 3.8): the archive cycle alone cannot reach the checkpoint.** The project is on Supabase's Free plan (read-only above 500 MB, per its docs), at 574.7 MiB, growing about 5 MiB a day; the gap to 450 MiB is 124.7 MiB. Cuts that leave every reader whole: 30.0 MB. With readers changed (s2's correlation input, the plan-approval warning, the analytics page, the backtest's book reader and regime book age): 85.6 MB. Waits on D9 (recommended: the Pro plan). 2.B waits on A.3's checkpoint. 2.C-2.F todo | section 3.8; section 9 (D9) |
+| Wave F (F.1-F.7, the seasonal focus) | **F.1 done 6 Oct:** the Seasonal Focus 10 is lucknow, karachi, helsinki, wellington, tel_aviv, milan, chicago, moscow, miami, amsterdam. They were chosen on pre-cutoff data by `tools/focus/season_predictability.py` and recorded in `docs/FOCUS_PREREG.md` and `focus_sets`; the set is evaluated from 8 Oct. F.2-F.7 todo | `docs/FOCUS_PREREG.md`; `data/eval/focus/` |
 | Phase 2 (2.1-2.5) | **2.1, 6 Oct: up to a 0.10 spread, `p` is the book's midpoint; over 0.10 it is open.** On hours where `p` did not move and the spread is at most 0.10, the mid matches it at the 90th percentile exactly (54,415 pairs, 98.6% within 0.01). The bid, the ask and the last trade are each further off. **Spreads over 0.10 (271 pairs, 0.5%) miss the tolerance:** 84.9% within 0.01, 90th percentile 0.02. The venue's display rule (the last trade) does not explain them: on the 25 with an archived trade, it is within 0.01 on 5 against the mid's 15. Cause not measured. The live reader (2.2) reads the mid for every bucket, with the spread stored. 2.3 reports the wide buckets on their own, and G2 sees them. 2.2-2.5 todo | `docs/WXPREDICT.md` (Phase 2.1); `tools/wxpredict/what_is_p.py` |
 | G2 | | |
 | Phase 3 (3.0-3.7) | todo (exploratory first look in section 2.2 only) | |

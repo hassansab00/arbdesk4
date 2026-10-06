@@ -63,7 +63,19 @@ FEATURES = ["fc_rest_minus_now", "now_minus_R", "fc_err_now", "fc_err_3h", "slop
             "fc_day_minus_R", "cloud_rest", "sw_rest", "doy_sin", "doy_cos", "models_spread"]
 # From 18:00 fewer than MIN_REST_HOURS forecast hours are left in the day, so
 # no row can be built (the replay of 26 Sep found hour 18 unfittable).
+# HOURS stays the evaluation harnesses' hours (fec_same_day, the checkpoint
+# replay), which reproduce committed results byte for byte.
 HOURS = tuple(range(7, 18))
+# THE LATE HOURS rd1 SERVES (the P.5 report, question 3; Hassan, 6 Oct: the
+# strategies decide before and during EACH city's own peak). A checkpoint sits
+# where the city's peak puts it, and Madrid's post-peak falls at 18:xx local:
+# with no fit for hour 18, S10 never decided it (7 of 7 days, 29 Sep - 5 Oct).
+# At a late hour the rest of the day is every forecast hour left (_min_rest),
+# so a row can be built. Only tools/fit_remaining_day.py --extend and the
+# shadow step read this; hours 7-17 of the served fit are left exactly as
+# they were (tests/test_remaining_day_late_hours.py).
+LATE_HOURS = (18,)
+SERVED_HOURS = HOURS + LATE_HOURS
 SET_RISE_C = 0.25
 WEIGHT_A = 0.5
 LAM_POOL = 10.0
@@ -108,6 +120,14 @@ def nearest(series, h, tol):
     return best[1] if best else None
 
 
+def _min_rest(hour):
+    """Forecast hours that must remain after `hour` for a row: MIN_REST_HOURS,
+    except at a late hour rd1 serves (LATE_HOURS), where it is every hour left
+    in the day (hour 18: the five hours 19-23). Unchanged for every other hour,
+    so 19:00 and later still give no row."""
+    return 23 - int(hour) if int(hour) in LATE_HOURS else MIN_REST_HOURS
+
+
 def features(readings, forecast, hour, day, spread):
     """The feature row for one city-day at local hour `hour`, or None.
 
@@ -126,7 +146,7 @@ def features(readings, forecast, hour, day, spread):
     if now is None or h1 is None or h3 is None:
         return None
     rest = [forecast[h][0] for h in range(hour + 1, 24) if h in forecast]
-    if len(rest) < MIN_REST_HOURS:
+    if len(rest) < _min_rest(hour):
         return None
     errs = []
     for h in (hour - 2, hour - 1, hour):

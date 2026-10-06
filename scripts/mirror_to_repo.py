@@ -230,6 +230,7 @@ NOT_MIRRORED = {
     "book_ladder_cache": "a cache of book_snapshots, rebuilt by trigger",
     "archive_daily_city_presence": "rebuildable from data/archive; the prune's own coverage proof",
     "archive_daily_rollup": "rebuildable from data/archive",
+    "focus_sets": "seeded from the repository by its migration (data/eval/focus/, docs/FOCUS_PREREG.md); the repo is the source",
     "archive_city_rollup": "rebuildable from data/archive",
     "desk_members": "auth user ids; no research content",
     "ad4_view_restore": "copies of view DDL whose source is sql/",

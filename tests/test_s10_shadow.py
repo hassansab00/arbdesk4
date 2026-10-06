@@ -247,8 +247,10 @@ def _fake_db(monkeypatch, models, upsert_fails_for=None, held=None, read_fails=F
         if path == "s10_shadow_checkpoints":
             if read_fails:
                 raise RuntimeError("read refused")
-            version = dict(params)["model_version"].removeprefix("eq.")
-            return [r for r in stored.values() if r["model_version"] == version]
+            want = dict(params)["model_version"]
+            assert want.startswith("in.("), want     # each row read back under its own version
+            versions = {v.strip('"') for v in want[len("in.("):-1].split(",")}
+            return [r for r in stored.values() if r["model_version"] in versions]
         raise AssertionError(path)
 
     def upsert(table, rows, on_conflict, **k):
@@ -337,3 +339,82 @@ def test_the_committed_challenger_serves_every_hour():
     blob = json.load(open(s.CHALLENGER_PATH))
     assert blob["features"] == rd.FEATURES_C and blob["models_column"] == "tmax_c"
     assert rd.version_of_c({int(h): p for h, p in blob["hours"].items()}, blob["bias"], blob["pooled"]) == blob["version"]
+
+
+# ---------------------------------------------------------------------------
+# rd1's late hours (the P.5 report, question 3; Hassan, 6 Oct: the strategies
+# decide before and during each city's own peak). Madrid's post-peak fell at
+# 18:xx local, an hour rd1 had no fit for, so S10 never decided it.
+# ---------------------------------------------------------------------------
+INCUMBENT = "rd1:2026-09-25:f5372ebb05"
+
+
+def test_the_served_fit_and_its_version_are_untouched():
+    """Challenger C's pre-registered forward comparison selects rd1's rows by
+    this exact version (tools/fec_s10_forward.py INCUMBENT): the late hours
+    live beside current.json, never in it."""
+    import os
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
+    import fec_s10_forward as F
+    params, version, _ = s.load_params()
+    assert version == INCUMBENT == F.INCUMBENT
+    assert rd.version_of(params) == INCUMBENT, "the stored parameters are the fit the version names"
+    assert sorted(params) == list(rd.HOURS) == list(range(7, 18))
+
+
+def test_the_late_fit_is_rd1_beside_the_served_one():
+    params, version, _ = s.load_params()
+    late, late_version = s.load_late(version)
+    assert sorted(late) == list(rd.LATE_HOURS) == [18]
+    assert late_version.startswith(rd.VERSION_PREFIX + ":") and late_version != INCUMBENT
+    assert rd.version_of(late) == late_version
+    assert s.load_late("rd1:some-other-fit") == ({}, None), "a late fit belongs to the served fit it was fitted beside"
+
+
+def test_a_late_hour_never_replaces_a_served_one():
+    merged, versions = s.with_late({11: "served"}, "v1", {11: "late", 18: "late18"}, "v2")
+    assert merged == {11: "served", 18: "late18"} and versions == {11: "v1", 18: "v2"}
+    assert s.with_late({11: "served"}, "v1", {}, None) == ({11: "served"}, {11: "v1"})
+
+
+def test_the_rest_of_the_day_rule_is_unchanged_up_to_17():
+    assert [rd._min_rest(h) for h in rd.HOURS] == [rd.MIN_REST_HOURS] * len(rd.HOURS)
+    assert rd._min_rest(18) == 5, "at 18:00 the rest of the day is 19-23, every hour of it"
+    assert rd._min_rest(19) == rd._min_rest(20) == rd.MIN_REST_HOURS, "no hour past the served ones gains a row"
+    fc = {h: (20 - 0.12 * (h - 15) ** 2, 40.0, 300.0) for h in range(24)}
+    readings = [(h + m / 60, 12 + 0.4 * h) for h in range(19) for m in (0, 30)]
+    assert rd.features(readings, fc, 18, DAY, 1.0) is not None
+    del fc[21]
+    assert rd.features(readings, fc, 18, DAY, 1.0) is None, "a late hour needs every forecast hour left"
+
+
+def test_madrid_at_18_is_decided_under_the_late_version(params):
+    """The served hours keep their version and the late hour carries its own,
+    in one tick's rows."""
+    _, served, spread = s.load_params()
+    late, late_version = s.load_late(served)
+    merged, versions = s.with_late(dict(params), "rd1:test", late, late_version)
+    inputs = {("madrid", DAY.isoformat()): {
+        "hourly": {str(h): [24 - 0.12 * (h - 16) ** 2, 20.0, 300.0] for h in range(24)}, "models_spread_c": 1.0}}
+    obs = [(h + m / 60, 14 + 0.6 * min(h, 16)) for h in range(19) for m in (0, 30)]
+    due = [("madrid", DAY.isoformat(), "postpeak_1h", dt.datetime(2026, 9, 27, 18, 36)),
+           ("madrid", DAY.isoformat(), "noon", dt.datetime(2026, 9, 27, 11, 0))]
+    rows, skipped = s.shadow_rows(due, merged, versions, inputs, {"madrid": _obs(obs, "Europe/Madrid")},
+                                  {"madrid": "Europe/Madrid"}, {"madrid": "C"},
+                                  {("madrid", DAY.isoformat()): LADDER}, 0.02, 0.05, spread)
+    assert skipped == {}
+    by = {r["checkpoint"]: r for r in rows}
+    assert by["postpeak_1h"]["model_hour"] == 18 and by["postpeak_1h"]["model_version"] == late_version
+    assert by["noon"]["model_version"] == "rd1:test"
+    assert abs(sum(by["postpeak_1h"]["probs"].values()) - 1) < 1e-4
+
+
+def test_the_late_version_is_registered_as_shadow():
+    import json
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1]
+    late = json.loads((root / "data" / "models" / "remaining_day" / "late_hours.json").read_text())["version"]
+    sql = (root / "supabase" / "migrations" / "20261006160000_s10_late_hours_are_registered.sql").read_text()
+    assert f"select 's10', '{late}', 'same day', 'shadow'," in sql
+    assert INCUMBENT in sql and "Hours 7-17 keep rd1:2026-09-25:f5372ebb05" in sql

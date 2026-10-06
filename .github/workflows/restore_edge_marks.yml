@@ -32,8 +32,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # TURNED OFF by the WXPredict build, wave A.6 (Hassan, 6 Oct: "do what's
+  # necessary as long as nothing's broken"; docs/WXPREDICT_BUILD.md section 3.6).
+  # Nothing starts this workflow: not the clock, the web app or n8n.
+  # A one-off recovery: it ran its two runs on 29 Sep. The cause is fixed - since
+  # 20260929220000 the edges prune never takes an eve or pre-day mark before
+  # freeze_edge_marks has copied it.
+  # A dispatch now skips the job and bills nothing. To turn it back on, delete
+  # the `if: false` line below (restore_edge_marks: put back
+  # `if: github.ref_name == 'main'`).
   restore:
-    if: github.ref_name == 'main'
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

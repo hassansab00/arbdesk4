@@ -263,18 +263,51 @@ def against_market_gate(rows):
     return out
 
 
+def _top_of_book(r):
+    """The row's top-of-book price: quoted_price (the best YES ask on YES, 1 -
+    the best YES bid on NO; quoted_price_for_side), else market_price for a row
+    that has none. market_price is the depth-weighted fill for a $100 order,
+    which on a shallow book is several levels deep (Codex on #324)."""
+    v = r.get("quoted_price")
+    return v if v is not None else r.get("market_price")
+
+
+def _yes_standing(rows):
+    """{band_id: the market's YES price} in row order, from the top of the
+    book: the YES row's best ask, or, when YES has none (nobody selling it),
+    1 - the NO row's quoted price, which is the best YES bid. A leader bought
+    up to 99c has no YES ask; its NO is quoted at about 1c. The same reading
+    as decision_engine.market_standing (the P.5 report, question 2; Hassan,
+    6 Oct)."""
+    yes = {r["band_id"]: _top_of_book(r) for r in rows
+           if r["side"] == "YES" and _top_of_book(r) is not None}
+    no = {r["band_id"]: _top_of_book(r) for r in rows
+          if r["side"] == "NO" and _top_of_book(r) is not None}
+    out = {}
+    for r in rows:
+        b = r["band_id"]
+        if b in out:
+            continue
+        if b in yes:
+            out[b] = float(yes[b])
+        elif b in no:
+            out[b] = 1.0 - float(no[b])
+    return out
+
+
 def against_market_rows(rows):
     """Indexes (into `rows`) of trades that back the engine against the market's
     favourite, for ONE market's edge rows. Empty when the two agree, or when
     either favourite cannot be named. model_prob is the side's own probability,
-    so the YES rows carry the engine's view and the YES prices the market's."""
+    so the YES rows carry the engine's view. The market's favourite is the
+    bucket with the highest YES price, read as _yes_standing reads it."""
     yes = [(i, r) for i, r in enumerate(rows) if r["side"] == "YES"]
     priced = [(i, r) for i, r in yes if r.get("model_prob") is not None]
-    quoted = [(i, r) for i, r in yes if r.get("market_price") is not None]
-    if not priced or not quoted:
+    standing = _yes_standing(rows)
+    if not priced or not standing:
         return set()
     engine_fav = max(priced, key=lambda x: x[1]["model_prob"])[1]["band_id"]
-    market_fav = max(quoted, key=lambda x: x[1]["market_price"])[1]["band_id"]
+    market_fav = max(standing, key=lambda b: standing[b])
     if engine_fav == market_fav:
         return set()
     return {i for i, r in enumerate(rows)
