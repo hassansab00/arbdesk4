@@ -41,7 +41,7 @@ for (bid, at), (k, r) in snaps.items():
     want[k].update((h0, h0 + 3600))
     rows.append((k, t, h0, r))
 print('snapshots matched to the record:', len(rows), 'buckets:', len(want), file=sys.stderr)
-pts = {}
+pts = {}; pts_at = {}
 for r in csv.DictReader(gzip.open(f'{ROOT}/data/training/market_history/prices.csv.gz', 'rt')):
     k = (r['event_id'], int(r['band_index']))
     hs = want.get(k)
@@ -50,6 +50,7 @@ for r in csv.DictReader(gzip.open(f'{ROOT}/data/training/market_history/prices.c
     t = int(r['t']); h = t // 3600 * 3600
     if h in hs and t - h < 60:
         pts[(k, h)] = float(r['p'])
+        pts_at[(k, h)] = t
 def f(x):
     try: return float(x)
     except: return None
@@ -87,6 +88,50 @@ for k, t, h0, r in rows:
     by[wide].append(abs(p0 - (bid + ask) / 2))
 for wide, xs in sorted(by.items()):
     print('stable, spread', '> 0.10' if wide else '<= 0.10', summ(xs))
+
+# The display rule's fallback, tested: on the wide stable pairs, the last archived
+# trade at or before p's own stamp (data/archive/trades; a NO-token print counts as
+# 1 - price; prints without a token id cannot be placed and are skipped).
+import bisect
+wide = []
+for k, t, h0, r in rows:
+    p0, p1 = pts.get((k, h0)), pts.get((k, h0 + 3600))
+    bid, ask = f(r['best_bid']), f(r['best_ask'])
+    if p0 is None or bid is None or ask is None or p1 != p0 or ask - bid <= 0.10 + 1e-9:
+        continue
+    wide.append((r['band_id'], p0, pts_at[(k, h0)], (bid + ask) / 2))
+bands = {b for b, *_ in wide}
+side = {}
+for fn in sorted(glob.glob(f'{ROOT}/data/mirror/bands/*.csv.gz')):
+    for r in csv.DictReader(gzip.open(fn, 'rt')):
+        if r['band_id'] in bands:
+            if r['token_yes']: side[r['token_yes']] = (r['band_id'], False)
+            if r['token_no']: side[r['token_no']] = (r['band_id'], True)
+prints = collections.defaultdict(set); unplaced = 0
+for fn in sorted(glob.glob(f'{ROOT}/data/archive/trades/*.csv.gz')):
+    for r in csv.DictReader(gzip.open(fn, 'rt')):
+        if r['band_id'] not in bands: continue
+        s = side.get(r['token_id'])
+        if s is None or s[0] != r['band_id']:
+            unplaced += 1; continue
+        px = float(r['price'])
+        prints[r['band_id']].add((ts(r['traded_at']), 1 - px if s[1] else px,
+                                  r['token_id'], r['size'], r['side'], r['proxy_wallet']))
+prints = {b: sorted(v) for b, v in prints.items()}
+mid_w, last_w, both = [], [], collections.Counter()
+for b, p0, at, mid in wide:
+    xs = prints.get(b, [])
+    i = bisect.bisect_right([x[0] for x in xs], at) - 1
+    if i < 0: continue
+    lp = xs[i][1]
+    mid_w.append(abs(p0 - mid)); last_w.append(abs(p0 - lp))
+    both[(abs(p0 - mid) <= 0.01, abs(p0 - lp) <= 0.01)] += 1
+print('wide stable pairs:', len(wide), '; with an archived trade before p:', len(mid_w),
+      '; trade prints that could not be placed:', unplaced)
+if mid_w:
+    print('wide, mid ', summ(mid_w))
+    print('wide, last', summ(last_w))
+    print('wide, (mid within 0.01, last within 0.01):', dict(both))
 
 import json
 # The tick's books (bid, ask and last at decided_at, ~hh:36), the same control.

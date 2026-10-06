@@ -192,11 +192,20 @@ The training table reads the venue's hourly `prices-history` point `p` as "the m
 | tick mid, stable hours, spread ≤ 0.10 | 669 | 0.0 | 0.005 | 90.4% | 95.7% |
 | tick last trade, stable hours, spread ≤ 0.10 | 669 | 0.005 | 0.99 | 50.2% | 61.6% |
 
-**Answer: `p` is the book's midpoint.**
-- On stable hours it matches the mid at the 90th percentile exactly. The bid, the ask and the last trade are all further off.
+**Answer: for spreads up to 0.10, `p` is the book's midpoint.**
+- On stable hours with a spread up to 0.10 (54,415 pairs), it matches the mid at the 90th percentile exactly (98.6% within 0.01). The bid, the ask and the last trade are all further off.
 - The all-hours figure (0.015 at the 90th percentile) is the price moving in the 25 min between `p`'s point and the snapshot, not a different definition.
-- The live reader (2.2) therefore reads each bucket's **midpoint at the decision instant**.
-- **One open case.** When the spread is over 0.10 (271 of the 54,686 stable book pairs, and 13 tick pairs), the mid matches less well: 84.9% within 0.01, 90th percentile 0.02. The last trade does not explain it either (on the 13 tick pairs the mid is closer than the last trade). The cause is not measured. These books are rare and, at a spread over 0.10, not ones a strategy would trade into.
+- The live reader (2.2) reads each bucket's **midpoint at the decision instant**, and stores the spread with it, so the case below can be found live.
+
+**Still open: spreads over 0.10.** These are 271 of the 54,686 stable book pairs (0.5%) and 13 tick pairs.
+- Against the mid: 84.9% within 0.01, 90th percentile 0.02. That misses this step's tolerance (0.01 at the 90th percentile).
+- **The venue's display rule (the last trade when the spread is over 0.10) does not explain it.** Of the 271 pairs, 25 have an archived trade print at or before `p`'s own stamp (`data/archive/trades` is partial: the other 246 have none; 94 August prints carry no token id and cannot be placed). On those 25:
+  - the last trade is within 0.01 of `p` on 5 (20%), with a median gap of 0.079 and a 90th percentile of 0.15;
+  - the mid is within 0.01 on 15 (60%), with a median of 0.005 and a 90th percentile of 0.065;
+  - 5 pairs match neither.
+- On the 13 tick pairs, the mid is also closer than the last trade.
+- **The cause is not measured, and no definition tested meets the tolerance on these books.** The mid is the closest one measured, so 2.2 uses it for every bucket.
+- 2.3's parity test reports the buckets with a spread over 0.10 on their own, with each difference listed. A definition for them waits on that test. G2 sees the result.
 
 ## Gaps (Phase 1)
 
