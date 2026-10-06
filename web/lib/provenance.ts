@@ -505,7 +505,7 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "ledger": [
     {
-      "cadence": "never - turned off (wave A.6)",
+      "cadence": "only when you run it",
       "file": "verify_resolution_source.yml",
       "how": "scripts/settlement.py",
       "kind": "action",

@@ -786,12 +786,14 @@ def test_the_stopped_steps_are_exactly_these():
 
 # WXPredict build, wave A.6 (Hassan, 6 Oct: "do what's necessary as long as
 # nothing's broken"): the manual workflows that neither the clock, the web app
-# nor n8n starts, and whose job something else now does. retire_desks is the
-# fourth that nothing starts; it stays on, because it is the only way to retire
-# a desk (the service key lives only in this repo's secrets).
+# nor n8n starts, and whose job something else now does. Two of the four that
+# nothing starts stay on, because nothing else can do their job:
+# retire_desks is the only way to retire a desk (the service key lives only in
+# this repo's secrets), and verify_resolution_source is the only test of the
+# weather.gov parser that settings.settlement_verified depends on
+# (docs/settlement_verification.md; Codex on #322).
 TURNED_OFF_WORKFLOWS = {
     "live_weather.yml",
-    "verify_resolution_source.yml",
     "restore_edge_marks.yml",
 }
 
@@ -820,6 +822,7 @@ def test_the_turned_off_workflows_are_exactly_these():
     assert found == TURNED_OFF_WORKFLOWS, (
         f"turned off: {sorted(found)}; expected exactly {sorted(TURNED_OFF_WORKFLOWS)}")
     assert "retire_desks.yml" not in found, "the only way to retire a desk stays on"
+    assert "verify_resolution_source.yml" not in found, "the only test of the settlement parser stays on"
 
 
 def test_n8n_only_dispatches_workflows_that_exist():

@@ -20,18 +20,7 @@ on:
         default: ''
 
 jobs:
-  # TURNED OFF by the WXPredict build, wave A.6 (Hassan, 6 Oct: "do what's
-  # necessary as long as nothing's broken"; docs/WXPREDICT_BUILD.md section 3.6).
-  # Nothing starts this workflow: not the clock, the web app or n8n.
-  # It never ran. pipeline_daily's nightly "Refresh observation trust" step
-  # (refresh_observation_trust over v_settlement_agreement) compares our station
-  # maximum with the venue's verdict on every settled ladder, every night.
-  # settings.settlement_verified is still Hassan's decision (D7, R36).
-  # A dispatch now skips the job and bills nothing. To turn it back on, delete
-  # the `if: false` line below (restore_edge_marks: put back
-  # `if: github.ref_name == 'main'`).
   verify:
-    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
