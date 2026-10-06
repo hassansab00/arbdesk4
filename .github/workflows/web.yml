@@ -28,9 +28,16 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
+      # THE NODE VERSION VERCEL RUNS: 24.x (the project's nodeVersion, read
+      # through the Vercel tool on 6 Oct). This said '20'. On Node 20 the
+      # installed supabase-js throws inside createClient ("Node.js detected but
+      # native WebSocket not found"), which no test reached until the paper
+      # desk route test (WXPredict build P.3) built a client with a key set;
+      # production, on 24, was never affected. A job named for Vercel's
+      # conditions runs Vercel's Node.
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
           cache-dependency-path: web/package-lock.json
 
