@@ -1,0 +1,56 @@
+{
+  "exported_at": "2026-10-05T21:18:43+00:00",
+  "files": {
+    "paper_accounts": {
+      "file": "paper_accounts.jsonl.gz",
+      "gzip_bytes": 1714,
+      "order": "account_id",
+      "rows": 20,
+      "sha256": "9de618435993789463d7840bf21c801b1281687017c8c1cb7ce440020e5b59ec"
+    },
+    "paper_activity": {
+      "file": "paper_activity.jsonl.gz",
+      "gzip_bytes": 229802,
+      "order": "event_id",
+      "rows": 676,
+      "sha256": "c81e7ef813ea1725941eba39e035dbf04568a84fe8985d1ce420fdb245e14dda"
+    },
+    "paper_orders": {
+      "file": "paper_orders.jsonl.gz",
+      "gzip_bytes": 582013,
+      "order": "order_id",
+      "rows": 226,
+      "sha256": "04096908f90fa1f2fdce6ceb2857a4bd50b7b444ea14a1428afd2ad4cf0cbe65"
+    },
+    "paper_position_settlements": {
+      "file": "paper_position_settlements.jsonl.gz",
+      "gzip_bytes": 14290,
+      "order": "account_id,band_id,side",
+      "rows": 177,
+      "sha256": "a6aa2f2ee8b6414757b9296bb0e4ddacbcbf87ad1ae8d448cc420653eb26fc2a"
+    },
+    "paper_positions": {
+      "file": "paper_positions.jsonl.gz",
+      "gzip_bytes": 14127,
+      "order": "account_id,band_id,side",
+      "rows": 178,
+      "sha256": "8b5a618d7c0e9b9f4f12449b60c504fd0e8cb4aebf0b63a5563c83335fef5e4c"
+    },
+    "paper_trade_plans": {
+      "file": "paper_trade_plans.jsonl.gz",
+      "gzip_bytes": 2589842,
+      "order": "plan_id",
+      "rows": 1291,
+      "sha256": "507cfa1fa3ce00bfe863d47ad2582fe2ac677995ff9b350fad2d9d2d933fd2bc"
+    },
+    "paper_trades": {
+      "file": "paper_trades.jsonl.gz",
+      "gzip_bytes": 31487,
+      "order": "trade_id",
+      "rows": 198,
+      "sha256": "8ab9a45af3e0fbb3e8f1fd9882373e7e10b42866f479fb6a3eec8bb2b59817a6"
+    }
+  },
+  "format": "gzip JSON Lines, one row per line, keys sorted",
+  "purpose": "plan v2 P0.3: every paper desk's record before retirement"
+}

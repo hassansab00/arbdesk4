@@ -195,6 +195,11 @@ MEASURED_MINUTES = {
     # the first (ingest_log 04:46:36Z and 04:46:54Z).
     # 29.0 + (667 - 276) / 60 + 1 = 36.5 on the means; 38 leaves room for a
     # slower night (1 Oct's daily run billed 33). Re-measure after a week.
+    # WXPredict A.3 switches off five steps whose output reaches no price
+    # (STOPPED_STEPS below): 366 s a night on the medians of 29 Sep - 5 Oct,
+    # 432 s on 5 Oct (jobs API), so about 6-7 billed minutes a night. NOT
+    # APPLIED HERE until three nights are measured with them off (A.3's
+    # checkpoint); 38 stays the ceiling meanwhile.
     "pipeline_daily.yml": 38.0,
     # Measured per night, every chained link included (the clock dispatches
     # one run; an incomplete ingest chains the next). 27 Sep, before the
@@ -730,6 +735,8 @@ def test_the_pipelines_do_not_skip_a_step_after_a_failure():
                 if "uses" in step or step.get("run", "").startswith("pip install"):
                     continue          # setup: a failure here IS fatal
                 cond = str(step.get("if", ""))
+                if (name, step.get("name")) in STOPPED_STEPS:
+                    continue          # held by test_the_stopped_steps_are_exactly_these
                 assert "cancelled()" in cond, (
                     f"{name} / {step.get('name', step.get('run'))!r} has no "
                     f"`if: !cancelled()` - one failure upstream silently skips it")
@@ -738,6 +745,43 @@ def test_the_pipelines_do_not_skip_a_step_after_a_failure():
                     f"hang burns the whole job's budget")
                 checked += 1
     assert checked >= 10, f"expected the pipeline steps to be checked, saw {checked}"
+
+
+# STEPS SWITCHED OFF ON PURPOSE (WXPredict build, wave A.3; docs/WXPREDICT_BUILD.md
+# section 3.6). Each refit something no price reads: measured 5 Oct, 366 s a
+# night on the medians of 7 nights. Named here one by one, so a step cannot
+# drift into `if: false` unnoticed, and a restart is a deliberate edit here too.
+STOPPED_STEPS = {
+    ("pipeline_daily.yml", "Promote or shadow the fitted models"),
+    ("pipeline_daily.yml", "Re-fit calibration map"),
+    ("pipeline_daily.yml", "Learn strategy parameters"),
+    ("pipeline_daily.yml", "Fit the intraday trajectory"),
+    ("pipeline_daily.yml", "The hit tournament"),
+}
+
+
+def test_the_stopped_steps_are_exactly_these():
+    """A stopped step stays in the file, reversible: `if: false`, its timeout,
+    and a comment right above it naming the build document and how to restart."""
+    import glob
+
+    found = set()
+    for path in sorted(glob.glob(os.path.join(WF_DIR, "pipeline_*.yml"))):
+        name = os.path.basename(path)
+        text = open(path).read()
+        doc = yaml.safe_load(text)
+        for job in (doc.get("jobs") or {}).values():
+            for step in job["steps"]:
+                cond = step.get("if")
+                if cond is False or str(cond).replace(" ", "") == "${{false}}":
+                    found.add((name, step.get("name")))
+                    assert step.get("timeout-minutes"), step.get("name")
+                    head = text[:text.index(f"- name: {step['name']}\n")]
+                    comment = head[head.rstrip().rfind("\n\n"):]
+                    assert "STOPPED by the WXPredict build, wave A.3" in comment, step["name"]
+                    assert "docs/WXPREDICT_BUILD.md" in comment and "To restart it" in comment, step["name"]
+    assert found == STOPPED_STEPS, (
+        f"switched off: {sorted(found)}; expected exactly {sorted(STOPPED_STEPS)}")
 
 
 def test_n8n_only_dispatches_workflows_that_exist():

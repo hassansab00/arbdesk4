@@ -131,3 +131,28 @@ def test_the_indicator_is_actually_on_the_predictive_page():
     """A component nobody renders is the same as no component."""
     assert "CalibrationStatus" in PAGE
     assert "<CalibrationStatus />" in PAGE
+
+
+def test_the_stop_migration_carries_the_shipped_view_verbatim():
+    """20261005190000 (WXPredict build, wave A.3) rebuilds the view live. A
+    copy that drifted from this file would put a view in production that the
+    repository does not describe."""
+    mig = (ROOT / "supabase" / "migrations"
+           / "20261005190000_five_fits_that_reach_no_price_stop.sql").read_text(encoding="utf-8")
+    end = "grant select on public.v_calibration_status to anon, authenticated, service_role;"
+    stmt = VIEW[VIEW.index("create or replace view public.v_calibration_status"):VIEW.index(end) + len(end)]
+    assert stmt in mig
+
+
+def test_stopped_is_never_reported_over_a_map_in_force():
+    """Stopping the refit does not stop the last map it wrote: the engine reads
+    settings.calibration_map, not the job (Codex on #316). So 'stopped' needs
+    both: the job no longer expected, and no stored map claiming `applies`.
+    tests/database/stopped-fits.cjs runs it."""
+    sql = _sql_without_comments()
+    fitter = sql[sql.index("fitter as ("):sql.index("\nselect\n")]
+    assert "clock_expected_jobs" in fitter
+    assert "s.key = 'calibration_map'" in fitter and "'applies'" in fitter
+    case = _state_case()
+    assert case.index("'stopped'") < case.index("'failed'")
+    assert "when f.stopped" in case, "'stopped' is decided by the fitter CTE alone"

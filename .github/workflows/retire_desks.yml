@@ -1,7 +1,9 @@
 name: Retire Paper Desks (one-off)
 
 # Plan v2 step P0.3: retire every existing paper desk, keeping all of its
-# history. Manual only - there is no schedule, and there never should be.
+# history. WXPredict build P.2 adds a targeted mode (`strategies`): only the
+# listed strategies' desks. Manual only - there is no schedule, and there
+# never should be.
 #
 # EXPORT, VERIFY, PUSH, THEN RETIRE - in that order, and never fused.
 # Retirement deletes nothing (every row stays in Postgres), but this is the
@@ -16,8 +18,19 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type RETIRE to export every desk and then retire them all'
+        description: 'Type RETIRE to export every desk and then retire them (all, or only the listed strategies)'
         required: true
+        default: ''
+      # WXPredict build P.2 (D5, Hassan 5 Oct): retire only these strategies'
+      # desks, each already switched off; every other desk and every strategy
+      # is left as it is. Empty: today's whole-desk retirement (P0.3).
+      strategies:
+        description: 'Optional: comma-separated strategy ids whose desks to retire (each must be switched off)'
+        required: false
+        default: ''
+      reason:
+        description: 'Optional: the reason recorded on each retired desk'
+        required: false
         default: ''
 
 permissions:
@@ -67,8 +80,18 @@ jobs:
             exit 1
           fi
 
-      - name: Retire every desk, then switch off s1-s9 with the reason on record
-        run: python tools/retire_desks.py retire
+      # With `strategies`: only those desks (tools/retire_desks.py refuses a
+      # listed strategy that is switched on, and touches no strategy). Without:
+      # every desk, then s1-s9 switched off. The inputs reach the tool through
+      # the environment, never through the shell's text.
+      - name: Retire the desks, with the reason on record
+        run: |
+          set -- retire
+          if [ -n "$STRATEGIES" ]; then set -- "$@" --strategies "$STRATEGIES"; fi
+          if [ -n "$REASON" ]; then set -- "$@" --reason "$REASON"; fi
+          python tools/retire_desks.py "$@"
         env:
+          STRATEGIES: ${{ github.event.inputs.strategies }}
+          REASON: ${{ github.event.inputs.reason }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

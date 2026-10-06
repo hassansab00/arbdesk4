@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:routes": "tsc -p tests/tsconfig.routes.json && node tests/operator-auth.test.cjs && node tests/city-cards.test.cjs && node tests/predictive.test.cjs && node tests/lineup.test.cjs"
+    "test:routes": "tsc -p tests/tsconfig.routes.json && node tests/operator-auth.test.cjs && node tests/city-cards.test.cjs && node tests/predictive.test.cjs && node tests/lineup.test.cjs && node tests/paper-desks.test.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

@@ -117,8 +117,16 @@ jobs:
       #     city and lead pass it the model stays in shadow and cannot move a
       #     number. Seconds of work on a few thousand rows, so it rides in the
       #     daily job rather than paying for a schedule of its own.
+      # STOPPED by the WXPredict build, wave A.3 (docs/WXPREDICT_BUILD.md,
+      # section 3.6, A.1 result): its output reaches no price.
+      #   Why: nothing can be promoted while TRAINS_ONLY_ON_ADVANCE_INFORMATION is False
+      #   (weather_model.py), and the price reads only promoted rows (v_model_promoted:
+      #   0 rows; 392 rows, 197 stale and 195 shadow, 5 Oct).
+      #   Its last output stays in the database and the mirror. To restart it,
+      #   set `if:` back to `${{ !cancelled() }}` and put its row back in
+      #   clock_expected_jobs (20261005190000 removed it).
       - name: Promote or shadow the fitted models
-        if: ${{ !cancelled() }}
+        if: ${{ false }}
         timeout-minutes: 10
         run: python scripts/model_promotion.py
 
@@ -147,8 +155,16 @@ jobs:
 
       # 6. Re-fit the calibration map on everything banked. Refuses to write a
       #    map below its minimum sample count, so it is safe from day one.
+      # STOPPED by the WXPredict build, wave A.3 (docs/WXPREDICT_BUILD.md,
+      # section 3.6, A.1 result): its output reaches no price.
+      #   Why: the price applies the map only when `applies` is true
+      #   (probability_engine._calibration_map); live, applies false (T 1.141).
+      #   WXPredict calibrates itself (build phase 3.5).
+      #   Its last output stays in the database and the mirror. To restart it,
+      #   set `if:` back to `${{ !cancelled() }}` and put its row back in
+      #   clock_expected_jobs (20261005190000 removed it).
       - name: Re-fit calibration map
-        if: ${{ !cancelled() }}
+        if: ${{ false }}
         timeout-minutes: 15
         run: python scripts/calibration.py
 
@@ -157,8 +173,15 @@ jobs:
       #     version in strategy_params. Recorded every night, used only once
       #     settings.strategy_learning.enabled is on (after the replay, P7.3).
       #     Seconds of arithmetic on a few thousand buckets.
+      # STOPPED by the WXPredict build, wave A.3 (docs/WXPREDICT_BUILD.md,
+      # section 3.6, A.1 result): its output reaches no price.
+      #   Why: every loader returns its prior while settings.strategy_learning
+      #   is off (learned.enabled); live, off. s2 and s10 do not read the table.
+      #   Its last output stays in the database and the mirror. To restart it,
+      #   set `if:` back to `${{ !cancelled() }}` and put its row back in
+      #   clock_expected_jobs (20261005190000 removed it).
       - name: Learn strategy parameters
-        if: ${{ !cancelled() }}
+        if: ${{ false }}
         timeout-minutes: 5
         run: python scripts/strategy_learn.py
 
@@ -180,8 +203,16 @@ jobs:
       #     forecast? After the databank freeze and after 6b, because it is
       #     scored against the distribution the desk actually published.
       #     Seconds of arithmetic over a few thousand city-day-hours.
+      # STOPPED by the WXPredict build, wave A.3 (docs/WXPREDICT_BUILD.md,
+      # section 3.6, A.1 result): its output reaches no price.
+      #   Why: the price reads only applied cells (v_city_trajectory_now,
+      #   trajectory_applied); live, 0 of 1,176. WXPredict learns the day's climb
+      #   inside one model (build R24).
+      #   Its last output stays in the database and the mirror. To restart it,
+      #   set `if:` back to `${{ !cancelled() }}` and put its row back in
+      #   clock_expected_jobs (20261005190000 removed it).
       - name: Fit the intraday trajectory
-        if: ${{ !cancelled() }}
+        if: ${{ false }}
         timeout-minutes: 10
         run: python scripts/trajectory.py
 
@@ -269,8 +300,16 @@ jobs:
       #     and the market at 18:00 local the evening before. After the databank
       #     freeze (its evidence) and 7b (the per-city measurement layer).
       #     Shadow: it writes derived_hit_*, the engine does not read them yet.
+      # STOPPED by the WXPredict build, wave A.3 (docs/WXPREDICT_BUILD.md,
+      # section 3.6, A.1 result): its output reaches no price.
+      #   Why: shadow only: derived_hit_* reach no price or page (the
+      #   freshness list and the mirror read them). WXPredict's scoreboard is the
+      #   per-city loop (build R26).
+      #   Its last output stays in the database and the mirror. To restart it,
+      #   set `if:` back to `${{ !cancelled() }}` and put its row back in
+      #   clock_expected_jobs (20261005190000 removed it).
       - name: The hit tournament
-        if: ${{ !cancelled() }}
+        if: ${{ false }}
         timeout-minutes: 10
         run: python scripts/hit_tournament.py
 

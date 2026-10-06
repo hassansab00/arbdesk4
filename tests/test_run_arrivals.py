@@ -27,6 +27,10 @@ ADDED = [(ROOT / "supabase" / "migrations" / name).read_text() for name in (
     "20261003170000_the_ladder_queue_is_expected_to_log.sql",   # P4.7: 3 days measured
     "20261004170000_the_minutes_fit_the_pro_plan.sql",          # P6.1: daily runs the forecast ingest
 )]
+# expectations removed because their step was switched off on purpose
+REMOVED = [(ROOT / "supabase" / "migrations" / name).read_text() for name in (
+    "20261005190000_five_fits_that_reach_no_price_stop.sql",    # WXPredict A.3: five fits stop
+)]
 AD4_91 = (ROOT / "sql" / "ad4_91_database_jobs.sql").read_text()
 WORKFLOWS = ROOT / ".github" / "workflows"
 
@@ -50,12 +54,38 @@ def _expected():
     return _rows(MIGRATION)
 
 
+def _removed(text):
+    """The (file, job) pairs a migration deletes from clock_expected_jobs."""
+    block = text[text.index("delete from public.clock_expected_jobs"):]
+    block = block[:block.index(";")]
+    file = re.search(r"file = '([a-z_]+\.yml)'", block).group(1)
+    jobs = re.findall(r"'([A-Za-z0-9_.]+)'", block[block.index("job in"):])
+    return {(file, j) for j in jobs}
+
+
 def _all_expected():
-    return _expected() + [r for text in ADDED for r in _rows(text)]
+    gone = set().union(*(_removed(text) for text in REMOVED))
+    rows = _expected() + [r for text in ADDED for r in _rows(text)]
+    return [r for r in rows if (r[0], r[1]) not in gone]
 
 
 def _scripts(workflow_text):
     return sorted(set(re.findall(r"python3? (?:scripts/)?([a-z_/]+\.py)", workflow_text)))
+
+
+def _running_scripts(workflow_text):
+    """The scripts of the steps that run: a step switched off (`if: false`)
+    writes nothing, so a job it writes cannot be expected of the workflow."""
+    import yaml
+    doc = yaml.safe_load(workflow_text)
+    runs = []
+    for job in (doc.get("jobs") or {}).values():
+        for step in job.get("steps", []):
+            cond = step.get("if")
+            if cond is False or str(cond).replace(" ", "") == "${{false}}":
+                continue
+            runs.append(str(step.get("run", "")))
+    return _scripts("\n".join(runs))
 
 
 def test_the_seed_is_what_was_measured():
@@ -75,7 +105,7 @@ def test_the_seed_is_what_was_measured():
 def test_every_expected_job_is_written_by_a_script_its_workflow_runs():
     for file, job, _ in _all_expected():
         wf = (WORKFLOWS / file).read_text()
-        scripts = _scripts(wf)
+        scripts = _running_scripts(wf)
         assert scripts, file
         if (file, job) in INDIRECT:
             script, marker = INDIRECT[(file, job)]

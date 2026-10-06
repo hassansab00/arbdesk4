@@ -143,6 +143,9 @@ def test_a_missing_archive_is_not_an_error():
 # was running in the first place.
 
 CONTROL = ROOT / "web" / "components" / "PaperDeskControl.tsx"
+# deskState moved to the shared module in WXPredict build P.4, so it can be
+# run without React (web/tests/paper-desks.test.cjs runs every case).
+DESKS = ROOT / "web" / "lib" / "paperDesks.ts"
 RUN_ROUTE = ROOT / "web" / "app" / "api" / "paper-run" / "route.ts"
 
 
@@ -155,17 +158,20 @@ def test_the_control_panel_is_the_first_thing_under_the_desk_picker():
 
 
 def test_every_way_a_desk_can_be_idle_has_a_state():
-    """Four states, and the fourth is the point."""
-    src = CONTROL.read_text(encoding="utf-8")
-    for state in ("ACTIVE", "PAUSED", "MANUAL", "STALLED"):
+    """Four states, and the fourth is the point; P.4 adds RETIRED (a retired or
+    switched-off strategy is never shown as running)."""
+    src = DESKS.read_text(encoding="utf-8")
+    for state in ("ACTIVE", "PAUSED", "MANUAL", "STALLED", "RETIRED"):
         assert f'key: "{state}"' in src, f"{state} is not a state the page can show"
+    assert 'from "@/lib/paperDesks"' in CONTROL.read_text(encoding="utf-8"), (
+        "the panel must show the shared state, not a copy of it")
 
 
 def test_a_desk_that_is_on_but_cannot_trade_is_not_shown_as_running():
     """A desk with no strategies, no cities or no spare cash looks exactly like
     a working desk that has not found a trade yet, and will sit there for ever.
     That is the state the old page could not express."""
-    src = CONTROL.read_text(encoding="utf-8")
+    src = DESKS.read_text(encoding="utf-8")
     assert "No strategies chosen" in src
     assert "No cities chosen" in src
     assert "No available cash" in src
@@ -282,12 +288,18 @@ def test_the_page_says_a_redeploy_is_needed():
 # that a live one existed two entries down a dropdown.
 
 def test_the_page_opens_on_the_desk_that_is_trading():
+    """WXPredict build P.3 (R41): the most recent trade, then the trade count,
+    then the name. On 5 Oct "first live desk" opened on s8, with 0 trades,
+    because all 15 shadow desks were live. web/tests/paper-desks.test.cjs runs
+    pickDesk on that roster."""
     src = PAGE.read_text(encoding="utf-8")
     assert "accounts.data[0].account_id" not in src, (
         "creation order picked a paused manual desk over one holding 9 positions")
-    assert "Number(live(b))-Number(live(a))" in src, (
-        "a desk that can act must outrank one that cannot")
-    assert "(a.mode==='automatic'||a.mode==='assisted')&&!a.entries_paused" in src
+    assert "pickDesk(accounts.data)" in src
+    lib = DESKS.read_text(encoding="utf-8")
+    assert "ms(b.last_trade_at) - ms(a.last_trade_at)" in lib
+    assert "(b.trade_count ?? 0) - (a.trade_count ?? 0)" in lib
+    assert "a.name.localeCompare(b.name)" in lib
 
 
 def test_the_choice_uses_only_columns_paper_accounts_has():
@@ -295,8 +307,10 @@ def test_the_choice_uses_only_columns_paper_accounts_has():
     read from a view is optional and must not decide the outcome on its own."""
     src = PAGE.read_text(encoding="utf-8")
     assert "open_positions?:number" in src and "trade_count?:number" in src, (
-        "keep them optional so a richer source can be reinstated later")
-    assert "??0" in src, "every optional count must have a fallback"
+        "keep them optional: the edge-gateway path sends plain paper_accounts rows")
+    lib = DESKS.read_text(encoding="utf-8")
+    assert "Number(live(b)) - Number(live(a))" in lib, (
+        "without counts, a desk that can act still outranks one that cannot")
 
 
 def test_the_dropdown_says_which_desk_is_which():
