@@ -16,12 +16,17 @@ import { nextCycle } from "@/components/PaperPipelineStatus";
  * and a guess about which of them actually stopped it. Meanwhile nothing on
  * the page said whether it was running at all.
  *
- * FOUR STATES, and the fourth is the one worth having.
+ * FIVE STATES, and STALLED is the one worth having.
  *
  *   ACTIVE    automation on, correctly configured, will trade
  *   PAUSED    deliberately stopped; nothing new will open
  *   MANUAL    no automation at all - it only acts on tickets you write
  *   STALLED   switched ON and cannot possibly trade
+ *   RETIRED   its strategy is retired or switched off (WXPredict build P.4):
+ *             never shown as running, and offers neither Stop nor Start
+ *
+ * ACTIVE also says when a running strategy is buying nothing: how many
+ * decisions it made in the last 24 h and the commonest reason (P.4).
  *
  * STALLED is the state the old page could not express, and it is the one that
  * wastes days. A desk with no strategies chosen, or no cities, or no spare
@@ -30,57 +35,16 @@ import { nextCycle } from "@/components/PaperPipelineStatus";
  * three it is.
  */
 
-type Policy = {
-  strategies?: string[]; cities?: string[];
-  max_plan_usd?: number; max_exposure_usd?: number; min_edge?: number;
-};
-export type Desk = {
-  account_id: string; name: string; mode: string; entries_paused: boolean;
-  cash: number | string; reserved_cash: number | string; policy: Policy;
-};
+// The state itself lives in lib/paperDesks.ts (WXPredict build P.4), where it
+// is tested without React; it is re-exported so callers are unchanged.
+import { deskState, type Desk, type DeskState } from "@/lib/paperDesks";
+export { deskState };
+export type { Desk, DeskState };
 
 const num = (v: unknown) => {
   const n = typeof v === "number" ? v : parseFloat(String(v ?? ""));
   return Number.isFinite(n) ? n : 0;
 };
-
-export type DeskState = {
-  key: "ACTIVE" | "PAUSED" | "MANUAL" | "STALLED";
-  dot: string; text: string; line: string;
-};
-
-/** The one sentence that explains what this desk is doing and why. */
-export function deskState(desk: Desk, available: number): DeskState {
-  const automated = desk.mode === "automatic" || desk.mode === "assisted";
-  if (!automated) return {
-    key: "MANUAL", dot: "bg-muted", text: "text-muted",
-    line: "No automation. It acts only on tickets you write by hand — switch it to automatic in Settings to have strategies trade it.",
-  };
-  if (desk.entries_paused) return {
-    key: "PAUSED", dot: "bg-warn", text: "text-warn",
-    line: "Stopped. Nothing new will open. Exits and settlement still run, and queued orders can still be cancelled.",
-  };
-  // Switched on but unable to act. Each of these leaves the desk looking
-  // healthy and idle for ever, so each is named rather than left to deduce.
-  if (!desk.policy?.strategies?.length) return {
-    key: "STALLED", dot: "bg-bad", text: "text-bad",
-    line: "No strategies chosen. It can only act on what a strategy proposes, so it will never trade until you pick one in Settings.",
-  };
-  if (!desk.policy?.cities?.length) return {
-    key: "STALLED", dot: "bg-bad", text: "text-bad",
-    line: "No cities chosen. Every proposal will be rejected as out of policy. Pick cities, or ALL, in Settings.",
-  };
-  if (available < 1) return {
-    key: "STALLED", dot: "bg-bad", text: "text-bad",
-    line: "No available cash. Everything is either spent or reserved against queued orders, so no new plan can be funded.",
-  };
-  return {
-    key: "ACTIVE", dot: "bg-good", text: "text-good",
-    line: desk.mode === "assisted"
-      ? "Running. Strategies propose; each plan waits for your approval in Settings before it is queued."
-      : "Running on its own. Eligible proposals are queued and filled within the limits below.",
-  };
-}
 
 const button = "rounded border border-border px-3 py-1.5 text-sm hover:bg-panel2 disabled:opacity-40";
 const primary = "rounded border border-accent px-3 py-1.5 text-sm text-accent hover:bg-panel2 disabled:opacity-40";

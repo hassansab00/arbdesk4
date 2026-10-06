@@ -16,3 +16,4 @@ supabase/.temp/
 .venv*/
 data/archive/.pending.json
 data/training/neighbours/cache/
+web/tests/render/out/
