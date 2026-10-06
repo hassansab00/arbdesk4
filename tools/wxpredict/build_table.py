@@ -24,7 +24,9 @@ WHAT A ROW MAY KNOW AT DECISION TIME t
   sees that hour's snapshot, the same price the model is judged against (the
   market at the decision), and nothing later.
 - A day's station maximum (yesterday, a forecast's past error, climatology):
-  when the whole local day ended REPORT_LAG_S before t.
+  when the whole local day ended REPORT_LAG_S before t, and only a whole day
+  (whole_day: no gap over common.WHOLE_DAY_MAX_GAP_H in its reports, midnight
+  to midnight). The label and the unlisted station days read the same rule.
 
 THE LABEL
 ---------
@@ -195,31 +197,39 @@ def load_events(stations_with_reports, first=None, last=None):
     return out, dict(left), listed
 
 
-def station_events(venue_days, stations, first=None, last=None):
-    """The city-days the venue did not list, as rows for the weather model
-    (component A trains on every whole station day; the venue's label exists
-    only on listed days). Each active city at its station today, from the first
-    day the honest forecast record covers to the last whole day of reports."""
+def station_events(venue_days, stations, sdaily, refused, first=None, last=None):
+    """(events, {reason: count}): the city-days the venue did not list, as rows
+    for the weather model (component A trains on every whole station day; the
+    venue's label exists only on listed days). Each active city at its station
+    today, from the first day the honest forecast record covers to the last
+    whole day of reports. A day that is not whole (whole_day) is left out and
+    counted, and so is a day inside that span with no report at all."""
     out = []
-    daily = collections.defaultdict(set)
-    newest = collections.defaultdict(int)
-    for r in common.read_csv(common.STATION_DAILY):
-        newest[r["station"]] = max(newest[r["station"]], unix_of(r["last_valid"]))
-        if int(r["n_reports"]) >= 12:
-            daily[r["station"]].add(r["local_date"])
+    left = collections.Counter()
     for city, c in sorted(common.active_cities().items()):
         st = (c.get("icao") or "").upper()
-        if st not in stations or not daily.get(st):
+        if st not in stations or not sdaily.get(st):
             continue
-        tz = common.zone(c)
-        for d in sorted(x for x in daily[st] if x >= STATION_FROM):
-            if (first and d < first) or (last and d > last) or (city, d) in venue_days:
+        unit = c.get("unit") or "C"
+        days = {**{d: None for d in sdaily[st]}, **refused.get(st, {})}
+        span = sorted(d for d in days if d >= STATION_FROM and (not first or d >= first)
+                      and (not last or d <= last))
+        if not span:
+            continue
+        d, end = dt.date.fromisoformat(span[0]), dt.date.fromisoformat(span[-1])
+        while d <= end:
+            k = d.isoformat()
+            d += dt.timedelta(days=1)
+            if (city, k) in venue_days:
                 continue
-            if common.local_day_bounds(dt.date.fromisoformat(d), tz)[1] > newest[st]:
-                continue                         # the reports stop before the day ends
-            out.append({"event_id": f"wx:{city}:{d}", "source": "station", "city": city, "date": d,
-                        "unit": c.get("unit") or "C", "station": st, "bands": [], "winner": None})
-    return out
+            if k not in days:
+                left["no report"] += 1
+            elif days[k] is not None:
+                left[days[k]] += 1
+            else:
+                out.append({"event_id": f"wx:{city}:{k}", "source": "station", "city": city, "date": k,
+                            "unit": unit, "station": st, "bands": [], "winner": None})
+    return out, dict(left)
 
 
 def bucket_of(value, bands):
@@ -337,22 +347,51 @@ def load_reports(station):
 # ---------------------------------------------------------------------------
 # station days (climatology, yesterday, past forecast error)
 # ---------------------------------------------------------------------------
+NOT_WHOLE = "a gap over %d h in its reports" % common.WHOLE_DAY_MAX_GAP_H
+UNFINISHED = "the reports stop inside the day"
+
+
+def whole_day(gap_h, day_end, newest):
+    """None when a station day is whole, else why not (review of #314: one
+    rule wherever a day's maximum is read). Whole: its reports leave no gap
+    over common.WHOLE_DAY_MAX_GAP_H, local midnight to the first report and the
+    last report to the next midnight (common.max_gap_h), and the station's
+    reports run past the day's end (`newest`, its newest report), so a fetch
+    that stops inside the day never passes for the day's end."""
+    if newest is None or newest < day_end:
+        return UNFINISHED
+    return None if gap_h <= common.WHOLE_DAY_MAX_GAP_H else NOT_WHOLE
+
+
 def load_station_daily():
-    """{station: {date: (tmax_c, tmax_f, peak local hour, last report unix)}}"""
+    """({station: {date: (tmax_c, tmax_f, peak local hour)}} for the whole
+    days, {station: {date: why not}} for the rest). Every past-day read -
+    yesterday, climatology, the forecast's past error, the unlisted days -
+    takes the first, so none can read a day that is not whole."""
+    rows = list(common.read_csv(common.STATION_DAILY))
+    newest = collections.defaultdict(int)
+    for r in rows:
+        newest[r["station"]] = max(newest[r["station"]], unix_of(r["last_valid"]))
     out = collections.defaultdict(dict)
+    refused = collections.defaultdict(dict)
     cities = common.cities()
-    for r in common.read_csv(common.STATION_DAILY):
-        tz = common.zone(cities[r["city_key"]])
-        at = dt.datetime.fromtimestamp(unix_of(r["tmax_at"]), common.UTC)
-        out[r["station"]][r["local_date"]] = (float(r["tmax_c"]), float(r["tmax_f"]),
-                                              at.astimezone(tz).hour + at.astimezone(tz).minute / 60,
-                                              int(r["n_reports"]))
-    return out
+    zones = {}
+    for r in rows:
+        tz = zones.get(r["city_key"]) or zones.setdefault(r["city_key"], common.zone(cities[r["city_key"]]))
+        why = whole_day(float(r["max_gap_h"]),
+                        common.local_day_bounds(dt.date.fromisoformat(r["local_date"]), tz)[1], newest[r["station"]])
+        if why:
+            refused[r["station"]][r["local_date"]] = why
+            continue
+        at = dt.datetime.fromtimestamp(unix_of(r["tmax_at"]), common.UTC).astimezone(tz)
+        out[r["station"]][r["local_date"]] = (float(r["tmax_c"]), float(r["tmax_f"]), at.hour + at.minute / 60)
+    return dict(out), dict(refused)
 
 
 def climatology(days, day, before=None):
-    """(mean, sd, n, median peak hour) of the station's maximum in C on days
-    within CLIM_HALF_WINDOW of `day`'s day of year, every year, before the
+    """(mean, sd, n, median peak hour) of the station's maximum in C on the
+    whole days (`days`, from load_station_daily) within CLIM_HALF_WINDOW of
+    `day`'s day of year, every year, before the
     date `before` (default `day` - 1). A row passes the newest day it may
     know (clim_for: review of #314, the D-1 00:01 decision must not count D-2,
     which ended a minute earlier)."""
@@ -368,7 +407,7 @@ def climatology(days, day, before=None):
             if d >= before:
                 continue
             v = days.get(d.isoformat())
-            if v is not None and v[3] >= 12:
+            if v is not None:
                 vals.append(v[0])
                 peaks.append(v[2])
     if len(vals) < 2:
@@ -579,9 +618,10 @@ def build_event(e, rep, sdays, bm, md, hourly, prices, tz):
     bands, unit = e["bands"], e["unit"]
     d0, d1 = common.local_day_bounds(day, tz)
     # the day's station maximum: every report of D, whatever its lag (label only),
-    # once the reports run past the day's end (a fetch that stops inside D gives none)
+    # on a whole day only (whole_day: an outage or a fetch that stops inside D gives none)
     a, b = bisect.bisect_left(rep.t, d0), bisect.bisect_left(rep.t, d1)
-    day_recs = rep.rec[a:b] if rep.t and rep.t[-1] >= d1 else []
+    whole = whole_day(common.max_gap_h(rep.t[a:b], d0, d1), d1, rep.t[-1] if rep.t else None) is None
+    day_recs = rep.rec[a:b] if whole else []
     st_max_c = max((r[0] for r in day_recs), default=None)
     st_max_unit = max((unit_reading(r[0], r[1], unit) for r in day_recs), default=None)
     st_in_win = None if st_max_unit is None or e["winner"] is None else \
@@ -603,7 +643,9 @@ def build_event(e, rep, sdays, bm, md, hourly, prices, tz):
         v["n_bands"] = len(bands)
         v["bands_lo"] = ";".join("" if lo is None else fmt(lo) for lo, _ in bands)
         v["bands_hi"] = ";".join("" if hi is None else fmt(hi) for _, hi in bands)
-        v["decision_utc"], v["decision_local"] = t, local.isoformat(timespec="minutes")
+        # the decision instant itself, hh:01 on the city's clock (review of #314: it said hh:00)
+        v["decision_utc"] = t
+        v["decision_local"] = dt.datetime.fromtimestamp(t, tz).isoformat(timespec="minutes")
         v["day_offset"], v["local_hour"], v["weekday"] = off, hour, local.weekday()
         doy = day.timetuple().tm_yday
         v["doy_sin"], v["doy_cos"] = math.sin(2 * math.pi * doy / 365.25), math.cos(2 * math.pi * doy / 365.25)
@@ -733,8 +775,8 @@ def fc_features(v, city, day, t, tz, bm, md, hourly, rep):
 
 
 def bias_features(v, city, station, day, t, tz, sdays, bm, md):
-    """The day-ahead forecast's recent error at this station, on target days
-    whose whole local day had ended REPORT_LAG_S before t."""
+    """The day-ahead forecast's recent error at this station, on whole target
+    days (`sdays`, from load_station_daily) that had ended REPORT_LAG_S before t."""
     errs, merrs = [], []
     for k in range(1, max(BIAS_WINDOWS) + 2):
         d = day - dt.timedelta(days=k)
@@ -742,7 +784,7 @@ def bias_features(v, city, station, day, t, tz, sdays, bm, md):
             continue
         obs = sdays.get(d.isoformat())
         row = bm.get((city, 1, d.isoformat()))
-        if obs is None or row is None or num(row["tmax_c"]) is None or obs[3] < 12:
+        if obs is None or row is None or num(row["tmax_c"]) is None:      # obs: whole days only
             continue
         errs.append((k, obs[0] - num(row["tmax_c"])))
         ms = [x[0] for x in md.get((city, 1, d.isoformat()), {}).values() if x[0] is not None]
@@ -792,19 +834,20 @@ def market_features(v, series, bands, t):
 def build(limit=0, first=None, last=None, out_dir=OUT_DIR, write_meta=True):
     stations = {f[:-7] for f in os.listdir(common.REPORTS) if f.endswith(".csv.gz")}
     events, left, listed = load_events(stations, first, last)
-    events += station_events(listed, stations, first, last)
+    sdaily, refused = load_station_daily()
+    unlisted, station_left = station_events(listed, stations, sdaily, refused, first, last)
+    events += unlisted
     events.sort(key=lambda e: (e["date"], e["city"], e["event_id"]))
     if limit:
         events = events[:limit]
     cities = common.cities()
-    sdaily = load_station_daily()
     bm, md = load_daily_forecasts()
     hourly = load_hourly_forecasts()
     prices = load_prices([e for e in events if e["source"] == "venue"])
     reports = {s: load_reports(s) for s in sorted({e["station"] for e in events})}
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, "wxpredict_table.csv.gz")
-    cov = Coverage(left)
+    cov = Coverage(left, station_left)
 
     def lines():
         for e in events:                      # in (date, city, event) order
@@ -828,8 +871,10 @@ class Coverage:
     """What the table holds, counted as it is written: rows, how often each
     column is filled, the label check, and the content's sha256."""
 
-    def __init__(self, left):
+    def __init__(self, left, station_left=None):
         self.left = left
+        self.station_left = station_left or {}
+        self.local_agrees = 0
         self.filled = collections.Counter()
         self.sha = hashlib.sha256()
         self.events = {}
@@ -840,6 +885,7 @@ class Coverage:
 
     def add(self, v, row):
         self.sha.update(("\x1f".join(row) + "\n").encode())
+        self.local_agrees += dt.datetime.fromisoformat(v["decision_local"]).timestamp() == v["decision_utc"]
         for c, x in zip(COLUMNS, row):
             if x != "":
                 self.filled[c] += 1
@@ -857,7 +903,12 @@ class Coverage:
             "dates": [dates[0], dates[-1]] if dates else [],
             "events_by_source": dict(collections.Counter(src for _, _, src in self.events.values())),
             "events_by_unit": dict(collections.Counter(u for u, _, _ in self.events.values())),
-            "left_out": self.left, "report_lag_s": REPORT_LAG_S, "publish_h": PUBLISH_H, "snapshot_s": SNAPSHOT_S,
+            "left_out": self.left, "station_days_left_out": self.station_left,
+            "whole_day_max_gap_h": common.WHOLE_DAY_MAX_GAP_H,
+            "venue_days_station_not_whole": sum(1 for _, w, src in self.events.values()
+                                                if src == "venue" and w is None),
+            "decision_local_parses_back": self.local_agrees,
+            "report_lag_s": REPORT_LAG_S, "publish_h": PUBLISH_H, "snapshot_s": SNAPSHOT_S,
             "market_max_age_s": MARKET_MAX_AGE_S,
             "station_max_in_winner": {"agree": sum(judged), "judged": len(judged)},
             "rows_on_d": self.rows_on_d, "rows_market_complete": self.complete,
@@ -873,6 +924,7 @@ def main():
     args = ap.parse_args()
     meta = build(args.limit, args.first, args.last, write_meta=not args.limit)
     show = {k: meta[k] for k in ("rows", "events", "cities", "dates", "events_by_source", "events_by_unit", "left_out",
+                                 "station_days_left_out", "venue_days_station_not_whole", "decision_local_parses_back",
                                  "station_max_in_winner", "rows_on_d", "rows_market_complete", "sha256")}
     print(json.dumps(show, indent=1), file=sys.stderr)
 

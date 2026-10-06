@@ -28,6 +28,11 @@ CITIES_GLOB = os.path.join(ROOT, "data", "mirror", "cities", "cities-*.csv.gz")
 
 UTC = dt.timezone.utc
 
+# A station day is whole when its reports leave no gap over this many hours,
+# counting local midnight to the first report and the last report to the next
+# midnight (review of #314: one rule wherever a day's maximum is read).
+WHOLE_DAY_MAX_GAP_H = 3
+
 
 def read_csv(path):
     with gzip.open(path, "rt", newline="") as f:
@@ -94,3 +99,12 @@ def local_day_bounds(day, tz):
     start = dt.datetime.combine(day, dt.time(0), tz)
     end = dt.datetime.combine(day + dt.timedelta(days=1), dt.time(0), tz)
     return int(start.timestamp()), int(end.timestamp())
+
+
+def max_gap_h(times, d0, d1):
+    """The longest stretch of the local day [d0, d1) (unix seconds) with no
+    report, in hours: local midnight to the first report, report to report,
+    and the last report to the next midnight. A day with no report is one gap
+    as long as the day. `times` are the day's report instants, any order."""
+    edges = [d0, *sorted(times), d1]
+    return max(b - a for a, b in zip(edges, edges[1:])) / 3600

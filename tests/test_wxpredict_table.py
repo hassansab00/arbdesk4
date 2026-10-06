@@ -227,6 +227,162 @@ def test_the_forecasts_recent_error_reads_only_whole_past_days():
 
 
 # ---------------------------------------------------------------------------
+# one rule for a whole day (review of #314)
+# ---------------------------------------------------------------------------
+def _halfhourly(day, tz=LONDON, skip=()):
+    """Report instants every 30 min (hh:20, hh:50) of a local day, real instants
+    walked in UTC, leaving out those whose local time falls in `skip`."""
+    d0, d1 = common.local_day_bounds(day, tz)
+    out = []
+    for u in range(d0 + 20 * 60, d1, 1800):
+        local = dt.datetime.fromtimestamp(u, dt.timezone.utc).astimezone(tz)
+        if not any(a <= local.hour + local.minute / 60 < b for a, b in skip):
+            out.append(u)
+    return out, d0, d1
+
+
+def test_a_day_with_a_fourteen_hour_outage_is_not_whole():
+    times, d0, d1 = _halfhourly(DAY, skip=[(6, 20)])          # nothing from 06:00 to 20:00
+    gap = common.max_gap_h(times, d0, d1)
+    assert math.isclose(gap, 14.5)                             # 05:50 to 20:20
+    assert bt.whole_day(gap, d1, d1 + 600) == bt.NOT_WHOLE
+
+
+def test_a_day_with_one_missed_report_is_whole():
+    times, d0, d1 = _halfhourly(DAY, skip=[(13.5, 14)])       # the 13:50 report is missing
+    assert len(times) == 47
+    gap = common.max_gap_h(times, d0, d1)
+    assert math.isclose(gap, 1.0) and bt.whole_day(gap, d1, d1 + 600) is None
+
+
+def test_the_gap_counts_from_midnight_and_to_the_next_midnight():
+    d0, d1 = common.local_day_bounds(DAY, LONDON)
+    hourly = list(range(d0 + 3 * 3600, d1 - 3 * 3600 + 1, 3600))      # 03:00 .. 21:00
+    assert math.isclose(common.max_gap_h(hourly, d0, d1), 3.0)
+    assert bt.whole_day(common.max_gap_h(hourly, d0, d1), d1, d1) is None            # exactly 3 h: whole
+    late = [u + 60 for u in hourly]                                   # 03:01 .. 21:01: midnight to first 3h01
+    assert bt.whole_day(common.max_gap_h(late, d0, d1), d1, d1) == bt.NOT_WHOLE
+    early = [u - 60 for u in hourly]                                  # last 20:59: 3h01 to midnight
+    assert bt.whole_day(common.max_gap_h(early, d0, d1), d1, d1) == bt.NOT_WHOLE
+    assert common.max_gap_h([], d0, d1) == 24.0                       # no report: one gap, the day
+
+
+def test_a_fall_back_day_is_measured_on_its_real_instants():
+    autumn, spring = dt.date(2026, 10, 25), dt.date(2026, 3, 29)
+    for day, hours in ((autumn, 25), (spring, 23)):
+        times, d0, d1 = _halfhourly(day)
+        assert (d1 - d0) / 3600 == hours and len(times) == 2 * hours
+        assert math.isclose(common.max_gap_h(times, d0, d1), 0.5)
+    # the repeated 01:00-02:00 lost once: one hour without a report, still whole
+    times, d0, d1 = _halfhourly(autumn)
+    second = [u for u in times if dt.datetime.fromtimestamp(u, LONDON).hour == 1][2:]
+    kept = [u for u in times if u not in second]
+    assert len(second) == 2 and math.isclose(common.max_gap_h(kept, d0, d1), 1.5)
+    assert bt.whole_day(common.max_gap_h(kept, d0, d1), d1, d1) is None
+
+
+def test_todays_partial_day_is_not_whole():
+    times, d0, d1 = _halfhourly(DAY)
+    now = _unix(DAY, 13, 0)
+    seen = [u for u in times if u <= now]                      # the reports stop at 12:50
+    assert bt.whole_day(common.max_gap_h(seen, d0, d1), d1, seen[-1]) == bt.UNFINISHED
+    # stopped 2 h before midnight: no gap over 3 h, but the day has not been reported to its end
+    seen = [u for u in times if u <= _unix(DAY, 22, 0)]
+    assert common.max_gap_h(seen, d0, d1) < common.WHOLE_DAY_MAX_GAP_H
+    assert bt.whole_day(common.max_gap_h(seen, d0, d1), d1, seen[-1]) == bt.UNFINISHED
+
+
+def test_the_daily_reduction_writes_each_days_longest_gap():
+    utc = dt.timezone.utc
+    rd = [("EGLC", dt.datetime.fromtimestamp(u, utc), 68.0, None) for u in _halfhourly(DAY, skip=[(6, 20)])[0]]
+    rd += [("EGLC", dt.datetime.fromtimestamp(u, utc), 68.0, None) for u in _halfhourly(DAY - dt.timedelta(days=1))[0]]
+    days = fo.reduce_daily(rd, {"EGLC": LONDON})
+    assert math.isclose(days[("EGLC", DAY)]["max_gap_h"], 14.5)
+    assert math.isclose(days[("EGLC", DAY - dt.timedelta(days=1))]["max_gap_h"], 0.5)
+    assert fo.DAILY_HEADER[-1] == "max_gap_h"
+
+
+def _station_daily(tmp_path, monkeypatch, gaps):
+    """A station_daily file for EGLC (london) with one row per {date: gap},
+    each day's last report at 23:50: the newest day's end is not reported."""
+    def stamp(u):
+        return dt.datetime.fromtimestamp(u, dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
+    rows = []
+    for d, gap in sorted(gaps.items()):
+        day = dt.date.fromisoformat(d)
+        rows.append(["EGLC", "london", d, 48, stamp(_unix(day, 0, 20)), stamp(_unix(day, 23, 50)), "77.00", "25.00",
+                     stamp(_unix(day, 15, 20)), "60.00", "15.00", f"{gap:.2f}"])
+    path = tmp_path / "daily.csv.gz"
+    common.write_csv(str(path), fo.DAILY_HEADER, rows)
+    monkeypatch.setattr(common, "STATION_DAILY", str(path))
+    monkeypatch.setattr(common, "cities", lambda: {"london": {"city_key": "london", "timezone": "Europe/London",
+                                                              "icao": "EGLC", "unit": "C", "status": "active"}})
+    monkeypatch.setattr(common, "active_cities", common.cities)
+
+
+def test_no_past_day_read_takes_a_day_that_is_not_whole(tmp_path, monkeypatch):
+    outage, nxt = DAY - dt.timedelta(days=1), DAY + dt.timedelta(days=1)
+    gaps = {(DAY - dt.timedelta(days=k)).isoformat(): 0.5 for k in range(-1, 40)}
+    gaps[outage.isoformat()] = 14.5
+    _station_daily(tmp_path, monkeypatch, gaps)
+    sdaily, refused = bt.load_station_daily()
+    assert refused["EGLC"] == {outage.isoformat(): bt.NOT_WHOLE, nxt.isoformat(): bt.UNFINISHED}
+    assert len(sdaily["EGLC"]) == len(gaps) - 2
+    # yesterday's maximum: absent, though yesterday ended long before 13:01
+    v = {}
+    t = _unix(DAY, 13) + bt.SNAPSHOT_S
+    bt.obs_features(v, bt.Reports(_day_reports()), t, common.local_day_bounds(DAY, LONDON)[0], 0, LONDON, "C",
+                    BANDS, sdaily["EGLC"], DAY)
+    assert "yday_max_c" not in v
+    # climatology and the forecast's past error count only the whole days: for D+1,
+    # climatology reads D-14 .. D-1 (14 days) less the outage
+    assert bt.climatology(sdaily["EGLC"], nxt)[2] == 13
+    bm = {("london", 1, d): {"tmax_c": "20" if d != outage.isoformat() else "-50"} for d in gaps}
+    v = {}
+    bt.bias_features(v, "london", "EGLC", nxt, _unix(nxt, 12), LONDON, sdaily["EGLC"], bm, {})
+    assert v["bias_n30"] == 30 and v["bias7_bm_c"] == 5.0          # 25 - 20; the outage's 25 - (-50) is not read
+
+
+def test_an_unlisted_day_that_is_not_whole_is_left_out_and_counted(tmp_path, monkeypatch):
+    first = dt.date(2025, 11, 5)
+    gaps = {(first + dt.timedelta(days=k)).isoformat(): 0.5 for k in range(6)}
+    gaps["2025-11-07"] = 14.5                                  # the review's example: an old outage day
+    del gaps["2025-11-08"]                                     # a day with no report at all
+    _station_daily(tmp_path, monkeypatch, gaps)                # the 10th, the newest, is not reported to its end
+    sdaily, refused = bt.load_station_daily()
+    events, left = bt.station_events({("london", "2025-11-06")}, {"EGLC"}, sdaily, refused)
+    assert [e["date"] for e in events] == ["2025-11-05", "2025-11-09"]      # the 6th is the venue's
+    assert left == {bt.NOT_WHOLE: 1, "no report": 1, bt.UNFINISHED: 1}
+
+
+def test_a_venue_day_that_is_not_whole_keeps_the_venues_label_alone():
+    e = {"event_id": "1", "source": "venue", "city": "london", "date": DAY.isoformat(), "unit": "C",
+         "station": "EGLC", "bands": BANDS, "winner": 4}
+    after = _report(_unix(DAY + dt.timedelta(days=1), 0, 20), 15.0)
+    outage = [r for r in _day_reports(peak=23.0) if not "2026-07-15T05:00Z" <= r["valid"] < "2026-07-15T19:00Z"]
+    rows = bt.build_event(e, bt.Reports(outage + [after]), {}, {}, {}, {}, {}, LONDON)
+    assert {r["station_max_unit"] for r in rows} == {None} and {r["station_in_winner"] for r in rows} == {None}
+    assert {r["label_unit"] for r in rows} == {23} and {r["winner"] for r in rows} == {4}
+    assert {r["station_reports_day"] for r in rows} == {0}
+    # one missed report: whole, and the station's maximum is read
+    missed = [r for r in _day_reports(peak=23.0) if r["valid"] != "2026-07-15T12:50Z"]
+    rows = bt.build_event(e, bt.Reports(missed + [after]), {}, {}, {}, {}, {}, LONDON)
+    assert {r["station_max_unit"] for r in rows} == {23} and all(r["station_in_winner"] for r in rows)
+
+
+def test_decision_local_is_the_decision_instant_and_parses_back():
+    for day in (DAY, dt.date(2026, 10, 25), dt.date(2026, 3, 29)):
+        e = {"event_id": "1", "source": "station", "city": "london", "date": day.isoformat(), "unit": "C",
+             "station": "EGLC", "bands": [], "winner": None}
+        rows = bt.build_event(e, bt.Reports([]), {}, {}, {}, {}, {}, LONDON)
+        assert all(dt.datetime.fromisoformat(r["decision_local"]).timestamp() == r["decision_utc"] for r in rows)
+        assert all(r["decision_local"][14:16] == "01" for r in rows)          # hh:01, not hh:00
+    autumn = bt.build_event({**e, "date": "2026-10-25"}, bt.Reports([]), {}, {}, {}, {}, {}, LONDON)
+    assert [r["decision_local"] for r in autumn if r["decision_local"].startswith("2026-10-25T01")] == \
+        ["2026-10-25T01:01+01:00", "2026-10-25T01:01+00:00"]
+
+
+# ---------------------------------------------------------------------------
 # the market at the decision
 # ---------------------------------------------------------------------------
 def _series(points):
@@ -306,7 +462,12 @@ def test_the_committed_meta_describes_this_builder():
     assert meta["columns"] == bt.COLUMNS
     assert (meta["report_lag_s"], meta["publish_h"], meta["snapshot_s"]) == \
         (bt.REPORT_LAG_S, bt.PUBLISH_H, bt.SNAPSHOT_S)
-    assert meta["station_max_in_winner"]["judged"] == meta["events_by_source"]["venue"]
+    # every venue event has the station's verdict, except where the station's day is not whole
+    assert meta["station_max_in_winner"]["judged"] + meta["venue_days_station_not_whole"] == \
+        meta["events_by_source"]["venue"]
+    assert meta["whole_day_max_gap_h"] == common.WHOLE_DAY_MAX_GAP_H
+    # decision_local parses back to decision_utc on every row of the built table (review of #314)
+    assert meta["decision_local_parses_back"] == meta["rows"]
 
 
 # ---------------------------------------------------------------------------

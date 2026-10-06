@@ -65,7 +65,7 @@ FIELDS = ["tmpf", "dwpf", "relh", "drct", "sknt", "gust", "p01i", "alti", "mslp"
           "skyc1", "skyc2", "skyc3", "skyl1", "skyl2", "skyl3", "wxcodes"]
 REPORT_HEADER = ["valid", *FIELDS, "t10_c", "td10_c", "max6_c", "min6_c"]
 DAILY_HEADER = ["station", "city_key", "local_date", "n_reports", "first_valid", "last_valid",
-                "tmax_f", "tmax_c", "tmax_at", "tmin_f", "tmin_c"]
+                "tmax_f", "tmax_c", "tmax_at", "tmin_f", "tmin_c", "max_gap_h"]
 
 T_GROUP = re.compile(r"^T([01])(\d{3})(?:([01])(\d{3}))?$")
 MAX6 = re.compile(r"^1([01])(\d{3})$")
@@ -197,8 +197,11 @@ def f_to_c(f):
 def reduce_daily(readings, tz_of):
     """{(station, local_date): summary} from (station, valid_utc, tmpf, t10_c).
     tmax_c is the greatest reading in C: the T group when the report has one,
-    else tmpf converted. tmax_at is the first report reaching the maximum."""
+    else tmpf converted. tmax_at is the first report reaching the maximum.
+    max_gap_h is the day's longest stretch without a reading, midnight to
+    midnight (common.max_gap_h): the builder's whole-day rule reads it."""
     days = {}
+    times = defaultdict(list)
     for st, valid, tmpf, t10 in readings:
         if tmpf is None:
             continue
@@ -210,6 +213,7 @@ def reduce_daily(readings, tz_of):
             days[key] = d = {"n": 0, "first": valid, "last": valid, "tmax_f": tmpf, "tmax_c": c,
                              "tmax_at": valid, "tmin_f": tmpf, "tmin_c": c}
         d["n"] += 1
+        times[key].append(int(valid.timestamp()))
         d["first"] = min(d["first"], valid)
         d["last"] = max(d["last"], valid)
         if c > d["tmax_c"] or (c == d["tmax_c"] and valid < d["tmax_at"]):
@@ -217,6 +221,8 @@ def reduce_daily(readings, tz_of):
         d["tmax_f"] = max(d["tmax_f"], tmpf)
         d["tmin_f"] = min(d["tmin_f"], tmpf)
         d["tmin_c"] = min(d["tmin_c"], c)
+    for (st, day), d in days.items():
+        d["max_gap_h"] = common.max_gap_h(times[(st, day)], *common.local_day_bounds(day, tz_of[st]))
     return days
 
 
@@ -265,7 +271,8 @@ def cmd_daily(args):
     for (st, day), d in sorted(days.items()):
         rows.append([st, stations[st], day.isoformat(), d["n"], d["first"].strftime("%Y-%m-%dT%H:%MZ"),
                      d["last"].strftime("%Y-%m-%dT%H:%MZ"), f"{d['tmax_f']:.2f}", f"{d['tmax_c']:.2f}",
-                     d["tmax_at"].strftime("%Y-%m-%dT%H:%MZ"), f"{d['tmin_f']:.2f}", f"{d['tmin_c']:.2f}"])
+                     d["tmax_at"].strftime("%Y-%m-%dT%H:%MZ"), f"{d['tmin_f']:.2f}", f"{d['tmin_c']:.2f}",
+                     f"{d['max_gap_h']:.2f}"])
     n = common.write_csv(common.STATION_DAILY, DAILY_HEADER, rows)
     print(json.dumps({"station_days": n}), file=sys.stderr)
 

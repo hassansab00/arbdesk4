@@ -30,7 +30,7 @@ trades.
 |---|---|---|---|
 | `data/training/market_history/` | the venue's record: every event, its ladder, its winner, its settlement station, every bucket's hourly price | see its README (refreshed 5 Oct) | `tools/market_history.py` (`seed` added) |
 | `data/training/wxpredict/station_reports/<ICAO>.csv.gz` | every routine and special report of the 50 settlement stations, 1 Jun 2025 - 5 Oct 2026 13:00Z | 902,238 (9.6 MB) | `tools/wxpredict/fetch_obs.py reports` |
-| `data/training/wxpredict/station_daily.csv.gz` | one row per station and local day, 2019-12-31 - 2026-10-05 (temperature only before June 2025) | 123,452 (1.8 MB) | `tools/wxpredict/fetch_obs.py climate` |
+| `data/training/wxpredict/station_daily.csv.gz` | one row per station and local day, 2019-12-31 - 2026-10-06 (temperature only before June 2025; the last days partial), with each day's longest stretch without a reading (`max_gap_h`, below) | 123,452 (1.9 MB) | `tools/wxpredict/fetch_obs.py climate` (`daily` from the cache) |
 | `data/training/previous_runs/` | what the public forecasts said before the day (P2.9) | see its README (hourly file extended 5 Oct) | `scripts/honest_record.py`, `tools/wxpredict/fetch_forecasts.py` |
 
 The station reports carry every field IEM's ASOS service gives:
@@ -76,7 +76,7 @@ committed, with the row count, every column's fill and the content's sha256.
   - the ladder is contiguous;
   - the settlement station's reports are present.
 - **Station rows** are the city-days the venue did not list, from 15 Jul 2025: the
-  weather model learns from every whole station day. They have no ladder and no
+  weather model learns from every whole station day (below). They have no ladder and no
   market.
 
 #### What a row may know at decision time t
@@ -87,7 +87,7 @@ committed, with the row count, every column's fill and the content's sha256.
 | an hourly forecast value for hour H (`_previous_day1`) | H - 17 h <= t | P2.9's stated assumption: a run started >= 24 h before H is out within 7 h; not verified run by run |
 | a daily forecast row (lead L, window ending at hour E of D) | D E:00 - (24 L - 7) h <= t | the same assumption; lead-1 00-17 known from D 00:00, lead-1 whole day from 06:00, lead-2 whole day from D-1 06:00 |
 | a market price | stamped <= t | the series stamps every point 0-59 s past the hour (all 6,473,670 points), so a decision at hh:01 sees that hour's snapshot and nothing later |
-| a day's station maximum (yesterday, a forecast's past error, climatology) | the whole local day ended 20 min before t | as a report |
+| a day's station maximum (yesterday, a forecast's past error, climatology) | the whole local day ended 20 min before t, and the day is whole (below) | as a report |
 
 The tests (`tests/test_wxpredict_table.py`) plant a later report, a later
 forecast hour and a later price, and check that no feature moves.
@@ -108,23 +108,51 @@ percentile 66 min) after their valid time over the 7 days to 5 Oct.
 The label is the venue's winning bucket, which is the only truth. The station's own maximum of D, in the
 market's unit with the venue's rounding, is kept beside it as the weather
 model's regression target and as a check. On venue rows the station maximum falls in
-the winning bucket on 9,410 of 9,586 listed days (98.2%). Of the 176 that disagree:
+the winning bucket on 9,382 of the 9,556 listed days whose station day is whole (98.2%). Of the 174 that disagree:
 - 118 are Shenzhen's, Mar - Aug 2026 (none in Sep - Oct);
 - Seoul has 24, Moscow 11 and Denver 6.
 
 `label_unit`, the weather model's target, is the station's maximum
-moved into the winning bucket on those days, so the venue's truth wins.. A day whose reports stop before it ends has no
-station label.
+moved into the winning bucket on those days, so the venue's truth wins. A station day that is not whole (below) has no
+station label: the row keeps the venue's label alone.
+
+#### A whole station day
+
+A station day is whole when its reports leave no gap over 3 h, counting from
+local midnight to the first report and from the last report to the next
+midnight (`common.max_gap_h`, `WHOLE_DAY_MAX_GAP_H`), and the station's reports
+run past the day's end. It is one rule wherever a day's maximum is read: the
+label, the unlisted station days, yesterday's maximum, climatology and the
+forecast's past error. Before the review of #314, the label and the unlisted
+days checked only the station's newest report, so an old outage passed (VILK,
+7 Nov 2025: no report for 14 h), and the past-day reads checked 12 reports, or
+nothing for yesterday.
+
+- `station_daily.csv.gz` carries each day's `max_gap_h`, regenerated on 6 Oct
+  from a fresh fetch of the climate windows. The fresh fetch rebuilt the old file
+  byte for byte (md5 `47213c91...`), and the new file differs from it only in
+  the added column, on all 123,452 rows.
+- 686 of the 123,452 station days have a gap over 3 h. From 1 Jun 2025 to
+  4 Oct 2026: 81 of 24,542, and 8 more days have no report at all.
+- No day passes the rule that failed the old 12-report check; 589 that passed
+  it fail the rule.
+- In the table, all 9,586 venue events are kept. On 30 of them the
+  station's day is not whole, so they carry no station maximum: Denver 9,
+  Panama City 4, Lucknow 3, Milan 3, Busan 3, Sao Paulo 2, Tel Aviv 2, and one each in
+  Manila, Wellington, Austin and Paris. Of the unlisted days, 38 are left out
+  for a gap over 3 h, 8 for having no report, and 1 for not being reported to
+  its end.
 
 #### Columns
 
-**Built 5 Oct 2026** (`table_meta.json`, sha256 `097799a77116...`). Two builds
-gave identical bytes. Each build takes about 7 minutes.
+**Built 6 Oct 2026** (`table_meta.json`, sha256 `d03b73e88b75...`). Two builds
+gave identical bytes. A build took 6 min 57 s.
 
-- **Rows:** 686,111, from 21,441 events in 48 cities, local days 15 Jul 2025 - 4 Oct 2026.
+- **Rows:** 684,990, from 21,406 events in 48 cities, local days 15 Jul 2025 - 4 Oct 2026.
 - **Venue events:** 9,586 (306,738 rows).
-- **Station days:** 11,855 (379,373 rows).
-- **Units:** C 16,528 events, F 4,913.
+- **Station days:** 11,820 (378,252 rows). The whole-day rule left out 35 that
+  the 5 Oct build kept (686,111 rows then).
+- **Units:** C 16,505 events, F 4,901.
 - **Left out of the venue's events:**
   - city not active 553;
   - not closed 136;
@@ -137,10 +165,10 @@ The table has 118 columns:
 
 | group | columns | filled |
 |---|---|---|
-| identity and clock | event, source (venue / station), city, station, date, unit, ladder, decision time (UTC and local), D-1 or D, local hour, weekday, day of year | 100% |
+| identity and clock | event, source (venue / station), city, station, date, unit, ladder, decision time (UTC and local: the decision instant, hh:01, which parses back to the UTC on every row), D-1 or D, local hour, weekday, day of year | 100% |
 | labels | `winner` (venue rows), `label_unit`, the station's maximum (unit and C), whether they agree | `label_unit` 100% |
 | the station now | age of the newest report, temperature, dew point, humidity, wind, gust, direction, pressure, visibility, sky, ceiling, five present-weather flags, 1 h / 3 h changes, precipitation over 3 h (each routine period's total, summed) | 100% (sky 75%, the rest per the table above) |
-| the station today (D rows) | running maximum (C, unit, its bucket, its age), 6-hour-group maximum, today's minimum, 06:00 reading; yesterday's maximum | running maximum 71.1% (D rows with reports), yesterday 93.7% |
+| the station today (D rows) | running maximum (C, unit, its bucket, its age), 6-hour-group maximum, today's minimum, 06:00 reading; yesterday's maximum (a whole day only) | running maximum 71.1% (D rows with reports), yesterday 93.5% |
 | day-ahead forecasts | which daily row was known (lead 1 whole day / 00-17, lead 2), best_match max, the seven models (each, mean, spread, range), best_match cloud, sunshine, wind, rain, dew point | 99.9-100% (UKMO 93.6%) |
 | the hourly forecast | known hours, the day's forecast max and its hour, now, the rest of the day's max, the next 3 h, the rest of the day's cloud / sunshine / wind / rain; observed minus forecast now and 3 h ago (temperature, dew point, pressure) | 75-90% |
 | the station's past | climatology of the day of year (mean, spread, count, typical peak hour, every year before), the day-ahead forecast's error over the last 7 and 30 whole days (best_match and the models' mean), its MAE | 99.9-100% |
