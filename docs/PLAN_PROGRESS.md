@@ -85,7 +85,7 @@ PR that advances a step.
             - **Three questions for Hassan, no rule changed:** the market prior's normalisation makes the leader's NO look cheap (255 checkpoints; the one bought lost); the against-market gate takes the highest ask as the favourite, so all 36 of its refusals were books whose leader had no ask; S10 never decides Madrid after its peak (a refit, held by D8).
         - **WXPredict build, phase 1 merged (G1):** [#314](https://github.com/hassansab00/arbdesk4/pull/314) as `33d90d6` (6 Oct; Hassan: "merge 314"), after phase 1.1 (the whole-day rule and `decision_local` at hh:01; both Codex threads resolved; CI green on `770c987` and on the merge with main).
         - **P.5 question 2 fixed (this PR; Hassan, 6 Oct: "yes"): the market's favourite when the leader has no ask.**
-          - A bucket's standing is its YES ask, or its YES bid when nobody sells YES. The decision engine and the edge engine read it the same way (the edge engine through the NO price).
+          - A bucket's standing is its YES ask, or its YES bid when nobody sells YES. The decision engine and the edge engine read it the same way, from the top of the book (the edge engine through the rows' quoted prices, not the depth-weighted fill; Codex on #324).
           - Replayed on the 36 `against_market` refusals of 29 Sep - 6 Oct: 34 were false (the engine agreed with the bought-up leader); 2 (Austin, 1 Oct) now block on the real favourite.
           - Tests for both engines; a mutation back to asks only fails each.
         - **WXPredict build, wave 2.A (this PR): storage measured; the archive cycle alone cannot reach the checkpoint (`docs/WXPREDICT_BUILD.md` section 3.8, D9).**

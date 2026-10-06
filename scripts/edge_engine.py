@@ -263,16 +263,26 @@ def against_market_gate(rows):
     return out
 
 
+def _top_of_book(r):
+    """The row's top-of-book price: quoted_price (the best YES ask on YES, 1 -
+    the best YES bid on NO; quoted_price_for_side), else market_price for a row
+    that has none. market_price is the depth-weighted fill for a $100 order,
+    which on a shallow book is several levels deep (Codex on #324)."""
+    v = r.get("quoted_price")
+    return v if v is not None else r.get("market_price")
+
+
 def _yes_standing(rows):
-    """{band_id: the market's YES price} in row order: the YES row's price, or,
-    when YES has no price (nobody selling it), 1 - the NO row's price, which is
-    the YES bid. A leader bought up to 99c has no YES ask; its NO costs about
-    1c. The same reading as decision_engine.market_standing (the P.5 report,
-    question 2; Hassan, 6 Oct)."""
-    yes = {r["band_id"]: r["market_price"] for r in rows
-           if r["side"] == "YES" and r.get("market_price") is not None}
-    no = {r["band_id"]: r["market_price"] for r in rows
-          if r["side"] == "NO" and r.get("market_price") is not None}
+    """{band_id: the market's YES price} in row order, from the top of the
+    book: the YES row's best ask, or, when YES has none (nobody selling it),
+    1 - the NO row's quoted price, which is the best YES bid. A leader bought
+    up to 99c has no YES ask; its NO is quoted at about 1c. The same reading
+    as decision_engine.market_standing (the P.5 report, question 2; Hassan,
+    6 Oct)."""
+    yes = {r["band_id"]: _top_of_book(r) for r in rows
+           if r["side"] == "YES" and _top_of_book(r) is not None}
+    no = {r["band_id"]: _top_of_book(r) for r in rows
+          if r["side"] == "NO" and _top_of_book(r) is not None}
     out = {}
     for r in rows:
         b = r["band_id"]
