@@ -17,6 +17,14 @@ written beside it for the tick's forward shadow, which never prices from it:
     python tools/fit_remaining_day.py <the same six inputs> --challenger rd3 \
         --out data/models/remaining_day/challenger_rd3.json
 
+rd1's late hours (remaining_day.LATE_HOURS; the P.5 report, question 3) are
+fitted beside the served fit, under their own version, leaving current.json
+and the version Challenger C's forward comparison selects by untouched:
+
+    python tools/fit_remaining_day.py <the same six inputs> --hours 18 \
+        --late-of data/models/remaining_day/current.json \
+        --out data/models/remaining_day/late_hours.json
+
 rd3 adds the seven models' lead-1 whole-day maxima (tmax_c, as scored and as
 s10_day1_inputs.models stores them), bias-corrected per model and city on every
 labelled day (remaining_day.fit_model_bias); the table is in the file and in
@@ -79,15 +87,60 @@ def challenger_rows(rows_by_hour, models, Y):
     return out, bias_js, pooled_js, len(pairs)
 
 
+def late(base_path, rows_by_hour, med):
+    """rd1's late hours, beside the served fit and never inside it: the P.5
+    report, question 3 (Hassan, 6 Oct: S10 decides at each city's own peak, and
+    Madrid's post-peak checkpoint falls at 18:xx local). Fitted from
+    `rows_by_hour` the same way as the served hours (remaining_day.fit_hour),
+    under a version of their own. current.json is not touched: the hours it
+    serves keep their parameters AND their version, which Challenger C's
+    pre-registered forward comparison selects rows by (tools/fec_s10_forward.py
+    INCUMBENT)."""
+    with open(base_path) as f:
+        base = json.load(f)
+    if not base["version"].startswith(rd.VERSION_PREFIX + ":"):
+        raise SystemExit(f"--late-of takes the served rd1 fit, not {base['version']}")
+    served = sorted(int(h) for h in base["hours"])
+    clash = sorted(set(served) & set(rows_by_hour))
+    if clash:
+        raise SystemExit(f"hours {clash} are served by {base['version']} already")
+    added = {h: p for h, p in ((h, rd.fit_hour(rs)) for h, rs in sorted(rows_by_hour.items())) if p}
+    missing = sorted(set(rows_by_hour) - set(added))
+    if missing:
+        raise SystemExit(f"too few rows to fit hours {missing}")
+    # As stored: the version is computed over the parameters the file holds.
+    added = {int(h): p for h, p in json.loads(json.dumps({str(h): p for h, p in added.items()},
+                                                         default=str)).items()}
+    version = rd.version_of(added)
+    blob = json.loads(rd.to_json(added, version))
+    blob["late_of"] = {"version": base["version"], "hours": served}
+    blob["spread_median_c"] = round(med, 4)
+    blob["rows_by_hour"] = {str(h): len(r) for h, r in rows_by_hour.items()}
+    return blob, version
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     for name in ("fc", "obs", "labels", "units", "tz", "models"):
         ap.add_argument(name)
     ap.add_argument("--out", required=True)
     ap.add_argument("--challenger", choices=["rd3"], help="fit Challenger C instead of rd1")
+    ap.add_argument("--hours", help="comma-separated local hours to fit (default: remaining_day.HOURS)")
+    ap.add_argument("--late-of", help="the served rd1 fit; fit --hours beside it as its late hours")
     a = ap.parse_args(argv)
+    hours = tuple(int(h) for h in a.hours.split(",")) if a.hours else rd.HOURS
+    if a.late_of and (a.challenger or not a.hours):
+        raise SystemExit("--late-of fits rd1's late --hours only")
     fc, obs, Y, unit, spread, med = E.load(a.fc, a.obs, _labels_path(a.labels), a.units, a.tz, a.models)
-    rows_by_hour = {h: E.rows_for(h, fc, obs, Y, spread, med) for h in rd.HOURS}
+    rows_by_hour = {h: E.rows_for(h, fc, obs, Y, spread, med) for h in hours}
+    if a.late_of:
+        blob, version = late(a.late_of, rows_by_hour, med)
+        os.makedirs(os.path.dirname(a.out), exist_ok=True)
+        with open(a.out, "w") as f:
+            json.dump(blob, f, sort_keys=True, separators=(",", ":"))
+        print(json.dumps({"version": version, "late_of": blob["late_of"]["version"],
+                          "hours": sorted(int(h) for h in blob["hours"]), "rows_by_hour": blob["rows_by_hour"]}))
+        return
     extra = {}
     if a.challenger == "rd3":
         rows_by_hour, bias_js, pooled_js, n_pairs = challenger_rows(rows_by_hour, load_models(a.models), Y)
