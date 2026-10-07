@@ -726,13 +726,17 @@ export default function PredictivePage() {
           two look identical in a table of mean error. The shaded planes are the real bucket
           boundaries, because a 0.6 °C miss across a line loses and a 0.9 °C miss inside one wins.
         </p>
+        {/* The planes are their own read (v_city_ladder_edges): a failed one is
+            said, not drawn as a funnel without its buckets (Codex on #334). */}
         <DataState
           relation="v_forecast_convergence"
           truncated={convQ.truncated}
-          loading={convQ.loading} error={convQ.error} isEmpty={funnel.length === 0}
+          loading={convQ.loading || cityEdgesQ.loading}
+          error={convQ.error ?? (cityEdgesQ.error ? `v_city_ladder_edges: ${cityEdgesQ.error}` : null)}
+          isEmpty={funnel.length === 0}
           emptyTitle="No forecast series for this city"
           emptyBody={MISSING("sql/ad4_31_predictive.sql", "and check v_forecast_coverage — a city with no forward forecast has nothing to draw.")}
-          onRetry={convQ.refresh}
+          onRetry={() => { convQ.refresh(); cityEdgesQ.refresh(); }}
         >
           <Convergence3D points={funnel} bands={bandEdges} unit={unit} />
         </DataState>

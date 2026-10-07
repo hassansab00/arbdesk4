@@ -56,6 +56,11 @@ def test_the_funnel_planes_read_the_edges_not_the_ladder():
     page = (ROOT / "web/app/predictive/page.tsx").read_text()
     assert 'supabase.from("v_city_ladder_edges").select("edge")' in page
     assert 'supabase.from("v_prediction_ladder").select("band_lo,band_hi")' not in page
+    # A failed edge read is said, not drawn as a funnel without its buckets
+    # (Codex on #334).
+    funnel = page[page.index('relation="v_forecast_convergence"'):]
+    funnel = funnel[:funnel.index("</DataState>")]
+    assert "cityEdgesQ.loading" in funnel and "cityEdgesQ.error" in funnel and "cityEdgesQ.refresh()" in funnel
 
 
 def test_the_confidence_view_reads_the_ladder_from_today_on():
