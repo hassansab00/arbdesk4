@@ -168,20 +168,19 @@ jobs:
         timeout-minutes: 15
         run: python scripts/calibration.py
 
-      # 6a. The nightly learning loop (plan v2 P5.8): the belief maps, from the
-      #     checkpoint outcomes databank banked above, one immutable row per
-      #     version in strategy_params. Recorded every night, used only once
-      #     settings.strategy_learning.enabled is on (after the replay, P7.3).
-      #     Seconds of arithmetic on a few thousand buckets.
-      # STOPPED by the WXPredict build, wave A.3 (docs/WXPREDICT_BUILD.md,
-      # section 3.6, A.1 result): its output reaches no price.
-      #   Why: every loader returns its prior while settings.strategy_learning
-      #   is off (learned.enabled); live, off. s2 and s10 do not read the table.
-      #   Its last output stays in the database and the mirror. To restart it,
-      #   set `if:` back to `${{ !cancelled() }}` and put its row back in
-      #   clock_expected_jobs (20261005190000 removed it).
+      # 6a. The nightly learning loop (plan v2 P5.8): the market weights, the
+      #     city clusters and the belief maps, from the checkpoint outcomes
+      #     databank banked above, one immutable row per version in
+      #     strategy_params. Seconds of arithmetic (9-22 s a night, A.1).
+      # STOPPED 5 Oct (wave A.3), RESTARTED 7 Oct (Hassan: "turn learning on"):
+      # settings.strategy_learning is on (20261007100000). The tick reads the
+      # market weight per view and checkpoint class, off its prior 0 only after
+      # 40 settled days (20 to choose a weight, 20 more scored forward) with a
+      # walk-forward lower 90% bound above zero, at most 0.05 a night, and the
+      # city clusters, which only tighten the cluster rail. Nothing reaches
+      # capital: meta_allocator reports, Hassan promotes.
       - name: Learn strategy parameters
-        if: ${{ false }}
+        if: ${{ !cancelled() }}
         timeout-minutes: 5
         run: python scripts/strategy_learn.py
 

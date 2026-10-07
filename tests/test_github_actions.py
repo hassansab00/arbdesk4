@@ -751,10 +751,11 @@ def test_the_pipelines_do_not_skip_a_step_after_a_failure():
 # section 3.6). Each refit something no price reads: measured 5 Oct, 366 s a
 # night on the medians of 7 nights. Named here one by one, so a step cannot
 # drift into `if: false` unnoticed, and a restart is a deliberate edit here too.
+# "Learn strategy parameters" was restarted 7 Oct (Hassan: "turn learning on";
+# migration 20261007100000 switched settings.strategy_learning on).
 STOPPED_STEPS = {
     ("pipeline_daily.yml", "Promote or shadow the fitted models"),
     ("pipeline_daily.yml", "Re-fit calibration map"),
-    ("pipeline_daily.yml", "Learn strategy parameters"),
     ("pipeline_daily.yml", "Fit the intraday trajectory"),
     ("pipeline_daily.yml", "The hit tournament"),
 }
