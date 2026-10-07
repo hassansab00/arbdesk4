@@ -1,0 +1,2638 @@
+{
+ "adopted": [],
+ "boot": 10000,
+ "by_city": {
+  "A_0.10_during": {
+   "amsterdam": {
+    "pnl_per_share": 0.0804,
+    "trades": 34
+   },
+   "ankara": {
+    "pnl_per_share": -0.0437,
+    "trades": 52
+   },
+   "atlanta": {
+    "pnl_per_share": -0.0214,
+    "trades": 58
+   },
+   "austin": {
+    "pnl_per_share": -0.0319,
+    "trades": 41
+   },
+   "beijing": {
+    "pnl_per_share": -0.0153,
+    "trades": 82
+   },
+   "buenos_aires": {
+    "pnl_per_share": -0.0231,
+    "trades": 94
+   },
+   "busan": {
+    "pnl_per_share": 0.0663,
+    "trades": 76
+   },
+   "cape_town": {
+    "pnl_per_share": 0.0565,
+    "trades": 58
+   },
+   "chengdu": {
+    "pnl_per_share": -0.0401,
+    "trades": 54
+   },
+   "chicago": {
+    "pnl_per_share": 0.0148,
+    "trades": 48
+   },
+   "chongqing": {
+    "pnl_per_share": -0.0168,
+    "trades": 69
+   },
+   "dallas": {
+    "pnl_per_share": 0.0063,
+    "trades": 47
+   },
+   "denver": {
+    "pnl_per_share": -0.0533,
+    "trades": 25
+   },
+   "guangzhou": {
+    "pnl_per_share": 0.0202,
+    "trades": 80
+   },
+   "helsinki": {
+    "pnl_per_share": -0.0344,
+    "trades": 61
+   },
+   "houston": {
+    "pnl_per_share": 0.0986,
+    "trades": 41
+   },
+   "istanbul": {
+    "pnl_per_share": 0.0112,
+    "trades": 8
+   },
+   "karachi": {
+    "pnl_per_share": 0.0263,
+    "trades": 70
+   },
+   "kuala_lumpur": {
+    "pnl_per_share": -0.0741,
+    "trades": 64
+   },
+   "london": {
+    "pnl_per_share": -0.0264,
+    "trades": 66
+   },
+   "los_angeles": {
+    "pnl_per_share": -0.2178,
+    "trades": 11
+   },
+   "lucknow": {
+    "pnl_per_share": 0.0478,
+    "trades": 22
+   },
+   "madrid": {
+    "pnl_per_share": -0.0342,
+    "trades": 90
+   },
+   "manila": {
+    "pnl_per_share": 0.0126,
+    "trades": 43
+   },
+   "mexico_city": {
+    "pnl_per_share": 0.0053,
+    "trades": 38
+   },
+   "miami": {
+    "pnl_per_share": -0.0187,
+    "trades": 60
+   },
+   "milan": {
+    "pnl_per_share": -0.0892,
+    "trades": 27
+   },
+   "moscow": {
+    "pnl_per_share": -0.1082,
+    "trades": 70
+   },
+   "munich": {
+    "pnl_per_share": -0.0034,
+    "trades": 47
+   },
+   "nyc": {
+    "pnl_per_share": -0.0239,
+    "trades": 69
+   },
+   "panama_city": {
+    "pnl_per_share": -0.0865,
+    "trades": 63
+   },
+   "paris": {
+    "pnl_per_share": -0.05,
+    "trades": 96
+   },
+   "qingdao": {
+    "pnl_per_share": 0.0259,
+    "trades": 70
+   },
+   "san_francisco": {
+    "pnl_per_share": 0.0779,
+    "trades": 30
+   },
+   "sao_paulo": {
+    "pnl_per_share": -0.0127,
+    "trades": 102
+   },
+   "seattle": {
+    "pnl_per_share": -0.0641,
+    "trades": 67
+   },
+   "seoul": {
+    "pnl_per_share": -0.0519,
+    "trades": 72
+   },
+   "shanghai": {
+    "pnl_per_share": 0.0359,
+    "trades": 74
+   },
+   "shenzhen": {
+    "pnl_per_share": -0.0155,
+    "trades": 73
+   },
+   "singapore": {
+    "pnl_per_share": 0.0427,
+    "trades": 88
+   },
+   "tel_aviv": {
+    "pnl_per_share": 0.0854,
+    "trades": 44
+   },
+   "tokyo": {
+    "pnl_per_share": -0.0423,
+    "trades": 72
+   },
+   "toronto": {
+    "pnl_per_share": -0.0053,
+    "trades": 45
+   },
+   "warsaw": {
+    "pnl_per_share": 0.0023,
+    "trades": 77
+   },
+   "wellington": {
+    "pnl_per_share": -0.0023,
+    "trades": 98
+   },
+   "wuhan": {
+    "pnl_per_share": 0.0222,
+    "trades": 87
+   },
+   "zhengzhou": {
+    "pnl_per_share": 0.1796,
+    "trades": 11
+   }
+  },
+  "A_0.10_pre": {
+   "amsterdam": {
+    "pnl_per_share": -0.2173,
+    "trades": 42
+   },
+   "ankara": {
+    "pnl_per_share": -0.0911,
+    "trades": 64
+   },
+   "atlanta": {
+    "pnl_per_share": -0.0752,
+    "trades": 69
+   },
+   "austin": {
+    "pnl_per_share": -0.011,
+    "trades": 35
+   },
+   "beijing": {
+    "pnl_per_share": -0.0543,
+    "trades": 43
+   },
+   "buenos_aires": {
+    "pnl_per_share": 0.0129,
+    "trades": 47
+   },
+   "busan": {
+    "pnl_per_share": -0.0051,
+    "trades": 50
+   },
+   "cape_town": {
+    "pnl_per_share": 0.0203,
+    "trades": 38
+   },
+   "chengdu": {
+    "pnl_per_share": -0.0935,
+    "trades": 37
+   },
+   "chicago": {
+    "pnl_per_share": 0.0749,
+    "trades": 61
+   },
+   "chongqing": {
+    "pnl_per_share": -0.0087,
+    "trades": 39
+   },
+   "dallas": {
+    "pnl_per_share": -0.0561,
+    "trades": 47
+   },
+   "denver": {
+    "pnl_per_share": -0.0758,
+    "trades": 20
+   },
+   "guangzhou": {
+    "pnl_per_share": -0.0984,
+    "trades": 56
+   },
+   "helsinki": {
+    "pnl_per_share": -0.0628,
+    "trades": 71
+   },
+   "houston": {
+    "pnl_per_share": -0.0464,
+    "trades": 57
+   },
+   "istanbul": {
+    "pnl_per_share": -0.0488,
+    "trades": 21
+   },
+   "karachi": {
+    "pnl_per_share": 0.129,
+    "trades": 16
+   },
+   "kuala_lumpur": {
+    "pnl_per_share": -0.1448,
+    "trades": 41
+   },
+   "london": {
+    "pnl_per_share": -0.0264,
+    "trades": 81
+   },
+   "los_angeles": {
+    "pnl_per_share": 0.1701,
+    "trades": 6
+   },
+   "lucknow": {
+    "pnl_per_share": 0.0575,
+    "trades": 33
+   },
+   "madrid": {
+    "pnl_per_share": -0.0393,
+    "trades": 51
+   },
+   "manila": {
+    "pnl_per_share": -0.0208,
+    "trades": 31
+   },
+   "mexico_city": {
+    "pnl_per_share": -0.0546,
+    "trades": 27
+   },
+   "miami": {
+    "pnl_per_share": -0.0311,
+    "trades": 67
+   },
+   "milan": {
+    "pnl_per_share": 0.0381,
+    "trades": 38
+   },
+   "moscow": {
+    "pnl_per_share": -0.0404,
+    "trades": 56
+   },
+   "munich": {
+    "pnl_per_share": 0.0107,
+    "trades": 55
+   },
+   "nyc": {
+    "pnl_per_share": -0.0454,
+    "trades": 99
+   },
+   "panama_city": {
+    "pnl_per_share": -0.0624,
+    "trades": 25
+   },
+   "paris": {
+    "pnl_per_share": -0.1209,
+    "trades": 64
+   },
+   "qingdao": {
+    "pnl_per_share": -0.1211,
+    "trades": 45
+   },
+   "san_francisco": {
+    "pnl_per_share": 0.0446,
+    "trades": 29
+   },
+   "sao_paulo": {
+    "pnl_per_share": -0.1412,
+    "trades": 45
+   },
+   "seattle": {
+    "pnl_per_share": 0.011,
+    "trades": 76
+   },
+   "seoul": {
+    "pnl_per_share": 0.0541,
+    "trades": 44
+   },
+   "shanghai": {
+    "pnl_per_share": -0.0864,
+    "trades": 58
+   },
+   "shenzhen": {
+    "pnl_per_share": -0.0527,
+    "trades": 47
+   },
+   "singapore": {
+    "pnl_per_share": 0.0155,
+    "trades": 62
+   },
+   "tel_aviv": {
+    "pnl_per_share": 0.0124,
+    "trades": 42
+   },
+   "tokyo": {
+    "pnl_per_share": 0.0205,
+    "trades": 52
+   },
+   "toronto": {
+    "pnl_per_share": -0.0809,
+    "trades": 40
+   },
+   "warsaw": {
+    "pnl_per_share": -0.0985,
+    "trades": 42
+   },
+   "wellington": {
+    "pnl_per_share": 0.0348,
+    "trades": 42
+   },
+   "wuhan": {
+    "pnl_per_share": 0.0479,
+    "trades": 34
+   },
+   "zhengzhou": {
+    "pnl_per_share": 0.0585,
+    "trades": 8
+   }
+  },
+  "A_0.20_during": {
+   "amsterdam": {
+    "pnl_per_share": 0.0904,
+    "trades": 15
+   },
+   "ankara": {
+    "pnl_per_share": 0.0103,
+    "trades": 19
+   },
+   "atlanta": {
+    "pnl_per_share": 0.0378,
+    "trades": 28
+   },
+   "austin": {
+    "pnl_per_share": 0.0175,
+    "trades": 23
+   },
+   "beijing": {
+    "pnl_per_share": -0.0137,
+    "trades": 68
+   },
+   "buenos_aires": {
+    "pnl_per_share": -0.0191,
+    "trades": 49
+   },
+   "busan": {
+    "pnl_per_share": 0.0779,
+    "trades": 51
+   },
+   "cape_town": {
+    "pnl_per_share": 0.0658,
+    "trades": 34
+   },
+   "chengdu": {
+    "pnl_per_share": -0.0125,
+    "trades": 38
+   },
+   "chicago": {
+    "pnl_per_share": -0.085,
+    "trades": 21
+   },
+   "chongqing": {
+    "pnl_per_share": 0.0279,
+    "trades": 39
+   },
+   "dallas": {
+    "pnl_per_share": 0.0365,
+    "trades": 18
+   },
+   "denver": {
+    "pnl_per_share": -0.0779,
+    "trades": 13
+   },
+   "guangzhou": {
+    "pnl_per_share": 0.0295,
+    "trades": 60
+   },
+   "helsinki": {
+    "pnl_per_share": -0.0708,
+    "trades": 29
+   },
+   "houston": {
+    "pnl_per_share": -0.0056,
+    "trades": 22
+   },
+   "istanbul": {
+    "pnl_per_share": 0.0008,
+    "trades": 4
+   },
+   "karachi": {
+    "pnl_per_share": -0.0243,
+    "trades": 34
+   },
+   "kuala_lumpur": {
+    "pnl_per_share": -0.0712,
+    "trades": 40
+   },
+   "london": {
+    "pnl_per_share": -0.0561,
+    "trades": 27
+   },
+   "los_angeles": {
+    "pnl_per_share": -0.0048,
+    "trades": 5
+   },
+   "lucknow": {
+    "pnl_per_share": 0.0043,
+    "trades": 13
+   },
+   "madrid": {
+    "pnl_per_share": -0.036,
+    "trades": 43
+   },
+   "manila": {
+    "pnl_per_share": -0.188,
+    "trades": 15
+   },
+   "mexico_city": {
+    "pnl_per_share": -0.0781,
+    "trades": 21
+   },
+   "miami": {
+    "pnl_per_share": 0.0462,
+    "trades": 29
+   },
+   "milan": {
+    "pnl_per_share": -0.1775,
+    "trades": 13
+   },
+   "moscow": {
+    "pnl_per_share": -0.0874,
+    "trades": 36
+   },
+   "munich": {
+    "pnl_per_share": 0.0534,
+    "trades": 22
+   },
+   "nyc": {
+    "pnl_per_share": -0.0319,
+    "trades": 45
+   },
+   "panama_city": {
+    "pnl_per_share": -0.0305,
+    "trades": 41
+   },
+   "paris": {
+    "pnl_per_share": -0.0664,
+    "trades": 54
+   },
+   "qingdao": {
+    "pnl_per_share": 0.0728,
+    "trades": 35
+   },
+   "san_francisco": {
+    "pnl_per_share": -0.0109,
+    "trades": 16
+   },
+   "sao_paulo": {
+    "pnl_per_share": 0.021,
+    "trades": 66
+   },
+   "seattle": {
+    "pnl_per_share": -0.0368,
+    "trades": 30
+   },
+   "seoul": {
+    "pnl_per_share": -0.0355,
+    "trades": 45
+   },
+   "shanghai": {
+    "pnl_per_share": 0.0236,
+    "trades": 40
+   },
+   "shenzhen": {
+    "pnl_per_share": 0.0142,
+    "trades": 35
+   },
+   "singapore": {
+    "pnl_per_share": -0.0022,
+    "trades": 51
+   },
+   "tel_aviv": {
+    "pnl_per_share": 0.0682,
+    "trades": 20
+   },
+   "tokyo": {
+    "pnl_per_share": -0.0798,
+    "trades": 41
+   },
+   "toronto": {
+    "pnl_per_share": 0.0016,
+    "trades": 22
+   },
+   "warsaw": {
+    "pnl_per_share": -0.0375,
+    "trades": 41
+   },
+   "wellington": {
+    "pnl_per_share": -0.0542,
+    "trades": 57
+   },
+   "wuhan": {
+    "pnl_per_share": 0.0516,
+    "trades": 56
+   },
+   "zhengzhou": {
+    "pnl_per_share": 0.1441,
+    "trades": 6
+   }
+  },
+  "A_0.20_pre": {
+   "amsterdam": {
+    "pnl_per_share": -0.1835,
+    "trades": 20
+   },
+   "ankara": {
+    "pnl_per_share": 0.0047,
+    "trades": 21
+   },
+   "atlanta": {
+    "pnl_per_share": -0.1081,
+    "trades": 24
+   },
+   "austin": {
+    "pnl_per_share": 0.1563,
+    "trades": 13
+   },
+   "beijing": {
+    "pnl_per_share": -0.0768,
+    "trades": 15
+   },
+   "buenos_aires": {
+    "pnl_per_share": -0.0266,
+    "trades": 13
+   },
+   "busan": {
+    "pnl_per_share": -0.0331,
+    "trades": 10
+   },
+   "cape_town": {
+    "pnl_per_share": -0.053,
+    "trades": 8
+   },
+   "chengdu": {
+    "pnl_per_share": -0.079,
+    "trades": 9
+   },
+   "chicago": {
+    "pnl_per_share": 0.0635,
+    "trades": 31
+   },
+   "chongqing": {
+    "pnl_per_share": 0.0473,
+    "trades": 14
+   },
+   "dallas": {
+    "pnl_per_share": -0.2155,
+    "trades": 17
+   },
+   "denver": {
+    "pnl_per_share": -0.0106,
+    "trades": 6
+   },
+   "guangzhou": {
+    "pnl_per_share": -0.0675,
+    "trades": 27
+   },
+   "helsinki": {
+    "pnl_per_share": -0.063,
+    "trades": 30
+   },
+   "houston": {
+    "pnl_per_share": -0.0777,
+    "trades": 25
+   },
+   "istanbul": {
+    "pnl_per_share": 0.0567,
+    "trades": 9
+   },
+   "karachi": {
+    "pnl_per_share": -0.0789,
+    "trades": 4
+   },
+   "kuala_lumpur": {
+    "pnl_per_share": -0.2346,
+    "trades": 12
+   },
+   "london": {
+    "pnl_per_share": 0.0097,
+    "trades": 23
+   },
+   "los_angeles": {
+    "pnl_per_share": -0.2922,
+    "trades": 2
+   },
+   "lucknow": {
+    "pnl_per_share": -0.1324,
+    "trades": 14
+   },
+   "madrid": {
+    "pnl_per_share": -0.0451,
+    "trades": 18
+   },
+   "manila": {
+    "pnl_per_share": 0.2399,
+    "trades": 2
+   },
+   "mexico_city": {
+    "pnl_per_share": 0.1441,
+    "trades": 4
+   },
+   "miami": {
+    "pnl_per_share": 0.0253,
+    "trades": 23
+   },
+   "milan": {
+    "pnl_per_share": -0.0699,
+    "trades": 14
+   },
+   "moscow": {
+    "pnl_per_share": -0.1356,
+    "trades": 23
+   },
+   "munich": {
+    "pnl_per_share": -0.0863,
+    "trades": 19
+   },
+   "nyc": {
+    "pnl_per_share": -0.0284,
+    "trades": 45
+   },
+   "panama_city": {
+    "pnl_per_share": -0.0605,
+    "trades": 13
+   },
+   "paris": {
+    "pnl_per_share": -0.0804,
+    "trades": 19
+   },
+   "qingdao": {
+    "pnl_per_share": -0.1092,
+    "trades": 12
+   },
+   "san_francisco": {
+    "pnl_per_share": 0.0981,
+    "trades": 10
+   },
+   "sao_paulo": {
+    "pnl_per_share": -0.0942,
+    "trades": 16
+   },
+   "seattle": {
+    "pnl_per_share": -0.0636,
+    "trades": 27
+   },
+   "seoul": {
+    "pnl_per_share": 0.0709,
+    "trades": 12
+   },
+   "shanghai": {
+    "pnl_per_share": 0.0514,
+    "trades": 16
+   },
+   "shenzhen": {
+    "pnl_per_share": 0.0051,
+    "trades": 20
+   },
+   "singapore": {
+    "pnl_per_share": -0.0242,
+    "trades": 17
+   },
+   "tel_aviv": {
+    "pnl_per_share": -0.0189,
+    "trades": 13
+   },
+   "tokyo": {
+    "pnl_per_share": 0.0681,
+    "trades": 21
+   },
+   "toronto": {
+    "pnl_per_share": 0.0482,
+    "trades": 9
+   },
+   "warsaw": {
+    "pnl_per_share": -0.0516,
+    "trades": 18
+   },
+   "wellington": {
+    "pnl_per_share": 0.0846,
+    "trades": 15
+   },
+   "wuhan": {
+    "pnl_per_share": 0.0826,
+    "trades": 16
+   },
+   "zhengzhou": {
+    "pnl_per_share": -0.0598,
+    "trades": 5
+   }
+  },
+  "M_0.10_during": {
+   "amsterdam": {
+    "pnl_per_share": 0.0638,
+    "trades": 47
+   },
+   "ankara": {
+    "pnl_per_share": -0.0348,
+    "trades": 56
+   },
+   "atlanta": {
+    "pnl_per_share": -0.0475,
+    "trades": 71
+   },
+   "austin": {
+    "pnl_per_share": -0.0313,
+    "trades": 51
+   },
+   "beijing": {
+    "pnl_per_share": -0.03,
+    "trades": 122
+   },
+   "buenos_aires": {
+    "pnl_per_share": -0.0419,
+    "trades": 111
+   },
+   "busan": {
+    "pnl_per_share": 0.0464,
+    "trades": 85
+   },
+   "cape_town": {
+    "pnl_per_share": 0.0467,
+    "trades": 76
+   },
+   "chengdu": {
+    "pnl_per_share": -0.0062,
+    "trades": 110
+   },
+   "chicago": {
+    "pnl_per_share": -0.016,
+    "trades": 62
+   },
+   "chongqing": {
+    "pnl_per_share": 0.0017,
+    "trades": 109
+   },
+   "dallas": {
+    "pnl_per_share": -0.0026,
+    "trades": 57
+   },
+   "denver": {
+    "pnl_per_share": -0.036,
+    "trades": 39
+   },
+   "guangzhou": {
+    "pnl_per_share": 0.0144,
+    "trades": 96
+   },
+   "helsinki": {
+    "pnl_per_share": -0.0372,
+    "trades": 62
+   },
+   "houston": {
+    "pnl_per_share": 0.1094,
+    "trades": 45
+   },
+   "istanbul": {
+    "pnl_per_share": -0.0008,
+    "trades": 30
+   },
+   "jeddah": {
+    "pnl_per_share": -0.0856,
+    "trades": 80
+   },
+   "karachi": {
+    "pnl_per_share": 0.0473,
+    "trades": 88
+   },
+   "kuala_lumpur": {
+    "pnl_per_share": -0.0286,
+    "trades": 91
+   },
+   "london": {
+    "pnl_per_share": -0.0109,
+    "trades": 77
+   },
+   "los_angeles": {
+    "pnl_per_share": 0.0103,
+    "trades": 55
+   },
+   "lucknow": {
+    "pnl_per_share": 0.0288,
+    "trades": 69
+   },
+   "madrid": {
+    "pnl_per_share": -0.0247,
+    "trades": 94
+   },
+   "manila": {
+    "pnl_per_share": -0.0001,
+    "trades": 44
+   },
+   "mexico_city": {
+    "pnl_per_share": 0.0152,
+    "trades": 41
+   },
+   "miami": {
+    "pnl_per_share": -0.0302,
+    "trades": 63
+   },
+   "milan": {
+    "pnl_per_share": -0.0248,
+    "trades": 45
+   },
+   "moscow": {
+    "pnl_per_share": -0.0923,
+    "trades": 81
+   },
+   "munich": {
+    "pnl_per_share": -0.0277,
+    "trades": 68
+   },
+   "nyc": {
+    "pnl_per_share": -0.018,
+    "trades": 78
+   },
+   "panama_city": {
+    "pnl_per_share": -0.0679,
+    "trades": 77
+   },
+   "paris": {
+    "pnl_per_share": -0.0417,
+    "trades": 118
+   },
+   "qingdao": {
+    "pnl_per_share": 0.0243,
+    "trades": 84
+   },
+   "san_francisco": {
+    "pnl_per_share": 0.0618,
+    "trades": 50
+   },
+   "sao_paulo": {
+    "pnl_per_share": -0.0025,
+    "trades": 127
+   },
+   "seattle": {
+    "pnl_per_share": -0.0707,
+    "trades": 76
+   },
+   "seoul": {
+    "pnl_per_share": -0.021,
+    "trades": 143
+   },
+   "shanghai": {
+    "pnl_per_share": 0.0181,
+    "trades": 114
+   },
+   "shenzhen": {
+    "pnl_per_share": -0.0468,
+    "trades": 86
+   },
+   "singapore": {
+    "pnl_per_share": 0.0435,
+    "trades": 89
+   },
+   "tel_aviv": {
+    "pnl_per_share": 0.0907,
+    "trades": 45
+   },
+   "tokyo": {
+    "pnl_per_share": -0.0343,
+    "trades": 111
+   },
+   "toronto": {
+    "pnl_per_share": 0.0023,
+    "trades": 97
+   },
+   "warsaw": {
+    "pnl_per_share": 0.0149,
+    "trades": 100
+   },
+   "wellington": {
+    "pnl_per_share": -0.0019,
+    "trades": 101
+   },
+   "wuhan": {
+    "pnl_per_share": 0.028,
+    "trades": 107
+   },
+   "zhengzhou": {
+    "pnl_per_share": 0.143,
+    "trades": 13
+   }
+  },
+  "M_0.10_pre": {
+   "amsterdam": {
+    "pnl_per_share": -0.1383,
+    "trades": 60
+   },
+   "ankara": {
+    "pnl_per_share": -0.0967,
+    "trades": 67
+   },
+   "atlanta": {
+    "pnl_per_share": -0.0972,
+    "trades": 82
+   },
+   "austin": {
+    "pnl_per_share": 0.0059,
+    "trades": 46
+   },
+   "beijing": {
+    "pnl_per_share": -0.0195,
+    "trades": 71
+   },
+   "buenos_aires": {
+    "pnl_per_share": 0.0183,
+    "trades": 60
+   },
+   "busan": {
+    "pnl_per_share": 0.0068,
+    "trades": 55
+   },
+   "cape_town": {
+    "pnl_per_share": -0.0011,
+    "trades": 45
+   },
+   "chengdu": {
+    "pnl_per_share": -0.0251,
+    "trades": 71
+   },
+   "chicago": {
+    "pnl_per_share": 0.0828,
+    "trades": 77
+   },
+   "chongqing": {
+    "pnl_per_share": -0.0004,
+    "trades": 66
+   },
+   "dallas": {
+    "pnl_per_share": -0.0483,
+    "trades": 59
+   },
+   "denver": {
+    "pnl_per_share": -0.1163,
+    "trades": 39
+   },
+   "guangzhou": {
+    "pnl_per_share": -0.1111,
+    "trades": 70
+   },
+   "helsinki": {
+    "pnl_per_share": -0.0563,
+    "trades": 73
+   },
+   "houston": {
+    "pnl_per_share": -0.0497,
+    "trades": 61
+   },
+   "istanbul": {
+    "pnl_per_share": -0.0787,
+    "trades": 61
+   },
+   "jeddah": {
+    "pnl_per_share": -0.0547,
+    "trades": 30
+   },
+   "karachi": {
+    "pnl_per_share": 0.1004,
+    "trades": 26
+   },
+   "kuala_lumpur": {
+    "pnl_per_share": -0.096,
+    "trades": 54
+   },
+   "london": {
+    "pnl_per_share": -0.0268,
+    "trades": 93
+   },
+   "los_angeles": {
+    "pnl_per_share": 0.0531,
+    "trades": 63
+   },
+   "lucknow": {
+    "pnl_per_share": 0.0498,
+    "trades": 78
+   },
+   "madrid": {
+    "pnl_per_share": -0.0417,
+    "trades": 53
+   },
+   "manila": {
+    "pnl_per_share": -0.0208,
+    "trades": 31
+   },
+   "mexico_city": {
+    "pnl_per_share": -0.0428,
+    "trades": 29
+   },
+   "miami": {
+    "pnl_per_share": -0.0271,
+    "trades": 71
+   },
+   "milan": {
+    "pnl_per_share": -0.0124,
+    "trades": 66
+   },
+   "moscow": {
+    "pnl_per_share": -0.0529,
+    "trades": 67
+   },
+   "munich": {
+    "pnl_per_share": -0.0408,
+    "trades": 83
+   },
+   "nyc": {
+    "pnl_per_share": -0.0387,
+    "trades": 113
+   },
+   "panama_city": {
+    "pnl_per_share": 0.0055,
+    "trades": 33
+   },
+   "paris": {
+    "pnl_per_share": -0.0864,
+    "trades": 77
+   },
+   "qingdao": {
+    "pnl_per_share": -0.1123,
+    "trades": 50
+   },
+   "san_francisco": {
+    "pnl_per_share": -0.0764,
+    "trades": 55
+   },
+   "sao_paulo": {
+    "pnl_per_share": -0.1239,
+    "trades": 55
+   },
+   "seattle": {
+    "pnl_per_share": 0.0058,
+    "trades": 83
+   },
+   "seoul": {
+    "pnl_per_share": 0.0504,
+    "trades": 86
+   },
+   "shanghai": {
+    "pnl_per_share": -0.1273,
+    "trades": 80
+   },
+   "shenzhen": {
+    "pnl_per_share": -0.0583,
+    "trades": 56
+   },
+   "singapore": {
+    "pnl_per_share": 0.0201,
+    "trades": 63
+   },
+   "tel_aviv": {
+    "pnl_per_share": 0.0068,
+    "trades": 44
+   },
+   "tokyo": {
+    "pnl_per_share": -0.0337,
+    "trades": 70
+   },
+   "toronto": {
+    "pnl_per_share": -0.122,
+    "trades": 78
+   },
+   "warsaw": {
+    "pnl_per_share": -0.0412,
+    "trades": 56
+   },
+   "wellington": {
+    "pnl_per_share": 0.0348,
+    "trades": 42
+   },
+   "wuhan": {
+    "pnl_per_share": -0.0173,
+    "trades": 49
+   },
+   "zhengzhou": {
+    "pnl_per_share": 0.0023,
+    "trades": 9
+   }
+  },
+  "M_0.20_during": {
+   "amsterdam": {
+    "pnl_per_share": 0.0574,
+    "trades": 20
+   },
+   "ankara": {
+    "pnl_per_share": 0.0104,
+    "trades": 21
+   },
+   "atlanta": {
+    "pnl_per_share": -0.0083,
+    "trades": 38
+   },
+   "austin": {
+    "pnl_per_share": 0.0397,
+    "trades": 27
+   },
+   "beijing": {
+    "pnl_per_share": -0.0382,
+    "trades": 100
+   },
+   "buenos_aires": {
+    "pnl_per_share": -0.0331,
+    "trades": 60
+   },
+   "busan": {
+    "pnl_per_share": 0.0622,
+    "trades": 55
+   },
+   "cape_town": {
+    "pnl_per_share": 0.0557,
+    "trades": 45
+   },
+   "chengdu": {
+    "pnl_per_share": 0.0232,
+    "trades": 79
+   },
+   "chicago": {
+    "pnl_per_share": -0.0506,
+    "trades": 27
+   },
+   "chongqing": {
+    "pnl_per_share": 0.0258,
+    "trades": 59
+   },
+   "dallas": {
+    "pnl_per_share": 0.0121,
+    "trades": 21
+   },
+   "denver": {
+    "pnl_per_share": 0.0029,
+    "trades": 21
+   },
+   "guangzhou": {
+    "pnl_per_share": 0.0161,
+    "trades": 71
+   },
+   "helsinki": {
+    "pnl_per_share": -0.0755,
+    "trades": 30
+   },
+   "houston": {
+    "pnl_per_share": -0.0056,
+    "trades": 22
+   },
+   "istanbul": {
+    "pnl_per_share": 0.0485,
+    "trades": 12
+   },
+   "jeddah": {
+    "pnl_per_share": -0.1314,
+    "trades": 45
+   },
+   "karachi": {
+    "pnl_per_share": -0.0211,
+    "trades": 40
+   },
+   "kuala_lumpur": {
+    "pnl_per_share": -0.0775,
+    "trades": 57
+   },
+   "london": {
+    "pnl_per_share": -0.0139,
+    "trades": 33
+   },
+   "los_angeles": {
+    "pnl_per_share": -0.016,
+    "trades": 29
+   },
+   "lucknow": {
+    "pnl_per_share": -0.0336,
+    "trades": 41
+   },
+   "madrid": {
+    "pnl_per_share": -0.0466,
+    "trades": 46
+   },
+   "manila": {
+    "pnl_per_share": -0.188,
+    "trades": 15
+   },
+   "mexico_city": {
+    "pnl_per_share": -0.0529,
+    "trades": 23
+   },
+   "miami": {
+    "pnl_per_share": 0.0173,
+    "trades": 31
+   },
+   "milan": {
+    "pnl_per_share": -0.1203,
+    "trades": 24
+   },
+   "moscow": {
+    "pnl_per_share": -0.0505,
+    "trades": 41
+   },
+   "munich": {
+    "pnl_per_share": 0.0034,
+    "trades": 35
+   },
+   "nyc": {
+    "pnl_per_share": -0.0365,
+    "trades": 49
+   },
+   "panama_city": {
+    "pnl_per_share": -0.0201,
+    "trades": 51
+   },
+   "paris": {
+    "pnl_per_share": -0.0569,
+    "trades": 61
+   },
+   "qingdao": {
+    "pnl_per_share": 0.0629,
+    "trades": 42
+   },
+   "san_francisco": {
+    "pnl_per_share": 0.0665,
+    "trades": 25
+   },
+   "sao_paulo": {
+    "pnl_per_share": 0.011,
+    "trades": 86
+   },
+   "seattle": {
+    "pnl_per_share": -0.03,
+    "trades": 33
+   },
+   "seoul": {
+    "pnl_per_share": -0.0554,
+    "trades": 90
+   },
+   "shanghai": {
+    "pnl_per_share": -0.014,
+    "trades": 64
+   },
+   "shenzhen": {
+    "pnl_per_share": -0.0338,
+    "trades": 43
+   },
+   "singapore": {
+    "pnl_per_share": -0.0022,
+    "trades": 51
+   },
+   "tel_aviv": {
+    "pnl_per_share": 0.0804,
+    "trades": 21
+   },
+   "tokyo": {
+    "pnl_per_share": -0.0454,
+    "trades": 68
+   },
+   "toronto": {
+    "pnl_per_share": 0.0272,
+    "trades": 51
+   },
+   "warsaw": {
+    "pnl_per_share": -0.0176,
+    "trades": 52
+   },
+   "wellington": {
+    "pnl_per_share": -0.0518,
+    "trades": 59
+   },
+   "wuhan": {
+    "pnl_per_share": 0.0347,
+    "trades": 68
+   },
+   "zhengzhou": {
+    "pnl_per_share": 0.0936,
+    "trades": 8
+   }
+  },
+  "M_0.20_pre": {
+   "amsterdam": {
+    "pnl_per_share": -0.1573,
+    "trades": 24
+   },
+   "ankara": {
+    "pnl_per_share": -0.0235,
+    "trades": 23
+   },
+   "atlanta": {
+    "pnl_per_share": -0.1242,
+    "trades": 29
+   },
+   "austin": {
+    "pnl_per_share": 0.1114,
+    "trades": 16
+   },
+   "beijing": {
+    "pnl_per_share": -0.0777,
+    "trades": 25
+   },
+   "buenos_aires": {
+    "pnl_per_share": -0.0318,
+    "trades": 15
+   },
+   "busan": {
+    "pnl_per_share": 0.0509,
+    "trades": 13
+   },
+   "cape_town": {
+    "pnl_per_share": -0.053,
+    "trades": 8
+   },
+   "chengdu": {
+    "pnl_per_share": 0.0388,
+    "trades": 24
+   },
+   "chicago": {
+    "pnl_per_share": 0.0672,
+    "trades": 44
+   },
+   "chongqing": {
+    "pnl_per_share": 0.1505,
+    "trades": 24
+   },
+   "dallas": {
+    "pnl_per_share": -0.1669,
+    "trades": 21
+   },
+   "denver": {
+    "pnl_per_share": -0.1084,
+    "trades": 13
+   },
+   "guangzhou": {
+    "pnl_per_share": -0.0216,
+    "trades": 34
+   },
+   "helsinki": {
+    "pnl_per_share": -0.063,
+    "trades": 30
+   },
+   "houston": {
+    "pnl_per_share": -0.0724,
+    "trades": 28
+   },
+   "istanbul": {
+    "pnl_per_share": 0.062,
+    "trades": 20
+   },
+   "jeddah": {
+    "pnl_per_share": -0.1422,
+    "trades": 15
+   },
+   "karachi": {
+    "pnl_per_share": 0.0873,
+    "trades": 6
+   },
+   "kuala_lumpur": {
+    "pnl_per_share": -0.0589,
+    "trades": 17
+   },
+   "london": {
+    "pnl_per_share": -0.0139,
+    "trades": 25
+   },
+   "los_angeles": {
+    "pnl_per_share": -0.0362,
+    "trades": 18
+   },
+   "lucknow": {
+    "pnl_per_share": -0.0471,
+    "trades": 33
+   },
+   "madrid": {
+    "pnl_per_share": -0.0509,
+    "trades": 20
+   },
+   "manila": {
+    "pnl_per_share": 0.2399,
+    "trades": 2
+   },
+   "mexico_city": {
+    "pnl_per_share": 0.1441,
+    "trades": 4
+   },
+   "miami": {
+    "pnl_per_share": 0.0429,
+    "trades": 24
+   },
+   "milan": {
+    "pnl_per_share": 0.0121,
+    "trades": 31
+   },
+   "moscow": {
+    "pnl_per_share": -0.1334,
+    "trades": 29
+   },
+   "munich": {
+    "pnl_per_share": -0.0887,
+    "trades": 30
+   },
+   "nyc": {
+    "pnl_per_share": -0.0486,
+    "trades": 49
+   },
+   "panama_city": {
+    "pnl_per_share": -0.0016,
+    "trades": 17
+   },
+   "paris": {
+    "pnl_per_share": -0.0152,
+    "trades": 23
+   },
+   "qingdao": {
+    "pnl_per_share": -0.0908,
+    "trades": 13
+   },
+   "san_francisco": {
+    "pnl_per_share": 0.0498,
+    "trades": 18
+   },
+   "sao_paulo": {
+    "pnl_per_share": -0.1117,
+    "trades": 18
+   },
+   "seattle": {
+    "pnl_per_share": -0.0388,
+    "trades": 31
+   },
+   "seoul": {
+    "pnl_per_share": 0.0911,
+    "trades": 18
+   },
+   "shanghai": {
+    "pnl_per_share": 0.0036,
+    "trades": 27
+   },
+   "shenzhen": {
+    "pnl_per_share": 0.014,
+    "trades": 25
+   },
+   "singapore": {
+    "pnl_per_share": -0.0057,
+    "trades": 18
+   },
+   "tel_aviv": {
+    "pnl_per_share": -0.0189,
+    "trades": 13
+   },
+   "tokyo": {
+    "pnl_per_share": 0.0103,
+    "trades": 27
+   },
+   "toronto": {
+    "pnl_per_share": -0.0626,
+    "trades": 29
+   },
+   "warsaw": {
+    "pnl_per_share": 0.0035,
+    "trades": 23
+   },
+   "wellington": {
+    "pnl_per_share": 0.0846,
+    "trades": 15
+   },
+   "wuhan": {
+    "pnl_per_share": -0.0006,
+    "trades": 20
+   },
+   "zhengzhou": {
+    "pnl_per_share": -0.0598,
+    "trades": 5
+   }
+  },
+  "W_0.10_during": {
+   "amsterdam": {
+    "pnl_per_share": 0.107,
+    "trades": 14
+   },
+   "ankara": {
+    "pnl_per_share": -0.0428,
+    "trades": 19
+   },
+   "atlanta": {
+    "pnl_per_share": -0.1152,
+    "trades": 21
+   },
+   "austin": {
+    "pnl_per_share": -0.0945,
+    "trades": 18
+   },
+   "beijing": {
+    "pnl_per_share": -0.0429,
+    "trades": 40
+   },
+   "buenos_aires": {
+    "pnl_per_share": -0.0784,
+    "trades": 36
+   },
+   "busan": {
+    "pnl_per_share": 0.1767,
+    "trades": 30
+   },
+   "cape_town": {
+    "pnl_per_share": 0.0467,
+    "trades": 21
+   },
+   "chengdu": {
+    "pnl_per_share": 0.0926,
+    "trades": 17
+   },
+   "chicago": {
+    "pnl_per_share": -0.0778,
+    "trades": 25
+   },
+   "chongqing": {
+    "pnl_per_share": -0.0957,
+    "trades": 22
+   },
+   "dallas": {
+    "pnl_per_share": -0.0474,
+    "trades": 13
+   },
+   "denver": {
+    "pnl_per_share": -0.1396,
+    "trades": 9
+   },
+   "guangzhou": {
+    "pnl_per_share": -0.0441,
+    "trades": 24
+   },
+   "helsinki": {
+    "pnl_per_share": -0.0828,
+    "trades": 11
+   },
+   "houston": {
+    "pnl_per_share": 0.1492,
+    "trades": 12
+   },
+   "istanbul": {
+    "pnl_per_share": 0.076,
+    "trades": 14
+   },
+   "jeddah": {
+    "pnl_per_share": -0.0525,
+    "trades": 27
+   },
+   "karachi": {
+    "pnl_per_share": 0.0621,
+    "trades": 39
+   },
+   "kuala_lumpur": {
+    "pnl_per_share": -0.0608,
+    "trades": 35
+   },
+   "london": {
+    "pnl_per_share": -0.0664,
+    "trades": 25
+   },
+   "los_angeles": {
+    "pnl_per_share": 0.0779,
+    "trades": 22
+   },
+   "lucknow": {
+    "pnl_per_share": 0.0077,
+    "trades": 19
+   },
+   "madrid": {
+    "pnl_per_share": 0.0909,
+    "trades": 47
+   },
+   "manila": {
+    "pnl_per_share": 0.0762,
+    "trades": 16
+   },
+   "mexico_city": {
+    "pnl_per_share": 0.058,
+    "trades": 12
+   },
+   "miami": {
+    "pnl_per_share": -0.0771,
+    "trades": 30
+   },
+   "milan": {
+    "pnl_per_share": 0.0416,
+    "trades": 22
+   },
+   "moscow": {
+    "pnl_per_share": -0.0686,
+    "trades": 33
+   },
+   "munich": {
+    "pnl_per_share": 0.0074,
+    "trades": 27
+   },
+   "nyc": {
+    "pnl_per_share": -0.0611,
+    "trades": 25
+   },
+   "panama_city": {
+    "pnl_per_share": -0.1354,
+    "trades": 36
+   },
+   "paris": {
+    "pnl_per_share": -0.0415,
+    "trades": 52
+   },
+   "qingdao": {
+    "pnl_per_share": 0.0108,
+    "trades": 28
+   },
+   "san_francisco": {
+    "pnl_per_share": -0.0763,
+    "trades": 20
+   },
+   "sao_paulo": {
+    "pnl_per_share": 0.0733,
+    "trades": 47
+   },
+   "seattle": {
+    "pnl_per_share": -0.1533,
+    "trades": 26
+   },
+   "seoul": {
+    "pnl_per_share": 0.0531,
+    "trades": 31
+   },
+   "shanghai": {
+    "pnl_per_share": -0.0289,
+    "trades": 32
+   },
+   "shenzhen": {
+    "pnl_per_share": 0.0763,
+    "trades": 22
+   },
+   "singapore": {
+    "pnl_per_share": -0.0667,
+    "trades": 39
+   },
+   "tel_aviv": {
+    "pnl_per_share": 0.142,
+    "trades": 24
+   },
+   "tokyo": {
+    "pnl_per_share": -0.0569,
+    "trades": 46
+   },
+   "toronto": {
+    "pnl_per_share": -0.0214,
+    "trades": 35
+   },
+   "warsaw": {
+    "pnl_per_share": 0.1635,
+    "trades": 26
+   },
+   "wellington": {
+    "pnl_per_share": 0.0395,
+    "trades": 45
+   },
+   "wuhan": {
+    "pnl_per_share": -0.0516,
+    "trades": 21
+   },
+   "zhengzhou": {
+    "pnl_per_share": 0.2665,
+    "trades": 5
+   }
+  },
+  "W_0.10_pre": {
+   "amsterdam": {
+    "pnl_per_share": 0.0415,
+    "trades": 17
+   },
+   "ankara": {
+    "pnl_per_share": -0.0871,
+    "trades": 30
+   },
+   "atlanta": {
+    "pnl_per_share": 0.0159,
+    "trades": 24
+   },
+   "austin": {
+    "pnl_per_share": 0.075,
+    "trades": 23
+   },
+   "beijing": {
+    "pnl_per_share": -0.1037,
+    "trades": 20
+   },
+   "buenos_aires": {
+    "pnl_per_share": -0.0165,
+    "trades": 24
+   },
+   "busan": {
+    "pnl_per_share": 0.1079,
+    "trades": 18
+   },
+   "cape_town": {
+    "pnl_per_share": -0.0188,
+    "trades": 16
+   },
+   "chengdu": {
+    "pnl_per_share": -0.0421,
+    "trades": 17
+   },
+   "chicago": {
+    "pnl_per_share": 0.061,
+    "trades": 31
+   },
+   "chongqing": {
+    "pnl_per_share": -0.0311,
+    "trades": 15
+   },
+   "dallas": {
+    "pnl_per_share": -0.1382,
+    "trades": 22
+   },
+   "denver": {
+    "pnl_per_share": 0.0175,
+    "trades": 11
+   },
+   "guangzhou": {
+    "pnl_per_share": -0.095,
+    "trades": 26
+   },
+   "helsinki": {
+    "pnl_per_share": 0.0463,
+    "trades": 18
+   },
+   "houston": {
+    "pnl_per_share": 0.0779,
+    "trades": 20
+   },
+   "istanbul": {
+    "pnl_per_share": -0.0801,
+    "trades": 30
+   },
+   "jeddah": {
+    "pnl_per_share": -0.257,
+    "trades": 15
+   },
+   "karachi": {
+    "pnl_per_share": 0.049,
+    "trades": 11
+   },
+   "kuala_lumpur": {
+    "pnl_per_share": -0.0747,
+    "trades": 24
+   },
+   "london": {
+    "pnl_per_share": -0.0763,
+    "trades": 39
+   },
+   "los_angeles": {
+    "pnl_per_share": 0.1467,
+    "trades": 20
+   },
+   "lucknow": {
+    "pnl_per_share": -0.0266,
+    "trades": 23
+   },
+   "madrid": {
+    "pnl_per_share": 0.0555,
+    "trades": 28
+   },
+   "manila": {
+    "pnl_per_share": -0.0337,
+    "trades": 12
+   },
+   "mexico_city": {
+    "pnl_per_share": 0.2527,
+    "trades": 9
+   },
+   "miami": {
+    "pnl_per_share": 0.0337,
+    "trades": 35
+   },
+   "milan": {
+    "pnl_per_share": -0.0383,
+    "trades": 31
+   },
+   "moscow": {
+    "pnl_per_share": -0.1243,
+    "trades": 27
+   },
+   "munich": {
+    "pnl_per_share": -0.0125,
+    "trades": 41
+   },
+   "nyc": {
+    "pnl_per_share": -0.031,
+    "trades": 40
+   },
+   "panama_city": {
+    "pnl_per_share": -0.0254,
+    "trades": 16
+   },
+   "paris": {
+    "pnl_per_share": 0.027,
+    "trades": 30
+   },
+   "qingdao": {
+    "pnl_per_share": -0.0885,
+    "trades": 18
+   },
+   "san_francisco": {
+    "pnl_per_share": -0.1957,
+    "trades": 17
+   },
+   "sao_paulo": {
+    "pnl_per_share": -0.0769,
+    "trades": 15
+   },
+   "seattle": {
+    "pnl_per_share": -0.0923,
+    "trades": 27
+   },
+   "seoul": {
+    "pnl_per_share": -0.0532,
+    "trades": 20
+   },
+   "shanghai": {
+    "pnl_per_share": -0.1401,
+    "trades": 34
+   },
+   "shenzhen": {
+    "pnl_per_share": 0.1875,
+    "trades": 11
+   },
+   "singapore": {
+    "pnl_per_share": 0.117,
+    "trades": 23
+   },
+   "tel_aviv": {
+    "pnl_per_share": 0.094,
+    "trades": 22
+   },
+   "tokyo": {
+    "pnl_per_share": 0.0795,
+    "trades": 22
+   },
+   "toronto": {
+    "pnl_per_share": -0.0238,
+    "trades": 25
+   },
+   "warsaw": {
+    "pnl_per_share": 0.1037,
+    "trades": 19
+   },
+   "wellington": {
+    "pnl_per_share": 0.0087,
+    "trades": 23
+   },
+   "wuhan": {
+    "pnl_per_share": -0.1552,
+    "trades": 13
+   },
+   "zhengzhou": {
+    "pnl_per_share": -0.0952,
+    "trades": 3
+   }
+  },
+  "W_0.20_during": {
+   "amsterdam": {
+    "pnl_per_share": 0.1436,
+    "trades": 6
+   },
+   "ankara": {
+    "pnl_per_share": -0.1127,
+    "trades": 4
+   },
+   "atlanta": {
+    "pnl_per_share": -0.1672,
+    "trades": 8
+   },
+   "austin": {
+    "pnl_per_share": -0.0634,
+    "trades": 10
+   },
+   "beijing": {
+    "pnl_per_share": -0.0638,
+    "trades": 32
+   },
+   "buenos_aires": {
+    "pnl_per_share": 0.0125,
+    "trades": 16
+   },
+   "busan": {
+    "pnl_per_share": 0.1107,
+    "trades": 16
+   },
+   "cape_town": {
+    "pnl_per_share": 0.1809,
+    "trades": 10
+   },
+   "chengdu": {
+    "pnl_per_share": -0.0001,
+    "trades": 12
+   },
+   "chicago": {
+    "pnl_per_share": -0.059,
+    "trades": 10
+   },
+   "chongqing": {
+    "pnl_per_share": -0.0213,
+    "trades": 8
+   },
+   "dallas": {
+    "pnl_per_share": 0.1665,
+    "trades": 2
+   },
+   "denver": {
+    "pnl_per_share": -0.1682,
+    "trades": 4
+   },
+   "guangzhou": {
+    "pnl_per_share": 0.024,
+    "trades": 14
+   },
+   "helsinki": {
+    "pnl_per_share": -0.2151,
+    "trades": 5
+   },
+   "houston": {
+    "pnl_per_share": -0.0182,
+    "trades": 4
+   },
+   "istanbul": {
+    "pnl_per_share": 0.1888,
+    "trades": 5
+   },
+   "jeddah": {
+    "pnl_per_share": -0.1233,
+    "trades": 13
+   },
+   "karachi": {
+    "pnl_per_share": -0.0239,
+    "trades": 18
+   },
+   "kuala_lumpur": {
+    "pnl_per_share": -0.1374,
+    "trades": 21
+   },
+   "london": {
+    "pnl_per_share": -0.054,
+    "trades": 12
+   },
+   "los_angeles": {
+    "pnl_per_share": 0.0732,
+    "trades": 11
+   },
+   "lucknow": {
+    "pnl_per_share": -0.0689,
+    "trades": 10
+   },
+   "madrid": {
+    "pnl_per_share": 0.0761,
+    "trades": 20
+   },
+   "manila": {
+    "pnl_per_share": -0.2008,
+    "trades": 4
+   },
+   "mexico_city": {
+    "pnl_per_share": -0.0632,
+    "trades": 6
+   },
+   "miami": {
+    "pnl_per_share": -0.0165,
+    "trades": 15
+   },
+   "milan": {
+    "pnl_per_share": -0.0122,
+    "trades": 7
+   },
+   "moscow": {
+    "pnl_per_share": -0.035,
+    "trades": 16
+   },
+   "munich": {
+    "pnl_per_share": 0.1342,
+    "trades": 11
+   },
+   "nyc": {
+    "pnl_per_share": -0.0573,
+    "trades": 17
+   },
+   "panama_city": {
+    "pnl_per_share": -0.1041,
+    "trades": 18
+   },
+   "paris": {
+    "pnl_per_share": -0.0325,
+    "trades": 22
+   },
+   "qingdao": {
+    "pnl_per_share": -0.0036,
+    "trades": 15
+   },
+   "san_francisco": {
+    "pnl_per_share": -0.0727,
+    "trades": 11
+   },
+   "sao_paulo": {
+    "pnl_per_share": 0.0671,
+    "trades": 34
+   },
+   "seattle": {
+    "pnl_per_share": -0.02,
+    "trades": 8
+   },
+   "seoul": {
+    "pnl_per_share": 0.0261,
+    "trades": 19
+   },
+   "shanghai": {
+    "pnl_per_share": 0.0215,
+    "trades": 18
+   },
+   "shenzhen": {
+    "pnl_per_share": 0.1731,
+    "trades": 10
+   },
+   "singapore": {
+    "pnl_per_share": -0.0593,
+    "trades": 24
+   },
+   "tel_aviv": {
+    "pnl_per_share": 0.1923,
+    "trades": 8
+   },
+   "tokyo": {
+    "pnl_per_share": -0.0883,
+    "trades": 27
+   },
+   "toronto": {
+    "pnl_per_share": -0.0888,
+    "trades": 14
+   },
+   "warsaw": {
+    "pnl_per_share": 0.0776,
+    "trades": 14
+   },
+   "wellington": {
+    "pnl_per_share": 0.0182,
+    "trades": 22
+   },
+   "wuhan": {
+    "pnl_per_share": -0.1089,
+    "trades": 11
+   },
+   "zhengzhou": {
+    "pnl_per_share": 0.1354,
+    "trades": 2
+   }
+  },
+  "W_0.20_pre": {
+   "amsterdam": {
+    "pnl_per_share": 0.0987,
+    "trades": 6
+   },
+   "ankara": {
+    "pnl_per_share": -0.0165,
+    "trades": 9
+   },
+   "atlanta": {
+    "pnl_per_share": -0.0644,
+    "trades": 5
+   },
+   "austin": {
+    "pnl_per_share": 0.1921,
+    "trades": 9
+   },
+   "beijing": {
+    "pnl_per_share": -0.0253,
+    "trades": 6
+   },
+   "buenos_aires": {
+    "pnl_per_share": 0.1244,
+    "trades": 5
+   },
+   "busan": {
+    "pnl_per_share": 0.7099,
+    "trades": 1
+   },
+   "cape_town": {
+    "pnl_per_share": 0.0629,
+    "trades": 1
+   },
+   "chengdu": {
+    "pnl_per_share": 0.4248,
+    "trades": 4
+   },
+   "chicago": {
+    "pnl_per_share": 0.0582,
+    "trades": 16
+   },
+   "chongqing": {
+    "pnl_per_share": 0.1095,
+    "trades": 8
+   },
+   "dallas": {
+    "pnl_per_share": -0.2167,
+    "trades": 6
+   },
+   "denver": {
+    "pnl_per_share": -0.1554,
+    "trades": 2
+   },
+   "guangzhou": {
+    "pnl_per_share": -0.0522,
+    "trades": 11
+   },
+   "helsinki": {
+    "pnl_per_share": -0.1077,
+    "trades": 6
+   },
+   "houston": {
+    "pnl_per_share": -0.0094,
+    "trades": 5
+   },
+   "istanbul": {
+    "pnl_per_share": 0.0881,
+    "trades": 7
+   },
+   "jeddah": {
+    "pnl_per_share": -0.2124,
+    "trades": 8
+   },
+   "karachi": {
+    "pnl_per_share": 0.2802,
+    "trades": 3
+   },
+   "kuala_lumpur": {
+    "pnl_per_share": -0.2624,
+    "trades": 2
+   },
+   "london": {
+    "pnl_per_share": -0.1367,
+    "trades": 5
+   },
+   "los_angeles": {
+    "pnl_per_share": 0.0877,
+    "trades": 7
+   },
+   "lucknow": {
+    "pnl_per_share": -0.3328,
+    "trades": 7
+   },
+   "madrid": {
+    "pnl_per_share": -0.0164,
+    "trades": 6
+   },
+   "miami": {
+    "pnl_per_share": 0.071,
+    "trades": 8
+   },
+   "milan": {
+    "pnl_per_share": -0.0121,
+    "trades": 11
+   },
+   "moscow": {
+    "pnl_per_share": -0.2517,
+    "trades": 8
+   },
+   "munich": {
+    "pnl_per_share": -0.2436,
+    "trades": 10
+   },
+   "nyc": {
+    "pnl_per_share": 0.0439,
+    "trades": 17
+   },
+   "panama_city": {
+    "pnl_per_share": -0.0546,
+    "trades": 7
+   },
+   "paris": {
+    "pnl_per_share": -0.0119,
+    "trades": 9
+   },
+   "qingdao": {
+    "pnl_per_share": 0.0336,
+    "trades": 4
+   },
+   "san_francisco": {
+    "pnl_per_share": -0.1474,
+    "trades": 4
+   },
+   "sao_paulo": {
+    "pnl_per_share": -0.3065,
+    "trades": 4
+   },
+   "seattle": {
+    "pnl_per_share": -0.127,
+    "trades": 8
+   },
+   "seoul": {
+    "pnl_per_share": -0.0824,
+    "trades": 5
+   },
+   "shanghai": {
+    "pnl_per_share": 0.0453,
+    "trades": 6
+   },
+   "shenzhen": {
+    "pnl_per_share": 0.5274,
+    "trades": 2
+   },
+   "singapore": {
+    "pnl_per_share": 0.142,
+    "trades": 7
+   },
+   "tel_aviv": {
+    "pnl_per_share": -0.0334,
+    "trades": 5
+   },
+   "tokyo": {
+    "pnl_per_share": 0.1337,
+    "trades": 7
+   },
+   "toronto": {
+    "pnl_per_share": -0.0807,
+    "trades": 6
+   },
+   "warsaw": {
+    "pnl_per_share": 0.1922,
+    "trades": 5
+   },
+   "wellington": {
+    "pnl_per_share": 0.1196,
+    "trades": 5
+   },
+   "wuhan": {
+    "pnl_per_share": -0.1681,
+    "trades": 6
+   },
+   "zhengzhou": {
+    "pnl_per_share": -0.1504,
+    "trades": 2
+   }
+  }
+ },
+ "control": {
+  "during": {
+   "cities": 48,
+   "dates": 197,
+   "hit_rate": 0.596,
+   "interval": [
+    -0.0235,
+    0.0041
+   ],
+   "mean_price": 0.5893,
+   "pnl_per_share": -0.0098,
+   "pnl_per_share_p75_spread": -0.0158,
+   "real_asks": {
+    "dates": 1,
+    "pnl_per_share": 0.2895,
+    "trades": 1
+   },
+   "trades": 7382
+  },
+  "pre": {
+   "cities": 48,
+   "dates": 197,
+   "hit_rate": 0.4935,
+   "interval": [
+    -0.0408,
+    -0.0087
+   ],
+   "mean_price": 0.4983,
+   "pnl_per_share": -0.025,
+   "pnl_per_share_p75_spread": -0.0306,
+   "real_asks": {
+    "dates": 5,
+    "pnl_per_share": -0.1825,
+    "trades": 11
+   },
+   "trades": 7731
+  }
+ },
+ "cutoff": "2026-09-01",
+ "events": 7957,
+ "events_left_out": {
+  "arch twin of a main listing": 46,
+  "city not active": 450,
+  "dated on/after the cutoff": 1868,
+  "ladder not contiguous": 1,
+  "not exactly one winner": 3
+ },
+ "events_without_peak_hour": 0,
+ "first_date": "2025-12-30",
+ "last_date": "2026-08-31",
+ "last_date_used": "2026-08-31",
+ "level": 0.9958333333333333,
+ "rules": {
+  "A_0.10_during": {
+   "adopted": false,
+   "cities": 47,
+   "dates": 195,
+   "hit_rate": 0.6539,
+   "interval": [
+    -0.0296,
+    0.0111
+   ],
+   "mean_price": 0.647,
+   "pnl_per_share": -0.0087,
+   "pnl_per_share_p75_spread": -0.0151,
+   "real_asks": {
+    "dates": 0,
+    "pnl_per_share": null,
+    "trades": 0
+   },
+   "trades": 2774,
+   "why": "interval not wholly above zero"
+  },
+  "A_0.10_pre": {
+   "adopted": false,
+   "cities": 47,
+   "dates": 196,
+   "hit_rate": 0.529,
+   "interval": [
+    -0.066,
+    -0.0063
+   ],
+   "mean_price": 0.5456,
+   "pnl_per_share": -0.0363,
+   "pnl_per_share_p75_spread": -0.0424,
+   "real_asks": {
+    "dates": 2,
+    "pnl_per_share": -0.1514,
+    "trades": 2
+   },
+   "trades": 2153,
+   "why": "interval not wholly above zero"
+  },
+  "A_0.20_during": {
+   "adopted": false,
+   "cities": 47,
+   "dates": 193,
+   "hit_rate": 0.6993,
+   "interval": [
+    -0.0382,
+    0.0176
+   ],
+   "mean_price": 0.6948,
+   "pnl_per_share": -0.01,
+   "pnl_per_share_p75_spread": -0.0163,
+   "real_asks": {
+    "dates": 0,
+    "pnl_per_share": null,
+    "trades": 0
+   },
+   "trades": 1530,
+   "why": "interval not wholly above zero"
+  },
+  "A_0.20_pre": {
+   "adopted": false,
+   "cities": 47,
+   "dates": 190,
+   "hit_rate": 0.5862,
+   "interval": [
+    -0.0743,
+    0.0074
+   ],
+   "mean_price": 0.6036,
+   "pnl_per_share": -0.035,
+   "pnl_per_share_p75_spread": -0.0413,
+   "real_asks": {
+    "dates": 0,
+    "pnl_per_share": null,
+    "trades": 0
+   },
+   "trades": 754,
+   "why": "interval not wholly above zero"
+  },
+  "M_0.10_during": {
+   "adopted": false,
+   "cities": 48,
+   "dates": 195,
+   "hit_rate": 0.6469,
+   "interval": [
+    -0.0261,
+    0.011
+   ],
+   "mean_price": 0.6387,
+   "pnl_per_share": -0.0075,
+   "pnl_per_share_p75_spread": -0.0139,
+   "real_asks": {
+    "dates": 0,
+    "pnl_per_share": null,
+    "trades": 0
+   },
+   "trades": 3741,
+   "why": "interval not wholly above zero"
+  },
+  "M_0.10_pre": {
+   "adopted": false,
+   "cities": 48,
+   "dates": 197,
+   "hit_rate": 0.5268,
+   "interval": [
+    -0.063,
+    -0.0115
+   ],
+   "mean_price": 0.5438,
+   "pnl_per_share": -0.0366,
+   "pnl_per_share_p75_spread": -0.0427,
+   "real_asks": {
+    "dates": 3,
+    "pnl_per_share": -0.1799,
+    "trades": 4
+   },
+   "trades": 2906,
+   "why": "interval not wholly above zero"
+  },
+  "M_0.20_during": {
+   "adopted": false,
+   "cities": 48,
+   "dates": 194,
+   "hit_rate": 0.688,
+   "interval": [
+    -0.0374,
+    0.0081
+   ],
+   "mean_price": 0.6882,
+   "pnl_per_share": -0.0145,
+   "pnl_per_share_p75_spread": -0.0208,
+   "real_asks": {
+    "dates": 0,
+    "pnl_per_share": null,
+    "trades": 0
+   },
+   "trades": 2090,
+   "why": "interval not wholly above zero"
+  },
+  "M_0.20_pre": {
+   "adopted": false,
+   "cities": 48,
+   "dates": 193,
+   "hit_rate": 0.5957,
+   "interval": [
+    -0.0586,
+    0.0127
+   ],
+   "mean_price": 0.6019,
+   "pnl_per_share": -0.0236,
+   "pnl_per_share_p75_spread": -0.03,
+   "real_asks": {
+    "dates": 1,
+    "pnl_per_share": 0.0955,
+    "trades": 1
+   },
+   "trades": 1034,
+   "why": "interval not wholly above zero"
+  },
+  "W_0.10_during": {
+   "adopted": false,
+   "cities": 48,
+   "dates": 191,
+   "hit_rate": 0.6905,
+   "interval": [
+    -0.035,
+    0.0228
+   ],
+   "mean_price": 0.6812,
+   "pnl_per_share": -0.006,
+   "pnl_per_share_p75_spread": -0.0124,
+   "real_asks": {
+    "dates": 0,
+    "pnl_per_share": null,
+    "trades": 0
+   },
+   "trades": 1260,
+   "why": "interval not wholly above zero"
+  },
+  "W_0.10_pre": {
+   "adopted": false,
+   "cities": 48,
+   "dates": 192,
+   "hit_rate": 0.581,
+   "interval": [
+    -0.0564,
+    0.0217
+   ],
+   "mean_price": 0.5798,
+   "pnl_per_share": -0.0179,
+   "pnl_per_share_p75_spread": -0.0239,
+   "real_asks": {
+    "dates": 0,
+    "pnl_per_share": null,
+    "trades": 0
+   },
+   "trades": 1055,
+   "why": "interval not wholly above zero"
+  },
+  "W_0.20_during": {
+   "adopted": false,
+   "cities": 48,
+   "dates": 182,
+   "hit_rate": 0.7404,
+   "interval": [
+    -0.0572,
+    0.027
+   ],
+   "mean_price": 0.7392,
+   "pnl_per_share": -0.0128,
+   "pnl_per_share_p75_spread": -0.0191,
+   "real_asks": {
+    "dates": 0,
+    "pnl_per_share": null,
+    "trades": 0
+   },
+   "trades": 624,
+   "why": "interval not wholly above zero"
+  },
+  "W_0.20_pre": {
+   "adopted": false,
+   "cities": 46,
+   "dates": 146,
+   "hit_rate": 0.6529,
+   "interval": [
+    -0.0873,
+    0.0581
+   ],
+   "mean_price": 0.6488,
+   "pnl_per_share": -0.0122,
+   "pnl_per_share_p75_spread": -0.0183,
+   "real_asks": {
+    "dates": 0,
+    "pnl_per_share": null,
+    "trades": 0
+   },
+   "trades": 291,
+   "why": "interval not wholly above zero"
+  }
+ },
+ "seed": 11,
+ "spread_model": {
+  "0": {
+   "median": 0.005,
+   "n": 7581,
+   "p75": 0.01
+  },
+  "1": {
+   "median": 0.01,
+   "n": 2253,
+   "p75": 0.02
+  },
+  "2": {
+   "median": 0.01,
+   "n": 1340,
+   "p75": 0.015
+  },
+  "3": {
+   "median": 0.01,
+   "n": 354,
+   "p75": 0.015
+  },
+  "4": {
+   "median": 0.01,
+   "n": 20,
+   "p75": 0.02
+  },
+  "5": {
+   "median": 0.009,
+   "n": 13,
+   "p75": 0.015
+  }
+ },
+ "version": "f7-momentum-v1"
+}

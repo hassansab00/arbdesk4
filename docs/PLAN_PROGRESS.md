@@ -122,6 +122,10 @@ PR that advances a step.
           - The project is on Supabase's Free plan; Supabase's docs put a Free project in read-only mode above 500 MB. It still accepts writes; why is not measured.
           - Cuts with every reader's window met (`decisions` to 2 days, `weather_forecast_models` to 7, `band_probabilities` to 18): 30.0 MB. With four more that change a reader (correlation history, model forecasts, old closing books, forecasts to 14 days): 85.6 MB.
           - Recommended to Hassan: the Pro plan ($25 a month, 8 GB). Nothing changed live.
+        - **WXPredict build, F.7 (this PR): the momentum trigger, measured first, is not adopted** (Hassan, 6 Oct: "the market movement where the likely winner starts climbing rapidly"; `docs/F7_MOMENTUM_2026-10-07.md`).
+          - `tools/f7/momentum_study.py`: rules committed before the first run (`2cd1f58`, 08:21Z 7 Oct); 7,957 events before 1 Sep; output `data/eval/f7/momentum_2026-10-07.json`, the same bytes twice.
+          - All twelve rules lose after the spread and the fee, -0.60 to -3.66 cents a share, and so does the favourite with no condition (-2.50 before the peak, -0.98 during). Adding the forecasts' agreement or the forecast's own bucket raises the hit rate and the price with it.
+          - Not built. `tests/test_f7_momentum.py` pins the result, its report and its cutoff; CI does not re-run the 32 s study (Rule 7).
         - **WXPredict build, phase 2.1 (#320): up to a 0.10 spread, the record's `p` is the book's midpoint; over 0.10 it stays open.**
           - On hours where `p` did not move and the spread is at most 0.10, the archived books' mid matches it at the 90th percentile exactly: 54,415 pairs, 98.6% within 0.01.
           - The bid and the ask reach 0.015 at the 90th percentile, and the tick's last trade 0.99.
