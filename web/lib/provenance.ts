@@ -943,6 +943,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "markets",
     "fact_band_outcome"
   ],
+  "mv_city_ladder_edges": [
+    "cities",
+    "bands",
+    "markets"
+  ],
   "mv_prediction_ladder": [
     "edges",
     "band_probabilities",
@@ -1193,6 +1198,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "markets",
     "fact_band_outcome"
+  ],
+  "v_city_ladder_edges": [
+    "cities",
+    "bands",
+    "markets"
   ],
   "v_city_metadata_health": [
     "cities"

@@ -329,9 +329,12 @@ export default function PredictivePage() {
         .range(from, to), LADDER_MAX),
     [], 120000, LADDER_MAX
   );
-  const cityLadderQ = useQuery<Array<{ band_lo: number | null; band_hi: number | null }>>(
-    () => supabase.from("v_prediction_ladder").select("band_lo,band_hi")
-            .eq("city_key", active).limit(1000),
+  // Every bucket edge of the city's markets in the ladder's window (45 days
+  // back, 16 ahead). The stored ladder keeps yesterday on (WXPredict build
+  // 2.A), so the edges have their own stored copy: the same set, 1,050 on 7 Oct.
+  const cityEdgesQ = useQuery<Array<{ edge: number }>>(
+    () => supabase.from("v_city_ladder_edges").select("edge")
+            .eq("city_key", active).order("edge").limit(1000),
     [active], 120000, 1000
   );
   // ORDERED BEFORE ANY CAP, AND READ A PAGE AT A TIME (handoff F2). This was
@@ -411,12 +414,11 @@ export default function PredictivePage() {
   // than a pretty grid.
   const bandEdges = useMemo(() => {
     const edges = new Set<number>();
-    for (const r of cityLadderQ.data ?? []) {
-      if (r.band_lo !== null) edges.add(r.band_lo);
-      if (r.band_hi !== null) edges.add(r.band_hi);
+    for (const r of cityEdgesQ.data ?? []) {
+      if (r.edge !== null) edges.add(Number(r.edge));
     }
     return Array.from(edges).sort((a, b) => a - b);
-  }, [cityLadderQ.data]);
+  }, [cityEdgesQ.data]);
 
   /* --------------------------------------------------------------- forward */
   // Every open city-day (96 on 30 Sep; the table used to render 60 of them).

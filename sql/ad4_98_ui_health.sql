@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 275 of them - and for each MISSING one names the
+-- and function the app reads - 277 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -90,6 +90,7 @@ with expected(rel, owner, used_by) as (values
     ('model_registry', 'supabase/migrations/20261004190000_one_prediction_contract.sql', ''),
     ('model_versions', 'ad4_00_preflight.sql', ''),
     ('mv_city_hit_history', 'supabase/migrations/20260930004500_the_hit_record_shows_the_priced_centre.sql', ''),
+    ('mv_city_ladder_edges', 'ad4_89_page_cache.sql', ''),
     ('mv_prediction_ladder', 'supabase/migrations/20260927170000_the_card_shows_what_was_priced.sql', ''),
     ('mv_venue_band_resolution', 'ad4_68_prediction_ladder_outcomes.sql', ''),
     ('paper_accounts', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),
@@ -158,6 +159,7 @@ with expected(rel, owner, used_by) as (values
     ('v_city_hit_history', 'ad4_85_city_hit_history.sql', '/predictive'),
     ('v_city_hit_history_live', 'supabase/migrations/20260929220000_the_edges_keep_the_prices_the_record_reads.sql', ''),
     ('v_city_hit_summary', 'ad4_85_city_hit_history.sql', '/predictive'),
+    ('v_city_ladder_edges', 'ad4_89_page_cache.sql', '/predictive'),
     ('v_city_metadata_health', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', '(CityReadiness)'),
     ('v_city_metadata_verification', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', ''),
     ('v_city_observation_health', 'ad4_71_observation_health.sql', '(CityWeatherHealth)'),
@@ -387,6 +389,7 @@ begin
     ('model_registry', 'supabase/migrations/20261004190000_one_prediction_contract.sql', ''),
     ('model_versions', 'ad4_00_preflight.sql', ''),
     ('mv_city_hit_history', 'supabase/migrations/20260930004500_the_hit_record_shows_the_priced_centre.sql', ''),
+    ('mv_city_ladder_edges', 'ad4_89_page_cache.sql', ''),
     ('mv_prediction_ladder', 'supabase/migrations/20260927170000_the_card_shows_what_was_priced.sql', ''),
     ('mv_venue_band_resolution', 'ad4_68_prediction_ladder_outcomes.sql', ''),
     ('paper_accounts', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),
@@ -455,6 +458,7 @@ begin
     ('v_city_hit_history', 'ad4_85_city_hit_history.sql', '/predictive'),
     ('v_city_hit_history_live', 'supabase/migrations/20260929220000_the_edges_keep_the_prices_the_record_reads.sql', ''),
     ('v_city_hit_summary', 'ad4_85_city_hit_history.sql', '/predictive'),
+    ('v_city_ladder_edges', 'ad4_89_page_cache.sql', '/predictive'),
     ('v_city_metadata_health', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', '(CityReadiness)'),
     ('v_city_metadata_verification', 'supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql', ''),
     ('v_city_observation_health', 'ad4_71_observation_health.sql', '(CityWeatherHealth)'),

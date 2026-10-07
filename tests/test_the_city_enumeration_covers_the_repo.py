@@ -155,6 +155,13 @@ SQL_FILTERS = {
     # the ladder, which admits only the active roster: FILTERS, like ad4_68.
     "supabase/migrations/20260927170000_the_card_shows_what_was_priced.sql":
         "v_prediction_ladder_bands / _live / the stored copy - the Predictive page",
+    # The funnel's bucket planes (WXPredict build 2.A, 7 Oct): every edge of
+    # the ladder's own markets, so the ladder's roster rule - the active
+    # cities only - exactly as v_prediction_ladder_bands. FILTERS, like it.
+    "sql/ad4_89_page_cache.sql":
+        "mv_city_ladder_edges - the Predictive funnel's bucket planes, the ladder's cities",
+    "supabase/migrations/20261007150000_the_page_cache_keeps_the_days_it_shows.sql":
+        "mv_city_ladder_edges, as in sql/ad4_89 - the Predictive funnel's bucket planes",
     "supabase/migrations/20260923180000_a_priceable_market_is_one_whose_local_day_has_not_ended.sql":
         "v_priceable_markets - the markets both engines price; a retired city is not priced",
     "sql/ad4_87_market_settlement_gaps.sql":    "v_market_settlement_gaps - ended days to act on; a "
