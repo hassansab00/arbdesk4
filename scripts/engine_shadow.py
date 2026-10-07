@@ -43,6 +43,20 @@ S10 = ("s10_winner", "s10_growth", "s10_lock")
 WRITE_RESERVE_S = 3.0
 ORDER_RESERVE_S = 1.0     # kept after the fills for the tick's own log
 
+# THE CANDIDATE GATE (WXPredict build F.7; Hassan, 6 Oct: "each strategy
+# trades only cities whose status is Candidate"). v_city_status gives each
+# city-day and checkpoint a status by the measured status-v1 rules; a strategy
+# may enter only where it is `candidate`. The gate acts after the engine has
+# decided and only on a BUY: no probability, price or exit is touched, and a
+# held-back BUY keeps what it would have bought in its params_version, so the
+# gate itself can be judged on settled outcomes. Every decided row names the
+# status and the rules version it saw. The view takes about 3 s to read
+# (EXPLAIN ANALYZE, 7 Oct: 2.86 s) and a tick job already runs 43-59 s against
+# whole billed minutes, so the tick starts the read when it starts and the
+# engine waits at most GATE_WAIT_S for it; unread, every BUY is held back.
+GATE_WAIT_S = 2.0
+STATUS_ROWS_MAX = 1000          # db-max-rows: reads have hit it (measure_skill.py, databank.py)
+
 # decisions.reason_code's check, as 20260925090000_decision_log.sql declares
 # it: lower-case letters and underscores, NO DIGITS. One code outside it fails
 # the tick's whole insert: on 27 Sep 15:36Z the first engine tick decided 78
@@ -184,6 +198,68 @@ def decision_row(run_id, decided_at, checkpoint_id, strategy_id, city, target, d
             "prediction_id": pid, "prediction_source": source}
 
 
+def read_status(rest):
+    """{(city, target date, checkpoint): (status, rules version)}, every row
+    of v_city_status (each active city's local today and tomorrow: 672 on
+    7 Oct), in ONE request with one try: each page of a paged read computes
+    the whole view again. A full page may have been cut by PostgREST's row
+    cap, so it is refused rather than read as complete."""
+    rows = rest("v_city_status", {"select": "city_key,target_date,checkpoint,status,rules_version",
+                                  "order": "city_key.asc,target_date.asc,checkpoint.asc",
+                                  "limit": str(STATUS_ROWS_MAX)}, tries=1)
+    if len(rows) >= STATUS_ROWS_MAX:
+        raise RuntimeError(f"v_city_status: {len(rows)} rows, at the read's cap of {STATUS_ROWS_MAX}")
+    return {(r["city_key"], str(r["target_date"]), r["checkpoint"]): (r["status"], r.get("rules_version"))
+            for r in rows}
+
+
+def start_status_read():
+    """The status read, begun on a daemon thread when the tick starts: the
+    process never waits for it at exit, whatever the read does."""
+    import threading
+    from concurrent.futures import Future
+    from common import rest
+    future = Future()
+
+    def run():
+        try:
+            future.set_result(read_status(rest))
+        except BaseException as e:            # noqa: BLE001 - handed to collect_status
+            future.set_exception(e)
+    threading.Thread(target=run, name="status-read", daemon=True).start()
+    return future
+
+
+def collect_status(future, wait_s=GATE_WAIT_S):
+    """(statuses, None) or ({}, why): not started, not back in time, failed.
+    An empty map holds every BUY back."""
+    if future is None:
+        return {}, "not started"
+    try:
+        return future.result(timeout=max(0.0, wait_s)), None
+    except Exception as e:                       # noqa: BLE001 - a timeout or a failed read
+        return {}, f"{type(e).__name__}: {str(e)[:120]}" if str(e) else type(e).__name__
+
+
+def candidate_gate(d, seen):
+    """decide's output with the status it saw, and a BUY where the status is
+    not `candidate` held back: NONE (HOLD when something is held), reason
+    `not_candidate`, no orders, and the BUY it would have been under
+    versions.status.would. seen: (status, rules version) or None."""
+    status, rules = seen if seen else (None, None)
+    versions = dict(d.get("versions") or {})
+    versions["status"] = {"status": status, "rules": rules}
+    if d.get("action") != "BUY" or status == "candidate":
+        return dict(d, versions=versions)
+    versions["status"]["would"] = {
+        "action": "BUY", "target_usd": _num(d.get("target_usd")),
+        "orders": [{"band_id": o.get("band_id"), "side": o.get("side"), "limit_price": _num(o.get("limit_price")),
+                    "usd": _num(o.get("usd"))} for o in (d.get("orders") or [])]}
+    held = _num(d.get("held_usd")) or 0.0
+    return dict(d, action="HOLD" if held > 0 else "NONE", reason_code="not_candidate", orders=[],
+                target_usd=d.get("held_usd"), versions=versions)
+
+
 def s10_call(entry):
     """(probs, prediction) from an s10_ladders value: s10_shadow.record gives
     {"probs", "id"} (the stored row); a bare ladder (the replay's, or a dry
@@ -240,12 +316,15 @@ def _num(x):
 
 
 def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, params, anchor_table,
-               deadline, run_id, decided_at, buys=None, exits=None):
+               deadline, run_id, decided_at, buys=None, exits=None, status=None):
     """(rows, detail). checkpoints: [(checkpoint_id, row)] written this tick,
     latest per city-day. deadline: time.monotonic() to stop at. `buys`, when
     given, collects (row, decision, checkpoint_id) for every BUY: its orders
     are what part 3b sends (engine_orders). `exits` collects S10's SELLs and
-    SWITCHes (exit_of) the same way."""
+    SWITCHes (exit_of) the same way. `status`: {(city, target, checkpoint):
+    (status, rules version)} puts the Candidate gate in force (an empty map
+    holds every BUY back); None leaves it out, as in the replay of a run
+    recorded before the gate."""
     import decision_engine as de
     from strategies import engine_views as ev
 
@@ -305,6 +384,8 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
                                                    prediction=call), trace))
                 continue
             d = de.decide(view, book=ebook, ledger=lg, params=params)
+            if status is not None:
+                d = candidate_gate(d, status.get((city, target, name)))
             rows.append(stamp_s10(decision_row(run_id, decided_at, checkpoint_id, sid, city, target, d=d,
                                                prediction=call), trace))
             if buys is not None and d.get("action") == "BUY":
@@ -432,8 +513,9 @@ def send_orders(buys, run_id, deadline, dry_run=False, exits=()):
 
 
 def record(written_rows, s10_ladders, bands_by_market, market_of, unit_of, floors, now, deadline,
-           dry_run=False):
-    """Decide for the checkpoints the tick just wrote, and write the rows."""
+           dry_run=False, status_read=None):
+    """Decide for the checkpoints the tick just wrote, and write the rows.
+    status_read: the future start_status_read() returned when the tick began."""
     from common import rest, rest_all, insert
     import city_clusters
     import market_anchor
@@ -472,16 +554,22 @@ def record(written_rows, s10_ladders, bands_by_market, market_of, unit_of, floor
         # tick: each city's floor, its basis and the newest reading under it
         # (v_city_running_max is a view of now), and each ledger as read. The
         # replay is given these to be compared with live (P5.12 acceptance).
+        statuses, unread = collect_status(status_read)
+        seen = {k: statuses[k] for k in sorted((r["city_key"], str(r["target_date"]), r["checkpoint"])
+                                                for r in latest.values()) if k in statuses}
+        out["status"] = {"read": len(statuses), "seen": len(seen), "unread": unread}
         out["inputs"] = {"decided_at": now.isoformat(),
                          "floors": {c: list(floors[c]) for c in sorted({k[0] for k in latest}) if c in floors},
-                         "ledgers": snapshot}
+                         "ledgers": snapshot,
+                         # the Candidate gate's input, as "city|date|checkpoint": [status, rules]
+                         "status": {"|".join(k): list(v) for k, v in seen.items()}}
         params = {"clusters": city_clusters.load(rest)}
         anchor_table = market_anchor.load(rest)
         run_id = str(uuid.uuid4())
         buys, exits = [], []
         rows, detail = decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, params,
                                   anchor_table, deadline - WRITE_RESERVE_S, run_id,
-                                  now.isoformat(), buys=buys, exits=exits)
+                                  now.isoformat(), buys=buys, exits=exits, status=seen)
         out.update(detail)
         out["actions"] = {}
         for r in rows:

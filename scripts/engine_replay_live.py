@@ -112,8 +112,18 @@ def replay_run(live_rows, inputs, checkpoints, s10_ladders, bands_of, units, tab
     floors = {c: tuple(v) for c, v in (inputs.get("floors") or {}).items()}
     rows, _detail = es.decide_all([(c, checkpoints[c]) for c in ids], s10_ladders, bands_of, units, floors,
                                   ledgers_from(inputs.get("ledgers")), {"clusters": clusters}, anchor,
-                                  float("inf"), live_rows[0]["run_id"], inputs["decided_at"])
+                                  float("inf"), live_rows[0]["run_id"], inputs["decided_at"],
+                                  status=status_from(inputs))
     return rows, None
+
+
+def status_from(inputs):
+    """The Candidate gate's statuses as the tick recorded them (F.7), or None
+    for a run recorded before the gate: it replays with the gate left out,
+    as it was decided."""
+    if "status" not in inputs:
+        return None
+    return {tuple(k.split("|")): tuple(v) for k, v in (inputs.get("status") or {}).items()}
 
 
 def compare(live_rows, replayed):
