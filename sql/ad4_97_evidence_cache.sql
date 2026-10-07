@@ -24,7 +24,9 @@
 --
 -- freeze_hit_forecasts copies v_hit_forecasts_live into
 -- derived_hit_forecasts (sql/ad4_88) for every day both forecast tables still
--- hold; v_hit_forecasts serves the frozen rows for the days before.
+-- hold; v_hit_forecasts serves the frozen rows for the days before. Since
+-- 7 Oct (WXPredict build 2.A) each row's own table decides: the tables keep
+-- different days.
 --
 -- Step 5 (29 Sep) adds the last two long readers:
 --
@@ -157,38 +159,46 @@ set search_path = public, pg_temp
 as $fn$
 declare
   t0 timestamptz := clock_timestamp();
-  v_from    date;
-  v_removed int;
-  v_written int;
+  v_forecasts date;
+  v_models    date;
+  v_removed   int;
+  v_written   int;
 begin
-  -- The oldest for_date both forecast tables hold: from it on, the live rows
-  -- are whole, and they replace whatever was frozen for those days.
-  select greatest((select min(for_date) from weather_forecasts),
-                  (select min(for_date) from weather_forecast_models))
-    into v_from;
-  if v_from is null then
+  -- Each forecast table's oldest for_date: from it on that table's live rows
+  -- are whole, and they replace what was frozen from that table for those
+  -- days (WXPredict build 2.A, 7 Oct: weather_forecast_models keeps a week,
+  -- weather_forecasts 30 days; until then one boundary, the later of the
+  -- two). A table with no row leaves its frozen rows as they are.
+  select (select min(for_date) from weather_forecasts),
+         (select min(for_date) from weather_forecast_models)
+    into v_forecasts, v_models;
+  if v_forecasts is null and v_models is null then
     return jsonb_build_object('ok', true, 'rows_written', 0,
                               'note', 'neither forecast table holds a row');
   end if;
 
-  delete from derived_hit_forecasts where for_date >= v_from;
+  delete from derived_hit_forecasts
+   where for_date >= coalesce(case source_table when 'weather_forecasts' then v_forecasts
+                                                else v_models end, 'infinity'::date);
   get diagnostics v_removed = row_count;
 
-  insert into derived_hit_forecasts (city_key, for_date, lane, model, forecast_max_c, known_at, frozen_at)
-  select city_key, for_date, lane, model, forecast_max_c, known_at, now()
+  insert into derived_hit_forecasts (city_key, for_date, lane, model, forecast_max_c, known_at, frozen_at, source_table)
+  select city_key, for_date, lane, model, forecast_max_c, known_at, now(), source_table
     from v_hit_forecasts_live
-   where for_date >= v_from;
+   where for_date >= coalesce(case source_table when 'weather_forecasts' then v_forecasts
+                                                else v_models end, 'infinity'::date);
   get diagnostics v_written = row_count;
 
   return jsonb_build_object(
-    'ok', true, 'from', v_from, 'rows_replaced', v_removed, 'rows_written', v_written,
+    'ok', true, 'from_forecasts', v_forecasts, 'from_models', v_models,
+    'rows_replaced', v_removed, 'rows_written', v_written,
     'rows_total', (select count(*) from derived_hit_forecasts),
     'ms', round(extract(epoch from (clock_timestamp() - t0)) * 1000));
 end;
 $fn$;
 
 comment on function public.freeze_hit_forecasts() is
-  'Copy v_hit_forecasts_live into derived_hit_forecasts for every day both forecast tables still hold, replacing what was frozen for them; the days before are left as frozen (plan v2 P1.6 phase 2). Called once a night by common.refresh_feature_cache.';
+  'Copy v_hit_forecasts_live into derived_hit_forecasts for every day its source_table still holds, replacing what was frozen from that table for those days; the days before are left as frozen (plan v2 P1.6 phase 2; per table, WXPredict build 2.A). Called once a night by common.refresh_feature_cache.';
 
 revoke all on function public.freeze_hit_forecasts() from public, anon, authenticated;
 grant execute on function public.freeze_hit_forecasts() to service_role;
