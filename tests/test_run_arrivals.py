@@ -31,6 +31,10 @@ ADDED = [(ROOT / "supabase" / "migrations" / name).read_text() for name in (
 REMOVED = [(ROOT / "supabase" / "migrations" / name).read_text() for name in (
     "20261005190000_five_fits_that_reach_no_price_stop.sql",    # WXPredict A.3: five fits stop
 )]
+# expectations put back, after REMOVED, because their step was restarted
+RESTORED = [(ROOT / "supabase" / "migrations" / name).read_text() for name in (
+    "20261007100000_strategy_learning_is_switched_on.sql",      # Hassan 7 Oct: learning on
+)]
 AD4_91 = (ROOT / "sql" / "ad4_91_database_jobs.sql").read_text()
 WORKFLOWS = ROOT / ".github" / "workflows"
 
@@ -66,7 +70,8 @@ def _removed(text):
 def _all_expected():
     gone = set().union(*(_removed(text) for text in REMOVED))
     rows = _expected() + [r for text in ADDED for r in _rows(text)]
-    return [r for r in rows if (r[0], r[1]) not in gone]
+    kept = [r for r in rows if (r[0], r[1]) not in gone]
+    return kept + [r for text in RESTORED for r in _rows(text) if (r[0], r[1]) not in {(k[0], k[1]) for k in kept}]
 
 
 def _scripts(workflow_text):

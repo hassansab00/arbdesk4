@@ -110,7 +110,7 @@ insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plai
   ('derived_band_day_volume',   'computed_at',    12, 'market',    'Dollars traded per bucket per day.'),
   ('signals',                   'fired_at',       26, 'trading',   'Trades a strategy asked for.'),
   ('decisions',                 'decided_at',      8, 'trading',   'What each strategy decided on each city-day at each run, including doing nothing.'),
-  ('strategy_params',           'fitted_at',      null, 'model',     'Stopped (WXPredict build, wave A.3): no longer refitted nightly, so these are its last rows. What the nightly learning loop fitted - the belief maps first - one row per version, with the prior and bounds each was held to. Used only once learning is switched on.'),
+  ('strategy_params',           'fitted_at',      30, 'model',     'What the nightly learning loop fitted - the market weights, the city clusters and the belief maps - one row per version, with the prior and bounds each was held to. Learning is on (7 Oct): the tick reads the market weights and the clusters.'),
   ('paper_trades',              'opened_at',    null, 'trading',   'Positions the paper desk holds or has closed.'),
   ('paper_accounts',            'created_at',   null, 'trading',   'Private paper accounts; created by the desk owner.'),
   ('paper_orders',              'requested_at', null, 'trading',   'Queued and completed paper orders.'),
