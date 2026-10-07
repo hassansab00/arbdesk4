@@ -49,7 +49,8 @@ ORDER_RESERVE_S = 1.0     # kept after the fills for the tick's own log
 # may enter only where it is `candidate`. The gate acts after the engine has
 # decided and only on a BUY: no probability, price or exit is touched, and a
 # held-back BUY keeps what it would have bought in its params_version, so the
-# gate itself can be judged on settled outcomes. Every decided row names the
+# gate itself can be judged on settled outcomes. An S10 SWITCH's buy half is
+# a BUY too: held back, the switch is a HOLD (exit_of). Every decided row names the
 # status and the rules version it saw. The view takes about 3 s to read
 # (EXPLAIN ANALYZE, 7 Oct: 2.86 s) and a tick job already runs 43-59 s against
 # whole billed minutes, so the tick starts the read when it starts and the
@@ -373,8 +374,10 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
             view, ebook, why = ev.engine_input(sid, ctx, trace) if trace is not None else ev.engine_input(sid, ctx)
             s10d = (trace or {}).get("s10") or {}
             if view is None and s10d.get("action") in ("SELL", "SWITCH") and held_s10:
+                gate = None if status is None else (
+                    lambda dd, k=(city, target, name): candidate_gate(dd, status.get(k)))
                 row_out, ex = exit_of(sid, s10d, held_s10, book, ebook, lg, trace, params,
-                                      run_id, decided_at, checkpoint_id, city, target, prediction=call)
+                                      run_id, decided_at, checkpoint_id, city, target, prediction=call, gate=gate)
                 rows.append(stamp_s10(row_out, trace))
                 if exits is not None and ex is not None:
                     exits.append(ex)
@@ -394,7 +397,7 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
 
 
 def exit_of(sid, s10d, held, book, ebook, lg, trace, params, run_id, decided_at, checkpoint_id, city, target,
-            prediction=None):
+            prediction=None, gate=None):
     """(decisions row, exit or None) for S10's own SELL or SWITCH (plan v2
     P5.12 part 3b, step 3).
 
@@ -405,6 +408,10 @@ def exit_of(sid, s10d, held, book, ebook, lg, trace, params, run_id, decided_at,
             the engine gives the new target no size - its band, a rail, the
             timing - selling would leave the ledger flat on a bucket S10 wanted
             to hold, so the decision is HOLD, coded switch_unsized.
+            `gate` (candidate_gate for this city-day, when it is in force)
+            sees the buy half: held back, the switch is HOLD for the same
+            reason, coded not_candidate, the switch it would have been kept
+            (Codex on #330). A SELL is never gated.
     The row says what was decided; the exit says what to send."""
     import decision_engine as de
     from strategies import s10_max_temp_winner as s10m
@@ -428,6 +435,12 @@ def exit_of(sid, s10d, held, book, ebook, lg, trace, params, run_id, decided_at,
                                        prediction=prediction)
         row.update(action="HOLD", reason_code="switch_unsized", n_signals=0)
         return row, None
+    if gate is not None:
+        d_buy = gate(d_buy)
+        if d_buy.get("action") != "BUY":
+            row = decision_row(run_id, decided_at, checkpoint_id, sid, city, target, d=d_buy, prediction=prediction)
+            row.update(action="HOLD", reason_code="not_candidate", n_signals=0)
+            return row, None
     row = decision_row(run_id, decided_at, checkpoint_id, sid, city, target, d=d_buy, prediction=prediction)
     row.update(action="SWITCH", reason_code="own_rule_switch", n_signals=1 + len(d_buy.get("orders") or []))
     return row, {"kind": "SWITCH", "row": row, "sell": sell, "buy": d_buy, "checkpoint_id": checkpoint_id}

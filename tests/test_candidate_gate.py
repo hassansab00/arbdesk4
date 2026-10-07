@@ -149,7 +149,7 @@ def test_the_status_reaches_no_price():
     assert 'rest("v_city_status"' in inspect.getsource(es.read_status)
     body = inspect.getsource(es.decide_all)
     assert "candidate_gate(d, status.get" in body
-    assert body.index("de.decide(") < body.index("candidate_gate(")
+    assert body.index("de.decide(") < body.index("candidate_gate(d, status.get")
     for fn in (es.engine_book, es.s10_call, es.exit_of):
         assert "status" not in inspect.getsource(fn)
 
@@ -192,3 +192,47 @@ def test_the_read_runs_on_a_daemon_thread(monkeypatch):
     assert es.collect_status(fut, wait_s=0.05) == ({}, "TimeoutError")
     gate.set()
     assert fut.result(timeout=5) == {} and seen["daemon"] is True
+
+
+def _switch(monkeypatch, gate):
+    """exit_of for S10's SWITCH from b1 to b2, the engine sizing the buy half."""
+    import decision_engine as de
+    monkeypatch.setattr(de, "decide", lambda view, book=None, ledger=None, params=None: json.loads(json.dumps(BUY)))
+    lg = es.ledger({"account_id": "a1", "strategy_id": "s10_winner", "cash": 980.0, "reserved_cash": 0.0},
+                   [], {}, [], "london", "2026-09-28", high_water=1000.0)
+    book = {"b1": {"bid": 0.2, "ask": 0.22}, "b2": {"bid": 0.29, "ask": 0.31}}
+    return es.exit_of("s10_winner", {"action": "SWITCH", "target": "b2"}, {"band_id": "b1", "shares": 50.0},
+                      book, book, lg, {"switch_view": {"probs": {}}}, {}, "run-1", "2026-09-28T11:36:00+00:00",
+                      "cp1", "london", "2026-09-28", gate=gate)
+
+
+def test_a_switch_into_a_city_that_is_not_candidate_holds(monkeypatch):
+    """Codex on #330: a SWITCH's buy half is an entry. Held back, the switch
+    is a HOLD, as an unsized one is: selling alone would leave the ledger flat
+    on a bucket S10 wanted to hold."""
+    row, ex = _switch(monkeypatch, lambda d: es.candidate_gate(d, ("watch", "status-v1")))
+    assert ex is None and row["action"] == "HOLD" and row["reason_code"] == "not_candidate"
+    assert row["n_signals"] == 0
+    assert json.loads(row["params_version"])["status"]["would"]["orders"][0]["band_id"] == "b2"
+    row, ex = _switch(monkeypatch, lambda d: es.candidate_gate(d, ("candidate", "status-v1")))
+    assert row["action"] == "SWITCH" and ex["kind"] == "SWITCH" and ex["buy"]["action"] == "BUY"
+    row, ex = _switch(monkeypatch, None)
+    assert row["action"] == "SWITCH" and "status" not in json.loads(row["params_version"])
+
+
+def test_a_sell_is_never_gated(monkeypatch):
+    def gate(d):
+        raise AssertionError("a SELL has no buy half to gate")
+    lg = es.ledger({"account_id": "a1", "strategy_id": "s10_winner", "cash": 980.0, "reserved_cash": 0.0},
+                   [], {}, [], "london", "2026-09-28", high_water=1000.0)
+    row, ex = es.exit_of("s10_winner", {"action": "SELL", "reason": "lost"}, {"band_id": "b1", "shares": 50.0},
+                         {"b1": {"bid": 0.01}}, {}, lg, {}, {}, "run-1", "2026-09-28T11:36:00+00:00", "cp1",
+                         "london", "2026-09-28", gate=gate)
+    assert ex["kind"] == "SELL" and row["n_signals"] == 1
+
+
+def test_decide_all_hands_the_gate_to_the_switch():
+    import inspect
+    body = inspect.getsource(es.decide_all)
+    assert "gate=gate" in body and "candidate_gate(dd, status.get(k))" in body
+    assert "gate = None if status is None" in body

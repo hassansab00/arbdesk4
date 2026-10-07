@@ -650,13 +650,14 @@ def test_an_s10_decision_that_cannot_name_its_call_is_attention(world, monkeypat
     assert world["logged"][0][1] == "attention"
 
 
-def test_the_tick_starts_the_status_read_first_and_hands_it_to_the_engine(world):
+def test_the_tick_starts_the_status_read_early_and_hands_it_to_the_engine(world):
     """F.7's Candidate gate reads v_city_status (about 3 s); the tick starts
-    it before its own work so it adds no wall time, and gives it to the
-    engine, which waits for it at most engine_shadow.GATE_WAIT_S."""
+    it right after writing this hour's station reports (so a fresh report
+    counts; Codex on #330) and before the rest of its work, so it adds no wall
+    time, and gives it to the engine, which waits at most GATE_WAIT_S."""
     import inspect
     tick.run(now=at("2026-09-24T22:35"))
     (kw,) = world["engine_kw"]
     assert kw["status_read"] is world["status_read"]
     src = inspect.getsource(tick.run)
-    assert src.index("start_status_read()") < src.index("read_stations(")
+    assert src.index("read_stations(") < src.index("start_status_read()") < src.index("_upcoming_markets()")

@@ -351,13 +351,14 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     t0 = time.monotonic()
     now = now or dt.datetime.now(dt.timezone.utc)
     version = engine_version()
-    # The Candidate gate's statuses (F.7), read beside the tick's own work:
-    # the view takes about 3 s and the engine decides near the end.
     import engine_shadow
-    status_read = engine_shadow.start_status_read()
 
     # Stations first, so this hour's checkpoints price on this hour's readings.
     stations = read_stations(now, dry_run)
+    # The Candidate gate's statuses (F.7), read beside the tick's own work:
+    # the view takes about 3 s and the engine decides near the end. After the
+    # stations, so a report this tick wrote counts as fresh (Codex on #330).
+    status_read = engine_shadow.start_status_read()
     cities = get_cities(require_coords=False)
     tz_of = {c["city_key"]: c.get("timezone") for c in cities}
     station_of = {c["city_key"]: c.get("icao") for c in cities}
