@@ -200,20 +200,26 @@ def _fake(monkeypatch, states, pf_status, trades_by_account, policy=None):
     return calls, logged
 
 
-def test_a_passing_strategy_is_promoted_and_the_portfolio_activated(monkeypatch):
+def test_a_passing_strategy_is_reported_for_hassan_never_promoted(monkeypatch):
+    """Rule 6, 7 Oct: capital is Hassan's. A strategy through the gate is
+    reported for his approval; the job promotes nothing and activates
+    nothing, so no allocation is written either."""
     states = {"sA": "shadow", "sB": "shadow", "sC": "research"}
     trades = {"acct_sA": _winner(), "acct_sB": _trades([-1] * 80, days=40), "acct_sC": _winner()}
     calls, logged = _fake(monkeypatch, states, "suspended", trades)
     ma.main(now=NOW)
-    fns = [fn for fn, _ in calls]
-    assert fns == ["promote_strategy_to_portfolio", "activate_portfolio_account", "set_portfolio_allocation"]
-    promote, activate, alloc = (p for _, p in calls)
-    assert promote["p_strategy_id"] == "sA" and promote["p_approved_by"] == ma.APPROVER
-    assert activate["p_bankroll"] == 10000
-    assert set(alloc["p_weights"]) == {"sA"} and alloc["p_weights"]["sA"] <= ma.MAX_STEP
-    assert alloc["p_version"] == "thompson-v1:2026-11-20"
-    assert logged["job"] == "meta_allocator" and logged["status"] == "ok"
+    assert calls == []
+    assert logged["job"] == "meta_allocator" and logged["status"] == "attention"
+    (e,) = logged["detail"]["eligible"]
+    assert e["strategy_id"] == "sA" and "lower 80% bound" in e["why"]
     assert "sC" not in logged["detail"]["looked_at"]           # research is not judged
+
+
+def test_the_job_cannot_promote_or_activate():
+    import inspect
+    src = inspect.getsource(ma.main)
+    assert "promote_strategy_to_portfolio" not in src and "activate_portfolio_account" not in src
+    assert not hasattr(ma, "APPROVER"), "no delegated approver is left to act in Hassan's name"
 
 
 def test_nothing_is_activated_while_no_strategy_has_earned_it(monkeypatch):
@@ -244,14 +250,11 @@ def test_a_rerun_the_same_night_leaves_tonights_allocation(monkeypatch):
     assert [fn for fn, _ in calls] == ["set_portfolio_allocation"], "last night's allocation is stepped from"
 
 
-def test_a_refused_activation_is_reported(monkeypatch):
+def test_a_strategy_hassan_promoted_waits_for_him_to_activate_the_account(monkeypatch):
+    """The account's bankroll is Hassan's too: with a strategy in the
+    portfolio state and the account not active, the job says so and writes
+    nothing."""
     calls, logged = _fake(monkeypatch, {"sA": "portfolio"}, "suspended", {"acct_sA": _winner()})
-
-    def refuse(fn, params):
-        if fn == "activate_portfolio_account":
-            raise RuntimeError("the portfolio account has history")
-        calls.append((fn, params))
-    monkeypatch.setattr(ma, "rpc", refuse)
     ma.main(now=NOW)
-    assert logged["status"] == "attention" and "has history" in logged["detail"]["activation_error"]
-    assert calls == []                                         # no allocation on a desk that is not active
+    assert calls == []
+    assert logged["status"] == "attention" and logged["detail"]["activation_awaits_hassan"] == ["sA"]
