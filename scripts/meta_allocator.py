@@ -4,21 +4,29 @@ DECIDED 24 Sep: Hassan delegated the P5.10 decision to Claude ("do what's the
 most optimal option"). The numbers are the plan's suggestions and live in
 settings 'portfolio_gate' (20260924120000_portfolio_by_evidence.sql).
 
+NOTHING REACHES CAPITAL WITHOUT HASSAN (7 Oct). With strategy learning
+switched on, a shadow strategy can now earn the gate below. Rule 6 makes
+capital Hassan's: putting a strategy in the portfolio state, and the
+portfolio account's bankroll. So this job no longer promotes or activates
+under the delegation of 24 Sep: a strategy that passes is REPORTED, status
+`attention`, under `eligible`, for Hassan to approve (promote_strategy_to_
+portfolio, then activate_portfolio_account, each naming him). Allocating
+among strategies already in an account Hassan activated goes on as before.
+
 THREE STEPS, each only on a strategy's OWN shadow ledger - never on the
 portfolio's fills, which are an example of the allocation, not evidence for it.
 
-1. THE GATE. A strategy in shadow is promoted into the portfolio state when
+1. THE GATE. A strategy in shadow is eligible for the portfolio state when
    its ledger shows all four:
      * at least min_settled_dates (30) distinct settled dates;
      * at least min_decisions (60) settled decisions;
      * a positive lower one-sided 80% bound on mean log-growth per dollar;
      * no single city-day making more than max_city_day_share (25%) of the gain.
-   The promotion goes through promote_strategy_to_portfolio() with the
-   delegated approver on record.
+   It is reported for Hassan's approval; this job never promotes.
 
-2. ACTIVATION. The first time any strategy is in the portfolio state, the
-   suspended portfolio account is activated at the gate's bankroll ($10,000
-   paper) through activate_portfolio_account(). Never by date.
+2. ACTIVATION. Hassan's, through activate_portfolio_account(): while a
+   strategy is in the portfolio state and the account is not active, the
+   job reports it, status `attention`, and never activates it.
 
 3. THE ALLOCATION. For each portfolio-state strategy, a Normal-inverse-gamma
    posterior of its log-growth per dollar, per regime (prior mean 0), mixed by
@@ -53,7 +61,6 @@ from collections import defaultdict
 from common import log_run, rest, rest_all, rpc
 
 ALLOCATION_VERSION = "thompson-v1"
-APPROVER = "Hassan (delegated to Claude, 24 Sep)"
 Z_LOWER_80 = 0.8416
 PRIOR_MU, PRIOR_KAPPA, PRIOR_ALPHA, PRIOR_BETA = 0.0, 10.0, 2.0, 1.0
 MIN_REGIME = 20
@@ -230,7 +237,7 @@ def main(now=None):
                                  ("status", "neq.retired"), ("limit", "1")])
     pf = pf[0] if pf else None
 
-    records, looked, promoted = {}, {}, []
+    records, looked, eligible = {}, {}, []
     for sid, state in sorted(states.items()):
         led = ledgers.get(sid)
         if state not in ("shadow", "portfolio") or not led:
@@ -244,26 +251,19 @@ def main(now=None):
             why = (f"P5.10 gate on its shadow ledger: {stats['decisions']} decisions over "
                    f"{stats['settled_dates']} dates, lower 80% bound {stats['lower_80']} > 0, "
                    f"top city-day {stats['top_city_day']['share']:.0%} of the gain")
-            rpc("promote_strategy_to_portfolio", {"p_strategy_id": sid, "p_approved_by": APPROVER, "p_reason": why})
-            promoted.append(sid)
-            print(f"  {sid}: shadow -> portfolio ({why})")
-            state = "portfolio"
+            eligible.append({"strategy_id": sid, "why": why})
+            print(f"  {sid}: passes the gate, awaiting Hassan's approval ({why})")
         if state == "portfolio":
             records[sid] = decs
 
-    status, detail = "ok", {"promoted": promoted, "looked_at": looked}
+    status, detail = "ok", {"eligible": eligible, "looked_at": looked}
+    if eligible:
+        status = "attention"
     if records and pf and pf["status"] != "active":
-        try:
-            res = rpc("activate_portfolio_account", {
-                "p_bankroll": cfg["bankroll_usd"], "p_approved_by": APPROVER,
-                "p_reason": f"first strategies through the P5.10 gate: {', '.join(sorted(records))}"})
-            detail["activated"] = res
-            pf["status"] = "active"
-            pf["policy"] = {}
-            print(f"  portfolio account activated at ${cfg['bankroll_usd']:,}")
-        except Exception as e:                          # noqa: BLE001 - reported, not swallowed
-            status, detail["activation_error"] = "attention", str(e)[:400]
-            print(f"  portfolio activation refused: {e}", file=sys.stderr)
+        status = "attention"
+        detail["activation_awaits_hassan"] = sorted(records)
+        print(f"  portfolio account {pf['status']}: activating it is Hassan's ({', '.join(sorted(records))} "
+              f"in the portfolio state)")
 
     if pf and pf["status"] == "active":
         policy = pf.get("policy") or {}
@@ -282,8 +282,8 @@ def main(now=None):
             for s, w in sorted(weights.items()):
                 print(f"  weight {w:.4f}  {s} (draw {draws[s]:+.5f})")
 
-    log_run("meta_allocator", status, len(promoted) + len(detail.get("allocation", {})), detail)
-    print(f"meta allocator: {len(promoted)} promoted, {len(records)} in the portfolio state, "
+    log_run("meta_allocator", status, len(detail.get("allocation", {})), detail)
+    print(f"meta allocator: {len(eligible)} eligible for Hassan, {len(records)} in the portfolio state, "
           f"portfolio {pf['status'] if pf else 'missing'}")
     return detail
 
