@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { readAllRows } from "@/lib/readAll";
@@ -9,6 +9,9 @@ import PredictionHindsight from "@/components/PredictionHindsight";
 import PredictionLineup from "@/components/PredictionLineup";
 import CityCards from "@/components/CityCards";
 import CalibrationStatus from "@/components/CalibrationStatus";
+import FocusFilter, { type FocusSet } from "@/components/FocusFilter";
+import { selectedKeys, type HindsightRow, type Scope } from "@/lib/focus";
+import type { StatusRow } from "@/lib/cityCards";
 import { Freshness, FreshnessRow } from "@/components/Provenance";
 import { Empty, LineChart, Scatter } from "@/components/charts";
 import Convergence3D, { type ConvergencePoint } from "@/components/Convergence3D";
@@ -150,6 +153,63 @@ export default function PredictivePage() {
   // ones, and the truncation warning would be measuring the wrong thing.
   const activeKeys = useMemo(() => cities.map((c) => c.city_key), [cities]);
   const [city, setCity] = useState<string>("");
+
+  /* ---------------------------------------- ONE SELECTION FOR THE PAGE (wave F)
+     "All active cities · Seasonal Focus 10 · Custom selection" and the moment a
+     call was frozen at. Every panel below takes `selected`, and every total is
+     added up from the rows it shows. The custom list is remembered in this
+     browser only; nothing about it reaches the database. */
+  const [scope, setScope] = useState<Scope>("all");
+  const [custom, setCustom] = useState<string[]>([]);
+  const [moment, setMoment] = useState<string>("day_ahead");
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem("predictive.custom") ?? "[]");
+      if (Array.isArray(saved)) setCustom(saved.filter((x) => typeof x === "string"));
+    } catch { /* no storage: start empty */ }
+  }, []);
+  useEffect(() => {
+    try { window.localStorage.setItem("predictive.custom", JSON.stringify(custom)); } catch { /* ignore */ }
+  }, [custom]);
+  const focusQ = useQuery<FocusSet[]>(
+    () => supabase.from("focus_sets").select("set_id,label,city_keys,window_from,window_to,evaluate_from,recorded_at")
+      .order("recorded_at", { ascending: false }).limit(1),
+    []
+  );
+  const focus = (focusQ.data ?? [])[0] ?? null;
+  // The universe the focus is judged against, frozen when the set was recorded.
+  const universeQ = useQuery<Array<{ city_keys: string[] }>>(
+    () => focus
+      ? supabase.from("focus_set_universes").select("city_keys").eq("set_id", focus.set_id).limit(1)
+      : Promise.resolve({ data: [] as Array<{ city_keys: string[] }>, error: null }),
+    [focus?.set_id ?? ""]
+  );
+  const universe = (universeQ.data ?? [])[0]?.city_keys ?? null;
+  const selected = useMemo(
+    () => selectedKeys(scope, activeKeys, focus?.city_keys ?? [], custom),
+    [scope, activeKeys, focus, custom]
+  );
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+  // EVERY FROZEN CALL, read once and shared: "Was it right?", the focus
+  // comparison and each card's record come from these rows. A page at a time,
+  // with the truncation flag, because a total over a short read looks like an
+  // answer (about 4,000 rows on 6 Oct, 48 more a day per moment).
+  const HINDSIGHT_MAX = 40000;
+  const hindsightQ = useQuery<HindsightRow[]>(
+    () => readAllRows<HindsightRow>((from, to) =>
+      supabase.from("v_prediction_hindsight")
+        .select("city_key,for_date,called_when,call_order,after_peak,called_at,predicted_band,predicted_pct,actual_band,observed_max_c,forecast_max_c,forecast_error_c,hit,market_band,market_hit,outcome_source,scheduled_local,engine_version,prob_on_winner")
+        .order("for_date", { ascending: false }).order("city_key").order("called_when")
+        .range(from, to), HINDSIGHT_MAX),
+    [], 300000, HINDSIGHT_MAX
+  );
+  // Each active city's status for its local today and tomorrow, at every moment.
+  const statusQ = useQuery<StatusRow[]>(
+    () => supabase.from("v_city_status")
+      .select("city_key,target_date,checkpoint,status,reason,reasons,station_age_h,forecast_run_at,n_models,models_span_c,disagreement_c,settled_days,min_settled_days,rules_version")
+      .limit(2000),
+    [], 300000, 2000
+  );
   /**
    * Why the backward-looking panels are empty, in the numbers themselves.
    *
@@ -211,7 +271,10 @@ export default function PredictivePage() {
 
   // Declared HERE, above the queries, because the convergence and ladder
   // queries are now filtered by it rather than filtered in the browser.
-  const active = city || cities[0]?.city_key || "";
+  // The detail panels show a city inside the selection only: a city picked
+  // earlier and then filtered out gives way to the first selected one, and an
+  // empty selection shows none (Codex on #327).
+  const active = (city && selectedSet.has(city) ? city : selected[0]) ?? "";
   /**
    * WHY THESE ARE SPLIT AND FILTERED, and why it was showing one city.
    *
@@ -243,11 +306,13 @@ export default function PredictivePage() {
     [active], 300000, 1000
   );
   const settledQ = useQuery<ConvRow[]>(
-    () => supabase.from("v_forecast_convergence_all").select("*")
+    // An empty selection asks for nothing: PostgREST refuses `in.()` (Codex on #327).
+    () => selected.length === 0 ? Promise.resolve({ data: [] as ConvRow[], error: null }) :
+      supabase.from("v_forecast_convergence_all").select("*")
             .eq("is_settled", true).eq("lead_days", 1)
-            .in("city_key", activeKeys)
+            .in("city_key", selected)
             .order("for_date", { ascending: false }).limit(1000),
-    [activeKeys.join(",")], 300000, 1000
+    [selected.join(",")], 300000, 1000
   );
   // Forward only: the ladder is drawn for days that have not resolved, and
   // the whole table is one row per band per SIDE per day for every city -
@@ -276,13 +341,14 @@ export default function PredictivePage() {
   // however large the limit, so a bigger view would have been cut silently.
   const SCORE_MAX = 4000;
   const scoreQ = useQuery<ScoreRow[]>(
-    () => readAllRows<ScoreRow>((from, to) =>
+    () => selected.length === 0 ? Promise.resolve({ data: [] as ScoreRow[], error: null }) :
+      readAllRows<ScoreRow>((from, to) =>
       supabase.from("v_prediction_scorecard_all")
         .select("city_key,model,lead_days,n_days,mae_c,bias_c,error_sd_c,worst_c,hit_rate_pct,within_1c_pct")
-        .in("city_key", activeKeys)
+        .in("city_key", selected)
         .order("city_key").order("model").order("lead_days")
         .range(from, to), SCORE_MAX),
-    [activeKeys.join(",")], undefined, SCORE_MAX
+    [selected.join(",")], undefined, SCORE_MAX
   );
   const [scoreCity, setScoreCity] = useState<string>("");
   const [allLeans, setAllLeans] = useState(false);
@@ -357,8 +423,9 @@ export default function PredictivePage() {
   // The bucket shown is the published distribution's peak, which is not
   // necessarily the bucket holding the centre (lib/predictive.ts).
   const forward = useMemo(
-    () => forwardRows((ladderQ.data ?? []) as ForwardLadderRow[], new Date().toISOString().slice(0, 10)),
-    [ladderQ.data]
+    () => forwardRows(((ladderQ.data ?? []) as ForwardLadderRow[]).filter((r) => selectedSet.has(r.city_key)),
+                      new Date().toISOString().slice(0, 10)),
+    [ladderQ.data, selectedSet]
   );
   const forwardCities = useMemo(() => new Set(forward.map((r) => r.city_key)).size, [forward]);
 
@@ -528,8 +595,14 @@ export default function PredictivePage() {
         </div>
       </div>
 
+      {/* ======================================= THE SELECTION, FOR EVERY PANEL == */}
+      <FocusFilter scope={scope} setScope={setScope} custom={custom} setCustom={setCustom}
+        moment={moment} setMoment={setMoment} cities={cities} focus={focus} shown={selected.length} />
+
       {/* ================================================ 0. EVERY CITY == */}
-      <CityCards onPick={setCity} />
+      <CityCards onPick={setCity} cities={selected} moment={moment}
+        hindsight={hindsightQ.data ?? []} status={statusQ.data ?? []}
+        statusError={statusQ.error} />
 
       {/* ======================================================== 1. FORWARD == */}
       <section className="space-y-2">
@@ -621,9 +694,12 @@ export default function PredictivePage() {
           rather than at the bottom of the page because a claim and its
           track record are one thought, and separating them is how a desk
           keeps believing a number nothing has checked. */}
-      <PredictionHindsight />
+      <PredictionHindsight rows={hindsightQ.data ?? []} loading={hindsightQ.loading} error={hindsightQ.error}
+        truncated={hindsightQ.truncated} onRetry={hindsightQ.refresh}
+        cities={selected} active={activeKeys} focus={focus} universe={universe}
+        moment={moment} setMoment={setMoment} />
 
-      <PredictionLineup />
+      <PredictionLineup cities={selected} />
 
       {/* ==================================================== 2. THE FUNNEL == */}
       <section className="space-y-2">
@@ -633,7 +709,7 @@ export default function PredictivePage() {
             value={active} onChange={(e) => setCity(e.target.value)}
             className="rounded border border-border bg-panel2 px-2 py-1 text-xs"
           >
-            {cities.map((c) => (
+            {cities.filter((c) => selectedSet.has(c.city_key)).map((c) => (
               <option key={c.city_key} value={c.city_key}>
                 {c.display_name ?? c.city_key}
               </option>
@@ -672,7 +748,7 @@ export default function PredictivePage() {
             value={active} onChange={(e) => setCity(e.target.value)}
             className="rounded border border-border bg-panel2 px-2 py-1 text-xs"
           >
-            {cities.map((c) => (
+            {cities.filter((c) => selectedSet.has(c.city_key)).map((c) => (
               <option key={c.city_key} value={c.city_key}>
                 {c.display_name ?? c.city_key}
               </option>
@@ -895,7 +971,7 @@ export default function PredictivePage() {
           // as loading and not as "nothing has settled" - that exact
           // confusion is what made this page claim an empty archive while
           // 2,268 settled comparisons sat in it.
-          loading={settledQ.loading || citiesQ.loading || activeKeys.length === 0}
+          loading={settledQ.loading || citiesQ.loading || cities.length === 0}
           error={settledQ.error}
           isEmpty={scatter.length === 0}
           emptyTitle={unverified ? "No verified days yet" : "No settled days yet"}
@@ -1022,7 +1098,7 @@ export default function PredictivePage() {
         {unverifiedNote}
         <DataState
           relation="v_prediction_scorecard"
-          loading={scoreQ.loading || citiesQ.loading || activeKeys.length === 0}
+          loading={scoreQ.loading || citiesQ.loading || cities.length === 0}
           error={scoreQ.error}
           isEmpty={errByLead.length === 0}
           emptyTitle={unverified ? "No verified days yet" : "No scorecard yet"}
@@ -1049,11 +1125,11 @@ export default function PredictivePage() {
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold">Raw forecast accuracy, per city, per model, per lead</h2>
           <select
-            value={scoreCity} onChange={(e) => setScoreCity(e.target.value)}
+            value={selectedSet.has(scoreCity) ? scoreCity : ""} onChange={(e) => setScoreCity(e.target.value)}
             className="rounded border border-border bg-panel2 px-2 py-1 text-xs"
           >
-            <option value="">All {fmtInt(cities.length)} cities</option>
-            {cities.map((c) => (
+            <option value="">All {fmtInt(selected.length)} selected cities</option>
+            {cities.filter((c) => selectedSet.has(c.city_key)).map((c) => (
               <option key={c.city_key} value={c.city_key}>{c.display_name ?? c.city_key}</option>
             ))}
           </select>
@@ -1071,20 +1147,21 @@ export default function PredictivePage() {
         <DataState
           relation="v_prediction_scorecard"
           truncated={scoreQ.truncated}
-          loading={scoreQ.loading || citiesQ.loading || activeKeys.length === 0}
+          loading={scoreQ.loading || citiesQ.loading || cities.length === 0}
           error={scoreQ.error} isEmpty={(scoreQ.data ?? []).length === 0}
           emptyTitle={unverified ? "No verified days yet" : "Nothing scored yet"}
           emptyBody={unverified ?? "Needs at least 5 settled days per city, model and lead."}
           onRetry={scoreQ.refresh}
         >
           {(() => {
-            const sc = groupScorecard(scoreQ.data ?? [], cities.map((c) => c.city_key), scoreCity);
+            const sCity = selectedSet.has(scoreCity) ? scoreCity : "";
+            const sc = groupScorecard(scoreQ.data ?? [], selected, sCity);
             return (
               <div className="space-y-2">
                 <p className="text-[11px] text-muted">
-                  {scoreCity
-                    ? `${fmtInt(sc.shownRows)} rows for ${scoreCity}.`
-                    : `All ${fmtInt(sc.totalRows)} rows: ${fmtInt(sc.citiesWithRows)} of ${fmtInt(cities.length)} active cities, by city, then model, then lead.`}
+                  {sCity
+                    ? `${fmtInt(sc.shownRows)} rows for ${sCity}.`
+                    : `All ${fmtInt(sc.totalRows)} rows: ${fmtInt(sc.citiesWithRows)} of the ${fmtInt(selected.length)} selected cities, by city, then model, then lead.`}
                   {sc.missing.length > 0 ? (
                     <> No row yet (fewer than 5 settled days per model and lead):{" "}
                       <span className="text-text">{sc.missing.join(", ")}</span>.</>

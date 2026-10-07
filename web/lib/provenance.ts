@@ -1260,6 +1260,19 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_forecasts",
     "book_snapshots"
   ],
+  "v_city_status": [
+    "cities",
+    "markets",
+    "bands",
+    "fact_checkpoint_outcome",
+    "prediction_checkpoints",
+    "band_probabilities",
+    "edges",
+    "fact_band_outcome",
+    "weather_forecast_models",
+    "weather_forecasts",
+    "weather_observations"
+  ],
   "v_city_temp_trend": [
     "cities",
     "weather_observations"

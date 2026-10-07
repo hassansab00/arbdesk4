@@ -9,10 +9,11 @@ import RefreshButton from "@/components/RefreshButton";
 import { fmtPct, fmtPp, fmtPrice, pnlColor, regimeColor } from "@/lib/format";
 import { fmtTemp, fmtTempDelta } from "@/lib/units";
 import {
-  buildCards, FORECASTS_DISAGREE_C,
+  buildCards, FORECASTS_DISAGREE_C, STATUS_WORDS, statusFor,
   type CityCard, type CityRow, type CurrentRow, type ForecastRow, type LadderRow,
-  type LiveRow, type OwnModelRow,
+  type LiveRow, type OwnModelRow, type StatusRow,
 } from "@/lib/cityCards";
+import { cityEvidence, momentLabel, type CityEvidence, type HindsightRow } from "@/lib/focus";
 import { fmtDateTime, fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
 
 /**
@@ -41,7 +42,21 @@ function isoDay(offsetDays: number): string {
   return new Date(Date.now() + offsetDays * 86400000).toISOString().slice(0, 10);
 }
 
-export default function CityCards({ onPick }: { onPick?: (city: string) => void }) {
+/** The record a card shows: settled calls on target dates from this many days back. */
+export const EVIDENCE_DAYS = 30;
+/** The moments each card lists side by side; post-peak is labelled apart. */
+const STRIP = ["day_ahead", "noon", "prepeak_1h"] as const;
+
+/**
+ * Props from the page's one selection (wave F): `cities` are the cards shown,
+ * `moment` the frozen moment their record and status are read at, `hindsight`
+ * every frozen call (the page reads it once), `status` v_city_status. Without
+ * them every active city is shown and no record or status is drawn.
+ */
+export default function CityCards({ onPick, cities, moment = "day_ahead", hindsight = [], status = [], statusError = null }: {
+  onPick?: (city: string) => void; cities?: string[]; moment?: string;
+  hindsight?: HindsightRow[]; status?: StatusRow[]; statusError?: string | null;
+}) {
   const [pick, setPick] = useState("soonest");
   const since = isoDay(-1);   // a city west of UTC is still trading yesterday's UTC date
 
@@ -91,14 +106,18 @@ export default function CityCards({ onPick }: { onPick?: (city: string) => void 
   };
   const dates = useMemo(
     () => Array.from(new Set((ladderQ.data ?? []).map((r) => r.for_date))).sort(), [ladderQ.data]);
-  const cards = useMemo(
-    () => buildCards(citiesQ.data ?? [], ladderQ.data ?? [], forecastQ.data ?? [],
-                     ownQ.data ?? [], liveQ.data ?? [], pick, currentQ.data ?? []),
-    [citiesQ.data, ladderQ.data, forecastQ.data, ownQ.data, liveQ.data, pick, currentQ.data]);
+  const cards = useMemo(() => {
+    const all = buildCards(citiesQ.data ?? [], ladderQ.data ?? [], forecastQ.data ?? [],
+                           ownQ.data ?? [], liveQ.data ?? [], pick, currentQ.data ?? []);
+    if (!cities) return all;
+    const want = new Set(cities);
+    return all.filter((c) => want.has(c.city_key));
+  }, [citiesQ.data, ladderQ.data, forecastQ.data, ownQ.data, liveQ.data, pick, currentQ.data, cities]);
+  const recordFrom = useMemo(() => isoDay(-EVIDENCE_DAYS), []);
   // The side panels are extras: a card still shows its ladder if one fails,
   // and says which one did, rather than the whole section going red.
   const sideErrors = [["forecasts", forecastQ.error], ["own model", ownQ.error], ["live weather", liveQ.error],
-    ["prices since the pricing run", currentQ.error]]
+    ["prices since the pricing run", currentQ.error], ["city status", statusError]]
     .filter(([, e]) => e) as Array<[string, string]>;
 
   return (
@@ -150,14 +169,30 @@ export default function CityCards({ onPick }: { onPick?: (city: string) => void 
         onRetry={reload}
       >
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {cards.map((c) => <Card key={`${c.city_key}|${c.for_date}`} c={c} onPick={onPick} />)}
+          {cards.map((c) => <Card key={`${c.city_key}|${c.for_date}`} c={c} onPick={onPick} moment={moment}
+            st={statusFor(status, c.city_key, c.for_date, moment)}
+            ev={cityEvidence(hindsight, c.city_key, moment, recordFrom)}
+            strip={STRIP.map((m) => [m, cityEvidence(hindsight, c.city_key, m, recordFrom)] as const)}
+            after={cityEvidence(hindsight, c.city_key, "postpeak_1h", recordFrom)}
+            showRecord={hindsight.length > 0} />)}
         </div>
       </DataState>
     </section>
   );
 }
 
-function Card({ c, onPick }: { c: CityCard; onPick?: (city: string) => void }) {
+const STATUS_TONE: Record<StatusRow["status"], string> = {
+  candidate: "border-good/60 text-good", watch: "border-warn/60 text-warn",
+  insufficient: "border-border text-muted", unavailable: "border-bad/60 text-bad",
+};
+
+const rateText = (e: CityEvidence) =>
+  e.n ? `${e.hits}/${e.n} (${Math.round((e.hits / e.n) * 100)}%)` : "none settled";
+
+function Card({ c, onPick, moment, st, ev, strip, after, showRecord }: {
+  c: CityCard; onPick?: (city: string) => void; moment: string; st: StatusRow | null;
+  ev: CityEvidence; strip: ReadonlyArray<readonly [string, CityEvidence]>; after: CityEvidence; showRecord: boolean;
+}) {
   const u = c.unit;
   const trusted = c.best && !c.best.against_market;
   return (
@@ -171,6 +206,16 @@ function Card({ c, onPick }: { c: CityCard; onPick?: (city: string) => void }) {
           {fmtResolutionDate(c.for_date)} · {fmtDaysAhead(c.for_date)}
         </span>
       </div>
+
+      {/* THE DAY'S STATUS (v_city_status). The worst state that applies, its
+          reason, and every other reason in the tooltip. A status never moves a
+          probability: it says how far the numbers below can be relied on. */}
+      {st && (
+        <div className={`mt-1 rounded border px-2 py-0.5 text-[11px] ${STATUS_TONE[st.status]}`}
+          title={`${(st.reasons ?? []).join("; ") || st.reason} · rules ${st.rules_version ?? "?"} · at ${momentLabel(moment)}`}>
+          <b>{STATUS_WORDS[st.status]}</b> · {st.reason}
+        </div>
+      )}
 
       {/* THE PICK. The one temperature the platform says the day will settle
           on: its most likely bucket. Hassan, 26 Sep: the big number used to be
@@ -274,6 +319,52 @@ function Card({ c, onPick }: { c: CityCard; onPick?: (city: string) => void }) {
         </dd>
       </dl>
 
+      {/* THE RECORD BEHIND THE PICK (wave F, F.4): this city's frozen calls at
+          the chosen moment over the last 30 target dates, from
+          v_prediction_hindsight. Day ahead, noon and pre-peak are listed apart;
+          after the peak is labelled apart, because by then the day has mostly
+          answered itself. */}
+      {showRecord && (
+        <div className="mt-2 border-t border-border pt-1.5 text-[11px]">
+          <div className="text-[10px] uppercase tracking-wide text-muted">
+            Its record at {momentLabel(moment)}, last {EVIDENCE_DAYS} days
+          </div>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+            <dt className="text-muted">Top pick right</dt>
+            <dd className="tabular-nums">
+              {rateText(ev)}
+              {ev.interval && <span className="text-muted"> · 95% {Math.round(ev.interval[0] * 100)}–{Math.round(ev.interval[1] * 100)}%</span>}
+            </dd>
+            <dt className="text-muted" title="Realised hit rate minus the average stated probability of the top pick. Negative: more confident than it turned out to deserve.">
+              Calibration gap
+            </dt>
+            <dd className="tabular-nums">
+              {ev.gap === null ? <span className="text-muted">—</span>
+                : <>{ev.gap > 0 ? "+" : ""}{(ev.gap * 100).toFixed(0)} pp <span className="text-muted">(claimed {Math.round((ev.claimed ?? 0) * 100)}%)</span></>}
+            </dd>
+            <dt className="text-muted" title="Observed maximum minus the priced centre, on the settled days that recorded a centre.">
+              Temperature error
+            </dt>
+            <dd className="tabular-nums">
+              {ev.mae === null ? <span className="text-muted">—</span>
+                : <>{fmtTempDelta(ev.mae, u).replace("+", "")} mean miss · bias {fmtTempDelta(ev.bias ?? 0, u)} <span className="text-muted">({ev.errN} days)</span></>}
+            </dd>
+            <dt className="text-muted" title="On the days the market had a favourite at the same moment: how often its favourite won, against how often this engine's pick did on those same days.">
+              Market vs model
+            </dt>
+            <dd className="tabular-nums">
+              {ev.marketN
+                ? <>market {ev.marketHits}/{ev.marketN} · model {ev.modelHitsOnMarketDays}/{ev.marketN} <span className="text-muted">same days</span></>
+                : <span className="text-muted">no day both called</span>}
+            </dd>
+          </dl>
+          <div className="mt-0.5 text-[10px] text-muted">
+            {strip.map(([m, e]) => <span key={m} className="mr-2">{momentLabel(m)} {rateText(e)}</span>)}
+            <span className="border-l border-border pl-2">after the peak {rateText(after)}</span>
+          </div>
+        </div>
+      )}
+
       {/* INPUTS, NOT ANSWERS. Each is a forecast of the day's maximum; the
           pick above is the bucket the engine's probabilities favour after
           spreading its centre by the measured error. */}
@@ -320,6 +411,8 @@ function Card({ c, onPick }: { c: CityCard; onPick?: (city: string) => void }) {
       <div className="mt-2 text-[10px] text-muted">
         {c.priced_at ? <>probabilities priced {fmtDateTime(c.priced_at)}</> : "not priced yet"}
         {c.edges_at && c.edges_at !== c.priced_at && <> · edges {fmtDateTime(c.edges_at)}</>}
+        {st?.station_age_h != null && <> · station report {Number(st.station_age_h).toFixed(1)} h ago</>}
+        {st?.forecast_run_at && <> · forecast run {fmtDateTime(st.forecast_run_at)}</>}
       </div>
     </div>
   );

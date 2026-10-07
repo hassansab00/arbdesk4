@@ -94,7 +94,7 @@ def test_the_page_reads_the_two_views_and_nothing_under_them():
     assert reads == {"v_learning_status", "v_prediction_lineup"}, reads
     assert '.eq("target_date", date).eq("checkpoint", checkpoint)' in COMPONENT, \
         "one date and checkpoint a read: at most 144 rows live, never the 1,000-row cap"
-    assert "<PredictionLineup />" in PAGE
+    assert "<PredictionLineup cities={selected} />" in PAGE      # the page's one selection (wave F)
     assert 'import PredictionLineup from "@/components/PredictionLineup";' in PAGE
 
 
