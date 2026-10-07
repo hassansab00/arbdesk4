@@ -91,6 +91,10 @@ ad4_96_prune_band_probabilities.sql
 # build 2.A): v_prunable_city_correlation and prune_city_correlation. After
 # ad4_phase2.sql, which creates derived_city_correlation.
 ad4_prune_city_correlation.sql
+# A week-old forecast's payload goes to the repository, the rows stay (WXPredict
+# build 2.A): weather_forecasts.variables and derived_model_forecast's
+# contributions and inputs. After ad4_00_preflight.sql and ad4_25_model_forecast.sql.
+ad4_prune_forecast_payloads.sql
 ad4_68_prediction_ladder_outcomes.sql
 ad4_71_observation_health.sql
 ad4_72_model_promotion.sql

@@ -427,6 +427,8 @@ Group A in total: **18.1 MB**. This is the first PR (migration `20261006170000`)
 
 Group B in total: **67.5 MB**.
 
+*Payloads (7 Oct, beyond the groups):* the rows stay and a week-old payload goes to the repository: `weather_forecasts.variables` (8.07 MiB on 53,364 rows) and `derived_model_forecast`'s contributions and inputs (3.62 MiB on 11,665 rows, and the table's growth), which nothing reads past a week.
+
 *A page cache (7 Oct, beyond the groups):* `mv_prediction_ladder` held 45 days of ladder no page reads (36,640 of 39,742 rows, 15.0 MiB). It keeps yesterday on; the funnel's bucket planes, the one reader of older days, read their own small copy of the edges. Nothing is deleted (it is a copy). `weather_forecast_models` at 7 days needs more than the ingest window: `v_hit_forecasts` and `freeze_hit_forecasts` take one boundary for both forecast tables, so a 7-day keep would freeze the hit tournament's best-match rows at 7 days too; each table needs its own boundary first.
 
 **A and B together: 85.6 MB.** That is 45 MB short of the gap in MiB terms and 67 MB short in decimal, before growth.

@@ -261,11 +261,26 @@ def test_each_source_names_the_dataset_the_archive_prunes_it_into():
     when it gets one, it must be the one the reader looks in."""
     import archive_observations as ao
     for name, spec in wh.SOURCES.items():
-        datasets = [k for k, v in ao.TABLES.items() if v["table"] == spec["table"]]
+        # A dataset that keeps the rows and moves only a payload (rows_stay:
+        # forecast_variables, WXPredict build 2.A) takes nothing this reader reads.
+        datasets = [k for k, v in ao.TABLES.items() if v["table"] == spec["table"] and not v.get("rows_stay")]
         assert datasets in ([], [spec["dataset"]]), (name, datasets)
         if datasets:
             assert ao.TABLES[spec["dataset"]]["cutoff_col"] == "for_date"
     assert wh.SOURCES["weather_forecasts"]["dataset"] in ao.TABLES
+
+
+def test_a_payload_dataset_keeps_the_rows_weather_history_reads():
+    """forecast_variables strips weather_forecasts.variables and deletes no row,
+    and no reader through weather_history selects the payload."""
+    import archive_observations as ao
+    spec = ao.TABLES["forecast_variables"]
+    assert spec["rows_stay"] is True and spec["table"] == "weather_forecasts"
+    sql = (ROOT / "sql" / "ad4_prune_forecast_payloads.sql").read_text()
+    body = sql[sql.index("create or replace function public.prune_forecast_variables"):]
+    body = body[:body.index("$function$;")]
+    assert "delete from" not in body.lower()
+    assert "set variables = jsonb_build_object('variables_in_repo', true)" in body
 
 
 def test_the_jobs_read_through_it():

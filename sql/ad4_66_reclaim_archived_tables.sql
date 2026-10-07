@@ -222,6 +222,17 @@ select cron.schedule(
   'VACUUM (FULL, ANALYZE) public.derived_city_correlation'
 );
 
+-- The weather model's explanations (WXPredict build 2.A, 7 Oct): the archive
+-- moves a day of contributions and inputs out of the rows every night and
+-- asks for its own reclaim, so this is the backstop - weekly, Monday 07:15,
+-- after the other weekly rewrites and before weather_model.yml (08:00) and
+-- the 08:00 intraday run write the table again.
+select cron.schedule(
+  'ad4_reclaim_derived_model_forecast',
+  '15 7 * * 1',
+  'VACUUM (FULL, ANALYZE) public.derived_model_forecast'
+);
+
 -- The decision log (plan v2 P5.11): about 2,600 rows a day, pruned past 30
 -- days. Small, so the rewrite is short; 03:55, behind edges, for the same
 -- one-rewrite-at-a-time reason.
@@ -287,7 +298,7 @@ declare
     -- appended (29 Sep, P1.6 phase 2)
     'weather_forecast_models', 'band_probabilities',
     -- appended (7 Oct, WXPredict build 2.A)
-    'derived_city_correlation'];
+    'derived_city_correlation', 'derived_model_forecast'];
   v_now   timestamptz := now();
   v_hour  int := extract(hour from (v_now at time zone 'UTC'))::int;
   v_at    timestamptz;

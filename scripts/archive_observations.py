@@ -477,6 +477,67 @@ TABLES = {
         "mirror_first": True,
         "needs_feature_cache": False,
     },
+    # A WEEK-OLD FORECAST'S PAYLOAD (WXPredict build 2.A; Hassan, 7 Oct:
+    # "proceed to the next storage cut"). The rows and their numbers stay, as
+    # with signal_inputs below; what goes is a jsonb payload nothing opens
+    # once the row is a week old. weather_forecasts.variables is 13.59 MiB of
+    # the table's 24.08 MiB of row data, 8.07 MiB of it on 53,364 rows dated
+    # over 7 days back; no view, function, script or page reads inside it
+    # (v_forecast_issued passes the column through; every reader of the view
+    # selects named columns). The export is keyed by the table's natural key
+    # (city_key, model, run_at, for_date), not forecast_id; the strip marks
+    # the row {"variables_in_repo": true}. The mirror copies the table by
+    # observed_at after the prune; prune_forecast_variables refuses a row
+    # observed since yesterday's midnight.
+    "forecast_variables": {
+        "table": "weather_forecasts",
+        "read_from": "v_forecast_variables_export",
+        "pk": "forecast_id",
+        "cutoff_col": "for_date",
+        "cutoff_is_date": True,
+        "prune_rpc": "prune_forecast_variables",
+        # The rows and their numbers stay; only the payload leaves (weather_history
+        # reads rows, so it still reads them from the table and the forecasts archive).
+        "rows_stay": True,
+        "tag": "forecast-variables-archive",
+        "columns": ["city_key", "model", "run_at", "observed_at", "for_date", "source", "variables"],
+        # 8.07 MiB of payload over 53,364 rows (7 Oct)
+        "bytes_per_row": 160,
+        "keep_days": 7,
+        "min_keep_days": 7,
+        "mirror_first": True,
+        "needs_feature_cache": False,
+    },
+    # THE WEATHER MODEL'S EXPLANATIONS (WXPredict build 2.A, 7 Oct).
+    # derived_model_forecast is never pruned and grows about 1,600 rows a
+    # day; contributions and inputs are 10.47 of its 14.90 MiB of row data.
+    # Their one reader, v_model_forecast_current, reads yesterday on; the
+    # skill page, the learning state and the engine read the numbers. The
+    # strip leaves contributions null and inputs {"payload_in_repo": true};
+    # the key is three columns, so the export pages on the view's joined
+    # key. The mirror copies the table by predicted_at after the prune;
+    # prune_model_payloads refuses a row predicted since yesterday's midnight.
+    "model_payloads": {
+        "table": "derived_model_forecast",
+        "read_from": "v_model_payloads_export",
+        "pk": "payload_key",
+        # the table's composite primary key, which the view joins into `pk`
+        "pk_joins": ["city_key", "for_date", "run_at"],
+        "cutoff_col": "for_date",
+        "cutoff_is_date": True,
+        "prune_rpc": "prune_model_payloads",
+        # The rows and their numbers stay; only the payload leaves (weather_history
+        # reads rows, so it still reads them from the table and the forecasts archive).
+        "rows_stay": True,
+        "tag": "model-payloads-archive",
+        "columns": ["city_key", "for_date", "run_at", "predicted_at", "contributions", "inputs"],
+        # 3.62 MiB of payload over 11,665 rows (7 Oct)
+        "bytes_per_row": 330,
+        "keep_days": 7,
+        "min_keep_days": 7,
+        "mirror_first": True,
+        "needs_feature_cache": False,
+    },
     # A WEEK-OLD SIGNAL'S DECISION INPUTS (plan v2 P1.6 phase 1, step 4,
     # 28 Sep; approved on condition that no collected data is lost). The rows
     # stay - four tables hold foreign keys to them and the board reads every

@@ -35,7 +35,8 @@ MIRRORED = sorted(n for n, s in ao.TABLES.items() if s.get("mirror_first"))
 
 
 def test_the_datasets_the_mirror_copies_by_day_are_marked():
-    assert MIRRORED == ["correlation", "forecast_features", "forecast_models", "probabilities", "trades"]
+    assert MIRRORED == ["correlation", "forecast_features", "forecast_models", "forecast_variables",
+                        "model_payloads", "probabilities", "trades"]
     assert ao.TABLES["trades"]["mirrored_on"] == "ingested_at"
 
 
@@ -46,6 +47,8 @@ REFUSES_UNMIRRORED = {
     "forecast_models": ("ad4_95_prune_forecast_models.sql", "observed_at"),
     "probabilities": ("ad4_96_prune_band_probabilities.sql", "computed_at"),
     "correlation": ("ad4_prune_city_correlation.sql", "computed_at"),
+    "forecast_variables": ("ad4_prune_forecast_payloads.sql", "observed_at"),
+    "model_payloads": ("ad4_prune_forecast_payloads.sql", "predicted_at"),
 }
 
 
