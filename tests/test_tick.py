@@ -267,7 +267,15 @@ def world(monkeypatch):
     # here it only reports, and w["engine"] says what.
     import engine_shadow
     w["engine"] = {"strategies": 6, "written": 0, "city_days": 0}
-    monkeypatch.setattr(engine_shadow, "record", lambda *a, **k: dict(w["engine"]))
+    w["engine_kw"] = []
+
+    def record(*a, **k):
+        w["engine_kw"].append(k)
+        return dict(w["engine"])
+    monkeypatch.setattr(engine_shadow, "record", record)
+    # The Candidate gate's status read (F.7) starts with the tick; here a token.
+    w["status_read"] = object()
+    monkeypatch.setattr(engine_shadow, "start_status_read", lambda: w["status_read"])
     # P1.1's candidate in shadow has its own tests (test_variant_shadow); here
     # it only records what the tick handed it.
     import variant_shadow
@@ -640,3 +648,16 @@ def test_an_s10_decision_that_cannot_name_its_call_is_attention(world, monkeypat
                                                                "read_back_error": "HTTPError"})
     tick.run(now=at("2026-09-24T22:35"))
     assert world["logged"][0][1] == "attention"
+
+
+def test_the_tick_starts_the_status_read_early_and_hands_it_to_the_engine(world):
+    """F.7's Candidate gate reads v_city_status (about 3 s); the tick starts
+    it right after writing this hour's station reports (so a fresh report
+    counts; Codex on #330) and before the rest of its work, so it adds no wall
+    time, and gives it to the engine, which waits at most GATE_WAIT_S."""
+    import inspect
+    tick.run(now=at("2026-09-24T22:35"))
+    (kw,) = world["engine_kw"]
+    assert kw["status_read"] is world["status_read"]
+    src = inspect.getsource(tick.run)
+    assert src.index("read_stations(") < src.index("start_status_read()") < src.index("_upcoming_markets()")

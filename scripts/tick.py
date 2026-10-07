@@ -351,9 +351,14 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     t0 = time.monotonic()
     now = now or dt.datetime.now(dt.timezone.utc)
     version = engine_version()
+    import engine_shadow
 
     # Stations first, so this hour's checkpoints price on this hour's readings.
     stations = read_stations(now, dry_run)
+    # The Candidate gate's statuses (F.7), read beside the tick's own work:
+    # the view takes about 3 s and the engine decides near the end. After the
+    # stations, so a report this tick wrote counts as fresh (Codex on #330).
+    status_read = engine_shadow.start_status_read()
     cities = get_cities(require_coords=False)
     tz_of = {c["city_key"]: c.get("timezone") for c in cities}
     station_of = {c["city_key"]: c.get("icao") for c in cities}
@@ -514,14 +519,14 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     # The one engine decides for its strategies on what this tick wrote,
     # recorded in `decisions`, ordering nothing (P5.12 part 3a). Bounded by
     # the tick's own budget; never raises.
-    import engine_shadow
     # (local date, floor, its basis, the newest station reading under it): S10
     # acts only on a fresh reading, so the engine needs the reading's time.
     engine_floors = {c: (d, f, (running.get(c) or {}).get("running_max_basis"),
                          (running.get(c) or {}).get("latest_reading_at")) for c, (d, f) in floors.items()}
     detail["engine"] = engine_shadow.record(out, s10_ladders, bands_by_market,
                                             market_of, unit_of, engine_floors, now,
-                                            deadline=t0 + budget_s, dry_run=dry_run)
+                                            deadline=t0 + budget_s, dry_run=dry_run,
+                                            status_read=status_read)
     # The same-day candidates beside each same-day call, observe only:
     # da_floor (docs/P11_DA_FLOOR_PREREG.md) and sd_corr
     # (docs/SD_CORR_PREREG.md). After the engine's decisions, which act

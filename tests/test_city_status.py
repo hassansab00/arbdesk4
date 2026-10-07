@@ -69,9 +69,10 @@ def test_the_study_reproduces_its_committed_output():
 
 def test_status_and_membership_never_reach_a_price():
     """The status says how far a card's numbers can be relied on; it does not
-    change them. Nothing under scripts/ reads it (F.7 will add the paper
-    strategies' read deliberately, with its own test), and the view does not
-    read the focus set."""
+    change them. Under scripts/ only F.7's Candidate gate reads it
+    (engine_shadow.py: it holds a BUY back after the engine decided, and
+    tests/test_candidate_gate.py holds it to that), and the view does not read
+    the focus set."""
     mig = _read(MIGRATION)
     view = mig[mig.index("create or replace view public.v_city_status"):]
     view = view[:view.index("$v$;")]                # the definition, not its comment
@@ -84,7 +85,7 @@ def test_status_and_membership_never_reach_a_price():
                 if re.search(r"\b(v_city_status|city_status_rules)\b", text):
                     hits.append(f)
     hits = [f for f in hits if f != "mirror_to_repo.py"]   # it lists the table as not mirrored
-    assert hits == [], f"read by {hits}"
+    assert hits == ["engine_shadow.py"], f"read by {hits}"
 
 
 def test_the_page_reads_one_selection_for_every_panel():
