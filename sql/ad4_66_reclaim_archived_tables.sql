@@ -210,6 +210,18 @@ select cron.schedule(
   'VACUUM (FULL, ANALYZE) public.band_probabilities'
 );
 
+-- Superseded correlations (WXPredict build 2.A, 7 Oct): the archive takes
+-- every row but each pair's newest once it is two days old, about 1,326 a
+-- night, and asks for its own reclaim, so this is the backstop. Daily, as
+-- every dataset kept three days or less is; 03:10, after the 02:36 archive
+-- and ahead of the other backstops. Nothing writes the table then (the
+-- recompute runs in pipeline_daily, about 05:00).
+select cron.schedule(
+  'ad4_reclaim_derived_city_correlation',
+  '10 3 * * *',
+  'VACUUM (FULL, ANALYZE) public.derived_city_correlation'
+);
+
 -- The decision log (plan v2 P5.11): about 2,600 rows a day, pruned past 30
 -- days. Small, so the rewrite is short; 03:55, behind edges, for the same
 -- one-rewrite-at-a-time reason.
@@ -273,7 +285,9 @@ declare
     -- appended (28 Sep), so every table above keeps its two-minute slot
     'paper_book_evidence', 'weather_forecast_features', 'signals',
     -- appended (29 Sep, P1.6 phase 2)
-    'weather_forecast_models', 'band_probabilities'];
+    'weather_forecast_models', 'band_probabilities',
+    -- appended (7 Oct, WXPredict build 2.A)
+    'derived_city_correlation'];
   v_now   timestamptz := now();
   v_hour  int := extract(hour from (v_now at time zone 'UTC'))::int;
   v_at    timestamptz;

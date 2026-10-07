@@ -1699,6 +1699,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "edges",
     "signals"
   ],
+  "v_prunable_city_correlation": [
+    "derived_city_correlation"
+  ],
   "v_prunable_edge_history": [
     "edges",
     "bands",

@@ -132,6 +132,18 @@ const assert = require('node:assert/strict');
       n_days integer,typical_climb_left_c numeric,climb_left_sd_c numeric,climb_left_p10_c numeric,
       climb_left_p90_c numeric,pct_already_peaked numeric,computed_at timestamptz not null default now(),
       primary key(city_key,local_hour));
+    -- derived_city_correlation is created by sql/ad4_phase2.sql, which this
+    -- harness never applies; v_prunable_city_correlation reads it
+    -- (20261007130000). The live shape (information_schema, pg_constraint,
+    -- pg_policy, 7 Oct): RLS on with anon_read, anon and authenticated may
+    -- read, the service role may write.
+    create table public.derived_city_correlation(city_a text not null references public.cities(city_key),
+      city_b text not null references public.cities(city_key),computed_at timestamptz not null default now(),
+      n_days integer,err_corr numeric,primary key(city_a,city_b,computed_at));
+    alter table public.derived_city_correlation enable row level security;
+    create policy anon_read on public.derived_city_correlation for select using (true);
+    grant select on public.derived_city_correlation to anon, authenticated;
+    grant all on public.derived_city_correlation to service_role;
     create table public.live_weather(city_key text primary key,updated_at timestamptz,observed_at timestamptz);
     -- weather_forecast_features is created by sql/ad4_24_nws_gridpoint.sql,
     -- which this harness never applies - so a migration doing an ALTER TABLE

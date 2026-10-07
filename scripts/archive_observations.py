@@ -446,6 +446,37 @@ TABLES = {
         "mirror_first": True,
         "needs_feature_cache": False,
     },
+    # EVERY CORRELATION BUT EACH PAIR'S NEWEST (WXPredict build 2.A, group B;
+    # Hassan, 7 Oct: "proceed with the correlation cuts"). recompute_correlation
+    # appends one row per city pair a day and nothing removed the old ones:
+    # 63,640 rows of 1,375 pairs, 8,944 kB (7 Oct). Its readers take the
+    # newest row per pair (signal_engine._correlations) or the newest
+    # computation's rows (signal_engine._context), which are each pair's
+    # newest; v_prunable_city_correlation never offers one, and
+    # prune_city_correlation rolls back if the pair count moves. The key is
+    # three columns, so the export pages on the view's joined text key.
+    # mirror_to_repo copies the table by computed_at after the prune.
+    "correlation": {
+        "table": "derived_city_correlation",
+        "read_from": "v_prunable_city_correlation",
+        "pk": "correlation_key",
+        # the table's composite primary key, which the view joins into `pk`
+        "pk_joins": ["city_a", "city_b", "computed_at"],
+        "cutoff_col": "computed_at",
+        "cutoff_is_date": False,
+        "prune_rpc": "prune_city_correlation",
+        "tag": "correlation-archive",
+        "columns": ["city_a", "city_b", "computed_at", "n_days", "err_corr"],
+        # 8,944 kB over 63,640 rows with its indexes (7 Oct)
+        "bytes_per_row": 144,
+        # TWO DAYS, WANTED AND FLOOR: no reader reads a superseded row, and
+        # two days back is always before the midnight the mirror has reached;
+        # prune_city_correlation refuses under 2.
+        "keep_days": 2,
+        "min_keep_days": 2,
+        "mirror_first": True,
+        "needs_feature_cache": False,
+    },
     # A WEEK-OLD SIGNAL'S DECISION INPUTS (plan v2 P1.6 phase 1, step 4,
     # 28 Sep; approved on condition that no collected data is lost). The rows
     # stay - four tables hold foreign keys to them and the board reads every

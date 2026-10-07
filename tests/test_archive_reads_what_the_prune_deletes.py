@@ -116,6 +116,9 @@ EXPORT_SOURCE = {
     "forecast_models": "v_forecast_models_export",
     # the prices no reader selects, with their market's date (P1.6 phase 2)
     "probabilities": "v_prunable_band_probabilities",
+    # every correlation a newer one of its pair superseded, with the
+    # three-column key joined into one to page on (WXPredict build 2.A)
+    "correlation":  "v_prunable_city_correlation",
 }
 
 
@@ -175,6 +178,7 @@ def test_the_exported_columns_exist_on_whatever_is_read(name):
         "v_signal_inputs_export":         "ad4_94_prune_signal_inputs.sql",
         "v_forecast_models_export":       "ad4_95_prune_forecast_models.sql",
         "v_prunable_band_probabilities":  "ad4_96_prune_band_probabilities.sql",
+        "v_prunable_city_correlation":    "ad4_prune_city_correlation.sql",
     }
     assert source in defines, f"{source} has no SQL file registered here"
     sql = (Path(ao.__file__).resolve().parents[1]

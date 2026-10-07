@@ -87,6 +87,10 @@ ad4_93_prune_forecast_features.sql
 ad4_94_prune_signal_inputs.sql
 ad4_95_prune_forecast_models.sql
 ad4_96_prune_band_probabilities.sql
+# Every correlation but each pair's newest goes to the repository (WXPredict
+# build 2.A): v_prunable_city_correlation and prune_city_correlation. After
+# ad4_phase2.sql, which creates derived_city_correlation.
+ad4_prune_city_correlation.sql
 ad4_68_prediction_ladder_outcomes.sql
 ad4_71_observation_health.sql
 ad4_72_model_promotion.sql
