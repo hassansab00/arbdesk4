@@ -234,6 +234,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_provisional_settings": "ad4_39_freshness.sql",
   "v_prunable_band_probabilities": "ad4_96_prune_band_probabilities.sql",
   "v_prunable_book_redundancy": "ad4_79_prune_book_redundancy.sql",
+  "v_prunable_city_correlation": "ad4_prune_city_correlation.sql",
   "v_prunable_edge_history": "ad4_80_prune_edge_history.sql",
   "v_prunable_resolution_evidence": "ad4_74_prune_resolution_evidence.sql",
   "v_risk_budget_health": "ad4_84_risk_budget.sql",

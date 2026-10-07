@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 274 of them - and for each MISSING one names the
+-- and function the app reads - 275 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -245,6 +245,7 @@ with expected(rel, owner, used_by) as (values
     ('v_provisional_settings', 'ad4_39_freshness.sql', '(Provenance)'),
     ('v_prunable_band_probabilities', 'ad4_96_prune_band_probabilities.sql', ''),
     ('v_prunable_book_redundancy', 'ad4_79_prune_book_redundancy.sql', ''),
+    ('v_prunable_city_correlation', 'ad4_prune_city_correlation.sql', ''),
     ('v_prunable_edge_history', 'ad4_80_prune_edge_history.sql', ''),
     ('v_prunable_resolution_evidence', 'ad4_74_prune_resolution_evidence.sql', ''),
     ('v_risk_budget_health', 'ad4_84_risk_budget.sql', ''),
@@ -541,6 +542,7 @@ begin
     ('v_provisional_settings', 'ad4_39_freshness.sql', '(Provenance)'),
     ('v_prunable_band_probabilities', 'ad4_96_prune_band_probabilities.sql', ''),
     ('v_prunable_book_redundancy', 'ad4_79_prune_book_redundancy.sql', ''),
+    ('v_prunable_city_correlation', 'ad4_prune_city_correlation.sql', ''),
     ('v_prunable_edge_history', 'ad4_80_prune_edge_history.sql', ''),
     ('v_prunable_resolution_evidence', 'ad4_74_prune_resolution_evidence.sql', ''),
     ('v_risk_budget_health', 'ad4_84_risk_budget.sql', ''),

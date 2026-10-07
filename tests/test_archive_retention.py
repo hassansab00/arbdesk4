@@ -179,7 +179,11 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
               "forecast_models": 30,
               # prices no reader selects: station_width_score reads 14 days of
               # every price; older, readers take one row a band (P1.6, 29 Sep)
-              "probabilities": 30}
+              "probabilities": 30,
+              # superseded correlations: every reader takes each pair's newest
+              # row, which never leaves; 2 keeps the prune behind the mirror
+              # (WXPredict build 2.A, 7 Oct)
+              "correlation": 2}
     assert set(limits) == set(TABLES), (
         f"a dataset was added to the archive without a reasoned retention ceiling here: "
         f"{sorted(set(TABLES) ^ set(limits))}")
