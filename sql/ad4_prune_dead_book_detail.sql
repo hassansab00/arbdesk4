@@ -82,11 +82,18 @@ declare
   n integer := 0;
 begin
   with newest as (
-    -- by (observed_at, snapshot_id), as v_unarchived_ladders takes a band's
-    -- last book: a tied pair has one newest, the same one in both (7 Oct)
-    select distinct on (band_id) snapshot_id
-      from book_snapshots
-     order by band_id, observed_at desc, snapshot_id desc
+    -- EVERY row at its band's newest instant (7 Oct). The readers
+    -- (v_latest_book, book_as_of) order by observed_at alone, so either row
+    -- of a tied pair can be the one they take: neither is nulled by age. Of
+    -- a decided band's tied last pair, the archive takes the higher
+    -- snapshot_id (v_unarchived_ladders), and only that one is stripped
+    -- below, once stamped (Codex on #337).
+    select s.snapshot_id
+      from book_snapshots s
+      join (select band_id, max(observed_at) as observed_at
+              from book_snapshots
+             group by band_id) m
+        on m.band_id = s.band_id and m.observed_at = s.observed_at
   )
   update book_snapshots b
      set raw_book = null, no_book = null

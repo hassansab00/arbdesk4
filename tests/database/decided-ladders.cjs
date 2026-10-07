@@ -5,7 +5,9 @@
 // last, not a market one day past, one book of a tied pair; the hourly prune
 // nulls that ladder only once it is stamped and only once book_ladder_cache
 // no longer holds the snapshot; a trading band's newest book is still never
-// touched; every number and every row stays; the browser reaches neither.
+// touched, nor either row of a tied newest pair by age (the readers order by
+// observed_at alone and may take either; Codex on #337); every number and
+// every row stays; the browser reaches neither.
 // ===========================================================================
 const { PGlite } = require('@electric-sql/pglite');
 const fs = require('fs');
@@ -71,12 +73,11 @@ const market = (c) => `10000000-0000-0000-0000-0000000000${c}`;
   // book (1), not a market one day past (3), not the tie's other book (6)
   assert.deepEqual(await ids('select snapshot_id from public.v_unarchived_ladders order by 1'), [2, 4, 5, 7, 8]);
 
-  // 2 - nothing stamped: a decided band's last book keeps its ladder; the
-  // earlier decided books go at 6 h as they always did
+  // 2 - nothing stamped: a decided band's last book keeps its ladder, and so
+  // does the other row of a tied newest pair (6); the earlier decided book
+  // (1) goes at 6 h as it always did
   await db.query('select public.prune_dead_book_detail()');
-  const afterFirst = await ladders();
-  for (const kept of [2, 3, 4, 5, 7, 8]) assert.ok(afterFirst.includes(kept), `snapshot ${kept} lost its ladder unstamped`);
-  assert.ok(!afterFirst.includes(1), 'an earlier decided book is nulled at 6 hours');
+  assert.deepEqual(await ladders(), [2, 3, 4, 5, 6, 7, 8]);
 
   // 3 - the mark counts the same rows the export read, and stamps them
   const before = (await db.query(`select (now() - interval '1 day') as t`)).rows[0].t;
@@ -88,14 +89,15 @@ const market = (c) => `10000000-0000-0000-0000-0000000000${c}`;
 
   // 4 - stamped: the decided last books lose their ladder, except the one
   // the cache still holds (5); the trading band's newest book (4) is never
-  // touched; the market one day past (3) was never stamped
+  // touched; the market one day past (3) was never stamped; the tie's other
+  // row (6) is never stamped and, at its band's newest instant, never aged out
   await db.query('select public.prune_dead_book_detail()');
-  assert.deepEqual(await ladders(), [3, 4, 5]);
+  assert.deepEqual(await ladders(), [3, 4, 5, 6]);
 
   // 5 - the cache lets go of 5 (its three-day trim): now it goes too
   await db.exec(`delete from public.book_ladder_cache where snapshot_id = 5`);
   await db.query('select public.prune_dead_book_detail()');
-  assert.deepEqual(await ladders(), [3, 4]);
+  assert.deepEqual(await ladders(), [3, 4, 6]);
 
   // 6 - every row and every number stays
   assert.deepEqual(await fingerprint(), numbers);
