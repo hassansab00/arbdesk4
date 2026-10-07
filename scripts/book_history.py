@@ -21,7 +21,7 @@ one is newer.
     band-day stays in the database (each prune logs band_days_before ==
     band_days_after). So an instant at or after the first UTC midnight past
     the cut is answered by the database alone: then as_of() IS the rpc call,
-    unchanged, and opens no file.
+    unchanged, and opens no file (but a decided band's last ladder, below).
   * Below that, the cut's file must be in this checkout, or the read refuses
     (StaleCheckout), exactly as for forecasts.
   * Only the files that can hold a row newer than the database's answer are
@@ -37,6 +37,18 @@ one is newer.
   * A long run can cross the nightly prune (backtest.yml has two hours at any
     hour). confirm_cut() asks the log again before the runner banks a date,
     and refuses if the cut moved while that date was being read.
+  * A decided band's last book loses its ladder once data/archive/ladders
+    holds it (WXPredict build 2.A, 7 Oct: prune_dead_book_detail, after the
+    archive's ladders dataset). book_as_of then answers that row with
+    raw_book and no_book null where it used to carry them; a lead-0 run at
+    12:00 UTC reaches 147 of the 8,145 such books there were on 7 Oct.
+    with_ladder() puts the ladder back from the file, by snapshot_id, so the
+    backtest reads what it read before. Only a decided book (DEAD_LOSER /
+    DEAD_WINNER) stamped ladder_archived_at: a trading book's ladder was
+    nulled at 48 hours before this and the backtest has never read it, and a
+    decided book that is not its band's last is nulled at 6 hours without an
+    archive. A stamped ladder no file in this checkout holds refuses
+    (StaleCheckout), as a missing cut file does.
 
 tools/p16_step32_proof.py proves it against the live database.
 """
@@ -50,12 +62,16 @@ import weather_history as wh
 
 ROOT = wh.ROOT
 DATASET = "books"
+LADDERS = "ladders"
+DECIDED = {"DEAD_LOSER", "DEAD_WINNER"}
 TEXT = {"band_id", "observed_at", "market_state"}
 BOOL = {"True": True, "False": False, "true": True, "false": False}
 
 _index = {}                        # path -> {band_id: ([instant], [row])}
+_ladders = {}                      # path -> {snapshot_id: (raw_book, no_book)}
 _used = {}                         # the cut this process's reads used
-stats = {"reads": 0, "bands": 0, "from_archive": 0, "files_opened": 0}   # bands: answered
+stats = {"reads": 0, "bands": 0, "from_archive": 0, "files_opened": 0,   # bands: answered
+         "ladders_restored": 0}
 
 
 def _ts(text):
@@ -102,6 +118,39 @@ def newest_in_file(path, band_id, at):
     return (entry[0][i - 1], entry[1][i - 1]) if i else None
 
 
+def _ladder_index(path):
+    """{snapshot_id: (raw_book, no_book)} for one ladders file. Once per process."""
+    if path not in _ladders:
+        out = {}
+        with gzip.open(path, "rt", newline="") as fh:
+            for r in csv.DictReader(fh):
+                out[int(r["snapshot_id"])] = (typed("raw_book", r["raw_book"]), typed("no_book", r["no_book"]))
+        _ladders[path] = out
+        stats["files_opened"] += 1
+    return _ladders[path]
+
+
+def with_ladder(row, root):
+    """The row as book_as_of returned it before its ladder went to the
+    repository: a decided band's last book, stamped and stripped, gets its
+    raw_book and no_book back from data/archive/ladders. Any other row is
+    returned as it is."""
+    if (row.get("market_state") not in DECIDED or not row.get("ladder_archived_at")
+            or row.get("raw_book") is not None or row.get("no_book") is not None):
+        return row
+    day = _ts(row["observed_at"]).astimezone(dt.timezone.utc).date().isoformat()
+    sid = int(row["snapshot_id"])
+    for f, t, path in wh.archive_files(LADDERS, root):
+        if f <= day <= t:
+            hit = _ladder_index(path).get(sid)
+            if hit is not None:
+                stats["ladders_restored"] += 1
+                return {**row, "raw_book": hit[0], "no_book": hit[1]}
+    raise wh.StaleCheckout(
+        f"snapshot {sid}'s ladder was moved to data/archive/{LADDERS} (stamped "
+        f"{row['ladder_archived_at']}) and no file in this checkout holds it. Pull main.")
+
+
 def complete_from(cut):
     """The first instant the database answers alone, or None when it always does."""
     if cut is None:
@@ -116,6 +165,8 @@ def as_of(band_ids, at, *, rpc_fn, rest_fn, root=None):
     band_ids = list(dict.fromkeys(band_ids))
     rows = rpc_fn("book_as_of", {"p_band_ids": band_ids, "p_as_of": at.isoformat()}) or []
     stats["reads"] += 1
+    root = root or ROOT
+    rows = [with_ladder(r, root) for r in rows]
     cut = wh.prune_boundary(DATASET, rest_fn=rest_fn)
     _used.setdefault(DATASET, cut)
     start = complete_from(cut)
@@ -123,7 +174,6 @@ def as_of(band_ids, at, *, rpc_fn, rest_fn, root=None):
         stats["bands"] += len(rows)
         return rows                                        # the read it replaces
 
-    root = root or ROOT
     wh.check_checkout(cut, root)
     have = {r["band_id"]: r for r in rows}
     # A file can only matter if it reaches past the database's oldest answer,
@@ -168,6 +218,7 @@ def confirm_cut(rest_fn):
 def reset():
     """Forget what this process looked up (tests)."""
     _index.clear()
+    _ladders.clear()
     _used.clear()
     for k in stats:
         stats[k] = 0

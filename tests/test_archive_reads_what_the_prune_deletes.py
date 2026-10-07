@@ -176,7 +176,7 @@ def test_the_exported_columns_exist_on_whatever_is_read(name):
         "v_prunable_resolution_evidence": "ad4_74_prune_resolution_evidence.sql",
         "v_prunable_book_redundancy":     "ad4_79_prune_book_redundancy.sql",
         "v_prunable_edge_history":        "ad4_80_prune_edge_history.sql",
-        "v_unarchived_ladders":           "../supabase/migrations/20260927100000_a_ladder_is_archived_before_it_is_pruned.sql",
+        "v_unarchived_ladders":           "../supabase/migrations/20261007190000_a_decided_bands_last_ladder_goes_to_the_repo.sql",
         "v_forecast_features_export":     "ad4_93_prune_forecast_features.sql",
         "v_signal_inputs_export":         "ad4_94_prune_signal_inputs.sql",
         "v_forecast_models_export":       "ad4_95_prune_forecast_models.sql",
