@@ -10,10 +10,12 @@
 --
 -- WHAT THE TICK READS ONCE IT IS ON:
 --   * the market weight per view and checkpoint class (market_anchor): off
---     its prior 0 only with 20 settled days and a walk-forward lower 90% bound
---     above zero, at most 0.05 a night, per city only after its own 20 days -
---     its own out-of-sample check. On 5 Oct every scope was still held at 0
---     ("fewer than 20 settled days": 8 to 11);
+--     its prior 0 only after 40 settled days - the first 20 only choose a
+--     weight, the next 20 score it forward (market_anchor._forward; the test
+--     holds 39 and passes 40; Codex on #332) - with the forward gain's lower
+--     90% bound above zero and a gain over the latest days, at most 0.05 a
+--     night; per city only after its own days. Its own out-of-sample check.
+--     On 5 Oct every scope was still held at 0, with 8 to 11 settled days;
 --   * the city clusters: they only tighten the cluster rail.
 --   The tick does not load the belief maps (engine_shadow passes the clusters
 --   and the anchor table only).
@@ -24,6 +26,13 @@
 --    (20260930001000); 20261005190000 removed it.
 -- 2. data_freshness_spec: strategy_params is fresh within 30 h again, as
 --    before the stop (sql/ad4_39_freshness.sql says the same).
+--    v_data_freshness writes each limit into its own definition, so it is
+--    rebuilt from that file's generator live after this migration, as the
+--    stop's was (Codex on #332). Done 7 Oct, after this migration, with
+--    CREATE OR REPLACE in
+--    one REPEATABLE READ transaction: EXCEPT ALL both ways, exactly the
+--    strategy_params row differed, every other table's row identical; anon
+--    reads all 68 rows.
 -- 3. settings.strategy_learning: enabled, with why.
 -- Re-runnable. tests/database/strategy-learning-on.cjs holds it.
 -- ===========================================================================
@@ -46,7 +55,7 @@ end $$;
 insert into public.settings (key, value)
 values ('strategy_learning', jsonb_build_object(
   'enabled', true,
-  'why', 'Switched on 7 Oct (Hassan: "turn learning on"). The tick reads the market weights, each off 0 only on its own walk-forward evidence (20 settled days, a lower 90% bound above zero, at most 0.05 a night), and the city clusters, which only tighten the cluster rail. Nothing reaches capital: meta_allocator reports, Hassan promotes.'))
+  'why', 'Switched on 7 Oct (Hassan: "turn learning on"). The tick reads the market weights, each off 0 only on its own walk-forward evidence (40 settled days: 20 to choose a weight, 20 more scored forward; a lower 90% bound above zero; at most 0.05 a night), and the city clusters, which only tighten the cluster rail. Nothing reaches capital: meta_allocator reports, Hassan promotes.'))
 on conflict (key) do update set value = excluded.value, updated_at = now();
 
 commit;

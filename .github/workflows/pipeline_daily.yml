@@ -174,10 +174,11 @@ jobs:
       #     strategy_params. Seconds of arithmetic (9-22 s a night, A.1).
       # STOPPED 5 Oct (wave A.3), RESTARTED 7 Oct (Hassan: "turn learning on"):
       # settings.strategy_learning is on (20261007100000). The tick reads the
-      # market weight per view and checkpoint class, off its prior 0 only on 20
-      # settled days and a walk-forward lower 90% bound above zero, at most
-      # 0.05 a night, and the city clusters, which only tighten the cluster
-      # rail. Nothing reaches capital: meta_allocator reports, Hassan promotes.
+      # market weight per view and checkpoint class, off its prior 0 only after
+      # 40 settled days (20 to choose a weight, 20 more scored forward) with a
+      # walk-forward lower 90% bound above zero, at most 0.05 a night, and the
+      # city clusters, which only tighten the cluster rail. Nothing reaches
+      # capital: meta_allocator reports, Hassan promotes.
       - name: Learn strategy parameters
         if: ${{ !cancelled() }}
         timeout-minutes: 5
