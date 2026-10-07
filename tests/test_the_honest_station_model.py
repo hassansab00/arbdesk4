@@ -305,3 +305,40 @@ def test_labels_and_the_last_station_max_are_whole_days_only():
         return rows
     labels = sm.load_labels(rest_all)
     assert labels == {("london", "2026-09-25"): 19.0}
+
+
+# ---------------------------------------------------------------------------
+# a night Open-Meteo hangs (7 Oct: the step killed, nothing written)
+# ---------------------------------------------------------------------------
+def test_no_forward_request_waits_past_the_runs_deadline(monkeypatch):
+    """main() sets honest_record's deadline before it asks for the current
+    runs, so a hung request cannot outlive the step and take every answered
+    city down with it."""
+    import common
+    seen = {}
+
+    def forward_rows(cities, now=None):
+        seen["deadline_left"] = hr._left()
+        return [], [], ["houston"]
+    monkeypatch.setattr(hr, "_deadline", None)
+    monkeypatch.setattr(hr, "forward_rows", forward_rows)
+    monkeypatch.setattr(hr, "read_rows", lambda path: [])
+    monkeypatch.setattr(common, "get_cities", lambda: [{"city_key": "houston"}])
+    monkeypatch.setattr(sm, "load_labels", lambda rest_all: {})
+    monkeypatch.setattr(sm, "load_previous", lambda rest_all, as_of: {})
+    monkeypatch.setattr(sm, "load_p39", lambda rest_all, as_of: {})
+    assert sm.main(["--dry-run", "--no-eval", "--as-of", "2026-10-07"]) == 0
+    assert seen["deadline_left"] is not None, "the forward requests ran with no deadline"
+    assert sm.FETCH_SECONDS - 5 < seen["deadline_left"] <= sm.FETCH_SECONDS
+
+
+def test_the_fetch_deadline_leaves_the_fit_its_time():
+    """The run after the requests took 14.8 s on 7 Oct (locally, on the repo
+    mirror's rows); the deadline leaves it at least a minute of the step."""
+    import pathlib
+    import re
+    wf = (pathlib.Path(ROOT) / ".github" / "workflows" / "pipeline_daily.yml").read_text()
+    step = wf[wf.index("- name: The honest station model"):]
+    minutes = int(re.search(r"timeout-minutes:\s*(\d+)", step[:300]).group(1))
+    assert "scripts/station_mos.py" in step[:300]
+    assert sm.FETCH_SECONDS + 60 <= minutes * 60
