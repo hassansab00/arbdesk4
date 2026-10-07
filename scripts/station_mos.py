@@ -43,6 +43,7 @@ import hashlib
 import json
 import math
 import sys
+import time
 
 import honest_record as hr
 import station_correction as sc
@@ -65,6 +66,20 @@ BOUND_C = 4.0
 MIN_CITY_DAYS = 90
 MAX_STEP_C = 0.25
 EVAL_DAYS = 30
+
+# A NIGHT OPEN-METEO HANGS. The current runs come through honest_record's
+# requests, and this job never set their deadline: each hung request waited
+# 60 s, twice, and once more after the pass. On 6 Oct four cities' requests
+# read-timed out, the second pass recovered two, and the step ended 5 s inside
+# its 5 minutes; on 7 Oct eight cities' did, the step was killed at 5 min 12 s,
+# and nothing was written, the cities that had answered included. Now no
+# request waits past FETCH_SECONDS after main() starts; what arrived is fitted
+# and written (status partial), and a city left out prices on P3.9 alone, as
+# houston and shenzhen did on 6 Oct (92 of 96 rows). The rest of the
+# run (the labels, the two files, four fits, two held-out checks) took 14.8 s
+# on 7 Oct, run locally on the repo mirror's rows: 210 s leaves it 90 s of
+# the step's 300 (tests/test_the_honest_station_model.py).
+FETCH_SECONDS = 210
 
 
 # ---------------------------------------------------------------------------
@@ -346,6 +361,7 @@ def main(argv=None):
     ap.add_argument("--no-eval", action="store_true")
     args = ap.parse_args(argv)
     from common import rest_all, upsert_replace, log_run, get_cities
+    hr._deadline = time.monotonic() + FETCH_SECONDS
 
     now = dt.datetime.now(dt.timezone.utc)
     as_of = dt.date.fromisoformat(args.as_of) if args.as_of else now.date()
