@@ -7,6 +7,7 @@
 !*.md
 !docs/**
 docs/CHALLENGER_C_PREREG.md
+docs/F7_MOMENTUM_2026-10-07.md
 docs/FOCUS_PREREG.md
 docs/OPEN_ITEMS.md
 docs/P11_DA_FLOOR_PREREG.md
