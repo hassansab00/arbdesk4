@@ -97,30 +97,42 @@ grant select, insert, update, delete on public.derived_hit_forecasts to service_
 -- forecast tables stop keeping the same days: weather_forecast_models keeps a
 -- week, weather_forecasts 30 days. A row is live while ITS table holds the
 -- day, so each row says which table that is. v_hit_forecasts_live writes it
--- from its own branch; the rows frozen before 7 Oct take it from their model,
--- the two tables' models being disjoint (7 Oct: nws, open_meteo_forecast and
--- open_meteo_best_match only in weather_forecasts, the seven per-model series
--- only in weather_forecast_models). A model in neither list refuses.
+-- from its own branch. A row frozen before 7 Oct takes it from its model:
+-- weather_forecasts' models are its three series (nws, open_meteo_forecast,
+-- open_meteo_best_match, 7 Oct) and any other model it holds; every other
+-- model is weather_forecast_models', whose list FORECAST_MODELS may change
+-- (scripts/ingest_forecasts.py; Codex on #338). A model both tables hold
+-- would be ambiguous and refuses.
 alter table public.derived_hit_forecasts add column if not exists source_table text;
 
 do $source$
 declare
-  v_unknown text;
+  v_both text;
 begin
-  select string_agg(distinct model, ', ') into v_unknown
-    from public.derived_hit_forecasts
-   where source_table is null
-     and model not in ('nws', 'open_meteo_forecast', 'open_meteo_best_match',
-                       'open_meteo_ecmwf_ifs025', 'open_meteo_gem_seamless', 'open_meteo_gfs_seamless',
-                       'open_meteo_icon_seamless', 'open_meteo_jma_seamless',
-                       'open_meteo_meteofrance_seamless', 'open_meteo_ukmo_seamless');
-  if v_unknown is not null then
-    raise exception 'derived_hit_forecasts: model(s) % belong to no known forecast table - nothing changed', v_unknown;
+  -- Each table's models, read once (a lookup per frozen row would scan
+  -- weather_forecasts 22,411 times; there is no index on model).
+  create temporary table hit_source_models on commit drop as
+  select 'weather_forecasts'::text as source_table, m.model
+    from (select distinct model from public.weather_forecasts
+          union select unnest(array['nws', 'open_meteo_forecast', 'open_meteo_best_match'])) m
+  union all
+  select 'weather_forecast_models', m.model
+    from (select distinct model from public.weather_forecast_models) m;
+
+  select string_agg(distinct f.model, ', ') into v_both
+    from public.derived_hit_forecasts f
+   where f.source_table is null
+     and f.model in (select model from hit_source_models where source_table = 'weather_forecasts')
+     and f.model in (select model from hit_source_models where source_table = 'weather_forecast_models');
+  if v_both is not null then
+    raise exception 'derived_hit_forecasts: model(s) % are in both forecast tables - which one a frozen row came from is ambiguous; nothing changed', v_both;
   end if;
-  update public.derived_hit_forecasts
-     set source_table = case when model in ('nws', 'open_meteo_forecast', 'open_meteo_best_match')
-                             then 'weather_forecasts' else 'weather_forecast_models' end
-   where source_table is null;
+  update public.derived_hit_forecasts f
+     set source_table = case
+           when f.model in (select model from hit_source_models where source_table = 'weather_forecasts')
+           then 'weather_forecasts' else 'weather_forecast_models' end
+   where f.source_table is null;
+  drop table hit_source_models;
   if not exists (select 1 from pg_constraint
                   where conname = 'derived_hit_forecasts_source_table'
                     and conrelid = 'public.derived_hit_forecasts'::regclass) then

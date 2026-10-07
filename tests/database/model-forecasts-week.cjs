@@ -5,8 +5,10 @@
 // A settled hit day for each of days 3 to 40 back, with both tables' kinds of
 // forecast, frozen under the old single boundary. Then:
 //
-//   * the frozen rows take their table from their model, and a model in
-//     neither table's list refuses the migration and changes nothing;
+//   * the frozen rows take their table from their model - weather_forecasts'
+//     series and models, else weather_forecast_models' (a model the
+//     FORECAST_MODELS override added included) - and a model both tables
+//     hold refuses the migration and changes nothing;
 //   * v_hit_forecasts returns exactly what it returned before the migration;
 //   * weather_forecast_models is pruned at 7 days through prune_forecast_models
 //     (6 refuses) and v_hit_forecasts still returns every row and column;
@@ -90,12 +92,25 @@ async function build() {
 }
 
 (async () => {
-  // A MODEL IN NEITHER LIST REFUSES, AND NOTHING CHANGES.
+  // A MODEL FORECAST_MODELS ADDED IS weather_forecast_models' (Codex on
+  // #338): frozen, it takes that table, and the migration goes through.
   {
     const db = await build();
     await db.exec(`insert into public.derived_hit_forecasts (city_key, for_date, lane, model, forecast_max_c, known_at)
-                   values ('nyc', current_date - 50, 'asof', 'mystery_model', 20, now())`);
-    await assert.rejects(db.exec(MIG), /mystery_model belong to no known forecast table/);
+                   values ('nyc', current_date - 50, 'research', 'open_meteo_custom_seamless', 20, now())`);
+    await db.exec(MIG);
+    const r = (await db.query(`select source_table from public.derived_hit_forecasts
+                                where model = 'open_meteo_custom_seamless'`)).rows[0];
+    assert.equal(r.source_table, 'weather_forecast_models');
+  }
+
+  // A MODEL BOTH TABLES HOLD IS AMBIGUOUS: IT REFUSES, AND NOTHING CHANGES.
+  {
+    const db = await build();
+    await db.exec(`select public.freeze_hit_forecasts()`);
+    await db.exec(`insert into public.weather_forecast_models (city_key, model, run_at, for_date, lead_days, forecast_max_c, source, observed_at)
+                   values ('nyc', 'open_meteo_forecast', now(), current_date, 1, 20, 'open-meteo-models-current', now())`);
+    await assert.rejects(db.exec(MIG), /open_meteo_forecast are in both forecast tables/);
     const col = (await db.query(`select count(*)::int as n from information_schema.columns
                                   where table_name = 'derived_hit_forecasts' and column_name = 'source_table'`)).rows[0].n;
     assert.equal(col, 0, 'a refused migration left the column behind');
@@ -186,5 +201,5 @@ async function build() {
     await db.exec('reset role');
   }
 
-  console.log("PASS: model-forecasts-week: frozen rows take their table from their model (an unknown one refuses, nothing changed); v_hit_forecasts unchanged by the migration and by a 7-day prune of weather_forecast_models (6 refuses); a weather_forecasts row 10 days late is served live and frozen; the freeze never touches the model rows below that table's oldest day, empty or not; closed to the browser; re-runnable");
+  console.log("PASS: model-forecasts-week: frozen rows take their table from their model (an override's model is weather_forecast_models'; one in both tables refuses, nothing changed); v_hit_forecasts unchanged by the migration and by a 7-day prune of weather_forecast_models (6 refuses); a weather_forecasts row 10 days late is served live and frozen; the freeze never touches the model rows below that table's oldest day, empty or not; closed to the browser; re-runnable");
 })().catch((e) => { console.error(e); process.exit(1); });
