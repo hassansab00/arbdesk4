@@ -448,6 +448,27 @@ Group B in total: **67.5 MB**.
 
 ---
 
+### 3.9 Hassan's research review (7 Oct): checked against the live system
+
+`docs/research/DAILY_MAX_TEMPERATURE_RESEARCH_2026-10-07.md` (Hassan, 7 Oct) is a literature and documentation review. Each recommendation was checked against the code and the live database on 7 Oct before anything was changed; what it adds goes into phase 3's pre-registration below.
+
+| the research | here, measured 7 Oct |
+|---|---|
+| The target is the contract's source, station, sampling and precision (S1-S3) | **In place.** Each active city's latest rules (`markets.rules_text`, markets dated 1-7 Oct): 48 of 48 name NOAA's timeseries page, Weather Underground as the fallback and whole degrees, and the page's station is the city's `icao` in 48 of 48; the 11 US markets add "Show Hourly Data", the 37 others take "all times on this day". The settlement read takes the station's own reports (`obs_primary_source()` = IEM, no minute window since 23 Sep): London's 93 half-hourly readings in 48 h, New York's 47 hourly ones, the NWS five-minute feed kept apart. |
+| Train on the settlement target, not the physical high | **In place.** `databank.py` banks `max_c_hourly`; the station correction scores both label sets on the venue's truth (`v_venue_truth`). |
+| Polymarket charges weather fees (S4-S5) | **In place, and current.** Gamma's `feeSchedule` for a London market on 7 Oct: `feesEnabled` true, rate 0.05, exponent 1, taker only, rebate 0.25; `cost_model.py` and `engine_orders.FEE_RATE` use exactly that, and all 2,221 archived books (to 30 Sep) carried 0.05. |
+| The daily maximum of each member, not of the ensemble mean (section 7) | **In place.** `ensemble_record.py` takes each member's maximum over the window, then summarises. |
+| Same day: the running maximum is a floor with mass on it (section 8) | **In place.** rd1's floor atom; the engine's observed floor. |
+| Proper scores, whole-date resampling, reliability, a sealed test (sections 10-11) | **In place.** Section 4. |
+| Dynamic eligibility, not a fixed city ranking (section 14) | **In place.** The daily status (F.2). |
+| A transparent calibrated baseline (EMOS) before a nonlinear challenger (sections 5, 15-16) | **Missing.** Phase 3 compares its gradient-boosted model with the market and the served engine only. Added to 3.2 below. |
+| Spread decides the width (EMOS: sigma squared = c + d S squared) | **Partly.** The seven models' lead-1 span decides Watch (25.2% top-bucket hits against 33.4%, F.2), and `sd_corr` is blind; phase 3 did not name spread as a feature. Added to 3.2. |
+| Performance before and after an upstream upgrade (section 11) | **Missing.** ECMWF IFS cycle 50r1 and AIFS v2 went live 12 May 2026 (S13), inside the development months. Added as a named check in section 4. |
+| The reports left before the window closes (section 8) | **Missing as a feature.** 20 of the 37 non-US stations filed twice an hour in the 48 h to 7 Oct (IEM, the readings above); a half-hourly station has twice the chances to set a new maximum. Added to 3.2's group A. |
+| NOAA replaces NAM, HREF, SREF and HiresW with RRFS and REFS on 3 Nov 2026 (S33) | **Not a feed we read.** The forecast ingest takes seven global Open-Meteo blends (`ingest_forecasts.DEFAULT_MODELS`); none is one of those. A dated check on 4 Nov: every model still writes rows for every city. |
+
+Not taken up: energy futures and degree-day indices (section 13), and new upstream sources (AIFS, GraphCast, GenCast) - each would need its own archive of as-issued runs before it could be tested, and none is in the development months.
+
 ## 4. The evaluation contract: frozen before any model is judged
 
 This becomes `docs/WXPREDICT_PREREG.md` in step 3.0. It is committed before any fold of the development run is scored.
@@ -479,6 +500,7 @@ This becomes `docs/WXPREDICT_PREREG.md` in step 3.0. It is committed before any 
 - **Morning centre** (defect 3): mean absolute error of WXPredict's expected maximum at 09:00, against the engine's raw centre (0.99) and the corrected one (0.77) on the same days.
 - **US** (defect 5): the number of US rows where WXPredict gave the winner under 1%, against the market's count.
 - **Per city:** gain and interval for every city with 20 or more scored dates.
+- **The 12 May upgrade** (ECMWF IFS 50r1 and AIFS v2; research review, section 3.9): each month's gain before and after 12 May 2026, and the ECMWF forecast's error against the other six models' over the same dates before and after (the difference of differences, so the season is not read as the upgrade), each with its whole-date interval. Reported on development months only.
 
 **What a pass does not mean.** A log-loss gain is not a trading edge: costs, spreads and fees are not in it. Trading on WXPredict is outside this build and is Hassan's (Rule 6).
 
@@ -953,14 +975,16 @@ Hassan, 6 Oct: a "Seasonal Focus 10" of the cities most predictable in their cur
 
 - **What:** gradient-boosted classes of the day's maximum in the market's unit, as offsets from an anchor (the running maximum, or the forecast), with city as a category. Trained on every whole station day, listed or not.
 - **Ablations**, each walk-forward on the development months and scored by section 4's metric against the market:
-  - **A** station now only;
+  - **A** station now only, with the station's report cadence (one or two reports an hour) and the reports left before the venue's window closes;
   - **B** + city;
-  - **C** + day-ahead forecasts;
+  - **C** + day-ahead forecasts, with their spread named: the lead-1 span and standard deviation of the models present (A0 below says why not all seven always are). The ensemble members' spread is recorded only since 28 Sep (Open-Meteo keeps members four days), so it cannot be in the development months; it is a forward-only candidate for v2;
   - **D** + hourly forecast;
   - **E** + calendar and activity;
   - **F** + station history (climatology, the forecast's past error);
   - **G** everything.
 - **Verification:** each group's added gain with its interval. A group that adds nothing (interval spanning 0) is reported and kept out of v1. Each choice cites its row.
+- **The calibrated baseline, A0** (research review, section 3.9): EMOS on the same rows and walk-forward. A normal distribution with mean a + b times the mean of the models present on the row (plus the running maximum as a floor on the day itself) and variance c + d S squared, S the standard deviation of those models; fitted by minimum CRPS on earlier months only, and mapped into the venue's buckets through the venue's rounding. It is scored against the market exactly as the boosted model is. **The boosted model replaces it only if its gain over A0 has a 90% interval above 0**; otherwise A0 is v1, as 3.4 chooses the simpler fusion.
+  - **A missing model** (Codex on #335). Not every row has all seven: of the 11,664 lead-1 city-days of January - August in `data/training/previous_runs/models_daily.csv.gz`, 9,644 have seven, 1,979 six and 41 five (counted 7 Oct; a count of the inputs, not a score). UKMO is missing 19 Apr - 30 May (1,559 city-days on 35 dates), GEM 5 - 10 Jun (223), Météo-France 6 - 11 Apr (146), ICON 9 - 13 Apr (133). So A0 takes the models as exchangeable members, the mean and spread of those present, rather than one coefficient per model, and needs at least five; nothing is imputed. Group C's span and standard deviation are over the models present too, with the count present as its own feature; the boosted model takes each model's forecast as its own feature, missing where it is missing. **A0 and the boosted model are scored on the same rows**, every row of the split; a row with fewer than five models would be left out of both, and the count of such rows reported.
 - **Checkpoint:** the v1 feature set and form are chosen on development months only, and written into the pre-registration's appendix (dated, before 3.6).
 
 **3.3 B, the buckets**
