@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 277 of them - and for each MISSING one names the
+-- and function the app reads - 279 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -205,6 +205,7 @@ with expected(rel, owner, used_by) as (values
     ('v_forecast_models_export', 'ad4_95_prune_forecast_models.sql', ''),
     ('v_forecast_postprocess_applied', 'ad4_83_forecast_postprocess.sql', ''),
     ('v_forecast_postprocess_health', 'ad4_83_forecast_postprocess.sql', ''),
+    ('v_forecast_variables_export', 'ad4_prune_forecast_payloads.sql', ''),
     ('v_hit_forecasts', 'ad4_88_hit_tournament.sql', ''),
     ('v_hit_forecasts_live', 'ad4_88_hit_tournament.sql', ''),
     ('v_hit_ladders', 'ad4_88_hit_tournament.sql', ''),
@@ -221,6 +222,7 @@ with expected(rel, owner, used_by) as (values
     ('v_model_disagreement', 'ad4_25_model_forecast.sql', '(CityCards), (Reasoning)'),
     ('v_model_forecast_current', 'ad4_25_model_forecast.sql', ''),
     ('v_model_forecast_skill', 'ad4_25_model_forecast.sql', '(ModelAnalytics)'),
+    ('v_model_payloads_export', 'ad4_prune_forecast_payloads.sql', ''),
     ('v_model_promoted', 'ad4_72_model_promotion.sql', ''),
     ('v_model_promotion', 'ad4_72_model_promotion.sql', ''),
     ('v_model_registry', 'supabase/migrations/20261004190000_one_prediction_contract.sql', ''),
@@ -504,6 +506,7 @@ begin
     ('v_forecast_models_export', 'ad4_95_prune_forecast_models.sql', ''),
     ('v_forecast_postprocess_applied', 'ad4_83_forecast_postprocess.sql', ''),
     ('v_forecast_postprocess_health', 'ad4_83_forecast_postprocess.sql', ''),
+    ('v_forecast_variables_export', 'ad4_prune_forecast_payloads.sql', ''),
     ('v_hit_forecasts', 'ad4_88_hit_tournament.sql', ''),
     ('v_hit_forecasts_live', 'ad4_88_hit_tournament.sql', ''),
     ('v_hit_ladders', 'ad4_88_hit_tournament.sql', ''),
@@ -520,6 +523,7 @@ begin
     ('v_model_disagreement', 'ad4_25_model_forecast.sql', '(CityCards), (Reasoning)'),
     ('v_model_forecast_current', 'ad4_25_model_forecast.sql', ''),
     ('v_model_forecast_skill', 'ad4_25_model_forecast.sql', '(ModelAnalytics)'),
+    ('v_model_payloads_export', 'ad4_prune_forecast_payloads.sql', ''),
     ('v_model_promoted', 'ad4_72_model_promotion.sql', ''),
     ('v_model_promotion', 'ad4_72_model_promotion.sql', ''),
     ('v_model_registry', 'supabase/migrations/20261004190000_one_prediction_contract.sql', ''),

@@ -183,7 +183,11 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
               # superseded correlations: every reader takes each pair's newest
               # row, which never leaves; 2 keeps the prune behind the mirror
               # (WXPredict build 2.A, 7 Oct)
-              "correlation": 2}
+              "correlation": 2,
+              # a week-old forecast's payload: nothing opens weather_forecasts'
+              # variables, and v_model_forecast_current reads the model
+              # payloads from yesterday on; the rows stay (WXPredict build 2.A)
+              "forecast_variables": 7, "model_payloads": 7}
     assert set(limits) == set(TABLES), (
         f"a dataset was added to the archive without a reasoned retention ceiling here: "
         f"{sorted(set(TABLES) ^ set(limits))}")
