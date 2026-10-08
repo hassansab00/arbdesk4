@@ -101,15 +101,16 @@ const B = (n) => `20000000-0000-0000-0000-0000000000${String(n).padStart(2, '0')
   // 7. the pipeline view: every market of the window, pending ones included
   await db.exec(`
     insert into public.markets values
-      ('${M(1)}', 'nyc',   current_date - 1, now() - interval '2 hours'),   -- proof complete, banked
+      ('${M(1)}', 'nyc',   current_date - 2, now() - interval '2 hours'),   -- proof complete, banked
       ('${M(2)}', 'la',    current_date - 2, null),                         -- asked, failed: awaiting venue
-                                                                                -- (two days back: yesterday has not ended in LA before 07:00Z)
+                                                                                -- (two days back: yesterday has not ended in LA before 07:00Z,
+                                                                                -- nor in New York before 04:00Z, which failed this test 00-03Z)
       ('${M(4)}', 'tokyo', current_date - 1, now() - interval '1 hour'),    -- proof complete, not banked
       ('${M(5)}', 'paris', current_date + 0, null),                         -- day not ended (for most of the day)
       ('${M(6)}', 'paris', current_date - 30, null);                        -- outside the window
     insert into public.bands values ('${B(1)}', '${M(1)}'), ('${B(2)}', '${M(1)}'), ('${B(4)}', '${M(4)}');
-    insert into public.fact_band_outcome values ('${B(1)}', 'nyc', current_date - 1, true, now() - interval '30 minutes'),
-      ('${B(2)}', 'nyc', current_date - 1, false, now() - interval '20 minutes');
+    insert into public.fact_band_outcome values ('${B(1)}', 'nyc', current_date - 2, true, now() - interval '30 minutes'),
+      ('${B(2)}', 'nyc', current_date - 2, false, now() - interval '20 minutes');
     insert into public.ingest_log values ('refresh_page_cache', 'ok', now() - interval '10 minutes'),
       ('refresh_page_cache', 'ok', now() - interval '40 minutes');
   `);

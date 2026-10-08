@@ -34,6 +34,16 @@ starts and writes what arrived; a city left out is simply missing that night.
 90 s inside a 2-minute step: the scheduled workflows cost 2,926 of the 3,000
 budgeted minutes a month on 28 Sep, so this step may add at most 2 a night.
 
+LEAST RECENTLY RECORDED FIRST (8 Oct). The deadline does not reach every
+city: on 8 Oct 29 of 48 were recorded whole; the run log named 15 "not asked:
+the run's deadline" for both models, 3 a read timeout and then not asked, and
+Istanbul's GFS a read timeout. The cities came in the table's own order, so
+the cut fell on the same tail every night: on main on 8 Oct, 17 of the 48 had
+no row at all since the record began on 29 Sep (London, NYC, Paris and Madrid
+among them), and a night missed cannot be fetched later. So the cities are
+asked in the order of their oldest model's newest row, a city never recorded
+first, and the cut moves round the list.
+
   python scripts/ensemble_record.py [--dry-run]
 """
 import argparse
@@ -164,6 +174,18 @@ def fetch_city(city, runs, fetched_at):
     return rows, missing
 
 
+def least_recorded_first(cities, rows):
+    """The cities in the order to ask them: by when the record last had both
+    models for the city, oldest first, so a city missing either model comes
+    first, never recorded before all. Ties keep the order given."""
+    newest = {}
+    for r in rows:
+        k = (r[0], r[1])
+        if r[-1] > newest.get(k, ""):
+            newest[k] = r[-1]
+    return sorted(cities, key=lambda c: min(newest.get((c["city_key"], m), "") for m in MODELS))
+
+
 def read_rows(path=FILE):
     if not os.path.exists(path):
         return []
@@ -206,17 +228,19 @@ def main(argv=None):
 
     fetched_at = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
     runs = {m: run_times(_get(META.format(meta), {}, f"{m} meta")) for m, meta in MODELS.items()}
-    cities = [c for c in get_cities() if c.get("latitude") is not None and c.get("timezone")]
+    old = read_rows()
+    cities = least_recorded_first(
+        [c for c in get_cities() if c.get("latitude") is not None and c.get("timezone")], old)
     new, missing = [], {}
     with ThreadPoolExecutor(WORKERS) as pool:
         for city, (rows, miss) in zip(cities, pool.map(lambda c: fetch_city(c, runs, fetched_at), cities)):
             new += rows
             if miss:
                 missing[city["city_key"]] = miss
-    old = read_rows()
     merged = merge(old, new)
     detail = {"fetched_at": fetched_at, "runs": runs, "cities": len(cities), "rows_new": len(new),
-              "rows_total": len(merged), "added": len(merged) - len(old), "unreached": missing}
+              "rows_total": len(merged), "added": len(merged) - len(old), "unreached": missing,
+              "asked_first": [c["city_key"] for c in cities[:3]]}
     print(detail)
     if args.dry_run:
         return 0

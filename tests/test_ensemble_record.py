@@ -75,3 +75,35 @@ def test_the_step_is_in_the_nightly_job_inside_its_budget():
         "the record must be written before the mirror is committed"
     assert re.search(r"git add data/mirror data/training", (ROOT / ".github" / "workflows" /
                                                             "archive_observations.yml").read_text())
+
+
+def _row(city, model, fetched):
+    return [city, model, "i", "a", "2026-10-07", "00_23", "51", "20.0", "1.0", "18", "19", "20", "21", "22", fetched]
+
+
+def test_the_city_least_recently_recorded_is_asked_first():
+    # The deadline does not reach every city (8 Oct: 29 of 48 whole), and the
+    # table's own order put the same 17 last every night, so they never had a
+    # row. A city missing either model counts as never recorded; ties keep the
+    # order given.
+    cities = [{"city_key": k} for k in ("a", "b", "c", "d")]
+    rows = [_row("a", "ecmwf_ifs025", "2026-10-08T02:52:46+00:00"), _row("a", "gfs025", "2026-10-08T02:52:46+00:00"),
+            _row("b", "ecmwf_ifs025", "2026-10-08T02:52:46+00:00"),
+            _row("c", "ecmwf_ifs025", "2026-10-07T02:50:23+00:00"), _row("c", "gfs025", "2026-10-08T02:52:46+00:00")]
+    assert [c["city_key"] for c in er.least_recorded_first(cities, rows)] == ["b", "d", "c", "a"]
+    assert [c["city_key"] for c in er.least_recorded_first(cities, [])] == ["a", "b", "c", "d"]
+
+
+def test_the_run_asks_in_that_order(monkeypatch, capsys):
+    import common
+    cities = [{"city_key": k, "latitude": 1.0, "longitude": 2.0, "timezone": "UTC"} for k in ("a", "b", "c")]
+    asked = []
+    monkeypatch.setattr(common, "get_cities", lambda: cities)
+    monkeypatch.setattr(er, "_get", lambda *a, **k: None)
+    monkeypatch.setattr(er, "WORKERS", 1)
+    monkeypatch.setattr(er, "read_rows", lambda: [_row("a", "ecmwf_ifs025", "2026-10-08T02:52:46+00:00"),
+                                                  _row("a", "gfs025", "2026-10-08T02:52:46+00:00")])
+    monkeypatch.setattr(er, "fetch_city", lambda c, runs, fetched_at: asked.append(c["city_key"]) or ([], []))
+    assert er.main(["--dry-run"]) == 0
+    assert asked == ["b", "c", "a"]
+    assert "'asked_first': ['b', 'c', 'a']" in capsys.readouterr().out
