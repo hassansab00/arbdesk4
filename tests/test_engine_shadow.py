@@ -176,13 +176,13 @@ def test_when_time_runs_short_the_twins_reach_the_least_recently_decided(monkeyp
     cks = [("c1", _city("london")), ("c2", _city("paris")), ("c3", _city("madrid"))]
     called = []
 
-    def last():
-        called.append(1)
+    def last(left):
+        called.append(left)
         return {("london", "2026-09-28"): 300.0, ("paris", "2026-09-28"): 100.0, ("madrid", "2026-09-28"): 200.0}
     rows, detail = es.decide_all(cks, {}, {("london", "2026-09-28"): BANDS},
                                  {"london": "C", "paris": "C", "madrid": "C"}, {}, ledgers, {}, None,
                                  50.0, "r", "2026-09-28T11:36:00+00:00", model_only_last=last)
-    assert called == [1]
+    assert called == [50.0], "handed the seconds the twins have left"
     assert detail == {"city_days": 3, "reached": 3, "out_of_time": 0,
                       "model_only_reached": 1, "model_only_out_of_time": 2}
     twins = {r["city_key"] for r in rows if r["strategy_id"] in es.MODEL_ONLY}
@@ -194,7 +194,7 @@ def test_with_no_time_left_the_twins_order_is_not_even_read(monkeypatch):
     monkeypatch.setattr(es.time, "monotonic", lambda: 100.0)
     called = []
     es.decide_all([("c1", ROW)], {}, {}, {}, {}, {}, {}, None, 50.0, "r", "t",
-                  model_only_last=lambda: called.append(1) or {})
+                  model_only_last=lambda left: called.append(left) or {})
     assert called == []
 
 
@@ -232,8 +232,17 @@ def test_the_engine_reads_the_twins_turns_beside_its_other_reads(monkeypatch):
     got = {}
 
     def decide_all(*a, **k):
-        got["last"] = k["model_only_last"]()
+        got["last"] = k["model_only_last"](0.25)
+        k["model_only_last"](30.0)
         return [], {"city_days": 1}
+    waits = {}
+    real_collect = es.collect_status
+
+    def collect_status(future, wait_s=es.GATE_WAIT_S):
+        if future is failed:
+            waits.setdefault("twins", []).append(wait_s)
+        return real_collect(future, wait_s)
+    monkeypatch.setattr(es, "collect_status", collect_status)
     monkeypatch.setattr(es, "decide_all", decide_all)
     monkeypatch.setattr(es, "read_ledgers", lambda *a, **k: {})
     monkeypatch.setattr(common, "rest_all", lambda *a, **k: [])
@@ -245,6 +254,8 @@ def test_the_engine_reads_the_twins_turns_beside_its_other_reads(monkeypatch):
                     dt.datetime(2026, 9, 28, 11, 36, tzinfo=dt.timezone.utc), deadline=100.0)
     assert "error" not in out, out
     assert got["last"] == {} and out["model_only_order"] == {"read": 0, "unread": "RuntimeError: down"}
+    # never waits longer than the twins have left, and never longer than TWINS_WAIT_S (Codex on #342)
+    assert waits["twins"] == [0.25, es.TWINS_WAIT_S]
 
 
 def test_it_never_raises_into_the_tick(monkeypatch):

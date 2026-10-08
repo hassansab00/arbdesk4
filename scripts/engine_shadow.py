@@ -355,9 +355,9 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
     holds every BUY back); None leaves it out, as in the replay of a run
     recorded before the gate. `model_only_deadline`, when given and earlier,
     is where the model-only twins' pass stops. `model_only_last`, when given
-    ({(city, target): when the twins last decided it}, or a function that
-    returns it, called only if the twins' pass has time), puts that pass in
-    least-recently-decided order (least_recent_first)."""
+    ({(city, target): when the twins last decided it}, or a function of the
+    seconds the twins have left that returns it, called only if they have
+    some), puts that pass in least-recently-decided order (least_recent_first)."""
     import decision_engine as de
     from strategies import engine_views as ev
 
@@ -371,8 +371,9 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
               ("model_only", MODEL_ONLY, deadline if model_only_deadline is None else min(deadline, model_only_deadline)))
     for group_name, group, stop_at in passes:
         todo = checkpoints
-        if group_name == "model_only" and model_only_last is not None and time.monotonic() < stop_at:
-            todo = least_recent_first(checkpoints, model_only_last() if callable(model_only_last)
+        left = stop_at - time.monotonic() if group_name == "model_only" and model_only_last is not None else 0.0
+        if left > 0:
+            todo = least_recent_first(checkpoints, model_only_last(left) if callable(model_only_last)
                                       else model_only_last)
         for checkpoint_id, row in todo:
             if time.monotonic() >= stop_at:
@@ -674,10 +675,12 @@ def record(written_rows, s10_ladders, bands_by_market, market_of, unit_of, floor
         import engine_orders
         twin_orders_by = deadline - MODEL_ONLY_RESERVE_S
 
-        def twins_last():
+        def twins_last(left):
             # Collected only once the anchored pass is done and the twins have
-            # time. Unread, it is empty, and the twins keep the tick's order.
-            last, unread = collect_status(twins_read, TWINS_WAIT_S)
+            # time, waiting no longer than they have left, so a slow read never
+            # costs the orders or the variants (Codex on #342). Unread, it is
+            # empty, and the twins keep the tick's order.
+            last, unread = collect_status(twins_read, min(TWINS_WAIT_S, left))
             out["model_only_order"] = {"read": len(last), "unread": unread}
             return last
         rows, detail = decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, params,
