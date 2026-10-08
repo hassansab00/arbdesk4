@@ -401,8 +401,15 @@ TABLES = {
         # 30 DAYS, as weather_forecasts (plan v2 P1.6 phase 2, step 5): station
         # correction reads 75 days through weather_history, the hit tournament
         # its frozen rows; prune_forecast_models refuses under 30.
-        "keep_days": 30,
-        "min_keep_days": 30,
+        # A WEEK (WXPredict build 2.A, 7 Oct): 60,305 of 95,059 rows were
+        # dated over 7 days back (7 Oct 16:5xZ). The hit forecasts now take
+        # each table's own oldest day (v_hit_forecasts, freeze_hit_forecasts),
+        # so weather_forecasts' rows stay live for its 30 days; the ingest's
+        # window follows weather_forecasts and writes no model row below this
+        # table's oldest day (ingest_forecasts.models_first_held_date). Since
+        # 26 Sep every row was written within a day of its date (51,061 rows).
+        "keep_days": 7,
+        "min_keep_days": 7,
         "mirror_first": True,
         # The refresh freezes the hit tournament's forecasts, which read this
         # table (plan v2 P1.6 phase 2, step 6); prune_forecast_models refuses

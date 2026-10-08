@@ -77,12 +77,17 @@ declare
   v_young  bigint;
   v_unfrozen bigint;
 begin
-  -- THIRTY DAYS, as weather_forecasts: station correction fits on 45 days and
-  -- scores on 30 more, and below the keep it reads the archive, not this.
-  if p_keep_days < 30 then
+  -- SEVEN DAYS (WXPredict build 2.A, 7 Oct; 30 before). Station correction
+  -- fits on 45 days and scores on 30 more, and below the keep it reads the
+  -- archive, not this (weather_history). The hit forecasts take this table's
+  -- own oldest day (v_hit_forecasts, freeze_hit_forecasts), so weather_forecasts
+  -- keeps its 30 days live. Since 26 Sep every row has been written within a
+  -- day of its date (51,061 rows, 7 Oct); the ingest writes nothing below the
+  -- oldest day held (ingest_forecasts.models_first_held_date).
+  if p_keep_days < 7 then
     return jsonb_build_object(
       'ok', false,
-      'error', 'keep_days must be at least 30 - the model forecasts are fitted over weeks'
+      'error', 'keep_days must be at least 7 - the newest week of model forecasts stays in the database'
     );
   end if;
 
@@ -184,4 +189,4 @@ revoke execute on function public.prune_forecast_models(integer, boolean, date, 
 grant execute on function public.prune_forecast_models(integer, boolean, date, bigint) to service_role;
 
 comment on function public.prune_forecast_models(integer, boolean, date, bigint) is
-  'Delete weather_forecast_models rows dated before the cutoff (at least 30 days back), only when the caller''s count read back from the committed archive file matches exactly, none was observed since yesterday''s UTC midnight (the repo mirror copies those after the prune), and every v_hit_forecasts row for those days is frozen in derived_hit_forecasts.';
+  'Delete weather_forecast_models rows dated before the cutoff (at least 7 days back; 30 until 7 Oct), only when the caller''s count read back from the committed archive file matches exactly, none was observed since yesterday''s UTC midnight (the repo mirror copies those after the prune), and every v_hit_forecasts row for those days is frozen in derived_hit_forecasts.';

@@ -1480,7 +1480,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "bands",
     "markets",
     "fact_band_outcome",
-    "weather_resolution_evidence"
+    "weather_resolution_evidence",
+    "weather_forecast_models",
+    "weather_forecasts"
   ],
   "v_index_never_used": [
     "bands",
