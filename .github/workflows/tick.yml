@@ -62,6 +62,7 @@ jobs:
             requirements.runtime.txt
             data/models/remaining_day/current.json
             data/models/remaining_day/challenger_rd3.json
+            data/models/remaining_day/late_hours.json
             data/archive/forecasts
           sparse-checkout-cone-mode: false
       - id: py
