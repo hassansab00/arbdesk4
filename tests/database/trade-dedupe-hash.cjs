@@ -9,6 +9,13 @@
 // called equal (numeric 0.5 and 0.50, one instant whatever its zone), equal;
 // what it kept apart (another wallet, a NULL), apart. The ingest's insert
 // returns the ids of what it inserted. Closed to the browser. Re-runnable.
+//
+// And it names no conflict target (20261008180000_a_trade_print_needs_no_
+// conflict_target.sql): on 8 Oct 16:36Z the targeted insert failed 4 of 9
+// batches with 42P10 in PostgREST connections whose first plan of the table
+// was the browser's. Only postgres and service_role may execute the key, so
+// an anon plan caches the index expression un-inlined while the service
+// role's target is inlined, and inference finds no index. Case 8 holds it.
 // ===========================================================================
 const { PGlite } = require('@electric-sql/pglite');
 const fs = require('fs');
@@ -19,6 +26,7 @@ const ROOT = path.join(__dirname, '..', '..');
 const read = (f) => fs.readFileSync(path.join(ROOT, 'supabase', 'migrations', f), 'utf-8');
 const HASH = read('20261008170000_a_trade_is_known_by_its_hash.sql');
 const DROP = read('20261008170100_the_wide_trade_index_goes.sql');
+const NO_TARGET = read('20261008180000_a_trade_print_needs_no_conflict_target.sql');
 
 const COND = '0x' + 'ab'.repeat(32);
 
@@ -49,6 +57,8 @@ const count = async (db) => (await db.query('select count(*)::int as n from publ
   const db = await world();
   await db.exec(HASH);
   await db.exec(HASH);                                   // re-runnable
+  await db.exec(NO_TARGET);
+  await db.exec(NO_TARGET);                              // re-runnable
 
   // 1. New prints go in and their ids come back; a re-sent batch adds nothing.
   const first = await insert(db, [print(), print({ proxy_wallet: '0xw2' }), print({ price: 0.51 })]);
@@ -102,5 +112,25 @@ const count = async (db) => (await db.query('select count(*)::int as n from publ
   }
   assert.equal((await db.query(`select has_function_privilege('service_role', 'public.insert_trade_prints(jsonb)', 'execute') as ok`)).rows[0].ok, true);
 
-  console.log('PASS: trade-dedupe-hash: the 16-byte key turns away exactly what the five-column index did (numeric scale and zone equal, NULLs and wallets apart, texts that would run together apart, a batch duplicate once), the ingest\'s insert returns what it inserted, the wide index goes and the overlap is still turned away; immutable; service role only; re-runnable');
+  // 8. Whoever planned the table first in a connection, the insert works:
+  //    as live, only postgres and service_role may execute the key, and the
+  //    browser's read (anon) comes first in some PostgREST connections.
+  for (const first of ['service_role', 'anon']) {
+    const fresh = await world();
+    await fresh.exec(HASH);
+    await fresh.exec(NO_TARGET);
+    await fresh.exec(DROP);
+    await fresh.exec(`grant select on public.trades_observed to anon;
+      grant select, insert on public.trades_observed to service_role;
+      grant usage on sequence public.trades_observed_trade_id_seq to service_role;
+      revoke all on function public.trade_dedupe_key(text, timestamptz, numeric, numeric, text) from public;
+      grant execute on function public.trade_dedupe_key(text, timestamptz, numeric, numeric, text) to service_role;`);
+    await fresh.exec(`set role ${first}; select count(*) from public.trades_observed where city_key = 'london'; reset role;`);
+    await fresh.exec('set role service_role');
+    assert.equal((await insert(fresh, [print()])).length, 1, `first plan as ${first}: the insert must work`);
+    assert.deepEqual(await insert(fresh, [print()]), [], `first plan as ${first}: the overlap is turned away`);
+    await fresh.close();
+  }
+
+  console.log('PASS: trade-dedupe-hash: the 16-byte key turns away exactly what the five-column index did (numeric scale and zone equal, NULLs and wallets apart, texts that would run together apart, a batch duplicate once), the ingest\'s insert returns what it inserted, the wide index goes and the overlap is still turned away; immutable; service role only; re-runnable; no conflict target, so a connection whose first plan of the table was anon\'s still inserts');
 })().catch((e) => { console.error(e); process.exit(1); });

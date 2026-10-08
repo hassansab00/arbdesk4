@@ -1,7 +1,8 @@
 -- AD4 trade dedupe by hash (WXPredict build 2.A group C, 8 Oct). The
--- install form of supabase/migrations/20261008170000 and 20261008170100: a
--- trade print's dedupe key as 16 bytes (trade_dedupe_key), its unique index,
--- the ingest's insert (insert_trade_prints), and the five-column index ad4_53 built
+-- install form of supabase/migrations/20261008170000, 20261008180000 and
+-- 20261008170100: a trade print's dedupe key as 16 bytes (trade_dedupe_key),
+-- its unique index, the ingest's insert (insert_trade_prints, with no conflict
+-- target: 20261008180000 says why), and the five-column index ad4_53 built
 -- dropped. The migrations say why. Re-runnable.
 
 create or replace function public.trade_dedupe_key(p_condition_id text, p_traded_at timestamptz,
@@ -35,12 +36,12 @@ as $$
     from jsonb_to_recordset(coalesce(p_rows, '[]'::jsonb))
          as r(band_id uuid, condition_id text, city_key text, token_id text, side text,
               price numeric, size numeric, traded_at timestamptz, proxy_wallet text, ingested_at timestamptz)
-  on conflict (public.trade_dedupe_key(condition_id, traded_at, price, size, proxy_wallet)) do nothing
+  on conflict do nothing
   returning t.trade_id
 $$;
 
 comment on function public.insert_trade_prints(jsonb) is
-  'The trade ingest''s insert: every print not already held, turned away by its dedupe key (trade_dedupe_key); returns the trade_id of each one inserted (WXPredict build 2.A, 8 Oct).';
+  'The trade ingest''s insert: every print not already held, turned away by the unique dedupe key (ad4_uq_trade_dedupe_hash, trade_dedupe_key) with no conflict target, so no role''s inlining can break it; returns the trade_id of each one inserted (WXPredict build 2.A, 8 Oct).';
 
 revoke all on function public.insert_trade_prints(jsonb) from public, anon, authenticated;
 grant execute on function public.insert_trade_prints(jsonb) to service_role;
