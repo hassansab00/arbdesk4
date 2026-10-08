@@ -177,8 +177,10 @@ def test_the_engine_hands_its_buys_over_and_writes_the_decision_first(monkeypatc
 def test_orders_follow_the_decisions_insert_and_never_raise(monkeypatch):
     src = open(es.__file__).read()
     body = src[src.index("def record("):]
-    assert body.index('insert("decisions", rows)') < body.index("send_orders(buys"), \
+    assert body.index('insert("decisions", rows)') < body.index("send_orders(a_buys"), \
         "the plan must find its decision: write the decision first"
+    assert body.index("send_orders(a_buys") < body.index("send_orders(m_buys"), \
+        "the anchored strategies' orders go before the model-only twins'"
     import common
     monkeypatch.setattr(common, "rest", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
     out = es.send_orders([({"strategy_id": "s10_winner", "city_key": "x", "resolution_date": "d"}, {}, "cp")],
@@ -358,3 +360,17 @@ def test_the_migration_carries_out_the_engines_exits():
                                    "20260927220000_the_engine_exits_by_its_own_rules.sql")).read()
     assert "d.action not in ('SELL', 'SWITCH')" in src and "d.action not in ('BUY', 'SWITCH')" in src
     assert "case when new.context ? 'decision_id' then 'engine_exit' else 'auto_exit' end" in src
+
+
+def test_send_fills_no_more_than_the_budget_it_is_given(monkeypatch):
+    """MAX_FILLS is per tick; a second send in the same tick passes what is left (Codex on #341)."""
+    seen = {}
+    monkeypatch.setattr(eo, "fill_ledgers",
+                        lambda ids, deadline, claim, fill_one, max_fills=eo.MAX_FILLS:
+                        seen.setdefault("max_fills", max_fills) and {})
+    monkeypatch.setattr(eo, "build", lambda *a, **k: (([{"band_id": "b"}], {}), None))
+    rest = lambda table, params: [{"plan_id": "p1", "status": "queued"}]
+    eo.send([({"strategy_id": "s", "city_key": "c", "resolution_date": "d"}, {}, "cp")],
+            {"s": "acct"}, {"s"}, {("s", "c", "d"): 1}, "run", time.monotonic() + 30,
+            lambda *a, **k: "p1", rest, lambda o: {}, max_fills=4)
+    assert seen["max_fills"] == 4

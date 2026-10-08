@@ -1,8 +1,8 @@
 -- ===========================================================================
 -- ad4_67_prune_exported_paper_trades.sql
 --
--- Safe to run any time. Creates one function. Deletes nothing by itself -
--- p_dry_run defaults to true and the caller must ask twice.
+-- Safe to run any time. Creates one function and one index. Deletes nothing
+-- by itself - p_dry_run defaults to true and the caller must ask twice.
 --
 -- scripts/export_paper_trades.py writes every CLOSED paper trade into
 -- web/public/paper-trades/YYYY-MM.jsonl, in the repository, where it is
@@ -188,3 +188,13 @@ grant execute on function public.prune_exported_paper_trades(integer, uuid[], bo
 
 comment on function public.prune_exported_paper_trades(integer, uuid[], boolean) is
   'Delete closed paper trades older than the cutoff, restricted to ids the caller has verified are present in the repository export. Open trades are never eligible. Before deleting, writes one append-only trades_archived activity row per desk carrying the realised P&L it is about to remove, so the desk''s books still balance once the rows live only in the repository.';
+
+
+-- THE INDEX THE DELETE NEEDS (20261008040000). ledger.trade_id references
+-- paper_trades with no ON DELETE, so every trade removed above is first
+-- looked up in ledger; without an index that is a full scan of ledger per
+-- trade. 362 ledger rows on 8 Oct, so no cost yet - indexed so that every
+-- foreign key into a pruned table leads an index, which
+-- tests/database/paper-contracts.cjs asserts.
+create index if not exists ad4_ix_ledger_trade_id
+  on public.ledger (trade_id) where trade_id is not null;

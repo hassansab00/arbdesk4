@@ -2658,6 +2658,80 @@ const assert = require('node:assert/strict');
   assert.ok(anonKeys.includes('bankroll'),'anon lost the settings the board reads');
   await db.exec('reset role;');
 
+  // ======================================================================
+  // EVERY FOREIGN KEY INTO A PRUNED TABLE LEADS AN INDEX
+  // (20261008040000_the_price_prune_finds_its_edges_by_index.sql). Postgres
+  // checks each row a prune removes against every table that references it;
+  // without an index each check is a full scan of the referencing table. On
+  // 8 Oct that was 39,316 scans of edges (9.85 ms each) and the prune died at
+  // the gateway with nothing removed. The tables are read from the prune
+  // functions themselves, so a new prune is covered without editing this.
+  // ======================================================================
+  const prunedTables=(await db.query(`select distinct lower(m[1]) as t from pg_proc p,
+      regexp_matches(p.prosrc,'delete\\s+from\\s+(?:only\\s+)?(?:public\\.)?([a-z_0-9]+)','gi') m
+     where p.pronamespace='public'::regnamespace and p.proname like 'prune%' order by 1`)).rows.map(r=>r.t);
+  for (const t of ['band_probabilities','paper_trades','book_snapshots']) {
+    assert.ok(prunedTables.includes(t),`no prune function removes rows from ${t} any more - the list below is not what it was written against: ${prunedTables}`);
+  }
+  const fkUnindexed=(await db.query(`select c.conrelid::regclass::text as child, c.conname
+      from pg_constraint c
+     where c.contype='f' and c.confrelid::regclass::text = any($1::text[])
+       and not exists (select 1 from pg_index i where i.indrelid=c.conrelid and i.indkey[0]=c.conkey[1])
+     order by 1,2`,[prunedTables])).rows;
+  assert.deepEqual(fkUnindexed,[],'a foreign key into a pruned table has no index: every row the prune removes scans the referencing table');
+  const prunedFks=(await db.query(`select c.conname from pg_constraint c
+     where c.contype='f' and c.confrelid::regclass::text = any($1::text[]) order by 1`,[prunedTables])).rows.map(r=>r.conname);
+  for (const k of ['edges_prob_id_fkey','ledger_trade_id_fkey']) {
+    assert.ok(prunedFks.includes(k),`${k} is not in the fixture, so this check proves nothing about it`);
+  }
+  // The referential check is a generic plan on `$1 = column`; the indexes are
+  // partial on `column is not null`, which that equality implies. The plan
+  // must use them, not merely have them.
+  await db.exec(`set plan_cache_mode = force_generic_plan; set enable_seqscan = off;
+    prepare ri_edges(bigint) as select 1 from only public.edges x where $1 operator(pg_catalog.=) x.prob_id for key share of x;
+    prepare ri_ledger(uuid) as select 1 from only public.ledger x where $1 operator(pg_catalog.=) x.trade_id for key share of x;`);
+  const riPlan=async (sql)=>(await db.query(sql)).rows.map(r=>r['QUERY PLAN']).join('\n');
+  assert.match(await riPlan('explain execute ri_edges(1)'),/Index Scan (using|on) ad4_ix_edges_prob_id\b/);
+  assert.match(await riPlan(`explain execute ri_ledger('00000000-0000-0000-0000-000000000000')`),/Index Scan (using|on) ad4_ix_ledger_trade_id\b/);
+  await db.exec('deallocate all; reset plan_cache_mode; reset enable_seqscan;');
+
+  // ======================================================================
+  // THE MODEL-ONLY TWINS TRADE ON PAPER (Hassan, 8 Oct;
+  // 20261008100000_the_model_only_twins_trade_on_paper.sql). Each of the six
+  // engine strategies has a twin: registered, its own $1,000 shadow ledger
+  // opened by the trigger, automatic exits off as its base's are, and in
+  // shadow - switched on - with the reason on the record. A re-run changes
+  // nothing, and never switches back on a twin someone has switched off.
+  // ======================================================================
+  const twinIds=['s10_winner_model','s10_growth_model','s10_lock_model','s11_ladder_model','s11_lock_model','s12_no_model'];
+  const twinRows=async()=>(await db.query(`select s.strategy_id,s.enabled,st.state,st.reason,s.extra->>'base' base,
+      (select count(*)::int from paper_accounts a where a.kind='shadow' and a.strategy_id=s.strategy_id) ledgers,
+      (select json_agg(json_build_object('cash',a.cash::float8,'start',a.starting_cash::float8,'auto_exit',a.policy->'auto_exit_enabled',
+               'pv',a.policy_version,'mode',a.mode,'paused',a.entries_paused,'status',a.status))
+         from paper_accounts a where a.kind='shadow' and a.strategy_id=s.strategy_id) ledger,
+      (select count(*)::int from strategy_state_history h where h.strategy_id=s.strategy_id) history
+      from strategies s left join strategy_state st using(strategy_id) where s.strategy_id = any($1) order by 1`,[twinIds])).rows;
+  const twinsBefore=await twinRows();
+  assert.deepEqual(twinsBefore.map(r=>r.strategy_id),[...twinIds].sort(),'every twin is registered');
+  for (const r of twinsBefore) {
+    assert.equal(r.base,r.strategy_id.replace(/_model$/,''),`${r.strategy_id} names its base`);
+    assert.equal(r.enabled,true,`${r.strategy_id} is switched on`);
+    assert.equal(r.state,'shadow',`${r.strategy_id} is in shadow, never the portfolio`);
+    assert.match(r.reason,/model-only \(w = 1\) shadow/);
+    assert.equal(r.ledgers,1,`${r.strategy_id} has exactly one shadow ledger`);
+    assert.deepEqual(r.ledger,[{cash:1000,start:1000,auto_exit:false,pv:2,mode:'automatic',paused:false,status:'active'}],
+      `${r.strategy_id}: $1,000 of paper, automatic, exits by its own rules only`);
+    assert.equal(r.history,2,`${r.strategy_id}: registered, then shadow`);
+  }
+  const twinMig=fs.readFileSync(path.join(directory,'20261008100000_the_model_only_twins_trade_on_paper.sql'),'utf8');
+  await db.exec(twinMig);
+  assert.deepEqual(await twinRows(),twinsBefore,'re-running the twins migration changes nothing');
+  await db.query("select public.set_strategy_state('s12_no_model','research','switched off by hand')");
+  await db.exec(twinMig);
+  const off=(await twinRows()).find(r=>r.strategy_id==='s12_no_model');
+  assert.equal(off.state,'research','a re-run never switches back on a twin someone switched off');
+  assert.equal(off.enabled,false);
+
   await db.close();
   console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, a shadow ledger per strategy and a suspended portfolio account, strategy lifecycle states, the fixed risk rails and the kill switch, the portfolio activated by evidence and its allocation, the decision log and its verified prune, research capture of prices only, no PUBLIC execute on SECURITY DEFINER functions and the settings the browser may not read');
 })().catch(e=>{console.error(e);process.exit(1);});
