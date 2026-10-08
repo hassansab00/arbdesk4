@@ -278,7 +278,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/trades_observed?on_conflict=condition_id,traded_at,price,size,proxy_wallet",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/rpc/insert_trade_prints",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -289,16 +289,12 @@
             {
               "name": "Accept",
               "value": "application/json"
-            },
-            {
-              "name": "Prefer",
-              "value": "resolution=ignore-duplicates,return=minimal"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.rows) }}",
+        "jsonBody": "={{ JSON.stringify({ p_rows: $json.rows }) }}",
         "options": {
           "response": {
             "response": {
@@ -316,7 +312,8 @@
           "id": "ad4-supabase",
           "name": "AD4 Supabase"
         }
-      }
+      },
+      "notes": "A print's dedupe key (condition_id, traded_at, price, size, proxy_wallet) is held as its 16-byte hash, trade_dedupe_key() (WXPredict build 2.A, 8 Oct). PostgREST cannot name that expression in on_conflict, so prints go in through insert_trade_prints(), which turns away every print already held and returns the trade_id of each one it inserted. The old ?on_conflict=condition_id,traded_at,price,size,proxy_wallet needs the five-column index, which 20261008170100 drops: with it this node fails with 42P10."
     },
     {
       "id": "refresh-rollups",

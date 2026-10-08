@@ -751,6 +751,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "trades_observed": [
     {
+      "cadence": "hourly",
+      "file": "tick.yml",
+      "how": "scripts/ingest_trades.py",
+      "kind": "action",
+      "name": "Tick (hourly checkpoints)"
+    },
+    {
       "cadence": "whenever its n8n schedule fires",
       "file": "P0.4_trade_history.template.json",
       "how": "n8n",

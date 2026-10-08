@@ -70,8 +70,11 @@ UA = {"User-Agent": "arbdesk4-trades/1.0", "Accept": "application/json"}
 # A print's dedupe key (condition_id, traded_at, price, size, proxy_wallet)
 # is held as its 16-byte hash (trade_dedupe_key, WXPredict build 2.A, 8 Oct:
 # 19 MB of index as five columns). PostgREST cannot name that expression in
-# on_conflict, so prints go in through insert_trade_prints(), which does.
-INSERT_RPC = "insert_trade_prints"
+# on_conflict, so prints go in through insert_trade_prints(), which does. The
+# path is spelled out whole so tools/gen_provenance.py, which finds a script's
+# RPCs by their literal rest/v1/rpc/ path, still names this job as a writer of
+# trades_observed.
+INSERT_PATH = "/rest/v1/rpc/insert_trade_prints"
 
 
 def switched_on():
@@ -196,10 +199,10 @@ def insert_new(rows):
         return 0
     new = 0
     for i in range(0, len(rows), 500):
-        r = _post(f"{_cfg()['url']}/rest/v1/rpc/{INSERT_RPC}", headers=_headers(),
+        r = _post(_cfg()["url"] + INSERT_PATH, headers=_headers(),
                   data=json.dumps({"p_rows": rows[i:i + 500]}), timeout=60)
         if r.status_code >= 400:
-            raise requests.HTTPError(f"{INSERT_RPC} -> HTTP {r.status_code}: {r.text[:300]}", response=r)
+            raise requests.HTTPError(f"insert_trade_prints -> HTTP {r.status_code}: {r.text[:300]}", response=r)
         new += len(r.json() or [])
     return new
 
