@@ -1299,6 +1299,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_weather_peak",
     "derived_trajectory"
   ],
+  "v_city_utc_day_max": [
+    "weather_observations"
+  ],
   "v_city_volume": [
     "bands",
     "markets",

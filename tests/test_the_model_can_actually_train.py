@@ -82,7 +82,22 @@ def _run(monkeypatch, cache_rows, *, argv=("weather_model",), fresh=None):
             return fresh or []
         return []                                  # no forecast days
 
+    # recent_days asks for the oldest reading and the cities' zones in one
+    # page each (weather_history.first_whole_days, Fresh Supabase 8 Oct):
+    # readings held since 2000, so every day the view returns is whole and the
+    # anchor is the view's, as it always was.
+    def fake_rest(path, params=None):
+        asked.append(path)
+        if path == "weather_observations":
+            return [{"valid_at": "2000-01-01T00:00:00+00:00"}]
+        if path == "cities":
+            return [{"city_key": c, "timezone": "UTC"} for c in {r["city_key"] for r in cache_rows}]
+        return []
+
+    import weather_history
+    weather_history.reset()
     monkeypatch.setattr(wm, "rest_all", fake_rest_all)
+    monkeypatch.setattr(wm, "rest", fake_rest)
     # Every city in the scripted cache is active. The retirement filter has its
     # own tests; here it must not be what decides the outcome.
     monkeypatch.setattr(wm, "active_city_keys",

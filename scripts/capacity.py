@@ -11,6 +11,7 @@ scheduling/logging wrapper so the job shows up in `ingest_log` next to
 every other daily job, consistent with how the rest of AD4 is run.
 """
 import sys
+import city_correlation
 from common import (log_run, refresh_feature_cache, rest, rpc as _call_rpc,
                     active_city_keys)
 
@@ -162,7 +163,12 @@ def main():
     # same second. One of those two messages says what to fix.
     failures = []
     capacity_rows = recompute_capacity_per_city(failures)
-    correlation_rows = _call_rpc("recompute_correlation")
+    # FROM THE ARCHIVE AS WELL (Fresh Supabase, 8 Oct). recompute_correlation
+    # read only what the two weather tables held, a month; their keeps fall
+    # to days, so the same computation over the same dates now reads the
+    # repository below each prune (scripts/city_correlation.py). Not
+    # optional, as before: a failure stops the job.
+    correlation_rows = city_correlation.recompute()
     print(f"derived_capacity: {capacity_rows} rows")
     print(f"derived_city_correlation: {correlation_rows} rows")
 
