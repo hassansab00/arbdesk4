@@ -253,6 +253,12 @@ SQL_RECORD = {
     # city's readings - retired ones held 7,279 on 29 Sep - and refuses a day
     # the hours cache does not hold, so an active-only walk would block it.
     "sql/ad4_97_evidence_cache.sql",
+    # Fresh Supabase (8 Oct): v_city_climb_profile_live, v_city_climate and
+    # refresh_weather_peak_city read the caches before the readings' first
+    # whole day - cities.timezone to put each reading on its local day, as in
+    # ad4_17, ad4_28 and ad4_56, and v_city_climate a row for every city as
+    # ad4_17's did. The record of what each city's weather did.
+    "sql/ad4_weather_readers_read_the_caches.sql",
 }
 
 # MIGRATIONS COUNT TOO. The first version of this file globbed sql/*.sql and
@@ -269,6 +275,12 @@ SQL_RECORD = {
 # rather than a bug. It is here because a blind spot is how the last four got
 # in.
 MIGRATION_RECORD = {
+    "supabase/migrations/20261008200000_the_long_weather_readers_read_the_caches.sql":
+        "refresh_city_day_hours as in sql/ad4_97, and v_city_climb_profile_live, "
+        "v_city_climate and refresh_weather_peak_city as in "
+        "sql/ad4_weather_readers_read_the_caches.sql - cities.timezone to put readings "
+        "on their local day; every city the prune reaches, retired ones too, and "
+        "v_city_climate a row per city as before",
     "supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql":
         "v_outcome_pipeline - cities.timezone to put each market's day end on its city's "
         "clock, and the unit; every market of the window, a retired city's too, because "

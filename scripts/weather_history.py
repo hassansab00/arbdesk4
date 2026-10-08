@@ -231,6 +231,27 @@ def _timezones(rest_fn, rest_all_fn):
     return _zones
 
 
+def first_whole_days(rest_fn=None, rest_all_fn=None):
+    """{city_key: 'YYYY-MM-DD'}: the first local day weather_observations holds
+    whole in each city - the local date of the oldest reading, or the day
+    after when that day began before it. The rule v_trajectory_evidence,
+    v_station_day_max and refresh_city_day_hours use: the readings serve the
+    days from here on, derived_city_day_features and the other caches the days
+    before. {} when the table holds no reading (every day is the caches')."""
+    oldest = _first(rest_fn, rest_all_fn, "weather_observations", [("select", "valid_at")], "valid_at.asc")
+    if not oldest:
+        return {}
+    t = _ts(oldest[0]["valid_at"])
+    out = {}
+    for city, tz in _timezones(rest_fn, rest_all_fn).items():
+        zone = ZoneInfo(tz or "UTC")
+        day = t.astimezone(zone).date()
+        if dt.datetime.combine(day, dt.time(0), zone) < t:
+            day += dt.timedelta(days=1)
+        out[city] = day.isoformat()
+    return out
+
+
 def reset():
     """Forget what this process looked up (tests)."""
     _boundary.clear()

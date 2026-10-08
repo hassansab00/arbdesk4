@@ -56,6 +56,7 @@ import sys
 from common import (rest, rest_all, log_run, _cfg, _headers,
                     active_city_keys, drop_retired)
 import requests
+import weather_history
 
 # Fewer than this and the fit is describing noise. Weather is seasonal: a few
 # months of days does not tell you how the relationship behaves in another
@@ -1022,12 +1023,26 @@ def recent_days(days=10):
     The fit needs every day there is; the prediction needs one real maximum
     per city. Pulling 200k rows for that would make the frequent run as
     expensive as the weekly one.
+
+    THE READINGS' WHOLE DAYS, THE CACHE BEFORE (Fresh Supabase, 8 Oct). The
+    live view holds only the days weather_observations still holds, and the
+    oldest of those is cut part-way through: its maximum reads low. Once the
+    readings keep three days, ten days back is mostly the cache's. So, as
+    v_trajectory_evidence takes them: the view for each city's days from its
+    first whole one, derived_city_day_features for the days before.
     """
     since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
-    rows = rest_all("v_city_day_features", [
-        ("select", "city_key,obs_date,max_c,n_obs"),
-        ("obs_date", f"gte.{since}"),
-    ], order="city_key.asc,obs_date.asc", page_size=1000)
+    cols = [("select", "city_key,obs_date,max_c,n_obs"), ("obs_date", f"gte.{since}")]
+    order = "city_key.asc,obs_date.asc"
+    first = weather_history.first_whole_days(rest_all_fn=rest_all)
+    # A city with no zone on record keeps the view's days, as before; with no
+    # reading held at all, every day is the cache's.
+    never = "9999-12-31" if not first else "0000-00-00"
+    rows = [r for r in rest_all("v_city_day_features", cols, order=order, page_size=1000)
+            if str(r["obs_date"])[:10] >= first.get(r["city_key"], "0000-00-00")]
+    rows += [r for r in rest_all("derived_city_day_features", cols, order=order, page_size=1000)
+             if str(r["obs_date"])[:10] < first.get(r["city_key"], never)]
+    rows.sort(key=lambda r: (r["city_key"], str(r["obs_date"])))
     by_city = {}
     for r in rows:
         by_city.setdefault(r["city_key"], []).append(r)

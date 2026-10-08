@@ -204,8 +204,13 @@ def run_main(monkeypatch):
                 raise feature_cache
             return feature_cache
 
+        def fake_correlation():
+            # scripts/city_correlation.py since 8 Oct; scripted as before
+            return fake_rpc("recompute_correlation")
+
         monkeypatch.setattr(capacity, "active_city_keys", lambda: {"austin"})
         monkeypatch.setattr(capacity, "_call_rpc", fake_rpc)
+        monkeypatch.setattr(capacity.city_correlation, "recompute", fake_correlation)
         monkeypatch.setattr(capacity, "log_run", fake_log_run)
         monkeypatch.setattr(capacity, "refresh_feature_cache", fake_features)
         return capacity.main(), logged

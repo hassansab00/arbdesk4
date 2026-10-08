@@ -163,6 +163,9 @@ TABLES = {
     # past the weather tables' keep (60 days today; step 5 lowers it to about
     # 30), and rows that change after that are re-copied by no one - noted.
     "derived_city_day_hours":        closed("obs_date", "city_key", "obs_date", after_days=40),
+    # Fresh Supabase (8 Oct): when each whole day peaked, what the peak hour
+    # reads once the readings no longer hold the day. Written like the hours.
+    "derived_city_day_peak":         closed("obs_date", "city_key", "obs_date", after_days=40),
     "derived_hit_forecasts":         closed("for_date", "city_key", "for_date", "lane", "model",
                                             "known_at", after_days=40),
     # step 5, the same way: each station's day per source (v_station_day_max)

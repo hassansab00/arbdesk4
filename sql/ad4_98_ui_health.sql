@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 279 of them - and for each MISSING one names the
+-- and function the app reads - 281 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -47,6 +47,7 @@ with expected(rel, owner, used_by) as (values
     ('derived_city_correlation', 'ad4_phase2.sql', ''),
     ('derived_city_day_features', 'ad4_00_preflight.sql', ''),
     ('derived_city_day_hours', 'ad4_86_trajectory.sql', ''),
+    ('derived_city_day_peak', 'ad4_97_evidence_cache.sql', ''),
     ('derived_city_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_climb_profile', 'ad4_28_feature_cache.sql', ''),
     ('derived_corrected_forecast', 'supabase/migrations/20260926120000_station_correction.sql', ''),
@@ -172,6 +173,7 @@ with expected(rel, owner, used_by) as (values
     ('v_city_temp_trend', 'ad4_26_temp_trend.sql', ''),
     ('v_city_today_readings', 'ad4_26_temp_trend.sql', '/monitor'),
     ('v_city_trajectory_now', 'ad4_86_trajectory.sql', ''),
+    ('v_city_utc_day_max', 'ad4_weather_readers_read_the_caches.sql', ''),
     ('v_city_volume', 'ad4_13_reconcile.sql', '(GlobalBar), /, /live'),
     ('v_coherent_band_outcome', 'supabase/migrations/20260922120000_a_ladder_cannot_resolve_to_nothing.sql', ''),
     ('v_condition_skill', 'ad4_24_nws_gridpoint.sql', '(ModelAnalytics)'),
@@ -348,6 +350,7 @@ begin
     ('derived_city_correlation', 'ad4_phase2.sql', ''),
     ('derived_city_day_features', 'ad4_00_preflight.sql', ''),
     ('derived_city_day_hours', 'ad4_86_trajectory.sql', ''),
+    ('derived_city_day_peak', 'ad4_97_evidence_cache.sql', ''),
     ('derived_city_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_climb_profile', 'ad4_28_feature_cache.sql', ''),
     ('derived_corrected_forecast', 'supabase/migrations/20260926120000_station_correction.sql', ''),
@@ -473,6 +476,7 @@ begin
     ('v_city_temp_trend', 'ad4_26_temp_trend.sql', ''),
     ('v_city_today_readings', 'ad4_26_temp_trend.sql', '/monitor'),
     ('v_city_trajectory_now', 'ad4_86_trajectory.sql', ''),
+    ('v_city_utc_day_max', 'ad4_weather_readers_read_the_caches.sql', ''),
     ('v_city_volume', 'ad4_13_reconcile.sql', '(GlobalBar), /, /live'),
     ('v_coherent_band_outcome', 'supabase/migrations/20260922120000_a_ladder_cannot_resolve_to_nothing.sql', ''),
     ('v_condition_skill', 'ad4_24_nws_gridpoint.sql', '(ModelAnalytics)'),

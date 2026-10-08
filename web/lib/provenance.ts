@@ -178,15 +178,6 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     }
   ],
-  "derived_city_correlation": [
-    {
-      "cadence": "daily",
-      "file": "pipeline_daily.yml",
-      "how": "scripts/capacity.py",
-      "kind": "action",
-      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
-    }
-  ],
   "derived_city_day_features": [
     {
       "cadence": "daily",
@@ -1298,6 +1289,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_observations",
     "derived_weather_peak",
     "derived_trajectory"
+  ],
+  "v_city_utc_day_max": [
+    "weather_observations"
   ],
   "v_city_volume": [
     "bands",
