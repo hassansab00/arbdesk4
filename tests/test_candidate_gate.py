@@ -78,7 +78,9 @@ def test_the_engine_sends_no_order_for_a_held_back_buy(monkeypatch):
         assert r["action"] == "NONE" and r["reason_code"] == "not_candidate" and r["n_signals"] == 0
         assert json.loads(r["params_version"])["status"]["would"]["action"] == "BUY"
     rows, buys = _decide_all(monkeypatch, {KEY: ("candidate", "status-v1")})
-    assert len(rows) == 3 and len(buys) == 3 and all(r["action"] == "BUY" for r in rows.values())
+    # S11, S11 lock and S12, and their model-only twins (8 Oct): the gate holds both alike
+    n = len([sid for sid in es.STRATEGIES if sid not in es.S10])
+    assert n == 6 and len(rows) == n and len(buys) == n and all(r["action"] == "BUY" for r in rows.values())
     assert all(json.loads(r["params_version"])["status"]["status"] == "candidate" for r in rows.values())
     rows, buys = _decide_all(monkeypatch, {})                 # read but empty, or unread
     assert buys == [] and all(r["reason_code"] == "not_candidate" for r in rows.values())
@@ -88,7 +90,8 @@ def test_without_the_gate_a_run_decides_as_before(monkeypatch):
     """The replay of a run recorded before the gate passes no statuses: it
     decides as that run did, with nothing stamped."""
     rows, buys = _decide_all(monkeypatch, None)
-    assert len(buys) == 3 and all("status" not in json.loads(r["params_version"]) for r in rows.values())
+    assert len(buys) == len([sid for sid in es.STRATEGIES if sid not in es.S10])
+    assert all("status" not in json.loads(r["params_version"]) for r in rows.values())
 
 
 def test_the_read_is_waited_for_briefly_and_fails_closed():

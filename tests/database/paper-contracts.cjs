@@ -2695,6 +2695,43 @@ const assert = require('node:assert/strict');
   assert.match(await riPlan(`explain execute ri_ledger('00000000-0000-0000-0000-000000000000')`),/Index Scan (using|on) ad4_ix_ledger_trade_id\b/);
   await db.exec('deallocate all; reset plan_cache_mode; reset enable_seqscan;');
 
+  // ======================================================================
+  // THE MODEL-ONLY TWINS TRADE ON PAPER (Hassan, 8 Oct;
+  // 20261008100000_the_model_only_twins_trade_on_paper.sql). Each of the six
+  // engine strategies has a twin: registered, its own $1,000 shadow ledger
+  // opened by the trigger, automatic exits off as its base's are, and in
+  // shadow - switched on - with the reason on the record. A re-run changes
+  // nothing, and never switches back on a twin someone has switched off.
+  // ======================================================================
+  const twinIds=['s10_winner_model','s10_growth_model','s10_lock_model','s11_ladder_model','s11_lock_model','s12_no_model'];
+  const twinRows=async()=>(await db.query(`select s.strategy_id,s.enabled,st.state,st.reason,s.extra->>'base' base,
+      (select count(*)::int from paper_accounts a where a.kind='shadow' and a.strategy_id=s.strategy_id) ledgers,
+      (select json_agg(json_build_object('cash',a.cash::float8,'start',a.starting_cash::float8,'auto_exit',a.policy->'auto_exit_enabled',
+               'pv',a.policy_version,'mode',a.mode,'paused',a.entries_paused,'status',a.status))
+         from paper_accounts a where a.kind='shadow' and a.strategy_id=s.strategy_id) ledger,
+      (select count(*)::int from strategy_state_history h where h.strategy_id=s.strategy_id) history
+      from strategies s left join strategy_state st using(strategy_id) where s.strategy_id = any($1) order by 1`,[twinIds])).rows;
+  const twinsBefore=await twinRows();
+  assert.deepEqual(twinsBefore.map(r=>r.strategy_id),[...twinIds].sort(),'every twin is registered');
+  for (const r of twinsBefore) {
+    assert.equal(r.base,r.strategy_id.replace(/_model$/,''),`${r.strategy_id} names its base`);
+    assert.equal(r.enabled,true,`${r.strategy_id} is switched on`);
+    assert.equal(r.state,'shadow',`${r.strategy_id} is in shadow, never the portfolio`);
+    assert.match(r.reason,/model-only \(w = 1\) shadow/);
+    assert.equal(r.ledgers,1,`${r.strategy_id} has exactly one shadow ledger`);
+    assert.deepEqual(r.ledger,[{cash:1000,start:1000,auto_exit:false,pv:2,mode:'automatic',paused:false,status:'active'}],
+      `${r.strategy_id}: $1,000 of paper, automatic, exits by its own rules only`);
+    assert.equal(r.history,2,`${r.strategy_id}: registered, then shadow`);
+  }
+  const twinMig=fs.readFileSync(path.join(directory,'20261008100000_the_model_only_twins_trade_on_paper.sql'),'utf8');
+  await db.exec(twinMig);
+  assert.deepEqual(await twinRows(),twinsBefore,'re-running the twins migration changes nothing');
+  await db.query("select public.set_strategy_state('s12_no_model','research','switched off by hand')");
+  await db.exec(twinMig);
+  const off=(await twinRows()).find(r=>r.strategy_id==='s12_no_model');
+  assert.equal(off.state,'research','a re-run never switches back on a twin someone switched off');
+  assert.equal(off.enabled,false);
+
   await db.close();
   console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, a shadow ledger per strategy and a suspended portfolio account, strategy lifecycle states, the fixed risk rails and the kill switch, the portfolio activated by evidence and its allocation, the decision log and its verified prune, research capture of prices only, no PUBLIC execute on SECURITY DEFINER functions and the settings the browser may not read');
 })().catch(e=>{console.error(e);process.exit(1);});

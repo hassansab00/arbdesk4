@@ -206,3 +206,69 @@ def test_a_book_that_does_not_quote_every_bucket_has_no_anchor():
     ctx["book"] = {b: q for b, q in ctx["book"].items() if b != first}
     view, _b, why = ev.engine_input("s11_ladder", ctx)
     assert view is None and why.startswith("no market to anchor")
+
+
+# THE MODEL-ONLY TWINS (Hassan, 8 Oct: "run the shadow, and the w = 1 thing").
+def test_every_engine_strategy_has_a_model_only_twin():
+    bases = (*ev.s10.VARIANTS, *ev.s11.VARIANTS, *ev.s12.VARIANTS)
+    assert ev.MODEL_ONLY == {f"{b}_model": b for b in bases}
+    # Not in ENGINE_STRATEGIES: the historical replay's set stays what it was (Codex on #341).
+    assert not set(ev.MODEL_ONLY) & set(ev.ENGINE_STRATEGIES)
+    from backtest import replay_engine
+    assert replay_engine.STRATEGIES == ("s11_ladder", "s11_lock", "s12_no", *ev.s2.VARIANTS)
+    for twin, base in ev.MODEL_ONLY.items():
+        assert ev.base_of(twin) == base and ev.base_of(base) == base
+    assert ev.base_of("s2_combination_arb") == "s2_combination_arb"
+
+
+def test_a_twin_decides_by_its_bases_rules_on_the_models_own_ladder():
+    """The twin's view is its base's view at w = 1, field for field, under its
+    own id - and the anchor it used is on the record."""
+    checked = 0
+    for i in SOME:
+        ctx = _ctx(ROWS[i])
+        for base in ("s11_ladder", "s11_lock", "s12_no"):
+            twin = f"{base}_model"
+            got, gbook, gwhy = ev.engine_input(twin, ctx)
+            want, wbook, wwhy = ev.engine_input(base, dict(ctx, anchor={"fixed_w": 1.0, "version": "model-only:w1"}))
+            if want is None:
+                assert got is None and gwhy == wwhy
+                continue
+            assert got["strategy_id"] == twin and want["strategy_id"] == base
+            assert {k: v for k, v in got.items() if k != "strategy_id"} == \
+                   {k: v for k, v in want.items() if k != "strategy_id"}
+            assert gbook == wbook
+            assert got["anchor"]["w"] == 1.0 and got["anchor"]["version"] == "model-only:w1"
+            ids = [b["band_id"] for b in ctx["bands"]]
+            market = ev.market_anchor.market_probs(ctx["book"], ids)
+            model = {b: float(ctx["probs"].get(b, 0.0)) for b in ids}
+            assert got["probs"] == ev.market_anchor.anchor(model, market, 1.0)
+            checked += 1
+    assert checked > 0, "no real ladder had a market to anchor on"
+
+
+def test_a_twins_anchor_is_fixed_whatever_the_learned_table_says():
+    """The learned weight is the base's; a twin never reads it."""
+    ctx = _ctx(ROWS[SOME[0]])
+    sc = ev.market_anchor.scope("engine", ROWS[SOME[0]]["checkpoint"])
+    table = {"version": "v-learned", "weights": {sc: 0.3}, "city_weights": {sc: {"here": 0.2}}}
+    ctx = dict(ctx, anchor={"table": table, "city": "here"}, checkpoint=ROWS[SOME[0]]["checkpoint"])
+    base, _b, why = ev.engine_input("s11_ladder", ctx)
+    if base is None:
+        pytest.skip(why)
+    twin, _b, _why = ev.engine_input("s11_ladder_model", ctx)
+    assert base["anchor"] == {"w": 0.2, "version": "v-learned", "scope": f"{sc}@here"}
+    assert twin["anchor"] == {"w": 1.0, "version": "model-only:w1", "scope": sc}
+
+
+def test_an_s10_twin_takes_its_bases_s10_rule():
+    """S10's variant decides the target; the twin passes its base's name."""
+    ctx = _ctx(ROWS[SOME[0]])
+    for base in ev.s10.VARIANTS:
+        t_trace, b_trace = {}, {}
+        tv, _tb, twhy = ev.engine_input(f"{base}_model", ctx, t_trace)
+        bv, _bb, bwhy = ev.engine_input(base, dict(ctx, anchor={"fixed_w": 1.0, "version": "model-only:w1"}), b_trace)
+        assert t_trace.get("s10") == b_trace.get("s10")
+        assert (tv is None) == (bv is None) and twhy == bwhy
+        if t_trace.get("s10"):
+            assert t_trace["s10"]["variant"] == base
