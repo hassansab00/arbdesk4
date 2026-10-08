@@ -142,6 +142,122 @@ def test_the_twins_decide_only_in_the_time_the_anchored_strategies_leave(monkeyp
     assert len(rows) == 2 * len(es.ANCHORED)
 
 
+
+# --------------------------------------------------------------------------
+# The twins take turns (8 Oct): least recently decided first
+# --------------------------------------------------------------------------
+def _city(name, cp="noon"):
+    return dict(ROW, city_key=name, checkpoint=cp)
+
+
+def test_the_twins_take_the_city_day_they_decided_longest_ago_first():
+    cks = [("c1", _city("london")), ("c2", _city("paris")), ("c3", _city("madrid")), ("c4", _city("rome"))]
+    last = {("london", "2026-09-28"): 300.0, ("paris", "2026-09-28"): 100.0, ("rome", "2026-09-28"): 200.0}
+    assert [c for c, _ in es.least_recent_first(cks, last)] == ["c3", "c2", "c4", "c1"]
+    # never decided keeps the tick's order among itself, and so does an unread map
+    assert [c for c, _ in es.least_recent_first(cks, {})] == ["c1", "c2", "c3", "c4"]
+    assert [c for c, _ in es.least_recent_first(cks, None)] == ["c1", "c2", "c3", "c4"]
+    # a city's other day is another city-day
+    other = ("c5", dict(_city("london"), target_date="2026-09-29"))
+    assert es.least_recent_first([cks[0], other], last)[0][0] == "c5"
+
+
+def test_when_time_runs_short_the_twins_reach_the_least_recently_decided(monkeypatch):
+    """Three city-days, time for one twin city-day: it is the one the twins
+    decided longest ago, not the tick's first; the anchored pass is untouched."""
+    ticks = {"n": 0}
+
+    def clock():
+        ticks["n"] += 1
+        # 3 anchored checks, the twins' order check and their first city-day in time; then past it
+        return 0.0 if ticks["n"] <= 5 else 100.0
+    monkeypatch.setattr(es.time, "monotonic", clock)
+    ledgers = {sid: flat for sid in es.STRATEGIES}
+    cks = [("c1", _city("london")), ("c2", _city("paris")), ("c3", _city("madrid"))]
+    called = []
+
+    def last(left):
+        called.append(left)
+        return {("london", "2026-09-28"): 300.0, ("paris", "2026-09-28"): 100.0, ("madrid", "2026-09-28"): 200.0}
+    rows, detail = es.decide_all(cks, {}, {("london", "2026-09-28"): BANDS},
+                                 {"london": "C", "paris": "C", "madrid": "C"}, {}, ledgers, {}, None,
+                                 50.0, "r", "2026-09-28T11:36:00+00:00", model_only_last=last)
+    assert called == [50.0], "handed the seconds the twins have left"
+    assert detail == {"city_days": 3, "reached": 3, "out_of_time": 0,
+                      "model_only_reached": 1, "model_only_out_of_time": 2}
+    twins = {r["city_key"] for r in rows if r["strategy_id"] in es.MODEL_ONLY}
+    assert twins == {"paris"}
+    assert {r["city_key"] for r in rows if r["strategy_id"] in es.ANCHORED} == {"london", "paris", "madrid"}
+
+
+def test_with_no_time_left_the_twins_order_is_not_even_read(monkeypatch):
+    monkeypatch.setattr(es.time, "monotonic", lambda: 100.0)
+    called = []
+    es.decide_all([("c1", ROW)], {}, {}, {}, {}, {}, {}, None, 50.0, "r", "t",
+                  model_only_last=lambda left: called.append(left) or {})
+    assert called == []
+
+
+def test_the_twins_last_decisions_are_read_from_the_first_twins_rows():
+    seen = {}
+
+    def rest(path, params=None, tries=4):
+        seen.update(path=path, params=dict(params), tries=tries)
+        return [{"city_key": "london", "resolution_date": "2026-09-28", "decided_at": "2026-09-28T10:36:50.364465+00:00"},
+                {"city_key": "london", "resolution_date": "2026-09-28", "decided_at": "2026-09-28T08:36:41+00:00"},
+                {"city_key": "paris", "resolution_date": "2026-09-29", "decided_at": "2026-09-28T09:36:40.1+00:00"}]
+    now = dt.datetime(2026, 9, 28, 11, 36, tzinfo=dt.timezone.utc)
+    last = es.read_twins_last(rest, now)
+    assert last == {("london", "2026-09-28"): dt.datetime(2026, 9, 28, 10, 36, 50, 364465, tzinfo=dt.timezone.utc).timestamp(),
+                    ("paris", "2026-09-29"): dt.datetime(2026, 9, 28, 9, 36, 40, 100000, tzinfo=dt.timezone.utc).timestamp()}
+    assert seen["path"] == "decisions" and seen["tries"] == 1
+    assert seen["params"] == {"select": "city_key,resolution_date,decided_at",
+                              "strategy_id": f"eq.{es.MODEL_ONLY[0]}",
+                              "decided_at": "gte.2026-09-26T11:36:00Z",
+                              "order": "decided_at.desc", "limit": str(es.TWINS_ROWS_MAX)}
+    # every reached city-day writes a row for every twin, whatever it decides
+    rows, _ = es.decide_all([("c1", ROW)], {}, {}, {}, {}, {}, {}, None, time.monotonic() + 60, "r", "t")
+    assert {(r["strategy_id"], r["reason_code"]) for r in rows if r["strategy_id"] == es.MODEL_ONLY[0]} == {
+        (es.MODEL_ONLY[0], "no_ledger")}
+
+
+def test_the_engine_reads_the_twins_turns_beside_its_other_reads(monkeypatch):
+    """record() starts the read when it starts and hands decide_all a
+    collector; an unread map leaves the tick's order and says why."""
+    import common, market_anchor, city_clusters
+    import concurrent.futures as cf
+    failed = cf.Future()
+    failed.set_exception(RuntimeError("down"))
+    monkeypatch.setattr(es, "start_twins_read", lambda rest, now: failed)
+    got = {}
+
+    def decide_all(*a, **k):
+        got["last"] = k["model_only_last"](0.25)
+        k["model_only_last"](30.0)
+        return [], {"city_days": 1}
+    waits = {}
+    real_collect = es.collect_status
+
+    def collect_status(future, wait_s=es.GATE_WAIT_S):
+        if future is failed:
+            waits.setdefault("twins", []).append(wait_s)
+        return real_collect(future, wait_s)
+    monkeypatch.setattr(es, "collect_status", collect_status)
+    monkeypatch.setattr(es, "decide_all", decide_all)
+    monkeypatch.setattr(es, "read_ledgers", lambda *a, **k: {})
+    monkeypatch.setattr(common, "rest_all", lambda *a, **k: [])
+    monkeypatch.setattr(common, "insert", lambda *a, **k: 1)
+    monkeypatch.setattr(market_anchor, "load", lambda rest=None: None)
+    monkeypatch.setattr(city_clusters, "load", lambda rest=None: None)
+    row = dict(ROW, local_decision_time="2026-09-28T13:36:00")
+    out = es.record([row], {}, {}, {("london", "2026-09-28"): {"market_id": "m"}}, {}, {},
+                    dt.datetime(2026, 9, 28, 11, 36, tzinfo=dt.timezone.utc), deadline=100.0)
+    assert "error" not in out, out
+    assert got["last"] == {} and out["model_only_order"] == {"read": 0, "unread": "RuntimeError: down"}
+    # never waits longer than the twins have left, and never longer than TWINS_WAIT_S (Codex on #342)
+    assert waits["twins"] == [0.25, es.TWINS_WAIT_S]
+
+
 def test_it_never_raises_into_the_tick(monkeypatch):
     import common
 
