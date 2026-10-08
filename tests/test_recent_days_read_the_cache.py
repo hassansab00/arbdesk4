@@ -21,16 +21,35 @@ def day(k):
     return (TODAY - dt.timedelta(days=k)).isoformat()
 
 
-def _rest_all(oldest, view, cache):
-    def rest_all(path, params=None, order=None, page_size=1000):
+CITIES = [{"city_key": "tokyo", "timezone": "Asia/Tokyo"}, {"city_key": "lima", "timezone": "America/Lima"}]
+
+
+def _rest(oldest):
+    """One page, as common.rest: the oldest reading is asked for with
+    limit=1, never by paging the whole table (Codex on #348)."""
+    def rest(path, params=None):
         if path == "weather_observations":
+            assert ("limit", "1") in params and ("order", "valid_at.asc") in params, params
             return [{"valid_at": oldest}] if oldest else []
         if path == "cities":
-            return [{"city_key": "tokyo", "timezone": "Asia/Tokyo"}, {"city_key": "lima", "timezone": "America/Lima"}]
+            return CITIES
+        raise AssertionError(path)
+    return rest
+
+
+def _rest_all(oldest, view, cache):
+    def rest_all(path, params=None, order=None, page_size=1000):
+        if path in ("weather_observations", "cities"):
+            raise AssertionError(f"{path} paged: it is one row / one page")
         lo = next(v for k, v in params if k == "obs_date")[4:]
         rows = {"v_city_day_features": view, "derived_city_day_features": cache}[path]
         return [dict(r) for r in rows if r["obs_date"] >= lo]
     return rest_all
+
+
+def _patch(monkeypatch, oldest, view, cache):
+    monkeypatch.setattr(wm, "rest", _rest(oldest))
+    monkeypatch.setattr(wm, "rest_all", _rest_all(oldest, view, cache=cache))
 
 
 @pytest.fixture(autouse=True)
@@ -47,16 +66,16 @@ def _row(city, k, max_c, n=24):
 def test_the_first_whole_day_is_the_one_after_a_cut():
     # 15:00Z is midnight in Tokyo (UTC+9): its day starts whole; 10:00 in Lima.
     t = f"{day(3)}T15:00:00+00:00"
-    first = wh.first_whole_days(rest_all_fn=_rest_all(t, [], []))
+    first = wh.first_whole_days(rest_fn=_rest(t))
     assert first == {"tokyo": day(2), "lima": day(2)}
     t = f"{day(3)}T15:00:01+00:00"
-    assert wh.first_whole_days(rest_all_fn=_rest_all(t, [], []))["tokyo"] == day(1)
+    assert wh.first_whole_days(rest_fn=_rest(t))["tokyo"] == day(1)
 
 
 def test_with_every_reading_held_it_is_the_view(monkeypatch):
     view = [_row("lima", k, 20 + k) for k in range(10, -1, -1)]
     cache = [_row("lima", k, 99) for k in range(10, -1, -1)]
-    monkeypatch.setattr(wm, "rest_all", _rest_all(f"{day(40)}T02:41:00+00:00", view, cache))
+    _patch(monkeypatch, f"{day(40)}T02:41:00+00:00", view, cache)
     got = wm.recent_days(5)
     assert got == {"lima": [r for r in view if r["obs_date"] >= day(5)]}
 
@@ -67,7 +86,7 @@ def test_the_cut_day_and_before_come_from_the_cache(monkeypatch):
     oldest = f"{day(3)}T02:36:00+00:00"
     view = [_row("lima", 4, 11.0, n=3)] + [_row("lima", k, 20 + k) for k in (3, 2, 1, 0)]
     cache = [_row("lima", k, 30 + k) for k in range(10, 0, -1)]
-    monkeypatch.setattr(wm, "rest_all", _rest_all(oldest, view, cache))
+    _patch(monkeypatch, oldest, view, cache)
     got = wm.recent_days(5)["lima"]
     assert [(r["obs_date"], r["max_c"]) for r in got] == (
         [(day(k), 30 + k) for k in (5, 4)] + [(day(k), 20 + k) for k in (3, 2, 1, 0)])
@@ -75,5 +94,5 @@ def test_the_cut_day_and_before_come_from_the_cache(monkeypatch):
 
 def test_no_reading_held_is_every_day_from_the_cache(monkeypatch):
     cache = [_row("tokyo", k, 30 + k) for k in (2, 1)]
-    monkeypatch.setattr(wm, "rest_all", _rest_all(None, [], cache))
+    _patch(monkeypatch, None, [], cache)
     assert [r["obs_date"] for r in wm.recent_days(5)["tokyo"]] == [day(2), day(1)]

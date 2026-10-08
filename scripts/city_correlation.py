@@ -195,15 +195,17 @@ def recompute(rest_all_fn=None, insert_fn=None, today=None, root=None, now=None)
     take the rows at the newest computed_at, so a part-written set must not
     exist. Returns the rows written, as recompute_correlation did."""
     if rest_all_fn is None or insert_fn is None:
-        from common import insert, rest_all
-        rest_all_fn = rest_all_fn or rest_all
-        insert_fn = insert_fn or insert
+        import common
+        rest_all_fn = rest_all_fn or common.rest_all
+        insert_fn = insert_fn or common.insert
+    insert = insert_fn
     rows = compute(rest_all_fn, today, root)
     at = (now or dt.datetime.now(dt.timezone.utc)).isoformat()
     payload = [{"city_a": a, "city_b": b, "computed_at": at, "n_days": n, "err_corr": as_numeric(v)}
                for a, b, n, v in rows]
     if payload:
-        insert_fn("derived_city_correlation", payload, chunk=len(payload))
+        # a literal call, so tools/gen_provenance.py sees what this fills
+        insert("derived_city_correlation", payload, chunk=len(payload))
     return len(payload)
 
 

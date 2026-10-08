@@ -1034,7 +1034,9 @@ def recent_days(days=10):
     since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
     cols = [("select", "city_key,obs_date,max_c,n_obs"), ("obs_date", f"gte.{since}")]
     order = "city_key.asc,obs_date.asc"
-    first = weather_history.first_whole_days(rest_all_fn=rest_all)
+    # rest, not rest_all: the oldest reading is one row (limit=1); paging
+    # would read the whole table to find it (Codex on #348).
+    first = weather_history.first_whole_days(rest_fn=rest)
     # A city with no zone on record keeps the view's days, as before; with no
     # reading held at all, every day is the cache's.
     never = "9999-12-31" if not first else "0000-00-00"

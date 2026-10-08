@@ -32,6 +32,9 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 # this, ingest_log (every job logs to it) claims to be filled by everything.
 NEVER_A_PRODUCT = {"ingest_log"}
 
+# call in a workflow's script -> the scripts/ module whose writes it makes.
+MODULE_WRITERS = {"city_correlation.recompute": "city_correlation"}
+
 
 def _yaml_workflows():
     """name, cron, and the scripts each GitHub Action runs.
@@ -91,6 +94,19 @@ def _script_writes():
         rpcs -= {"log_ingest"}
         if tables or rpcs:
             out[stem] = {"tables": sorted(tables), "rpcs": sorted(rpcs)}
+    # A MODULE THAT WRITES FOR ITS CALLER. capacity.py fills
+    # derived_city_correlation through city_correlation.recompute() since
+    # 8 Oct (Fresh Supabase); a scan of capacity.py alone lost the table's
+    # filler (Codex on #348). Named, like the helper above: following every
+    # import would credit a script with whatever its imports can write.
+    for path in sorted(paths):
+        src = open(path).read()
+        stem = os.path.relpath(path, os.path.join(ROOT, "scripts"))[:-3]
+        for call, module in MODULE_WRITERS.items():
+            if module != stem and module in out and re.search(r"\b" + re.escape(call) + r"\s*\(", src):
+                w = out.setdefault(stem, {"tables": [], "rpcs": []})
+                w["tables"] = sorted(set(w["tables"]) | set(out[module]["tables"]))
+                w["rpcs"] = sorted(set(w["rpcs"]) | set(out[module]["rpcs"]))
     return out
 
 

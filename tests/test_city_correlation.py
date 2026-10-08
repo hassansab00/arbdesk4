@@ -172,3 +172,13 @@ def test_recompute_writes_one_set_in_one_request():
     assert table == "derived_city_correlation" and chunk == len(rows)
     assert {r["computed_at"] for r in rows} == {"2026-10-08T04:50:00+00:00"}
     assert all(isinstance(r["err_corr"], str) for r in rows)
+
+
+def test_the_daily_pipeline_is_still_named_as_the_filler():
+    """The write moved from capacity.py into city_correlation.recompute();
+    tools/gen_provenance.py must still say the Daily Pipeline fills the table
+    (Codex on #348), or an empty panel names no job."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import gen_provenance
+    fillers = gen_provenance.build().get("derived_city_correlation", [])
+    assert any(f["file"] == "pipeline_daily.yml" and f["how"] == "scripts/capacity.py" for f in fillers), fillers
