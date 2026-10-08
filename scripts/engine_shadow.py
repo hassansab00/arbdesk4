@@ -38,10 +38,20 @@ import time
 import uuid
 
 JOB_KEY = "engine"
-STRATEGIES = ("s10_winner", "s10_growth", "s10_lock", "s11_ladder", "s11_lock", "s12_no")
-S10 = ("s10_winner", "s10_growth", "s10_lock")
+ANCHORED = ("s10_winner", "s10_growth", "s10_lock", "s11_ladder", "s11_lock", "s12_no")
+# Each one's model-only twin (engine_views.MODEL_ONLY; Hassan, 8 Oct: "run the
+# shadow, and the w = 1 thing"): the same rules on the model's own ladder, the
+# market anchor at w = 1, on a shadow ledger of its own.
+MODEL_ONLY = tuple(f"{s}_model" for s in ANCHORED)
+STRATEGIES = ANCHORED + MODEL_ONLY
+S10 = ("s10_winner", "s10_growth", "s10_lock", "s10_winner_model", "s10_growth_model", "s10_lock_model")
 WRITE_RESERVE_S = 3.0
 ORDER_RESERVE_S = 1.0     # kept after the fills for the tick's own log
+# The model-only twins stop this long before the engine's deadline, decisions
+# and orders alike, so the tick's same-day variants (variant_shadow, which runs
+# after the engine and records preregistered forward tests) keep their time:
+# they took 1.63 s at the median and 5.38 s at most over 70 ticks to 8 Oct.
+MODEL_ONLY_RESERVE_S = 8.0
 
 # THE CANDIDATE GATE (WXPredict build F.7; Hassan, 6 Oct: "each strategy
 # trades only cities whose status is Candidate"). v_city_status gives each
@@ -317,7 +327,7 @@ def _num(x):
 
 
 def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, params, anchor_table,
-               deadline, run_id, decided_at, buys=None, exits=None, status=None):
+               deadline, run_id, decided_at, buys=None, exits=None, status=None, model_only_deadline=None):
     """(rows, detail). checkpoints: [(checkpoint_id, row)] written this tick,
     latest per city-day. deadline: time.monotonic() to stop at. `buys`, when
     given, collects (row, decision, checkpoint_id) for every BUY: its orders
@@ -325,75 +335,86 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
     SWITCHes (exit_of) the same way. `status`: {(city, target, checkpoint):
     (status, rules version)} puts the Candidate gate in force (an empty map
     holds every BUY back); None leaves it out, as in the replay of a run
-    recorded before the gate."""
+    recorded before the gate. `model_only_deadline`, when given and earlier,
+    is where the model-only twins' pass stops."""
     import decision_engine as de
     from strategies import engine_views as ev
 
-    rows, skipped, reached = [], 0, 0
-    for checkpoint_id, row in checkpoints:
-        if time.monotonic() >= deadline:
-            skipped += 1
-            continue
-        reached += 1
-        city, target, name = row["city_key"], str(row["target_date"]), row["checkpoint"]
-        bands = bands_of.get((city, target)) or []
-        floor = floors.get(city)
-        today = bool(floor) and floor[0] == target
-        floor_c = floor[1] if today else None
-        # The floor's basis and the age of the station reading under it, only
-        # for the target's own local day: yesterday's reading vouches for
-        # nothing today.
-        floor_basis = floor[2] if today and len(floor) > 2 else None
-        reading_age_min = reading_age(floor[3] if today and len(floor) > 3 else None, decided_at)
-        book = engine_book(row.get("market"))
-        for sid in STRATEGIES:
-            if sid in S10:
-                probs, call = s10_call(s10_ladders.get((city, target, name)))
-            else:
-                probs = row.get("probs")
-                call = (checkpoint_id, "prediction_checkpoints") if checkpoint_id else None
-            led = ledgers.get(sid)
-            if led is None:
-                rows.append(decision_row(run_id, decided_at, checkpoint_id, sid, city, target,
-                                         why="no ledger", prediction=call))
+    # THE ANCHORED STRATEGIES FIRST, THE TWINS IN WHAT TIME IS LEFT. A city-day
+    # the deadline cuts off is lost to every strategy decided in its pass, so
+    # the model-only twins (8 Oct) decide only after all six anchored ones have
+    # decided every city-day: they can never cost their bases a decision.
+    rows = []
+    counts = {"anchored": [0, 0], "model_only": [0, 0]}          # reached, out of time
+    passes = (("anchored", ANCHORED, deadline),
+              ("model_only", MODEL_ONLY, deadline if model_only_deadline is None else min(deadline, model_only_deadline)))
+    for group_name, group, stop_at in passes:
+        for checkpoint_id, row in checkpoints:
+            if time.monotonic() >= stop_at:
+                counts[group_name][1] += 1
                 continue
-            lg = led(city, target)
-            if not probs:
-                rows.append(decision_row(run_id, decided_at, checkpoint_id, sid, city, target,
-                                         why="no ladder"))
-                continue
-            held_s10 = None
-            if sid in S10:
-                yes = [(b, y) for b, (y, _n) in lg["held"].items() if y > 0]
-                held_s10 = {"band_id": yes[0][0], "shares": yes[0][1]} if yes else None
-            ctx = {"bands": bands, "unit": unit_of.get(city, "C"), "probs": dict(probs), "book": book,
-                   "floor_c": floor_c, "floor_basis": floor_basis,
-                   "reading_age_min": reading_age_min, "held": held_s10, "checkpoint": name,
-                   "anchor": {"table": anchor_table, "city": city}}
-            trace = {} if sid in S10 else None
-            view, ebook, why = ev.engine_input(sid, ctx, trace) if trace is not None else ev.engine_input(sid, ctx)
-            s10d = (trace or {}).get("s10") or {}
-            if view is None and s10d.get("action") in ("SELL", "SWITCH") and held_s10:
-                gate = None if status is None else (
-                    lambda dd, k=(city, target, name): candidate_gate(dd, status.get(k)))
-                row_out, ex = exit_of(sid, s10d, held_s10, book, ebook, lg, trace, params,
-                                      run_id, decided_at, checkpoint_id, city, target, prediction=call, gate=gate)
-                rows.append(stamp_s10(row_out, trace))
-                if exits is not None and ex is not None:
-                    exits.append(ex)
-                continue
-            if view is None:
-                rows.append(stamp_s10(decision_row(run_id, decided_at, checkpoint_id, sid, city, target, why=why,
+            counts[group_name][0] += 1
+            city, target, name = row["city_key"], str(row["target_date"]), row["checkpoint"]
+            bands = bands_of.get((city, target)) or []
+            floor = floors.get(city)
+            today = bool(floor) and floor[0] == target
+            floor_c = floor[1] if today else None
+            # The floor's basis and the age of the station reading under it, only
+            # for the target's own local day: yesterday's reading vouches for
+            # nothing today.
+            floor_basis = floor[2] if today and len(floor) > 2 else None
+            reading_age_min = reading_age(floor[3] if today and len(floor) > 3 else None, decided_at)
+            book = engine_book(row.get("market"))
+            for sid in group:
+                if sid in S10:
+                    probs, call = s10_call(s10_ladders.get((city, target, name)))
+                else:
+                    probs = row.get("probs")
+                    call = (checkpoint_id, "prediction_checkpoints") if checkpoint_id else None
+                led = ledgers.get(sid)
+                if led is None:
+                    rows.append(decision_row(run_id, decided_at, checkpoint_id, sid, city, target,
+                                             why="no ledger", prediction=call))
+                    continue
+                lg = led(city, target)
+                if not probs:
+                    rows.append(decision_row(run_id, decided_at, checkpoint_id, sid, city, target,
+                                             why="no ladder"))
+                    continue
+                held_s10 = None
+                if sid in S10:
+                    yes = [(b, y) for b, (y, _n) in lg["held"].items() if y > 0]
+                    held_s10 = {"band_id": yes[0][0], "shares": yes[0][1]} if yes else None
+                ctx = {"bands": bands, "unit": unit_of.get(city, "C"), "probs": dict(probs), "book": book,
+                       "floor_c": floor_c, "floor_basis": floor_basis,
+                       "reading_age_min": reading_age_min, "held": held_s10, "checkpoint": name,
+                       "anchor": {"table": anchor_table, "city": city}}
+                trace = {} if sid in S10 else None
+                view, ebook, why = ev.engine_input(sid, ctx, trace) if trace is not None else ev.engine_input(sid, ctx)
+                s10d = (trace or {}).get("s10") or {}
+                if view is None and s10d.get("action") in ("SELL", "SWITCH") and held_s10:
+                    gate = None if status is None else (
+                        lambda dd, k=(city, target, name): candidate_gate(dd, status.get(k)))
+                    row_out, ex = exit_of(sid, s10d, held_s10, book, ebook, lg, trace, params,
+                                          run_id, decided_at, checkpoint_id, city, target, prediction=call, gate=gate)
+                    rows.append(stamp_s10(row_out, trace))
+                    if exits is not None and ex is not None:
+                        exits.append(ex)
+                    continue
+                if view is None:
+                    rows.append(stamp_s10(decision_row(run_id, decided_at, checkpoint_id, sid, city, target, why=why,
+                                                       prediction=call), trace))
+                    continue
+                d = de.decide(view, book=ebook, ledger=lg, params=params)
+                if status is not None:
+                    d = candidate_gate(d, status.get((city, target, name)))
+                rows.append(stamp_s10(decision_row(run_id, decided_at, checkpoint_id, sid, city, target, d=d,
                                                    prediction=call), trace))
-                continue
-            d = de.decide(view, book=ebook, ledger=lg, params=params)
-            if status is not None:
-                d = candidate_gate(d, status.get((city, target, name)))
-            rows.append(stamp_s10(decision_row(run_id, decided_at, checkpoint_id, sid, city, target, d=d,
-                                               prediction=call), trace))
-            if buys is not None and d.get("action") == "BUY":
-                buys.append((rows[-1], d, checkpoint_id))
-    return rows, {"city_days": len(checkpoints), "reached": reached, "out_of_time": skipped}
+                if buys is not None and d.get("action") == "BUY":
+                    buys.append((rows[-1], d, checkpoint_id))
+    return rows, {"city_days": len(checkpoints), "reached": counts["anchored"][0],
+                  "out_of_time": counts["anchored"][1], "model_only_reached": counts["model_only"][0],
+                  "model_only_out_of_time": counts["model_only"][1]}
 
 
 def exit_of(sid, s10d, held, book, ebook, lg, trace, params, run_id, decided_at, checkpoint_id, city, target,
@@ -580,9 +601,12 @@ def record(written_rows, s10_ladders, bands_by_market, market_of, unit_of, floor
         anchor_table = market_anchor.load(rest)
         run_id = str(uuid.uuid4())
         buys, exits = [], []
+        import engine_orders
+        twin_orders_by = deadline - MODEL_ONLY_RESERVE_S
         rows, detail = decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, params,
                                   anchor_table, deadline - WRITE_RESERVE_S, run_id,
-                                  now.isoformat(), buys=buys, exits=exits, status=seen)
+                                  now.isoformat(), buys=buys, exits=exits, status=seen,
+                                  model_only_deadline=twin_orders_by - 2 * engine_orders.FILL_SECONDS)
         out.update(detail)
         out["actions"] = {}
         for r in rows:
@@ -595,8 +619,18 @@ def record(written_rows, s10_ladders, bands_by_market, market_of, unit_of, floor
         # Part 3b: the BUYs of a switched-on strategy reach its shadow ledger,
         # filled before the tick ends (engine_orders). The decision is written
         # first: the plan must find it.
-        if buys or exits:
-            out["orders"] = send_orders(buys, run_id, deadline - ORDER_RESERVE_S, dry_run, exits=exits)
+        # The anchored strategies' orders first, on the engine's own deadline;
+        # the twins' after, by theirs (MODEL_ONLY_RESERVE_S).
+        twin = lambda sid: sid in MODEL_ONLY
+        a_buys = [b for b in buys if not twin(b[0]["strategy_id"])]
+        a_exits = [e for e in exits if not twin(e["row"]["strategy_id"])]
+        m_buys = [b for b in buys if twin(b[0]["strategy_id"])]
+        m_exits = [e for e in exits if twin(e["row"]["strategy_id"])]
+        if a_buys or a_exits:
+            out["orders"] = send_orders(a_buys, run_id, deadline - ORDER_RESERVE_S, dry_run, exits=a_exits)
+        if m_buys or m_exits:
+            out["model_only_orders"] = send_orders(m_buys, run_id, min(twin_orders_by, deadline - ORDER_RESERVE_S),
+                                                   dry_run, exits=m_exits)
     except Exception as e:                       # noqa: BLE001 - never into the tick
         out["error"] = f"{type(e).__name__}: {str(e)[:160]}"
     out["seconds"] = round(time.monotonic() - t0, 1)

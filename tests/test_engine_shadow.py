@@ -80,7 +80,8 @@ def test_every_strategy_gets_a_row_the_table_accepts():
     ledgers = {sid: flat for sid in es.STRATEGIES}
     rows, detail = es.decide_all([("cp1", ROW)], {}, {("london", "2026-09-28"): BANDS}, {"london": "C"}, {},
                                  ledgers, {}, None, time.monotonic() + 60, "run-1", "2026-09-28T11:36:00+00:00")
-    assert detail == {"city_days": 1, "reached": 1, "out_of_time": 0}
+    assert detail == {"city_days": 1, "reached": 1, "out_of_time": 0,
+                      "model_only_reached": 1, "model_only_out_of_time": 0}
     assert sorted(r["strategy_id"] for r in rows) == sorted(es.STRATEGIES)
     for r in rows:
         assert r["action"] in ACTIONS and CODE.match(r["reason_code"]), r
@@ -122,7 +123,23 @@ def test_a_strategy_without_a_ledger_or_a_quoted_book_is_a_row_too():
 def test_the_deadline_defers_city_days_instead_of_overrunning():
     rows, detail = es.decide_all([("cp1", ROW), ("cp2", dict(ROW, city_key="paris"))], {}, {}, {}, {},
                                  {}, {}, None, time.monotonic() - 1, "r", "t")
-    assert rows == [] and detail == {"city_days": 2, "reached": 0, "out_of_time": 2}
+    assert rows == [] and detail == {"city_days": 2, "reached": 0, "out_of_time": 2,
+                                     "model_only_reached": 0, "model_only_out_of_time": 2}
+
+
+def test_the_twins_decide_only_in_the_time_the_anchored_strategies_leave(monkeypatch):
+    """8 Oct: a deadline that falls after the anchored pass costs the
+    model-only twins their city-days and never an anchored strategy its own."""
+    clock = iter([0.0, 0.0] + [100.0] * 10)        # both anchored checks in time, then past it
+    monkeypatch.setattr(es.time, "monotonic", lambda: next(clock))
+    ledgers = {sid: flat for sid in es.STRATEGIES}
+    rows, detail = es.decide_all([("cp1", ROW), ("cp2", dict(ROW, city_key="paris"))], {},
+                                 {("london", "2026-09-28"): BANDS}, {"london": "C", "paris": "C"}, {},
+                                 ledgers, {}, None, 50.0, "r", "2026-09-28T11:36:00+00:00")
+    assert detail == {"city_days": 2, "reached": 2, "out_of_time": 0,
+                      "model_only_reached": 0, "model_only_out_of_time": 2}
+    assert sorted({r["strategy_id"] for r in rows}) == sorted(es.ANCHORED)
+    assert len(rows) == 2 * len(es.ANCHORED)
 
 
 def test_it_never_raises_into_the_tick(monkeypatch):
@@ -140,12 +157,32 @@ def test_it_never_raises_into_the_tick(monkeypatch):
 
 def test_the_migration_registers_them_disabled_and_lets_switch_be_recorded():
     sql = (ROOT / "supabase" / "migrations" / "20260927150000_engine_strategies_are_registered.sql").read_text()
-    for sid in es.STRATEGIES:
+    for sid in es.ANCHORED:
         assert f"('{sid}'," in sql
-    assert sql.count(", false,") == len(es.STRATEGIES)              # none enabled
+    assert sql.count(", false,") == len(es.ANCHORED)                # none enabled
     assert "on conflict (strategy_id) do nothing" in sql
     assert "'SWITCH'" in sql and "drop constraint if exists decisions_action_check" in sql
     assert "s2_combination_arb" not in es.STRATEGIES
+
+
+def test_the_model_only_twins_are_registered_off_then_put_in_shadow_once():
+    """20261008100000: each twin registered switched off (its ledger opens),
+    its automatic exits off as its base's are, then into shadow only from the
+    state registration gave it - a re-run never switches a twin back on."""
+    from strategies import engine_views as ev
+    sql = (ROOT / "supabase" / "migrations" / "20261008100000_the_model_only_twins_trade_on_paper.sql").read_text()
+    assert es.MODEL_ONLY == tuple(f"{s}_model" for s in es.ANCHORED)
+    assert set(es.MODEL_ONLY) == set(ev.MODEL_ONLY)
+    for sid in es.MODEL_ONLY:
+        assert f"('{sid}'," in sql
+        assert f'"base":"{ev.base_of(sid)}"' in sql
+        assert sql.count(f"'{sid}'") == 3, sid                     # the row, the exits, the state
+    assert sql.count("'YES', false,") + sql.count("'NO', false,") == len(es.MODEL_ONLY)
+    assert "on conflict (strategy_id) do nothing" in sql
+    assert """'{"auto_exit_enabled": false}'""" in sql
+    assert "state = 'research' and reason = 'registered'" in sql
+    assert "public.set_strategy_state(r.strategy_id, 'shadow'," in sql
+    assert "portfolio" not in sql.split("=" * 75)[-1]                 # the body never names the portfolio
 
 
 def test_the_reading_age_is_minutes_from_the_station_reading_to_the_decision():
@@ -190,7 +227,10 @@ def test_an_s10_row_records_the_parameters_its_own_rule_used():
     for r in rows:
         pv = json.loads(r["params_version"])
         assert pv["s10"] == {"view": s10.VIEW_VERSION, "h_switch": s10.h_switch()}
-        assert pv["market_anchor"]["version"] == "prior" and "scope" in pv["market_anchor"]
+        want = ("model-only:w1", 1.0) if r["strategy_id"] in es.MODEL_ONLY else ("prior", 0.0)
+        assert (pv["market_anchor"]["version"], pv["market_anchor"]["w"]) == want, r["strategy_id"]
+        assert "scope" in pv["market_anchor"]
+    assert {r["strategy_id"] for r in rows} == set(es.S10)
     row = es.decision_row("run", "t", "cp", "s11_ladder", "london", "2026-09-28", why="no ladder")
     assert es.stamp_s10(row, None) is row, "a row S10's own rule did not decide passes through"
 
@@ -289,3 +329,44 @@ def test_the_two_columns_are_named_together_as_the_table_requires():
             assert r["prediction_source"] in (None, "prediction_checkpoints", "s10_shadow_checkpoints")
     mig = (ROOT / "supabase" / "migrations" / "20261004210000_decisions_name_their_call.sql").read_text()
     assert "check\n      ((prediction_id is null) = (prediction_source is null))" in mig
+
+
+def test_the_twins_stop_at_their_own_deadline(monkeypatch):
+    """8 Oct: the model-only twins stop MODEL_ONLY_RESERVE_S before the engine's
+    deadline, so variant_shadow keeps its time; the anchored pass is untouched."""
+    clock = iter([0.0, 0.0] + [20.0] * 10)
+    monkeypatch.setattr(es.time, "monotonic", lambda: next(clock))
+    ledgers = {sid: flat for sid in es.STRATEGIES}
+    rows, detail = es.decide_all([("cp1", ROW), ("cp2", dict(ROW, city_key="paris"))], {},
+                                 {("london", "2026-09-28"): BANDS}, {"london": "C", "paris": "C"}, {},
+                                 ledgers, {}, None, 50.0, "r", "2026-09-28T11:36:00+00:00",
+                                 model_only_deadline=10.0)
+    assert detail["reached"] == 2 and detail["model_only_reached"] == 0 and detail["model_only_out_of_time"] == 2
+    assert {r["strategy_id"] for r in rows} == set(es.ANCHORED)
+
+
+def test_record_sends_the_anchored_orders_on_the_engines_deadline_and_the_twins_on_theirs(monkeypatch):
+    import datetime as dt
+    import engine_orders
+    calls = []
+    monkeypatch.setattr(es, "send_orders", lambda b, run, deadline, dry, exits=(): calls.append(
+        (sorted({x[0]["strategy_id"] for x in b}), deadline)) or {"buys": len(b)})
+
+    def decide_all(*a, **k):
+        k["buys"].extend([({"strategy_id": "s12_no"}, {}, "cp"), ({"strategy_id": "s12_no_model"}, {}, "cp")])
+        assert k["model_only_deadline"] == 100.0 - es.MODEL_ONLY_RESERVE_S - 2 * engine_orders.FILL_SECONDS
+        return [{"action": "BUY"}], {"city_days": 1}
+    monkeypatch.setattr(es, "decide_all", decide_all)
+    monkeypatch.setattr(es, "read_ledgers", lambda *a, **k: {})
+    monkeypatch.setattr(es, "collect_status", lambda f: ({}, None))
+    import common, market_anchor, city_clusters
+    monkeypatch.setattr(common, "rest_all", lambda *a, **k: [])
+    monkeypatch.setattr(common, "insert", lambda *a, **k: 1)
+    monkeypatch.setattr(market_anchor, "load", lambda rest=None: None)
+    monkeypatch.setattr(city_clusters, "load", lambda rest=None: None)
+    row = dict(ROW, local_decision_time="2026-09-28T13:36:00")
+    out = es.record([row], {}, {}, {("london", "2026-09-28"): {"market_id": "m"}}, {}, {},
+                    dt.datetime(2026, 9, 28, 11, 36, tzinfo=dt.timezone.utc), deadline=100.0)
+    assert "error" not in out, out
+    assert calls == [(["s12_no"], 100.0 - es.ORDER_RESERVE_S), (["s12_no_model"], 100.0 - es.MODEL_ONLY_RESERVE_S)]
+    assert out["orders"] == {"buys": 1} and out["model_only_orders"] == {"buys": 1}

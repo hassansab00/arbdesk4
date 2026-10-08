@@ -177,8 +177,10 @@ def test_the_engine_hands_its_buys_over_and_writes_the_decision_first(monkeypatc
 def test_orders_follow_the_decisions_insert_and_never_raise(monkeypatch):
     src = open(es.__file__).read()
     body = src[src.index("def record("):]
-    assert body.index('insert("decisions", rows)') < body.index("send_orders(buys"), \
+    assert body.index('insert("decisions", rows)') < body.index("send_orders(a_buys"), \
         "the plan must find its decision: write the decision first"
+    assert body.index("send_orders(a_buys") < body.index("send_orders(m_buys"), \
+        "the anchored strategies' orders go before the model-only twins'"
     import common
     monkeypatch.setattr(common, "rest", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
     out = es.send_orders([({"strategy_id": "s10_winner", "city_key": "x", "resolution_date": "d"}, {}, "cp")],
