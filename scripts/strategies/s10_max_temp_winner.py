@@ -110,7 +110,7 @@ def target(variant, post, book, candidates, min_price_yes=DEFAULT_MIN_PRICE_YES)
     return top, hs.single_bucket_growth(post[top][0], _ask(book, top)), None
 
 
-def _lock_book(post, book, bands, anchor, held_shares, ledger_usd, cash_usd):
+def _lock_book(post, book, bands, anchor, held_shares, ledger_usd, cash_usd, book_iters=None):
     """The best book over the WHOLE ladder that cannot end below the ledger's
     wealth, if one holds the anchor; else None. Every bucket stays in: the lock
     is about what the venue pays, not what our reading rules out."""
@@ -119,7 +119,7 @@ def _lock_book(post, book, bands, anchor, held_shares, ledger_usd, cash_usd):
         return None                      # a bucket without an ask: no equal-shares book
     ladder = [{"id": b, "p": post[b][0], "yes_price": _ask(book, b), "no_price": None} for b in ids]
     out = hs.solve_book(ladder, allow=("YES",), held=held_shares, total_usd=ledger_usd,
-                        cash_usd=cash_usd, lock=True)
+                        cash_usd=cash_usd, lock=True, **({} if book_iters is None else {"iters": int(book_iters)}))
     if f"{anchor}:YES" not in out["weights"]:     # holdings_solver.assets names
         return None
     # solve_book(lock=True) returns a book that holds the lock or all cash, and
@@ -130,7 +130,7 @@ def _lock_book(post, book, bands, anchor, held_shares, ledger_usd, cash_usd):
 def decide(variant, *, bands, unit, probs, book, floor_c=None, floor_basis=None,
            reading_age_min=None, held=None, ledger_usd=1.0, cash_usd=None,
            belief_table=None, cluster=None, checkpoint=None, h=None,
-           min_price_yes=DEFAULT_MIN_PRICE_YES):
+           min_price_yes=DEFAULT_MIN_PRICE_YES, book_iters=None):
     """One S10 decision for one city-day.
 
     bands     the ladder in venue order: dicts with band_id, band_lo, band_hi,
@@ -187,7 +187,7 @@ def decide(variant, *, bands, unit, probs, book, floor_c=None, floor_basis=None,
         if anchor is None:
             out.update(action="NONE", reason=why_not)
             return out
-        book_out = _lock_book(post, book, bands, anchor, None, ledger_usd, cash_usd)
+        book_out = _lock_book(post, book, bands, anchor, None, ledger_usd, cash_usd, book_iters=book_iters)
         if book_out is None or book_out["growth"] <= 0:
             out.update(action="NONE", target=anchor, reason="no book that cannot lose holds the top bucket")
             return out

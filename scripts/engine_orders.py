@@ -87,6 +87,40 @@ def plan_legs(orders, p_post):
     return legs, dropped, legs_p
 
 
+def fit_to_room(legs, room_usd):
+    """(legs, None) when their cash ceilings fit `room_usd`, else (legs scaled
+    to fit, {"room_usd", "before", "after"}).
+
+    The rails sum each leg's cash ceiling - its cost at the limit, the worst
+    fee and a cent, rounded up - against the city-day and cluster rooms;
+    decide sizes the city-day on cost at the fee its price carries. A plan
+    sized to the rail therefore asks a few cents more than it allows and is
+    refused whole: 8 Oct 11:36Z, the twins' first BUYs, "Rail: 30.05 on milan"
+    and "30.01 on tel_aviv" against $30.00. Every leg's shares are scaled by
+    one factor, floored to the share step, until the ceilings fit; the room is
+    taken in whole cents, down."""
+    if room_usd is None or not legs:
+        return legs, None
+    room = math.floor(float(room_usd) * 100 + 1e-6) / 100
+    before = round(sum(float(l["cash_ceiling"]) for l in legs), 2)
+    if before <= room:
+        return legs, None
+    f = room / before
+    out, after = [], before
+    for _ in range(40):
+        out = []
+        for l in legs:
+            limit = float(l["limit_price"])
+            shares = _floor_step(float(l["shares"]) * f)
+            ceiling = _ceil_cents(shares * limit + shares * worst_fee_per_share(limit) + 0.01)
+            out.append(dict(l, shares=f"{shares:.2f}", cash_ceiling=f"{ceiling:.2f}"))
+        after = round(sum(float(l["cash_ceiling"]) for l in out), 2)
+        if after <= room:
+            break
+        f *= 0.995
+    return out, {"room_usd": f"{room:.2f}", "before": f"{before:.2f}", "after": f"{after:.2f}"}
+
+
 def net_edge_per_share(legs, legs_p, rate=FEE_RATE):
     """Share-weighted (posterior - cost at the limit, fee included); None
     without every leg's posterior (queue_plan then refuses the plan)."""
@@ -104,15 +138,27 @@ def net_edge_per_share(legs, legs_p, rate=FEE_RATE):
 def build(decision_id, decision_row, d, run_id, checkpoint_id):
     """(legs, evidence) for one BUY decision, or (None, why)."""
     legs, dropped, legs_p = plan_legs(d.get("orders"), d.get("p_post") or {})
+    legs, fitted = fit_to_room(legs, d.get("room_usd"))
+    if fitted:
+        kept = [l for l in legs if float(l["shares"]) * float(l["limit_price"]) >= MIN_ORDER_USD]
+        dropped += [{"band_id": l["band_id"], "side": l["side"],
+                     "usd": round(float(l["shares"]) * float(l["limit_price"]), 2),
+                     "why": f"below the venue minimum of {MIN_ORDER_USD:g} USDC once fitted to the rails"}
+                    for l in legs if l not in kept]
+        legs = kept
     if not legs:
         return None, "every leg below the venue minimum or unpriced"
+    # A lock's no-loss book covers every outcome; without one of its legs it
+    # can lose, so it is not sent at all (Codex on #343).
+    if d.get("lock") and dropped:
+        return None, "a lock that would lose a leg"
     edge = net_edge_per_share(legs, legs_p)
     evidence = {"source": "engine", "decision_id": decision_id, "run_id": run_id, "checkpoint_id": checkpoint_id,
                 "strategy_id": decision_row["strategy_id"], "city_key": decision_row["city_key"],
                 "resolution_date": decision_row["resolution_date"], "engine_version": d.get("engine_version"),
                 "versions": d.get("versions"), "g_now": d.get("g_now"), "g_target": d.get("g_target"),
                 "target_usd": d.get("target_usd"), "legs_p": legs_p, "dropped": dropped,
-                "net_edge_per_share": None if edge is None else f"{edge:.6f}",
+                "net_edge_per_share": None if edge is None else f"{edge:.6f}", "fitted_to_room": fitted,
                 "execution_assumption": "Independent IOC legs at the tick's ask; filled against the book "
                                         "captured at fill time"}
     return (legs, evidence), None

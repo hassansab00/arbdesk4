@@ -17,6 +17,7 @@ no_ask, no_bid, depth_usd}}, "floor_c", "floor_basis", "reading_age_min",
 S10's SELL (certainly lost) and SWITCH are its own decisions and come back as
 the reason; the engine sizes buys only (it does not decide sells, P5.5).
 """
+import holdings_solver as hs
 import market_anchor
 from strategies import s2_structural_arb as s2
 from strategies import s10_max_temp_winner as s10
@@ -38,6 +39,9 @@ RESEARCH_ONLY = {
 MODEL_ONLY = {f"{b}_model": b for b in (*s10.VARIANTS, *s11.VARIANTS, *s12.VARIANTS)}
 MODEL_ONLY_W = 1.0
 MODEL_ONLY_VERSION = "model-only:w1"
+# The twins' book solves run holdings_solver.MODEL_ONLY_BOOK_ITERS iterations
+# (measured there), recorded on every twin decision as versions.solver.
+MODEL_ONLY_BOOK_ITERS = hs.MODEL_ONLY_BOOK_ITERS
 # The twins are not in this list: it is the set the historical replay
 # (scripts/backtest/replay_engine.py) reproduces byte for byte. engine_input
 # takes a twin through base_of.
@@ -110,7 +114,8 @@ def engine_input(strategy_id, ctx, trace=None):
         d = s10.decide(base, bands=ctx["bands"], unit=ctx["unit"], probs=ctx["probs"], book=book,
                        floor_c=ctx.get("floor_c"), floor_basis=ctx.get("floor_basis"),
                        reading_age_min=ctx.get("reading_age_min"), held=ctx.get("held"),
-                       cluster=ctx.get("cluster"), checkpoint=ctx.get("checkpoint"))
+                       cluster=ctx.get("cluster"), checkpoint=ctx.get("checkpoint"),
+                       book_iters=MODEL_ONLY_BOOK_ITERS if strategy_id in MODEL_ONLY else None)
         if trace is not None:
             trace["s10"] = d
             if d["action"] == "SWITCH":

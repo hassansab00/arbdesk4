@@ -258,6 +258,93 @@ def test_the_engine_reads_the_twins_turns_beside_its_other_reads(monkeypatch):
     assert waits["twins"] == [0.25, es.TWINS_WAIT_S]
 
 
+
+# --------------------------------------------------------------------------
+# The twins solve at MODEL_ONLY_BOOK_ITERS and leave time to fill what they buy
+# --------------------------------------------------------------------------
+def _buy_everything(monkeypatch, seen_params):
+    import decision_engine as de
+    from strategies import engine_views as ev
+    monkeypatch.setattr(ev, "engine_input",
+                        lambda sid, ctx, trace=None: ({"probs": PROBS, "strategy_id": sid}, ctx["book"], None))
+
+    def decide(view, *, book, ledger, params):
+        seen_params.append((view["strategy_id"], params))
+        return {"action": "BUY", "reason_code": "enter", "orders": [], "versions": {}, "binding": []}
+    monkeypatch.setattr(de, "decide", decide)
+
+
+def test_only_the_twins_solve_at_their_own_iterations(monkeypatch):
+    from strategies import engine_views as ev
+    seen = []
+    _buy_everything(monkeypatch, seen)
+    rows, _ = es.decide_all([("c1", ROW)], {}, {("london", "2026-09-28"): BANDS}, {"london": "C"}, {},
+                            {sid: flat for sid in es.STRATEGIES}, {"clusters": "k"}, None, time.monotonic() + 60,
+                            "r", "2026-09-28T11:36:00+00:00")
+    by = dict(seen)
+    engine = [s for s in es.STRATEGIES if s not in es.S10]          # S10 needs its own ladder; none here
+    assert sorted(by) == sorted(engine)
+    assert all(by[s] == {"clusters": "k"} for s in engine if s in es.ANCHORED)
+    assert all(by[s] == {"clusters": "k", "book_iters": ev.MODEL_ONLY_BOOK_ITERS} for s in engine if s in es.MODEL_ONLY)
+    assert ev.MODEL_ONLY_BOOK_ITERS == 1000
+
+
+def test_s10s_twins_build_their_lock_book_at_the_twins_iterations(monkeypatch):
+    from strategies import engine_views as ev
+    import strategies.s10_max_temp_winner as s10
+    seen = {}
+
+    def decide(variant, **k):
+        seen[variant, k.get("book_iters")] = True
+        return {"action": "NONE", "reason": "test"}
+    monkeypatch.setattr(s10, "decide", decide)
+    ctx = {"bands": BANDS, "unit": "C", "probs": dict(PROBS), "book": MARKET, "checkpoint": "noon",
+           "anchor": {"table": None, "city": "london"}}
+    for sid in ("s10_lock", "s10_lock_model"):
+        ev.engine_input(sid, dict(ctx), {})
+    assert seen == {("s10_lock", None): True, ("s10_lock", ev.MODEL_ONLY_BOOK_ITERS): True}
+
+
+def test_the_twins_stop_in_time_to_fill_what_they_bought(monkeypatch):
+    """8 Oct 11:36Z: three twin plans published with the tick nearly out; the
+    one the rails passed never filled. Each BUY moves the twins' stop earlier
+    by its fill time."""
+    seen = []
+    _buy_everything(monkeypatch, seen)
+    clock = iter([0.0, 0.0,          # the anchored pass, both city-days
+                  0.0,               # the twins' first city-day
+                  0.0, 0.0,          # inside it, s11_lock_model and s12_no_model after a BUY
+                  33.0])             # their second: inside 40 s, not inside 40 - 3 BUYs x 2.5
+    monkeypatch.setattr(es.time, "monotonic", lambda: next(clock))
+    cks = [("c1", ROW), ("c2", dict(ROW, city_key="paris"))]
+    buys = []
+    rows, detail = es.decide_all(cks, {}, {("london", "2026-09-28"): BANDS}, {"london": "C", "paris": "C"}, {},
+                                 {sid: flat for sid in es.STRATEGIES}, {}, None, 50.0, "r",
+                                 "2026-09-28T11:36:00+00:00", buys=buys, model_only_deadline=40.0,
+                                 model_only_fill_s=2.5)
+    assert detail["model_only_reached"] == 1 and detail["model_only_out_of_time"] == 1
+    assert detail["reached"] == 2 and detail["out_of_time"] == 0, "the anchored pass never pays for it"
+    assert len([b for b in buys if b[0]["strategy_id"] in es.MODEL_ONLY]) == 3      # s11 x2, s12
+    # with no BUY yet the twins keep their whole window; inside the city-day,
+    # once s11_ladder_model has bought, the rest stop for its fill (Codex on #343)
+    seen.clear()
+    clock = iter([0.0, 39.0, 39.0])
+    monkeypatch.setattr(es.time, "monotonic", lambda: next(clock))
+    buys = []
+    rows, detail = es.decide_all([("c1", ROW)], {}, {}, {"london": "C"}, {}, {sid: flat for sid in es.STRATEGIES},
+                                 {}, None, 50.0, "r", "2026-09-28T11:36:00+00:00", buys=buys,
+                                 model_only_deadline=40.0, model_only_fill_s=2.5)
+    assert detail["model_only_reached"] == 1 and detail["model_only_cut_short"] == 1
+    twins = [r["strategy_id"] for r in rows if r["strategy_id"] in es.MODEL_ONLY]
+    assert twins == ["s10_winner_model", "s10_growth_model", "s10_lock_model", "s11_ladder_model"]
+    assert [b[0]["strategy_id"] for b in buys if b[0]["strategy_id"] in es.MODEL_ONLY] == ["s11_ladder_model"]
+
+
+def test_the_tick_hands_the_twins_the_fill_time():
+    src = (ROOT / "scripts" / "engine_shadow.py").read_text()
+    assert "model_only_last=twins_last, model_only_fill_s=engine_orders.FILL_SECONDS)" in src
+
+
 def test_it_never_raises_into_the_tick(monkeypatch):
     import common
 
