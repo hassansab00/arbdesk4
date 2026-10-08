@@ -11,6 +11,7 @@ import math
 import pytest
 
 import station_width_score as ws
+from archive_observations import _cell
 from probability_engine import clamp_prob, compute_band_probabilities
 
 B = [{"band_id": f"00000000-0000-0000-0000-00000000000{i}", "band_lo": lo, "band_hi": hi,
@@ -22,13 +23,13 @@ MARKET = {"market_id": "11111111-0000-0000-0000-000000000000", "city_key": "lond
           "resolution_date": "2026-09-29", "winning_band_id": WIN}
 
 
-def _stored(centre, sigma, width, at="2026-09-28T20:36:00+00:00", lead=1, **over):
+def _stored(centre, sigma, width, at="2026-09-28T20:36:00+00:00", lead=1, pid0=1000, **over):
     probs = compute_band_probabilities(centre, sigma, "C", B)
-    return [dict({"band_id": b, "computed_at": at, "raw_prob": round(clamp_prob(p), 6),
+    return [dict({"prob_id": pid0 + i, "band_id": b, "computed_at": at, "raw_prob": round(clamp_prob(p), 6),
                   "calibrated_prob": round(clamp_prob(p), 6), "centre_c": centre, "sigma_c": sigma,
                   "station_width_c": width, "lead_days": lead, "observed_floor_c": None,
                   "forecast_version": "aaaaaaaa-0000-0000-0000-000000000000"}, **over)
-            for b, p in probs]
+            for i, (b, p) in enumerate(probs)]
 
 
 def _midnight():
@@ -139,10 +140,12 @@ def test_the_bootstrap_resamples_whole_dates_and_is_repeatable():
     assert a["log_loss_gain_90"][0] == pytest.approx(0.0, abs=1e-9)
 
 
-def _run(monkeypatch, markets, done, prices, labels=(), dry=False):
+def _run(monkeypatch, markets, done, prices, labels=(), dry=False, pruned=None):
     import sys
     import types
     import common as real_common
+    import weather_history
+    weather_history.reset()
     written, logged, fact = {}, [], [dict(r) for r in done]
     common = types.ModuleType("common")
 
@@ -162,6 +165,9 @@ def _run(monkeypatch, markets, done, prices, labels=(), dry=False):
             return [r for r in prices if r["band_id"] in p["band_id"]]
         if path == "derived_city_day_features":
             return list(labels)
+        if path == "ingest_log":
+            assert p["job"] == "eq.archive_probabilities" and p["status"] == "eq.ok"
+            return [{"finished_at": "2026-09-30T02:45:00+00:00", "detail": pruned}] if pruned else []
         raise AssertionError(path)
 
     def upsert(table, rows, key):
@@ -200,3 +206,57 @@ def test_a_dry_run_writes_and_logs_nothing(monkeypatch):
     detail, written, logged = _run(monkeypatch, [MARKET], [], _stored(19.4, 1.5, 1.0), dry=True)
     assert written == {} and logged == []
     assert detail["scored_tonight"] == 1 and detail["summary"]["markets"] == 1
+
+
+# --------------------------------------------------------------------------
+# FRESH SUPABASE (Hassan, 8 Oct): the price prune keeps three days of markets,
+# so a market below its cut is scored from the archive's committed file.
+# --------------------------------------------------------------------------
+ARCHIVED = "data/archive/probabilities/probabilities-2026-09-29-to-2026-09-29.csv.gz"
+PRUNED = {"archived_through": "2026-09-30", "file": ARCHIVED}
+
+
+def _write_archive(root, rows):
+    """The file as archive_observations writes it: every column of the prune's
+    view, each cell through _cell, the market's resolution_date last."""
+    import csv
+    import gzip
+    import os
+    path = root / ARCHIVED
+    os.makedirs(path.parent, exist_ok=True)
+    cols = list(rows[0]) + ["resolution_date"]
+    with gzip.open(path, "wt", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=cols)
+        w.writeheader()
+        for r in rows:
+            w.writerow({c: _cell(v) for c, v in dict(r, resolution_date="2026-09-29").items()})
+
+
+def test_a_market_below_the_price_cut_is_scored_from_the_archive_alike(monkeypatch, tmp_path):
+    import weather_history
+    prices = _stored(19.4, 1.5, 1.0)
+    labels = [{"city_key": "london", "obs_date": "2026-09-29", "max_c": 19.6,
+               "computed_at": "2026-09-30T05:00:00+00:00"}]
+    _, from_db, _ = _run(monkeypatch, [MARKET], [], prices, labels)
+    _write_archive(tmp_path, prices)
+    monkeypatch.setattr(weather_history, "ROOT", str(tmp_path))
+    _, from_archive, _ = _run(monkeypatch, [MARKET], [], [], labels, pruned=PRUNED)
+    assert from_archive["fact_station_width_score"] == from_db["fact_station_width_score"]
+    # a row the database still holds wins; the archive fills the rest
+    _, mixed, _ = _run(monkeypatch, [MARKET], [], prices[:2], labels, pruned=PRUNED)
+    assert mixed["fact_station_width_score"] == from_db["fact_station_width_score"]
+
+
+def test_a_checkout_without_the_pruned_file_refuses(monkeypatch, tmp_path):
+    import weather_history
+    monkeypatch.setattr(weather_history, "ROOT", str(tmp_path))
+    with pytest.raises(weather_history.StaleCheckout):
+        _run(monkeypatch, [MARKET], [], [], pruned=PRUNED)
+
+
+def test_no_archive_is_read_when_no_market_reaches_below_the_cut(monkeypatch, tmp_path):
+    import weather_history
+    monkeypatch.setattr(weather_history, "ROOT", str(tmp_path))      # no file there
+    _, written, _ = _run(monkeypatch, [MARKET], [], _stored(19.4, 1.5, 1.0),
+                         pruned={"archived_through": "2026-09-29", "file": ARCHIVED})
+    assert len(written["fact_station_width_score"]) == 1

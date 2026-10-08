@@ -201,5 +201,47 @@ async function build() {
     await db.exec('reset role');
   }
 
-  console.log("PASS: model-forecasts-week: frozen rows take their table from their model (an override's model is weather_forecast_models'; one in both tables refuses, nothing changed); v_hit_forecasts unchanged by the migration and by a 7-day prune of weather_forecast_models (6 refuses); a weather_forecasts row 10 days late is served live and frozen; the freeze never touches the model rows below that table's oldest day, empty or not; closed to the browser; re-runnable");
+  // 8 - Fresh Supabase (8 Oct): the floor is two days, the function otherwise
+  // the week's. Unfrozen days refuse; frozen, the model rows for days 3 to 40
+  // go and v_hit_forecasts returns every row it returned before.
+  {
+    const FRESH = read('20261008190000_the_prices_keep_three_days_and_models_two.sql');
+    const db2 = await build();
+    const q2 = async (sql) => (await db2.query(sql)).rows;
+    const prune2 = async (args) => (await q2(`select public.prune_forecast_models(${args}) as r`))[0].r;
+    await db2.exec(MIG);
+    await db2.exec(FRESH);
+    await db2.exec(FRESH);                                       // re-runnable
+    const one2 = await prune2('1, true');
+    assert.equal(one2.ok, false, 'one day is under the floor');
+    assert.match(one2.error, /at least 2/);
+    const unfrozen = await prune2('2, true');
+    assert.equal(unfrozen.ok, false, 'days the hit forecasts have not frozen were offered');
+    assert.match(unfrozen.error, /not in derived_hit_forecasts/);
+    await db2.exec(`select public.freeze_hit_forecasts()`);
+    const before2 = JSON.stringify(await q2(HITS));
+    assert.equal(JSON.parse(before2).length, 38 * 4);
+    const dry2 = await prune2('2, true');
+    assert.equal(dry2.ok, true, JSON.stringify(dry2));
+    assert.equal(Number(dry2.would_delete), 38 * 2, 'days 3 to 40, two model rows each');
+    assert.equal((await prune2('2, false, null, 75')).ok, false, 'a mismatched count deleted');
+    const done2 = await prune2('2, false, null, 76');
+    assert.equal(done2.ok, true, JSON.stringify(done2));
+    assert.equal(Number(done2.deleted), 76);
+    assert.equal((await q2(`select count(*)::int as n from public.weather_forecast_models`))[0].n, 0);
+    assert.equal(JSON.stringify(await q2(HITS)), before2, 'the hit forecasts lost or changed rows at the 2-day prune');
+    for (const role of ['anon', 'authenticated']) {
+      assert.equal((await q2(`select has_function_privilege('${role}', 'public.prune_forecast_models(integer,boolean,date,bigint)', 'execute') as ok`))[0].ok,
+        false, `${role} can execute the prune`);
+    }
+    assert.equal((await q2(`select has_function_privilege('service_role', 'public.prune_forecast_models(integer,boolean,date,bigint)', 'execute') as ok`))[0].ok, true);
+    // Two days shed every night: the reclaim backstop is daily, after the
+    // 02:36 archive (cron.schedule replaces a job by name: the last call is
+    // the job).
+    const backstop = (await q2(`select schedule, command from cron.calls
+                                 where jobname = 'ad4_reclaim_weather_forecast_models'`)).at(-1);
+    assert.deepEqual(backstop, { schedule: '0 3 * * *', command: 'VACUUM (FULL, ANALYZE) public.weather_forecast_models' });
+  }
+
+  console.log("PASS: model-forecasts-week: frozen rows take their table from their model (an override's model is weather_forecast_models'; one in both tables refuses, nothing changed); v_hit_forecasts unchanged by the migration and by a 7-day prune of weather_forecast_models (6 refuses); a weather_forecasts row 10 days late is served live and frozen; the freeze never touches the model rows below that table's oldest day, empty or not; closed to the browser; re-runnable; two days from Fresh Supabase (8 Oct: 1 refuses, unfrozen days refuse, a 2-day prune leaves v_hit_forecasts unchanged, the reclaim backstop daily)");
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -190,23 +190,27 @@ select cron.schedule(
   'VACUUM (FULL, ANALYZE) public.signals'
 );
 
--- Each model's forecasts (plan v2 P1.6 phase 2, 29 Sep): pruned by for_date
--- as weather_forecasts is, so reclaimed as it is - weekly, Monday 06:50,
--- after the two other weather tables. Nothing writes the table then (the
--- ingest runs at 03:36 and 04:36).
+-- Each model's forecasts (plan v2 P1.6 phase 2, 29 Sep): pruned by for_date.
+-- Weekly, Monday 06:50, until 8 Oct; DAILY since the table keeps two days
+-- (Fresh Supabase, 20261008190000), as every dataset kept three days or less
+-- is. The archive asks for its own reclaim, so this is the backstop: 03:00,
+-- after the 02:36 archive, ahead of the other backstops. Nothing writes the
+-- table then (the ingest runs at 03:36 and 04:36).
 select cron.schedule(
   'ad4_reclaim_weather_forecast_models',
-  '50 6 * * 1',
+  '0 3 * * *',
   'VACUUM (FULL, ANALYZE) public.weather_forecast_models'
 );
 
--- Prices no reader selects, 30 days past their market (plan v2 P1.6 phase 2,
--- step 6, 29 Sep): the archive sheds about a day of them a night and asks for
--- its own reclaim, so this is only the backstop - weekly, Monday 07:05, after
--- the weather tables and outside the hourly tick (:36) and the engine runs.
+-- Prices no reader selects, past their market (plan v2 P1.6 phase 2, step 6,
+-- 29 Sep): the archive sheds about a day of them a night and asks for its own
+-- reclaim, so this is only the backstop. Weekly, Monday 07:05, until 8 Oct;
+-- DAILY since the prices keep three days (Fresh Supabase, 20261008190000):
+-- 03:05, after the 02:36 archive, outside the hourly tick (:36) and the
+-- engine runs.
 select cron.schedule(
   'ad4_reclaim_band_probabilities',
-  '5 7 * * 1',
+  '5 3 * * *',
   'VACUUM (FULL, ANALYZE) public.band_probabilities'
 );
 
