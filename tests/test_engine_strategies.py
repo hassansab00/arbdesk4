@@ -212,7 +212,10 @@ def test_a_book_that_does_not_quote_every_bucket_has_no_anchor():
 def test_every_engine_strategy_has_a_model_only_twin():
     bases = (*ev.s10.VARIANTS, *ev.s11.VARIANTS, *ev.s12.VARIANTS)
     assert ev.MODEL_ONLY == {f"{b}_model": b for b in bases}
-    assert set(ev.MODEL_ONLY) <= set(ev.ENGINE_STRATEGIES)
+    # Not in ENGINE_STRATEGIES: the historical replay's set stays what it was (Codex on #341).
+    assert not set(ev.MODEL_ONLY) & set(ev.ENGINE_STRATEGIES)
+    from backtest import replay_engine
+    assert replay_engine.STRATEGIES == ("s11_ladder", "s11_lock", "s12_no", *ev.s2.VARIANTS)
     for twin, base in ev.MODEL_ONLY.items():
         assert ev.base_of(twin) == base and ev.base_of(base) == base
     assert ev.base_of("s2_combination_arb") == "s2_combination_arb"

@@ -521,7 +521,7 @@ def read_ledgers(rest, rest_all, now, snapshot=None):
     return out
 
 
-def send_orders(buys, run_id, deadline, dry_run=False, exits=()):
+def send_orders(buys, run_id, deadline, dry_run=False, exits=(), max_fills=None):
     """engine_orders.send for this run's BUYs and S10 exits; reads only when
     one of their strategies is switched on. Never raises."""
     from common import rest, rest_all, rpc
@@ -541,7 +541,8 @@ def send_orders(buys, run_id, deadline, dry_run=False, exits=()):
                           ("run_id", f"eq.{run_id}"), ("action", "in.(BUY,SELL,SWITCH)")], order="decision_id.asc")}
         import paper_worker
         return engine_orders.send(buys, accounts, enabled, ids, run_id, deadline, rpc, rest,
-                                  paper_worker.fill_order, dry_run=dry_run, exits=exits)
+                                  paper_worker.fill_order, dry_run=dry_run, exits=exits,
+                                  max_fills=engine_orders.MAX_FILLS if max_fills is None else max_fills)
     except Exception as e:                       # noqa: BLE001 - never into the tick
         return {"buys": len(buys), "error": f"{type(e).__name__}: {str(e)[:160]}"}
 
@@ -629,8 +630,12 @@ def record(written_rows, s10_ladders, bands_by_market, market_of, unit_of, floor
         if a_buys or a_exits:
             out["orders"] = send_orders(a_buys, run_id, deadline - ORDER_RESERVE_S, dry_run, exits=a_exits)
         if m_buys or m_exits:
+            # MAX_FILLS is per tick: the twins fill only what the anchored
+            # strategies left of it (Codex on #341).
+            used = sum(((out.get("orders") or {}).get("fills") or {}).values())
             out["model_only_orders"] = send_orders(m_buys, run_id, min(twin_orders_by, deadline - ORDER_RESERVE_S),
-                                                   dry_run, exits=m_exits)
+                                                   dry_run, exits=m_exits,
+                                                   max_fills=max(0, engine_orders.MAX_FILLS - used))
     except Exception as e:                       # noqa: BLE001 - never into the tick
         out["error"] = f"{type(e).__name__}: {str(e)[:160]}"
     out["seconds"] = round(time.monotonic() - t0, 1)

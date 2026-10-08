@@ -38,8 +38,11 @@ RESEARCH_ONLY = {
 MODEL_ONLY = {f"{b}_model": b for b in (*s10.VARIANTS, *s11.VARIANTS, *s12.VARIANTS)}
 MODEL_ONLY_W = 1.0
 MODEL_ONLY_VERSION = "model-only:w1"
+# The twins are not in this list: it is the set the historical replay
+# (scripts/backtest/replay_engine.py) reproduces byte for byte. engine_input
+# takes a twin through base_of.
 ENGINE_STRATEGIES = (tuple(s10.VARIANTS) + tuple(s11.VARIANTS) + tuple(s12.VARIANTS)
-                     + tuple(s2.VARIANTS) + tuple(RESEARCH_ONLY) + tuple(MODEL_ONLY))
+                     + tuple(s2.VARIANTS) + tuple(RESEARCH_ONLY))
 
 
 def base_of(strategy_id):

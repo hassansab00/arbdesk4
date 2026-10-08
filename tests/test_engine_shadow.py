@@ -349,8 +349,8 @@ def test_record_sends_the_anchored_orders_on_the_engines_deadline_and_the_twins_
     import datetime as dt
     import engine_orders
     calls = []
-    monkeypatch.setattr(es, "send_orders", lambda b, run, deadline, dry, exits=(): calls.append(
-        (sorted({x[0]["strategy_id"] for x in b}), deadline)) or {"buys": len(b)})
+    monkeypatch.setattr(es, "send_orders", lambda b, run, deadline, dry, exits=(), max_fills=None: calls.append(
+        (sorted({x[0]["strategy_id"] for x in b}), deadline, max_fills)) or {"buys": len(b), "fills": {"filled": 5}})
 
     def decide_all(*a, **k):
         k["buys"].extend([({"strategy_id": "s12_no"}, {}, "cp"), ({"strategy_id": "s12_no_model"}, {}, "cp")])
@@ -368,5 +368,7 @@ def test_record_sends_the_anchored_orders_on_the_engines_deadline_and_the_twins_
     out = es.record([row], {}, {}, {("london", "2026-09-28"): {"market_id": "m"}}, {}, {},
                     dt.datetime(2026, 9, 28, 11, 36, tzinfo=dt.timezone.utc), deadline=100.0)
     assert "error" not in out, out
-    assert calls == [(["s12_no"], 100.0 - es.ORDER_RESERVE_S), (["s12_no_model"], 100.0 - es.MODEL_ONLY_RESERVE_S)]
-    assert out["orders"] == {"buys": 1} and out["model_only_orders"] == {"buys": 1}
+    # MAX_FILLS is per tick: the twins get what the anchored orders left (Codex on #341)
+    assert calls == [(["s12_no"], 100.0 - es.ORDER_RESERVE_S, None),
+                     (["s12_no_model"], 100.0 - es.MODEL_ONLY_RESERVE_S, engine_orders.MAX_FILLS - 5)]
+    assert out["orders"]["buys"] == 1 and out["model_only_orders"]["buys"] == 1
