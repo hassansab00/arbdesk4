@@ -374,3 +374,98 @@ def test_send_fills_no_more_than_the_budget_it_is_given(monkeypatch):
             {"s": "acct"}, {"s"}, {("s", "c", "d"): 1}, "run", time.monotonic() + 30,
             lambda *a, **k: "p1", rest, lambda o: {}, max_fills=4)
     assert seen["max_fills"] == 4
+
+
+# --------------------------------------------------------------------------
+# A plan sized to the rail fits the rail (8 Oct 11:36Z)
+# --------------------------------------------------------------------------
+# The two plans the rails refused on the twins' first BUYs, as published.
+MILAN = [{"side": "NO", "shares": "46.75", "band_id": "deaef28a", "limit_price": "0.63", "cash_ceiling": "30.05"}]
+TEL_AVIV = [{"side": "YES", "shares": "367.66", "band_id": "3ffe4de0", "limit_price": "0.078", "cash_ceiling": "30.01"}]
+
+
+def _rail_sum(legs):
+    """What the city-day rail adds up (20260928090000): each leg's cash ceiling."""
+    return sum(Decimal(l["cash_ceiling"]) for l in legs)
+
+
+@pytest.mark.parametrize("legs", [MILAN, TEL_AVIV])
+def test_the_refused_plans_reproduce_and_fit_once_scaled(legs):
+    # the ceiling the published leg carried is plan_legs' own arithmetic
+    shares, limit = float(legs[0]["shares"]), float(legs[0]["limit_price"])
+    assert eo._ceil_cents(shares * limit + shares * eo.worst_fee_per_share(limit) + 0.01) == float(legs[0]["cash_ceiling"])
+    room = 0.03 * 1000.0                              # the rail on a $1,000 shadow ledger
+    assert _rail_sum(legs) > Decimal("30.00")         # refused as published
+    fitted, how = eo.fit_to_room(legs, room)
+    assert _rail_sum(fitted) <= Decimal("30.00"), "the rail now lets it through"
+    assert how == {"room_usd": "30.00", "before": legs[0]["cash_ceiling"], "after": f"{_rail_sum(fitted):.2f}"}
+    l = fitted[0]
+    assert Decimal(l["cash_ceiling"]) >= Decimal(l["shares"]) * Decimal(l["limit_price"]), "the leg stays valid"
+    assert 0.99 * shares <= float(l["shares"]) < shares, "a few cents off, not a different bet"
+    assert (l["band_id"], l["side"], l["limit_price"]) == (legs[0]["band_id"], legs[0]["side"], legs[0]["limit_price"])
+
+
+def test_a_plan_inside_its_room_or_without_one_is_untouched():
+    legs, _d, _p = eo.plan_legs(ORDERS, P_POST)
+    assert eo.fit_to_room(legs, None) == (legs, None)
+    assert eo.fit_to_room(legs, float(_rail_sum(legs))) == (legs, None)
+    assert eo.fit_to_room([], 10.0) == ([], None)
+
+
+def test_every_leg_is_scaled_by_one_factor_and_a_leg_that_falls_below_the_minimum_is_dropped():
+    legs = [dict(MILAN[0]), {"side": "YES", "shares": "70.00", "band_id": "b9", "limit_price": "0.08",
+                             "cash_ceiling": f"{eo._ceil_cents(70 * 0.08 + 70 * eo.worst_fee_per_share(0.08) + 0.01):.2f}"}]
+    fitted, _how = eo.fit_to_room(legs, 30.0)
+    assert _rail_sum(fitted) <= Decimal("30.00")
+    r = [float(a["shares"]) / float(b["shares"]) for a, b in zip(fitted, legs)]
+    assert abs(r[0] - r[1]) < 0.01, r
+    # through build: the 70-share leg is $5.60 at 0.08, so scaled it falls under the venue minimum
+    d = {"orders": [{"band_id": l["band_id"], "side": l["side"], "limit_price": float(l["limit_price"]),
+                     "shares": float(l["shares"])} for l in legs], "p_post": {}, "room_usd": 30.0}
+    (out, ev), why = eo.build(1, {"strategy_id": "s12_no_model", "city_key": "milan", "resolution_date": "2026-10-08"},
+                             d, "run", "cp")
+    assert why is None and [l["band_id"] for l in out] == ["deaef28a"]
+    assert ev["fitted_to_room"]["room_usd"] == "30.00"
+    assert [x["band_id"] for x in ev["dropped"]] == ["b9"] and "once fitted to the rails" in ev["dropped"][0]["why"]
+    assert _rail_sum(out) <= Decimal("30.00")
+
+
+def test_a_decision_sized_to_the_city_day_rail_publishes_a_plan_the_rail_accepts():
+    """End to end, as s10_growth_model's tel_aviv BUY: one target bucket,
+    capped at 3% of $1,000 on cost; the plan built from it reserves no more
+    than the rail allows."""
+    import decision_engine as de
+    view = {"strategy_id": "t", "city_key": "c", "resolution_date": "2026-09-28",
+            "probs": {"a": 0.1, "b": 0.6, "c": 0.2, "d": 0.1}, "allow": ("YES",), "only": ["b:YES"]}
+    book = {"a": {"ask": 0.10, "bid": 0.08}, "b": {"ask": 0.35, "bid": 0.33, "depth_usd": 500.0},
+            "c": {"ask": 0.30, "bid": 0.28}, "d": {"ask": 0.10, "bid": 0.08}}
+    d = de.decide(view, book=book, ledger={"equity_usd": 1000.0, "cash_usd": 1000.0},
+                  params={"against_market_gate_on": False})
+    assert d["action"] == "BUY" and "city_day" in d["binding"]
+    assert abs(d["room_usd"] - 30.0) < 1e-9
+    legs, _dropped, _p = eo.plan_legs(d["orders"], d["p_post"])
+    assert _rail_sum(legs) > Decimal("30.00"), "unfitted, the reservation is over the rail"
+    (out, _ev), why = eo.build(1, {"strategy_id": "t", "city_key": "c", "resolution_date": "2026-09-28"},
+                               d, "run", "cp")
+    assert why is None and _rail_sum(out) <= Decimal("30.00")
+
+
+def test_the_twins_solve_at_their_iterations_and_say_so(monkeypatch):
+    import decision_engine as de
+    import holdings_solver as hs
+    seen = []
+    real = hs.solve_book
+
+    def solve_book(*a, **k):
+        seen.append(k.get("iters"))
+        return real(*a, **k)
+    monkeypatch.setattr(hs, "solve_book", solve_book)
+    view = {"strategy_id": "t", "city_key": "c", "resolution_date": "2026-09-28",
+            "probs": {"a": 0.1, "b": 0.5, "c": 0.3, "d": 0.1}}
+    book = {"a": {"ask": 0.10, "bid": 0.08}, "b": {"ask": 0.35, "bid": 0.33, "depth_usd": 500.0},
+            "c": {"ask": 0.30, "bid": 0.28}, "d": {"ask": 0.10, "bid": 0.08}}
+    base = de.decide(view, book=book, ledger={"equity_usd": 1000.0, "cash_usd": 1000.0})
+    twin = de.decide(view, book=book, ledger={"equity_usd": 1000.0, "cash_usd": 1000.0},
+                     params={"book_iters": 1000})
+    assert seen == [None, 1000]
+    assert "solver" not in base["versions"] and twin["versions"]["solver"] == "book-iters:1000"

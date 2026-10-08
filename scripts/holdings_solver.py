@@ -283,6 +283,16 @@ def solve_robust(ladder, sds, alpha=ALPHA_PRIOR, allow=("YES", "NO"),
 # --------------------------------------------------------------------------
 
 BOOK_ITERS = 4000
+# The model-only twins' book solves (engine_views.MODEL_ONLY). At w = 1 a twin
+# solves where its base at w = 0 skips the solve, and the tick could not fit
+# them: on 8 Oct 10:36Z they reached none of 22 city-days. Replayed on the 72
+# recorded runs to 8 Oct 06:36Z (762 city-days, each twin on a fresh $1,000
+# ledger), 1,000 iterations gave the same action on all 4,572 twin decisions
+# and the same 506 BUYs as BOOK_ITERS, $2.88 apart in all over the 506, at
+# 0.37 s of CPU a city-day against 1.49 s. 500 iterations x 100 draws, 1,000 x
+# 100 and 1,000 x 50 changed 21, 19 and 44 of the 4,572 actions and are not
+# used. The anchored strategies keep BOOK_ITERS.
+MODEL_ONLY_BOOK_ITERS = 1000
 BIND_TOL = 1e-4
 
 

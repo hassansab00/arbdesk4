@@ -161,6 +161,11 @@ def decide(view, *, book, ledger, rails=None, halted=False, params=None, state=N
                         "timing": timing.TIMING_VERSION,
                         "market_anchor": view.get("anchor"),
                         "clusters": city_clusters.version_of(params.get("clusters"))}}
+    # A book solve at other than holdings_solver.BOOK_ITERS iterations (the
+    # model-only twins, engine_views.MODEL_ONLY_BOOK_ITERS) says so on the row.
+    book_iters = params.get("book_iters")
+    if book_iters is not None:
+        out["versions"]["solver"] = f"book-iters:{int(book_iters)}"
     holding = any(float(y) > 0 or float(n) > 0 for y, n in held.values())
     idle = "HOLD" if holding else "NONE"
 
@@ -215,6 +220,9 @@ def decide(view, *, book, ledger, rails=None, halted=False, params=None, state=N
     if max_spend <= 0:
         out.update(action=idle, reason_code=f"{room_by}_full", binding=[room_by])
         return out
+    # The dollars the rails leave this ladder, for the plan's cash reservation
+    # to fit (engine_orders.fit_to_room).
+    out["room_usd"] = max_spend * equity
     # The lock's floor: this ladder's free cash plus its holdings at cost. A
     # ledger with money on other ladders has less than 1 here, and a floor of
     # 1 refused every lock while anything else was held (the replay: all 119
@@ -236,7 +244,7 @@ def decide(view, *, book, ledger, rails=None, halted=False, params=None, state=N
     solved = hs.solve_book(ladder, allow=allow, caps=caps, held=held, total_usd=equity, cash_usd=cash,
                            sds=sds, alpha=params.get("alpha", hs.ALPHA_PRIOR),
                            lock=bool(view.get("lock")), max_price=rails.get("max_price"),
-                           lock_floor=lock_floor)
+                           lock_floor=lock_floor, **({} if book_iters is None else {"iters": int(book_iters)}))
     frac = hs.fractional(solved, params.get("lambda", hs.LAMBDA_PRIOR))
     out["binding"] = list(out["binding"]) + [b for b in solved["binding"] if b not in out["binding"]]
     # Drawdown scaling after lambda's own bounds, so a learned lambda at its

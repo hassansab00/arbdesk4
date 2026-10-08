@@ -66,6 +66,10 @@ MODEL_ONLY_RESERVE_S = 8.0
 # cut every hour. The pass takes them least recently decided first instead:
 # one the twins have not decided in TWINS_LOOKBACK_H, then the one they
 # decided longest ago, so each city-day gets its turn.
+# TWINS FILL WHAT THEY BUY (8 Oct 11:36Z). The first tick with twin BUYs
+# published three plans with the tick nearly out: the one the rails let
+# through queued at 13.94 and never filled (fills {}), and expired. The twins'
+# pass now stops FILL_SECONDS earlier for every BUY or exit it has decided.
 TWINS_LOOKBACK_H = 48
 TWINS_WAIT_S = 1.0
 TWINS_ROWS_MAX = 1000           # db-max-rows; newest first, so a cut drops the oldest
@@ -345,7 +349,7 @@ def _num(x):
 
 def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, params, anchor_table,
                deadline, run_id, decided_at, buys=None, exits=None, status=None, model_only_deadline=None,
-               model_only_last=None):
+               model_only_last=None, model_only_fill_s=0.0):
     """(rows, detail). checkpoints: [(checkpoint_id, row)] written this tick,
     latest per city-day. deadline: time.monotonic() to stop at. `buys`, when
     given, collects (row, decision, checkpoint_id) for every BUY: its orders
@@ -357,7 +361,10 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
     is where the model-only twins' pass stops. `model_only_last`, when given
     ({(city, target): when the twins last decided it}, or a function of the
     seconds the twins have left that returns it, called only if they have
-    some), puts that pass in least-recently-decided order (least_recent_first)."""
+    some), puts that pass in least-recently-decided order (least_recent_first).
+    `model_only_fill_s`: the twins stop that much earlier for each BUY or exit
+    they have decided, so what they buy has time to fill (TWINS FILL WHAT THEY
+    BUY). Their book solves run engine_views.MODEL_ONLY_BOOK_ITERS iterations."""
     import decision_engine as de
     from strategies import engine_views as ev
 
@@ -370,13 +377,17 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
     passes = (("anchored", ANCHORED, deadline),
               ("model_only", MODEL_ONLY, deadline if model_only_deadline is None else min(deadline, model_only_deadline)))
     for group_name, group, stop_at in passes:
+        twin = group_name == "model_only"
+        g_params = dict(params or {}, book_iters=ev.MODEL_ONLY_BOOK_ITERS) if twin else params
+        acted_before = len(buys or []) + len(exits or [])
         todo = checkpoints
         left = stop_at - time.monotonic() if group_name == "model_only" and model_only_last is not None else 0.0
         if left > 0:
             todo = least_recent_first(checkpoints, model_only_last(left) if callable(model_only_last)
                                       else model_only_last)
         for checkpoint_id, row in todo:
-            if time.monotonic() >= stop_at:
+            acted = len(buys or []) + len(exits or []) - acted_before if twin else 0
+            if time.monotonic() >= stop_at - model_only_fill_s * acted:
                 counts[group_name][1] += 1
                 continue
             counts[group_name][0] += 1
@@ -421,7 +432,7 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
                 if view is None and s10d.get("action") in ("SELL", "SWITCH") and held_s10:
                     gate = None if status is None else (
                         lambda dd, k=(city, target, name): candidate_gate(dd, status.get(k)))
-                    row_out, ex = exit_of(sid, s10d, held_s10, book, ebook, lg, trace, params,
+                    row_out, ex = exit_of(sid, s10d, held_s10, book, ebook, lg, trace, g_params,
                                           run_id, decided_at, checkpoint_id, city, target, prediction=call, gate=gate)
                     rows.append(stamp_s10(row_out, trace))
                     if exits is not None and ex is not None:
@@ -431,7 +442,7 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
                     rows.append(stamp_s10(decision_row(run_id, decided_at, checkpoint_id, sid, city, target, why=why,
                                                        prediction=call), trace))
                     continue
-                d = de.decide(view, book=ebook, ledger=lg, params=params)
+                d = de.decide(view, book=ebook, ledger=lg, params=g_params)
                 if status is not None:
                     d = candidate_gate(d, status.get((city, target, name)))
                 rows.append(stamp_s10(decision_row(run_id, decided_at, checkpoint_id, sid, city, target, d=d,
@@ -687,7 +698,7 @@ def record(written_rows, s10_ladders, bands_by_market, market_of, unit_of, floor
                                   anchor_table, deadline - WRITE_RESERVE_S, run_id,
                                   now.isoformat(), buys=buys, exits=exits, status=seen,
                                   model_only_deadline=twin_orders_by - 2 * engine_orders.FILL_SECONDS,
-                                  model_only_last=twins_last)
+                                  model_only_last=twins_last, model_only_fill_s=engine_orders.FILL_SECONDS)
         out.update(detail)
         out["actions"] = {}
         for r in rows:
