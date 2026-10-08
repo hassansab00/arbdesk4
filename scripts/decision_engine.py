@@ -153,7 +153,7 @@ def decide(view, *, book, ledger, rails=None, halted=False, params=None, state=N
            "resolution_date": view.get("resolution_date"), "engine_version": ENGINE_VERSION,
            "action": "NONE", "reason_code": None, "orders": [], "g_now": None, "g_target": None,
            "g_wait": None, "binding": [], "target_usd": round(held_usd, 2), "held_usd": round(held_usd, 2),
-           "timing": None, "drawdown_scale": None,
+           "timing": None, "drawdown_scale": None, "lock": bool(view.get("lock")),
            "versions": {"engine": ENGINE_VERSION,
                         "belief": (params.get("belief_table") or {}).get("version", "prior"),
                         "lambda": params.get("lambda_version", "prior"),

@@ -148,6 +148,10 @@ def build(decision_id, decision_row, d, run_id, checkpoint_id):
         legs = kept
     if not legs:
         return None, "every leg below the venue minimum or unpriced"
+    # A lock's no-loss book covers every outcome; without one of its legs it
+    # can lose, so it is not sent at all (Codex on #343).
+    if d.get("lock") and dropped:
+        return None, "a lock that would lose a leg"
     edge = net_edge_per_share(legs, legs_p)
     evidence = {"source": "engine", "decision_id": decision_id, "run_id": run_id, "checkpoint_id": checkpoint_id,
                 "strategy_id": decision_row["strategy_id"], "city_key": decision_row["city_key"],

@@ -469,3 +469,33 @@ def test_the_twins_solve_at_their_iterations_and_say_so(monkeypatch):
                      params={"book_iters": 1000})
     assert seen == [None, 1000]
     assert "solver" not in base["versions"] and twin["versions"]["solver"] == "book-iters:1000"
+
+
+def test_a_lock_that_would_lose_a_leg_is_not_sent():
+    """A lock's no-loss book covers every outcome; dropped to fit the rail or
+    under the venue minimum, one missing leg leaves an outcome that loses
+    (Codex on #343). A book that is not a lock keeps its other legs."""
+    legs = [dict(MILAN[0]), {"side": "YES", "shares": "70.00", "band_id": "b9", "limit_price": "0.08",
+                             "cash_ceiling": f"{eo._ceil_cents(70 * 0.08 + 70 * eo.worst_fee_per_share(0.08) + 0.01):.2f}"}]
+    d = {"orders": [{"band_id": l["band_id"], "side": l["side"], "limit_price": float(l["limit_price"]),
+                     "shares": float(l["shares"])} for l in legs], "p_post": {}, "room_usd": 30.0, "lock": True}
+    row = {"strategy_id": "s11_lock_model", "city_key": "milan", "resolution_date": "2026-10-08"}
+    assert eo.build(1, row, d, "run", "cp") == (None, "a lock that would lose a leg")
+    # under the minimum before any fit, the same
+    d2 = {"orders": ORDERS, "p_post": P_POST, "lock": True}
+    assert eo.build(1, row, d2, "run", "cp") == (None, "a lock that would lose a leg")
+    # whole, it is sent; not a lock, the rest is sent
+    d3 = dict(d, room_usd=None)
+    assert eo.build(1, row, d3, "run", "cp")[1] is None
+    assert eo.build(1, row, dict(d, lock=False), "run", "cp")[1] is None
+
+
+def test_decide_says_whether_its_book_is_a_lock():
+    import decision_engine as de
+    view = {"strategy_id": "t", "city_key": "c", "resolution_date": "2026-09-28",
+            "probs": {"a": 0.1, "b": 0.5, "c": 0.3, "d": 0.1}}
+    book = {"a": {"ask": 0.10, "bid": 0.08}, "b": {"ask": 0.35, "bid": 0.33, "depth_usd": 500.0},
+            "c": {"ask": 0.30, "bid": 0.28}, "d": {"ask": 0.10, "bid": 0.08}}
+    led = {"equity_usd": 1000.0, "cash_usd": 1000.0}
+    assert de.decide(view, book=book, ledger=led)["lock"] is False
+    assert de.decide(dict(view, lock=True), book=book, ledger=led)["lock"] is True

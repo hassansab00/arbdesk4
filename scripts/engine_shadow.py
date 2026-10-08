@@ -374,6 +374,7 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
     # decided every city-day: they can never cost their bases a decision.
     rows = []
     counts = {"anchored": [0, 0], "model_only": [0, 0]}          # reached, out of time
+    cut_short = 0       # city-days where the twins stopped partway to fill what they had bought
     passes = (("anchored", ANCHORED, deadline),
               ("model_only", MODEL_ONLY, deadline if model_only_deadline is None else min(deadline, model_only_deadline)))
     for group_name, group, stop_at in passes:
@@ -403,6 +404,15 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
             reading_age_min = reading_age(floor[3] if today and len(floor) > 3 else None, decided_at)
             book = engine_book(row.get("market"))
             for sid in group:
+                # The reserve holds inside a city-day too: a city-day that has
+                # just bought stops its remaining twins once their fills would
+                # not fit (Codex on #343), so the last city-day cannot use the
+                # fill window up.
+                if twin and sid != group[0]:
+                    acted = len(buys or []) + len(exits or []) - acted_before
+                    if acted and time.monotonic() >= stop_at - model_only_fill_s * acted:
+                        cut_short += 1
+                        break
                 if sid in S10:
                     probs, call = s10_call(s10_ladders.get((city, target, name)))
                 else:
@@ -449,9 +459,12 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
                                                    prediction=call), trace))
                 if buys is not None and d.get("action") == "BUY":
                     buys.append((rows[-1], d, checkpoint_id))
-    return rows, {"city_days": len(checkpoints), "reached": counts["anchored"][0],
-                  "out_of_time": counts["anchored"][1], "model_only_reached": counts["model_only"][0],
-                  "model_only_out_of_time": counts["model_only"][1]}
+    detail = {"city_days": len(checkpoints), "reached": counts["anchored"][0],
+              "out_of_time": counts["anchored"][1], "model_only_reached": counts["model_only"][0],
+              "model_only_out_of_time": counts["model_only"][1]}
+    if cut_short:
+        detail["model_only_cut_short"] = cut_short
+    return rows, detail
 
 
 def least_recent_first(checkpoints, last):

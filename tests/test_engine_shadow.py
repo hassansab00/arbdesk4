@@ -313,6 +313,7 @@ def test_the_twins_stop_in_time_to_fill_what_they_bought(monkeypatch):
     _buy_everything(monkeypatch, seen)
     clock = iter([0.0, 0.0,          # the anchored pass, both city-days
                   0.0,               # the twins' first city-day
+                  0.0, 0.0,          # inside it, s11_lock_model and s12_no_model after a BUY
                   33.0])             # their second: inside 40 s, not inside 40 - 3 BUYs x 2.5
     monkeypatch.setattr(es.time, "monotonic", lambda: next(clock))
     cks = [("c1", ROW), ("c2", dict(ROW, city_key="paris"))]
@@ -324,14 +325,19 @@ def test_the_twins_stop_in_time_to_fill_what_they_bought(monkeypatch):
     assert detail["model_only_reached"] == 1 and detail["model_only_out_of_time"] == 1
     assert detail["reached"] == 2 and detail["out_of_time"] == 0, "the anchored pass never pays for it"
     assert len([b for b in buys if b[0]["strategy_id"] in es.MODEL_ONLY]) == 3      # s11 x2, s12
-    # with no BUY yet the twins keep their whole window
+    # with no BUY yet the twins keep their whole window; inside the city-day,
+    # once s11_ladder_model has bought, the rest stop for its fill (Codex on #343)
     seen.clear()
-    clock = iter([0.0, 0.0, 39.0])
+    clock = iter([0.0, 39.0, 39.0])
     monkeypatch.setattr(es.time, "monotonic", lambda: next(clock))
-    _rows, detail = es.decide_all([("c1", ROW)], {}, {}, {"london": "C"}, {}, {sid: flat for sid in es.STRATEGIES},
-                                  {}, None, 50.0, "r", "2026-09-28T11:36:00+00:00", buys=[],
-                                  model_only_deadline=40.0, model_only_fill_s=2.5)
-    assert detail["model_only_reached"] == 1
+    buys = []
+    rows, detail = es.decide_all([("c1", ROW)], {}, {}, {"london": "C"}, {}, {sid: flat for sid in es.STRATEGIES},
+                                 {}, None, 50.0, "r", "2026-09-28T11:36:00+00:00", buys=buys,
+                                 model_only_deadline=40.0, model_only_fill_s=2.5)
+    assert detail["model_only_reached"] == 1 and detail["model_only_cut_short"] == 1
+    twins = [r["strategy_id"] for r in rows if r["strategy_id"] in es.MODEL_ONLY]
+    assert twins == ["s10_winner_model", "s10_growth_model", "s10_lock_model", "s11_ladder_model"]
+    assert [b[0]["strategy_id"] for b in buys if b[0]["strategy_id"] in es.MODEL_ONLY] == ["s11_ladder_model"]
 
 
 def test_the_tick_hands_the_twins_the_fill_time():
