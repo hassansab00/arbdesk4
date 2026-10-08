@@ -45,6 +45,12 @@ JOB = "P3.9_width_score"
 FORWARD_FROM = "2026-09-28"
 LOOKBACK_DAYS = 14          # a market confirmed later than this after its day is not looked for
 PRICING_LOOKBACK_DAYS = 3   # the day-ahead price is looked for this far before the day
+# The prices this reads. Below the price prune's cut (archive dataset
+# `probabilities`, three days by market date from 8 Oct) they come from the
+# archive's committed files, as weather_history reads the forecasts.
+PRICE_COLUMNS = ("prob_id", "band_id", "computed_at", "raw_prob", "calibrated_prob", "centre_c", "sigma_c",
+                 "station_width_c", "lead_days", "observed_floor_c", "forecast_version")
+PRICE_DATASET = "probabilities"
 REPRODUCE_TOL = 1e-4
 BOOT = 2000
 SEED = 11
@@ -236,6 +242,40 @@ def _chunks(xs, n):
         yield xs[i:i + n]
 
 
+def archived_prices(band_market, first, start, held, rest_all, root=None):
+    """The prices of `band_market`'s bands the database no longer holds.
+
+    FRESH SUPABASE (Hassan, 8 Oct: everything a day does not need goes to the
+    repository daily). The price prune keeps three days of markets, not the
+    eighteen this scorer's fourteen-day lookback needed, so a market dated
+    before the prune's cut is read from the archive's committed files
+    (data/archive/probabilities), as weather_history reads the forecasts:
+    nothing is read when no market reaches below the cut, the newest prune's
+    file must be in this checkout (weather_history.check_checkout), and a row
+    the database still holds (`held`, by prob_id) wins. The pruned rows are
+    exactly what the prune deleted (v_prunable_band_probabilities); a market's
+    marks it never offers stay in the database. Values come back typed as the
+    REST API returns them (weather_history.file_rows).
+    """
+    import weather_history as wh
+    root = root or wh.ROOT
+    cut = wh.prune_boundary(PRICE_DATASET, rest_all_fn=rest_all)
+    if cut is None or first >= cut["before"]:
+        return {}
+    wh.check_checkout(cut, root)
+    out = {}
+    for _f, to, path in wh.archive_files(PRICE_DATASET, root):
+        if to < first:
+            continue
+        for r in wh.file_rows(path):
+            mid = band_market.get(str(r.get("band_id")))
+            if (mid is None or str(r.get("prob_id")) in held or r.get("lead_days") is None
+                    or int(r["lead_days"]) < 1 or str(r.get("computed_at")) < start):
+                continue
+            out.setdefault(mid, []).append({c: r.get(c) for c in PRICE_COLUMNS})
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true")
@@ -270,12 +310,14 @@ def main(argv=None):
         band_market = {str(b["band_id"]): mid for mid, bs in bands.items() for b in bs}
         for batch in _chunks(sorted(band_market), 100):
             for r in rest_all("band_probabilities",
-                              [("select", "band_id,computed_at,raw_prob,calibrated_prob,centre_c,sigma_c,"
-                                          "station_width_c,lead_days,observed_floor_c,forecast_version"),
+                              [("select", ",".join(PRICE_COLUMNS)),
                                ("band_id", f"in.({','.join(batch)})"), ("computed_at", f"gte.{start}"),
                                ("lead_days", "gte.1")],
                               order="band_id.asc,computed_at.asc,prob_id.asc"):
                 prices.setdefault(band_market[str(r["band_id"])], []).append(r)
+        held = {str(r["prob_id"]) for rs in prices.values() for r in rs}
+        for mid, rs in archived_prices(band_market, first, start, held, rest_all).items():
+            prices.setdefault(mid, []).extend(rs)
     labels = {}
     if todo:
         for r in rest_all("derived_city_day_features",

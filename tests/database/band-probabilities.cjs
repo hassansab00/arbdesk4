@@ -170,6 +170,20 @@ const at = (day, hhmm, tz) => `(((current_date + ${day})::timestamp + interval '
   assert.equal(blind18.ok, false);
   assert.match(blind18.error, /p_expected_rows is required/);
 
+  // Fresh Supabase (8 Oct): the floor is three days, the function otherwise
+  // the one above; station_width_score reads the older prices from the
+  // archive. Everything below runs under this one.
+  const FRESH = fs.readFileSync(path.join(MIGRATIONS, '20261008190000_the_prices_keep_three_days_and_models_two.sql'), 'utf-8');
+  await db.exec(FRESH);
+  await db.exec(FRESH);                                          // re-runnable
+  const short3 = await prune('2');
+  assert.equal(short3.ok, false);
+  assert.match(short3.error, /at least 3/);
+  assert.equal((await prune('3')).ok, true, 'three days is a window the function accepts');
+  const blind3 = await prune('3, false');
+  assert.equal(blind3.ok, false);
+  assert.match(blind3.error, /p_expected_rows is required/);
+
   // Dry run: the six offered rows of the two old markets, nothing deleted.
   const dry = await prune('30, true');
   assert.equal(dry.ok, true, JSON.stringify(dry));
@@ -251,6 +265,11 @@ const at = (day, hhmm, tz) => `(((current_date + ${day})::timestamp + interval '
   const calls = (await db.query('select jobname, schedule, command from cron.calls')).rows;
   assert.ok(calls.some((c) => c.jobname === 'ad4_reclaim_band_probabilities' && c.schedule === '5 7 * * 1'
     && c.command === 'VACUUM (FULL, ANALYZE) public.band_probabilities'), JSON.stringify(calls));
+  // Fresh Supabase: three days shed every night, so the backstop is daily,
+  // at its old 07:05, long after the archive's window (cron.schedule replaces
+  // a job by name: the last call is the job).
+  const backstop = calls.filter((c) => c.jobname === 'ad4_reclaim_band_probabilities').at(-1);
+  assert.deepEqual([backstop.schedule, backstop.command], ['5 7 * * *', 'VACUUM (FULL, ANALYZE) public.band_probabilities']);
 
   // The view is the service role's alone, and so is the prune.
   for (const role of ['anon', 'authenticated']) {
@@ -265,5 +284,5 @@ const at = (day, hhmm, tz) => `(((current_date + ${day})::timestamp + interval '
   await assert.rejects(db.query('select count(*) from public.v_prunable_band_probabilities'), /permission denied/);
   await db.exec('reset role');
 
-  console.log('PASS: band-probabilities: the newest, pre-day, eve (UTC without a zone, at the boundary), priced-at, city-day and edge-cited prices are never offered and every reader selects the same rows after the prune; a thirty-day floor, eighteen from 2.A (6 Oct), the exact verified count or nothing, never a row the repo mirror has not had, a delete that differs from its count rolls back, every band stays priced, an edge\'s price is released with the edge, request_reclaim and the weekly backstop take the table, service role only, re-runnable');
+  console.log('PASS: band-probabilities: the newest, pre-day, eve (UTC without a zone, at the boundary), priced-at, city-day and edge-cited prices are never offered and every reader selects the same rows after the prune; a thirty-day floor, eighteen from 2.A (6 Oct), three from Fresh Supabase (8 Oct), the exact verified count or nothing, never a row the repo mirror has not had, a delete that differs from its count rolls back, every band stays priced, an edge\'s price is released with the edge, request_reclaim and the backstop (weekly, daily from 8 Oct) take the table, service role only, re-runnable');
 })().catch((e) => { console.error(e); process.exit(1); });

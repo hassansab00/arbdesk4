@@ -147,17 +147,18 @@ declare
   v_bands  bigint;
   v_gone   bigint;
 begin
-  -- EIGHTEEN DAYS (WXPredict build 2.A, group A; Hassan, 6 Oct: offload to
-  -- the repository). The window is the market's resolution_date.
-  -- station_width_score reads every price of the markets resolved in the last
-  -- 14 days (LOOKBACK_DAYS), priced from 3 days before (PRICING_LOOKBACK_DAYS):
-  -- markets dated before current_date - 18 are four days past the oldest it
-  -- reads. The analytics page reads open markets; everything older is read
-  -- one row at a time, and those rows are never offered.
-  if p_keep_days < 18 then
+  -- THREE DAYS (Fresh Supabase, Hassan 8 Oct: what a day's runs do not need
+  -- goes to the repository every night; 18 before, 30 until 6 Oct). The window
+  -- is the market's resolution_date. Every live reader takes the markets of
+  -- yesterday on (v_current_prediction, v_latest_prob, the readiness views,
+  -- databank's unbanked bands) or one row a band this view never offers (the
+  -- marks behind mv_city_hit_history and v_probability_reliability).
+  -- station_width_score, which read 14 days of every price, reads the older
+  -- ones from the archive's committed files (archived_prices).
+  if p_keep_days < 3 then
     return jsonb_build_object(
       'ok', false,
-      'error', 'keep_days must be at least 18 - station_width_score reads every price of the markets of the last 14 days'
+      'error', 'keep_days must be at least 3 - live readers take the markets of yesterday on; older prices are read from the archive'
     );
   end if;
 

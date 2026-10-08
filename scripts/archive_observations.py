@@ -408,8 +408,12 @@ TABLES = {
         # window follows weather_forecasts and writes no model row below this
         # table's oldest day (ingest_forecasts.models_first_held_date). Since
         # 26 Sep every row was written within a day of its date (51,061 rows).
-        "keep_days": 7,
-        "min_keep_days": 7,
+        # TWO DAYS (Fresh Supabase, Hassan 8 Oct: what a day's runs do not need
+        # goes to the repository every night): every live reader takes for_date
+        # from yesterday on; two keeps a row written a day late until the
+        # mirror has it (migration 20261008190000).
+        "keep_days": 2,
+        "min_keep_days": 2,
         "mirror_first": True,
         # The refresh freezes the hit tournament's forecasts, which read this
         # table (plan v2 P1.6 phase 2, step 6); prune_forecast_models refuses
@@ -448,8 +452,12 @@ TABLES = {
         # 18 DAYS (WXPredict build 2.A, group A): station_width_score reads
         # every price of the markets resolved in the last 14 days, priced
         # from 3 days before; prune_band_probabilities refuses under 18.
-        "keep_days": 18,
-        "min_keep_days": 18,
+        # THREE DAYS (Fresh Supabase, Hassan 8 Oct): every live reader takes
+        # the markets of yesterday on, or one row a band this never offers;
+        # station_width_score reads older prices from the archive's committed
+        # files (archived_prices). Migration 20261008190000.
+        "keep_days": 3,
+        "min_keep_days": 3,
         "mirror_first": True,
         "needs_feature_cache": False,
     },

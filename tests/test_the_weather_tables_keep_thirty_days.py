@@ -33,7 +33,8 @@ def test_the_keeps():
     assert (ao.TABLES["forecasts"]["keep_days"], ao.TABLES["forecasts"]["min_keep_days"]) == (30, 30)
     # A week since 7 Oct (WXPredict build 2.A): the hit forecasts and the
     # ingest take each table's own oldest day (tests/database/model-forecasts-week.cjs).
-    assert (ao.TABLES["forecast_models"]["keep_days"], ao.TABLES["forecast_models"]["min_keep_days"]) == (7, 7)
+    # Two days since 8 Oct (Fresh Supabase): every live reader takes yesterday on.
+    assert (ao.TABLES["forecast_models"]["keep_days"], ao.TABLES["forecast_models"]["min_keep_days"]) == (2, 2)
 
 
 WEEK = MIG / "20261007210000_each_models_forecasts_keep_a_week.sql"
@@ -55,8 +56,19 @@ def test_the_model_forecast_prune_changes_its_floor_and_nothing_else():
     assert re.search(r"if p_keep_days < 7 then", week)
     assert _prune_models_without_floor(week) == _prune_models_without_floor(LIVE_BEFORE.read_text(encoding="utf-8")), (
         "the migration changed more of prune_forecast_models than its floor")
+
+
+
+TWO = MIG / "20261008190000_the_prices_keep_three_days_and_models_two.sql"
+
+
+def test_the_two_day_floor_changes_the_floor_and_nothing_else():
+    two, week = TWO.read_text(encoding="utf-8"), WEEK.read_text(encoding="utf-8")
+    assert re.search(r"if p_keep_days < 2 then", two)
+    assert _prune_models_without_floor(two) == _prune_models_without_floor(week), (
+        "the migration changed more of prune_forecast_models than its floor")
     repo = (ROOT / "sql" / "ad4_95_prune_forecast_models.sql").read_text(encoding="utf-8")
-    assert "p_keep_days < 7 then" in repo and "p_keep_days < 30" not in repo
+    assert "p_keep_days < 2 then" in repo and "p_keep_days < 7" not in repo and "p_keep_days < 30" not in repo
 
 
 def test_the_observation_prune_changes_its_floor_and_nothing_else():
