@@ -266,10 +266,10 @@ const at = (day, hhmm, tz) => `(((current_date + ${day})::timestamp + interval '
   assert.ok(calls.some((c) => c.jobname === 'ad4_reclaim_band_probabilities' && c.schedule === '5 7 * * 1'
     && c.command === 'VACUUM (FULL, ANALYZE) public.band_probabilities'), JSON.stringify(calls));
   // Fresh Supabase: three days shed every night, so the backstop is daily,
-  // after the 02:36 archive (cron.schedule replaces a job by name: the last
-  // call is the job).
+  // at its old 07:05, long after the archive's window (cron.schedule replaces
+  // a job by name: the last call is the job).
   const backstop = calls.filter((c) => c.jobname === 'ad4_reclaim_band_probabilities').at(-1);
-  assert.deepEqual([backstop.schedule, backstop.command], ['5 3 * * *', 'VACUUM (FULL, ANALYZE) public.band_probabilities']);
+  assert.deepEqual([backstop.schedule, backstop.command], ['5 7 * * *', 'VACUUM (FULL, ANALYZE) public.band_probabilities']);
 
   // The view is the service role's alone, and so is the prune.
   for (const role of ['anon', 'authenticated']) {

@@ -23,10 +23,12 @@
 -- frozen hit forecasts, the lock. sql/ad4_95 and sql/ad4_96 match.
 --
 -- Both tables now shed rows every night, so their reclaim backstops go from
--- weekly to daily, as every dataset kept three days or less is: 03:00 and
--- 03:05, after the 02:36 archive (sql/ad4_66 matches). The archive still asks
--- for its own reclaim after each prune. Re-runnable: cron.schedule replaces a
--- job by name.
+-- weekly to daily, as every dataset kept three days or less is, at the times
+-- they had: 06:50 and 07:05, long after the archive (dispatched 02:36, up to
+-- 45 minutes; on 8 Oct it asked for reclaims until 03:14), so a VACUUM FULL
+-- never locks a table the archive is exporting or pruning (Codex on #347).
+-- sql/ad4_66 matches. The archive still asks for its own reclaim after each
+-- prune. Re-runnable: cron.schedule replaces a job by name.
 -- ===========================================================================
 
 create or replace function public.prune_band_probabilities(
@@ -297,9 +299,9 @@ comment on function public.prune_forecast_models(integer, boolean, date, bigint)
 do $$
 begin
   if exists (select 1 from pg_namespace where nspname = 'cron') then
-    perform cron.schedule('ad4_reclaim_weather_forecast_models', '0 3 * * *',
+    perform cron.schedule('ad4_reclaim_weather_forecast_models', '50 6 * * *',
                           'VACUUM (FULL, ANALYZE) public.weather_forecast_models');
-    perform cron.schedule('ad4_reclaim_band_probabilities', '5 3 * * *',
+    perform cron.schedule('ad4_reclaim_band_probabilities', '5 7 * * *',
                           'VACUUM (FULL, ANALYZE) public.band_probabilities');
   end if;
 end $$;

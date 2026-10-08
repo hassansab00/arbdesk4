@@ -235,12 +235,12 @@ async function build() {
         false, `${role} can execute the prune`);
     }
     assert.equal((await q2(`select has_function_privilege('service_role', 'public.prune_forecast_models(integer,boolean,date,bigint)', 'execute') as ok`))[0].ok, true);
-    // Two days shed every night: the reclaim backstop is daily, after the
-    // 02:36 archive (cron.schedule replaces a job by name: the last call is
-    // the job).
+    // Two days shed every night: the reclaim backstop is daily, at its old
+    // 06:50, long after the archive's window (cron.schedule replaces a job by
+    // name: the last call is the job).
     const backstop = (await q2(`select schedule, command from cron.calls
                                  where jobname = 'ad4_reclaim_weather_forecast_models'`)).at(-1);
-    assert.deepEqual(backstop, { schedule: '0 3 * * *', command: 'VACUUM (FULL, ANALYZE) public.weather_forecast_models' });
+    assert.deepEqual(backstop, { schedule: '50 6 * * *', command: 'VACUUM (FULL, ANALYZE) public.weather_forecast_models' });
   }
 
   console.log("PASS: model-forecasts-week: frozen rows take their table from their model (an override's model is weather_forecast_models'; one in both tables refuses, nothing changed); v_hit_forecasts unchanged by the migration and by a 7-day prune of weather_forecast_models (6 refuses); a weather_forecasts row 10 days late is served live and frozen; the freeze never touches the model rows below that table's oldest day, empty or not; closed to the browser; re-runnable; two days from Fresh Supabase (8 Oct: 1 refuses, unfrozen days refuse, a 2-day prune leaves v_hit_forecasts unchanged, the reclaim backstop daily)");
