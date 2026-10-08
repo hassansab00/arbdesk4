@@ -1843,7 +1843,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "derived_trajectory"
   ],
   "v_unarchived_ladders": [
-    "book_snapshots"
+    "bands",
+    "book_snapshots",
+    "markets"
   ],
   "v_venue_band_resolution": [
     "bands",

@@ -231,7 +231,8 @@ def send_exits(exits, accounts, enabled, decision_ids, deadline, rpc, fill_one, 
     return out, buys
 
 
-def send(buys, accounts, enabled, decision_ids, run_id, deadline, rpc, rest, fill_one, dry_run=False, exits=()):
+def send(buys, accounts, enabled, decision_ids, run_id, deadline, rpc, rest, fill_one, dry_run=False, exits=(),
+         max_fills=MAX_FILLS):
     """Carry out S10's exits (send_exits), then publish a plan per BUY of a
     switched-on strategy - and per switch whose sale filled - and fill them.
 
@@ -293,6 +294,7 @@ def send(buys, accounts, enabled, decision_ids, run_id, deadline, rpc, rest, fil
                 out["blocked"][r] = out["blocked"].get(r, 0) + 1
     if out["queued"] and not dry_run:
         out["fills"] = fill_ledgers(queued_accounts, deadline,
-                                    lambda aid: rpc("claim_account_order", {"p_account": aid}), fill_one)
+                                    lambda aid: rpc("claim_account_order", {"p_account": aid}), fill_one,
+                                    max_fills=max_fills)
     out["seconds"] = round(time.monotonic() - t0, 1)
     return out

@@ -29,6 +29,7 @@ import json
 import sys
 
 import engine_shadow as es
+from strategies.engine_views import MODEL_ONLY_VERSION
 
 ACCEPT = 0.95                 # the plan's acceptance share
 MISMATCHES_KEPT = 30
@@ -85,6 +86,8 @@ def learned_tables(live_rows, tables):
         pv = json.loads(r["params_version"]) if r.get("params_version") else {}
         cv = pv.get("clusters")
         av = (pv.get("market_anchor") or {}).get("version")
+        if av == MODEL_ONLY_VERSION:
+            av = None               # a model-only twin's weight is fixed, not a learned table
         if cv and cv != "prior":
             if ("city_clusters", cv) not in tables:
                 return None, None, f"city_clusters {cv} not found"
@@ -223,7 +226,7 @@ def read_day(day, rest, rest_all):
             if pv.get("clusters") not in (None, "prior"):
                 versions.add(("city_clusters", pv["clusters"]))
             av = (pv.get("market_anchor") or {}).get("version")
-            if av not in (None, "prior"):
+            if av not in (None, "prior", MODEL_ONLY_VERSION):
                 versions.add(("market_weight", av))
     for param, version in sorted(versions):
         rows = rest("strategy_params", [("select", "value,version"), ("param", f"eq.{param}"),

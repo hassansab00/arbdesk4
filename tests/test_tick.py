@@ -416,16 +416,25 @@ def test_the_deadline_leaves_the_job_inside_its_minute():
 def test_every_repo_file_the_tick_reads_is_checked_out():
     """The checkout is sparse. From 27 Sep 09:36Z every tick wrote no S10
     shadow row with "no fitted parameters at data/models/remaining_day/
-    current.json": the file is committed, but the checkout held only scripts/."""
+    current.json": the file is committed, but the checkout held only scripts/.
+
+    AND EVERY ONE OF THEM (7 Oct). rd1's late hours (late_hours.json, #325,
+    6 Oct) were committed but never checked out: load_late found no file and
+    the 16:36Z ticks of 6 and 7 Oct skipped Madrid's post-peak checkpoint with
+    "no fit for local hour 18". Every *_PATH s10_shadow defines is read here,
+    not a list that has to remember a new one."""
     import s10_shadow
     step = next(s for s in next(iter(_tick_yml()["jobs"].values()))["steps"]
                 if str(s.get("uses", "")).startswith("actions/checkout"))
     paths = step["with"]["sparse-checkout"].split()
     root = pathlib.Path(__file__).resolve().parents[1]
-    for path in (s10_shadow.PARAMS_PATH, s10_shadow.CHALLENGER_PATH):   # rd1, and rd3's forward shadow
+    files = {name: value for name, value in vars(s10_shadow).items()
+             if name.endswith("_PATH") and isinstance(value, str)}
+    assert {"PARAMS_PATH", "CHALLENGER_PATH", "LATE_PATH"} <= set(files), sorted(files)
+    for name, path in files.items():
         needed = pathlib.Path(path).resolve().relative_to(root).as_posix()
-        assert (root / needed).exists()
-        assert any(needed == p or needed.startswith(p.rstrip("/") + "/") for p in paths), needed
+        assert (root / needed).exists(), (name, needed)
+        assert any(needed == p or needed.startswith(p.rstrip("/") + "/") for p in paths), (name, needed)
 
 
 def test_the_forecast_archive_regime_reads_is_checked_out():

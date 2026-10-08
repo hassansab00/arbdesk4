@@ -615,6 +615,13 @@ TABLES = {
     # nightly run takes every ladder older than a day, so a ladder waits at
     # most about two days in Postgres. About 2-4 MB of ladder JSON a day
     # before gzip (26 Sep: 3.8 MB LIVE, 0.4 MB WIDE and ONE_SIDED).
+    # AND A DECIDED BAND'S LAST BOOK (WXPredict build 2.A, 7 Oct). The hourly
+    # prune never touched a band's newest snapshot, so a closed market's
+    # decided bands kept their last ladder forever: 10,268 on 7 Oct, 8.77 MiB
+    # in the 8,145 over three days old, about 510 a day (16 market dates). The view now
+    # takes each once its market's date is two days past, and the prune nulls
+    # it once stamped (20261007190000). The first run carries the backlog,
+    # 9,012 books (17.8 MiB of ladder text before gzip, 7 Oct).
     "ladders": {
         "table": "book_snapshots",
         "read_from": "v_unarchived_ladders",
