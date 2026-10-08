@@ -413,6 +413,8 @@ All eight ledgers pass `paper_desk_retire`'s refusal checks today (5 Oct): 0 pos
 
 Group A in total: **18.1 MB**. This is the first PR (migration `20261006170000`): decisions keep 3 days with a floor of 2, and band probabilities keep 18 days.
 
+The first eighteen-day prune (8 Oct, 39,316 rows) timed out with nothing removed: every removed price was checked against `edges` by a sequential scan, because `edges.prob_id` had no index (9.85 ms each, about 387 s in all). Migration `20261008040000` indexes it, and `ledger.trade_id`; the same rows' checks then took 5.7 s. The next nightly run resumes the committed file's prune.
+
 `weather_forecast_models` moved to group B when it was built. `ingest_forecasts.first_held_date` takes the later of the two forecast tables' oldest days, and nothing older is fetched. A 7-day keep would shrink the forecast ingest's catch-up window from about 30 days to 7 for both tables. The ingest must first keep a window per table.
 
 *Group B: a reader sees less, or needs a code change first.*

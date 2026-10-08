@@ -2658,6 +2658,43 @@ const assert = require('node:assert/strict');
   assert.ok(anonKeys.includes('bankroll'),'anon lost the settings the board reads');
   await db.exec('reset role;');
 
+  // ======================================================================
+  // EVERY FOREIGN KEY INTO A PRUNED TABLE LEADS AN INDEX
+  // (20261008040000_the_price_prune_finds_its_edges_by_index.sql). Postgres
+  // checks each row a prune removes against every table that references it;
+  // without an index each check is a full scan of the referencing table. On
+  // 8 Oct that was 39,316 scans of edges (9.85 ms each) and the prune died at
+  // the gateway with nothing removed. The tables are read from the prune
+  // functions themselves, so a new prune is covered without editing this.
+  // ======================================================================
+  const prunedTables=(await db.query(`select distinct lower(m[1]) as t from pg_proc p,
+      regexp_matches(p.prosrc,'delete\\s+from\\s+(?:only\\s+)?(?:public\\.)?([a-z_0-9]+)','gi') m
+     where p.pronamespace='public'::regnamespace and p.proname like 'prune%' order by 1`)).rows.map(r=>r.t);
+  for (const t of ['band_probabilities','paper_trades','book_snapshots']) {
+    assert.ok(prunedTables.includes(t),`no prune function removes rows from ${t} any more - the list below is not what it was written against: ${prunedTables}`);
+  }
+  const fkUnindexed=(await db.query(`select c.conrelid::regclass::text as child, c.conname
+      from pg_constraint c
+     where c.contype='f' and c.confrelid::regclass::text = any($1::text[])
+       and not exists (select 1 from pg_index i where i.indrelid=c.conrelid and i.indkey[0]=c.conkey[1])
+     order by 1,2`,[prunedTables])).rows;
+  assert.deepEqual(fkUnindexed,[],'a foreign key into a pruned table has no index: every row the prune removes scans the referencing table');
+  const prunedFks=(await db.query(`select c.conname from pg_constraint c
+     where c.contype='f' and c.confrelid::regclass::text = any($1::text[]) order by 1`,[prunedTables])).rows.map(r=>r.conname);
+  for (const k of ['edges_prob_id_fkey','ledger_trade_id_fkey']) {
+    assert.ok(prunedFks.includes(k),`${k} is not in the fixture, so this check proves nothing about it`);
+  }
+  // The referential check is a generic plan on `$1 = column`; the indexes are
+  // partial on `column is not null`, which that equality implies. The plan
+  // must use them, not merely have them.
+  await db.exec(`set plan_cache_mode = force_generic_plan; set enable_seqscan = off;
+    prepare ri_edges(bigint) as select 1 from only public.edges x where $1 operator(pg_catalog.=) x.prob_id for key share of x;
+    prepare ri_ledger(uuid) as select 1 from only public.ledger x where $1 operator(pg_catalog.=) x.trade_id for key share of x;`);
+  const riPlan=async (sql)=>(await db.query(sql)).rows.map(r=>r['QUERY PLAN']).join('\n');
+  assert.match(await riPlan('explain execute ri_edges(1)'),/Index Scan (using|on) ad4_ix_edges_prob_id\b/);
+  assert.match(await riPlan(`explain execute ri_ledger('00000000-0000-0000-0000-000000000000')`),/Index Scan (using|on) ad4_ix_ledger_trade_id\b/);
+  await db.exec('deallocate all; reset plan_cache_mode; reset enable_seqscan;');
+
   await db.close();
   console.log('PASS: authenticated and single-desk paper contracts, private research, leases, fills, approvals, exits, the paper_trades bridge, the book-redundancy prune, the desk-independent strategy mark, desk retirement, a shadow ledger per strategy and a suspended portfolio account, strategy lifecycle states, the fixed risk rails and the kill switch, the portfolio activated by evidence and its allocation, the decision log and its verified prune, research capture of prices only, no PUBLIC execute on SECURITY DEFINER functions and the settings the browser may not read');
 })().catch(e=>{console.error(e);process.exit(1);});
