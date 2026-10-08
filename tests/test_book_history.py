@@ -216,3 +216,92 @@ def test_every_archive_files_name_is_its_observed_dates():
         with gzip.open(path, "rt", newline="") as fh:
             days = {r["observed_at"][:10] for r in csv.DictReader(fh)}
         assert (min(days), max(days)) == (f, t), path
+
+
+# ---------------------------------------------------------------------------
+# A decided band's last ladder (WXPredict build 2.A, 7 Oct). prune_dead_book_
+# detail nulls it once data/archive/ladders holds it; book_as_of then answers
+# that row without it. The backtest must read what it read before.
+# ---------------------------------------------------------------------------
+LADDER_COLUMNS = ["snapshot_id", "band_id", "observed_at", "market_state", "best_bid", "best_ask",
+                  "no_best_bid", "no_best_ask", "raw_book", "no_book"]
+WALL = '{"asks":[{"price":0.001,"size":95000.5}],"bids":[]}'
+NO_WALL = '{"ask_levels":1,"asks":[{"price":0.999,"size":12.25}]}'
+
+
+def _write_ladders(root, name, rows):
+    folder = root / "data" / "archive" / "ladders"
+    folder.mkdir(parents=True, exist_ok=True)
+    with gzip.open(folder / name, "wt", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=LADDER_COLUMNS)
+        w.writeheader()
+        for r in rows:
+            w.writerow({c: r.get(c, "") for c in LADDER_COLUMNS})
+
+
+def _last_book(sid, band, at, state="DEAD_LOSER", stamped="2026-09-22T02:40:00+00:00", raw=None, no=None):
+    return {"snapshot_id": sid, "band_id": band, "observed_at": at, "market_state": state,
+            "best_bid": None, "best_ask": 0.001, "ladder_archived_at": stamped, "raw_book": raw, "no_book": no}
+
+
+def test_a_decided_bands_last_book_gets_its_ladder_back(tmp_path):
+    _write_ladders(tmp_path, "ladders-2026-09-19-to-2026-09-20.csv.gz", [
+        {"snapshot_id": "7", "band_id": "d", "observed_at": "2026-09-19T21:26:00+00:00",
+         "market_state": "DEAD_LOSER", "best_ask": "0.001", "raw_book": WALL, "no_book": NO_WALL},
+        {"snapshot_id": "8", "band_id": "e", "observed_at": "2026-09-20T03:00:00+00:00",
+         "market_state": "DEAD_WINNER", "best_bid": "0.999", "raw_book": WALL, "no_book": ""}])
+    d = _Desk([_last_book(7, "d", "2026-09-19T21:26:00+00:00"),
+               _last_book(8, "e", "2026-09-20T03:00:00+00:00", state="DEAD_WINNER")])
+    rows = bh.as_of(["d", "e"], NOON, rpc_fn=d.rpc, rest_fn=d.rest, root=str(tmp_path))
+    by = {r["band_id"]: r for r in rows}
+    # exactly what rest() handed back before the strip: the jsonb parsed
+    assert by["d"]["raw_book"] == {"asks": [{"price": 0.001, "size": 95000.5}], "bids": []}
+    assert by["d"]["no_book"] == {"ask_levels": 1, "asks": [{"price": 0.999, "size": 12.25}]}
+    assert by["e"]["raw_book"] == {"asks": [{"price": 0.001, "size": 95000.5}], "bids": []}
+    assert by["e"]["no_book"] is None
+    # nothing else on the row moves
+    for band, sid in (("d", 7), ("e", 8)):
+        before = next(r for r in d.rows if r["band_id"] == band)
+        assert {k: v for k, v in by[band].items() if k not in ("raw_book", "no_book")} == \
+               {k: v for k, v in before.items() if k not in ("raw_book", "no_book")}
+        assert by[band]["snapshot_id"] == sid
+    assert bh.stats["ladders_restored"] == 2
+
+
+def test_only_a_stamped_stripped_decided_book_is_touched(tmp_path, monkeypatch):
+    monkeypatch.setattr(wh, "archive_files", lambda *a, **k: pytest.fail("opened the archive"))
+    rows = [
+        # a trading book's ladder was nulled at 48 h long before 7 Oct: the
+        # backtest never read it, and it does not now
+        _last_book(1, "a", "2026-09-19T21:26:00+00:00", state="LIVE"),
+        # stamped but not yet stripped (the ladder cache still holds it)
+        _last_book(2, "b", "2026-09-19T21:26:00+00:00", raw={"asks": []}),
+        # decided, never stamped: a non-last decided book nulled at 6 h
+        _last_book(3, "c", "2026-09-19T21:26:00+00:00", stamped=None),
+        _db("f", "2026-09-19T23:10:00+00:00"),
+    ]
+    d = _Desk(rows)
+    assert bh.as_of(["a", "b", "c", "f"], NOON, rpc_fn=d.rpc, rest_fn=d.rest, root=str(tmp_path)) == rows
+    assert bh.stats["ladders_restored"] == 0
+
+
+def test_a_moved_ladder_this_checkout_lacks_refuses(tmp_path):
+    _write_ladders(tmp_path, "ladders-2026-09-19-to-2026-09-20.csv.gz", [
+        {"snapshot_id": "99", "band_id": "z", "observed_at": "2026-09-19T21:26:00+00:00",
+         "market_state": "DEAD_LOSER", "raw_book": WALL}])
+    d = _Desk([_last_book(7, "d", "2026-09-19T21:26:00+00:00")])
+    with pytest.raises(wh.StaleCheckout, match="snapshot 7"):
+        bh.as_of(["d"], NOON, rpc_fn=d.rpc, rest_fn=d.rest, root=str(tmp_path))
+    d = _Desk([_last_book(7, "d", "2026-09-21T01:00:00+00:00")])   # no file covers the 21st
+    with pytest.raises(wh.StaleCheckout):
+        bh.as_of(["d"], NOON, rpc_fn=d.rpc, rest_fn=d.rest, root=str(tmp_path))
+
+
+def test_every_ladders_files_name_is_its_observed_dates():
+    """with_ladder() picks the ladders file by the dates in its name."""
+    files = wh.archive_files("ladders", str(ROOT))
+    assert files
+    for f, t, path in files:
+        with gzip.open(path, "rt", newline="") as fh:
+            days = {r["observed_at"][:10] for r in csv.DictReader(fh)}
+        assert (min(days), max(days)) == (f, t), path

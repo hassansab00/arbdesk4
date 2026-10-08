@@ -28,6 +28,14 @@ markets the whole history is on disk, so:
 It cannot reach the database (no key in the sandbox), so it writes SQL: run
 each file through the Supabase SQL tool.
 
+Since 7 Oct (WXPredict build 2.A) a decided band's last book loses its ladder
+once data/archive/ladders holds it (prune_dead_book_detail, after the ladders
+dataset), and book_history.with_ladder puts it back by snapshot_id. The SQL
+side reads the database, so on a DEAD_LOSER / DEAD_WINNER row whose
+ladder_archived_at is set, a raw_book or no_book that reads 'null' where the
+mirror says 'set' is that move, not a lost row; tests/test_book_history.py
+holds the restore.
+
   python tools/p16_step32_proof.py past --sql-dir DIR --cut-before 2026-09-25 \\
       --cut-file data/archive/books/books-2026-09-20-to-2026-09-25.csv.gz
   python tools/p16_step32_proof.py reference --sql-dir DIR --date 2026-09-26 --date 2026-09-27

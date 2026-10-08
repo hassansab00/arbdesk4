@@ -56,6 +56,16 @@
 -- windows almost guarantee that already on an hourly feed, but 'almost' is
 -- how v_latest_book would one day return a row with no ladder on a band the
 -- collector had stopped seeing.
+--
+-- EXCEPT A DECIDED BAND'S LAST BOOK, once the repository holds its ladder
+-- (WXPredict build 2.A, 7 Oct). A band the collector has stopped seeing is a
+-- closed market's: its last book kept its ladder forever, 10,268 of them on
+-- 7 Oct, 8.77 MiB in the 8,145 over three days old. The archive's ladders
+-- dataset exports it once the market's date is two days past
+-- (v_unarchived_ladders); this nulls it once stamped, and never while
+-- book_ladder_cache holds the snapshot (that cache assumes a band's newest
+-- book does not change). The readers of a closed market's last ladder are
+-- listed in supabase/migrations/20261007190000_a_decided_bands_last_ladder_goes_to_the_repo.sql.
 -- Stamped by mark_ladders_archived() once the nightly archive holds the
 -- ladder (supabase/migrations/20260927100000_a_ladder_is_archived_before_it_is_pruned.sql).
 alter table public.book_snapshots add column if not exists ladder_archived_at timestamptz;
@@ -72,16 +82,31 @@ declare
   n integer := 0;
 begin
   with newest as (
-    select distinct on (band_id) snapshot_id
-      from book_snapshots
-     order by band_id, observed_at desc
+    -- EVERY row at its band's newest instant (7 Oct). The readers
+    -- (v_latest_book, book_as_of) order by observed_at alone, so either row
+    -- of a tied pair can be the one they take: neither is nulled by age. Of
+    -- a decided band's tied last pair, the archive takes the higher
+    -- snapshot_id (v_unarchived_ladders), and only that one is stripped
+    -- below, once stamped (Codex on #337).
+    select s.snapshot_id
+      from book_snapshots s
+      join (select band_id, max(observed_at) as observed_at
+              from book_snapshots
+             group by band_id) m
+        on m.band_id = s.band_id and m.observed_at = s.observed_at
   )
   update book_snapshots b
      set raw_book = null, no_book = null
    where (b.raw_book is not null or b.no_book is not null)
      -- a trading band's ladder is in the repository archive first (plan v2 P5.13)
      and (b.ladder_archived_at is not null or b.market_state in ('DEAD_LOSER', 'DEAD_WINNER'))
-     and b.snapshot_id not in (select snapshot_id from newest)
+     and (b.snapshot_id not in (select snapshot_id from newest)
+          -- a decided band's last book, once the archive holds its ladder and
+          -- the three-day ladder cache no longer holds the snapshot
+          -- (WXPredict build 2.A, 7 Oct)
+          or (b.market_state in ('DEAD_LOSER', 'DEAD_WINNER')
+              and b.ladder_archived_at is not null
+              and not exists (select 1 from book_ladder_cache c where c.snapshot_id = b.snapshot_id)))
      and b.observed_at < now() - case
            when b.market_state in ('DEAD_LOSER', 'DEAD_WINNER') then p_older_than
            else p_live_older_than
@@ -92,7 +117,7 @@ end;
 $$;
 
 comment on function public.prune_dead_book_detail(interval, interval) is
-  'Nulls raw_book and no_book on snapshots nobody reads - six hours for a band the market has decided, forty-eight for one still trading, never the newest snapshot of any band - and a trading band''s only once its ladder is in the repository archive (ladder_archived_at, plan v2 P5.13). Keeps every numeric column. Never deletes a row.';
+  'Nulls raw_book and no_book on snapshots nobody reads - six hours for a band the market has decided, forty-eight for one still trading - and a trading band''s only once its ladder is in the repository archive (ladder_archived_at, plan v2 P5.13). Never the newest snapshot of a band, except a decided band''s last book once the archive holds its ladder and book_ladder_cache no longer holds it (WXPredict build 2.A). Keeps every numeric column. Never deletes a row.';
 
 drop function if exists public.prune_dead_book_detail(interval);
 revoke all on function public.prune_dead_book_detail(interval, interval) from public, anon, authenticated;
