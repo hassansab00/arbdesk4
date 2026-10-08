@@ -30,8 +30,33 @@ def _prune_observations(path):
 
 def test_the_keeps():
     assert (ao.TABLES["observations"]["keep_days"], ao.TABLES["observations"]["min_keep_days"]) == (32, 32)
-    for name in ("forecasts", "forecast_models"):
-        assert (ao.TABLES[name]["keep_days"], ao.TABLES[name]["min_keep_days"]) == (30, 30), name
+    assert (ao.TABLES["forecasts"]["keep_days"], ao.TABLES["forecasts"]["min_keep_days"]) == (30, 30)
+    # A week since 7 Oct (WXPredict build 2.A): the hit forecasts and the
+    # ingest take each table's own oldest day (tests/database/model-forecasts-week.cjs).
+    assert (ao.TABLES["forecast_models"]["keep_days"], ao.TABLES["forecast_models"]["min_keep_days"]) == (7, 7)
+
+
+WEEK = MIG / "20261007210000_each_models_forecasts_keep_a_week.sql"
+LIVE_BEFORE = MIG / "20260929160000_the_evidence_outlasts_the_weather_tables.sql"
+
+
+def _prune_models_without_floor(text):
+    """prune_forecast_models' body with its floor block (the comment above it
+    and the if ... end if) taken out."""
+    i = text.index("create or replace function public.prune_forecast_models(")
+    body = text[i:text.index("$function$;", i)]
+    start = body.index("begin\n") + len("begin\n")
+    end = body.index("end if;", body.index("p_keep_days <")) + len("end if;")
+    return body[:start] + body[end:]
+
+
+def test_the_model_forecast_prune_changes_its_floor_and_nothing_else():
+    week = WEEK.read_text(encoding="utf-8")
+    assert re.search(r"if p_keep_days < 7 then", week)
+    assert _prune_models_without_floor(week) == _prune_models_without_floor(LIVE_BEFORE.read_text(encoding="utf-8")), (
+        "the migration changed more of prune_forecast_models than its floor")
+    repo = (ROOT / "sql" / "ad4_95_prune_forecast_models.sql").read_text(encoding="utf-8")
+    assert "p_keep_days < 7 then" in repo and "p_keep_days < 30" not in repo
 
 
 def test_the_observation_prune_changes_its_floor_and_nothing_else():

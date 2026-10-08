@@ -132,6 +132,7 @@ def _drive(monkeypatch, tmp_path, first_held, argv=None):
     monkeypatch.setattr(f, "PAUSE", 0)
     monkeypatch.setattr(f, "MODELS", [])
     monkeypatch.setattr(f, "first_held_date", lambda: first_held)
+    monkeypatch.setattr(f, "models_first_held_date", lambda: None)
     monkeypatch.setattr(f, "fetch", fetch)
     monkeypatch.setattr(f, "existing_dates", lambda c, s, e: set())      # every day missing
     monkeypatch.setattr(f, "get_cities", lambda require_coords=True: [
@@ -169,18 +170,76 @@ def test_a_manual_window_across_the_cut_starts_at_it(monkeypatch, tmp_path):
     assert min(s for s, _ in asked) == D(2026, 9, 1), asked
 
 
-def test_the_oldest_day_held_is_the_later_of_both_tables(monkeypatch):
-    oldest = {"weather_forecasts": "2026-08-30", "weather_forecast_models": "2026-09-01"}
+def test_each_table_has_its_own_oldest_day_held(monkeypatch):
+    """WXPredict build 2.A (7 Oct): the window is weather_forecasts' oldest day
+    (30 days), the model rows are held to weather_forecast_models' own (a
+    week). The later of the two would shrink the catch-up to a week."""
+    oldest = {"weather_forecasts": "2026-08-30", "weather_forecast_models": "2026-09-22"}
     seen = []
 
     def rest(table, params=None):
         seen.append((table, params))
         return [{"for_date": oldest[table]}]
     monkeypatch.setattr(f, "rest", rest)
-    assert f.first_held_date() == D(2026, 9, 1)
+    assert f.first_held_date() == D(2026, 8, 30)
+    assert f.models_first_held_date() == D(2026, 9, 22)
     assert [t for t, _ in seen] == ["weather_forecasts", "weather_forecast_models"]
     assert all(("order", "for_date.asc") in p and ("limit", "1") in p for _, p in seen)
     monkeypatch.setattr(f, "rest", lambda table, params=None: [])
-    assert f.first_held_date() is None                        # an empty database clamps nothing
+    assert f.first_held_date() is None and f.models_first_held_date() is None   # an empty database clamps nothing
     assert f.catchup_start(D(2026, 8, 1), None) == D(2026, 8, 1)
+
+
+def test_held_from_keeps_the_rows_on_and_after_the_day():
+    rows = [{"for_date": d} for d in ("2026-09-20", "2026-09-21", "2026-09-22", "2026-09-23")]
+    assert f.held_from(rows, D(2026, 9, 22)) == (rows[2:], 2)
+    assert f.held_from(rows, None) == (rows, 0)
+    assert f.held_from(rows, D(2026, 9, 1)) == (rows, 0)
+
+
+def test_a_model_row_is_never_written_below_its_own_tables_oldest_day(monkeypatch, tmp_path):
+    """The night's window reaches 30 days back for weather_forecasts; the model
+    rows the same fetch returns for days weather_forecast_models no longer
+    holds are dropped and counted, never written back below its cut."""
+    today = dt.datetime.now(dt.timezone.utc).date()
+    held_from = today - dt.timedelta(days=30)
+    models_from = today - dt.timedelta(days=7)
+    written, logged = [], []
+
+    def fetch(lat, lon, start, end, label, models=None):
+        return {"start": start, "end": end}, "ok"
+
+    def build_rows(city_key, js, model=None, tz=None, first=None, last=None):
+        days = [(first + dt.timedelta(days=i)).isoformat() for i in range((last - first).days + 1)]
+        if model:
+            return [{"city_key": city_key, "model": model, "for_date": d, "lead_days": 1} for d in days]
+        return [{"city_key": city_key, "for_date": d, "lead_days": l} for d in days for l in f.LEADS]
+
+    def upsert(table, rows, key):
+        written.append((table, [r["for_date"] for r in rows]))
+        return len(rows)
+    monkeypatch.setattr(f, "WORKERS", 1)
+    monkeypatch.setattr(f, "PAUSE", 0)
+    monkeypatch.setattr(f, "MODELS", ["m1"])
+    monkeypatch.setattr(f, "first_held_date", lambda: held_from)
+    monkeypatch.setattr(f, "models_first_held_date", lambda: models_from)
+    monkeypatch.setattr(f, "fetch", fetch)
+    monkeypatch.setattr(f, "fetch_current", lambda lat, lon, label: (None, "refused"))
+    monkeypatch.setattr(f, "build_rows", build_rows)
+    monkeypatch.setattr(f, "upsert", upsert)
+    monkeypatch.setattr(f, "existing_dates", lambda c, s, e: set())      # every day missing
+    monkeypatch.setattr(f, "current_snapshot_of", lambda cities: {})
+    monkeypatch.setattr(f, "get_cities", lambda require_coords=True: [
+        {"city_key": "nyc", "latitude": 0.0, "longitude": 0.0, "timezone": "UTC"}])
+    monkeypatch.setattr(f, "log_run", lambda job, status, rows, detail: logged.append(detail))
+    monkeypatch.setenv("FORECAST_RESULT_PATH", str(tmp_path / "result.json"))
+    monkeypatch.setattr(sys, "argv", ["ingest_forecasts.py"])
+    f.main()
+    forecasts = sorted({d for t, ds in written if t == "weather_forecasts" for d in ds})
+    models = sorted({d for t, ds in written if t == "weather_forecast_models" for d in ds})
+    assert forecasts[0] == held_from.isoformat()                 # the window keeps its 30 days
+    assert models and models[0] == models_from.isoformat()       # the model rows their own week
+    assert all(d >= models_from.isoformat() for d in models)
+    assert logged[-1]["model_rows_below_held"] == (models_from - held_from).days
+    assert logged[-1]["models_held_from"] == models_from.isoformat()
 

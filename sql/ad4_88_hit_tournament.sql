@@ -73,7 +73,8 @@ comment on view public.v_hit_ladders is
 -- derived_hit_forecasts every night for every day both forecast tables still
 -- hold, and v_hit_forecasts serves the live rows for those days and the
 -- frozen rows for the days before them. The tables are pruned by whole
--- for_dates, so a day is either held whole or frozen.
+-- for_dates, so a day is either held whole or frozen. Since 7 Oct each row's
+-- own table decides (source_table, below).
 create table if not exists public.derived_hit_forecasts (
   city_key       text        not null,
   for_date       date        not null,
@@ -92,11 +93,64 @@ alter table public.derived_hit_forecasts enable row level security;
 revoke all on public.derived_hit_forecasts from public, anon, authenticated;
 grant select, insert, update, delete on public.derived_hit_forecasts to service_role;
 
+-- WHICH TABLE EACH ROW CAME FROM (WXPredict build 2.A, 7 Oct). The two
+-- forecast tables stop keeping the same days: weather_forecast_models keeps a
+-- week, weather_forecasts 30 days. A row is live while ITS table holds the
+-- day, so each row says which table that is. v_hit_forecasts_live writes it
+-- from its own branch. A row frozen before 7 Oct takes it from its model:
+-- weather_forecasts' models are its three series (nws, open_meteo_forecast,
+-- open_meteo_best_match, 7 Oct) and any other model it holds; every other
+-- model is weather_forecast_models', whose list FORECAST_MODELS may change
+-- (scripts/ingest_forecasts.py; Codex on #338). A model both tables hold
+-- would be ambiguous and refuses.
+alter table public.derived_hit_forecasts add column if not exists source_table text;
+
+do $source$
+declare
+  v_both text;
+begin
+  -- Each table's models, read once (a lookup per frozen row would scan
+  -- weather_forecasts 22,411 times; there is no index on model).
+  create temporary table hit_source_models on commit drop as
+  select 'weather_forecasts'::text as source_table, m.model
+    from (select distinct model from public.weather_forecasts
+          union select unnest(array['nws', 'open_meteo_forecast', 'open_meteo_best_match'])) m
+  union all
+  select 'weather_forecast_models', m.model
+    from (select distinct model from public.weather_forecast_models) m;
+
+  select string_agg(distinct f.model, ', ') into v_both
+    from public.derived_hit_forecasts f
+   where f.source_table is null
+     and f.model in (select model from hit_source_models where source_table = 'weather_forecasts')
+     and f.model in (select model from hit_source_models where source_table = 'weather_forecast_models');
+  if v_both is not null then
+    raise exception 'derived_hit_forecasts: model(s) % are in both forecast tables - which one a frozen row came from is ambiguous; nothing changed', v_both;
+  end if;
+  update public.derived_hit_forecasts f
+     set source_table = case
+           when f.model in (select model from hit_source_models where source_table = 'weather_forecasts')
+           then 'weather_forecasts' else 'weather_forecast_models' end
+   where f.source_table is null;
+  drop table hit_source_models;
+  if not exists (select 1 from pg_constraint
+                  where conname = 'derived_hit_forecasts_source_table'
+                    and conrelid = 'public.derived_hit_forecasts'::regclass) then
+    alter table public.derived_hit_forecasts
+      add constraint derived_hit_forecasts_source_table
+      check (source_table in ('weather_forecasts', 'weather_forecast_models'));
+  end if;
+end
+$source$;
+
+alter table public.derived_hit_forecasts alter column source_table set not null;
+
 create or replace view public.v_hit_forecasts_live as
 with day as (
   select distinct city_key, for_date, cutoff_at from public.v_hit_ladders
 )
-select d.city_key, d.for_date, 'asof'::text as lane, f.model, f.forecast_max_c, f.issued_at as known_at
+select d.city_key, d.for_date, 'asof'::text as lane, f.model, f.forecast_max_c, f.issued_at as known_at,
+       'weather_forecasts'::text as source_table
   from day d
   cross join lateral (
     select distinct on (i.model) i.model, i.forecast_max_c, i.issued_at
@@ -107,7 +161,8 @@ select d.city_key, d.for_date, 'asof'::text as lane, f.model, f.forecast_max_c, 
        and i.forecast_max_c is not null
      order by i.model, i.issued_at desc) f
 union all
-select d.city_key, d.for_date, 'asof', m.model, m.forecast_max_c, m.observed_at
+select d.city_key, d.for_date, 'asof', m.model, m.forecast_max_c, m.observed_at,
+       'weather_forecast_models'
   from day d
   cross join lateral (
     select distinct on (w.model) w.model, w.forecast_max_c, w.observed_at
@@ -117,39 +172,45 @@ select d.city_key, d.for_date, 'asof', m.model, m.forecast_max_c, m.observed_at
        and w.observed_at <= d.cutoff_at
      order by w.model, w.observed_at desc) m
 union all
-select d.city_key, d.for_date, 'research', f.model, f.forecast_max_c, f.run_at
+select d.city_key, d.for_date, 'research', f.model, f.forecast_max_c, f.run_at,
+       'weather_forecasts'
   from day d
   join public.weather_forecasts f
     on f.city_key = d.city_key and f.for_date = d.for_date
    and f.source = 'open-meteo-previous-runs' and f.lead_days = 1
    and f.forecast_max_c is not null
 union all
-select d.city_key, d.for_date, 'research', w.model, w.forecast_max_c, w.run_at
+select d.city_key, d.for_date, 'research', w.model, w.forecast_max_c, w.run_at,
+       'weather_forecast_models'
   from day d
   join public.weather_forecast_models w
     on w.city_key = d.city_key and w.for_date = d.for_date
    and w.source = 'open-meteo-previous-runs' and w.lead_days = 1;
 
 comment on view public.v_hit_forecasts_live is
-  'v_hit_forecasts computed from the forecast tables as they stand: correct for every day both tables still hold. freeze_hit_forecasts copies it nightly; v_hit_forecasts serves it (plan v2 P1.6 phase 2).';
+  'v_hit_forecasts computed from the forecast tables as they stand: correct for every day its source_table still holds. freeze_hit_forecasts copies it nightly; v_hit_forecasts serves it (plan v2 P1.6 phase 2; source_table, WXPredict build 2.A).';
 
--- The oldest for_date both tables hold whole: from it on the live rows, before
--- it the frozen ones. greatest() skips an empty table; both empty, all frozen.
+-- Each table's oldest for_date: from it on that table's rows are live, before
+-- it they are frozen (WXPredict build 2.A, 7 Oct: the tables keep different
+-- days; until then this was one boundary, the later of the two). An empty
+-- table serves all its rows frozen.
 create or replace view public.v_hit_forecasts as
 with held as (
-  select greatest((select min(for_date) from public.weather_forecasts),
-                  (select min(for_date) from public.weather_forecast_models)) as from_date
+  select (select min(for_date) from public.weather_forecasts)       as forecasts_from,
+         (select min(for_date) from public.weather_forecast_models) as models_from
 )
 select l.city_key, l.for_date, l.lane, l.model, l.forecast_max_c, l.known_at
   from public.v_hit_forecasts_live l, held h
- where l.for_date >= coalesce(h.from_date, 'infinity'::date)
+ where l.for_date >= coalesce(case l.source_table when 'weather_forecasts' then h.forecasts_from
+                                                  else h.models_from end, 'infinity'::date)
 union all
 select f.city_key, f.for_date, f.lane, f.model, f.forecast_max_c, f.known_at
   from public.derived_hit_forecasts f, held h
- where f.for_date < coalesce(h.from_date, 'infinity'::date);
+ where f.for_date < coalesce(case f.source_table when 'weather_forecasts' then h.forecasts_from
+                                                 else h.models_from end, 'infinity'::date);
 
 comment on view public.v_hit_forecasts is
-  'Per settled city-day and model: the newest forecast known by 18:00 local the evening before (lane asof), and previous-runs values at nominal lead 1 whose issue time is unverified (lane research, never promotes). Plan v2.1 P3.8. Live while both forecast tables hold the day, frozen (derived_hit_forecasts) before (plan v2 P1.6 phase 2).';
+  'Per settled city-day and model: the newest forecast known by 18:00 local the evening before (lane asof), and previous-runs values at nominal lead 1 whose issue time is unverified (lane research, never promotes). Plan v2.1 P3.8. Live while the row''s own forecast table holds the day, frozen (derived_hit_forecasts) before (plan v2 P1.6 phase 2; per table, WXPredict build 2.A).';
 
 revoke all on public.v_hit_ladders   from public, anon, authenticated;
 revoke all on public.v_hit_forecasts from public, anon, authenticated;

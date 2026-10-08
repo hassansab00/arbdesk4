@@ -344,8 +344,13 @@ def missing_span(have, cs, ce):
     return (first, last) if first else None
 
 
+def _oldest_held(table):
+    rows = rest(table, [("select", "for_date"), ("order", "for_date.asc"), ("limit", "1")])
+    return dt.date.fromisoformat(str(rows[0]["for_date"])[:10]) if rows else None
+
+
 def first_held_date():
-    """The oldest for_date both forecast tables still hold, or None.
+    """The oldest for_date weather_forecasts still holds, or None.
 
     NOTHING IS WRITTEN BELOW IT (plan v2 P1.6 phase 2, step 5). The prune cuts
     both tables by date, so from this day on they hold every row they were
@@ -355,13 +360,34 @@ def first_held_date():
     that no longer held them: missing_span runs from the first missing day to
     today, so one hole 33 days back re-fetched days 31-32 too, from the
     previous-runs API, with other run_at values than the rows already in
-    data/archive - which weather_history keys on, so both would be read."""
-    held = []
-    for table in ("weather_forecasts", "weather_forecast_models"):
-        rows = rest(table, [("select", "for_date"), ("order", "for_date.asc"), ("limit", "1")])
-        if rows:
-            held.append(dt.date.fromisoformat(str(rows[0]["for_date"])[:10]))
-    return max(held) if held else None
+    data/archive - which weather_history keys on, so both would be read.
+
+    ONE TABLE PER BOUNDARY (WXPredict build 2.A, 7 Oct). This was the later of
+    both tables' oldest days. weather_forecast_models now keeps a week and
+    weather_forecasts 30 days, so the later day would shrink the catch-up
+    window to a week for both. The window is judged on weather_forecasts
+    (existing_dates), so it starts at weather_forecasts' oldest day; the model
+    rows the same fetch returns are held to their own table's oldest day by
+    models_first_held_date."""
+    return _oldest_held("weather_forecasts")
+
+
+def models_first_held_date():
+    """The oldest for_date weather_forecast_models still holds, or None: no
+    model row dated before it is written (first_held_date says why). Since
+    26 Sep every model row has been written within a day of its date (51,061
+    rows, 7 Oct), so a night's fetch loses nothing to it; a hole older than a
+    week is no longer filled from here."""
+    return _oldest_held("weather_forecast_models")
+
+
+def held_from(rows, first_held):
+    """(the rows dated on or after first_held, how many were dropped). None
+    holds nothing back."""
+    if not first_held:
+        return rows, 0
+    keep = [r for r in rows if r["for_date"] >= first_held.isoformat()]
+    return keep, len(rows) - len(keep)
 
 
 def catchup_start(start, first_held):
@@ -419,13 +445,17 @@ def main():
     if start > end:
         raise ValueError('start must be on or before end')
     first_held = first_held_date() if ARCHIVE else start
+    models_held = models_first_held_date() if ARCHIVE else None
     if catchup_start(start, first_held) != start:
         if first_held > end:
-            raise ValueError(f"{start} to {end} is older than {first_held}, the oldest day both "
-                             f"forecast tables hold: those days are in data/archive")
-        print(f"window starts {first_held}, the oldest day both forecast tables hold "
+            raise ValueError(f"{start} to {end} is older than {first_held}, the oldest day "
+                             f"weather_forecasts holds: those days are in data/archive")
+        print(f"window starts {first_held}, the oldest day weather_forecasts holds "
               f"(asked from {start}; the days before are archived)")
         start = catchup_start(start, first_held)
+    if models_held and models_held > start:
+        print(f"model rows from {models_held}, the oldest day weather_forecast_models holds "
+              f"(the days before are archived)")
 
     t0 = time.monotonic()
     all_cities = get_cities(require_coords=True)
@@ -453,11 +483,13 @@ def main():
     # The per-model request is reported, never raised: it is additive, and a
     # refusal there must not stop best_match or start a paid continuation.
     model_rows, model_failed, model_empty = defaultdict(int), defaultdict(int), set()
+    model_below_held = 0
 
     def one_city(item):
         n_before, c, have = item
         out = {"got": 0, "skipped": 0, "refused": 0, "unreached": 0, "ran_out": False,
-               "model_rows": defaultdict(int), "model_failed": defaultdict(int), "model_empty": set()}
+               "model_rows": defaultdict(int), "model_failed": defaultdict(int), "model_empty": set(),
+               "model_below_held": 0}
         if (time.monotonic() - t0) / 60 > SOFT_DEADLINE_MIN:
             out["ran_out"] = True
             return c, n_before, out
@@ -491,6 +523,10 @@ def main():
                     for model in MODELS:
                         mrows = [{k: v for k, v in r.items() if k != "variables"}
                                  for r in build_rows(c["city_key"], mjs, model, c.get("timezone"), cs, ce)]
+                        # Never below the oldest day weather_forecast_models
+                        # holds: those days are in data/archive.
+                        mrows, below = held_from(mrows, models_held)
+                        out["model_below_held"] += below
                         if mrows:
                             n = upsert("weather_forecast_models", mrows,
                                        "city_key,model,run_at,for_date")
@@ -521,6 +557,7 @@ def main():
                 total += out["got"]
                 for m, n in out["model_rows"].items():
                     model_rows[m] += n
+                model_below_held += out["model_below_held"]
                 model_empty |= out["model_empty"]
                 # a hung city is asked once more below; only its LAST answer counts
                 if out["unreached"] and attempt == 1:
@@ -632,6 +669,7 @@ def main():
              "models": MODELS, "model_rows": dict(model_rows),
              "model_requests_failed": dict(model_failed),
              "models_without_rows": sorted(model_empty),
+             "model_rows_below_held": model_below_held, "models_held_from": str(models_held) if models_held else None,
              "current_rows": current_rows, "current_failed": dict(current_failed),
              "current_cities_missing": sorted(set(current_missing)),
              "current_snapshot_of": snapshot_of, "archive": ARCHIVE})

@@ -175,8 +175,10 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
               "forecast_features": 2,
               # signals' decision inputs: the plan's week; the rows stay (P1.6, 28 Sep)
               "signal_inputs": 7,
-              # each model's forecasts: as weather_forecasts (P1.6 phase 2, step 5)
-              "forecast_models": 30,
+              # each model's forecasts: a week; the hit forecasts take each
+              # table's own oldest day and the ingest writes nothing below it
+              # (WXPredict build 2.A, 7 Oct; 30 before, as weather_forecasts)
+              "forecast_models": 7,
               # prices no reader selects: station_width_score reads 14 days of
               # every price; older, readers take one row a band (P1.6, 29 Sep)
               "probabilities": 30,
