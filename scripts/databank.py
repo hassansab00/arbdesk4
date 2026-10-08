@@ -33,6 +33,7 @@ import datetime as dt
 import sys
 from collections import defaultdict
 
+import weather_history
 from common import (rest, rest_all, rpc, upsert, log_run, get_cities,
                     city_local_date, timezone_of)
 
@@ -201,11 +202,17 @@ def bank_forecasts(observed, days_back, force):
     # found no verified outcome for most of what it did see, and banked
     # nothing - while reporting "ok, banked 0". Five runs on 2026-09-14 alone
     # said exactly that while 09-12 and 09-13 sat there fully joinable.
-    rows = rest_all("weather_forecasts", [
+    #
+    # THROUGH THE ARCHIVE (Fresh Supabase, 8 Oct): the forecasts' keep falls to
+    # days, so the window's older dates come from data/archive/forecasts, as
+    # every other long reader of the table takes them (weather_history). An
+    # archived row has no forecast_id; it sorts after the database's, and the
+    # latest run per key wins either way.
+    rows = weather_history.read("weather_forecasts", [
         ("select", "forecast_id,city_key,model,run_at,for_date,lead_days,forecast_max_c"),
         ("for_date", f"gte.{since}"),
         ("for_date", f"lt.{until}"),
-    ], order="forecast_id.asc", page_size=1000)
+    ], rest_all_fn=rest_all, order="forecast_id.asc", page_size=1000)
 
     # Keep the LATEST run per (city, date, model, lead): that is the forecast
     # standing at the time, which is what was acted on.

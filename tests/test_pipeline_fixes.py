@@ -1031,7 +1031,9 @@ def test_the_freeze_pages_every_read_it_bounds():
         src = inspect.getsource(fn)
         body = "\n".join(l for l in src.splitlines()
                          if not l.lstrip().startswith("#"))
-        assert "rest_all(" in body, (
+        # bank_forecasts pages through weather_history.read (Fresh Supabase,
+        # 8 Oct), which reads the database with the rest_all it is handed.
+        assert "rest_all(" in body or "rest_all_fn=rest_all" in body, (
             f"{fn.__name__} must page its read - PostgREST silently truncates "
             f"at db-max-rows and a larger ?limit= changes nothing")
         assert '("limit", "50000")' not in body and '("limit", "20000")' not in body, (

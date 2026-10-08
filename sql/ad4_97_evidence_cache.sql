@@ -42,6 +42,11 @@
 -- freeze_forecast_latest copies the forecast standing at each lead on every
 -- day that has passed into derived_forecast_latest (sql/ad4_31).
 --
+-- Fresh Supabase (8 Oct) adds derived_city_day_peak, written by
+-- refresh_city_day_hours for every whole day: when the day peaked, which
+-- refresh_weather_peak_city reads for the days the readings no longer hold
+-- (sql/ad4_weather_readers_read_the_caches.sql).
+--
 -- All three run inside common.refresh_feature_cache - every night in
 -- capacity.py and before every weather prune in archive_observations.py,
 -- which refuses to prune when they fail - and the three weather prunes each
@@ -55,6 +60,28 @@
 -- the prune had already taken.
 -- ===========================================================================
 
+-- ---------------------------------------------------------------------------
+-- 1. The peak of each whole local day, kept.
+-- ---------------------------------------------------------------------------
+create table if not exists public.derived_city_day_peak (
+  city_key        text        not null,
+  obs_date        date        not null,   -- the city's local date
+  peak_local_hour numeric     not null,   -- hour + minute/60 of the highest reading, the earliest of equals
+  n_readings      integer     not null,   -- readings with a temperature that day
+  computed_at     timestamptz not null default now(),
+  primary key (city_key, obs_date)
+);
+
+comment on table public.derived_city_day_peak is
+  'Per city and local day: when the highest reading fell (hour + minute/60, the earliest of equals) and how many readings had a temperature, as refresh_weather_peak_city measures a day. Written by refresh_city_day_hours for every day the readings hold whole, never for a day the prune has cut into. What refresh_weather_peak_city reads for the days the readings no longer hold (Fresh Supabase, 8 Oct).';
+
+alter table public.derived_city_day_peak enable row level security;
+revoke all on public.derived_city_day_peak from anon, authenticated;
+grant select, insert, update on public.derived_city_day_peak to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 2. refresh_city_day_hours writes it, under the same whole-day rule.
+-- ---------------------------------------------------------------------------
 create or replace function public.refresh_city_day_hours(p_city text default null)
 returns jsonb
 language plpgsql
@@ -70,6 +97,7 @@ declare
   v_n       int;
   v_written int := 0;
   v_station int := 0;
+  v_peak    int := 0;
   v_cities  int := 0;
 begin
   select min(valid_at) into v_oldest from weather_observations;
@@ -133,22 +161,43 @@ begin
     get diagnostics v_n = row_count;
     v_station := v_station + v_n;
 
+    -- When each whole day peaked, as refresh_weather_peak_city measures a day
+    -- (Fresh Supabase, 8 Oct): the highest reading, the earliest of equals,
+    -- and the readings counted. Whole days only, never a cut day.
+    insert into derived_city_day_peak (city_key, obs_date, peak_local_hour, n_readings, computed_at)
+    select v_city, x.d, x.local_hour, x.n_readings::int, now()
+      from (select (o.valid_at at time zone v_tz)::date as d,
+                   extract(hour from (o.valid_at at time zone v_tz))
+                     + extract(minute from (o.valid_at at time zone v_tz)) / 60.0 as local_hour,
+                   count(*) over (partition by (o.valid_at at time zone v_tz)::date) as n_readings,
+                   row_number() over (partition by (o.valid_at at time zone v_tz)::date
+                                      order by o.temp_c desc, o.valid_at) as rk
+              from weather_observations o
+             where o.city_key = v_city and o.temp_c is not null) x
+     where x.rk = 1 and x.d >= v_first
+    on conflict (city_key, obs_date) do update
+       set peak_local_hour = excluded.peak_local_hour, n_readings = excluded.n_readings,
+           computed_at = now();
+    get diagnostics v_n = row_count;
+    v_peak := v_peak + v_n;
+
     v_cities := v_cities + 1;
   end loop;
 
   return jsonb_build_object(
     'ok', true, 'city', p_city, 'cities', v_cities, 'days_written', v_written,
-    'station_days_written', v_station,
+    'station_days_written', v_station, 'peak_days_written', v_peak,
     'whole_from_instant', v_oldest,
     'ms', round(extract(epoch from (clock_timestamp() - t0)) * 1000));
 end;
 $fn$;
 
 comment on function public.refresh_city_day_hours(text) is
-  'Write each city''s local days as 24 hourly maxima into derived_city_day_hours, and per source into derived_station_day_sources: every day the readings hold whole, and a cut day only if it was never cached (plan v2 P1.6 phase 2). Called once a night for every city - retired ones too, since the prune cuts theirs - by common.refresh_feature_cache.';
+  'Write each city''s local days as 24 hourly maxima into derived_city_day_hours, per source into derived_station_day_sources, and when each peaked into derived_city_day_peak: every day the readings hold whole, and (hours, sources) a cut day only if it was never cached (plan v2 P1.6 phase 2; Fresh Supabase, 8 Oct). Called once a night for every city - retired ones too, since the prune cuts theirs - by common.refresh_feature_cache.';
 
 revoke all on function public.refresh_city_day_hours(text) from public, anon, authenticated;
 grant execute on function public.refresh_city_day_hours(text) to service_role;
+
 
 
 create or replace function public.freeze_hit_forecasts()
