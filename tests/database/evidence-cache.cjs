@@ -140,8 +140,11 @@ const MIG = read('20260929160000_the_evidence_outlasts_the_weather_tables.sql');
     'while both tables hold every day, the view is the live computation');
 
   // THE PRUNES REFUSE WHAT IS NOT KEPT. The observations are cut at an
-  // instant 30 days back (13:xx in New York: part-way through a local day).
-  const cutAt = `(date_trunc('hour', now()) - interval '30 days')`;
+  // instant over 30 days back, 13:00 in New York: part-way through a local
+  // day whatever the hour the test runs. (It was the hour now truncated less
+  // 30 days, which at 04:xxZ, 05:xxZ in winter, is New York's midnight: the
+  // cut day came out whole and the test failed for that hour of every day.)
+  const cutAt = `(((current_date - 31)::timestamp + interval '13 hours') at time zone '${TZ}')`;
   const doomedObs = (await one(`select count(*)::int as n from public.weather_observations where valid_at < ${cutAt}`)).n;
   assert.ok(doomedObs > 200);
   const obsDry = await one(`select public.prune_observations(30, true, ${cutAt}) as r`);
