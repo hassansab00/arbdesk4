@@ -46,8 +46,13 @@ const assert = require('node:assert/strict');
       best_bid numeric,best_ask numeric,no_best_bid numeric,no_best_ask numeric,raw_book jsonb,no_book jsonb);
     -- ingested_at as live (not null, default now()): prune_trades takes only
     -- trades ingested before the cutoff's UTC day, which the mirror has.
+    -- The dedupe columns and their five-column unique index as production has
+    -- them (sql/ad4_53): 20261008170000 builds the hash key over them and
+    -- 20261008170100 drops the wide index.
     create table public.trades_observed(trade_id bigint primary key,city_key text,traded_at timestamptz,
-      ingested_at timestamptz not null default now());
+      ingested_at timestamptz not null default now(),band_id uuid,condition_id text,price numeric,size numeric,
+      side text,proxy_wallet text not null default '',token_id text,observed_at timestamptz);
+    create unique index ad4_uq_trade_dedupe on public.trades_observed(condition_id,traded_at,price,size,proxy_wallet);
     -- signals.payload carries the decision snapshot that
     -- 20260919180000_trade_decision_lineage.sql stamps onto every trade, so
     -- the column has to exist here or that migration's backfill fails on a

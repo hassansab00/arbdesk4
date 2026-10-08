@@ -67,7 +67,11 @@ BUDGET_S = 15.0
 RESERVE_S = 6.0
 OVERLAP = dt.timedelta(hours=1)
 UA = {"User-Agent": "arbdesk4-trades/1.0", "Accept": "application/json"}
-CONFLICT = "condition_id,traded_at,price,size,proxy_wallet"
+# A print's dedupe key (condition_id, traded_at, price, size, proxy_wallet)
+# is held as its 16-byte hash (trade_dedupe_key, WXPredict build 2.A, 8 Oct:
+# 19 MB of index as five columns). PostgREST cannot name that expression in
+# on_conflict, so prints go in through insert_trade_prints(), which does.
+INSERT_RPC = "insert_trade_prints"
 
 
 def switched_on():
@@ -190,16 +194,13 @@ def insert_new(rows):
     """
     if not rows:
         return 0
-    h = _headers()
-    h["Prefer"] = "resolution=ignore-duplicates,return=representation"
     new = 0
     for i in range(0, len(rows), 500):
-        r = _post(f"{_cfg()['url']}/rest/v1/trades_observed", headers=h,
-                  params={"on_conflict": CONFLICT, "select": "trade_id"},
-                  data=json.dumps(rows[i:i + 500]), timeout=60)
+        r = _post(f"{_cfg()['url']}/rest/v1/rpc/{INSERT_RPC}", headers=_headers(),
+                  data=json.dumps({"p_rows": rows[i:i + 500]}), timeout=60)
         if r.status_code >= 400:
-            raise requests.HTTPError(f"trades_observed -> HTTP {r.status_code}: {r.text[:300]}", response=r)
-        new += len(r.json())
+            raise requests.HTTPError(f"{INSERT_RPC} -> HTTP {r.status_code}: {r.text[:300]}", response=r)
+        new += len(r.json() or [])
     return new
 
 
