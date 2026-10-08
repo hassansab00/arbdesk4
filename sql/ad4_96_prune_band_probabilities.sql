@@ -3,8 +3,9 @@
 -- REST GOES TO THE REPOSITORY AFTER 30 DAYS (plan v2 P1.6 phase 2, step 6,
 -- 29 Sep)
 --
--- Safe to run any time. Creates one view and one function. Deletes nothing
--- by itself - p_dry_run defaults to true and the caller must ask twice.
+-- Safe to run any time. Creates one view, one index and one function.
+-- Deletes nothing by itself - p_dry_run defaults to true and the caller must
+-- ask twice.
 --
 -- Hassan, 29 Sep: "Do phase 2 as planned" and "do step 6 ten step 5".
 --
@@ -110,6 +111,17 @@ comment on view public.v_prunable_band_probabilities is
 
 revoke all on public.v_prunable_band_probabilities from public, anon, authenticated;
 grant select on public.v_prunable_band_probabilities to service_role;
+
+
+-- THE INDEX THE DELETE NEEDS (20261008040000). edges.prob_id references this
+-- table with no ON DELETE, so every price the prune removes is first looked
+-- up in edges. Without this that lookup is a full scan of edges: 9.85 ms each
+-- on 8 Oct, and the first eighteen-day prune (39,316 rows, about 387 s of
+-- scans) died at the gateway with nothing removed. With it, the same rows'
+-- lookups and the view took 5.7 s. Partial, as only a non-null reference can
+-- block a removal.
+create index if not exists ad4_ix_edges_prob_id
+  on public.edges (prob_id) where prob_id is not null;
 
 
 create or replace function public.prune_band_probabilities(
