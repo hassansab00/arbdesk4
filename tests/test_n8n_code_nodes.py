@@ -1530,10 +1530,24 @@ def _unique_keys_by_table():
     out = {}
     src = " ".join(re.sub(r"--[^\n]*", " ", open(f).read())
                    for f in sorted(glob.glob(os.path.join(ROOT, "sql", "*.sql"))))
+    # An index a later file drops is no key: ad4_trade_dedupe_hash drops
+    # ad4_53's five-column trade index, and an upsert naming those columns
+    # then fails with 42P10. Later means in install order.
+    order = [ln.strip() for ln in open(os.path.join(ROOT, "sql", "INSTALL_ORDER.txt"))
+             if ln.strip() and not ln.lstrip().startswith("#")]
+    ordered = " ".join(re.sub(r"--[^\n]*", " ", open(os.path.join(ROOT, "sql", f)).read()) for f in order)
+    events = sorted([(m.start(), "create", m.group(1).lower()) for m in re.finditer(
+        r"create\s+unique\s+index\s+(?:concurrently\s+)?(?:if\s+not\s+exists\s+)?([a-z0-9_]+)\s+on\b",
+        ordered, re.I)] + [(m.start(), "drop", m.group(1).lower()) for m in re.finditer(
+        r"drop\s+index\s+(?:concurrently\s+)?(?:if\s+exists\s+)?(?:public\.)?([a-z0-9_]+)", ordered, re.I)])
+    last = {}
+    for _pos, what, name in events:
+        last[name] = what
+    dropped = {name for name, what in last.items() if what == "drop"}
 
     def add(table, cols):
         cols = frozenset(c.strip().strip('"') for c in cols.split(",") if c.strip())
-        if cols:
+        if cols and not any("(" in c for c in cols):   # an expression is no on_conflict target
             out.setdefault(table.lower(), set()).add(cols)
 
     # create table x ( ... primary key (a,b) ... )   /  ... unique (a,b)
@@ -1547,8 +1561,9 @@ def _unique_keys_by_table():
             add(table, k.group(1))
     # create unique index ... on t (a,b)
     for m in re.finditer(r"create\s+unique\s+index\s+(?:concurrently\s+)?(?:if\s+not\s+exists\s+)?"
-                         r"[a-z0-9_]*\s*on\s+(?:public\.)?([a-z0-9_]+)\s*\(([^)]*)\)", src, re.I):
-        add(m.group(1), m.group(2))
+                         r"([a-z0-9_]*)\s*on\s+(?:public\.)?([a-z0-9_]+)\s*\(([^)]*)\)", src, re.I):
+        if m.group(1).lower() not in dropped:
+            add(m.group(2), m.group(3))
     # alter table t add constraint c unique (a,b) / primary key (a,b)
     for m in re.finditer(r"alter\s+table\s+(?:public\.)?([a-z0-9_]+)[^;]*?"
                          r"(?:unique|primary\s+key)\s*\(([^)]*)\)", src, re.I | re.S):

@@ -291,3 +291,42 @@ def test_the_background_run_hands_its_exit_code_to_the_last_step(tmp_path):
     done = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", collect],
                           cwd=tmp_path, env=env, capture_output=True, text=True, timeout=20)
     assert done.returncode == 3 and "fake run" in done.stdout
+
+
+# --------------------------------------------------------------------------
+# Prints go in through insert_trade_prints(), which dedupes on the 16-byte key
+# (WXPredict build 2.A, 8 Oct: 20261008170000)
+# --------------------------------------------------------------------------
+class _Posted:
+    def __init__(self, body, status=200):
+        self.status_code, self._body, self.text = status, body, str(body)
+
+    def json(self):
+        return self._body
+
+
+def test_prints_go_through_insert_trades_in_batches_and_count_what_was_new(monkeypatch):
+    import json
+    calls = []
+
+    def post(url, **kw):
+        calls.append((url, json.loads(kw["data"])))
+        rows = json.loads(kw["data"])["p_rows"]
+        return _Posted([{"trade_id": i} for i in range(len(rows) - 1)])     # one of each batch was held
+    monkeypatch.setattr(it, "_post", post)
+    monkeypatch.setattr(it, "_cfg", lambda: {"url": "https://x.supabase.co"})
+    monkeypatch.setattr(it, "_headers", lambda: {"apikey": "k"})
+    rows = [{"n": i} for i in range(1200)]
+    assert it.insert_new(rows) == 1197
+    assert [u for u, _b in calls] == ["https://x.supabase.co/rest/v1/rpc/insert_trade_prints"] * 3
+    assert [len(b["p_rows"]) for _u, b in calls] == [500, 500, 200]
+    assert calls[0][1]["p_rows"][0] == {"n": 0} and calls[2][1]["p_rows"][-1] == {"n": 1199}
+    assert it.insert_new([]) == 0 and len(calls) == 3
+
+
+def test_a_refused_insert_fails_its_batch(monkeypatch):
+    monkeypatch.setattr(it, "_post", lambda url, **kw: _Posted({"message": "no"}, 400))
+    monkeypatch.setattr(it, "_cfg", lambda: {"url": "https://x.supabase.co"})
+    monkeypatch.setattr(it, "_headers", lambda: {})
+    with pytest.raises(it.requests.HTTPError, match="insert_trade_prints -> HTTP 400"):
+        it.insert_new([{"n": 1}])
