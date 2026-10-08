@@ -169,12 +169,16 @@ MEASURED_MINUTES = {
     # MEASURED 1-4 Oct, with the queue and the banking in it: 21 runs, 83
     # billed minutes, 3.95 a run (job 156-249 s; Actions jobs API, each job
     # rounded up). Every 6 hours from 4 Oct, at 02/08/14/20 UTC (20261004170000).
-    "pipeline_intraday.yml": 4.0,
+    # Measured 4-8 Oct (to 16:00Z), every 6 hours: 21 runs, 86 billed, 4.10 a
+    # run (Actions jobs API, each job rounded up; S4, 8 Oct).
+    "pipeline_intraday.yml": 4.1,
     # The hourly checkpoint tick (plan v2 P6.1 / P4.2). Dispatched 24 Sep:
     # 35 s with a cold venv cache, 21 s warm (7 checkpoints, script 11.8 s).
     # Billed at one minute; tick.py stops itself at 45 s.
     # Measured 1-4 Oct: 83 runs, 84 billed minutes (one run took two).
-    "tick.yml": 1.02,
+    # Measured 1 Oct 16:00Z - 8 Oct 16:00Z: 167 runs, 173 billed, 1.04 a run
+    # (the slowest job 202 s; S4, 8 Oct).
+    "tick.yml": 1.04,
     # 29.0 measured 19 Sep. Measured 28 Sep with everything since in it (the
     # hit tournament 2 min 2 s, the width score 3 s, the engine replay 6 s):
     # the job ran 04:36:05-05:05:44, 29 min 39 s, billed 30. The settlement
@@ -200,7 +204,11 @@ MEASURED_MINUTES = {
     # 432 s on 5 Oct (jobs API), so about 6-7 billed minutes a night. NOT
     # APPLIED HERE until three nights are measured with them off (A.3's
     # checkpoint); 38 stays the ceiling meanwhile.
-    "pipeline_daily.yml": 38.0,
+    # MEASURED with them off, the three nights after #316 (6-8 Oct): 28, 31
+    # and 27 billed (1,667, 1,838 and 1,590 s; jobs API). 7 Oct's 31 includes
+    # the honest station model failing at its step timeout (fixed since). 31,
+    # the slowest of the three (S4, 8 Oct).
+    "pipeline_daily.yml": 31.0,
     # Measured per night, every chained link included (the clock dispatches
     # one run; an incomplete ingest chains the next). 27 Sep, before the
     # parallel ingest (#204): three links, 67 billed minutes. 28 Sep, the
@@ -224,7 +232,10 @@ MEASURED_MINUTES = {
     # after its first nights and lower it if the step runs short.
     # Measured 1-4 Oct: 14, 13, 13 and 14 billed (759-793 s). 29 Sep - 5 Oct,
     # seven nights: 14, 14, 14, 13, 13, 14 and 15, mean 13.86 (checked 5 Oct).
-    "archive_observations.yml": 13.9,
+    # 2-8 Oct: 13, 13, 14, 15, 15, 15 and 19 billed, mean 14.86 (jobs API). 8
+    # Oct's 19 (1,101 s) includes the price prune timing out (HTTP 504), which
+    # #340's index fixes. 15, the nights without it (S4, 8 Oct).
+    "archive_observations.yml": 15.0,
     # Measured 1-4 Oct: 1 billed minute on each of 4 runs.
     "paper_trade_log.yml": 1.0,
     # 1.5 measured before 2026-09-22; the wind-direction backfill added a
@@ -232,7 +243,8 @@ MEASURED_MINUTES = {
     # the first time it runs, and writes nothing on every run after that.
     # Held at 4.0 until a run with the step in it has been timed - the
     # budget may round up, it may not guess low.
-    "weather_model.yml": 4.0,
+    # Timed 5 Oct 08:36Z with the step in it: 50 s, billed 1 (jobs API; S4).
+    "weather_model.yml": 1.0,
     "live_weather.yml": 1.5,
     "verify_resolution_source.yml": 1.5,
     "backtest.yml": 1.5,
