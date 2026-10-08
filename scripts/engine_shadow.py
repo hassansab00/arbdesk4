@@ -52,6 +52,23 @@ ORDER_RESERVE_S = 1.0     # kept after the fills for the tick's own log
 # after the engine and records preregistered forward tests) keep their time:
 # they took 1.63 s at the median and 5.38 s at most over 70 ticks to 8 Oct.
 MODEL_ONLY_RESERVE_S = 8.0
+# THE TWINS TAKE TURNS (8 Oct). At w = 1 a twin sees an edge on most ladders
+# and solves its book, where its base at w = 0 skips the solve
+# (holdings_solver.no_book_grows). On the 24 recorded runs to 8 Oct 06:36Z,
+# replayed here, the six twins took 375 s of CPU against their bases' 46 s:
+# 1.48 s a city-day, nearly all of it in solve_book's robust objective (4,000
+# iterations over 200 draws). The tick leaves them little: over the 93 ticks
+# of 4-8 Oct the anchored engine ended (the tick's seconds less the
+# variants', ingest_log) a median 5.1 s before the twins' stop at 32 s (1.3 s
+# at the 25th percentile, 7.7 s at the 75th), and on 8 Oct 10:36Z, the twins'
+# first tick, 5.7 s after it: 22 city-days, none reached. Taken in the order
+# the tick wrote them, the same city-days would be
+# cut every hour. The pass takes them least recently decided first instead:
+# one the twins have not decided in TWINS_LOOKBACK_H, then the one they
+# decided longest ago, so each city-day gets its turn.
+TWINS_LOOKBACK_H = 48
+TWINS_WAIT_S = 1.0
+TWINS_ROWS_MAX = 1000           # db-max-rows; newest first, so a cut drops the oldest
 
 # THE CANDIDATE GATE (WXPredict build F.7; Hassan, 6 Oct: "each strategy
 # trades only cities whose status is Candidate"). v_city_status gives each
@@ -327,7 +344,8 @@ def _num(x):
 
 
 def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, params, anchor_table,
-               deadline, run_id, decided_at, buys=None, exits=None, status=None, model_only_deadline=None):
+               deadline, run_id, decided_at, buys=None, exits=None, status=None, model_only_deadline=None,
+               model_only_last=None):
     """(rows, detail). checkpoints: [(checkpoint_id, row)] written this tick,
     latest per city-day. deadline: time.monotonic() to stop at. `buys`, when
     given, collects (row, decision, checkpoint_id) for every BUY: its orders
@@ -336,7 +354,10 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
     (status, rules version)} puts the Candidate gate in force (an empty map
     holds every BUY back); None leaves it out, as in the replay of a run
     recorded before the gate. `model_only_deadline`, when given and earlier,
-    is where the model-only twins' pass stops."""
+    is where the model-only twins' pass stops. `model_only_last`, when given
+    ({(city, target): when the twins last decided it}, or a function that
+    returns it, called only if the twins' pass has time), puts that pass in
+    least-recently-decided order (least_recent_first)."""
     import decision_engine as de
     from strategies import engine_views as ev
 
@@ -349,7 +370,11 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
     passes = (("anchored", ANCHORED, deadline),
               ("model_only", MODEL_ONLY, deadline if model_only_deadline is None else min(deadline, model_only_deadline)))
     for group_name, group, stop_at in passes:
-        for checkpoint_id, row in checkpoints:
+        todo = checkpoints
+        if group_name == "model_only" and model_only_last is not None and time.monotonic() < stop_at:
+            todo = least_recent_first(checkpoints, model_only_last() if callable(model_only_last)
+                                      else model_only_last)
+        for checkpoint_id, row in todo:
             if time.monotonic() >= stop_at:
                 counts[group_name][1] += 1
                 continue
@@ -415,6 +440,49 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
     return rows, {"city_days": len(checkpoints), "reached": counts["anchored"][0],
                   "out_of_time": counts["anchored"][1], "model_only_reached": counts["model_only"][0],
                   "model_only_out_of_time": counts["model_only"][1]}
+
+
+def least_recent_first(checkpoints, last):
+    """The twins' order (THE TWINS TAKE TURNS): a city-day missing from `last`
+    first, then the one decided longest ago; the tick's own order among equals."""
+    def key(item):
+        t = (last or {}).get((item[1]["city_key"], str(item[1]["target_date"])))
+        return (t is not None, t if t is not None else 0.0)
+    return sorted(checkpoints, key=key)
+
+
+def read_twins_last(rest, now):
+    """{(city, target date): epoch seconds} - when the model-only twins last
+    decided each city-day within TWINS_LOOKBACK_H. A city-day the twins' pass
+    reaches gets a row for every twin whatever it decides (no ledger, no
+    ladder, NONE), so the first twin's rows say where the pass has been."""
+    since = (now - dt.timedelta(hours=TWINS_LOOKBACK_H)).astimezone(dt.timezone.utc)
+    rows = rest("decisions", [("select", "city_key,resolution_date,decided_at"),
+                              ("strategy_id", f"eq.{MODEL_ONLY[0]}"),
+                              ("decided_at", f"gte.{since:%Y-%m-%dT%H:%M:%SZ}"),
+                              ("order", "decided_at.desc"), ("limit", str(TWINS_ROWS_MAX))], tries=1)
+    last = {}
+    for r in rows:
+        k = (r["city_key"], str(r["resolution_date"]))
+        t = dt.datetime.fromisoformat(r["decided_at"]).timestamp()
+        last[k] = max(t, last.get(k, t))
+    return last
+
+
+def start_twins_read(rest, now):
+    """read_twins_last on a daemon thread, begun when the engine starts, so it
+    runs beside the engine's other reads and the anchored pass."""
+    import threading
+    from concurrent.futures import Future
+    future = Future()
+
+    def run():
+        try:
+            future.set_result(read_twins_last(rest, now))
+        except BaseException as e:            # noqa: BLE001 - handed to collect_status
+            future.set_exception(e)
+    threading.Thread(target=run, name="twins-read", daemon=True).start()
+    return future
 
 
 def exit_of(sid, s10d, held, book, ebook, lg, trace, params, run_id, decided_at, checkpoint_id, city, target,
@@ -560,6 +628,7 @@ def record(written_rows, s10_ladders, bands_by_market, market_of, unit_of, floor
         if not written_rows:
             out["city_days"] = 0
             return out
+        twins_read = start_twins_read(rest, now)
         keys = {(r["city_key"], str(r["target_date"]), r["checkpoint"]) for r in written_rows}
         ids = {}
         cities = sorted({k[0] for k in keys})
@@ -604,10 +673,18 @@ def record(written_rows, s10_ladders, bands_by_market, market_of, unit_of, floor
         buys, exits = [], []
         import engine_orders
         twin_orders_by = deadline - MODEL_ONLY_RESERVE_S
+
+        def twins_last():
+            # Collected only once the anchored pass is done and the twins have
+            # time. Unread, it is empty, and the twins keep the tick's order.
+            last, unread = collect_status(twins_read, TWINS_WAIT_S)
+            out["model_only_order"] = {"read": len(last), "unread": unread}
+            return last
         rows, detail = decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, params,
                                   anchor_table, deadline - WRITE_RESERVE_S, run_id,
                                   now.isoformat(), buys=buys, exits=exits, status=seen,
-                                  model_only_deadline=twin_orders_by - 2 * engine_orders.FILL_SECONDS)
+                                  model_only_deadline=twin_orders_by - 2 * engine_orders.FILL_SECONDS,
+                                  model_only_last=twins_last)
         out.update(detail)
         out["actions"] = {}
         for r in rows:
