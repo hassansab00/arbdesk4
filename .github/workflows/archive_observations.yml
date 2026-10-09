@@ -271,9 +271,12 @@ jobs:
       # data/training/previous_runs for scripts/station_mos.py. Two requests a
       # city (~200 weighted Open-Meteo calls for 10 days x 48 cities); it
       # deletes nothing and a failed city is simply asked again tomorrow.
+      # 11 minutes from 9 Oct (was 5): the repository is public, so the step's
+      # time is not billed, and on 9 Oct the run hit its 240 s deadline with
+      # 14 of 47 cities unreached (step 02:46:07-02:50:10Z).
       - name: Append the honest training record
         if: always()
-        timeout-minutes: 5
+        timeout-minutes: 11
         run: PYTHONPATH=scripts python scripts/honest_record.py
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -283,11 +286,13 @@ jobs:
       # daily maxima for the next days, with the run's initialisation and
       # publication times, appended to data/training/ensembles. Open-Meteo
       # keeps ensemble members for about four days, so this record cannot be
-      # made afterwards. 96 requests (~480 weighted Open-Meteo calls); a 90 s
-      # deadline inside a 2-minute step (the Actions minute budget).
+      # made afterwards. 96 requests (~480 weighted Open-Meteo calls). A 360 s
+      # deadline inside a 7-minute step from 9 Oct (was 90 s in 2 minutes, for
+      # the Actions minute budget): the repository is public, and on 9 Oct the
+      # run hit its deadline with 23 of 47 cities unreached (02:50:10-02:51:41Z).
       - name: Append the ensemble record
         if: always()
-        timeout-minutes: 2
+        timeout-minutes: 7
         run: PYTHONPATH=scripts python scripts/ensemble_record.py
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

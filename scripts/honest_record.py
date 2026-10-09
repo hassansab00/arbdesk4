@@ -67,9 +67,12 @@ RETRY_WAIT = 10
 # waits past it, no retry starts without MIN_LEFT seconds, and what arrived is
 # written (status partial). A city left out is asked again the next night:
 # every run re-asks the last APPEND_DAYS days. Reading, merging and writing the
-# two files took 2.7 s on 28 Sep (42,234 and 293,313 rows), so 240 s leaves the
-# step (timeout-minutes: 5 in archive_observations.yml) a minute to spare.
-RUN_SECONDS = 240
+# two files took 2.7 s on 28 Sep (42,234 and 293,313 rows), so the deadline
+# leaves the step a minute to spare. 240 s in a 5-minute step until 9 Oct,
+# when the run hit it with 14 of 47 cities unreached (step 02:46:07-02:50:10Z);
+# the repository is public from 9 Oct, its runners are not billed, and 600 s
+# in an 11-minute step (archive_observations.yml) lets every city answer.
+RUN_SECONDS = 600
 MIN_LEFT = 5
 _deadline = None                # time.monotonic() value, or None: no deadline
 
