@@ -56,7 +56,32 @@ const WHAT_IT_DOES: Record<string, string> = {
     "Buys the two most likely ADJACENT buckets when the pair costs under 70c including fees and one of them holds where the day is actually heading.",
   s9_ladder_basket:
     "Buys the contiguous window of buckets with the best expected return per dollar after fees, when it clears the floor and contains where the day is heading.",
+  // The engine strategies (plan v2 P8.1, 27 Sep): each starts from the market
+  // (w = 0) until the model earns weight (scripts/market_anchor.py).
+  s10_winner:
+    "Holds the YES of the one bucket most likely to win each city-day, staked by Kelly, and moves only when the growth gained beats the cost of switching. Starts from the market until the model earns weight.",
+  s10_growth:
+    "Holds the one YES that grows the ledger most - often a cheaper bucket than the favourite. Starts from the market until the model earns weight.",
+  s10_lock:
+    "Anchored on the most likely bucket, it trades only a book over the whole ladder that cannot end below its cost whatever bucket wins.",
+  s11_ladder:
+    "Buys the growth-optimal set of YES buckets (Kelly's horse race): small on a sharp day, wider on an uncertain one, with no width rule. Starts from the market until the model earns weight.",
+  s11_lock:
+    "The ladder optimiser under a no-loss constraint: a book that cannot end below its cost in any outcome, dead buckets included.",
+  s12_no:
+    "Sells the buckets the market overprices by buying their NO, tails especially, sized on the worst draws of the posterior. Starts from the market until the model earns weight.",
 };
+
+/** A model-only twin's base (engine_views.MODEL_ONLY): s12_no_model -> s12_no. */
+const baseOf = (id: string) => (id.endsWith("_model") ? id.slice(0, -"_model".length) : null);
+
+function whatItDoes(id: string): string {
+  if (WHAT_IT_DOES[id]) return WHAT_IT_DOES[id];
+  const base = baseOf(id);
+  return base && WHAT_IT_DOES[base]
+    ? `Model-only twin of ${base}: the same rules on the model's own numbers (w = 1), on its own $1,000 paper ledger.`
+    : "—";
+}
 
 const ORIGIN_NOTE: Record<string, string> = {
   hassan: "traded by hand before it was code",
@@ -123,7 +148,20 @@ const NEEDS: Record<string, { text: string; count?: keyof BoardConditions }> = {
   s7_pre_peak_gradient: { text: "a city inside its pre-peak entry window", count: "inside_peak_window" },
   s8_two_bucket_cover: { text: "two buckets that together cover where the day is heading" },
   s9_ladder_basket: { text: "a contiguous run of buckets clearing the floor together" },
+  s10_winner: { text: "its most likely bucket priced under what the view makes it, after the fee - at w = 0 the view is the market's own price" },
+  s10_growth: { text: "a tradeable bucket priced under what the view makes it, after the fee - at w = 0 the view is the market's own price" },
+  s10_lock: { text: "a ladder whose buckets together cost under $1.00 with fees" },
+  s11_ladder: { text: "tradeable buckets priced under what the view makes them, after the fee - at w = 0 the view is the market's own price" },
+  s11_lock: { text: "a ladder whose buckets together cost under $1.00 with fees" },
+  s12_no: { text: "a NO priced under what the view makes it, after the fee - at w = 0 the view is the market's own price" },
 };
+
+/** What a strategy is waiting for; a twin waits for its base's conditions on the model's numbers. */
+function needsOf(id: string) {
+  if (NEEDS[id]) return NEEDS[id];
+  const base = baseOf(id);
+  return base && NEEDS[base] ? { text: NEEDS[base].text.replace(/ - at w = 0 the view is the market's own price$/, " on the model's own numbers") } : undefined;
+}
 
 export default function StrategiesPage() {
   const boardQ = useQuery<StrategyBoardRow[]>(
@@ -322,6 +360,7 @@ export default function StrategiesPage() {
             return (
               <div
                 key={r.strategy_id}
+                data-strategy={r.strategy_id}
                 className={`rounded border bg-panel ${r.enabled ? "border-good/40" : "border-border"}`}
               >
                 <div className="flex flex-wrap items-start gap-3 p-3">
@@ -359,7 +398,7 @@ export default function StrategiesPage() {
                       )}
                     </div>
                     <p className="mt-0.5 max-w-3xl text-[11px] leading-relaxed text-muted">
-                      {WHAT_IT_DOES[r.strategy_id] ?? "—"}
+                      {whatItDoes(r.strategy_id)}
                     </p>
 
                     {/* ---- ON THIS DESK ---------------------------------
@@ -405,21 +444,20 @@ export default function StrategiesPage() {
                               waiting FOR, which is the part that can be acted
                               on - and counts it where the board can be
                               counted. */}
-                          {d.allowed_here && d.proposed === 0 && NEEDS[r.strategy_id] && (
-                            <div className="mt-0.5 text-muted">
-                              needs {NEEDS[r.strategy_id].text}
-                              {cond && NEEDS[r.strategy_id].count && (
-                                <span
-                                  className={
-                                    cond[NEEDS[r.strategy_id].count!] > 0 ? " text-good" : " text-warn"
-                                  }
-                                >
-                                  {" "}
-                                  — {cond[NEEDS[r.strategy_id].count!]} of {cond.cities} qualify right now
-                                </span>
-                              )}
-                            </div>
-                          )}
+                          {d.allowed_here && d.proposed === 0 && needsOf(r.strategy_id) && (() => {
+                            const need = needsOf(r.strategy_id)!;
+                            return (
+                              <div className="mt-0.5 text-muted">
+                                needs {need.text}
+                                {cond && need.count && (
+                                  <span className={cond[need.count] > 0 ? " text-good" : " text-warn"}>
+                                    {" "}
+                                    — {cond[need.count]} of {cond.cities} qualify right now
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       );
                     })()}

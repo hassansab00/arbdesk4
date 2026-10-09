@@ -72,27 +72,77 @@ def _fee(p):
     return 0.05 * p * (1 - p)
 
 
-def test_every_registered_strategy_has_a_walkthrough():
+def _strategy_ids():
+    """Every id the page can list: the signal-path REGISTRY, the retired ids
+    it still shows, and the engine's (engine_shadow.STRATEGIES).
+
+    THE ENGINE'S WERE MISSING (Hassan, 9 Oct: "we need the how it works
+    explanation for each strategy, we used to have it visible when we clicked
+    but now no"). S10, S11 and S12 were registered on 27 Sep and their
+    model-only twins on 8 Oct, all through engine_shadow, which this test
+    never read - so 12 of the 13 active strategies said "No walkthrough is
+    written" while it stayed green."""
     from strategies import REGISTRY as LIVE
     from strategies.legacy import LEGACY_REGISTRY
-    REGISTRY = {**LIVE, **LEGACY_REGISTRY}   # the page lists retired ids too
+    import engine_shadow
+    return {**LIVE, **LEGACY_REGISTRY}, set(engine_shadow.ANCHORED), set(engine_shadow.MODEL_ONLY)
 
-    described = set(re.findall(r"^\s{2}(s\d+_\w+):\s*\{", PANEL, re.M))
-    missing = sorted(set(REGISTRY) - described)
+
+DESCRIBED = set(re.findall(r"^\s{2}(s\d+_\w+):\s*\{", PANEL, re.M))
+
+
+def test_every_registered_strategy_has_a_walkthrough():
+    registry, anchored, _twins = _strategy_ids()
+    missing = sorted((set(registry) | anchored) - DESCRIBED)
     assert not missing, (
         f"no walkthrough for {missing}. The page will offer 'how it works' and then say "
         "there is nothing written, which is worse than not offering it."
     )
 
 
-def test_no_walkthrough_describes_a_strategy_that_does_not_exist():
-    from strategies import REGISTRY as LIVE
-    from strategies.legacy import LEGACY_REGISTRY
-    REGISTRY = {**LIVE, **LEGACY_REGISTRY}   # the page lists retired ids too
+def test_every_model_only_twin_shows_its_base():
+    """A twin decides by its base's rules at w = 1 (engine_views.MODEL_ONLY),
+    so its walkthrough is the base's on the model's numbers - resolved by id,
+    not six copies that could drift."""
+    from strategies.engine_views import MODEL_ONLY
+    _registry, _anchored, twins = _strategy_ids()
+    assert twins == set(MODEL_ONLY)
+    for twin, base in MODEL_ONLY.items():
+        assert twin == f"{base}_model" and base in DESCRIBED, twin
+    assert "PLAYS[strategyId] ?? twinPlay(strategyId)" in PANEL_CODE
+    assert 'strategyId.endsWith("_model")' in PANEL_CODE
 
-    described = set(re.findall(r"^\s{2}(s\d+_\w+):\s*\{", PANEL, re.M))
-    stale = sorted(described - set(REGISTRY))
-    assert not stale, f"explained on the page but not in REGISTRY: {stale}"
+
+def test_no_walkthrough_describes_a_strategy_that_does_not_exist():
+    registry, anchored, _twins = _strategy_ids()
+    stale = sorted(DESCRIBED - set(registry) - anchored)
+    assert not stale, f"explained on the page but not in REGISTRY or engine_shadow: {stale}"
+
+
+def test_the_page_says_what_every_strategy_does():
+    registry, anchored, twins = _strategy_ids()
+    said = set(re.findall(r"^\s{2}(s\d+_\w+):\s*$", PAGE, re.M))
+    missing = sorted((set(registry) | anchored) - said)
+    assert not missing, f"no one-line summary on the strategies page for {missing}"
+    assert "whatItDoes(r.strategy_id)" in PAGE and 'id.endsWith("_model")' in PAGE
+
+
+def test_the_engine_walkthroughs_take_what_the_solver_takes():
+    """web/lib/kelly.ts ports holdings_solver; web/tests/kelly.test.cjs pins
+    its answers on the worked market to these. If the solver changes, both
+    sides must be looked at again."""
+    import holdings_solver as hs
+    market = _market()
+    ladder = [{"id": b["label"], "p": b["prob"], "yes_price": b["ask"] if b["ask"] >= 0.07 else None,
+               "no_price": 1 - b["ask"]} for b in market]
+    yes = hs.solve(ladder, allow=("YES",))
+    assert {k.split(":")[0] for k, w in yes["weights"].items() if w > 1e-3} == {"30–31", "31–32"}
+    assert abs(yes["cash"] - 0.9191090269636576) < 1e-6
+    no = hs.solve(ladder, allow=("NO",))
+    assert {k.split(":")[0] for k, w in no["weights"].items() if w > 1e-3} == {"32–33", "33–34", "34–35", "≥35"}
+    assert abs(no["growth"] - 0.02407555097182852) < 1e-9
+    assert hs.best_single_bucket([{"id": b["id"], "p": b["p"], "yes_price": b["yes_price"]} for b in ladder])[0] == "31–32"
+    assert hs.single_bucket_growth(0.30, 0.30) == 0.0, "the favourite is priced at its probability"
 
 
 def test_the_worked_market_is_a_real_market():
