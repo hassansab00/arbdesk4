@@ -262,19 +262,33 @@ grant execute on function public.run_health_watchdog() to service_role;
 -- (to_regclass), and tools/gen_provenance.py reads a view's body as far as the
 -- next view or the end of the file.
 create or replace view public.v_job_last_ok as
+-- ingest_log is read twice in all, not twice per job (Codex on #357: 128
+-- correlated scans took 109.5 ms on 9 Oct's 6,708 rows; aggregated, 29.0 ms).
+-- A job switched 'off' or 'manual' on the Workflows page logs only 'skipped'
+-- rows (should_run()), by choice: it is never overdue (Codex on #357).
+with ok as (
+  select job, max(logged_at) as last_ok_at
+    from public.ingest_log where status = 'ok' group by job
+), last as (
+  select distinct on (job) job, logged_at, status
+    from public.ingest_log order by job, logged_at desc
+), gate as (
+  select value as schedules from public.settings where key = 'workflow_schedules'
+)
 select s.job, s.cadence, s.scheduled_by, s.max_age_minutes,
        ok.last_ok_at,
        round(extract(epoch from now() - ok.last_ok_at) / 60)::int as age_minutes,
        last.logged_at as last_run_at, last.status as last_status,
-       (ok.last_ok_at is null or now() - ok.last_ok_at > make_interval(mins => s.max_age_minutes)) as overdue
+       (coalesce(gate.schedules -> s.job ->> 'mode', 'auto') not in ('off', 'manual')
+        and (ok.last_ok_at is null or now() - ok.last_ok_at > make_interval(mins => s.max_age_minutes))) as overdue,
+       coalesce(gate.schedules -> s.job ->> 'mode', 'auto') as mode
   from public.job_sla s
-  left join lateral (select max(l.logged_at) as last_ok_at from public.ingest_log l
-                      where l.job = s.job and l.status = 'ok') ok on true
-  left join lateral (select l.logged_at, l.status from public.ingest_log l
-                      where l.job = s.job order by l.logged_at desc limit 1) last on true;
+  left join ok on ok.job = s.job
+  left join last on last.job = s.job
+  left join gate on true;
 
 comment on view public.v_job_last_ok is
-  'Plan v2 P6.3 (9 Oct): each job in job_sla, when it last logged ok, its last run and status, and whether its last ok is older than its SLA. run_health_watchdog() fails on an overdue job.';
+  'Plan v2 P6.3 (9 Oct): each job in job_sla, when it last logged ok, its last run and status, its Workflows-page mode, and whether its last ok is older than its SLA (never for a job switched off or manual). run_health_watchdog() fails on an overdue job.';
 
 revoke all on public.v_job_last_ok from public, anon, authenticated;
 grant select on public.v_job_last_ok to service_role;

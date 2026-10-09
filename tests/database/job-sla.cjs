@@ -35,6 +35,8 @@ const FILES = ['archive_observations.yml', 'forecasts.yml', 'observations.yml', 
     create table public.book_snapshots (observed_at timestamptz);
     create table public.weather_forecasts (run_at timestamptz);
     create table public.anomalies (detected_at timestamptz, kind text);
+    create table public.settings (key text primary key, value jsonb not null);
+    insert into public.settings values ('workflow_schedules', '{"P0.2_market_discovery": {"mode": "auto"}}');
     create table public.city_volume (volume_usd numeric, n_trades bigint);
     create view public.v_city_volume as select * from public.city_volume;
     insert into public.book_snapshots values (now() - interval '10 minutes');
@@ -100,6 +102,27 @@ const FILES = ['archive_observations.yml', 'forecasts.yml', 'observations.yml', 
     wd.failures);
   assert.equal(wd.failures.length, 1, 'only the SLA fails: the book, forecast, volume and arrivals are healthy here');
   assert.ok(wd.summary.includes('past their SLA') && wd.summary.includes('NOT emailed - email is off'));
+
+  // A JOB PAUSED ON PURPOSE IS NOT OVERDUE (Codex on #357). Switched 'off' or
+  // 'manual' on the Workflows page, should_run() logs only 'skipped' rows.
+  await db.exec(`
+    delete from public.ingest_log where job = 'P0.2_market_discovery';
+    insert into public.ingest_log (job, status, rows, detail, logged_at) values
+      ('P0.2_market_discovery', 'ok', 0, '{}', now() - interval '3 days'),
+      ('P0.2_market_discovery', 'skipped', 0, '{"gate": "off"}', now() - interval '1 hour');
+  `);
+  const paused = async () => (await one(`select overdue, mode, last_status from public.v_job_last_ok
+                                          where job = 'P0.2_market_discovery'`))[0];
+  assert.deepEqual(await paused(), { overdue: true, mode: 'auto', last_status: 'skipped' },
+    'in auto, three days without an ok is overdue');
+  for (const mode of ['off', 'manual']) {
+    await db.query(`update public.settings set value = jsonb_set(value, '{P0.2_market_discovery,mode}', to_jsonb($1::text))
+                     where key = 'workflow_schedules'`, [mode]);
+    assert.deepEqual(await paused(), { overdue: false, mode, last_status: 'skipped' }, `${mode} is a choice, not a fault`);
+  }
+  await db.exec(`delete from public.ingest_log where job = 'P0.2_market_discovery';
+                 insert into public.ingest_log (job, status, rows, detail, logged_at)
+                 values ('P0.2_market_discovery', 'ok', 0, '{}', now() - interval '5 minutes');`);
 
   // IMPLAUSIBLE EDGES ARE INFORMATION. Five of them fail nothing and are a note;
   // one anomaly of any other kind still fails, as every anomaly did before.
