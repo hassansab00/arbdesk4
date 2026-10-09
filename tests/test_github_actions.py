@@ -178,7 +178,14 @@ MEASURED_MINUTES = {
     # Measured 1-4 Oct: 83 runs, 84 billed minutes (one run took two).
     # Measured 1 Oct 16:00Z - 8 Oct 16:00Z: 167 runs, 173 billed, 1.04 a run
     # (the slowest job 202 s; S4, 8 Oct).
-    "tick.yml": 1.04,
+    # 3.0 from 9 Oct, an UPPER BOUND, NOT MEASURED: the repository went public
+    # (standard runners free) and tick.py's budget went from 45 s to 100 s
+    # inside a 110 s deadline. A run that ends at its deadline is 2-4 s of
+    # setup + 110 s, then an NWS step in 16 of 24 hours (readings 6-9 s,
+    # 28 Sep) and the post steps (2-6 s, 27 Sep): past 120 s, so 3 billed-
+    # equivalent minutes. Re-measure on the first full day (jobs API, each
+    # job rounded up).
+    "tick.yml": 3.0,
     # 29.0 measured 19 Sep. Measured 28 Sep with everything since in it (the
     # hit tournament 2 min 2 s, the width score 3 s, the engine replay 6 s):
     # the job ran 04:36:05-05:05:44, 29 min 39 s, billed 30. The settlement
@@ -278,9 +285,20 @@ DEFAULT_MINUTES = 5.0
 # them, 302 on 4 Oct alone. The lever chosen (Hassan, 5 Oct): CI no longer
 # re-runs on main after a merge (10 of 41 test runs 4 Oct 13:21Z - 5 Oct
 # 08:41Z); see test_ci_does_not_run_again_on_main_after_a_merge.
-SCHEDULED_MINUTE_BUDGET = 2850
+#
+# PUBLIC FROM 9 OCT (Hassan: "okay i made it public"). GitHub's billing docs
+# (read 9 Oct): Actions usage is free for public repositories on standard
+# GitHub-hosted runners; the plan's included minutes apply to private ones.
+# So the 3,000 no longer binds anything, and this budget stops being the
+# allowance less CI. It stays as a guard: a schedule or a job that runs away
+# is still a fault. 6,000 is about one and a half times the scheduled total
+# once the tick has 100 s (4,096 a month with the tick at its 3.0 upper
+# bound, 2,685 before), so doubling the hourly tick's cadence (+2,160) still
+# fails here.
+SCHEDULED_MINUTE_BUDGET = 6000
 
-# The account's monthly allowance, for the messages below.
+# The account's monthly allowance for PRIVATE repositories (GitHub Pro), for
+# the messages below. It does not apply while the repository is public.
 MONTHLY_ALLOWANCE = 3000
 
 # Kept so a schedule change that doubles the RUNS is still visible even if the
@@ -482,8 +500,9 @@ def test_the_scheduled_workflows_fit_in_the_minute_allowance():
     assert total <= SCHEDULED_MINUTE_BUDGET, (
         f"scheduled workflows cost {total:.0f} minutes a month, over the "
         f"{SCHEDULED_MINUTE_BUDGET} budget.\n"
-        f"The allowance is {MONTHLY_ALLOWANCE:,} a month for scheduled work and CI "
-        f"together; the budget keeps the rest for CI.\n"
+        f"The repository is public (9 Oct), so standard runners are free; the "
+        f"budget guards against a runaway schedule. (Private, the allowance would "
+        f"be {MONTHLY_ALLOWANCE:,} a month for scheduled work and CI together.)\n"
         f"Cut a cadence, make a job faster, or raise the budget WITH THE REASON "
         f"written into the constant.\n{detail}")
 

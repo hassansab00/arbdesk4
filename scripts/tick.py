@@ -24,8 +24,10 @@ peak hour for that month (derived_weather_peak). A city with no measured peak
 skips those three and says so - 15:00 would be a guess.
 
 A TIME BUDGET, NOT A HOPE. Work that cannot finish inside BUDGET_S is left
-for the next tick and logged as deferred, never silently dropped: GitHub bills
-each job in whole minutes, so a 61-second tick costs two (plan v2 P6.1).
+for the next tick and logged as deferred, never silently dropped. Until 9 Oct
+the budget was 45 s, because GitHub billed each job of a private repository in
+whole minutes and a 61-second tick cost two (plan v2 P6.1). The repository is
+public from 9 Oct (Hassan), and standard runners are free for a public one.
 """
 import datetime as dt
 import json
@@ -46,7 +48,22 @@ FIXED_LOCAL = {"morning": (0, 9, 0), "noon": (0, 12, 0), "d1_eve": (-1, 18, 0)}
 # with the tick on time, and twice across a 15-minute overlap - the second
 # write is ignored by the table's unique key.
 GRACE_MIN = 75
-BUDGET_S = 45.0
+# 100 s from 9 Oct (was 45 s, to fit one billed minute; see the docstring).
+# On 8-9 Oct the anchored strategies reached 253 of 253 city-days and the
+# model-only twins 95 (37.5%), because the twins get what the engine leaves
+# before this deadline and the engine started 16-35 s in (ingest_log, 24
+# ticks; their share fell with a later start, correlation -0.78). The tick
+# itself took 25-43 s. 100 s leaves the twins about a minute more; the job's
+# deadline in tick.yml (110 s) and its 5-minute timeout stay above it.
+BUDGET_S = 100.0
+# THE JOB'S DEADLINE BINDS THE TICK TOO (Codex on #353, 9 Oct). tick.py
+# starts after the checkout and the virtualenv, so BUDGET_S counted from its
+# own start can run past TICK_DEADLINE when the setup is slow: budget() takes
+# the nearer of the two. Never below MIN_BUDGET_S, because the checkpoints
+# are the tick's first duty and 45 s is the budget the anchored strategies
+# reached 253 of 253 city-days on (8-9 Oct); the job's timeout in tick.yml
+# leaves room for it.
+MIN_BUDGET_S = 45.0
 # S10 in shadow fetches at most this long per tick (about four cities' two
 # requests each, in parallel); the engine's own work keeps the rest.
 S10_FETCH_S = 8.0
@@ -344,6 +361,16 @@ def _reprice(pe, current_ladder, market_of, floors, unit_of, due_days):
                                 "reprice": [f"{c} {t}" for c, t in targets]}
 
 
+def budget(deadline=None, now_epoch=None, budget_s=BUDGET_S):
+    """The seconds this tick may spend: BUDGET_S, or what is left before the
+    job's deadline (TICK_DEADLINE, epoch seconds, set by tick.yml) when that
+    is nearer, but never under MIN_BUDGET_S."""
+    if deadline in (None, ""):
+        return budget_s
+    left = float(deadline) - (time.time() if now_epoch is None else now_epoch)
+    return max(MIN_BUDGET_S, min(budget_s, left))
+
+
 def run(now=None, budget_s=BUDGET_S, dry_run=False):
     import probability_engine as pe
     import current_ladder
@@ -378,6 +405,7 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     held = _written({(c, t, k) for c, t, k, _ in candidates})
     due = [d for d in candidates if (d[0], d[1], d[2]) not in held]
     detail = {"engine_version": version, "due": len(due), "already_written": len(candidates) - len(due),
+              "budget_s": round(budget_s, 1),
               "notes": notes[:20], "observations": stations, "s10": s10}
     market_of = {(m["city_key"], str(m["resolution_date"])): m for m in markets}
     days = sorted({(c, t) for c, t, _, _ in due})
@@ -582,4 +610,4 @@ if __name__ == "__main__":
     if a.at:
         at = dt.datetime.fromisoformat(a.at)
         at = at.replace(tzinfo=dt.timezone.utc) if at.tzinfo is None else at.astimezone(dt.timezone.utc)
-    run(now=at, dry_run=a.dry_run)
+    run(now=at, budget_s=budget(os.environ.get("TICK_DEADLINE")), dry_run=a.dry_run)
