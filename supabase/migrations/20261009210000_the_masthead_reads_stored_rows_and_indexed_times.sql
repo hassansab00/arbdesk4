@@ -80,16 +80,18 @@
 --    v_city_stats 54, v_band_ladder 847, v_data_health 1), EXCEPT ALL 0 and
 --    0 both ways against their rows before. The stored copy is 1.1 MiB.
 --
--- The bodies are the ones in sql/ad4_89_page_cache.sql. Re-runnable; a
--- database without these tables or views (the contracts' fixture) is left
--- alone.
+-- The bodies are the ones in sql/ad4_89_page_cache.sql, less the two
+-- statements there that remove an old copy: this removes nothing, and
+-- refuses where a stored copy is left from before (ad4_89 rebuilds it). Re-runnable; a database without these tables
+-- or views (the contracts' fixture) is left alone.
 -- ===========================================================================
 
 -- Replacing v_opportunities takes its exclusive lock, and every page read of
 -- it (or of a view built on it) queues behind a waiting lock. Wait 5 s at
 -- most; past that this fails whole and is run again at a quieter moment.
--- (The first apply, 9 Oct 21:17Z, ran past the SQL tool's 60 s beside a page
--- load whose reads timed out, and rolled back.)
+-- (Three applies, 9 Oct 21:17-21:26Z, ran past the SQL tool's 60 s and
+-- changed nothing; none reached the database's log, which every DDL
+-- statement does.)
 set local lock_timeout = '5s';
 
 -- 1. The freshness timestamps.
@@ -140,9 +142,13 @@ begin
     select 1 from pg_depend d join pg_rewrite r on r.oid = d.objid
      where r.ev_class = v and d.refobjid = mv);
   if not wrapped then
+    -- NOTHING IS REMOVED HERE. A stored copy or live view left from before
+    -- means v_opportunities was reinstalled live since (sql/ad4_13);
+    -- sql/ad4_89_page_cache.sql rebuilds both from its new definition.
+    if mv is not null or to_regclass('public.v_opportunities_live') is not null then
+      raise exception 'v_opportunities is live but a stored copy exists: run sql/ad4_89_page_cache.sql, which rebuilds it';
+    end if;
     def := pg_get_viewdef(v, true);
-    drop materialized view if exists public.mv_opportunities;
-    drop view if exists public.v_opportunities_live;
     execute format('create view public.v_opportunities_live as %s', def);
     create materialized view public.mv_opportunities as select v.* from public.v_opportunities_live v;
     create unique index mv_opportunities_key on public.mv_opportunities (band_id, side);

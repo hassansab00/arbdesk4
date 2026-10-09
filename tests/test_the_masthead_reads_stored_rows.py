@@ -38,22 +38,33 @@ def _refresh(text):
     return _block(text, "create or replace function public.refresh_page_cache()", "end $$;")
 
 
+SHARED = [
+    "def := pg_get_viewdef(v, true);",
+    "execute format('create view public.v_opportunities_live as %s', def);",
+    "create materialized view public.mv_opportunities as select v.* from public.v_opportunities_live v;",
+    "create unique index mv_opportunities_key on public.mv_opportunities (band_id, side);",
+    "execute format('create or replace view public.v_opportunities as select %s from public.mv_opportunities '",
+    "'where resolution_date >= (now() at time zone coalesce(timezone, ''UTC''))::date '",
+    "'order by score desc nulls last', cols);",
+    "revoke all on public.v_opportunities_live from public, anon, authenticated;",
+    "grant select on public.v_opportunities_live to service_role;",
+    "revoke all on public.mv_opportunities from public, anon, authenticated;",
+    "grant select on public.mv_opportunities to service_role;",
+]
+
+
 def test_both_installs_store_the_opportunities_the_same_way():
+    """The same build in both; the migration removes nothing (it refuses
+    where an old copy is left), the install file rebuilds that case."""
     mig, sql = _opportunities_block(MIG), _opportunities_block(SQL)
-    assert mig == sql, "the migration and sql/ad4_89 build v_opportunities differently"
-    assert "def := pg_get_viewdef(v, true);" in mig, "the live view is the definition as it stands, copied"
-    assert "create view public.v_opportunities_live as %s" in mig
-    assert "create unique index mv_opportunities_key on public.mv_opportunities (band_id, side);" in mig
+    for line in SHARED:
+        assert line in mig and line in sql, line
     # Replaced IN PLACE, so its grants and the five views built on it stay bound.
-    assert "create or replace view public.v_opportunities as select %s from public.mv_opportunities" in mig
     assert not re.search(r"\bcascade\b", MIG, re.I), "nothing built on v_opportunities may be dropped with it"
-    # The live view's one clock condition and its order, re-applied on read.
-    assert "where resolution_date >= (now() at time zone coalesce(timezone, ''UTC''))::date" in mig
-    assert "order by score desc nulls last" in mig
-    # The browser never reads the copy or the live definition.
-    for rel in ("v_opportunities_live", "mv_opportunities"):
-        assert f"revoke all on public.{rel} from public, anon, authenticated;" in mig
-        assert f"grant select on public.{rel} to service_role;" in mig
+    assert not re.search(r"\bdrop\b", MIG, re.I), "the migration drops nothing"
+    assert "raise exception 'v_opportunities is live but a stored copy exists: run sql/ad4_89_page_cache.sql" in mig
+    assert "drop materialized view if exists public.mv_opportunities;" in sql
+    assert "drop view if exists public.v_opportunities_live;" in sql
 
 
 def test_the_wrapper_reapplies_the_live_views_own_clock_condition():

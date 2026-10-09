@@ -13,8 +13,8 @@
 //    v_opportunities_live and the copy are the service role's only. The
 //    wrapper hides a market whose date has passed in its city's time zone,
 //    keeps the live order, and refresh_page_cache() carries the copy.
-//    Re-runnable, and sql/ad4_89 rebuilds it after v_opportunities is
-//    reinstalled live.
+//    Re-runnable. After v_opportunities is reinstalled live the migration
+//    refuses (it removes nothing) and sql/ad4_89 rebuilds the copy.
 // ===========================================================================
 const { PGlite } = require('@electric-sql/pglite');
 const fs = require('fs');
@@ -188,6 +188,10 @@ const LOG = `
       select o.edge_id, o.side, o.tradeable, o.band_id, o.city_key, o.resolution_date, c.timezone, o.score, o.fillable
         from public.opp_rows o join public.cities c on c.city_key = o.city_key
        order by o.score desc nulls last;`);
+  // The migration removes nothing: it refuses, and names the file that
+  // rebuilds the copy.
+  await assert.rejects(db.exec(MIG), /run sql\/ad4_89_page_cache\.sql, which rebuilds it/);
+  assert.match(MIG, /^(?![\s\S]*\bdrop\s+(materialized\s+)?view\b)/i, 'the migration holds no DROP');
   await db.exec(AD4_89);
   assert.match((await one(`select pg_get_viewdef('public.v_opportunities'::regclass, true) as d`)).d, /FROM mv_opportunities/);
   assert.equal((await one(`select fillable::int as f from public.v_opportunities limit 1`)).f, 7);
@@ -196,5 +200,5 @@ const LOG = `
   assert.equal(await oid('public.v_trade_plan'), planOid, 'the reinstall left the view built on it alone');
   assert.equal((await one(`select has_table_privilege('anon', 'public.mv_opportunities', 'select') as ok`)).ok, false);
 
-  console.log('PASS: masthead-cache: the freshness max() columns get ad4_44\'s index on the named tables only (never a second, never where updates rewrite the column); v_opportunities is stored rows behind the same view, columns and grants, the view built on it untouched, closed markets hidden, the live order kept, the copy and the live definition the service role\'s only, refreshed by refresh_page_cache(); re-runnable, and ad4_89 stores a reinstalled view again');
+  console.log('PASS: masthead-cache: the freshness max() columns get ad4_44\'s index on the named tables only (never a second, never where updates rewrite the column); v_opportunities is stored rows behind the same view, columns and grants, the view built on it untouched, closed markets hidden, the live order kept, the copy and the live definition the service role\'s only, refreshed by refresh_page_cache(); re-runnable; after a reinstall the migration refuses and ad4_89 stores the view again');
 })().catch((e) => { console.error(e); process.exit(1); });
