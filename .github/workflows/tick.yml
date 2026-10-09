@@ -114,16 +114,20 @@ jobs:
         # tick after #290 (10:36Z 30 Sep) had 0.0 s and skipped, as 10 ticks had
         # in the three days before. It waits on the venue and PostgREST, not
         # the CPU, so it runs beside the checkpoints with its budget still cut
-        # from the same deadline (confirm_recent.budget): one billed minute.
-        # `timeout` is the backstop; the last step collects its log. Not on a
-        # rehearsal: dry_run writes nothing.
+        # from the same deadline (confirm_recent.budget). `timeout` is the
+        # backstop; the last step collects its log. Not on a rehearsal:
+        # dry_run writes nothing.
+        # 110 s from 9 Oct (was 40): above the sweep's 60 s, the slowest
+        # ladder and the 25 s kept for the bank (confirm_recent.py, "KILLED,
+        # NOT SLOW"), so it ends only a hang; at 40 it ended six runs in 72 h.
         id: confirm
         if: ${{ github.event.inputs.dry_run != 'true' }}
         run: |
+          date +%s > "$RUNNER_TEMP/confirm.start"
           (
             set +e
-            timeout 40 .venv/bin/python scripts/confirm_recent.py > "$RUNNER_TEMP/confirm.log" 2>&1
-            echo $? > "$RUNNER_TEMP/confirm.rc"
+            timeout 110 .venv/bin/python scripts/confirm_recent.py > "$RUNNER_TEMP/confirm.log" 2>&1
+            echo $? > "$RUNNER_TEMP/confirm.rc.tmp" && mv "$RUNNER_TEMP/confirm.rc.tmp" "$RUNNER_TEMP/confirm.rc"
           ) < /dev/null > /dev/null 2>&1 &
       - name: Checkpoints
         # Inputs reach the script through the environment, never the shell
@@ -147,11 +151,23 @@ jobs:
         # Waits for the run started above (its budget ends before
         # TICK_DEADLINE). It never fails the job: a failure is in its own log
         # row (P4.7_confirm_recent) and in the crash row common.py writes.
+        # A run its timeout ended (exit 124) writes neither, so this step
+        # writes its row, attention with the exit code (Wave 2.C, 9 Oct: six
+        # such hours in 72 h were silent gaps). It waits until the run's own
+        # 110 s backstop has passed, counted from when the run started, so a
+        # hung run's 124 is always seen (Codex on #355: a fixed 45 s from
+        # here could end before the backstop when the steps above are quick).
         if: ${{ !cancelled() && steps.confirm.outcome == 'success' }}
         run: |
-          for i in $(seq 1 90); do [ -f "$RUNNER_TEMP/confirm.rc" ] && break; sleep 0.5; done
+          started="$(cat "$RUNNER_TEMP/confirm.start" 2>/dev/null || date +%s)"
+          until [ -f "$RUNNER_TEMP/confirm.rc" ] || [ "$(date +%s)" -gt $(( started + 110 + 5 )) ]; do sleep 0.5; done
           cat "$RUNNER_TEMP/confirm.log" 2>/dev/null || true
-          [ -f "$RUNNER_TEMP/confirm.rc" ] || echo "confirm_recent still running after 45 s; its timeout ends it"
+          [ -f "$RUNNER_TEMP/confirm.rc" ] || echo "confirm_recent still running past its 110 s timeout"
+          rc="$(cat "$RUNNER_TEMP/confirm.rc" 2>/dev/null || true)"
+          echo "confirm_recent exit code: ${rc:-none yet}"
+          if [ "$rc" = "124" ]; then
+            .venv/bin/python scripts/confirm_recent.py --killed "$rc" || true
+          fi
       - name: Trade prints, collected
         # Waits for the run started above: it stops starting batches at its
         # budget and before TICK_DEADLINE, so it has normally finished by now.

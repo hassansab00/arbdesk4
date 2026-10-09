@@ -28,11 +28,29 @@ import time
 JOB = "P4.7_confirm_recent"
 HOURS_UTC = tuple(range(24))        # eligibility is local (confirm_queue.queue_order)
 # Started beside the checkpoints since 30 Sep (tick.yml), so it has the tick's
-# whole window, not what the other steps leave: up to 25 s, ending RESERVE_S
-# before TICK_DEADLINE; a ladder is not started with under 2 s left
-# (confirm_queue.MIN_LEFT_S), and tick.yml's `timeout 40` is the backstop.
-BUDGET_S = 25.0
-RESERVE_S = 8.0
+# whole window, not what the other steps leave. A ladder is not started with
+# under 2 s left (confirm_queue.MIN_LEFT_S).
+#
+# KILLED, NOT SLOW (Wave 2.C, 9 Oct). Until 9 Oct the sweep had 25 s, 8 s were
+# kept before TICK_DEADLINE, and tick.yml's `timeout 40` was the backstop. Six
+# ticks in the 72 h to 9 Oct 19:00Z wrote no row (6 Oct 22Z and 23Z, 7 Oct
+# 18Z, 8 Oct 08Z and 18Z, 9 Oct 08Z; ingest_log): the 08:36Z job's log shows
+# the step finished with an empty log and its exit code never printed, and the
+# ladders of the 18Z ticks were recorded, so the sweep had ended. What the
+# budget never counted came after it: bank_checkpoint_outcomes, mean 5.4 s and
+# at most 19.9 s over 315 calls (pg_stat_statements, 9 Oct), and the last
+# ladder, which the budget does not stop once begun (at most 11.8 s, p90
+# 6.8 s, over 99 ladders of 6-9 Oct; market_confirmation_attempts). Up to 25 s
+# of sweep (its reads included), a last ladder and the bank passed 40 s.
+#
+# The tick has 110 s from 9 Oct (#353). The sweep gets up to 60 s (about 13
+# ladders at the measured median of 4.5 s; up to 14 were due an hour on
+# 9 Oct); RESERVE_S keeps 25 s before the deadline for the bank and the log
+# row; the backstop is above the sweep, the slowest ladder and the reserve
+# together, so it can only end a hang (test_confirm_recent).
+BUDGET_S = 60.0
+RESERVE_S = 25.0
+LADDER_OVERRUN_S = 12.0     # the slowest ladder measured, 11.8 s (above)
 DAYS_BACK = 3
 # The venue answers in about half a second a call (tested 30 Sep: 0.66 s for an
 # 11-band Gamma request, 0.64 s for one CLOB market). A call that has not
@@ -73,8 +91,10 @@ def main(now=None, deadline=None):
         return detail
     sweep = confirm_queue.run(budget_seconds=seconds, days_back=DAYS_BACK, now=now,
                               get=quick_json, trigger="tick", log=False)
+    t_bank = time.monotonic()
     banked = rpc("bank_checkpoint_outcomes") or 0
     detail = {"budget_s": round(seconds, 1), "banked_checkpoints": banked,
+              "sweep_s": sweep.get("seconds"), "bank_s": round(time.monotonic() - t_bank, 1),
               "evidence_captured": sweep.get("evidence_captured"),
               "due": sweep.get("due"), "asked": sweep.get("asked"),
               "completed": sweep.get("completed"), "unreached": sweep.get("unreached"),
@@ -89,6 +109,23 @@ def main(now=None, deadline=None):
     return detail
 
 
+def log_killed(exit_code):
+    """A run its backstop ended writes nothing itself, so tick.yml's collecting
+    step writes this row instead: the hour is attention with the exit code,
+    not a silent gap."""
+    from common import log_run
+    detail = {"killed": True, "exit_code": int(exit_code),
+              "summary": f"ended by tick.yml's timeout (exit {int(exit_code)}): "
+                         "no sweep or bank was recorded this hour; the next tick asks again",
+              "trigger": "tick"}
+    log_run(JOB, "attention", 0, detail)
+    print(detail["summary"])
+    return detail
+
+
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) == 3 and sys.argv[1] == "--killed":
+        log_killed(sys.argv[2])
+    else:
+        main()
     sys.exit(0)
