@@ -104,9 +104,10 @@ end $$;
 -- reads v_opportunities or a view built on it, and the masthead counts its
 -- tradeable rows once a minute on every open page: about 2 s each, 38 of the
 -- 156 browser reads that died at 8 s in the 24 h to 9 Oct 20:34Z. Stored the
--- same way, with two differences: the wrapper re-applies the live view's one
--- clock condition (a market shows until its date has passed in the city's
--- time zone) and its order. The strategies read v_opportunities_live
+-- same way, with two differences: the wrapper re-applies the live view's row
+-- condition on the clock (a market shows until its date has passed in the
+-- city's time zone) and its order. Between refreshes the 24-hour volume
+-- figures lag the clock (9 Oct: 2.15 % at most, two minutes after a build). The strategies read v_opportunities_live
 -- (scripts/signal_engine.py): they run between the edge engine and the
 -- pipeline's refresh, and must see the edges just written.
 do $$

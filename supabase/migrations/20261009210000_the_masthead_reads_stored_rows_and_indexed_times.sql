@@ -58,10 +58,13 @@
 --                            v_city_reasoning, v_city_stats, v_band_ladder,
 --                            v_data_health) stay bound and read stored rows
 --
---    The wrapper re-applies the live view's one clock-dependent condition
---    (a market is shown until its resolution date has passed in the city's
---    own time zone) and its order, so between refreshes it differs from the
---    live view only by what was written since, never by the clock.
+--    The wrapper re-applies the live view's row condition on the clock (a
+--    market is shown until its resolution date has passed in the city's own
+--    time zone) and its order. At each refresh it equals the live view.
+--    Between refreshes it lags by what was written since AND by the 24-hour
+--    volume window, which moves with the clock: measured 9 Oct 21:43Z, two
+--    minutes after the copy was built, 198 of 1,562 rows had moved, city
+--    volume by at most 2.15 %, band volume 0.58 %, no score changing sign.
 --
 --    The strategies do not read the stored copy: scripts/signal_engine.py
 --    reads v_opportunities_live, because it runs after the edge engine and
