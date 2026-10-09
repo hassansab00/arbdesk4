@@ -1963,7 +1963,7 @@ def test_a_truncating_cap_drops_backfill_and_keeps_today():
 # ------------------------------------------------------------------ P0.3 ---
 # P0.3 logged 'ok' unless more bands failed than were written. On 9 Oct
 # 03:27Z (execution 9899) 63 of 1,188 bands got no row - all 129 failed
-# fetches of 2,376 were "timeout of 20000ms exceeded" after three tries - and
+# fetches of 2,376 were "timeout of 20000ms exceeded" - and
 # the run logged ok, so neither the Workflows page nor the watchdog's
 # not_ok_24h saw it. Any lost book now makes the run partial, by kind.
 P03 = "P0.3_book_volume_snapshot.template.json"
@@ -2031,13 +2031,19 @@ def test_p03_names_each_kind_of_loss():
     assert d["fetch_failed"] == 3
 
 
-def test_p03_fetch_retries_before_a_book_counts_as_lost():
-    """The live node (since 8 Oct 15:46Z) retries three times a second apart,
-    which needs HTTP errors to be errors (neverError false); one that still
-    fails continues as an item for Build snapshots to count."""
+def test_p03_fetch_carries_no_node_retry_that_cannot_retry_a_book():
+    """A failed book is an {error} item (onError continueRegularOutput), and an
+    HTTP error is one too (neverError false), so Build snapshots can count it.
+
+    No retryOnFail beside it: n8n retries such a node only when its FIRST
+    output item is an error, and then re-runs every request
+    (packages/core/src/execution-engine/workflow-execute.ts, checkFailure reads
+    data[0][0].json.error). From 8 Oct 15:46Z it was on and claimed three
+    tries a book; a lost book anywhere but first got one (Codex, #352)."""
     wf = json.load(open(os.path.join(ROOT, "n8n", P03)))
     fetch = next(n for n in wf["nodes"] if n["name"] == "Fetch book")
-    assert fetch.get("retryOnFail") is True and fetch.get("maxTries") == 3
-    assert fetch.get("waitBetweenTries") == 1000
-    assert fetch["parameters"]["options"]["response"]["response"]["neverError"] is False
     assert fetch.get("onError") == "continueRegularOutput"
+    assert fetch["parameters"]["options"]["response"]["response"]["neverError"] is False
+    assert not fetch.get("retryOnFail"), (
+        "retryOnFail with continueRegularOutput retries only when the first book fails, "
+        "and then fetches every book again")
