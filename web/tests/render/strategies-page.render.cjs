@@ -66,6 +66,32 @@ const MUST = {
   s4_tail_fade: /Sell the outer buckets/,
 };
 
+// Settling the two Kelly books, from the solver's own weights (web/lib/kelly.ts,
+// built by `npm run test:routes`): w / cost shares a leg per $1.00 of the ledger.
+const { effectiveCost, solveKelly } = require(path.join(WEB, '.route-test', 'lib', 'kelly.js'));
+const MARKET = (() => {
+  const src = fs.readFileSync(path.join(WEB, 'components', 'StrategyExplainer.tsx'), 'utf-8');
+  const block = src.split('export const MARKET: Bucket[] = [')[1].split('];')[0];
+  return [...block.matchAll(/label:\s*"([^"]+)".*?ask:\s*([\d.]+).*?prob:\s*([\d.]+)/g)]
+    .map((m) => ({ label: m[1], ask: Number(m[2]), prob: Number(m[3]) }));
+})();
+function settledProfit(side, prices, landed) {
+  const { weights } = solveKelly(MARKET.map((b) => b.prob), prices, side);
+  let payout = 0, staked = 0;
+  weights.forEach((w, i) => {
+    if (w <= 1e-3) return;
+    staked += w;                                           // price and fee: w of the $1.00
+    const wins = side === 'YES' ? MARKET[i].label === landed : MARKET[i].label !== landed;
+    if (wins) payout += w / effectiveCost(prices[i]);
+  });
+  const p = payout - staked;
+  return `${p < 0 ? '−' : ''}$${Math.abs(p).toFixed(2)}`;
+}
+const SETTLE = {
+  s11_ladder_model: ['31–32', settledProfit('YES', MARKET.map((b) => (b.ask >= 0.07 ? b.ask : null)), '31–32')],
+  s12_no_model: ['30–31', settledProfit('NO', MARKET.map((b) => 1 - b.ask), '30–31')],
+};
+
 async function waitFor(url, ms = 60000) {
   const end = Date.now() + ms;
   while (Date.now() < end) {
@@ -102,13 +128,21 @@ async function waitFor(url, ms = 60000) {
       const text = await card.innerText();
       assert.ok(!text.includes('No walkthrough is written'), `${id}: no walkthrough`);
       if (MUST[id]) assert.match(text, MUST[id], `${id}: ${text.slice(0, 600)}`);
+      if (SETTLE[id]) {
+        // The Kelly books settle each leg in the size the solver chose, per
+        // $1.00 of the ledger (Codex on #350), not one share of every leg.
+        const [bucket, profit] = SETTLE[id];
+        await card.getByTitle(`Suppose the day lands in ${bucket}`).click();
+        const line = await card.getByText(/on every \$1\.00$/).innerText();
+        assert.equal(line, `profit ${profit} on every $1.00`, `${id} settled in ${bucket}`);
+      }
       if (id === 's12_no_model' || id === 's12_no') {
         await card.screenshot({ path: path.join(OUT, `strategies-${id}.png`) });
       }
       await card.getByRole('button', { name: 'hide' }).click();
     }
     assert.deepEqual(errors, [], 'the page threw');
-    console.log(`PASS: render - all ${ids.length} strategies (13 active, one retired) open a walkthrough with a summary; the engine panels show what holdings_solver buys on the worked market; screenshots in ${OUT}`);
+    console.log(`PASS: render - all ${ids.length} strategies (13 active, one retired) open a walkthrough with a summary; the engine panels show what holdings_solver buys on the worked market; S11 settled in 31–32 shows ${SETTLE.s11_ladder_model[1]} and S12 in 30–31 ${SETTLE.s12_no_model[1]} on every $1.00, each leg at the solver's weight; screenshots in ${OUT}`);
   } finally {
     await browser.close();
     server.kill();

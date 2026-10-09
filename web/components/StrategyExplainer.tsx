@@ -82,7 +82,9 @@ const cents = (n: number) => `${Math.round(n * 100)}c`;
 // --------------------------------------------------------------------------
 // What each strategy takes on this market, and why.
 // --------------------------------------------------------------------------
-type Leg = { i: number; side: "YES" | "NO" };
+/** shares: how many of this leg the book holds; one when not given (the
+ *  per-share walkthroughs). The Kelly books size each leg by its weight. */
+type Leg = { i: number; side: "YES" | "NO"; shares?: number };
 type Gate = { label: string; value: string; ok: boolean };
 
 type Play = {
@@ -95,6 +97,9 @@ type Play = {
   reads: string;
   /** s7 only: the shape of the afternoon, which is the whole signal. */
   trace?: { at: string; c: number }[];
+  /** A Kelly book's legs hold shares per $1.00 of the ledger, so it settles
+   *  per dollar of the ledger, not per share (Codex on #350). */
+  perLedger?: boolean;
 };
 
 const roundTrip = (price: number) => 2 * fee(price) + 0.02; // two fees plus a 2c spread, twice crossed
@@ -143,8 +148,12 @@ const tradeableYes = MARKET.map((b) => b.ask >= MIN_YES);
 const noPrices = MARKET.map((b) => 1 - b.ask);
 /** A fraction of the ledger under 0.1% is not a leg. */
 const TAKES = 1e-3;
+/** The solver's book as legs: a fraction w of $1.00 buys w / cost shares, the
+ *  fee inside the cost, so each leg is held in the size the solver chose. */
 const legsOf = (weights: number[], side: "YES" | "NO"): Leg[] =>
-  weights.flatMap((w, i) => (w > TAKES ? [{ i, side }] : []));
+  weights.flatMap((w, i) => (w > TAKES
+    ? [{ i, side, shares: w / effectiveCost(side === "YES" ? MARKET[i].ask : 1 - MARKET[i].ask)! }]
+    : []));
 
 const TOP = probs.indexOf(Math.max(...probs));
 const topCost = effectiveCost(MARKET[TOP].ask)!;
@@ -238,6 +247,7 @@ const MODEL: Record<string, Play> = {
       "The engine then sizes on the worst draws of the posterior and a fraction of Kelly, so the stake it actually buys is smaller.",
     ],
     legs: LADDER,
+    perLedger: true,
     refuses: LADDER.length ? undefined : "No tradeable bucket is priced under what the model makes it, so it buys nothing.",
     gates: [
       { label: "tradeable YES buckets", value: `${tradeableYes.filter(Boolean).length} of ${MARKET.length}`, ok: true },
@@ -272,6 +282,7 @@ const MODEL: Record<string, Play> = {
       "The engine sizes on the worst draws of the posterior and a fraction of this, so the less certain the model, the smaller the stake.",
     ],
     legs: NOS,
+    perLedger: true,
     refuses: NOS.length ? undefined : "No NO is priced under its probability after the fee, so it buys nothing.",
     gates: [
       { label: "NOs priced under their probability", value: `${noEdges} of ${MARKET.length}`, ok: noEdges > 0 },
@@ -525,16 +536,19 @@ export const PLAYS: Record<string, Play> = {
 // Settling the position for real.
 // --------------------------------------------------------------------------
 function settle(legs: Leg[], landed: number) {
-  let cost = 0, payout = 0, fees = 0;
+  let cost = 0, payout = 0, fees = 0, won = 0;
   for (const leg of legs) {
     const b = MARKET[leg.i];
     const price = leg.side === "YES" ? b.ask : 1 - b.ask;
-    cost += price;
-    fees += fee(price);
-    const won = leg.side === "YES" ? leg.i === landed : leg.i !== landed;
-    if (won) payout += 1;
+    const n = leg.shares ?? 1;
+    cost += n * price;
+    fees += n * fee(price);
+    if (leg.side === "YES" ? leg.i === landed : leg.i !== landed) {
+      payout += n;
+      won += 1;
+    }
   }
-  return { cost, payout, fees, profit: payout - cost - fees };
+  return { cost, payout, fees, won, profit: payout - cost - fees };
 }
 
 // --------------------------------------------------------------------------
@@ -653,7 +667,8 @@ export function StrategyExplainer({ strategyId }: { strategyId: string }) {
     );
   }
 
-  const stake = sum(play.legs.map((l) => (l.side === "YES" ? MARKET[l.i].ask : 1 - MARKET[l.i].ask)));
+  const stake = sum(play.legs.map((l) => (l.shares ?? 1) * (l.side === "YES" ? MARKET[l.i].ask : 1 - MARKET[l.i].ask)));
+  const per = play.perLedger ? "of every $1.00" : "a share";
 
   return (
     <div className="space-y-3 border-t border-border bg-panel2/20 px-3 py-3 text-[11px]">
@@ -706,7 +721,7 @@ export function StrategyExplainer({ strategyId }: { strategyId: string }) {
             <div className="rounded border border-border bg-panel p-2">
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 font-mono text-[10px]">
                 <span className="text-muted">
-                  stake <span className="text-text">{money(stake)}</span> a share
+                  stake <span className="text-text">{money(stake)}</span> {per}
                 </span>
                 <span className="text-muted">
                   {play.legs.length} leg{play.legs.length === 1 ? "" : "s"}
@@ -720,7 +735,8 @@ export function StrategyExplainer({ strategyId }: { strategyId: string }) {
                       fee <span className="text-text">{money(outcome.fees)}</span>
                     </span>
                     <span className={outcome.profit >= 0 ? "text-good" : "text-bad"}>
-                      {outcome.profit >= 0 ? "profit" : "loss"} {money(Math.abs(outcome.profit))} a share
+                      {outcome.profit >= 0 ? "profit" : "loss"} {money(Math.abs(outcome.profit))}{" "}
+                      {play.perLedger ? "on every $1.00" : "a share"}
                     </span>
                   </>
                 ) : (
@@ -730,8 +746,10 @@ export function StrategyExplainer({ strategyId }: { strategyId: string }) {
               {outcome && (
                 <p className="mt-1 leading-relaxed text-muted">
                   The day finished in <span className="font-mono text-text">{MARKET[landed!].label}</span>.{" "}
-                  {outcome.payout > 0
-                    ? `${outcome.payout === 1 ? "One leg" : `${outcome.payout} legs`} settled at $1.00 against ${money(stake)} staked.`
+                  {outcome.won > 0
+                    ? play.perLedger
+                      ? `${outcome.won === 1 ? "One leg" : `${outcome.won} legs`} paid out, ${money(outcome.payout)} for every $1.00 of the ledger against ${money(stake)} staked and ${money(outcome.fees)} in fees, each leg in the size the solver chose.`
+                      : `${outcome.won === 1 ? "One leg" : `${outcome.won} legs`} settled at $1.00 against ${money(stake)} staked.`
                     : "No leg settled in the money, so the whole stake is lost — this is the case the gates exist to make rare, not impossible."}
                 </p>
               )}
