@@ -93,8 +93,8 @@ jobs:
         # 18-33 s, NWS readings 6-9 s, confirmations up to 20 s): 11 of 19 runs
         # read no trade and the cycle stood at its 04:36Z mark all day. The
         # step waits on the network, not the CPU, so it runs beside the others
-        # from here with up to 30 s of its own, still ending before the same
-        # deadline (ingest_trades.py budget()): one billed minute. The last
+        # from here with up to 60 s of its own (30 until 9 Oct, Wave 2.D),
+        # still ending before the same deadline (ingest_trades.py budget()). The last
         # step collects its log and exit code. set +e because the runner's
         # bash -e would end the subshell before it wrote the code down; the
         # subshell's own output goes to /dev/null so this step does not wait
@@ -105,7 +105,7 @@ jobs:
         run: |
           (
             set +e
-            .venv/bin/python scripts/ingest_trades.py --budget 30 > "$RUNNER_TEMP/trades.log" 2>&1
+            .venv/bin/python scripts/ingest_trades.py --budget 60 > "$RUNNER_TEMP/trades.log" 2>&1
             echo $? > "$RUNNER_TEMP/trades.rc"
           ) < /dev/null > /dev/null 2>&1 &
       - name: Venue confirmations, started beside the other steps (P4.7)

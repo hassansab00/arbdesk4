@@ -44,6 +44,11 @@ mark all day (nothing was lost: the mark held, and no batch was truncated).
 It waits on the API, not the CPU, so tick.yml now starts it in the background
 before the checkpoints with --budget 30; budget() still ends it before the
 same deadline, so the job stays inside its one billed minute.
+
+--budget 60 FROM 9 OCT (Wave 2.D). The tick has 110 s from #353 (the
+repository is public and its runners are not billed). In the 7 days to 9 Oct
+3 of 168 runs stopped at the 30 s with batches left (ingest_log); budget()
+still clamps the 60 to the deadline less RESERVE_S.
 """
 import argparse
 import datetime as dt
@@ -54,7 +59,7 @@ import time
 
 import requests
 
-from common import _cfg, _headers, _post, log_run, rest, rest_all, rpc
+from common import _cfg, _headers, _post, _retry_after, log_run, rest, rest_all, rpc
 
 API = "https://data-api.polymarket.com/trades"
 BATCH = 100
@@ -66,6 +71,8 @@ BUDGET_S = 15.0
 # trades), so that much is kept back from the tick's deadline.
 RESERVE_S = 6.0
 OVERLAP = dt.timedelta(hours=1)
+RATE_LIMIT_WAIT_S = 5.0      # a 429 without Retry-After (fetch_batch)
+RATE_LIMIT_MAX_WAIT_S = 15.0
 UA = {"User-Agent": "arbdesk4-trades/1.0", "Accept": "application/json"}
 # A print's dedupe key (condition_id, traded_at, price, size, proxy_wallet)
 # is held as its 16-byte hash (trade_dedupe_key, WXPredict build 2.A, 8 Oct:
@@ -170,12 +177,30 @@ def plan(hw, prev):
     return since, cursor
 
 
-def fetch_batch(ids, since, get=requests.get):
-    """Every trade on these markets newer than `since`, newest first, paged."""
+def fetch_batch(ids, since, get=requests.get, wait_until=None, stats=None,
+                sleep=time.sleep, clock=time.monotonic):
+    """Every trade on these markets newer than `since`, newest first, paged.
+
+    A 429 IS WAITED OUT ONCE A PAGE (Wave 2.D, R8). In the 7 days to 9 Oct
+    19:40Z, 5 of 168 runs lost a batch to `429 Too Many Requests` (ingest_log);
+    the batch was read again the next hour from the cursor, so nothing was
+    lost, only an hour late. The page is now asked again after Retry-After
+    (RATE_LIMIT_WAIT_S when the API sends none, never more than
+    RATE_LIMIT_MAX_WAIT_S), once, and only when the wait still ends before
+    `wait_until` (the run's budget); otherwise the 429 is raised as before.
+    `stats` counts the waits for the run's log row."""
     out = []
     for page in range(MAX_PAGES):
-        r = get(API, params={"market": ",".join(ids), "limit": PAGE, "offset": page * PAGE},
-                headers=UA, timeout=20)
+        params = {"market": ",".join(ids), "limit": PAGE, "offset": page * PAGE}
+        r = get(API, params=params, headers=UA, timeout=20)
+        if getattr(r, "status_code", 200) == 429:
+            wait = min(_retry_after(r) or RATE_LIMIT_WAIT_S, RATE_LIMIT_MAX_WAIT_S)
+            if wait_until is None or clock() + wait < wait_until:
+                sleep(wait)
+                if stats is not None:
+                    stats["waits"] = stats.get("waits", 0) + 1
+                    stats["seconds"] = round(stats.get("seconds", 0.0) + wait, 1)
+                r = get(API, params=params, headers=UA, timeout=20)
         r.raise_for_status()
         got = r.json()
         if not isinstance(got, list):
@@ -256,6 +281,7 @@ def main(budget_s=BUDGET_S, now=None):
     errors, truncated = [], []
     done_to, resume_at, stopped = cursor, None, False
     slowest = 0.0
+    rate_limited = {"waits": 0, "seconds": 0.0}
     for batch in batches:
         # Start a batch only if one as slow as the slowest so far still ends
         # inside the budget. Checking only the time already spent let a second
@@ -266,7 +292,7 @@ def main(budget_s=BUDGET_S, now=None):
             break
         t0 = time.monotonic()
         try:
-            raw = fetch_batch(batch, since)
+            raw = fetch_batch(batch, since, wait_until=started + budget_s, stats=rate_limited)
             if since is not None and len(raw) >= MAX_PAGES * PAGE and \
                     min(float(t["timestamp"]) for t in raw) >= since.timestamp():
                 # Every page full and still newer than the mark: the API will
@@ -303,6 +329,7 @@ def main(budget_s=BUDGET_S, now=None):
               "cursor": next_cursor, "truncated": truncated,
               "fetched": fetched, "new": new, "unmatched": unmatched, "errors": errors[:5],
               "seconds": round(time.monotonic() - started, 1), "budget_s": round(budget_s, 1), "rollups": rollups,
+              "rate_limited": rate_limited,
               "summary": f"{new} new trades from {len(ids)} open markets "
                          f"({batches_done} of the {len(batches)} batches left in the cycle, {fetched} fetched since the mark)"}
     log_run("P0.4_trade_history", status, new, detail)
