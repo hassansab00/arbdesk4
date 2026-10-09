@@ -222,3 +222,64 @@ def test_a_run_its_timeout_ended_is_logged_by_the_collecting_step(tmp_path):
     assert done.returncode == 0
     assert "exit code: 124" in done.stdout
     assert (tmp_path / "killed.args").read_text().split() == ["scripts/confirm_recent.py", "--killed", "124"]
+
+
+def _collect_and_start():
+    import yaml
+    steps = yaml.safe_load((ROOT / ".github" / "workflows" / "tick.yml").read_text())["jobs"]["tick"]["steps"]
+    start = next(s for s in steps if s.get("id") == "confirm")["run"]
+    collect = next(s for s in steps if s.get("name") == "Venue confirmations, collected (P4.7)")["run"]
+    return start, collect
+
+
+def test_the_collector_waits_through_the_backstop():
+    """Codex on #355: a fixed 45 s wait from the collecting step could end
+    before the 110 s backstop when the checkpoints and NWS steps are quick, so
+    a hung run's 124 came too late to be seen. The wait is now counted from
+    the run's own start and reaches past the backstop."""
+    import re
+    start, collect = _collect_and_start()
+    backstop = int(re.search(r"timeout (\d+) \.venv/bin/python scripts/confirm_recent\.py", start).group(1))
+    assert 'date +%s > "$RUNNER_TEMP/confirm.start"' in start
+    waited = re.search(r"started \+ (\d+) \+ (\d+)", collect)
+    assert waited and int(waited.group(1)) == backstop and int(waited.group(2)) > 0
+    # The exit code is written whole: a reader never sees an empty file.
+    assert 'mv "$RUNNER_TEMP/confirm.rc.tmp" "$RUNNER_TEMP/confirm.rc"' in start
+
+
+def test_a_late_timeout_is_still_seen_and_logged(tmp_path):
+    import os
+    import stat
+    import subprocess
+    import time
+    _, collect = _collect_and_start()
+    fake = tmp_path / ".venv" / "bin" / "python"
+    fake.parent.mkdir(parents=True)
+    fake.write_text('#!/bin/bash\necho "$@" > "$RUNNER_TEMP/killed.args"\n')
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    (tmp_path / "confirm.start").write_text(f"{int(time.time())}\n")
+    env = {**os.environ, "RUNNER_TEMP": str(tmp_path)}
+    late = subprocess.Popen(["bash", "-c", 'sleep 2; echo 124 > "$RUNNER_TEMP/confirm.rc.tmp" '
+                             '&& mv "$RUNNER_TEMP/confirm.rc.tmp" "$RUNNER_TEMP/confirm.rc"'], env=env)
+    done = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", collect],
+                          cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60)
+    late.wait(timeout=10)
+    assert done.returncode == 0 and "exit code: 124" in done.stdout
+    assert (tmp_path / "killed.args").read_text().split() == ["scripts/confirm_recent.py", "--killed", "124"]
+
+
+def test_the_wait_is_counted_from_the_runs_start(tmp_path):
+    """A run that started 114 s ago is past its 110 s backstop plus the margin
+    within a few seconds: the collector stops waiting and says so."""
+    import os
+    import subprocess
+    import time
+    _, collect = _collect_and_start()
+    (tmp_path / "confirm.start").write_text(f"{int(time.time()) - 114}\n")
+    env = {**os.environ, "RUNNER_TEMP": str(tmp_path)}
+    t0 = time.monotonic()
+    done = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", collect],
+                          cwd=tmp_path, env=env, capture_output=True, text=True, timeout=30)
+    assert time.monotonic() - t0 < 10
+    assert done.returncode == 0 and "still running past its 110 s timeout" in done.stdout
+    assert "exit code: none yet" in done.stdout

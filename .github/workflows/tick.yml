@@ -123,10 +123,11 @@ jobs:
         id: confirm
         if: ${{ github.event.inputs.dry_run != 'true' }}
         run: |
+          date +%s > "$RUNNER_TEMP/confirm.start"
           (
             set +e
             timeout 110 .venv/bin/python scripts/confirm_recent.py > "$RUNNER_TEMP/confirm.log" 2>&1
-            echo $? > "$RUNNER_TEMP/confirm.rc"
+            echo $? > "$RUNNER_TEMP/confirm.rc.tmp" && mv "$RUNNER_TEMP/confirm.rc.tmp" "$RUNNER_TEMP/confirm.rc"
           ) < /dev/null > /dev/null 2>&1 &
       - name: Checkpoints
         # Inputs reach the script through the environment, never the shell
@@ -152,12 +153,16 @@ jobs:
         # row (P4.7_confirm_recent) and in the crash row common.py writes.
         # A run its timeout ended (exit 124) writes neither, so this step
         # writes its row, attention with the exit code (Wave 2.C, 9 Oct: six
-        # such hours in 72 h were silent gaps).
+        # such hours in 72 h were silent gaps). It waits until the run's own
+        # 110 s backstop has passed, counted from when the run started, so a
+        # hung run's 124 is always seen (Codex on #355: a fixed 45 s from
+        # here could end before the backstop when the steps above are quick).
         if: ${{ !cancelled() && steps.confirm.outcome == 'success' }}
         run: |
-          for i in $(seq 1 90); do [ -f "$RUNNER_TEMP/confirm.rc" ] && break; sleep 0.5; done
+          started="$(cat "$RUNNER_TEMP/confirm.start" 2>/dev/null || date +%s)"
+          until [ -f "$RUNNER_TEMP/confirm.rc" ] || [ "$(date +%s)" -gt $(( started + 110 + 5 )) ]; do sleep 0.5; done
           cat "$RUNNER_TEMP/confirm.log" 2>/dev/null || true
-          [ -f "$RUNNER_TEMP/confirm.rc" ] || echo "confirm_recent still running after 45 s; its timeout ends it"
+          [ -f "$RUNNER_TEMP/confirm.rc" ] || echo "confirm_recent still running past its 110 s timeout"
           rc="$(cat "$RUNNER_TEMP/confirm.rc" 2>/dev/null || true)"
           echo "confirm_recent exit code: ${rc:-none yet}"
           if [ "$rc" = "124" ]; then
