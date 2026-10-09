@@ -108,19 +108,26 @@ select cron.schedule(
   'VACUUM (FULL, ANALYZE) public.paper_resolution_evidence'
 );
 
--- WEEKLY, smallest first, on tables that shed little. The order is the
--- original one and for the original reason: VACUUM FULL holds both the old
--- file and the new one while it rebuilds, so freeing the small tables first
--- lowers the peak the big one has to fit inside.
+-- Weekly, Monday, until 9 Oct; DAILY at the same times since both tables keep
+-- three days (Fresh Supabase, part 2b, 20261009090000), as every dataset kept
+-- three days or less is: the archive sheds a day of each every night (3,623-
+-- 3,631 forecasts a for_date and 4,580-4,927 readings a UTC day, 3-8 Oct).
+-- The archive asks for its own reclaim, so these are the backstops, long after
+-- it (dispatched 02:36, up to 45 minutes). Measured on their last weekly runs
+-- (5 Oct), at 30 and 32 days held: 6.76 s and 3.75 s, done before the tick
+-- writes readings at 06:36.
+-- The order is the original one and for the original reason: VACUUM FULL
+-- holds both the old file and the new one while it rebuilds, so freeing the
+-- small tables first lowers the peak the big one has to fit inside.
 select cron.schedule(
   'ad4_reclaim_weather_forecasts',
-  '20 6 * * 1',
+  '20 6 * * *',
   'VACUUM (FULL, ANALYZE) public.weather_forecasts'
 );
 
 select cron.schedule(
   'ad4_reclaim_weather_observations',
-  '35 6 * * 1',
+  '35 6 * * *',
   'VACUUM (FULL, ANALYZE) public.weather_observations'
 );
 

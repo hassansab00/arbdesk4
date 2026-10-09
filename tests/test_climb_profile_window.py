@@ -46,11 +46,19 @@ def test_the_window_is_the_measured_one():
 
 
 def test_retention_keeps_the_window_whole():
-    """The view reads the 30 whole local days before today; the oldest of
-    them starts up to 14 hours before its UTC date (UTC+14), and the prune
-    cuts part-way through a day. Raw readings must reach 32 days back, or the
-    window's oldest day would be read from what a cut left."""
-    assert ao.TABLES["observations"]["min_keep_days"] >= WINDOW_DAYS + 2
+    """The view reads the 30 whole local days before today. Until 9 Oct the
+    raw readings had to reach 32 days back for that (the oldest day starts up
+    to 14 hours before its UTC date, and the prune cuts part-way through a
+    day). Since part 2a the definition that wins reads the readings only for
+    the days they hold whole and derived_city_day_hours before
+    (test_the_cached_definition_reads_the_same_window), and prune_observations
+    refuses to delete a day those hours have not kept - so the readings keep
+    three days (Fresh Supabase, part 2b)."""
+    assert ao.TABLES["observations"]["min_keep_days"] >= 3
+    body = _body(CACHE_MIGRATION)
+    assert ">= f.first_whole" in body and "from derived_city_day_hours d" in body
+    prune = (ROOT / "supabase" / "migrations" / "20261009090000_the_weather_tables_keep_three_days.sql").read_text(encoding="utf-8")
+    assert "are not in derived_city_day_hours" in prune
 
 
 # ---------------------------------------------------------------------------

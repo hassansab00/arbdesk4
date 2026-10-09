@@ -202,6 +202,25 @@ def test_an_unknown_source_is_unclassified_and_timed_by_run_at():
 # values, filters and order as the REST API gives them
 # --------------------------------------------------------------------------
 
+def test_one_city_is_typed_as_the_whole_file_is_and_only_that_city(world, monkeypatch):
+    """Fresh Supabase, part 2b: the tick's 60-day history is almost all
+    archive at a three-day keep, so a city read types that city's rows only.
+    They must be exactly the rows, and the types, the whole file gives."""
+    wh.reset()
+    path = str(world["root"] / "data" / "archive" / "forecasts" / "forecasts-2026-07-28-to-2026-07-29.csv.gz")
+    typed = []
+    real = wh._typed
+    monkeypatch.setattr(wh, "_typed", lambda k, v: typed.append(k) or real(k, v))
+    tokyo = wh.archived("forecasts", None, CUT, root=str(world["root"]), city="tokyo")
+    assert typed.count("city_key") == 1, "rows of other cities were typed"
+    assert wh.archived("forecasts", None, CUT, root=str(world["root"]), city="tokyo") == tokyo
+    assert wh.archived("forecasts", None, CUT, root=str(world["root"]), city="paris") == []
+    whole = [r for r in wh.file_rows(path) if r["city_key"] == "tokyo"]
+    assert tokyo == whole and [type(v) for v in tokyo[0].values()] == [type(v) for v in whole[0].values()]
+    assert typed.count("city_key") == 1 + 3, "the city read was typed again, or the file read did not type every row"
+    wh.reset()
+
+
 def test_values_come_back_as_rest_returned_them():
     assert wh._value("15.8") == 15.8 and wh._value("33") == 33 and isinstance(wh._value("33"), int)
     assert wh._value("33.0") == 33.0 and isinstance(wh._value("33.0"), float)

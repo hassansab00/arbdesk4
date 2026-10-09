@@ -368,7 +368,13 @@ def first_held_date():
     window to a week for both. The window is judged on weather_forecasts
     (existing_dates), so it starts at weather_forecasts' oldest day; the model
     rows the same fetch returns are held to their own table's oldest day by
-    models_first_held_date."""
+    models_first_held_date.
+
+    THREE DAYS SINCE 9 OCT (Fresh Supabase, part 2b): weather_forecasts keeps
+    three days, so a hole older than that is no longer filled. Of the month
+    the table held on 9 Oct, the only forecasts written more than three days
+    after their day were an outage's catch-up on 13-14 Sep: 140 four days
+    late and 21 five days late. Those would now stay missing."""
     return _oldest_held("weather_forecasts")
 
 
