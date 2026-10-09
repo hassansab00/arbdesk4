@@ -67,6 +67,75 @@ def test_a_short_page_is_the_last():
     assert calls == ["0xa,0xb"]                       # one request for the whole batch
 
 
+class _Limited:
+    """A 429 response, with Retry-After when given."""
+    status_code = 429
+
+    def __init__(self, after=None):
+        self.headers = {} if after is None else {"Retry-After": str(after)}
+
+    def raise_for_status(self):
+        import requests
+        raise requests.HTTPError("429 Client Error: Too Many Requests", response=self)
+
+
+def test_a_429_is_waited_out_once_when_the_budget_allows():
+    """R8 (Wave 2.D): 5 of 168 runs in the 7 days to 9 Oct lost a batch to a
+    429. The page is asked again after Retry-After, and the wait is counted."""
+    answers = [_Limited(after=3), _Resp([_trade(5)])]
+    slept, stats = [], {}
+    got = it.fetch_batch(["0xa"], None, get=lambda *a, **k: answers.pop(0),
+                         wait_until=100.0, stats=stats, sleep=slept.append, clock=lambda: 0.0)
+    assert len(got) == 1 and slept == [3.0]
+    assert stats == {"waits": 1, "seconds": 3.0}
+
+
+def test_a_429_without_retry_after_waits_the_default_and_never_too_long():
+    answers = [_Limited(), _Resp([_trade(5)])]
+    slept = []
+    it.fetch_batch(["0xa"], None, get=lambda *a, **k: answers.pop(0), wait_until=100.0,
+                   sleep=slept.append, clock=lambda: 0.0)
+    assert slept == [it.RATE_LIMIT_WAIT_S]
+    answers = [_Limited(after=600), _Resp([_trade(5)])]
+    slept = []
+    it.fetch_batch(["0xa"], None, get=lambda *a, **k: answers.pop(0), wait_until=100.0,
+                   sleep=slept.append, clock=lambda: 0.0)
+    assert slept == [it.RATE_LIMIT_MAX_WAIT_S]
+
+
+def test_a_retry_after_of_zero_is_asked_again_at_once():
+    """Codex on #356: `Retry-After: 0` is valid and means now; read as falsy
+    it became the 5 s default, spending budget for nothing."""
+    answers = [_Limited(after=0), _Resp([_trade(5)])]
+    slept = []
+    got = it.fetch_batch(["0xa"], None, get=lambda *a, **k: answers.pop(0), wait_until=1.0,
+                         sleep=slept.append, clock=lambda: 0.0)
+    assert len(got) == 1 and slept == [0.0]
+
+
+def test_a_429_past_the_budget_or_twice_is_raised_as_before():
+    """The batch then fails and the next run resumes it from the cursor,
+    exactly as before the wait existed."""
+    import requests
+    slept = []
+    with pytest.raises(requests.HTTPError):
+        it.fetch_batch(["0xa"], None, get=lambda *a, **k: _Limited(after=10), wait_until=5.0,
+                       sleep=slept.append, clock=lambda: 0.0)
+    assert slept == []
+    answers = [_Limited(after=1), _Limited(after=1)]
+    with pytest.raises(requests.HTTPError):
+        it.fetch_batch(["0xa"], None, get=lambda *a, **k: answers.pop(0), wait_until=100.0,
+                       sleep=slept.append, clock=lambda: 0.0)
+    assert slept == [1.0], "one wait a page, never a loop"
+
+
+def test_the_run_passes_its_budget_to_the_wait():
+    import inspect
+    src = inspect.getsource(it.main)
+    assert "fetch_batch(batch, since, wait_until=started + budget_s, stats=rate_limited)" in src
+    assert '"rate_limited": rate_limited' in src
+
+
 def test_the_plan_resumes_an_incomplete_cycle_with_the_older_mark():
     hw = dt.datetime(2026, 9, 25, 8, 0, tzinfo=dt.timezone.utc)
     assert it.plan(hw, {}) == (hw - it.OVERLAP, "")
@@ -94,7 +163,7 @@ def _wire(monkeypatch, n_conditions, prev=None, fail_batches=(), deep_batches=()
     monkeypatch.setattr(it, "rest", rest)
     seen = []
 
-    def fetch(ids, since):
+    def fetch(ids, since, **kw):
         j = int(ids[0][2:]) // it.BATCH
         seen.append(j)
         if j in fail_batches:
@@ -146,7 +215,7 @@ def test_a_backlog_spread_over_runs_finishes_its_cycle(monkeypatch):
         logged, seen = _wire(monkeypatch, n, prev=prev)
         real = it.fetch_batch
 
-        def slow(ids, since, real=real):
+        def slow(ids, since, real=real, **kw):
             clock[0] += 20.0                               # a backlog batch: 20 s, measured
             return real(ids, since)
         monkeypatch.setattr(it, "fetch_batch", slow)
@@ -194,7 +263,7 @@ def test_a_batch_that_would_overrun_the_budget_is_not_started(monkeypatch):
     logged, seen = _wire(monkeypatch, 3 * it.BATCH)
     real = it.fetch_batch
 
-    def slow(ids, since):
+    def slow(ids, since, **kw):
         clock[0] += 9.0                                    # 9 s a batch: a second one ends at 18 s
         return real(ids, since)
     monkeypatch.setattr(it, "fetch_batch", slow)
@@ -248,7 +317,7 @@ def test_the_tick_starts_the_trades_before_the_checkpoints_and_collects_them_las
     steps = _tick_steps()
     names = [s.get("name", "") for s in steps]
     start = next(i for i, s in enumerate(steps) if s.get("id") == "trades")
-    assert "scripts/ingest_trades.py --budget 30" in steps[start]["run"]
+    assert "scripts/ingest_trades.py --budget 60" in steps[start]["run"]
     assert steps[start]["run"].rstrip().endswith("&")                      # backgrounded
     assert start < names.index("Checkpoints")
     last = steps[-1]
@@ -257,16 +326,19 @@ def test_the_tick_starts_the_trades_before_the_checkpoints_and_collects_them_las
     assert sum("ingest_trades.py" in (s.get("run") or "") for s in steps) == 1
 
 
-def test_thirty_seconds_fit_the_deadline_it_starts_under():
+def test_sixty_seconds_fit_the_deadline_it_starts_under():
     """The step starts a few seconds after the Deadline step (checkout, python,
-    the cached venv); 48 s less RESERVE_S leaves room for the 30 it asks, and
-    budget() clamps it to the deadline whatever the start."""
+    the cached venv); the deadline less RESERVE_S leaves room for the 60 it
+    asks (30 until 9 Oct, when the tick's deadline was 48 s), and budget()
+    clamps it to the deadline whatever the start."""
     import re
     deadline_step = _tick_steps()[0]
     deadline_s = int(re.search(r"\+ (\d+) \)\)", deadline_step["run"]).group(1))
-    assert deadline_s - it.RESERVE_S - 10 >= 30
-    assert it.budget(30, deadline=1000, now_epoch=1000 - 48 + 10) == 30
-    assert it.budget(30, deadline=1000, now_epoch=1000 - 20) == pytest.approx(14)
+    asked = int(re.search(r"ingest_trades\.py --budget (\d+)", "\n".join(
+        s.get("run") or "" for s in _tick_steps())).group(1))
+    assert deadline_s - it.RESERVE_S - 10 >= asked
+    assert it.budget(60, deadline=1000, now_epoch=1000 - deadline_s + 10) == 60
+    assert it.budget(60, deadline=1000, now_epoch=1000 - 20) == pytest.approx(14)
 
 
 def test_the_background_run_hands_its_exit_code_to_the_last_step(tmp_path):
