@@ -71,8 +71,8 @@
 --    ad4_verify.
 --
 --    Refreshed by refresh_page_cache(): pg_cron at :12 and :42 (the :42 run
---    follows the :36 tick and P0.3's books at :24), and at the end of both
---    pipelines, the intraday one right after it writes the edges.
+--    follows the :36 tick and P0.3's books at :24), and as the last step of
+--    both pipelines, the intraday one after its edges, signals and orders.
 --
 --    Proved 9 Oct 20:45-20:52Z before applying, in one REPEATABLE READ snapshot,
 --    the build below run and rolled back: v_opportunities 1,694 rows, and
@@ -84,6 +84,13 @@
 -- database without these tables or views (the contracts' fixture) is left
 -- alone.
 -- ===========================================================================
+
+-- Replacing v_opportunities takes its exclusive lock, and every page read of
+-- it (or of a view built on it) queues behind a waiting lock. Wait 5 s at
+-- most; past that this fails whole and is run again at a quieter moment.
+-- (The first apply, 9 Oct 21:17Z, ran past the SQL tool's 60 s beside a page
+-- load whose reads timed out, and rolled back.)
+set local lock_timeout = '5s';
 
 -- 1. The freshness timestamps.
 do $migration$
