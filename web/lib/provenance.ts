@@ -1500,6 +1500,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_forecasts",
     "weather_observations"
   ],
+  "v_job_last_ok": [
+    "ingest_log"
+  ],
   "v_latest_book": [
     "book_snapshots",
     "bands"

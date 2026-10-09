@@ -177,7 +177,7 @@ const CATALOGUE: Array<{
     job: "P4.1_health_watchdog",
     label: "Health Watchdog",
     schedule: "every 6 hours, in the database (pg_cron)",
-    what: "Checks snapshot freshness, forecast runs, failed ingest jobs, anomalies and traded volume. Runs in the database since 25 Sep so it costs no n8n executions; the Run button still starts the n8n copy. Email is off.",
+    what: "Checks snapshot freshness, forecast runs, failed ingest jobs, dispatched runs that never logged, and traded volume, and since 9 Oct the age of every scheduled job's last ok against its SLA (one cadence plus a margin: the tick 90 min, a daily job 26 h); a job past it is named in the summary. Implausible-edge anomalies are a note, not a failure. Runs in the database since 25 Sep so it costs no n8n executions; the Run button still starts the n8n copy. Email is off.",
   },
 ];
 
