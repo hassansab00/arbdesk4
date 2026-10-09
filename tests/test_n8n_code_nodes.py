@@ -1958,3 +1958,92 @@ def test_a_truncating_cap_drops_backfill_and_keeps_today():
     dates = {i["for_date"] for i in r["outputs"]["Build requests"]}
     assert dates == {datetime.date.today().isoformat()}, \
         f"the cap ate the live day: {sorted(dates)}"
+
+
+# ------------------------------------------------------------------ P0.3 ---
+# P0.3 logged 'ok' unless more bands failed than were written. On 9 Oct
+# 03:27Z (execution 9899) 63 of 1,188 bands got no row - all 129 failed
+# fetches of 2,376 were "timeout of 20000ms exceeded" - and
+# the run logged ok, so neither the Workflows page nor the watchdog's
+# not_ok_24h saw it. Any lost book now makes the run partial, by kind.
+P03 = "P0.3_book_volume_snapshot.template.json"
+P03_PLAN = "plan_P0.3_book_snapshot.json"
+_TIMEOUT = {"error": {"message": "timeout of 20000ms exceeded", "name": "AxiosError"}}
+
+
+def _p03_book(token, bid="0.40", ask="0.45"):
+    return {"market": "0xm", "asset_id": token,
+            "bids": [{"price": bid, "size": "100"}], "asks": [{"price": ask, "size": "50"}]}
+
+
+def _p03_fetch(*responses):
+    def m(plan):
+        plan["seed"]["Fetch book"] = list(responses)
+    return m
+
+
+def test_p03_a_lost_book_makes_the_run_partial():
+    """b1 both books; b2 loses its YES book (no row); b3 loses its NO book."""
+    r = run(P03, P03_PLAN)
+    assert r["ok"], r
+    s = r["outputs"]["Summary"][0]
+    assert s["rows"] == 2
+    assert s["status"] == "partial" and s["log"]["p_status"] == "partial"
+    d = s["log"]["p_detail"]
+    assert (d["requested"], d["failed"], d["no_failed"]) == (3, 1, 1)
+    assert (d["requests_made"], d["fetch_failed"], d["fetch_failures"]) == (6, 2, {"timeout": 2})
+    assert "2 of 6 fetches brought back no book: timeout 2" in s["summary"], s["summary"]
+    rows = {row["band_id"]: row for row in r["outputs"]["Build snapshots"][0]["rows"]}
+    assert set(rows) == {"b1", "b3"}
+    assert rows["b1"]["no_book"] is not None and rows["b3"]["no_book"] is None
+
+
+def test_p03_a_run_that_lost_nothing_is_ok():
+    r = run_with(P03, P03_PLAN, _p03_fetch(*[_p03_book(f"t{i}") for i in range(6)]))
+    assert r["ok"], r
+    s = r["outputs"]["Summary"][0]
+    assert s["status"] == "ok" and s["rows"] == 3
+    d = s["log"]["p_detail"]
+    assert d["fetch_failed"] == 0 and d["fetch_failures"] == {} and d["failed"] == 0
+    assert "brought back no book" not in s["summary"]
+
+
+def test_p03_more_bands_lost_than_written_is_still_attention():
+    r = run_with(P03, P03_PLAN, _p03_fetch(_TIMEOUT, _p03_book("b1_no"), _TIMEOUT,
+                                           _p03_book("b2_no"), _p03_book("b3_yes"), _p03_book("b3_no")))
+    assert r["ok"], r
+    s = r["outputs"]["Summary"][0]
+    assert s["rows"] == 1 and s["log"]["p_detail"]["failed"] == 2
+    assert s["status"] == "attention"
+
+
+def test_p03_names_each_kind_of_loss():
+    """A refusal by status, an empty book and a timeout are three different
+    things to fix; the detail keeps them apart."""
+    r = run_with(P03, P03_PLAN, _p03_fetch(
+        {"error": {"message": "404 - No orderbook exists", "name": "NodeApiError", "httpCode": "404"}},
+        _p03_book("b1_no"),
+        {"market": "0xm", "asset_id": "b2_yes", "bids": [], "asks": []},
+        _p03_book("b2_no"), _p03_book("b3_yes"), _TIMEOUT))
+    assert r["ok"], r
+    d = r["outputs"]["Summary"][0]["log"]["p_detail"]
+    assert d["fetch_failures"] == {"http_404": 1, "no_levels": 1, "timeout": 1}
+    assert d["fetch_failed"] == 3
+
+
+def test_p03_fetch_carries_no_node_retry_that_cannot_retry_a_book():
+    """A failed book is an {error} item (onError continueRegularOutput), and an
+    HTTP error is one too (neverError false), so Build snapshots can count it.
+
+    No retryOnFail beside it: n8n retries such a node only when its FIRST
+    output item is an error, and then re-runs every request
+    (packages/core/src/execution-engine/workflow-execute.ts, checkFailure reads
+    data[0][0].json.error). From 8 Oct 15:46Z it was on and claimed three
+    tries a book; a lost book anywhere but first got one (Codex, #352)."""
+    wf = json.load(open(os.path.join(ROOT, "n8n", P03)))
+    fetch = next(n for n in wf["nodes"] if n["name"] == "Fetch book")
+    assert fetch.get("onError") == "continueRegularOutput"
+    assert fetch["parameters"]["options"]["response"]["response"]["neverError"] is False
+    assert not fetch.get("retryOnFail"), (
+        "retryOnFail with continueRegularOutput retries only when the first book fails, "
+        "and then fetches every book again")
