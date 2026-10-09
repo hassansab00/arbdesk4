@@ -89,16 +89,18 @@ TABLES = {
         "cutoff_col": "valid_at",
         "cutoff_is_date": False,
         "prune_rpc": "prune_observations",
-        # 32 DAYS, WANTED AND FLOOR (plan v2 P1.6 phase 2, step 5, 29 Sep). The
-        # climb profile reads the 30 whole local days before today; the oldest
-        # of them can begin 14 hours before its UTC date (UTC+14) and the prune
-        # cuts part-way through a day, so the readings must reach 32 days back
-        # (tests/test_climb_profile_window.py). Every other reader of the
-        # readings reads a week or less, the caches (derived_city_day_features,
-        # _hours, derived_station_day_sources) or the repository
-        # (scripts/weather_history.py); prune_observations refuses under 32.
-        "keep_days": 32,
-        "min_keep_days": 32,
+        # THREE DAYS, WANTED AND FLOOR (Fresh Supabase, part 2b, 9 Oct; 32
+        # since 29 Sep). Hassan, 8 Oct: offload the database to the repository
+        # every night. Part 2a moved the month-long readers (the climb profile,
+        # the city climate, the peak hour, the correlation, the model's recent
+        # days, the databank) onto the caches refresh_city_day_hours keeps for
+        # every whole day (derived_city_day_features, _hours, _peak,
+        # derived_station_day_sources) or onto the repository
+        # (scripts/weather_history.py); the live readers take the last 48
+        # hours. prune_observations refuses under 3, and refuses to delete a
+        # day any of those caches has not kept.
+        "keep_days": 3,
+        "min_keep_days": 3,
         "tag": "observations-archive",
         "columns": ["city_key", "station", "valid_at", "temp_c", "temp_f",
                     "dewpoint_c", "humidity", "wind_speed", "wind_dir_deg",
@@ -114,12 +116,16 @@ TABLES = {
         # by the time of day the job happened to run.
         "cutoff_is_date": True,
         "prune_rpc": "prune_forecasts",
-        # 30 DAYS, WANTED AND FLOOR (plan v2 P1.6 phase 2, step 5). The long
-        # readers read the repository (weather_history: skill, regime, the
-        # backtest, the ingest's gap check) or what the nightly freeze kept
-        # (v_hit_forecasts, v_forecast_latest); prune_forecasts refuses under 30.
-        "keep_days": 30,
-        "min_keep_days": 30,
+        # THREE DAYS, WANTED AND FLOOR (Fresh Supabase, part 2b, 9 Oct; 30
+        # since 29 Sep). The long readers read the repository (weather_history:
+        # skill, regime, the backtest, the databank, the correlation, the
+        # ingest's gap check) or what the nightly freeze kept (v_hit_forecasts,
+        # v_forecast_latest). Three, not two: ingest_forecasts refills only the
+        # days the table still holds (first_held_date), and on 12-14 Sep an
+        # outage's catch-up wrote 378 forecasts three days after their day.
+        # prune_forecasts refuses under 3.
+        "keep_days": 3,
+        "min_keep_days": 3,
         "tag": "forecasts-archive",
         "columns": ["city_key", "model", "run_at", "observed_at", "for_date",
                     "lead_days", "forecast_max_c", "variables", "source"],

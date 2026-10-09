@@ -62,9 +62,15 @@ declare
   v_doomed bigint; v_keep bigint; v_skill bigint; v_skill_at timestamptz;
   v_newest_doomed date; v_freed text; v_unfrozen bigint; v_unfrozen_latest bigint;
 begin
-  if p_keep_days < 30 then
+  -- THREE DAYS (Fresh Supabase, part 2b, 9 Oct; 30 before). Skill, the
+  -- regime's history, the backtest and the databank read older days from the
+  -- repository (scripts/weather_history.py); the hit forecasts and the
+  -- forecast standing at each lead are frozen below. Three, not two: the
+  -- ingest refills only the days the table still holds
+  -- (ingest_forecasts.first_held_date).
+  if p_keep_days < 3 then
     return jsonb_build_object('ok', false,
-      'error', 'keep_days must be at least 30 - skill is measured over months');
+      'error', 'keep_days must be at least 3 - the ingest refills only the days the table holds; older forecasts are read from the archive');
   end if;
 
   if not p_dry_run and p_expected_rows is null then
@@ -167,7 +173,7 @@ end;
 $ad4$;
 
 comment on function public.prune_forecasts(integer, boolean, date, bigint) is
-  'Delete forecasts older than a cutoff only when p_expected_rows equals the verified archive count, derived_forecast_skill proves the rows were scored, and what v_hit_forecasts and v_forecast_latest read for the days going is frozen (derived_hit_forecasts, derived_forecast_latest). Committed calls require the expected count.';
+  'Delete forecasts older than a cutoff only when p_expected_rows equals the verified archive count, derived_forecast_skill proves the rows were scored, and what v_hit_forecasts and v_forecast_latest read for the days going is frozen (derived_hit_forecasts, derived_forecast_latest). Refuses under 3 days. Committed calls require the expected count.';
 
 do $ad4$
 declare r text;

@@ -181,6 +181,9 @@ SQL_FILTERS = {
     "supabase/migrations/20261004150000_the_basis_is_the_feeds.sql":
         "v_city_observation_health and refresh_live_weather_timing again, as in sql/ad4_71 and "
         "ad4_live_weather_timing - the basis counted over the feed the maximum came from",
+    "supabase/migrations/20261009090100_the_feed_age_reads_the_cache.sql":
+        "v_city_observation_health again, as in sql/ad4_71 - the feed age read from the "
+        "station-day cache for a city the readings no longer hold",
     # The model inputs' freshness beside the main forecast's (audit P3, 5 Oct):
     # operational, like v_city_observation_health - is the desk's input fresh
     # for a city it prices - not the record.
@@ -275,6 +278,9 @@ SQL_RECORD = {
 # rather than a bug. It is here because a blind spot is how the last four got
 # in.
 MIGRATION_RECORD = {
+    "supabase/migrations/20261009090000_the_weather_tables_keep_three_days.sql":
+        "prune_observations, as in sql/ad4_29 - its guards put each reading on its city's "
+        "local day; every city the prune reaches, retired ones too",
     "supabase/migrations/20261008200000_the_long_weather_readers_read_the_caches.sql":
         "refresh_city_day_hours as in sql/ad4_97, and v_city_climb_profile_live, "
         "v_city_climate and refresh_weather_peak_city as in "

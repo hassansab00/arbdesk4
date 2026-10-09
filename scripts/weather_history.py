@@ -42,6 +42,7 @@ import gzip
 import json
 import os
 import re
+import threading
 from zoneinfo import ZoneInfo
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -73,6 +74,7 @@ ISSUED_AT_SOURCE = {"api.weather.gov": "provider_update_time", "open-meteo": "in
 _boundary = {}
 _files = {}
 _zones = {}
+_lock = threading.Lock()
 
 
 class StaleCheckout(RuntimeError):
@@ -163,14 +165,32 @@ def file_rows(path):
     return _files[path]
 
 
-def _by_city(path):
-    key = ("by_city", path)
-    if key not in _files:
-        index = {}
-        for r in file_rows(path):
-            index.setdefault(r["city_key"], []).append(r)
-        _files[key] = index
-    return _files[key]
+def _city_rows(path, city):
+    """One city's rows of one archive file, typed, as file_rows types them.
+
+    TYPED ONLY FOR THE CITIES ASKED FOR (Fresh Supabase, part 2b, 9 Oct). The
+    tick asks for the few cities it prices, once each. With the forecasts
+    kept three days its 60-day history comes almost all from here: 27 daily
+    files of ~3,630 rows. For twelve cities (a tick prices 6 to 15), typing
+    every row took 1.32-1.38 s of its 48 s and typing only theirs 0.64-0.72 s,
+    the same rows (measured on files shaped like 5 Oct's). The lock is for the
+    tick's threads, which would otherwise each read the same file."""
+    with _lock:
+        raw = ("raw_by_city", path)
+        if raw not in _files:
+            with gzip.open(path, "rt", newline="") as fh:
+                reader = csv.reader(fh)
+                header = next(reader, [])
+                at = header.index("city_key") if "city_key" in header else None
+                groups = {}
+                for row in reader:
+                    groups.setdefault(row[at] if at is not None else "", []).append(row)
+            _files[raw] = (header, groups)
+        key = ("by_city", path, city)
+        if key not in _files:
+            header, groups = _files[raw]
+            _files[key] = [{k: _typed(k, v) for k, v in zip(header, row)} for row in groups.get(city, [])]
+        return _files[key]
 
 
 def archived(dataset, lo, before, root=ROOT, city=None):
@@ -181,7 +201,7 @@ def archived(dataset, lo, before, root=ROOT, city=None):
     for f, t, path in archive_files(dataset, root):
         if t < (lo or "0000-00-00") or f >= before:
             continue
-        rows = file_rows(path) if city is None else _by_city(path).get(city, [])
+        rows = file_rows(path) if city is None else _city_rows(path, city)
         out.extend(r for r in rows if (lo is None or r["for_date"] >= lo) and r["for_date"] < before)
     return out
 

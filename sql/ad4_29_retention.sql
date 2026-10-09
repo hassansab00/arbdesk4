@@ -312,16 +312,15 @@ declare
                                    (current_date - p_keep_days)::timestamptz);
   v_cut date := (v_before at time zone 'UTC')::date;
   v_doomed bigint; v_cached_before bigint; v_uncovered bigint; v_freed text;
-  v_unkept bigint; v_unkept_station bigint;
+  v_unkept bigint; v_unkept_station bigint; v_oldest timestamptz; v_unkept_peak bigint;
 begin
-  if p_keep_days < 32 then
-    -- The climb profile reads the 30 whole local days before today; the
-    -- oldest can begin 14 hours before its UTC date and the prune cuts part-
-    -- way through a day, so the readings must reach 32 days back (plan v2
-    -- P1.6 phase 2, step 5). Everything longer reads the caches or the
-    -- repository.
+  if p_keep_days < 3 then
+    -- THREE DAYS (Fresh Supabase, part 2b, 9 Oct; 32 before). Every reader of
+    -- more than the last two days reads the caches below for the days the
+    -- readings no longer hold whole, or the repository
+    -- (scripts/weather_history.py).
     return jsonb_build_object('ok', false,
-      'error', 'keep_days must be at least 32 - the climb profile reads the 30 whole local days before today');
+      'error', 'keep_days must be at least 3 - live readers take the readings of the last 48 hours; older days are read from the caches and the archive');
   end if;
 
   if not p_dry_run and p_expected_rows is null then
@@ -421,6 +420,38 @@ begin
       'unkept_station_days', v_unkept_station);
   end if;
 
+  -- ...and in derived_city_day_peak (sql/ad4_97), which
+  -- refresh_weather_peak_city reads for those days (Fresh Supabase, part 2b):
+  -- every day with a temperature the readings hold whole, by
+  -- refresh_city_day_hours' rule - from the local day of the oldest reading,
+  -- or the next one if that day began before it. The day the last prune cut
+  -- into was never whole, so nothing kept its peak.
+  select min(valid_at) into v_oldest from weather_observations;
+  select count(*) into v_unkept_peak from (
+    select distinct
+           o.city_key,
+           (o.valid_at at time zone coalesce(c.timezone, 'UTC'))::date as d,
+           (v_oldest at time zone coalesce(c.timezone, 'UTC'))::date
+             + case when ((v_oldest at time zone coalesce(c.timezone, 'UTC'))::date::timestamp
+                          at time zone coalesce(c.timezone, 'UTC')) < v_oldest
+                    then 1 else 0 end as first_whole
+      from weather_observations o
+      join cities c on c.city_key = o.city_key
+     where o.valid_at < v_before and o.temp_c is not null
+  ) x
+  where x.d >= x.first_whole
+    and not exists (
+      select 1 from derived_city_day_peak k
+       where k.city_key = x.city_key and k.obs_date = x.d
+    );
+
+  if v_unkept_peak > 0 then
+    return jsonb_build_object('ok', false,
+      'error', format('%s whole city-day(s) older than %s are not in derived_city_day_peak. Run common.refresh_feature_cache first (it keeps them) - the peak hour reads them after the prune.',
+                      v_unkept_peak, v_cut),
+      'unkept_peak_days', v_unkept_peak);
+  end if;
+
   select count(*) into v_cached_before from derived_city_day_features;
 
   if p_dry_run then
@@ -439,7 +470,7 @@ end;
 $ad4$;
 
 comment on function prune_observations(int, boolean, timestamptz, bigint) is
-  'Delete raw observations older than p_before (or p_keep_days if not given). A committed prune requires p_expected_rows to equal the verified archive count, and refuses unless every affected city-local day is cached - in derived_city_day_features, derived_city_day_hours and, per source, derived_station_day_sources. Dry run by default.';
+  'Delete raw observations older than p_before (or p_keep_days if not given). A committed prune requires p_expected_rows to equal the verified archive count, and refuses unless every affected city-local day is cached - in derived_city_day_features, derived_city_day_hours and, per source, derived_station_day_sources, and every whole day''s peak in derived_city_day_peak. Refuses under 3 days. Dry run by default.';
 
 
 -- --------------------------------------------------------------------------
