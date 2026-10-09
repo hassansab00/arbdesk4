@@ -194,7 +194,8 @@ def fetch_batch(ids, since, get=requests.get, wait_until=None, stats=None,
         params = {"market": ",".join(ids), "limit": PAGE, "offset": page * PAGE}
         r = get(API, params=params, headers=UA, timeout=20)
         if getattr(r, "status_code", 200) == 429:
-            wait = min(_retry_after(r) or RATE_LIMIT_WAIT_S, RATE_LIMIT_MAX_WAIT_S)
+            after = _retry_after(r)        # None when not sent; 0 is a valid "now" (Codex on #356)
+            wait = min(RATE_LIMIT_WAIT_S if after is None else max(0.0, after), RATE_LIMIT_MAX_WAIT_S)
             if wait_until is None or clock() + wait < wait_until:
                 sleep(wait)
                 if stats is not None:

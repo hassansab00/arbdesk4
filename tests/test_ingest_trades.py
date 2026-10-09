@@ -103,6 +103,16 @@ def test_a_429_without_retry_after_waits_the_default_and_never_too_long():
     assert slept == [it.RATE_LIMIT_MAX_WAIT_S]
 
 
+def test_a_retry_after_of_zero_is_asked_again_at_once():
+    """Codex on #356: `Retry-After: 0` is valid and means now; read as falsy
+    it became the 5 s default, spending budget for nothing."""
+    answers = [_Limited(after=0), _Resp([_trade(5)])]
+    slept = []
+    got = it.fetch_batch(["0xa"], None, get=lambda *a, **k: answers.pop(0), wait_until=1.0,
+                         sleep=slept.append, clock=lambda: 0.0)
+    assert len(got) == 1 and slept == [0.0]
+
+
 def test_a_429_past_the_budget_or_twice_is_raised_as_before():
     """The batch then fails and the next run resumes it from the cursor,
     exactly as before the wait existed."""
