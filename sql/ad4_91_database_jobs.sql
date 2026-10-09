@@ -87,6 +87,7 @@ declare
   v_book timestamptz; v_fc timestamptz; v_age numeric;
   v_err int; v_jobs text; v_anom int;
   v_missed int; v_missed_jobs text; v_not_ok jsonb;
+  v_overdue int; v_overdue_jobs text; v_overdue_detail jsonb; v_info_anom int; v_notes jsonb := '[]';
   v_cities int; v_vol numeric; v_trades bigint;
   v_summary text; v_status text; v_detail jsonb;
 begin
@@ -132,6 +133,29 @@ begin
     end if;
   end if;
 
+  -- THE AGE OF EACH JOB'S LAST OK (plan v2 P6.3, WXPredict build 2.D, R14).
+  -- A run that never logged is caught above, but only for what the clock
+  -- dispatches; a job that runs every time and never succeeds (the nightly
+  -- records, partial on every night 6-9 Oct), or one whose own scheduler
+  -- stopped (n8n, pg_cron), was not caught at all. job_sla holds, for every
+  -- scheduled job, its cadence plus a margin; a job whose last 'ok' is older
+  -- than that is overdue.
+  if to_regclass('public.v_job_last_ok') is not null then
+    select count(*),
+           string_agg(format('%s (last ok %s, allowed %sh)', job,
+                             coalesce(round(age_minutes / 60.0, 1)::text || 'h ago', 'none on record'),
+                             round(max_age_minutes / 60.0, 1)), ', ' order by job),
+           coalesce(jsonb_object_agg(job, jsonb_build_object('last_ok_at', last_ok_at, 'age_h', round(age_minutes / 60.0, 1),
+                                                             'sla_h', round(max_age_minutes / 60.0, 1),
+                                                             'last_status', last_status)), '{}'::jsonb)
+      into v_overdue, v_overdue_jobs, v_overdue_detail
+      from public.v_job_last_ok where overdue;
+    v_checks := v_checks || jsonb_build_object('overdue_jobs', v_overdue_detail);
+    if v_overdue > 0 then
+      v_failures := v_failures || format('%s job(s) past their SLA: %s', v_overdue, v_overdue_jobs);
+    end if;
+  end if;
+
   -- Runs that logged 'partial' or 'attention': reported per job, not failed.
   select jsonb_object_agg(job, counts order by job) into v_not_ok
     from (select job, jsonb_build_object('partial', count(*) filter (where status = 'partial'),
@@ -142,9 +166,21 @@ begin
            group by job) p;
   v_checks := v_checks || jsonb_build_object('not_ok_24h', coalesce(v_not_ok, '{}'::jsonb));
 
-  select count(*) into v_anom from anomalies where detected_at > now() - interval '24 hours';
-  v_checks := v_checks || jsonb_build_object('anomalies_24h', v_anom);
-  if v_anom > 0 then v_failures := v_failures || format('%s anomaly row(s) in 24h', v_anom); end if;
+  -- WARNINGS APART FROM INFORMATION (plan v2 P6.3). Every anomaly row of the
+  -- 7 days to 9 Oct was edge_engine's 'implausible_edge' (1,054 rows): the
+  -- model and the market disagree on a band. That is the research's to read,
+  -- not a job that failed, and it kept every watchdog run 'attention'. It is
+  -- a note now; any other kind of anomaly still fails the check.
+  select count(*), count(*) filter (where kind = 'implausible_edge')
+    into v_anom, v_info_anom
+    from anomalies where detected_at > now() - interval '24 hours';
+  v_checks := v_checks || jsonb_build_object('anomalies_24h', v_anom, 'implausible_edges_24h', v_info_anom);
+  if v_anom - v_info_anom > 0 then
+    v_failures := v_failures || format('%s anomaly row(s) in 24h', v_anom - v_info_anom);
+  end if;
+  if v_info_anom > 0 then
+    v_notes := v_notes || to_jsonb(format('%s implausible-edge row(s) in 24h (information: the model and the market disagree; not a failed job)', v_info_anom));
+  end if;
 
   select count(*), coalesce(sum(volume_usd), 0), coalesce(sum(n_trades), 0)
     into v_cities, v_vol, v_trades from v_city_volume;
@@ -164,7 +200,7 @@ begin
     else 'AD4 P4.1: all clear.' end;
   v_detail := jsonb_build_object('summary', v_summary, 'failures', to_jsonb(v_failures), 'checks', v_checks,
                                  'context_notes', jsonb_build_array(format('market volume 24h: $%s across %s cities, %s trades',
-                                                                           round(v_vol), v_cities, v_trades)),
+                                                                           round(v_vol), v_cities, v_trades)) || v_notes,
                                  'emailed', false, 'email_enabled', false, 'trigger', 'pg_cron');
   perform log_ingest('P4.1_health_watchdog', v_status, cardinality(v_failures), v_detail);
   return v_detail || jsonb_build_object('status', v_status);

@@ -135,9 +135,17 @@ def _watchdog(text):
     return text[i:text.index("end $$;", i)]
 
 
+def _latest_watchdog_migration():
+    """The newest migration that defines the watchdog: what production runs."""
+    paths = [p for p in sorted((ROOT / "supabase" / "migrations").glob("*.sql"))
+             if "create or replace function public.run_health_watchdog()" in p.read_text()]
+    return paths[-1].read_text()
+
+
 def test_the_sql_file_and_the_migration_define_the_same_watchdog():
-    assert _watchdog(AD4_91) == _watchdog(MIGRATION)
-    body = _watchdog(MIGRATION)
+    latest = _latest_watchdog_migration()
+    assert _watchdog(AD4_91) == _watchdog(latest)
+    body = _watchdog(latest)
     assert "to_regclass('public.v_run_arrivals') is not null" in body, "a fresh install without the view still runs"
     assert "missed_runs_24h" in body and "not_ok_24h" in body
     assert "v_status := case when cardinality(v_failures) > 0 then 'attention' else 'ok' end;" in body

@@ -244,6 +244,7 @@ NOT_MIRRORED = {
                                     "each attempt (plan v2.2 P4.7); the proofs it produces are "
                                     "mirrored as resolution_verdicts and fact_band_outcome",
     "clock_expected_jobs": "configuration seeded from its migration (20260930001000), which is its source",
+    "job_sla": "configuration seeded from its migration (20261009200000), which is its source",
     "regimes": "empty (0 rows, 23 Sep); P1.6 may drop it",
     "ensemble_forecasts": "empty (0 rows, 23 Sep); P1.6 may drop it",
     "book_capture_attempts": "empty (0 rows, 23 Sep); P1.6 may drop it",

@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 281 of them - and for each MISSING one names the
+-- and function the app reads - 283 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -84,6 +84,7 @@ with expected(rel, owner, used_by) as (values
     ('focus_set_universes', 'supabase/migrations/20261006180000_each_city_has_a_daily_status.sql', '/predictive'),
     ('focus_sets', 'supabase/migrations/20261006150000_the_focus_set_is_recorded.sql', '/predictive'),
     ('ingest_log', 'ad4_00_preflight.sql', '(PaperPipelineStatus), (PipelineStatus)'),
+    ('job_sla', 'supabase/migrations/20261009200000_the_watchdog_knows_when_each_job_last_worked.sql', ''),
     ('ledger', 'ad4_00_preflight.sql', ''),
     ('live_weather', 'ad4_live_weather.sql', '(CityCards), (GlobalBar), (RightRail), /board, /live, /opportunities'),
     ('market_confirmation_attempts', 'supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql', ''),
@@ -213,6 +214,7 @@ with expected(rel, owner, used_by) as (values
     ('v_hit_ladders', 'ad4_88_hit_tournament.sql', ''),
     ('v_index_never_used', 'ad4_50_index_dedupe.sql', ''),
     ('v_jit_state', 'ad4_46_jit.sql', ''),
+    ('v_job_last_ok', 'supabase/migrations/20261009200000_the_watchdog_knows_when_each_job_last_worked.sql', ''),
     ('v_latest_book', 'ad4_13_reconcile.sql', ''),
     ('v_latest_edge', 'ad4_phase2.sql', ''),
     ('v_latest_prob', 'ad4_phase2.sql', ''),
@@ -387,6 +389,7 @@ begin
     ('focus_set_universes', 'supabase/migrations/20261006180000_each_city_has_a_daily_status.sql', '/predictive'),
     ('focus_sets', 'supabase/migrations/20261006150000_the_focus_set_is_recorded.sql', '/predictive'),
     ('ingest_log', 'ad4_00_preflight.sql', '(PaperPipelineStatus), (PipelineStatus)'),
+    ('job_sla', 'supabase/migrations/20261009200000_the_watchdog_knows_when_each_job_last_worked.sql', ''),
     ('ledger', 'ad4_00_preflight.sql', ''),
     ('live_weather', 'ad4_live_weather.sql', '(CityCards), (GlobalBar), (RightRail), /board, /live, /opportunities'),
     ('market_confirmation_attempts', 'supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql', ''),
@@ -516,6 +519,7 @@ begin
     ('v_hit_ladders', 'ad4_88_hit_tournament.sql', ''),
     ('v_index_never_used', 'ad4_50_index_dedupe.sql', ''),
     ('v_jit_state', 'ad4_46_jit.sql', ''),
+    ('v_job_last_ok', 'supabase/migrations/20261009200000_the_watchdog_knows_when_each_job_last_worked.sql', ''),
     ('v_latest_book', 'ad4_13_reconcile.sql', ''),
     ('v_latest_edge', 'ad4_phase2.sql', ''),
     ('v_latest_prob', 'ad4_phase2.sql', ''),
