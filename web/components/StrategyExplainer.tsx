@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { effectiveCost, singleBucketGrowth, solveKelly } from "@/lib/kelly";
 
 /**
  * WHAT EACH STRATEGY ACTUALLY DOES, ON ONE MARKET YOU CAN POKE.
@@ -33,6 +34,13 @@ import { useMemo, useState } from "react";
  * The economics are the venue's, not an approximation: exactly one bucket
  * settles at $1.00 and the rest at zero, and the fee is shares x 0.05 x
  * p x (1 - p), which is what scripts/cost_model.py charges.
+ *
+ * THE ENGINE STRATEGIES (S10, S11, S12 and their model-only twins) were
+ * registered on 27 Sep and 8 Oct without walkthroughs, so for 12 of the 13
+ * active strategies the panel said "No walkthrough is written" (Hassan, 9 Oct:
+ * "we used to have it visible when we clicked, but now no"). They have them
+ * now, below the nine; what each buys on the worked market is what the
+ * engine's solver buys on it (lib/kelly.ts), not a typed claim.
  */
 
 // --------------------------------------------------------------------------
@@ -113,6 +121,210 @@ const COVERED: Leg[] = [4, 5, 6, 7, 8].map((i) => ({ i, side: "YES" as const }))
 const RUN: Leg[] = [4, 5, 6].map((i) => ({ i, side: "YES" as const }));
 const PAIR: Leg[] = [5, 6].map((i) => ({ i, side: "YES" as const }));
 const pct = (x: number) => `${Math.round(x * 100)}%`;
+
+// --------------------------------------------------------------------------
+// THE ENGINE STRATEGIES (plan v2 P8.1; registered 27 Sep, the model-only twins
+// 8 Oct). Each is a view - the model's probability for every bucket - plus
+// constraints, and the engine's own solver decides what to buy. So the legs
+// are what holdings_solver buys on this market, computed by lib/kelly.ts with
+// the same arithmetic.
+//
+// MODEL is what each does on the model's own numbers, which is how its twin
+// trades (w = 1). The strategy itself starts from the market and stays there
+// (w = 0) until the model earns weight, and its panel says what that means.
+// --------------------------------------------------------------------------
+const probs = MARKET.map((b) => b.prob);
+const label = (i: number) => MARKET[i].label;
+const list = (legs: Leg[]) => legs.map((l) => label(l.i)).join(", ");
+/** edge_engine.DEFAULT_MIN_PRICE_YES: the platform buys no YES under 7c. */
+const MIN_YES = 0.07;
+const tradeableYes = MARKET.map((b) => b.ask >= MIN_YES);
+/** A NO at 1 - the ask: this market quotes one price per bucket (as s4 above). */
+const noPrices = MARKET.map((b) => 1 - b.ask);
+/** A fraction of the ledger under 0.1% is not a leg. */
+const TAKES = 1e-3;
+const legsOf = (weights: number[], side: "YES" | "NO"): Leg[] =>
+  weights.flatMap((w, i) => (w > TAKES ? [{ i, side }] : []));
+
+const TOP = probs.indexOf(Math.max(...probs));
+const topCost = effectiveCost(MARKET[TOP].ask)!;
+const topGrowth = singleBucketGrowth(MARKET[TOP].prob, MARKET[TOP].ask);
+const growths = MARKET.map((b, i) => (tradeableYes[i] ? singleBucketGrowth(b.prob, b.ask) : 0));
+const BEST = growths.indexOf(Math.max(...growths));
+const bestGrows = growths[BEST] > 0;
+const ladderBook = solveKelly(probs, MARKET.map((b, i) => (tradeableYes[i] ? b.ask : null)), "YES");
+const LADDER: Leg[] = legsOf(ladderBook.weights, "YES");
+const noBook = solveKelly(probs, noPrices, "NO");
+const NOS: Leg[] = legsOf(noBook.weights, "NO");
+const noEdges = MARKET.filter((b) => 1 - b.prob > effectiveCost(1 - b.ask)!).length;
+/** Equal shares of every bucket: the cheapest book that pays the same whatever wins. */
+const LOCK_COST = allInOf(YES_ALL);
+const LOCKS = LOCK_COST < 1;
+const lockRefusal =
+  `Holding the same number of shares of all eleven is the cheapest book that pays the same whichever bucket wins, and here it costs ${money(LOCK_COST)} with fees for $1.00 back. No book avoids a loss in every outcome, so it holds nothing.`;
+const lockGates = (anchor: string): Gate[] => [
+  { label: "anchor", value: anchor, ok: true },
+  { label: "every bucket quoted", value: `${MARKET.length} of ${MARKET.length}`, ok: true },
+  { label: "equal shares of all eleven", value: `${money(LOCK_COST)} with fees`, ok: LOCKS },
+  { label: "safe in every outcome", value: LOCKS ? "yes" : `no — ${cents(LOCK_COST - 1)} more than it pays`, ok: LOCKS },
+];
+
+const MODEL: Record<string, Play> = {
+  s10_winner: {
+    headline: "Hold the YES of the one bucket most likely to win, and move only when the evidence says to.",
+    steps: [
+      "Read the model's probability for every bucket: the remaining-day ladder, through the belief layer.",
+      "Drop every bucket the station's measured maximum has already ruled out, and every book the platform will not trade: a dead book, or a YES under 7c.",
+      "Hold the YES of the most probable bucket left, one bucket per city-day, staked by Kelly on the price with the fee.",
+      `Here that is ${label(TOP)} at ${pct(MARKET[TOP].prob)}, which costs ${cents(topCost)} with the fee. ${topGrowth > 0
+        ? "It is priced under its probability, so it is held."
+        : "A bucket priced at or above its probability has a Kelly stake of zero, so there is nothing to hold."}`,
+      "Switch only when the growth gained beats the cost of selling what is held plus a margin (h_switch, 0.005 to start). A held bucket the station rules out is sold at the bid at once.",
+    ],
+    legs: topGrowth > 0 ? [{ i: TOP, side: "YES" }] : [],
+    refuses: topGrowth > 0 ? undefined
+      : `The most probable bucket, ${label(TOP)}, is ${pct(MARKET[TOP].prob)} likely and costs ${cents(topCost)} with the fee: no edge, so it holds nothing rather than a favourite at its fair price. The favourite is the bet only when it is cheap.`,
+    gates: [
+      { label: "most probable bucket", value: `${label(TOP)}, ${pct(MARKET[TOP].prob)}`, ok: true },
+      { label: "tradeable (7c and up)", value: cents(MARKET[TOP].ask), ok: tradeableYes[TOP] },
+      { label: "price with the fee", value: cents(topCost), ok: MARKET[TOP].prob > topCost },
+      { label: "Kelly growth", value: topGrowth.toFixed(4), ok: topGrowth > 0 },
+    ],
+    reads: "scripts/strategies/s10_max_temp_winner.py · holdings_solver.single_bucket_growth",
+  },
+  s10_growth: {
+    headline: "Hold the one YES that grows the ledger most - often a cheaper bucket than the favourite.",
+    steps: [
+      "Read the model's probability for every bucket, and drop the ones the station has ruled out and the books the platform will not trade.",
+      "For each bucket left, work out how fast a Kelly stake on its YES grows the ledger, with the fee in the price.",
+      "Hold the one that grows it most. Growth pays for the edge relative to the price, not for being likely, so a long shot priced well under its probability can beat the favourite.",
+      bestGrows
+        ? `Here that is ${label(BEST)}: ${pct(MARKET[BEST].prob)} likely at ${cents(effectiveCost(MARKET[BEST].ask)!)} with the fee. The favourite, ${label(TOP)}, grows ${topGrowth > 0 ? "less" : "nothing"} at ${cents(topCost)}.`
+        : "Here no tradeable bucket is priced under its probability, so nothing grows the ledger.",
+      "One bucket per city-day, and the same switching rule as s10_winner.",
+    ],
+    legs: bestGrows ? [{ i: BEST, side: "YES" }] : [],
+    refuses: bestGrows ? undefined : "No tradeable bucket is priced under what the model makes it, so it holds nothing.",
+    gates: [
+      { label: "tradeable YES buckets", value: `${tradeableYes.filter(Boolean).length} of ${MARKET.length}`, ok: true },
+      { label: "best growth", value: bestGrows ? `${label(BEST)}, ${growths[BEST].toFixed(4)}` : "none", ok: bestGrows },
+      { label: "the favourite's growth", value: topGrowth.toFixed(4), ok: topGrowth > 0 },
+      { label: "one bucket per city-day", value: "yes", ok: true },
+    ],
+    reads: "scripts/strategies/s10_max_temp_winner.py · holdings_solver.best_single_bucket",
+  },
+  s10_lock: {
+    headline: "Anchored on the most likely bucket, trade only a book that cannot end below its cost whatever wins.",
+    steps: [
+      "Anchor on the most probable bucket, as s10_winner does.",
+      "Trade only a book over the WHOLE ladder that cannot leave the ledger below what it had, whichever bucket wins - the old S6 insurance.",
+      "Every bucket counts, the dead ones too: a lock is about what the venue pays, not about what the forecast rules out.",
+      `The cheapest such book is the same shares of every bucket. Here it costs ${money(LOCK_COST)} with fees and pays $1.00.`,
+    ],
+    legs: LOCKS ? YES_ALL : [],
+    refuses: LOCKS ? undefined : lockRefusal,
+    gates: lockGates(label(TOP)),
+    reads: "scripts/strategies/s10_max_temp_winner.py · holdings_solver.solve_book(lock=True)",
+  },
+  s11_ladder: {
+    headline: "Buy the set of buckets that grows the ledger fastest: small on a sharp day, wider on an uncertain one.",
+    steps: [
+      "Read the model's probability for every bucket.",
+      "Keep the YES of every bucket the platform will trade (7c and up) that the station has not ruled out.",
+      "Buy the set that grows the ledger fastest - Kelly's horse race: buckets in order of probability over price, each added while it still beats what the set so far leaves in cash.",
+      LADDER.length
+        ? `Here that is ${list(LADDER)}: ${pct(1 - ladderBook.cash)} of the ledger, the rest kept as cash. No width rule: a sharper ladder would give a smaller set.`
+        : "Here no bucket is priced under its probability, so the set is empty.",
+      "The engine then sizes on the worst draws of the posterior and a fraction of Kelly, so the stake it actually buys is smaller.",
+    ],
+    legs: LADDER,
+    refuses: LADDER.length ? undefined : "No tradeable bucket is priced under what the model makes it, so it buys nothing.",
+    gates: [
+      { label: "tradeable YES buckets", value: `${tradeableYes.filter(Boolean).length} of ${MARKET.length}`, ok: true },
+      { label: "the set", value: LADDER.length ? list(LADDER) : "none", ok: LADDER.length > 0 },
+      { label: "share of the ledger (plain Kelly)", value: pct(1 - ladderBook.cash), ok: true },
+      { label: "expected log-growth", value: ladderBook.growth.toFixed(4), ok: ladderBook.growth > 0 },
+    ],
+    reads: "scripts/strategies/s11_ladder_optimiser.py · holdings_solver.solve_book",
+  },
+  s11_lock: {
+    headline: "The ladder optimiser under a no-loss constraint: a book that cannot end below its cost in any outcome.",
+    steps: [
+      "The same view as s11_ladder.",
+      "The book must not end below its cost whichever bucket wins.",
+      "The whole ladder stays in, dead buckets included: a lock is about what the venue pays.",
+      `The cheapest book that pays the same in every outcome is equal shares of all eleven. Here it costs ${money(LOCK_COST)} with fees and pays $1.00.`,
+    ],
+    legs: LOCKS ? YES_ALL : [],
+    refuses: LOCKS ? undefined : lockRefusal,
+    gates: lockGates("the whole ladder"),
+    reads: "scripts/strategies/s11_ladder_optimiser.py · holdings_solver.solve_book(lock=True)",
+  },
+  s12_no: {
+    headline: "Sell the buckets the market overprices by buying their NO - tails especially.",
+    steps: [
+      "A NO pays $1.00 whenever the day lands anywhere but its bucket, so buying a bucket's NO is selling the bucket.",
+      "Its price is the book's NO ask, else 1 − the YES bid. This market quotes one price per bucket, so a NO here costs 1 − the ask.",
+      "Skip a bucket the station has already ruled out - its NO has nothing left to win - and any dead book.",
+      NOS.length
+        ? `Buy the growth-optimal set of NOs on the model's probabilities. Here: NO on ${list(NOS)}, buckets the market prices above what the model makes them by more than the fee.`
+        : "Buy the growth-optimal set of NOs on the model's probabilities. Here there is none.",
+      "The engine sizes on the worst draws of the posterior and a fraction of this, so the less certain the model, the smaller the stake.",
+    ],
+    legs: NOS,
+    refuses: NOS.length ? undefined : "No NO is priced under its probability after the fee, so it buys nothing.",
+    gates: [
+      { label: "NOs priced under their probability", value: `${noEdges} of ${MARKET.length}`, ok: noEdges > 0 },
+      { label: "the set", value: NOS.length ? list(NOS) : "none", ok: NOS.length > 0 },
+      { label: "share of the ledger (plain Kelly)", value: pct(1 - noBook.cash), ok: true },
+      { label: "expected log-growth", value: noBook.growth.toFixed(4), ok: noBook.growth > 0 },
+    ],
+    reads: "scripts/strategies/s12_overpriced_no.py · holdings_solver.solve_book(allow=NO)",
+  },
+};
+
+const sideList = (legs: Leg[]) => legs.map((l) => `${l.side} ${label(l.i)}`).join(", ");
+
+/**
+ * An engine strategy as it trades: anchored on the market until the model
+ * earns weight. The 16,182 decisions and one buy are the twins' migration's
+ * count (20261008100000: decisions, live and data/archive/decisions).
+ */
+function anchored(base: string): Play {
+  const m = MODEL[base];
+  return {
+    headline: m.headline,
+    steps: [
+      "Start from the market, not the model: p = p_market + w × (p_model − p_market), where p_market is each bucket's mid normalised to sum to one. w is learned per view and checkpoint, and stays 0 until the model has beaten the market on settled days (at least 40).",
+      ...m.steps,
+    ],
+    legs: [],
+    refuses:
+      `At w = 0 the view is the market's own price, and an ask sits above its mid with the fee on top, so it almost never has an edge: from 27 Sep 16:36Z to 8 Oct 06:36Z the six engine strategies decided 16,182 times and bought once. Its model-only twin, ${base}_model, trades these rules at w = 1 on its own $1,000 paper ledger; on this market it would ${m.legs.length ? `buy ${sideList(m.legs)}` : "take nothing too"}.`,
+    gates: [
+      { label: "anchor weight w", value: "0 — the market's numbers until the model earns weight", ok: false },
+      { label: "on the model's numbers (w = 1)", value: m.legs.length ? sideList(m.legs) : "nothing", ok: m.legs.length > 0 },
+    ],
+    reads: `${m.reads} · market_anchor.py`,
+  };
+}
+
+/** A model-only twin: its base's rules at w = 1 (engine_views.MODEL_ONLY). */
+export function twinPlay(strategyId: string): Play | undefined {
+  if (!strategyId.endsWith("_model")) return undefined;
+  const base = strategyId.slice(0, -"_model".length);
+  const m = MODEL[base];
+  if (!m) return undefined;
+  return {
+    ...m,
+    steps: [
+      `The same rules as ${base}, on the model's own numbers: the market anchor at w = 1, recorded on every decision as model-only:w1. It trades its own $1,000 paper ledger only.`,
+      ...m.steps,
+    ],
+    gates: [{ label: "anchor weight w", value: "1 — the model's own numbers", ok: true }, ...m.gates],
+    reads: `${m.reads} · engine_views.MODEL_ONLY`,
+  };
+}
 
 export const PLAYS: Record<string, Play> = {
   s1_buy_low_sell_signal: {
@@ -300,6 +512,13 @@ export const PLAYS: Record<string, Play> = {
     ],
     reads: "scripts/strategies/s9_ladder_basket.py · scored on EV per dollar, not on probability",
   },
+
+  s10_winner: { ...anchored("s10_winner") },
+  s10_growth: { ...anchored("s10_growth") },
+  s10_lock: { ...anchored("s10_lock") },
+  s11_ladder: { ...anchored("s11_ladder") },
+  s11_lock: { ...anchored("s11_lock") },
+  s12_no: { ...anchored("s12_no") },
 };
 
 // --------------------------------------------------------------------------
@@ -418,7 +637,7 @@ function Trace({ points }: { points: { at: string; c: number }[] }) {
 
 // --------------------------------------------------------------------------
 export function StrategyExplainer({ strategyId }: { strategyId: string }) {
-  const play = PLAYS[strategyId];
+  const play = PLAYS[strategyId] ?? twinPlay(strategyId);
   const [landed, setLanded] = useState<number | null>(null);
   const outcome = useMemo(
     () => (play && landed !== null ? settle(play.legs, landed) : null),
