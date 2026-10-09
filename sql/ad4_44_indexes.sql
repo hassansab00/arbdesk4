@@ -237,6 +237,13 @@ begin
          and to_regclass('public.' || spec.table_name) is not null
     loop
       continue when r.n < 1000;
+      -- NOT WHERE EVERY UPDATE REWRITES THE COLUMN (9 Oct, WXPredict build
+      -- 2.E). derived_band_day_volume's upsert sets computed_at = now() and
+      -- P0.2 sets markets.last_seen_at on every upsert; an index on the
+      -- column would take the HOT path from each of those updates (881,105
+      -- and 16,332 to 9 Oct) to save a read of 82 and 22 ms. The other tables
+      -- this indexes: supabase/migrations/20261009210000.
+      continue when r.table_name in ('derived_band_day_volume', 'markets');
       if exists (
         select 1 from pg_index i
         join pg_class ic on ic.oid = i.indexrelid

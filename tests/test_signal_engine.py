@@ -35,7 +35,7 @@ def board(monkeypatch):
     """Serve v_opportunities / live_weather / the derived tables from memory."""
     def go(opps, live=None, timing=None):
         def fake_rest_all(path, params=None, **kw):
-            if path == "v_opportunities":
+            if path == se.BOARD:
                 return opps
             if path == "live_weather":
                 return live or []
