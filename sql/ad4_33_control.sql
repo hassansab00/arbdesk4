@@ -209,7 +209,7 @@ scored as (
 -- settlement on its resolution. Until 9 Oct the board read signals alone, so
 -- the twins that had bought (23, 5 and 2 trades) read "nothing has met its
 -- conditions in 30 days".
-ledger as (
+ledger_live as (
   select t.strategy_id,
          count(*) filter (where t.opened_at > now() - interval '30 days')::int as n_bought_30d,
          max(t.opened_at)                                    as last_bought_at,
@@ -223,6 +223,44 @@ ledger as (
     join strategies e on e.strategy_id = t.strategy_id
    where coalesce(e.origin, e.extra ->> 'origin') = 'engine'
    group by t.strategy_id
+),
+-- ...AND WHAT LEFT FOR THE REPOSITORY. The daily export prunes a closed trade
+-- 30 days after it closes (prune_exported_paper_trades), and the
+-- trades_archived row it writes on the ledger carries, per strategy, the
+-- trades, wins and net it took (20261009110000). They are added back, so the
+-- all-time record does not fall when the rows leave. A row without by_strategy
+-- (written before that key existed) counts its totals and leaves wins
+-- unknown, never zero.
+ledger_archived as (
+  select a.strategy_id,
+         sum(case when x.payload ? 'by_strategy'
+                  then coalesce((x.payload -> 'by_strategy' -> a.strategy_id ->> 'trades')::int, 0)
+                  else (x.payload ->> 'trades')::int end)::int         as n_trades,
+         sum(case when x.payload ? 'by_strategy'
+                  then coalesce((x.payload -> 'by_strategy' -> a.strategy_id ->> 'won')::int, 0) end)::int as n_won,
+         bool_and(x.payload ? 'by_strategy')                         as won_known,
+         sum(case when x.payload ? 'by_strategy'
+                  then coalesce((x.payload -> 'by_strategy' -> a.strategy_id ->> 'realized_pnl')::numeric, 0)
+                  else (x.payload ->> 'realized_pnl')::numeric end)  as net_pnl
+    from paper_activity x
+    join paper_accounts a on a.account_id = x.account_id and a.kind = 'shadow'
+    join strategies e on e.strategy_id = a.strategy_id
+   where x.event_type = 'trades_archived'
+     and coalesce(e.origin, e.extra ->> 'origin') = 'engine'
+   group by a.strategy_id
+),
+ledger as (
+  select strategy_id,
+         coalesce(v.n_bought_30d, 0)                         as n_bought_30d,
+         v.last_bought_at,
+         coalesce(v.n_bought, 0) + coalesce(r.n_trades, 0)   as n_bought,
+         coalesce(v.n_settled, 0) + coalesce(r.n_trades, 0)  as n_settled,
+         case when r.strategy_id is null then v.n_won
+              when r.won_known then coalesce(v.n_won, 0) + r.n_won end as n_won,
+         case when v.net_pnl is null and r.net_pnl is null then null
+              else round(coalesce(v.net_pnl, 0) + coalesce(r.net_pnl, 0), 2) end as net_pnl
+    from ledger_live v
+    full join ledger_archived r using (strategy_id)
 )
 select
   s.strategy_id,
@@ -241,7 +279,9 @@ select
   coalesce(f.n_waiting, 0)                                   as waiting,
   coalesce(f.last_fired_at, l.last_bought_at)                as last_fired_at,
   coalesce(p.n_filled, l.n_bought, 0)                        as filled_all_time,
-  coalesce(p.n_won, l.n_won, 0)                              as won_all_time,
+  -- An engine ledger whose archived wins are unknown says so (null), not 0.
+  case when p.n_won is null and l.strategy_id is not null then l.n_won
+       else coalesce(p.n_won, 0) end                       as won_all_time,
   coalesce(p.net_pnl, l.net_pnl)                             as net_pnl,
   p.avg_slippage_c,
   case when coalesce(p.n_filled, 0) > 0
@@ -321,7 +361,7 @@ order by s.enabled desc,
          s.strategy_id;
 
 comment on view v_strategy_board is
-  'Every strategy with its own record beside its switch. The record is its SIGNALS marked to settlement - no desk, no cash, no approval - because whether a desk subscribed is a deployment choice and not evidence about the strategy. The filled_* and net_pnl columns remain: those are the realised desk record, which is the only place real slippage appears. An engine strategy (S10, S11, S12 and the model-only twins) fires no signals; its columns and verdict read the paper trades of its own shadow ledger, one strategy to a ledger.';
+  'Every strategy with its own record beside its switch. The record is its SIGNALS marked to settlement - no desk, no cash, no approval - because whether a desk subscribed is a deployment choice and not evidence about the strategy. The filled_* and net_pnl columns remain: those are the realised desk record, which is the only place real slippage appears. An engine strategy (S10, S11, S12 and the model-only twins) fires no signals; its columns and verdict read the paper trades of its own shadow ledger, one strategy to a ledger, plus those the daily export has moved to the repository (that ledger''s trades_archived rows, by_strategy).';
 
 
 -- --------------------------------------------------------------------------

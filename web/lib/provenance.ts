@@ -1078,6 +1078,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "cities",
     "fact_signal_outcome",
     "paper_accounts",
+    "paper_activity",
     "paper_trades",
     "signals",
     "fact_band_outcome",
@@ -1794,6 +1795,7 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "fact_signal_outcome",
     "ledger",
     "paper_accounts",
+    "paper_activity",
     "paper_trades",
     "signals",
     "fact_band_outcome"

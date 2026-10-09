@@ -62,6 +62,14 @@ ACCOUNTED_FOR = {
         # one that turns it into a cascade destroys the lineage instead.
         "'archived_trade_id', trade_id",
     ],
+    # The same function, re-issued to add each strategy's share of the
+    # archived trades (by_strategy) for the strategies board (9 Oct).
+    ("supabase/migrations/20261009110000_an_archived_trade_keeps_its_strategy.sql",
+     "paper_trades"): [
+        "'trades_archived'",
+        "'archived_trade_id', trade_id",
+        "'by_strategy'",
+    ],
     # The contract harness deletes inside a transaction it rolls back, to
     # reconstruct a reset recorded before the write-off existed. Nothing it
     # does survives the rollback.
