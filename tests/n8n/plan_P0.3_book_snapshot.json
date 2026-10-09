@@ -1,0 +1,150 @@
+{
+ "seed": {
+  "Config": {
+   "supabase_url": "https://testproject.supabase.co",
+   "clob_book_url": "https://clob.polymarket.com/book?token_id={token}",
+   "max_bands_per_run": "5000"
+  },
+  "Build request list": [
+   {
+    "band_id": "b1",
+    "token_yes": "b1_yes",
+    "condition_id": "0xc",
+    "side": "YES",
+    "token_id": "b1_yes",
+    "book_url": "https://clob.polymarket.com/book?token_id=b1_yes"
+   },
+   {
+    "band_id": "b1",
+    "token_yes": "b1_yes",
+    "condition_id": "0xc",
+    "side": "NO",
+    "token_id": "b1_no",
+    "book_url": "https://clob.polymarket.com/book?token_id=b1_no"
+   },
+   {
+    "band_id": "b2",
+    "token_yes": "b2_yes",
+    "condition_id": "0xc",
+    "side": "YES",
+    "token_id": "b2_yes",
+    "book_url": "https://clob.polymarket.com/book?token_id=b2_yes"
+   },
+   {
+    "band_id": "b2",
+    "token_yes": "b2_yes",
+    "condition_id": "0xc",
+    "side": "NO",
+    "token_id": "b2_no",
+    "book_url": "https://clob.polymarket.com/book?token_id=b2_no"
+   },
+   {
+    "band_id": "b3",
+    "token_yes": "b3_yes",
+    "condition_id": "0xc",
+    "side": "YES",
+    "token_id": "b3_yes",
+    "book_url": "https://clob.polymarket.com/book?token_id=b3_yes"
+   },
+   {
+    "band_id": "b3",
+    "token_yes": "b3_yes",
+    "condition_id": "0xc",
+    "side": "NO",
+    "token_id": "b3_no",
+    "book_url": "https://clob.polymarket.com/book?token_id=b3_no"
+   }
+  ],
+  "Fetch book": [
+   {
+    "market": "0xm",
+    "asset_id": "b1_yes",
+    "bids": [
+     {
+      "price": "0.40",
+      "size": "100"
+     }
+    ],
+    "asks": [
+     {
+      "price": "0.45",
+      "size": "50"
+     }
+    ]
+   },
+   {
+    "market": "0xm",
+    "asset_id": "b1_no",
+    "bids": [
+     {
+      "price": "0.55",
+      "size": "100"
+     }
+    ],
+    "asks": [
+     {
+      "price": "0.60",
+      "size": "50"
+     }
+    ]
+   },
+   {
+    "error": {
+     "message": "timeout of 20000ms exceeded",
+     "name": "AxiosError"
+    }
+   },
+   {
+    "market": "0xm",
+    "asset_id": "b2_no",
+    "bids": [
+     {
+      "price": "0.70",
+      "size": "100"
+     }
+    ],
+    "asks": [
+     {
+      "price": "0.75",
+      "size": "50"
+     }
+    ]
+   },
+   {
+    "market": "0xm",
+    "asset_id": "b3_yes",
+    "bids": [
+     {
+      "price": "0.10",
+      "size": "100"
+     }
+    ],
+    "asks": [
+     {
+      "price": "0.12",
+      "size": "50"
+     }
+    ]
+   },
+   {
+    "error": {
+     "message": "timeout of 20000ms exceeded",
+     "name": "AxiosError"
+    }
+   }
+  ],
+  "Insert snapshots": [
+   {}
+  ]
+ },
+ "run": [
+  {
+   "node": "Build snapshots",
+   "input": "Fetch book"
+  },
+  {
+   "node": "Summary",
+   "input": "Insert snapshots"
+  }
+ ]
+}
