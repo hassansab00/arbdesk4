@@ -387,6 +387,30 @@ def rpc(fn, params=None, timeout=120):
     return r.json()
 
 
+def retired_cities_still_held(active):
+    """The cities outside `active` whose readings weather_observations still
+    holds.
+
+    THE PRUNE CUTS EVERY CITY'S READINGS (Fresh Supabase, part 2b, 9 Oct).
+    prune_observations refuses a day derived_city_day_features does not hold,
+    for retired cities as for active ones, and the features were refreshed for
+    active cities only. A city retired part-way through a day left that day
+    uncached: taipei's 21 Sep (8 readings from 16:00Z on 20 Sep; cached up to
+    20 Sep) and zhengzhou's 9 Oct (one reading at 16:00Z on 8 Oct, its local
+    midnight). Found on 9 Oct: a three-day keep would have been refused the
+    first night. So a retired city is refreshed while its readings are held -
+    a few nights after it stops, with the readings kept three days - and
+    never after. One request per retired city (7 on 9 Oct)."""
+    held = set()
+    for c in rest("cities", {"select": "city_key", "limit": "500"}):
+        key = c["city_key"]
+        if key in active:
+            continue
+        if rest("weather_observations", {"select": "city_key", "city_key": f"eq.{key}", "limit": "1"}):
+            held.add(key)
+    return held
+
+
 def refresh_feature_cache(days=None, quiet=False):
     """Refresh the derived caches ONE CITY AT A TIME, and raise if any fail.
 
@@ -402,9 +426,13 @@ def refresh_feature_cache(days=None, quiet=False):
     Raises on the first city that fails. Callers that prune must not proceed on
     a partial cache - the cache is what survives the prune.
     """
-    # Active only. A retired city's cached days are kept forever, but there is
-    # no reason to spend a per-city statement refreshing history nobody prices.
-    cities = sorted(active_city_keys())
+    # Active cities, and a retired one only while the readings still hold its
+    # days (retired_cities_still_held). A retired city's cached days are kept
+    # forever, but there is no reason to spend a per-city statement refreshing
+    # history nobody prices once the prune has taken its readings.
+    active = active_city_keys()
+    retired = retired_cities_still_held(active)
+    cities = sorted(active | retired)
     if not cities:
         return {"cities": 0, "city_days_total": 0}
 
@@ -454,6 +482,7 @@ def refresh_feature_cache(days=None, quiet=False):
 
     out = {
         "cities": len(cities),
+        "retired_still_held": sorted(retired),
         "city_days_touched": total_of("city_days_touched"),
         "city_hours": total_of("city_hours"),
         # The cut day of each city, left as cached rather than rebuilt from the

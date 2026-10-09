@@ -29,7 +29,22 @@ def test_the_migration_carries_the_shipped_statements_verbatim():
           .replace("create view v_city_observation_health as",
                    "create or replace view public.v_city_observation_health as", 1))
     fn = _stmt(timing, "create or replace function public.refresh_live_weather_timing()", "\nend;\n$$;")
-    assert "$oh$" + oh + "$oh$" in mig
+    # The view is re-issued by the NEWEST migration that carries it: since
+    # 9 Oct its feed age reads the station cache for a city the readings no
+    # longer hold (Fresh Supabase, part 2b). This one's view is ad4_71's but
+    # for that one CTE.
+    newest = _read("supabase", "migrations", "20261009090100_the_feed_age_reads_the_cache.sql")
+    assert "$oh$" + oh + "$oh$" in newest
+    feed = _stmt(oh, "feed as (", "\n),\n")
+    old_feed = ("feed as (\n  select t.city_key,\n         (select max(o.valid_at)\n"
+                "            from weather_observations o\n           where o.city_key = t.city_key\n"
+                "             and o.temp_c is not null)                                  as newest_reading\n"
+                "  from tz t\n),\n")
+    shipped = mig[mig.index("$oh$") + 4:mig.index("$oh$", mig.index("$oh$") + 4)]
+    assert old_feed in shipped
+    comment = oh[:oh.index("feed as (")]
+    comment = comment[comment.rindex("),\n") + 3:]
+    assert shipped.replace(old_feed, comment + feed) == oh, "the 9 Oct view changed more than the feed age"
     assert "$fn$" + fn + "$fn$" in mig
 
 

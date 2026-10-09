@@ -85,6 +85,12 @@ function middayZone() {
       window_opens_hour numeric, window_closes_hour numeric, minutes_to_peak int,
       rolling_over boolean, direction text);
     create view public.v_trade_timing as select * from public.trade_timing_rows;
+    -- Each city's day per source, as refresh_city_day_hours keeps it (ad4_29):
+    -- the feed age reads it for a city the readings no longer hold.
+    create table public.derived_station_day_sources(city_key text not null, obs_date date not null,
+      source text not null, max_c numeric, max_f numeric, n_readings bigint not null,
+      last_reading_at timestamptz not null, station text, computed_at timestamptz not null default now(),
+      first_reading_at timestamptz, primary key (city_key, obs_date, source));
   `);
 
   // The real v_city_today_readings, so "today's readings" cannot mean one
@@ -329,6 +335,20 @@ function middayZone() {
       `${city} is stamped with a day that is not its own`);
   }
 
-  console.log(`observation-health: 6 contracts hold, the settlement feed first and the basis counted over it (zone ${TZ}, local ${localToday})`);
+  // ---- 6. the feed age, held or cached (Fresh Supabase, part 2b) ----------
+  // The readings keep three days. A city silent longer reads the newest day
+  // the station cache kept; a held reading is newer than any cached day.
+  await db.exec(`
+    insert into public.derived_station_day_sources(city_key, obs_date, source, max_c, n_readings, last_reading_at) values
+      ('model_only_city', (now() - interval '100 hours')::date, 'IEM', 20.0, 12, now() - interval '100 hours'),
+      ('model_only_city', (now() - interval '130 hours')::date, 'IEM', 21.0, 12, now() - interval '130 hours'),
+      ('series_city',     (now() - interval '200 hours')::date, 'IEM', 19.0, 12, now() - interval '200 hours');`);
+  const age = Object.fromEntries((await db.query(
+    `select city_key, obs_feed_age_h::float8 as h from public.v_city_observation_health`)).rows.map(r => [r.city_key, r.h]));
+  assert.equal(age.series_city, 0.2, 'a held reading must win over an older cached day');
+  assert.equal(age.model_only_city, 100.0, 'a city the readings no longer hold must read its newest cached day');
+  assert.equal(age.floor_city, 30.0, 'yesterday\'s held reading is the age');
+
+  console.log(`observation-health: 7 contracts hold, the feed age held or cached, the settlement feed first and the basis counted over it (zone ${TZ}, local ${localToday})`);
   await db.close();
 })().catch(err => { console.error(err); process.exit(1); });

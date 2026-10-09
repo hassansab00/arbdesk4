@@ -559,6 +559,7 @@ def test_a_failed_evidence_cache_fails_the_refresh(monkeypatch, failing):
             raise requests.HTTPError("boom")
         return {"ok": True}
     monkeypatch.setattr(common, "active_city_keys", lambda: {"nyc"})
+    monkeypatch.setattr(common, "retired_cities_still_held", lambda active: set())
     monkeypatch.setattr(common, "rpc", rpc)
     with pytest.raises(requests.HTTPError):
         common.refresh_feature_cache(quiet=True)
@@ -573,6 +574,7 @@ def test_the_refresh_reports_the_cut_days_it_left_as_cached(monkeypatch):
             return {"ok": True, "ms": 5, "cut_days_left_as_cached": per_city[params["p_city"]]}
         return {"ok": True}
     monkeypatch.setattr(common, "active_city_keys", lambda: set(per_city))
+    monkeypatch.setattr(common, "retired_cities_still_held", lambda active: set())
     monkeypatch.setattr(common, "rpc", rpc)
     assert common.refresh_feature_cache(quiet=True)["cut_days_left_as_cached"] == 2
 
@@ -584,6 +586,7 @@ def test_the_refresh_reports_what_each_cache_wrote(monkeypatch):
                "freeze_forecast_latest": {"rows_written": 19, "ms": 23},
                "freeze_edge_marks": {"rows_written": 29, "ms": 31}}
     monkeypatch.setattr(common, "active_city_keys", lambda: {"nyc"})
+    monkeypatch.setattr(common, "retired_cities_still_held", lambda active: set())
     monkeypatch.setattr(common, "rpc", lambda fn, params=None, **k: answers[fn])
     out = common.refresh_feature_cache(quiet=True)
     assert (out["day_hours_written"], out["station_days_written"], out["hit_forecasts_frozen"],

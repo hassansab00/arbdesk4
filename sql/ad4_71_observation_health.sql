@@ -172,12 +172,21 @@ newest as (
   from v_city_today_readings r
   order by r.city_key, r.valid_at desc
 ),
+-- HELD OR CACHED (Fresh Supabase, part 2b, 9 Oct). The readings keep three
+-- days, so a city silent longer had none held and its age came out null:
+-- 'never' on the Live page, sorted as fresh. refresh_city_day_hours keeps
+-- every day's last reading per source in derived_station_day_sources (ad4_29)
+-- and prune_observations refuses a day it has not kept, so the newest of
+-- those is the newest reading once the readings hold none.
 feed as (
   select t.city_key,
-         (select max(o.valid_at)
-            from weather_observations o
-           where o.city_key = t.city_key
-             and o.temp_c is not null)                                  as newest_reading
+         coalesce((select max(o.valid_at)
+                     from weather_observations o
+                    where o.city_key = t.city_key
+                      and o.temp_c is not null),
+                  (select max(k.last_reading_at)
+                     from derived_station_day_sources k
+                    where k.city_key = t.city_key))                     as newest_reading
   from tz t
 ),
 -- THE SETTLEMENT FEED (4 Oct). The venue settles on the station's routine

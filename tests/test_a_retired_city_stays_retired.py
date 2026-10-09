@@ -144,15 +144,56 @@ def test_promotion_does_not_score_a_retired_city(monkeypatch, capsys):
     assert "jinan" in capsys.readouterr().out
 
 
-def test_the_cache_refresh_skips_retired_cities(monkeypatch):
+def _fake_cities(monkeypatch, held):
+    """The cities table (two active, three retired) and the readings, which
+    still hold the cities in `held`."""
     asked = []
-    monkeypatch.setattr(common, "active_city_keys", lambda: {"nyc", "london"})
+
+    def rest(path, params=None):
+        params = dict(params or {})
+        if path == "cities":
+            rows = [{"city_key": c, "status": "active"} for c in ("london", "nyc")] + \
+                   [{"city_key": c, "status": "retired"} for c in ("dc", "jinan", "taipei")]
+            if params.get("status") == "eq.active":
+                rows = [r for r in rows if r["status"] == "active"]
+            return [{"city_key": r["city_key"]} for r in rows]
+        if path == "weather_observations":
+            asked.append(params["city_key"][3:])
+            return [{"city_key": params["city_key"][3:]}] if params["city_key"][3:] in held else []
+        raise AssertionError(path)
+    monkeypatch.setattr(common, "rest", rest)
+    return asked
+
+
+def test_the_cache_refresh_skips_retired_cities_once_their_readings_are_gone(monkeypatch):
+    asked = []
+    _fake_cities(monkeypatch, held=set())
     monkeypatch.setattr(common, "rpc",
                         lambda fn, params=None: asked.append((fn, (params or {}).get("p_city")))
-                        or {"ok": True, "city_days_touched": 1, "city_hours": 1,
-                            "city_days_total": 1, "ms": 1})
-    common.refresh_feature_cache(quiet=True)
+                        or {"ok": True, "city_days_total": 1, "ms": 1})
+    out = common.refresh_feature_cache(quiet=True)
     assert sorted(c for f, c in asked if f == "refresh_feature_cache") == ["london", "nyc"]
+    assert out["retired_still_held"] == []
+    # The hours walk every city in one call, on purpose: prune_observations
+    # cuts every city's readings and refuses a day they do not hold (plan v2
+    # P1.6 phase 2, step 6).
+    assert [c for f, c in asked if f == "refresh_city_day_hours"] == [None]
+
+
+def test_a_retired_city_is_refreshed_while_its_readings_are_held(monkeypatch):
+    """Fresh Supabase, part 2b (9 Oct): prune_observations refuses a day the
+    features do not hold, retired cities' days included, and taipei retired
+    part-way through its 21 Sep. Only the cities outside the active set are
+    looked up, one request each, and only those still held are refreshed."""
+    asked = []
+    looked = _fake_cities(monkeypatch, held={"taipei"})
+    monkeypatch.setattr(common, "rpc",
+                        lambda fn, params=None: asked.append((fn, (params or {}).get("p_city")))
+                        or {"ok": True, "city_days_total": 1, "ms": 1})
+    out = common.refresh_feature_cache(quiet=True)
+    assert sorted(c for f, c in asked if f == "refresh_feature_cache") == ["london", "nyc", "taipei"]
+    assert sorted(looked) == ["dc", "jinan", "taipei"]
+    assert out["retired_still_held"] == ["taipei"]
     # The hours are the one exception, on purpose: prune_observations cuts
     # every city's readings and refuses a day they do not hold, so they walk
     # every city in one call (plan v2 P1.6 phase 2, step 6).
