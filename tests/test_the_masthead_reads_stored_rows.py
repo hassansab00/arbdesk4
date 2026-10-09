@@ -134,3 +134,13 @@ def test_the_freshness_indexes_are_ad4_44s_own():
     for t in ("derived_band_day_volume", "markets"):
         assert t not in FRESH
     assert "continue when r.table_name in ('derived_band_day_volume', 'markets');" in AD4_44
+
+
+def test_postgrest_is_told_about_the_new_live_view():
+    """The strategies read v_opportunities_live through PostgREST, which
+    answers PGRST205 for a relation its schema cache has not seen (Codex on
+    #358)."""
+    for text in (MIG, SQL):
+        body = text[text.index("create view public.v_opportunities_live as %s"):]
+        assert "notify pgrst, 'reload schema';" in body
+

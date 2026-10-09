@@ -178,6 +178,12 @@ comment on function public.refresh_page_cache() is
 revoke all on function public.refresh_page_cache() from public, anon, authenticated;
 grant execute on function public.refresh_page_cache() to service_role;
 
+-- TELL POSTGREST (Codex on #358). signal_engine reads v_opportunities_live
+-- through PostgREST, which answers PGRST205 for a relation its schema cache
+-- has not seen (sql/ad4_13). Supabase's pgrst_ddl_watch event trigger also
+-- asks for the reload on DDL; this does not depend on it.
+notify pgrst, 'reload schema';
+
 do $$
 begin
   if exists (select 1 from pg_namespace where nspname = 'cron') then
