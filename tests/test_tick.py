@@ -374,7 +374,7 @@ def test_the_tick_is_one_job_with_no_matrix():
     assert len(jobs) == 1, "each job bills its own whole minutes"
     job = next(iter(jobs.values()))
     assert "strategy" not in job and "matrix" not in json.dumps(job)
-    assert job["timeout-minutes"] == 3
+    assert job["timeout-minutes"] == 5
     assert doc["concurrency"] == {"group": "tick", "cancel-in-progress": False}
 
 
@@ -410,16 +410,40 @@ def test_the_deadline_covers_the_budget_inside_the_job_timeout():
     minute (27 Sep 12:36Z: at 52 s the job ran 62 s; this step began 4 s in,
     the post steps and completion took 6 s). The repository is public from
     9 Oct and the minute is not billed, so what must hold is the job's own
-    timeout: the steps beside the checkpoints stop at the deadline, which is
-    no shorter than tick.py's budget, and the deadline plus those 4 + 6 s
-    leaves a minute of the timeout for the setup and the NWS steps."""
+    timeout (Codex on #353): the deadline step starts up to 4 s in, tick.py
+    and the steps beside it stop at the deadline, the trade prints' collector
+    can wait out its backstop on a hung request, and the post steps take up
+    to 6 s. That has to leave a minute of the timeout for the NWS steps,
+    which carry no deadline of their own."""
     import re
     import tick
     job = next(iter(_tick_yml()["jobs"].values()))
     step = next(s for s in job["steps"] if s.get("name") == "Deadline")
     deadline_s = int(re.search(r"\+ (\d+) \)\)", step["run"]).group(1))
     assert deadline_s >= tick.BUDGET_S
-    assert deadline_s + 4 + 6 <= int(job["timeout-minutes"]) * 60 - 60
+    collect = next(s for s in job["steps"] if s.get("name") == "Trade prints, collected")
+    polls, every = re.search(r"seq 1 (\d+)\); .*?sleep ([\d.]+)", collect["run"]).groups()
+    backstop_s = int(polls) * float(every)
+    assert 4 + deadline_s + backstop_s + 6 + 60 <= int(job["timeout-minutes"]) * 60
+
+
+def test_the_tick_takes_its_budget_from_the_jobs_deadline():
+    """tick.py starts after the checkout and the virtualenv, so 100 s counted
+    from its own start could run past TICK_DEADLINE on a slow setup (Codex on
+    #353). It takes the nearer of the two, never under the 45 s the anchored
+    strategies reached every city-day on (8-9 Oct)."""
+    import tick
+    assert tick.MIN_BUDGET_S <= tick.BUDGET_S
+    assert tick.budget(None) == tick.BUDGET_S
+    assert tick.budget("") == tick.BUDGET_S
+    assert tick.budget(1_000_500, now_epoch=1_000_000) == tick.BUDGET_S
+    assert tick.budget(1_000_070, now_epoch=1_000_000) == 70
+    assert tick.budget(1_000_010, now_epoch=1_000_000) == tick.MIN_BUDGET_S
+    assert tick.budget(999_000, now_epoch=1_000_000) == tick.MIN_BUDGET_S
+    # ...and the script's entry point is what reads it from the job.
+    src = (ROOT / "scripts" / "tick.py").read_text()
+    main = src[src.index('if __name__ == "__main__":'):]
+    assert 'budget_s=budget(os.environ.get("TICK_DEADLINE"))' in main
 
 
 def test_every_repo_file_the_tick_reads_is_checked_out():

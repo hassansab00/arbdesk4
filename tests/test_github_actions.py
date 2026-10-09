@@ -178,12 +178,14 @@ MEASURED_MINUTES = {
     # Measured 1-4 Oct: 83 runs, 84 billed minutes (one run took two).
     # Measured 1 Oct 16:00Z - 8 Oct 16:00Z: 167 runs, 173 billed, 1.04 a run
     # (the slowest job 202 s; S4, 8 Oct).
-    # 2.0 from 9 Oct, an UPPER BOUND, NOT MEASURED: the repository went public
+    # 3.0 from 9 Oct, an UPPER BOUND, NOT MEASURED: the repository went public
     # (standard runners free) and tick.py's budget went from 45 s to 100 s
-    # inside a 110 s deadline, so a job is at most about 2 billed-equivalent
-    # minutes (setup 2-4 s, post steps 2-6 s, 27 Sep). Re-measure on the
-    # first full day (jobs API, each job rounded up).
-    "tick.yml": 2.0,
+    # inside a 110 s deadline. A run that ends at its deadline is 2-4 s of
+    # setup + 110 s, then an NWS step in 16 of 24 hours (readings 6-9 s,
+    # 28 Sep) and the post steps (2-6 s, 27 Sep): past 120 s, so 3 billed-
+    # equivalent minutes. Re-measure on the first full day (jobs API, each
+    # job rounded up).
+    "tick.yml": 3.0,
     # 29.0 measured 19 Sep. Measured 28 Sep with everything since in it (the
     # hit tournament 2 min 2 s, the width score 3 s, the engine replay 6 s):
     # the job ran 04:36:05-05:05:44, 29 min 39 s, billed 30. The settlement
@@ -289,9 +291,10 @@ DEFAULT_MINUTES = 5.0
 # GitHub-hosted runners; the plan's included minutes apply to private ones.
 # So the 3,000 no longer binds anything, and this budget stops being the
 # allowance less CI. It stays as a guard: a schedule or a job that runs away
-# is still a fault. 6,000 is a little under twice the scheduled total once
-# the tick has 100 s (3,376 a month with the tick at its 2.0 upper bound,
-# 2,685 before), so doubling a cadence or a job's time still fails here.
+# is still a fault. 6,000 is about one and a half times the scheduled total
+# once the tick has 100 s (4,096 a month with the tick at its 3.0 upper
+# bound, 2,685 before), so doubling the hourly tick's cadence (+2,160) still
+# fails here.
 SCHEDULED_MINUTE_BUDGET = 6000
 
 # The account's monthly allowance for PRIVATE repositories (GitHub Pro), for

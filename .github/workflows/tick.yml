@@ -44,7 +44,12 @@ env:
 jobs:
   tick:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    # 5 minutes from 9 Oct (was 3). The longest this job can honestly run:
+    # the deadline below (110 s, starting 2-4 s in), then the NWS steps, which
+    # carry no deadline of their own, then the trade prints' 120 s backstop
+    # for a hung request, then the post steps (2-6 s). That is about 240 s
+    # before the NWS steps; 300 leaves them a minute (Codex on #353).
+    timeout-minutes: 5
     steps:
       # THE DEADLINE. Every step after the fixed ones may use only the time
       # left before it: 110 s after this step. Until 9 Oct it was 48 s, to
@@ -52,7 +57,10 @@ jobs:
       # starts 2-4 s into the job, the post steps add 2-6 s). The repository
       # is public from 9 Oct and standard runners are free for it, so the
       # deadline follows the work: tick.py's BUDGET_S (100 s) gives the
-      # model-only twins the time they lacked. The 3-minute timeout is above.
+      # model-only twins the time they lacked. tick.py reads it too
+      # (tick.budget): a slow checkout or a cold install comes out of the
+      # tick's 100 s instead of running past the deadline. Only a setup over
+      # 65 s takes it below its 45 s floor, and then it keeps the 45 s.
       - name: Deadline
         run: echo "TICK_DEADLINE=$(( $(date +%s) + 110 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
@@ -148,7 +156,7 @@ jobs:
         # Waits for the run started above: it stops starting batches at its
         # budget and before TICK_DEADLINE, so it has normally finished by now.
         # A batch already in flight is let finish, as when this step ran last;
-        # 120 s is the backstop for a hung request, inside the job's 3-minute
+        # 120 s is the backstop for a hung request, inside the job's 5-minute
         # timeout. Its exit code is the step's: it fails only when nothing
         # worked (ingest_trades.py). Only if the run was started.
         if: ${{ !cancelled() && steps.trades.outcome == 'success' }}
