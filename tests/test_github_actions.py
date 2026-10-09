@@ -242,7 +242,11 @@ MEASURED_MINUTES = {
     # 2-8 Oct: 13, 13, 14, 15, 15, 15 and 19 billed, mean 14.86 (jobs API). 8
     # Oct's 19 (1,101 s) includes the price prune timing out (HTTP 504), which
     # #340's index fixes. 15, the nights without it (S4, 8 Oct).
-    "archive_observations.yml": 15.0,
+    # 26.0 from 9 Oct, an UPPER BOUND, NOT MEASURED: the honest record's
+    # deadline 240 -> 600 s and the ensemble record's 90 -> 360 s (the
+    # repository is public, the steps' time is not billed), at most +11 min
+    # on 15. Each run ends as soon as its cities answer; re-measure.
+    "archive_observations.yml": 26.0,
     # Measured 1-4 Oct: 1 billed minute on each of 4 runs.
     "paper_trade_log.yml": 1.0,
     # 1.5 measured before 2026-09-22; the wind-direction backfill added a
@@ -293,8 +297,9 @@ DEFAULT_MINUTES = 5.0
 # allowance less CI. It stays as a guard: a schedule or a job that runs away
 # is still a fault. 6,000 is about one and a half times the scheduled total
 # once the tick has 100 s (4,096 a month with the tick at its 3.0 upper
-# bound, 2,685 before), so doubling the hourly tick's cadence (+2,160) still
-# fails here.
+# bound, 2,685 before; 4,426 from Wave 2.B, 9 Oct, with the nightly archive
+# at its 26.0 upper bound), so doubling the hourly tick's cadence (+2,160)
+# still fails here.
 SCHEDULED_MINUTE_BUDGET = 6000
 
 # The account's monthly allowance for PRIVATE repositories (GitHub Pro), for

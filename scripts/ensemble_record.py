@@ -31,8 +31,12 @@ commit. A key already stored is kept, not rewritten.
 
 DEADLINE. As honest_record (#239): the run stops asking RUN_SECONDS after it
 starts and writes what arrived; a city left out is simply missing that night.
-90 s inside a 2-minute step: the scheduled workflows cost 2,926 of the 3,000
-budgeted minutes a month on 28 Sep, so this step may add at most 2 a night.
+Until 9 Oct it was 90 s inside a 2-minute step, because the scheduled workflows
+cost 2,926 of the 3,000 budgeted minutes a month (28 Sep). The repository is
+public from 9 Oct and its standard runners are not billed, and the deadline
+was what cut the cities: on 9 Oct the step ran 91 s and 23 of 47 cities were
+unreached. 360 s inside a 7-minute step; the run ends as soon as every city
+has answered.
 
 LEAST RECENTLY RECORDED FIRST (8 Oct). The deadline does not reach every
 city: on 8 Oct 29 of 48 were recorded whole; the run log named 15 "not asked:
@@ -70,7 +74,7 @@ MIN_HOURS = 20              # a local day with fewer hourly values is left out
 WORKERS = 4                 # Open-Meteo refused a fifth concurrent request on 26 Sep
 TIMEOUT = 60
 TRIES = 2
-RUN_SECONDS = 90            # inside the step's 2 minutes: the Actions budget (tests/test_github_actions.py)
+RUN_SECONDS = 360           # inside the step's 7 minutes (see DEADLINE above)
 MIN_LEFT = 5
 QUANTILES = (10, 25, 50, 75, 90)
 
