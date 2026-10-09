@@ -24,8 +24,10 @@ peak hour for that month (derived_weather_peak). A city with no measured peak
 skips those three and says so - 15:00 would be a guess.
 
 A TIME BUDGET, NOT A HOPE. Work that cannot finish inside BUDGET_S is left
-for the next tick and logged as deferred, never silently dropped: GitHub bills
-each job in whole minutes, so a 61-second tick costs two (plan v2 P6.1).
+for the next tick and logged as deferred, never silently dropped. Until 9 Oct
+the budget was 45 s, because GitHub billed each job of a private repository in
+whole minutes and a 61-second tick cost two (plan v2 P6.1). The repository is
+public from 9 Oct (Hassan), and standard runners are free for a public one.
 """
 import datetime as dt
 import json
@@ -46,7 +48,14 @@ FIXED_LOCAL = {"morning": (0, 9, 0), "noon": (0, 12, 0), "d1_eve": (-1, 18, 0)}
 # with the tick on time, and twice across a 15-minute overlap - the second
 # write is ignored by the table's unique key.
 GRACE_MIN = 75
-BUDGET_S = 45.0
+# 100 s from 9 Oct (was 45 s, to fit one billed minute; see the docstring).
+# On 8-9 Oct the anchored strategies reached 253 of 253 city-days and the
+# model-only twins 95 (37.5%), because the twins get what the engine leaves
+# before this deadline and the engine started 16-35 s in (ingest_log, 24
+# ticks; their share fell with a later start, correlation -0.78). The tick
+# itself took 25-43 s. 100 s leaves the twins about a minute more; the job's
+# deadline in tick.yml (110 s) and its 3-minute timeout stay above it.
+BUDGET_S = 100.0
 # S10 in shadow fetches at most this long per tick (about four cities' two
 # requests each, in parallel); the engine's own work keeps the rest.
 S10_FETCH_S = 8.0

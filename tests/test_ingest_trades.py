@@ -261,9 +261,10 @@ def test_thirty_seconds_fit_the_deadline_it_starts_under():
     """The step starts a few seconds after the Deadline step (checkout, python,
     the cached venv); 48 s less RESERVE_S leaves room for the 30 it asks, and
     budget() clamps it to the deadline whatever the start."""
+    import re
     deadline_step = _tick_steps()[0]
-    assert "+ 48 ))" in deadline_step["run"]
-    assert 48 - it.RESERVE_S - 10 >= 30
+    deadline_s = int(re.search(r"\+ (\d+) \)\)", deadline_step["run"]).group(1))
+    assert deadline_s - it.RESERVE_S - 10 >= 30
     assert it.budget(30, deadline=1000, now_epoch=1000 - 48 + 10) == 30
     assert it.budget(30, deadline=1000, now_epoch=1000 - 20) == pytest.approx(14)
 

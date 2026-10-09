@@ -56,9 +56,11 @@ work, not just to plan steps:
   `shadow` mode without asking. Anything that puts capital on the
   **portfolio** account needs Hassan's approval: turning allocation on, the
   bankroll, and the fixed safety rails.
-- **Rule 7: Actions minutes are a hard budget.** The repo is private, and
-  the account is on GitHub Pro: 3,000 minutes a month (Hassan, 4 Oct), which
-  scheduled work and CI share; keep the total under it. Only plan step P6.1 changes
+- **Rule 7: Actions minutes are budgeted.** The repo is **public since 9 Oct**
+  (Hassan), and GitHub does not bill standard runners on a public repository,
+  so the GitHub Pro allowance (3,000 minutes a month, which bound scheduled
+  work and CI together while the repo was private) no longer applies. The
+  budget stays as a guard against a schedule or a job that runs away. Only plan step P6.1 changes
   `SCHEDULED_MINUTE_BUDGET` / `SCHEDULED_RUN_BUDGET`, and it writes the
   reason into the constant. Every workflow's measured minutes go into
   `MEASURED_MINUTES`. No new scheduled workflow is added outside P6.1.
@@ -172,7 +174,8 @@ file that exists but is not listed is a file nobody installs.
 
 ## Scheduled workflows have a budget
 
-`tests/test_github_actions.py` caps total scheduled runs per month, because a
-private repo meters Actions minutes. Adding a schedule means either cutting
+`tests/test_github_actions.py` caps total scheduled runs and minutes per month.
+The repo is public since 9 Oct, so the minutes are not billed; the caps remain a
+guard against a runaway schedule. Adding a schedule means either cutting
 another cadence or raising `SCHEDULED_RUN_BUDGET` **with the reason written
 into the constant** - there is a worked example there already.

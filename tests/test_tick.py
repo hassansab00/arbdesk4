@@ -405,12 +405,21 @@ def test_the_tick_runs_hourly_at_36_on_the_n8n_clock_and_can_be_started_by_hand(
     assert {"file": "tick.yml", "hours_utc": "*"} in table
 
 
-def test_the_deadline_leaves_the_job_inside_its_minute():
-    """27 Sep 12:36Z: at 52 s the job ran 62 s (this step began 4 s in, the
-    post steps and completion took 6 s). 48 + 4 + 6 = 58."""
+def test_the_deadline_covers_the_budget_inside_the_job_timeout():
+    """Until 9 Oct the deadline was 48 s, to keep the job inside one billed
+    minute (27 Sep 12:36Z: at 52 s the job ran 62 s; this step began 4 s in,
+    the post steps and completion took 6 s). The repository is public from
+    9 Oct and the minute is not billed, so what must hold is the job's own
+    timeout: the steps beside the checkpoints stop at the deadline, which is
+    no shorter than tick.py's budget, and the deadline plus those 4 + 6 s
+    leaves a minute of the timeout for the setup and the NWS steps."""
     import re
-    step = next(s for s in next(iter(_tick_yml()["jobs"].values()))["steps"] if s.get("name") == "Deadline")
-    assert int(re.search(r"\+ (\d+) \)\)", step["run"]).group(1)) <= 48
+    import tick
+    job = next(iter(_tick_yml()["jobs"].values()))
+    step = next(s for s in job["steps"] if s.get("name") == "Deadline")
+    deadline_s = int(re.search(r"\+ (\d+) \)\)", step["run"]).group(1))
+    assert deadline_s >= tick.BUDGET_S
+    assert deadline_s + 4 + 6 <= int(job["timeout-minutes"]) * 60 - 60
 
 
 def test_every_repo_file_the_tick_reads_is_checked_out():

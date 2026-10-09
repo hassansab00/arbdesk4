@@ -89,7 +89,10 @@ def test_the_tick_starts_it_beside_the_checkpoints_with_a_backstop():
     assert wf.index('"$RUNNER_TEMP/confirm.rc"') < run("tick.py")
     assert wf.rindex("confirm.rc") > run("tick.py"), "collected after the checkpoints"
     assert wf.rindex("trades.rc") > run("tick.py")
-    assert cr.BUDGET_S + cr.RESERVE_S < 48, "inside TICK_DEADLINE"
+    import re
+    deadline_s = int(re.search(r"date \+%s\) \+ (\d+) \)\)",
+                               (ROOT / ".github" / "workflows" / "tick.yml").read_text()).group(1))
+    assert cr.BUDGET_S + cr.RESERVE_S < deadline_s, "inside TICK_DEADLINE"
 
 
 def test_the_ledger_is_asked_only_about_the_candidates(monkeypatch):
