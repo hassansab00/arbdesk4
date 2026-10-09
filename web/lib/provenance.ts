@@ -1077,6 +1077,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "ledger",
     "cities",
     "fact_signal_outcome",
+    "paper_accounts",
+    "paper_activity",
+    "paper_trades",
     "signals",
     "fact_band_outcome",
     "derived_forecast_skill",
@@ -1790,6 +1793,10 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_strategy_board": [
     "fact_signal_outcome",
+    "ledger",
+    "paper_accounts",
+    "paper_activity",
+    "paper_trades",
     "signals",
     "fact_band_outcome"
   ],

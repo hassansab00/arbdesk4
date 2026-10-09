@@ -1419,7 +1419,7 @@ const assert = require('node:assert/strict');
   // A trade that has been archived to the repository is still money the desk
   // made. Pick a desk that actually has one to lose.
   const victim = (await db.query(
-    `select t.trade_id, t.net_pnl, t.account_id,
+    `select t.trade_id, t.net_pnl, t.account_id, t.strategy_id,
             (select count(*)::int from public.ledger l where l.trade_id=t.trade_id) as lineage
        from public.paper_trades t
       where t.account_id is not null and t.closed_at is not null
@@ -1439,9 +1439,12 @@ const assert = require('node:assert/strict');
     'select realized from public.v_paper_desk_integrity where account_id=$1',
     [victim.account_id])).rows[0].realized);
 
+  // The engine writes strategy_id on every trade; the fixture's trade may
+  // predate that, and by_strategy below needs one to be about.
+  victim.strategy_id = victim.strategy_id || 'contract_strategy';
   await db.query(
-    "update public.paper_trades set closed_at=now()-interval '40 days' where trade_id=$1",
-    [victim.trade_id]);
+    "update public.paper_trades set closed_at=now()-interval '40 days', strategy_id=$2 where trade_id=$1",
+    [victim.trade_id, victim.strategy_id]);
   const pruned = (await db.query(
     'select prune_exported_paper_trades(30, array[$1::uuid], false) as r',
     [victim.trade_id])).rows[0].r;
@@ -1479,6 +1482,17 @@ const assert = require('node:assert/strict');
   // The assertion the whole thing is for: under the old prune this fails by
   // exactly the archived trade's net_pnl, for good.
   await books(victim.account_id, 'after a closed trade was archived to the repository and deleted');
+  // ...and the record per strategy leaves with it (20261009110000):
+  // v_strategy_board adds an engine ledger's archived trades back from this.
+  const share = (await db.query(
+    `select payload->'by_strategy'->$2 as s from public.paper_activity
+      where account_id=$1 and event_type='trades_archived'
+      order by event_id desc limit 1`, [victim.account_id, victim.strategy_id])).rows[0].s;
+  assert.ok(share, 'the trades_archived row does not say which strategy the trade was');
+  assert.equal(Number(share.trades), 1);
+  assert.equal(Number(share.won), Number(victim.net_pnl) > 0 ? 1 : 0);
+  assert.ok(Math.abs(Number(share.realized_pnl) - Number(victim.net_pnl || 0)) < 1e-6,
+    `by_strategy carries ${share.realized_pnl}, the trade's net was ${victim.net_pnl}`);
 
   // ...and the same for a reset that flattens a desk still holding basis.
   const basisAtReset = Number((await db.query(

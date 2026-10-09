@@ -1,33 +1,24 @@
 -- ===========================================================================
--- ad4_67_prune_exported_paper_trades.sql
+-- AN ARCHIVED TRADE KEEPS ITS STRATEGY (9 Oct; review of the board PR #351).
 --
--- Safe to run any time. Creates one function and one index. Deletes nothing
--- by itself - p_dry_run defaults to true and the caller must ask twice.
+-- prune_exported_paper_trades deletes closed paper trades 30 days after they
+-- close, once the daily export has them in web/public/paper-trades, and
+-- writes one append-only trades_archived row per desk with the count and the
+-- realised P&L, so the desk's books still balance. That kept the money and
+-- lost the record by strategy: v_strategy_board reads an engine strategy's
+-- all-time trades, wins, net and verdict from its own shadow ledger's
+-- paper_trades, so from the first prune of an engine trade (s12_no's closed
+-- 30 Sep 08:36Z, so the export run of 31 Oct) those numbers would have
+-- fallen back.
 --
--- scripts/export_paper_trades.py writes every CLOSED paper trade into
--- web/public/paper-trades/YYYY-MM.jsonl, in the repository, where it is
--- versioned and free and survives the database. Postgres then only needs to
--- carry open positions and a short tail of recent closes.
+-- One key is added to that row: by_strategy, {strategy_id: {trades, won,
+-- realized_pnl}} over the same trades. Nothing else in the function changes;
+-- the live body equals sql/ad4_67's with comments stripped (md5 8e94aad8...,
+-- checked 9 Oct). No trades_archived row exists yet (0, 9 Oct), so no old
+-- row lacks the key. The statement is sql/ad4_67's, verbatim.
 --
--- WHY THE CALLER MUST NAME THE IDS. A date cutoff alone would delete whatever
--- happens to be older than it, including a trade whose export failed. The
--- script re-reads the files it just wrote and passes back the ids it can
--- actually see on disk; this function deletes the INTERSECTION of that list
--- and the cutoff, and nothing else. A file that failed to write therefore
--- cannot become a delete - the same contract prune_observations uses, in the
--- direction that matters.
---
--- An open trade is never eligible, at any age. closed_at is null while a
--- position is live and that row is still changing.
---
--- NOTHING THE TRADE LEAVES BEHIND IS DELETED WITH IT. Two things point at a
--- closed trade and both survive the row going to the repository:
---
---   paper_activity  gets a trades_archived row carrying the realised P&L, so
---                   the desk's books still balance once the trades are gone
---   ledger          keeps every decision row; only the foreign key is
---                   released, and the trade id it pointed at is written into
---                   detail first, so the link survives as data
+-- Its body deletes, so the Supabase tool cannot apply it: Hassan runs it.
+-- Re-runnable.
 -- ===========================================================================
 
 create or replace function public.prune_exported_paper_trades(
@@ -206,13 +197,3 @@ grant execute on function public.prune_exported_paper_trades(integer, uuid[], bo
 
 comment on function public.prune_exported_paper_trades(integer, uuid[], boolean) is
   'Delete closed paper trades older than the cutoff, restricted to ids the caller has verified are present in the repository export. Open trades are never eligible. Before deleting, writes one append-only trades_archived activity row per desk carrying the realised P&L it is about to remove, so the desk''s books still balance once the rows live only in the repository.';
-
-
--- THE INDEX THE DELETE NEEDS (20261008040000). ledger.trade_id references
--- paper_trades with no ON DELETE, so every trade removed above is first
--- looked up in ledger; without an index that is a full scan of ledger per
--- trade. 362 ledger rows on 8 Oct, so no cost yet - indexed so that every
--- foreign key into a pruned table leads an index, which
--- tests/database/paper-contracts.cjs asserts.
-create index if not exists ad4_ix_ledger_trade_id
-  on public.ledger (trade_id) where trade_id is not null;

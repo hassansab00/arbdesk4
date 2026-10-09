@@ -200,6 +200,67 @@ scored as (
     from fact_signal_outcome f
     left join public.v_signal_mark m on m.signal_id = f.signal_id
    group by f.strategy_id
+),
+-- THE ENGINE'S OWN RECORD (9 Oct). S10, S11, S12 and their model-only twins
+-- fire no signals: they decide through the engine (decisions, kept three
+-- days) and trade a shadow ledger of their own, one strategy to a ledger
+-- (P5.1), so that ledger is no desk's choice but the strategy itself. Its
+-- paper trades are the record - each a fill against the venue's book and a
+-- settlement on its resolution. Until 9 Oct the board read signals alone, so
+-- the twins that had bought (23, 5 and 2 trades) read "nothing has met its
+-- conditions in 30 days".
+ledger_live as (
+  select t.strategy_id,
+         count(*) filter (where t.opened_at > now() - interval '30 days')::int as n_bought_30d,
+         max(t.opened_at)                                    as last_bought_at,
+         count(*)::int                                       as n_bought,
+         count(t.closed_at)::int                             as n_settled,
+         count(*) filter (where t.closed_at is not null and t.net_pnl > 0)::int as n_won,
+         round(sum(t.net_pnl) filter (where t.closed_at is not null), 2) as net_pnl
+    from paper_trades t
+    join paper_accounts a on a.account_id = t.account_id
+                         and a.kind = 'shadow' and a.strategy_id = t.strategy_id
+    join strategies e on e.strategy_id = t.strategy_id
+   where coalesce(e.origin, e.extra ->> 'origin') = 'engine'
+   group by t.strategy_id
+),
+-- ...AND WHAT LEFT FOR THE REPOSITORY. The daily export prunes a closed trade
+-- 30 days after it closes (prune_exported_paper_trades), and the
+-- trades_archived row it writes on the ledger carries, per strategy, the
+-- trades, wins and net it took (20261009110000). They are added back, so the
+-- all-time record does not fall when the rows leave. A row without by_strategy
+-- (written before that key existed) counts its totals and leaves wins
+-- unknown, never zero.
+ledger_archived as (
+  select a.strategy_id,
+         sum(case when x.payload ? 'by_strategy'
+                  then coalesce((x.payload -> 'by_strategy' -> a.strategy_id ->> 'trades')::int, 0)
+                  else (x.payload ->> 'trades')::int end)::int         as n_trades,
+         sum(case when x.payload ? 'by_strategy'
+                  then coalesce((x.payload -> 'by_strategy' -> a.strategy_id ->> 'won')::int, 0) end)::int as n_won,
+         bool_and(x.payload ? 'by_strategy')                         as won_known,
+         sum(case when x.payload ? 'by_strategy'
+                  then coalesce((x.payload -> 'by_strategy' -> a.strategy_id ->> 'realized_pnl')::numeric, 0)
+                  else (x.payload ->> 'realized_pnl')::numeric end)  as net_pnl
+    from paper_activity x
+    join paper_accounts a on a.account_id = x.account_id and a.kind = 'shadow'
+    join strategies e on e.strategy_id = a.strategy_id
+   where x.event_type = 'trades_archived'
+     and coalesce(e.origin, e.extra ->> 'origin') = 'engine'
+   group by a.strategy_id
+),
+ledger as (
+  select strategy_id,
+         coalesce(v.n_bought_30d, 0)                         as n_bought_30d,
+         v.last_bought_at,
+         coalesce(v.n_bought, 0) + coalesce(r.n_trades, 0)   as n_bought,
+         coalesce(v.n_settled, 0) + coalesce(r.n_trades, 0)  as n_settled,
+         case when r.strategy_id is null then v.n_won
+              when r.won_known then coalesce(v.n_won, 0) + r.n_won end as n_won,
+         case when v.net_pnl is null and r.net_pnl is null then null
+              else round(coalesce(v.net_pnl, 0) + coalesce(r.net_pnl, 0), 2) end as net_pnl
+    from ledger_live v
+    full join ledger_archived r using (strategy_id)
 )
 select
   s.strategy_id,
@@ -212,15 +273,21 @@ select
   s.regime_filter,
   s.capital_cap_pct,
   s.max_concurrent,
-  coalesce(f.n_fired, 0)                                     as fired_30d,
+  -- An engine strategy's columns read its ledger (above); every other row
+  -- reads exactly what it read before.
+  coalesce(f.n_fired, l.n_bought_30d, 0)                     as fired_30d,
   coalesce(f.n_waiting, 0)                                   as waiting,
-  f.last_fired_at,
-  coalesce(p.n_filled, 0)                                    as filled_all_time,
-  coalesce(p.n_won, 0)                                       as won_all_time,
-  p.net_pnl,
+  coalesce(f.last_fired_at, l.last_bought_at)                as last_fired_at,
+  coalesce(p.n_filled, l.n_bought, 0)                        as filled_all_time,
+  -- An engine ledger whose archived wins are unknown says so (null), not 0.
+  case when p.n_won is null and l.strategy_id is not null then l.n_won
+       else coalesce(p.n_won, 0) end                       as won_all_time,
+  coalesce(p.net_pnl, l.net_pnl)                             as net_pnl,
   p.avg_slippage_c,
   case when coalesce(p.n_filled, 0) > 0
-       then round(100.0 * p.n_won / p.n_filled, 1) end       as win_rate_pct,
+       then round(100.0 * p.n_won / p.n_filled, 1)
+       when coalesce(l.n_settled, 0) > 0
+       then round(100.0 * l.n_won / l.n_settled, 1) end     as win_rate_pct,
   -- THE VERDICT NOW ASKS THE SIGNALS, NOT THE DESK. "Nothing has filled yet"
   -- described the desk's subscription list and read as a fact about the
   -- strategy; 30 days of it is how s3 and s6 looked unproven while 1,600
@@ -242,6 +309,18 @@ select
                                                   coalesce(s.extra ->> 'retired_record',
                                                            s.extra ->> 'retired_because'))
     when not s.enabled                     then 'off - it cannot propose anything'
+    -- An engine strategy that has bought, judged on its own ledger: settled
+    -- trades, the same 30 the signals need.
+    when coalesce(f.n_fired, 0) = 0 and coalesce(l.n_bought_30d, 0) > 0
+     and l.n_settled = 0                   then format('trading on its own paper ledger: %s bought, none settled yet',
+                                                  l.n_bought)
+    when coalesce(f.n_fired, 0) = 0 and coalesce(l.n_bought_30d, 0) > 0
+     and l.n_settled < 30                  then format('too few settled trades to judge - %s of 30, net $%s on its own paper ledger',
+                                                  l.n_settled, l.net_pnl)
+    when coalesce(f.n_fired, 0) = 0 and coalesce(l.n_bought_30d, 0) > 0
+     and l.net_pnl > 0                     then 'profitable on its own paper ledger'
+    when coalesce(f.n_fired, 0) = 0 and coalesce(l.n_bought_30d, 0) > 0
+                                           then 'losing on its own paper ledger'
     when coalesce(f.n_fired, 0) = 0        then 'on, but nothing has met its conditions in 30 days'
     when coalesce(sc.n_scored, 0) = 0      then 'firing, but nothing it fired has settled yet'
     -- 30 is where a binomial is usable under the normal approximation, which
@@ -276,12 +355,13 @@ from strategies s
 left join fired  f  on f.strategy_id  = s.strategy_id
 left join paid   p  on p.strategy_id  = s.strategy_id
 left join scored sc on sc.strategy_id = s.strategy_id
+left join ledger l  on l.strategy_id  = s.strategy_id
 order by s.enabled desc,
          case when coalesce(sc.stake, 0) > 0 then sc.mark_net / sc.stake end desc nulls last,
          s.strategy_id;
 
 comment on view v_strategy_board is
-  'Every strategy with its own record beside its switch. The record is its SIGNALS marked to settlement - no desk, no cash, no approval - because whether a desk subscribed is a deployment choice and not evidence about the strategy. The filled_* and net_pnl columns remain: those are the realised desk record, which is the only place real slippage appears.';
+  'Every strategy with its own record beside its switch. The record is its SIGNALS marked to settlement - no desk, no cash, no approval - because whether a desk subscribed is a deployment choice and not evidence about the strategy. The filled_* and net_pnl columns remain: those are the realised desk record, which is the only place real slippage appears. An engine strategy (S10, S11, S12 and the model-only twins) fires no signals; its columns and verdict read the paper trades of its own shadow ledger, one strategy to a ledger, plus those the daily export has moved to the repository (that ledger''s trades_archived rows, by_strategy).';
 
 
 -- --------------------------------------------------------------------------
