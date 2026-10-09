@@ -72,7 +72,7 @@ def _live(basis, **over):
 def board(monkeypatch):
     def go(live):
         def fake_rest_all(path, params=None, **kw):
-            return [_opp()] if path == "v_opportunities" else (live if path == "live_weather" else [])
+            return [_opp()] if path == se.BOARD else (live if path == "live_weather" else [])
         monkeypatch.setattr(se, "rest_all", fake_rest_all)
         monkeypatch.setattr(se, "rest", lambda path, params=None: [])
         return se._band_views()[0]

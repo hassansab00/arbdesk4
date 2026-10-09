@@ -1,8 +1,9 @@
 -- ===========================================================================
 -- AD4 PAGE CACHE (plan v2 P6.5) - the Predictive page reads stored rows.
 --
--- v_prediction_ladder (ad4_31 / ad4_68), v_forecast_convergence_all (ad4_62)
--- and v_city_hit_history (ad4_85) are defined in full in those files. This
+-- v_prediction_ladder (ad4_31 / ad4_68), v_forecast_convergence_all (ad4_62),
+-- v_city_hit_history (ad4_85) and v_opportunities (ad4_13; below, 2.E) are
+-- defined in full in those files. This
 -- file runs after them and turns each into a wrapper over a materialized copy
 -- of its own definition (v_X_live -> mv_X -> v_X), refreshed CONCURRENTLY by
 -- refresh_page_cache(). It is re-runnable: after any of those files is
@@ -99,6 +100,58 @@ begin
     'The bucket edges the Predictive funnel draws as planes, per city: the stored rows of mv_city_ladder_edges (WXPredict build 2.A).';
 end $$;
 
+-- THE OPPORTUNITIES (WXPredict build 2.E, 9 Oct; 20261009210000). Every page
+-- reads v_opportunities or a view built on it, and the masthead counts its
+-- tradeable rows once a minute on every open page: about 2 s each, 38 of the
+-- 156 browser reads that died at 8 s in the 24 h to 9 Oct 20:34Z. Stored the
+-- same way, with two differences: the wrapper re-applies the live view's row
+-- condition on the clock (a market shows until its date has passed in the
+-- city's time zone) and its order. Between refreshes the 24-hour volume
+-- figures lag the clock (9 Oct: 2.15 % at most, two minutes after a build). The strategies read v_opportunities_live
+-- (scripts/signal_engine.py): they run between the edge engine and the
+-- pipeline's refresh, and must see the edges just written.
+do $$
+declare
+  v       regclass := to_regclass('public.v_opportunities');
+  mv      regclass := to_regclass('public.mv_opportunities');
+  def     text;
+  cols    text;
+  wrapped boolean;
+begin
+  if v is null then
+    raise notice 'no v_opportunities (sql/ad4_13); nothing to store';
+    return;
+  end if;
+  wrapped := mv is not null and exists (
+    select 1 from pg_depend d join pg_rewrite r on r.oid = d.objid
+     where r.ev_class = v and d.refobjid = mv);
+  if not wrapped then
+    def := pg_get_viewdef(v, true);
+    drop materialized view if exists public.mv_opportunities;
+    drop view if exists public.v_opportunities_live;
+    execute format('create view public.v_opportunities_live as %s', def);
+    create materialized view public.mv_opportunities as select v.* from public.v_opportunities_live v;
+    create unique index mv_opportunities_key on public.mv_opportunities (band_id, side);
+
+    select string_agg(format('%I', attname), ', ' order by attnum) into cols
+      from pg_attribute
+     where attrelid = 'public.v_opportunities_live'::regclass and attnum > 0 and not attisdropped;
+    execute format('create or replace view public.v_opportunities as select %s from public.mv_opportunities '
+                   'where resolution_date >= (now() at time zone coalesce(timezone, ''UTC''))::date '
+                   'order by score desc nulls last', cols);
+  end if;
+
+  revoke all on public.v_opportunities_live from public, anon, authenticated;
+  grant select on public.v_opportunities_live to service_role;
+  revoke all on public.mv_opportunities from public, anon, authenticated;
+  grant select on public.mv_opportunities to service_role;
+
+  comment on view public.v_opportunities_live is
+    'The full definition of v_opportunities (sql/ad4_13), computed from the tables on every read. The strategies read this (scripts/signal_engine.py); the pages read v_opportunities, the stored rows (plan v2 P6.5; WXPredict build 2.E).';
+  comment on materialized view public.mv_opportunities is
+    'Stored rows of v_opportunities_live, refreshed by refresh_page_cache() (plan v2 P6.5; WXPredict build 2.E). The pages read v_opportunities, which selects from here.';
+end $$;
+
 create or replace function public.refresh_page_cache()
 returns jsonb
 language plpgsql
@@ -110,7 +163,7 @@ declare
   t0 timestamptz;
   out jsonb := '{}'::jsonb;
 begin
-  foreach m in array array['mv_prediction_ladder', 'mv_city_ladder_edges', 'mv_forecast_convergence_all', 'mv_city_hit_history'] loop
+  foreach m in array array['mv_opportunities', 'mv_prediction_ladder', 'mv_city_ladder_edges', 'mv_forecast_convergence_all', 'mv_city_hit_history'] loop
     continue when to_regclass('public.' || m) is null;
     t0 := clock_timestamp();
     execute format('refresh materialized view concurrently public.%I', m);
@@ -121,10 +174,16 @@ begin
 end $$;
 
 comment on function public.refresh_page_cache() is
-  'Refreshes the stored rows the Predictive page reads (plan v2 P6.5), without blocking a reader. pg_cron at :12 and :42; the pipelines call it after they write.';
+  'Refreshes the stored rows the pages read (plan v2 P6.5), without blocking a reader: the opportunities and the Predictive page''s views. pg_cron at :12 and :42; the pipelines call it after they write.';
 
 revoke all on function public.refresh_page_cache() from public, anon, authenticated;
 grant execute on function public.refresh_page_cache() to service_role;
+
+-- TELL POSTGREST (Codex on #358). signal_engine reads v_opportunities_live
+-- through PostgREST, which answers PGRST205 for a relation its schema cache
+-- has not seen (sql/ad4_13). Supabase's pgrst_ddl_watch event trigger also
+-- asks for the reload on DDL; this does not depend on it.
+notify pgrst, 'reload schema';
 
 do $$
 begin

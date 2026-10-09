@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 283 of them - and for each MISSING one names the
+-- and function the app reads - 285 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -93,6 +93,7 @@ with expected(rel, owner, used_by) as (values
     ('model_versions', 'ad4_00_preflight.sql', ''),
     ('mv_city_hit_history', 'supabase/migrations/20260930004500_the_hit_record_shows_the_priced_centre.sql', ''),
     ('mv_city_ladder_edges', 'ad4_89_page_cache.sql', ''),
+    ('mv_opportunities', 'ad4_89_page_cache.sql', ''),
     ('mv_prediction_ladder', 'supabase/migrations/20260927170000_the_card_shows_what_was_priced.sql', ''),
     ('mv_venue_band_resolution', 'ad4_68_prediction_ladder_outcomes.sql', ''),
     ('paper_accounts', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),
@@ -232,6 +233,7 @@ with expected(rel, owner, used_by) as (values
     ('v_model_registry', 'supabase/migrations/20261004190000_one_prediction_contract.sql', ''),
     ('v_operational_health', 'supabase/migrations/20260912234500_phase1c_operational_readiness.sql', ''),
     ('v_opportunities', 'ad4_13_reconcile.sql', '(Header), (ModelAnalytics), /, /analytics, /board, /globe, /goals, /live, /monitor'),
+    ('v_opportunities_live', 'ad4_89_page_cache.sql', ''),
     ('v_opportunity_context', 'ad4_22_opportunity_context.sql', '/opportunities'),
     ('v_outcome_evidence_health', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', '(DataBank), /predictive, /synthesis'),
     ('v_outcome_pipeline', 'supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql', ''),
@@ -398,6 +400,7 @@ begin
     ('model_versions', 'ad4_00_preflight.sql', ''),
     ('mv_city_hit_history', 'supabase/migrations/20260930004500_the_hit_record_shows_the_priced_centre.sql', ''),
     ('mv_city_ladder_edges', 'ad4_89_page_cache.sql', ''),
+    ('mv_opportunities', 'ad4_89_page_cache.sql', ''),
     ('mv_prediction_ladder', 'supabase/migrations/20260927170000_the_card_shows_what_was_priced.sql', ''),
     ('mv_venue_band_resolution', 'ad4_68_prediction_ladder_outcomes.sql', ''),
     ('paper_accounts', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),
@@ -537,6 +540,7 @@ begin
     ('v_model_registry', 'supabase/migrations/20261004190000_one_prediction_contract.sql', ''),
     ('v_operational_health', 'supabase/migrations/20260912234500_phase1c_operational_readiness.sql', ''),
     ('v_opportunities', 'ad4_13_reconcile.sql', '(Header), (ModelAnalytics), /, /analytics, /board, /globe, /goals, /live, /monitor'),
+    ('v_opportunities_live', 'ad4_89_page_cache.sql', ''),
     ('v_opportunity_context', 'ad4_22_opportunity_context.sql', '/opportunities'),
     ('v_outcome_evidence_health', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', '(DataBank), /predictive, /synthesis'),
     ('v_outcome_pipeline', 'supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql', ''),

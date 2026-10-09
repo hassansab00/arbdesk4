@@ -61,6 +61,13 @@ from strategy_rules import run_strategies
 # the same window, stated once here so the two cannot drift apart.
 SIGNAL_TTL_MINUTES = 30
 
+# THE BOARD THE STRATEGIES SEE, computed now (WXPredict build 2.E, 9 Oct).
+# v_opportunities is stored rows since 20261009210000, refreshed at :12 and
+# :42 and at the end of each pipeline - after this step, which runs right
+# behind the edge engine. v_opportunities_live is the same definition read
+# from the tables, so the strategies see the edges just written.
+BOARD = "v_opportunities_live"
+
 
 def _enabled_strategies():
     """Only what the operator has switched on. All ten ship disabled.
@@ -125,7 +132,7 @@ def _band_views():
     than recomputed, for the same reason the pricing is read from
     v_opportunities and not re-derived: one implementation, read everywhere.
     """
-    rows = rest_all("v_opportunities", [("select", "*")],
+    rows = rest_all(BOARD, [("select", "*")],
                     order="band_id.asc,side.asc", page_size=1000)
     by_band = defaultdict(dict)
     for r in rows:

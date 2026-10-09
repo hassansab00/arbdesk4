@@ -165,7 +165,7 @@ def _opp(band_id="b1", **over):
 def board(monkeypatch):
     def go(probs):
         def fake_rest_all(path, params=None, **kw):
-            if path == "v_opportunities":
+            if path == se.BOARD:
                 return [_opp(), _opp(side="NO", market_price=0.90)]
             if path == "v_latest_prob":
                 return probs
