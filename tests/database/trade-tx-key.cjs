@@ -121,5 +121,29 @@ const count = async (db, where = 'true') =>
     await fresh.close();
   }
 
-  console.log('PASS: trade-tx-key: separate transactions sharing condition, second, price, size and wallet go in apart; the same transaction is turned away (scale, zone and batch duplicates too); a print without one is turned away as before; a print held without its hash is not stored again when it returns with one; the full hash index is gone; immutable; service role only; re-runnable; a connection whose first plan was anon\'s still inserts');
+  // 7. The install files (sql/) re-run over separate transactions sharing the
+  //    five columns: neither may try to rebuild a full five-column index (Codex on #366).
+  {
+    const sqlDir = path.join(ROOT, 'sql');
+    const PLAIN = fs.readFileSync(path.join(sqlDir, 'ad4_53_trade_dedupe_plain.sql'), 'utf-8');
+    const INSTALL = fs.readFileSync(path.join(sqlDir, 'ad4_trade_dedupe_hash.sql'), 'utf-8');
+    const inst = new PGlite();
+    await inst.exec(`create role anon; create role authenticated; create role service_role;
+      create table public.trades_observed (trade_id bigserial primary key, band_id uuid, condition_id text,
+        traded_at timestamptz, price numeric, size numeric, side text, proxy_wallet text,
+        ingested_at timestamptz not null default now(), city_key text, token_id text, observed_at timestamptz);`);
+    await inst.exec(PLAIN);
+    await inst.exec(INSTALL);
+    const two = await insert(inst, [print({ transaction_hash: '0xa' }), print({ transaction_hash: '0xb' })]);
+    assert.equal(two.length, 2, 'installed fresh: two transactions go in apart');
+    await inst.exec(PLAIN);                                  // re-run: must not rebuild ad4_uq_trade_dedupe
+    await inst.exec(INSTALL);                                // re-run: must not rebuild ad4_uq_trade_dedupe_hash
+    const left = (await inst.query(`select indexname from pg_indexes where tablename = 'trades_observed' order by 1`))
+      .rows.map((r) => r.indexname);
+    assert.ok(!left.includes('ad4_uq_trade_dedupe') && !left.includes('ad4_uq_trade_dedupe_hash'), left.join(','));
+    assert.equal(await count(inst), 2, 'the re-run keeps both trades');
+    await inst.close();
+  }
+
+  console.log('PASS: trade-tx-key: the install files re-run over separate transactions sharing the five columns; separate transactions sharing condition, second, price, size and wallet go in apart; the same transaction is turned away (scale, zone and batch duplicates too); a print without one is turned away as before; a print held without its hash is not stored again when it returns with one; the full hash index is gone; immutable; service role only; re-runnable; a connection whose first plan was anon\'s still inserts');
 })().catch((e) => { console.error(e); process.exit(1); });

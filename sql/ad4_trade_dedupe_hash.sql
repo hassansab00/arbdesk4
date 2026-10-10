@@ -23,8 +23,18 @@ $$;
 comment on function public.trade_dedupe_key(text, timestamptz, numeric, numeric, text) is
   'The dedupe key of one trade print as 16 bytes: equal exactly when (condition_id, traded_at, price, size, proxy_wallet) are equal; NULL when any of the first four is (WXPredict build 2.A, 8 Oct).';
 
-create unique index if not exists ad4_uq_trade_dedupe_hash
-  on public.trades_observed (public.trade_dedupe_key(condition_id, traded_at, price, size, proxy_wallet));
+-- Built only before the transaction is part of the key (R46 part 2, below):
+-- once separate transactions sharing these five columns are held, this full
+-- index cannot be built, and a re-run of this file must not try (Codex on #366).
+do $$
+begin
+  if not exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'trades_observed'
+                    and column_name = 'transaction_hash') then
+    create unique index if not exists ad4_uq_trade_dedupe_hash
+      on public.trades_observed (public.trade_dedupe_key(condition_id, traded_at, price, size, proxy_wallet));
+  end if;
+end $$;
 
 create or replace function public.insert_trade_prints(p_rows jsonb)
 returns table (trade_id bigint)
