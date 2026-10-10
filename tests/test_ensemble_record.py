@@ -171,3 +171,15 @@ def test_a_chunk_is_one_request_and_a_short_answer_is_none(monkeypatch):
     assert er.fetch_model(cities, "gfs025") is None
     monkeypatch.setattr(er, "_get", lambda url, params, label, tries=1: {"x": 1})
     assert er.fetch_model(cities[:1], "gfs025") == [{"x": 1}]
+
+
+def test_the_browser_port_reads_the_fixture_the_same():
+    """The city popup computes each member's day in the browser
+    (web/lib/ensemble.ts). web/tests/ensemble.test.cjs pins these same numbers
+    on this same fixture, so the two cannot drift apart unseen."""
+    import json
+    js = json.loads((ROOT / "web" / "tests" / "fixtures" / "ensemble_tokyo.json").read_text())
+    rows = {(r[4], r[5]): r[6:14] for r in er.daily_rows("tokyo", "Asia/Tokyo", "ecmwf_ifs025", js, None, None, "x")}
+    assert rows[("2026-10-10", "00_23")] == [3, 26.17, 0.236, 26.0, 26.0, 26.0, 26.25, 26.4]
+    assert rows[("2026-10-11", "00_23")] == [3, 30.83, 6.485, 26.1, 26.25, 26.5, 33.25, 37.3]
+    assert {d for d, _ in rows} == {"2026-10-10", "2026-10-11"}

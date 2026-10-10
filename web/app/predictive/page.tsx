@@ -604,7 +604,7 @@ export default function PredictivePage() {
       {/* ================================================ 0. EVERY CITY == */}
       <CityCards onPick={setCity} cities={selected} moment={moment}
         hindsight={hindsightQ.data ?? []} status={statusQ.data ?? []}
-        statusError={statusQ.error} />
+        statusError={statusQ.error} scorecard={scoreQ.data ?? []} summary={hitSumQ.data ?? []} />
 
       {/* ======================================================== 1. FORWARD == */}
       <section className="space-y-2">

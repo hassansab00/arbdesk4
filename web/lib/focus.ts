@@ -49,6 +49,9 @@ export type HindsightRow = {
   predicted_pct: number | string | null; hit: boolean | null;
   forecast_error_c: number | string | null; market_hit: boolean | null;
   engine_version?: string | null; prob_on_winner?: number | string | null;
+  /** read by the city popup's last days: the call, the winner and the market's call */
+  predicted_band?: string | null; actual_band?: string | null; market_band?: string | null;
+  observed_max_c?: number | string | null;
 };
 
 const num = (v: unknown): number | null => {

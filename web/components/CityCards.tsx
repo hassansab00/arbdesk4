@@ -15,6 +15,7 @@ import {
 } from "@/lib/cityCards";
 import { cityEvidence, momentLabel, type CityEvidence, type HindsightRow } from "@/lib/focus";
 import { fmtDateTime, fmtDaysAhead, fmtResolutionDate } from "@/lib/time";
+import CityPopup, { type HitSummaryRow, type ScoreRow } from "@/components/CityPopup";
 
 /**
  * ONE CARD PER CITY: the call, at a glance, for the market you can still trade.
@@ -52,16 +53,22 @@ const STRIP = ["day_ahead", "noon", "prepeak_1h"] as const;
  * `moment` the frozen moment their record and status are read at, `hindsight`
  * every frozen call (the page reads it once), `status` v_city_status. Without
  * them every active city is shown and no record or status is drawn.
+ * `scorecard` (v_prediction_scorecard_all) and `summary` (v_city_hit_summary)
+ * are the page's own reads, handed to a city's popup.
  */
-export default function CityCards({ onPick, cities, moment = "day_ahead", hindsight = [], status = [], statusError = null }: {
+export default function CityCards({ onPick, cities, moment = "day_ahead", hindsight = [], status = [], statusError = null,
+                                    scorecard = [], summary = [] }: {
   onPick?: (city: string) => void; cities?: string[]; moment?: string;
   hindsight?: HindsightRow[]; status?: StatusRow[]; statusError?: string | null;
+  scorecard?: ScoreRow[]; summary?: HitSummaryRow[];
 }) {
   const [pick, setPick] = useState("soonest");
+  // THE CITY'S POPUP (Hassan, 10 Oct): which card is open, by city and day.
+  const [open, setOpen] = useState<string | null>(null);
   const since = isoDay(-1);   // a city west of UTC is still trading yesterday's UTC date
 
   const citiesQ = useQuery<CityRow[]>(
-    () => supabase.from("cities").select("city_key,display_name,unit").eq("status", "active").order("city_key"), []
+    () => supabase.from("cities").select("city_key,display_name,unit,latitude,longitude,timezone").eq("status", "active").order("city_key"), []
   );
   const ladderQ = useQuery<LadderRow[]>(
     () => readAllRows<LadderRow>((from, to) =>
@@ -114,6 +121,7 @@ export default function CityCards({ onPick, cities, moment = "day_ahead", hindsi
     return all.filter((c) => want.has(c.city_key));
   }, [citiesQ.data, ladderQ.data, forecastQ.data, ownQ.data, liveQ.data, pick, currentQ.data, cities]);
   const recordFrom = useMemo(() => isoDay(-EVIDENCE_DAYS), []);
+  const openCard = open ? cards.find((c) => `${c.city_key}|${c.for_date}` === open) ?? null : null;
   // The side panels are extras: a card still shows its ladder if one fails,
   // and says which one did, rather than the whole section going red.
   const sideErrors = [["forecasts", forecastQ.error], ["own model", ownQ.error], ["live weather", liveQ.error],
@@ -169,7 +177,8 @@ export default function CityCards({ onPick, cities, moment = "day_ahead", hindsi
         onRetry={reload}
       >
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {cards.map((c) => <Card key={`${c.city_key}|${c.for_date}`} c={c} onPick={onPick} moment={moment}
+          {cards.map((c) => <Card key={`${c.city_key}|${c.for_date}`} c={c} moment={moment}
+            onPick={(city) => { onPick?.(city); setOpen(`${c.city_key}|${c.for_date}`); }}
             st={statusFor(status, c.city_key, c.for_date, moment)}
             ev={cityEvidence(hindsight, c.city_key, moment, recordFrom)}
             strip={STRIP.map((m) => [m, cityEvidence(hindsight, c.city_key, m, recordFrom)] as const)}
@@ -177,6 +186,16 @@ export default function CityCards({ onPick, cities, moment = "day_ahead", hindsi
             showRecord={hindsight.length > 0} />)}
         </div>
       </DataState>
+      {openCard && (
+        <CityPopup c={openCard} moment={moment} onClose={() => setOpen(null)}
+          city={(citiesQ.data ?? []).find((x) => x.city_key === openCard.city_key) ?? { city_key: openCard.city_key }}
+          ladder={(ladderQ.data ?? []).filter((r) => r.city_key === openCard.city_key && r.for_date === openCard.for_date)}
+          current={(currentQ.data ?? []).filter((r) => r.city_key === openCard.city_key
+            && r.target_date === openCard.for_date && r.source !== "pricing")}
+          status={statusFor(status, openCard.city_key, openCard.for_date, moment)}
+          hindsight={hindsight} scorecard={scorecard}
+          summary={summary.find((r) => r.city_key === openCard.city_key) ?? null} />
+      )}
     </section>
   );
 }
@@ -196,10 +215,12 @@ function Card({ c, onPick, moment, st, ev, strip, after, showRecord }: {
   const u = c.unit;
   const trusted = c.best && !c.best.against_market;
   return (
-    <div className={`rounded border bg-panel p-3 text-xs ${trusted ? "border-accent/60" : "border-border"}`}>
+    <div className={`cursor-pointer rounded border bg-panel p-3 text-xs hover:border-accent ${trusted ? "border-accent/60" : "border-border"}`}
+      onClick={() => onPick?.(c.city_key)}>
       <div className="flex items-baseline justify-between gap-2">
         <button className="truncate text-sm font-semibold text-accent hover:underline"
-          onClick={() => onPick?.(c.city_key)} title="Show this city in the panels below">
+          onClick={(e) => { e.stopPropagation(); onPick?.(c.city_key); }}
+          title="Open this city's day in detail, and show it in the panels below">
           {c.name}
         </button>
         <span className="shrink-0 text-muted">
