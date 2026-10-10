@@ -17,7 +17,7 @@ trades.
 | phase | what | state |
 |---|---|---|
 | 1 | Clean, refresh, one training table where every row knows only what was known | this PR |
-| 2 | The market's price fetched fresh at each decision in the tick | todo |
+| 2 | The market's price fetched fresh at each decision in the tick | 2.1 and 2.4 measured; the rest waits on wave 2's checkpoints |
 | 3 | The model: A weather, B buckets, C market fusion, D calibration | next |
 | 4 | Walk-forward proof against the market on every listed city-day | next, with phase 3 |
 | 5 | Nightly cycle, shadow, the board; Hassan decides serving | todo |
@@ -207,10 +207,51 @@ The training table reads the venue's hourly `prices-history` point `p` as "the m
 - **The cause is not measured, and no definition tested meets the tolerance on these books.** The mid is the closest one measured, so 2.2 uses it for every bucket.
 - 2.3's parity test reports the buckets with a spread over 0.10 on their own, with each difference listed. A definition for them waits on that test. G2 sees the result.
 
+## Phase 2.4: market activity from the past (measured 10 Oct)
+
+The table has no volume (Gaps, below). This asks whether the venue still serves every trade of settled events, so that a volume series could be built for the past rather than waiting for live history. The tool is `tools/wxpredict/trade_history.py`; its output, `data/eval/wxpredict/trade_history_probe.json`, holds every number below.
+
+**Method.**
+- **The sample:** 10 events from every month of the market record (closed, one winner, the main listing), drawn with a fixed seed: 108 events, 1,092 buckets, 30 Dec 2025 - 7 Oct 2026.
+- **The trades:** each event's trades come from Polymarket's data API `/trades` (the endpoint `scripts/ingest_trades.py` reads every hour), paged to the end.
+- **The check:** each bucket's summed trade sizes are compared with Gamma's own lifetime `volume` for that bucket.
+- **The cap:** the API refuses an offset over 10,000. It also filters by `start`/`end` (one NYC bucket: 603 + 185 = its 788 trades), so a bucket over the cap can be asked in halves. No sampled event reached the cap.
+
+**What came back.** 246,108 trades, 416 requests, 620 s, one request at a time. Two 500s and one 429 were each answered on the next try. Every bucket had at least one trade, and no trade was later than the day after the event's date. 158 trades are stamped before the event's `created_at`; this is not explained.
+
+| bucket | count | months |
+|---|---|---|
+| sizes sum to Gamma's volume (within 0.01 shares) | 863 | all of Dec - Feb and May - Jun; 50 of 106 in Mar; most of Jul - Oct |
+| Gamma gives no volume, so it cannot be checked | 56 | March only |
+| differs from Gamma's volume | 173 | all of April; 13 in Jul, 32 in Aug, 16 in Sep, 2 in Oct |
+
+**On the 173 that differ:**
+- Size divided by Gamma's volume: median 0.991, range 0.506-1.222.
+- **62 are above 1**: the API serves more than Gamma counts. So Gamma's figure is not exact truth either.
+- Net, they fall 74,386 shares short. That is 0.91% of the sample's 8,172,025 shares of Gamma volume.
+- Asking for every fill (`takerOnly=false`) does not explain the gap. On one Houston bucket of 4 Apr it returned each trade from both sides (285 fills, 9,207 shares, about twice the 116 taker trades' 4,542), and neither figure is Gamma's 4,665.
+- The cause is not measured.
+
+**Against our own capture.** `scripts/ingest_trades.py` has stored the same API's trades every hour, and `data/archive/trades` has them without a break from 27 Sep 22:34Z. The 10 sampled events dated 1-4 Oct traded entirely inside that span. Each of their trades the API serves today was matched on the archive's own key (condition, second, price, size, wallet):
+- **The API serves 15,726 trades; 2,506 of them (15.9%) were never stored.**
+- Of the 13,113 we stored, the API still serves every one.
+- The ones never stored are not spread evenly across the hour. In minutes 10-19, 1,263 of 4,742 are missing (27%); in every other ten minutes, 8-14%.
+- 119 of the API's trades share their key with another trade. The archive's dedupe key keeps one row per key, so it would merge them.
+- **So the live record undercounts trades, and the API's backfill is the more complete source.** Why the hourly ingest misses these is not measured. It is recorded as R46 in `docs/WXPREDICT_BUILD.md`.
+
+**Answer: a past volume series exists.** The venue serves the trades of settled events back to the oldest in the record (30 Dec 2025). Each bucket can be checked against Gamma where Gamma has a volume, and the check passes exactly on 863 of the 1,036 buckets that can be checked. Per the plan, it enters the table only in a later version, with its own leak test: trades are stamped to the second, so a decision at t sees only trades before t.
+
+**The size of a full backfill**, scaled from the sample (not measured):
+- about 24.6 million trades over the record's 10,033 events (each month's sample mean times its events);
+- at the sample's 5.74 s an event, about 16 h of requests;
+- the raw trades are too large for the repository; the table would hold volume by bucket-hour.
+
 ## Gaps (Phase 1)
 
 - **Market activity is a proxy.** The venue's hourly price history has no volume. "Activity" is the number of
   bucket-hours whose price moved by more than half a cent in the last 1 h and 6 h. The trade
-  prints in the database start 3 Oct 22:36Z, and the archive's trades are partial.
+  prints in the database start 3 Oct 22:36Z, and the archive's trades are partial. **Phase 2.4
+  (10 Oct):** the venue serves every past trade, checkable against Gamma's volume, so a past
+  series can be built; our own hourly capture misses 15.9% of trades (above).
 - **Hourly forecasts are best_match only.** The seven models are daily maxima, not hourly curves.
 - **The forecast publication delay is assumed, not measured run by run** (P2.9's 7 h).
