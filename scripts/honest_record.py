@@ -51,34 +51,42 @@ LEADS = (1, 2)
 LAST_HOUR = 17          # every window ends by 17:00 local
 MIN_HOURS = 20          # a day with fewer hourly temperatures is left out
 APPEND_DAYS = 10
-WORKERS = 4             # Open-Meteo refused a fifth concurrent request on 26 Sep
-# ASKED AGAIN IN ROUNDS, SPREAD OVER THE RUN (10 Oct). A request with no
-# answer is asked again after each wait below while the deadline leaves time,
-# and only the part (heating or models) that is missing (common.ask_in_rounds).
+# MANY CITIES A REQUEST, ONE REQUEST AT A TIME (10 Oct). Open-Meteo takes a
+# comma-separated list of coordinates and answers with one object per place,
+# in the order asked; each place's answer is the one a request for it alone
+# gets, series for series (asked through the database's pg_net on 10 Oct:
+# 12 places on the Previous Runs API, 3 on the ensemble API, 2 on the
+# forecast API's seven models; the only extra field is `location_id`). So the
+# record asks CHUNK cities a request: 8 requests a night, not 94, never two
+# at once (WORKERS).
 #
-# The second pass came from 27 Sep, when the multi-model request timed out
-# twice for moscow, paris, lucknow and houston within 05:16-05:18Z, so those
-# four had no station-model row and priced on P3.9 alone that day. It asked
-# a hung request again 5 s after it timed out, and once more 10 s after the
-# pass; each of the record's 13 logged runs from 27 Sep to 10 Oct was
-# partial. The 10 Oct run (job log, step from 02:47:36Z): four requests
-# stalled together, one on each of the pool's workers - wellington's models
-# and wuhan's, lucknow's and paris's heating - and every ask of those URLs
-# stalled its full 60 s, from about 02:47:43 to 02:52:08Z: wuhan's, lucknow's
-# and paris's heating 4 asks of 4, wellington's heating 2 of 2 in the second
-# pass after answering in the first. The 15 cities after them all answered
-# once the workers were free, and wellington's models answered when asked
-# about 4 minutes after their first stall. The same 94 URLs asked from
-# another network at 03:52Z all came back in 0.59-1.09 s. So a stall holds
-# one URL for minutes while others answer, and the cure is to come back to it
-# later, which the run's 600 s (276 s used that night) leaves room for.
+# WHY. Each of the record's 13 logged runs from 27 Sep to 10 Oct was partial,
+# and so were the ensemble record's and 5 of the station model's 6 in the
+# week to 10 Oct, all three asking one city a request, four at a time, from a
+# GitHub runner. n8n's P1.5, which asks every city in ONE request, logged ok
+# on 55 of 55 runs in that week (ingest_log). Open-Meteo limits how many
+# requests one address has open: of 8 sent at once from the database on
+# 10 Oct, 3 came back 429 "Too many concurrent requests", and a runner's
+# address is shared with other people's jobs. The run logs show what a full
+# allowance looks like from our side: requests that hang. The station model on
+# 10 Oct (04:59:25-05:01:27Z, 20 s a request) had 24 of 28 consecutive
+# requests hang, 4 at a time, while the requests either side answered in under
+# a second; the forecast ingest before it in the same job had hangs and two
+# 429s "Too Many Requests" (04:37-04:47Z).
 #
-# Every round is in the run's detail (when, asked, answered, its slowest
-# answer), so the nights after this say whether the waits reach a stall.
+# ASKED AGAIN IN ROUNDS. A chunk with no answer is asked again after each wait
+# below while the deadline leaves time, the missing part only
+# (common.ask_in_rounds); each round is in the run's detail. On 10 Oct a URL
+# asked again soon after hanging hung again (16 asks of 4 URLs in the record;
+# the 12 the station model's second round reached before its deadline), so the
+# waits are long.
+CHUNK = 12
+WORKERS = 1
 RETRY_WAITS = (10, 30, 60, 90, 120, 150)
-# The 94 came back in 0.59-1.09 s, and no stalled ask answered inside 60 s
-# (the 16 of 10 Oct): 20 s is far past an answer and leaves time for rounds.
-TIMEOUT = 20
+# A 12-city answer is about 0.3 MB (314,169 and 324,875 bytes on 10 Oct;
+# Open-Meteo reported 87 ms to build the first); single-city answers came
+# back in 0.59-1.09 s, and no hung request answered inside 60 s.
+TIMEOUT = 30
 # A run that outlives its step is killed before it writes anything. On 28 Sep
 # (02:41-02:46Z) eight cities' requests read-timed out, the 5-minute step
 # ended, and the whole night was lost, the forty cities that had answered
@@ -268,7 +276,7 @@ def _left():
 
 def _get(url, params, label):
     """One ask: the answer, or None. Asked again later by fetch_each's rounds,
-    not here: on 10 Oct no stalled URL answered when asked again at once."""
+    not here: on 10 Oct no hung URL answered when asked again at once."""
     left = _left()
     if left is not None and left < MIN_LEFT:
         print(f"  ! {label} not asked: the run's deadline", file=sys.stderr)
@@ -288,44 +296,74 @@ def _get(url, params, label):
 PARTS = ("heating", "models")
 
 
-def previous_request(city, part, start, end):
-    """One part's request to the Previous Runs API: UTC hours from the day
-    before `start` to the day after `end`, so every local day between them is
-    whole whatever the city's offset."""
-    base = {"latitude": city["latitude"], "longitude": city["longitude"], "timezone": "GMT",
-            "start_date": (start - dt.timedelta(days=1)).isoformat(),
-            "end_date": (end + dt.timedelta(days=1)).isoformat()}
+def _places(cities):
+    return {"latitude": ",".join(str(c["latitude"]) for c in cities),
+            "longitude": ",".join(str(c["longitude"]) for c in cities)}
+
+
+def _per_place(js, cities, label):
+    """One answer per city, in the order asked, or None. Open-Meteo answers a
+    single place with an object and several with a list."""
+    if js is None:
+        return None
+    answers = [js] if isinstance(js, dict) else js
+    if not isinstance(answers, list) or len(answers) != len(cities):
+        print(f"  ! {label}: {len(answers) if isinstance(answers, list) else 'no'} answers "
+              f"for {len(cities)} places", file=sys.stderr)
+        return None
+    return answers
+
+
+def _label(cities, what):
+    return f"{cities[0]['city_key']}..{cities[-1]['city_key']} ({len(cities)}) {what}"
+
+
+def previous_request(cities, part, start, end):
+    """One part's request to the Previous Runs API for a chunk of cities: UTC
+    hours from the day before `start` to the day after `end`, so every local
+    day between them is whole whatever the city's offset. A list of answers,
+    one per city, or None."""
+    base = dict(_places(cities), timezone="GMT", start_date=(start - dt.timedelta(days=1)).isoformat(),
+                end_date=(end + dt.timedelta(days=1)).isoformat())
     if part == "heating":
         params = dict(base, hourly=",".join(f"{v}_previous_day{l}" for v in HEATING for l in LEADS))
     else:
         params = dict(base, hourly=",".join(f"temperature_2m_previous_day{l}" for l in LEADS),
                       models=",".join(MODELS))
-    return _get(PREVIOUS_API, params, f"{city['city_key']} previous {part}")
+    label = _label(cities, f"previous {part}")
+    return _per_place(_get(PREVIOUS_API, params, label), cities, label)
 
 
-def current_request(city, part):
-    base = {"latitude": city["latitude"], "longitude": city["longitude"], "timezone": "GMT",
-            "forecast_days": 4}          # UTC days: enough for local day+2 at any offset
+def current_request(cities, part):
+    base = dict(_places(cities), timezone="GMT",
+                forecast_days=4)        # UTC days: enough for local day+2 at any offset
     if part == "heating":
         params = dict(base, hourly=",".join(HEATING))
     else:
         params = dict(base, hourly="temperature_2m", models=",".join(MODELS))
-    return _get(CURRENT_API, params, f"{city['city_key']} current {part}")
+    label = _label(cities, f"current {part}")
+    return _per_place(_get(CURRENT_API, params, label), cities, label)
 
 
 def fetch_each(ask, cities, rounds=None):
     """[(city, (heating, models))] in `cities` order, a part never answered
-    None. ask(city, part) makes one request. Every part is asked once, then
-    the missing parts alone again after each of RETRY_WAITS while the
+    None. ask(chunk, part) makes one request for a chunk of CHUNK cities and
+    gives one answer per city, or None. Every chunk's parts are asked once,
+    then the missing ones alone again after each of RETRY_WAITS while the
     deadline leaves time (common.ask_in_rounds); `rounds`, a list, gets each
     round's counts."""
     from common import ask_in_rounds
-    keys = [(i, part) for i in range(len(cities)) for part in PARTS]
-    answers, done = ask_in_rounds(keys, lambda k: ask(cities[k[0]], k[1]), WORKERS, RETRY_WAITS,
+    chunks = [cities[i:i + CHUNK] for i in range(0, len(cities), CHUNK)]
+    keys = [(k, part) for k in range(len(chunks)) for part in PARTS]
+    answers, done = ask_in_rounds(keys, lambda key: ask(chunks[key[0]], key[1]), WORKERS, RETRY_WAITS,
                                   _left, MIN_LEFT)
     if rounds is not None:
         rounds.extend(done)
-    return [(city, tuple(answers.get((i, part)) for part in PARTS)) for i, city in enumerate(cities)]
+    out = []
+    for k, chunk in enumerate(chunks):
+        got = [answers.get((k, part)) or [None] * len(chunk) for part in PARTS]
+        out += [(city, (got[0][j], got[1][j])) for j, city in enumerate(chunk)]
+    return out
 
 
 def forward_rows(cities, fetched_at=None, rounds=None):
@@ -398,7 +436,7 @@ def main(argv=None):
     cities = [c for c in get_cities() if c.get("latitude") is not None and c.get("timezone")
               and c.get("status", "active") == "active"]
     bm, md, missing, rounds = [], [], [], []
-    for city, (h, m) in fetch_each(lambda c, part: previous_request(c, part, start, end), cities, rounds):
+    for city, (h, m) in fetch_each(lambda chunk, part: previous_request(chunk, part, start, end), cities, rounds):
         if h is None or m is None:
             missing.append(city["city_key"])
         b, x = previous_rows(city["city_key"], h, m, city["timezone"], start.isoformat(), end.isoformat())

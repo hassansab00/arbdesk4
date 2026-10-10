@@ -817,9 +817,9 @@ def ask_in_rounds(keys, ask, workers, waits, left=lambda: None, min_left=5):
     (seconds after the first), how many keys it asked and how many answered,
     and its slowest answer in seconds (None when none answered).
 
-    Open-Meteo stalls a request now and then, and asking the same URL again at
-    once stalls again while every other URL answers (scripts/honest_record.py,
-    10 Oct); spreading the asks over the run's spare time is what can reach it.
+    Open-Meteo leaves a request hanging now and then, and a URL asked again
+    soon after it hung hung again (scripts/honest_record.py, 10 Oct); spreading
+    the asks over the run's spare time is what can reach it.
     """
     answers, todo, rounds = {}, list(keys), []
     t0 = time.monotonic()
