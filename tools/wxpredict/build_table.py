@@ -264,7 +264,7 @@ def load_prices(events):
 # the table
 # ---------------------------------------------------------------------------
 def build(limit=0, first=None, last=None, out_dir=OUT_DIR, write_meta=True):
-    common.READ = set()
+    common.READ = {}
     try:
         return _build(limit, first, last, out_dir, write_meta)
     finally:

@@ -40,12 +40,32 @@ def test_reads_are_recorded_only_while_a_build_records(tmp_path, monkeypatch):
     f = tmp_path / "a.csv.gz"
     with gzip.open(f, "wt") as g:
         g.write("x\n1\n")
+    listed = tmp_path / "listed.csv.gz"
+    listed.write_bytes(b"listed")
     monkeypatch.setattr(common, "READ", None)
     assert list(common.read_csv(f)) == [{"x": "1"}]
-    monkeypatch.setattr(common, "READ", set())
-    list(common.read_csv(f))
-    common.note(tmp_path / "listed.csv.gz")
-    assert common.READ == {str(f), str(tmp_path / "listed.csv.gz")}
+    monkeypatch.setattr(common, "READ", {})
+    assert list(common.read_csv(f)) == [{"x": "1"}], "the same rows when recording"
+    common.note(listed)
+    assert common.READ == {str(f): common.blob_sha(f.read_bytes()), str(listed): common.blob_sha(b"listed")}
+
+
+def test_the_id_is_of_the_bytes_read_and_a_file_that_changes_stops_the_build(tmp_path, monkeypatch):
+    """Codex on #369: the id comes from the bytes the build parsed, not from a
+    later look at the file; a file seen twice with other bytes stops it."""
+    import gzip
+    f = tmp_path / "a.csv.gz"
+    with gzip.open(f, "wt") as g:
+        g.write("x\n1\n")
+    first = f.read_bytes()
+    monkeypatch.setattr(common, "READ", {})
+    rows = common.read_csv(f)
+    assert next(rows) == {"x": "1"}                  # read and recorded
+    with gzip.open(f, "wt") as g:                    # replaced while the build runs
+        g.write("x\n2\n")
+    assert common.sources(common.READ) == {os.path.relpath(f, common.DATA_ROOT): common.blob_sha(first)}
+    with pytest.raises(RuntimeError, match="changed while the build"):
+        list(common.read_csv(f))
 
 
 def test_every_source_path_follows_the_root_and_comes_back(tmp_path):
@@ -65,7 +85,9 @@ def test_sources_are_named_by_path_under_the_root(tmp_path, monkeypatch):
     d.mkdir(parents=True)
     (d / "b.csv.gz").write_bytes(b"bee")
     monkeypatch.setattr(common, "DATA_ROOT", str(tmp_path))
-    assert common.sources({str(d / "b.csv.gz")}) == {"data/training/previous_runs/b.csv.gz": common.blob_sha(b"bee")}
+    monkeypatch.setattr(common, "READ", {})
+    common.note(d / "b.csv.gz")
+    assert common.sources(common.READ) == {"data/training/previous_runs/b.csv.gz": common.blob_sha(b"bee")}
 
 
 def test_materialize_writes_each_blob_and_refuses_a_wrong_one(tmp_path):

@@ -47,20 +47,11 @@ WHOLE_DAY_MAX_GAP_H = 3
 
 
 # Every source file a build reads, when a build is recording them (R47: the
-# table names its inputs by git blob, so it can be rebuilt from exactly them).
+# table names its inputs by git blob, so it can be rebuilt from exactly them):
+# {absolute path: git blob id of the bytes the build itself read}. The id is
+# taken from those bytes, never from a later look at the file, and a file whose
+# bytes differ the second time a build sees it stops the build (Codex on #369).
 READ = None
-
-
-def note(path):
-    """Record `path` as a source of the build that is recording."""
-    if READ is not None:
-        READ.add(os.path.abspath(path))
-
-
-def read_csv(path):
-    note(path)
-    with gzip.open(path, "rt", newline="") as f:
-        yield from csv.DictReader(f)
 
 
 def blob_sha(data):
@@ -68,13 +59,37 @@ def blob_sha(data):
     return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
 
 
-def sources(paths):
-    """{path relative to the data root: git blob id} for the files given."""
-    out = {}
-    for p in sorted(paths):
-        with open(p, "rb") as f:
-            out[os.path.relpath(p, DATA_ROOT).replace(os.sep, "/")] = blob_sha(f.read())
-    return out
+def _record(path, data):
+    if READ is None:
+        return
+    p = os.path.abspath(path)
+    sha = blob_sha(data)
+    if READ.setdefault(p, sha) != sha:
+        raise RuntimeError(f"{p} changed while the build was reading its sources")
+
+
+def note(path):
+    """Record a file the build lists without parsing (its bytes, now)."""
+    if READ is not None:
+        with open(path, "rb") as f:
+            _record(path, f.read())
+
+
+def read_csv(path):
+    if READ is None:
+        with gzip.open(path, "rt", newline="") as f:
+            yield from csv.DictReader(f)
+        return
+    with open(path, "rb") as f:
+        data = f.read()
+    _record(path, data)
+    with gzip.open(io.BytesIO(data), "rt", newline="") as f:
+        yield from csv.DictReader(f)
+
+
+def sources(recorded):
+    """{path relative to the data root: git blob id} from a recording build's READ."""
+    return {os.path.relpath(p, DATA_ROOT).replace(os.sep, "/"): sha for p, sha in sorted(recorded.items())}
 
 
 def write_csv(path, header, rows):
