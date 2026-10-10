@@ -4,7 +4,9 @@
 // outside 1-3 or an anchor that is not earlier than its night; an open day's
 // width always names its version; every price can record the stored width;
 // the freshness page tracks it; and the pricing switch starts OFF and is
-// never switched back off by a re-run.
+// never switched back off by a re-run. 20261010170000 (Hassan, 10 Oct) turns
+// it on once, keeps everything else in the row, and never turns it back on
+// after someone has turned it off.
 // ===========================================================================
 const { PGlite } = require('@electric-sql/pglite');
 const fs = require('fs');
@@ -14,6 +16,7 @@ const assert = require('node:assert/strict');
 const DIR = path.join(__dirname, '..', '..', 'supabase', 'migrations');
 const P39 = fs.readFileSync(path.join(DIR, '20260926120000_station_correction.sql'), 'utf-8');
 const MIG = fs.readFileSync(path.join(DIR, '20260927190000_the_width_around_the_corrected_centre.sql'), 'utf-8');
+const ON = fs.readFileSync(path.join(DIR, '20261010170000_the_station_width_prices.sql'), 'utf-8');
 
 async function refused(db, sql, params) {
   try { await db.query(sql, params); } catch (e) { return true; }
@@ -69,11 +72,30 @@ async function refused(db, sql, params) {
   assert.equal((await db.query('select count(*)::int n from public.derived_station_width')).rows[0].n, 1);
   assert.equal((await db.query('select count(*)::int n from public.derived_corrected_forecast')).rows[0].n, 2);
 
+  // TURNED ON (Hassan, 10 Oct): from the seed, once.
+  await db.exec(`update public.settings set value = jsonb_set(value, '{enabled}', 'false') where key = 'station_width_pricing'`);
+  const seed = await flag();
+  await db.exec(ON);
+  const on = await flag();
+  assert.equal(on.enabled, true, 'the width prices');
+  assert.equal(on.max_lead_days, 1, 'day-ahead only, as before');
+  assert.equal(on.why, seed.why, 'the seed\'s reason is kept');
+  assert.equal(on.enabled_at, '2026-10-10');
+  assert.equal(on.enabled_by, 'Hassan');
+  assert.match(on.enabled_why, /\+0\.1171/, 'the forward score it was turned on by is in the row');
+  await db.exec(`update public.settings set value = jsonb_set(value, '{enabled}', 'false') where key = 'station_width_pricing'`);
+  await db.exec(ON);
+  await db.exec(MIG);
+  assert.equal((await flag()).enabled, false, 'switched off later, a re-run does not turn it back on');
+  const noSettings = new PGlite();
+  await noSettings.exec(ON);   // the database contracts have no settings table: a no-op there
+
   const g = (await db.query(`select
       has_table_privilege('anon', 'public.derived_station_width', 'select') a,
       has_table_privilege('authenticated', 'public.derived_station_width', 'select') u,
       has_table_privilege('service_role', 'public.derived_station_width', 'update') s`)).rows[0];
   assert.deepEqual([g.a, g.u, g.s], [false, false, true], 'derived_station_width grants');
   console.log('station-width: service role only, a width is positive with its version and an earlier anchor, ' +
-              'every price can record it, tracked for freshness, the switch starts off and a re-run keeps it');
+              'every price can record it, tracked for freshness, the switch starts off and a re-run keeps it; ' +
+              'turned on once (10 Oct), never back on after it is turned off');
 })().catch((e) => { console.error(e); process.exit(1); });

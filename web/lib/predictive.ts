@@ -170,3 +170,89 @@ export function largestLeans<T extends { bias: number; city: string }>(byCity: T
   const sorted = byCity.slice().sort((a, b) => Math.abs(b.bias) - Math.abs(a.bias) || a.city.localeCompare(b.city));
   return { shown: k > 0 ? sorted.slice(0, k) : sorted, total: sorted.length };
 }
+
+/* --------------------------------------------- the checkpoint scoreboard */
+
+/**
+ * One row of v_checkpoint_scoreboard: every checkpoint's FIRST call
+ * (v_checkpoint_calls.first_call) graded against the bucket the venue
+ * confirmed, per city and over every city (city_key 'all'). The market is the
+ * book at the same moment, renormalised over the buckets the engine priced,
+ * and scored only where every one of them had a price (market_scored), so the
+ * `_common` scores and the market's are on the same days.
+ */
+export interface CheckpointScoreRow {
+  checkpoint: string; checkpoint_order: number; after_peak: boolean; city_key: string;
+  city_days: number; model_hits: number; model_claimed: number | string | null;
+  market_called: number; market_hits: number; market_scored: number;
+  brier_model: number | string | null; log_loss_model: number | string | null;
+  brier_uniform: number | string | null;
+  brier_model_common: number | string | null; brier_market: number | string | null;
+  log_loss_model_common: number | string | null; log_loss_market: number | string | null;
+  first_day: string | null; last_day: string | null;
+}
+
+export interface CheckpointScore {
+  checkpoint: string; order: number; afterPeak: boolean;
+  days: number; hits: number; hitRate: number | null; claimed: number | null;
+  marketCalled: number; marketHits: number; marketRate: number | null;
+  /** the days both are scored on: the market had a price on every bucket priced */
+  common: number;
+  brier: number | null; brierUniform: number | null;
+  brierCommon: number | null; brierMarket: number | null;
+  logLossCommon: number | null; logLossMarket: number | null;
+  /** who scored lower on the common days, by Brier; null with no common day */
+  brierLeader: "us" | "market" | "tie" | null;
+  firstDay: string | null; lastDay: string | null;
+}
+
+const num = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === "") return null;
+  const x = typeof v === "number" ? v : parseFloat(String(v));
+  return Number.isFinite(x) ? x : null;
+};
+
+/** One city's checkpoints (or every city's, with "all"), in the order of the day. */
+export function checkpointScores(rows: CheckpointScoreRow[], cityKey: string): CheckpointScore[] {
+  return rows.filter((r) => r.city_key === cityKey)
+    .slice().sort((a, b) => Number(a.checkpoint_order) - Number(b.checkpoint_order))
+    .map((r) => {
+      const days = Number(r.city_days) || 0;
+      const hits = Number(r.model_hits) || 0;
+      const marketCalled = Number(r.market_called) || 0;
+      const marketHits = Number(r.market_hits) || 0;
+      const common = Number(r.market_scored) || 0;
+      const brierCommon = common ? num(r.brier_model_common) : null;
+      const brierMarket = common ? num(r.brier_market) : null;
+      return {
+        checkpoint: r.checkpoint, order: Number(r.checkpoint_order), afterPeak: r.after_peak === true,
+        days, hits, hitRate: days ? hits / days : null, claimed: num(r.model_claimed),
+        marketCalled, marketHits, marketRate: marketCalled ? marketHits / marketCalled : null,
+        common,
+        brier: num(r.brier_model), brierUniform: num(r.brier_uniform),
+        brierCommon, brierMarket,
+        logLossCommon: common ? num(r.log_loss_model_common) : null,
+        logLossMarket: common ? num(r.log_loss_market) : null,
+        brierLeader: brierCommon === null || brierMarket === null ? null
+          : brierCommon < brierMarket ? "us" : brierCommon > brierMarket ? "market" : "tie",
+        firstDay: r.first_day, lastDay: r.last_day,
+      };
+    });
+}
+
+/**
+ * The checkpoints whose city rows do not add up to the view's own total
+ * (city_key 'all'): a short read, or a day graded between the two halves of
+ * it. The panel says so instead of showing a city's share of a total that is
+ * not whole.
+ */
+export function scoreboardShort(rows: CheckpointScoreRow[]): string[] {
+  const total = new Map<string, number>();
+  const sum = new Map<string, number>();
+  for (const r of rows) {
+    const m = r.city_key === "all" ? total : sum;
+    m.set(r.checkpoint, (m.get(r.checkpoint) ?? 0) + (Number(r.city_days) || 0));
+  }
+  const keys = new Set([...total.keys(), ...sum.keys()]);
+  return [...keys].filter((k) => total.get(k) !== sum.get(k)).sort();
+}

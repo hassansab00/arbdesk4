@@ -5,6 +5,10 @@
 // the trade, includes the accuracy of the city based on our historical data").
 // Not part of CI: it builds the app and drives Chromium.
 //
+// It also checks the checkpoint scoreboard (R28, Hassan 10 Oct, option 1):
+// Tokyo's checkpoints scored against the market beside its day-ahead record,
+// and every city's behind "Every city, the same table".
+//
 //   node tests/render/predictive-popup.render.cjs        (from web/)
 //   SKIP_BUILD=1 node tests/render/predictive-popup.render.cjs
 //
@@ -73,6 +77,28 @@ const TABLES = {
     { city_key: 'tokyo', model: 'gfs_seamless', lead_days: 1, n_days: 30, mae_c: 1.3, bias_c: -0.4, error_sd_c: 1.5, worst_c: 4.0, hit_rate_pct: 27, within_1c_pct: 50 },
   ],
   derived_weather_peak: [{ city_key: 'tokyo', month: MONTH, peak_hour_local: 13.5, window_width_h: 3.0, n_days: 61 }],
+  v_city_hit_history: [1, 2].map((n) => ({
+    city_key: 'tokyo', display_name: 'Tokyo', unit: 'C', for_date: day(-n), ladder_bands: 8, model_bands: 8,
+    observed_max_c: 24.3, forecast_max_c: 24.8, error_c: -0.5, sigma_c: 1.1, confidence: 0.6, regime_label: 'normal',
+    centre_c: 24.6, centre_error_c: 0.3, winner: '24°C', model_call: '24°C', model_call_prob: 0.31,
+    model_prob_on_winner: 0.31, model_hit: true, brier_model: 0.7, brier_uniform: 0.875, called_at: `${day(-n - 1)}T14:00:00Z`,
+    hours_before_day: 1, head_to_head: true, bands_scored: 8, market_call: '24°C', market_call_price: 0.4,
+    market_prob_on_winner: 0.4, market_hit: true, brier_model_common: 0.7, brier_market: 0.6, brier_uniform_common: 0.875 })),
+  // Tokyo's evening-before and after-peak rows, and the totals they add up to
+  // with Lima's; Lima's postpeak has no common day.
+  v_checkpoint_scoreboard: [
+    ['tokyo', 'd1_eve', 1, false, 12, 5, 0.29, 12, 6, 10, 0.74, 1.6, 0.875, 0.7512, 0.6431, 1.62, 1.24],
+    ['tokyo', 'postpeak_1h', 6, true, 12, 9, 0.66, 12, 11, 10, 0.4, 0.95, 0.875, 0.41, 0.15, 0.97, 0.27],
+    ['lima', 'd1_eve', 1, false, 3, 2, 0.3, 3, 1, 2, 0.6, 1.2, 0.875, 0.55, 0.7, 1.1, 1.5],
+    ['lima', 'postpeak_1h', 6, true, 3, 3, 0.7, 0, 0, 0, 0.2, 0.5, 0.875, null, null, null, null],
+    ['all', 'd1_eve', 1, false, 15, 7, 0.292, 15, 7, 12, 0.712, 1.52, 0.875, 0.7177, 0.6526, 1.533, 1.283],
+    ['all', 'postpeak_1h', 6, true, 15, 12, 0.668, 12, 11, 10, 0.36, 0.86, 0.875, 0.41, 0.15, 0.97, 0.27],
+  ].map(([city_key, checkpoint, checkpoint_order, after_peak, city_days, model_hits, model_claimed, market_called,
+          market_hits, market_scored, brier_model, log_loss_model, brier_uniform, brier_model_common, brier_market,
+          log_loss_model_common, log_loss_market]) => ({
+    checkpoint, checkpoint_order, after_peak, city_key, city_days, model_hits, model_claimed, market_called, market_hits,
+    market_scored, brier_model, log_loss_model, brier_uniform, brier_model_common, brier_market, log_loss_model_common,
+    log_loss_market, first_day: day(-12), last_day: day(-1) })),
 };
 
 // FIVE MEMBERS whose maxima on Tokyo's tomorrow are 23.2, 24.4, 24.6, 25.1 and
@@ -161,8 +187,34 @@ async function waitFor(url, ms = 60000) {
     // Escape closes it.
     await page.keyboard.press('Escape');
     await dialog.waitFor({ state: 'detached', timeout: 5000 });
+
+    // THE CHECKPOINT SCOREBOARD beside the day-ahead record (R28).
+    const board = page.getByRole('table', { name: 'Tokyo at each checkpoint' });
+    await board.waitFor({ timeout: 10000 });
+    await page.getByRole('heading', { name: 'Through the day: Tokyo at each checkpoint' }).waitFor();
+    const row = async (t, label) => (await t.locator('tr', { hasText: label }).first().innerText()).replace(/\s+/g, ' ');
+    assert.match(await row(board, 'Evening before'),
+      /^Evening before 12 41\.7% \(5\) 29\.0% 50\.0% \(6 of 12\) 0\.751 \/ 0\.643 on 10 1\.620 \/ 1\.240 0\.740 \/ 0\.875$/);
+    assert.match(await row(board, '1 h after peak'), /^1 h after peak \(answered\) 12 75\.0% \(9\)/);
+    const brierCell = board.locator('tr', { hasText: 'Evening before' }).locator('td').nth(5);
+    assert.equal(await brierCell.evaluate((td) => td.style.color), 'var(--c-bad)', 'the market scored lower: red');
+    // the day-ahead record comes first, the long day table after
+    const order = await page.evaluate(() => {
+      const at = (el) => (el ? el.getBoundingClientRect().top + window.scrollY : NaN);
+      const h = [...document.querySelectorAll('h3')].find((x) => x.textContent.startsWith('Through the day'));
+      const stat = [...document.querySelectorAll('div')].find((x) => x.textContent === 'settled days');
+      const day = [...document.querySelectorAll('th')].find((x) => x.textContent === 'day');
+      return [at(stat), at(h), at(day)];
+    });
+    assert.ok(order[0] < order[1] && order[1] < order[2], `summary, scoreboard, day table: ${order}`);
+    await page.getByText('Every city, the same table').click();
+    const every = page.getByRole('table', { name: 'Every city at each checkpoint' });
+    assert.match(await row(every, 'Evening before'), /^Evening before 15 46\.7% \(7\)/);
+    assert.equal(await page.getByText(/do not add up to the view/).count(), 0, 'Tokyo and Lima add up to the totals');
+    await board.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(OUT, 'predictive-checkpoint-scoreboard.png'), fullPage: false });
     assert.deepEqual(errors, [], 'the page threw');
-    console.log(`PASS: render - Tokyo's card opens its popup: the pick and the market's, the predicted maximum and its input, the usual peak, both ensembles (5 members, median 24.6), every bucket with the platform's probability beside each ensemble's share (25: 33% / 40%), the city's record at every moment and per public model; Escape closes it; screenshot in ${OUT}`);
+    console.log(`PASS: render - Tokyo's card opens its popup: the pick and the market's, the predicted maximum and its input, the usual peak, both ensembles (5 members, median 24.6), every bucket with the platform's probability beside each ensemble's share (25: 33% / 40%), the city's record at every moment and per public model; Escape closes it; the checkpoint scoreboard sits between the day-ahead record and its day table, Tokyo's evening-before row exact and red where the market scored lower, every city's behind its toggle, the totals add up; screenshots in ${OUT}`);
   } finally {
     await browser.close();
     server.kill();

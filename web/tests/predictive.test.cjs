@@ -4,7 +4,8 @@
 // 8 cities unlabelled. Run with: npm run test:routes
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { forwardRows, groupScorecard, pendingDays, localDayEnd, tzOffsetMs, largestLeans, PROB_SUM_TOLERANCE } =
+const { forwardRows, groupScorecard, pendingDays, localDayEnd, tzOffsetMs, largestLeans, PROB_SUM_TOLERANCE,
+        checkpointScores, scoreboardShort } =
   require(path.join(__dirname, '..', '.route-test', 'lib', 'predictive.js'));
 
 // ------------------------------------------------------------ the scorecard
@@ -130,5 +131,65 @@ assert.equal(leans.shown.length, 8);
 assert.equal(leans.total, 48, 'the label can say 8 of 48');
 assert.equal(largestLeans([{ city: 'a', bias: 1 }], 0).shown.length, 1, 'k = 0 shows all');
 
+// ------------------------------------------------ the checkpoint scoreboard
+// R28 (Hassan 10 Oct, option 1). The 'all' rows are v_checkpoint_scoreboard as
+// anon read it on 10 Oct (two of six checkpoints); the city rows are made up so
+// they add up to them, as the grouping sets do (checked live 10 Oct: every
+// checkpoint's 48 city rows summed to its total).
+const SB = [
+  { checkpoint: 'postpeak_1h', checkpoint_order: 6, after_peak: true, city_key: 'all', city_days: 702, model_hits: 516,
+    model_claimed: '0.6718', market_called: 702, market_hits: 635, market_scored: 564, brier_model: '0.4155',
+    log_loss_model: '0.9445', brier_uniform: '0.9091', brier_model_common: '0.4238', brier_market: '0.1419',
+    log_loss_model_common: '0.9791', log_loss_market: '0.2686', first_day: '2026-09-24', last_day: '2026-10-10' },
+  { checkpoint: 'd1_eve', checkpoint_order: 1, after_peak: false, city_key: 'all', city_days: 665, model_hits: 260,
+    model_claimed: '0.2894', market_called: 665, market_hits: 305, market_scored: 590, brier_model: '0.7581',
+    log_loss_model: '1.6370', brier_uniform: '0.9091', brier_model_common: '0.7593', brier_market: '0.6489',
+    log_loss_model_common: '1.6316', log_loss_market: '1.2504', first_day: '2026-09-25', last_day: '2026-10-10' },
+  { checkpoint: 'd1_eve', checkpoint_order: 1, after_peak: false, city_key: 'london', city_days: 15, model_hits: 9,
+    model_claimed: 0.31, market_called: 14, market_hits: 7, market_scored: 12, brier_model: 0.61,
+    log_loss_model: 1.2, brier_uniform: 0.9091, brier_model_common: 0.58, brier_market: 0.64,
+    log_loss_model_common: 1.1, log_loss_market: 1.3, first_day: '2026-09-25', last_day: '2026-10-09' },
+  { checkpoint: 'd1_eve', checkpoint_order: 1, after_peak: false, city_key: 'tokyo', city_days: 650, model_hits: 251,
+    model_claimed: 0.29, market_called: 651, market_hits: 298, market_scored: 578, brier_model: 0.76,
+    log_loss_model: 1.64, brier_uniform: 0.9091, brier_model_common: 0.76, brier_market: 0.649,
+    log_loss_model_common: 1.63, log_loss_market: 1.25, first_day: '2026-09-25', last_day: '2026-10-10' },
+  { checkpoint: 'postpeak_1h', checkpoint_order: 6, after_peak: true, city_key: 'london', city_days: 702, model_hits: 516,
+    model_claimed: 0.67, market_called: 0, market_hits: 0, market_scored: 0, brier_model: 0.42,
+    log_loss_model: 0.94, brier_uniform: 0.9091, brier_model_common: null, brier_market: null,
+    log_loss_model_common: null, log_loss_market: null, first_day: '2026-09-24', last_day: '2026-10-10' },
+];
+{
+  const all = checkpointScores(SB, 'all');
+  assert.deepEqual(all.map((s) => s.checkpoint), ['d1_eve', 'postpeak_1h'], 'in the order of the day, not as read');
+  const eve = all[0];
+  assert.equal(eve.days, 665);
+  assert.equal(eve.hitRate, 260 / 665);
+  assert.equal(eve.claimed, 0.2894, 'numeric arrives as text and is read as a number');
+  assert.equal(eve.marketRate, 305 / 665);
+  assert.equal(eve.common, 590);
+  assert.deepEqual([eve.brierCommon, eve.brierMarket], [0.7593, 0.6489]);
+  assert.deepEqual([eve.logLossCommon, eve.logLossMarket], [1.6316, 1.2504]);
+  assert.equal(eve.brierLeader, 'market', 'the book scored lower than the engine the evening before (10 Oct)');
+  assert.equal(all[1].afterPeak, true);
+
+  const london = checkpointScores(SB, 'london');
+  assert.equal(london[0].brierLeader, 'us');
+  assert.equal(london[0].marketRate, 7 / 14, "the market's rate is over the days it had a favourite");
+  // no common day: no market score, no leader, never a 0 standing in for one
+  assert.equal(london[1].common, 0);
+  assert.equal(london[1].brierMarket, null);
+  assert.equal(london[1].logLossCommon, null);
+  assert.equal(london[1].brierLeader, null);
+  assert.equal(london[1].marketRate, null);
+  assert.deepEqual(checkpointScores(SB, 'paris'), []);
+
+  // london + tokyo = 665 at d1_eve, as the total says; at postpeak_1h the
+  // total's 702 is london's alone, and tokyo is missing nothing there.
+  assert.deepEqual(scoreboardShort(SB), []);
+  assert.deepEqual(scoreboardShort(SB.filter((r) => r.city_key !== 'tokyo')), ['d1_eve'], 'a short read is named');
+  assert.deepEqual(scoreboardShort([]), []);
+}
+
 console.log('predictive: every city reachable in the scorecard (47 + 1 named without rows), 96 of 96 forward rows, '
-  + 'the peak bucket from the distribution, local-day pending states, the lean chart scoped');
+  + 'the peak bucket from the distribution, local-day pending states, the lean chart scoped, '
+  + 'the checkpoint scoreboard in the order of the day with no market score made up and a short read named');
