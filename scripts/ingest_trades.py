@@ -112,7 +112,7 @@ def high_water():
 
 
 def to_rows(trades, by_token, ingested_at):
-    """P0.4's mapping, unchanged. Returns (rows, unmatched)."""
+    """P0.4's mapping, with the trade's transaction hash (R46 part 2). Returns (rows, unmatched)."""
     rows, unmatched = [], 0
     for t in trades:
         token = str(t.get("asset") or "")
@@ -142,6 +142,9 @@ def to_rows(trades, by_token, ingested_at):
             "traded_at": traded_at.isoformat(),
             "proxy_wallet": t.get("proxyWallet") or "",
             "ingested_at": ingested_at,
+            # part of the dedupe key where present (R46 part 2, 20261010190000):
+            # two transactions sharing the other five columns are two trades
+            "transaction_hash": t.get("transactionHash") or None,
         })
     return rows, unmatched
 

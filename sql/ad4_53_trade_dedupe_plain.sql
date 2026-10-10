@@ -55,8 +55,18 @@ alter table public.trades_observed
   alter column proxy_wallet set not null;
 
 -- 2. The same key, on plain columns, so `on_conflict=` can name it.
-create unique index if not exists ad4_uq_trade_dedupe
-  on public.trades_observed (condition_id, traded_at, price, size, proxy_wallet);
+--    Not once the transaction is part of the key (ad4_trade_dedupe_hash.sql,
+--    R46 part 2): separate transactions sharing these five columns are held
+--    then, this index cannot be built, and a re-run must not try (Codex on #366).
+do $$
+begin
+  if not exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'trades_observed'
+                    and column_name = 'transaction_hash') then
+    create unique index if not exists ad4_uq_trade_dedupe
+      on public.trades_observed (condition_id, traded_at, price, size, proxy_wallet);
+  end if;
+end $$;
 
 -- 3. The expression index is now redundant. Dropping it also reclaims the
 --    space it held, which matters on a Nano instance (ad4_50 measured

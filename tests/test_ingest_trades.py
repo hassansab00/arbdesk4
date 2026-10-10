@@ -24,7 +24,17 @@ def test_the_mapping_is_p04s():
     assert r == {"band_id": "b1", "condition_id": "0xc1", "city_key": "nyc", "token_id": "tokY",
                  "side": "BUY", "price": 0.4, "size": 10.0,
                  "traded_at": "2026-09-25T08:40:00+00:00", "proxy_wallet": "0xw",
-                 "ingested_at": "2026-09-25T09:00:00+00:00"}
+                 "ingested_at": "2026-09-25T09:00:00+00:00", "transaction_hash": None}
+
+
+def test_the_transaction_hash_is_sent_for_the_dedupe_key():
+    """R46 part 2: two transactions sharing condition, second, price, size and
+    wallet are two trades; the hash keeps them apart (20261010190000)."""
+    rows, _ = it.to_rows([dict(_trade(1790325600), transactionHash="0xabc"),
+                          dict(_trade(1790325600), transactionHash="0xdef")], {"tokY": BAND}, "x")
+    assert [r["transaction_hash"] for r in rows] == ["0xabc", "0xdef"]
+    rows, _ = it.to_rows([dict(_trade(1790325600), transactionHash="")], {"tokY": BAND}, "x")
+    assert rows[0]["transaction_hash"] is None, "no hash is sent as none, never as ''"
 
 
 def test_proxy_wallet_is_never_null():
