@@ -115,11 +115,17 @@ export function bucketShares(maximaC: number[], unit: Unit, bands: BandBounds[],
   return { shares, unplaced: unplaced / maximaC.length };
 }
 
-/** The request the browser sends for one city and model (asked in GMT, as the record asks). */
+/**
+ * The request the browser sends for one city and model, asked in GMT as the
+ * record asks: yesterday, so a city east of UTC has the whole of its today,
+ * and four UTC days ahead, so a city west of UTC has the whole of its day
+ * after tomorrow (Los Angeles's day +2 ends at 07:00Z on the UTC day +3;
+ * scripts/honest_record.py asks four for the same reason; Codex on #362).
+ */
 export function ensembleUrl(lat: number, lon: number, model: EnsembleModel): string {
   const q = new URLSearchParams({
     latitude: String(lat), longitude: String(lon), hourly: "temperature_2m", models: model,
-    timezone: "GMT", past_days: "1", forecast_days: "3",
+    timezone: "GMT", past_days: "1", forecast_days: "4",
   });
   return `https://ensemble-api.open-meteo.com/v1/ensemble?${q.toString()}`;
 }

@@ -68,6 +68,19 @@ assert.equal(u.host, 'ensemble-api.open-meteo.com');
 assert.equal(u.searchParams.get('models'), 'ecmwf_ifs025');
 assert.equal(u.searchParams.get('timezone'), 'GMT');
 assert.equal(u.searchParams.get('past_days'), '1');
+// Los Angeles's day after tomorrow runs to 07:00Z on the UTC day +3: four UTC
+// days hold all 24 of its hours, three only 17 (under MIN_HOURS).
+assert.equal(u.searchParams.get('forecast_days'), '4');
+{
+  const now = Date.parse('2026-10-10T16:00:00Z');
+  const lastHour = now - (now % 86400000) + (Number(u.searchParams.get('forecast_days')) * 24 - 1) * 3600000;
+  const time = [];
+  for (let t = now - (now % 86400000) - 86400000; t <= lastHour; t += 3600000) time.push(new Date(t).toISOString().slice(0, 16));
+  const flat = { hourly: { time, temperature_2m: time.map(() => 20) } };
+  assert.equal(memberMaxima(flat, 'America/Los_Angeles', '2026-10-12').length, 1);
+  const short = { hourly: { time: time.slice(0, -24), temperature_2m: time.slice(0, -24).map(() => 20) } };
+  assert.deepEqual(memberMaxima(short, 'America/Los_Angeles', '2026-10-12'), []);   // three days: 17 hours
+}
 assert.deepEqual(runTimes({ last_run_initialisation_time: 1790553600 }), { init: '2026-09-28T00:00:00.000Z', available: null });
 assert.deepEqual(runTimes(null), { init: null, available: null });
 
