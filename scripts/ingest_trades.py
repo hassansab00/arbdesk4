@@ -339,11 +339,202 @@ def main(budget_s=BUDGET_S, now=None):
     return detail
 
 
+# ---------------------------------------------------------------------------
+# THE TRADES BEFORE WE KNEW THE MARKET (R46, WXPredict build phase 2.4, 10 Oct).
+#
+# The hourly cycle above reads every OPEN market from one mark, the newest
+# trade stored less OVERLAP. A market enters `bands` only when n8n's P0.2
+# discovery first asks for it, at 03:20, 09:20, 15:20 and 21:20Z, for the next
+# day's events; the venue lists them about a day earlier and they trade from
+# then. Their trades before discovery are older than the mark, so no run ever
+# asked for them. Measured 10 Oct (tools/wxpredict/trade_history.py archive):
+# for the 10 sampled events of 1-4 Oct the API serves 15,726 trades and we
+# hold 13,113 rows; of the 2,506 never stored, 2,484 were traded before the
+# market's markets.first_seen_at (e.g. Tokyo's 1 Oct event, listed 29 Sep
+# 04:57Z, first seen 30 Sep 03:20Z). Of the rest, 22 are trades at 0.999 placed
+# 35-52 h after first sight, after the market left `open_bands`, and 107 were
+# merged by the dedupe key (separate transactions sharing condition, second,
+# price, size and wallet): both named in R46, neither fixed here.
+#
+# So each market first seen in the last BACKFILL_HOURS is asked once more for
+# every trade up to OVERLAP after it was first seen (the API's `end`, unix
+# seconds), i.e. exactly the window the hourly cycle never read, and what is
+# new is inserted through the same insert_trade_prints (duplicates turned
+# away). It runs in pipeline_intraday (02:36, 08:36, 14:36, 20:36Z), not in
+# the tick, so the tick's 60 s are untouched: 13 h covers every discovery run
+# twice (a discovery at 03:20Z is 5.3 h before the 08:36Z run and 11.3 h
+# before the 14:36Z run), so one failed run is made good by the next. The
+# backfill runs read BACKFILL_FIRST_HOURS until one has finished whole ('ok'),
+# to reach every market discovered before this existed.
+#
+# A RUN THAT STOPS SHORT IS RESUMED (Codex on #365). The markets a run did not
+# reach, or failed on, are logged as `pending` and read FIRST by the next run,
+# whether or not they are still inside its window, so a slow spell cannot
+# leave a cohort's tail to age out unread. A pending market is carried for at
+# most BACKFILL_LOOKBACK after it was first seen. A window that reached the
+# offset cap is not retried: asking again gives the same answer.
+#
+# THE WORKFLOWS PAGE'S SWITCH IS OBEYED (Codex on #365): with P0.4 off or
+# manual there, the backfill writes nothing, as the hourly run does.
+#
+# THE OFFSET CAP. The API refuses an offset over 10,000. A window whose answer
+# reaches it is asked again in halves with `start` and `end`, down to
+# BACKFILL_MAX_DEPTH halvings; one that still reaches it is logged, never
+# called whole.
+BACKFILL_JOB = "P0.4_trade_backfill"
+BACKFILL_HOURS = 13
+BACKFILL_FIRST_HOURS = 60
+BACKFILL_BUDGET_S = 240.0
+BACKFILL_LOOKBACK = dt.timedelta(days=7)    # the earliest a window starts: listed ~1-2 days before first sight
+BACKFILL_MAX_DEPTH = 12
+
+
+def recent_markets(since, pending=()):
+    """{market_id: (first_seen_at, [bands])} for every market first seen at or
+    after `since`, and for every market in `pending` wherever it was first seen."""
+    rows = rest_all("bands", {
+        "select": "band_id,token_yes,token_no,condition_id,"
+                  "markets!inner(market_id,city_key,resolution_date,closed,first_seen_at)",
+        "markets.first_seen_at": f"gte.{since.isoformat()}",
+        "condition_id": "not.is.null"}, order="band_id.asc")
+    if pending:
+        rows += rest_all("bands", {
+            "select": "band_id,token_yes,token_no,condition_id,"
+                      "markets!inner(market_id,city_key,resolution_date,closed,first_seen_at)",
+            "markets.market_id": "in.(" + ",".join(str(m) for m in pending) + ")",
+            "condition_id": "not.is.null"}, order="band_id.asc")
+    out, seen_bands = {}, set()
+    for b in rows:
+        if b["band_id"] in seen_bands:
+            continue
+        seen_bands.add(b["band_id"])
+        m = b["markets"]
+        seen = dt.datetime.fromisoformat(str(m["first_seen_at"]).replace("Z", "+00:00"))
+        out.setdefault(m["market_id"], (seen, []))[1].append(b)
+    return out
+
+
+def fetch_window(ids, start, end, get=requests.get, depth=0, sleep=time.sleep):
+    """Every trade on these markets with start <= timestamp <= end (unix s): (trades, whole).
+
+    `whole` is False only when a window still reaches the offset cap after
+    BACKFILL_MAX_DEPTH halvings. A 429 is waited out once a page, as
+    fetch_batch does (Retry-After, else RATE_LIMIT_WAIT_S, never more than
+    RATE_LIMIT_MAX_WAIT_S); a second one fails the market for this run."""
+    out = []
+    for page in range(MAX_PAGES + 1):              # offsets 0 to 10,000: all the API gives
+        params = {"market": ",".join(ids), "start": int(start), "end": int(end),
+                  "limit": PAGE, "offset": page * PAGE}
+        r = get(API, params=params, headers=UA, timeout=20)
+        if getattr(r, "status_code", 200) == 429:
+            after = _retry_after(r)
+            sleep(min(RATE_LIMIT_WAIT_S if after is None else max(0.0, after), RATE_LIMIT_MAX_WAIT_S))
+            r = get(API, params=params, headers=UA, timeout=20)
+        r.raise_for_status()
+        got = r.json()
+        if not isinstance(got, list):
+            raise ValueError(f"trades API returned {type(got).__name__}, not a list")
+        out.extend(got)
+        if len(got) < PAGE:
+            return out, True
+    # every page full up to the cap: ask again in halves
+    if depth >= BACKFILL_MAX_DEPTH or end - start < 2:
+        return out, False
+    mid = (int(start) + int(end)) // 2
+    a, wa = fetch_window(ids, start, mid, get, depth + 1, sleep)
+    b, wb = fetch_window(ids, mid + 1, end, get, depth + 1, sleep)
+    return a + b, wa and wb
+
+
+def previous_backfill():
+    """(ever_ok, pending): whether a backfill has ever finished whole ('ok'),
+    and the markets the last run that read anything left pending. Until one has
+    finished whole, each run reads BACKFILL_FIRST_HOURS."""
+    ok = rest("ingest_log", [("select", "logged_at"), ("job", f"eq.{BACKFILL_JOB}"),
+                             ("status", "eq.ok"), ("order", "logged_at.desc"), ("limit", "1")])
+    last = rest("ingest_log", [("select", "detail"), ("job", f"eq.{BACKFILL_JOB}"),
+                               ("status", "neq.skipped"), ("order", "logged_at.desc"), ("limit", "1")])
+    pending = ((last[0].get("detail") or {}).get("pending") or []) if last else []
+    return bool(ok), [str(m) for m in pending]
+
+
+def backfill(budget_s=BACKFILL_BUDGET_S, hours=None, now=None, get=requests.get):
+    """Read each recently discovered market's trades from before it was discovered."""
+    started = time.monotonic()
+    now = now or dt.datetime.now(dt.timezone.utc)
+    on, mode = switched_on()
+    if not on:
+        detail = {"summary": f"P0.4_trade_history is {mode} on the Workflows page - backfill not run",
+                  "mode": mode}
+        log_run(BACKFILL_JOB, "skipped", 0, detail)
+        print(detail["summary"])
+        return {**detail, "status": "skipped"}
+    ever_ok, carried = previous_backfill()
+    first_run = not ever_ok
+    hours = hours if hours is not None else (BACKFILL_FIRST_HOURS if first_run else BACKFILL_HOURS)
+    markets = recent_markets(now - dt.timedelta(hours=hours), carried)
+    dropped = [m for m, (seen, _) in markets.items() if str(m) in carried and seen < now - BACKFILL_LOOKBACK]
+    for m in dropped:
+        del markets[m]
+    ingested_at = now.isoformat()
+    done = fetched = new = unmatched = 0
+    errors, capped, left, failed = [], [], [], []
+    slowest = 0.0
+    # the markets the last run did not finish come first, then the oldest first sight
+    order = sorted(markets.items(), key=lambda kv: (str(kv[0]) not in carried, kv[1][0], str(kv[0])))
+    for market_id, (seen, bands) in order:
+        if time.monotonic() - started + slowest > budget_s:
+            left.append(market_id)
+            continue
+        t0 = time.monotonic()
+        by_token = {str(b[k]): b for b in bands for k in ("token_yes", "token_no") if b.get(k)}
+        ids = sorted({b["condition_id"] for b in bands})
+        end = seen + OVERLAP
+        try:
+            raw, whole = fetch_window(ids, (seen - BACKFILL_LOOKBACK).timestamp(), end.timestamp(), get=get)
+            if not whole:
+                capped.append(market_id)
+            rows, um = to_rows(raw, by_token, ingested_at)
+            fetched += len(rows)
+            unmatched += um
+            new += insert_new(rows)
+            done += 1
+        except Exception as e:                       # noqa: BLE001 - counted and reported
+            errors.append(f"{market_id}: {str(e)[:160]}")
+            failed.append(market_id)
+        slowest = max(slowest, time.monotonic() - t0)
+    rollups = None
+    if new:
+        try:
+            rollups = rpc("refresh_derived")
+        except Exception as e:                       # noqa: BLE001
+            errors.append(f"refresh_derived: {str(e)[:160]}")
+    status = "error" if errors and not done else ("attention" if errors or capped or left else "ok")
+    detail = {"hours": hours, "first_run": first_run, "markets": len(markets), "read": done,
+              "carried": len(carried), "dropped": [str(m) for m in dropped],
+              "left": len(left), "pending": [str(m) for m in failed + left],
+              "capped": capped[:10], "fetched": fetched, "new": new,
+              "unmatched": unmatched, "errors": errors[:5], "seconds": round(time.monotonic() - started, 1),
+              "budget_s": budget_s, "rollups": rollups,
+              "summary": f"{new} trades from before discovery, {done} of {len(markets)} markets first seen "
+                         f"in the last {hours} h ({fetched} read)"}
+    log_run(BACKFILL_JOB, status, new, detail)
+    print(detail["summary"], "| errors:", len(errors))
+    detail["status"] = status
+    return detail
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--budget", type=float, default=BUDGET_S)
+    ap.add_argument("--budget", type=float, default=None)
+    ap.add_argument("--backfill", action="store_true",
+                    help="read the trades of recently discovered markets from before their discovery (R46)")
+    ap.add_argument("--hours", type=float, default=None, help="--backfill: markets first seen this many hours back")
     a = ap.parse_args()
-    d = main(budget_s=a.budget)
+    if a.backfill:
+        d = backfill(budget_s=a.budget if a.budget is not None else BACKFILL_BUDGET_S, hours=a.hours)
+        sys.exit(1 if d["status"] == "error" else 0)
+    d = main(budget_s=a.budget if a.budget is not None else BUDGET_S)
     # Only a run in which nothing worked fails the step; partial trouble is in
     # the log row, and the tick it rides with must not turn red for a page.
     sys.exit(1 if d["status"] == "error" else 0)

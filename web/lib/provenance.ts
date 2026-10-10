@@ -137,6 +137,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
   ],
   "derived_band_day_volume": [
     {
+      "cadence": "several times a day",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/ingest_trades.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
+    },
+    {
       "cadence": "hourly",
       "file": "tick.yml",
       "how": "scripts/ingest_trades.py",
@@ -211,6 +218,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
     }
   ],
   "derived_city_day_volume": [
+    {
+      "cadence": "several times a day",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/ingest_trades.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
+    },
     {
       "cadence": "hourly",
       "file": "tick.yml",
@@ -750,6 +764,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
     }
   ],
   "trades_observed": [
+    {
+      "cadence": "several times a day",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/ingest_trades.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
+    },
     {
       "cadence": "hourly",
       "file": "tick.yml",
