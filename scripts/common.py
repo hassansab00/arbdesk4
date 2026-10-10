@@ -3,6 +3,7 @@ import os, sys, time, json
 import requests
 import threading
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 
 # ONE CONNECTION POOL FOR THE PROCESS (plan v2 P6.1). Every call used to be a
 # bare requests.get/post: a new TCP and TLS handshake per request. Measured on
@@ -803,6 +804,48 @@ def retry(fn, tries=4, wait=5, label=""):
                 print(f"  ! {label} gave up after {tries}: {e}", file=sys.stderr)
                 return None
             time.sleep(wait * (a + 1))
+
+
+def ask_in_rounds(keys, ask, workers, waits, left=lambda: None, min_left=5):
+    """Ask every key once, `workers` at a time; then ask the keys still without
+    an answer (ask returned None) again after each wait in `waits`, for as long
+    as the run's deadline allows: a round starts only when `left()` (seconds,
+    None for no deadline) holds the wait and `min_left` more. A key that has
+    answered is never asked again.
+
+    Returns ({key: answer}, rounds), one entry per round run: when it started
+    (seconds after the first), how many keys it asked and how many answered,
+    and its slowest answer in seconds (None when none answered).
+
+    Open-Meteo stalls a request now and then, and asking the same URL again at
+    once stalls again while every other URL answers (scripts/honest_record.py,
+    10 Oct); spreading the asks over the run's spare time is what can reach it.
+    """
+    answers, todo, rounds = {}, list(keys), []
+    t0 = time.monotonic()
+
+    def timed(key):
+        t = time.monotonic()
+        answer = ask(key)
+        return answer, time.monotonic() - t
+
+    with ThreadPoolExecutor(workers) as pool:
+        for n in range(len(waits) + 1):
+            if not todo:
+                break
+            if n:
+                s = left()
+                if s is not None and s < waits[n - 1] + min_left:
+                    break
+                time.sleep(waits[n - 1])
+            started = time.monotonic() - t0
+            got = list(pool.map(timed, todo))
+            answered = [secs for (answer, secs) in got if answer is not None]
+            answers.update((key, answer) for key, (answer, _) in zip(todo, got) if answer is not None)
+            rounds.append({"after_s": round(started, 1), "asked": len(todo), "answered": len(answered),
+                           "slowest_answer_s": round(max(answered), 2) if answered else None})
+            todo = [key for key in todo if key not in answers]
+    return answers, rounds
 
 
 # model_versions cache, so one run resolves each label once

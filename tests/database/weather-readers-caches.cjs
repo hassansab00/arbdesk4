@@ -73,7 +73,22 @@ const OLD_CLIMATE = `
          case when coalesce(s.n_days, 0) >= 15 then s.n_days else r.n_days end as baseline_days
     from today t left join seasonal s on s.city_key = t.city_key left join recent r on r.city_key = t.city_key;`;
 
-const CITIES = { nyc: 'America/New_York', tokyo: 'Asia/Tokyo', reykjavik: null };
+// THE CUT DAY ALWAYS COUNTS. The prune below cuts at now() - 3 days, so the
+// local hour it cuts each city at is the hour the suite runs. Early in the
+// UTC day it falls after nyc's last reading of a day and before tokyo's and
+// reykjavik's afternoon peak, the old function sees the same peaks, and the
+// guard in part 3 failed (10 Oct, 03:59Z). Run with the clock moved to :07
+// and :37 past every UTC hour, it failed at the six from 03:37 to 06:07Z.
+// So one more city takes the fixed zone that puts the cut between 20:00 and
+// 21:00 local whenever the suite runs: its cut day keeps under 12 readings,
+// which the old function leaves out. With it all 48 passed. (Etc/GMT-N is
+// UTC+N.)
+const EVENING = (() => {
+  let off = (20 - new Date().getUTCHours() + 24) % 24;
+  if (off > 14) off -= 24;
+  return `Etc/GMT${off > 0 ? '-' : '+'}${Math.abs(off)}`;
+})();
+const CITIES = { nyc: 'America/New_York', tokyo: 'Asia/Tokyo', reykjavik: null, evening: EVENING };
 const CLIMB = 'select * from v_city_climb_profile_live order by city_key, local_hour';
 const CLIMATE = 'select * from v_city_climate order by city_key';
 const PEAKS = 'select city_key, month, peak_hour_local, window_width_h, n_days from derived_weather_peak order by 1, 2';

@@ -103,7 +103,34 @@ def test_the_run_asks_in_that_order(monkeypatch, capsys):
     monkeypatch.setattr(er, "WORKERS", 1)
     monkeypatch.setattr(er, "read_rows", lambda: [_row("a", "ecmwf_ifs025", "2026-10-08T02:52:46+00:00"),
                                                   _row("a", "gfs025", "2026-10-08T02:52:46+00:00")])
-    monkeypatch.setattr(er, "fetch_city", lambda c, runs, fetched_at: asked.append(c["city_key"]) or ([], []))
+    monkeypatch.setattr(er, "RETRY_WAITS", ())
+    monkeypatch.setattr(er, "fetch_model", lambda c, model: asked.append(c["city_key"]))
     assert er.main(["--dry-run"]) == 0
-    assert asked == ["b", "c", "a"]
+    assert list(dict.fromkeys(asked)) == ["b", "c", "a"]
     assert "'asked_first': ['b', 'c', 'a']" in capsys.readouterr().out
+
+
+def test_a_model_left_unanswered_is_asked_again_later_and_alone(monkeypatch, capsys):
+    """10 Oct: four asks stalled together and each stalled again when asked
+    5 s later; the run ended at 136 s of its 360 with them missing. Now the
+    missing (city, model) alone is asked again after each wait while the
+    deadline leaves time, and the rounds are in the run's detail."""
+    import common
+    cities = [{"city_key": k, "latitude": 1.0, "longitude": 2.0, "timezone": "UTC"} for k in ("a", "b")]
+    asked, slept = [], []
+    monkeypatch.setattr(common, "get_cities", lambda: cities)
+    monkeypatch.setattr(common.time, "sleep", slept.append)
+    monkeypatch.setattr(er, "_get", lambda *a, **k: None)
+    monkeypatch.setattr(er, "read_rows", lambda: [])
+    monkeypatch.setattr(er, "daily_rows", lambda city, tz, model, *a: [_row(city, model, "2026-10-10T02:52:12+00:00")])
+
+    def fetch_model(c, model):
+        asked.append((c["city_key"], model))
+        stalled = (c["city_key"], model) == ("b", "gfs025") and asked.count(("b", "gfs025")) < 3
+        return None if stalled else {"hourly": {}}
+    monkeypatch.setattr(er, "fetch_model", fetch_model)
+    assert er.main(["--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert asked.count(("b", "gfs025")) == 3 and len(asked) == 6 and slept == list(er.RETRY_WAITS[:2])
+    assert "'unreached': {}" in out and "'rows_new': 4" in out
+    assert "'rounds': [{'after_s'" in out

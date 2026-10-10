@@ -79,6 +79,12 @@ EVAL_DAYS = 30
 # run (the labels, the two files, four fits, two held-out checks) took 14.8 s
 # on 7 Oct, run locally on the repo mirror's rows: 210 s leaves it 90 s of
 # the step's 300 (tests/test_the_honest_station_model.py).
+#
+# From 10 Oct a request with no answer is asked again in rounds spread over
+# these 210 s (honest_record.RETRY_WAITS), the missing part only. The run was
+# partial on 5 of its 7 logged runs from 2 to 9 Oct (ingest_log; 7 Oct's was
+# killed and logged nothing); on 8 Oct it missed wuhan, lucknow, paris and
+# houston.
 FETCH_SECONDS = 210
 
 
@@ -373,7 +379,8 @@ def main(argv=None):
     active = {c["city_key"] for c in cities}
     history = assemble([r for r in hr.read_rows(hr.BEST_MATCH_FILE) if r[0] in active],
                        [r for r in hr.read_rows(hr.MODELS_FILE) if r[0] in active], labels)
-    fbm, fmd, unreached = hr.forward_rows(cities, now)
+    rounds = []
+    fbm, fmd, unreached = hr.forward_rows(cities, now, rounds)
     forward = assemble([hr._text(r) for r in fbm], [hr._text(r) for r in fmd], labels)
     previous = load_previous(rest_all, as_of)
     p39 = load_p39(rest_all, as_of)
@@ -423,7 +430,7 @@ def main(argv=None):
 
     detail = {"as_of": as_of.isoformat(), "version": version, "cells": len(coef_rows),
               "forward": len(out_rows), "forward_with_p39": sum(1 for r in out_rows if r["blend_c"] is not None),
-              "unreached": unreached, "chosen": chosen_by, "held_out": scores,
+              "unreached": unreached, "rounds": rounds, "chosen": chosen_by, "held_out": scores,
               "stepped": sum(1 for a, _ in steps.values() if a < 1.0),
               "pooled_cities": sum(1 for _, n in steps.values() if n < MIN_CITY_DAYS),
               "priors": {"bound_c": BOUND_C, "min_city_days": MIN_CITY_DAYS, "max_step_c": MAX_STEP_C,
