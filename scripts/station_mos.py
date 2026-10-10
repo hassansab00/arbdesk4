@@ -80,11 +80,13 @@ EVAL_DAYS = 30
 # on 7 Oct, run locally on the repo mirror's rows: 210 s leaves it 90 s of
 # the step's 300 (tests/test_the_honest_station_model.py).
 #
-# From 10 Oct a request with no answer is asked again in rounds spread over
-# these 210 s (honest_record.RETRY_WAITS), the missing part only. The run was
-# partial on 5 of its 7 logged runs from 2 to 9 Oct (ingest_log; 7 Oct's was
-# killed and logged nothing); on 8 Oct it missed wuhan, lucknow, paris and
-# houston.
+# From 10 Oct the current runs are asked honest_record.CHUNK cities a request,
+# one request at a time, and a chunk with no answer is asked again in rounds
+# spread over these 210 s (honest_record.RETRY_WAITS). The run was partial on
+# 5 of its 7 logged runs from 2 to 9 Oct (ingest_log; 7 Oct's was killed and
+# logged nothing). On 10 Oct, asking one city a request with 20 s each, 24 of
+# 28 consecutive requests hung (04:59:25-05:01:27Z) and the run missed 13
+# cities.
 FETCH_SECONDS = 210
 
 

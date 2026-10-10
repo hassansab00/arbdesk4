@@ -104,33 +104,70 @@ def test_the_run_asks_in_that_order(monkeypatch, capsys):
     monkeypatch.setattr(er, "read_rows", lambda: [_row("a", "ecmwf_ifs025", "2026-10-08T02:52:46+00:00"),
                                                   _row("a", "gfs025", "2026-10-08T02:52:46+00:00")])
     monkeypatch.setattr(er, "RETRY_WAITS", ())
-    monkeypatch.setattr(er, "fetch_model", lambda c, model: asked.append(c["city_key"]))
+    monkeypatch.setattr(er, "CHUNK", 1)
+    monkeypatch.setattr(er, "fetch_model", lambda chunk, model: asked.append(chunk[0]["city_key"]))
     assert er.main(["--dry-run"]) == 0
     assert list(dict.fromkeys(asked)) == ["b", "c", "a"]
     assert "'asked_first': ['b', 'c', 'a']" in capsys.readouterr().out
 
 
 def test_a_model_left_unanswered_is_asked_again_later_and_alone(monkeypatch, capsys):
-    """10 Oct: four asks stalled together and each stalled again when asked
-    5 s later; the run ended at 136 s of its 360 with them missing. Now the
-    missing (city, model) alone is asked again after each wait while the
-    deadline leaves time, and the rounds are in the run's detail."""
+    """10 Oct: four asks hung together and each hung again when asked 5 s
+    later; the run ended at 136 s of its 360 with them missing. Now the cities
+    go in chunks, one request a model, and a chunk's missing model alone is
+    asked again after each wait while the deadline leaves time; the rounds are
+    in the run's detail."""
     import common
-    cities = [{"city_key": k, "latitude": 1.0, "longitude": 2.0, "timezone": "UTC"} for k in ("a", "b")]
+    cities = [{"city_key": k, "latitude": 1.0, "longitude": 2.0, "timezone": "UTC"} for k in ("a", "b", "c")]
     asked, slept = [], []
     monkeypatch.setattr(common, "get_cities", lambda: cities)
     monkeypatch.setattr(common.time, "sleep", slept.append)
+    monkeypatch.setattr(er, "CHUNK", 2)
     monkeypatch.setattr(er, "_get", lambda *a, **k: None)
     monkeypatch.setattr(er, "read_rows", lambda: [])
-    monkeypatch.setattr(er, "daily_rows", lambda city, tz, model, *a: [_row(city, model, "2026-10-10T02:52:12+00:00")])
+    monkeypatch.setattr(er, "daily_rows",
+                        lambda city, tz, model, js, *a: [_row(city, model, "2026-10-10T02:52:12+00:00")] if js == city else [])
 
-    def fetch_model(c, model):
-        asked.append((c["city_key"], model))
-        stalled = (c["city_key"], model) == ("b", "gfs025") and asked.count(("b", "gfs025")) < 3
-        return None if stalled else {"hourly": {}}
+    def fetch_model(chunk, model):
+        key = (tuple(c["city_key"] for c in chunk), model)
+        asked.append(key)
+        if key == (("c",), "gfs025") and asked.count(key) < 3:
+            return None
+        return [c["city_key"] for c in chunk]
     monkeypatch.setattr(er, "fetch_model", fetch_model)
     assert er.main(["--dry-run"]) == 0
     out = capsys.readouterr().out
-    assert asked.count(("b", "gfs025")) == 3 and len(asked) == 6 and slept == list(er.RETRY_WAITS[:2])
-    assert "'unreached': {}" in out and "'rows_new': 4" in out
+    assert asked.count((("c",), "gfs025")) == 3 and len(asked) == 6 and slept == list(er.RETRY_WAITS[:2])
+    assert sorted(set(asked)) == [(("a", "b"), "ecmwf_ifs025"), (("a", "b"), "gfs025"),
+                                  (("c",), "ecmwf_ifs025"), (("c",), "gfs025")]
+    assert "'unreached': {}" in out and "'rows_new': 6" in out
     assert "'rounds': [{'after_s'" in out
+
+
+def test_a_chunk_never_answered_leaves_each_of_its_cities_missing(monkeypatch, capsys):
+    import common
+    cities = [{"city_key": k, "latitude": 1.0, "longitude": 2.0, "timezone": "UTC"} for k in ("a", "b", "c")]
+    monkeypatch.setattr(common, "get_cities", lambda: cities)
+    monkeypatch.setattr(common.time, "sleep", lambda s: None)
+    monkeypatch.setattr(er, "CHUNK", 2)
+    monkeypatch.setattr(er, "_get", lambda *a, **k: None)
+    monkeypatch.setattr(er, "read_rows", lambda: [])
+    monkeypatch.setattr(er, "daily_rows", lambda *a: [])
+    monkeypatch.setattr(er, "fetch_model",
+                        lambda chunk, model: None if model == "ecmwf_ifs025" and chunk[0]["city_key"] == "a"
+                        else [c["city_key"] for c in chunk])
+    assert er.main(["--dry-run"]) == 0
+    assert "'unreached': {'a': ['ecmwf_ifs025'], 'b': ['ecmwf_ifs025']}" in capsys.readouterr().out
+
+
+def test_a_chunk_is_one_request_and_a_short_answer_is_none(monkeypatch):
+    seen = []
+    cities = [{"city_key": k, "latitude": 1.0 + i, "longitude": 5.0 + i} for i, k in enumerate(("a", "b"))]
+    monkeypatch.setattr(er, "_deadline", None)
+    monkeypatch.setattr(er, "_get", lambda url, params, label, tries=1: seen.append(params) or [{"x": 1}, {"x": 2}])
+    assert er.fetch_model(cities, "gfs025") == [{"x": 1}, {"x": 2}]
+    assert seen[-1]["latitude"] == "1.0,2.0" and seen[-1]["longitude"] == "5.0,6.0" and seen[-1]["models"] == "gfs025"
+    monkeypatch.setattr(er, "_get", lambda url, params, label, tries=1: [{"x": 1}])
+    assert er.fetch_model(cities, "gfs025") is None
+    monkeypatch.setattr(er, "_get", lambda url, params, label, tries=1: {"x": 1})
+    assert er.fetch_model(cities[:1], "gfs025") == [{"x": 1}]
