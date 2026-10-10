@@ -1,11 +1,13 @@
-"""WXPredict build, step 2.4: does the venue keep every past trade of these markets?
+"""WXPredict build, step 2.4: does the venue still serve the trades of settled markets?
 
 The training table has each bucket's hourly price (prices-history) but no
 volume. Polymarket's data API (`/trades`, the one scripts/ingest_trades.py
 reads every hour) is asked for the trades of settled events, and each
-bucket's trades are checked against Gamma's own lifetime `volume` for it:
-the sum of the trades' sizes (shares) must equal it. A bucket that does is
-COMPLETE: every trade the venue counted is in the answer.
+bucket's summed trade sizes (shares) are compared with Gamma's own lifetime
+`volume` for it. A bucket whose sum equals it is a VOLUME MATCH. That is
+agreement between two of the venue's own figures, not proof that every
+trade came back: Gamma's figure is itself off on some buckets (below), and
+missing and extra trades could net to it (Codex on #364).
 
 THE SAMPLE. EVENTS_PER_MONTH events from every month of
 data/training/market_history/events.csv.gz (closed, one winner, the "main"
@@ -22,17 +24,20 @@ THE REQUESTS, measured 10 Oct before this was written:
     788 trades);
   * one request at a time, PAUSE_S apart.
 
-A BUCKET IS ONE OF THREE: `complete` (sizes sum to Gamma's volume within
-TOL), `no_gamma_volume` (Gamma gives no volume, so it cannot be checked), or
-`mismatch` (it differs; the ratio is kept, and it runs both ways, so Gamma's
-figure is not exact truth either).
+A BUCKET IS ONE OF THREE: `volume_match` (sizes sum to Gamma's volume
+within TOL), `no_gamma_volume` (Gamma gives no volume, so nothing to compare),
+or `volume_differs` (the ratio is kept; it runs both ways, so Gamma's figure
+is not exact truth either).
 
 AGAINST OUR OWN CAPTURE (`archive`). scripts/ingest_trades.py has stored the
 same API's prints every hour, archived in data/archive/trades. For the
 sampled events whose whole life falls inside the archive's unbroken span
 (ARCHIVE_FROM on), the API is asked again and every trade matched on the
 archive's own key (condition, second, price, size, wallet): what the API
-serves that we never stored, and what we stored that it no longer serves.
+serves that we never stored, what we stored that it no longer serves (the one
+completeness check here that does not lean on Gamma), and the row deficit:
+the API's trades less the rows we hold, which also counts the trades the
+dedupe key merged into one row (Codex on #364).
 
 WHAT IT WRITES: data/eval/wxpredict/trade_history_probe.json, the sample's
 event ids, every bucket's trade count, size sum and Gamma volume, the
@@ -137,9 +142,9 @@ def sample():
 
 
 def kind(b):
-    if b['complete']:
-        return 'complete'
-    return 'no_gamma_volume' if not b['gamma_volume'] else 'mismatch'
+    if b['volume_match']:
+        return 'volume_match'
+    return 'no_gamma_volume' if not b['gamma_volume'] else 'volume_differs'
 
 
 def summarise(rows, months):
@@ -147,24 +152,24 @@ def summarise(rows, months):
     per_month = {}
     for r in rows:
         m = per_month.setdefault(r['date'][:7], {'events': 0, 'buckets': 0, 'trades': 0, 'buckets_with_no_trade': 0,
-                                                 'complete': 0, 'no_gamma_volume': 0, 'mismatch': 0})
+                                                 'volume_match': 0, 'no_gamma_volume': 0, 'volume_differs': 0})
         m['events'] += 1
         m['trades'] += r['trades']
         for b in r['buckets']:
             m['buckets'] += 1
             m[kind(b)] += 1
             m['buckets_with_no_trade'] += b['trades'] == 0
-    ratios = sorted(b['size'] / b['gamma_volume'] for b in buckets if kind(b) == 'mismatch')
+    ratios = sorted(b['size'] / b['gamma_volume'] for b in buckets if kind(b) == 'volume_differs')
     gv = sum(b['gamma_volume'] for b in buckets)
     return {
         'events': len(rows), 'buckets': len(buckets),
         'kinds': dict(collections.Counter(kind(b) for b in buckets)),
-        'mismatch_ratio': {'n': len(ratios), 'min': ratios[0] if ratios else None,
+        'volume_differs_ratio': {'n': len(ratios), 'min': ratios[0] if ratios else None,
                            'median': ratios[len(ratios) // 2] if ratios else None,
                            'max': ratios[-1] if ratios else None,
                            'above_1': sum(x > 1 for x in ratios)},
-        'mismatch_net_shares_short': round(sum(b['gamma_volume'] - b['size'] for b in buckets
-                                               if kind(b) == 'mismatch'), 2),
+        'volume_differs_net_shares_short': round(sum(b['gamma_volume'] - b['size'] for b in buckets
+                                               if kind(b) == 'volume_differs'), 2),
         'gamma_volume_shares': round(gv, 2),
         'trades': sum(r['trades'] for r in rows),
         'events_asked_by_bucket': sum(r['asked_by'] == 'bucket' for r in rows),
@@ -204,6 +209,11 @@ def archive(doc):
     inside = [k for k in keys if k[1] >= start]
     missed = [k for k in inside if k not in stored]
     distinct = set(keys)
+    # The rows we hold for these trades: one per stored key the API still
+    # serves. The API's trades on those keys beyond one each were merged by
+    # the dedupe key; with the never-stored trades they make the row deficit.
+    held = len(stored & distinct)
+    on_held_keys = sum(1 for k in inside if k in stored)
     by_minute = collections.defaultdict(lambda: [0, 0])
     for k in inside:
         m = dt.datetime.fromtimestamp(k[1], dt.timezone.utc).minute // 10 * 10
@@ -216,6 +226,9 @@ def archive(doc):
         'api_trades_sharing_a_key': len(keys) - len(distinct),
         'never_stored': len(missed), 'never_stored_share': round(len(missed) / len(inside), 4) if inside else None,
         'stored': len(stored), 'stored_no_longer_served': len(stored - distinct),
+        'merged_by_dedupe_key': on_held_keys - held,
+        'row_deficit': len(inside) - held,
+        'row_deficit_share': round((len(inside) - held) / len(inside), 4) if inside else None,
         'never_stored_by_minute_of_hour': {f'{m:02d}-{m + 9:02d}': {'missed': v[0], 'all': v[1]}
                                            for m, v in sorted(by_minute.items())},
         'requests': sess.requests,
@@ -256,14 +269,14 @@ def main():
         rows.append({
             'event_id': e['event_id'], 'slug': e['slug'], 'date': e['date'], 'unit': e['unit'], 'asked_by': how,
             'buckets': [{'condition_id': c, 'trades': n[c], 'size': round(size[c], 6), 'gamma_volume': vol[c],
-                         'complete': abs(size[c] - vol[c]) <= TOL} for c in vol],
+                         'volume_match': abs(size[c] - vol[c]) <= TOL} for c in vol],
             'trades': len(trades),
             'first_trade': min(ts) if ts else None, 'last_trade': max(ts) if ts else None,
             'before_created': sum(1 for x in ts if x < created),
             'after_day_plus_1': sum(1 for x in ts if x > day_end),
         })
         print(f"{e['date']} {e['slug'][:60]:60s} {len(trades):6d} trades, "
-              f"{sum(b['complete'] for b in rows[-1]['buckets'])}/{len(vol)} buckets complete ({how})",
+              f"{sum(b['volume_match'] for b in rows[-1]['buckets'])}/{len(vol)} buckets match Gamma ({how})",
               file=sys.stderr)
     summary = summarise(rows, months)
     summary.update({'requests': sess.requests, 'refused': dict(sess.refused), 'asked_on': asked_on,
