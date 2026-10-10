@@ -403,3 +403,146 @@ def test_a_refused_insert_fails_its_batch(monkeypatch):
     monkeypatch.setattr(it, "_headers", lambda: {})
     with pytest.raises(it.requests.HTTPError, match="insert_trade_prints -> HTTP 400"):
         it.insert_new([{"n": 1}])
+
+
+# ---------------------------------------------------------------------------
+# THE TRADES BEFORE WE KNEW THE MARKET (R46, 10 Oct): each market first seen in
+# the last BACKFILL_HOURS is read up to OVERLAP after it was first seen.
+SEEN = dt.datetime(2026, 10, 10, 3, 20, 57, tzinfo=dt.timezone.utc)
+
+
+class _Paged:
+    """The data API over a fixed list: start/end inclusive, newest first, capped at offset 10,000."""
+
+    def __init__(self, trades):
+        self.trades = sorted(trades, key=lambda t: -t["timestamp"])
+        self.asked = []
+
+    def __call__(self, url, params, headers, timeout):
+        self.asked.append(dict(params))
+        assert params["offset"] <= it.MAX_PAGES * it.PAGE, "asked past the API's offset cap"
+        rows = [t for t in self.trades if params["start"] <= t["timestamp"] <= params["end"]]
+        return _Resp(rows[params["offset"]:params["offset"] + params["limit"]])
+
+
+def test_a_window_is_asked_with_start_and_end_and_a_short_page_ends_it():
+    api = _Paged([_trade(1000 + i) for i in range(1500)] + [_trade(5000)])
+    got, whole = it.fetch_window(["0xa", "0xb"], 1000, 2600, get=api)
+    assert whole and len(got) == 1500, "the trade after `end` is not read"
+    assert [a["offset"] for a in api.asked] == [0, it.PAGE]
+    assert all(a["market"] == "0xa,0xb" and a["start"] == 1000 and a["end"] == 2600 for a in api.asked)
+
+
+def test_a_window_over_the_cap_is_read_in_halves_and_comes_back_whole():
+    n = 25_000
+    api = _Paged([_trade(100_000 + i, size=1 + i % 7) for i in range(n)])
+    got, whole = it.fetch_window(["0xa"], 100_000, 100_000 + n, get=api)
+    assert whole and len(got) == n
+    assert len({t["timestamp"] for t in got}) == n, "the halves meet with no gap and no overlap"
+
+
+def test_a_window_still_over_the_cap_at_the_last_halving_is_not_called_whole(monkeypatch):
+    monkeypatch.setattr(it, "BACKFILL_MAX_DEPTH", 0)
+    api = _Paged([_trade(100_000 + i) for i in range(12_000)])
+    got, whole = it.fetch_window(["0xa"], 100_000, 112_000, get=api)
+    assert not whole and len(got) == (it.MAX_PAGES + 1) * it.PAGE
+
+
+def test_a_429_in_a_window_is_waited_out_once():
+    answers = [_Limited(after=2), _Resp([_trade(5)])]
+    slept = []
+    got, whole = it.fetch_window(["0xa"], 0, 10, get=lambda *a, **k: answers.pop(0), sleep=slept.append)
+    assert whole and len(got) == 1 and slept == [2.0]
+
+
+def _wire_backfill(monkeypatch, markets, ok_before=True, fail=()):
+    """markets: {market_id: (first_seen, n_bands)}"""
+    bands = []
+    for mid, (seen, nb) in markets.items():
+        for i in range(nb):
+            bands.append({"band_id": f"{mid}-{i}", "token_yes": f"{mid}-y{i}", "token_no": f"{mid}-n{i}",
+                          "condition_id": f"0x{mid}{i:02d}",
+                          "markets": {"market_id": mid, "city_key": "tokyo", "resolution_date": "2026-10-11",
+                                      "closed": False, "first_seen_at": seen.isoformat()}})
+    asked_since, windows, logged, inserted = [], [], {}, []
+
+    def rest_all(table, params, order):
+        assert table == "bands"
+        since = dt.datetime.fromisoformat(params["markets.first_seen_at"][4:])
+        asked_since.append(since)
+        return [b for b in bands if dt.datetime.fromisoformat(b["markets"]["first_seen_at"]) >= since]
+    monkeypatch.setattr(it, "rest_all", rest_all)
+    monkeypatch.setattr(it, "rest", lambda table, params: [{"logged_at": "x"}] if ok_before else [])
+
+    def fetch(ids, start, end, get=None, **kw):
+        mid = ids[0][2:-2]
+        windows.append((mid, start, end))
+        if mid in fail:
+            raise RuntimeError("502 from the trades API")
+        return [_trade(end - 60, asset=f"{mid}-y0", cond=ids[0])], True
+    monkeypatch.setattr(it, "fetch_window", fetch)
+    monkeypatch.setattr(it, "insert_new", lambda rows: inserted.append(len(rows)) or len(rows))
+    monkeypatch.setattr(it, "rpc", lambda fn: {"ok": True})
+    monkeypatch.setattr(it, "log_run", lambda job, status, rows, detail: logged.update(job=job, status=status, rows=rows))
+    return asked_since, windows, logged, inserted
+
+
+def test_each_new_market_is_read_up_to_an_hour_after_it_was_first_seen(monkeypatch):
+    now = SEEN + dt.timedelta(hours=5, minutes=15)
+    asked_since, windows, logged, inserted = _wire_backfill(
+        monkeypatch, {"m1": (SEEN, 11), "m2": (SEEN, 9)})
+    d = it.backfill(now=now)
+    assert asked_since == [now - dt.timedelta(hours=it.BACKFILL_HOURS)]
+    assert [w[0] for w in windows] == ["m1", "m2"]
+    for _, start, end in windows:
+        assert end == (SEEN + it.OVERLAP).timestamp(), "exactly the window the hourly cycle never read"
+        assert start == (SEEN - it.BACKFILL_LOOKBACK).timestamp()
+    assert d["status"] == "ok" and d["new"] == 2 and d["read"] == 2 and not d["first_run"]
+    assert logged == {"job": it.BACKFILL_JOB, "status": "ok", "rows": 2}
+
+
+def test_until_a_backfill_has_finished_whole_it_reaches_further_back(monkeypatch):
+    now = SEEN + dt.timedelta(hours=5)
+    asked_since, *_ = _wire_backfill(monkeypatch, {"m1": (SEEN, 3)}, ok_before=False)
+    d = it.backfill(now=now)
+    assert d["first_run"] and d["hours"] == it.BACKFILL_FIRST_HOURS
+    assert asked_since == [now - dt.timedelta(hours=it.BACKFILL_FIRST_HOURS)]
+
+
+def test_thirteen_hours_cover_each_discovery_twice():
+    """P0.2 first sees next-day markets at 03:20Z (all 94 of 9-10 Oct); the
+    intraday runs at 02:36, 08:36, 14:36, 20:36Z. A market seen at 03:20Z must
+    fall in two runs' windows, so one failed run is made good by the next."""
+    runs = [dt.datetime(2026, 10, 10, h, 36, tzinfo=dt.timezone.utc) for h in (8, 14, 20)] + \
+           [dt.datetime(2026, 10, 11, 2, 36, tzinfo=dt.timezone.utc)]
+    covered = [r for r in runs if r - dt.timedelta(hours=it.BACKFILL_HOURS) <= SEEN <= r]
+    assert len(covered) == 2
+
+
+def test_a_failed_market_does_not_stop_the_others_and_is_reported(monkeypatch):
+    _, windows, logged, _ = _wire_backfill(monkeypatch, {"m1": (SEEN, 2), "m2": (SEEN, 2)}, fail={"m1"})
+    d = it.backfill(now=SEEN + dt.timedelta(hours=5))
+    assert [w[0] for w in windows] == ["m1", "m2"] and d["read"] == 1
+    assert d["status"] == "attention" and d["errors"]
+
+
+def test_a_backfill_out_of_time_says_how_many_markets_are_left(monkeypatch):
+    clock = [0.0]
+    monkeypatch.setattr(it.time, "monotonic", lambda: clock[0])
+    _, windows, logged, _ = _wire_backfill(monkeypatch, {f"m{i}": (SEEN, 2) for i in range(5)})
+    real = it.fetch_window
+
+    def slow(*a, **k):
+        clock[0] += 40.0
+        return real(*a, **k)
+    monkeypatch.setattr(it, "fetch_window", slow)
+    d = it.backfill(budget_s=100, now=SEEN + dt.timedelta(hours=5))
+    assert d["read"] == 2 and d["left"] == 3 and d["status"] == "attention"
+
+
+def test_the_backfill_runs_in_the_intraday_pipeline_not_the_tick():
+    import pathlib
+    wf = pathlib.Path(__file__).resolve().parents[1] / ".github" / "workflows"
+    intraday = (wf / "pipeline_intraday.yml").read_text()
+    assert "python scripts/ingest_trades.py --backfill --budget 300" in intraday
+    assert "--backfill" not in (wf / "tick.yml").read_text(), "the tick's minute is untouched"

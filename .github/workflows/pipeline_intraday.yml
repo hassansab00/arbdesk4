@@ -194,6 +194,22 @@ jobs:
         timeout-minutes: 3
         run: python scripts/databank.py --bands-only --days 3 --proof-days 3
 
+      # THE TRADES BEFORE WE KNEW THE MARKET (R46, 10 Oct). P0.2 discovery
+      # (n8n, 03:20Z) first sees each next-day market about a day after the
+      # venue lists it, and the hourly trade ingest reads only from its
+      # high-water mark, so those trades were never asked for: 2,484 of the
+      # 2,506 trades never stored for the sampled events of 1-4 Oct, and about
+      # 6,950 of the 8,600 the API serves for the 47 markets first seen 10 Oct
+      # 03:20Z. This reads, for each market first seen in the last 13 h, every
+      # trade up to an hour after it was first seen. Here, not in the tick, so
+      # the tick's minute is untouched: a dry run of 94 markets took 94
+      # requests and 58.9 s. Not gated on PAPER_TRADES_ENABLED: it is the
+      # market's record, not trading.
+      - name: Trades from before each new market was discovered (R46)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 7
+        run: python scripts/ingest_trades.py --backfill --budget 300
+
       # THE PAGES READ STORED ROWS (plan v2 P6.5): refresh them now that this
       # run has written, rather than at the next :12 / :42 of pg_cron.
       # CONCURRENTLY, so a page open during the refresh keeps reading.
