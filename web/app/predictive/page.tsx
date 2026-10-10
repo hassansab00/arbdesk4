@@ -6,6 +6,7 @@ import { useQuery } from "@/lib/useQuery";
 import { readAllRows } from "@/lib/readAll";
 import { DataState } from "@/components/DataState";
 import PredictionHindsight from "@/components/PredictionHindsight";
+import CheckpointScoreboard from "@/components/CheckpointScoreboard";
 import PredictionLineup from "@/components/PredictionLineup";
 import CityCards from "@/components/CityCards";
 import CalibrationStatus from "@/components/CalibrationStatus";
@@ -20,7 +21,7 @@ import { fmtTemp, fmtTempDelta, type Unit } from "@/lib/units";
 import { fmtResolutionDate } from "@/lib/time";
 import {
   forwardRows, groupScorecard, pendingDays, largestLeans,
-  type ForwardLadderRow, type MarketDay, type PendingDay,
+  type CheckpointScoreRow, type ForwardLadderRow, type MarketDay, type PendingDay,
 } from "@/lib/predictive";
 
 /**
@@ -380,6 +381,13 @@ export default function PredictivePage() {
   );
   const hitSumQ = useQuery<HitSummaryRow[]>(
     () => supabase.from("v_city_hit_summary").select("*").limit(200), [], 300000, 200
+  );
+  // EVERY CHECKPOINT'S SCORES, read once for every city (R28): 294 rows on
+  // 10 Oct, growing with cities, not days; each city's panel is cut from it.
+  const checkpointQ = useQuery<CheckpointScoreRow[]>(
+    () => supabase.from("v_checkpoint_scoreboard").select("*")
+            .order("city_key").order("checkpoint_order").limit(2000),
+    [], 300000, 2000
   );
   const scaleQ = useQuery<ScalingRow[]>(
     () => supabase.from("v_edge_scaling").select("*"), []
@@ -867,6 +875,15 @@ export default function PredictivePage() {
                 </p>
               </div>
             )}
+
+            {/* R28 (Hassan, 10 Oct, option 1): the day-ahead record stays; the
+                checkpoint calls are scored beside it, against the market. */}
+            <CheckpointScoreboard
+              rows={checkpointQ.data ?? []} cityKey={active}
+              cityName={activeCity?.display_name ?? active}
+              loading={checkpointQ.loading} error={checkpointQ.error}
+              truncated={checkpointQ.truncated} onRetry={checkpointQ.refresh}
+            />
 
             <div className="overflow-x-auto rounded border border-border bg-panel">
               <table className="w-full text-[11px]">
