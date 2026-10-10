@@ -58,7 +58,6 @@ import os
 import statistics
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
 from zoneinfo import ZoneInfo
 
 import requests
@@ -72,8 +71,14 @@ FORECAST_DAYS = 3
 LAST_HOUR = 17              # the honest record's window, 00-17 local
 MIN_HOURS = 20              # a local day with fewer hourly values is left out
 WORKERS = 4                 # Open-Meteo refused a fifth concurrent request on 26 Sep
-TIMEOUT = 60
-TRIES = 2
+# ASKED AGAIN IN ROUNDS (10 Oct), as honest_record's requests are and for the
+# same reason: a stalled URL stalls again when asked again at once. On 10 Oct
+# (job log, step from 02:52:12Z) four asks stalled together - denver's GFS,
+# istanbul's, paris's and houston's ECMWF - each stalled its full 60 s twice,
+# and the run ended at 136 s of its 360 with those four missing. The other 90
+# asks all answered in the at most 12 s of the run the stall left free.
+RETRY_WAITS = (10, 30, 60, 90, 120, 150)   # honest_record.RETRY_WAITS
+TIMEOUT = 20                # honest_record.TIMEOUT
 RUN_SECONDS = 360           # inside the step's 7 minutes (see DEADLINE above)
 MIN_LEFT = 5
 QUANTILES = (10, 25, 50, 75, 90)
@@ -91,8 +96,10 @@ def _left():
     return None if _deadline is None else _deadline - time.monotonic()
 
 
-def _get(url, params, label):
-    for attempt in range(TRIES):
+def _get(url, params, label, tries=1):
+    """The answer, or None. A city's request is asked once here and again by
+    the rounds in main(); the run's meta files, twice, 5 s apart."""
+    for attempt in range(tries):
         left = _left()
         if left is not None and left < MIN_LEFT:
             print(f"  ! {label} not asked: the run's deadline", file=sys.stderr)
@@ -105,7 +112,7 @@ def _get(url, params, label):
             r.raise_for_status()
             return r.json()
         except Exception as e:                         # timeout, reset, 429, 5xx
-            if attempt == TRIES - 1:
+            if attempt == tries - 1:
                 print(f"  ! {label} unreached: {str(e)[:120]}", file=sys.stderr)
                 return None
             time.sleep(5)
@@ -164,18 +171,11 @@ def daily_rows(city_key, tz, model, js, run_init, run_available, fetched_at):
     return out
 
 
-def fetch_city(city, runs, fetched_at):
-    rows, missing = [], []
-    for model in MODELS:
-        js = _get(API, {"latitude": city["latitude"], "longitude": city["longitude"], "hourly": "temperature_2m",
-                        "models": model, "forecast_days": FORECAST_DAYS, "timezone": "GMT"},
-                  f"{city['city_key']} {model}")
-        if js is None:
-            missing.append(model)
-            continue
-        init, avail = runs.get(model, (None, None))
-        rows += daily_rows(city["city_key"], city["timezone"], model, js, init, avail, fetched_at)
-    return rows, missing
+def fetch_model(city, model):
+    """One city's latest run of one ensemble model, or None."""
+    return _get(API, {"latitude": city["latitude"], "longitude": city["longitude"], "hourly": "temperature_2m",
+                      "models": model, "forecast_days": FORECAST_DAYS, "timezone": "GMT"},
+                f"{city['city_key']} {model}")
 
 
 def least_recorded_first(cities, rows):
@@ -226,25 +226,31 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
-    from common import get_cities, log_run
+    from common import ask_in_rounds, get_cities, log_run
     global _deadline
     _deadline = time.monotonic() + RUN_SECONDS
 
     fetched_at = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
-    runs = {m: run_times(_get(META.format(meta), {}, f"{m} meta")) for m, meta in MODELS.items()}
+    runs = {m: run_times(_get(META.format(meta), {}, f"{m} meta", tries=2)) for m, meta in MODELS.items()}
     old = read_rows()
     cities = least_recorded_first(
         [c for c in get_cities() if c.get("latitude") is not None and c.get("timezone")], old)
+    keys = [(i, model) for i in range(len(cities)) for model in MODELS]
+    answers, rounds = ask_in_rounds(keys, lambda k: fetch_model(cities[k[0]], k[1]), WORKERS, RETRY_WAITS,
+                                    _left, MIN_LEFT)
     new, missing = [], {}
-    with ThreadPoolExecutor(WORKERS) as pool:
-        for city, (rows, miss) in zip(cities, pool.map(lambda c: fetch_city(c, runs, fetched_at), cities)):
-            new += rows
-            if miss:
-                missing[city["city_key"]] = miss
+    for i, city in enumerate(cities):
+        for model in MODELS:
+            js = answers.get((i, model))
+            if js is None:
+                missing.setdefault(city["city_key"], []).append(model)
+                continue
+            init, avail = runs.get(model, (None, None))
+            new += daily_rows(city["city_key"], city["timezone"], model, js, init, avail, fetched_at)
     merged = merge(old, new)
     detail = {"fetched_at": fetched_at, "runs": runs, "cities": len(cities), "rows_new": len(new),
               "rows_total": len(merged), "added": len(merged) - len(old), "unreached": missing,
-              "asked_first": [c["city_key"] for c in cities[:3]]}
+              "asked_first": [c["city_key"] for c in cities[:3]], "rounds": rounds}
     print(detail)
     if args.dry_run:
         return 0

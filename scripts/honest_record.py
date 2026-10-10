@@ -35,7 +35,6 @@ import gzip
 import os
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
 
@@ -53,13 +52,33 @@ LAST_HOUR = 17          # every window ends by 17:00 local
 MIN_HOURS = 20          # a day with fewer hourly temperatures is left out
 APPEND_DAYS = 10
 WORKERS = 4             # Open-Meteo refused a fifth concurrent request on 26 Sep
-TIMEOUT = 60
-TRIES = 2
-# A city whose request hung in the first pass is asked again once, after the
-# pass, with RETRY_WAIT between. On 27 Sep the multi-model request timed out
+# ASKED AGAIN IN ROUNDS, SPREAD OVER THE RUN (10 Oct). A request with no
+# answer is asked again after each wait below while the deadline leaves time,
+# and only the part (heating or models) that is missing (common.ask_in_rounds).
+#
+# The second pass came from 27 Sep, when the multi-model request timed out
 # twice for moscow, paris, lucknow and houston within 05:16-05:18Z, so those
-# four had no station-model row and priced on P3.9 alone that day.
-RETRY_WAIT = 10
+# four had no station-model row and priced on P3.9 alone that day. It asked
+# a hung request again 5 s after it timed out, and once more 10 s after the
+# pass; each of the record's 13 logged runs from 27 Sep to 10 Oct was
+# partial. The 10 Oct run (job log, step from 02:47:36Z): four requests
+# stalled together, one on each of the pool's workers - wellington's models
+# and wuhan's, lucknow's and paris's heating - and every ask of those URLs
+# stalled its full 60 s, from about 02:47:43 to 02:52:08Z: wuhan's, lucknow's
+# and paris's heating 4 asks of 4, wellington's heating 2 of 2 in the second
+# pass after answering in the first. The 15 cities after them all answered
+# once the workers were free, and wellington's models answered when asked
+# about 4 minutes after their first stall. The same 94 URLs asked from
+# another network at 03:52Z all came back in 0.59-1.09 s. So a stall holds
+# one URL for minutes while others answer, and the cure is to come back to it
+# later, which the run's 600 s (276 s used that night) leaves room for.
+#
+# Every round is in the run's detail (when, asked, answered, its slowest
+# answer), so the nights after this say whether the waits reach a stall.
+RETRY_WAITS = (10, 30, 60, 90, 120, 150)
+# The 94 came back in 0.59-1.09 s, and no stalled ask answered inside 60 s
+# (the 16 of 10 Oct): 20 s is far past an answer and leaves time for rounds.
+TIMEOUT = 20
 # A run that outlives its step is killed before it writes anything. On 28 Sep
 # (02:41-02:46Z) eight cities' requests read-timed out, the 5-minute step
 # ended, and the whole night was lost, the forty cities that had answered
@@ -248,69 +267,72 @@ def _left():
 
 
 def _get(url, params, label):
-    for attempt in range(TRIES):
-        left = _left()
-        if left is not None and left < MIN_LEFT:
-            print(f"  ! {label} not asked: the run's deadline", file=sys.stderr)
+    """One ask: the answer, or None. Asked again later by fetch_each's rounds,
+    not here: on 10 Oct no stalled URL answered when asked again at once."""
+    left = _left()
+    if left is not None and left < MIN_LEFT:
+        print(f"  ! {label} not asked: the run's deadline", file=sys.stderr)
+        return None
+    try:
+        r = requests.get(url, params=params, timeout=TIMEOUT if left is None else min(TIMEOUT, left))
+        if r.status_code == 400:
+            print(f"  ! {label} 400: {r.text[:200]}", file=sys.stderr)
             return None
-        try:
-            r = requests.get(url, params=params, timeout=TIMEOUT if left is None else min(TIMEOUT, left))
-            if r.status_code == 400:
-                print(f"  ! {label} 400: {r.text[:200]}", file=sys.stderr)
-                return None
-            r.raise_for_status()
-            return r.json()
-        except Exception as e:                         # timeout, reset, 429, 5xx
-            if attempt == TRIES - 1:
-                print(f"  ! {label} unreached: {str(e)[:120]}", file=sys.stderr)
-                return None
-            time.sleep(5)
-    return None
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:                             # timeout, reset, 429, 5xx
+        print(f"  ! {label} unreached: {str(e)[:120]}", file=sys.stderr)
+        return None
 
 
-def fetch_previous(city, start, end):
-    """UTC hours from the day before `start` to the day after `end`, so every
-    local day between them is whole whatever the city's offset."""
+PARTS = ("heating", "models")
+
+
+def previous_request(city, part, start, end):
+    """One part's request to the Previous Runs API: UTC hours from the day
+    before `start` to the day after `end`, so every local day between them is
+    whole whatever the city's offset."""
     base = {"latitude": city["latitude"], "longitude": city["longitude"], "timezone": "GMT",
             "start_date": (start - dt.timedelta(days=1)).isoformat(),
             "end_date": (end + dt.timedelta(days=1)).isoformat()}
-    heating = _get(PREVIOUS_API, dict(base, hourly=",".join(f"{v}_previous_day{l}" for v in HEATING for l in LEADS)),
-                   f"{city['city_key']} previous heating")
-    models = _get(PREVIOUS_API, dict(base, hourly=",".join(f"temperature_2m_previous_day{l}" for l in LEADS),
-                                     models=",".join(MODELS)), f"{city['city_key']} previous models")
-    return heating, models
+    if part == "heating":
+        params = dict(base, hourly=",".join(f"{v}_previous_day{l}" for v in HEATING for l in LEADS))
+    else:
+        params = dict(base, hourly=",".join(f"temperature_2m_previous_day{l}" for l in LEADS),
+                      models=",".join(MODELS))
+    return _get(PREVIOUS_API, params, f"{city['city_key']} previous {part}")
 
 
-def fetch_current(city):
+def current_request(city, part):
     base = {"latitude": city["latitude"], "longitude": city["longitude"], "timezone": "GMT",
             "forecast_days": 4}          # UTC days: enough for local day+2 at any offset
-    heating = _get(CURRENT_API, dict(base, hourly=",".join(HEATING)), f"{city['city_key']} current heating")
-    models = _get(CURRENT_API, dict(base, hourly="temperature_2m", models=",".join(MODELS)),
-                  f"{city['city_key']} current models")
-    return heating, models
+    if part == "heating":
+        params = dict(base, hourly=",".join(HEATING))
+    else:
+        params = dict(base, hourly="temperature_2m", models=",".join(MODELS))
+    return _get(CURRENT_API, params, f"{city['city_key']} current {part}")
 
 
-def fetch_each(fetch, cities):
-    """[(city, (heating, models))] in `cities` order. One pass on the pool,
-    then one more pass over the cities with a part missing; a part the first
-    pass did get is kept."""
-    with ThreadPoolExecutor(WORKERS) as pool:
-        got = list(pool.map(fetch, cities))
-        again = [i for i, (h, m) in enumerate(got) if h is None or m is None]
-        left = _left()
-        if again and (left is None or left >= RETRY_WAIT + MIN_LEFT):
-            time.sleep(RETRY_WAIT)
-            for i, (h, m) in zip(again, pool.map(fetch, [cities[i] for i in again])):
-                old_h, old_m = got[i]
-                got[i] = (old_h if old_h is not None else h, old_m if old_m is not None else m)
-    return list(zip(cities, got))
+def fetch_each(ask, cities, rounds=None):
+    """[(city, (heating, models))] in `cities` order, a part never answered
+    None. ask(city, part) makes one request. Every part is asked once, then
+    the missing parts alone again after each of RETRY_WAITS while the
+    deadline leaves time (common.ask_in_rounds); `rounds`, a list, gets each
+    round's counts."""
+    from common import ask_in_rounds
+    keys = [(i, part) for i in range(len(cities)) for part in PARTS]
+    answers, done = ask_in_rounds(keys, lambda k: ask(cities[k[0]], k[1]), WORKERS, RETRY_WAITS,
+                                  _left, MIN_LEFT)
+    if rounds is not None:
+        rounds.extend(done)
+    return [(city, tuple(answers.get((i, part)) for part in PARTS)) for i, city in enumerate(cities)]
 
 
-def forward_rows(cities, fetched_at=None):
+def forward_rows(cities, fetched_at=None, rounds=None):
     """Tomorrow's and the day after's rows from each model's current run."""
     fetched_at = fetched_at or dt.datetime.now(dt.timezone.utc)
     bm, md, missing = [], [], []
-    for city, (h, m) in fetch_each(fetch_current, cities):
+    for city, (h, m) in fetch_each(current_request, cities, rounds):
         if h is None or m is None:
             missing.append(city["city_key"])
         b, x = current_rows(city["city_key"], h, m, fetched_at, city["timezone"])
@@ -375,8 +397,8 @@ def main(argv=None):
     start, end = today - dt.timedelta(days=args.days), today - dt.timedelta(days=1)
     cities = [c for c in get_cities() if c.get("latitude") is not None and c.get("timezone")
               and c.get("status", "active") == "active"]
-    bm, md, missing = [], [], []
-    for city, (h, m) in fetch_each(lambda c: fetch_previous(c, start, end), cities):
+    bm, md, missing, rounds = [], [], [], []
+    for city, (h, m) in fetch_each(lambda c, part: previous_request(c, part, start, end), cities, rounds):
         if h is None or m is None:
             missing.append(city["city_key"])
         b, x = previous_rows(city["city_key"], h, m, city["timezone"], start.isoformat(), end.isoformat())
@@ -386,7 +408,7 @@ def main(argv=None):
     new_bm, new_md = merge(old_bm, bm, 3), merge(old_md, md, 4)
     detail = {"from": start.isoformat(), "to": end.isoformat(), "cities": len(cities),
               "unreached": missing, "best_match_rows": len(bm), "model_rows": len(md),
-              "best_match_total": len(new_bm), "models_total": len(new_md)}
+              "best_match_total": len(new_bm), "models_total": len(new_md), "rounds": rounds}
     print(detail)
     if args.dry_run:
         return 0

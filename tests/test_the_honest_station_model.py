@@ -310,15 +310,17 @@ def test_labels_and_the_last_station_max_are_whole_days_only():
 # ---------------------------------------------------------------------------
 # a night Open-Meteo hangs (7 Oct: the step killed, nothing written)
 # ---------------------------------------------------------------------------
-def test_no_forward_request_waits_past_the_runs_deadline(monkeypatch):
+def test_no_forward_request_waits_past_the_runs_deadline(monkeypatch, capsys):
     """main() sets honest_record's deadline before it asks for the current
     runs, so a hung request cannot outlive the step and take every answered
-    city down with it."""
+    city down with it. The rounds the requests took are in the run's detail
+    (10 Oct)."""
     import common
     seen = {}
 
-    def forward_rows(cities, now=None):
+    def forward_rows(cities, now=None, rounds=None):
         seen["deadline_left"] = hr._left()
+        rounds.append({"after_s": 0.0, "asked": 2, "answered": 0, "slowest_answer_s": None})
         return [], [], ["houston"]
     monkeypatch.setattr(hr, "_deadline", None)
     monkeypatch.setattr(hr, "forward_rows", forward_rows)
@@ -330,6 +332,7 @@ def test_no_forward_request_waits_past_the_runs_deadline(monkeypatch):
     assert sm.main(["--dry-run", "--no-eval", "--as-of", "2026-10-07"]) == 0
     assert seen["deadline_left"] is not None, "the forward requests ran with no deadline"
     assert sm.FETCH_SECONDS - 5 < seen["deadline_left"] <= sm.FETCH_SECONDS
+    assert '"rounds": [' in capsys.readouterr().out
 
 
 def test_the_fetch_deadline_leaves_the_fit_its_time():
