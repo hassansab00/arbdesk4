@@ -170,9 +170,11 @@ TABLES = {
         "mirrored_on": "ingested_at",
         "mirror_first": True,
         "tag": "trades-archive",
+        # transaction_hash from 20261010190000 (R46 part 2): part of the
+        # dedupe key where present, NULL on the prints stored before it.
         "columns": ["band_id", "condition_id", "traded_at", "price", "size",
                     "side", "proxy_wallet", "ingested_at", "city_key",
-                    "token_id", "observed_at"],
+                    "token_id", "observed_at", "transaction_hash"],
         "bytes_per_row": 583,
     },
     # THE FASTEST-GROWING TABLE, and the one the 90-day default cannot touch.
