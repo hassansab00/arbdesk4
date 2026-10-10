@@ -38,10 +38,14 @@ station's maximum moved into the winning bucket when the two disagree
 
     python tools/wxpredict/build_table.py            # -> data/training/wxpredict/table/
     python tools/wxpredict/build_table.py --limit 200
+    python tools/wxpredict/build_table.py --recorded # rebuild the recorded table, check its sha256
 
-The table is not committed (it rebuilds byte for byte from the committed
-sources); its row count, columns and sha256 are, in
-data/training/wxpredict/table_meta.json.
+The table is not committed; its row count, columns and sha256 are, in
+data/training/wxpredict/table_meta.json, with every source it was built from
+named by its git blob (`sources`, R47). The sources move: the nightly mirror
+extends the forecast record, and the cities file follows public.cities. So a
+plain build reads the files as they are now, and --recorded rebuilds the
+recorded table from exactly its own sources, taken from git.
 """
 import argparse
 import collections
@@ -49,7 +53,9 @@ import datetime as dt
 import hashlib
 import json
 import os
+import subprocess
 import sys
+import tempfile
 from array import array
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -258,7 +264,18 @@ def load_prices(events):
 # the table
 # ---------------------------------------------------------------------------
 def build(limit=0, first=None, last=None, out_dir=OUT_DIR, write_meta=True):
-    stations = {f[:-7] for f in os.listdir(common.REPORTS) if f.endswith(".csv.gz")}
+    common.READ = set()
+    try:
+        return _build(limit, first, last, out_dir, write_meta)
+    finally:
+        common.READ = None
+
+
+def _build(limit, first, last, out_dir, write_meta):
+    listed_reports = sorted(f for f in os.listdir(common.REPORTS) if f.endswith(".csv.gz"))
+    for f in listed_reports:                  # a station's file decides which events are eligible
+        common.note(os.path.join(common.REPORTS, f))
+    stations = {f[:-7] for f in listed_reports}
     events, left, listed = load_events(stations, first, last)
     sdaily, refused = load_station_daily()
     unlisted, station_left = station_events(listed, stations, sdaily, refused, first, last)
@@ -286,6 +303,7 @@ def build(limit=0, first=None, last=None, out_dir=OUT_DIR, write_meta=True):
 
     n = common.write_csv(path, COLUMNS, lines())
     meta = cov.result(n)
+    meta["sources"] = common.sources(common.READ)
     if write_meta:
         with open(META, "w") as f:
             json.dump(meta, f, indent=1, sort_keys=True)
@@ -342,12 +360,55 @@ class Coverage:
         }
 
 
+def git_blob(sha):
+    """A blob's bytes from this repository's git objects."""
+    return subprocess.run(["git", "-C", common.ROOT, "cat-file", "blob", sha], check=True,
+                          capture_output=True).stdout
+
+
+def materialize(sources, dest, cat=git_blob):
+    """Write each recorded source (path under the data root -> git blob id)
+    under `dest`, refusing any blob whose bytes are not the id they claim."""
+    for rel, sha in sorted(sources.items()):
+        data = cat(sha)
+        if common.blob_sha(data) != sha:
+            raise ValueError(f"{rel}: blob {sha} gave bytes of {common.blob_sha(data)}")
+        path = os.path.join(dest, *rel.split("/"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(data)
+
+
+def rebuild_recorded(meta_path=META, cat=git_blob):
+    """(same, meta): the table rebuilt from exactly the sources table_meta.json
+    names, and whether its content and its sources are the recorded ones."""
+    with open(meta_path) as f:
+        recorded = json.load(f)
+    if not recorded.get("sources"):
+        raise SystemExit(f"{meta_path} names no sources (recorded before R47)")
+    with tempfile.TemporaryDirectory() as tmp:
+        materialize(recorded["sources"], tmp, cat)
+        common.use_root(tmp)
+        try:
+            meta = build(out_dir=os.path.join(tmp, "table"), write_meta=False)
+        finally:
+            common.use_root(common.ROOT)
+    return meta["sha256"] == recorded["sha256"] and meta["sources"] == recorded["sources"], meta
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--from", dest="first", default=None)
     ap.add_argument("--to", dest="last", default=None)
+    ap.add_argument("--recorded", action="store_true",
+                    help="rebuild the recorded table from the sources table_meta.json names, and check it")
     args = ap.parse_args()
+    if args.recorded:
+        same, meta = rebuild_recorded()
+        print(json.dumps({"sha256": meta["sha256"], "rows": meta["rows"], "recorded": same}, indent=1),
+              file=sys.stderr)
+        sys.exit(0 if same else 1)
     meta = build(args.limit, args.first, args.last, write_meta=not args.limit)
     show = {k: meta[k] for k in ("rows", "events", "cities", "dates", "events_by_source", "events_by_unit", "left_out",
                                  "station_days_left_out", "venue_days_station_not_whole", "decision_local_parses_back",

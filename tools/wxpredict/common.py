@@ -13,18 +13,30 @@ Every source the training table reads is a file in the repository:
 import csv
 import datetime as dt
 import glob
+import hashlib
 import io
 import gzip
 import os
 from zoneinfo import ZoneInfo
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-MH = os.path.join(ROOT, "data", "training", "market_history")
-PR = os.path.join(ROOT, "data", "training", "previous_runs")
-WX = os.path.join(ROOT, "data", "training", "wxpredict")
-REPORTS = os.path.join(WX, "station_reports")
-STATION_DAILY = os.path.join(WX, "station_daily.csv.gz")
-CITIES_GLOB = os.path.join(ROOT, "data", "mirror", "cities", "cities-*.csv.gz")
+
+
+def use_root(root):
+    """Point every source path at `root`, a tree laid out like the repository's
+    (the repository itself by default; a directory of recorded sources for
+    build_table.py --recorded, R47)."""
+    global DATA_ROOT, MH, PR, WX, REPORTS, STATION_DAILY, CITIES_GLOB
+    DATA_ROOT = root
+    MH = os.path.join(root, "data", "training", "market_history")
+    PR = os.path.join(root, "data", "training", "previous_runs")
+    WX = os.path.join(root, "data", "training", "wxpredict")
+    REPORTS = os.path.join(WX, "station_reports")
+    STATION_DAILY = os.path.join(WX, "station_daily.csv.gz")
+    CITIES_GLOB = os.path.join(root, "data", "mirror", "cities", "cities-*.csv.gz")
+
+
+use_root(ROOT)
 
 UTC = dt.timezone.utc
 
@@ -34,9 +46,35 @@ UTC = dt.timezone.utc
 WHOLE_DAY_MAX_GAP_H = 3
 
 
+# Every source file a build reads, when a build is recording them (R47: the
+# table names its inputs by git blob, so it can be rebuilt from exactly them).
+READ = None
+
+
+def note(path):
+    """Record `path` as a source of the build that is recording."""
+    if READ is not None:
+        READ.add(os.path.abspath(path))
+
+
 def read_csv(path):
+    note(path)
     with gzip.open(path, "rt", newline="") as f:
         yield from csv.DictReader(f)
+
+
+def blob_sha(data):
+    """The git blob id of these bytes, as `git hash-object` gives it."""
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+
+
+def sources(paths):
+    """{path relative to the data root: git blob id} for the files given."""
+    out = {}
+    for p in sorted(paths):
+        with open(p, "rb") as f:
+            out[os.path.relpath(p, DATA_ROOT).replace(os.sep, "/")] = blob_sha(f.read())
+    return out
 
 
 def write_csv(path, header, rows):
