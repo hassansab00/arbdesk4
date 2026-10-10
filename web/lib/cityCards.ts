@@ -5,7 +5,11 @@ import type { Unit } from "@/lib/units";
  * and Supabase so web/tests/city-cards.test.cjs can run them.
  */
 
-export interface CityRow { city_key: string; display_name: string | null; unit: string | null }
+export interface CityRow {
+  city_key: string; display_name: string | null; unit: string | null;
+  /** for the city's popup: where its ensemble is asked for, and its clock */
+  latitude?: number | null; longitude?: number | null; timezone?: string | null;
+}
 export interface LadderRow {
   city_key: string; for_date: string; band_id: string; band_index: number | null;
   band_label: string | null; side: string | null; model_prob: number | null;
@@ -114,7 +118,7 @@ export interface BandBounds {
 
 /** The ladder in temperature order: open low tail, closed buckets, open high
  *  tail (probability_engine._ladder). */
-function temperatureOrder(bands: BandBounds[]): BandBounds[] {
+export function temperatureOrder(bands: BandBounds[]): BandBounds[] {
   const key = (b: BandBounds): [number, number] =>
     b.open_low ? [0, -Infinity] : b.open_high ? [2, Number(b.band_lo)] : [1, Number(b.band_lo)];
   return bands.slice().sort((a, b) => {
@@ -123,7 +127,8 @@ function temperatureOrder(bands: BandBounds[]): BandBounds[] {
   });
 }
 
-function holds(b: BandBounds, r: number): boolean {
+/** The bucket holds a reading already in the market's unit and read as the venue reads it. */
+export function holds(b: BandBounds, r: number): boolean {
   if (b.open_low) return b.band_hi != null && r < Number(b.band_hi);
   if (b.open_high) return b.band_lo != null && r >= Number(b.band_lo);
   return b.band_lo != null && b.band_hi != null && Number(b.band_lo) <= r && r < Number(b.band_hi);

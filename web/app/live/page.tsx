@@ -8,7 +8,7 @@ import { DataState, ErrorBox, InlineError, Loading } from "@/components/DataStat
 import WeatherIcon from "@/components/WeatherIcon";
 import CityWeatherHealth from "@/components/CityWeatherHealth";
 import CityForecastInputs from "@/components/CityForecastInputs";
-import { fmtAge, fmtCompactUsd, severityColor } from "@/lib/format";
+import { fmtAge, fmtCompactUsd } from "@/lib/format";
 import { fmtTemp, fmtTempDelta, fmtBandRange, toDisplay, type Unit } from "@/lib/units";
 import { fmtTime, fmtCityHour, shortZone } from "@/lib/time";
 import type { City, LiveWeather, WeatherEvent } from "@/lib/types";
@@ -112,8 +112,9 @@ export default function LiveWeatherPage() {
     1000
   );
 
-  // Supabase Realtime: new weather_events push straight in, no polling.
-  const [realtimeStatus, setRealtimeStatus] = useState<string>("connecting");
+  // Supabase Realtime: a new weather_events row refreshes the cards and the
+  // band-cross borders, no polling. The event feed that listed the rows beside
+  // the cards is gone (Hassan, 10 Oct); the global rail still lists them.
   useEffect(() => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
     try {
@@ -123,9 +124,9 @@ export default function LiveWeatherPage() {
           events.refresh();
           live.refresh();
         })
-        .subscribe((status) => setRealtimeStatus(status));
-    } catch (e) {
-      setRealtimeStatus(e instanceof Error ? e.message : "unavailable");
+        .subscribe();
+    } catch {
+      channel = null;
     }
     return () => {
       if (channel) supabase.removeChannel(channel);
@@ -268,7 +269,7 @@ export default function LiveWeatherPage() {
   }, [live.data]);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+    <div className="grid gap-4">
       <div>
         <h1 className="mb-1 text-lg font-semibold">Live Weather</h1>
         <p className="mb-3 max-w-3xl text-xs leading-relaxed text-muted">
@@ -529,49 +530,6 @@ export default function LiveWeatherPage() {
         {detail && <CityDetail row={detail} onClose={() => setSelected(null)} />}
       </div>
 
-      <aside className="rounded border border-border bg-panel p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-muted">Event feed</h2>
-          <span
-            className={`text-[10px] ${realtimeStatus === "SUBSCRIBED" ? "text-good" : "text-muted"}`}
-            title="Supabase Realtime subscription on weather_events. Requires the table to be in the supabase_realtime publication — sql/ad4_live_weather.sql adds it."
-          >
-            {realtimeStatus === "SUBSCRIBED" ? "live" : realtimeStatus.toLowerCase()}
-          </span>
-        </div>
-        <DataState
-          relation="weather_events"
-          loading={events.loading}
-          error={events.error}
-          isEmpty={(events.data ?? []).length === 0}
-          emptyTitle="No events yet"
-          emptyBody={
-            <>
-              <code>weather_events</code> fills as <code>scripts/live_weather.py</code> detects
-              spikes, drops, band crosses and day-decided transitions. Thresholds live in{" "}
-              <code>settings.weather_alerts</code> and are provisional.
-            </>
-          }
-          onRetry={events.refresh}
-          compact
-        >
-          <div className="space-y-2">
-            {(events.data ?? []).map((e) => (
-              <div key={e.event_id} className={`rounded border-l-4 bg-panel2 p-2 text-xs ${severityColor(e.severity)}`}>
-                <div className="flex justify-between">
-                  <span className="font-semibold">{e.kind}</span>
-                  <span className="text-[10px] uppercase">{e.severity}</span>
-                </div>
-                <div className="text-muted">
-                  {e.city_key} · {fmtAge(e.detected_at)}
-                  {e.temp_c !== null && ` · ${fmtTemp(e.temp_c, cityByKey.get(e.city_key)?.unit)}`}
-                  {e.change_c !== null && ` · ${fmtTempDelta(e.change_c, cityByKey.get(e.city_key)?.unit)}`}
-                </div>
-              </div>
-            ))}
-          </div>
-        </DataState>
-      </aside>
     </div>
   );
 }
