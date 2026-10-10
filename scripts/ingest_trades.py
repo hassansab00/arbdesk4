@@ -367,6 +367,16 @@ def main(budget_s=BUDGET_S, now=None):
 # backfill runs read BACKFILL_FIRST_HOURS until one has finished whole ('ok'),
 # to reach every market discovered before this existed.
 #
+# A RUN THAT STOPS SHORT IS RESUMED (Codex on #365). The markets a run did not
+# reach, or failed on, are logged as `pending` and read FIRST by the next run,
+# whether or not they are still inside its window, so a slow spell cannot
+# leave a cohort's tail to age out unread. A pending market is carried for at
+# most BACKFILL_LOOKBACK after it was first seen. A window that reached the
+# offset cap is not retried: asking again gives the same answer.
+#
+# THE WORKFLOWS PAGE'S SWITCH IS OBEYED (Codex on #365): with P0.4 off or
+# manual there, the backfill writes nothing, as the hourly run does.
+#
 # THE OFFSET CAP. The API refuses an offset over 10,000. A window whose answer
 # reaches it is asked again in halves with `start` and `end`, down to
 # BACKFILL_MAX_DEPTH halvings; one that still reaches it is logged, never
@@ -379,15 +389,25 @@ BACKFILL_LOOKBACK = dt.timedelta(days=7)    # the earliest a window starts: list
 BACKFILL_MAX_DEPTH = 12
 
 
-def recent_markets(since):
-    """{market_id: (first_seen_at, [bands])} for every market first seen at or after `since`."""
+def recent_markets(since, pending=()):
+    """{market_id: (first_seen_at, [bands])} for every market first seen at or
+    after `since`, and for every market in `pending` wherever it was first seen."""
     rows = rest_all("bands", {
         "select": "band_id,token_yes,token_no,condition_id,"
                   "markets!inner(market_id,city_key,resolution_date,closed,first_seen_at)",
         "markets.first_seen_at": f"gte.{since.isoformat()}",
         "condition_id": "not.is.null"}, order="band_id.asc")
-    out = {}
+    if pending:
+        rows += rest_all("bands", {
+            "select": "band_id,token_yes,token_no,condition_id,"
+                      "markets!inner(market_id,city_key,resolution_date,closed,first_seen_at)",
+            "markets.market_id": "in.(" + ",".join(str(m) for m in pending) + ")",
+            "condition_id": "not.is.null"}, order="band_id.asc")
+    out, seen_bands = {}, set()
     for b in rows:
+        if b["band_id"] in seen_bands:
+            continue
+        seen_bands.add(b["band_id"])
         m = b["markets"]
         seen = dt.datetime.fromisoformat(str(m["first_seen_at"]).replace("Z", "+00:00"))
         out.setdefault(m["market_id"], (seen, []))[1].append(b)
@@ -427,25 +447,42 @@ def fetch_window(ids, start, end, get=requests.get, depth=0, sleep=time.sleep):
 
 
 def previous_backfill():
-    """Whether a backfill has ever finished whole ('ok'). Until one has, each
-    run reads BACKFILL_FIRST_HOURS, so a first run cut short is not left behind."""
-    r = rest("ingest_log", [("select", "logged_at"), ("job", f"eq.{BACKFILL_JOB}"),
-                            ("status", "eq.ok"), ("order", "logged_at.desc"), ("limit", "1")])
-    return bool(r)
+    """(ever_ok, pending): whether a backfill has ever finished whole ('ok'),
+    and the markets the last run that read anything left pending. Until one has
+    finished whole, each run reads BACKFILL_FIRST_HOURS."""
+    ok = rest("ingest_log", [("select", "logged_at"), ("job", f"eq.{BACKFILL_JOB}"),
+                             ("status", "eq.ok"), ("order", "logged_at.desc"), ("limit", "1")])
+    last = rest("ingest_log", [("select", "detail"), ("job", f"eq.{BACKFILL_JOB}"),
+                               ("status", "neq.skipped"), ("order", "logged_at.desc"), ("limit", "1")])
+    pending = ((last[0].get("detail") or {}).get("pending") or []) if last else []
+    return bool(ok), [str(m) for m in pending]
 
 
 def backfill(budget_s=BACKFILL_BUDGET_S, hours=None, now=None, get=requests.get):
     """Read each recently discovered market's trades from before it was discovered."""
     started = time.monotonic()
     now = now or dt.datetime.now(dt.timezone.utc)
-    first_run = not previous_backfill()
+    on, mode = switched_on()
+    if not on:
+        detail = {"summary": f"P0.4_trade_history is {mode} on the Workflows page - backfill not run",
+                  "mode": mode}
+        log_run(BACKFILL_JOB, "skipped", 0, detail)
+        print(detail["summary"])
+        return {**detail, "status": "skipped"}
+    ever_ok, carried = previous_backfill()
+    first_run = not ever_ok
     hours = hours if hours is not None else (BACKFILL_FIRST_HOURS if first_run else BACKFILL_HOURS)
-    markets = recent_markets(now - dt.timedelta(hours=hours))
+    markets = recent_markets(now - dt.timedelta(hours=hours), carried)
+    dropped = [m for m, (seen, _) in markets.items() if str(m) in carried and seen < now - BACKFILL_LOOKBACK]
+    for m in dropped:
+        del markets[m]
     ingested_at = now.isoformat()
     done = fetched = new = unmatched = 0
-    errors, capped, left = [], [], []
+    errors, capped, left, failed = [], [], [], []
     slowest = 0.0
-    for market_id, (seen, bands) in sorted(markets.items(), key=lambda kv: (kv[1][0], kv[0])):
+    # the markets the last run did not finish come first, then the oldest first sight
+    order = sorted(markets.items(), key=lambda kv: (str(kv[0]) not in carried, kv[1][0], str(kv[0])))
+    for market_id, (seen, bands) in order:
         if time.monotonic() - started + slowest > budget_s:
             left.append(market_id)
             continue
@@ -464,6 +501,7 @@ def backfill(budget_s=BACKFILL_BUDGET_S, hours=None, now=None, get=requests.get)
             done += 1
         except Exception as e:                       # noqa: BLE001 - counted and reported
             errors.append(f"{market_id}: {str(e)[:160]}")
+            failed.append(market_id)
         slowest = max(slowest, time.monotonic() - t0)
     rollups = None
     if new:
@@ -473,7 +511,9 @@ def backfill(budget_s=BACKFILL_BUDGET_S, hours=None, now=None, get=requests.get)
             errors.append(f"refresh_derived: {str(e)[:160]}")
     status = "error" if errors and not done else ("attention" if errors or capped or left else "ok")
     detail = {"hours": hours, "first_run": first_run, "markets": len(markets), "read": done,
-              "left": len(left), "capped": capped[:10], "fetched": fetched, "new": new,
+              "carried": len(carried), "dropped": [str(m) for m in dropped],
+              "left": len(left), "pending": [str(m) for m in failed + left],
+              "capped": capped[:10], "fetched": fetched, "new": new,
               "unmatched": unmatched, "errors": errors[:5], "seconds": round(time.monotonic() - started, 1),
               "budget_s": budget_s, "rollups": rollups,
               "summary": f"{new} trades from before discovery, {done} of {len(markets)} markets first seen "

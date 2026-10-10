@@ -455,8 +455,8 @@ def test_a_429_in_a_window_is_waited_out_once():
     assert whole and len(got) == 1 and slept == [2.0]
 
 
-def _wire_backfill(monkeypatch, markets, ok_before=True, fail=()):
-    """markets: {market_id: (first_seen, n_bands)}"""
+def _wire_backfill(monkeypatch, markets, ok_before=True, fail=(), pending=None, mode="auto"):
+    """markets: {market_id: (first_seen, n_bands)}; pending: the last run's pending list."""
     bands = []
     for mid, (seen, nb) in markets.items():
         for i in range(nb):
@@ -468,11 +468,23 @@ def _wire_backfill(monkeypatch, markets, ok_before=True, fail=()):
 
     def rest_all(table, params, order):
         assert table == "bands"
+        if "markets.market_id" in params:              # the carried markets, wherever first seen
+            wanted = params["markets.market_id"][4:-1].split(",")
+            return [b for b in bands if b["markets"]["market_id"] in wanted]
         since = dt.datetime.fromisoformat(params["markets.first_seen_at"][4:])
         asked_since.append(since)
         return [b for b in bands if dt.datetime.fromisoformat(b["markets"]["first_seen_at"]) >= since]
     monkeypatch.setattr(it, "rest_all", rest_all)
-    monkeypatch.setattr(it, "rest", lambda table, params: [{"logged_at": "x"}] if ok_before else [])
+
+    def rest(table, params):
+        p = dict(params)
+        if table == "settings":
+            return [{"value": {"P0.4_trade_history": {"mode": mode, "every_minutes": 300}}}]
+        assert table == "ingest_log"
+        if p.get("status") == "eq.ok":
+            return [{"logged_at": "x"}] if ok_before else []
+        return [{"detail": {"pending": pending}}] if pending is not None else []
+    monkeypatch.setattr(it, "rest", rest)
 
     def fetch(ids, start, end, get=None, **kw):
         mid = ids[0][2:-2]
@@ -546,3 +558,48 @@ def test_the_backfill_runs_in_the_intraday_pipeline_not_the_tick():
     intraday = (wf / "pipeline_intraday.yml").read_text()
     assert "python scripts/ingest_trades.py --backfill --budget 300" in intraday
     assert "--backfill" not in (wf / "tick.yml").read_text(), "the tick's minute is untouched"
+
+
+def test_a_run_cut_short_is_resumed_first_by_the_next_one(monkeypatch):
+    """Codex on #365: without this, every run re-read the same finished prefix
+    and the tail of a cohort could age out of the window unread."""
+    clock = [0.0]
+    monkeypatch.setattr(it.time, "monotonic", lambda: clock[0])
+    cohort = {f"m{i}": (SEEN, 2) for i in range(5)}
+    _, windows, _, _ = _wire_backfill(monkeypatch, cohort)
+    real = it.fetch_window
+
+    def slow(*a, **k):
+        clock[0] += 40.0
+        return real(*a, **k)
+    monkeypatch.setattr(it, "fetch_window", slow)
+    d = it.backfill(budget_s=100, now=SEEN + dt.timedelta(hours=5))
+    assert [w[0] for w in windows] == ["m0", "m1"] and d["pending"] == ["m2", "m3", "m4"]
+    # the next run, after the cohort has left the 13 h window: the pending are still read, first
+    _, windows, logged, _ = _wire_backfill(monkeypatch, cohort, pending=d["pending"])
+    d2 = it.backfill(now=SEEN + dt.timedelta(hours=20))
+    assert [w[0] for w in windows] == ["m2", "m3", "m4"] and d2["pending"] == [] and d2["status"] == "ok"
+    assert d2["carried"] == 3
+
+
+def test_a_failed_market_is_carried_to_the_next_run(monkeypatch):
+    _wire_backfill(monkeypatch, {"m1": (SEEN, 2), "m2": (SEEN, 2)}, fail={"m1"})
+    d = it.backfill(now=SEEN + dt.timedelta(hours=5))
+    assert d["pending"] == ["m1"]
+
+
+def test_a_carried_market_is_dropped_after_the_lookback(monkeypatch):
+    old = SEEN - it.BACKFILL_LOOKBACK - dt.timedelta(hours=1)
+    _, windows, _, _ = _wire_backfill(monkeypatch, {"m0": (old, 2), "m1": (SEEN, 2)}, pending=["m0"])
+    d = it.backfill(now=SEEN + dt.timedelta(hours=5))
+    assert [w[0] for w in windows] == ["m1"] and d["dropped"] == ["m0"]
+
+
+@pytest.mark.parametrize("mode", ["off", "manual"])
+def test_the_backfill_obeys_the_workflows_page_switch(monkeypatch, mode):
+    """Codex on #365: the hourly run skips when P0.4 is off or manual; so does this."""
+    _, windows, logged, inserted = _wire_backfill(monkeypatch, {"m1": (SEEN, 2)}, mode=mode)
+    d = it.backfill(now=SEEN + dt.timedelta(hours=5))
+    assert windows == [] and inserted == [] and d["status"] == "skipped"
+    assert logged == {"job": it.BACKFILL_JOB, "status": "skipped", "rows": 0}
+
