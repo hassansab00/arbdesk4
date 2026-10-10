@@ -60,9 +60,17 @@ Pressure is the sea-level pressure where the report has one, else the altimeter 
 ### The training table
 
 `python tools/wxpredict/build_table.py` writes
-`data/training/wxpredict/table/wxpredict_table.csv.gz`. It is not committed: it
-rebuilds from the sources above. `data/training/wxpredict/table_meta.json` is
-committed, with the row count, every column's fill and the content's sha256.
+`data/training/wxpredict/table/wxpredict_table.csv.gz`. It is not committed.
+`data/training/wxpredict/table_meta.json` is committed, with the row count, every
+column's fill, the content's sha256, and every source file the build read or
+listed, each named by its git blob (`sources`, R47).
+
+The sources move after a table is recorded: the nightly mirror extends the
+forecast record in `previous_runs`, and the builder takes its cities from the
+newest mirror of `public.cities`. So a plain build reads the files as they are
+now, and `python tools/wxpredict/build_table.py --recorded` rebuilds the recorded
+table from exactly its own sources, taken from git, and fails unless the
+content's sha256 and the files read are the recorded ones.
 
 - **Rows.** One per (event, decision time). Decisions are taken every hour of the
   event's local day D and every three hours of D-1, each 60 s after the hour,
