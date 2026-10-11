@@ -78,6 +78,9 @@ def main(argv=None):
     ap.add_argument("decisions")
     ap.add_argument("--out", default=None)
     ap.add_argument("--model-col", default="p_fusion")
+    ap.add_argument("--from", dest="date_from", default=None, help="first event date (default: the first with books)")
+    ap.add_argument("--to", dest="date_to", default=None,
+                    help="last event date (default: the mirror's newest; after it the books are the archive's alone)")
     args = ap.parse_args(argv)
 
     dec = pd.read_csv(args.decisions, low_memory=False)
@@ -96,9 +99,12 @@ def main(argv=None):
 
     b = books.merge(bands, on="band_id", how="inner").merge(markets, on="market_id", how="inner")
     first_book = b.resolution_date.min()
-    # The window: dates whose kept books the mirror has already taken.
-    b = b[(b.resolution_date <= kept_through)]
-    dec = dec[(dec.date >= first_book) & (dec.date <= kept_through)]
+    # The window: dates whose kept books the mirror has already taken, unless
+    # --from/--to say otherwise (after the mirror's newest date, the archive's alone).
+    d0 = max(first_book, args.date_from) if args.date_from else first_book
+    d1 = args.date_to or kept_through
+    b = b[(b.resolution_date >= d0) & (b.resolution_date <= d1)]
+    dec = dec[(dec.date >= d0) & (dec.date <= d1)]
 
     # Each market's ladder must be the scored event's, bucket for bucket.
     ladders = {}
@@ -182,7 +188,8 @@ def main(argv=None):
         "made": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
         "decisions_sha256": dec_sha,
         "model_col": args.model_col,
-        "window": [str(first_book), str(kept_through)],
+        "window": [str(d0), str(d1)],
+        "books_after_mirror": "archive only" if str(d1) > str(kept_through) else None,
         "books": {"archive_files": len(arch_files), "mirror_files": len(kept_files),
                   "snapshots_matched": int(len(m)), "markets_unmatched": unmatched,
                   "dates": int(m.date.nunique())},

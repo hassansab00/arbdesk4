@@ -22,7 +22,9 @@ number. No tree, no move. Scored on the month's venue decisions with every
 bucket priced, against the market's normalised prices and the market
 tempered per hour group (walkforward.py's control), with a 90% interval from
 resampling whole dates. --dump writes the per-bucket probabilities in the
-form ask_backtest.py reads (the model's in p_model). Research only.
+form ask_backtest.py reads (the model's in p_model), and in `delta` the
+trees' correction to each bucket's logit (0 where the month has no trees),
+which book_anchor.py applies to a fresher price. Research only.
 
 --weather takes walkforward.py's --dump and gives each bucket the weather
 model's probability (and its log ratio to the market's) as a feature. Every
@@ -204,13 +206,16 @@ def main(argv=None):
                                         np.datetime64(cut - pd.Timedelta(days=VALID_DAYS)))
         fits[month] = {"rounds": rounds, "valid_nll_market": round(base, 4), "valid_nll_model": round(best, 4),
                        "train_decisions": int(tr_dec.sum())}
-        raw = init[te] + (model.predict(xl[te], raw_score=True) if model is not None else 0.0)
+        corr = model.predict(xl[te], raw_score=True) if model is not None else np.zeros(int(te.sum()))
+        raw = init[te] + corr
         idx = np.flatnonzero(te_dec)
         pos = np.full(n, -1)
         pos[idx] = np.arange(len(idx))
         p = np.zeros((len(idx), q.shape[1]))
         p[pos[r[te]], c[te]] = sigmoid(raw)
         p = p / p.sum(1, keepdims=True)
+        delta = np.zeros_like(p)                     # the trees' correction to each bucket's logit
+        delta[pos[r[te]], c[te]] = corr
         qq, mm, ww = q[idx], mask[idx], win[idx]
         # the market tempered per hour group on the training decisions: its own calibration
         lq_tr, lq_te = np.log(np.where(mask[tr_dec], q[tr_dec], 1)), np.log(np.where(mm, qq, 1))
@@ -233,7 +238,7 @@ def main(argv=None):
                 "unit": sub.unit.values, "decision_utc": sub.decision_utc.values,
                 "day_offset": sub.day_offset.values, "local_hour": sub.local_hour.values,
                 "bands_lo": sub.bands_lo.values, "bands_hi": sub.bands_hi.values, "winner": ww,
-                "q": fmt(qq), "p_tempered": fmt(qt), "p_model": fmt(p)}))
+                "q": fmt(qq), "p_tempered": fmt(qt), "p_model": fmt(p), "delta": fmt(delta)}))
         print(f"{month}: {len(idx):,} decisions, {rounds} trees (valid {base:.4f} -> {best:.4f}), "
               f"{time.time() - t0:.0f} s", flush=True)
 
