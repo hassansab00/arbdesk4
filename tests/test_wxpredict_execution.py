@@ -67,3 +67,18 @@ def test_cash_is_shared_and_comes_back_at_settlement():
         "t=2: 60 of 100 is locked until t=10, 40 free; t=11: the win's 120 is back; t=12: a second 60 on city-day c passes the cap (100)"
     taken, skipped = ex.simulate([e(1, 10, "a", 6, True), e(2, 10, "a", 6, True)], bankroll=100, city_day_cap=0.1)
     assert len(taken) == 1 and skipped == {"capital": 0, "city_day_cap": 1}
+
+
+def test_the_funding_order_does_not_depend_on_the_list():
+    """Entries at one instant compete for the cash and the city-day cap; the
+    winner must not depend on how the list was built (Codex on #379)."""
+    import random
+    base = [{"t": 5, "settle_t": 99, "city_day": "x", "band_id": f"b{i}", "side": s, "usd": 40.0, "fee": 0.0,
+             "shares": 80.0, "win": i % 2 == 0} for i in range(4) for s in ("yes", "no")]
+    first, _ = ex.simulate(base, bankroll=100, city_day_cap=1.0)
+    for seed in range(5):
+        shuffled = base[:]
+        random.Random(seed).shuffle(shuffled)
+        again, _ = ex.simulate(shuffled, bankroll=100, city_day_cap=1.0)
+        assert [(e["band_id"], e["side"]) for e in again] == [(e["band_id"], e["side"]) for e in first]
+    assert [(e["band_id"], e["side"]) for e in first] == [("b0", "no"), ("b0", "yes")], "band, then side"

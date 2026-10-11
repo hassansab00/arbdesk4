@@ -549,7 +549,12 @@ from 5 Oct and is in its docstring; the sizing and cash rules are plain Python
 - **Cash:** $1,000 shared, paid at entry, returned the day after the event
   date; at most 10% on one city-day. A simulation grid, not an allocation.
   Because the cap admits entries in time order, a dearer entry can change which
-  later ones fit, so the stressed rows are not always lower.
+  later ones fit, so the stressed rows are not always lower. Entries at one
+  instant are funded by band and side (`execution.funding_order`), never by
+  probability or outcome. *As first run they were funded in the order the
+  trades file listed them, every YES before every NO (Codex on #379); that
+  order flattered the capped rows: the $50 exploration row read +$1,465.67,
+  +$1,153.97 with the fixed order. The $10 rows and the holdout did not move.*
 - **Latency:** at the snapshot (optimistic) and at the band's next snapshot
   within 2 hours (pessimistic; about one an hour is archived). The live delay
   is not measured yet.
@@ -564,7 +569,7 @@ The H3 corrections on the book (own snapshot), $10 tickets, at the snapshot:
 | | entries | spent | net | per date (90%) | worst drawdown |
 |---|---|---|---|---|---|
 | exploration, 27 Aug - 25 Sep (23 dates; where H3 was found) | 295 | $2,678 | **+$469.77** | +$20.42 (+$7.17 to +$34.57) | $91 |
-| the same, $50 tickets (mean entry $33: the depth runs out) | 261 | $8,643 | +$1,465.67 | +$63.72 (+$16.74 to +$115.20) | $361 |
+| the same, $50 tickets (mean entry $33: the depth runs out) | 261 | $8,643 | +$1,153.97 | +$50.17 (+$1.56 to +$102.73) | $361 |
 | the same, stress +1c / next snapshot | 295 / 130 | | +$411.09 / +$265.01 | +$17.87 / +$18.93 (-$0.18 to +$38.46) | |
 | holdout, 26 Sep - 2 Oct (7 dates) | 87 | $833 | **+$114.47** | +$16.35 (-$2.82 to +$35.15) | $33 |
 | the market's own prices, holdout / exploration | 13 / 30 | | -$17.24 / -$99.75 | | |

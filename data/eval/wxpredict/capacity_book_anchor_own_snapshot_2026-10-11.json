@@ -1,5 +1,5 @@
 {
- "made": "2026-10-11T17:22Z",
+ "made": "2026-10-11T17:31Z",
  "trades_sha256": "208f8ece4efd15738832c3aef055ec1120ddf59c71d30b25eb2bab3e5dfe3f92",
  "theta": 0.05,
  "bankroll": 1000.0,
@@ -8,7 +8,7 @@
   "2026-08-27",
   "2026-09-25"
  ],
- "rule": "The rule, fixed before it was run on any date from 5 Oct (11 Oct): SIGNALS: the trades of the one-share rule at THETA 0.05, unchanged (ask_backtest.py --trades-out): each is one entry on one band, side and day, at the book snapshot it qualified on. The model's and the market's own (the control) are run the same way. THE LADDER at that snapshot is rebuilt from the archived depth tiers by the platform's rule (execution.synth_levels; sql/ad4_13_reconcile.sql, ad4_synth_levels). YES walks the asks; NO walks the YES bids at 1 - price (the venue's NO ask is that complement on 99.93% of rows). Whether the book also carried a real NO ask is recorded, and the complement-only entries are reported on their own. SIZE: level by level while the probability is at least THETA above the level's price, up to a ticket of T dollars, never past 25 cents from the touch; the venue's taker fee (cost_model.taker_fee) on every share at its level's price. STRESSED: the same entries with every share of the first tier one cent dearer (the platform's rule prices that tier at the touch). An entry below the minimum order is not made. The minimum order is NOT RECORDED (markets.min_order_size is empty on all 2,708 markets, and the stored books keep only bids and asks): 5 shares is assumed, 1 share is shown beside it. CASH: a bankroll of B dollars, each entry's cost paid at its snapshot and its winnings returned at the end of the day after the event date (UTC); an entry the free cash cannot pay is skipped, and so is one that would put more than C of the bankroll on one city-day. LATENCY: (a) at the snapshot itself; (b) at the band's next tradeable snapshot within 2 hours, with the same probability and the rule checked again there (the archive keeps about one snapshot an hour, so (b) is a pessimistic bound and (a) an optimistic one; the live delay is not measured yet). T 10, 50 and 250 dollars, B 1,000, C 10%: a simulation grid, not an allocation.",
+ "rule": "The rule, fixed before it was run on any date from 5 Oct (11 Oct): SIGNALS: the trades of the one-share rule at THETA 0.05, unchanged (ask_backtest.py --trades-out): each is one entry on one band, side and day, at the book snapshot it qualified on. The model's and the market's own (the control) are run the same way. THE LADDER at that snapshot is rebuilt from the archived depth tiers by the platform's rule (execution.synth_levels; sql/ad4_13_reconcile.sql, ad4_synth_levels). YES walks the asks; NO walks the YES bids at 1 - price (the venue's NO ask is that complement on 99.93% of rows). Whether the book also carried a real NO ask is recorded, and the complement-only entries are reported on their own. SIZE: level by level while the probability is at least THETA above the level's price, up to a ticket of T dollars, never past 25 cents from the touch; the venue's taker fee (cost_model.taker_fee) on every share at its level's price. STRESSED: the same entries with every share of the first tier one cent dearer (the platform's rule prices that tier at the touch). An entry below the minimum order is not made. The minimum order is NOT RECORDED (markets.min_order_size is empty on all 2,708 markets, and the stored books keep only bids and asks): 5 shares is assumed, 1 share is shown beside it. CASH: a bankroll of B dollars, each entry's cost paid at its snapshot and its winnings returned at the end of the day after the event date (UTC); an entry the free cash cannot pay is skipped, and so is one that would put more than C of the bankroll on one city-day. Entries are funded in time order, and at one instant by band and side (execution.funding_order: never by probability or outcome). LATENCY: (a) at the snapshot itself; (b) at the band's next tradeable snapshot within 2 hours, with the same probability and the rule checked again there (the archive keeps about one snapshot an hour, so (b) is a pessimistic bound and (a) an optimistic one; the live delay is not measured yet). T 10, 50 and 250 dollars, B 1,000, C 10%: a simulation grid, not an allocation.",
  "one_share": {
   "model": {
    "trades": 311,
@@ -90,40 +90,40 @@
      "city_day_cap": 33
     },
     "dates": 23,
-    "shares": 18140.5,
+    "shares": 17688.0,
     "usd_spent": 8642.77,
-    "fees": 193.01,
-    "net_profit": 1465.67,
-    "return_on_spent": 0.1659,
-    "mean_profit_per_date": 63.72,
+    "fees": 189.39,
+    "net_profit": 1153.97,
+    "return_on_spent": 0.1307,
+    "mean_profit_per_date": 50.17,
     "ci90_per_date": [
-     16.7408,
-     115.2037
+     1.5614,
+     102.7348
     ],
     "max_drawdown": 361.49,
-    "without_best_date": 969.89,
-    "without_best_city": 953.82,
+    "without_best_date": 658.19,
+    "without_best_city": 837.21,
     "best_city": "chongqing",
     "mean_lock_days": 2.13,
     "mean_usd_per_entry": 33.11,
     "by_side": {
      "yes": {
-      "entries": 112,
-      "net_profit": 1067.88
+      "entries": 105,
+      "net_profit": 626.18
      },
      "no": {
-      "entries": 149,
-      "net_profit": 397.79
+      "entries": 156,
+      "net_profit": 527.79
      }
     },
     "no_real_vs_complement": {
      "real": {
-      "entries": 97,
-      "net_profit": 32.91
+      "entries": 102,
+      "net_profit": 114.55
      },
      "complement only": {
-      "entries": 52,
-      "net_profit": 364.87
+      "entries": 54,
+      "net_profit": 413.25
      }
     }
    },
@@ -138,30 +138,30 @@
      "city_day_cap": 132
     },
     "dates": 21,
-    "shares": 11532.2,
-    "usd_spent": 4803.0,
-    "fees": 121.07,
-    "net_profit": 1715.27,
-    "return_on_spent": 0.3483,
-    "mean_profit_per_date": 81.68,
+    "shares": 11267.0,
+    "usd_spent": 4817.6,
+    "fees": 119.22,
+    "net_profit": 1437.34,
+    "return_on_spent": 0.2911,
+    "mean_profit_per_date": 68.44,
     "ci90_per_date": [
-     22.9823,
-     147.4045
+     8.2421,
+     138.986
     ],
     "max_drawdown": 324.42,
-    "without_best_date": 1072.51,
+    "without_best_date": 794.57,
     "without_best_city": 1004.39,
     "best_city": "chongqing",
     "mean_lock_days": 1.94,
-    "mean_usd_per_entry": 29.47,
+    "mean_usd_per_entry": 29.56,
     "by_side": {
      "yes": {
-      "entries": 78,
-      "net_profit": 1111.03
+      "entries": 77,
+      "net_profit": 805.17
      },
      "no": {
-      "entries": 85,
-      "net_profit": 604.24
+      "entries": 86,
+      "net_profit": 632.16
      }
     },
     "no_real_vs_complement": {
@@ -170,8 +170,8 @@
       "net_profit": 369.34
      },
      "complement only": {
-      "entries": 27,
-      "net_profit": 234.91
+      "entries": 28,
+      "net_profit": 262.83
      }
     }
    },
@@ -234,40 +234,40 @@
      "city_day_cap": 33
     },
     "dates": 23,
-    "shares": 18155.8,
+    "shares": 17703.3,
     "usd_spent": 8650.17,
-    "fees": 193.18,
-    "net_profit": 1467.29,
-    "return_on_spent": 0.1659,
-    "mean_profit_per_date": 63.8,
+    "fees": 189.55,
+    "net_profit": 1155.59,
+    "return_on_spent": 0.1307,
+    "mean_profit_per_date": 50.24,
     "ci90_per_date": [
-     16.84,
-     115.2205
+     1.8693,
+     102.71
     ],
     "max_drawdown": 359.06,
-    "without_best_date": 971.51,
-    "without_best_city": 955.44,
+    "without_best_date": 659.81,
+    "without_best_city": 838.83,
     "best_city": "chongqing",
     "mean_lock_days": 2.12,
     "mean_usd_per_entry": 32.4,
     "by_side": {
      "yes": {
-      "entries": 116,
-      "net_profit": 1070.08
+      "entries": 109,
+      "net_profit": 628.38
      },
      "no": {
-      "entries": 151,
-      "net_profit": 397.21
+      "entries": 158,
+      "net_profit": 527.21
      }
     },
     "no_real_vs_complement": {
      "real": {
-      "entries": 99,
-      "net_profit": 32.33
+      "entries": 104,
+      "net_profit": 113.97
      },
      "complement only": {
-      "entries": 52,
-      "net_profit": 364.87
+      "entries": 54,
+      "net_profit": 413.25
      }
     }
    },
@@ -282,30 +282,30 @@
      "city_day_cap": 132
     },
     "dates": 21,
-    "shares": 11547.5,
-    "usd_spent": 4810.41,
-    "fees": 121.23,
-    "net_profit": 1716.89,
-    "return_on_spent": 0.3481,
-    "mean_profit_per_date": 81.76,
+    "shares": 11282.3,
+    "usd_spent": 4825.01,
+    "fees": 119.39,
+    "net_profit": 1438.96,
+    "return_on_spent": 0.291,
+    "mean_profit_per_date": 68.52,
     "ci90_per_date": [
-     23.1392,
-     147.4957
+     8.5433,
+     139.1064
     ],
     "max_drawdown": 322.0,
-    "without_best_date": 1074.13,
+    "without_best_date": 796.19,
     "without_best_city": 1006.01,
     "best_city": "chongqing",
     "mean_lock_days": 1.94,
-    "mean_usd_per_entry": 28.46,
+    "mean_usd_per_entry": 28.55,
     "by_side": {
      "yes": {
-      "entries": 82,
-      "net_profit": 1113.23
+      "entries": 81,
+      "net_profit": 807.37
      },
      "no": {
-      "entries": 87,
-      "net_profit": 603.66
+      "entries": 88,
+      "net_profit": 631.59
      }
     },
     "no_real_vs_complement": {
@@ -314,8 +314,8 @@
       "net_profit": 368.76
      },
      "complement only": {
-      "entries": 27,
-      "net_profit": 234.91
+      "entries": 28,
+      "net_profit": 262.83
      }
     }
    },
@@ -378,40 +378,40 @@
      "city_day_cap": 32
     },
     "dates": 23,
-    "shares": 17965.3,
-    "usd_spent": 8729.3,
-    "fees": 191.12,
-    "net_profit": 1205.82,
-    "return_on_spent": 0.1352,
-    "mean_profit_per_date": 52.43,
+    "shares": 17552.9,
+    "usd_spent": 8725.18,
+    "fees": 187.89,
+    "net_profit": 937.96,
+    "return_on_spent": 0.1052,
+    "mean_profit_per_date": 40.78,
     "ci90_per_date": [
-     5.5015,
-     103.9101
+     -8.0597,
+     93.4931
     ],
     "max_drawdown": 383.35,
-    "without_best_date": 724.96,
-    "without_best_city": 709.88,
-    "best_city": "chongqing",
+    "without_best_date": 457.1,
+    "without_best_city": 634.69,
+    "best_city": "jeddah",
     "mean_lock_days": 2.13,
-    "mean_usd_per_entry": 33.57,
+    "mean_usd_per_entry": 33.56,
     "by_side": {
      "yes": {
-      "entries": 111,
-      "net_profit": 948.02
+      "entries": 103,
+      "net_profit": 495.16
      },
      "no": {
-      "entries": 149,
-      "net_profit": 257.8
+      "entries": 157,
+      "net_profit": 442.8
      }
     },
     "no_real_vs_complement": {
      "real": {
-      "entries": 97,
-      "net_profit": -17.39
+      "entries": 102,
+      "net_profit": 59.61
      },
      "complement only": {
-      "entries": 52,
-      "net_profit": 275.19
+      "entries": 55,
+      "net_profit": 383.19
      }
     }
    },
@@ -426,30 +426,30 @@
      "city_day_cap": 133
     },
     "dates": 21,
-    "shares": 11314.8,
-    "usd_spent": 4756.64,
-    "fees": 119.57,
-    "net_profit": 1535.71,
-    "return_on_spent": 0.3149,
-    "mean_profit_per_date": 73.13,
+    "shares": 11049.6,
+    "usd_spent": 4768.59,
+    "fees": 117.58,
+    "net_profit": 1260.57,
+    "return_on_spent": 0.258,
+    "mean_profit_per_date": 60.03,
     "ci90_per_date": [
-     14.5108,
-     139.1877
+     -1.3983,
+     131.1418
     ],
     "max_drawdown": 373.48,
-    "without_best_date": 905.89,
+    "without_best_date": 630.76,
     "without_best_city": 873.55,
     "best_city": "chongqing",
     "mean_lock_days": 1.94,
-    "mean_usd_per_entry": 29.36,
+    "mean_usd_per_entry": 29.44,
     "by_side": {
      "yes": {
-      "entries": 78,
-      "net_profit": 1041.77
+      "entries": 77,
+      "net_profit": 739.84
      },
      "no": {
-      "entries": 84,
-      "net_profit": 493.94
+      "entries": 85,
+      "net_profit": 520.73
      }
     },
     "no_real_vs_complement": {
@@ -458,8 +458,8 @@
       "net_profit": 272.77
      },
      "complement only": {
-      "entries": 27,
-      "net_profit": 221.17
+      "entries": 28,
+      "net_profit": 247.96
      }
     }
    },
@@ -522,40 +522,40 @@
      "city_day_cap": 32
     },
     "dates": 23,
-    "shares": 17980.6,
-    "usd_spent": 8736.86,
-    "fees": 191.28,
-    "net_profit": 1207.28,
-    "return_on_spent": 0.1352,
-    "mean_profit_per_date": 52.49,
+    "shares": 17568.2,
+    "usd_spent": 8732.73,
+    "fees": 188.05,
+    "net_profit": 939.42,
+    "return_on_spent": 0.1053,
+    "mean_profit_per_date": 40.84,
     "ci90_per_date": [
-     5.684,
-     103.7974
+     -7.7753,
+     93.5251
     ],
     "max_drawdown": 381.02,
-    "without_best_date": 726.43,
-    "without_best_city": 711.35,
-    "best_city": "chongqing",
+    "without_best_date": 458.57,
+    "without_best_city": 636.15,
+    "best_city": "jeddah",
     "mean_lock_days": 2.12,
-    "mean_usd_per_entry": 32.85,
+    "mean_usd_per_entry": 32.83,
     "by_side": {
      "yes": {
-      "entries": 115,
-      "net_profit": 950.11
+      "entries": 107,
+      "net_profit": 497.26
      },
      "no": {
-      "entries": 151,
-      "net_profit": 257.17
+      "entries": 159,
+      "net_profit": 442.17
      }
     },
     "no_real_vs_complement": {
      "real": {
-      "entries": 99,
-      "net_profit": -18.02
+      "entries": 104,
+      "net_profit": 58.98
      },
      "complement only": {
-      "entries": 52,
-      "net_profit": 275.19
+      "entries": 55,
+      "net_profit": 383.19
      }
     }
    },
@@ -570,30 +570,30 @@
      "city_day_cap": 133
     },
     "dates": 21,
-    "shares": 11330.1,
-    "usd_spent": 4764.2,
-    "fees": 119.74,
-    "net_profit": 1537.17,
-    "return_on_spent": 0.3147,
-    "mean_profit_per_date": 73.2,
+    "shares": 11064.9,
+    "usd_spent": 4776.15,
+    "fees": 117.74,
+    "net_profit": 1262.04,
+    "return_on_spent": 0.2579,
+    "mean_profit_per_date": 60.1,
     "ci90_per_date": [
-     14.6084,
-     139.1771
+     -1.29,
+     131.1457
     ],
     "max_drawdown": 371.15,
-    "without_best_date": 907.36,
+    "without_best_date": 632.22,
     "without_best_city": 875.02,
     "best_city": "chongqing",
     "mean_lock_days": 1.93,
-    "mean_usd_per_entry": 28.36,
+    "mean_usd_per_entry": 28.43,
     "by_side": {
      "yes": {
-      "entries": 82,
-      "net_profit": 1043.86
+      "entries": 81,
+      "net_profit": 741.94
      },
      "no": {
-      "entries": 86,
-      "net_profit": 493.31
+      "entries": 87,
+      "net_profit": 520.1
      }
     },
     "no_real_vs_complement": {
@@ -602,8 +602,8 @@
       "net_profit": 272.14
      },
      "complement only": {
-      "entries": 27,
-      "net_profit": 221.17
+      "entries": 28,
+      "net_profit": 247.96
      }
     }
    },
@@ -666,40 +666,40 @@
      "city_day_cap": 13
     },
     "dates": 14,
-    "shares": 10729.0,
+    "shares": 10447.3,
     "usd_spent": 4508.43,
-    "fees": 104.3,
-    "net_profit": 1035.11,
-    "return_on_spent": 0.2244,
-    "mean_profit_per_date": 73.94,
+    "fees": 101.73,
+    "net_profit": 756.0,
+    "return_on_spent": 0.164,
+    "mean_profit_per_date": 54.0,
     "ci90_per_date": [
-     24.4987,
-     121.9317
+     4.0217,
+     105.4792
     ],
     "max_drawdown": 212.03,
-    "without_best_date": 768.75,
-    "without_best_city": 682.77,
+    "without_best_date": 489.64,
+    "without_best_city": 403.65,
     "best_city": "jeddah",
     "mean_lock_days": 2.13,
     "mean_usd_per_entry": 38.53,
     "by_side": {
      "yes": {
-      "entries": 41,
-      "net_profit": 683.03
+      "entries": 37,
+      "net_profit": 291.36
      },
      "no": {
-      "entries": 76,
-      "net_profit": 352.08
+      "entries": 80,
+      "net_profit": 464.64
      }
     },
     "no_real_vs_complement": {
      "real": {
-      "entries": 56,
-      "net_profit": 124.87
+      "entries": 59,
+      "net_profit": 221.39
      },
      "complement only": {
-      "entries": 20,
-      "net_profit": 227.21
+      "entries": 21,
+      "net_profit": 243.25
      }
     }
    },
@@ -810,40 +810,40 @@
      "city_day_cap": 13
     },
     "dates": 14,
-    "shares": 10732.2,
+    "shares": 10450.5,
     "usd_spent": 4509.82,
-    "fees": 104.34,
-    "net_profit": 1035.47,
-    "return_on_spent": 0.2244,
-    "mean_profit_per_date": 73.96,
+    "fees": 101.77,
+    "net_profit": 756.36,
+    "return_on_spent": 0.164,
+    "mean_profit_per_date": 54.03,
     "ci90_per_date": [
-     24.6134,
-     121.8919
+     4.1798,
+     105.3603
     ],
     "max_drawdown": 211.11,
-    "without_best_date": 769.68,
-    "without_best_city": 683.13,
+    "without_best_date": 490.56,
+    "without_best_city": 404.01,
     "best_city": "jeddah",
     "mean_lock_days": 2.13,
     "mean_usd_per_entry": 37.9,
     "by_side": {
      "yes": {
-      "entries": 42,
-      "net_profit": 682.47
+      "entries": 38,
+      "net_profit": 290.79
      },
      "no": {
-      "entries": 77,
-      "net_profit": 353.0
+      "entries": 81,
+      "net_profit": 465.56
      }
     },
     "no_real_vs_complement": {
      "real": {
-      "entries": 57,
-      "net_profit": 125.8
+      "entries": 60,
+      "net_profit": 222.31
      },
      "complement only": {
-      "entries": 20,
-      "net_profit": 227.21
+      "entries": 21,
+      "net_profit": 243.25
      }
     }
    },
@@ -954,40 +954,40 @@
      "city_day_cap": 12
     },
     "dates": 14,
-    "shares": 10678.4,
-    "usd_spent": 4597.41,
-    "fees": 104.12,
-    "net_profit": 1021.87,
-    "return_on_spent": 0.2173,
-    "mean_profit_per_date": 72.99,
+    "shares": 10396.7,
+    "usd_spent": 4595.25,
+    "fees": 101.41,
+    "net_profit": 745.05,
+    "return_on_spent": 0.1586,
+    "mean_profit_per_date": 53.22,
     "ci90_per_date": [
-     23.5767,
-     119.7871
+     3.0357,
+     104.3043
     ],
     "max_drawdown": 223.85,
-    "without_best_date": 765.21,
-    "without_best_city": 674.02,
+    "without_best_date": 488.39,
+    "without_best_city": 397.2,
     "best_city": "jeddah",
     "mean_lock_days": 2.13,
-    "mean_usd_per_entry": 39.29,
+    "mean_usd_per_entry": 39.28,
     "by_side": {
      "yes": {
-      "entries": 40,
-      "net_profit": 690.35
+      "entries": 36,
+      "net_profit": 304.09
      },
      "no": {
-      "entries": 77,
-      "net_profit": 331.52
+      "entries": 81,
+      "net_profit": 440.96
      }
     },
     "no_real_vs_complement": {
      "real": {
-      "entries": 57,
-      "net_profit": 117.69
+      "entries": 60,
+      "net_profit": 211.74
      },
      "complement only": {
-      "entries": 20,
-      "net_profit": 213.83
+      "entries": 21,
+      "net_profit": 229.22
      }
     }
    },
@@ -1098,40 +1098,40 @@
      "city_day_cap": 12
     },
     "dates": 14,
-    "shares": 10681.5,
-    "usd_spent": 4598.84,
-    "fees": 104.15,
-    "net_profit": 1022.2,
-    "return_on_spent": 0.2174,
-    "mean_profit_per_date": 73.01,
+    "shares": 10399.8,
+    "usd_spent": 4596.68,
+    "fees": 101.45,
+    "net_profit": 745.38,
+    "return_on_spent": 0.1587,
+    "mean_profit_per_date": 53.24,
     "ci90_per_date": [
-     23.7065,
-     119.7273
+     3.0973,
+     104.4002
     ],
     "max_drawdown": 222.94,
-    "without_best_date": 766.11,
-    "without_best_city": 674.35,
+    "without_best_date": 489.29,
+    "without_best_city": 397.53,
     "best_city": "jeddah",
     "mean_lock_days": 2.12,
-    "mean_usd_per_entry": 38.65,
+    "mean_usd_per_entry": 38.63,
     "by_side": {
      "yes": {
-      "entries": 41,
-      "net_profit": 689.77
+      "entries": 37,
+      "net_profit": 303.51
      },
      "no": {
-      "entries": 78,
-      "net_profit": 332.43
+      "entries": 82,
+      "net_profit": 441.87
      }
     },
     "no_real_vs_complement": {
      "real": {
-      "entries": 58,
-      "net_profit": 118.6
+      "entries": 61,
+      "net_profit": 212.65
      },
      "complement only": {
-      "entries": 20,
-      "net_profit": 213.83
+      "entries": 21,
+      "net_profit": 229.22
      }
     }
    },

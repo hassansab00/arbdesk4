@@ -33,7 +33,9 @@ The rule, fixed before it was run on any date from 5 Oct (11 Oct):
   CASH: a bankroll of B dollars, each entry's cost paid at its snapshot and
   its winnings returned at the end of the day after the event date (UTC);
   an entry the free cash cannot pay is skipped, and so is one that would
-  put more than C of the bankroll on one city-day.
+  put more than C of the bankroll on one city-day. Entries are funded in
+  time order, and at one instant by band and side (execution.funding_order:
+  never by probability or outcome).
 
   LATENCY: (a) at the snapshot itself; (b) at the band's next tradeable
   snapshot within 2 hours, with the same probability and the rule checked
@@ -180,7 +182,8 @@ def main(argv=None):
             shares, usd, fee = fill
             settle = int(pd.Timestamp(r.date, tz="UTC").timestamp()) + 2 * 86400
             real_no = pd.notna(row.no_best_ask) and abs(float(row.no_best_ask) - (1 - float(row.best_bid))) <= 0.001
-            out.append({"t": int(row.t), "settle_t": settle, "city_day": (city_of.get(r.band_id), r.date),
+            out.append({"t": int(row.t), "settle_t": settle, "band_id": r.band_id,
+                        "city_day": (city_of.get(r.band_id), r.date),
                         "city": city_of.get(r.band_id), "date": r.date, "side": r.side, "shares": shares,
                         "usd": usd, "fee": fee, "win": bool(r.win),
                         "no_quote": ("real" if real_no else "complement only") if r.side == "no" else "n/a"})

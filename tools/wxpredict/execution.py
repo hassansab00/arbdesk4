@@ -75,14 +75,21 @@ def size_entry(levels, p, theta, ticket_usd, min_shares, max_touch_slip=0.25, to
     return fill["shares"], usd, fee
 
 
+def funding_order(e):
+    """Entries are funded in time order; entries at the same instant by band
+    and side, a fixed order that does not depend on how the list was built
+    and does not look at the probability or the outcome (Codex on #379)."""
+    return (e["t"], str(e.get("band_id", "")), str(e.get("side", "")))
+
+
 def simulate(entries, bankroll, city_day_cap):
     """Shared cash: each entry {t, settle_t, city_day, usd, fee, shares, win}
-    in time order pays usd + fee at t and returns shares (if it won) at
+    in funding_order pays usd + fee at t and returns shares (if it won) at
     settle_t. An entry the free cash cannot pay, or that would put more than
     city_day_cap of the bankroll on one city-day, is skipped. Returns the
     taken entries and the skips by reason."""
     cash, locked, per_city_day, taken, skipped = bankroll, [], {}, [], {"capital": 0, "city_day_cap": 0}
-    for e in sorted(entries, key=lambda e: e["t"]):
+    for e in sorted(entries, key=funding_order):
         for item in [x for x in locked if x[0] <= e["t"]]:
             cash += item[1]
             locked.remove(item)
