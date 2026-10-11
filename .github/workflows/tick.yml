@@ -129,12 +129,35 @@ jobs:
             timeout 110 .venv/bin/python scripts/confirm_recent.py > "$RUNNER_TEMP/confirm.log" 2>&1
             echo $? > "$RUNNER_TEMP/confirm.rc.tmp" && mv "$RUNNER_TEMP/confirm.rc.tmp" "$RUNNER_TEMP/confirm.rc"
           ) < /dev/null > /dev/null 2>&1 &
+      - name: The live record, started beside the other steps (WXPredict WP3)
+        # Every live input as it arrives, with the time it arrived
+        # (scripts/live_capture.py): every open bucket's book, the hourly
+        # `_previous_day1` forecast, and the station reports of the tick's own
+        # IEM read, which tick.py leaves in LIVE_CAPTURE_IEM (one IEM request,
+        # as before). It waits on the network, not the CPU, so it runs beside
+        # the checkpoints; its budget (95 s) ends before TICK_DEADLINE, and
+        # `timeout` is the backstop. A run the backstop ends is logged by its
+        # collecting step. Off or manual on the Workflows page
+        # (P2.12_live_capture) stores nothing. Not on a rehearsal.
+        id: capture
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          LIVE_CAPTURE_IEM: ${{ runner.temp }}/iem_answer.txt
+        run: |
+          date +%s > "$RUNNER_TEMP/capture.start"
+          (
+            set +e
+            timeout 105 .venv/bin/python scripts/live_capture.py > "$RUNNER_TEMP/capture.log" 2>&1
+            echo $? > "$RUNNER_TEMP/capture.rc.tmp" && mv "$RUNNER_TEMP/capture.rc.tmp" "$RUNNER_TEMP/capture.rc"
+          ) < /dev/null > /dev/null 2>&1 &
       - name: Checkpoints
         # Inputs reach the script through the environment, never the shell
         # line, and tick.py parses --at as a timestamp or refuses it.
+        # LIVE_CAPTURE_IEM: where it leaves its IEM answer for the live record.
         env:
           TICK_DRY_RUN: ${{ github.event.inputs.dry_run }}
           TICK_AT: ${{ github.event.inputs.at }}
+          LIVE_CAPTURE_IEM: ${{ runner.temp }}/iem_answer.txt
         run: .venv/bin/python scripts/tick.py
       - name: NWS forecasts (replaces n8n P1.3 and P1.4)
         # Runs in the ticks of 03, 09, 15 and 21 UTC, the hours n8n ran them;
@@ -167,6 +190,22 @@ jobs:
           echo "confirm_recent exit code: ${rc:-none yet}"
           if [ "$rc" = "124" ]; then
             .venv/bin/python scripts/confirm_recent.py --killed "$rc" || true
+          fi
+      - name: The live record, collected (WXPredict WP3)
+        # Waits for the run started above, at most until its 105 s backstop
+        # has passed, counted from its start. It never fails the job: a
+        # failure is in the run's own row (P2.12_live_capture), and a run the
+        # backstop ended (exit 124) writes none, so this writes it.
+        if: ${{ !cancelled() && steps.capture.outcome == 'success' }}
+        run: |
+          started="$(cat "$RUNNER_TEMP/capture.start" 2>/dev/null || date +%s)"
+          until [ -f "$RUNNER_TEMP/capture.rc" ] || [ "$(date +%s)" -gt $(( started + 105 + 5 )) ]; do sleep 0.5; done
+          cat "$RUNNER_TEMP/capture.log" 2>/dev/null || true
+          [ -f "$RUNNER_TEMP/capture.rc" ] || echo "live_capture still running past its 105 s timeout"
+          rc="$(cat "$RUNNER_TEMP/capture.rc" 2>/dev/null || true)"
+          echo "live_capture exit code: ${rc:-none yet}"
+          if [ "$rc" = "124" ]; then
+            .venv/bin/python scripts/live_capture.py --killed "$rc" || true
           fi
       - name: Trade prints, collected
         # Waits for the run started above: it stops starting batches at its

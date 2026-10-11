@@ -234,6 +234,17 @@ select cron.schedule(
   'VACUUM (FULL, ANALYZE) public.derived_city_correlation'
 );
 
+-- The live record (WXPredict WP3, 11 Oct): the archive takes every row two
+-- days old, about a day of captures a night, and asks for its own reclaim, so
+-- this is the backstop. Daily, as every dataset kept three days or less is;
+-- 03:05, after the 02:36 archive and ahead of the other backstops, clear of
+-- the tick, which writes the table at :36-:38.
+select cron.schedule(
+  'ad4_reclaim_live_capture',
+  '5 3 * * *',
+  'VACUUM (FULL, ANALYZE) public.live_capture'
+);
+
 -- The weather model's explanations (WXPredict build 2.A, 7 Oct): the archive
 -- moves a day of contributions and inputs out of the rows every night and
 -- asks for its own reclaim, so this is the backstop - weekly, Monday 07:15,
@@ -310,7 +321,9 @@ declare
     -- appended (29 Sep, P1.6 phase 2)
     'weather_forecast_models', 'band_probabilities',
     -- appended (7 Oct, WXPredict build 2.A)
-    'derived_city_correlation', 'derived_model_forecast'];
+    'derived_city_correlation', 'derived_model_forecast',
+    -- appended (11 Oct, WXPredict WP3)
+    'live_capture'];
   v_now   timestamptz := now();
   v_hour  int := extract(hour from (v_now at time zone 'UTC'))::int;
   v_at    timestamptz;

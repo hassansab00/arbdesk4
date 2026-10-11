@@ -134,6 +134,7 @@ insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plai
   ('weather_resolution_attempts','captured_at',  30, 'databank',  'Auditable attempts to collect final contract-authority weather outcomes.'),
   ('paper_position_settlements','settled_at',    null, 'trading',   'Paper payouts and released cost basis at venue resolution.'),
   ('research_captures',         'captured_at',  null, 'databank',  'Private predictive and synthesis revisions; unchanged records are deduplicated.'),
+  ('live_capture',              'captured_at',     2, 'databank',  'What the live system had at each hourly tick, as it arrived: station reports, the hourly forecast and every open bucket''s book. Kept two days; older rows are in the repository.'),
   ('ledger',                    'recorded_at',  null, 'trading',   'Every cash movement. Accumulates; never stale.'),
   ('fact_forecast_outcome',     'captured_at',    30, 'databank',  'Settled evidence: what was forecast against what happened.'),
   ('fact_band_outcome',         'captured_at',    30, 'databank',  'Settled evidence: what a bucket was priced at against whether it won.'),

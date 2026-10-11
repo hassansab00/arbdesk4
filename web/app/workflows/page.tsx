@@ -181,6 +181,13 @@ const CATALOGUE: Array<{
     note: "Off or manual here stops the asking; answers already on their way are still read. The Run button has no workflow behind it: the poller runs in the database.",
   },
   {
+    job: "P2.12_live_capture",
+    label: "Live record (every input the tick had)",
+    schedule: "hourly, in the GitHub tick (scripts/live_capture.py), beside the checkpoints",
+    what: "Keeps every live input as it arrived, with the time it arrived: the station reports of the tick's own IEM read (every field the training reads), the hourly day-ahead forecast for every city, and every open bucket's book. A report or forecast value is stored once per change. Two days in the database; older rows go to the repository with the nightly archive. It is what the WXPredict parity test and shadow records are judged on.",
+    note: "Off or manual here stores nothing; the tick's own work is unchanged. The Run button has no workflow behind it: it runs inside the tick.",
+  },
+  {
     job: "P4.1_health_watchdog",
     label: "Health Watchdog",
     schedule: "every 6 hours, in the database (pg_cron)",

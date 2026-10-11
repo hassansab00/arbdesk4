@@ -500,6 +500,34 @@ TABLES = {
         "mirror_first": True,
         "needs_feature_cache": False,
     },
+    # THE LIVE RECORD (WXPredict WP3; Hassan, 11 Oct: "go ahead with live
+    # capture"). Every input the hourly tick had, as it arrived: station
+    # reports, the hourly `_previous_day1` forecast, every open bucket's book
+    # (scripts/live_capture.py). Its readers are the WXPredict live reader and
+    # parity test, which read the repository's copies; nothing in Postgres
+    # reads it. Kept two days; the export is the whole table older than the
+    # cutoff, keyed by capture_id, which is not exported (the rows carry their
+    # own kind, key and time). The mirror copies it by captured_at after the
+    # prune; prune_live_capture refuses a row captured since yesterday's
+    # midnight.
+    "live_capture": {
+        "table": "live_capture",
+        "pk": "capture_id",
+        "cutoff_col": "captured_at",
+        "cutoff_is_date": False,
+        "prune_rpc": "prune_live_capture",
+        "tag": "live-capture-archive",
+        "columns": ["kind", "key", "captured_at", "payload", "written_at"],
+        # NOT MEASURED YET: the first night's rows say. A books row carries
+        # every open bucket (869 on 11 Oct), a report or hourly row one value set.
+        "bytes_per_row": None,
+        # TWO DAYS, WANTED AND FLOOR: nothing in Postgres reads it, and two days
+        # back is always before the midnight the mirror has reached.
+        "keep_days": 2,
+        "min_keep_days": 2,
+        "mirror_first": True,
+        "needs_feature_cache": False,
+    },
     # A WEEK-OLD FORECAST'S PAYLOAD (WXPredict build 2.A; Hassan, 7 Oct:
     # "proceed to the next storage cut"). The rows and their numbers stay, as
     # with signal_inputs below; what goes is a jsonb payload nothing opens
@@ -901,6 +929,13 @@ def mirror_needs(spec, cutoff, now=None):
     if spec.get("mirrored_on"):
         return utc_midnight(cutoff)
     return utc_midnight(now or dt.datetime.now(dt.timezone.utc)) - dt.timedelta(days=1)
+
+
+def rows_older_than(spec, cutoff):
+    """Whether the relation the export reads holds any row older than the cutoff."""
+    return bool(rest(read_source(spec), [("select", spec["pk"]),
+                                         (spec["cutoff_col"], f"lt.{cutoff.isoformat()}"),
+                                         ("limit", "1")]))
 
 
 def _root():
@@ -1346,6 +1381,17 @@ def export_one(spec, name, args):
     if spec.get("mirror_first"):
         need = mirror_needs(spec, cutoff)
         have = mirrored_through(spec["table"])
+        # A TABLE THE MIRROR HAS NEVER COPIED, WITH NOTHING OLD ENOUGH TO GO.
+        # A new dataset's first night (live_capture, 11 Oct): the mirror copies
+        # it only after this step, so the manifest cannot have it yet, and no
+        # row is old enough to export, so nothing is at risk. An established
+        # table whose mirror is behind still stops below.
+        if have is None and not rows_older_than(spec, cutoff):
+            print(f"{spec['table']} is not in {MIRROR_MANIFEST} yet and has nothing older than "
+                  f"{cutoff.isoformat()} - nothing to archive.")
+            log_run(job, "ok", 0, {"keep_days": keep_days, "storage": pressure, "mirror_through": None,
+                                   "note": "not mirrored yet; nothing older than the cutoff"})
+            return 0
         if have is None or have < need:
             print(f"THE MIRROR IS BEHIND: {MIRROR_MANIFEST} has {spec['table']} through "
                   f"{have.isoformat() if have else 'nothing'}, and this prune needs "

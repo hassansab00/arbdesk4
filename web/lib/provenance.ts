@@ -526,6 +526,15 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Verify Resolution Source"
     }
   ],
+  "live_capture": [
+    {
+      "cadence": "hourly",
+      "file": "tick.yml",
+      "how": "scripts/live_capture.py",
+      "kind": "action",
+      "name": "Tick (hourly checkpoints)"
+    }
+  ],
   "live_weather": [
     {
       "cadence": "never - turned off (wave A.6)",
@@ -1344,6 +1353,12 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "markets",
     "bands"
   ],
+  "v_data_freshness": [
+    "live_capture"
+  ],
+  "v_data_health": [
+    "live_capture"
+  ],
   "v_databank_coverage": [
     "fact_band_outcome",
     "fact_forecast_outcome",
@@ -1733,6 +1748,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "band_probabilities",
     "cities",
     "fact_band_outcome"
+  ],
+  "v_provisional_settings": [
+    "live_capture"
   ],
   "v_prunable_band_probabilities": [
     "band_probabilities",

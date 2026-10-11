@@ -15,13 +15,24 @@ from common import get_cities, upsert, log_run, retry
 
 IEM = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
 
+# The fields this ingest reads, and the wider set the hourly tick asks for so
+# the live record (scripts/live_capture.py, WXPredict WP3) holds every field
+# the training reads (tools/wxpredict/fetch_obs.py FIELDS and the METAR text,
+# for its T group and 6-hour extremes). One request either way. Measured
+# 11 Oct over the 47 active stations' last 6 hours: parse() gives the same
+# 405 rows from both answers (0 differ either way); the wider answer is
+# 61,581 bytes against 24,974.
+DATA = "tmpf,dwpf,relh,drct,sknt,p01i,skyc1,mslp"
+FULL_DATA = ("tmpf,dwpf,relh,drct,sknt,gust,p01i,alti,mslp,vsby,"
+             "skyc1,skyc2,skyc3,skyl1,skyl2,skyl3,wxcodes,metar")
+
 # How much calendar time one request may cover. 48 stations over 2 days came
 # back as 2,239 rows in 138 KB; a year in one request would be ~420,000 rows
 # and ~25 MB, which is not a request, it is an outage waiting for a timeout.
 MAX_DAYS_PER_REQUEST = 30
 
 
-def fetch_station(station, start, end, since=None, until=None, timeout=300):
+def fetch_station(station, start, end, since=None, until=None, timeout=300, data=DATA):
     """One request. `station` is an ICAO string OR a list of them.
 
     THE PER-IP RATE LIMIT WAS AN ARTEFACT OF ASKING 48 TIMES.
@@ -57,7 +68,7 @@ def fetch_station(station, start, end, since=None, until=None, timeout=300):
         # to Mexico City at 2,240 m: station pressure there is ~770 hPa on the
         # calmest day of the year, so a single coefficient fitted across
         # cities would be reading altitude, not weather.
-        "station": station, "data": "tmpf,dwpf,relh,drct,sknt,p01i,skyc1,mslp",
+        "station": station, "data": data,
         "year1": start.year, "month1": start.month, "day1": start.day,
         "year2": end.year,   "month2": end.month,   "day2": end.day,
         "tz": "Etc/UTC", "format": "onlycomma", "latlon": "no",

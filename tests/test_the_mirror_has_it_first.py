@@ -36,7 +36,7 @@ MIRRORED = sorted(n for n, s in ao.TABLES.items() if s.get("mirror_first"))
 
 def test_the_datasets_the_mirror_copies_by_day_are_marked():
     assert MIRRORED == ["correlation", "forecast_features", "forecast_models", "forecast_variables",
-                        "model_payloads", "probabilities", "trades"]
+                        "live_capture", "model_payloads", "probabilities", "trades"]
     assert ao.TABLES["trades"]["mirrored_on"] == "ingested_at"
 
 
@@ -49,6 +49,7 @@ REFUSES_UNMIRRORED = {
     "correlation": ("ad4_prune_city_correlation.sql", "computed_at"),
     "forecast_variables": ("ad4_prune_forecast_payloads.sql", "observed_at"),
     "model_payloads": ("ad4_prune_forecast_payloads.sql", "predicted_at"),
+    "live_capture": ("ad4_prune_live_capture.sql", "captured_at"),
 }
 
 
@@ -113,8 +114,9 @@ def test_no_manifest_means_not_mirrored(monkeypatch, tmp_path):
     assert ao.mirrored_through("trades_observed") is None
 
 
-def _export(monkeypatch, name, through):
+def _export(monkeypatch, name, through, older=True):
     logged = []
+    monkeypatch.setattr(ao, "rows_older_than", lambda spec, cutoff: older)
     monkeypatch.setattr(ao, "effective_keep_days", lambda spec, override: (spec["keep_days"], {"over": False}))
     monkeypatch.setattr(ao, "refresh_feature_cache", lambda *a, **k: None)
     monkeypatch.setattr(ao, "finish_stranded_export", lambda *a, **k: None)
@@ -152,3 +154,29 @@ def test_a_mirror_that_has_caught_up_lets_the_export_run(monkeypatch, name):
     rc, reads, logged = _export(monkeypatch, name, today)
     assert rc == 0 and len(reads) == 1
     assert logged[0][0] == "ok"
+
+
+@pytest.mark.parametrize("name", MIRRORED)
+def test_a_new_table_with_nothing_old_enough_is_not_a_fault(monkeypatch, name):
+    """A dataset's first night (live_capture, 11 Oct): the mirror copies it
+    only after the archive, so the manifest cannot have it, and nothing is old
+    enough to go. Nothing is read or deleted, and it is not an alarm; with a
+    row old enough, it stops as before, and so does a mirror that is behind."""
+    rc, reads, logged = _export(monkeypatch, name, None, older=False)
+    assert rc == 0 and reads == []
+    assert logged[0][0] == "ok" and logged[0][1]["mirror_through"] is None
+    rc, reads, logged = _export(monkeypatch, name, None, older=True)
+    assert rc == 1 and reads == [] and logged[0][0] == "attention"
+    behind = ao.utc_midnight(dt.datetime.now(UTC)) - dt.timedelta(days=3)
+    rc, reads, logged = _export(monkeypatch, name, behind, older=False)
+    assert rc == 1 and logged[0][0] == "attention", "an established table's lagging mirror still stops it"
+
+
+def test_the_probe_asks_for_one_row_older_than_the_cutoff(monkeypatch):
+    seen = []
+    monkeypatch.setattr(ao, "rest", lambda relation, params: seen.append((relation, params)) or [])
+    cutoff = dt.datetime(2026, 10, 10, 2, 40, tzinfo=UTC)
+    assert ao.rows_older_than(ao.TABLES["live_capture"], cutoff) is False
+    (relation, params), = seen
+    assert relation == "live_capture"
+    assert ("captured_at", f"lt.{cutoff.isoformat()}") in params and ("limit", "1") in params

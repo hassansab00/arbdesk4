@@ -302,6 +302,24 @@ def _written(keys):
     return {(r["city_key"], str(r["target_date"]), r["checkpoint"]) for r in rows}
 
 
+def share_with_capture(text, received_at, path=None):
+    """Leave the IEM answer for scripts/live_capture.py (WXPredict WP3), which
+    runs beside this step: the first line is when the answer arrived. Written
+    to a temporary name and renamed, so the reader never sees half a file.
+    Never raises: the live record is not the tick's to lose an hour over."""
+    path = path or os.environ.get("LIVE_CAPTURE_IEM")
+    if not path:
+        return False
+    try:
+        with open(path + ".tmp", "w", encoding="utf-8") as fh:
+            fh.write(received_at.isoformat() + "\n" + text)
+        os.replace(path + ".tmp", path)
+        return True
+    except Exception as e:
+        print(f"  ! the live record's copy of the IEM answer was not written: {e}", file=sys.stderr)
+        return False
+
+
 def read_stations(now, dry_run=False):
     """Every active station's METAR readings over the last STATION_HOURS, in ONE request.
 
@@ -319,8 +337,12 @@ def read_stations(now, dry_run=False):
         icaos = sorted({(c.get("icao") or "").strip().upper() for c in cities if c.get("icao")})
         since = now - dt.timedelta(hours=STATION_HOURS)
         # day2 is EXCLUSIVE on the ASOS service (ingest_observations.window).
+        # Every field the training reads, so the live record (WXPredict WP3)
+        # keeps this same answer whole; parse() reads only its own columns.
         txt = io.fetch_station(icaos, since.date(), now.date() + dt.timedelta(days=1),
-                               since=since, until=now, timeout=STATION_TIMEOUT_S)
+                               since=since, until=now, timeout=STATION_TIMEOUT_S, data=io.FULL_DATA)
+        if txt and not dry_run:
+            share_with_capture(txt, dt.datetime.now(dt.timezone.utc))
         rows = io.parse(txt, by_station=by_station) if txt else []
         seen = {r["city_key"] for r in rows}
         out.update(cities=len(seen), silent=sorted(c["city_key"] for c in cities if c["city_key"] not in seen))
