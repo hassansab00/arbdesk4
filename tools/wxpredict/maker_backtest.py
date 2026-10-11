@@ -51,6 +51,23 @@ decisions, books and trades in the repository. Books after the mirror's
 newest date are the archive's alone (the kept books join when the mirror
 takes them, 16 days on, and the test is run again then).
 
+H1 FAILED on 26 Sep - 4 Oct: -0.0019 a share (-0.0253 to +0.0222), 835 fills
+(data/eval/wxpredict/maker_backtest_h1_holdout_2026-10-11.json).
+
+HYPOTHESIS H2, fixed 11 Oct after H1's holdout and before any date after
+4 Oct was looked at: resting orders on the evening before pay. On D-1
+decisions the rule above at THETA 0.05 with through fills paid in both
+windows seen so far (11-25 Sep +0.0616 on 32 fills; 26 Sep - 4 Oct +0.0481 on
+104), and so did the market's own prices on the second (+0.0386 on 59).
+H2: on event dates from 2026-10-05, through the newest with decisions, books
+and trades in the repository, the "D-1" group pays more than zero a share
+for the market residual (market_residual.py without --weather, p_model).
+H2-control: the same for the market's own prices ("market (control)"); if
+it pays too, the money is in resting on the evening's thin books, not in the
+model. Both are judged on their 90% interval from resampling whole dates;
+a window too short to separate either from zero says so and waits for more
+dates, it is not read either way.
+
     python tools/wxpredict/maker_backtest.py DECISIONS.csv.gz [--model-col p_model] [--from D] [--to D]
                                              [--out data/eval/wxpredict/maker_backtest_<date>.json]
 """

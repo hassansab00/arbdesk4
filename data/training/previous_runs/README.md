@@ -63,7 +63,14 @@ offset, so Lucknow's stamps sit at :30), local days 14 Jul 2025 - 25 Sep 2026,
 10,368 new hours (48 cities x 216). The 2,304 hours that overlap the file
 were identical value for value. No existing row was rewritten: all 505,728
 are unchanged, and the file now holds 516,096 rows. An hour H's value comes from a run started at least 24 h
-before H (published, by the assumption above, by H - 17 h).
+before H (published, by the assumption above, by H - 17 h). **Appended nightly from 11 Oct** by `scripts/honest_record.py`
+(archive_observations.yml), from the heating answer it already asks for
+(the same seven variables at `_previous_day1`, asked in UTC): every hour
+before the run's day, no row rewritten, an hour asked again compared value
+by value and a difference logged (`hourly_differ`), not merged. Lucknow's
+hours sit at :30 UTC (the `timezone=auto` build on a +5:30 offset) and a UTC
+answer's at :00, so its hours are left out of the nightly append
+(`hourly_off_grid`) and extended by `tools/wxpredict/fetch_forecasts.py` alone.
 
 `models_daily.csv.gz` - the seven models the desk combines (ECMWF IFS 0.25,
 GFS, ICON, UKMO, JMA, GEM, Meteo-France), one row per (city, lead, model, day):
