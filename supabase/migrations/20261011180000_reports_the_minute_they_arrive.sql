@@ -68,6 +68,16 @@ insert into public.focus_obs_stations (icao, city_key, timezone, local_from, loc
   ('LTFM', 'istanbul', 'Europe/Istanbul', 10, 17, 'WP4 pilot, comparison (11 Oct)')
 on conflict (icao) do nothing;
 
+-- Its switch on the Workflows page, which shows only the jobs that have an
+-- entry here (Codex on #380). every_minutes 0: pg_cron sets the cadence and
+-- it costs no n8n execution, so it adds nothing to v_execution_budget. Only
+-- added when missing, so a mode set on the page survives a re-run.
+do $fo$ begin
+  update public.settings set value = value || jsonb_build_object('P2.11_focus_obs',
+    jsonb_build_object('mode', 'auto', 'every_minutes', 0))
+   where key = 'workflow_schedules' and not (value ? 'P2.11_focus_obs');
+end $fo$;
+
 create table if not exists public.focus_obs_polls (
   request_id   bigint primary key,
   source       text not null default 'awc',
@@ -144,6 +154,7 @@ begin
           end if;
         end loop;
       exception when others then
+        v_n := 0; v_new := 0;                    -- the block's inserts are rolled back with it
         v_err := coalesce(v_err || '; ', '') || 'unreadable answer: ' || sqlerrm;
       end;
     end if;
@@ -206,7 +217,11 @@ begin
   select jsonb_build_object(
            'asked', count(*),
            'answered_200', count(*) filter (where status_code = 200),
-           'failed', count(*) filter (where read_at is not null and status_code is distinct from 200),
+           -- an answer that could not be read is a failed poll whatever its
+           -- status: a 200 carrying no readable reports stores nothing
+           -- (Codex on #380)
+           'failed', count(*) filter (where read_at is not null
+                                        and (status_code is distinct from 200 or error is not null)),
            'unanswered', count(*) filter (where read_at is null),
            'reports_seen', coalesce(sum(n_reports), 0),
            'new_reports', coalesce(sum(n_new), 0),

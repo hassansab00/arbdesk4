@@ -41,6 +41,14 @@ const metar = (icao, obs, raw, receipt, temp) => ({
     { asked: false, read_new: 0, reason: 'no pg_net' });
   assert.deepEqual((await one('select icao, local_from, local_to from public.focus_obs_stations order by icao')),
     [{ icao: 'LTFM', local_from: 10, local_to: 17 }, { icao: 'OEJN', local_from: 10, local_to: 17 }]);
+  // its switch exists, so the Workflows page shows it (Codex on #380); a
+  // re-run keeps a mode set there
+  assert.deepEqual((await one(`select value -> 'P2.11_focus_obs' v from public.settings where key = 'workflow_schedules'`))[0].v,
+    { mode: 'auto', every_minutes: 0 });
+  await db.exec(`update public.settings set value = jsonb_set(value, '{P2.11_focus_obs,mode}', '"manual"') where key = 'workflow_schedules'`);
+  await db.exec(MIG);
+  assert.equal((await one(`select value -> 'P2.11_focus_obs' ->> 'mode' m from public.settings where key = 'workflow_schedules'`))[0].m, 'manual');
+  await db.exec(`update public.settings set value = '{}' where key = 'workflow_schedules'`);
 
   await db.exec(`
     create schema net;
@@ -95,16 +103,20 @@ const metar = (icao, obs, raw, receipt, temp) => ({
                                 where obs_time = '2026-10-12T07:00:00Z' order by report_id`)).map((x) => [x.raw_ob.slice(0, 9), x.f]),
     [['METAR OEJ', '2026-10-12 07:01:05+00'], ['METAR COR', '2026-10-12 07:04:02+00']]);
 
-  // AN UNREADABLE ANSWER is recorded on its poll and stops nothing; a failed
-  // one (status 500) is read too.
+  // AN UNREADABLE ANSWER is recorded on its poll and stops nothing, and keeps
+  // nothing of a half-read answer; a failed one (status 500) is read too.
   const third = r.request_id;
-  await answer(third, 200, '<html>busy</html>', '2026-10-12T07:05:01Z');
+  await answer(third, 200, JSON.stringify([
+    metar('OEJN', '2026-10-12T07:30:00Z', 'SPECI OEJN 120730Z 29003KT CAVOK 33/26 Q1008', '2026-10-12T07:30:20Z', 33),
+    { ...metar('OEJN', '2026-10-12T07:31:00Z', 'SPECI OEJN 120731Z 29003KT CAVOK 33/26 Q1008', '2026-10-12T07:31:20Z', 33), temp: 'n/a' },
+  ]), '2026-10-12T07:05:01Z');
   r = (await one('select public.focus_obs_poll() r'))[0].r;
   const fourth = r.request_id;
   await answer(fourth, 500, null, '2026-10-12T07:06:01Z');
   r = (await one('select public.focus_obs_poll() r'))[0].r;
-  const polls = await one('select request_id::int i, status_code, n_new, error from public.focus_obs_polls where request_id in ($1, $2) order by request_id', [third, fourth]);
+  const polls = await one('select request_id::int i, status_code, n_reports, n_new, error from public.focus_obs_polls where request_id in ($1, $2) order by request_id', [third, fourth]);
   assert.equal(polls[0].n_new, 0);
+  assert.equal(polls[0].n_reports, 0);
   assert.match(polls[0].error, /unreadable answer/);
   assert.equal(polls[1].status_code, 500);
   assert.equal((await one('select count(*)::int n from public.focus_obs_reports'))[0].n, 3);
@@ -133,6 +145,7 @@ const metar = (icao, obs, raw, receipt, temp) => ({
   assert.equal(day.polls.new_reports, 3);
   assert.equal(day.stations.OEJN.new_reports, 3);
   assert.equal(day.stations.OEJN.corrections, 1);
+  assert.equal(day.polls.failed, 2, 'the unreadable 200 and the 500 (Codex on #380)');
   assert.ok(['ok', 'partial'].includes(log[0].status), log[0].status);
 
   // CLOSED TO THE BROWSER.

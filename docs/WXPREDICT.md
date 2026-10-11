@@ -604,9 +604,12 @@ can be known, and nothing recorded that. Hassan approved a poller (11 Oct:
   carried it). A correction (COR) is a new row beside the original. Every poll
   and its answer is kept, so a missed minute shows.
 - **The Workflows page** switch `P2.11_focus_obs` (off or manual) stops the
-  asking. One `ingest_log` row a UTC day (23:55Z): polls, failures, reports,
-  corrections, and per station the median minutes from the reading and from
-  the source's receipt to ours. It joins the watchdog after its first days.
+  asking; the migration adds it to `settings.workflow_schedules` and the page
+  lists it. One `ingest_log` row a UTC day (23:55Z): polls, failures (an
+  answer that could not be read counts as failed, whatever its status),
+  reports, corrections, and per station the median minutes from the reading
+  and from the source's receipt to ours. It joins the watchdog after its
+  first days.
 - **The nightly mirror** copies the reports, the polls and the stations.
 - **Not yet known:** whether Aviation Weather is earlier than NOAA's timeseries
   (the settlement source) or than the venue's prices move. That is what the
