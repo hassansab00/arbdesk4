@@ -1,0 +1,788 @@
+{
+ "made": "2026-10-11T08:13Z",
+ "table_gzip_sha256": "bd16da926ca635effa247b297ff98b7110539623a04c9274035200a10d2e3277",
+ "rows": 670686,
+ "method": "WXPredict phases 3-4, first cut: does a model trained on the training table",
+ "test_months": [
+  "2026-05",
+  "2026-06",
+  "2026-07",
+  "2026-08",
+  "2026-09",
+  "2026-10"
+ ],
+ "calib_days": 60,
+ "seed": 20261011,
+ "cutoff_eve_left_out": true,
+ "all": {
+  "decisions": 216055,
+  "dates": 157,
+  "events": null,
+  "nll": {
+   "market": 0.9486,
+   "market_tempered": 0.9452,
+   "weather": 1.2343,
+   "fusion": 0.9414
+  },
+  "top_bucket_hit": {
+   "market": 0.6086,
+   "fusion": 0.6084
+  },
+  "weather_mae_c": 0.757,
+  "fusion_minus_market": {
+   "mean": -0.0072,
+   "ci90": [
+    -0.0091,
+    -0.0053
+   ]
+  },
+  "market_tempered_minus_market": {
+   "mean": -0.0034,
+   "ci90": [
+    -0.0047,
+    -0.0019
+   ]
+  },
+  "weather_minus_market": {
+   "mean": 0.2857,
+   "ci90": [
+    0.2738,
+    0.2981
+   ]
+  }
+ },
+ "by_group": {
+  "D-1 evening": {
+   "decisions": 57415,
+   "dates": 156,
+   "events": null,
+   "nll": {
+    "market": 1.3681,
+    "market_tempered": 1.3628,
+    "weather": 1.5692,
+    "fusion": 1.3593
+   },
+   "top_bucket_hit": {
+    "market": 0.4432,
+    "fusion": 0.4408
+   },
+   "weather_mae_c": 0.973,
+   "fusion_minus_market": {
+    "mean": -0.0088,
+    "ci90": [
+     -0.0119,
+     -0.0056
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0054,
+    "ci90": [
+     -0.0077,
+     -0.0029
+    ]
+   },
+   "weather_minus_market": {
+    "mean": 0.201,
+    "ci90": [
+     0.1861,
+     0.2157
+    ]
+   }
+  },
+  "D 00-08h": {
+   "decisions": 63108,
+   "dates": 156,
+   "events": null,
+   "nll": {
+    "market": 1.2557,
+    "market_tempered": 1.2548,
+    "weather": 1.4371,
+    "fusion": 1.2482
+   },
+   "top_bucket_hit": {
+    "market": 0.4778,
+    "fusion": 0.4786
+   },
+   "weather_mae_c": 0.844,
+   "fusion_minus_market": {
+    "mean": -0.0075,
+    "ci90": [
+     -0.0101,
+     -0.0047
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0008,
+    "ci90": [
+     -0.0022,
+     0.0006
+    ]
+   },
+   "weather_minus_market": {
+    "mean": 0.1814,
+    "ci90": [
+     0.167,
+     0.1968
+    ]
+   }
+  },
+  "D 09-12h": {
+   "decisions": 26642,
+   "dates": 156,
+   "events": null,
+   "nll": {
+    "market": 1.1326,
+    "market_tempered": 1.1307,
+    "weather": 1.3654,
+    "fusion": 1.1261
+   },
+   "top_bucket_hit": {
+    "market": 0.5184,
+    "fusion": 0.5204
+   },
+   "weather_mae_c": 0.788,
+   "fusion_minus_market": {
+    "mean": -0.0065,
+    "ci90": [
+     -0.0088,
+     -0.004
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0019,
+    "ci90": [
+     -0.0032,
+     -0.0005
+    ]
+   },
+   "weather_minus_market": {
+    "mean": 0.2328,
+    "ci90": [
+     0.2179,
+     0.2481
+    ]
+   }
+  },
+  "D 13-16h": {
+   "decisions": 25528,
+   "dates": 157,
+   "events": null,
+   "nll": {
+    "market": 0.6063,
+    "market_tempered": 0.601,
+    "weather": 0.9854,
+    "fusion": 0.5979
+   },
+   "top_bucket_hit": {
+    "market": 0.7484,
+    "fusion": 0.7489
+   },
+   "weather_mae_c": 0.593,
+   "fusion_minus_market": {
+    "mean": -0.0084,
+    "ci90": [
+     -0.0106,
+     -0.0059
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0053,
+    "ci90": [
+     -0.0068,
+     -0.0037
+    ]
+   },
+   "weather_minus_market": {
+    "mean": 0.3791,
+    "ci90": [
+     0.3632,
+     0.3957
+    ]
+   }
+  },
+  "D 17-23h": {
+   "decisions": 43362,
+   "dates": 156,
+   "events": null,
+   "nll": {
+    "market": 0.0348,
+    "market_tempered": 0.0303,
+    "weather": 0.5617,
+    "fusion": 0.0302
+   },
+   "top_bucket_hit": {
+    "market": 0.991,
+    "fusion": 0.9907
+   },
+   "weather_mae_c": 0.421,
+   "fusion_minus_market": {
+    "mean": -0.0046,
+    "ci90": [
+     -0.0062,
+     -0.0022
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0045,
+    "ci90": [
+     -0.006,
+     -0.0021
+    ]
+   },
+   "weather_minus_market": {
+    "mean": 0.5269,
+    "ci90": [
+     0.5064,
+     0.548
+    ]
+   }
+  }
+ },
+ "by_month": {
+  "2026-05": {
+   "decisions": 28576,
+   "dates": 31,
+   "events": null,
+   "nll": {
+    "market": 1.1601,
+    "market_tempered": 1.1609,
+    "weather": 1.3685,
+    "fusion": 1.1526
+   },
+   "top_bucket_hit": {
+    "market": 0.5281,
+    "fusion": 0.5269
+   },
+   "weather_mae_c": 0.98,
+   "fusion_minus_market": {
+    "mean": -0.0075,
+    "ci90": [
+     -0.0162,
+     0.0019
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": 0.0009,
+    "ci90": [
+     -0.0059,
+     0.0082
+    ]
+   },
+   "weather_minus_market": {
+    "mean": 0.2084,
+    "ci90": [
+     0.1731,
+     0.2426
+    ]
+   }
+  },
+  "2026-06": {
+   "decisions": 44119,
+   "dates": 30,
+   "events": null,
+   "nll": {
+    "market": 0.9396,
+    "market_tempered": 0.9355,
+    "weather": 1.2648,
+    "fusion": 0.9307
+   },
+   "top_bucket_hit": {
+    "market": 0.6128,
+    "fusion": 0.6127
+   },
+   "weather_mae_c": 0.796,
+   "fusion_minus_market": {
+    "mean": -0.009,
+    "ci90": [
+     -0.0122,
+     -0.0057
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0041,
+    "ci90": [
+     -0.0066,
+     -0.0017
+    ]
+   },
+   "weather_minus_market": {
+    "mean": 0.3252,
+    "ci90": [
+     0.3039,
+     0.3487
+    ]
+   }
+  },
+  "2026-07": {
+   "decisions": 45822,
+   "dates": 31,
+   "events": null,
+   "nll": {
+    "market": 0.9632,
+    "market_tempered": 0.9604,
+    "weather": 1.2607,
+    "fusion": 0.9563
+   },
+   "top_bucket_hit": {
+    "market": 0.6012,
+    "fusion": 0.6018
+   },
+   "weather_mae_c": 0.745,
+   "fusion_minus_market": {
+    "mean": -0.0069,
+    "ci90": [
+     -0.0109,
+     -0.0029
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0028,
+    "ci90": [
+     -0.0051,
+     -0.0007
+    ]
+   },
+   "weather_minus_market": {
+    "mean": 0.2975,
+    "ci90": [
+     0.2709,
+     0.3256
+    ]
+   }
+  },
+  "2026-08": {
+   "decisions": 46458,
+   "dates": 31,
+   "events": null,
+   "nll": {
+    "market": 0.9126,
+    "market_tempered": 0.9088,
+    "weather": 1.1661,
+    "fusion": 0.9028
+   },
+   "top_bucket_hit": {
+    "market": 0.6266,
+    "fusion": 0.627
+   },
+   "weather_mae_c": 0.692,
+   "fusion_minus_market": {
+    "mean": -0.0098,
+    "ci90": [
+     -0.0136,
+     -0.0059
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0037,
+    "ci90": [
+     -0.006,
+     -0.0014
+    ]
+   },
+   "weather_minus_market": {
+    "mean": 0.2535,
+    "ci90": [
+     0.231,
+     0.2764
+    ]
+   }
+  },
+  "2026-09": {
+   "decisions": 45064,
+   "dates": 30,
+   "events": null,
+   "nll": {
+    "market": 0.8558,
+    "market_tempered": 0.8498,
+    "weather": 1.1801,
+    "fusion": 0.8524
+   },
+   "top_bucket_hit": {
+    "market": 0.6401,
+    "fusion": 0.6389
+   },
+   "weather_mae_c": 0.669,
+   "fusion_minus_market": {
+    "mean": -0.0034,
+    "ci90": [
+     -0.0058,
+     -0.001
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0061,
+    "ci90": [
+     -0.008,
+     -0.0042
+    ]
+   },
+   "weather_minus_market": {
+    "mean": 0.3243,
+    "ci90": [
+     0.302,
+     0.3479
+    ]
+   }
+  },
+  "2026-10": {
+   "decisions": 6016,
+   "dates": 4,
+   "events": null,
+   "nll": {
+    "market": 0.8725,
+    "market_tempered": 0.8713,
+    "weather": 1.1053,
+    "fusion": 0.8675
+   },
+   "top_bucket_hit": {
+    "market": 0.6406,
+    "fusion": 0.6443
+   },
+   "weather_mae_c": 0.659,
+   "fusion_minus_market": {
+    "mean": -0.005,
+    "ci90": [
+     -0.0095,
+     -0.0005
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0012,
+    "ci90": [
+     -0.0071,
+     0.0052
+    ]
+   },
+   "weather_minus_market": {
+    "mean": 0.2327,
+    "ci90": [
+     0.2171,
+     0.2469
+    ]
+   }
+  }
+ },
+ "fitted_pool_weights": {
+  "2026-05": {
+   "D-1 evening": {
+    "market_only": [
+     1.2046875000000008
+    ],
+    "fusion": [
+     0.8958632469177245,
+     0.30652809619903576
+    ]
+   },
+   "D 00-08h": {
+    "market_only": [
+     1.1453125000000002
+    ],
+    "fusion": [
+     0.9305587768554686,
+     0.2533376312255863
+    ]
+   },
+   "D 09-12h": {
+    "market_only": [
+     1.11796875
+    ],
+    "fusion": [
+     0.918995475769043,
+     0.2807356166839601
+    ]
+   },
+   "D 13-16h": {
+    "market_only": [
+     1.1914062500000004
+    ],
+    "fusion": [
+     1.0316793441772463,
+     0.2580329418182372
+    ]
+   },
+   "D 17-23h": {
+    "market_only": [
+     1.8156250000000018
+    ],
+    "fusion": [
+     1.6562723670154809,
+     0.3661520141735676
+    ]
+   }
+  },
+  "2026-06": {
+   "D-1 evening": {
+    "market_only": [
+     1.1578125000000004
+    ],
+    "fusion": [
+     0.9776033848524088,
+     0.18177912242710584
+    ]
+   },
+   "D 00-08h": {
+    "market_only": [
+     1.0757812500000001
+    ],
+    "fusion": [
+     0.9207709580659857,
+     0.18018466047942658
+    ]
+   },
+   "D 09-12h": {
+    "market_only": [
+     1.06640625
+    ],
+    "fusion": [
+     0.9275684745516628,
+     0.1879309354873848
+    ]
+   },
+   "D 13-16h": {
+    "market_only": [
+     1.1140625000000002
+    ],
+    "fusion": [
+     1.0149367373436684,
+     0.1612826613709331
+    ]
+   },
+   "D 17-23h": {
+    "market_only": [
+     1.1703125000000005
+    ],
+    "fusion": [
+     1.1012894719839077,
+     0.11760540604591391
+    ]
+   }
+  },
+  "2026-07": {
+   "D-1 evening": {
+    "market_only": [
+     1.1382812500000001
+    ],
+    "fusion": [
+     0.933744410611689,
+     0.2153866626089445
+    ]
+   },
+   "D 00-08h": {
+    "market_only": [
+     1.0570312499999999
+    ],
+    "fusion": [
+     0.8545181274414047,
+     0.22461799621582035
+    ]
+   },
+   "D 09-12h": {
+    "market_only": [
+     1.05625
+    ],
+    "fusion": [
+     0.9154858537018296,
+     0.1734020707011225
+    ]
+   },
+   "D 13-16h": {
+    "market_only": [
+     1.12421875
+    ],
+    "fusion": [
+     1.0551585784181938,
+     0.10689638234674834
+    ]
+   },
+   "D 17-23h": {
+    "market_only": [
+     1.2375000000000007
+    ],
+    "fusion": [
+     1.2147760133957468,
+     0.036079565668478086
+    ]
+   }
+  },
+  "2026-08": {
+   "D-1 evening": {
+    "market_only": [
+     1.1328125
+    ],
+    "fusion": [
+     0.9319593956926835,
+     0.21228959122148874
+    ]
+   },
+   "D 00-08h": {
+    "market_only": [
+     1.06328125
+    ],
+    "fusion": [
+     0.8550051689147937,
+     0.23741548061370898
+    ]
+   },
+   "D 09-12h": {
+    "market_only": [
+     1.0812500000000003
+    ],
+    "fusion": [
+     0.9434315755032003,
+     0.17572783813113435
+    ]
+   },
+   "D 13-16h": {
+    "market_only": [
+     1.13515625
+    ],
+    "fusion": [
+     1.0432920217514026,
+     0.15362023472785877
+    ]
+   },
+   "D 17-23h": {
+    "market_only": [
+     1.2929687500000007
+    ],
+    "fusion": [
+     1.2100463986396781,
+     0.17211952686309773
+    ]
+   }
+  },
+  "2026-09": {
+   "D-1 evening": {
+    "market_only": [
+     1.11171875
+    ],
+    "fusion": [
+     0.9594532921910279,
+     0.15775896023958946
+    ]
+   },
+   "D 00-08h": {
+    "market_only": [
+     1.0515625000000002
+    ],
+    "fusion": [
+     0.859832170605658,
+     0.20723354458808912
+    ]
+   },
+   "D 09-12h": {
+    "market_only": [
+     1.0828125000000002
+    ],
+    "fusion": [
+     0.9375740162096917,
+     0.17795127814868553
+    ]
+   },
+   "D 13-16h": {
+    "market_only": [
+     1.1570312500000004
+    ],
+    "fusion": [
+     1.04860458895564,
+     0.16694396048784194
+    ]
+   },
+   "D 17-23h": {
+    "market_only": [
+     1.365625000000001
+    ],
+    "fusion": [
+     1.2843636393547053,
+     0.18150897502899124
+    ]
+   }
+  },
+  "2026-10": {
+   "D-1 evening": {
+    "market_only": [
+     1.1468750000000003
+    ],
+    "fusion": [
+     1.0225017499702518,
+     0.12764229968757718
+    ]
+   },
+   "D 00-08h": {
+    "market_only": [
+     1.0828125000000002
+    ],
+    "fusion": [
+     0.9655220124870529,
+     0.12624661669135057
+    ]
+   },
+   "D 09-12h": {
+    "market_only": [
+     1.11796875
+    ],
+    "fusion": [
+     0.9970620287582284,
+     0.14489405281841716
+    ]
+   },
+   "D 13-16h": {
+    "market_only": [
+     1.1898437500000005
+    ],
+    "fusion": [
+     1.0919673077762115,
+     0.1486463239789002
+    ]
+   },
+   "D 17-23h": {
+    "market_only": [
+     1.374218750000001
+    ],
+    "fusion": [
+     1.3158214318798844,
+     0.11272731305099962
+    ]
+   }
+  }
+ },
+ "calibration_window": {
+  "2026-05": {
+   "decisions": 25612,
+   "nll_market": 1.2146,
+   "nll_weather": 1.3987,
+   "weather_mae_c": 1.014
+  },
+  "2026-06": {
+   "decisions": 40654,
+   "nll_market": 1.1767,
+   "nll_weather": 1.4189,
+   "weather_mae_c": 1.029
+  },
+  "2026-07": {
+   "decisions": 70209,
+   "nll_market": 1.029,
+   "nll_weather": 1.291,
+   "weather_mae_c": 0.885
+  },
+  "2026-08": {
+   "decisions": 86946,
+   "nll_market": 0.952,
+   "nll_weather": 1.247,
+   "weather_mae_c": 0.779
+  },
+  "2026-09": {
+   "decisions": 87795,
+   "nll_market": 0.9348,
+   "nll_weather": 1.2217,
+   "weather_mae_c": 0.725
+  },
+  "2026-10": {
+   "decisions": 88514,
+   "nll_market": 0.8848,
+   "nll_weather": 1.1696,
+   "weather_mae_c": 0.687
+  }
+ },
+ "seconds": 417
+}
