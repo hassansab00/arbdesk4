@@ -273,8 +273,18 @@ def cmd_daily(args):
                      d["last"].strftime("%Y-%m-%dT%H:%MZ"), f"{d['tmax_f']:.2f}", f"{d['tmax_c']:.2f}",
                      d["tmax_at"].strftime("%Y-%m-%dT%H:%MZ"), f"{d['tmin_f']:.2f}", f"{d['tmin_c']:.2f}",
                      f"{d['max_gap_h']:.2f}"])
+    # A STATION NOT ASKED THIS TIME KEEPS ITS DAYS (11 Oct). The stations are the
+    # active cities' (common.event_stations); a city that has left the list
+    # (Zhengzhou, ZHCC: 2,470 days on 11 Oct) is not fetched, and rewriting the
+    # file from this run alone dropped its whole history. Its rows are carried
+    # over unchanged.
+    kept = []
+    if os.path.exists(common.STATION_DAILY):
+        kept = [[r[h] for h in DAILY_HEADER] for r in common.read_csv(common.STATION_DAILY)
+                if r["station"] not in stations]
+    rows = sorted(rows + kept, key=lambda r: (r[0], r[2]))
     n = common.write_csv(common.STATION_DAILY, DAILY_HEADER, rows)
-    print(json.dumps({"station_days": n}), file=sys.stderr)
+    print(json.dumps({"station_days": n, "kept_from_stations_not_asked": len(kept)}), file=sys.stderr)
 
 
 def main():
