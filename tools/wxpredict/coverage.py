@@ -11,8 +11,10 @@ with a probability and no payoff is computed.
              books) of those events' buckets, and the complete ladder snapshots
              (every bucket of a market in one 10-minute window)
   trades     archived prints (data/archive/trades) in those events' buckets
-  hourly     cities with any lead-1 hourly forecast row on the date
-             (data/training/previous_runs/best_match_hourly_day1_utc.csv.gz)
+  hourly     cities with a whole local day of lead-1 hourly forecasts (at
+             least 23 of the city's own hours; the file is in UTC and each
+             row is put on the city's wall clock, as honest_record.py does;
+             data/training/previous_runs/best_match_hourly_day1_utc.csv.gz)
   stations   cities with a station day on the date (station_daily.csv.gz)
 
 A date is flagged when an event has no book, no print or no winner, or when a
@@ -27,6 +29,7 @@ and without them its books cannot be matched (11 Oct: 3 and 4 Oct had none).
 """
 import argparse
 import datetime as dt
+import glob
 import gzip
 import json
 import os
@@ -89,7 +92,16 @@ def main(argv=None):
 
     with gzip.open(HOURLY, "rt") as fh:
         hourly = pd.read_csv(fh, usecols=["city_key", "utc"])
-    hourly["date"] = hourly.utc.str[:10]
+    zones, _ = ab.read_all(sorted(glob.glob(os.path.join(ROOT, "data/mirror/cities/cities-*.csv.gz")))[-1]
+                           .replace(ROOT + os.sep, ""), ["city_key", "timezone"])
+    zone = zones.drop_duplicates("city_key").set_index("city_key").timezone
+    utc = pd.to_datetime(hourly.utc, utc=True)
+    hourly["date"] = ""
+    for city, idx in hourly.groupby("city_key").groups.items():
+        if city in zone.index:                       # a city with no zone has no local day here
+            hourly.loc[idx, "date"] = utc[idx].dt.tz_convert(zone[city]).dt.strftime("%Y-%m-%d")
+    whole = hourly.groupby(["city_key", "date"]).size()
+    whole = whole[whole >= 23].reset_index()[["city_key", "date"]]
     with gzip.open(STATION_DAILY, "rt") as fh:
         sdays = pd.read_csv(fh, usecols=["city_key", "local_date"])
 
@@ -103,7 +115,7 @@ def main(argv=None):
         ev_markets = set(mk.city_key[mk.resolution_date == date]) & cities
         ev_books = set(b.city_key)
         ev_trades = set(tr.city_key)
-        hr = set(hourly.city_key[hourly.date == date]) & cities
+        hr = set(whole.city_key[whole.date == date]) & cities
         st = set(sdays.city_key[sdays.local_date == date]) & cities
         row = {"date": date, "events": len(cities), "with_winner": int(e.settled.sum()), "decisions": int(len(ev)),
                "book_rows": int(len(b)), "events_with_books": len(ev_books & cities),
@@ -119,7 +131,7 @@ def main(argv=None):
             ("an event without a book", row["events_with_books"] < row["events"]),
             ("an event without a print", row["events_with_trades"] < row["events"]),
             ("an event without a winner", row["with_winner"] < row["events"]),
-            ("a city without an hourly forecast", len(hr) < len(cities)),
+            ("a city without a whole local day of hourly forecasts", len(hr) < len(cities)),
             ("a city without a station day", len(st) < len(cities))) if bad]
         days.append(row)
 
@@ -130,7 +142,8 @@ def main(argv=None):
     text = json.dumps(result, indent=1)
     print(text)
     if args.out:
-        os.makedirs(os.path.dirname(args.out), exist_ok=True)
+        if os.path.dirname(args.out):
+            os.makedirs(os.path.dirname(args.out), exist_ok=True)
         with open(args.out, "w") as fh:
             fh.write(text + "\n")
     return result
