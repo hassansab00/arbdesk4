@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 286 of them - and for each MISSING one names the
+-- and function the app reads - 289 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -81,6 +81,9 @@ with expected(rel, owner, used_by) as (values
     ('fact_forecast_outcome', 'ad4_18_databank.sql', ''),
     ('fact_signal_outcome', 'ad4_18_databank.sql', ''),
     ('fact_station_width_score', 'supabase/migrations/20260927200000_the_width_scored_forward.sql', ''),
+    ('focus_obs_polls', 'supabase/migrations/20261011180000_reports_the_minute_they_arrive.sql', ''),
+    ('focus_obs_reports', 'supabase/migrations/20261011180000_reports_the_minute_they_arrive.sql', ''),
+    ('focus_obs_stations', 'supabase/migrations/20261011180000_reports_the_minute_they_arrive.sql', ''),
     ('focus_set_universes', 'supabase/migrations/20261006180000_each_city_has_a_daily_status.sql', '/predictive'),
     ('focus_sets', 'supabase/migrations/20261006150000_the_focus_set_is_recorded.sql', '/predictive'),
     ('ingest_log', 'ad4_00_preflight.sql', '(PaperPipelineStatus), (PipelineStatus)'),
@@ -389,6 +392,9 @@ begin
     ('fact_forecast_outcome', 'ad4_18_databank.sql', ''),
     ('fact_signal_outcome', 'ad4_18_databank.sql', ''),
     ('fact_station_width_score', 'supabase/migrations/20260927200000_the_width_scored_forward.sql', ''),
+    ('focus_obs_polls', 'supabase/migrations/20261011180000_reports_the_minute_they_arrive.sql', ''),
+    ('focus_obs_reports', 'supabase/migrations/20261011180000_reports_the_minute_they_arrive.sql', ''),
+    ('focus_obs_stations', 'supabase/migrations/20261011180000_reports_the_minute_they_arrive.sql', ''),
     ('focus_set_universes', 'supabase/migrations/20261006180000_each_city_has_a_daily_status.sql', '/predictive'),
     ('focus_sets', 'supabase/migrations/20261006150000_the_focus_set_is_recorded.sql', '/predictive'),
     ('ingest_log', 'ad4_00_preflight.sql', '(PaperPipelineStatus), (PipelineStatus)'),

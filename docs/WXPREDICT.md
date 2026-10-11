@@ -585,6 +585,37 @@ exploration window is where the idea came from and is not evidence; the
 holdout cannot separate it from zero. The test that counts is H3a from 5 Oct,
 one-share and at size (`data/eval/wxpredict/capacity_*`).
 
+### Reports the minute they arrive: the focused capture (WP4, 11 Oct)
+
+The station reports reach the platform once an hour (the tick reads IEM at
+:36 UTC; a median 36 minutes after the reading, p90 66, on 10-11 Oct). A
+same-day trade on a new report is worth only what it is worth WHEN the report
+can be known, and nothing recorded that. Hassan approved a poller (11 Oct:
+"yes add the poller"): `supabase/migrations/20261011180000_reports_the_minute_they_arrive.sql`.
+
+- **Pilots:** Jeddah (OEJN) and Istanbul (LTFM), 10:00-17:00 local
+  (07-14 UTC), from `focus_obs_stations`, a row each, so the pilot can widen
+  without a migration. Exploratory, not a claim that they pay best. Every other
+  city is captured exactly as before.
+- **Every minute** (pg_cron, inside the database, no GitHub minutes) one
+  request to Aviation Weather's METAR feed for the open stations, through
+  pg_net. Each distinct report is kept once, with the reading's time, Aviation
+  Weather's own receipt time and **our first receipt** (the answer that first
+  carried it). A correction (COR) is a new row beside the original. Every poll
+  and its answer is kept, so a missed minute shows.
+- **The Workflows page** switch `P2.11_focus_obs` (off or manual) stops the
+  asking; the migration adds it to `settings.workflow_schedules` and the page
+  lists it. One `ingest_log` row a UTC day (23:55Z): polls, failures (an
+  answer that could not be read counts as failed, whatever its status),
+  reports, corrections, and per station the median minutes from the reading
+  and from the source's receipt to ours. It joins the watchdog after its
+  first days.
+- **The nightly mirror** copies the reports, the polls and the stations.
+- **Not yet known:** whether Aviation Weather is earlier than NOAA's timeseries
+  (the settlement source) or than the venue's prices move. That is what the
+  record is for; the 28 Sep result (buying a new maximum's bucket 2 minutes
+  after the reading lost -0.0110 a share) says speed alone has not paid.
+
 ## Gaps (Phase 1)
 
 - **Market activity is a proxy.** The venue's hourly price history has no volume. "Activity" is the number of

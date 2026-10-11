@@ -137,6 +137,11 @@ TABLES = {
     "derived_mos_forecast":          snapshot("city_key", "for_date"),
     # --- what happened: inputs and settled outcomes -------------------------
     "weather_observations":          append("observed_at", "obs_id"),
+    # WP4 (11 Oct): the focus stations' reports with our first receipt, and
+    # every poll asked (a poll is final minutes after it is asked)
+    "focus_obs_reports":             append("first_seen_at", "report_id"),
+    "focus_obs_polls":               append("asked_at", "request_id"),
+    "focus_obs_stations":            snapshot("icao"),
     "weather_forecasts":             append("observed_at", "forecast_id"),
     "weather_forecast_models":       append("observed_at", "city_key", "model", "run_at", "for_date"),
     "weather_forecast_features":     append("captured_at", "city_key", "for_date", "run_at"),
