@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-10-10T05:36:27.166263+00:00",
+  "generated_at": "2026-10-11T05:36:25.549244+00:00",
   "months": [
     "2026-09",
     "2026-10"
   ],
-  "trades": 242,
-  "net_pnl": -800.19023,
-  "gross_pnl": -720.06628,
-  "fees": 79.72395,
-  "wins": 76,
-  "losses": 166,
+  "trades": 291,
+  "net_pnl": -741.43536,
+  "gross_pnl": -652.985,
+  "fees": 88.05036,
+  "wins": 96,
+  "losses": 195,
   "cities": [
     "amsterdam",
     "ankara",
@@ -49,6 +49,7 @@
     "seattle",
     "seoul",
     "shanghai",
+    "shenzhen",
     "singapore",
     "tel_aviv",
     "tokyo",
@@ -67,5 +68,5 @@
     "s4_tail_fade"
   ],
   "first_closed_at": "2026-09-16T23:00:46.118439+00:00",
-  "last_closed_at": "2026-10-10T05:36:22.604722+00:00"
+  "last_closed_at": "2026-10-11T05:36:22.778024+00:00"
 }
