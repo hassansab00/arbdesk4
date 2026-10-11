@@ -1,0 +1,352 @@
+{
+ "made": "2026-10-11T11:15Z",
+ "table_gzip_sha256": "bd16da926ca635effa247b297ff98b7110539623a04c9274035200a10d2e3277",
+ "decisions": 246240,
+ "method": "WXPredict phase 3C: start at the market, learn only where it is wrong.",
+ "test_months": [
+  "2026-06",
+  "2026-07",
+  "2026-08",
+  "2026-09",
+  "2026-10"
+ ],
+ "weather": {
+  "dump_sha256": "86a80d37d3d5610d58071bcf7f22023e7cf72f640af8cf065fd3cbaac29279d9",
+  "decisions_with_weather": 216055
+ },
+ "seed": 20261011,
+ "fits": {
+  "2026-06": {
+   "rounds": 54,
+   "valid_nll_market": 1.1007,
+   "valid_nll_model": 1.0904,
+   "train_decisions": 57257
+  },
+  "2026-07": {
+   "rounds": 111,
+   "valid_nll_market": 0.9729,
+   "valid_nll_model": 0.9536,
+   "train_decisions": 101378
+  },
+  "2026-08": {
+   "rounds": 58,
+   "valid_nll_market": 0.9653,
+   "valid_nll_model": 0.9582,
+   "train_decisions": 147211
+  },
+  "2026-09": {
+   "rounds": 71,
+   "valid_nll_market": 0.921,
+   "valid_nll_model": 0.9116,
+   "train_decisions": 193683
+  },
+  "2026-10": {
+   "rounds": 140,
+   "valid_nll_market": 0.8611,
+   "valid_nll_model": 0.8536,
+   "train_decisions": 238720
+  }
+ },
+ "all": {
+  "decisions": 187479,
+  "dates": 126,
+  "nll": {
+   "market": 0.9164,
+   "market_tempered": 0.9123,
+   "model": 0.9058
+  },
+  "top_bucket_hit": {
+   "market": 0.6208,
+   "model": 0.6236
+  },
+  "model_minus_market": {
+   "mean": -0.0106,
+   "ci90": [
+    -0.0126,
+    -0.0087
+   ]
+  },
+  "market_tempered_minus_market": {
+   "mean": -0.0041,
+   "ci90": [
+    -0.0054,
+    -0.0028
+   ]
+  }
+ },
+ "by_group": {
+  "D-1 evening": {
+   "decisions": 46520,
+   "dates": 126,
+   "nll": {
+    "market": 1.3738,
+    "market_tempered": 1.3682,
+    "model": 1.3615
+   },
+   "top_bucket_hit": {
+    "market": 0.4392,
+    "model": 0.441
+   },
+   "model_minus_market": {
+    "mean": -0.0123,
+    "ci90": [
+     -0.0159,
+     -0.0087
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0056,
+    "ci90": [
+     -0.0084,
+     -0.0028
+    ]
+   }
+  },
+  "D 00-08h": {
+   "decisions": 52844,
+   "dates": 126,
+   "nll": {
+    "market": 1.2523,
+    "market_tempered": 1.2508,
+    "model": 1.2392
+   },
+   "top_bucket_hit": {
+    "market": 0.4775,
+    "model": 0.4821
+   },
+   "model_minus_market": {
+    "mean": -0.0131,
+    "ci90": [
+     -0.0163,
+     -0.0099
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0015,
+    "ci90": [
+     -0.0031,
+     0.0
+    ]
+   }
+  },
+  "D 09-12h": {
+   "decisions": 23481,
+   "dates": 126,
+   "nll": {
+    "market": 1.1219,
+    "market_tempered": 1.1192,
+    "model": 1.1098
+   },
+   "top_bucket_hit": {
+    "market": 0.5228,
+    "model": 0.5268
+   },
+   "model_minus_market": {
+    "mean": -0.0121,
+    "ci90": [
+     -0.015,
+     -0.0092
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0027,
+    "ci90": [
+     -0.004,
+     -0.0014
+    ]
+   }
+  },
+  "D 13-16h": {
+   "decisions": 23512,
+   "dates": 126,
+   "nll": {
+    "market": 0.5961,
+    "market_tempered": 0.5902,
+    "model": 0.5837
+   },
+   "top_bucket_hit": {
+    "market": 0.7524,
+    "model": 0.7565
+   },
+   "model_minus_market": {
+    "mean": -0.0124,
+    "ci90": [
+     -0.014,
+     -0.0107
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.006,
+    "ci90": [
+     -0.0072,
+     -0.0046
+    ]
+   }
+  },
+  "D 17-23h": {
+   "decisions": 41122,
+   "dates": 126,
+   "nll": {
+    "market": 0.0331,
+    "market_tempered": 0.0276,
+    "model": 0.0294
+   },
+   "top_bucket_hit": {
+    "market": 0.9913,
+    "model": 0.9912
+   },
+   "model_minus_market": {
+    "mean": -0.0036,
+    "ci90": [
+     -0.0041,
+     -0.0032
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0054,
+    "ci90": [
+     -0.006,
+     -0.0048
+    ]
+   }
+  }
+ },
+ "by_month": {
+  "2026-06": {
+   "decisions": 44119,
+   "dates": 30,
+   "nll": {
+    "market": 0.9396,
+    "market_tempered": 0.9354,
+    "model": 0.9249
+   },
+   "top_bucket_hit": {
+    "market": 0.6128,
+    "model": 0.6166
+   },
+   "model_minus_market": {
+    "mean": -0.0147,
+    "ci90": [
+     -0.0185,
+     -0.0109
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0042,
+    "ci90": [
+     -0.0072,
+     -0.0013
+    ]
+   }
+  },
+  "2026-07": {
+   "decisions": 45822,
+   "dates": 31,
+   "nll": {
+    "market": 0.9632,
+    "market_tempered": 0.9607,
+    "model": 0.9512
+   },
+   "top_bucket_hit": {
+    "market": 0.6012,
+    "model": 0.6044
+   },
+   "model_minus_market": {
+    "mean": -0.012,
+    "ci90": [
+     -0.0177,
+     -0.0062
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0025,
+    "ci90": [
+     -0.0055,
+     0.0003
+    ]
+   }
+  },
+  "2026-08": {
+   "decisions": 46458,
+   "dates": 31,
+   "nll": {
+    "market": 0.9126,
+    "market_tempered": 0.909,
+    "model": 0.9009
+   },
+   "top_bucket_hit": {
+    "market": 0.6266,
+    "model": 0.6286
+   },
+   "model_minus_market": {
+    "mean": -0.0117,
+    "ci90": [
+     -0.0142,
+     -0.0092
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0036,
+    "ci90": [
+     -0.0062,
+     -0.0009
+    ]
+   }
+  },
+  "2026-09": {
+   "decisions": 45064,
+   "dates": 30,
+   "nll": {
+    "market": 0.8558,
+    "market_tempered": 0.8492,
+    "model": 0.8503
+   },
+   "top_bucket_hit": {
+    "market": 0.6401,
+    "model": 0.6421
+   },
+   "model_minus_market": {
+    "mean": -0.0056,
+    "ci90": [
+     -0.0083,
+     -0.0026
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0066,
+    "ci90": [
+     -0.009,
+     -0.0043
+    ]
+   }
+  },
+  "2026-10": {
+   "decisions": 6016,
+   "dates": 4,
+   "nll": {
+    "market": 0.8725,
+    "market_tempered": 0.8712,
+    "model": 0.8724
+   },
+   "top_bucket_hit": {
+    "market": 0.6406,
+    "model": 0.6435
+   },
+   "model_minus_market": {
+    "mean": -0.0001,
+    "ci90": [
+     -0.0071,
+     0.0092
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0014,
+    "ci90": [
+     -0.0071,
+     0.0048
+    ]
+   }
+  }
+ },
+ "seconds": 988
+}

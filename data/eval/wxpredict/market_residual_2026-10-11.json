@@ -1,0 +1,348 @@
+{
+ "made": "2026-10-11T10:27Z",
+ "table_gzip_sha256": "bd16da926ca635effa247b297ff98b7110539623a04c9274035200a10d2e3277",
+ "decisions": 246240,
+ "method": "WXPredict phase 3C: start at the market, learn only where it is wrong.",
+ "test_months": [
+  "2026-06",
+  "2026-07",
+  "2026-08",
+  "2026-09",
+  "2026-10"
+ ],
+ "seed": 20261011,
+ "fits": {
+  "2026-06": {
+   "rounds": 66,
+   "valid_nll_market": 1.1007,
+   "valid_nll_model": 1.0956,
+   "train_decisions": 57257
+  },
+  "2026-07": {
+   "rounds": 57,
+   "valid_nll_market": 0.9729,
+   "valid_nll_model": 0.9631,
+   "train_decisions": 101378
+  },
+  "2026-08": {
+   "rounds": 37,
+   "valid_nll_market": 0.9653,
+   "valid_nll_model": 0.9613,
+   "train_decisions": 147211
+  },
+  "2026-09": {
+   "rounds": 70,
+   "valid_nll_market": 0.921,
+   "valid_nll_model": 0.9142,
+   "train_decisions": 193683
+  },
+  "2026-10": {
+   "rounds": 105,
+   "valid_nll_market": 0.8611,
+   "valid_nll_model": 0.8526,
+   "train_decisions": 238720
+  }
+ },
+ "all": {
+  "decisions": 187479,
+  "dates": 126,
+  "nll": {
+   "market": 0.9164,
+   "market_tempered": 0.9123,
+   "model": 0.9081
+  },
+  "top_bucket_hit": {
+   "market": 0.6208,
+   "model": 0.6231
+  },
+  "model_minus_market": {
+   "mean": -0.0083,
+   "ci90": [
+    -0.0098,
+    -0.0069
+   ]
+  },
+  "market_tempered_minus_market": {
+   "mean": -0.0041,
+   "ci90": [
+    -0.0054,
+    -0.0028
+   ]
+  }
+ },
+ "by_group": {
+  "D-1 evening": {
+   "decisions": 46520,
+   "dates": 126,
+   "nll": {
+    "market": 1.3738,
+    "market_tempered": 1.3682,
+    "model": 1.3614
+   },
+   "top_bucket_hit": {
+    "market": 0.4392,
+    "model": 0.4401
+   },
+   "model_minus_market": {
+    "mean": -0.0124,
+    "ci90": [
+     -0.015,
+     -0.0098
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0056,
+    "ci90": [
+     -0.0084,
+     -0.0028
+    ]
+   }
+  },
+  "D 00-08h": {
+   "decisions": 52844,
+   "dates": 126,
+   "nll": {
+    "market": 1.2523,
+    "market_tempered": 1.2508,
+    "model": 1.2422
+   },
+   "top_bucket_hit": {
+    "market": 0.4775,
+    "model": 0.4816
+   },
+   "model_minus_market": {
+    "mean": -0.0101,
+    "ci90": [
+     -0.0125,
+     -0.0078
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0015,
+    "ci90": [
+     -0.0031,
+     0.0
+    ]
+   }
+  },
+  "D 09-12h": {
+   "decisions": 23481,
+   "dates": 126,
+   "nll": {
+    "market": 1.1219,
+    "market_tempered": 1.1192,
+    "model": 1.1137
+   },
+   "top_bucket_hit": {
+    "market": 0.5228,
+    "model": 0.5278
+   },
+   "model_minus_market": {
+    "mean": -0.0082,
+    "ci90": [
+     -0.0101,
+     -0.0062
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0027,
+    "ci90": [
+     -0.004,
+     -0.0014
+    ]
+   }
+  },
+  "D 13-16h": {
+   "decisions": 23512,
+   "dates": 126,
+   "nll": {
+    "market": 0.5961,
+    "market_tempered": 0.5902,
+    "model": 0.5891
+   },
+   "top_bucket_hit": {
+    "market": 0.7524,
+    "model": 0.7548
+   },
+   "model_minus_market": {
+    "mean": -0.007,
+    "ci90": [
+     -0.008,
+     -0.0061
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.006,
+    "ci90": [
+     -0.0072,
+     -0.0046
+    ]
+   }
+  },
+  "D 17-23h": {
+   "decisions": 41122,
+   "dates": 126,
+   "nll": {
+    "market": 0.0331,
+    "market_tempered": 0.0276,
+    "model": 0.0309
+   },
+   "top_bucket_hit": {
+    "market": 0.9913,
+    "model": 0.9913
+   },
+   "model_minus_market": {
+    "mean": -0.0022,
+    "ci90": [
+     -0.0023,
+     -0.002
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0054,
+    "ci90": [
+     -0.006,
+     -0.0048
+    ]
+   }
+  }
+ },
+ "by_month": {
+  "2026-06": {
+   "decisions": 44119,
+   "dates": 30,
+   "nll": {
+    "market": 0.9396,
+    "market_tempered": 0.9354,
+    "model": 0.9283
+   },
+   "top_bucket_hit": {
+    "market": 0.6128,
+    "model": 0.6146
+   },
+   "model_minus_market": {
+    "mean": -0.0114,
+    "ci90": [
+     -0.0148,
+     -0.0079
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0042,
+    "ci90": [
+     -0.0072,
+     -0.0013
+    ]
+   }
+  },
+  "2026-07": {
+   "decisions": 45822,
+   "dates": 31,
+   "nll": {
+    "market": 0.9632,
+    "market_tempered": 0.9607,
+    "model": 0.956
+   },
+   "top_bucket_hit": {
+    "market": 0.6012,
+    "model": 0.6014
+   },
+   "model_minus_market": {
+    "mean": -0.0072,
+    "ci90": [
+     -0.0109,
+     -0.0035
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0025,
+    "ci90": [
+     -0.0055,
+     0.0003
+    ]
+   }
+  },
+  "2026-08": {
+   "decisions": 46458,
+   "dates": 31,
+   "nll": {
+    "market": 0.9126,
+    "market_tempered": 0.909,
+    "model": 0.905
+   },
+   "top_bucket_hit": {
+    "market": 0.6266,
+    "model": 0.6293
+   },
+   "model_minus_market": {
+    "mean": -0.0075,
+    "ci90": [
+     -0.0099,
+     -0.0054
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0036,
+    "ci90": [
+     -0.0062,
+     -0.0009
+    ]
+   }
+  },
+  "2026-09": {
+   "decisions": 45064,
+   "dates": 30,
+   "nll": {
+    "market": 0.8558,
+    "market_tempered": 0.8492,
+    "model": 0.8482
+   },
+   "top_bucket_hit": {
+    "market": 0.6401,
+    "model": 0.6448
+   },
+   "model_minus_market": {
+    "mean": -0.0076,
+    "ci90": [
+     -0.0106,
+     -0.0047
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0066,
+    "ci90": [
+     -0.009,
+     -0.0043
+    ]
+   }
+  },
+  "2026-10": {
+   "decisions": 6016,
+   "dates": 4,
+   "nll": {
+    "market": 0.8725,
+    "market_tempered": 0.8712,
+    "model": 0.8675
+   },
+   "top_bucket_hit": {
+    "market": 0.6406,
+    "model": 0.6425
+   },
+   "model_minus_market": {
+    "mean": -0.005,
+    "ci90": [
+     -0.0108,
+     0.0024
+    ]
+   },
+   "market_tempered_minus_market": {
+    "mean": -0.0014,
+    "ci90": [
+     -0.0071,
+     0.0048
+    ]
+   }
+  }
+ },
+ "seconds": 370
+}

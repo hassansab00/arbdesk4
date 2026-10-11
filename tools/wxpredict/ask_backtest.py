@@ -22,8 +22,15 @@ The rule, fixed before it was run:
   (data/mirror/book_snapshots), which wait 16 days before they are mirrored.
 
 Mean payoff per share, with a 90% interval from resampling whole dates.
+Beside it, outside the rule: the same trades after the venue's taker fee on
+weather markets, 0.05 p (1 - p) a share at price p (scripts/cost_model.py),
+which the rule above leaves out.
 
-    python tools/wxpredict/ask_backtest.py DECISIONS.csv.gz [--out data/eval/wxpredict/ask_backtest_<date>.json]
+    python tools/wxpredict/ask_backtest.py DECISIONS.csv.gz [--model-col p_fusion] [--out data/eval/wxpredict/ask_backtest_<date>.json]
+
+--model-col names the decisions' column holding the model's probabilities
+(walkforward.py --dump writes p_fusion, market_residual.py --dump p_model);
+the rule is the same for every model.
 """
 import argparse
 import datetime as dt
@@ -31,9 +38,13 @@ import glob
 import hashlib
 import json
 import os
+import sys
 
 import numpy as np
 import pandas as pd
+
+sys.path.insert(0, os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")), "scripts"))
+import cost_model  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 THETAS = (0.02, 0.05, 0.10)
@@ -66,6 +77,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("decisions")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--model-col", default="p_fusion")
     args = ap.parse_args(argv)
 
     dec = pd.read_csv(args.decisions, low_memory=False)
@@ -133,7 +145,8 @@ def main(argv=None):
     def prob(col):
         return np.array([float(s.split(";")[i]) for s, i in zip(m[col].values, m.bucket.values)])
 
-    probs = {"fusion": prob("p_fusion"), "market (control)": prob("q"), "market tempered": prob("p_tempered")}
+    probs = {args.model_col.removeprefix("p_"): prob(args.model_col), "market (control)": prob("q"),
+             "market tempered": prob("p_tempered")}
     won = (m.winner.values.astype(int) == m.bucket.values.astype(int))
     yes_ask = pd.to_numeric(m.best_ask, errors="coerce").values
     bid = pd.to_numeric(m.best_bid, errors="coerce").values
@@ -146,10 +159,12 @@ def main(argv=None):
             ok = np.isfinite(price) & (price > 0) & (price < 1) & (pp - price >= theta)
             t = pd.DataFrame({"band_id": m.band_id.values[ok], "date": m.date.values[ok], "t": m.t.values[ok],
                               "price": price[ok], "p": pp[ok], "win": win[ok], "side": side,
-                              "hour": m.local_hour.values[ok], "day_offset": m.day_offset.values[ok]})
+                              "hour": m.local_hour.values[ok], "day_offset": m.day_offset.values[ok],
+                              "age_min": (m.t.values[ok] - m.t_dec.values[ok]) / 60})
             rows.append(t.sort_values("t").drop_duplicates(["band_id", "side", "date"]))
         t = pd.concat(rows, ignore_index=True)
         t["payoff"] = t.win.astype(float) - t.price
+        t["payoff_after_fee"] = t.payoff - cost_model.taker_fee(1.0, t.price.values)
         return t
 
     def summary(t):
@@ -159,16 +174,20 @@ def main(argv=None):
                 "mean_price": round(float(t.price.mean()), 4), "mean_p": round(float(t.p.mean()), 4),
                 "win_rate": round(float(t.win.mean()), 4),
                 "payoff_per_share": round(float(t.payoff.mean()), 4), "ci90": boot_ci(t.payoff.values, t.date.values),
-                "total": round(float(t.payoff.sum()), 2)}
+                "total": round(float(t.payoff.sum()), 2),
+                "after_taker_fee": {"payoff_per_share": round(float(t.payoff_after_fee.mean()), 4),
+                                    "ci90": boot_ci(t.payoff_after_fee.values, t.date.values)}}
 
     result = {
         "made": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
         "decisions_sha256": dec_sha,
+        "model_col": args.model_col,
         "window": [str(first_book), str(kept_through)],
         "books": {"archive_files": len(arch_files), "mirror_files": len(kept_files),
                   "snapshots_matched": int(len(m)), "markets_unmatched": unmatched,
                   "dates": int(m.date.nunique())},
-        "rule": __doc__.strip().split("\n\n")[1].strip(),
+        # the rule, the thresholds and the window: the three paragraphs under "The rule, fixed before it was run:"
+        "rule": " ".join(" ".join(__doc__.strip().split("\n\n")[2:5]).split()),
         "test_theta": TEST_THETA,
         "results": {},
     }
@@ -181,6 +200,10 @@ def main(argv=None):
             r["by_when"] = {w: summary(t[sel]) for w, sel in (
                 ("D-1", t.day_offset < 0), ("D before 13h", (t.day_offset == 0) & (t.hour < 13)),
                 ("D 13h on", (t.day_offset == 0) & (t.hour >= 13)))}
+            # how old the decision was at the snapshot: the decision's prices are the hour's
+            r["by_age"] = {w: summary(t[sel]) for w, sel in (
+                ("0-15 min", t.age_min < 15), ("15-30 min", (t.age_min >= 15) & (t.age_min < 30)),
+                ("30-60 min", t.age_min >= 30))}
             result["results"][name][f"theta_{theta:.2f}"] = r
     text = json.dumps(result, indent=1)
     print(text)

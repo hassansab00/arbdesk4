@@ -40,6 +40,9 @@ import pandas as pd
 from scipy.optimize import minimize
 from scipy.special import ndtr
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import remaining  # noqa: E402
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 TABLE = os.path.join(ROOT, "data", "training", "wxpredict", "table", "wxpredict_table.csv.gz")
 FLOOR = 0.0005                      # features.PRICE_FLOOR: the market's floor before normalising
@@ -171,6 +174,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=None)
     ap.add_argument("--months", default=",".join(TEST_MONTHS))
+    ap.add_argument("--remaining", action="store_true",
+                    help="phase 3A: on the day from 09h, the remaining-day model's buckets (tools/wxpredict/remaining.py)")
     ap.add_argument("--dump", default=None,
                     help="also write each scored decision's ladders (csv.gz) for tools/wxpredict/ask_backtest.py")
     args = ap.parse_args(argv)
@@ -185,6 +190,10 @@ def main(argv=None):
     assert not leaks, leaks
     print("features:", ",".join(x_all.columns), flush=True)
     print(f"loaded {len(df):,} rows, {x_all.shape[1]} features, {time.time() - t0:.0f} s", flush=True)
+    if args.remaining:
+        el = remaining.eligible(df)
+        x_inc = remaining.features(df, x_all)
+        j_inc = remaining.target(df)
 
     scored = []
     dumps = []
@@ -223,6 +232,21 @@ def main(argv=None):
         sd_by_row = pd.Series(sd_cal, index=cal_idx)
         sd_m = fit_sd(x_all[cal], np.abs(r_cal))
         mu_b = fit_mu(x_all[tr_b], df.y_c[tr_b])
+        if args.remaining:
+            ta, tb = tr_a.values & el, tr_b.values & el
+            inc_a = remaining.fit(x_inc[ta], j_inc[ta], SEED)
+            inc_b = remaining.fit(x_inc[tb], j_inc[tb], SEED)
+
+        def with_remaining(w, rows, model, sub, lo, hi, mask):
+            # on the day from 09h, the remaining-day model's buckets replace the forecast model's
+            if not args.remaining:
+                return w
+            e = el[rows]
+            if e.any():
+                pr = model.predict(x_inc[rows][e])
+                w = w.copy()
+                w[e] = remaining.bucket_probs(pr, sub.unit.values[e], sub.rmax_unit.values[e], lo[e], hi[e], mask[e])
+            return w
 
         # fusion weights on the calibration window's priced venue decisions,
         # from model A (which had not seen them)
@@ -232,6 +256,7 @@ def main(argv=None):
         mu = mu_a.predict(x_all[cv])
         sd = np.maximum(0.3, sd_by_row.loc[np.flatnonzero(cv.values)].values * 1.2533)
         w = weather_probs(mu, sd, sub.unit.values, lo, hi, mask, sub.rmax_unit.values, sub.day_offset.values)
+        w = with_remaining(w, cv.values, inc_a if args.remaining else None, sub, lo, hi, mask)
         g = groups(sub.day_offset.values, sub.local_hour.values)
         lq, lw = np.log(np.where(mask, q, 1)), np.log(np.where(mask, w, 1))
         calib[month] = {"decisions": int(len(sub)), "nll_market": round(float(nll(q, win).mean()), 4),
@@ -249,6 +274,7 @@ def main(argv=None):
         mu = mu_b.predict(x_all[test])
         sd = np.maximum(0.3, sd_m.predict(x_all[test]) * 1.2533)
         w = weather_probs(mu, sd, sub.unit.values, lo, hi, mask, sub.rmax_unit.values, sub.day_offset.values)
+        w = with_remaining(w, test.values, inc_b if args.remaining else None, sub, lo, hi, mask)
         g = groups(sub.day_offset.values, sub.local_hour.values)
         lq, lw = np.log(np.where(mask, q, 1)), np.log(np.where(mask, w, 1))
         p_mt = np.zeros_like(q)
@@ -298,6 +324,7 @@ def main(argv=None):
         "method": __doc__.strip().splitlines()[0],
         "test_months": args.months.split(","), "calib_days": CALIB_DAYS, "seed": SEED,
         "cutoff_eve_left_out": True,
+        "remaining_day_model": bool(args.remaining),
         "all": summary(s),
         "by_group": {GROUP_NAMES[k]: summary(part) for k, part in s.groupby("group")},
         "by_month": {k: summary(part) for k, part in s.groupby("month")},
