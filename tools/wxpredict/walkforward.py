@@ -140,9 +140,11 @@ def features(df):
     return x
 
 
+# deterministic and force_col_wise: the same table and seed give the same
+# numbers on a re-run (LightGBM's multithreaded histograms otherwise may not).
 LGB = dict(objective="regression", learning_rate=0.05, num_leaves=63, min_data_in_leaf=200,
            feature_fraction=0.8, bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0, verbose=-1,
-           seed=SEED, num_threads=4)
+           seed=SEED, num_threads=4, deterministic=True, force_col_wise=True)
 
 
 def fit_mu(x, y, rounds=600):
@@ -169,6 +171,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=None)
     ap.add_argument("--months", default=",".join(TEST_MONTHS))
+    ap.add_argument("--dump", default=None,
+                    help="also write each scored decision's ladders (csv.gz) for tools/wxpredict/ask_backtest.py")
     args = ap.parse_args(argv)
     t0 = time.time()
     sha = hashlib.sha256(open(TABLE, "rb").read()).hexdigest()
@@ -183,6 +187,7 @@ def main(argv=None):
     print(f"loaded {len(df):,} rows, {x_all.shape[1]} features, {time.time() - t0:.0f} s", flush=True)
 
     scored = []
+    dumps = []
     fitted = {}
     calib = {}
     for month in args.months.split(","):
@@ -253,6 +258,16 @@ def main(argv=None):
             gw = wts.get(gi) or {"market_only": [1.0], "fusion": [1.0, 0.0]}
             p_mt[s] = pool([lq[s]], gw["market_only"], mask[s])
             p_fu[s] = pool([lq[s], lw[s]], gw["fusion"], mask[s])
+        if args.dump:
+            def fmt(a, m):
+                return [";".join(f"{v:.6f}" for v in row[mk]) for row, mk in zip(a, m)]
+            dumps.append(pd.DataFrame({
+                "event_id": sub.event_id.values, "city_key": sub.city_key.values, "date": sub.date.values,
+                "unit": sub.unit.values, "decision_utc": sub.decision_utc.values,
+                "day_offset": sub.day_offset.values, "local_hour": sub.local_hour.values,
+                "bands_lo": sub.bands_lo.values, "bands_hi": sub.bands_hi.values, "winner": win,
+                "q": fmt(q, mask), "p_tempered": fmt(p_mt, mask), "p_fusion": fmt(p_fu, mask),
+                "p_weather": fmt(w, mask)}))
         scored.append(pd.DataFrame({
             "month": month, "date": sub.date.values, "city": sub.city_key.values, "group": g,
             "nll_market": nll(q, win), "nll_market_tempered": nll(p_mt, win),
@@ -290,6 +305,8 @@ def main(argv=None):
         "calibration_window": calib,
         "seconds": round(time.time() - t0),
     }
+    if args.dump:
+        pd.concat(dumps, ignore_index=True).to_csv(args.dump, index=False, compression="gzip")
     text = json.dumps(result, indent=1)
     print(text)
     if args.out:
