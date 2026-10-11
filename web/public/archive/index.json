@@ -46,10 +46,19 @@
           "gzip_bytes": 26483,
           "rows": 20,
           "to": "2026-10-09"
+        },
+        {
+          "archived_at": "2026-10-11T02:37:23+00:00",
+          "archived_through": "2026-10-10T02:37:20.670440+00:00",
+          "asset": "book_evidence-2026-10-09-to-2026-10-10.csv.gz",
+          "from": "2026-10-09",
+          "gzip_bytes": 82170,
+          "rows": 66,
+          "to": "2026-10-10"
         }
       ],
       "release_tag": "book-evidence-archive",
-      "rows_archived": 2241,
+      "rows_archived": 2307,
       "table": "paper_book_evidence"
     },
     "books": {
@@ -233,10 +242,19 @@
           "gzip_bytes": 651340,
           "rows": 8971,
           "to": "2026-10-06"
+        },
+        {
+          "archived_at": "2026-10-11T02:37:40+00:00",
+          "archived_through": "2026-10-08T02:37:23.290425+00:00",
+          "asset": "books-2026-10-07-to-2026-10-08.csv.gz",
+          "from": "2026-10-07",
+          "gzip_bytes": 690516,
+          "rows": 9551,
+          "to": "2026-10-08"
         }
       ],
       "release_tag": "books-archive",
-      "rows_archived": 387102,
+      "rows_archived": 396653,
       "table": "book_snapshots"
     },
     "correlation": {
@@ -267,10 +285,19 @@
           "gzip_bytes": 20402,
           "rows": 1326,
           "to": "2026-10-07"
+        },
+        {
+          "archived_at": "2026-10-11T02:37:42+00:00",
+          "archived_through": "2026-10-09T02:37:40.049353+00:00",
+          "asset": "correlation-2026-10-08-to-2026-10-08.csv.gz",
+          "from": "2026-10-08",
+          "gzip_bytes": 20323,
+          "rows": 1326,
+          "to": "2026-10-08"
         }
       ],
       "release_tag": "correlation-archive",
-      "rows_archived": 63591,
+      "rows_archived": 64917,
       "table": "derived_city_correlation"
     },
     "decisions": {
@@ -301,10 +328,19 @@
           "gzip_bytes": 36341,
           "rows": 1908,
           "to": "2026-10-08"
+        },
+        {
+          "archived_at": "2026-10-11T02:37:44+00:00",
+          "archived_through": "2026-10-09T02:37:42.614269+00:00",
+          "asset": "decisions-2026-10-08-to-2026-10-09.csv.gz",
+          "from": "2026-10-08",
+          "gzip_bytes": 49766,
+          "rows": 2217,
+          "to": "2026-10-09"
         }
       ],
       "release_tag": "decisions-archive",
-      "rows_archived": 39465,
+      "rows_archived": 41682,
       "table": "decisions"
     },
     "edges": {
@@ -470,10 +506,19 @@
           "gzip_bytes": 487214,
           "rows": 6160,
           "to": "2026-10-08"
+        },
+        {
+          "archived_at": "2026-10-11T02:37:52+00:00",
+          "archived_through": "2026-10-09T02:37:44.784973+00:00",
+          "asset": "edges-2026-10-08-to-2026-10-09.csv.gz",
+          "from": "2026-10-08",
+          "gzip_bytes": 491699,
+          "rows": 6160,
+          "to": "2026-10-09"
         }
       ],
       "release_tag": "edges-archive",
-      "rows_archived": 280440,
+      "rows_archived": 286600,
       "table": "edges"
     },
     "forecast_features": {
@@ -585,10 +630,19 @@
           "gzip_bytes": 68469,
           "rows": 3337,
           "to": "2026-10-07"
+        },
+        {
+          "archived_at": "2026-10-11T02:37:55+00:00",
+          "archived_through": "2026-10-09",
+          "asset": "forecast_features-2026-10-08-to-2026-10-08.csv.gz",
+          "from": "2026-10-08",
+          "gzip_bytes": 68981,
+          "rows": 3339,
+          "to": "2026-10-08"
         }
       ],
       "release_tag": "forecast-features-archive",
-      "rows_archived": 80644,
+      "rows_archived": 83983,
       "table": "weather_forecast_features"
     },
     "forecast_models": {
@@ -691,10 +745,19 @@
           "gzip_bytes": 25842,
           "rows": 2814,
           "to": "2026-10-07"
+        },
+        {
+          "archived_at": "2026-10-11T02:38:26+00:00",
+          "archived_through": "2026-10-09",
+          "asset": "forecast_models-2026-10-08-to-2026-10-08.csv.gz",
+          "from": "2026-10-08",
+          "gzip_bytes": 24675,
+          "rows": 2642,
+          "to": "2026-10-08"
         }
       ],
       "release_tag": "forecast-models-archive",
-      "rows_archived": 131155,
+      "rows_archived": 133797,
       "table": "weather_forecast_models"
     },
     "forecast_variables": {
@@ -943,10 +1006,19 @@
           "gzip_bytes": 706436,
           "rows": 85694,
           "to": "2026-10-06"
+        },
+        {
+          "archived_at": "2026-10-11T02:39:08+00:00",
+          "archived_through": "2026-10-08",
+          "asset": "forecasts-2026-10-07-to-2026-10-07.csv.gz",
+          "from": "2026-10-07",
+          "gzip_bytes": 41062,
+          "rows": 3625,
+          "to": "2026-10-07"
         }
       ],
       "release_tag": "forecasts-archive",
-      "rows_archived": 148579,
+      "rows_archived": 152204,
       "table": "weather_forecasts"
     },
     "ladders": {
@@ -1067,10 +1139,19 @@
           "gzip_bytes": 1221441,
           "rows": 4243,
           "to": "2026-10-09"
+        },
+        {
+          "archived_at": "2026-10-11T02:39:24+00:00",
+          "archived_through": "2026-10-10T02:39:08.138415+00:00",
+          "asset": "ladders-2026-10-09-to-2026-10-10.csv.gz",
+          "from": "2026-10-09",
+          "gzip_bytes": 1209821,
+          "rows": 4211,
+          "to": "2026-10-10"
         }
       ],
       "release_tag": "ladders-archive",
-      "rows_archived": 61256,
+      "rows_archived": 65467,
       "table": "book_snapshots"
     },
     "model_payloads": {
@@ -1101,10 +1182,19 @@
           "gzip_bytes": 51558,
           "rows": 2205,
           "to": "2026-10-02"
+        },
+        {
+          "archived_at": "2026-10-11T02:39:28+00:00",
+          "archived_through": "2026-10-04",
+          "asset": "model_payloads-2026-10-03-to-2026-10-03.csv.gz",
+          "from": "2026-10-03",
+          "gzip_bytes": 51836,
+          "rows": 2266,
+          "to": "2026-10-03"
         }
       ],
       "release_tag": "model-payloads-archive",
-      "rows_archived": 18022,
+      "rows_archived": 20288,
       "table": "derived_model_forecast"
     },
     "observations": {
@@ -1338,10 +1428,19 @@
           "gzip_bytes": 1217901,
           "rows": 132244,
           "to": "2026-10-07"
+        },
+        {
+          "archived_at": "2026-10-11T02:40:01+00:00",
+          "archived_through": "2026-10-08T02:39:28.715089+00:00",
+          "asset": "observations-2026-10-07-to-2026-10-08.csv.gz",
+          "from": "2026-10-07",
+          "gzip_bytes": 45494,
+          "rows": 4579,
+          "to": "2026-10-08"
         }
       ],
       "release_tag": "observations-archive",
-      "rows_archived": 650630,
+      "rows_archived": 655209,
       "table": "weather_observations"
     },
     "probabilities": {
@@ -1372,10 +1471,19 @@
           "gzip_bytes": 2250588,
           "rows": 62447,
           "to": "2026-10-06"
+        },
+        {
+          "archived_at": "2026-10-11T02:40:10+00:00",
+          "archived_through": "2026-10-08",
+          "asset": "probabilities-2026-10-07-to-2026-10-07.csv.gz",
+          "from": "2026-10-07",
+          "gzip_bytes": 93181,
+          "rows": 2574,
+          "to": "2026-10-07"
         }
       ],
       "release_tag": "probabilities-archive",
-      "rows_archived": 101785,
+      "rows_archived": 104359,
       "table": "band_probabilities"
     },
     "research": {
@@ -1570,10 +1678,19 @@
           "gzip_bytes": 156510,
           "rows": 1350,
           "to": "2026-10-08"
+        },
+        {
+          "archived_at": "2026-10-11T02:40:12+00:00",
+          "archived_through": "2026-10-09T02:40:10.158415+00:00",
+          "asset": "research-2026-10-08-to-2026-10-09.csv.gz",
+          "from": "2026-10-08",
+          "gzip_bytes": 156251,
+          "rows": 1347,
+          "to": "2026-10-09"
         }
       ],
       "release_tag": "research-archive",
-      "rows_archived": 343859,
+      "rows_archived": 345206,
       "table": "research_captures"
     },
     "resolution": {
@@ -1748,10 +1865,19 @@
           "gzip_bytes": 458638,
           "rows": 516,
           "to": "2026-10-09"
+        },
+        {
+          "archived_at": "2026-10-11T02:40:17+00:00",
+          "archived_through": "2026-10-10T02:40:12.869432+00:00",
+          "asset": "resolution-2026-10-09-to-2026-10-10.csv.gz",
+          "from": "2026-10-09",
+          "gzip_bytes": 426069,
+          "rows": 479,
+          "to": "2026-10-10"
         }
       ],
       "release_tag": "resolution-archive",
-      "rows_archived": 31529,
+      "rows_archived": 32008,
       "table": "paper_resolution_evidence"
     },
     "signal_inputs": {
@@ -1997,13 +2123,22 @@
           "gzip_bytes": 2828098,
           "rows": 53957,
           "to": "2026-10-07"
+        },
+        {
+          "archived_at": "2026-10-11T02:41:14+00:00",
+          "archived_through": "2026-10-10T02:40:19.187944+00:00",
+          "asset": "trades-2026-10-08-to-2026-10-09.csv.gz",
+          "from": "2026-10-08",
+          "gzip_bytes": 2828864,
+          "rows": 52939,
+          "to": "2026-10-09"
         }
       ],
       "release_tag": "trades-archive",
-      "rows_archived": 965232,
+      "rows_archived": 1018171,
       "table": "trades_observed"
     }
   },
   "rebuilt_from": "release assets, row counts parsed from the files themselves",
-  "updated_at": "2026-10-10T02:43:51+00:00"
+  "updated_at": "2026-10-11T02:41:14+00:00"
 }
