@@ -46,18 +46,20 @@ import pandas as pd
 sys.path.insert(0, os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")), "scripts"))
 import cost_model  # noqa: E402
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import snapshot_match  # noqa: E402
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 THETAS = (0.02, 0.05, 0.10)
 TEST_THETA = 0.05
 SEED = 20261011
 MAX_AGE_S = 3600
-SNAP_S = 600                   # book_anchor.py's ladder snapshot, 10 minutes
 
 
 def first_in_snapshot(b):
     """True for each band's first book in its 10-minute window: the one
     book_anchor.py prices. Read over every book, before any filter."""
-    return b.t == b.groupby([b.band_id, b.t // SNAP_S]).t.transform("min")
+    return np.array(snapshot_match.first_in_snapshot(b.band_id.values, b.t.values), dtype=bool)
 
 
 def own_snapshot(m):
@@ -70,9 +72,9 @@ def own_snapshot(m):
     Any other dump is matched as before."""
     if "hourly_decision_utc" not in m.columns:
         return m
-    keep = (m.first_in_snap & (m.t // SNAP_S == m.t_dec // SNAP_S)
-            & (m.t - m.hourly_decision_utc <= MAX_AGE_S))
-    return m[keep.values]
+    keep = snapshot_match.own_snapshot_mask(m.t.values, m.t_dec.values, m.hourly_decision_utc.values,
+                                            m.first_in_snap.values, MAX_AGE_S)
+    return m[np.array(keep, dtype=bool)]
 
 
 def read_all(pattern, usecols=None):
