@@ -24,7 +24,14 @@ tempered per hour group (walkforward.py's control), with a 90% interval from
 resampling whole dates. --dump writes the per-bucket probabilities in the
 form ask_backtest.py reads (the model's in p_model). Research only.
 
+--weather takes walkforward.py's --dump and gives each bucket the weather
+model's probability (and its log ratio to the market's) as a feature. Every
+one of those is out of sample: walkforward.py's model for a month never saw
+that month, so a decision's weather probability was knowable at the decision.
+Decisions before walkforward.py's first test month have none (left empty).
+
     python tools/wxpredict/market_residual.py [--out data/eval/wxpredict/market_residual_<date>.json] [--dump D.csv.gz]
+                                              [--weather WALKFORWARD_DUMP.csv.gz]
 """
 import argparse
 import datetime as dt
@@ -60,7 +67,26 @@ def to_c(unit, v):
     return np.where(np.asarray(unit)[:, None] == "F", (v - 32) * 5 / 9, v)
 
 
-def long_form(df, lo, hi, q, mask):
+def logit(p):
+    p = np.clip(p, CLIP, 1 - CLIP)
+    return np.log(p / (1 - p))
+
+
+def weather_ladders(df, path, k):
+    """walkforward.py's out-of-sample weather probabilities, bucket by bucket,
+    for the decisions it scored (NaN elsewhere)."""
+    wd = pd.read_csv(path, usecols=["event_id", "decision_utc", "p_weather"])
+    assert not wd.duplicated(["event_id", "decision_utc"]).any()
+    p = df[["event_id", "decision_utc"]].merge(wd, how="left", on=["event_id", "decision_utc"]).p_weather.values
+    w = np.full((len(df), k), np.nan)
+    for i, s in enumerate(p):
+        if isinstance(s, str):
+            v = [float(a) for a in s.split(";")]
+            w[i, :len(v)] = v
+    return w
+
+
+def long_form(df, lo, hi, q, mask, w=None):
     """One row per (decision, valid bucket): the decision's features and the bucket's."""
     n, k = q.shape
     x = wf.features(df)
@@ -81,9 +107,12 @@ def long_form(df, lo, hi, q, mask):
     qc = np.where(mask, q, 0)
     b = {"k_rel_fav": cols - fav[:, None], "k_rel_rmax": cols - i0[:, None],
          "k_from_top": df.n_bands.values[:, None] - 1 - cols,
-         "q": q, "logit_q": np.log(np.clip(q, CLIP, 1 - CLIP) / (1 - np.clip(q, CLIP, 1 - CLIP))),
+         "q": q, "logit_q": logit(q),
          "q_below": np.cumsum(qc, 1) - qc, "q_rank": (-qc).argsort(1).argsort(1),
          "open_lo": open_lo.astype(int), "open_hi": open_hi.astype(int)}
+    if w is not None:
+        b["w"] = w
+        b["logit_w_minus_q"] = logit(w) - logit(q)
     for f in FORECASTS:
         v = df[f].values.astype(float)[:, None]
         b[f"centre_minus_{f}"] = (centre - v) / per_step
@@ -138,6 +167,7 @@ def main(argv=None):
     ap.add_argument("--out", default=None)
     ap.add_argument("--dump", default=None)
     ap.add_argument("--months", default=",".join(TEST_MONTHS))
+    ap.add_argument("--weather", default=None)
     args = ap.parse_args(argv)
     t0 = time.time()
     sha = hashlib.sha256(open(wf.TABLE, "rb").read()).hexdigest()
@@ -146,11 +176,14 @@ def main(argv=None):
     df["d"] = pd.to_datetime(df.date)
     lo, hi, q, mask, win = wf.ladders(df)
     n = len(df)
-    xl, r, c = long_form(df, lo, hi, q, mask)
+    w = weather_ladders(df, args.weather, q.shape[1]) if args.weather else None
+    if w is not None:
+        print(f"weather probabilities for {int(np.isfinite(w[:, 0]).sum()):,} of {n:,} decisions", flush=True)
+    xl, r, c = long_form(df, lo, hi, q, mask, w)
     leaks = [col for col in xl.columns if col in wf.LABELS or col in ("y_c", "d")]
     assert not leaks, leaks
     y = (c == win[r]).astype(int)
-    init = np.log(np.clip(q[r, c], CLIP, 1 - CLIP) / (1 - np.clip(q[r, c], CLIP, 1 - CLIP)))
+    init = logit(q[r, c])
     dates = df.d.values[r]
     groups = wf.groups(df.day_offset.values, df.local_hour.values)
     print(f"{n:,} decisions, {len(xl):,} buckets, {xl.shape[1]} features, {time.time() - t0:.0f} s", flush=True)
@@ -217,6 +250,9 @@ def main(argv=None):
 
     result = {"made": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"), "table_gzip_sha256": sha,
               "decisions": n, "method": __doc__.strip().splitlines()[0], "test_months": args.months.split(","),
+              "weather": None if not args.weather else {
+                  "dump_sha256": hashlib.sha256(open(args.weather, "rb").read()).hexdigest(),
+                  "decisions_with_weather": int(np.isfinite(w[:, 0]).sum())},
               "seed": SEED, "fits": fits, "all": summary(s),
               "by_group": {wf.GROUP_NAMES[k]: summary(p) for k, p in s.groupby("group")},
               "by_month": {k: summary(p) for k, p in s.groupby("month")},
