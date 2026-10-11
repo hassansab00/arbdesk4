@@ -155,6 +155,7 @@ def main(argv=None):
     b["t"] = ((pd.to_datetime(b.observed_at, utc=True, format="ISO8601") - pd.Timestamp("1970-01-01", tz="UTC"))
               // pd.Timedelta(seconds=1)).astype("int64")
     b = b.sort_values(["band_id", "t"]).drop_duplicates(["band_id", "t"])
+    b["first_in_snap"] = ab.first_in_snapshot(b)
     # the order ends at the bucket's next snapshot or after MAX_LIFE_S
     nxt = b.groupby("band_id").t.shift(-1)
     b["t_end"] = np.minimum(nxt.fillna(b.t + MAX_LIFE_S), b.t + MAX_LIFE_S).astype("int64")
@@ -168,7 +169,7 @@ def main(argv=None):
     dec["date"] = dec.date.astype(str)
     m = pd.merge_asof(b, dec.rename(columns={"decision_utc": "t_dec"}), left_on="t", right_on="t_dec",
                       by=["city_key", "date"], direction="backward", tolerance=ab.MAX_AGE_S)
-    m = m[m.t_dec.notna()].reset_index(drop=True)
+    m = ab.own_snapshot(m[m.t_dec.notna()]).reset_index(drop=True)
 
     # every print as a YES price and the taker's direction in YES
     tok = bands.set_index("band_id")[["token_yes"]]
@@ -240,6 +241,7 @@ def main(argv=None):
                   "markets_unmatched": unmatched, "dates": int(m.date.nunique())},
         "trades": {"files": len(trade_files), "prints_in_window_buckets": int(len(tr))},
         "rule": " ".join(" ".join(__doc__.strip().split("\n\n")[3:8]).split()),
+        "book_anchored": " ".join(ab.own_snapshot.__doc__.split()) if "hourly_decision_utc" in m.columns else None,
         "test_theta": TEST_THETA, "results": {}}
     for name, p in probs.items():
         result["results"][name] = {}
