@@ -17,6 +17,7 @@ const assert = require('node:assert/strict');
 const DIR = path.join(__dirname, '..', '..', 'supabase', 'migrations');
 const ARRIVALS = path.join(DIR, '20260930001000_a_dispatched_run_that_never_logged.sql');
 const SLA = path.join(DIR, '20261009200000_the_watchdog_knows_when_each_job_last_worked.sql');
+const FOLLOWS = path.join(DIR, '20261011160000_the_trade_backfill_joins_the_watchdog.sql');
 const FILES = ['archive_observations.yml', 'forecasts.yml', 'observations.yml', 'paper_trade_log.yml',
                'pipeline_daily.yml', 'pipeline_intraday.yml', 'tick.yml', 'weather_model.yml'];
 
@@ -46,10 +47,14 @@ const FILES = ['archive_observations.yml', 'forecasts.yml', 'observations.yml', 
   await db.exec(fs.readFileSync(ARRIVALS, 'utf-8'));
   await db.exec(fs.readFileSync(SLA, 'utf-8'));
   await db.exec(fs.readFileSync(SLA, 'utf-8'));          // re-runnable
+  await db.exec(fs.readFileSync(FOLLOWS, 'utf-8'));
+  await db.exec(fs.readFileSync(FOLLOWS, 'utf-8'));      // re-runnable
 
   const one = async (sql, params = []) => (await db.query(sql, params)).rows;
   const jobs = (await one('select job from public.job_sla order by job')).map((r) => r.job);
-  assert.equal(jobs.length, 64, 'the seed is written once and a second run changes nothing');
+  assert.equal(jobs.length, 65, 'the seed and R46\'s trade backfill are written once and a second run changes nothing');
+  assert.deepEqual(await one(`select job, switch_key from public.job_sla where switch_key is not null`),
+    [{ job: 'P0.4_trade_backfill', switch_key: 'P0.4_trade_history' }], 'only the backfill follows another switch');
 
   // The rule is the table's, not each row's.
   const sla = Object.fromEntries((await one('select job, max_age_minutes from public.job_sla')).map((r) => [r.job, r.max_age_minutes]));
@@ -124,6 +129,34 @@ const FILES = ['archive_observations.yml', 'forecasts.yml', 'observations.yml', 
                  insert into public.ingest_log (job, status, rows, detail, logged_at)
                  values ('P0.2_market_discovery', 'ok', 0, '{}', now() - interval '5 minutes');`);
 
+  // A JOB THAT FOLLOWS ANOTHER'S SWITCH (R46). The trade backfill has no
+  // switch of its own: with P0.4_trade_history off it logs only 'skipped'.
+  // Its own key on the page means nothing; P0.4_trade_history's decides.
+  await db.exec(`
+    delete from public.ingest_log where job = 'P0.4_trade_backfill';
+    insert into public.ingest_log (job, status, rows, detail, logged_at) values
+      ('P0.4_trade_backfill', 'ok', 0, '{}', now() - interval '3 days'),
+      ('P0.4_trade_backfill', 'skipped', 0, '{"gate": "off"}', now() - interval '1 hour');
+  `);
+  const follower = async () => (await one(`select overdue, mode from public.v_job_last_ok
+                                            where job = 'P0.4_trade_backfill'`))[0];
+  const setMode = (key, mode) => db.query(`update public.settings set value = jsonb_set(value, array[$1, 'mode'], to_jsonb($2::text))
+                                            where key = 'workflow_schedules'`, [key, mode]);
+  assert.deepEqual(await follower(), { overdue: true, mode: 'auto' }, 'no switch set: auto, three days without an ok is overdue');
+  await db.exec(`update public.settings set value = value || '{"P0.4_trade_history": {"mode": "auto"}, "P0.4_trade_backfill": {"mode": "off"}}'
+                  where key = 'workflow_schedules'`);
+  assert.deepEqual(await follower(), { overdue: true, mode: 'auto' }, 'its own key is not its switch');
+  for (const mode of ['off', 'manual']) {
+    await setMode('P0.4_trade_history', mode);
+    assert.deepEqual(await follower(), { overdue: false, mode }, `P0.4_trade_history ${mode}: the backfill is not overdue`);
+  }
+  await setMode('P0.4_trade_history', 'auto');
+  assert.deepEqual(await follower(), { overdue: true, mode: 'auto' }, 'switched back on, it is overdue again');
+  await db.exec(`update public.settings set value = value - 'P0.4_trade_backfill' where key = 'workflow_schedules';
+                 delete from public.ingest_log where job = 'P0.4_trade_backfill';
+                 insert into public.ingest_log (job, status, rows, detail, logged_at)
+                 values ('P0.4_trade_backfill', 'ok', 0, '{}', now() - interval '5 minutes');`);
+
   // IMPLAUSIBLE EDGES ARE INFORMATION. Five of them fail nothing and are a note;
   // one anomaly of any other kind still fails, as every anomaly did before.
   await db.exec(`
@@ -162,5 +195,5 @@ const FILES = ['archive_observations.yml', 'forecasts.yml', 'observations.yml', 
   await assert.rejects(db.query('select public.run_health_watchdog()'), /permission denied/);
   await db.exec('reset role');
 
-  console.log('PASS: job-sla: every scheduled job has an SLA the table computes (one cadence plus max(30 min, cadence/12)); a job whose last ok is older, or that has none, is overdue and fails the watchdog by name; implausible edges are a note, any other anomaly still fails; the old checks still fail as before; service role only; re-runnable');
+  console.log('PASS: job-sla: every scheduled job has an SLA the table computes (one cadence plus max(30 min, cadence/12)); a job whose last ok is older, or that has none, is overdue and fails the watchdog by name; a job switched off or manual, or following a switch that is (the trade backfill follows P0.4_trade_history), is not; implausible edges are a note, any other anomaly still fails; the old checks still fail as before; service role only; re-runnable');
 })().catch((e) => { console.error(e); process.exit(1); });

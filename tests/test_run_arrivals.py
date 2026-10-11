@@ -26,6 +26,7 @@ MIGRATION = (ROOT / "supabase" / "migrations" / "20260930001000_a_dispatched_run
 ADDED = [(ROOT / "supabase" / "migrations" / name).read_text() for name in (
     "20261003170000_the_ladder_queue_is_expected_to_log.sql",   # P4.7: 3 days measured
     "20261004170000_the_minutes_fit_the_pro_plan.sql",          # P6.1: daily runs the forecast ingest
+    "20261011160000_the_trade_backfill_joins_the_watchdog.sql", # R46: the backfill, after a day of runs
 )]
 # expectations removed because their step was switched off on purpose
 REMOVED = [(ROOT / "supabase" / "migrations" / name).read_text() for name in (
@@ -241,6 +242,16 @@ def test_the_ladder_queue_jobs_are_expected_once_and_idempotently():
                                               ("pipeline_intraday.yml", "databank_bands")}
     assert not {(f, j) for f, j, _ in added} & {(f, j) for f, j, _ in _expected()}
     assert "on conflict (file, job) do nothing" in ADDED[0]
+
+
+def test_the_intraday_run_owes_the_trade_backfill_now():
+    """R46 (11 Oct): the backfill step of pipeline_intraday.yml logged
+    P0.4_trade_backfill on each of its first four runs (20:36Z 10 Oct - 14:36Z
+    11 Oct, all 'ok'), so expecting it reports none of the 24 h the watchdog
+    counts missing; the row is added once, never rewritten."""
+    added = _rows(ADDED[2])
+    assert added == [("pipeline_intraday.yml", "P0.4_trade_backfill", "45")]
+    assert "on conflict (file, job) do nothing" in ADDED[2]
 
 
 def test_the_daily_run_owes_the_forecast_ingest_now():

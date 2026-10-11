@@ -171,6 +171,10 @@ MEASURED_MINUTES = {
     # rounded up). Every 6 hours from 4 Oct, at 02/08/14/20 UTC (20261004170000).
     # Measured 4-8 Oct (to 16:00Z), every 6 hours: 21 runs, 86 billed, 4.10 a
     # run (Actions jobs API, each job rounded up; S4, 8 Oct).
+    # R46's trade backfill (ingest_trades.py --backfill, #365) is a step of
+    # this job from 10 Oct. Its four runs to 11 Oct 14:39Z: jobs of 186-234 s,
+    # 4 billed minutes each (Actions jobs API, each job rounded up). 4.1 kept;
+    # 234 s is near the 240 s that would bill a fifth minute.
     "pipeline_intraday.yml": 4.1,
     # The hourly checkpoint tick (plan v2 P6.1 / P4.2). Dispatched 24 Sep:
     # 35 s with a cold venv cache, 21 s warm (7 checkpoints, script 11.8 s).
