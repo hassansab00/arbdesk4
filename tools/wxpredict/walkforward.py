@@ -189,9 +189,16 @@ def main(argv=None):
         m0 = pd.Timestamp(month + "-01")
         m1 = m0 + pd.offsets.MonthBegin(1)
         c0 = m0 - pd.Timedelta(days=CALIB_DAYS)
-        tr_a = df.d < c0                      # model A: before the calibration window
-        cal = (df.d >= c0) & (df.d < m0)
-        tr_b = df.d < m0                      # model B: everything before the month
+        # THE EVE OF EACH CUTOFF IS LEFT OUT (Codex on #372). A decision on
+        # the evening before a day (D-1) is made while that evening's own day
+        # is still running, so a model or weights fitted on that day's outcome
+        # would know what the decision could not: the 1st's D-1 decisions are
+        # made on the last day of the month before, the calibration window's
+        # first on the day before it.
+        eve = pd.Timedelta(days=1)
+        tr_a = df.d < c0 - eve                # model A: before the calibration window
+        cal = (df.d >= c0) & (df.d < m0 - eve)
+        tr_b = df.d < m0 - eve                # model B: everything before the month
         test = (df.d >= m0) & (df.d < m1) & (df.source == "venue") & (df.mkt_complete == 1)
         if not test.any():
             continue
@@ -275,6 +282,7 @@ def main(argv=None):
         "table_gzip_sha256": sha, "rows": int(len(df)),
         "method": __doc__.strip().splitlines()[0],
         "test_months": args.months.split(","), "calib_days": CALIB_DAYS, "seed": SEED,
+        "cutoff_eve_left_out": True,
         "all": summary(s),
         "by_group": {GROUP_NAMES[k]: summary(part) for k, part in s.groupby("group")},
         "by_month": {k: summary(part) for k, part in s.groupby("month")},
@@ -285,7 +293,8 @@ def main(argv=None):
     text = json.dumps(result, indent=1)
     print(text)
     if args.out:
-        os.makedirs(os.path.dirname(args.out), exist_ok=True)
+        if os.path.dirname(args.out):
+            os.makedirs(os.path.dirname(args.out), exist_ok=True)
         with open(args.out, "w") as fh:
             fh.write(text + "\n")
     return result
