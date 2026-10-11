@@ -38,10 +38,11 @@ The rule, fixed before it was run on any date from 5 Oct (11 Oct):
   never by probability or outcome).
 
   LATENCY: (a) at the snapshot itself; (b) at the band's next tradeable
-  snapshot within 2 hours, with the same probability and the rule checked
-  again there (the archive keeps about one snapshot an hour, so (b) is a
+  snapshot within 3 hours, with the same probability and the rule checked
+  again there. A band's book was archived hourly 12-25 Sep and every 2 hours
+  from 26 Sep (per-band gap median 120.0 min, p90 121.0), so (b) is a
   pessimistic bound and (a) an optimistic one; the live delay is not
-  measured yet).
+  measured yet.
 
   T 10, 50 and 250 dollars, B 1,000, C 10%: a simulation grid, not an
   allocation.
@@ -74,7 +75,7 @@ TICKETS = (10.0, 50.0, 250.0)
 BANKROLL = 1000.0
 CITY_DAY_CAP = 0.10
 MIN_SHARES = (5.0, 1.0)            # assumed; the venue's minimum is not recorded
-NEXT_WITHIN_S = 2 * 3600
+NEXT_WITHIN_S = 3 * 3600          # covers the 2-hourly books from 26 Sep (gaps of 120-121 min)
 TIER_COLS = ("1c", "2c", "5c", "10c", "25c")
 
 

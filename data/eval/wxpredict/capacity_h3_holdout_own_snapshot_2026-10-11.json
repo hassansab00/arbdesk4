@@ -1,5 +1,5 @@
 {
- "made": "2026-10-11T17:31Z",
+ "made": "2026-10-11T17:40Z",
  "trades_sha256": "7b70400510466f6d28e5b4095bc35833b739681667b282c55ac4de7144c085e4",
  "theta": 0.05,
  "bankroll": 1000.0,
@@ -8,7 +8,7 @@
   "2026-09-26",
   "2026-10-02"
  ],
- "rule": "The rule, fixed before it was run on any date from 5 Oct (11 Oct): SIGNALS: the trades of the one-share rule at THETA 0.05, unchanged (ask_backtest.py --trades-out): each is one entry on one band, side and day, at the book snapshot it qualified on. The model's and the market's own (the control) are run the same way. THE LADDER at that snapshot is rebuilt from the archived depth tiers by the platform's rule (execution.synth_levels; sql/ad4_13_reconcile.sql, ad4_synth_levels). YES walks the asks; NO walks the YES bids at 1 - price (the venue's NO ask is that complement on 99.93% of rows). Whether the book also carried a real NO ask is recorded, and the complement-only entries are reported on their own. SIZE: level by level while the probability is at least THETA above the level's price, up to a ticket of T dollars, never past 25 cents from the touch; the venue's taker fee (cost_model.taker_fee) on every share at its level's price. STRESSED: the same entries with every share of the first tier one cent dearer (the platform's rule prices that tier at the touch). An entry below the minimum order is not made. The minimum order is NOT RECORDED (markets.min_order_size is empty on all 2,708 markets, and the stored books keep only bids and asks): 5 shares is assumed, 1 share is shown beside it. CASH: a bankroll of B dollars, each entry's cost paid at its snapshot and its winnings returned at the end of the day after the event date (UTC); an entry the free cash cannot pay is skipped, and so is one that would put more than C of the bankroll on one city-day. Entries are funded in time order, and at one instant by band and side (execution.funding_order: never by probability or outcome). LATENCY: (a) at the snapshot itself; (b) at the band's next tradeable snapshot within 2 hours, with the same probability and the rule checked again there (the archive keeps about one snapshot an hour, so (b) is a pessimistic bound and (a) an optimistic one; the live delay is not measured yet). T 10, 50 and 250 dollars, B 1,000, C 10%: a simulation grid, not an allocation.",
+ "rule": "The rule, fixed before it was run on any date from 5 Oct (11 Oct): SIGNALS: the trades of the one-share rule at THETA 0.05, unchanged (ask_backtest.py --trades-out): each is one entry on one band, side and day, at the book snapshot it qualified on. The model's and the market's own (the control) are run the same way. THE LADDER at that snapshot is rebuilt from the archived depth tiers by the platform's rule (execution.synth_levels; sql/ad4_13_reconcile.sql, ad4_synth_levels). YES walks the asks; NO walks the YES bids at 1 - price (the venue's NO ask is that complement on 99.93% of rows). Whether the book also carried a real NO ask is recorded, and the complement-only entries are reported on their own. SIZE: level by level while the probability is at least THETA above the level's price, up to a ticket of T dollars, never past 25 cents from the touch; the venue's taker fee (cost_model.taker_fee) on every share at its level's price. STRESSED: the same entries with every share of the first tier one cent dearer (the platform's rule prices that tier at the touch). An entry below the minimum order is not made. The minimum order is NOT RECORDED (markets.min_order_size is empty on all 2,708 markets, and the stored books keep only bids and asks): 5 shares is assumed, 1 share is shown beside it. CASH: a bankroll of B dollars, each entry's cost paid at its snapshot and its winnings returned at the end of the day after the event date (UTC); an entry the free cash cannot pay is skipped, and so is one that would put more than C of the bankroll on one city-day. Entries are funded in time order, and at one instant by band and side (execution.funding_order: never by probability or outcome). LATENCY: (a) at the snapshot itself; (b) at the band's next tradeable snapshot within 3 hours, with the same probability and the rule checked again there. A band's book was archived hourly 12-25 Sep and every 2 hours from 26 Sep (per-band gap median 120.0 min, p90 121.0), so (b) is a pessimistic bound and (a) an optimistic one; the live delay is not measured yet. T 10, 50 and 250 dollars, B 1,000, C 10%: a simulation grid, not an allocation.",
  "one_share": {
   "model": {
    "trades": 89,
@@ -609,45 +609,45 @@
    },
    "next snapshot | platform ladder | min 5 shares | ticket $10": {
     "signals": 89,
-    "entries": 36,
+    "entries": 46,
     "skipped": {
      "no_book": 0,
-     "no_next_book": 33,
-     "below_rule_or_minimum": 20,
+     "no_next_book": 14,
+     "below_rule_or_minimum": 29,
      "capital": 0,
      "city_day_cap": 0
     },
     "dates": 7,
-    "shares": 657.1,
-    "usd_spent": 355.95,
-    "fees": 7.38,
-    "net_profit": 43.74,
-    "return_on_spent": 0.1204,
-    "mean_profit_per_date": 6.25,
+    "shares": 885.0,
+    "usd_spent": 455.95,
+    "fees": 9.91,
+    "net_profit": 47.67,
+    "return_on_spent": 0.1023,
+    "mean_profit_per_date": 6.81,
     "ci90_per_date": [
-     -3.8009,
-     16.9012
+     -7.262,
+     21.0362
     ],
-    "max_drawdown": 12.4,
-    "without_best_date": 11.4,
-    "without_best_city": 15.56,
-    "best_city": "jeddah",
-    "mean_lock_days": 2.44,
-    "mean_usd_per_entry": 9.89,
+    "max_drawdown": 26.64,
+    "without_best_date": 3.08,
+    "without_best_city": 0.04,
+    "best_city": "munich",
+    "mean_lock_days": 2.43,
+    "mean_usd_per_entry": 9.91,
     "by_side": {
      "yes": {
-      "entries": 12,
-      "net_profit": 6.02
+      "entries": 19,
+      "net_profit": 11.35
      },
      "no": {
-      "entries": 24,
-      "net_profit": 37.73
+      "entries": 27,
+      "net_profit": 36.33
      }
     },
     "no_real_vs_complement": {
      "real": {
-      "entries": 24,
-      "net_profit": 37.73
+      "entries": 27,
+      "net_profit": 36.33
      },
      "complement only": {
       "entries": 0,
@@ -657,45 +657,45 @@
    },
    "next snapshot | platform ladder | min 5 shares | ticket $50": {
     "signals": 89,
-    "entries": 32,
+    "entries": 40,
     "skipped": {
      "no_book": 0,
-     "no_next_book": 33,
-     "below_rule_or_minimum": 20,
+     "no_next_book": 14,
+     "below_rule_or_minimum": 29,
      "capital": 0,
-     "city_day_cap": 4
+     "city_day_cap": 6
     },
     "dates": 7,
-    "shares": 2796.1,
-    "usd_spent": 1516.32,
-    "fees": 31.17,
-    "net_profit": 106.72,
-    "return_on_spent": 0.069,
-    "mean_profit_per_date": 15.25,
+    "shares": 3658.9,
+    "usd_spent": 1852.75,
+    "fees": 40.69,
+    "net_profit": 149.52,
+    "return_on_spent": 0.079,
+    "mean_profit_per_date": 21.36,
     "ci90_per_date": [
-     -27.1428,
-     56.6669
+     -46.3621,
+     82.373
     ],
-    "max_drawdown": 107.96,
-    "without_best_date": -32.91,
-    "without_best_city": -29.21,
-    "best_city": "jeddah",
-    "mean_lock_days": 2.43,
-    "mean_usd_per_entry": 47.39,
+    "max_drawdown": 211.26,
+    "without_best_date": -30.08,
+    "without_best_city": 4.97,
+    "best_city": "munich",
+    "mean_lock_days": 2.42,
+    "mean_usd_per_entry": 46.32,
     "by_side": {
      "yes": {
-      "entries": 10,
-      "net_profit": -128.18
+      "entries": 17,
+      "net_profit": -36.29
      },
      "no": {
-      "entries": 22,
-      "net_profit": 234.9
+      "entries": 23,
+      "net_profit": 185.8
      }
     },
     "no_real_vs_complement": {
      "real": {
-      "entries": 22,
-      "net_profit": 234.9
+      "entries": 23,
+      "net_profit": 185.8
      },
      "complement only": {
       "entries": 0,
@@ -705,35 +705,35 @@
    },
    "next snapshot | platform ladder | min 5 shares | ticket $250": {
     "signals": 89,
-    "entries": 10,
+    "entries": 12,
     "skipped": {
      "no_book": 0,
-     "no_next_book": 33,
-     "below_rule_or_minimum": 20,
+     "no_next_book": 14,
+     "below_rule_or_minimum": 29,
      "capital": 0,
-     "city_day_cap": 26
+     "city_day_cap": 34
     },
     "dates": 7,
-    "shares": 1370.1,
-    "usd_spent": 555.83,
-    "fees": 15.38,
-    "net_profit": 211.39,
-    "return_on_spent": 0.3701,
-    "mean_profit_per_date": 30.2,
+    "shares": 1445.3,
+    "usd_spent": 592.25,
+    "fees": 16.32,
+    "net_profit": 174.02,
+    "return_on_spent": 0.286,
+    "mean_profit_per_date": 24.86,
     "ci90_per_date": [
-     -29.0115,
-     93.9465
+     -37.5146,
+     91.6163
     ],
-    "max_drawdown": 139.34,
-    "without_best_date": -15.26,
-    "without_best_city": 103.07,
+    "max_drawdown": 160.45,
+    "without_best_date": -52.62,
+    "without_best_city": 65.71,
     "best_city": "miami",
-    "mean_lock_days": 2.31,
-    "mean_usd_per_entry": 55.58,
+    "mean_lock_days": 2.24,
+    "mean_usd_per_entry": 49.35,
     "by_side": {
      "yes": {
-      "entries": 6,
-      "net_profit": 69.28
+      "entries": 8,
+      "net_profit": 31.92
      },
      "no": {
       "entries": 4,
@@ -753,45 +753,45 @@
    },
    "next snapshot | platform ladder | min 1 shares | ticket $10": {
     "signals": 89,
-    "entries": 36,
+    "entries": 46,
     "skipped": {
      "no_book": 0,
-     "no_next_book": 33,
-     "below_rule_or_minimum": 20,
+     "no_next_book": 14,
+     "below_rule_or_minimum": 29,
      "capital": 0,
      "city_day_cap": 0
     },
     "dates": 7,
-    "shares": 657.1,
-    "usd_spent": 355.95,
-    "fees": 7.38,
-    "net_profit": 43.74,
-    "return_on_spent": 0.1204,
-    "mean_profit_per_date": 6.25,
+    "shares": 885.0,
+    "usd_spent": 455.95,
+    "fees": 9.91,
+    "net_profit": 47.67,
+    "return_on_spent": 0.1023,
+    "mean_profit_per_date": 6.81,
     "ci90_per_date": [
-     -3.8009,
-     16.9012
+     -7.262,
+     21.0362
     ],
-    "max_drawdown": 12.4,
-    "without_best_date": 11.4,
-    "without_best_city": 15.56,
-    "best_city": "jeddah",
-    "mean_lock_days": 2.44,
-    "mean_usd_per_entry": 9.89,
+    "max_drawdown": 26.64,
+    "without_best_date": 3.08,
+    "without_best_city": 0.04,
+    "best_city": "munich",
+    "mean_lock_days": 2.43,
+    "mean_usd_per_entry": 9.91,
     "by_side": {
      "yes": {
-      "entries": 12,
-      "net_profit": 6.02
+      "entries": 19,
+      "net_profit": 11.35
      },
      "no": {
-      "entries": 24,
-      "net_profit": 37.73
+      "entries": 27,
+      "net_profit": 36.33
      }
     },
     "no_real_vs_complement": {
      "real": {
-      "entries": 24,
-      "net_profit": 37.73
+      "entries": 27,
+      "net_profit": 36.33
      },
      "complement only": {
       "entries": 0,
@@ -801,45 +801,45 @@
    },
    "next snapshot | platform ladder | min 1 shares | ticket $50": {
     "signals": 89,
-    "entries": 32,
+    "entries": 40,
     "skipped": {
      "no_book": 0,
-     "no_next_book": 33,
-     "below_rule_or_minimum": 20,
+     "no_next_book": 14,
+     "below_rule_or_minimum": 29,
      "capital": 0,
-     "city_day_cap": 4
+     "city_day_cap": 6
     },
     "dates": 7,
-    "shares": 2796.1,
-    "usd_spent": 1516.32,
-    "fees": 31.17,
-    "net_profit": 106.72,
-    "return_on_spent": 0.069,
-    "mean_profit_per_date": 15.25,
+    "shares": 3658.9,
+    "usd_spent": 1852.75,
+    "fees": 40.69,
+    "net_profit": 149.52,
+    "return_on_spent": 0.079,
+    "mean_profit_per_date": 21.36,
     "ci90_per_date": [
-     -27.1428,
-     56.6669
+     -46.3621,
+     82.373
     ],
-    "max_drawdown": 107.96,
-    "without_best_date": -32.91,
-    "without_best_city": -29.21,
-    "best_city": "jeddah",
-    "mean_lock_days": 2.43,
-    "mean_usd_per_entry": 47.39,
+    "max_drawdown": 211.26,
+    "without_best_date": -30.08,
+    "without_best_city": 4.97,
+    "best_city": "munich",
+    "mean_lock_days": 2.42,
+    "mean_usd_per_entry": 46.32,
     "by_side": {
      "yes": {
-      "entries": 10,
-      "net_profit": -128.18
+      "entries": 17,
+      "net_profit": -36.29
      },
      "no": {
-      "entries": 22,
-      "net_profit": 234.9
+      "entries": 23,
+      "net_profit": 185.8
      }
     },
     "no_real_vs_complement": {
      "real": {
-      "entries": 22,
-      "net_profit": 234.9
+      "entries": 23,
+      "net_profit": 185.8
      },
      "complement only": {
       "entries": 0,
@@ -849,35 +849,35 @@
    },
    "next snapshot | platform ladder | min 1 shares | ticket $250": {
     "signals": 89,
-    "entries": 10,
+    "entries": 12,
     "skipped": {
      "no_book": 0,
-     "no_next_book": 33,
-     "below_rule_or_minimum": 20,
+     "no_next_book": 14,
+     "below_rule_or_minimum": 29,
      "capital": 0,
-     "city_day_cap": 26
+     "city_day_cap": 34
     },
     "dates": 7,
-    "shares": 1370.1,
-    "usd_spent": 555.83,
-    "fees": 15.38,
-    "net_profit": 211.39,
-    "return_on_spent": 0.3701,
-    "mean_profit_per_date": 30.2,
+    "shares": 1445.3,
+    "usd_spent": 592.25,
+    "fees": 16.32,
+    "net_profit": 174.02,
+    "return_on_spent": 0.286,
+    "mean_profit_per_date": 24.86,
     "ci90_per_date": [
-     -29.0115,
-     93.9465
+     -37.5146,
+     91.6163
     ],
-    "max_drawdown": 139.34,
-    "without_best_date": -15.26,
-    "without_best_city": 103.07,
+    "max_drawdown": 160.45,
+    "without_best_date": -52.62,
+    "without_best_city": 65.71,
     "best_city": "miami",
-    "mean_lock_days": 2.31,
-    "mean_usd_per_entry": 55.58,
+    "mean_lock_days": 2.24,
+    "mean_usd_per_entry": 49.35,
     "by_side": {
      "yes": {
-      "entries": 6,
-      "net_profit": 69.28
+      "entries": 8,
+      "net_profit": 31.92
      },
      "no": {
       "entries": 4,
@@ -897,45 +897,45 @@
    },
    "next snapshot | touch +1c | min 5 shares | ticket $10": {
     "signals": 89,
-    "entries": 36,
+    "entries": 46,
     "skipped": {
      "no_book": 0,
-     "no_next_book": 33,
-     "below_rule_or_minimum": 20,
+     "no_next_book": 14,
+     "below_rule_or_minimum": 29,
      "capital": 0,
      "city_day_cap": 0
     },
     "dates": 7,
-    "shares": 657.1,
-    "usd_spent": 362.15,
-    "fees": 7.34,
-    "net_profit": 37.58,
-    "return_on_spent": 0.1017,
-    "mean_profit_per_date": 5.37,
+    "shares": 885.0,
+    "usd_spent": 464.42,
+    "fees": 9.88,
+    "net_profit": 39.23,
+    "return_on_spent": 0.0827,
+    "mean_profit_per_date": 5.6,
     "ci90_per_date": [
-     -4.5934,
-     15.8818
+     -8.1731,
+     19.5976
     ],
-    "max_drawdown": 12.93,
-    "without_best_date": 6.88,
-    "without_best_city": 9.9,
-    "best_city": "jeddah",
-    "mean_lock_days": 2.44,
-    "mean_usd_per_entry": 10.06,
+    "max_drawdown": 28.12,
+    "without_best_date": -3.73,
+    "without_best_city": -7.08,
+    "best_city": "munich",
+    "mean_lock_days": 2.43,
+    "mean_usd_per_entry": 10.1,
     "by_side": {
      "yes": {
-      "entries": 12,
-      "net_profit": 3.53
+      "entries": 19,
+      "net_profit": 7.01
      },
      "no": {
-      "entries": 24,
-      "net_profit": 34.06
+      "entries": 27,
+      "net_profit": 32.22
      }
     },
     "no_real_vs_complement": {
      "real": {
-      "entries": 24,
-      "net_profit": 34.06
+      "entries": 27,
+      "net_profit": 32.22
      },
      "complement only": {
       "entries": 0,
@@ -945,45 +945,45 @@
    },
    "next snapshot | touch +1c | min 5 shares | ticket $50": {
     "signals": 89,
-    "entries": 32,
+    "entries": 40,
     "skipped": {
      "no_book": 0,
-     "no_next_book": 33,
-     "below_rule_or_minimum": 20,
+     "no_next_book": 14,
+     "below_rule_or_minimum": 29,
      "capital": 0,
-     "city_day_cap": 4
+     "city_day_cap": 6
     },
     "dates": 7,
-    "shares": 2796.1,
-    "usd_spent": 1540.92,
-    "fees": 30.98,
-    "net_profit": 82.32,
-    "return_on_spent": 0.0524,
-    "mean_profit_per_date": 11.76,
+    "shares": 3658.9,
+    "usd_spent": 1885.84,
+    "fees": 40.59,
+    "net_profit": 116.52,
+    "return_on_spent": 0.0605,
+    "mean_profit_per_date": 16.65,
     "ci90_per_date": [
-     -30.2172,
-     53.3905
+     -50.3011,
+     77.5136
     ],
-    "max_drawdown": 118.26,
-    "without_best_date": -51.54,
-    "without_best_city": -52.15,
-    "best_city": "jeddah",
-    "mean_lock_days": 2.43,
-    "mean_usd_per_entry": 48.15,
+    "max_drawdown": 224.84,
+    "without_best_date": -56.39,
+    "without_best_city": -23.37,
+    "best_city": "munich",
+    "mean_lock_days": 2.42,
+    "mean_usd_per_entry": 47.15,
     "by_side": {
      "yes": {
-      "entries": 10,
-      "net_profit": -136.17
+      "entries": 17,
+      "net_profit": -52.09
      },
      "no": {
-      "entries": 22,
-      "net_profit": 218.49
+      "entries": 23,
+      "net_profit": 168.61
      }
     },
     "no_real_vs_complement": {
      "real": {
-      "entries": 22,
-      "net_profit": 218.49
+      "entries": 23,
+      "net_profit": 168.61
      },
      "complement only": {
       "entries": 0,
@@ -993,35 +993,35 @@
    },
    "next snapshot | touch +1c | min 5 shares | ticket $250": {
     "signals": 89,
-    "entries": 10,
+    "entries": 12,
     "skipped": {
      "no_book": 0,
-     "no_next_book": 33,
-     "below_rule_or_minimum": 20,
+     "no_next_book": 14,
+     "below_rule_or_minimum": 29,
      "capital": 0,
-     "city_day_cap": 26
+     "city_day_cap": 34
     },
     "dates": 7,
-    "shares": 1370.1,
-    "usd_spent": 565.76,
-    "fees": 15.42,
-    "net_profit": 201.41,
-    "return_on_spent": 0.3466,
-    "mean_profit_per_date": 28.77,
+    "shares": 1445.3,
+    "usd_spent": 602.81,
+    "fees": 16.36,
+    "net_profit": 163.42,
+    "return_on_spent": 0.2639,
+    "mean_profit_per_date": 23.35,
     "ci90_per_date": [
-     -30.0745,
-     92.1636
+     -38.5602,
+     89.4751
     ],
-    "max_drawdown": 141.86,
-    "without_best_date": -20.89,
-    "without_best_city": 94.91,
+    "max_drawdown": 163.38,
+    "without_best_date": -58.88,
+    "without_best_city": 56.92,
     "best_city": "miami",
-    "mean_lock_days": 2.31,
-    "mean_usd_per_entry": 56.58,
+    "mean_lock_days": 2.24,
+    "mean_usd_per_entry": 50.23,
     "by_side": {
      "yes": {
-      "entries": 6,
-      "net_profit": 63.14
+      "entries": 8,
+      "net_profit": 25.16
      },
      "no": {
       "entries": 4,
@@ -1041,45 +1041,45 @@
    },
    "next snapshot | touch +1c | min 1 shares | ticket $10": {
     "signals": 89,
-    "entries": 36,
+    "entries": 46,
     "skipped": {
      "no_book": 0,
-     "no_next_book": 33,
-     "below_rule_or_minimum": 20,
+     "no_next_book": 14,
+     "below_rule_or_minimum": 29,
      "capital": 0,
      "city_day_cap": 0
     },
     "dates": 7,
-    "shares": 657.1,
-    "usd_spent": 362.15,
-    "fees": 7.34,
-    "net_profit": 37.58,
-    "return_on_spent": 0.1017,
-    "mean_profit_per_date": 5.37,
+    "shares": 885.0,
+    "usd_spent": 464.42,
+    "fees": 9.88,
+    "net_profit": 39.23,
+    "return_on_spent": 0.0827,
+    "mean_profit_per_date": 5.6,
     "ci90_per_date": [
-     -4.5934,
-     15.8818
+     -8.1731,
+     19.5976
     ],
-    "max_drawdown": 12.93,
-    "without_best_date": 6.88,
-    "without_best_city": 9.9,
-    "best_city": "jeddah",
-    "mean_lock_days": 2.44,
-    "mean_usd_per_entry": 10.06,
+    "max_drawdown": 28.12,
+    "without_best_date": -3.73,
+    "without_best_city": -7.08,
+    "best_city": "munich",
+    "mean_lock_days": 2.43,
+    "mean_usd_per_entry": 10.1,
     "by_side": {
      "yes": {
-      "entries": 12,
-      "net_profit": 3.53
+      "entries": 19,
+      "net_profit": 7.01
      },
      "no": {
-      "entries": 24,
-      "net_profit": 34.06
+      "entries": 27,
+      "net_profit": 32.22
      }
     },
     "no_real_vs_complement": {
      "real": {
-      "entries": 24,
-      "net_profit": 34.06
+      "entries": 27,
+      "net_profit": 32.22
      },
      "complement only": {
       "entries": 0,
@@ -1089,45 +1089,45 @@
    },
    "next snapshot | touch +1c | min 1 shares | ticket $50": {
     "signals": 89,
-    "entries": 32,
+    "entries": 40,
     "skipped": {
      "no_book": 0,
-     "no_next_book": 33,
-     "below_rule_or_minimum": 20,
+     "no_next_book": 14,
+     "below_rule_or_minimum": 29,
      "capital": 0,
-     "city_day_cap": 4
+     "city_day_cap": 6
     },
     "dates": 7,
-    "shares": 2796.1,
-    "usd_spent": 1540.92,
-    "fees": 30.98,
-    "net_profit": 82.32,
-    "return_on_spent": 0.0524,
-    "mean_profit_per_date": 11.76,
+    "shares": 3658.9,
+    "usd_spent": 1885.84,
+    "fees": 40.59,
+    "net_profit": 116.52,
+    "return_on_spent": 0.0605,
+    "mean_profit_per_date": 16.65,
     "ci90_per_date": [
-     -30.2172,
-     53.3905
+     -50.3011,
+     77.5136
     ],
-    "max_drawdown": 118.26,
-    "without_best_date": -51.54,
-    "without_best_city": -52.15,
-    "best_city": "jeddah",
-    "mean_lock_days": 2.43,
-    "mean_usd_per_entry": 48.15,
+    "max_drawdown": 224.84,
+    "without_best_date": -56.39,
+    "without_best_city": -23.37,
+    "best_city": "munich",
+    "mean_lock_days": 2.42,
+    "mean_usd_per_entry": 47.15,
     "by_side": {
      "yes": {
-      "entries": 10,
-      "net_profit": -136.17
+      "entries": 17,
+      "net_profit": -52.09
      },
      "no": {
-      "entries": 22,
-      "net_profit": 218.49
+      "entries": 23,
+      "net_profit": 168.61
      }
     },
     "no_real_vs_complement": {
      "real": {
-      "entries": 22,
-      "net_profit": 218.49
+      "entries": 23,
+      "net_profit": 168.61
      },
      "complement only": {
       "entries": 0,
@@ -1137,35 +1137,35 @@
    },
    "next snapshot | touch +1c | min 1 shares | ticket $250": {
     "signals": 89,
-    "entries": 10,
+    "entries": 12,
     "skipped": {
      "no_book": 0,
-     "no_next_book": 33,
-     "below_rule_or_minimum": 20,
+     "no_next_book": 14,
+     "below_rule_or_minimum": 29,
      "capital": 0,
-     "city_day_cap": 26
+     "city_day_cap": 34
     },
     "dates": 7,
-    "shares": 1370.1,
-    "usd_spent": 565.76,
-    "fees": 15.42,
-    "net_profit": 201.41,
-    "return_on_spent": 0.3466,
-    "mean_profit_per_date": 28.77,
+    "shares": 1445.3,
+    "usd_spent": 602.81,
+    "fees": 16.36,
+    "net_profit": 163.42,
+    "return_on_spent": 0.2639,
+    "mean_profit_per_date": 23.35,
     "ci90_per_date": [
-     -30.0745,
-     92.1636
+     -38.5602,
+     89.4751
     ],
-    "max_drawdown": 141.86,
-    "without_best_date": -20.89,
-    "without_best_city": 94.91,
+    "max_drawdown": 163.38,
+    "without_best_date": -58.88,
+    "without_best_city": 56.92,
     "best_city": "miami",
-    "mean_lock_days": 2.31,
-    "mean_usd_per_entry": 56.58,
+    "mean_lock_days": 2.24,
+    "mean_usd_per_entry": 50.23,
     "by_side": {
      "yes": {
-      "entries": 6,
-      "net_profit": 63.14
+      "entries": 8,
+      "net_profit": 25.16
      },
      "no": {
       "entries": 4,
