@@ -1,0 +1,1175 @@
+{
+ "made": "2026-10-11T15:29Z",
+ "decisions_sha256": "cf107021b36956656afc84c99d7b318807befe55910def871380cc66085db908",
+ "model_col": "p_model",
+ "window": [
+  "2026-09-26",
+  "2026-10-04"
+ ],
+ "books_after_mirror": "archive only",
+ "books": {
+  "archive_files": 21,
+  "mirror_files": 15,
+  "snapshots_matched": 13877,
+  "markets_unmatched": 6,
+  "dates": 7
+ },
+ "rule": "For every order-book snapshot of a bucket with a tradeable book, take the newest scored decision of the same city-day at or before the snapshot (at most an hour before; tools/wxpredict/walkforward.py --dump, every probability out of sample). Buy one share of YES at the best ask when the probability is at least THETA above it, or one share of NO at its best ask (1 - best bid where the book gives no NO ask) when 1 - p is at least THETA above that. One share per bucket, side and day: the first snapshot that qualifies. Settled on the venue's winner. No fee. THETA 0.05 is the test; 0.02 and 0.10 are shown beside it. The same rule with the market's own normalised prices (q) is the control, which should not make money, and with the tempered market (q^a) the market's own calibration. The window is the event dates whose books are all in the repository: the archive's pruned books (data/archive/books) and the mirror's kept books (data/mirror/book_snapshots), which wait 16 days before they are mirrored.",
+ "book_anchored": "A book-anchored dump (book_anchor.py, with `hourly_decision_utc`) prices one ladder snapshot. Each book is judged only against the anchor of its own snapshot, and only the band's first book there (the one the anchor priced), with the weather decision under it at most MAX_AGE_S before the book. Matched as an hourly decision, a book an hour on took the previous anchor's stale price and a correction up to two hours old (Codex on #376). Any other dump is matched as before.",
+ "test_theta": 0.05,
+ "results": {
+  "model": {
+   "theta_0.02": {
+    "trades": 561,
+    "dates": 7,
+    "mean_price": 0.5679,
+    "mean_p": 0.5991,
+    "win_rate": 0.5882,
+    "payoff_per_share": 0.0203,
+    "ci90": [
+     -0.0207,
+     0.0595
+    ],
+    "total": 11.39,
+    "after_taker_fee": {
+     "payoff_per_share": 0.0102,
+     "ci90": [
+      -0.0309,
+      0.0494
+     ]
+    },
+    "by_side": {
+     "yes": {
+      "trades": 226,
+      "dates": 7,
+      "mean_price": 0.3932,
+      "mean_p": 0.4235,
+      "win_rate": 0.4248,
+      "payoff_per_share": 0.0316,
+      "ci90": [
+       -0.0164,
+       0.085
+      ],
+      "total": 7.14,
+      "after_taker_fee": {
+       "payoff_per_share": 0.0208,
+       "ci90": [
+        -0.0274,
+        0.0744
+       ]
+      }
+     },
+     "no": {
+      "trades": 335,
+      "dates": 7,
+      "mean_price": 0.6858,
+      "mean_p": 0.7175,
+      "win_rate": 0.6985,
+      "payoff_per_share": 0.0127,
+      "ci90": [
+       -0.0315,
+       0.0481
+      ],
+      "total": 4.25,
+      "after_taker_fee": {
+       "payoff_per_share": 0.003,
+       "ci90": [
+        -0.0413,
+        0.0384
+       ]
+      }
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 372,
+      "dates": 7,
+      "mean_price": 0.5809,
+      "mean_p": 0.6124,
+      "win_rate": 0.5968,
+      "payoff_per_share": 0.0158,
+      "ci90": [
+       -0.0315,
+       0.0596
+      ],
+      "total": 5.89,
+      "after_taker_fee": {
+       "payoff_per_share": 0.0056,
+       "ci90": [
+        -0.0418,
+        0.0495
+       ]
+      }
+     },
+     "D before 13h": {
+      "trades": 167,
+      "dates": 7,
+      "mean_price": 0.5506,
+      "mean_p": 0.5803,
+      "win_rate": 0.5868,
+      "payoff_per_share": 0.0362,
+      "ci90": [
+       -0.033,
+       0.104
+      ],
+      "total": 6.05,
+      "after_taker_fee": {
+       "payoff_per_share": 0.0261,
+       "ci90": [
+        -0.0431,
+        0.0939
+       ]
+      }
+     },
+     "D 13h on": {
+      "trades": 22,
+      "dates": 7,
+      "mean_price": 0.4793,
+      "mean_p": 0.5151,
+      "win_rate": 0.4545,
+      "payoff_per_share": -0.0248,
+      "ci90": [
+       -0.1607,
+       0.0662
+      ],
+      "total": -0.55,
+      "after_taker_fee": {
+       "payoff_per_share": -0.0344,
+       "ci90": [
+        -0.171,
+        0.0563
+       ]
+      }
+     }
+    },
+    "by_age": {
+     "0-15 min": {
+      "trades": 0
+     },
+     "15-30 min": {
+      "trades": 551,
+      "dates": 7,
+      "mean_price": 0.5697,
+      "mean_p": 0.6009,
+      "win_rate": 0.5826,
+      "payoff_per_share": 0.0129,
+      "ci90": [
+       -0.0306,
+       0.0545
+      ],
+      "total": 7.11,
+      "after_taker_fee": {
+       "payoff_per_share": 0.0028,
+       "ci90": [
+        -0.0407,
+        0.0443
+       ]
+      }
+     },
+     "30-60 min": {
+      "trades": 10,
+      "dates": 6,
+      "mean_price": 0.472,
+      "mean_p": 0.4986,
+      "win_rate": 0.9,
+      "payoff_per_share": 0.428,
+      "ci90": [
+       0.278,
+       0.5622
+      ],
+      "total": 4.28,
+      "after_taker_fee": {
+       "payoff_per_share": 0.4174,
+       "ci90": [
+        0.2685,
+        0.5504
+       ]
+      }
+     }
+    }
+   },
+   "theta_0.05": {
+    "trades": 89,
+    "dates": 7,
+    "mean_price": 0.5406,
+    "mean_p": 0.6008,
+    "win_rate": 0.618,
+    "payoff_per_share": 0.0774,
+    "ci90": [
+     0.0008,
+     0.1428
+    ],
+    "total": 6.89,
+    "after_taker_fee": {
+     "payoff_per_share": 0.0662,
+     "ci90": [
+      -0.0104,
+      0.1316
+     ]
+    },
+    "by_side": {
+     "yes": {
+      "trades": 40,
+      "dates": 7,
+      "mean_price": 0.4395,
+      "mean_p": 0.4988,
+      "win_rate": 0.55,
+      "payoff_per_share": 0.1105,
+      "ci90": [
+       0.0455,
+       0.1658
+      ],
+      "total": 4.42,
+      "after_taker_fee": {
+       "payoff_per_share": 0.0987,
+       "ci90": [
+        0.0336,
+        0.1537
+       ]
+      }
+     },
+     "no": {
+      "trades": 49,
+      "dates": 7,
+      "mean_price": 0.6231,
+      "mean_p": 0.6841,
+      "win_rate": 0.6735,
+      "payoff_per_share": 0.0504,
+      "ci90": [
+       -0.0523,
+       0.1418
+      ],
+      "total": 2.47,
+      "after_taker_fee": {
+       "payoff_per_share": 0.0396,
+       "ci90": [
+        -0.0634,
+        0.1311
+       ]
+      }
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 46,
+      "dates": 7,
+      "mean_price": 0.5591,
+      "mean_p": 0.6191,
+      "win_rate": 0.6957,
+      "payoff_per_share": 0.1365,
+      "ci90": [
+       0.0412,
+       0.2336
+      ],
+      "total": 6.28,
+      "after_taker_fee": {
+       "payoff_per_share": 0.1255,
+       "ci90": [
+        0.0304,
+        0.2226
+       ]
+      }
+     },
+     "D before 13h": {
+      "trades": 38,
+      "dates": 7,
+      "mean_price": 0.5482,
+      "mean_p": 0.6088,
+      "win_rate": 0.5789,
+      "payoff_per_share": 0.0308,
+      "ci90": [
+       -0.1431,
+       0.172
+      ],
+      "total": 1.17,
+      "after_taker_fee": {
+       "payoff_per_share": 0.0191,
+       "ci90": [
+        -0.1548,
+        0.1604
+       ]
+      }
+     },
+     "D 13h on": {
+      "trades": 5,
+      "dates": 4,
+      "mean_price": 0.312,
+      "mean_p": 0.372,
+      "win_rate": 0.2,
+      "payoff_per_share": -0.112,
+      "ci90": [
+       -0.29,
+       0.212
+      ],
+      "total": -0.56,
+      "after_taker_fee": {
+       "payoff_per_share": -0.1217,
+       "ci90": [
+        -0.3001,
+        0.2013
+       ]
+      }
+     }
+    },
+    "by_age": {
+     "0-15 min": {
+      "trades": 0
+     },
+     "15-30 min": {
+      "trades": 88,
+      "dates": 7,
+      "mean_price": 0.5393,
+      "mean_p": 0.5996,
+      "win_rate": 0.6136,
+      "payoff_per_share": 0.0743,
+      "ci90": [
+       -0.0026,
+       0.1425
+      ],
+      "total": 6.54,
+      "after_taker_fee": {
+       "payoff_per_share": 0.0631,
+       "ci90": [
+        -0.0139,
+        0.1312
+       ]
+      }
+     },
+     "30-60 min": {
+      "trades": 1,
+      "dates": 1,
+      "mean_price": 0.65,
+      "mean_p": 0.7066,
+      "win_rate": 1.0,
+      "payoff_per_share": 0.35,
+      "ci90": [
+       0.35,
+       0.35
+      ],
+      "total": 0.35,
+      "after_taker_fee": {
+       "payoff_per_share": 0.3386,
+       "ci90": [
+        0.3386,
+        0.3386
+       ]
+      }
+     }
+    }
+   },
+   "theta_0.10": {
+    "trades": 3,
+    "dates": 2,
+    "mean_price": 0.5333,
+    "mean_p": 0.6399,
+    "win_rate": 1.0,
+    "payoff_per_share": 0.4667,
+    "ci90": [
+     0.34,
+     0.53
+    ],
+    "total": 1.4,
+    "after_taker_fee": {
+     "payoff_per_share": 0.4547,
+     "ci90": [
+      0.3288,
+      0.5176
+     ]
+    },
+    "by_side": {
+     "yes": {
+      "trades": 1,
+      "dates": 1,
+      "mean_price": 0.44,
+      "mean_p": 0.5541,
+      "win_rate": 1.0,
+      "payoff_per_share": 0.56,
+      "ci90": [
+       0.56,
+       0.56
+      ],
+      "total": 0.56,
+      "after_taker_fee": {
+       "payoff_per_share": 0.5477,
+       "ci90": [
+        0.5477,
+        0.5477
+       ]
+      }
+     },
+     "no": {
+      "trades": 2,
+      "dates": 2,
+      "mean_price": 0.58,
+      "mean_p": 0.6828,
+      "win_rate": 1.0,
+      "payoff_per_share": 0.42,
+      "ci90": [
+       0.34,
+       0.5
+      ],
+      "total": 0.84,
+      "after_taker_fee": {
+       "payoff_per_share": 0.4081,
+       "ci90": [
+        0.3288,
+        0.4875
+       ]
+      }
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 1,
+      "dates": 1,
+      "mean_price": 0.66,
+      "mean_p": 0.7617,
+      "win_rate": 1.0,
+      "payoff_per_share": 0.34,
+      "ci90": [
+       0.34,
+       0.34
+      ],
+      "total": 0.34,
+      "after_taker_fee": {
+       "payoff_per_share": 0.3288,
+       "ci90": [
+        0.3288,
+        0.3288
+       ]
+      }
+     },
+     "D before 13h": {
+      "trades": 2,
+      "dates": 1,
+      "mean_price": 0.47,
+      "mean_p": 0.5789,
+      "win_rate": 1.0,
+      "payoff_per_share": 0.53,
+      "ci90": [
+       0.53,
+       0.53
+      ],
+      "total": 1.06,
+      "after_taker_fee": {
+       "payoff_per_share": 0.5176,
+       "ci90": [
+        0.5176,
+        0.5176
+       ]
+      }
+     },
+     "D 13h on": {
+      "trades": 0
+     }
+    },
+    "by_age": {
+     "0-15 min": {
+      "trades": 0
+     },
+     "15-30 min": {
+      "trades": 3,
+      "dates": 2,
+      "mean_price": 0.5333,
+      "mean_p": 0.6399,
+      "win_rate": 1.0,
+      "payoff_per_share": 0.4667,
+      "ci90": [
+       0.34,
+       0.53
+      ],
+      "total": 1.4,
+      "after_taker_fee": {
+       "payoff_per_share": 0.4547,
+       "ci90": [
+        0.3288,
+        0.5176
+       ]
+      }
+     },
+     "30-60 min": {
+      "trades": 0
+     }
+    }
+   }
+  },
+  "market (control)": {
+   "theta_0.02": {
+    "trades": 146,
+    "dates": 7,
+    "mean_price": 0.5093,
+    "mean_p": 0.5384,
+    "win_rate": 0.4932,
+    "payoff_per_share": -0.0162,
+    "ci90": [
+     -0.1327,
+     0.0633
+    ],
+    "total": -2.36,
+    "after_taker_fee": {
+     "payoff_per_share": -0.0278,
+     "ci90": [
+      -0.1445,
+      0.0521
+     ]
+    },
+    "by_side": {
+     "yes": {
+      "trades": 1,
+      "dates": 1,
+      "mean_price": 0.52,
+      "mean_p": 0.5439,
+      "win_rate": 1.0,
+      "payoff_per_share": 0.48,
+      "ci90": [
+       0.48,
+       0.48
+      ],
+      "total": 0.48,
+      "after_taker_fee": {
+       "payoff_per_share": 0.4675,
+       "ci90": [
+        0.4675,
+        0.4675
+       ]
+      }
+     },
+     "no": {
+      "trades": 145,
+      "dates": 7,
+      "mean_price": 0.5092,
+      "mean_p": 0.5384,
+      "win_rate": 0.4897,
+      "payoff_per_share": -0.0196,
+      "ci90": [
+       -0.1393,
+       0.0628
+      ],
+      "total": -2.84,
+      "after_taker_fee": {
+       "payoff_per_share": -0.0312,
+       "ci90": [
+        -0.151,
+        0.0515
+       ]
+      }
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 102,
+      "dates": 7,
+      "mean_price": 0.5336,
+      "mean_p": 0.5616,
+      "win_rate": 0.5294,
+      "payoff_per_share": -0.0042,
+      "ci90": [
+       -0.1147,
+       0.0666
+      ],
+      "total": -0.43,
+      "after_taker_fee": {
+       "payoff_per_share": -0.0161,
+       "ci90": [
+        -0.1268,
+        0.0549
+       ]
+      }
+     },
+     "D before 13h": {
+      "trades": 35,
+      "dates": 7,
+      "mean_price": 0.4971,
+      "mean_p": 0.5265,
+      "win_rate": 0.5143,
+      "payoff_per_share": 0.0171,
+      "ci90": [
+       -0.1883,
+       0.1858
+      ],
+      "total": 0.6,
+      "after_taker_fee": {
+       "payoff_per_share": 0.0056,
+       "ci90": [
+        -0.2006,
+        0.1745
+       ]
+      }
+     },
+     "D 13h on": {
+      "trades": 9,
+      "dates": 6,
+      "mean_price": 0.2812,
+      "mean_p": 0.3221,
+      "win_rate": 0.0,
+      "payoff_per_share": -0.2812,
+      "ci90": [
+       -0.3593,
+       -0.1653
+      ],
+      "total": -2.53,
+      "after_taker_fee": {
+       "payoff_per_share": -0.29,
+       "ci90": [
+        -0.3695,
+        -0.1718
+       ]
+      }
+     }
+    },
+    "by_age": {
+     "0-15 min": {
+      "trades": 0
+     },
+     "15-30 min": {
+      "trades": 143,
+      "dates": 7,
+      "mean_price": 0.5089,
+      "mean_p": 0.5382,
+      "win_rate": 0.4825,
+      "payoff_per_share": -0.0264,
+      "ci90": [
+       -0.1435,
+       0.0515
+      ],
+      "total": -3.77,
+      "after_taker_fee": {
+       "payoff_per_share": -0.038,
+       "ci90": [
+        -0.1555,
+        0.04
+       ]
+      }
+     },
+     "30-60 min": {
+      "trades": 3,
+      "dates": 2,
+      "mean_price": 0.53,
+      "mean_p": 0.5517,
+      "win_rate": 1.0,
+      "payoff_per_share": 0.47,
+      "ci90": [
+       0.45,
+       0.51
+      ],
+      "total": 1.41,
+      "after_taker_fee": {
+       "payoff_per_share": 0.4577,
+       "ci90": [
+        0.4377,
+        0.4975
+       ]
+      }
+     }
+    }
+   },
+   "theta_0.05": {
+    "trades": 13,
+    "dates": 4,
+    "mean_price": 0.4178,
+    "mean_p": 0.4835,
+    "win_rate": 0.3846,
+    "payoff_per_share": -0.0332,
+    "ci90": [
+     -0.1411,
+     0.3267
+    ],
+    "total": -0.43,
+    "after_taker_fee": {
+     "payoff_per_share": -0.0433,
+     "ci90": [
+      -0.1517,
+      0.318
+     ]
+    },
+    "by_side": {
+     "yes": {
+      "trades": 0
+     },
+     "no": {
+      "trades": 13,
+      "dates": 4,
+      "mean_price": 0.4178,
+      "mean_p": 0.4835,
+      "win_rate": 0.3846,
+      "payoff_per_share": -0.0332,
+      "ci90": [
+       -0.1411,
+       0.3267
+      ],
+      "total": -0.43,
+      "after_taker_fee": {
+       "payoff_per_share": -0.0433,
+       "ci90": [
+        -0.1517,
+        0.318
+       ]
+      }
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 6,
+      "dates": 2,
+      "mean_price": 0.5283,
+      "mean_p": 0.589,
+      "win_rate": 0.5,
+      "payoff_per_share": -0.0283,
+      "ci90": [
+       -0.3075,
+       0.53
+      ],
+      "total": -0.17,
+      "after_taker_fee": {
+       "payoff_per_share": -0.0402,
+       "ci90": [
+        -0.3197,
+        0.5188
+       ]
+      }
+     },
+     "D before 13h": {
+      "trades": 4,
+      "dates": 1,
+      "mean_price": 0.4725,
+      "mean_p": 0.5465,
+      "win_rate": 0.5,
+      "payoff_per_share": 0.0275,
+      "ci90": [
+       0.0275,
+       0.0275
+      ],
+      "total": 0.11,
+      "after_taker_fee": {
+       "payoff_per_share": 0.0163,
+       "ci90": [
+        0.0163,
+        0.0163
+       ]
+      }
+     },
+     "D 13h on": {
+      "trades": 3,
+      "dates": 3,
+      "mean_price": 0.1237,
+      "mean_p": 0.1884,
+      "win_rate": 0.0,
+      "payoff_per_share": -0.1237,
+      "ci90": [
+       -0.154,
+       -0.0933
+      ],
+      "total": -0.37,
+      "after_taker_fee": {
+       "payoff_per_share": -0.129,
+       "ci90": [
+        -0.1605,
+        -0.0975
+       ]
+      }
+     }
+    },
+    "by_age": {
+     "0-15 min": {
+      "trades": 0
+     },
+     "15-30 min": {
+      "trades": 13,
+      "dates": 4,
+      "mean_price": 0.4178,
+      "mean_p": 0.4835,
+      "win_rate": 0.3846,
+      "payoff_per_share": -0.0332,
+      "ci90": [
+       -0.1411,
+       0.3267
+      ],
+      "total": -0.43,
+      "after_taker_fee": {
+       "payoff_per_share": -0.0433,
+       "ci90": [
+        -0.1517,
+        0.318
+       ]
+      }
+     },
+     "30-60 min": {
+      "trades": 0
+     }
+    }
+   },
+   "theta_0.10": {
+    "trades": 0,
+    "by_side": {
+     "yes": {
+      "trades": 0
+     },
+     "no": {
+      "trades": 0
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 0
+     },
+     "D before 13h": {
+      "trades": 0
+     },
+     "D 13h on": {
+      "trades": 0
+     }
+    },
+    "by_age": {
+     "0-15 min": {
+      "trades": 0
+     },
+     "15-30 min": {
+      "trades": 0
+     },
+     "30-60 min": {
+      "trades": 0
+     }
+    }
+   }
+  },
+  "market tempered": {
+   "theta_0.02": {
+    "trades": 146,
+    "dates": 7,
+    "mean_price": 0.5093,
+    "mean_p": 0.5384,
+    "win_rate": 0.4932,
+    "payoff_per_share": -0.0162,
+    "ci90": [
+     -0.1327,
+     0.0633
+    ],
+    "total": -2.36,
+    "after_taker_fee": {
+     "payoff_per_share": -0.0278,
+     "ci90": [
+      -0.1445,
+      0.0521
+     ]
+    },
+    "by_side": {
+     "yes": {
+      "trades": 1,
+      "dates": 1,
+      "mean_price": 0.52,
+      "mean_p": 0.5439,
+      "win_rate": 1.0,
+      "payoff_per_share": 0.48,
+      "ci90": [
+       0.48,
+       0.48
+      ],
+      "total": 0.48,
+      "after_taker_fee": {
+       "payoff_per_share": 0.4675,
+       "ci90": [
+        0.4675,
+        0.4675
+       ]
+      }
+     },
+     "no": {
+      "trades": 145,
+      "dates": 7,
+      "mean_price": 0.5092,
+      "mean_p": 0.5384,
+      "win_rate": 0.4897,
+      "payoff_per_share": -0.0196,
+      "ci90": [
+       -0.1393,
+       0.0628
+      ],
+      "total": -2.84,
+      "after_taker_fee": {
+       "payoff_per_share": -0.0312,
+       "ci90": [
+        -0.151,
+        0.0515
+       ]
+      }
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 102,
+      "dates": 7,
+      "mean_price": 0.5336,
+      "mean_p": 0.5616,
+      "win_rate": 0.5294,
+      "payoff_per_share": -0.0042,
+      "ci90": [
+       -0.1147,
+       0.0666
+      ],
+      "total": -0.43,
+      "after_taker_fee": {
+       "payoff_per_share": -0.0161,
+       "ci90": [
+        -0.1268,
+        0.0549
+       ]
+      }
+     },
+     "D before 13h": {
+      "trades": 35,
+      "dates": 7,
+      "mean_price": 0.4971,
+      "mean_p": 0.5265,
+      "win_rate": 0.5143,
+      "payoff_per_share": 0.0171,
+      "ci90": [
+       -0.1883,
+       0.1858
+      ],
+      "total": 0.6,
+      "after_taker_fee": {
+       "payoff_per_share": 0.0056,
+       "ci90": [
+        -0.2006,
+        0.1745
+       ]
+      }
+     },
+     "D 13h on": {
+      "trades": 9,
+      "dates": 6,
+      "mean_price": 0.2812,
+      "mean_p": 0.3221,
+      "win_rate": 0.0,
+      "payoff_per_share": -0.2812,
+      "ci90": [
+       -0.3593,
+       -0.1653
+      ],
+      "total": -2.53,
+      "after_taker_fee": {
+       "payoff_per_share": -0.29,
+       "ci90": [
+        -0.3695,
+        -0.1718
+       ]
+      }
+     }
+    },
+    "by_age": {
+     "0-15 min": {
+      "trades": 0
+     },
+     "15-30 min": {
+      "trades": 143,
+      "dates": 7,
+      "mean_price": 0.5089,
+      "mean_p": 0.5382,
+      "win_rate": 0.4825,
+      "payoff_per_share": -0.0264,
+      "ci90": [
+       -0.1435,
+       0.0515
+      ],
+      "total": -3.77,
+      "after_taker_fee": {
+       "payoff_per_share": -0.038,
+       "ci90": [
+        -0.1555,
+        0.04
+       ]
+      }
+     },
+     "30-60 min": {
+      "trades": 3,
+      "dates": 2,
+      "mean_price": 0.53,
+      "mean_p": 0.5517,
+      "win_rate": 1.0,
+      "payoff_per_share": 0.47,
+      "ci90": [
+       0.45,
+       0.51
+      ],
+      "total": 1.41,
+      "after_taker_fee": {
+       "payoff_per_share": 0.4577,
+       "ci90": [
+        0.4377,
+        0.4975
+       ]
+      }
+     }
+    }
+   },
+   "theta_0.05": {
+    "trades": 13,
+    "dates": 4,
+    "mean_price": 0.4178,
+    "mean_p": 0.4835,
+    "win_rate": 0.3846,
+    "payoff_per_share": -0.0332,
+    "ci90": [
+     -0.1411,
+     0.3267
+    ],
+    "total": -0.43,
+    "after_taker_fee": {
+     "payoff_per_share": -0.0433,
+     "ci90": [
+      -0.1517,
+      0.318
+     ]
+    },
+    "by_side": {
+     "yes": {
+      "trades": 0
+     },
+     "no": {
+      "trades": 13,
+      "dates": 4,
+      "mean_price": 0.4178,
+      "mean_p": 0.4835,
+      "win_rate": 0.3846,
+      "payoff_per_share": -0.0332,
+      "ci90": [
+       -0.1411,
+       0.3267
+      ],
+      "total": -0.43,
+      "after_taker_fee": {
+       "payoff_per_share": -0.0433,
+       "ci90": [
+        -0.1517,
+        0.318
+       ]
+      }
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 6,
+      "dates": 2,
+      "mean_price": 0.5283,
+      "mean_p": 0.589,
+      "win_rate": 0.5,
+      "payoff_per_share": -0.0283,
+      "ci90": [
+       -0.3075,
+       0.53
+      ],
+      "total": -0.17,
+      "after_taker_fee": {
+       "payoff_per_share": -0.0402,
+       "ci90": [
+        -0.3197,
+        0.5188
+       ]
+      }
+     },
+     "D before 13h": {
+      "trades": 4,
+      "dates": 1,
+      "mean_price": 0.4725,
+      "mean_p": 0.5465,
+      "win_rate": 0.5,
+      "payoff_per_share": 0.0275,
+      "ci90": [
+       0.0275,
+       0.0275
+      ],
+      "total": 0.11,
+      "after_taker_fee": {
+       "payoff_per_share": 0.0163,
+       "ci90": [
+        0.0163,
+        0.0163
+       ]
+      }
+     },
+     "D 13h on": {
+      "trades": 3,
+      "dates": 3,
+      "mean_price": 0.1237,
+      "mean_p": 0.1884,
+      "win_rate": 0.0,
+      "payoff_per_share": -0.1237,
+      "ci90": [
+       -0.154,
+       -0.0933
+      ],
+      "total": -0.37,
+      "after_taker_fee": {
+       "payoff_per_share": -0.129,
+       "ci90": [
+        -0.1605,
+        -0.0975
+       ]
+      }
+     }
+    },
+    "by_age": {
+     "0-15 min": {
+      "trades": 0
+     },
+     "15-30 min": {
+      "trades": 13,
+      "dates": 4,
+      "mean_price": 0.4178,
+      "mean_p": 0.4835,
+      "win_rate": 0.3846,
+      "payoff_per_share": -0.0332,
+      "ci90": [
+       -0.1411,
+       0.3267
+      ],
+      "total": -0.43,
+      "after_taker_fee": {
+       "payoff_per_share": -0.0433,
+       "ci90": [
+        -0.1517,
+        0.318
+       ]
+      }
+     },
+     "30-60 min": {
+      "trades": 0
+     }
+    }
+   },
+   "theta_0.10": {
+    "trades": 0,
+    "by_side": {
+     "yes": {
+      "trades": 0
+     },
+     "no": {
+      "trades": 0
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 0
+     },
+     "D before 13h": {
+      "trades": 0
+     },
+     "D 13h on": {
+      "trades": 0
+     }
+    },
+    "by_age": {
+     "0-15 min": {
+      "trades": 0
+     },
+     "15-30 min": {
+      "trades": 0
+     },
+     "30-60 min": {
+      "trades": 0
+     }
+    }
+   }
+  }
+ }
+}

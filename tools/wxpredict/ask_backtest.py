@@ -51,6 +51,28 @@ THETAS = (0.02, 0.05, 0.10)
 TEST_THETA = 0.05
 SEED = 20261011
 MAX_AGE_S = 3600
+SNAP_S = 600                   # book_anchor.py's ladder snapshot, 10 minutes
+
+
+def first_in_snapshot(b):
+    """True for each band's first book in its 10-minute window: the one
+    book_anchor.py prices. Read over every book, before any filter."""
+    return b.t == b.groupby([b.band_id, b.t // SNAP_S]).t.transform("min")
+
+
+def own_snapshot(m):
+    """A book-anchored dump (book_anchor.py, with `hourly_decision_utc`) prices
+    one ladder snapshot. Each book is judged only against the anchor of its own
+    snapshot, and only the band's first book there (the one the anchor
+    priced), with the weather decision under it at most MAX_AGE_S before the
+    book. Matched as an hourly decision, a book an hour on took the previous
+    anchor's stale price and a correction up to two hours old (Codex on #376).
+    Any other dump is matched as before."""
+    if "hourly_decision_utc" not in m.columns:
+        return m
+    keep = (m.first_in_snap & (m.t // SNAP_S == m.t_dec // SNAP_S)
+            & (m.t - m.hourly_decision_utc <= MAX_AGE_S))
+    return m[keep.values]
 
 
 def read_all(pattern, usecols=None):
@@ -134,6 +156,7 @@ def main(argv=None):
     # whole seconds since the epoch, whatever resolution pandas keeps the times in
     b["t"] = ((pd.to_datetime(b.observed_at, utc=True, format="ISO8601") - pd.Timestamp("1970-01-01", tz="UTC"))
               // pd.Timedelta(seconds=1)).astype("int64")
+    b["first_in_snap"] = first_in_snapshot(b)
     b = b[b.tradeable.astype(str).str.lower() == "true"]
 
     # The newest scored decision at or before each snapshot, at most an hour old.
@@ -146,7 +169,10 @@ def main(argv=None):
     m = pd.merge_asof(b, dec.rename(columns={"decision_utc": "t_dec"}),
                       left_on="t", right_on="t_dec", by=["city_key", "date"], direction="backward",
                       tolerance=MAX_AGE_S)
-    m = m[m.t_dec.notna()]
+    m = own_snapshot(m[m.t_dec.notna()])
+    # how old the weather under the decision is at the book: the hour's own, or
+    # for a book-anchored dump the hourly decision its correction came from
+    t_weather = m.hourly_decision_utc.values if "hourly_decision_utc" in m.columns else m.t_dec.values
 
     def prob(col):
         return np.array([float(s.split(";")[i]) for s, i in zip(m[col].values, m.bucket.values)])
@@ -166,7 +192,7 @@ def main(argv=None):
             t = pd.DataFrame({"band_id": m.band_id.values[ok], "date": m.date.values[ok], "t": m.t.values[ok],
                               "price": price[ok], "p": pp[ok], "win": win[ok], "side": side,
                               "hour": m.local_hour.values[ok], "day_offset": m.day_offset.values[ok],
-                              "age_min": (m.t.values[ok] - m.t_dec.values[ok]) / 60})
+                              "age_min": (m.t.values[ok] - t_weather[ok]) / 60})
             rows.append(t.sort_values("t").drop_duplicates(["band_id", "side", "date"]))
         t = pd.concat(rows, ignore_index=True)
         t["payoff"] = t.win.astype(float) - t.price
@@ -195,6 +221,7 @@ def main(argv=None):
                   "dates": int(m.date.nunique())},
         # the rule, the thresholds and the window: the three paragraphs under "The rule, fixed before it was run:"
         "rule": " ".join(" ".join(__doc__.strip().split("\n\n")[2:5]).split()),
+        "book_anchored": " ".join(own_snapshot.__doc__.split()) if "hourly_decision_utc" in m.columns else None,
         "test_theta": TEST_THETA,
         "results": {},
     }
@@ -207,7 +234,7 @@ def main(argv=None):
             r["by_when"] = {w: summary(t[sel]) for w, sel in (
                 ("D-1", t.day_offset < 0), ("D before 13h", (t.day_offset == 0) & (t.hour < 13)),
                 ("D 13h on", (t.day_offset == 0) & (t.hour >= 13)))}
-            # how old the decision was at the snapshot: the decision's prices are the hour's
+            # how old the weather under the decision was at the snapshot (the hourly decision's)
             r["by_age"] = {w: summary(t[sel]) for w, sel in (
                 ("0-15 min", t.age_min < 15), ("15-30 min", (t.age_min >= 15) & (t.age_min < 30)),
                 ("30-60 min", t.age_min >= 30))}

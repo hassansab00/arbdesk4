@@ -46,6 +46,14 @@ fills were looked at there for H1, the book anchor's never), with --from
 Each is judged on its 90% interval from resampling whole dates; a window too
 short to separate it from zero says so and is not read either way.
 
+MATCHED TO ITS OWN SNAPSHOT (11 Oct, Codex on #376). The backtests first
+matched these rows as hourly decisions, so a book up to an hour on took an
+older snapshot's anchor: its stale price and a correction up to two hours
+old. They now judge each row only against the band's first book in its own
+snapshot (ask_backtest.own_snapshot). Fixed after the 26 Sep - 4 Oct holdout
+was seen (as run: taker +0.0525, maker -0.0416; own snapshot: +0.0662 and
+-0.0410, the readings unchanged), so H3a's test is the dates from 5 Oct.
+
     python tools/wxpredict/book_anchor.py RESIDUAL_DUMP.csv.gz OUT.csv.gz
 """
 import argparse
