@@ -326,6 +326,22 @@ has already moved.
 ask. The market's favourite at the ask returns its price (above). Test 2
 fails; by the rule set with Hassan on 11 Oct, the forecasting build stops.
 
+**The three angles:**
+
+| angle | measured | price paid | result per share |
+|---|---|---|---|
+| a better forecast (the fusion, 5 points over the ask) | test 2 above, 22 Aug - 25 Sep | the book's best ask at the snapshot | -0.0175 (90% -0.0309 to -0.0042) |
+| the market's own calibration (the favourite at the ask) | above, 22 Aug - 10 Oct | the book's best ask at the snapshot | about zero in every hour group |
+| speed (buy the bucket a new daily maximum enters, 2 min after the reading's valid time) | `docs/MARKET_REACTION_2026-09-28.md`, 2,964 events on 207 dates | modelled, not executable: the one-minute price plus the hourly books' median half-spread, plus the taker fee | -0.0110 (90% -0.0203 to -0.0015); later entries lose more |
+
+The speed row is not a payable price (Codex on #373): the study adds a
+median half-spread to a quoted price. Its entry is also earlier than anyone
+reading the public report could act: reports reached IEM 8-16 min after their
+valid time when measured on 5 Oct (`REPORT_LAG_S`,
+`tools/wxpredict/features.py`), and the study buys 2 min after it. It loses
+even so. An executable test would need the order book at the minute the
+report is published, which the hourly books do not have.
+
 **The market's favourite at the real ask** (`book_snapshots`, 22 Aug - 10 Oct,
 settled bands, the bucket with the highest mid at each hourly snapshot, bought
 at its best ask): the outcome minus the ask per share is +0.020 (774 buys,
