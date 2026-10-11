@@ -420,6 +420,39 @@ market's own prices at D-1 (+0.0386, 59 fills) and the tempered market
 (+0.0582, 65 fills): resting orders on the evening before may pay whatever
 the model. That is H2, for dates after 4 Oct; it is not claimed here.
 
+### Decide at the book, not the hour (H3, 11 Oct)
+
+Every test lost from 13h on the day, the market's own prices too: the
+decision is the hour's (the venue's hourly price at hh:01), the trade is at a
+book snapshot up to an hour later, and the reports move the book in between.
+`market_residual.py --dump` now also writes `delta`, the trees' change to
+each bucket's logit (rebuilding `p_model` from it matches on every row
+checked; the rerun's `p_model` equals the first run's on all 187,479
+decisions). `book_anchor.py` puts that change on the book's own mid at each
+complete ladder snapshot (31,103 snapshots, 21,167 with a decision at most an
+hour old), so the market's price in the decision is the one traded against;
+the weather features stay the hour's.
+
+| | taker after the fee (test 2's rule) | maker, through fills (test 3's rule) |
+|---|---|---|
+| hour-anchored residual, tests 2 and 3 | -0.0225 | -0.0162 |
+| book-anchored, same windows (exploration: where the idea came from) | +0.0334 (+0.0055 to +0.0677), 549 trades | +0.0300 (+0.0117 to +0.0640), 320 fills |
+| the book's own prices, same windows | -0.0140 | -0.0190 |
+| **H3, 26 Sep - 4 Oct** (committed a83f4a6 before the run; 7 dates, books the archive's alone) | **+0.0525 (-0.0255 to +0.1284), 94 trades: not separable from zero** | **-0.0416 (-0.0727 to -0.0120), 721 fills: fails** |
+| the book's own prices, H3's window | -0.1064, 20 trades | -0.0389, 569 fills |
+
+**H3b (resting orders) fails; H3a (taking the ask) is not read either way**
+and is tested again from 5 Oct. In H3a's window D-1 made +0.1094 before the
+fee (52 trades), found after looking.
+
+**Trade capture changes the maker test.** A resting order fills only on a
+print through its price, so the fills depend on how many prints were
+captured: the archive holds about 15,155 a day for 14-27 Sep and 23,480 to
+32,426 a day from 27 Sep (`data/archive/trades`, prints over distinct days).
+With fuller capture the same rule filled 721 times in 7 dates against 320 in
+14, and the extra fills are the ones that lose. Test 3's and H1's earlier
+windows undercount fills, for the model and the control alike.
+
 **Ladder arbitrage** (`ladder_arb.py`, 22 Aug - 2 Oct). One bucket wins, so
 YES on every bucket for less than 1, or NO on every live bucket for less than
 the number of live buckets less 1, is riskless. The live YES bids summed over
