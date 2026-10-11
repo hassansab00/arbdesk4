@@ -46,6 +46,15 @@ MARKET_HISTORY_CACHE=<dir> python tools/market_history.py prices
 MARKET_HISTORY_CACHE=<dir> python tools/market_history.py write
 ```
 
+**Refreshed 11 Oct 2026** (WXPredict H2) the same way: `seed` put the
+committed finished series into the cache (106,112 buckets), `index` re-read
+Gamma (10,625 events) and `prices` fetched the other 8,218 buckets in about
+340 s. Checked against the record before it: all 10,325 events, 112,669
+buckets and 6,473,670 price points are still there; the only changes are the
+142 events that closed since (`closed` 0 -> 1) and 1,552 buckets' `winner`
+('' -> 0/1); no price point changed. Now 10,619 events (2025-12-30 to
+2026-10-13), 115,903 buckets, 6,679,510 price points.
+
 ## Files
 
 | file | rows | one row per |

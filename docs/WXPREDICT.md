@@ -29,8 +29,8 @@ trades.
 | source | what | rows | tool |
 |---|---|---|---|
 | `data/training/market_history/` | the venue's record: every event, its ladder, its winner, its settlement station, every bucket's hourly price | see its README (refreshed 5 Oct) | `tools/market_history.py` (`seed` added) |
-| `data/training/wxpredict/station_reports/<ICAO>.csv.gz` | every routine and special report of the 50 settlement stations, 1 Jun 2025 - 5 Oct 2026 13:00Z | 902,238 (9.6 MB) | `tools/wxpredict/fetch_obs.py reports` |
-| `data/training/wxpredict/station_daily.csv.gz` | one row per station and local day, 2019-12-31 - 2026-10-06 (temperature only before June 2025; the last days partial), with each day's longest stretch without a reading (`max_gap_h`, below) | 123,452 (1.9 MB) | `tools/wxpredict/fetch_obs.py climate` (`daily` from the cache) |
+| `data/training/wxpredict/station_reports/<ICAO>.csv.gz` | every routine and special report of the 50 settlement stations, 1 Jun 2025 - 10 Oct 2026 23:58Z (extended 11 Oct: 9,716 reports after the committed span appended; the 14 committed reports a refetch spelled differently were kept, see below) | 911,954 | `tools/wxpredict/fetch_obs.py reports` |
+| `data/training/wxpredict/station_daily.csv.gz` | one row per station and local day, 2019-12-31 - 2026-10-11 (temperature only before June 2025; the last days partial), with each day's longest stretch without a reading (`max_gap_h`, below). Rebuilt 11 Oct: 276 days added, 49 partial days of 5-6 Oct completed, none removed; a station no longer asked (Zhengzhou, ZHCC) keeps its 2,470 days | 123,728 | `tools/wxpredict/fetch_obs.py climate` (`daily` from the cache) |
 | `data/training/previous_runs/` | what the public forecasts said before the day (P2.9) | see its README (hourly file extended 5 Oct) | `scripts/honest_record.py`, `tools/wxpredict/fetch_forecasts.py` |
 
 The station reports carry every field IEM's ASOS service gives:
@@ -427,6 +427,14 @@ the number of live buckets less 1, is riskless. The live YES bids summed over
 taker fee on the legs is a median 3.2 cents, leaving 5 snapshots and $0.04.
 All the YES asks summed under 1 on 39 snapshots, 3 after the fee. S2
 (`scripts/strategies/s2_combination_arb.py`) already scans both baskets.
+
+**Refreshed 11 Oct for H2.** The 14 committed reports a refetch spelled
+differently are not corrections: each is a minute with two reports (a
+routine and a special, or a correction), and `fetch_obs.py` keeps the one it
+reads last, so IEM's order decides (KAUS 6 Jul 2025 13:55Z: 79 F committed,
+blank on the refetch). Neither spelling is the record's, so the committed
+rows stay and only reports after the committed span were appended. The
+order-dependent choice is not fixed here.
 
 ## Gaps (Phase 1)
 
