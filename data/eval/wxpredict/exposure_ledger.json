@@ -82,11 +82,12 @@
    "developed_on": ["2026-08-22", "2026-09-25"],
    "scored": ["2026-08-22", "2026-10-04"],
    "verdict": "H3b FAILED (-0.0410, -0.0727 to -0.0104, 718 fills, own snapshot). H3a not separable from zero on 26 Sep - 4 Oct (+0.0662, -0.0104 to +0.1316, 89 trades, own snapshot); the own-snapshot matching was fixed after that window was seen (Codex on #376), so H3a's test is the dates from 5 Oct.",
-   "pending": {"part": "H3a", "test_from": "2026-10-05", "tools": "book_anchor.py on a market_residual.py dump, then ask_backtest.py --model-col p_model --from 2026-10-05, after_taker_fee at THETA 0.05"},
+   "pending": {"part": "H3a", "test_from": "2026-10-05", "tools": "book_anchor.py on a market_residual.py dump, then ask_backtest.py --model-col p_model --from 2026-10-05, after_taker_fee at THETA 0.05; at size, capacity.py on its --trades-out (rule fixed 11 Oct, before any date from 5 Oct)"},
    "results": ["ask_backtest_book_anchor_2026-10-11.json", "ask_backtest_book_anchor_own_snapshot_2026-10-11.json",
                "maker_backtest_book_anchor_2026-10-11.json", "maker_backtest_book_anchor_own_snapshot_2026-10-11.json",
                "ask_backtest_h3_holdout_2026-10-11.json", "ask_backtest_h3_holdout_own_snapshot_2026-10-11.json",
-               "maker_backtest_h3_holdout_2026-10-11.json", "maker_backtest_h3_holdout_own_snapshot_2026-10-11.json"]
+               "maker_backtest_h3_holdout_2026-10-11.json", "maker_backtest_h3_holdout_own_snapshot_2026-10-11.json",
+               "capacity_book_anchor_own_snapshot_2026-10-11.json", "capacity_h3_holdout_own_snapshot_2026-10-11.json"]
   },
   {
    "id": "H2_maker_d_minus_1",

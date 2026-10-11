@@ -435,8 +435,10 @@ the weather features stay the hour's.
 
 **Each book against its own snapshot (Codex on #376).** The first runs
 matched the book-anchored rows as the backtests match an hourly decision: the
-newest row at most an hour before the book. A band's books come about hourly
-(median gap 60.1 min in `data/archive/books`), so when the next snapshot had
+newest row at most an hour before the book. A band's books came hourly from
+12 to 25 Sep and every 2 hours from 26 Sep (per-band gap median 60.0 and
+120.0 min; 5-7 hours until 3 Sep, and none archived 4-11 Sep, cause not
+measured), so when the next snapshot had
 no complete ladder, a book up to an hour on took the previous anchor's price
 and a correction up to two hours old: 263 of the 549 exploratory taker trades
 were 30-60 minutes after their anchor, and lost (-0.0447 after the fee). A
@@ -523,6 +525,65 @@ order and tick) of every market it does not hold yet to
 markets (the mirror's row wins) and record when they did
 (`definitions_recent`); the backtests' own ladder check (each market's lower
 edges against the scored event's) still applies.
+
+### At size: the execution and capacity audit (11 Oct, evening)
+
+The one-share scores say whether a rule's average share pays. `tools/wxpredict/capacity.py`
+asks how many dollars the same signals could have used, after costs, beside
+them (never in place of them). Its rule was fixed before it touched any date
+from 5 Oct and is in its docstring; the sizing and cash rules are plain Python
+(`tools/wxpredict/execution.py`, `tests/test_wxpredict_execution.py`).
+
+- **The ladder:** the archive keeps no full book (`raw_book` is stripped), only
+  the dollars within 1, 2, 5, 10 and 25 cents of the touch. The ladder is rebuilt
+  by the platform's own rule (`sql/ad4_13_reconcile.sql`, `ad4_synth_levels`),
+  and walked with `cost_model.walk_ladder`. Within 1 cent of the best ask a
+  late-September book holds a median $14.55 (10th percentile $1.77, 90th
+  $147.68; 31,654 tradeable rows), within 5 cents $50.26.
+- **NO** is bought on the YES bids at 1 - price: the venue's NO ask equals that
+  complement within 0.001 on 99.93% of rows, and is present on 99.5% of
+  late-September rows. Entries on books with no real NO ask are reported apart.
+- **Size:** level by level while the probability is at least THETA above the
+  level, up to a ticket ($10, $50, $250), the taker fee on every share.
+  **The venue's minimum order is not recorded** (`markets.min_order_size` and
+  `min_tick_size` are empty on all 2,708 markets; the stored books keep only
+  bids and asks): 5 shares is assumed, 1 shown beside it.
+- **Cash:** $1,000 shared, paid at entry, returned the day after the event
+  date; at most 10% on one city-day. A simulation grid, not an allocation.
+  Because the cap admits entries in time order, a dearer entry can change which
+  later ones fit, so the stressed rows are not always lower. Entries at one
+  instant are funded by band and side (`execution.funding_order`), never by
+  probability or outcome. *As first run they were funded in the order the
+  trades file listed them, every YES before every NO (Codex on #379); that
+  order flattered the capped rows: the $50 exploration row read +$1,465.67,
+  +$1,153.97 with the fixed order. The $10 rows and the holdout did not move.*
+- **Latency:** at the snapshot (optimistic) and at the band's next snapshot
+  within 3 hours (pessimistic; books are archived every 2 hours from 26 Sep,
+  hourly 12-25 Sep). The live delay is not measured yet. *First written as
+  "within 2 hours" when the cadence was believed hourly; the 2-hourly gaps run
+  120-121 min, so it dropped entries whose next book came a minute late (33 of
+  89 on the holdout). Widened before any date from 5 Oct was run.*
+- **Stress:** the same entries with every first-tier share a cent dearer.
+  *As first written, this put the whole first tier a cent past the touch and so
+  refused entries the one-share rule had taken at the recorded best ask (58 of
+  89 on the holdout); it was redefined before any date from 5 Oct was run, after
+  that seen window had been looked at.*
+
+The H3 corrections on the book (own snapshot), $10 tickets, at the snapshot:
+
+| | entries | spent | net | per date (90%) | worst drawdown |
+|---|---|---|---|---|---|
+| exploration, 27 Aug - 25 Sep (23 dates; where H3 was found) | 295 | $2,678 | **+$469.77** | +$20.42 (+$7.17 to +$34.57) | $91 |
+| the same, $50 tickets (mean entry $33: the depth runs out) | 261 | $8,643 | +$1,153.97 | +$50.17 (+$1.56 to +$102.73) | $361 |
+| the same, stress +1c / next snapshot | 295 / 135 | | +$411.09 / +$228.02 | +$17.87 / +$16.29 (-$1.62 to +$34.85) | |
+| holdout, 26 Sep - 2 Oct (7 dates) | 87 | $833 | **+$114.47** | +$16.35 (-$2.82 to +$35.15) | $33 |
+| the market's own prices, holdout / exploration | 13 / 30 | | -$17.24 / -$99.75 | | |
+
+**Read:** on the seen windows the one-share edge survives the walk down the
+book, the fee and a cent of stress, and the control loses at size. The
+exploration window is where the idea came from and is not evidence; the
+holdout cannot separate it from zero. The test that counts is H3a from 5 Oct,
+one-share and at size (`data/eval/wxpredict/capacity_*`).
 
 ## Gaps (Phase 1)
 
