@@ -161,6 +161,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_city_running_max": "ad4_71_observation_health.sql",
   "v_city_stats": "ad4_17_city_stats.sql",
   "v_city_status": "supabase/migrations/20261006180000_each_city_has_a_daily_status.sql",
+  "v_city_status_live": "ad4_89_page_cache.sql",
   "v_city_temp_trend": "ad4_26_temp_trend.sql",
   "v_city_today_readings": "ad4_26_temp_trend.sql",
   "v_city_trajectory_now": "ad4_86_trajectory.sql",

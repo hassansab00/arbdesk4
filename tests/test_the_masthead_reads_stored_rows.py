@@ -21,6 +21,7 @@ MIG = (ROOT / "supabase/migrations/20261009210000_the_masthead_reads_stored_rows
 SQL = (ROOT / "sql/ad4_89_page_cache.sql").read_text()
 AD4_39 = (ROOT / "sql/ad4_39_freshness.sql").read_text()
 AD4_44 = (ROOT / "sql/ad4_44_indexes.sql").read_text()
+PART2 = (ROOT / "supabase/migrations/20261011100000_the_heavy_page_views_read_stored_rows.sql").read_text()
 
 
 def _block(text, start, end):
@@ -80,12 +81,16 @@ def test_the_wrapper_reapplies_the_live_views_own_clock_condition():
 
 
 def test_the_refresh_carries_the_opportunities_first_and_never_blocks_a_reader():
+    assert "array['mv_opportunities', 'mv_prediction_ladder', 'mv_city_ladder_edges', " \
+           "'mv_forecast_convergence_all', 'mv_city_hit_history']" in _refresh(MIG)
     for text in (MIG, SQL):
         body = _refresh(text)
         assert "array['mv_opportunities', 'mv_prediction_ladder', 'mv_city_ladder_edges', " \
-               "'mv_forecast_convergence_all', 'mv_city_hit_history']" in body
+               "'mv_forecast_convergence_all', 'mv_city_hit_history'" in body
         assert "refresh materialized view concurrently" in body
-    assert _refresh(MIG) == _refresh(SQL)
+    # The install form carries the newest refresh: 2.E part 2 adds six copies
+    # after these (tests/test_the_heavy_page_views_read_stored_rows.py).
+    assert _refresh(PART2) == _refresh(SQL)
 
 
 def test_the_strategies_read_the_live_definition():

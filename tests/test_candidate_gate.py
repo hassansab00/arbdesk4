@@ -144,12 +144,14 @@ def test_the_tick_records_the_statuses_it_gated_on_for_the_replay(monkeypatch):
 
 
 def test_the_status_reaches_no_price():
-    """engine_shadow reads v_city_status in read_status only, and uses it in
-    candidate_gate only: after decide, never in a view or a probability."""
+    """engine_shadow reads v_city_status_live in read_status only, and uses
+    it in candidate_gate only: after decide, never in a view or a probability.
+    It reads the live one: the page's v_city_status counts settled days from
+    the stored hit record (2.E part 2, 20261011100000)."""
     import inspect
     src = inspect.getsource(es)
-    assert len(re.findall(r"v_city_status\"", src)) == 1
-    assert 'rest("v_city_status"' in inspect.getsource(es.read_status)
+    assert len(re.findall(r"v_city_status(_live)?\"", src)) == 1
+    assert 'rest("v_city_status_live"' in inspect.getsource(es.read_status)
     body = inspect.getsource(es.decide_all)
     assert "candidate_gate(d, status.get" in body
     assert body.index("de.decide(") < body.index("candidate_gate(d, status.get")
@@ -166,7 +168,7 @@ def test_the_read_is_one_request_and_refuses_a_full_page():
                  "rules_version": "status-v1"}]
     assert es.read_status(rest) == {KEY: ("watch", "status-v1")}
     (path, params, tries), = asked
-    assert path == "v_city_status" and tries == 1 and params["limit"] == str(es.STATUS_ROWS_MAX)
+    assert path == "v_city_status_live" and tries == 1 and params["limit"] == str(es.STATUS_ROWS_MAX)
 
     def full(path, params=None, tries=4):
         return [{"city_key": f"c{i}", "target_date": "2026-09-28", "checkpoint": "noon", "status": "candidate",
