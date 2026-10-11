@@ -23,7 +23,11 @@ The rule, fixed before it was run:
 
 Mean payoff per share, with a 90% interval from resampling whole dates.
 
-    python tools/wxpredict/ask_backtest.py DECISIONS.csv.gz [--out data/eval/wxpredict/ask_backtest_<date>.json]
+    python tools/wxpredict/ask_backtest.py DECISIONS.csv.gz [--model-col p_fusion] [--out data/eval/wxpredict/ask_backtest_<date>.json]
+
+--model-col names the decisions' column holding the model's probabilities
+(walkforward.py --dump writes p_fusion, market_residual.py --dump p_model);
+the rule is the same for every model.
 """
 import argparse
 import datetime as dt
@@ -66,6 +70,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("decisions")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--model-col", default="p_fusion")
     args = ap.parse_args(argv)
 
     dec = pd.read_csv(args.decisions, low_memory=False)
@@ -133,7 +138,8 @@ def main(argv=None):
     def prob(col):
         return np.array([float(s.split(";")[i]) for s, i in zip(m[col].values, m.bucket.values)])
 
-    probs = {"fusion": prob("p_fusion"), "market (control)": prob("q"), "market tempered": prob("p_tempered")}
+    probs = {args.model_col.removeprefix("p_"): prob(args.model_col), "market (control)": prob("q"),
+             "market tempered": prob("p_tempered")}
     won = (m.winner.values.astype(int) == m.bucket.values.astype(int))
     yes_ask = pd.to_numeric(m.best_ask, errors="coerce").values
     bid = pd.to_numeric(m.best_bid, errors="coerce").values
@@ -164,11 +170,13 @@ def main(argv=None):
     result = {
         "made": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
         "decisions_sha256": dec_sha,
+        "model_col": args.model_col,
         "window": [str(first_book), str(kept_through)],
         "books": {"archive_files": len(arch_files), "mirror_files": len(kept_files),
                   "snapshots_matched": int(len(m)), "markets_unmatched": unmatched,
                   "dates": int(m.date.nunique())},
-        "rule": __doc__.strip().split("\n\n")[1].strip(),
+        # the rule, the thresholds and the window: the three paragraphs under "The rule, fixed before it was run:"
+        "rule": " ".join(" ".join(__doc__.strip().split("\n\n")[2:5]).split()),
         "test_theta": TEST_THETA,
         "results": {},
     }
