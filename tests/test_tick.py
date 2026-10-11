@@ -693,7 +693,7 @@ def test_an_s10_decision_that_cannot_name_its_call_is_attention(world, monkeypat
 
 
 def test_the_tick_starts_the_status_read_early_and_hands_it_to_the_engine(world):
-    """F.7's Candidate gate reads v_city_status (about 3 s); the tick starts
+    """F.7's Candidate gate reads v_city_status_live (about 3 s); the tick starts
     it right after writing this hour's station reports (so a fresh report
     counts; Codex on #330) and before the rest of its work, so it adds no wall
     time, and gives it to the engine, which waits at most GATE_WAIT_S."""

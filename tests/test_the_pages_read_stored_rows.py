@@ -20,11 +20,13 @@ CACHED = ("v_prediction_ladder", "v_forecast_convergence_all", "v_city_hit_histo
 
 
 def test_every_cached_view_is_converted_in_place_with_a_unique_key():
+    # Replaced IN PLACE, so grants and dependent views stay bound; the install
+    # form also carries the view's own options and order (2.E part 2).
+    assert "create or replace view public.%I as select %s from public.%I" in MIG
+    assert "create or replace view public.%I%s as select %s from public.%I%s" in SQL
     for text in (MIG, SQL):
         for v in CACHED:
             assert f"('{v}'," in text
-        assert "create or replace view public.%I as select %s from public.%I" in text, (
-            "replaced IN PLACE, so grants and dependent views stay bound")
         assert "create unique index" in text, "CONCURRENTLY needs a unique index"
         assert "revoke all on public.%I from public, anon, authenticated" in text
 

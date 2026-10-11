@@ -188,7 +188,7 @@ Each row gives an item's state, **measured on 5 Oct 2026 unless it says "per the
 | R8 | `P0.4_trade_history` | 3 of 48 attention | data-api 429 on one batch | Back off and resume (it already keeps a cursor); measure. | 2 |
 | R9 | `P4.1_health_watchdog` | 8 of 8 attention | it sums the warnings above | Becomes meaningful with P6.3 (R14). | 2 |
 | R10 | `edge_engine` | 3 attention | the against-market gate blocks the engine where the market is better (109 bands on 4 Oct). This is the gate working. | Nothing; it is "informational" under P6.3. | n/a |
-| R11 | **Statement timeouts** (P6.5) | 49 `canceling statement due to statement timeout` in the 24 h to 5 Oct ~16:00Z (postgres log) | the queries are not named in that log | Name them from the API gateway log, then fix them the P6.5 way (stored rows behind views). Acceptance: 0 in 24 h. | 2 |
+| R11 | **Statement timeouts** (P6.5) | 49 `canceling statement due to statement timeout` in the 24 h to 5 Oct ~16:00Z (postgres log) | the queries are not named in that log | Name them from the API gateway log, then fix them the P6.5 way (stored rows behind views). Acceptance: 0 in 24 h. **9 Oct, 2.E (#358):** the masthead's two reads, 95 of 156 named. **10 Oct: the acceptance failed**, 133 in the 24 h to 21:45Z, all page loads. **11 Oct, 2.E part 2:** six page-only views read stored rows (`v_prediction_hindsight`, `v_edge_scaling`, `v_calibration`, `v_edge_realisation`, `v_model_forecast_skill`, `v_condition_skill`); `v_city_status` counts the stored hit record and the Candidate gate reads `v_city_status_live`. Acceptance measured again 24 h after it is live. | 2 |
 
 ### 3.3 The served engine's defects (section 1)
 

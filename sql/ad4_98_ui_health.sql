@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 285 of them - and for each MISSING one names the
+-- and function the app reads - 286 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -172,6 +172,7 @@ with expected(rel, owner, used_by) as (values
     ('v_city_running_max', 'ad4_71_observation_health.sql', ''),
     ('v_city_stats', 'ad4_17_city_stats.sql', ''),
     ('v_city_status', 'supabase/migrations/20261006180000_each_city_has_a_daily_status.sql', '/predictive'),
+    ('v_city_status_live', 'ad4_89_page_cache.sql', ''),
     ('v_city_temp_trend', 'ad4_26_temp_trend.sql', ''),
     ('v_city_today_readings', 'ad4_26_temp_trend.sql', '/monitor'),
     ('v_city_trajectory_now', 'ad4_86_trajectory.sql', ''),
@@ -479,6 +480,7 @@ begin
     ('v_city_running_max', 'ad4_71_observation_health.sql', ''),
     ('v_city_stats', 'ad4_17_city_stats.sql', ''),
     ('v_city_status', 'supabase/migrations/20261006180000_each_city_has_a_daily_status.sql', '/predictive'),
+    ('v_city_status_live', 'ad4_89_page_cache.sql', ''),
     ('v_city_temp_trend', 'ad4_26_temp_trend.sql', ''),
     ('v_city_today_readings', 'ad4_26_temp_trend.sql', '/monitor'),
     ('v_city_trajectory_now', 'ad4_86_trajectory.sql', ''),

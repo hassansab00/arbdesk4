@@ -86,6 +86,9 @@ TWINS_ROWS_MAX = 1000           # db-max-rows; newest first, so a cut drops the 
 # (EXPLAIN ANALYZE, 7 Oct: 2.86 s) and a tick job already runs 43-59 s against
 # whole billed minutes, so the tick starts the read when it starts and the
 # engine waits at most GATE_WAIT_S for it; unread, every BUY is held back.
+# It reads v_city_status_live (WXPredict build 2.E part 2, 11 Oct): the page's
+# v_city_status counts settled days from the stored hit record, refreshed
+# every half hour; this one counts them from the tables, as the gate always has.
 GATE_WAIT_S = 2.0
 STATUS_ROWS_MAX = 1000          # db-max-rows: reads have hit it (measure_skill.py, databank.py)
 
@@ -232,15 +235,15 @@ def decision_row(run_id, decided_at, checkpoint_id, strategy_id, city, target, d
 
 def read_status(rest):
     """{(city, target date, checkpoint): (status, rules version)}, every row
-    of v_city_status (each active city's local today and tomorrow: 672 on
-    7 Oct), in ONE request with one try: each page of a paged read computes
-    the whole view again. A full page may have been cut by PostgREST's row
-    cap, so it is refused rather than read as complete."""
-    rows = rest("v_city_status", {"select": "city_key,target_date,checkpoint,status,rules_version",
-                                  "order": "city_key.asc,target_date.asc,checkpoint.asc",
-                                  "limit": str(STATUS_ROWS_MAX)}, tries=1)
+    of v_city_status_live (each active city's local today and tomorrow: 672
+    on 7 Oct), in ONE request with one try: each page of a paged read
+    computes the whole view again. A full page may have been cut by
+    PostgREST's row cap, so it is refused rather than read as complete."""
+    rows = rest("v_city_status_live", {"select": "city_key,target_date,checkpoint,status,rules_version",
+                                       "order": "city_key.asc,target_date.asc,checkpoint.asc",
+                                       "limit": str(STATUS_ROWS_MAX)}, tries=1)
     if len(rows) >= STATUS_ROWS_MAX:
-        raise RuntimeError(f"v_city_status: {len(rows)} rows, at the read's cap of {STATUS_ROWS_MAX}")
+        raise RuntimeError(f"v_city_status_live: {len(rows)} rows, at the read's cap of {STATUS_ROWS_MAX}")
     return {(r["city_key"], str(r["target_date"]), r["checkpoint"]): (r["status"], r.get("rules_version"))
             for r in rows}
 
