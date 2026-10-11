@@ -26,6 +26,19 @@ there), not Postgres: the database is over its size target (P1.6) and a
 training record is read whole once a night. This job appends the last
 APPEND_DAYS days and archive_observations.yml commits it.
 
+THE HOURLY LEAD-1 RECORD TOO (11 Oct). best_match_hourly_day1_utc.csv.gz
+(WXPredict's hourly forecast features) was built once on 26 Sep and
+extended by hand (tools/wxpredict/fetch_forecasts.py), so it stopped on
+5 Oct while the daily files went on. The heating request below already asks
+for its seven variables, hourly, `_previous_day1`, in UTC; their hours before
+today are appended from the same answer, no request added. A row already in
+the file is never rewritten: an hour asked again is compared value by value
+and a difference is reported, not merged (fetch_forecasts.py's rule). The
+file was built with timezone=auto, so a city on a half-hour offset (Lucknow,
+the only one on 11 Oct: 10,752 rows at :30) has its hours at :30 UTC, where
+a UTC answer has them at :00; an answer's hours off a city's own grid are
+counted and left out, so that city is extended by fetch_forecasts.py alone.
+
   python scripts/honest_record.py [--days 10] [--dry-run]
 """
 import argparse
@@ -107,6 +120,8 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 DIR = os.path.join(ROOT, "data", "training", "previous_runs")
 BEST_MATCH_FILE = os.path.join(DIR, "best_match_daily.csv.gz")
 MODELS_FILE = os.path.join(DIR, "models_daily.csv.gz")
+HOURLY_FILE = os.path.join(DIR, "best_match_hourly_day1_utc.csv.gz")
+HOURLY_HEADER = ["city_key", "utc", "t", "td", "cloud", "sw", "wind", "precip", "pmsl"]   # HEATING's order
 BEST_MATCH_HEADER = ["city_key", "lead_days", "for_date", "tmax_c", "tmax_00_17_c", "tmin_00_08_c", "t_08_c",
                      "td_08_c", "td_09_17_c", "cloud_09_17_pct", "cloud_max_09_17_pct", "shortwave_06_17_wh_m2",
                      "wind_09_17_kmh", "precip_00_17_mm", "pressure_msl_08_hpa", "n_hours"]
@@ -412,6 +427,52 @@ def _text(row):
     return [one(v) for v in row]
 
 
+def hourly_day1_rows(city_key, heating_js, before):
+    """The hourly lead-1 record's rows from a heating answer (asked in UTC, so
+    its stamps are the record's own): every hour before `before` (a naive UTC
+    datetime) with a temperature, the seven HEATING values in HOURLY_HEADER's
+    order."""
+    h = (heating_js or {}).get("hourly") or {}
+    cols = [h.get(f"{v}_previous_day1") or [] for v in HEATING]
+    out = []
+    for i, t in enumerate(h.get("time") or []):
+        stamp = dt.datetime.fromisoformat(t)
+        vals = [c[i] if i < len(c) else None for c in cols]
+        if stamp >= before or vals[0] is None:
+            continue
+        out.append([city_key, stamp.strftime("%Y-%m-%dT%H:%M"), *vals])
+    return out
+
+
+def append_hourly(existing, new):
+    """New hours are added; a row already in the record is never rewritten. An
+    hour asked again is compared value by value: the same counts as identical,
+    a difference is returned to be reported, not merged. An hour off its
+    city's grid (the minute its rows already have) is counted, not added.
+    Returns (rows sorted by city and hour, added, identical, differing keys,
+    off-grid hours)."""
+    by = {(r[0], r[1]): r for r in existing}
+    grid = {r[0]: r[1][14:16] for r in existing}
+    added, same, differ, off = 0, 0, [], 0
+
+    def nums(row):
+        return [float(x) if x != "" else None for x in row[2:]]
+    for r in new:
+        t = _text(r)
+        if grid.get(t[0], t[1][14:16]) != t[1][14:16]:
+            off += 1
+            continue
+        old = by.get((t[0], t[1]))
+        if old is None:
+            by[(t[0], t[1])] = t
+            added += 1
+        elif nums(old) == nums(t):
+            same += 1
+        else:
+            differ.append((t[0], t[1]))
+    return [by[k] for k in sorted(by)], added, same, differ, off
+
+
 def merge(existing, new, key_len):
     """Rows keyed by their first `key_len` columns; a new row replaces the old
     one with the same key (a run re-read later is the same run). Sorted."""
@@ -422,7 +483,8 @@ def merge(existing, new, key_len):
     return [by[k] for k in sorted(by)]
 
 
-def main(argv=None):
+def main(argv=None, now=None):
+    """`now` (an aware UTC datetime) is for tests; the job reads the clock."""
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--days", type=int, default=APPEND_DAYS)
     ap.add_argument("--dry-run", action="store_true")
@@ -431,27 +493,33 @@ def main(argv=None):
     global _deadline
     _deadline = time.monotonic() + RUN_SECONDS
 
-    today = dt.datetime.now(dt.timezone.utc).date()
+    today = (now or dt.datetime.now(dt.timezone.utc)).date()
     start, end = today - dt.timedelta(days=args.days), today - dt.timedelta(days=1)
+    before = dt.datetime.combine(today, dt.time())          # the hourly record takes hours before today (UTC)
     cities = [c for c in get_cities() if c.get("latitude") is not None and c.get("timezone")
               and c.get("status", "active") == "active"]
-    bm, md, missing, rounds = [], [], [], []
+    bm, md, hourly, missing, rounds = [], [], [], [], []
     for city, (h, m) in fetch_each(lambda chunk, part: previous_request(chunk, part, start, end), cities, rounds):
         if h is None or m is None:
             missing.append(city["city_key"])
         b, x = previous_rows(city["city_key"], h, m, city["timezone"], start.isoformat(), end.isoformat())
         bm += b
         md += x
+        hourly += hourly_day1_rows(city["city_key"], h, before)
     old_bm, old_md = read_rows(BEST_MATCH_FILE), read_rows(MODELS_FILE)
     new_bm, new_md = merge(old_bm, bm, 3), merge(old_md, md, 4)
+    new_hr, hr_added, hr_same, hr_differ, hr_off = append_hourly(read_rows(HOURLY_FILE), hourly)
     detail = {"from": start.isoformat(), "to": end.isoformat(), "cities": len(cities),
               "unreached": missing, "best_match_rows": len(bm), "model_rows": len(md),
-              "best_match_total": len(new_bm), "models_total": len(new_md), "rounds": rounds}
+              "best_match_total": len(new_bm), "models_total": len(new_md), "rounds": rounds,
+              "hourly_added": hr_added, "hourly_identical": hr_same, "hourly_differ": len(hr_differ),
+              "hourly_differ_first": hr_differ[:5], "hourly_off_grid": hr_off, "hourly_total": len(new_hr)}
     print(detail)
     if args.dry_run:
         return 0
     write_rows(BEST_MATCH_FILE, BEST_MATCH_HEADER, new_bm)
     write_rows(MODELS_FILE, MODELS_HEADER, new_md)
+    write_rows(HOURLY_FILE, HOURLY_HEADER, new_hr)
     status = "ok" if not missing else ("partial" if len(missing) < len(cities) else "error")
     log_run(JOB, status, len(bm) + len(md), detail)
     return 0 if status != "error" else 1
