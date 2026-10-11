@@ -1,0 +1,763 @@
+{
+ "made": "2026-10-11T08:16Z",
+ "decisions_sha256": "f436bef3e8c58f19343806fbc4b297502eb3e3c53be5af4c74ad681bcf8c9ea0",
+ "window": [
+  "2026-08-22",
+  "2026-09-25"
+ ],
+ "books": {
+  "archive_files": 21,
+  "mirror_files": 15,
+  "snapshots_matched": 59628,
+  "markets_unmatched": 93,
+  "dates": 28
+ },
+ "rule": "The rule, fixed before it was run:",
+ "test_theta": 0.05,
+ "results": {
+  "fusion": {
+   "theta_0.02": {
+    "trades": 3529,
+    "dates": 28,
+    "mean_price": 0.5322,
+    "mean_p": 0.58,
+    "win_rate": 0.514,
+    "payoff_per_share": -0.0182,
+    "ci90": [
+     -0.027,
+     -0.0095
+    ],
+    "total": -64.11,
+    "by_side": {
+     "yes": {
+      "trades": 1432,
+      "dates": 27,
+      "mean_price": 0.3068,
+      "mean_p": 0.3572,
+      "win_rate": 0.2863,
+      "payoff_per_share": -0.0205,
+      "ci90": [
+       -0.0309,
+       -0.0101
+      ],
+      "total": -29.34
+     },
+     "no": {
+      "trades": 2097,
+      "dates": 28,
+      "mean_price": 0.6861,
+      "mean_p": 0.7322,
+      "win_rate": 0.6695,
+      "payoff_per_share": -0.0166,
+      "ci90": [
+       -0.0285,
+       -0.0061
+      ],
+      "total": -34.76
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 1284,
+      "dates": 24,
+      "mean_price": 0.5699,
+      "mean_p": 0.6085,
+      "win_rate": 0.5436,
+      "payoff_per_share": -0.0263,
+      "ci90": [
+       -0.0502,
+       -0.0052
+      ],
+      "total": -33.72
+     },
+     "D before 13h": {
+      "trades": 1851,
+      "dates": 24,
+      "mean_price": 0.5082,
+      "mean_p": 0.5554,
+      "win_rate": 0.4965,
+      "payoff_per_share": -0.0117,
+      "ci90": [
+       -0.0273,
+       0.004
+      ],
+      "total": -21.62
+     },
+     "D 13h on": {
+      "trades": 394,
+      "dates": 19,
+      "mean_price": 0.5223,
+      "mean_p": 0.6028,
+      "win_rate": 0.5,
+      "payoff_per_share": -0.0223,
+      "ci90": [
+       -0.0489,
+       0.0067
+      ],
+      "total": -8.77
+     }
+    }
+   },
+   "theta_0.05": {
+    "trades": 1738,
+    "dates": 27,
+    "mean_price": 0.4824,
+    "mean_p": 0.5782,
+    "win_rate": 0.4649,
+    "payoff_per_share": -0.0175,
+    "ci90": [
+     -0.0309,
+     -0.0042
+    ],
+    "total": -30.48,
+    "by_side": {
+     "yes": {
+      "trades": 727,
+      "dates": 27,
+      "mean_price": 0.3196,
+      "mean_p": 0.4149,
+      "win_rate": 0.2875,
+      "payoff_per_share": -0.0321,
+      "ci90": [
+       -0.0493,
+       -0.0168
+      ],
+      "total": -23.35
+     },
+     "no": {
+      "trades": 1011,
+      "dates": 26,
+      "mean_price": 0.5995,
+      "mean_p": 0.6956,
+      "win_rate": 0.5925,
+      "payoff_per_share": -0.0071,
+      "ci90": [
+       -0.023,
+       0.0089
+      ],
+      "total": -7.13
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 326,
+      "dates": 24,
+      "mean_price": 0.5603,
+      "mean_p": 0.6326,
+      "win_rate": 0.5399,
+      "payoff_per_share": -0.0204,
+      "ci90": [
+       -0.063,
+       0.0153
+      ],
+      "total": -6.65
+     },
+     "D before 13h": {
+      "trades": 1014,
+      "dates": 24,
+      "mean_price": 0.4765,
+      "mean_p": 0.5636,
+      "win_rate": 0.4724,
+      "payoff_per_share": -0.0041,
+      "ci90": [
+       -0.0302,
+       0.0218
+      ],
+      "total": -4.2
+     },
+     "D 13h on": {
+      "trades": 398,
+      "dates": 18,
+      "mean_price": 0.4337,
+      "mean_p": 0.5706,
+      "win_rate": 0.3844,
+      "payoff_per_share": -0.0493,
+      "ci90": [
+       -0.0858,
+       -0.0101
+      ],
+      "total": -19.63
+     }
+    }
+   },
+   "theta_0.10": {
+    "trades": 695,
+    "dates": 25,
+    "mean_price": 0.3953,
+    "mean_p": 0.5711,
+    "win_rate": 0.3439,
+    "payoff_per_share": -0.0514,
+    "ci90": [
+     -0.0845,
+     -0.0224
+    ],
+    "total": -35.71,
+    "by_side": {
+     "yes": {
+      "trades": 298,
+      "dates": 24,
+      "mean_price": 0.2948,
+      "mean_p": 0.4602,
+      "win_rate": 0.2013,
+      "payoff_per_share": -0.0934,
+      "ci90": [
+       -0.1408,
+       -0.0478
+      ],
+      "total": -27.84
+     },
+     "no": {
+      "trades": 397,
+      "dates": 25,
+      "mean_price": 0.4707,
+      "mean_p": 0.6544,
+      "win_rate": 0.4509,
+      "payoff_per_share": -0.0198,
+      "ci90": [
+       -0.0523,
+       0.0102
+      ],
+      "total": -7.87
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 50,
+      "dates": 15,
+      "mean_price": 0.571,
+      "mean_p": 0.6925,
+      "win_rate": 0.54,
+      "payoff_per_share": -0.031,
+      "ci90": [
+       -0.1294,
+       0.0611
+      ],
+      "total": -1.55
+     },
+     "D before 13h": {
+      "trades": 336,
+      "dates": 23,
+      "mean_price": 0.4307,
+      "mean_p": 0.5815,
+      "win_rate": 0.3988,
+      "payoff_per_share": -0.0318,
+      "ci90": [
+       -0.0857,
+       0.0173
+      ],
+      "total": -10.7
+     },
+     "D 13h on": {
+      "trades": 309,
+      "dates": 17,
+      "mean_price": 0.3283,
+      "mean_p": 0.5402,
+      "win_rate": 0.2524,
+      "payoff_per_share": -0.0759,
+      "ci90": [
+       -0.1205,
+       -0.0347
+      ],
+      "total": -23.46
+     }
+    }
+   }
+  },
+  "market (control)": {
+   "theta_0.02": {
+    "trades": 2959,
+    "dates": 28,
+    "mean_price": 0.4963,
+    "mean_p": 0.5476,
+    "win_rate": 0.4735,
+    "payoff_per_share": -0.0228,
+    "ci90": [
+     -0.0313,
+     -0.0147
+    ],
+    "total": -67.43,
+    "by_side": {
+     "yes": {
+      "trades": 1103,
+      "dates": 28,
+      "mean_price": 0.2535,
+      "mean_p": 0.3112,
+      "win_rate": 0.2185,
+      "payoff_per_share": -0.035,
+      "ci90": [
+       -0.0459,
+       -0.0266
+      ],
+      "total": -38.64
+     },
+     "no": {
+      "trades": 1856,
+      "dates": 27,
+      "mean_price": 0.6405,
+      "mean_p": 0.688,
+      "win_rate": 0.625,
+      "payoff_per_share": -0.0155,
+      "ci90": [
+       -0.0276,
+       -0.0036
+      ],
+      "total": -28.79
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 1024,
+      "dates": 24,
+      "mean_price": 0.5372,
+      "mean_p": 0.5745,
+      "win_rate": 0.5303,
+      "payoff_per_share": -0.0069,
+      "ci90": [
+       -0.0267,
+       0.0113
+      ],
+      "total": -7.08
+     },
+     "D before 13h": {
+      "trades": 1529,
+      "dates": 24,
+      "mean_price": 0.5093,
+      "mean_p": 0.5601,
+      "win_rate": 0.484,
+      "payoff_per_share": -0.0253,
+      "ci90": [
+       -0.0361,
+       -0.0158
+      ],
+      "total": -38.66
+     },
+     "D 13h on": {
+      "trades": 406,
+      "dates": 19,
+      "mean_price": 0.344,
+      "mean_p": 0.4324,
+      "win_rate": 0.2906,
+      "payoff_per_share": -0.0534,
+      "ci90": [
+       -0.079,
+       -0.0235
+      ],
+      "total": -21.68
+     }
+    }
+   },
+   "theta_0.05": {
+    "trades": 1397,
+    "dates": 26,
+    "mean_price": 0.4382,
+    "mean_p": 0.5426,
+    "win_rate": 0.4073,
+    "payoff_per_share": -0.0309,
+    "ci90": [
+     -0.0481,
+     -0.0142
+    ],
+    "total": -43.15,
+    "by_side": {
+     "yes": {
+      "trades": 548,
+      "dates": 25,
+      "mean_price": 0.2514,
+      "mean_p": 0.3556,
+      "win_rate": 0.2007,
+      "payoff_per_share": -0.0506,
+      "ci90": [
+       -0.0756,
+       -0.0254
+      ],
+      "total": -27.75
+     },
+     "no": {
+      "trades": 849,
+      "dates": 26,
+      "mean_price": 0.5588,
+      "mean_p": 0.6632,
+      "win_rate": 0.5406,
+      "payoff_per_share": -0.0181,
+      "ci90": [
+       -0.0358,
+       -0.0026
+      ],
+      "total": -15.4
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 214,
+      "dates": 22,
+      "mean_price": 0.5533,
+      "mean_p": 0.6257,
+      "win_rate": 0.514,
+      "payoff_per_share": -0.0393,
+      "ci90": [
+       -0.0915,
+       -0.0002
+      ],
+      "total": -8.41
+     },
+     "D before 13h": {
+      "trades": 789,
+      "dates": 24,
+      "mean_price": 0.4644,
+      "mean_p": 0.5573,
+      "win_rate": 0.4461,
+      "payoff_per_share": -0.0183,
+      "ci90": [
+       -0.044,
+       0.012
+      ],
+      "total": -14.43
+     },
+     "D 13h on": {
+      "trades": 394,
+      "dates": 18,
+      "mean_price": 0.3231,
+      "mean_p": 0.4678,
+      "win_rate": 0.2716,
+      "payoff_per_share": -0.0515,
+      "ci90": [
+       -0.0779,
+       -0.0256
+      ],
+      "total": -20.3
+     }
+    }
+   },
+   "theta_0.10": {
+    "trades": 629,
+    "dates": 24,
+    "mean_price": 0.3522,
+    "mean_p": 0.5373,
+    "win_rate": 0.3164,
+    "payoff_per_share": -0.0358,
+    "ci90": [
+     -0.0674,
+     -0.0058
+    ],
+    "total": -22.51,
+    "by_side": {
+     "yes": {
+      "trades": 250,
+      "dates": 24,
+      "mean_price": 0.2426,
+      "mean_p": 0.4213,
+      "win_rate": 0.168,
+      "payoff_per_share": -0.0746,
+      "ci90": [
+       -0.1179,
+       -0.0302
+      ],
+      "total": -18.66
+     },
+     "no": {
+      "trades": 379,
+      "dates": 23,
+      "mean_price": 0.4244,
+      "mean_p": 0.6138,
+      "win_rate": 0.4142,
+      "payoff_per_share": -0.0102,
+      "ci90": [
+       -0.0431,
+       0.0243
+      ],
+      "total": -3.85
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 29,
+      "dates": 9,
+      "mean_price": 0.561,
+      "mean_p": 0.6809,
+      "win_rate": 0.5172,
+      "payoff_per_share": -0.0438,
+      "ci90": [
+       -0.1803,
+       0.0766
+      ],
+      "total": -1.27
+     },
+     "D before 13h": {
+      "trades": 270,
+      "dates": 23,
+      "mean_price": 0.4149,
+      "mean_p": 0.5758,
+      "win_rate": 0.4074,
+      "payoff_per_share": -0.0075,
+      "ci90": [
+       -0.06,
+       0.0423
+      ],
+      "total": -2.01
+     },
+     "D 13h on": {
+      "trades": 330,
+      "dates": 17,
+      "mean_price": 0.2825,
+      "mean_p": 0.4932,
+      "win_rate": 0.2242,
+      "payoff_per_share": -0.0583,
+      "ci90": [
+       -0.0953,
+       -0.0254
+      ],
+      "total": -19.23
+     }
+    }
+   }
+  },
+  "market tempered": {
+   "theta_0.02": {
+    "trades": 2941,
+    "dates": 27,
+    "mean_price": 0.5494,
+    "mean_p": 0.6013,
+    "win_rate": 0.5267,
+    "payoff_per_share": -0.0228,
+    "ci90": [
+     -0.0319,
+     -0.016
+    ],
+    "total": -66.92,
+    "by_side": {
+     "yes": {
+      "trades": 1294,
+      "dates": 27,
+      "mean_price": 0.3621,
+      "mean_p": 0.4115,
+      "win_rate": 0.3369,
+      "payoff_per_share": -0.0252,
+      "ci90": [
+       -0.0386,
+       -0.0134
+      ],
+      "total": -32.59
+     },
+     "no": {
+      "trades": 1647,
+      "dates": 27,
+      "mean_price": 0.6966,
+      "mean_p": 0.7504,
+      "win_rate": 0.6758,
+      "payoff_per_share": -0.0208,
+      "ci90": [
+       -0.0302,
+       -0.0142
+      ],
+      "total": -34.34
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 902,
+      "dates": 24,
+      "mean_price": 0.5782,
+      "mean_p": 0.6172,
+      "win_rate": 0.5488,
+      "payoff_per_share": -0.0294,
+      "ci90": [
+       -0.0644,
+       -0.0017
+      ],
+      "total": -26.53
+     },
+     "D before 13h": {
+      "trades": 1589,
+      "dates": 24,
+      "mean_price": 0.5442,
+      "mean_p": 0.5949,
+      "win_rate": 0.5249,
+      "payoff_per_share": -0.0193,
+      "ci90": [
+       -0.0315,
+       -0.0064
+      ],
+      "total": -30.66
+     },
+     "D 13h on": {
+      "trades": 450,
+      "dates": 18,
+      "mean_price": 0.5105,
+      "mean_p": 0.5919,
+      "win_rate": 0.4889,
+      "payoff_per_share": -0.0216,
+      "ci90": [
+       -0.0455,
+       0.003
+      ],
+      "total": -9.73
+     }
+    }
+   },
+   "theta_0.05": {
+    "trades": 1372,
+    "dates": 26,
+    "mean_price": 0.4804,
+    "mean_p": 0.5851,
+    "win_rate": 0.449,
+    "payoff_per_share": -0.0314,
+    "ci90": [
+     -0.0449,
+     -0.0172
+    ],
+    "total": -43.1,
+    "by_side": {
+     "yes": {
+      "trades": 590,
+      "dates": 25,
+      "mean_price": 0.3241,
+      "mean_p": 0.4242,
+      "win_rate": 0.278,
+      "payoff_per_share": -0.0461,
+      "ci90": [
+       -0.0644,
+       -0.0271
+      ],
+      "total": -27.22
+     },
+     "no": {
+      "trades": 782,
+      "dates": 26,
+      "mean_price": 0.5983,
+      "mean_p": 0.7065,
+      "win_rate": 0.578,
+      "payoff_per_share": -0.0203,
+      "ci90": [
+       -0.0365,
+       -0.0039
+      ],
+      "total": -15.88
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 199,
+      "dates": 22,
+      "mean_price": 0.5734,
+      "mean_p": 0.648,
+      "win_rate": 0.5678,
+      "payoff_per_share": -0.0056,
+      "ci90": [
+       -0.0689,
+       0.0426
+      ],
+      "total": -1.11
+     },
+     "D before 13h": {
+      "trades": 779,
+      "dates": 24,
+      "mean_price": 0.4881,
+      "mean_p": 0.5816,
+      "win_rate": 0.4647,
+      "payoff_per_share": -0.0234,
+      "ci90": [
+       -0.0422,
+       -0.0011
+      ],
+      "total": -18.24
+     },
+     "D 13h on": {
+      "trades": 394,
+      "dates": 18,
+      "mean_price": 0.4181,
+      "mean_p": 0.5601,
+      "win_rate": 0.3579,
+      "payoff_per_share": -0.0603,
+      "ci90": [
+       -0.0866,
+       -0.0326
+      ],
+      "total": -23.75
+     }
+    }
+   },
+   "theta_0.10": {
+    "trades": 596,
+    "dates": 24,
+    "mean_price": 0.3899,
+    "mean_p": 0.5748,
+    "win_rate": 0.3423,
+    "payoff_per_share": -0.0476,
+    "ci90": [
+     -0.0853,
+     -0.0141
+    ],
+    "total": -28.39,
+    "by_side": {
+     "yes": {
+      "trades": 262,
+      "dates": 23,
+      "mean_price": 0.285,
+      "mean_p": 0.4618,
+      "win_rate": 0.2099,
+      "payoff_per_share": -0.0751,
+      "ci90": [
+       -0.1256,
+       -0.0292
+      ],
+      "total": -19.67
+     },
+     "no": {
+      "trades": 334,
+      "dates": 23,
+      "mean_price": 0.4722,
+      "mean_p": 0.6634,
+      "win_rate": 0.4461,
+      "payoff_per_share": -0.0261,
+      "ci90": [
+       -0.0643,
+       0.0151
+      ],
+      "total": -8.71
+     }
+    },
+    "by_when": {
+     "D-1": {
+      "trades": 29,
+      "dates": 9,
+      "mean_price": 0.5831,
+      "mean_p": 0.7044,
+      "win_rate": 0.5517,
+      "payoff_per_share": -0.0314,
+      "ci90": [
+       -0.1334,
+       0.0472
+      ],
+      "total": -0.91
+     },
+     "D before 13h": {
+      "trades": 272,
+      "dates": 23,
+      "mean_price": 0.4281,
+      "mean_p": 0.5899,
+      "win_rate": 0.4118,
+      "payoff_per_share": -0.0163,
+      "ci90": [
+       -0.0641,
+       0.0294
+      ],
+      "total": -4.43
+     },
+     "D 13h on": {
+      "trades": 295,
+      "dates": 17,
+      "mean_price": 0.3357,
+      "mean_p": 0.5481,
+      "win_rate": 0.2576,
+      "payoff_per_share": -0.0781,
+      "ci90": [
+       -0.1323,
+       -0.0355
+      ],
+      "total": -23.04
+     }
+    }
+   }
+  }
+ }
+}

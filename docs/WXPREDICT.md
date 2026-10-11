@@ -19,8 +19,8 @@ trades.
 | 1 | Clean, refresh, one training table where every row knows only what was known | this PR |
 | 2 | The market's price fetched fresh at each decision in the tick | 2.1 and 2.4 measured; the rest waits on wave 2's checkpoints |
 | 3 | The model: A weather, B buckets, C market fusion, D calibration | first cut 11 Oct (below) |
-| 4 | Walk-forward proof against the market on every listed city-day | first cut 11 Oct: 0.7% better than the market's prices, half of it the market's own calibration; the top bucket unchanged |
-| 5 | Nightly cycle, shadow, the board; Hassan decides serving | todo |
+| 4 | Walk-forward proof against the market on every listed city-day | first cut 11 Oct: 0.7% better than the market's prices in probability, the pick unchanged; test 2 at the real asks loses (-1.75 cents a share); build stopped |
+| 5 | Nightly cycle, shadow, the board; Hassan decides serving | not started: frozen 11 Oct after test 2 |
 
 ## Phase 1: the data
 
@@ -260,7 +260,8 @@ The table has no volume (Gaps, below). This asks whether the venue still serves 
 `tools/wxpredict/walkforward.py` (research only; it needs numpy, pandas, scipy
 and lightgbm, which `requirements.txt` does not carry). Built on the table of
 10 Oct's sources (670,686 rows, gzip sha256 `bd16da92...`); the result is
-`data/eval/wxpredict/walkforward_2026-10-11.json`.
+`data/eval/wxpredict/walkforward_2026-10-11.json`. LightGBM runs
+deterministic, so the same table and seed give the same numbers.
 
 - **Weather model:** LightGBM on every row before the test month, the day's
   maximum in C from what was known at the decision; a spread model fitted on
@@ -271,33 +272,59 @@ and lightgbm, which `requirements.txt` does not carry). Built on the table of
 - **Fusion:** p proportional to q^a w^b, q the market's normalised prices, w
   the weather model's, a and b per decision hour group, fitted on the 60 days
   before the month.
+- **No look-ahead at the cutoff** (Codex on #372): every fit leaves out the
+  day before its cutoff, since a D-1 decision is made while that day runs.
 - **Scored:** each month May-Oct 2026 on its venue decisions with every bucket
   priced, against the venue's winner: 216,055 decisions on 157 dates.
 
 | mean log-loss per decision | |
 |---|---|
 | the market's prices | 0.9486 |
-| the market's prices, tempered (q^a alone) | 0.9453 |
-| the weather model alone | 1.2403 |
-| fusion | 0.9418 |
+| the market's prices, tempered (q^a alone) | 0.9452 |
+| the weather model alone | 1.2343 |
+| fusion | 0.9414 |
 
-- **Fusion against the market:** -0.0068 (90% interval -0.0087 to -0.0047,
-  resampling whole dates). It is better in five of the six months; in May its
-  interval spans zero.
+- **Fusion against the market:** -0.0072 (90% interval -0.0091 to -0.0053,
+  resampling whole dates). Below zero in every month; in May the interval
+  spans zero.
 - **Half of it is the market's own calibration:** tempering the market's
-  prices alone gives -0.0033 (-0.0046 to -0.0018). What the weather adds
-  beyond that is about 0.0035.
+  prices alone gives -0.0034 (-0.0047 to -0.0019).
 - **The pick does not change:** the most likely bucket wins 60.86% of the time
-  by the market's prices and 60.87% by the fusion. The weather's fitted weight
-  is 0.05-0.38 against the market's 0.86-1.63.
-- **By hour:** the fusion is better in every hour group, by 0.0046-0.0083.
-- **The weather model alone** is 0.29 worse than the market (MAE 0.756 C on
-  the scored decisions).
+  by the market's prices and 60.84% by the fusion. The weather's fitted weight
+  is 0.04-0.37 against the market's 0.85-1.66.
+- **The weather model alone** is 0.29 worse than the market (MAE 0.757 C).
 
-**Read:** the public forecasts and the reports the model reads are in the
-price already. The fusion's improvement is real in probability and small: it
-moves a bucket's probability by points, not tens of points. Whether that pays
-after the spread is not measured here.
+## Test 2: the fusion at the real asks (11 Oct; Hassan: "yes run test 2")
+
+`tools/wxpredict/ask_backtest.py`, result
+`data/eval/wxpredict/ask_backtest_2026-10-11.json`. The rule was fixed before
+the run (the tool's docstring): at each order-book snapshot of a bucket, the
+newest scored decision of that city-day at most an hour before it; buy one
+share of YES at the best ask when the fusion's probability is at least 5
+points above it, or of NO at its ask when 1 - p is; one share per bucket, side
+and day, the first snapshot that qualifies; settled on the venue's winner; no
+fee. The books are the repository's (the archive's pruned and the mirror's
+kept snapshots), so the window is 22 Aug - 25 Sep: 59,628 snapshots matched on
+28 dates; 93 ladders whose lower edges differ from the scored event's were
+left out.
+
+| rule | trades | payoff per share | 90% interval | total |
+|---|---|---|---|---|
+| fusion, 5 points (the test) | 1,738 | -0.0175 | -0.0309 to -0.0042 | -30.48 |
+| fusion, 2 points | 3,529 | -0.0182 | -0.0270 to -0.0095 | -64.11 |
+| fusion, 10 points | 695 | -0.0514 | -0.0845 to -0.0224 | -35.71 |
+| market's own prices (control), 5 points | 1,397 | -0.0309 | -0.0481 to -0.0142 | -43.15 |
+| market tempered, 5 points | 1,372 | -0.0314 | -0.0449 to -0.0172 | -43.10 |
+
+At 5 points, YES -0.0321 (727 trades) and NO -0.0071 (1,011, interval -0.023
+to +0.009); before 13h on the day -0.0041 (interval -0.030 to +0.022), from
+13h -0.0493. No side, hour or threshold makes money; the control loses too,
+so a price that looks cheap against the hourly record is mostly a book that
+has already moved.
+
+**Read:** the fusion's small improvement in probability does not survive the
+ask. The market's favourite at the ask returns its price (above). Test 2
+fails; by the rule set with Hassan on 11 Oct, the forecasting build stops.
 
 **The market's favourite at the real ask** (`book_snapshots`, 22 Aug - 10 Oct,
 settled bands, the bucket with the highest mid at each hourly snapshot, bought

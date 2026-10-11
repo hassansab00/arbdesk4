@@ -103,15 +103,19 @@ def main(argv=None):
     for mid, lad in ladders.items():
         key = (mk.at[mid, "city_key"], mk.at[mid, "resolution_date"])
         ev = event_ladder.get(key)
-        if ev is None or len(ev) != len(lad) or any(
-                (a[0] != c[0]) or (a[1] != c[1]) for a, c in zip(ev, [(x[0], x[1]) for x in lad])):
+        # Matched on the lower edges: the bands table writes an upper edge
+        # inclusive on some older ladders (Lucknow, 1 Sep: 26-26) and
+        # exclusive on the rest, the training table always exclusive.
+        if ev is None or len(ev) != len(lad) or any(a[0] != c[0] for a, c in zip(ev, lad)):
             unmatched += 1
             continue
         for i, (_, _, bid) in enumerate(lad):
             band_bucket[bid] = i
     b = b[b.band_id.isin(band_bucket)].copy()
     b["bucket"] = b.band_id.map(band_bucket)
-    b["t"] = pd.to_datetime(b.observed_at, utc=True, format="ISO8601").astype("int64") // 10**9
+    # whole seconds since the epoch, whatever resolution pandas keeps the times in
+    b["t"] = ((pd.to_datetime(b.observed_at, utc=True, format="ISO8601") - pd.Timestamp("1970-01-01", tz="UTC"))
+              // pd.Timedelta(seconds=1)).astype("int64")
     b = b[b.tradeable.astype(str).str.lower() == "true"]
 
     # The newest scored decision at or before each snapshot, at most an hour old.
