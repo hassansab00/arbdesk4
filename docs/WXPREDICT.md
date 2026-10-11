@@ -492,6 +492,38 @@ blank on the refetch). Neither spelling is the record's, so the committed
 rows stay and only reports after the committed span were appended. The
 order-dependent choice is not fixed here.
 
+### What each question has seen, and what a date holds (11 Oct, evening)
+
+Two checks now stand before any result on new dates (the Codex action plan of
+11 Oct, section 2):
+
+- **The exposure ledger** (`data/eval/wxpredict/exposure_ledger.json`): every
+  result in `data/eval/wxpredict` is registered under the question it answers,
+  with the dates it scored, the rule's file and, for H1, H2 and H3, the commit
+  that fixed the rule before its holdout. `tests/test_wxpredict_exposure_ledger.py`
+  fails when a result is not registered, scores dates outside its entry, or
+  scores a date the ledger calls untouched. **Every result ends by 4 Oct; the
+  untouched dates start 5 Oct.** The sealed test of `WXPREDICT_BUILD.md`
+  (1 Sep - 4 Oct) was scored by these research models and is not untouched.
+- **The coverage report** (`tools/wxpredict/coverage.py`): per event date, the
+  events, winners, decisions, books, complete ladders, prints, hourly
+  forecasts and station days the scored events have, with the dates that miss
+  any flagged. It scores nothing.
+
+**It found a hole at once.** The mirror copies a market and its bands 9 days
+after the market's date (`scripts/mirror_to_repo.py`, `CLOSED_AFTER_DAYS`),
+because the market row changes until it settles. On 11 Oct it held markets
+through 2 Oct, so no book after that could be matched to its ladder: 3 and
+4 Oct had 1,504 decisions each and every winner, and no book and no print.
+**H3's "26 Sep - 4 Oct" holdout scored 26 Sep - 2 Oct** (its 7 dates), and a
+test "from 5 Oct" run on 12 Oct would have scored nothing. The nightly mirror
+now also writes the columns fixed at listing (ids, edges, tokens, minimum
+order and tick) of every market it does not hold yet to
+`data/training/market_definitions/`. The tools read them only for those
+markets (the mirror's row wins) and record when they did
+(`definitions_recent`); the backtests' own ladder check (each market's lower
+edges against the scored event's) still applies.
+
 ## Gaps (Phase 1)
 
 - **Market activity is a proxy.** The venue's hourly price history has no volume. "Activity" is the number of

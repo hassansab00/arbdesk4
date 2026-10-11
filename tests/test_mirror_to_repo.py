@@ -255,3 +255,43 @@ def test_kept_books_wait_past_the_edge_prune(world):
     man = {"schema": 1, "tables": {}}
     n, _ = run("book_snapshots", m.TABLES["book_snapshots"], man, today)
     assert n == 2, "16 days or older only: the edges' 14-day prune can still un-cite the rest"
+
+
+def test_recent_definitions_cover_the_markets_the_mirror_does_not_hold_yet(world, monkeypatch, tmp_path):
+    """On 11 Oct the mirror held markets through 2 Oct (CLOSED_AFTER_DAYS), so
+    no book after it could be matched to its ladder. The definitions of the
+    markets after the mirror's newest date are written beside it, and only
+    the columns fixed at listing."""
+    monkeypatch.setattr(m, "DEFINITIONS", str(tmp_path / "defs"))
+    world.tables["markets"] = [
+        {"market_id": f"m{i}", "city_key": "jeddah", "resolution_date": d, "unit": "C", "band_count": 2,
+         "condition_id": f"c{i}", "min_order_size": 5, "min_tick_size": 0.01, "first_seen_at": "x",
+         "closed": "false", "winning_band_id": None}
+        for i, d in enumerate(["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-05"])]
+    world.tables["bands"] = [
+        {"band_id": f"b{i}{k}", "market_id": f"m{i}", "band_index": k, "band_label": f"{30 + k}C",
+         "band_lo": 30 + k, "band_hi": 31 + k, "open_low": k == 0, "open_high": k == 1, "condition_id": f"c{i}{k}",
+         "token_yes": f"y{i}{k}", "token_no": f"n{i}{k}", "markets.resolution_date": d}
+        for i, d in enumerate(["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-05"]) for k in (0, 1)]
+    man = {"schema": 1, "tables": {"markets": {"through": "2026-10-02"}, "bands": {"through": "2026-10-02"}}}
+
+    got = m.recent_definitions(man, dt.date(2026, 10, 11), dry_run=False)
+
+    assert got == {"markets": 2, "bands": 4}, "only the markets dated after the mirror's newest, and their bands"
+    mk = file_rows(tmp_path / "defs" / "markets-recent.csv.gz")
+    assert [r["market_id"] for r in mk] == ["m2", "m3"]
+    assert list(mk[0]) == m.MARKET_DEFINITION, "no column that changes after listing (closed, the winner)"
+    bd = file_rows(tmp_path / "defs" / "bands-recent.csv.gz")
+    assert [r["band_id"] for r in bd] == ["b20", "b21", "b30", "b31"] and list(bd[0]) == m.BAND_DEFINITION
+    first = (tmp_path / "defs" / "bands-recent.csv.gz").read_bytes()
+    m.recent_definitions(man, dt.date(2026, 10, 11), dry_run=False)
+    assert (tmp_path / "defs" / "bands-recent.csv.gz").read_bytes() == first, "the same rows give the same bytes"
+
+
+def test_recent_definitions_refuse_a_count_that_disagrees(world, monkeypatch, tmp_path):
+    monkeypatch.setattr(m, "DEFINITIONS", str(tmp_path / "defs"))
+    world.tables["markets"] = [{"market_id": "m1", "resolution_date": "2026-10-05"}]
+    monkeypatch.setattr(m, "exact_count", lambda t, f: 2)
+    with pytest.raises(RuntimeError, match="definitions"):
+        m.recent_definitions({"schema": 1, "tables": {}}, dt.date(2026, 10, 11), dry_run=False)
+    assert not (tmp_path / "defs").exists()

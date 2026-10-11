@@ -82,6 +82,21 @@ def read_all(pattern, usecols=None):
     return pd.concat([pd.read_csv(f, usecols=usecols, low_memory=False) for f in files], ignore_index=True), files
 
 
+def read_definitions(table, usecols):
+    """`markets` or `bands` from the mirror, and for the markets it does not
+    hold yet (it copies a market 9 days after its date) the definitions the
+    nightly mirror writes to data/training/market_definitions. A market or
+    band the mirror holds is always the mirror's row."""
+    rows, files = read_all(f"data/mirror/{table}/*.csv.gz", usecols)
+    extra = sorted(glob.glob(os.path.join(ROOT, f"data/training/market_definitions/{table}-*.csv.gz")))
+    if extra:
+        key = "market_id" if table == "markets" else "band_id"
+        more = pd.concat([pd.read_csv(f, usecols=usecols, low_memory=False) for f in extra], ignore_index=True)
+        rows = pd.concat([rows, more[~more[key].isin(rows[key])]], ignore_index=True)
+        files = files + extra
+    return rows, files
+
+
 def edges(lo_s, hi_s):
     lo = [None if x == "" else float(x) for x in lo_s.split(";")]
     hi = [None if x == "" else float(x) for x in hi_s.split(";")]
@@ -115,9 +130,9 @@ def main(argv=None):
     kept, kept_files = read_all("data/mirror/book_snapshots/*.csv.gz", cols + ["mirror_resolution_date"])
     kept_through = kept.mirror_resolution_date.max()
     books = pd.concat([arch, kept[cols]], ignore_index=True)
-    bands, _ = read_all("data/mirror/bands/*.csv.gz",
+    bands, def_files = read_definitions("bands",
                         ["band_id", "market_id", "band_index", "band_lo", "band_hi", "open_low", "open_high"])
-    markets, _ = read_all("data/mirror/markets/*.csv.gz", ["market_id", "city_key", "resolution_date"])
+    markets, _ = read_definitions("markets", ["market_id", "city_key", "resolution_date"])
     bands = bands.drop_duplicates("band_id")
     markets = markets.drop_duplicates("market_id")
 
@@ -218,6 +233,7 @@ def main(argv=None):
         "model_col": args.model_col,
         "window": [str(d0), str(d1)],
         "books_after_mirror": "archive only" if str(d1) > str(kept_through) else None,
+        "definitions_recent": [os.path.basename(f) for f in def_files if "market_definitions" in f] or None,
         "books": {"archive_files": len(arch_files), "mirror_files": len(kept_files),
                   "snapshots_matched": int(len(m)), "markets_unmatched": unmatched,
                   "dates": int(m.date.nunique())},

@@ -122,10 +122,10 @@ def main(argv=None):
     kept, kept_files = ab.read_all("data/mirror/book_snapshots/*.csv.gz", cols + ["mirror_resolution_date"])
     kept_through = kept.mirror_resolution_date.max()
     books = pd.concat([arch, kept[cols]], ignore_index=True)
-    bands, _ = ab.read_all("data/mirror/bands/*.csv.gz",
+    bands, def_files = ab.read_definitions("bands",
                            ["band_id", "market_id", "band_index", "band_lo", "band_hi", "open_low", "open_high",
                             "token_yes", "token_no"])
-    markets, _ = ab.read_all("data/mirror/markets/*.csv.gz", ["market_id", "city_key", "resolution_date"])
+    markets, _ = ab.read_definitions("markets", ["market_id", "city_key", "resolution_date"])
     bands = bands.drop_duplicates("band_id")
     markets = markets.drop_duplicates("market_id")
     trades, trade_files, first_full = load_trades()
@@ -237,6 +237,7 @@ def main(argv=None):
         "made": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"), "decisions_sha256": dec_sha,
         "model_col": args.model_col, "window": [str(d0), str(d1)],
         "books_after_mirror": "archive only" if str(d1) > str(kept_through) else None,
+        "definitions_recent": [os.path.basename(f) for f in def_files if "market_definitions" in f] or None,
         "books": {"archive_files": len(arch_files), "mirror_files": len(kept_files), "snapshots_matched": int(len(m)),
                   "markets_unmatched": unmatched, "dates": int(m.date.nunique())},
         "trades": {"files": len(trade_files), "prints_in_window_buckets": int(len(tr))},
