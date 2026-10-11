@@ -20,7 +20,9 @@ mkt_complete), against the venue's winner: mean negative log-likelihood per
 decision, and the difference to the market with a 90% interval from
 resampling whole dates. Also the market's own prices tempered (q^a alone),
 which separates "the market is miscalibrated" from "the weather adds
-information". Nothing here prices or trades.
+information". Nothing here prices or trades. Research only: it needs numpy,
+pandas, scipy and lightgbm, which requirements.txt does not carry, and the
+table built by build_table.py (data/training/wxpredict/table/, not committed).
 
     python tools/wxpredict/walkforward.py [--out data/eval/wxpredict/walkforward_<date>.json]
 """

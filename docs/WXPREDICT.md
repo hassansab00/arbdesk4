@@ -18,8 +18,8 @@ trades.
 |---|---|---|
 | 1 | Clean, refresh, one training table where every row knows only what was known | this PR |
 | 2 | The market's price fetched fresh at each decision in the tick | 2.1 and 2.4 measured; the rest waits on wave 2's checkpoints |
-| 3 | The model: A weather, B buckets, C market fusion, D calibration | next |
-| 4 | Walk-forward proof against the market on every listed city-day | next, with phase 3 |
+| 3 | The model: A weather, B buckets, C market fusion, D calibration | first cut 11 Oct (below) |
+| 4 | Walk-forward proof against the market on every listed city-day | first cut 11 Oct: 0.7% better than the market's prices, half of it the market's own calibration; the top bucket unchanged |
 | 5 | Nightly cycle, shadow, the board; Hassan decides serving | todo |
 
 ## Phase 1: the data
@@ -254,6 +254,57 @@ The table has no volume (Gaps, below). This asks whether the venue still serves 
 - about 24.6 million trades over the record's 10,033 events (each month's sample mean times its events);
 - at the sample's 5.74 s an event, about 16 h of requests;
 - the raw trades are too large for the repository; the table would hold volume by bucket-hour.
+
+## Phases 3-4, first cut: against the market (11 Oct)
+
+`tools/wxpredict/walkforward.py` (research only; it needs numpy, pandas, scipy
+and lightgbm, which `requirements.txt` does not carry). Built on the table of
+10 Oct's sources (670,686 rows, gzip sha256 `bd16da92...`); the result is
+`data/eval/wxpredict/walkforward_2026-10-11.json`.
+
+- **Weather model:** LightGBM on every row before the test month, the day's
+  maximum in C from what was known at the decision; a spread model fitted on
+  the 60 days before the month from a model that had not seen them, each
+  calibration day's spread from a fold that had not seen it; each bucket's
+  mass of that distribution in the market's unit, above the maximum already
+  reported.
+- **Fusion:** p proportional to q^a w^b, q the market's normalised prices, w
+  the weather model's, a and b per decision hour group, fitted on the 60 days
+  before the month.
+- **Scored:** each month May-Oct 2026 on its venue decisions with every bucket
+  priced, against the venue's winner: 216,055 decisions on 157 dates.
+
+| mean log-loss per decision | |
+|---|---|
+| the market's prices | 0.9486 |
+| the market's prices, tempered (q^a alone) | 0.9453 |
+| the weather model alone | 1.2403 |
+| fusion | 0.9418 |
+
+- **Fusion against the market:** -0.0068 (90% interval -0.0087 to -0.0047,
+  resampling whole dates). It is better in five of the six months; in May its
+  interval spans zero.
+- **Half of it is the market's own calibration:** tempering the market's
+  prices alone gives -0.0033 (-0.0046 to -0.0018). What the weather adds
+  beyond that is about 0.0035.
+- **The pick does not change:** the most likely bucket wins 60.86% of the time
+  by the market's prices and 60.87% by the fusion. The weather's fitted weight
+  is 0.05-0.38 against the market's 0.86-1.63.
+- **By hour:** the fusion is better in every hour group, by 0.0046-0.0083.
+- **The weather model alone** is 0.29 worse than the market (MAE 0.756 C on
+  the scored decisions).
+
+**Read:** the public forecasts and the reports the model reads are in the
+price already. The fusion's improvement is real in probability and small: it
+moves a bucket's probability by points, not tens of points. Whether that pays
+after the spread is not measured here.
+
+**The market's favourite at the real ask** (`book_snapshots`, 22 Aug - 10 Oct,
+settled bands, the bucket with the highest mid at each hourly snapshot, bought
+at its best ask): the outcome minus the ask per share is +0.020 (774 buys,
+D-1), -0.001 (1,515, D before noon), +0.007 (438, noon-6pm), -0.055 (58, after
+6pm), each within two of its standard error (a naive one, which understates
+the clustering by date). The favourite wins as often as its ask says.
 
 ## Gaps (Phase 1)
 
