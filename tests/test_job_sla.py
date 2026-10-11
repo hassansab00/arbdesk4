@@ -16,6 +16,8 @@ import re
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "supabase" / "migrations"
 SLA_MIGRATION = MIGRATIONS / "20261009200000_the_watchdog_knows_when_each_job_last_worked.sql"
+# SLAs added after the seed, each with the switch it follows (R46, 11 Oct)
+SLA_ADDED = [MIGRATIONS / "20261011160000_the_trade_backfill_joins_the_watchdog.sql"]
 AD4_91 = (ROOT / "sql" / "ad4_91_database_jobs.sql").read_text()
 
 
@@ -26,13 +28,19 @@ def _module(name):
     return mod
 
 
-def _sla():
-    """{job: (cadence_minutes, cadence, scheduled_by)} from the seed."""
-    text = SLA_MIGRATION.read_text()
+def _sla_rows(path):
+    """[(job, cadence_minutes, cadence, scheduled_by, switch_key or None)] of a migration's job_sla insert."""
+    text = path.read_text()
     block = text[text.index("insert into public.job_sla"):]
     block = block[:block.index("on conflict")]
-    rows = re.findall(r"\('([A-Za-z0-9_.]+)', (\d+), '([^']*)', '([^']*)'\)", block)
-    out = {job: (int(c), cadence, by) for job, c, cadence, by in rows}
+    rows = re.findall(r"\('([A-Za-z0-9_.]+)', (\d+), '([^']*)', '([^']*)'(?:, '([A-Za-z0-9_.]+)')?\)", block)
+    return [(job, int(c), cadence, by, switch or None) for job, c, cadence, by, switch in rows]
+
+
+def _sla():
+    """{job: (cadence_minutes, cadence, scheduled_by)} from the seed and the SLAs added after it."""
+    rows = [r for path in [SLA_MIGRATION] + SLA_ADDED for r in _sla_rows(path)]
+    out = {job: (c, cadence, by) for job, c, cadence, by, _ in rows}
     assert len(out) == len(rows), "a job is listed twice"
     return out
 
@@ -40,6 +48,23 @@ def _sla():
 def _rule(cadence):
     """The table's generated column, in Python: one cadence plus max(30 min, cadence / 12)."""
     return cadence + max(30, cadence // 12)
+
+
+def test_the_trade_backfill_follows_the_trade_history_switch():
+    """R46 (11 Oct): the backfill obeys P0.4_trade_history's Workflows-page
+    switch (ingest_trades.switched_on), so its SLA row names that switch, and
+    v_job_last_ok reads a job's mode through switch_key when one is named."""
+    import ingest_trades
+    rows = {r[0]: r for r in _sla_rows(SLA_ADDED[0])}
+    assert rows == {"P0.4_trade_backfill": ("P0.4_trade_backfill", 360, "02/08/14/20 UTC",
+                                            "pipeline_intraday.yml, dispatched by the clock", "P0.4_trade_history")}
+    assert ingest_trades.BACKFILL_JOB == "P0.4_trade_backfill"
+    src = open(ingest_trades.__file__).read()
+    assert '.get("P0.4_trade_history")' in src, "the backfill's switch is P0.4_trade_history's"
+    text = SLA_ADDED[0].read_text()
+    assert "add column if not exists switch_key text" in text
+    assert text.count("coalesce(s.switch_key, s.job)") == 2, "the overdue test and the mode both read it"
+    assert _sla_rows(SLA_MIGRATION) and all(r[4] is None for r in _sla_rows(SLA_MIGRATION))
 
 
 def test_the_rule_is_the_plans_own_examples():
