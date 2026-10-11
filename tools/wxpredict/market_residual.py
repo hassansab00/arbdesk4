@@ -75,9 +75,11 @@ def logit(p):
 def weather_ladders(df, path, k):
     """walkforward.py's out-of-sample weather probabilities, bucket by bucket,
     for the decisions it scored (NaN elsewhere)."""
-    wd = pd.read_csv(path, usecols=["event_id", "decision_utc", "p_weather"])
+    wd = pd.read_csv(path, usecols=["event_id", "decision_utc", "p_weather"], dtype={"event_id": str})
     assert not wd.duplicated(["event_id", "decision_utc"]).any()
-    p = df[["event_id", "decision_utc"]].merge(wd, how="left", on=["event_id", "decision_utc"]).p_weather.values
+    keys = pd.DataFrame({"event_id": df.event_id.astype(str).values, "decision_utc": df.decision_utc.values})
+    p = keys.merge(wd, how="left", on=["event_id", "decision_utc"]).p_weather.values
+    assert len(p) == len(df)
     w = np.full((len(df), k), np.nan)
     for i, s in enumerate(p):
         if isinstance(s, str):

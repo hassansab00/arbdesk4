@@ -18,9 +18,9 @@ trades.
 |---|---|---|
 | 1 | Clean, refresh, one training table where every row knows only what was known | this PR |
 | 2 | The market's price fetched fresh at each decision in the tick | 2.1 and 2.4 measured; the rest waits on wave 2's checkpoints |
-| 3 | The model: A weather, B buckets, C market fusion, D calibration | first cut 11 Oct (below) |
-| 4 | Walk-forward proof against the market on every listed city-day | first cut 11 Oct: 0.7% better than the market's prices in probability, the pick unchanged; test 2 at the real asks loses (-1.75 cents a share); build stopped |
-| 5 | Nightly cycle, shadow, the board; Hassan decides serving | not started: frozen 11 Oct after test 2 |
+| 3 | The model: A weather, B buckets, C market fusion, D calibration | first cut 11 Oct; the remaining day (3A) and the market residual (3C) the same day (below) |
+| 4 | Walk-forward proof against the market on every listed city-day | the market residual beats the market's prices in every month and hour group (-0.0083 nats); no rule yet makes money at the real prices: test 2 (taker), test 3 (maker) and H1 lose (below) |
+| 5 | Nightly cycle, shadow, the board; Hassan decides serving | not started: waits on a rule that makes money on dates it was not found on |
 
 ## Phase 1: the data
 
@@ -324,7 +324,9 @@ has already moved.
 
 **Read:** the fusion's small improvement in probability does not survive the
 ask. The market's favourite at the ask returns its price (above). Test 2
-fails; by the rule set with Hassan on 11 Oct, the forecasting build stops.
+fails. The stop that followed was withdrawn the same day (Hassan, 11 Oct:
+"DO NOT FREEZE DO NOT ABANDON ... WE NEED TO BUILD A SOLID SYSTEM"): the test
+judged one model, not the idea; the next builds are below.
 
 **The three angles:**
 
@@ -348,6 +350,83 @@ at its best ask): the outcome minus the ask per share is +0.020 (774 buys,
 D-1), -0.001 (1,515, D before noon), +0.007 (438, noon-6pm), -0.055 (58, after
 6pm), each within two of its standard error (a naive one, which understates
 the clustering by date). The favourite wins as often as its ask says.
+
+## Phase 3, the next builds (11 Oct, after the stop was withdrawn)
+
+Every model below is scored the same way as the first cut: fitted only on
+decisions dated before the eve of each test month, scored on the month's
+venue decisions with every bucket priced, against the market's own
+normalised prices, 90% intervals from resampling whole dates. The money tests
+use the books and trade prints in the repository. Results in
+`data/eval/wxpredict/*_2026-10-11.json`; the decision dumps they read are
+rebuilt from the committed code and the table (sha256 `bd16da92...`).
+
+### In probability
+
+| model (tool) | what it is | minus the market, nats per decision | 90% interval |
+|---|---|---|---|
+| fusion, first cut (`walkforward.py`) | log pool of the market and the weather model | -0.0072 | -0.0091 to -0.0053 |
+| fusion with the remaining day (`walkforward.py --remaining`, 3A) | on the day from 09h, the weather side is a multiclass model of how many buckets above the running maximum the day ends (`remaining.py`) | -0.0081 | -0.0099 to -0.0062 |
+| market-aware, from scratch (`market_aware.py`) | the remaining-day model handed the market's prices as features, July-Oct | **+0.1172** (worse) | +0.1031 to +0.1323 |
+| **market residual** (`market_residual.py`, 3C) | starts every bucket at the market's own price (logit) and boosts corrections only; the number of trees chosen on the last 14 training days | **-0.0083** | -0.0098 to -0.0069 |
+| market residual with the weather (`market_residual.py --weather`, the 3A walk-forward's dump) | the same, each bucket also given the weather model's out-of-sample probability and its log ratio to the market's | **-0.0106** | -0.0126 to -0.0087 |
+
+- The remaining day improves the weather model alone from 1.2343 to 1.1236
+  (it is still 0.175 behind the market, 0.166 to 0.185).
+- Learning the whole distribution from scratch loses what the price already
+  knows (market-aware: worse in every month and hour group). Starting at the
+  price and learning only where it is wrong is the first model better than
+  the market in every hour group (D-1 -0.0124, D 00-08h -0.0101, D 09-12h
+  -0.0082, D 13-16h -0.0070, D 17-23h -0.0022) and in every whole month (June
+  -0.0114, July -0.0072, August -0.0075, September -0.0076; October's four
+  days -0.0050, interval -0.0108 to +0.0024). The most likely bucket changes
+  little: it wins 62.1% of the time by the market, 62.3% by the residual.
+- With the weather model's probability added the residual gains most on the
+  day from midnight to 16h (-0.0131, -0.0121, -0.0124) but less in the newest
+  months: September -0.0056 (against -0.0076 without it), October's four days
+  -0.0001 (-0.0071 to +0.0092).
+
+### At the real prices
+
+| test | rule (fixed before the run, in the tool) | window | market residual | the market's own prices (control) |
+|---|---|---|---|---|
+| test 2, taker (`ask_backtest.py --model-col p_model`) | buy one share at the best ask when p is 5 points above it | 22 Aug - 25 Sep, 1,651 trades | -0.0131 (-0.0256 to +0.0024) | -0.0309 (-0.0481 to -0.0142) |
+| test 2 after the taker fee | the venue charges takers 0.05 p (1 - p) a share on weather markets (`scripts/cost_model.py`); the rule left it out | the same | **-0.0225** (-0.0349 to -0.0070) | -0.0400 (-0.0572 to -0.0234) |
+| test 3, maker (`maker_backtest.py`) | rest one share at the best bid (offer) when p is 5 points better; filled only by a print through the price before the next snapshot | 11-25 Sep (trades carry their token from 11 Sep), 396 fills | **-0.0162** (-0.0363 to +0.0141) | -0.0372 (-0.0757 to -0.0093) |
+| the residual with the weather, tests 2 / 2 after fee / 3 | the same rules | the same windows: 1,855 trades, 415 fills | -0.0013 (-0.0127 to +0.0112) / **-0.0107** (-0.0221 to +0.0017) / **-0.0096** (-0.0349 to +0.0084) | |
+
+The residual's choices beat the market's own by about 2 cents a share in
+both tests, and still lose: as a taker the spread and the fee are larger than
+its edge; as a maker the orders that fill are the ones a better-informed
+trader took (3% of the resting orders filled).
+
+**Where the money goes.** Split by when the decision was made (after looking,
+so not a result):
+
+| | test 2 (taker, no fee) | test 3 (maker) |
+|---|---|---|
+| D-1 evening | +0.0328 (364 trades) | +0.0616 (32 fills) |
+| on the day before 13h | -0.0091 (902) | +0.0305 (210) |
+| on the day from 13h | -0.0659 (385) | -0.0961 (154) |
+
+**H1, tested on dates it was not found on.** Fixed in `maker_backtest.py`
+and committed (3793c19) before any date after 25 Sep was run: test 3's rule
+on D-1 and the day before 13h pays more than zero. On 26 Sep - 4 Oct (7
+dates; books from the archive, the mirror's kept books join in 16 days):
+**-0.0019 a share (-0.0253 to +0.0222), 835 fills. H1 fails.** In the same
+holdout, from 13h lost again (-0.0806, -0.1041 to -0.0570, 322 fills), and D-1
+made money again (+0.0481, -0.0118 to +0.0966, 104 fills), but so did the
+market's own prices at D-1 (+0.0386, 59 fills) and the tempered market
+(+0.0582, 65 fills): resting orders on the evening before may pay whatever
+the model. That is H2, for dates after 4 Oct; it is not claimed here.
+
+**Ladder arbitrage** (`ladder_arb.py`, 22 Aug - 2 Oct). One bucket wins, so
+YES on every bucket for less than 1, or NO on every live bucket for less than
+the number of live buckets less 1, is riskless. The live YES bids summed over
+1 on 524 of 24,606 ladder snapshots (353 markets), by a median 1 cent; the
+taker fee on the legs is a median 3.2 cents, leaving 5 snapshots and $0.04.
+All the YES asks summed under 1 on 39 snapshots, 3 after the fee. S2
+(`scripts/strategies/s2_combination_arb.py`) already scans both baskets.
 
 ## Gaps (Phase 1)
 

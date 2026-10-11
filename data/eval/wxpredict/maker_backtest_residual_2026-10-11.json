@@ -1,0 +1,1434 @@
+{
+ "made": "2026-10-11T10:37Z",
+ "decisions_sha256": "64938e43f1d29e1c354744605b998ea5d1cc1df25f93aced4327f4007bd2ac03",
+ "model_col": "p_model",
+ "window": [
+  "2026-09-11",
+  "2026-09-25"
+ ],
+ "books": {
+  "archive_files": 21,
+  "mirror_files": 15,
+  "snapshots_matched": 51892,
+  "markets_unmatched": 45,
+  "dates": 14
+ },
+ "trades": {
+  "files": 19,
+  "prints_in_window_buckets": 107733
+ },
+ "rule": "At each order-book snapshot of a bucket with a two-sided tradeable book, take the newest scored decision of the same city-day at or before the snapshot (at most an hour before, as test 2). If the probability p is at least THETA above the best bid, rest a bid for one YES share AT the best bid; if the best ask is at least THETA above p, rest an offer of one YES share at the best ask (the same as a bid for one NO at 1 - the ask). An order lives until the next snapshot of the bucket or an hour, whichever comes first. It is FILLED only if a trade in that bucket after the snapshot and before the order ends printed THROUGH its price: a taker selling YES (or buying NO) at a YES price below the bid, a taker buying YES (or selling NO) above the offer. A print through the price clears every order resting at it, so this does not depend on where the order would have stood in the queue. A print AT the price (the \"touch\") is shown beside it as the optimistic case, not the test. Prints come from data/archive/trades, NO-token prints turned into YES prices (1 - p). One share per bucket, side and day: the first fill. Settled on the venue's winner: a YES bought at b pays (won) - b, a YES sold at a pays a - (won). No fee (makers pay none); the maker's rebate (a quarter of the taker's fee, cost_model.maker_rebate) is shown beside, not counted. THETA 0.05 is the test; 0.02 and 0.10 beside it. The market's own normalised prices (q) and the tempered market are the controls. The window: the event dates whose books are in the repository and whose trades all carry their token (from the first archived trade file with every token known), through the newest date the mirror holds books for.",
+ "test_theta": 0.05,
+ "results": {
+  "model": {
+   "theta_0.02": {
+    "orders_placed": {
+     "bid yes": 14844,
+     "offer yes": 24789
+    },
+    "through": {
+     "fills": 676,
+     "dates": 11,
+     "mean_price": 0.28,
+     "payoff_per_share": -0.0106,
+     "ci90": [
+      -0.0244,
+      0.0039
+     ],
+     "total": -7.13,
+     "with_rebate": -0.0087,
+     "by_side": {
+      "bid yes": {
+       "fills": 329,
+       "dates": 11,
+       "mean_price": 0.2697,
+       "payoff_per_share": -0.0326,
+       "ci90": [
+        -0.067,
+        -0.0137
+       ],
+       "total": -10.72,
+       "with_rebate": -0.0307
+      },
+      "offer yes": {
+       "fills": 347,
+       "dates": 11,
+       "mean_price": 0.2899,
+       "payoff_per_share": 0.0103,
+       "ci90": [
+        -0.0086,
+        0.0457
+       ],
+       "total": 3.59,
+       "with_rebate": 0.0122
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 123,
+       "dates": 9,
+       "mean_price": 0.271,
+       "payoff_per_share": -0.0181,
+       "ci90": [
+        -0.0379,
+        0.1121
+       ],
+       "total": -2.23,
+       "with_rebate": -0.016
+      },
+      "D before 13h": {
+       "fills": 379,
+       "dates": 11,
+       "mean_price": 0.2564,
+       "payoff_per_share": 0.0157,
+       "ci90": [
+        -0.0109,
+        0.045
+       ],
+       "total": 5.94,
+       "with_rebate": 0.0176
+      },
+      "D 13h on": {
+       "fills": 174,
+       "dates": 11,
+       "mean_price": 0.338,
+       "payoff_per_share": -0.0623,
+       "ci90": [
+        -0.097,
+        -0.0278
+       ],
+       "total": -10.84,
+       "with_rebate": -0.0606
+      }
+     }
+    },
+    "touch": {
+     "fills": 742,
+     "dates": 11,
+     "mean_price": 0.2651,
+     "payoff_per_share": -0.0013,
+     "ci90": [
+      -0.0118,
+      0.0141
+     ],
+     "total": -0.93,
+     "with_rebate": 0.0006,
+     "by_side": {
+      "bid yes": {
+       "fills": 358,
+       "dates": 11,
+       "mean_price": 0.2537,
+       "payoff_per_share": -0.0246,
+       "ci90": [
+        -0.0565,
+        -0.0077
+       ],
+       "total": -8.81,
+       "with_rebate": -0.0228
+      },
+      "offer yes": {
+       "fills": 384,
+       "dates": 11,
+       "mean_price": 0.2757,
+       "payoff_per_share": 0.0205,
+       "ci90": [
+        0.0023,
+        0.0549
+       ],
+       "total": 7.88,
+       "with_rebate": 0.0223
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 180,
+       "dates": 10,
+       "mean_price": 0.2493,
+       "payoff_per_share": -0.0051,
+       "ci90": [
+        -0.0307,
+        0.1437
+       ],
+       "total": -0.91,
+       "with_rebate": -0.0031
+      },
+      "D before 13h": {
+       "fills": 397,
+       "dates": 11,
+       "mean_price": 0.2383,
+       "payoff_per_share": 0.0135,
+       "ci90": [
+        -0.0104,
+        0.0375
+       ],
+       "total": 5.37,
+       "with_rebate": 0.0153
+      },
+      "D 13h on": {
+       "fills": 165,
+       "dates": 11,
+       "mean_price": 0.3468,
+       "payoff_per_share": -0.0327,
+       "ci90": [
+        -0.0738,
+        0.0084
+       ],
+       "total": -5.39,
+       "with_rebate": -0.031
+      }
+     }
+    }
+   },
+   "theta_0.05": {
+    "orders_placed": {
+     "bid yes": 5352,
+     "offer yes": 8003
+    },
+    "through": {
+     "fills": 396,
+     "dates": 11,
+     "mean_price": 0.3424,
+     "payoff_per_share": -0.0162,
+     "ci90": [
+      -0.0363,
+      0.0141
+     ],
+     "total": -6.42,
+     "with_rebate": -0.0141,
+     "by_side": {
+      "bid yes": {
+       "fills": 195,
+       "dates": 11,
+       "mean_price": 0.2718,
+       "payoff_per_share": -0.0308,
+       "ci90": [
+        -0.0702,
+        -0.0067
+       ],
+       "total": -6.0,
+       "with_rebate": -0.0287
+      },
+      "offer yes": {
+       "fills": 201,
+       "dates": 11,
+       "mean_price": 0.4108,
+       "payoff_per_share": -0.0021,
+       "ci90": [
+        -0.0369,
+        0.064
+       ],
+       "total": -0.42,
+       "with_rebate": 0.0002
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 32,
+       "dates": 6,
+       "mean_price": 0.3447,
+       "payoff_per_share": 0.0616,
+       "ci90": [
+        0.0169,
+        0.3083
+       ],
+       "total": 1.97,
+       "with_rebate": 0.0641
+      },
+      "D before 13h": {
+       "fills": 210,
+       "dates": 11,
+       "mean_price": 0.3089,
+       "payoff_per_share": 0.0305,
+       "ci90": [
+        -0.0141,
+        0.1535
+       ],
+       "total": 6.4,
+       "with_rebate": 0.0327
+      },
+      "D 13h on": {
+       "fills": 154,
+       "dates": 11,
+       "mean_price": 0.3875,
+       "payoff_per_share": -0.0961,
+       "ci90": [
+        -0.1363,
+        -0.0621
+       ],
+       "total": -14.79,
+       "with_rebate": -0.0941
+      }
+     }
+    },
+    "touch": {
+     "fills": 426,
+     "dates": 11,
+     "mean_price": 0.3374,
+     "payoff_per_share": -0.0038,
+     "ci90": [
+      -0.0254,
+      0.0341
+     ],
+     "total": -1.62,
+     "with_rebate": -0.0016,
+     "by_side": {
+      "bid yes": {
+       "fills": 211,
+       "dates": 11,
+       "mean_price": 0.2733,
+       "payoff_per_share": -0.0221,
+       "ci90": [
+        -0.0562,
+        0.0024
+       ],
+       "total": -4.67,
+       "with_rebate": -0.0201
+      },
+      "offer yes": {
+       "fills": 215,
+       "dates": 11,
+       "mean_price": 0.4002,
+       "payoff_per_share": 0.0142,
+       "ci90": [
+        -0.0224,
+        0.0871
+       ],
+       "total": 3.05,
+       "with_rebate": 0.0165
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 42,
+       "dates": 6,
+       "mean_price": 0.3481,
+       "payoff_per_share": 0.0576,
+       "ci90": [
+        0.0193,
+        0.3271
+       ],
+       "total": 2.42,
+       "with_rebate": 0.0602
+      },
+      "D before 13h": {
+       "fills": 233,
+       "dates": 11,
+       "mean_price": 0.3018,
+       "payoff_per_share": 0.0321,
+       "ci90": [
+        -0.01,
+        0.1409
+       ],
+       "total": 7.49,
+       "with_rebate": 0.0344
+      },
+      "D 13h on": {
+       "fills": 151,
+       "dates": 11,
+       "mean_price": 0.3892,
+       "payoff_per_share": -0.0764,
+       "ci90": [
+        -0.1108,
+        -0.0423
+       ],
+       "total": -11.53,
+       "with_rebate": -0.0744
+      }
+     }
+    }
+   },
+   "theta_0.10": {
+    "orders_placed": {
+     "bid yes": 1533,
+     "offer yes": 1886
+    },
+    "through": {
+     "fills": 179,
+     "dates": 11,
+     "mean_price": 0.4019,
+     "payoff_per_share": -0.0355,
+     "ci90": [
+      -0.098,
+      0.0343
+     ],
+     "total": -6.35,
+     "with_rebate": -0.0334,
+     "by_side": {
+      "bid yes": {
+       "fills": 94,
+       "dates": 11,
+       "mean_price": 0.2409,
+       "payoff_per_share": -0.0494,
+       "ci90": [
+        -0.1304,
+        0.0006
+       ],
+       "total": -4.64,
+       "with_rebate": -0.0475
+      },
+      "offer yes": {
+       "fills": 85,
+       "dates": 11,
+       "mean_price": 0.5799,
+       "payoff_per_share": -0.0201,
+       "ci90": [
+        -0.0816,
+        0.1102
+       ],
+       "total": -1.71,
+       "with_rebate": -0.0177
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 6,
+       "dates": 1,
+       "mean_price": 0.4417,
+       "payoff_per_share": -0.1617,
+       "ci90": [
+        -0.1617,
+        -0.1617
+       ],
+       "total": -0.97,
+       "with_rebate": -0.1589
+      },
+      "D before 13h": {
+       "fills": 56,
+       "dates": 8,
+       "mean_price": 0.3282,
+       "payoff_per_share": 0.0214,
+       "ci90": [
+        -0.1053,
+        0.102
+       ],
+       "total": 1.2,
+       "with_rebate": 0.0237
+      },
+      "D 13h on": {
+       "fills": 117,
+       "dates": 11,
+       "mean_price": 0.4351,
+       "payoff_per_share": -0.0562,
+       "ci90": [
+        -0.1215,
+        0.0252
+       ],
+       "total": -6.58,
+       "with_rebate": -0.0542
+      }
+     }
+    },
+    "touch": {
+     "fills": 192,
+     "dates": 11,
+     "mean_price": 0.3956,
+     "payoff_per_share": -0.023,
+     "ci90": [
+      -0.0813,
+      0.0514
+     ],
+     "total": -4.41,
+     "with_rebate": -0.0209,
+     "by_side": {
+      "bid yes": {
+       "fills": 103,
+       "dates": 11,
+       "mean_price": 0.2445,
+       "payoff_per_share": -0.0309,
+       "ci90": [
+        -0.1061,
+        0.0238
+       ],
+       "total": -3.18,
+       "with_rebate": -0.029
+      },
+      "offer yes": {
+       "fills": 89,
+       "dates": 11,
+       "mean_price": 0.5705,
+       "payoff_per_share": -0.0138,
+       "ci90": [
+        -0.0751,
+        0.1215
+       ],
+       "total": -1.23,
+       "with_rebate": -0.0115
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 7,
+       "dates": 1,
+       "mean_price": 0.4057,
+       "payoff_per_share": -0.1657,
+       "ci90": [
+        -0.1657,
+        -0.1657
+       ],
+       "total": -1.16,
+       "with_rebate": -0.1631
+      },
+      "D before 13h": {
+       "fills": 65,
+       "dates": 9,
+       "mean_price": 0.322,
+       "payoff_per_share": 0.0041,
+       "ci90": [
+        -0.1221,
+        0.0656
+       ],
+       "total": 0.27,
+       "with_rebate": 0.0063
+      },
+      "D 13h on": {
+       "fills": 120,
+       "dates": 11,
+       "mean_price": 0.4349,
+       "payoff_per_share": -0.0293,
+       "ci90": [
+        -0.0947,
+        0.0548
+       ],
+       "total": -3.52,
+       "with_rebate": -0.0273
+      }
+     }
+    }
+   }
+  },
+  "market (control)": {
+   "theta_0.02": {
+    "orders_placed": {
+     "bid yes": 10313,
+     "offer yes": 24274
+    },
+    "through": {
+     "fills": 668,
+     "dates": 11,
+     "mean_price": 0.2711,
+     "payoff_per_share": -0.0186,
+     "ci90": [
+      -0.0385,
+      -0.0081
+     ],
+     "total": -12.41,
+     "with_rebate": -0.0167,
+     "by_side": {
+      "bid yes": {
+       "fills": 342,
+       "dates": 11,
+       "mean_price": 0.2274,
+       "payoff_per_share": -0.0432,
+       "ci90": [
+        -0.0873,
+        -0.0186
+       ],
+       "total": -14.76,
+       "with_rebate": -0.0415
+      },
+      "offer yes": {
+       "fills": 326,
+       "dates": 11,
+       "mean_price": 0.317,
+       "payoff_per_share": 0.0072,
+       "ci90": [
+        -0.0095,
+        0.0351
+       ],
+       "total": 2.35,
+       "with_rebate": 0.0094
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 99,
+       "dates": 9,
+       "mean_price": 0.2935,
+       "payoff_per_share": -0.0119,
+       "ci90": [
+        -0.0433,
+        0.179
+       ],
+       "total": -1.18,
+       "with_rebate": -0.0097
+      },
+      "D before 13h": {
+       "fills": 399,
+       "dates": 11,
+       "mean_price": 0.2565,
+       "payoff_per_share": 0.0012,
+       "ci90": [
+        -0.0218,
+        0.0182
+       ],
+       "total": 0.47,
+       "with_rebate": 0.0032
+      },
+      "D 13h on": {
+       "fills": 170,
+       "dates": 11,
+       "mean_price": 0.2924,
+       "payoff_per_share": -0.0688,
+       "ci90": [
+        -0.1173,
+        -0.0224
+       ],
+       "total": -11.7,
+       "with_rebate": -0.0672
+      }
+     }
+    },
+    "touch": {
+     "fills": 748,
+     "dates": 11,
+     "mean_price": 0.2591,
+     "payoff_per_share": -0.0066,
+     "ci90": [
+      -0.0222,
+      0.0032
+     ],
+     "total": -4.97,
+     "with_rebate": -0.0048,
+     "by_side": {
+      "bid yes": {
+       "fills": 386,
+       "dates": 11,
+       "mean_price": 0.2108,
+       "payoff_per_share": -0.0347,
+       "ci90": [
+        -0.0739,
+        -0.014
+       ],
+       "total": -13.38,
+       "with_rebate": -0.0331
+      },
+      "offer yes": {
+       "fills": 362,
+       "dates": 11,
+       "mean_price": 0.3105,
+       "payoff_per_share": 0.0233,
+       "ci90": [
+        0.0073,
+        0.051
+       ],
+       "total": 8.42,
+       "with_rebate": 0.0254
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 142,
+       "dates": 10,
+       "mean_price": 0.2671,
+       "payoff_per_share": 0.0186,
+       "ci90": [
+        -0.0061,
+        0.1569
+       ],
+       "total": 2.65,
+       "with_rebate": 0.0207
+      },
+      "D before 13h": {
+       "fills": 445,
+       "dates": 11,
+       "mean_price": 0.238,
+       "payoff_per_share": 0.0017,
+       "ci90": [
+        -0.0171,
+        0.0194
+       ],
+       "total": 0.76,
+       "with_rebate": 0.0036
+      },
+      "D 13h on": {
+       "fills": 161,
+       "dates": 11,
+       "mean_price": 0.3103,
+       "payoff_per_share": -0.052,
+       "ci90": [
+        -0.1007,
+        -0.0055
+       ],
+       "total": -8.38,
+       "with_rebate": -0.0504
+      }
+     }
+    }
+   },
+   "theta_0.05": {
+    "orders_placed": {
+     "bid yes": 3244,
+     "offer yes": 5705
+    },
+    "through": {
+     "fills": 359,
+     "dates": 11,
+     "mean_price": 0.3442,
+     "payoff_per_share": -0.0372,
+     "ci90": [
+      -0.0757,
+      -0.0093
+     ],
+     "total": -13.37,
+     "with_rebate": -0.0351,
+     "by_side": {
+      "bid yes": {
+       "fills": 178,
+       "dates": 11,
+       "mean_price": 0.2413,
+       "payoff_per_share": -0.0503,
+       "ci90": [
+        -0.1009,
+        -0.0246
+       ],
+       "total": -8.96,
+       "with_rebate": -0.0484
+      },
+      "offer yes": {
+       "fills": 181,
+       "dates": 11,
+       "mean_price": 0.4453,
+       "payoff_per_share": -0.0244,
+       "ci90": [
+        -0.0625,
+        0.0393
+       ],
+       "total": -4.41,
+       "with_rebate": -0.0219
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 15,
+       "dates": 2,
+       "mean_price": 0.4207,
+       "payoff_per_share": -0.0527,
+       "ci90": [
+        -0.1021,
+        0.64
+       ],
+       "total": -0.79,
+       "with_rebate": -0.05
+      },
+      "D before 13h": {
+       "fills": 181,
+       "dates": 10,
+       "mean_price": 0.3205,
+       "payoff_per_share": -0.0003,
+       "ci90": [
+        -0.0699,
+        0.0547
+       ],
+       "total": -0.06,
+       "with_rebate": 0.002
+      },
+      "D 13h on": {
+       "fills": 163,
+       "dates": 11,
+       "mean_price": 0.3633,
+       "payoff_per_share": -0.0768,
+       "ci90": [
+        -0.1082,
+        -0.042
+       ],
+       "total": -12.52,
+       "with_rebate": -0.0748
+      }
+     }
+    },
+    "touch": {
+     "fills": 393,
+     "dates": 11,
+     "mean_price": 0.336,
+     "payoff_per_share": -0.0228,
+     "ci90": [
+      -0.0581,
+      0.0095
+     ],
+     "total": -8.98,
+     "with_rebate": -0.0207,
+     "by_side": {
+      "bid yes": {
+       "fills": 194,
+       "dates": 11,
+       "mean_price": 0.2372,
+       "payoff_per_share": -0.0413,
+       "ci90": [
+        -0.0867,
+        -0.0175
+       ],
+       "total": -8.01,
+       "with_rebate": -0.0394
+      },
+      "offer yes": {
+       "fills": 199,
+       "dates": 11,
+       "mean_price": 0.4323,
+       "payoff_per_share": -0.0049,
+       "ci90": [
+        -0.0442,
+        0.0688
+       ],
+       "total": -0.97,
+       "with_rebate": -0.0024
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 23,
+       "dates": 2,
+       "mean_price": 0.4148,
+       "payoff_per_share": 0.0339,
+       "ci90": [
+        0.0064,
+        0.64
+       ],
+       "total": 0.78,
+       "with_rebate": 0.0365
+      },
+      "D before 13h": {
+       "fills": 208,
+       "dates": 11,
+       "mean_price": 0.307,
+       "payoff_per_share": -0.0034,
+       "ci90": [
+        -0.0546,
+        0.0692
+       ],
+       "total": -0.71,
+       "with_rebate": -0.0012
+      },
+      "D 13h on": {
+       "fills": 162,
+       "dates": 11,
+       "mean_price": 0.362,
+       "payoff_per_share": -0.0559,
+       "ci90": [
+        -0.0885,
+        -0.0205
+       ],
+       "total": -9.05,
+       "with_rebate": -0.0539
+      }
+     }
+    }
+   },
+   "theta_0.10": {
+    "orders_placed": {
+     "bid yes": 1172,
+     "offer yes": 1710
+    },
+    "through": {
+     "fills": 169,
+     "dates": 11,
+     "mean_price": 0.4207,
+     "payoff_per_share": -0.0774,
+     "ci90": [
+      -0.1286,
+      -0.0385
+     ],
+     "total": -13.08,
+     "with_rebate": -0.0753,
+     "by_side": {
+      "bid yes": {
+       "fills": 82,
+       "dates": 11,
+       "mean_price": 0.2328,
+       "payoff_per_share": -0.0865,
+       "ci90": [
+        -0.1733,
+        -0.0362
+       ],
+       "total": -7.09,
+       "with_rebate": -0.0847
+      },
+      "offer yes": {
+       "fills": 87,
+       "dates": 11,
+       "mean_price": 0.5979,
+       "payoff_per_share": -0.0688,
+       "ci90": [
+        -0.1132,
+        0.0094
+       ],
+       "total": -5.99,
+       "with_rebate": -0.0664
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 2,
+       "dates": 1,
+       "mean_price": 0.59,
+       "payoff_per_share": -0.41,
+       "ci90": [
+        -0.41,
+        -0.41
+       ],
+       "total": -0.82,
+       "with_rebate": -0.407
+      },
+      "D before 13h": {
+       "fills": 45,
+       "dates": 8,
+       "mean_price": 0.3342,
+       "payoff_per_share": -0.06,
+       "ci90": [
+        -0.1842,
+        0.0015
+       ],
+       "total": -2.7,
+       "with_rebate": -0.0579
+      },
+      "D 13h on": {
+       "fills": 122,
+       "dates": 11,
+       "mean_price": 0.4499,
+       "payoff_per_share": -0.0783,
+       "ci90": [
+        -0.1366,
+        -0.0334
+       ],
+       "total": -9.56,
+       "with_rebate": -0.0763
+      }
+     }
+    },
+    "touch": {
+     "fills": 186,
+     "dates": 11,
+     "mean_price": 0.4115,
+     "payoff_per_share": -0.0581,
+     "ci90": [
+      -0.1109,
+      -0.014
+     ],
+     "total": -10.8,
+     "with_rebate": -0.056,
+     "by_side": {
+      "bid yes": {
+       "fills": 93,
+       "dates": 11,
+       "mean_price": 0.2331,
+       "payoff_per_share": -0.061,
+       "ci90": [
+        -0.1465,
+        -0.0095
+       ],
+       "total": -5.67,
+       "with_rebate": -0.0592
+      },
+      "offer yes": {
+       "fills": 93,
+       "dates": 11,
+       "mean_price": 0.59,
+       "payoff_per_share": -0.0551,
+       "ci90": [
+        -0.1022,
+        0.028
+       ],
+       "total": -5.13,
+       "with_rebate": -0.0528
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 2,
+       "dates": 1,
+       "mean_price": 0.59,
+       "payoff_per_share": -0.41,
+       "ci90": [
+        -0.41,
+        -0.41
+       ],
+       "total": -0.82,
+       "with_rebate": -0.407
+      },
+      "D before 13h": {
+       "fills": 56,
+       "dates": 9,
+       "mean_price": 0.3281,
+       "payoff_per_share": -0.0527,
+       "ci90": [
+        -0.1918,
+        -0.0044
+       ],
+       "total": -2.95,
+       "with_rebate": -0.0506
+      },
+      "D 13h on": {
+       "fills": 128,
+       "dates": 11,
+       "mean_price": 0.4453,
+       "payoff_per_share": -0.0549,
+       "ci90": [
+        -0.1097,
+        -0.0028
+       ],
+       "total": -7.03,
+       "with_rebate": -0.0529
+      }
+     }
+    }
+   }
+  },
+  "market tempered": {
+   "theta_0.02": {
+    "orders_placed": {
+     "bid yes": 12107,
+     "offer yes": 25822
+    },
+    "through": {
+     "fills": 666,
+     "dates": 11,
+     "mean_price": 0.2879,
+     "payoff_per_share": -0.0199,
+     "ci90": [
+      -0.0427,
+      -0.0091
+     ],
+     "total": -13.25,
+     "with_rebate": -0.0179,
+     "by_side": {
+      "bid yes": {
+       "fills": 305,
+       "dates": 11,
+       "mean_price": 0.3082,
+       "payoff_per_share": -0.0492,
+       "ci90": [
+        -0.1031,
+        -0.0182
+       ],
+       "total": -14.99,
+       "with_rebate": -0.0471
+      },
+      "offer yes": {
+       "fills": 361,
+       "dates": 11,
+       "mean_price": 0.2707,
+       "payoff_per_share": 0.0048,
+       "ci90": [
+        -0.0131,
+        0.0312
+       ],
+       "total": 1.74,
+       "with_rebate": 0.0067
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 117,
+       "dates": 9,
+       "mean_price": 0.2795,
+       "payoff_per_share": -0.0255,
+       "ci90": [
+        -0.0763,
+        0.0497
+       ],
+       "total": -2.98,
+       "with_rebate": -0.0233
+      },
+      "D before 13h": {
+       "fills": 392,
+       "dates": 11,
+       "mean_price": 0.2729,
+       "payoff_per_share": -0.0042,
+       "ci90": [
+        -0.0405,
+        0.0125
+       ],
+       "total": -1.66,
+       "with_rebate": -0.0022
+      },
+      "D 13h on": {
+       "fills": 157,
+       "dates": 11,
+       "mean_price": 0.3317,
+       "payoff_per_share": -0.0548,
+       "ci90": [
+        -0.0976,
+        -0.0136
+       ],
+       "total": -8.61,
+       "with_rebate": -0.0532
+      }
+     }
+    },
+    "touch": {
+     "fills": 744,
+     "dates": 11,
+     "mean_price": 0.2729,
+     "payoff_per_share": -0.0094,
+     "ci90": [
+      -0.0244,
+      -0.0014
+     ],
+     "total": -7.0,
+     "with_rebate": -0.0075,
+     "by_side": {
+      "bid yes": {
+       "fills": 339,
+       "dates": 11,
+       "mean_price": 0.2921,
+       "payoff_per_share": -0.0413,
+       "ci90": [
+        -0.0861,
+        -0.0185
+       ],
+       "total": -14.01,
+       "with_rebate": -0.0394
+      },
+      "offer yes": {
+       "fills": 405,
+       "dates": 11,
+       "mean_price": 0.2568,
+       "payoff_per_share": 0.0173,
+       "ci90": [
+        0.0012,
+        0.0437
+       ],
+       "total": 7.01,
+       "with_rebate": 0.0191
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 167,
+       "dates": 10,
+       "mean_price": 0.267,
+       "payoff_per_share": 0.0171,
+       "ci90": [
+        -0.0245,
+        0.1243
+       ],
+       "total": 2.85,
+       "with_rebate": 0.0192
+      },
+      "D before 13h": {
+       "fills": 425,
+       "dates": 11,
+       "mean_price": 0.2504,
+       "payoff_per_share": -0.011,
+       "ci90": [
+        -0.0358,
+        0.0031
+       ],
+       "total": -4.68,
+       "with_rebate": -0.0091
+      },
+      "D 13h on": {
+       "fills": 152,
+       "dates": 11,
+       "mean_price": 0.342,
+       "payoff_per_share": -0.034,
+       "ci90": [
+        -0.0805,
+        0.0117
+       ],
+       "total": -5.17,
+       "with_rebate": -0.0324
+      }
+     }
+    }
+   },
+   "theta_0.05": {
+    "orders_placed": {
+     "bid yes": 3923,
+     "offer yes": 5068
+    },
+    "through": {
+     "fills": 346,
+     "dates": 11,
+     "mean_price": 0.3522,
+     "payoff_per_share": -0.0429,
+     "ci90": [
+      -0.0942,
+      -0.0189
+     ],
+     "total": -14.86,
+     "with_rebate": -0.0407,
+     "by_side": {
+      "bid yes": {
+       "fills": 165,
+       "dates": 11,
+       "mean_price": 0.3143,
+       "payoff_per_share": -0.0719,
+       "ci90": [
+        -0.1461,
+        -0.0357
+       ],
+       "total": -11.87,
+       "with_rebate": -0.0698
+      },
+      "offer yes": {
+       "fills": 181,
+       "dates": 11,
+       "mean_price": 0.3868,
+       "payoff_per_share": -0.0165,
+       "ci90": [
+        -0.0594,
+        0.0279
+       ],
+       "total": -2.99,
+       "with_rebate": -0.0143
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 16,
+       "dates": 2,
+       "mean_price": 0.34,
+       "payoff_per_share": -0.1012,
+       "ci90": [
+        -0.46,
+        -0.0773
+       ],
+       "total": -1.62,
+       "with_rebate": -0.0988
+      },
+      "D before 13h": {
+       "fills": 178,
+       "dates": 11,
+       "mean_price": 0.3236,
+       "payoff_per_share": -0.0144,
+       "ci90": [
+        -0.1011,
+        0.0116
+       ],
+       "total": -2.57,
+       "with_rebate": -0.0122
+      },
+      "D 13h on": {
+       "fills": 152,
+       "dates": 11,
+       "mean_price": 0.387,
+       "payoff_per_share": -0.0702,
+       "ci90": [
+        -0.1145,
+        -0.0291
+       ],
+       "total": -10.66,
+       "with_rebate": -0.0681
+      }
+     }
+    },
+    "touch": {
+     "fills": 381,
+     "dates": 11,
+     "mean_price": 0.3476,
+     "payoff_per_share": -0.0232,
+     "ci90": [
+      -0.0727,
+      0.0015
+     ],
+     "total": -8.84,
+     "with_rebate": -0.021,
+     "by_side": {
+      "bid yes": {
+       "fills": 181,
+       "dates": 11,
+       "mean_price": 0.3129,
+       "payoff_per_share": -0.0532,
+       "ci90": [
+        -0.1268,
+        -0.0189
+       ],
+       "total": -9.63,
+       "with_rebate": -0.0511
+      },
+      "offer yes": {
+       "fills": 200,
+       "dates": 11,
+       "mean_price": 0.379,
+       "payoff_per_share": 0.0039,
+       "ci90": [
+        -0.0381,
+        0.0534
+       ],
+       "total": 0.79,
+       "with_rebate": 0.0062
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 20,
+       "dates": 2,
+       "mean_price": 0.346,
+       "payoff_per_share": -0.025,
+       "ci90": [
+        -0.46,
+        -0.0021
+       ],
+       "total": -0.5,
+       "with_rebate": -0.0225
+      },
+      "D before 13h": {
+       "fills": 205,
+       "dates": 11,
+       "mean_price": 0.313,
+       "payoff_per_share": -0.0096,
+       "ci90": [
+        -0.0839,
+        0.0156
+       ],
+       "total": -1.97,
+       "with_rebate": -0.0074
+      },
+      "D 13h on": {
+       "fills": 156,
+       "dates": 11,
+       "mean_price": 0.3931,
+       "payoff_per_share": -0.0408,
+       "ci90": [
+        -0.0848,
+        -0.0001
+       ],
+       "total": -6.37,
+       "with_rebate": -0.0388
+      }
+     }
+    }
+   },
+   "theta_0.10": {
+    "orders_placed": {
+     "bid yes": 1364,
+     "offer yes": 1597
+    },
+    "through": {
+     "fills": 177,
+     "dates": 11,
+     "mean_price": 0.4064,
+     "payoff_per_share": -0.0773,
+     "ci90": [
+      -0.1465,
+      -0.0343
+     ],
+     "total": -13.69,
+     "with_rebate": -0.0751,
+     "by_side": {
+      "bid yes": {
+       "fills": 91,
+       "dates": 11,
+       "mean_price": 0.2782,
+       "payoff_per_share": -0.1023,
+       "ci90": [
+        -0.1784,
+        -0.0585
+       ],
+       "total": -9.31,
+       "with_rebate": -0.1003
+      },
+      "offer yes": {
+       "fills": 86,
+       "dates": 11,
+       "mean_price": 0.5421,
+       "payoff_per_share": -0.0509,
+       "ci90": [
+        -0.1368,
+        0.0276
+       ],
+       "total": -4.38,
+       "with_rebate": -0.0484
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 0
+      },
+      "D before 13h": {
+       "fills": 59,
+       "dates": 10,
+       "mean_price": 0.3542,
+       "payoff_per_share": -0.0471,
+       "ci90": [
+        -0.2147,
+        0.0115
+       ],
+       "total": -2.78,
+       "with_rebate": -0.0448
+      },
+      "D 13h on": {
+       "fills": 118,
+       "dates": 10,
+       "mean_price": 0.4325,
+       "payoff_per_share": -0.0924,
+       "ci90": [
+        -0.1638,
+        -0.0301
+       ],
+       "total": -10.91,
+       "with_rebate": -0.0902
+      }
+     }
+    },
+    "touch": {
+     "fills": 193,
+     "dates": 11,
+     "mean_price": 0.3923,
+     "payoff_per_share": -0.0655,
+     "ci90": [
+      -0.1267,
+      -0.0136
+     ],
+     "total": -12.65,
+     "with_rebate": -0.0633,
+     "by_side": {
+      "bid yes": {
+       "fills": 102,
+       "dates": 11,
+       "mean_price": 0.2763,
+       "payoff_per_share": -0.0802,
+       "ci90": [
+        -0.1536,
+        -0.0319
+       ],
+       "total": -8.18,
+       "with_rebate": -0.0782
+      },
+      "offer yes": {
+       "fills": 91,
+       "dates": 11,
+       "mean_price": 0.5224,
+       "payoff_per_share": -0.0491,
+       "ci90": [
+        -0.1245,
+        0.0517
+       ],
+       "total": -4.47,
+       "with_rebate": -0.0466
+      }
+     },
+     "by_when": {
+      "D-1": {
+       "fills": 0
+      },
+      "D before 13h": {
+       "fills": 71,
+       "dates": 10,
+       "mean_price": 0.338,
+       "payoff_per_share": -0.0682,
+       "ci90": [
+        -0.2125,
+        -0.006
+       ],
+       "total": -4.84,
+       "with_rebate": -0.0659
+      },
+      "D 13h on": {
+       "fills": 122,
+       "dates": 11,
+       "mean_price": 0.4239,
+       "payoff_per_share": -0.064,
+       "ci90": [
+        -0.1384,
+        0.0049
+       ],
+       "total": -7.81,
+       "with_rebate": -0.0618
+      }
+     }
+    }
+   }
+  }
+ }
+}
