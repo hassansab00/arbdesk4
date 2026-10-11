@@ -13,7 +13,10 @@ ladder at its ask and needs all their asks to sum to less than 1.
 A ladder snapshot: every band of an open market (no DEAD_WINNER yet) with a
 book in the same 10-minute window (the snapshots of one ladder are taken
 within milliseconds). Its size is the shares within 1 cent of the best bid on
-the thinnest live bucket (bid_usd_1c / best bid). Each gain is shown before
+the thinnest live bucket (bid_usd_1c / best bid). The NO books' own depth is
+kept on too few snapshots to size the basket bought at the NO asks (no_book:
+2,195 of 432,783 book rows, 11 Oct), so that basket gives counts and gains
+only, no shares and no dollars (Codex on #374). Each gain is shown before
 and after the venue's taker fee on every leg, 0.05 p (1 - p) a share at price
 p (scripts/cost_model.py). Research only.
 
@@ -82,19 +85,24 @@ def main(argv=None):
     s = s[(s.n == s.n_bands) & (s.winners == 0) & (s.n_live >= 2)].reset_index().merge(markets, on="market_id")
 
     def side(part, gain, shares, fee):
-        x = part.assign(gain=gain, shares=shares, fee=fee)
+        """shares None: the basket's depth is not known, so no size or dollars."""
+        x = part.assign(gain=gain, shares=np.nan if shares is None else shares, fee=fee)
         net = x[x.gain - x.fee > 0]
         x = x[x.gain > 0]
         x = x.assign(usd=x.gain * x.shares)
         first = x.sort_values("snap").drop_duplicates("market_id")
-        return {"ladder_snapshots": int(len(part)), "with_a_gain": int(len(x)), "markets": int(x.market_id.nunique()),
-                "dates": int(x.resolution_date.nunique()), "gain_per_set": described(x.gain),
-                "fee_per_set": described(x.fee),
-                "shares_on_thinnest_bucket": described(x.shares),
-                "usd_first_per_market": round(float(first.usd.sum()), 2),
-                "usd_every_snapshot": round(float(x.usd.sum()), 2),
-                "after_taker_fee": {"with_a_gain": int(len(net)), "gain_per_set": described(net.gain - net.fee),
-                                    "usd_every_snapshot": round(float(((net.gain - net.fee) * net.shares).sum()), 2)}}
+        out = {"ladder_snapshots": int(len(part)), "with_a_gain": int(len(x)), "markets": int(x.market_id.nunique()),
+               "dates": int(x.resolution_date.nunique()), "gain_per_set": described(x.gain),
+               "fee_per_set": described(x.fee),
+               "after_taker_fee": {"with_a_gain": int(len(net)), "gain_per_set": described(net.gain - net.fee)}}
+        if shares is None:
+            out["size"] = "not known: the NO books' depth is not kept"
+            return out
+        out["shares_on_thinnest_bucket"] = described(x.shares)
+        out["usd_first_per_market"] = round(float(first.usd.sum()), 2)
+        out["usd_every_snapshot"] = round(float(x.usd.sum()), 2)
+        out["after_taker_fee"]["usd_every_snapshot"] = round(float(((net.gain - net.fee) * net.shares).sum()), 2)
+        return out
 
     al = m.groupby(key).agg(sum_ask_all=("best_ask", lambda x: x.sum(min_count=1)),
                             ask_missing_all=("best_ask", lambda x: x.isna().sum()),
@@ -109,7 +117,7 @@ def main(argv=None):
         "window": [str(s.resolution_date.min()), str(s.resolution_date.max())],
         "open_ladder_snapshots": int(len(s)),
         "buy_every_no_at_1_minus_yes_bid": side(sell, sell.sum_bid - 1, sell.shares_bid, sell.fee_no_bid),
-        "buy_every_no_at_its_ask": side(no, (no.n_live - 1) - no.sum_no_ask, no.shares_bid, no.fee_no_ask),
+        "buy_every_no_at_its_ask": side(no, (no.n_live - 1) - no.sum_no_ask, None, no.fee_no_ask),
         "buy_every_yes_at_its_ask_every_bucket": side(buy, 1 - buy.sum_ask_all, buy.shares_ask_all, buy.fee_yes_ask),
         "method": __doc__.strip().splitlines()[0],
     }

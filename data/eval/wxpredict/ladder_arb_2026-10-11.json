@@ -1,5 +1,5 @@
 {
- "made": "2026-10-11T10:34Z",
+ "made": "2026-10-11T11:23Z",
  "books": {
   "archive_files": 21,
   "mirror_files": 15,
@@ -35,18 +35,6 @@
    "75%": 0.0346,
    "max": 0.0409
   },
-  "shares_on_thinnest_bucket": {
-   "count": 524.0,
-   "mean": 47.3739,
-   "std": 56.5185,
-   "min": 0.0,
-   "25%": 10.0,
-   "50%": 26.7874,
-   "75%": 62.8749,
-   "max": 384.103
-  },
-  "usd_first_per_market": 142.85,
-  "usd_every_snapshot": 215.59,
   "after_taker_fee": {
    "with_a_gain": 5,
    "gain_per_set": {
@@ -60,7 +48,19 @@
     "max": 0.0239
    },
    "usd_every_snapshot": 0.04
-  }
+  },
+  "shares_on_thinnest_bucket": {
+   "count": 524.0,
+   "mean": 47.3739,
+   "std": 56.5185,
+   "min": 0.0,
+   "25%": 10.0,
+   "50%": 26.7874,
+   "75%": 62.8749,
+   "max": 384.103
+  },
+  "usd_first_per_market": 142.85,
+  "usd_every_snapshot": 215.59
  },
  "buy_every_no_at_its_ask": {
   "ladder_snapshots": 18470,
@@ -87,18 +87,6 @@
    "75%": 0.0346,
    "max": 0.0404
   },
-  "shares_on_thinnest_bucket": {
-   "count": 394.0,
-   "mean": 45.3979,
-   "std": 54.7671,
-   "min": 0.01,
-   "25%": 9.0275,
-   "50%": 25.4034,
-   "75%": 61.301,
-   "max": 337.4485
-  },
-  "usd_first_per_market": 96.44,
-  "usd_every_snapshot": 152.86,
   "after_taker_fee": {
    "with_a_gain": 3,
    "gain_per_set": {
@@ -110,9 +98,9 @@
     "50%": 0.0031,
     "75%": 0.0059,
     "max": 0.0087
-   },
-   "usd_every_snapshot": 0.04
-  }
+   }
+  },
+  "size": "not known: the NO books' depth is not kept"
  },
  "buy_every_yes_at_its_ask_every_bucket": {
   "ladder_snapshots": 26518,
@@ -139,18 +127,6 @@
    "75%": 0.0352,
    "max": 0.0418
   },
-  "shares_on_thinnest_bucket": {
-   "count": 39.0,
-   "mean": 20.3428,
-   "std": 25.5385,
-   "min": 0.25,
-   "25%": 5.395,
-   "50%": 10.0,
-   "75%": 21.7854,
-   "max": 107.5
-  },
-  "usd_first_per_market": 8.69,
-  "usd_every_snapshot": 8.79,
   "after_taker_fee": {
    "with_a_gain": 3,
    "gain_per_set": {
@@ -164,7 +140,19 @@
     "max": 0.065
    },
    "usd_every_snapshot": 2.59
-  }
+  },
+  "shares_on_thinnest_bucket": {
+   "count": 39.0,
+   "mean": 20.3428,
+   "std": 25.5385,
+   "min": 0.25,
+   "25%": 5.395,
+   "50%": 10.0,
+   "75%": 21.7854,
+   "max": 107.5
+  },
+  "usd_first_per_market": 8.69,
+  "usd_every_snapshot": 8.79
  },
  "method": "Is there arbitrage across a ladder? Measured on the repository's books."
 }
