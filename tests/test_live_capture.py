@@ -106,12 +106,27 @@ def test_the_books_are_asked_in_requests_the_venue_takes(monkeypatch):
         sent.append(len(toks))
         if len(sent) == 2:
             return R(None, fail=True)
-        return R([{"asset_id": t, "bids": [{"price": "0.1", "size": "1"}], "asks": []} for t in reversed(toks)])
+        return R([{"asset_id": t, "bids": [{"price": "0.1", "size": "1"}], "asks": []} for t in reversed(toks)
+                  if t != "tok0001"])                     # one bucket answered without a book
     monkeypatch.setattr(lc, "_post", post)
-    tops, d = lc.fetch_books(band_of, lambda: 60)
+    payload, d = lc.fetch_books(band_of, lambda: 60)
     assert max(sent) <= lc.BOOKS_PER_REQUEST and sum(sent) == len(band_of) and len(sent) == 3
-    assert d["books"] == len(band_of) - lc.BOOKS_PER_REQUEST and len(d["errors"]) == 1
-    assert tops["band0"][0] == 0.1, "matched by asset_id, not by position"
+    assert d["books"] == len(band_of) - lc.BOOKS_PER_REQUEST - 1 and len(d["errors"]) == 1
+    assert payload["tops"]["band0"][0] == 0.1, "matched by asset_id, not by position"
+    # THE ROW SAYS WHAT IT LACKS (Codex on #381): every open bucket is in exactly
+    # one of tops, failed and no_book, and a failed request makes it incomplete
+    assert payload["complete"] is False and payload["buckets"] == len(band_of)
+    assert len(payload["failed"]) == lc.BOOKS_PER_REQUEST and payload["no_book"] == ["band1"]
+    parts = [set(payload["tops"]), set(payload["failed"]), set(payload["no_book"])]
+    assert set().union(*parts) == set(band_of.values()) and sum(len(p) for p in parts) == len(band_of)
+
+
+def test_buckets_never_asked_for_lack_of_time_are_named(monkeypatch):
+    band_of = {f"tok{i:04d}": f"band{i}" for i in range(lc.BOOKS_PER_REQUEST + 5)}
+    monkeypatch.setattr(lc, "_post", lambda *a, **k: (_ for _ in ()).throw(AssertionError("asked")))
+    payload, d = lc.fetch_books(band_of, lambda: lc.RESERVE_S - 1)
+    assert payload["complete"] is False and len(payload["failed"]) == len(band_of) and payload["tops"] == {}
+    assert d["asked"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -195,8 +210,9 @@ def desk(monkeypatch, tmp_path):
     calls = {"put": [], "log": []}
     monkeypatch.setattr(lc, "mode", lambda: "auto")
     monkeypatch.setattr(lc, "open_bands", lambda now: {"t1": "b1"})
-    monkeypatch.setattr(lc, "fetch_books", lambda band_of, left: ({"b1": [0.4] * 10},
-                                                                   {"buckets": 1, "asked": 1, "books": 1, "errors": []}))
+    monkeypatch.setattr(lc, "fetch_books", lambda band_of, left: (
+        {"buckets": 1, "complete": True, "failed": [], "no_book": [], "tops": {"b1": [0.4] * 10}},
+        {"buckets": 1, "asked": 1, "books": 1, "failed": 0, "no_book": 0, "errors": []}))
     monkeypatch.setattr(lc, "get_cities", lambda: [{"city_key": "jeddah", "latitude": 21.7, "longitude": 39.2}])
     monkeypatch.setattr(lc, "fetch_hourly", lambda cities, now, left: (
         [{"key": "jeddah|2026-10-12T09:00", "payload": [31.0]}], {"cities": 1, "answered": 1, "values": 1, "errors": []}))
@@ -216,6 +232,8 @@ def test_a_run_keeps_all_three_and_writes_one_row(desk):
     assert kinds == ["books", "hourly", "report"] and all(fn == "live_capture_put" for fn, _ in desk["put"])
     report = desk["put"][2][1]
     assert report["p_captured_at"] == "2026-10-11T21:36:02+00:00", "a report's time is when the tick received it"
+    (books,) = desk["put"][0][1]["p_rows"]
+    assert books["key"] == "all" and books["payload"]["complete"] is True and "b1" in books["payload"]["tops"]
     (job, st, rows, d), = desk["log"]
     assert (job, st, rows) == (lc.JOB, "ok", 3) and d["reports"]["stations"] == 1
 
@@ -227,6 +245,16 @@ def test_one_part_failing_stops_nothing(desk, monkeypatch):
     status, detail = lc.run(now=dt.datetime(2026, 10, 11, 21, 36, tzinfo=UTC), iem_path=desk["iem"])
     assert status == "partial" and "Open-Meteo hung" in detail["hourly"]["error"]
     assert [p["p_kind"] for _, p in desk["put"]] == ["books", "report"]
+
+
+def test_an_incomplete_snapshot_is_kept_and_marked(desk, monkeypatch):
+    monkeypatch.setattr(lc, "fetch_books", lambda band_of, left: (
+        {"buckets": 2, "complete": False, "failed": ["b2"], "no_book": [], "tops": {"b1": [0.4] * 10}},
+        {"buckets": 2, "asked": 2, "books": 1, "failed": 1, "no_book": 0, "errors": ["tokens 1-2: HTTPError"]}))
+    status, detail = lc.run(now=dt.datetime(2026, 10, 11, 21, 36, tzinfo=UTC), iem_path=desk["iem"])
+    assert status == "partial" and detail["books"]["failed"] == 1
+    (books,) = desk["put"][0][1]["p_rows"]
+    assert books["payload"]["complete"] is False and books["payload"]["failed"] == ["b2"]
 
 
 def test_no_answer_from_the_tick_is_said(desk, monkeypatch, tmp_path):

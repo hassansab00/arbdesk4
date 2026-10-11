@@ -649,7 +649,11 @@ arrived:
   answered in 2.38 s (two requests: 869 tokens in one are refused, "Payload
   exceeds the limit"; 500 answered); 89,569 bytes of JSON. **The minimum
   order is 5 shares on all 847** (the capacity audit had to assume it); 428
-  had no bid and 14 no ask.
+  had no bid and 14 no ask. Each row names what it lacks: `failed` (a
+  request that failed or was never sent) and `no_book` (answered without a
+  book, 22 of 869 on 11 Oct); every open bucket is in exactly one of `tops`,
+  `failed` and `no_book`, and `complete` is false whenever `failed` is not
+  empty (Codex on #381).
 
 A report or hourly value is stored once per change, with the first time it
 was seen; one that changes back is stored again, so the newest row is always

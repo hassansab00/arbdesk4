@@ -11,7 +11,8 @@ checkpoints, and keeps every input as it arrives, with the time it arrived, in
 public.live_capture (supabase/migrations/20261011210000_the_live_record.sql):
 
   books   every open bucket's YES book (the buckets the 2-hourly snapshot
-          reads: an open market resolving from 8 h ago on). POST /books takes
+          reads: an open market resolving from 8 h ago on), with the buckets
+          it lacks named (fetch_books: failed, no_book). POST /books takes
           at most BOOKS_PER_REQUEST tokens: 869 in one request were refused
           ("Payload exceeds the limit"), 500 answered in 0.81 s with 1.2 MB
           (11 Oct). Per bucket: best bid, best ask, the size at each, the USD
@@ -122,28 +123,45 @@ def open_bands(now):
 
 
 def fetch_books(band_of, left):
-    """({band_id: top}, detail). One request per BOOKS_PER_REQUEST tokens; a
-    request that fails is recorded and the others are kept."""
+    """(payload, detail). One request per BOOKS_PER_REQUEST tokens; a request
+    that fails is recorded and the others are kept.
+
+    THE ROW SAYS WHAT IT IS MISSING (Codex on #381). A snapshot with buckets
+    absent would read as the whole market, so the payload names them:
+    `failed` the buckets whose request failed or was never sent, `no_book` the
+    buckets asked whose answer carried no book (22 of 869 on 11 Oct). Every
+    open bucket is in exactly one of `tops`, `failed` and `no_book`; the
+    snapshot is complete when `failed` is empty."""
     tokens = sorted(band_of)
-    tops, errors, asked = {}, [], 0
+    tops, failed, no_book, errors, asked = {}, [], [], [], 0
     for i in range(0, len(tokens), BOOKS_PER_REQUEST):
-        if left() < RESERVE_S:
-            errors.append(f"tokens {i}-{len(tokens)}: not asked, out of time")
-            break
         chunk = tokens[i:i + BOOKS_PER_REQUEST]
+        if left() < RESERVE_S:
+            rest = tokens[i:]
+            errors.append(f"tokens {i}-{len(tokens)}: not asked, out of time")
+            failed += [band_of[t] for t in rest]
+            break
         asked += len(chunk)
         try:
             r = _post(CLOB_BOOKS, headers={"content-type": "application/json"},
                       data=json.dumps([{"token_id": t} for t in chunk]),
                       timeout=min(REQUEST_TIMEOUT_S, max(1.0, left() - RESERVE_S)))
             r.raise_for_status()
+            got = {}
             for book in r.json() or []:
                 band = band_of.get(str(book.get("asset_id")))
                 if band:
-                    tops[band] = book_top(book)
+                    got[band] = book_top(book)
         except Exception as e:
             errors.append(f"tokens {i}-{i + len(chunk)}: {type(e).__name__}: {str(e)[:120]}")
-    return tops, {"buckets": len(tokens), "asked": asked, "books": len(tops), "errors": errors}
+            failed += [band_of[t] for t in chunk]
+            continue
+        tops.update(got)
+        no_book += [band_of[t] for t in chunk if band_of[t] not in got]
+    payload = {"buckets": len(tokens), "complete": not failed, "failed": sorted(failed),
+               "no_book": sorted(no_book), "tops": tops}
+    return payload, {"buckets": len(tokens), "asked": asked, "books": len(tops), "failed": len(failed),
+                     "no_book": len(no_book), "errors": errors}
 
 
 # ---------------------------------------------------------------------------
@@ -292,12 +310,13 @@ def run(now=None, dry_run=False, iem_path=None):
     try:
         t0 = time.monotonic()
         band_of = open_bands(now)
-        tops, d = fetch_books(band_of, left)
+        payload, d = fetch_books(band_of, left)
         captured = dt.datetime.now(dt.timezone.utc)
-        d["new"] = put("books", captured, [{"key": "all", "payload": tops}] if tops else [], dry_run, left)[1]
+        d["new"] = put("books", captured, [{"key": "all", "payload": payload}] if payload["tops"] else [],
+                       dry_run, left)[1]
         d["seconds"] = round(time.monotonic() - t0, 1)
         detail["books"] = d
-        parts_ok.append(bool(tops) and not d["errors"])
+        parts_ok.append(bool(payload["tops"]) and payload["complete"] and not d["errors"])
         new_total += d["new"]
     except Exception as e:
         detail["books"] = {"error": f"{type(e).__name__}: {str(e)[:160]}"}

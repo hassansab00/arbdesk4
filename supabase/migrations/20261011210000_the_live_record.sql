@@ -22,9 +22,13 @@
 --                  answers with the current forecast (Jeddah 13 Oct: 24 of 24
 --                  hours equal to it), so what was served when is the record.
 --   kind 'books'   every open bucket's YES book at the tick, one row a tick,
---                  key 'all': {band_id: [best bid, best ask, bid size, ask
---                  size, bid USD within 5c, ask USD within 5c, last trade,
---                  book time (s), min order size, tick size]}.
+--                  key 'all': {"buckets": n, "complete": bool, "failed":
+--                  [band ids whose request failed], "no_book": [band ids
+--                  answered without a book], "tops": {band_id: [best bid,
+--                  best ask, bid size, ask size, bid USD within 5c, ask USD
+--                  within 5c, last trade, book time (s), min order size, tick
+--                  size]}}. Every open bucket is in exactly one of tops,
+--                  failed and no_book (Codex on #381).
 --
 -- captured_at is when the answer reached us. A 'report' or 'hourly' row is
 -- kept only when it differs from the newest row of its key, so each value is
