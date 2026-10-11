@@ -38,7 +38,21 @@ The rule, fixed before it was run:
 
 Mean payoff per share and a 90% interval from resampling whole dates.
 
-    python tools/wxpredict/maker_backtest.py DECISIONS.csv.gz [--model-col p_model] [--out data/eval/wxpredict/maker_backtest_<date>.json]
+HYPOTHESIS H1, fixed 11 Oct after test 3 and before any date after 25 Sep
+was looked at: on 11-25 Sep (test 3) and 22 Aug - 25 Sep (test 2), every
+loss of the market-residual model (market_residual.py) came from decisions
+on the day from 13h local, when the reports move the book faster than an
+hourly decision; D-1 and the day before 13h made money in both tests (found
+after looking, so not claimed). H1: the rule above at THETA 0.05, through
+fills, on decisions at D-1 or on the day before 13h local ("D-1 or D before
+13h" in by_when), pays more than zero a share. Its test is the dates after
+the ones it was found on: --from 2026-09-26, through the newest date with
+decisions, books and trades in the repository. Books after the mirror's
+newest date are the archive's alone (the kept books join when the mirror
+takes them, 16 days on, and the test is run again then).
+
+    python tools/wxpredict/maker_backtest.py DECISIONS.csv.gz [--model-col p_model] [--from D] [--to D]
+                                             [--out data/eval/wxpredict/maker_backtest_<date>.json]
 """
 import argparse
 import datetime as dt
@@ -80,6 +94,8 @@ def main(argv=None):
     ap.add_argument("decisions")
     ap.add_argument("--model-col", default="p_model")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--from", dest="date_from", default=None, help="first event date (default: the first with tokens)")
+    ap.add_argument("--to", dest="date_to", default=None, help="last event date (default: the mirror's newest)")
     args = ap.parse_args(argv)
 
     dec = pd.read_csv(args.decisions, low_memory=False)
@@ -98,8 +114,10 @@ def main(argv=None):
     trades, trade_files, first_full = load_trades()
 
     b = books.merge(bands[["band_id", "market_id"]], on="band_id").merge(markets, on="market_id")
-    b = b[(b.resolution_date >= first_full) & (b.resolution_date <= kept_through)]
-    dec = dec[(dec.date >= first_full) & (dec.date <= kept_through)]
+    d0 = max(first_full, args.date_from) if args.date_from else first_full
+    d1 = args.date_to or kept_through
+    b = b[(b.resolution_date >= d0) & (b.resolution_date <= d1)]
+    dec = dec[(dec.date >= d0) & (dec.date <= d1)]
 
     # each market's ladder must be the scored event's, bucket for bucket (lower edges; ask_backtest.py)
     event_ladder = {(r.city_key, r.date): ab.edges(r.bands_lo, r.bands_hi)
@@ -199,7 +217,8 @@ def main(argv=None):
 
     result = {
         "made": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"), "decisions_sha256": dec_sha,
-        "model_col": args.model_col, "window": [str(first_full), str(kept_through)],
+        "model_col": args.model_col, "window": [str(d0), str(d1)],
+        "books_after_mirror": "archive only" if str(d1) > str(kept_through) else None,
         "books": {"archive_files": len(arch_files), "mirror_files": len(kept_files), "snapshots_matched": int(len(m)),
                   "markets_unmatched": unmatched, "dates": int(m.date.nunique())},
         "trades": {"files": len(trade_files), "prints_in_window_buckets": int(len(tr))},
@@ -218,7 +237,8 @@ def main(argv=None):
                 r[fill]["by_side"] = {s: summary(f[f.side == s]) for s in ("bid yes", "offer yes")}
                 r[fill]["by_when"] = {w: summary(f[sel]) for w, sel in (
                     ("D-1", f.day_offset < 0), ("D before 13h", (f.day_offset == 0) & (f.hour < 13)),
-                    ("D 13h on", (f.day_offset == 0) & (f.hour >= 13)))}
+                    ("D 13h on", (f.day_offset == 0) & (f.hour >= 13)),
+                    ("D-1 or D before 13h", (f.day_offset < 0) | (f.hour < 13)))}
             result["results"][name][f"theta_{theta:.2f}"] = r
     text = json.dumps(result, indent=1)
     print(text)
