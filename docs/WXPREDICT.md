@@ -524,6 +524,57 @@ markets (the mirror's row wins) and record when they did
 (`definitions_recent`); the backtests' own ladder check (each market's lower
 edges against the scored event's) still applies.
 
+### At size: the execution and capacity audit (11 Oct, evening)
+
+The one-share scores say whether a rule's average share pays. `tools/wxpredict/capacity.py`
+asks how many dollars the same signals could have used, after costs, beside
+them (never in place of them). Its rule was fixed before it touched any date
+from 5 Oct and is in its docstring; the sizing and cash rules are plain Python
+(`tools/wxpredict/execution.py`, `tests/test_wxpredict_execution.py`).
+
+- **The ladder:** the archive keeps no full book (`raw_book` is stripped), only
+  the dollars within 1, 2, 5, 10 and 25 cents of the touch. The ladder is rebuilt
+  by the platform's own rule (`sql/ad4_13_reconcile.sql`, `ad4_synth_levels`),
+  and walked with `cost_model.walk_ladder`. Within 1 cent of the best ask a
+  late-September book holds a median $14.55 (10th percentile $1.77, 90th
+  $147.68; 31,654 tradeable rows), within 5 cents $50.26.
+- **NO** is bought on the YES bids at 1 - price: the venue's NO ask equals that
+  complement within 0.001 on 99.93% of rows, and is present on 99.5% of
+  late-September rows. Entries on books with no real NO ask are reported apart.
+- **Size:** level by level while the probability is at least THETA above the
+  level, up to a ticket ($10, $50, $250), the taker fee on every share.
+  **The venue's minimum order is not recorded** (`markets.min_order_size` and
+  `min_tick_size` are empty on all 2,708 markets; the stored books keep only
+  bids and asks): 5 shares is assumed, 1 shown beside it.
+- **Cash:** $1,000 shared, paid at entry, returned the day after the event
+  date; at most 10% on one city-day. A simulation grid, not an allocation.
+  Because the cap admits entries in time order, a dearer entry can change which
+  later ones fit, so the stressed rows are not always lower.
+- **Latency:** at the snapshot (optimistic) and at the band's next snapshot
+  within 2 hours (pessimistic; about one an hour is archived). The live delay
+  is not measured yet.
+- **Stress:** the same entries with every first-tier share a cent dearer.
+  *As first written, this put the whole first tier a cent past the touch and so
+  refused entries the one-share rule had taken at the recorded best ask (58 of
+  89 on the holdout); it was redefined before any date from 5 Oct was run, after
+  that seen window had been looked at.*
+
+The H3 corrections on the book (own snapshot), $10 tickets, at the snapshot:
+
+| | entries | spent | net | per date (90%) | worst drawdown |
+|---|---|---|---|---|---|
+| exploration, 27 Aug - 25 Sep (23 dates; where H3 was found) | 295 | $2,678 | **+$469.77** | +$20.42 (+$7.17 to +$34.57) | $91 |
+| the same, $50 tickets (mean entry $33: the depth runs out) | 261 | $8,643 | +$1,465.67 | +$63.72 (+$16.74 to +$115.20) | $361 |
+| the same, stress +1c / next snapshot | 295 / 130 | | +$411.09 / +$265.01 | +$17.87 / +$18.93 (-$0.18 to +$38.46) | |
+| holdout, 26 Sep - 2 Oct (7 dates) | 87 | $833 | **+$114.47** | +$16.35 (-$2.82 to +$35.15) | $33 |
+| the market's own prices, holdout / exploration | 13 / 30 | | -$17.24 / -$99.75 | | |
+
+**Read:** on the seen windows the one-share edge survives the walk down the
+book, the fee and a cent of stress, and the control loses at size. The
+exploration window is where the idea came from and is not evidence; the
+holdout cannot separate it from zero. The test that counts is H3a from 5 Oct,
+one-share and at size (`data/eval/wxpredict/capacity_*`).
+
 ## Gaps (Phase 1)
 
 - **Market activity is a proxy.** The venue's hourly price history has no volume. "Activity" is the number of

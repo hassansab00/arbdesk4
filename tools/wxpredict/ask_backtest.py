@@ -117,6 +117,8 @@ def main(argv=None):
     ap.add_argument("decisions")
     ap.add_argument("--out", default=None)
     ap.add_argument("--model-col", default="p_fusion")
+    ap.add_argument("--trades-out", default=None,
+                    help="write the trades of THETA 0.05 (the model's and the control's) for capacity.py")
     ap.add_argument("--from", dest="date_from", default=None, help="first event date (default: the first with books)")
     ap.add_argument("--to", dest="date_to", default=None,
                     help="last event date (default: the mirror's newest; after it the books are the archive's alone)")
@@ -243,6 +245,12 @@ def main(argv=None):
         "test_theta": TEST_THETA,
         "results": {},
     }
+    if args.trades_out:
+        parts = []
+        for name, p in probs.items():
+            if name != "market tempered":
+                parts.append(trades(p, TEST_THETA).assign(who=name))
+        pd.concat(parts, ignore_index=True).to_csv(args.trades_out, index=False, compression="gzip")
     for name, p in probs.items():
         result["results"][name] = {}
         for theta in THETAS:
