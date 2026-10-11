@@ -104,9 +104,9 @@ def main(argv=None):
 
     dec = pd.read_csv(args.residual_dump, low_memory=False)
     assert "delta" in dec.columns, "a market_residual.py dump with delta"
-    bands, _ = ab.read_all("data/mirror/bands/*.csv.gz",
+    bands, _ = ab.read_definitions("bands",
                            ["band_id", "market_id", "band_index", "band_lo", "open_low"])
-    markets, _ = ab.read_all("data/mirror/markets/*.csv.gz", ["market_id", "city_key", "resolution_date"])
+    markets, _ = ab.read_definitions("markets", ["market_id", "city_key", "resolution_date"])
     bands = bands.drop_duplicates("band_id")
     markets = markets.drop_duplicates("market_id").set_index("market_id")
 

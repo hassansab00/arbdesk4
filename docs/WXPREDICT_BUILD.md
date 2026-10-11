@@ -37,7 +37,7 @@ These come from CLAUDE.md and Hassan's messages, restated so nothing is lost.
 | Actions minutes are a hard budget (Rule 7) | 3,000 a month, CI included; October was at 941 billed by 5 Oct 16:04Z (R1). No new scheduled workflow (only P6.1 may add one). Every change to a scheduled job's runtime is measured before merge and written into `MEASURED_MINUTES`. |
 | Adaptive never means unbounded (Rule 11) | Every learned parameter has a prior, hard bounds, a minimum sample, a maximum change per nightly update, and a version on every decision that used it. Nothing is evaluated on data it learned from. |
 | Blind tests stay blind | rd3, `da_floor:v1` and `sd_corr:v1` are pre-registered. Their scores are not read before their first look (about 25 Oct; `docs/CHALLENGER_C_PREREG.md`, `docs/P11_DA_FLOOR_PREREG.md`, `docs/SD_CORR_PREREG.md`). WXPredict is compared with the market and the served engine, never with them, until they are unblinded. |
-| The sealed test stays sealed | 1 Sep - 4 Oct 2026, and every listed day after it, is WXPredict's final test (section 4). No model output on those days is scored or looked at before G4. |
+| The sealed test stays sealed | 1 Sep - 4 Oct 2026, and every listed day after it, is WXPredict's final test (section 4). No model output on those days is scored or looked at before G4. **Superseded 11 Oct:** after Hassan withdrew the freeze ("DO NOT FREEZE ... WE NEED TO BUILD A SOLID SYSTEM"), the research models were scored out of sample on these dates (walk-forward May - 4 Oct; tests 2 and 3, H1 and H3 on 22 Aug - 4 Oct). 1 Sep - 4 Oct is no longer untouched for any WXPredict model; the untouched dates start 5 Oct. Which question saw which dates: `data/eval/wxpredict/exposure_ledger.json` (checked by `tests/test_wxpredict_exposure_ledger.py`). |
 | Both suites before every push | `PYTHONPATH=scripts python -m pytest tests/ -q`; `npm ci --prefix tests/database --ignore-scripts && npm test --prefix tests/database`. For web changes also: `cd web && ./node_modules/.bin/tsc --noEmit && npm run test:routes && ./node_modules/.bin/next build`. |
 | Generated files are regenerated | `python3 tools/gen_provenance.py && python3 tools/gen_sql_owner.py`. They are never edited by hand. |
 | Few pushes | One validated push beats three speculative ones. Progress notes ride the work's PR. |
@@ -493,7 +493,7 @@ This becomes `docs/WXPREDICT_PREREG.md` in step 3.0. It is committed before any 
 
 **Splits:**
 - **Development:** test months Jan - Aug 2026. Every model choice (features, form, hyper-parameters, fusion form) is made here only.
-- **Sealed test:** 1 Sep - 4 Oct 2026, plus every listed day added before G4. It is scored once, after G3, with everything frozen.
+- **Sealed test:** 1 Sep - 4 Oct 2026, plus every listed day added before G4. It is scored once, after G3, with everything frozen. *(11 Oct: superseded; those dates were scored by the research models. The untouched dates start 5 Oct: `data/eval/wxpredict/exposure_ledger.json`.)*
 - **Walk-forward inside each split.**
   - Month M's weather model is fitted only on rows whose day ended before M began (the day before M's first day is left out).
   - The fusion and calibration for month M are fitted only on earlier months' out-of-sample rows.

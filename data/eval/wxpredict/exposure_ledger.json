@@ -1,0 +1,128 @@
+{
+ "about": "Which dates each WXPredict question has been scored on, so no rule is tested on dates it was found, tuned or looked at on. Every result in data/eval/wxpredict is registered here exactly once; tests/test_wxpredict_exposure_ledger.py checks it. A new result is registered in the same PR that commits it, and untouched_from moves past every date scored. Written 11 Oct 2026 (the Codex action plan of 11 Oct, section 2: one exposure ledger).",
+ "untouched_from": "2026-10-05",
+ "untouched_note": "No WXPredict model, rule or control has been scored on an event date from 5 Oct (every result below ends by 4 Oct, the table's newest date). Data volumes after 4 Oct were counted (trade prints a day, R46) without outcomes or prices being scored.",
+ "table": {
+  "recorded": {"file": "data/training/wxpredict/table_meta.json", "sha256": "d03b73e88b75", "dates": ["2025-07-15", "2026-10-04"], "rows": 684990},
+  "results_built_on": {"table_gzip_sha256": "bd16da926ca6", "rows": 670686, "note": "every model result of 11 Oct was made on a table rebuilt from 11 Oct's sources (47 cities; R47), not the recorded one; build_table.py --recorded rebuilds the recorded one"}
+ },
+ "sealed_test": "WXPREDICT_BUILD.md section 4 sealed 1 Sep - 4 Oct 2026 for WXPredict v1 until G4. From 11 Oct (Hassan: 'DO NOT FREEZE ... WE NEED TO BUILD A SOLID SYSTEM') the research models below were scored out of sample on those dates by walk-forward and at the real asks, so 1 Sep - 4 Oct is no longer an untouched test for any WXPredict model. The untouched dates start 5 Oct.",
+ "questions": [
+  {
+   "id": "test1_fusion_probability",
+   "question": "Does the walk-forward fusion beat the market's normalised price in log loss?",
+   "rule_file": "tools/wxpredict/walkforward.py",
+   "rule_marker": "better than the market, on days it never saw",
+   "scored": ["2026-05-01", "2026-10-04"],
+   "verdict": "fusion -0.0072 nats a decision against the market (#372); the weather model alone loses to the market",
+   "results": ["walkforward_2026-10-11.json"]
+  },
+  {
+   "id": "phase3a_remaining_day",
+   "question": "Does the remaining-day fusion (warming still to come) beat the market in log loss?",
+   "rule_file": "tools/wxpredict/walkforward.py",
+   "rule_marker": "phase 3A: on the day from 09h",
+   "scored": ["2026-05-01", "2026-10-04"],
+   "verdict": "fusion -0.0081 (90% -0.0099 to -0.0062); weather alone 1.2343 -> 1.1236 (#374)",
+   "results": ["walkforward_remaining_2026-10-11.json"]
+  },
+  {
+   "id": "phase3_market_aware",
+   "question": "Does a model with the market's price as a feature beat the market in log loss?",
+   "rule_file": "tools/wxpredict/market_aware.py",
+   "rule_marker": "where is the market wrong on the day",
+   "scored": ["2026-07-01", "2026-10-04"],
+   "verdict": "worse than the market: +0.1172 nats a decision (+0.1031 to +0.1323), in every month and hour group (#374)",
+   "results": ["market_aware_2026-10-11.json"]
+  },
+  {
+   "id": "phase3c_market_residual",
+   "question": "Does the market's price plus learned per-bucket corrections beat the market in log loss?",
+   "rule_file": "tools/wxpredict/market_residual.py",
+   "rule_marker": "start at the market, learn only where it is wrong",
+   "scored": ["2026-06-01", "2026-10-04"],
+   "verdict": "-0.0083 (-0.0098 to -0.0069); with the weather model -0.0106 (-0.0126 to -0.0087) (#374)",
+   "results": ["market_residual_2026-10-11.json", "market_residual_weather_2026-10-11.json"]
+  },
+  {
+   "id": "test2_taker_at_the_ask",
+   "question": "Test 2: does the model make money buying at the ask (one share, THETA 0.05)?",
+   "rule_file": "tools/wxpredict/ask_backtest.py",
+   "rule_marker": "The rule, fixed before it was run:",
+   "scored": ["2026-08-22", "2026-09-25"],
+   "verdict": "fails: fusion -1.75c a share (#372); market residual -0.0131, -0.0225 after the taker fee (#374)",
+   "results": ["ask_backtest_2026-10-11.json", "ask_backtest_residual_2026-10-11.json", "ask_backtest_residual_weather_2026-10-11.json"]
+  },
+  {
+   "id": "test3_maker_through_fills",
+   "question": "Test 3: does the market residual make money resting at the best bid/offer, filled only through the price?",
+   "rule_file": "tools/wxpredict/maker_backtest.py",
+   "rule_marker": "The rule, fixed before it was run:",
+   "scored": ["2026-09-11", "2026-09-25"],
+   "verdict": "fails: -0.0162 a share (#374)",
+   "results": ["maker_backtest_residual_2026-10-11.json", "maker_backtest_residual_weather_2026-10-11.json"]
+  },
+  {
+   "id": "H1_maker_before_13h",
+   "question": "H1: test 3's rule on D-1 and the day before 13h local pays more than zero.",
+   "rule_file": "tools/wxpredict/maker_backtest.py",
+   "rule_marker": "HYPOTHESIS H1",
+   "rule_commit": "3793c19",
+   "developed_on": ["2026-08-22", "2026-09-25"],
+   "scored": ["2026-09-26", "2026-10-04"],
+   "verdict": "FAILED: -0.0019 a share (-0.0253 to +0.0222), 835 fills",
+   "results": ["maker_backtest_h1_holdout_2026-10-11.json"]
+  },
+  {
+   "id": "H3_book_anchor",
+   "question": "H3: the market residual's corrections on the book's own mid at the snapshot pay more than zero at THETA 0.05: (a) taking the ask after the taker fee, (b) resting with through fills.",
+   "rule_file": "tools/wxpredict/book_anchor.py",
+   "rule_marker": "HYPOTHESIS H3",
+   "rule_commit": "a83f4a6",
+   "developed_on": ["2026-08-22", "2026-09-25"],
+   "scored": ["2026-08-22", "2026-10-04"],
+   "verdict": "H3b FAILED (-0.0410, -0.0727 to -0.0104, 718 fills, own snapshot). H3a not separable from zero on 26 Sep - 4 Oct (+0.0662, -0.0104 to +0.1316, 89 trades, own snapshot); the own-snapshot matching was fixed after that window was seen (Codex on #376), so H3a's test is the dates from 5 Oct.",
+   "pending": {"part": "H3a", "test_from": "2026-10-05", "tools": "book_anchor.py on a market_residual.py dump, then ask_backtest.py --model-col p_model --from 2026-10-05, after_taker_fee at THETA 0.05"},
+   "results": ["ask_backtest_book_anchor_2026-10-11.json", "ask_backtest_book_anchor_own_snapshot_2026-10-11.json",
+               "maker_backtest_book_anchor_2026-10-11.json", "maker_backtest_book_anchor_own_snapshot_2026-10-11.json",
+               "ask_backtest_h3_holdout_2026-10-11.json", "ask_backtest_h3_holdout_own_snapshot_2026-10-11.json",
+               "maker_backtest_h3_holdout_2026-10-11.json", "maker_backtest_h3_holdout_own_snapshot_2026-10-11.json"]
+  },
+  {
+   "id": "H2_maker_d_minus_1",
+   "question": "H2: resting orders on D-1 decisions (test 3's rule, THETA 0.05, through fills) pay more than zero for the market residual; H2-control: the same for the market's own prices.",
+   "rule_file": "tools/wxpredict/maker_backtest.py",
+   "rule_marker": "HYPOTHESIS H2",
+   "rule_commit": "7c770e1",
+   "developed_on": ["2026-09-11", "2026-10-04"],
+   "scored": [],
+   "verdict": "pending",
+   "pending": {"part": "H2 and H2-control", "test_from": "2026-10-05", "tools": "maker_backtest.py --model-col p_model --from 2026-10-05, the D-1 group, through fills"},
+   "results": []
+  },
+  {
+   "id": "ladder_arbitrage",
+   "question": "Exploration, no model: is there riskless ladder arbitrage after the taker fee?",
+   "rule_file": "tools/wxpredict/ladder_arb.py",
+   "rule_marker": "Is there arbitrage across a ladder?",
+   "scored": ["2026-08-22", "2026-10-02"],
+   "verdict": "none after the fee (5 snapshots, $0.04)",
+   "results": ["ladder_arb_2026-10-11.json"]
+  },
+  {
+   "id": "trade_history_probe",
+   "question": "Data probe, no outcome scored: does the venue serve past trades for settled events?",
+   "rule_file": "tools/wxpredict/trade_history.py",
+   "rule_marker": "does the venue still serve the trades of settled markets?",
+   "scored": [],
+   "verdict": "yes, back to 30 Dec 2025 (phase 2.4)",
+   "results": ["trade_history_probe.json"]
+  }
+ ],
+ "blind_elsewhere": [
+  {"id": "rd3", "contract": "docs/CHALLENGER_C_PREREG.md", "first_look": "about 25 Oct (20 settled dates, 3-22 Oct)", "trigger": "trig_019QK37oqwVbAMcVWYnRQCVF (2026-10-25T09:47Z)"},
+  {"id": "da_floor:v1", "contract": "docs/P11_DA_FLOOR_PREREG.md", "first_look": "the first day with at least 20 scored target dates, about 25 Oct", "trigger": "trig_01RYCfWh8F9tFSAwgnU5cEgk (2026-10-25T10:30Z; counts dates first, re-arms daily under 20)"},
+  {"id": "sd_corr:v1", "contract": "docs/SD_CORR_PREREG.md", "first_look": "the first day with at least 20 scored target dates, about 26 Oct", "trigger": "trig_014487X2FuvGvAtbTfgzBuhf (2026-10-26T10:30Z; counts dates first, re-arms daily under 20)"},
+  {"id": "ensemble record (P2.10 / P3.10, R23)", "contract": "docs/WXPREDICT_BUILD.md R23", "first_look": "30 days of record from 29 Sep, about 29 Oct", "trigger": "trig_01KbKRaWUvyM5rVwzkZLZvim (2026-10-29T10:30Z; counts nights first)"}
+ ]
+}

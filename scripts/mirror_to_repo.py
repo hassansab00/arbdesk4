@@ -436,6 +436,51 @@ def mirror_one(table, spec, manifest, today, dry_run):
     return len(rows), "exported"
 
 
+# --- the definitions of markets the mirror does not hold yet -------------------
+
+DEFINITIONS = os.path.join(ROOT, "data", "training", "market_definitions")
+MARKET_DEFINITION = ["market_id", "city_key", "resolution_date", "unit", "band_count", "condition_id",
+                     "min_order_size", "min_tick_size", "first_seen_at"]
+BAND_DEFINITION = ["band_id", "market_id", "band_index", "band_label", "band_lo", "band_hi",
+                   "open_low", "open_high", "condition_id", "token_yes", "token_no"]
+
+
+def recent_definitions(manifest, today, dry_run):
+    """A market and its bands reach the mirror CLOSED_AFTER_DAYS after the
+    market's date, because a market row changes until it settles. Research
+    on recent dates still needs which band is which bucket: on 11 Oct the
+    mirror held markets through 2 Oct, so no book after it could be matched
+    to its ladder (tools/wxpredict/coverage.py). This writes the columns
+    that are fixed when a market is listed, for every market dated after
+    the mirror's newest, to data/training/market_definitions/ - one file per
+    table, rewritten each night. The mirror's own row stays the record; the
+    research tools read these only for markets the mirror does not hold."""
+    out = {}
+    for table, cols, spec, col in (
+            ("markets", MARKET_DEFINITION, {"pk": ["market_id"]}, "resolution_date"),
+            ("bands", BAND_DEFINITION, {"pk": ["band_id"], "via": "markets", "date": "resolution_date"},
+             "markets.resolution_date")):
+        through = manifest["tables"].get(table, {}).get("through") or \
+            (today - dt.timedelta(days=CLOSED_AFTER_DAYS)).isoformat()
+        filters = [(col, f"gt.{through}")]
+        rows = read_rows(table, spec, filters)
+        count_filters = filters if table == "markets" else \
+            [("select", "band_id,markets!inner(resolution_date)")] + filters
+        n = exact_count(table, count_filters)
+        if n != len(rows):
+            raise RuntimeError(f"{table} definitions: read {len(rows)} rows after {through}, the table has {n}")
+        out[table] = len(rows)
+        if dry_run or not rows:
+            continue
+        rows = sorted(({c: r.get(c) for c in cols} for r in rows), key=lambda r: str(r[spec["pk"][0]]))
+        path = os.path.join(DEFINITIONS, f"{table}-recent.csv.gz")
+        os.makedirs(DEFINITIONS, exist_ok=True)
+        with open(path, "wb") as fh:
+            fh.write(gzip.compress(to_csv(rows).encode(), 9, mtime=0))
+        read_back(path, len(rows))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--table", default="all")
@@ -455,6 +500,13 @@ def main():
             print(f"{name:34s} FAILED  {e}", file=sys.stderr)
         if not a.dry_run:
             save_manifest(manifest)                 # a later failure keeps what succeeded
+    if a.table == "all":
+        try:
+            got = recent_definitions(manifest, today, a.dry_run)
+            print(f"{'market_definitions':34s} {sum(got.values()):>9,}  recent ({got})")
+        except Exception as e:                      # research input: never stops the mirror
+            failed.append("market_definitions")
+            print(f"{'market_definitions':34s} FAILED  {e}", file=sys.stderr)
     if not a.dry_run:
         log_run("mirror_to_repo", "error" if failed else "ok", total,
                 {"tables": len(names), "failed": failed})
