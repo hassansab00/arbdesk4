@@ -616,6 +616,55 @@ can be known, and nothing recorded that. Hassan approved a poller (11 Oct:
   record is for; the 28 Sep result (buying a new maximum's bucket 2 minutes
   after the reading lost -0.0110 a share) says speed alone has not paid.
 
+### The live record: every input the tick had, as it arrived (WP3a, 11 Oct)
+
+The training table decides what a row may know by rule: a report 20 minutes
+after its reading, an hourly forecast 17 hours before its hour, the market at
+its hourly point. Nothing recorded what the live system actually had at a
+decision, so the rules could not be checked live (phase 2.3, parity) and no
+model could be judged on the inputs it would really have had. Hassan approved
+the live capture (11 Oct). `scripts/live_capture.py` runs in the hourly tick,
+beside the checkpoints, and keeps in `live_capture`, with the time each
+arrived:
+
+- **Station reports** (`report`): every report of the tick's own IEM read,
+  with every field the training reads (`fetch_obs.FIELDS` and the METAR
+  text). The tick still asks IEM once; it now asks for those fields, and
+  `parse()` gives the same observation rows from either answer (measured
+  11 Oct over the 47 stations' last 6 hours: 405 rows each, 0 differ).
+  419 reports from all 47 stations in one answer (11 Oct ~21Z).
+- **The hourly forecast** (`hourly`): Open-Meteo's best_match
+  `_previous_day1` for the seven variables the training reads, every active
+  city, every UTC hour from yesterday's midnight to 17 h ahead (the rule's
+  horizon, `24 - PUBLISH_H`). For an hour no run from a day before covers,
+  the API answers with the current forecast (measured 11 Oct 18:15Z: Jeddah's
+  13 Oct, 24 of 24 hours equal to it; real day-before values reached about
+  11 h ahead, not the rule's 17), so what was served when is the record, and
+  it measures the rule's publication delay run by run. 12 cities answered in
+  one request with 744 values in the window (11 Oct ~21Z). Lucknow's hours
+  come at :00 UTC here and at :30 in the training file (built in local time).
+- **Every open bucket's book** (`books`, one row a tick): best bid and ask,
+  the size at each, the USD within 5 cents of each touch, the last trade, the
+  book's own time, the minimum order and the tick. 847 of 869 open buckets
+  answered in 2.38 s (two requests: 869 tokens in one are refused, "Payload
+  exceeds the limit"; 500 answered); 89,569 bytes of JSON. **The minimum
+  order is 5 shares on all 847** (the capacity audit had to assume it); 428
+  had no bid and 14 no ask. Each row names what it lacks: `failed` (a
+  request that failed or was never sent) and `no_book` (answered without a
+  book, 22 of 869 on 11 Oct); every open bucket is in exactly one of `tops`,
+  `failed` and `no_book`, and `complete` is false whenever `failed` is not
+  empty (Codex on #381).
+
+A report or hourly value is stored once per change, with the first time it
+was seen; one that changes back is stored again, so the newest row is always
+what was being served. Two days stay in Postgres; the nightly archive takes
+the rest to `data/archive/live_capture` (verified count, then prune), and the
+mirror copies every row. Off or manual on the Workflows page
+(`P2.12_live_capture`) stores nothing. Next (WP3b): the live reader builds
+each decision's features from the record as known at that instant, through
+`features.py`; the parity test compares them with the builder's rows once the
+days are archived (3 days); then shadow probability records.
+
 ## Gaps (Phase 1)
 
 - **Market activity is a proxy.** The venue's hourly price history has no volume. "Activity" is the number of

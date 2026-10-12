@@ -78,6 +78,7 @@ export const SQL_OWNER: Record<string, string> = {
   "ingest_log": "ad4_00_preflight.sql",
   "job_sla": "supabase/migrations/20261009200000_the_watchdog_knows_when_each_job_last_worked.sql",
   "ledger": "ad4_00_preflight.sql",
+  "live_capture": "ad4_prune_live_capture.sql",
   "live_weather": "ad4_live_weather.sql",
   "market_confirmation_attempts": "supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql",
   "markets": "ad4_00_preflight.sql",

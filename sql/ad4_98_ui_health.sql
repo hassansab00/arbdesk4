@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 289 of them - and for each MISSING one names the
+-- and function the app reads - 290 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -89,6 +89,7 @@ with expected(rel, owner, used_by) as (values
     ('ingest_log', 'ad4_00_preflight.sql', '(PaperPipelineStatus), (PipelineStatus)'),
     ('job_sla', 'supabase/migrations/20261009200000_the_watchdog_knows_when_each_job_last_worked.sql', ''),
     ('ledger', 'ad4_00_preflight.sql', ''),
+    ('live_capture', 'ad4_prune_live_capture.sql', ''),
     ('live_weather', 'ad4_live_weather.sql', '(CityCards), (GlobalBar), (RightRail), /board, /live, /opportunities'),
     ('market_confirmation_attempts', 'supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql', ''),
     ('markets', 'ad4_00_preflight.sql', '(Header), /predictive'),
@@ -400,6 +401,7 @@ begin
     ('ingest_log', 'ad4_00_preflight.sql', '(PaperPipelineStatus), (PipelineStatus)'),
     ('job_sla', 'supabase/migrations/20261009200000_the_watchdog_knows_when_each_job_last_worked.sql', ''),
     ('ledger', 'ad4_00_preflight.sql', ''),
+    ('live_capture', 'ad4_prune_live_capture.sql', ''),
     ('live_weather', 'ad4_live_weather.sql', '(CityCards), (GlobalBar), (RightRail), /board, /live, /opportunities'),
     ('market_confirmation_attempts', 'supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql', ''),
     ('markets', 'ad4_00_preflight.sql', '(Header), /predictive'),

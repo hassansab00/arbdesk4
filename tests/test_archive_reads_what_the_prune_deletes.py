@@ -122,6 +122,8 @@ EXPORT_SOURCE = {
     # a week-old forecast's payload, the rows stay (WXPredict build 2.A)
     "forecast_variables": "v_forecast_variables_export",
     "model_payloads":     "v_model_payloads_export",
+    # the whole table older than two days, paged on capture_id (WXPredict WP3)
+    "live_capture": "live_capture",
 }
 
 

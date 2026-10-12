@@ -532,15 +532,17 @@ def test_read_stations_is_one_request_for_the_board_over_six_hours(monkeypatch):
     monkeypatch.setattr(tick, "get_cities", lambda **kw: [
         {"city_key": "nyc", "icao": "KLGA"}, {"city_key": "london", "icao": "EGLC"}])
 
-    def fetch(station, start, end, since=None, until=None, timeout=300):
-        calls.append((list(station), start, end, since, until, timeout))
+    def fetch(station, start, end, since=None, until=None, timeout=300, data=io.DATA):
+        calls.append((list(station), start, end, since, until, timeout, data))
         return _iem_csv(["LGA,2026-09-24 20:51,70.0,60.0,70,180,5,0,FEW,1015.0"])
     monkeypatch.setattr(io, "fetch_station", fetch)
     monkeypatch.setattr(tick, "upsert", lambda t, rows, k: written.append((t, rows, k)) or len(rows))
+    monkeypatch.delenv("LIVE_CAPTURE_IEM", raising=False)
     now = at("2026-09-24T22:36")
     out = tick.read_stations(now)
-    (stations, start, end, since, until, timeout), = calls
+    (stations, start, end, since, until, timeout, data), = calls
     assert stations == ["EGLC", "KLGA"], "one request carries every station"
+    assert data == io.FULL_DATA, "every field the training reads, for the live record (WP3)"
     assert since == now - dt.timedelta(hours=6) and until == now
     assert end == dt.date(2026, 9, 25), "day2 is exclusive, so it must be tomorrow"
     assert timeout == tick.STATION_TIMEOUT_S

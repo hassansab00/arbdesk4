@@ -96,6 +96,9 @@ ad4_prune_city_correlation.sql
 # build 2.A): weather_forecasts.variables and derived_model_forecast's
 # contributions and inputs. After ad4_00_preflight.sql and ad4_25_model_forecast.sql.
 ad4_prune_forecast_payloads.sql
+# The live record and its way out (WXPredict WP3): live_capture, live_capture_put
+# and prune_live_capture. After ad4_66, whose request_reclaim allow-lists it.
+ad4_prune_live_capture.sql
 ad4_68_prediction_ladder_outcomes.sql
 ad4_71_observation_health.sql
 ad4_72_model_promotion.sql

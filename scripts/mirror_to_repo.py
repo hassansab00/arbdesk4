@@ -142,6 +142,9 @@ TABLES = {
     "focus_obs_reports":             append("first_seen_at", "report_id"),
     "focus_obs_polls":               append("asked_at", "request_id"),
     "focus_obs_stations":            snapshot("icao"),
+    # WP3 (11 Oct): every live input the tick had, as it arrived; kept two
+    # days in Postgres, the older rows in data/archive/live_capture
+    "live_capture":                  append("captured_at", "capture_id"),
     "weather_forecasts":             append("observed_at", "forecast_id"),
     "weather_forecast_models":       append("observed_at", "city_key", "model", "run_at", "for_date"),
     "weather_forecast_features":     append("captured_at", "city_key", "for_date", "run_at"),
