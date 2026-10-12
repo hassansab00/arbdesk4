@@ -6,8 +6,9 @@
 // ('focus_book', keyed by its bucket) reduced - the touch found by price,
 // sizes summed per price, ten levels each side, its own time - and only when
 // it changed; an unreadable answer keeps nothing; a failure to ask stops
-// nothing; the day's row reports books apart from reports; the browser reads
-// none of it. pg_net is faked as in focus-obs.cjs.
+// nothing but is counted, and an answer short of the books asked is a failed
+// poll (Codex on #389); the day's row reports books apart from reports; the
+// browser reads none of it. pg_net is faked as in focus-obs.cjs.
 // ===========================================================================
 const { PGlite } = require('@electric-sql/pglite');
 const fs = require('fs');
@@ -19,6 +20,7 @@ const LIVE = mig('20261011210000_the_live_record.sql');
 const LIVE2 = mig('20261012150000_the_live_record_keeps_the_evening_forecasts.sql');
 const WP4 = mig('20261011180000_reports_the_minute_they_arrive.sql');
 const MIG = mig('20261012170000_books_the_minute_reports_arrive.sql');
+const MIG2 = mig('20261012180000_a_books_poll_that_fails_is_counted.sql');
 
 const level = (price, size) => ({ price: String(price), size: String(size) });
 
@@ -41,7 +43,7 @@ const level = (price, size) => ({ price: String(price), size: String(size) });
     create table public.markets (market_id text primary key, city_key text, resolution_date date, closed boolean);
     create table public.bands (band_id text primary key, market_id text, band_index int, token_yes text);
   `);
-  for (const m of [LIVE, LIVE2, WP4, MIG, MIG]) await db.exec(m);              // re-runnable
+  for (const m of [LIVE, LIVE2, WP4, MIG, MIG, MIG2, MIG2]) await db.exec(m);  // re-runnable
   const one = async (sql, p = []) => (await db.query(sql, p)).rows;
 
   // the live record takes the new kind, and only it besides the others
@@ -91,8 +93,8 @@ const level = (price, size) => ({ price: String(price), size: String(size) });
   const call = (await one('select url, body from net.calls where id = $1', [booksReq]))[0];
   assert.equal(call.url, 'https://clob.polymarket.com/books');
   assert.deepEqual(call.body, [{ token_id: 'tj0' }, { token_id: 'tj1' }], "only Jeddah's open markets of today");
-  assert.deepEqual((await one('select source, stations from public.focus_obs_polls where request_id = $1', [booksReq]))[0],
-    { source: 'clob_books', stations: ['OEJN'] });
+  assert.deepEqual((await one('select source, stations, n_asked from public.focus_obs_polls where request_id = $1', [booksReq]))[0],
+    { source: 'clob_books', stations: ['OEJN'], n_asked: 2 });
 
   // THE ANSWER: asks worst first as the venue lists them, a repeated price,
   // an empty level, more than ten levels; a second book with no bid; a token
@@ -152,21 +154,45 @@ const level = (price, size) => ({ price: String(price), size: String(size) });
   assert.equal(r.books_request_id, null);
   await db.exec(`update public.markets set closed = false where market_id = 'mj'`);
 
-  // A FAILURE TO ASK THE BOOKS stops nothing.
+  // A FAILURE TO ASK THE BOOKS stops nothing, and the minute's reports poll
+  // says why its books were not asked (Codex on #389).
   await db.exec(`alter table public.bands rename to bands_away`);
   r = (await one('select public.focus_obs_poll() r'))[0].r;
   assert.equal(r.asked, true);
   assert.equal(r.books_request_id, null);
+  assert.match(r.books_error, /bands/);
+  assert.match((await one('select books_error from public.focus_obs_polls where request_id = $1', [r.request_id]))[0].books_error,
+    /bands/);
   await db.exec(`alter table public.bands_away rename to bands`);
+
+  // AN ANSWER WITH NO BOOKS, OR FEWER THAN ASKED, is a failed poll; what it
+  // carried is kept (Codex on #389).
+  r = (await one('select public.focus_obs_poll() r'))[0].r;
+  assert.equal(r.books_error, null);
+  const empty = r.books_request_id;
+  await answer(empty, 200, '[]', '2026-10-12T07:05:04Z');
+  r = (await one('select public.focus_obs_poll() r'))[0].r;
+  assert.deepEqual((await one('select n_reports, n_new, error from public.focus_obs_polls where request_id = $1', [empty]))[0],
+    { n_reports: 0, n_new: 0, error: 'answer short: 0 of 2 books' });
+  const short = r.books_request_id;
+  await answer(short, 200, JSON.stringify([{ ...book0, timestamp: '1791820500000', last_trade_price: '0.34' }]),
+    '2026-10-12T07:06:04Z');
+  r = (await one('select public.focus_obs_poll() r'))[0].r;
+  assert.deepEqual((await one('select n_reports, n_new, error from public.focus_obs_polls where request_id = $1', [short]))[0],
+    { n_reports: 1, n_new: 1, error: 'answer short: 1 of 2 books' });
+  assert.equal((await one(`select count(*)::int n from public.live_capture where kind = 'focus_book'`))[0].n, 4);
 
   // THE DAY: books reported apart from the reports.
   await db.exec(`update public.focus_obs_polls set asked_at = '2026-10-12T07:00:00Z'::timestamptz + request_id * interval '1 minute'`);
   const day = (await one(`select public.focus_obs_day('2026-10-12') r`))[0].r;
-  assert.equal(day.books.asked, 4, 'the minute after the unreadable one asked again');
-  assert.equal(day.books.unanswered, 1);
-  assert.equal(day.books.books_stored, 3);
-  assert.equal(day.books.books_seen, 4);
-  assert.equal(day.books.failed, 1, 'the unreadable one');
+  assert.equal(day.books.asked, 7, 'the minute after the unreadable one asked again');
+  assert.equal(day.books.unanswered, 2, 'the minute after the unreadable one, and the last');
+  assert.equal(day.books.books_stored, 4);
+  assert.equal(day.books.books_seen, 5);
+  assert.equal(day.books.failed, 3, 'the unreadable one and the two short ones');
+  assert.equal(day.books.short, 2);
+  assert.equal(day.books.not_asked, 1, 'the minute whose books could not be asked');
+  assert.equal(day.status, 'partial');
   assert.equal(day.polls.reports_seen, 0, 'books are not counted as reports');
   assert.ok(day.polls.asked >= 5);
 
@@ -181,6 +207,7 @@ const level = (price, size) => ({ price: String(price), size: String(size) });
   // RE-RUNNABLE with rows in place
   const n = (await one('select count(*)::int n from public.live_capture'))[0].n;
   await db.exec(MIG);
+  await db.exec(MIG2);
   assert.equal((await one('select count(*)::int n from public.live_capture'))[0].n, n);
-  console.log('PASS: focus-books: each minute of the window the open same-day books of the window\'s cities, one request, kept in the live record by bucket - the touch by price, sizes summed per price, ten levels a side, the book\'s own time - and only when changed; an unreadable answer keeps nothing; no market or a failure to ask stops nothing; the day reports books apart; closed to the browser; re-runnable');
+  console.log('PASS: focus-books: each minute of the window the open same-day books of the window\'s cities, one request, kept in the live record by bucket - the touch by price, sizes summed per price, ten levels a side, the book\'s own time - and only when changed; an unreadable answer keeps nothing; no market or a failure to ask stops nothing, the failure counted; a short answer is a failed poll; the day reports books apart; closed to the browser; re-runnable');
 })().catch((e) => { console.error(e); process.exit(1); });

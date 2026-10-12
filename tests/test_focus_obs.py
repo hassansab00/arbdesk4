@@ -50,17 +50,20 @@ def test_the_mirror_copies_its_records():
 
 
 BOOKS = (ROOT / "supabase" / "migrations" / "20261012170000_books_the_minute_reports_arrive.sql").read_text()
+BOOKS2 = (ROOT / "supabase" / "migrations" / "20261012180000_a_books_poll_that_fails_is_counted.sql").read_text()
 
 
 def test_the_books_ride_the_reports_minute_and_add_no_schedule():
     """WP5: the focus cities' books are asked in the same minute as the
     reports, by the same poll; no cron job and no workflow is added (rule 7,
-    and the poll's switch stops both)."""
-    assert "cron.schedule" not in BOOKS
-    poll = BOOKS[BOOKS.index("create or replace function public.focus_obs_poll"):]
-    poll = poll[:poll.index("$fo$;")]
-    assert poll.index("aviationweather.gov") < poll.index("focus_books_ask(v_ids)"), "the reports first"
-    assert "switched ' || v_mode" in poll, "the Workflows switch stops both"
+    and the poll's switch stops both). The same in the poll's newest form
+    (Codex on #389)."""
+    for mig in (BOOKS, BOOKS2):
+        assert "cron.schedule" not in mig
+        poll = mig[mig.index("create or replace function public.focus_obs_poll"):]
+        poll = poll[:poll.index("$fo$;")]
+        assert poll.index("aviationweather.gov") < poll.index("focus_books_ask(v_ids)"), "the reports first"
+        assert "switched ' || v_mode" in poll, "the Workflows switch stops both"
 
 
 def test_the_books_are_in_the_database_suite():
