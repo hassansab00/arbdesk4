@@ -930,6 +930,48 @@ minutes (`20261013010000_the_tick_has_room_for_wxpredict.sql`).
 first full day. The shadow's own log row (`P7.6_wxrd_shadow`) joins the
 watchdog after its first day of runs.
 
+### Why each day hit or missed: the daily record (13 Oct)
+
+Hassan, 12 Oct: "each day needs to teach the model outcomes and data points on
+why this weather hit/miss based on what". `tools/wxpredict/day_review.py` runs
+in the nightly archive job, after the station data is appended, and writes one
+row per settled city-day to `derived_day_review` (re-writing the last three
+settled dates, so a late settlement is reviewed again). The city popup shows the
+city's newest seven.
+
+- **The outcome:** the winning bucket, and the station's maximum with the hour
+  it first came, against the hour it usually comes (the station's own days
+  around the date in earlier years).
+- **The forecast:** best_match's lead-1 maximum and its error (station minus
+  forecast), the seven models' maxima, and which came closest.
+- **The weather:** what the station reported against what the lead-1 forecast
+  said, over the forecast's own hours: cloud, dew point and wind from 09 to
+  17h local, rain from 00 to 17h (each to the end of its last hour).
+  - Each difference also gets a z against the same city's differences over
+    the 60 days before.
+  - A difference is put into words only when it is unusual for the city
+    (|z| at least 1) and large (15 points of cloud, 1 C of dew point,
+    5 km/h of wind).
+  - Rain is worded when the forecast and the station disagree.
+  - Temperatures are in the city's own unit.
+- **The calls:** at each checkpoint of the day, the platform's top bucket, the
+  market's and wxrd-v2's, and whether each won. The popup tallies the calls
+  before the peak, because after it the day is mostly decided.
+
+These are facts, not a fitted explanation. The record says what differed and by
+how much; it does not claim a difference caused the miss.
+
+Rehearsed on 7–10 Oct against the live tables (the rows read through SQL, the
+job's own code, no writes):
+- 188 rows, 172 with a forecast error; 14.5 s after Codex's fixes on #396 (the
+  forecast's own hours, the corrected checkpoint view), 15.2 s before.
+- Amsterdam 9 Oct: the station read 18 C against a forecast of 16.9. The
+  evening before, the platform and the market both had 18 C. From the morning
+  to 1 h before the peak, the platform said 16 C and the market 17 C, and both
+  missed.
+- Jeddah 8 Oct: the maximum came at 22:00 local (36 C, after 35 C from 12 to
+  14h), against 11:00 usually, after every checkpoint of the day.
+
 ## Gaps (Phase 1)
 
 - **Market activity is a proxy.** The venue's hourly price history has no volume. "Activity" is the number of

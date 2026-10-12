@@ -133,6 +133,10 @@ TABLES = {
     "derived_station_correction":    snapshot("city_key", "source", "lead_days"),
     "derived_corrected_forecast":    snapshot("city_key", "for_date"),
     "derived_station_width":         snapshot("city_key", "lead_days"),
+    # 13 Oct: why each settled city-day hit or missed; day_review.py rewrites
+    # the last three settled dates each night, so a date is final well inside
+    # the mirror's closed rule
+    "derived_day_review":            closed("target_date", "city_key", "target_date"),
     "derived_mos_coefficients":      snapshot("city_key", "lead_days"),
     "derived_mos_forecast":          snapshot("city_key", "for_date"),
     # --- what happened: inputs and settled outcomes -------------------------

@@ -24,6 +24,7 @@
     "../lib/focus.ts",
     "../lib/paperDesks.ts",
     "../lib/kelly.ts",
+    "../lib/dayReview.ts",
     "../app/api/operator/route.ts",
     "../app/api/paper-desk/route.ts",
     "../app/api/paper-run/route.ts",

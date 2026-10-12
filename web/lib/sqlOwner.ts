@@ -40,6 +40,7 @@ export const SQL_OWNER: Record<string, string> = {
   "derived_city_day_volume": "ad4_00_preflight.sql",
   "derived_climb_profile": "ad4_28_feature_cache.sql",
   "derived_corrected_forecast": "supabase/migrations/20260926120000_station_correction.sql",
+  "derived_day_review": "supabase/migrations/20261013020000_why_each_day_hit_or_missed.sql",
   "derived_edge_marks": "ad4_80_prune_edge_history.sql",
   "derived_forecast_latest": "ad4_31_predictive.sql",
   "derived_forecast_postprocess": "ad4_83_forecast_postprocess.sql",
