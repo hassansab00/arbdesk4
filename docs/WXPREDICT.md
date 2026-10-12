@@ -904,6 +904,17 @@ wxrd-v2 and the market are compared on the same checkpoints of the same days
 (`fact_checkpoint_outcome` banks the engine's and the market's). Nothing prices
 or trades from it.
 
+A checkpoint stays due for 6 hours until it has its row, oldest first, at most
+30 a tick, and rows stop being built 90 s into the step (what was built is
+written). So a tick whose step failed or timed out leaves its checkpoints to
+the next ticks instead of losing them, and a backlog cannot time the step out
+hour after hour (Codex on #395). A retry reads exactly what an on-time run
+would have: the live record up to the engine's instant (`captured_at` at or
+before it). The ticks wrote 2 to 19 such checkpoints an hour from 22Z 11 Oct
+to 21Z 12 Oct (`prediction_checkpoints`). The virtualenv is built beside its
+cached path and moved into it only after its imports work, so a failed
+install is never cached.
+
 Rehearsed on the 20:36Z tick of 12 Oct against the live tables (the rows read
 through SQL, the job's own code): 8 checkpoints due, 8 rows, 4.1 s, every
 ladder summing to 1 within 3e-6. The live record started 12 Oct 08:36Z, so

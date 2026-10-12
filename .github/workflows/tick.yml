@@ -226,6 +226,9 @@ jobs:
       # last. Its own virtualenv (cached), its own 3 minutes, and it never
       # fails the job. Rehearsed on the 20:36Z tick of 12 Oct against the live
       # tables: 8 checkpoints due, 8 rows, 4.1 s. Nothing here prices or trades.
+      # The virtualenv is built beside the cached path and moved into it only
+      # once its imports work, so a failed or timed-out install leaves nothing
+      # at .venv-wx for the cache to save (Codex on #395).
       - name: The WXPredict virtualenv
         id: wxvenv
         if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
@@ -238,7 +241,13 @@ jobs:
         timeout-minutes: 3
         continue-on-error: true
         run: |
-          [ -x .venv-wx/bin/python ] || { python -m venv .venv-wx && .venv-wx/bin/pip install -q -r requirements.wxpredict.txt; }
+          if [ ! -x .venv-wx/bin/python ]; then
+            rm -rf .venv-wx-build
+            python -m venv .venv-wx-build
+            .venv-wx-build/bin/python -m pip install -q -r requirements.wxpredict.txt
+            .venv-wx-build/bin/python -c "import lightgbm, numpy, pandas, requests, scipy"
+            mv .venv-wx-build .venv-wx
+          fi
           .venv-wx/bin/python tools/wxpredict/wxrd_live.py
       - name: Trade prints, collected
         # Waits for the run started above: it stops starting batches at its

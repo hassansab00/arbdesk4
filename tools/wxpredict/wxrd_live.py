@@ -8,15 +8,22 @@ scored on, so the two (and the market at the same moment) are compared on the
 same days. NOTHING HERE PRICES OR TRADES.
 
 EACH TICK, after the live record has been collected (tick.yml, the last step):
-  due        every prediction_checkpoints row the tick wrote in the last
-             SERVED_WITHIN_MIN minutes at a checkpoint of CHECKPOINTS (the
-             day itself), that has no wxrd row yet
+  due        every prediction_checkpoints row decided in the last RETRY_HOURS
+             at a checkpoint of CHECKPOINTS (the day itself) that has no wxrd
+             row yet, oldest first, at most MAX_DUE: a tick whose step failed
+             or timed out leaves its checkpoints to the next ticks rather than
+             losing them (Codex on #395), and a backlog is cleared over
+             several ticks: rows stop being built at ROW_BUDGET_S and what was
+             built is written, so a backlog cannot time the step out hour
+             after hour
   the row    live_reader.row_at in arrival mode at the instant the engine
              decided (its decided_at): what the live record had then
-             (public.live_capture, the last RECORD_HOURS hours, read for the
-             due cities and their stations only), the training's rules with
-             the model's report lag, the station's past days and the daily
-             forecasts of the days before from the repository
+             (public.live_capture, captured_at <= decided_at, so a retry
+             reads what an on-time run would have; the RECORD_HOURS before the
+             oldest due checkpoint, read for the due cities and their
+             stations only), the training's rules with the model's report
+             lag, the station's past days and the daily forecasts of the days
+             before from the repository
   the model  the frozen wxrd-v2 (its sha256 checked); a row before 09h local
              or without a running maximum gets no probability, counted
   the write  one variant_shadow_checkpoints row per due checkpoint: variant
@@ -44,7 +51,11 @@ ROOT = common.ROOT
 VARIANT = "wxrd"
 MODEL_JSON = os.path.join(ROOT, "data", "models", "wxrd", "wxrd-v2_remaining.json")
 CHECKPOINTS = ("morning", "noon", "prepeak_2h", "prepeak_1h", "postpeak_1h")
-SERVED_WITHIN_MIN = 30
+SERVED_WITHIN_MIN = 30      # a row decided further back than this was written by a retry
+RETRY_HOURS = 6             # the record the row reads reaches RETRY_HOURS + RECORD_HOURS back, inside the prune's 2 days
+MAX_DUE = 30                # a tick wrote 2-19 such checkpoints an hour, 11-12 Oct (prediction_checkpoints)
+ROW_BUDGET_S = 90           # rows stop being built here and what is built is written, inside the step's 3 min;
+                            # bounds, not measurements: the first ticks' seconds are in the log rows
 RECORD_HOURS = 40           # the day's hourly forecasts reach the record up to 17 h ahead; the prune keeps 2 days
 KINDS = ("report", "hourly", "hourly2", "models1", "models2")
 TABLE = "variant_shadow_checkpoints"
@@ -59,11 +70,14 @@ def variant_version(meta):
     return f"wxrd:v2:{meta['model_sha256'][:12]}"
 
 
-def due(served, held):
-    """The served rows at a checkpoint of CHECKPOINTS without a wxrd row:
-    held is {(city, target_date, checkpoint)} of the wxrd rows written."""
-    return [r for r in served if r["checkpoint"] in CHECKPOINTS
-            and (r["city_key"], str(r["target_date"]), r["checkpoint"]) not in held]
+def due(served, held, limit=MAX_DUE):
+    """The served rows at a checkpoint of CHECKPOINTS without a wxrd row,
+    oldest decision first, at most `limit`: held is {(city, target_date,
+    checkpoint)} of the wxrd rows written. Returns (due, deferred count)."""
+    todo = sorted((r for r in served if r["checkpoint"] in CHECKPOINTS
+                   and (r["city_key"], str(r["target_date"]), r["checkpoint"]) not in held),
+                  key=lambda r: (str(r["decided_at"]), r["city_key"], r["checkpoint"]))
+    return todo[:limit], max(0, len(todo) - limit)
 
 
 def probs_of(band_ids, p):
@@ -87,6 +101,11 @@ def variant_row(served, unit, band_ids, p, version, calibrated):
         "unit": unit, "probs": probs, "top_band_id": top[0], "top_prob": top[1],
         "floor_c": None, "q_down": None, "q_up": None,
     }
+
+
+def oldest(todo):
+    """The earliest decision among the due rows, as a UTC datetime."""
+    return min(dt.datetime.fromisoformat(str(r["decided_at"]).replace("Z", "+00:00")) for r in todo)
 
 
 def event_for(events, served):
@@ -131,19 +150,20 @@ def run(now=None, dry_run=False):
     with open(MODEL_JSON) as fh:
         meta = json.load(fh)
     version = variant_version(meta)
-    since = (now - dt.timedelta(minutes=SERVED_WITHIN_MIN)).isoformat()
+    since = (now - dt.timedelta(hours=RETRY_HOURS)).isoformat()
     served = ops.rest_all("prediction_checkpoints", [
         ("select", "city_key,target_date,checkpoint,decided_at,engine_version,model_path,station,centre_c,"
                    "sigma_c,top_band_id"),
         ("decided_at", f"gte.{since}"), ("decided_at", f"lte.{now.isoformat()}"),
         ("checkpoint", f"in.({','.join(CHECKPOINTS)})")], order="checkpoint_id.asc")
     variant_rows = ops.rest_all(TABLE, [("select", "city_key,target_date,checkpoint,variant,served_calibrated"),
-                                        ("decided_at", f"gte.{(now - dt.timedelta(hours=3)).isoformat()}")],
-                                order="shadow_id.asc")
+                                        ("decided_at", f"gte.{since}")], order="shadow_id.asc")
     key = lambda r: (r["city_key"], str(r["target_date"]), r["checkpoint"])  # noqa: E731
-    todo = due(served, {key(r) for r in variant_rows if r["variant"] == VARIANT})
+    todo, deferred = due(served, {key(r) for r in variant_rows if r["variant"] == VARIANT})
     calibrated = {key(r): r["served_calibrated"] for r in variant_rows if r["variant"] != VARIANT}
-    detail = {"version": version, "served": len(served), "due": len(todo), "written": 0, "skipped": {}}
+    late = (now - dt.timedelta(minutes=SERVED_WITHIN_MIN)).isoformat()
+    detail = {"version": version, "served": len(served), "due": len(todo), "deferred": deferred,
+              "retried": sum(str(r["decided_at"]) < late for r in todo), "written": 0, "skipped": {}}
     if not todo:
         detail["seconds"] = round(time.time() - t0, 1)
         if not dry_run:
@@ -154,7 +174,7 @@ def run(now=None, dry_run=False):
     city_keys = {r["city_key"] for r in todo}
     record_rows = ops.rest_all("live_capture", [
         ("select", "kind,key,captured_at,payload"), ("kind", f"in.({','.join(KINDS)})"),
-        ("captured_at", f"gte.{(now - dt.timedelta(hours=RECORD_HOURS)).isoformat()}"),
+        ("captured_at", f"gte.{(oldest(todo) - dt.timedelta(hours=RECORD_HOURS)).isoformat()}"),
         ("captured_at", f"lte.{now.isoformat()}"), ("or", key_filter(cities, city_keys))],
         order="capture_id.asc", page_size=1000)
     record = lr.Record([(r["kind"], r["key"], r["captured_at"], r["payload"]) for r in record_rows])
@@ -172,7 +192,10 @@ def run(now=None, dry_run=False):
 
     skipped = {}
     rows, pairs = [], []
-    for s in todo:
+    for i, s in enumerate(todo):
+        if time.time() - t0 > ROW_BUDGET_S:
+            detail["deferred"] += len(todo) - i
+            break
         if key(s) not in calibrated:
             skipped["no sibling variant row (calibration unknown)"] = \
                 skipped.get("no sibling variant row (calibration unknown)", 0) + 1
