@@ -54,6 +54,10 @@ snapshot (ask_backtest.own_snapshot). Fixed after the 26 Sep - 4 Oct holdout
 was seen (as run: taker +0.0525, maker -0.0416; own snapshot: +0.0662 and
 -0.0410, the readings unchanged), so H3a's test is the dates from 5 Oct.
 
+H3a on 5-9 Oct, not separable from zero: +0.0440 a share after the taker fee
+(-0.0020 to +0.0939), 55 trades (data/eval/wxpredict/ask_backtest_h3a_2026-10-12.json;
+at size capacity_h3a_2026-10-12.json). Read again as dates arrive.
+
     python tools/wxpredict/book_anchor.py RESIDUAL_DUMP.csv.gz OUT.csv.gz
 """
 import argparse

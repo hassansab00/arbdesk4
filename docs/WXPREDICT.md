@@ -585,6 +585,64 @@ exploration window is where the idea came from and is not evidence; the
 holdout cannot separate it from zero. The test that counts is H3a from 5 Oct,
 one-share and at size (`data/eval/wxpredict/capacity_*`).
 
+### H2 and H3a on the first new dates, 5-9 Oct (12 Oct)
+
+The two tests fixed on 11 Oct before any date from 5 Oct was looked at, run
+as their tools are written, on the dates the coverage report passes.
+
+**What was under them.** The first nightly hourly append (#375) added 7,814
+hours and rewrote none; the 124 hours Open-Meteo now serves differently
+(Milan and Munich 3-4 Oct, Paris 1-4 Oct) keep their first answer
+(`docs/PLAN_PROGRESS.md`, night 3). The coverage report on the first residual
+dump flagged every date: Lucknow, the one city on a half-hour offset, had no
+hourly forecast after 4 Oct, because the nightly append leaves out hours off a
+city's own grid and only `fetch_forecasts.py` extends that city. Lucknow's 5-11
+Oct (168 hours) were added by `fetch_forecasts.py`'s own code, its request
+answered through the database's pg_net (this sandbox's address gets 429 from
+Open-Meteo; the 168 rows' md5 checked equal on both sides), and no existing
+line changed. Then the table was rebuilt (679,742 rows, 15 Jul 2025 - 11 Oct
+2026, content `efdee4fb...`, gzip `c0f9bb31...`; `table_meta.json` keeps the
+recorded table) and `market_residual.py --dump` rerun (its monthly fits equal
+the first run's: the change reaches only October's test rows). Coverage
+(`data/eval/wxpredict/coverage/coverage_2026-10-05_on_2026-10-12.json`):
+5-9 Oct whole, 47 events a date, each with its market definition, books
+(510-864 complete ladders a date), prints, winner, whole local hourly day and
+station day; 10 and 11 Oct have no archived book yet. Window: 5-9 Oct.
+
+**H2 FAILED.** Resting orders on the evening before (the D-1 group, THETA 0.05,
+through fills) lose: **-0.0966 a share (90% -0.1412 to -0.0446), 65 fills on 5
+dates** (`maker_backtest_h2_2026-10-12.json`). H2-control, the market's own
+prices: -0.0748 (-0.2099 to +0.0845), 40 fills, not separable from zero. The
+other groups of the same run, shown only: before 13h on the day -0.0488
+(405 fills), from 13h +0.0074 (-0.0293 to +0.0333, 215 fills).
+
+**H3a, not separable from zero.** The corrections on the book's own price,
+one share at the ask after the taker fee: **+0.0440 a share (-0.0020 to
++0.0939), 55 trades on 5 dates** (before the fee +0.0555, +0.0097 to +0.1055;
+`ask_backtest_h3a_2026-10-12.json`). The controls made no trade at THETA 0.05.
+At size (`capacity_h3a_2026-10-12.json`, the rule fixed in #379):
+
+| $10 tickets | entries | spent | fees | net | per date (90%) | without the best date |
+|---|---|---|---|---|---|---|
+| at the snapshot | 55 | $524.75 | $12.92 | +$18.59 | +$3.72 (-$8.05 to +$16.83) | -$15.13 |
+| stress +1c | 55 | | $12.95 | +$7.32 | | -$23.34 |
+| next snapshot | 26 | $254.02 | $6.74 | +$29.35 | +$5.87 (-$10.22 to +$20.85) | -$7.73 |
+
+The minimum order the capacity rule had to assume (5 shares) is what the live
+record now reads on every open book (WP3a, 12 Oct: `min_order_size` 5 on all
+1,034).
+
+**Read:** H2 is decided: resting on the evening's books does not pay for the
+market residual. H3a is not decided: five dates cannot separate it from zero,
+and the one-share and at-size readings both lean positive, as they did on
+26 Sep - 2 Oct. It is read again as dates arrive (10 Oct on are unseen; the
+ledger's `untouched_from` is 10 Oct). Five dates resampled whole make a coarse
+interval; it is reported, not trusted further than that.
+
+**Found on the way:** a city on a half-hour offset (Lucknow) is not extended by
+the nightly append, so every later test needs its hours added by hand first.
+Not fixed here.
+
 ### Reports the minute they arrive: the focused capture (WP4, 11 Oct)
 
 The station reports reach the platform once an hour (the tick reads IEM at

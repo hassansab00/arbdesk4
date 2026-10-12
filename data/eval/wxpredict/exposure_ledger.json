@@ -1,10 +1,11 @@
 {
  "about": "Which dates each WXPredict question has been scored on, so no rule is tested on dates it was found, tuned or looked at on. Every result in data/eval/wxpredict is registered here exactly once; tests/test_wxpredict_exposure_ledger.py checks it. A new result is registered in the same PR that commits it, and untouched_from moves past every date scored. Written 11 Oct 2026 (the Codex action plan of 11 Oct, section 2: one exposure ledger).",
- "untouched_from": "2026-10-05",
- "untouched_note": "No WXPredict model, rule or control has been scored on an event date from 5 Oct (every result below ends by 4 Oct, the table's newest date). Data volumes after 4 Oct were counted (trade prints a day, R46) without outcomes or prices being scored.",
+ "untouched_from": "2026-10-10",
+ "untouched_note": "No WXPredict model, rule or control has been scored on an event date from 10 Oct. H2 and H3a scored 5-9 Oct on 12 Oct: the newest dates with every event's market definition, books, prints, winner, whole local day of hourly forecasts and station day (data/eval/wxpredict/coverage/coverage_2026-10-05_on_2026-10-12.json; 10 and 11 Oct had no archived book yet). The market residual's own October log loss, which its --dump run also computes (1-11 Oct), went to a scratch file and was neither read nor committed. Data volumes after 4 Oct were counted (trade prints a day, R46) without outcomes or prices being scored.",
  "table": {
   "recorded": {"file": "data/training/wxpredict/table_meta.json", "sha256": "d03b73e88b75", "dates": ["2025-07-15", "2026-10-04"], "rows": 684990},
-  "results_built_on": {"table_gzip_sha256": "bd16da926ca6", "rows": 670686, "note": "every model result of 11 Oct was made on a table rebuilt from 11 Oct's sources (47 cities; R47), not the recorded one; build_table.py --recorded rebuilds the recorded one"}
+  "results_built_on": {"table_gzip_sha256": "bd16da926ca6", "rows": 670686, "note": "every model result of 11 Oct was made on a table rebuilt from 11 Oct's sources (47 cities; R47), not the recorded one; build_table.py --recorded rebuilds the recorded one"},
+  "results_built_on_12_oct": {"table_gzip_sha256": "c0f9bb312c9a", "content_sha256": "efdee4fb792b", "rows": 679742, "dates": ["2025-07-15", "2026-10-11"], "note": "H2 and H3a of 12 Oct were made on a table rebuilt from 12 Oct's sources: #375's first nightly hourly append and Lucknow's 5-11 Oct hours (fetch_forecasts.py's own rules, its answer asked through pg_net); table_meta.json keeps the recorded table"}
  },
  "sealed_test": "WXPREDICT_BUILD.md section 4 sealed 1 Sep - 4 Oct 2026 for WXPredict v1 until G4. From 11 Oct (Hassan: 'DO NOT FREEZE ... WE NEED TO BUILD A SOLID SYSTEM') the research models below were scored out of sample on those dates by walk-forward and at the real asks, so 1 Sep - 4 Oct is no longer an untouched test for any WXPredict model. The untouched dates start 5 Oct.",
  "questions": [
@@ -80,14 +81,15 @@
    "rule_marker": "HYPOTHESIS H3",
    "rule_commit": "a83f4a6",
    "developed_on": ["2026-08-22", "2026-09-25"],
-   "scored": ["2026-08-22", "2026-10-04"],
-   "verdict": "H3b FAILED (-0.0410, -0.0727 to -0.0104, 718 fills, own snapshot). H3a not separable from zero on 26 Sep - 4 Oct (+0.0662, -0.0104 to +0.1316, 89 trades, own snapshot); the own-snapshot matching was fixed after that window was seen (Codex on #376), so H3a's test is the dates from 5 Oct.",
-   "pending": {"part": "H3a", "test_from": "2026-10-05", "tools": "book_anchor.py on a market_residual.py dump, then ask_backtest.py --model-col p_model --from 2026-10-05, after_taker_fee at THETA 0.05; at size, capacity.py on its --trades-out (rule fixed 11 Oct, before any date from 5 Oct)"},
+   "scored": ["2026-08-22", "2026-10-09"],
+   "verdict": "H3b FAILED (-0.0410, -0.0727 to -0.0104, 718 fills, own snapshot). H3a not separable from zero on 26 Sep - 4 Oct (+0.0662, -0.0104 to +0.1316, 89 trades, own snapshot); the own-snapshot matching was fixed after that window was seen (Codex on #376), so H3a's test is the dates from 5 Oct. H3a on 5-9 Oct (12 Oct): after the taker fee +0.0440 a share (-0.0020 to +0.0939), 55 trades on 5 dates, not separable from zero (before the fee +0.0555, +0.0097 to +0.1055); the controls made no trade at THETA 0.05. At size, $10 tickets at the snapshot: 55 entries, $524.75 spent, net +$18.59, per date +$3.72 (90% -$8.05 to +$16.83), -$15.13 without the best date.",
+   "pending": {"part": "H3a, as the dates grow", "test_from": "2026-10-10", "tools": "the same steps (book_anchor.py on a market_residual.py dump, ask_backtest.py --model-col p_model --from 2026-10-05 through the newest covered date, after_taker_fee at THETA 0.05; capacity.py on its --trades-out); 5-9 Oct were not separable from zero, so the reading waits for more dates, 10 Oct on unseen"},
    "results": ["ask_backtest_book_anchor_2026-10-11.json", "ask_backtest_book_anchor_own_snapshot_2026-10-11.json",
                "maker_backtest_book_anchor_2026-10-11.json", "maker_backtest_book_anchor_own_snapshot_2026-10-11.json",
                "ask_backtest_h3_holdout_2026-10-11.json", "ask_backtest_h3_holdout_own_snapshot_2026-10-11.json",
                "maker_backtest_h3_holdout_2026-10-11.json", "maker_backtest_h3_holdout_own_snapshot_2026-10-11.json",
-               "capacity_book_anchor_own_snapshot_2026-10-11.json", "capacity_h3_holdout_own_snapshot_2026-10-11.json"]
+               "capacity_book_anchor_own_snapshot_2026-10-11.json", "capacity_h3_holdout_own_snapshot_2026-10-11.json",
+               "ask_backtest_h3a_2026-10-12.json", "capacity_h3a_2026-10-12.json"]
   },
   {
    "id": "H2_maker_d_minus_1",
@@ -96,10 +98,9 @@
    "rule_marker": "HYPOTHESIS H2",
    "rule_commit": "7c770e1",
    "developed_on": ["2026-09-11", "2026-10-04"],
-   "scored": [],
-   "verdict": "pending",
-   "pending": {"part": "H2 and H2-control", "test_from": "2026-10-05", "tools": "maker_backtest.py --model-col p_model --from 2026-10-05, the D-1 group, through fills"},
-   "results": []
+   "scored": ["2026-10-05", "2026-10-09"],
+   "verdict": "FAILED: the D-1 group at THETA 0.05, through fills, -0.0966 a share (-0.1412 to -0.0446), 65 fills on 5 dates (5-9 Oct, 12 Oct). H2-control, the market's own prices: -0.0748 (-0.2099 to +0.0845), 40 fills, not separable from zero.",
+   "results": ["maker_backtest_h2_2026-10-12.json"]
   },
   {
    "id": "ladder_arbitrage",

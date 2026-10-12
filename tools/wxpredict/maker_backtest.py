@@ -68,6 +68,10 @@ model. Both are judged on their 90% interval from resampling whole dates;
 a window too short to separate either from zero says so and waits for more
 dates, it is not read either way.
 
+H2 FAILED on 5-9 Oct: -0.0966 a share (-0.1412 to -0.0446), 65 fills; H2-control
+-0.0748 (-0.2099 to +0.0845), 40 fills, not separable
+(data/eval/wxpredict/maker_backtest_h2_2026-10-12.json).
+
     python tools/wxpredict/maker_backtest.py DECISIONS.csv.gz [--model-col p_model] [--from D] [--to D]
                                              [--out data/eval/wxpredict/maker_backtest_<date>.json]
 """
