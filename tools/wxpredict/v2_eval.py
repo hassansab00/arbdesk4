@@ -15,7 +15,12 @@ the days before it (walk-forward, weekly folds of FOLDS):
               data/archive/forecasts and the mirror's weather_forecasts):
               (a) as features beside the others, the model refitted; (b) the
               model's forecast inputs moved by the revision (newest daily
-              maximum minus the lead-1 best_match one), not refitted.
+              maximum minus the lead-1 best_match one), not refitted: every
+              forecast temperature of the day together (REVISED_UP: the
+              daily maxima, the models' mean, range and each member, the
+              hourly levels) and the observed-minus-forecast anomalies the
+              other way (REVISED_DOWN), so the inputs stay coherent (Codex
+              on #394).
 
 Scored on the venue decisions from 09h with every bucket priced (the table's
 mkt_complete): hit (the model's most likely bucket won), log loss, the
@@ -39,6 +44,8 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from wxpredict import features  # noqa: E402
 import remaining  # noqa: E402
 import walkforward as wf  # noqa: E402
 
@@ -49,7 +56,9 @@ FOLDS = [("2026-09-15", "2026-09-21"), ("2026-09-22", "2026-09-28"), ("2026-09-2
          ("2026-10-06", "2026-10-11")]
 HOURS = [(9, 10), (11, 12), (13, 14), (15, 16), (17, 23), (9, 16)]
 FORECAST_GLOBS = ("data/archive/forecasts/*.csv.gz", "data/mirror/weather_forecasts/*.csv.gz")
-REVISED = ("fc_bm_tmax_c", "fch_rest_max_c", "fch_day_max_c", "fc_models_mean_c")
+REVISED_UP = ("fc_bm_tmax_c", "fc_models_mean_c", "fc_models_min_c", "fc_models_max_c",
+              *[f"fc_{m}_c" for m in features.MODELS], "fch_day_max_c", "fch_now_c", "fch_rest_max_c", "fch_next3_c")
+REVISED_DOWN = ("anom_now_c", "anom_3h_c")
 
 
 def unix(s):
@@ -186,8 +195,8 @@ def main(argv=None):
     rev = val - v2.fc_bm_tmax_c.values
     has = ~np.isnan(rev)
     moved = v2.copy()
-    for c in REVISED:
-        moved[c] = np.where(has, v2[c].values + np.nan_to_num(rev), v2[c].values)
+    for c, sign in [(c, 1) for c in REVISED_UP] + [(c, -1) for c in REVISED_DOWN]:
+        moved[c] = np.where(has, v2[c].values + sign * np.nan_to_num(rev), v2[c].values)
     xr = remaining.features(moved, wf.features(moved))
     rr, _ = score(v2, x2, fits=fits2, variants={"": xr})
     have = v2[(v2.date >= window[0]) & (v2.date <= window[1]) & (v2.source == "venue")]

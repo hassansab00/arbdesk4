@@ -1,5 +1,5 @@
 {
- "made": "2026-10-12T20:27Z",
+ "made": "2026-10-12T21:28Z",
  "window": [
   "2026-09-15",
   "2026-10-11"
@@ -226,149 +226,149 @@
   "9-10h": {
    "n": 2442,
    "hit_v2": 0.43,
-   "hit_v2_revised": 0.405,
+   "hit_v2_revised": 0.4054,
    "hit_market": 0.5147,
    "nll_v2": 1.3921,
-   "nll_v2_revised": 1.4717,
+   "nll_v2_revised": 1.4534,
    "nll_market": 1.1243,
    "d_hit_ci90": [
-    -0.0429,
-    -0.006
+    -0.043,
+    -0.0061
    ],
    "d_nll_ci90": [
-    0.0456,
-    0.1128
+    0.0307,
+    0.0911
    ],
    "obs_age_min_median_v2": 31.0,
    "obs_age_min_median_v2_revised": 31.0,
    "C": {
     "n": 1870,
     "hit_v2": 0.4471,
-    "hit_v2_revised": 0.4241,
+    "hit_v2_revised": 0.4235,
     "hit_market": 0.5364
    },
    "F": {
     "n": 572,
     "hit_v2": 0.3741,
-    "hit_v2_revised": 0.3427,
+    "hit_v2_revised": 0.3462,
     "hit_market": 0.4441
    }
   },
   "11-12h": {
    "n": 2443,
    "hit_v2": 0.4707,
-   "hit_v2_revised": 0.4613,
+   "hit_v2_revised": 0.465,
    "hit_market": 0.5493,
    "nll_v2": 1.1839,
-   "nll_v2_revised": 1.2439,
+   "nll_v2_revised": 1.2278,
    "nll_market": 1.0212,
    "d_hit_ci90": [
-    -0.0262,
-    0.0079
+    -0.0225,
+    0.0111
    ],
    "d_nll_ci90": [
-    0.0345,
-    0.0843
+    0.0185,
+    0.0684
    ],
    "obs_age_min_median_v2": 31.0,
    "obs_age_min_median_v2_revised": 31.0,
    "C": {
     "n": 1871,
     "hit_v2": 0.4869,
-    "hit_v2_revised": 0.4714,
+    "hit_v2_revised": 0.473,
     "hit_market": 0.5644
    },
    "F": {
     "n": 572,
     "hit_v2": 0.4178,
-    "hit_v2_revised": 0.4283,
+    "hit_v2_revised": 0.4388,
     "hit_market": 0.5
    }
   },
   "13-14h": {
    "n": 2445,
    "hit_v2": 0.6143,
-   "hit_v2_revised": 0.6004,
+   "hit_v2_revised": 0.5935,
    "hit_market": 0.6879,
    "nll_v2": 0.8559,
-   "nll_v2_revised": 0.9027,
+   "nll_v2_revised": 0.8997,
    "nll_market": 0.7384,
    "d_hit_ci90": [
-    -0.0306,
-    0.0028
+    -0.0343,
+    -0.0076
    ],
    "d_nll_ci90": [
-    0.0277,
-    0.0658
+    0.0255,
+    0.0617
    ],
    "obs_age_min_median_v2": 31.0,
    "obs_age_min_median_v2_revised": 31.0,
    "C": {
     "n": 1873,
     "hit_v2": 0.6401,
-    "hit_v2_revised": 0.6145,
+    "hit_v2_revised": 0.6113,
     "hit_market": 0.6967
    },
    "F": {
     "n": 572,
     "hit_v2": 0.5297,
-    "hit_v2_revised": 0.5542,
+    "hit_v2_revised": 0.535,
     "hit_market": 0.6591
    }
   },
   "15-16h": {
    "n": 2446,
    "hit_v2": 0.8524,
-   "hit_v2_revised": 0.8393,
+   "hit_v2_revised": 0.8377,
    "hit_market": 0.8872,
    "nll_v2": 0.415,
    "nll_v2_revised": 0.4441,
    "nll_market": 0.3242,
    "d_hit_ci90": [
-    -0.0217,
-    -0.0041
+    -0.024,
+    -0.0055
    ],
    "d_nll_ci90": [
-    0.0193,
-    0.039
+    0.0199,
+    0.0387
    ],
    "obs_age_min_median_v2": 31.0,
    "obs_age_min_median_v2_revised": 31.0,
    "C": {
     "n": 1874,
     "hit_v2": 0.8581,
-    "hit_v2_revised": 0.8447,
+    "hit_v2_revised": 0.8431,
     "hit_market": 0.8965
    },
    "F": {
     "n": 572,
     "hit_v2": 0.8339,
-    "hit_v2_revised": 0.8217,
+    "hit_v2_revised": 0.8199,
     "hit_market": 0.8566
    }
   },
   "17-23h": {
    "n": 8561,
    "hit_v2": 0.9872,
-   "hit_v2_revised": 0.987,
+   "hit_v2_revised": 0.9873,
    "hit_market": 0.9933,
    "nll_v2": 0.0769,
    "nll_v2_revised": 0.0771,
    "nll_market": 0.0329,
    "d_hit_ci90": [
-    -0.0006,
-    0.0002
+    -0.0002,
+    0.0005
    ],
    "d_nll_ci90": [
-    -0.0019,
-    0.0021
+    -0.002,
+    0.0022
    ],
    "obs_age_min_median_v2": 31.0,
    "obs_age_min_median_v2_revised": 31.0,
    "C": {
     "n": 6559,
     "hit_v2": 0.9857,
-    "hit_v2_revised": 0.9855,
+    "hit_v2_revised": 0.9858,
     "hit_market": 0.993
    },
    "F": {
@@ -381,31 +381,31 @@
   "9-16h": {
    "n": 9776,
    "hit_v2": 0.592,
-   "hit_v2_revised": 0.5766,
+   "hit_v2_revised": 0.5755,
    "hit_market": 0.6599,
    "nll_v2": 0.9615,
-   "nll_v2_revised": 1.0154,
+   "nll_v2_revised": 1.006,
    "nll_market": 0.8018,
    "d_hit_ci90": [
-    -0.0249,
-    -0.0057
+    -0.0251,
+    -0.0079
    ],
    "d_nll_ci90": [
-    0.0364,
-    0.0712
+    0.0275,
+    0.0607
    ],
    "obs_age_min_median_v2": 31.0,
    "obs_age_min_median_v2_revised": 31.0,
    "C": {
     "n": 7488,
     "hit_v2": 0.6082,
-    "hit_v2_revised": 0.5888,
+    "hit_v2_revised": 0.5879,
     "hit_market": 0.6736
    },
    "F": {
     "n": 2288,
     "hit_v2": 0.5389,
-    "hit_v2_revised": 0.5367,
+    "hit_v2_revised": 0.535,
     "hit_market": 0.6149
    }
   }

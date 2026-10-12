@@ -146,7 +146,7 @@
    "rule_file": "tools/wxpredict/v2_eval.py",
    "rule_marker": "the newest forecast the platform had fetched by the decision",
    "scored": ["2026-09-15", "2026-10-11"],
-   "verdict": "No (12 Oct, on the v2 table, 18,337 venue decisions, each with a fetched forecast): (a) as features 09-16h hit 59.20% -> 59.21% (-0.6 to +0.6 points), log loss -0.0065 to +0.0076; (b) moving the inputs 59.20% -> 57.66% (-2.5 to -0.6 points), log loss +0.036 to +0.071, worse.",
+   "verdict": "No (12 Oct, on the v2 table, 18,337 venue decisions, each with a fetched forecast): (a) as features 09-16h hit 59.20% -> 59.21% (-0.6 to +0.6 points), log loss -0.0065 to +0.0076; (b) moving every forecast temperature input together (and the anomalies the other way) 59.20% -> 57.55% (-2.5 to -0.8 points), log loss +0.028 to +0.061, worse.",
    "results": ["same_day_forecast_2026-10-12.json"]
   },
   {

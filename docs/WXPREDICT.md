@@ -845,9 +845,10 @@ every three hours and archives each fetch with its time
 reduces the daily maximum's error only a little: mean absolute error 1.234 C
 at lead 1, 1.139 C as of 09h local, 1.128 C as of 12h (1,434 city-days, a
 scratch measurement, not committed). As features, refitted, it changes nothing:
-09-16h 59.20% -> 59.21%, 90% interval -0.6 to +0.6 points. Moving the
-model's forecast inputs by the revision makes it worse: 57.66%, log loss
-+0.036 to +0.071 (`same_day_forecast_2026-10-12.json`).
+09-16h 59.20% -> 59.21%, 90% interval -0.6 to +0.6 points. Moving every
+forecast temperature input by the revision (and the observed-minus-forecast
+anomalies the other way) makes it worse: 57.55%, -2.5 to -0.8 points, log
+loss +0.028 to +0.061 (`same_day_forecast_2026-10-12.json`).
 
 **Stale reports are.** A v1 row counts a station report 20 minutes after its
 reading (IEM, 5 Oct), and decisions are on the hour. So a station that
