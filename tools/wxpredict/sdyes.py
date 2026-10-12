@@ -85,3 +85,79 @@ def choose(qualifying):
 def settle(entry, won):
     """Net profit of an entry held to settlement: a share pays 1 if its bucket won."""
     return (entry["shares"] if won else 0.0) - entry["usd"] - entry["fee"]
+
+
+# ---------------------------------------------------------------------------
+# the forward decisions (WP5 step 3): which books judge a decision, and how
+# ---------------------------------------------------------------------------
+def fresh_answer(polls, t, icao, latency_s=LATENCY_S, within_s=BOOK_WITHIN_S):
+    """When the books that judge a decision at t were answered: the first clean
+    books poll (source clob_books, status 200, no error) that asked for the
+    station's city, answered from t + latency_s to t + within_s. None when
+    there is none: the decision is skipped, 'no fresh book'. polls: [{source,
+    stations, answered_at (unix seconds), status_code, error}]."""
+    best = None
+    for p in polls:
+        if p.get("source") != "clob_books" or p.get("status_code") != 200 or p.get("error"):
+            continue
+        a = p.get("answered_at")
+        if icao not in (p.get("stations") or []) or a is None or not (t + latency_s <= a <= t + within_s):
+            continue
+        if best is None or a < best:
+            best = a
+    return best
+
+
+def ask_levels(book):
+    """A focus_book payload's asks ([[price, shares], ...], best first) as walk_yes levels."""
+    return [{"price": float(p), "size": float(s)} for p, s in ((book or {}).get("asks") or [])]
+
+
+def min_order(book):
+    """The book's own minimum order; MIN_SHARES where it states none."""
+    m = (book or {}).get("min")
+    return MIN_SHARES if m in (None, "") else float(m)
+
+
+def market_probs(books):
+    """The market-only control: each bucket's price as the price record prices
+    a book (the midpoint, an empty bid as 0 and an empty ask as 1), normalised
+    over the ladder. None when a bucket has no book."""
+    prices = []
+    for b in books:
+        if b is None or (b.get("bid") is None and b.get("ask") is None):
+            return None
+        bid, ask = b.get("bid"), b.get("ask")
+        prices.append(((0.0 if bid is None else float(bid)) + (1.0 if ask is None else float(ask))) / 2)
+    total = sum(prices)
+    return [p / total for p in prices] if total > 0 else None
+
+
+def judge(t, probs, books, theta=THETA):
+    """One decision: for each bucket of the ladder (probs and books in ladder
+    order; a book None where the bucket has none), the walk and whether it
+    qualified, or why not: 'no probability', 'no book', 'no ask', 'below
+    theta' (the touch with its fee leaves less than theta) or 'below the
+    minimum order'."""
+    out = []
+    for i, (p, b) in enumerate(zip(probs, books)):
+        row = {"t": t, "bucket": i, "p": p, "touch": None, "qualified": False, "reason": None}
+        lv = ask_levels(b)
+        if p is None:
+            row["reason"] = "no probability"
+        elif b is None:
+            row["reason"] = "no book"
+        elif not lv:
+            row["reason"] = "no ask"
+        else:
+            row["touch"] = lv[0]["price"]
+            w = walk_yes(lv, p, theta, min_shares=min_order(b))
+            if w is None:
+                short = p - lv[0]["price"] - fee_per_share(lv[0]["price"]) < theta - 1e-12
+                row["reason"] = "below theta" if short else "below the minimum order"
+            else:
+                shares, usd, fee = w
+                row.update(shares=shares, usd=usd, fee=fee, cost=(usd + fee) / shares,
+                           edge=p - (usd + fee) / shares, qualified=True)
+        out.append(row)
+    return out

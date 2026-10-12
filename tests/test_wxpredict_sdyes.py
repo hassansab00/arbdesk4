@@ -94,3 +94,56 @@ def test_the_freeze_names_the_values():
     doc = (ROOT / "docs" / "SAME_DAY_YES_PREREG.md").read_text()
     for v in (sdyes.VERSION, sdyes.MODEL_SHA256, "THETA 0.10", sdyes.FIRST_FORWARD_DATE):
         assert v in doc, v
+
+
+# the forward decisions (WP5 step 3)
+POLLS = [
+    {"source": "awc", "stations": ["OEJN"], "answered_at": 1070, "status_code": 200, "error": None},
+    {"source": "clob_books", "stations": ["OEJN"], "answered_at": 1050, "status_code": 200, "error": None},
+    {"source": "clob_books", "stations": ["LTFM"], "answered_at": 1070, "status_code": 200, "error": None},
+    {"source": "clob_books", "stations": ["OEJN", "LTFM"], "answered_at": 1080, "status_code": 200,
+     "error": "answer short: 21 of 22 books"},
+    {"source": "clob_books", "stations": ["OEJN", "LTFM"], "answered_at": 1125, "status_code": 200, "error": None},
+    {"source": "clob_books", "stations": ["OEJN", "LTFM"], "answered_at": 1190, "status_code": 200, "error": None},
+]
+
+
+def test_a_decision_is_judged_on_the_first_clean_books_after_the_latency():
+    assert sdyes.fresh_answer(POLLS, 1000, "OEJN") == 1125, \
+        "1050 is before t + 60 s, 1070 is reports or another city, 1080 was short"
+    assert sdyes.fresh_answer(POLLS, 1000, "LTFM") == 1070
+    assert sdyes.fresh_answer(POLLS, 1000, "OEJN", within_s=100) is None, "no fresh book"
+    assert sdyes.fresh_answer([], 1000, "OEJN") is None
+
+
+BOOK = {"bid": 0.2, "ask": 0.3, "bids": [[0.2, 50]], "asks": [[0.3, 10], [0.32, 20], [0.4, 100]], "min": 5}
+
+
+def test_a_focus_book_is_walked_as_recorded():
+    assert sdyes.ask_levels(BOOK) == [{"price": 0.3, "size": 10.0}, {"price": 0.32, "size": 20.0},
+                                      {"price": 0.4, "size": 100.0}]
+    assert sdyes.ask_levels(None) == [] and sdyes.ask_levels({"asks": []}) == []
+    assert sdyes.min_order(BOOK) == 5.0 and sdyes.min_order({"min": None}) == sdyes.MIN_SHARES
+    assert sdyes.min_order({"min": "15"}) == 15.0
+
+
+def test_the_market_control_prices_each_book_as_the_price_record():
+    books = [{"bid": None, "ask": 0.02}, {"bid": 0.6, "ask": 0.7}, {"bid": 0.2, "ask": None}]
+    q = sdyes.market_probs(books)
+    raw = [0.01, 0.65, 0.6]
+    assert q == pytest.approx([r / sum(raw) for r in raw])
+    assert sdyes.market_probs([books[0], None]) is None, "a bucket without a book"
+    assert sdyes.market_probs([{"bid": None, "ask": None}]) is None
+
+
+def test_each_bucket_is_judged_or_given_its_reason():
+    thin = dict(BOOK, min=50)
+    rows = sdyes.judge(1000, [0.45, 0.45, 0.2, None, 0.45, 0.45],
+                       [BOOK, thin, BOOK, BOOK, None, {"bid": 0.1, "asks": []}], theta=0.10)
+    assert [r["reason"] for r in rows] == [None, "below the minimum order", "below theta", "no probability",
+                                           "no book", "no ask"]
+    r = rows[0]
+    assert r["qualified"] and r["shares"] == pytest.approx(30) and r["touch"] == 0.3
+    assert r["cost"] == pytest.approx((3.0 + 6.4 + 10 * fee(0.3) + 20 * fee(0.32)) / 30)
+    assert r["edge"] == pytest.approx(0.45 - r["cost"]) and r["edge"] >= 0.10
+    assert [x["bucket"] for x in rows] == list(range(6)) and all(x["t"] == 1000 for x in rows)
