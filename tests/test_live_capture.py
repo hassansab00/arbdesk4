@@ -228,8 +228,37 @@ def test_the_forecast_is_asked_a_chunk_at_a_time_in_gmt(monkeypatch):
     assert params["end_date"] == "2026-10-13", "far enough for lead 2"
     assert set(rows) == {"hourly", "hourly2"}
     assert d["answered"] == lc.CITIES_PER_REQUEST and len(d["errors"]) == 1
-    assert len(rows["hourly"]) == lc.CITIES_PER_REQUEST, "lead 1 stops at 17 h"
-    assert len(rows["hourly2"]) == 2 * lc.CITIES_PER_REQUEST, "lead 2 reaches 41 h"
+    flat = {k: [r for _, batch in v for r in batch] for k, v in rows.items()}
+    assert len(flat["hourly"]) == lc.CITIES_PER_REQUEST, "lead 1 stops at 17 h"
+    assert len(flat["hourly2"]) == 2 * lc.CITIES_PER_REQUEST, "lead 2 reaches 41 h"
+    assert d["values"] == {1: lc.CITIES_PER_REQUEST, 2: 2 * lc.CITIES_PER_REQUEST}
+
+
+def test_each_chunk_carries_the_time_its_answer_arrived(monkeypatch):
+    """Codex on #386: one time for the whole part would stamp the first
+    chunk's values with the last chunk's arrival."""
+    cities = [{"city_key": f"c{i}", "latitude": i, "longitude": -i} for i in range(2 * lc.CITIES_PER_REQUEST)]
+    clock = iter([dt.datetime(2026, 10, 12, 15, 36, 5, tzinfo=UTC), dt.datetime(2026, 10, 12, 15, 36, 49, tzinfo=UTC)])
+
+    class Clock(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return next(clock)
+    monkeypatch.setattr(lc.dt, "datetime", Clock)
+
+    def get(url, params=None, timeout=None):
+        n = len(params["latitude"].split(","))
+        return _Answer([{"hourly": {"time": ["2026-10-11T12:00"],
+                                    **{f"temperature_2m_previous_day{lead}_{m}": [1.0] for m in honest_record.MODELS
+                                       for lead in (1, 2)}}}] * n)
+    monkeypatch.setattr(lc, "_get", get)
+    rows, d = lc.fetch_models(cities, dt.datetime(2026, 10, 11, 21, 36, tzinfo=UTC), lambda: 60)
+    (a1, b1), (a2, b2) = rows["models1"]
+    assert (a1.second, a2.second) == (5, 49) and len(b1) == len(b2) == lc.CITIES_PER_REQUEST
+    put = []
+    monkeypatch.setattr(lc, "rpc", lambda fn, p, timeout=None: put.append(p) or {"new": len(p["p_rows"])})
+    assert sum(lc.put("models1", at, batch, False)[1] for at, batch in rows["models1"]) == len(cities)
+    assert [p["p_captured_at"] for p in put] == [a1.isoformat(), a2.isoformat()]
 
 
 def test_the_models_are_asked_as_the_nightly_record_asks(monkeypatch):
@@ -243,6 +272,7 @@ def test_the_models_are_asked_as_the_nightly_record_asks(monkeypatch):
                                        for lead in (1, 2)}}}] * 3)
     monkeypatch.setattr(lc, "_get", get)
     rows, d = lc.fetch_models(cities, dt.datetime(2026, 10, 11, 21, 36, tzinfo=UTC), lambda: 60)
+    rows = {k: [r for _, batch in v for r in batch] for k, v in rows.items()}
     ((url, params),) = asked
     # the nightly record's own models request (honest_record.previous_request)
     nightly = []
@@ -291,13 +321,14 @@ def desk(monkeypatch, tmp_path):
         {"buckets": 1, "complete": True, "failed": [], "no_book": [], "tops": {"b1": [0.4] * 10}},
         {"buckets": 1, "asked": 1, "books": 1, "failed": 0, "no_book": 0, "errors": []}))
     monkeypatch.setattr(lc, "get_cities", lambda: [{"city_key": "jeddah", "latitude": 21.7, "longitude": 39.2}])
+    at = dt.datetime(2026, 10, 11, 21, 36, 7, tzinfo=UTC)
     monkeypatch.setattr(lc, "fetch_hourly", lambda cities, now, left: (
-        {"hourly": [{"key": "jeddah|2026-10-12T09:00", "payload": [31.0]}],
-         "hourly2": [{"key": "jeddah|2026-10-13T09:00", "payload": [32.0]}]},
+        {"hourly": [(at, [{"key": "jeddah|2026-10-12T09:00", "payload": [31.0]}])],
+         "hourly2": [(at, [{"key": "jeddah|2026-10-13T09:00", "payload": [32.0]}])]},
         {"cities": 1, "answered": 1, "values": {1: 1, 2: 1}, "errors": []}))
     monkeypatch.setattr(lc, "fetch_models", lambda cities, now, left: (
-        {"models1": [{"key": "jeddah|2026-10-12T09:00", "payload": [31.0] * 7}],
-         "models2": [{"key": "jeddah|2026-10-12T09:00", "payload": [30.0] * 7}]},
+        {"models1": [(at, [{"key": "jeddah|2026-10-12T09:00", "payload": [31.0] * 7}])],
+         "models2": [(at, [{"key": "jeddah|2026-10-12T09:00", "payload": [30.0] * 7}])]},
         {"cities": 1, "answered": 1, "values": {1: 1, 2: 1}, "errors": []}))
     monkeypatch.setattr(lc, "rpc", lambda fn, params, timeout=None: calls["put"].append((fn, params)) or {"new": 1})
     monkeypatch.setattr(lc, "log_run", lambda job, status, rows, detail: calls["log"].append((job, status, rows, detail)))

@@ -236,11 +236,15 @@ def _ask(chunk, params, left):
 
 
 def _fetch(cities, now, left, hourly, rows_of):
-    """({kind: [{key, payload}]}, detail). One request per CITIES_PER_REQUEST
-    cities, one at a time (honest_record: Open-Meteo refuses several open
-    requests from one address); a chunk that fails is recorded, the next tick
-    asks again. `rows_of(city_key, answer, lead, first, last)` gives one
-    lead's rows inside that lead's window."""
+    """({lead: [(captured_at, [{key, payload}])]}, detail). One request per
+    CITIES_PER_REQUEST cities, one at a time (honest_record: Open-Meteo
+    refuses several open requests from one address); a chunk that fails is
+    recorded, the next tick asks again. `rows_of(city_key, answer, lead, first,
+    last)` gives one lead's rows inside that lead's window.
+
+    EACH CHUNK CARRIES THE TIME ITS OWN ANSWER ARRIVED (Codex on #386): one
+    time for the whole part would say a chunk that answered first arrived
+    when the last one did, and the record is when each value arrived."""
     windows = {lead: hourly_window(now, h) for lead, h in LEAD_HORIZON.items()}
     first, last = windows[1][0], max(w[1] for w in windows.values())
     rows = {lead: [] for lead in LEAD_HORIZON}
@@ -253,25 +257,27 @@ def _fetch(cities, now, left, hourly, rows_of):
         try:
             answers = _ask(chunk, dict(hourly, start_date=first.date().isoformat(),
                                        end_date=last.date().isoformat()), left)
+            arrived = dt.datetime.now(dt.timezone.utc)
             got = {lead: [] for lead in LEAD_HORIZON}
             for city, a in zip(chunk, answers):
                 for lead in LEAD_HORIZON:
                     got[lead] += rows_of(city["city_key"], a, lead, *windows[lead])
             for lead in LEAD_HORIZON:
-                rows[lead] += got[lead]
+                rows[lead].append((arrived, got[lead]))
             answered += len(chunk)
         except Exception as e:
             errors.append(f"{chunk[0]['city_key']}..{chunk[-1]['city_key']}: "
                           f"{type(e).__name__}: {str(e)[:120]}")
     return rows, {"cities": len(cities), "answered": answered,
-                  "values": {lead: len(r) for lead, r in rows.items()},
+                  "values": {lead: sum(len(r) for _, r in batches) for lead, batches in rows.items()},
                   "window": {lead: [w[0].isoformat(), w[1].isoformat()] for lead, w in windows.items()},
                   "errors": errors}
 
 
 def fetch_hourly(cities, now, left):
-    """({kind: rows}, detail): best_match's seven at both leads, one request a
-    chunk ('hourly' to HORIZON_H, 'hourly2' to HORIZON2_H)."""
+    """({kind: [(captured_at, rows)]}, detail): best_match's seven at both
+    leads, one request a chunk ('hourly' to HORIZON_H, 'hourly2' to
+    HORIZON2_H)."""
     rows, d = _fetch(cities, now, left,
                      {"hourly": ",".join(f"{v}_previous_day{lead}" for v in honest_record.HEATING
                                          for lead in LEAD_HORIZON)},
@@ -280,9 +286,9 @@ def fetch_hourly(cities, now, left):
 
 
 def fetch_models(cities, now, left):
-    """({kind: rows}, detail): the seven models' temperature at both leads, one
-    request a chunk, asked as honest_record.previous_request asks it
-    ('models1' to HORIZON_H, 'models2' to HORIZON2_H)."""
+    """({kind: [(captured_at, rows)]}, detail): the seven models' temperature
+    at both leads, one request a chunk, asked as honest_record.previous_request
+    asks it ('models1' to HORIZON_H, 'models2' to HORIZON2_H)."""
     rows, d = _fetch(cities, now, left,
                      {"hourly": ",".join(f"temperature_2m_previous_day{lead}" for lead in LEAD_HORIZON),
                       "models": ",".join(honest_record.MODELS)},
@@ -395,10 +401,9 @@ def run(now=None, dry_run=False, iem_path=None):
             if not cities:
                 cities.extend(c for c in get_cities() if c.get("latitude") is not None)
             by_kind, d = fetch(cities, now, left)
-            captured = dt.datetime.now(dt.timezone.utc)
             d["new"] = {}
-            for kind, rows in by_kind.items():
-                d["new"][kind] = put(kind, captured, rows, dry_run, left)[1]
+            for kind, batches in by_kind.items():
+                d["new"][kind] = sum(put(kind, captured, rows, dry_run, left)[1] for captured, rows in batches)
             d["seconds"] = round(time.monotonic() - t0, 1)
             detail[part] = d
             parts_ok.append(d["answered"] == d["cities"] and not d["errors"])
