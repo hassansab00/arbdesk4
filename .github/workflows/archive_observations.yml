@@ -323,8 +323,8 @@ jobs:
       # popup - the outcome, the lead-1 forecast and its error, the afternoon's
       # cloud, dew point, wind and rain against the forecast, and each
       # checkpoint's engine, market and wxrd-v2 call. After the station data,
-      # so the day's reports are in. Rehearsed on 8-10 Oct against the live
-      # tables (rows read through SQL): 141 rows in 14.1 s. Logged as
+      # so the day's reports are in. Rehearsed on 7-10 Oct against the live
+      # tables (rows read through SQL): 188 rows in 14.5 s. Logged as
       # P7.7_day_review. Writes only its own table.
       - name: Why each day hit or missed (WXPredict)
         if: always()

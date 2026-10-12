@@ -944,8 +944,9 @@ city's newest seven.
   around the date in earlier years).
 - **The forecast:** best_match's lead-1 maximum and its error (station minus
   forecast), the seven models' maxima, and which came closest.
-- **The weather:** between 09 and 17 local, what the station reported against
-  what the lead-1 forecast said: cloud, dew point, wind, rain.
+- **The weather:** what the station reported against what the lead-1 forecast
+  said, over the forecast's own hours: cloud, dew point and wind from 09 to
+  17h local, rain from 00 to 17h (each to the end of its last hour).
   - Each difference also gets a z against the same city's differences over
     the 60 days before.
   - A difference is put into words only when it is unusual for the city
@@ -962,7 +963,8 @@ how much; it does not claim a difference caused the miss.
 
 Rehearsed on 7–10 Oct against the live tables (the rows read through SQL, the
 job's own code, no writes):
-- 188 rows in 15.2 s, 172 with a forecast error.
+- 188 rows, 172 with a forecast error; 14.5 s after Codex's fixes on #396 (the
+  forecast's own hours, the corrected checkpoint view), 15.2 s before.
 - Amsterdam 9 Oct: the station read 18 C against a forecast of 16.9. The
   evening before, the platform and the market both had 18 C. From the morning
   to 1 h before the peak, the platform said 16 C and the market 17 C, and both

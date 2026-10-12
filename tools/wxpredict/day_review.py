@@ -9,8 +9,10 @@ settled city-day (public.derived_day_review), read by the city popup:
                 days around the date in earlier years)
   the forecast  best_match's lead-1 maximum and its error (station - forecast),
                 the seven models' and which came closest
-  the weather   between 09 and 17 local, what the station reported against
-                what the lead-1 forecast said: cloud, dew point, wind, rain.
+  the weather   in the forecast's own windows (09-17h local for cloud, dew
+                point and wind, 00-17h for rain, each to the end of its last
+                hour), what the station reported against what the lead-1
+                forecast said.
                 Each difference also as a z: against the same city's
                 differences over the DAYS_HISTORY days before, so "much
                 cloudier than forecast" means unusual for that city
@@ -43,8 +45,12 @@ TABLE = "derived_day_review"
 DAYS = 3                    # settled dates reviewed each night (a late settlement is reviewed again)
 DAYS_HISTORY = 60           # the city's own differences the z is taken against
 MIN_HISTORY = 20            # fewer days: no z
-WINDOW_LOCAL = (9, 17)      # the afternoon the forecast's own aggregates cover (best_match_daily *_09_17)
-RAIN_FC_MM = 0.5            # a forecast of rain: more than this by 17h
+# The forecast's own windows, (first, last) local hour inclusive, as
+# scripts/honest_record.py WINDOWS builds best_match_daily (Codex on #396): the
+# hour labelled 17 is in both, so a report up to 17:59 is compared.
+WINDOW_LOCAL = (9, 17)      # cloud_09_17_pct, td_09_17_c, wind_09_17_kmh
+RAIN_WINDOW_LOCAL = (0, 17)  # precip_00_17_mm
+RAIN_FC_MM = 0.5            # a forecast of rain: more than this from 00 to 17h
 CHECKPOINTS = ("d1_eve", "morning", "noon", "prepeak_2h", "prepeak_1h", "postpeak_1h")
 WHAT = {"cloud_pct": ("cloud", "%"), "td_c": ("dew point", "C"), "wind_kmh": ("wind", "km/h")}
 # A difference is worded only when it is unusual for the city (|z| >= 1) AND
@@ -56,16 +62,21 @@ MIN_DELTA = {"cloud": 15.0, "dew point": 1.0, "wind": 5.0}
 # ---------------------------------------------------------------------------
 # pure
 # ---------------------------------------------------------------------------
-def afternoon(rep, day, tz, window=WINDOW_LOCAL):
-    """What the station reported between the window's hours on `day`: mean
-    cloud (% of the sky, from the most covered layer's oktas), mean dew point,
-    mean wind (km/h), whether it rained (a rain, shower, drizzle or thunder
-    code, or measured precipitation), and how many reports. None with under
-    six reports."""
+def reports_in(rep, day, tz, window):
+    """The reports of `day` from the window's first hour to the end of its
+    last (local, both inclusive, as the forecast's windows are)."""
     a = dt.datetime.combine(day, dt.time(window[0]), tz).timestamp()
-    b = dt.datetime.combine(day, dt.time(window[1]), tz).timestamp()
-    i0, i1 = bisect.bisect_left(rep.t, a), bisect.bisect_left(rep.t, b)
-    recs = rep.rec[i0:i1]
+    b = (dt.datetime.combine(day, dt.time(window[1]), tz) + dt.timedelta(hours=1)).timestamp()
+    return rep.rec[bisect.bisect_left(rep.t, a):bisect.bisect_left(rep.t, b)]
+
+
+def afternoon(rep, day, tz, window=WINDOW_LOCAL, rain_window=RAIN_WINDOW_LOCAL):
+    """What the station reported in the forecast's windows on `day`: mean
+    cloud (% of the sky, from the most covered layer's oktas), mean dew point
+    and mean wind (km/h) from 09 to 17h, whether it rained from 00 to 17h (a
+    rain, shower or thunder code, or measured precipitation), and how many
+    reports the 09-17h window held. None with under six of them."""
+    recs = reports_in(rep, day, tz, window)
     if len(recs) < 6:
         return None
     idx = {f: k for k, f in enumerate(features.Reports.FIELDS)}
@@ -75,11 +86,12 @@ def afternoon(rep, day, tz, window=WINDOW_LOCAL):
         return statistics.fmean(v) * scale if v else None
     # the report's weather as features.WX_FLAGS' bits: rain, shower, thunder, snow, fog
     wet = [i for i, (name, _) in enumerate(features.WX_FLAGS) if name in ("rain", "shower", "thunder")]
-    precip = [r[idx["precip_in"]] for r in recs if r[idx["precip_in"]] is not None]
+    wet_recs = reports_in(rep, day, tz, rain_window)
+    precip = [r[idx["precip_in"]] for r in wet_recs if r[idx["precip_in"]] is not None]
     oktas = mean("sky_oktas")
     return {"cloud_pct": None if oktas is None else oktas / 8 * 100, "td_c": mean("td_c"),
             "wind_kmh": mean("wind_kt", 1.852),
-            "rain": any(r[idx["wx"]][i] for r in recs for i in wet) or sum(precip) > 0,
+            "rain": any(r[idx["wx"]][i] for r in wet_recs for i in wet) or sum(precip) > 0,
             "reports": len(recs)}
 
 
@@ -161,7 +173,7 @@ def fmt_hour(h):
 def calls(checkpoint_rows, wxrd_rows, labels=None):
     """Per checkpoint, in the day's order: the engine's top bucket, its
     probability on the winner and whether it hit; the market's; wxrd-v2's;
-    each top bucket's label. checkpoint_rows: fact_checkpoint_outcome joined
+    each top bucket's label. checkpoint_rows: v_checkpoint_outcome joined
     with the served top; wxrd_rows: {checkpoint: variant row}; labels:
     {band_id: label}."""
     labels = labels or {}
@@ -245,7 +257,9 @@ def run(days=DAYS, dry_run=False, now=None):
     now = now or dt.datetime.now(dt.timezone.utc)
     first = (now.date() - dt.timedelta(days=days + 1)).isoformat()
     last = (now.date() - dt.timedelta(days=1)).isoformat()
-    outcome_rows = ops.rest_all("fact_checkpoint_outcome", [
+    # the corrected view: the market columns of the rows banked before 26 Sep
+    # 16:38Z are wrong in the table (20260930003000; Codex on #396)
+    outcome_rows = ops.rest_all("v_checkpoint_outcome", [
         ("select", "checkpoint_id,city_key,target_date,checkpoint,winner_band_id,hit,model_prob_on_winner,"
                    "market_top_band_id,market_hit,market_prob_on_winner"),
         ("target_date", f"gte.{first}"), ("target_date", f"lte.{last}")], order="checkpoint_id.asc")

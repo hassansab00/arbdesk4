@@ -32,12 +32,37 @@ def day_of(hours, **kw):
     return features.Reports([report(dt.datetime.combine(DAY, dt.time(h, 30), TZ), **kw) for h in hours])
 
 
-def test_the_afternoon_is_the_reports_between_09_and_17():
+def test_the_afternoon_is_the_reports_of_the_forecasts_hours_09_to_17():
     obs = dr.afternoon(day_of(range(0, 24), sky="BKN", sknt="10"), DAY, TZ)
-    assert obs["reports"] == 8, "09:30 to 16:30"
+    assert obs["reports"] == 9, "09:30 to 17:30: the hour labelled 17 is in the forecast's window (Codex on #396)"
     assert obs["cloud_pct"] == 6 / 8 * 100 and abs(obs["wind_kmh"] - 18.52) < 1e-9
     assert obs["rain"] is False
     assert dr.afternoon(day_of(range(9, 13)), DAY, TZ) is None, "under six reports"
+
+
+def test_the_windows_are_the_forecasts_own():
+    """best_match_daily's aggregates (scripts/honest_record.py WINDOWS) and the
+    station's must cover the same hours, or a delta compares different periods."""
+    import honest_record
+    assert dr.WINDOW_LOCAL == honest_record.WINDOWS["cloud_09_17_pct"] == honest_record.WINDOWS["td_09_17_c"] \
+        == honest_record.WINDOWS["wind_09_17_kmh"]
+    assert dr.RAIN_WINDOW_LOCAL == honest_record.WINDOWS["precip_00_17_mm"]
+
+
+def test_rain_is_counted_over_the_forecasts_rain_hours():
+    """precip_00_17_mm covers 00-17h, so morning rain is rain (Codex on #396);
+    rain after 18h is not."""
+    def day(wet_hour):
+        return features.Reports([report(dt.datetime.combine(DAY, dt.time(h, 30), TZ), wx="-RA" if h == wet_hour else "")
+                                 for h in range(0, 24)])
+    assert dr.afternoon(day(7), DAY, TZ)["rain"] is True
+    assert dr.afternoon(day(17), DAY, TZ)["rain"] is True
+    assert dr.afternoon(day(18), DAY, TZ)["rain"] is False
+
+
+def test_it_reads_the_corrected_checkpoint_outcomes():
+    src = (ROOT / "tools" / "wxpredict" / "day_review.py").read_text()
+    assert 'ops.rest_all("v_checkpoint_outcome"' in src and 'rest_all("fact_checkpoint_outcome"' not in src
 
 
 def test_rain_is_a_wet_code_or_measured_precipitation():

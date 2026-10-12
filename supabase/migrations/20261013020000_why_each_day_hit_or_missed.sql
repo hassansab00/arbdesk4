@@ -6,9 +6,9 @@
 -- every night, one row a settled city-day: the winning bucket, the station's
 -- maximum and when it came against when it usually comes, the lead-1
 -- forecast and its error, the seven models' maxima and the closest, what the
--- station reported between 09 and 17 local against what the forecast said
--- (cloud, dew point, wind, rain; each difference also as a z against the
--- city's own previous 60 days), and at each checkpoint the engine's, the
+-- station reported in the forecast's own windows against what the forecast
+-- said (cloud, dew point and wind 09-17h local, rain 00-17h; each difference
+-- also as a z against the city's own previous 60 days), and at each checkpoint the engine's, the
 -- market's and wxrd-v2's top bucket and whether it won. The city popup reads
 -- it.
 --
