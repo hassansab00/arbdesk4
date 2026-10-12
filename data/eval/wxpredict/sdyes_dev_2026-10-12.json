@@ -1,0 +1,1443 @@
+{
+ "made": "2026-10-12T16:46Z",
+ "dump_sha256": "dabcd6bcdc51150c5e14196f4312244ddcd6a0f6ed26ef974bafeb6cb514de2d",
+ "version": "sdyes-v1",
+ "dev_last": "2026-10-09",
+ "window": [
+  "2026-09-13",
+  "2026-10-08"
+ ],
+ "rule": "Written before it was run (12 Oct). It picks the candidate's model and THETA for docs/SAME_DAY_YES_PREREG.md on dates already inspected, and says how they did there. These dates chose the values, so their result flatters the candidate; only the forward dates test it. THE DECISIONS: the walk-forward dump with the remaining-day model (walkforward.py --remaining --dump; every probability out of sample, each month's models fitted on the dates before it). Jeddah and Istanbul, the event day itself, decisions from 10:00 to before 17:00 on the city's clock, event dates up to DEV_LAST: the ledger's dates already looked at (data/eval/wxpredict/exposure_ledger.json, untouched_from 10 Oct). The dump's later rows are dropped before anything is scored, and the walk-forward's own log loss of its October month is not read. THE BOOKS: the archived books (data/archive/books, data/mirror/book_snapshots), a snapshot every hour 12-25 Sep and every two hours from 26 Sep. Each book is judged with the newest decision of its city-day at or before it, at most an hour old (as ask_backtest.py). The ladder at size is rebuilt from the archived depth tiers by the platform's rule (execution.synth_levels): the first tier is priced at the touch, which is optimistic, so every result is also shown with that tier one cent dearer. THE RULE: sdyes.walk_yes and sdyes.choose. YES only; a ticket of $10; a level is bought while p - (price + taker fee) >= THETA; at least 5 shares (the minimum order is not in the archived books); one entry per city-day, the first book at which a bucket qualifies, held to settlement on the venue's winner. WHO: the candidates p_weather (the remaining-day model alone) and p_fusion (it pooled with the market, the WXPredict incumbent); the controls q (the market's own prices: market-only) and p_tempered (the market recalibrated); and rd1 (S10, the live same-day incumbent), at its own checkpoints, where one is at most an hour before the book. THE CHOICE, fixed before the run: among the two candidates and THETA in THETAS, the pair with the highest mean net profit per entry date (Jeddah and Istanbul together) with at least MIN_ENTRY_DATES entry dates. If no pair has a positive mean, nothing is frozen: the pilot stops at development and that is reported.",
+ "books": {
+  "archive_files": 22,
+  "mirror_files": 16,
+  "books_of_matched_ladders": 18111,
+  "tradeable_with_a_decision": 578,
+  "markets_unmatched": 4,
+  "first_date": "2026-09-13",
+  "last_date": "2026-10-08"
+ },
+ "eligible_city_days": {
+  "jeddah": 26,
+  "istanbul": 25
+ },
+ "results": {
+  "p_weather": {
+   "theta_0.02": {
+    "entries": 48,
+    "entry_dates": 26,
+    "by_city_entries": {
+     "jeddah": 26,
+     "istanbul": 22
+    },
+    "win_rate": 0.1667,
+    "mean_p": 0.3918,
+    "mean_cost_per_share": 0.2927,
+    "mean_touch": 0.2759,
+    "mean_hour": 10.31,
+    "usd_spent": 393.56,
+    "fees": 13.37,
+    "net_profit": -226.89,
+    "net_profit_stressed": -240.18,
+    "per_entry_date": {
+     "dates": 26,
+     "mean_per_date": -8.727,
+     "ci90": [
+      -12.985,
+      -3.923
+     ],
+     "ci95": [
+      -13.555,
+      -2.807
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 26,
+     "mean_per_date": -9.238,
+     "ci90": [
+      -13.466,
+      -4.451
+     ],
+     "ci95": [
+      -14.01,
+      -3.377
+     ]
+    },
+    "one_share_mean": -0.1177,
+    "by_city": {
+     "jeddah": {
+      "entries": 26,
+      "net_profit": -162.53,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 22,
+      "net_profit": -64.37,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -276.05,
+    "without_best_city": -162.53
+   },
+   "theta_0.05": {
+    "entries": 43,
+    "entry_dates": 24,
+    "by_city_entries": {
+     "jeddah": 23,
+     "istanbul": 20
+    },
+    "win_rate": 0.1395,
+    "mean_p": 0.4192,
+    "mean_cost_per_share": 0.291,
+    "mean_touch": 0.2734,
+    "mean_hour": 10.65,
+    "usd_spent": 361.4,
+    "fees": 12.68,
+    "net_profit": -233.93,
+    "net_profit_stressed": -244.44,
+    "per_entry_date": {
+     "dates": 24,
+     "mean_per_date": -9.747,
+     "ci90": [
+      -14.089,
+      -4.668
+     ],
+     "ci95": [
+      -14.724,
+      -3.567
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 24,
+     "mean_per_date": -10.185,
+     "ci90": [
+      -14.553,
+      -5.112
+     ],
+     "ci95": [
+      -15.156,
+      -3.997
+     ]
+    },
+    "one_share_mean": -0.1423,
+    "by_city": {
+     "jeddah": {
+      "entries": 23,
+      "net_profit": -159.99,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 20,
+      "net_profit": -73.94,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -278.59,
+    "without_best_city": -159.99
+   },
+   "theta_0.10": {
+    "entries": 41,
+    "entry_dates": 24,
+    "by_city_entries": {
+     "jeddah": 22,
+     "istanbul": 19
+    },
+    "win_rate": 0.1707,
+    "mean_p": 0.4322,
+    "mean_cost_per_share": 0.2578,
+    "mean_touch": 0.2412,
+    "mean_hour": 11.29,
+    "usd_spent": 293.81,
+    "fees": 10.55,
+    "net_profit": 52.19,
+    "net_profit_stressed": 39.27,
+    "per_entry_date": {
+     "dates": 24,
+     "mean_per_date": 2.174,
+     "ci90": [
+      -8.49,
+      15.693
+     ],
+     "ci95": [
+      -9.415,
+      18.861
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 24,
+     "mean_per_date": 1.636,
+     "ci90": [
+      -8.935,
+      15.019
+     ],
+     "ci95": [
+      -9.904,
+      18.206
+     ]
+    },
+    "one_share_mean": -0.0777,
+    "by_city": {
+     "jeddah": {
+      "entries": 22,
+      "net_profit": 95.49,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 19,
+      "net_profit": -43.31,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -97.34,
+    "without_best_city": -43.31
+   },
+   "theta_0.15": {
+    "entries": 32,
+    "entry_dates": 21,
+    "by_city_entries": {
+     "jeddah": 19,
+     "istanbul": 13
+    },
+    "win_rate": 0.1562,
+    "mean_p": 0.4541,
+    "mean_cost_per_share": 0.2282,
+    "mean_touch": 0.2109,
+    "mean_hour": 11.78,
+    "usd_spent": 210.17,
+    "fees": 7.75,
+    "net_profit": 27.78,
+    "net_profit_stressed": 16.99,
+    "per_entry_date": {
+     "dates": 21,
+     "mean_per_date": 1.323,
+     "ci90": [
+      -8.175,
+      15.169
+     ],
+     "ci95": [
+      -8.956,
+      17.952
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 21,
+     "mean_per_date": 0.809,
+     "ci90": [
+      -8.659,
+      14.484
+     ],
+     "ci95": [
+      -9.399,
+      17.23
+     ]
+    },
+    "one_share_mean": -0.0615,
+    "by_city": {
+     "jeddah": {
+      "entries": 19,
+      "net_profit": 56.85,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 13,
+      "net_profit": -29.07,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -121.75,
+    "without_best_city": -29.07
+   },
+   "theta_0.20": {
+    "entries": 23,
+    "entry_dates": 15,
+    "by_city_entries": {
+     "istanbul": 12,
+     "jeddah": 11
+    },
+    "win_rate": 0.2174,
+    "mean_p": 0.498,
+    "mean_cost_per_share": 0.2297,
+    "mean_touch": 0.2134,
+    "mean_hour": 12.09,
+    "usd_spent": 160.48,
+    "fees": 6.05,
+    "net_profit": 70.21,
+    "net_profit_stressed": 63.31,
+    "per_entry_date": {
+     "dates": 15,
+     "mean_per_date": 4.68,
+     "ci90": [
+      -8.895,
+      24.375
+     ],
+     "ci95": [
+      -9.689,
+      27.215
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 15,
+     "mean_per_date": 4.22,
+     "ci90": [
+      -9.253,
+      23.706
+     ],
+     "ci95": [
+      -10.057,
+      26.581
+     ]
+    },
+    "one_share_mean": -0.003,
+    "by_city": {
+     "jeddah": {
+      "entries": 11,
+      "net_profit": 94.18,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 12,
+      "net_profit": -23.98,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -80.47,
+    "without_best_city": -23.98
+   }
+  },
+  "p_fusion": {
+   "theta_0.02": {
+    "entries": 31,
+    "entry_dates": 22,
+    "by_city_entries": {
+     "jeddah": 21,
+     "istanbul": 10
+    },
+    "win_rate": 0.2903,
+    "mean_p": 0.3967,
+    "mean_cost_per_share": 0.3281,
+    "mean_touch": 0.311,
+    "mean_hour": 11.9,
+    "usd_spent": 211.75,
+    "fees": 6.84,
+    "net_profit": -41.35,
+    "net_profit_stressed": -47.24,
+    "per_entry_date": {
+     "dates": 22,
+     "mean_per_date": -1.879,
+     "ci90": [
+      -5.796,
+      2.559
+     ],
+     "ci95": [
+      -6.297,
+      3.415
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 22,
+     "mean_per_date": -2.147,
+     "ci90": [
+      -6.041,
+      2.239
+     ],
+     "ci95": [
+      -6.554,
+      3.147
+     ]
+    },
+    "one_share_mean": -0.0282,
+    "by_city": {
+     "jeddah": {
+      "entries": 21,
+      "net_profit": -106.26,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 10,
+      "net_profit": 64.91,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -71.34,
+    "without_best_city": -106.26
+   },
+   "theta_0.05": {
+    "entries": 22,
+    "entry_dates": 19,
+    "by_city_entries": {
+     "jeddah": 19,
+     "istanbul": 3
+    },
+    "win_rate": 0.0909,
+    "mean_p": 0.3423,
+    "mean_cost_per_share": 0.2364,
+    "mean_touch": 0.2136,
+    "mean_hour": 12.5,
+    "usd_spent": 172.21,
+    "fees": 6.36,
+    "net_profit": -139.3,
+    "net_profit_stressed": -144.51,
+    "per_entry_date": {
+     "dates": 19,
+     "mean_per_date": -7.332,
+     "ci90": [
+      -9.874,
+      -4.227
+     ],
+     "ci95": [
+      -10.264,
+      -3.529
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 19,
+     "mean_per_date": -7.606,
+     "ci90": [
+      -10.145,
+      -4.472
+     ],
+     "ci95": [
+      -10.55,
+      -3.77
+     ]
+    },
+    "one_share_mean": -0.1291,
+    "by_city": {
+     "jeddah": {
+      "entries": 19,
+      "net_profit": -119.73,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 3,
+      "net_profit": -19.57,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -158.43,
+    "without_best_city": -119.73
+   },
+   "theta_0.10": {
+    "entries": 16,
+    "entry_dates": 15,
+    "by_city_entries": {
+     "jeddah": 14,
+     "istanbul": 2
+    },
+    "win_rate": 0.0,
+    "mean_p": 0.3218,
+    "mean_cost_per_share": 0.167,
+    "mean_touch": 0.1512,
+    "mean_hour": 12.81,
+    "usd_spent": 88.45,
+    "fees": 3.58,
+    "net_profit": -92.03,
+    "net_profit_stressed": -95.45,
+    "per_entry_date": {
+     "dates": 15,
+     "mean_per_date": -6.136,
+     "ci90": [
+      -8.45,
+      -4.02
+     ],
+     "ci95": [
+      -8.929,
+      -3.708
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 15,
+     "mean_per_date": -6.363,
+     "ci90": [
+      -8.699,
+      -4.243
+     ],
+     "ci95": [
+      -9.223,
+      -3.942
+     ]
+    },
+    "one_share_mean": -0.157,
+    "by_city": {
+     "jeddah": {
+      "entries": 14,
+      "net_profit": -71.36,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 2,
+      "net_profit": -20.68,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -91.53,
+    "without_best_city": -71.36
+   },
+   "theta_0.15": {
+    "entries": 9,
+    "entry_dates": 9,
+    "by_city_entries": {
+     "jeddah": 7,
+     "istanbul": 2
+    },
+    "win_rate": 0.0,
+    "mean_p": 0.3635,
+    "mean_cost_per_share": 0.1614,
+    "mean_touch": 0.1467,
+    "mean_hour": 12.89,
+    "usd_spent": 48.77,
+    "fees": 2.09,
+    "net_profit": -50.86,
+    "net_profit_stressed": -52.71,
+    "per_entry_date": {
+     "dates": 9,
+     "mean_per_date": -5.651,
+     "ci90": [
+      -7.44,
+      -3.862
+     ],
+     "ci95": [
+      -7.825,
+      -3.567
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 9,
+     "mean_per_date": -5.856,
+     "ci90": [
+      -7.613,
+      -4.096
+     ],
+     "ci95": [
+      -8.005,
+      -3.776
+     ]
+    },
+    "one_share_mean": -0.1526,
+    "by_city": {
+     "jeddah": {
+      "entries": 7,
+      "net_profit": -35.77,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 2,
+      "net_profit": -15.09,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -49.77,
+    "without_best_city": -35.77
+   },
+   "theta_0.20": {
+    "entries": 5,
+    "entry_dates": 5,
+    "by_city_entries": {
+     "jeddah": 4,
+     "istanbul": 1
+    },
+    "win_rate": 0.0,
+    "mean_p": 0.3788,
+    "mean_cost_per_share": 0.1334,
+    "mean_touch": 0.128,
+    "mean_hour": 12.4,
+    "usd_spent": 17.25,
+    "fees": 0.75,
+    "net_profit": -18.0,
+    "net_profit_stressed": -19.58,
+    "per_entry_date": {
+     "dates": 5,
+     "mean_per_date": -3.6,
+     "ci90": [
+      -4.723,
+      -2.589
+     ],
+     "ci95": [
+      -4.802,
+      -2.411
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 5,
+     "mean_per_date": -3.917,
+     "ci90": [
+      -5.078,
+      -2.829
+     ],
+     "ci95": [
+      -5.201,
+      -2.669
+     ]
+    },
+    "one_share_mean": -0.1334,
+    "by_city": {
+     "jeddah": {
+      "entries": 4,
+      "net_profit": -12.12,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 1,
+      "net_profit": -5.88,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -16.21,
+    "without_best_city": -12.12
+   }
+  },
+  "q": {
+   "theta_0.02": {
+    "entries": 29,
+    "entry_dates": 23,
+    "by_city_entries": {
+     "jeddah": 21,
+     "istanbul": 8
+    },
+    "win_rate": 0.1034,
+    "mean_p": 0.251,
+    "mean_cost_per_share": 0.1657,
+    "mean_touch": 0.15,
+    "mean_hour": 12.14,
+    "usd_spent": 180.85,
+    "fees": 7.29,
+    "net_profit": -52.97,
+    "net_profit_stressed": -61.42,
+    "per_entry_date": {
+     "dates": 23,
+     "mean_per_date": -2.303,
+     "ci90": [
+      -6.734,
+      2.902
+     ],
+     "ci95": [
+      -7.4,
+      3.978
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 23,
+     "mean_per_date": -2.67,
+     "ci90": [
+      -7.094,
+      2.509
+     ],
+     "ci95": [
+      -7.788,
+      3.651
+     ]
+    },
+    "one_share_mean": -0.0521,
+    "by_city": {
+     "jeddah": {
+      "entries": 21,
+      "net_profit": -91.52,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 8,
+      "net_profit": 38.56,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -95.74,
+    "without_best_city": -91.52
+   },
+   "theta_0.05": {
+    "entries": 22,
+    "entry_dates": 19,
+    "by_city_entries": {
+     "jeddah": 19,
+     "istanbul": 3
+    },
+    "win_rate": 0.0455,
+    "mean_p": 0.3006,
+    "mean_cost_per_share": 0.1751,
+    "mean_touch": 0.1505,
+    "mean_hour": 12.55,
+    "usd_spent": 152.25,
+    "fees": 6.15,
+    "net_profit": -120.42,
+    "net_profit_stressed": -126.01,
+    "per_entry_date": {
+     "dates": 19,
+     "mean_per_date": -6.338,
+     "ci90": [
+      -9.076,
+      -3.234
+     ],
+     "ci95": [
+      -9.528,
+      -2.314
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 19,
+     "mean_per_date": -6.632,
+     "ci90": [
+      -9.395,
+      -3.522
+     ],
+     "ci95": [
+      -9.828,
+      -2.582
+     ]
+    },
+    "one_share_mean": -0.1108,
+    "by_city": {
+     "jeddah": {
+      "entries": 19,
+      "net_profit": -135.63,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 3,
+      "net_profit": 15.22,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -142.81,
+    "without_best_city": -135.63
+   },
+   "theta_0.10": {
+    "entries": 17,
+    "entry_dates": 16,
+    "by_city_entries": {
+     "jeddah": 15,
+     "istanbul": 2
+    },
+    "win_rate": 0.0,
+    "mean_p": 0.3179,
+    "mean_cost_per_share": 0.1528,
+    "mean_touch": 0.1358,
+    "mean_hour": 12.94,
+    "usd_spent": 98.53,
+    "fees": 4.15,
+    "net_profit": -102.68,
+    "net_profit_stressed": -106.83,
+    "per_entry_date": {
+     "dates": 16,
+     "mean_per_date": -6.417,
+     "ci90": [
+      -8.56,
+      -4.532
+     ],
+     "ci95": [
+      -8.991,
+      -4.252
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 16,
+     "mean_per_date": -6.677,
+     "ci90": [
+      -8.849,
+      -4.773
+     ],
+     "ci95": [
+      -9.292,
+      -4.492
+     ]
+    },
+    "one_share_mean": -0.1414,
+    "by_city": {
+     "jeddah": {
+      "entries": 15,
+      "net_profit": -87.58,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 2,
+      "net_profit": -15.09,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -102.17,
+    "without_best_city": -87.58
+   },
+   "theta_0.15": {
+    "entries": 9,
+    "entry_dates": 9,
+    "by_city_entries": {
+     "jeddah": 8,
+     "istanbul": 1
+    },
+    "win_rate": 0.0,
+    "mean_p": 0.3569,
+    "mean_cost_per_share": 0.1513,
+    "mean_touch": 0.1356,
+    "mean_hour": 12.78,
+    "usd_spent": 51.45,
+    "fees": 2.22,
+    "net_profit": -53.66,
+    "net_profit_stressed": -55.51,
+    "per_entry_date": {
+     "dates": 9,
+     "mean_per_date": -5.963,
+     "ci90": [
+      -7.807,
+      -4.131
+     ],
+     "ci95": [
+      -8.123,
+      -3.822
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 9,
+     "mean_per_date": -6.168,
+     "ci90": [
+      -7.968,
+      -4.365
+     ],
+     "ci95": [
+      -8.281,
+      -4.045
+     ]
+    },
+    "one_share_mean": -0.1412,
+    "by_city": {
+     "jeddah": {
+      "entries": 8,
+      "net_profit": -43.24,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 1,
+      "net_profit": -10.43,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -52.57,
+    "without_best_city": -43.24
+   },
+   "theta_0.20": {
+    "entries": 5,
+    "entry_dates": 5,
+    "by_city_entries": {
+     "jeddah": 4,
+     "istanbul": 1
+    },
+    "win_rate": 0.0,
+    "mean_p": 0.3826,
+    "mean_cost_per_share": 0.1354,
+    "mean_touch": 0.128,
+    "mean_hour": 12.4,
+    "usd_spent": 19.26,
+    "fees": 0.84,
+    "net_profit": -20.09,
+    "net_profit_stressed": -21.68,
+    "per_entry_date": {
+     "dates": 5,
+     "mean_per_date": -4.019,
+     "ci90": [
+      -4.822,
+      -3.215
+     ],
+     "ci95": [
+      -4.994,
+      -3.072
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 5,
+     "mean_per_date": -4.336,
+     "ci90": [
+      -5.185,
+      -3.488
+     ],
+     "ci95": [
+      -5.361,
+      -3.356
+     ]
+    },
+    "one_share_mean": -0.1334,
+    "by_city": {
+     "jeddah": {
+      "entries": 4,
+      "net_profit": -14.22,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 1,
+      "net_profit": -5.88,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -17.35,
+    "without_best_city": -14.22
+   }
+  },
+  "p_tempered": {
+   "theta_0.02": {
+    "entries": 26,
+    "entry_dates": 22,
+    "by_city_entries": {
+     "jeddah": 19,
+     "istanbul": 7
+    },
+    "win_rate": 0.1538,
+    "mean_p": 0.3383,
+    "mean_cost_per_share": 0.25,
+    "mean_touch": 0.2296,
+    "mean_hour": 11.88,
+    "usd_spent": 193.91,
+    "fees": 6.98,
+    "net_profit": -83.02,
+    "net_profit_stressed": -88.82,
+    "per_entry_date": {
+     "dates": 22,
+     "mean_per_date": -3.774,
+     "ci90": [
+      -7.731,
+      1.036
+     ],
+     "ci95": [
+      -8.348,
+      2.152
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 22,
+     "mean_per_date": -4.037,
+     "ci90": [
+      -8.01,
+      0.775
+     ],
+     "ci95": [
+      -8.616,
+      1.902
+     ]
+    },
+    "one_share_mean": -0.0825,
+    "by_city": {
+     "jeddah": {
+      "entries": 19,
+      "net_profit": -87.11,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 7,
+      "net_profit": 4.09,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -125.8,
+    "without_best_city": -87.11
+   },
+   "theta_0.05": {
+    "entries": 21,
+    "entry_dates": 19,
+    "by_city_entries": {
+     "jeddah": 18,
+     "istanbul": 3
+    },
+    "win_rate": 0.0952,
+    "mean_p": 0.3128,
+    "mean_cost_per_share": 0.1968,
+    "mean_touch": 0.1752,
+    "mean_hour": 12.48,
+    "usd_spent": 153.82,
+    "fees": 6.1,
+    "net_profit": -93.76,
+    "net_profit_stressed": -98.98,
+    "per_entry_date": {
+     "dates": 19,
+     "mean_per_date": -4.935,
+     "ci90": [
+      -8.408,
+      -1.003
+     ],
+     "ci95": [
+      -8.962,
+      -0.287
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 19,
+     "mean_per_date": -5.209,
+     "ci90": [
+      -8.697,
+      -1.273
+     ],
+     "ci95": [
+      -9.234,
+      -0.537
+     ]
+    },
+    "one_share_mean": -0.0864,
+    "by_city": {
+     "jeddah": {
+      "entries": 18,
+      "net_profit": -110.89,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 3,
+      "net_profit": 17.13,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -116.15,
+    "without_best_city": -110.89
+   },
+   "theta_0.10": {
+    "entries": 16,
+    "entry_dates": 15,
+    "by_city_entries": {
+     "jeddah": 14,
+     "istanbul": 2
+    },
+    "win_rate": 0.0,
+    "mean_p": 0.3159,
+    "mean_cost_per_share": 0.1559,
+    "mean_touch": 0.1393,
+    "mean_hour": 13.0,
+    "usd_spent": 94.28,
+    "fees": 3.95,
+    "net_profit": -98.23,
+    "net_profit_stressed": -102.32,
+    "per_entry_date": {
+     "dates": 15,
+     "mean_per_date": -6.549,
+     "ci90": [
+      -8.793,
+      -4.571
+     ],
+     "ci95": [
+      -9.262,
+      -4.241
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 15,
+     "mean_per_date": -6.821,
+     "ci90": [
+      -9.082,
+      -4.845
+     ],
+     "ci95": [
+      -9.549,
+      -4.528
+     ]
+    },
+    "one_share_mean": -0.145,
+    "by_city": {
+     "jeddah": {
+      "entries": 14,
+      "net_profit": -83.13,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 2,
+      "net_profit": -15.09,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -97.35,
+    "without_best_city": -83.13
+   },
+   "theta_0.15": {
+    "entries": 7,
+    "entry_dates": 7,
+    "by_city_entries": {
+     "jeddah": 6,
+     "istanbul": 1
+    },
+    "win_rate": 0.0,
+    "mean_p": 0.3857,
+    "mean_cost_per_share": 0.1721,
+    "mean_touch": 0.1529,
+    "mean_hour": 12.86,
+    "usd_spent": 44.47,
+    "fees": 1.89,
+    "net_profit": -46.36,
+    "net_profit_stressed": -47.22,
+    "per_entry_date": {
+     "dates": 7,
+     "mean_per_date": -6.623,
+     "ci90": [
+      -8.79,
+      -4.313
+     ],
+     "ci95": [
+      -9.093,
+      -3.979
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 7,
+     "mean_per_date": -6.746,
+     "ci90": [
+      -8.874,
+      -4.439
+     ],
+     "ci95": [
+      -9.196,
+      -4.091
+     ]
+    },
+    "one_share_mean": -0.1591,
+    "by_city": {
+     "jeddah": {
+      "entries": 6,
+      "net_profit": -35.93,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 1,
+      "net_profit": -10.43,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -45.27,
+    "without_best_city": -35.93
+   },
+   "theta_0.20": {
+    "entries": 5,
+    "entry_dates": 5,
+    "by_city_entries": {
+     "jeddah": 4,
+     "istanbul": 1
+    },
+    "win_rate": 0.0,
+    "mean_p": 0.3784,
+    "mean_cost_per_share": 0.1334,
+    "mean_touch": 0.128,
+    "mean_hour": 12.4,
+    "usd_spent": 17.25,
+    "fees": 0.75,
+    "net_profit": -18.0,
+    "net_profit_stressed": -19.58,
+    "per_entry_date": {
+     "dates": 5,
+     "mean_per_date": -3.6,
+     "ci90": [
+      -4.723,
+      -2.589
+     ],
+     "ci95": [
+      -4.802,
+      -2.411
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 5,
+     "mean_per_date": -3.917,
+     "ci90": [
+      -5.078,
+      -2.829
+     ],
+     "ci95": [
+      -5.201,
+      -2.669
+     ]
+    },
+    "one_share_mean": -0.1334,
+    "by_city": {
+     "jeddah": {
+      "entries": 4,
+      "net_profit": -12.12,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 1,
+      "net_profit": -5.88,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -16.21,
+    "without_best_city": -12.12
+   }
+  },
+  "rd1": {
+   "theta_0.02": {
+    "entries": 20,
+    "entry_dates": 11,
+    "by_city_entries": {
+     "jeddah": 11,
+     "istanbul": 9
+    },
+    "win_rate": 0.2,
+    "mean_p": 0.3077,
+    "mean_cost_per_share": 0.1673,
+    "mean_touch": 0.1471,
+    "mean_hour": 10.5,
+    "usd_spent": 173.64,
+    "fees": 7.28,
+    "net_profit": 34.86,
+    "net_profit_stressed": 30.44,
+    "per_entry_date": {
+     "dates": 11,
+     "mean_per_date": 3.169,
+     "ci90": [
+      -15.185,
+      26.167
+     ],
+     "ci95": [
+      -16.514,
+      31.755
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 11,
+     "mean_per_date": 2.768,
+     "ci90": [
+      -15.492,
+      25.654
+     ],
+     "ci95": [
+      -16.773,
+      31.242
+     ]
+    },
+    "one_share_mean": 0.0476,
+    "by_city": {
+     "jeddah": {
+      "entries": 11,
+      "net_profit": 72.76,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 9,
+      "net_profit": -37.9,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -87.01,
+    "without_best_city": -37.9
+   },
+   "theta_0.05": {
+    "entries": 20,
+    "entry_dates": 11,
+    "by_city_entries": {
+     "jeddah": 11,
+     "istanbul": 9
+    },
+    "win_rate": 0.2,
+    "mean_p": 0.3169,
+    "mean_cost_per_share": 0.1618,
+    "mean_touch": 0.1403,
+    "mean_hour": 10.8,
+    "usd_spent": 174.39,
+    "fees": 7.31,
+    "net_profit": 28.18,
+    "net_profit_stressed": 21.61,
+    "per_entry_date": {
+     "dates": 11,
+     "mean_per_date": 2.562,
+     "ci90": [
+      -15.269,
+      25.642
+     ],
+     "ci95": [
+      -16.744,
+      30.77
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 11,
+     "mean_per_date": 1.965,
+     "ci90": [
+      -15.849,
+      24.933
+     ],
+     "ci95": [
+      -17.188,
+      30.136
+     ]
+    },
+    "one_share_mean": 0.0547,
+    "by_city": {
+     "jeddah": {
+      "entries": 11,
+      "net_profit": 70.97,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 9,
+      "net_profit": -42.79,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -93.69,
+    "without_best_city": -42.79
+   },
+   "theta_0.10": {
+    "entries": 19,
+    "entry_dates": 11,
+    "by_city_entries": {
+     "jeddah": 10,
+     "istanbul": 9
+    },
+    "win_rate": 0.1053,
+    "mean_p": 0.312,
+    "mean_cost_per_share": 0.1086,
+    "mean_touch": 0.0877,
+    "mean_hour": 11.47,
+    "usd_spent": 134.71,
+    "fees": 5.88,
+    "net_profit": 32.76,
+    "net_profit_stressed": 26.12,
+    "per_entry_date": {
+     "dates": 11,
+     "mean_per_date": 2.978,
+     "ci90": [
+      -12.626,
+      25.668
+     ],
+     "ci95": [
+      -13.855,
+      29.843
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 11,
+     "mean_per_date": 2.375,
+     "ci90": [
+      -13.166,
+      24.988
+     ],
+     "ci95": [
+      -14.432,
+      29.001
+     ]
+    },
+    "one_share_mean": 0.0138,
+    "by_city": {
+     "jeddah": {
+      "entries": 10,
+      "net_profit": 61.07,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 9,
+      "net_profit": -28.31,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -92.71,
+    "without_best_city": -28.31
+   },
+   "theta_0.15": {
+    "entries": 18,
+    "entry_dates": 11,
+    "by_city_entries": {
+     "jeddah": 10,
+     "istanbul": 8
+    },
+    "win_rate": 0.1111,
+    "mean_p": 0.3311,
+    "mean_cost_per_share": 0.1088,
+    "mean_touch": 0.0934,
+    "mean_hour": 11.78,
+    "usd_spent": 107.15,
+    "fees": 4.64,
+    "net_profit": 14.54,
+    "net_profit_stressed": 8.06,
+    "per_entry_date": {
+     "dates": 11,
+     "mean_per_date": 1.322,
+     "ci90": [
+      -10.372,
+      17.189
+     ],
+     "ci95": [
+      -11.342,
+      20.622
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 11,
+     "mean_per_date": 0.733,
+     "ci90": [
+      -10.897,
+      16.533
+     ],
+     "ci95": [
+      -11.889,
+      19.864
+     ]
+    },
+    "one_share_mean": 0.0137,
+    "by_city": {
+     "jeddah": {
+      "entries": 10,
+      "net_profit": 36.1,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 8,
+      "net_profit": -21.56,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -72.62,
+    "without_best_city": -21.56
+   },
+   "theta_0.20": {
+    "entries": 14,
+    "entry_dates": 10,
+    "by_city_entries": {
+     "jeddah": 7,
+     "istanbul": 7
+    },
+    "win_rate": 0.0714,
+    "mean_p": 0.3571,
+    "mean_cost_per_share": 0.0999,
+    "mean_touch": 0.0909,
+    "mean_hour": 12.57,
+    "usd_spent": 71.32,
+    "fees": 3.17,
+    "net_profit": 92.18,
+    "net_profit_stressed": 85.13,
+    "per_entry_date": {
+     "dates": 10,
+     "mean_per_date": 9.218,
+     "ci90": [
+      -8.352,
+      39.563
+     ],
+     "ci95": [
+      -9.168,
+      41.462
+     ]
+    },
+    "per_entry_date_stressed": {
+     "dates": 10,
+     "mean_per_date": 8.513,
+     "ci90": [
+      -8.866,
+      38.443
+     ],
+     "ci95": [
+      -9.735,
+      40.407
+     ]
+    },
+    "one_share_mean": -0.0234,
+    "by_city": {
+     "jeddah": {
+      "entries": 7,
+      "net_profit": 131.7,
+      "eligible_city_days": 26
+     },
+     "istanbul": {
+      "entries": 7,
+      "net_profit": -39.52,
+      "eligible_city_days": 25
+     }
+    },
+    "without_best_date": -58.02,
+    "without_best_city": -39.52
+   }
+  }
+ },
+ "choice": {
+  "frozen": {
+   "model": "p_weather",
+   "theta": 0.1
+  },
+  "mean_per_entry_date": 2.174
+ }
+}
