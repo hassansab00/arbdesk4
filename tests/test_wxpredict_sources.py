@@ -102,13 +102,14 @@ def test_materialize_writes_each_blob_and_refuses_a_wrong_one(tmp_path):
 
 
 def test_the_recorded_rebuild_needs_the_same_content_and_the_same_sources(tmp_path, monkeypatch):
-    recorded = {"sha256": "abc", "rows": 3, "sources": {"data/a.csv.gz": common.blob_sha(b"a")}}
+    recorded = {"sha256": "abc", "rows": 3, "sources": {"data/a.csv.gz": common.blob_sha(b"a")}, "report_lag_s": 480}
     path = tmp_path / "meta.json"
     path.write_text(json.dumps(recorded))
     seen = {}
 
-    def fake_build(out_dir, write_meta):
+    def fake_build(out_dir, write_meta, report_lag_s):
         seen["root"], seen["write_meta"] = common.DATA_ROOT, write_meta
+        assert report_lag_s == 480, "rebuilt with the lag it was built with (the v2 table's 8 min)"
         assert (pathlib.Path(common.DATA_ROOT) / "data" / "a.csv.gz").read_bytes() == b"a"
         return dict(result)
 

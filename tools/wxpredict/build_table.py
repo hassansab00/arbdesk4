@@ -9,7 +9,8 @@ each SNAPSHOT_S after the hour.
 WHAT A ROW MAY KNOW AT DECISION TIME t
 -------------------------------------
 - A station report: when valid + REPORT_LAG_S <= t (REPORT_LAG_S measured
-  against IEM, see the constant).
+  against IEM, see the constant; 8 min in the v2 table, --v2, measured
+  against Aviation Weather's receipt times on 12 Oct: features.REPORT_LAG_V2_S).
 - An hourly forecast value for hour H (best_match, `_previous_day1`): when
   H - (24 - PUBLISH_H) h <= t. `_previous_day1` is a run started at least 24 h
   before H; PUBLISH_H is P2.9's stated publication allowance (the record's
@@ -63,10 +64,16 @@ from wxpredict import common  # noqa: E402
 
 OUT_DIR = os.path.join(common.WX, "table")
 META = os.path.join(common.WX, "table_meta.json")
+# The v2 table (12 Oct): the same rows, a report known REPORT_LAG_V2_S (8 min)
+# after its reading (features.py, "WHEN A REPORT IS KNOWN, AGAIN"). Its own
+# directory and meta, so the recorded v1 table and table_meta.json stand.
+OUT_DIR_V2 = os.path.join(common.WX, "table_v2")
+META_V2 = os.path.join(common.WX, "table_v2_meta.json")
 
 # Every feature, and the constants that say what a row may know, live in
 # features.py: one implementation for the table and the live reader (phase
 # 2.3). They are imported here under their old names.
+from wxpredict import features as feat  # noqa: E402
 from wxpredict.features import (  # noqa: E402,F401
     REPORT_LAG_S, PUBLISH_H, SNAPSHOT_S, DAY_HOURS, EVE_HOURS, MARKET_MAX_AGE_S, PRICE_FLOOR,
     CLIM_HALF_WINDOW, BIAS_WINDOWS, MODELS, SKY_OKTAS, WX_FLAGS, unix_of, num, f_to_c, c_to_f,
@@ -264,10 +271,13 @@ def load_prices(events):
 # ---------------------------------------------------------------------------
 # the table
 # ---------------------------------------------------------------------------
-def build(limit=0, first=None, last=None, out_dir=OUT_DIR, write_meta=True):
+def build(limit=0, first=None, last=None, out_dir=OUT_DIR, write_meta=True, report_lag_s=None, meta_path=None):
+    """The table. report_lag_s: when a report is known after its reading
+    (features.REPORT_LAG_S, v1's 20 min, when None); the meta records it."""
     common.READ = {}
     try:
-        return _build(limit, first, last, out_dir, write_meta)
+        with feat.report_lag(feat.REPORT_LAG_S if report_lag_s is None else report_lag_s):
+            return _build(limit, first, last, out_dir, write_meta, meta_path or META)
     finally:
         common.READ = None
 
@@ -282,7 +292,7 @@ def report_stations(nightly):
     return {f[:-7] for f in listed_reports} | set(nightly)
 
 
-def _build(limit, first, last, out_dir, write_meta):
+def _build(limit, first, last, out_dir, write_meta, meta_path):
     nightly = common.nightly_reports()
     stations = report_stations(nightly)
     events, left, listed = load_events(stations, first, last)
@@ -314,7 +324,7 @@ def _build(limit, first, last, out_dir, write_meta):
     meta = cov.result(n)
     meta["sources"] = common.sources(common.READ)
     if write_meta:
-        with open(META, "w") as f:
+        with open(meta_path, "w") as f:
             json.dump(meta, f, indent=1, sort_keys=True)
             f.write("\n")
     return meta
@@ -361,7 +371,7 @@ class Coverage:
             "venue_days_station_not_whole": sum(1 for _, w, src in self.events.values()
                                                 if src == "venue" and w is None),
             "decision_local_parses_back": self.local_agrees,
-            "report_lag_s": REPORT_LAG_S, "publish_h": PUBLISH_H, "snapshot_s": SNAPSHOT_S,
+            "report_lag_s": feat.REPORT_LAG_S, "publish_h": PUBLISH_H, "snapshot_s": SNAPSHOT_S,
             "market_max_age_s": MARKET_MAX_AGE_S,
             "station_max_in_winner": {"agree": sum(judged), "judged": len(judged)},
             "rows_on_d": self.rows_on_d, "rows_market_complete": self.complete,
@@ -399,7 +409,8 @@ def rebuild_recorded(meta_path=META, cat=git_blob):
         materialize(recorded["sources"], tmp, cat)
         common.use_root(tmp)
         try:
-            meta = build(out_dir=os.path.join(tmp, "table"), write_meta=False)
+            meta = build(out_dir=os.path.join(tmp, "table"), write_meta=False,
+                         report_lag_s=recorded.get("report_lag_s"))
         finally:
             common.use_root(common.ROOT)
     return meta["sha256"] == recorded["sha256"] and meta["sources"] == recorded["sources"], meta
@@ -412,13 +423,20 @@ def main():
     ap.add_argument("--to", dest="last", default=None)
     ap.add_argument("--recorded", action="store_true",
                     help="rebuild the recorded table from the sources table_meta.json names, and check it")
+    ap.add_argument("--v2", action="store_true",
+                    help="the v2 table: a report known 8 min after its reading (table_v2/, table_v2_meta.json)")
     args = ap.parse_args()
+    meta_path = META_V2 if args.v2 else META
     if args.recorded:
-        same, meta = rebuild_recorded()
+        same, meta = rebuild_recorded(meta_path)
         print(json.dumps({"sha256": meta["sha256"], "rows": meta["rows"], "recorded": same}, indent=1),
               file=sys.stderr)
         sys.exit(0 if same else 1)
-    meta = build(args.limit, args.first, args.last, write_meta=not args.limit)
+    if args.v2:
+        meta = build(args.limit, args.first, args.last, out_dir=OUT_DIR_V2, write_meta=not args.limit,
+                     report_lag_s=feat.REPORT_LAG_V2_S, meta_path=META_V2)
+    else:
+        meta = build(args.limit, args.first, args.last, write_meta=not args.limit)
     show = {k: meta[k] for k in ("rows", "events", "cities", "dates", "events_by_source", "events_by_unit", "left_out",
                                  "station_days_left_out", "venue_days_station_not_whole", "decision_local_parses_back",
                                  "station_max_in_winner", "rows_on_d", "rows_market_complete", "sha256")}

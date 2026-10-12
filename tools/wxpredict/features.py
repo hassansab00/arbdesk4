@@ -13,6 +13,7 @@ SNAPSHOT_S, MARKET_MAX_AGE_S).
 import bisect
 import calendar
 import collections
+import contextlib
 import datetime as dt
 import math
 import os
@@ -29,6 +30,33 @@ from wxpredict import common  # noqa: E402
 # a margin. The platform's own hourly ingest adds a median 38 min on top
 # (weather_observations, 7 days to 5 Oct): phase 2 reads IEM at the tick.
 REPORT_LAG_S = 20 * 60
+# WHEN A REPORT IS KNOWN, AGAIN (12 Oct). Aviation Weather's own receipt time
+# of each METAR, read for all 47 stations on 12 Oct (400 reports read 14:50-
+# 20:00Z; data/eval/wxpredict/report_latency_2026-10-12.json): 4.47 min after
+# the reading at the median, 6.22 at p75, 8.35 at p90, 13.27 at p95; the
+# minute poll (WP4) saw Jeddah's a median 1.0 min after the reading and
+# Istanbul's 6.0. A model whose decisions on the hour count a report only 20
+# min after its reading never sees a station's :50-:59 report (every US
+# airport's): in half of the 11-12h decisions the newest report it knew was
+# over an hour old. The table built with 8 min (the p90) is the v2 table;
+# v1 (20 min) stays the default, so the frozen sdyes-v1 pilot and the recorded
+# table are unchanged. A build or a reader sets the lag with report_lag().
+REPORT_LAG_V2_S = 8 * 60
+
+
+@contextlib.contextmanager
+def report_lag(seconds):
+    """Every row made inside counts a report known `seconds` after its reading
+    (the module's REPORT_LAG_S, which every rule here reads when it runs),
+    restored on the way out."""
+    global REPORT_LAG_S
+    before = REPORT_LAG_S
+    REPORT_LAG_S = int(seconds)
+    try:
+        yield REPORT_LAG_S
+    finally:
+        REPORT_LAG_S = before
+
 PUBLISH_H = 7                  # P2.9's allowance: a run is out within 7 h of its start
 SNAPSHOT_S = 60                # the decision instant: the hour's market snapshot (stamped 0-59 s past)
 DAY_HOURS = tuple(range(24))   # decision hours on D

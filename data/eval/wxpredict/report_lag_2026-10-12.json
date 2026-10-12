@@ -1,0 +1,227 @@
+{
+ "made": "2026-10-12T20:27Z",
+ "window": [
+  "2026-09-15",
+  "2026-10-11"
+ ],
+ "folds": [
+  [
+   "2026-09-15",
+   "2026-09-21"
+  ],
+  [
+   "2026-09-22",
+   "2026-09-28"
+  ],
+  [
+   "2026-09-29",
+   "2026-10-05"
+  ],
+  [
+   "2026-10-06",
+   "2026-10-11"
+  ]
+ ],
+ "tables": {
+  "v1": {
+   "file": "data/training/wxpredict/table/wxpredict_table.csv.gz",
+   "gzip_sha256": "c0f9bb312c9a33acc0cb8c36e1c0605f69fcf423be4a56d578aa0dfc191bc6dc",
+   "report_lag_s": 1200
+  },
+  "v2": {
+   "file": "data/training/wxpredict/table_v2/wxpredict_table.csv.gz",
+   "gzip_sha256": "b27874d38b8aa3b618848a4017bc05d431e941c19b15567c4a302333d91f016b",
+   "report_lag_s": 480
+  }
+ },
+ "model": "remaining.py, refitted per fold on every eligible row dated before it",
+ "result": {
+  "matched_decisions": 18336,
+  "9-10h": {
+   "n": 2442,
+   "hit_v1": 0.4099,
+   "hit_v2": 0.43,
+   "hit_market": 0.5147,
+   "nll_v1": 1.4079,
+   "nll_v2": 1.3921,
+   "nll_market": 1.1243,
+   "d_hit_ci90": [
+    0.0029,
+    0.0383
+   ],
+   "d_nll_ci90": [
+    -0.0351,
+    0.0045
+   ],
+   "obs_age_min_median_v1": 46.0,
+   "obs_age_min_median_v2": 31.0,
+   "C": {
+    "n": 1870,
+    "hit_v1": 0.4257,
+    "hit_v2": 0.4471,
+    "hit_market": 0.5364
+   },
+   "F": {
+    "n": 572,
+    "hit_v1": 0.3584,
+    "hit_v2": 0.3741,
+    "hit_market": 0.4441
+   }
+  },
+  "11-12h": {
+   "n": 2443,
+   "hit_v1": 0.4654,
+   "hit_v2": 0.4707,
+   "hit_market": 0.5493,
+   "nll_v1": 1.2126,
+   "nll_v2": 1.1839,
+   "nll_market": 1.0212,
+   "d_hit_ci90": [
+    -0.0065,
+    0.0175
+   ],
+   "d_nll_ci90": [
+    -0.0429,
+    -0.0147
+   ],
+   "obs_age_min_median_v1": 41.0,
+   "obs_age_min_median_v2": 31.0,
+   "C": {
+    "n": 1871,
+    "hit_v1": 0.488,
+    "hit_v2": 0.4869,
+    "hit_market": 0.5644
+   },
+   "F": {
+    "n": 572,
+    "hit_v1": 0.3916,
+    "hit_v2": 0.4178,
+    "hit_market": 0.5
+   }
+  },
+  "13-14h": {
+   "n": 2444,
+   "hit_v1": 0.5912,
+   "hit_v2": 0.6142,
+   "hit_market": 0.6878,
+   "nll_v1": 0.9272,
+   "nll_v2": 0.8562,
+   "nll_market": 0.7386,
+   "d_hit_ci90": [
+    0.0118,
+    0.034
+   ],
+   "d_nll_ci90": [
+    -0.0836,
+    -0.0579
+   ],
+   "obs_age_min_median_v1": 56.0,
+   "obs_age_min_median_v2": 31.0,
+   "C": {
+    "n": 1872,
+    "hit_v1": 0.6207,
+    "hit_v2": 0.64,
+    "hit_market": 0.6966
+   },
+   "F": {
+    "n": 572,
+    "hit_v1": 0.4948,
+    "hit_v2": 0.5297,
+    "hit_market": 0.6591
+   }
+  },
+  "15-16h": {
+   "n": 2446,
+   "hit_v1": 0.8119,
+   "hit_v2": 0.8524,
+   "hit_market": 0.8872,
+   "nll_v1": 0.4819,
+   "nll_v2": 0.415,
+   "nll_market": 0.3242,
+   "d_hit_ci90": [
+    0.0311,
+    0.0497
+   ],
+   "d_nll_ci90": [
+    -0.0779,
+    -0.0568
+   ],
+   "obs_age_min_median_v1": 47.0,
+   "obs_age_min_median_v2": 31.0,
+   "C": {
+    "n": 1874,
+    "hit_v1": 0.8415,
+    "hit_v2": 0.8581,
+    "hit_market": 0.8965
+   },
+   "F": {
+    "n": 572,
+    "hit_v1": 0.715,
+    "hit_v2": 0.8339,
+    "hit_market": 0.8566
+   }
+  },
+  "17-23h": {
+   "n": 8561,
+   "hit_v1": 0.9841,
+   "hit_v2": 0.9872,
+   "hit_market": 0.9933,
+   "nll_v1": 0.0862,
+   "nll_v2": 0.0769,
+   "nll_market": 0.0329,
+   "d_hit_ci90": [
+    0.0021,
+    0.0039
+   ],
+   "d_nll_ci90": [
+    -0.0125,
+    -0.0065
+   ],
+   "obs_age_min_median_v1": 61.0,
+   "obs_age_min_median_v2": 31.0,
+   "C": {
+    "n": 6559,
+    "hit_v1": 0.9844,
+    "hit_v2": 0.9857,
+    "hit_market": 0.993
+   },
+   "F": {
+    "n": 2002,
+    "hit_v1": 0.983,
+    "hit_v2": 0.992,
+    "hit_market": 0.9945
+   }
+  },
+  "9-16h": {
+   "n": 9775,
+   "hit_v1": 0.5697,
+   "hit_v2": 0.5919,
+   "hit_market": 0.6598,
+   "nll_v1": 1.0072,
+   "nll_v2": 0.9616,
+   "nll_market": 0.8019,
+   "d_hit_ci90": [
+    0.0166,
+    0.0281
+   ],
+   "d_nll_ci90": [
+    -0.0535,
+    -0.038
+   ],
+   "obs_age_min_median_v1": 46.0,
+   "obs_age_min_median_v2": 31.0,
+   "C": {
+    "n": 7487,
+    "hit_v1": 0.5941,
+    "hit_v2": 0.6081,
+    "hit_market": 0.6736
+   },
+   "F": {
+    "n": 2288,
+    "hit_v1": 0.4899,
+    "hit_v2": 0.5389,
+    "hit_market": 0.6149
+   }
+  }
+ }
+}
