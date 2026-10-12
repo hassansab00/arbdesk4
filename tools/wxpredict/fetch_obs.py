@@ -411,12 +411,7 @@ def ops_log():
     common.py. Importing it also makes a crash leave its row (crash:<script>)."""
     if not (os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_KEY")):
         return None
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "ops_common", os.path.join(common.ROOT, "scripts", "common.py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.log_run
+    return common.ops().log_run
 
 
 def main(argv=None):

@@ -1,0 +1,225 @@
+"""WXPredict v2 on the day, in shadow: beside every same-day call the tick writes.
+
+Hassan, 12 Oct: the prediction has to be right before the peak. wxrd-v2
+(wxrd_fit.py; data/eval/wxpredict/report_lag_2026-10-12.json) is the
+remaining-day model that counts a station report 8 minutes after its reading.
+This runs it live, for every city, at the very checkpoints the engine is
+scored on, so the two (and the market at the same moment) are compared on the
+same days. NOTHING HERE PRICES OR TRADES.
+
+EACH TICK, after the live record has been collected (tick.yml, the last step):
+  due        every prediction_checkpoints row the tick wrote in the last
+             SERVED_WITHIN_MIN minutes at a checkpoint of CHECKPOINTS (the
+             day itself), that has no wxrd row yet
+  the row    live_reader.row_at in arrival mode at the instant the engine
+             decided (its decided_at): what the live record had then
+             (public.live_capture, the last RECORD_HOURS hours, read for the
+             due cities and their stations only), the training's rules with
+             the model's report lag, the station's past days and the daily
+             forecasts of the days before from the repository
+  the model  the frozen wxrd-v2 (its sha256 checked); a row before 09h local
+             or without a running maximum gets no probability, counted
+  the write  one variant_shadow_checkpoints row per due checkpoint: variant
+             'wxrd', version 'wxrd:v2:<sha256 12>', the bucket probabilities,
+             the top bucket; one ingest_log row (P7.6_wxrd_shadow) a tick
+Bounded and never fails the tick: tick.yml runs it with its own timeout and
+continue-on-error; anything it cannot do is counted by reason in its log row.
+
+    python tools/wxpredict/wxrd_live.py [--dry-run] [--at 2026-10-13T12:40Z]
+"""
+import argparse
+import datetime as dt
+import gzip
+import hashlib
+import json
+import os
+import sys
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from wxpredict import common, live_reader as lr  # noqa: E402
+
+ROOT = common.ROOT
+VARIANT = "wxrd"
+MODEL_JSON = os.path.join(ROOT, "data", "models", "wxrd", "wxrd-v2_remaining.json")
+CHECKPOINTS = ("morning", "noon", "prepeak_2h", "prepeak_1h", "postpeak_1h")
+SERVED_WITHIN_MIN = 30
+RECORD_HOURS = 40           # the day's hourly forecasts reach the record up to 17 h ahead; the prune keeps 2 days
+KINDS = ("report", "hourly", "hourly2", "models1", "models2")
+TABLE = "variant_shadow_checkpoints"
+ON_CONFLICT = "city_key,target_date,checkpoint,variant"
+JOB = "P7.6_wxrd_shadow"
+
+
+# ---------------------------------------------------------------------------
+# pure
+# ---------------------------------------------------------------------------
+def variant_version(meta):
+    return f"wxrd:v2:{meta['model_sha256'][:12]}"
+
+
+def due(served, held):
+    """The served rows at a checkpoint of CHECKPOINTS without a wxrd row:
+    held is {(city, target_date, checkpoint)} of the wxrd rows written."""
+    return [r for r in served if r["checkpoint"] in CHECKPOINTS
+            and (r["city_key"], str(r["target_date"]), r["checkpoint"]) not in held]
+
+
+def probs_of(band_ids, p):
+    """{band_id: p} rounded to 6 places, as the variant table holds them."""
+    return {str(b): round(float(x), 6) for b, x in zip(band_ids, p)}
+
+
+def variant_row(served, unit, band_ids, p, version, calibrated):
+    """calibrated: the served call's calibration as the tick recorded it on
+    the other variants' rows of the same checkpoint (variant_shadow.py reads
+    it from the engine's reasons; a separate step cannot)."""
+    probs = probs_of(band_ids, p)
+    top = sorted(probs.items(), key=lambda kv: (-kv[1], kv[0]))[0]
+    return {
+        "city_key": served["city_key"], "target_date": str(served["target_date"]),
+        "checkpoint": served["checkpoint"], "variant": VARIANT, "variant_version": version,
+        "decided_at": served["decided_at"], "engine_version": served["engine_version"],
+        "station": served.get("station"), "served_centre_c": served.get("centre_c"),
+        "served_sigma_c": served.get("sigma_c"),
+        "served_calibrated": bool(calibrated),
+        "unit": unit, "probs": probs, "top_band_id": top[0], "top_prob": top[1],
+        "floor_c": None, "q_down": None, "q_up": None,
+    }
+
+
+def event_for(events, served):
+    """The served call's ladder among the city-day's events: the one holding
+    its top bucket (a city-day can have a twin listing)."""
+    for e in events:
+        if e["city"] == served["city_key"] and e["date"] == str(served["target_date"]) \
+                and str(served["top_band_id"]) in e["band_ids"]:
+            return e
+    return None
+
+
+def key_filter(cities, city_keys):
+    """PostgREST or-filter for the live record's keys of these cities: their
+    forecasts ('city|hour') and their stations' reports ('IEM id|time')."""
+    parts = []
+    for k in sorted(city_keys):
+        parts.append(f"key.like.{k}|*")
+        icao = (cities.get(k) or {}).get("icao")
+        if icao:
+            parts.append(f"key.like.{common.iem_id(icao)}|*")
+    return "(" + ",".join(parts) + ")"
+
+
+# ---------------------------------------------------------------------------
+# the run
+# ---------------------------------------------------------------------------
+def load_model(meta):
+    import lightgbm as lgb
+    with open(os.path.join(os.path.dirname(MODEL_JSON), meta["model_file"]), "rb") as fh:
+        text = gzip.decompress(fh.read())
+    sha = hashlib.sha256(text).hexdigest()
+    if sha != meta["model_sha256"]:
+        raise SystemExit(f"wxrd-v2's sha256 is {sha}, not {meta['model_sha256']}: refusing to predict")
+    return lgb.Booster(model_str=text.decode())
+
+
+def run(now=None, dry_run=False):
+    t0 = time.time()
+    ops = common.ops()
+    now = now or dt.datetime.now(dt.timezone.utc)
+    with open(MODEL_JSON) as fh:
+        meta = json.load(fh)
+    version = variant_version(meta)
+    since = (now - dt.timedelta(minutes=SERVED_WITHIN_MIN)).isoformat()
+    served = ops.rest_all("prediction_checkpoints", [
+        ("select", "city_key,target_date,checkpoint,decided_at,engine_version,model_path,station,centre_c,"
+                   "sigma_c,top_band_id"),
+        ("decided_at", f"gte.{since}"), ("decided_at", f"lte.{now.isoformat()}"),
+        ("checkpoint", f"in.({','.join(CHECKPOINTS)})")], order="checkpoint_id.asc")
+    variant_rows = ops.rest_all(TABLE, [("select", "city_key,target_date,checkpoint,variant,served_calibrated"),
+                                        ("decided_at", f"gte.{(now - dt.timedelta(hours=3)).isoformat()}")],
+                                order="shadow_id.asc")
+    key = lambda r: (r["city_key"], str(r["target_date"]), r["checkpoint"])  # noqa: E731
+    todo = due(served, {key(r) for r in variant_rows if r["variant"] == VARIANT})
+    calibrated = {key(r): r["served_calibrated"] for r in variant_rows if r["variant"] != VARIANT}
+    detail = {"version": version, "served": len(served), "due": len(todo), "written": 0, "skipped": {}}
+    if not todo:
+        detail["seconds"] = round(time.time() - t0, 1)
+        if not dry_run:
+            ops.log_run(JOB, "ok", 0, detail)
+        return detail
+
+    cities = common.cities()
+    city_keys = {r["city_key"] for r in todo}
+    record_rows = ops.rest_all("live_capture", [
+        ("select", "kind,key,captured_at,payload"), ("kind", f"in.({','.join(KINDS)})"),
+        ("captured_at", f"gte.{(now - dt.timedelta(hours=RECORD_HOURS)).isoformat()}"),
+        ("captured_at", f"lte.{now.isoformat()}"), ("or", key_filter(cities, city_keys))],
+        order="capture_id.asc", page_size=1000)
+    record = lr.Record([(r["kind"], r["key"], r["captured_at"], r["payload"]) for r in record_rows])
+    dates = sorted({str(r["target_date"]) for r in todo})
+    markets = ops.rest_all("markets", [("select", "market_id,city_key,resolution_date,unit"),
+                                       ("city_key", f"in.({','.join(sorted(city_keys))})"),
+                                       ("resolution_date", f"in.({','.join(dates)})")], order="market_id.asc")
+    bands = ops.rest_all("bands", [("select", "band_id,market_id,band_index,band_lo,band_hi,open_low,open_high"),
+                                   ("market_id", f"in.({','.join(m['market_id'] for m in markets)})")],
+                         order="band_id.asc") if markets else []
+    events = lr.live_events(markets, bands, cities, dates[0], dates[-1])
+    from wxpredict import build_table
+    sdays, _ = build_table.load_station_daily()
+    bm, md = build_table.load_daily_forecasts()
+
+    skipped = {}
+    rows, pairs = [], []
+    for s in todo:
+        if key(s) not in calibrated:
+            skipped["no sibling variant row (calibration unknown)"] = \
+                skipped.get("no sibling variant row (calibration unknown)", 0) + 1
+            continue
+        e = event_for(events, s)
+        if e is None:
+            skipped["no whole ladder"] = skipped.get("no whole ladder", 0) + 1
+            continue
+        t = int(dt.datetime.fromisoformat(str(s["decided_at"]).replace("Z", "+00:00")).timestamp())
+        row = lr.row_at(record, e, cities, sdays, bm, md, t, report_lag_s=meta["report_lag_s"])
+        if row is None:
+            skipped["not on the day"] = skipped.get("not on the day", 0) + 1
+            continue
+        rows.append(row)
+        pairs.append((s, e, row))
+    out = []
+    if rows:
+        import sdyes_forward
+        probs = sdyes_forward.model_probs(rows, load_model(meta))
+        for s, e, row in pairs:
+            p = probs.get((str(row["event_id"]), int(row["decision_utc"])))
+            if p is None:
+                why = "before 09h local" if int(row["local_hour"]) < 9 else "no running maximum"
+                skipped[why] = skipped.get(why, 0) + 1
+                continue
+            out.append(variant_row(s, e["unit"], e["band_ids"], p, version, calibrated[key(s)]))
+    if out and not dry_run:
+        ops.upsert(TABLE, out, ON_CONFLICT)
+    detail.update(written=len(out), skipped=skipped, record_rows=len(record_rows),
+                  seconds=round(time.time() - t0, 1))
+    if dry_run:
+        detail["rows"] = out
+    else:
+        lost = sum(v for k, v in skipped.items() if k in ("no whole ladder", "not on the day"))
+        ops.log_run(JOB, "ok" if not lost else "partial", len(out), detail)
+    return detail
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--at", default="", help="rehearse as if it were this UTC time")
+    args = ap.parse_args(argv)
+    now = dt.datetime.fromisoformat(args.at.replace("Z", "+00:00")) if args.at else None
+    print(json.dumps(run(now, args.dry_run), indent=1, default=str))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

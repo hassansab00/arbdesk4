@@ -327,3 +327,33 @@ def test_only_whole_ladders_are_events():
     (e,) = lr.live_events(markets, bands, CITIES, "2026-10-13", "2026-10-15")
     assert e["event_id"] == "m1" and e["band_ids"] == ["m1-0", "m1-1", "m1-2"]
     assert e["bands"] == [(None, 22.0), (22.0, 23.0), (23.0, None)] and e["station"] == ICAO
+
+
+def test_a_row_at_any_instant_is_the_readers_own_row_on_the_hour(city_days):
+    """row_at (the live shadow's): on one of the table's instants it is the
+    row build() makes in arrival mode, column for column."""
+    d = city_days
+    record = lr.Record(d["record"])
+    rows = lr.build(record, [d["event"]], CITIES, d["sdays"], d["bm"], d["md"], record.first, record.last,
+                    modes=("arrival",))
+    noon = next(r for r in rows if r["day_offset"] == 0 and r["local_hour"] == 13)
+    one = lr.row_at(record, d["event"], CITIES, d["sdays"], d["bm"], d["md"], noon["decision_utc"])
+    for c in lr.COLUMNS:
+        assert one.get(c) == noon.get(c), c
+
+
+def test_a_row_at_quarter_past_knows_the_report_v2_counts(city_days):
+    """The fixture's reports reach the tick 12 min after the reading. At 15
+    past, the :00 report is 15 min old: v2 (8 min) counts it, v1 (20 min)
+    counts the half-hour report before it."""
+    d = city_days
+    record = lr.Record(d["record"])
+    from zoneinfo import ZoneInfo
+    t = int(dt.datetime(2026, 10, 14, 13, 15, tzinfo=ZoneInfo(TZ)).timestamp())
+    v2 = lr.row_at(record, d["event"], CITIES, d["sdays"], d["bm"], d["md"], t,
+                   report_lag_s=features.REPORT_LAG_V2_S)
+    v1 = lr.row_at(record, d["event"], CITIES, d["sdays"], d["bm"], d["md"], t)
+    assert v2["decision_utc"] == t and v2["local_hour"] == 13 and v2["live_mode"] == "arrival"
+    assert v2["obs_age_min"] == pytest.approx(15) and v1["obs_age_min"] == pytest.approx(45)
+    far = int(dt.datetime(2026, 10, 16, 12, tzinfo=ZoneInfo(TZ)).timestamp())
+    assert lr.row_at(record, d["event"], CITIES, d["sdays"], d["bm"], d["md"], far) is None, "not D-1 or D"

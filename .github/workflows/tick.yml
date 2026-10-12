@@ -49,7 +49,9 @@ jobs:
     # carry no deadline of their own, then the trade prints' 120 s backstop
     # for a hung request, then the post steps (2-6 s). That is about 240 s
     # before the NWS steps; 300 leaves them a minute (Codex on #353).
-    timeout-minutes: 5
+    # 8 from 13 Oct: WXPredict's shadow, the last step, has 3 minutes of its
+    # own (a cold virtualenv installs numpy, pandas, scipy and lightgbm).
+    timeout-minutes: 8
     steps:
       # THE DEADLINE. Every step after the fixed ones may use only the time
       # left before it: 110 s after this step. Until 9 Oct it was 48 s, to
@@ -75,6 +77,14 @@ jobs:
             data/models/remaining_day/challenger_rd3.json
             data/models/remaining_day/late_hours.json
             data/archive/forecasts
+            requirements.wxpredict.txt
+            tools/wxpredict
+            data/models/wxrd
+            data/mirror/cities
+            data/training/wxpredict/station_daily.csv.gz
+            data/training/wxpredict/station_daily_nightly
+            data/training/previous_runs/best_match_daily.csv.gz
+            data/training/previous_runs/models_daily.csv.gz
           sparse-checkout-cone-mode: false
       - id: py
         uses: actions/setup-python@v5
@@ -207,6 +217,29 @@ jobs:
           if [ "$rc" = "124" ]; then
             .venv/bin/python scripts/live_capture.py --killed "$rc" || true
           fi
+      # WXPREDICT ON THE DAY, IN SHADOW (13 Oct). wxrd-v2, the remaining-day
+      # model that counts a report 8 minutes after its reading (#394), beside
+      # every same-day call this tick wrote, all cities, at the engine's own
+      # checkpoints: variant 'wxrd' in variant_shadow_checkpoints, one log row
+      # (P7.6_wxrd_shadow). After the live record is collected, so this hour's
+      # reports are in it, and before the trade prints' collector, which stays
+      # last. Its own virtualenv (cached), its own 3 minutes, and it never
+      # fails the job. Rehearsed on the 20:36Z tick of 12 Oct against the live
+      # tables: 8 checkpoints due, 8 rows, 4.1 s. Nothing here prices or trades.
+      - name: The WXPredict virtualenv
+        id: wxvenv
+        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: .venv-wx
+          key: tick-wx-venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-${{ hashFiles('requirements.wxpredict.txt') }}
+      - name: WXPredict on the day, in shadow (wxrd-v2)
+        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
+        timeout-minutes: 3
+        continue-on-error: true
+        run: |
+          [ -x .venv-wx/bin/python ] || { python -m venv .venv-wx && .venv-wx/bin/pip install -q -r requirements.wxpredict.txt; }
+          .venv-wx/bin/python tools/wxpredict/wxrd_live.py
       - name: Trade prints, collected
         # Waits for the run started above: it stops starting batches at its
         # budget and before TICK_DEADLINE, so it has normally finished by now.

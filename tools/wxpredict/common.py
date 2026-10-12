@@ -175,6 +175,24 @@ def station_daily_rows():
     return [rows[k] for k in sorted(rows)]
 
 
+_OPS = None
+
+
+def ops():
+    """scripts/common.py, the database helpers (rest_all, upsert, log_run),
+    loaded once by path: a script run from tools/wxpredict has this directory's
+    common.py first on its path. Loading it also makes a crash leave its row
+    (crash:<script>)."""
+    global _OPS
+    if _OPS is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("ops_common", os.path.join(ROOT, "scripts", "common.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _OPS = mod
+    return _OPS
+
+
 def cities():
     """{city_key: row} from the newest mirror of public.cities."""
     path = sorted(glob.glob(CITIES_GLOB))[-1]

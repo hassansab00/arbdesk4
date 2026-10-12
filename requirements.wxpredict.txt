@@ -1,0 +1,8 @@
+# WXPredict's live shadow, the tick's last step (tools/wxpredict/wxrd_live.py,
+# .github/workflows/tick.yml): the versions wxrd-v2 was fitted and checked
+# with (12 Oct). Its own virtualenv, so the tick's stays requests alone.
+requests==2.34.2
+numpy==2.4.6
+scipy==1.17.1
+pandas==3.0.6
+lightgbm==4.7.0

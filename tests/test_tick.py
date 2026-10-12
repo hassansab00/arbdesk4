@@ -374,7 +374,7 @@ def test_the_tick_is_one_job_with_no_matrix():
     assert len(jobs) == 1, "each job bills its own whole minutes"
     job = next(iter(jobs.values()))
     assert "strategy" not in job and "matrix" not in json.dumps(job)
-    assert job["timeout-minutes"] == 5
+    assert job["timeout-minutes"] == 8, "5 until 13 Oct; WXPredict's shadow step has 3 of its own"
     assert doc["concurrency"] == {"group": "tick", "cancel-in-progress": False}
 
 
@@ -424,7 +424,9 @@ def test_the_deadline_covers_the_budget_inside_the_job_timeout():
     collect = next(s for s in job["steps"] if s.get("name") == "Trade prints, collected")
     polls, every = re.search(r"seq 1 (\d+)\); .*?sleep ([\d.]+)", collect["run"]).groups()
     backstop_s = int(polls) * float(every)
-    assert 4 + deadline_s + backstop_s + 6 + 60 <= int(job["timeout-minutes"]) * 60
+    # WXPredict's shadow (13 Oct) runs last with a timeout of its own
+    wx = next(s for s in job["steps"] if s.get("name") == "WXPredict on the day, in shadow (wxrd-v2)")
+    assert 4 + deadline_s + backstop_s + 6 + 60 + int(wx["timeout-minutes"]) * 60 <= int(job["timeout-minutes"]) * 60
 
 
 def test_the_tick_takes_its_budget_from_the_jobs_deadline():

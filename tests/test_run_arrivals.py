@@ -36,6 +36,10 @@ REMOVED = [(ROOT / "supabase" / "migrations" / name).read_text() for name in (
 RESTORED = [(ROOT / "supabase" / "migrations" / name).read_text() for name in (
     "20261007100000_strategy_learning_is_switched_on.sql",      # Hassan 7 Oct: learning on
 )]
+# windows changed in place (`on conflict ... do update`), applied last: the newest wins
+UPDATED = [(ROOT / "supabase" / "migrations" / name).read_text() for name in (
+    "20261013010000_the_tick_has_room_for_wxpredict.sql",       # WXPredict's shadow: tick 5 -> 8 min
+)]
 AD4_91 = (ROOT / "sql" / "ad4_91_database_jobs.sql").read_text()
 WORKFLOWS = ROOT / ".github" / "workflows"
 
@@ -72,7 +76,12 @@ def _all_expected():
     gone = set().union(*(_removed(text) for text in REMOVED))
     rows = _expected() + [r for text in ADDED for r in _rows(text)]
     kept = [r for r in rows if (r[0], r[1]) not in gone]
-    return kept + [r for text in RESTORED for r in _rows(text) if (r[0], r[1]) not in {(k[0], k[1]) for k in kept}]
+    out = kept + [r for text in RESTORED for r in _rows(text) if (r[0], r[1]) not in {(k[0], k[1]) for k in kept}]
+    for text in UPDATED:
+        for r in _rows(text):
+            assert (r[0], r[1]) in {(k[0], k[1]) for k in out}, f"{r[:2]} updates a window nobody expects"
+            out = [r if (k[0], k[1]) == (r[0], r[1]) else k for k in out]
+    return out
 
 
 def _scripts(workflow_text):
