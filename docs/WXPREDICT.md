@@ -891,6 +891,45 @@ serve `wxrd-v2` in shadow beside every same-day call (all 47 cities), score it
 against the engine and the market on the same checkpoints, and keep looking
 for what the market knows that the model does not.
 
+### wxrd-v2 on the day, in shadow beside every same-day call (13 Oct)
+
+`tools/wxpredict/wxrd_live.py`, the hourly tick's step after the live record is
+collected (`.github/workflows/tick.yml`). For every `prediction_checkpoints` row
+the tick wrote at a checkpoint of the day itself (morning, noon, prepeak_2h,
+prepeak_1h, postpeak_1h) it builds the decision's row as the live system had it
+at the engine's own instant (`live_reader.row_at`, arrival mode, the 8-minute
+report rule), prices it with the frozen `wxrd-v2` and writes variant `wxrd` to
+`variant_shadow_checkpoints` (version `wxrd:v2:62b5de3eace3`). So the engine,
+wxrd-v2 and the market are compared on the same checkpoints of the same days
+(`fact_checkpoint_outcome` banks the engine's and the market's). Nothing prices
+or trades from it.
+
+A checkpoint stays due for 6 hours until it has its row, oldest first, at most
+30 a tick, and rows stop being built 90 s into the step (what was built is
+written). So a tick whose step failed or timed out leaves its checkpoints to
+the next ticks instead of losing them, and a backlog cannot time the step out
+hour after hour (Codex on #395). A retry reads exactly what an on-time run
+would have: the live record up to the engine's instant (`captured_at` at or
+before it). The ticks wrote 2 to 19 such checkpoints an hour from 22Z 11 Oct
+to 21Z 12 Oct (`prediction_checkpoints`). The virtualenv is built beside its
+cached path and moved into it only after its imports work, so a failed
+install is never cached.
+
+Rehearsed on the 20:36Z tick of 12 Oct against the live tables (the rows read
+through SQL, the job's own code): 8 checkpoints due, 8 rows, 4.1 s, every
+ladder summing to 1 within 3e-6. The live record started 12 Oct 08:36Z, so
+that day's early forecast hours are missing for the American cities; from
+13 Oct the record holds whole days.
+
+The tick job's timeout goes from 5 to 8 minutes (the step has 3 of its own:
+a cold virtualenv installs numpy, pandas, scipy and lightgbm, pinned in
+`requirements.wxpredict.txt` to the versions wxrd-v2 was fitted with), and
+the three tick jobs' expected windows in `clock_expected_jobs` from 15 to 20
+minutes (`20261013010000_the_tick_has_room_for_wxpredict.sql`).
+`MEASURED_MINUTES["tick.yml"]` is 4.0, an upper bound to re-measure on the
+first full day. The shadow's own log row (`P7.6_wxrd_shadow`) joins the
+watchdog after its first day of runs.
+
 ## Gaps (Phase 1)
 
 - **Market activity is a proxy.** The venue's hourly price history has no volume. "Activity" is the number of

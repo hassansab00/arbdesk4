@@ -403,7 +403,6 @@ def _build(record, events, cities, sdays, history_bm, history_md, first_t, last_
     tz_names = {k: c["timezone"] for k, c in cities.items() if c.get("timezone")}
     books = book_series(record)
     ticks = [at for at, _ in record.books()]
-    empty = features.Reports([])
     rows = []
     rule = View(record, icao_of, tz_names) if "rule" in modes else None
     for t, todo in instants(events, cities, first_t, last_t).items():
@@ -413,24 +412,50 @@ def _build(record, events, cities, sdays, history_bm, history_md, first_t, last_
         if "arrival" in modes:
             views["arrival"] = View(record, icao_of, tz_names, t)
         for e, off, local in todo:
-            tz = common.zone(cities[e["city"]])
-            series = ladder_series(books, e["band_ids"])
-            st_days = sdays.get(e["station"], {})
             for mode, v in views.items():
-                rep = v.reports.get(e["station"], empty)
-                ctx = features.event_context(e, rep, st_days, tz)
-                bm = OwnDay(v.bm, history_bm, e["city"], e["date"])
-                md = OwnDay(v.md, history_md, e["city"], e["date"])
-                row = features.decision_row(e, ctx, off, local, rep, st_days, bm, md, v.hourly, series, tz)
-                row["live_mode"] = mode
-                sp = spreads_at(books, e["band_ids"], t)
-                row["mkt_spreads"] = ";".join("" if s is None else features.fmt(s, 4) for s in sp)
-                row["mkt_sides"] = ";".join(s or "" for s in spreads_at(books, e["band_ids"], t, which=3))
-                k = bisect.bisect_right(ticks, t)
-                row["mkt_book_age_min"] = (t - ticks[k - 1]) / 60 if k else None   # the newest tick's
-                row["books_seen"] = k
-                rows.append(row)
+                rows.append(_row(e, off, local, t, mode, v, books, ticks, cities, sdays, history_bm, history_md))
     return rows
+
+
+def _row(e, off, local, t, mode, v, books, ticks, cities, sdays, history_bm, history_md):
+    """One event's row at one instant, as one way of knowing (`v`) sees it."""
+    tz = common.zone(cities[e["city"]])
+    st_days = sdays.get(e["station"], {})
+    rep = v.reports.get(e["station"], features.Reports([]))
+    ctx = features.event_context(e, rep, st_days, tz)
+    bm = OwnDay(v.bm, history_bm, e["city"], e["date"])
+    md = OwnDay(v.md, history_md, e["city"], e["date"])
+    row = features.decision_row(e, ctx, off, local, rep, st_days, bm, md, v.hourly,
+                                ladder_series(books, e["band_ids"]), tz)
+    row["live_mode"] = mode
+    sp = spreads_at(books, e["band_ids"], t)
+    row["mkt_spreads"] = ";".join("" if s is None else features.fmt(s, 4) for s in sp)
+    row["mkt_sides"] = ";".join(s or "" for s in spreads_at(books, e["band_ids"], t, which=3))
+    k = bisect.bisect_right(ticks, t)
+    row["mkt_book_age_min"] = (t - ticks[k - 1]) / 60 if k else None   # the newest tick's
+    row["books_seen"] = k
+    return row
+
+
+def row_at(record, e, cities, sdays, history_bm, history_md, t, report_lag_s=None):
+    """The event's arrival-mode row at any instant t (unix seconds), not only
+    the table's on-the-hour ones: what the live system had at t (captured_at
+    <= t), then the training's rules with the given report lag. The decision
+    is taken SNAPSHOT_S after `local`, as every row's is, so decision_utc is t
+    (to the second). The live shadow (wxrd_live.py) asks for the instant the
+    tick priced its call at. None when t is not on the event's day or the day
+    before, on the city's clock."""
+    tz = common.zone(cities[e["city"]])
+    local = dt.datetime.fromtimestamp(int(t) - features.SNAPSHOT_S, tz)
+    off = (local.date() - dt.date.fromisoformat(e["date"])).days
+    if off not in (-1, 0):
+        return None
+    icao_of = {common.iem_id(c["icao"]): c["icao"].upper() for c in cities.values() if c.get("icao")}
+    tz_names = {k: c["timezone"] for k, c in cities.items() if c.get("timezone")}
+    with features.report_lag(features.REPORT_LAG_S if report_lag_s is None else report_lag_s):
+        v = View(record, icao_of, tz_names, int(t))
+        return _row(e, off, local, int(t), "arrival", v, book_series(record), [at for at, _ in record.books()],
+                    cities, sdays, history_bm, history_md)
 
 
 def write_rows(path, rows):

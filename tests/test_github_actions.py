@@ -189,7 +189,14 @@ MEASURED_MINUTES = {
     # 28 Sep) and the post steps (2-6 s, 27 Sep): past 120 s, so 3 billed-
     # equivalent minutes. Re-measure on the first full day (jobs API, each
     # job rounded up).
-    "tick.yml": 3.0,
+    # 4.0 from 13 Oct, an UPPER BOUND, NOT MEASURED: WXPredict's shadow step
+    # (wxrd_live.py) runs last, rehearsed at 4.1 s on 12 Oct's 20:36Z tick
+    # against the live tables, plus its cached virtualenv's restore; a run at
+    # its deadline is then still under four minutes. A cold virtualenv
+    # (numpy, pandas, scipy, lightgbm) adds about a minute, once per change
+    # of requirements.wxpredict.txt. Re-measure on the first full day (jobs
+    # API, each job rounded up).
+    "tick.yml": 4.0,
     # 29.0 measured 19 Sep. Measured 28 Sep with everything since in it (the
     # hit tournament 2 min 2 s, the width score 3 s, the engine replay 6 s):
     # the job ran 04:36:05-05:05:44, 29 min 39 s, billed 30. The settlement
