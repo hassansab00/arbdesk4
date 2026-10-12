@@ -168,3 +168,13 @@ def test_without_the_database_keys_nothing_is_logged(monkeypatch):
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
     assert fo.ops_log() is None
+
+
+def test_a_station_only_the_nights_hold_has_reports_for_the_build(tmp_path, monkeypatch):
+    """Codex on #393: a city added or moved since the last full fetch has no
+    station file; its nightly reports must still make its events eligible."""
+    setup(tmp_path, monkeypatch, [], [report("2026-10-12T10:20Z", "60.00")])
+    common.write_csv(str(tmp_path / "wx" / "station_reports_nightly" / f"reports-{NIGHT}.csv.gz"),
+                     ["station", *fo.REPORT_HEADER], [["LTFM", *report("2026-10-12T10:20Z", "70.00")]])
+    assert bt.report_stations(common.nightly_reports()) == {"EGLC", "LTFM"}
+    assert [r["tmpf"] for r in common.station_report_rows("LTFM")] == ["70.00"]
