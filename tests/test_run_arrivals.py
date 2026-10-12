@@ -118,7 +118,9 @@ def test_every_expected_job_is_written_by_a_script_its_workflow_runs():
             assert script in scripts, (file, script)
             assert marker in (ROOT / "scripts" / script).read_text(), (file, job, marker)
             continue
-        sources = "".join((ROOT / "scripts" / s).read_text() for s in scripts)
+        # a script outside scripts/ is named by its path (tools/wxpredict/fetch_obs.py)
+        sources = "".join(((ROOT / "scripts" / s) if (ROOT / "scripts" / s).exists() else (ROOT / s)).read_text()
+                          for s in scripts)
         assert re.search(rf"""["']{re.escape(job)}["']""", sources), (
             f"{file} is expected to log {job}, and none of its scripts ({scripts}) names it")
 

@@ -15,7 +15,8 @@ with a probability and no payoff is computed.
              least 23 of the city's own hours; the file is in UTC and each
              row is put on the city's wall clock, as honest_record.py does;
              data/training/previous_runs/best_match_hourly_day1_utc.csv.gz)
-  stations   cities with a station day on the date (station_daily.csv.gz)
+  stations   cities with a station day on the date (station_daily.csv.gz and
+             the nightly days beside it, station_daily_nightly)
 
 A date is flagged when an event has no book, no print or no winner, or when a
 city of the dump has no hourly forecast or station day. Books after the
@@ -102,8 +103,13 @@ def main(argv=None):
             hourly.loc[idx, "date"] = utc[idx].dt.tz_convert(zone[city]).dt.strftime("%Y-%m-%d")
     whole = hourly.groupby(["city_key", "date"]).size()
     whole = whole[whole >= 23].reset_index()[["city_key", "date"]]
-    with gzip.open(STATION_DAILY, "rt") as fh:
-        sdays = pd.read_csv(fh, usecols=["city_key", "local_date"])
+    # the file and each night's days beside it (fetch_obs.py update, 12 Oct)
+    parts = []
+    for path in [STATION_DAILY, *sorted(glob.glob(os.path.join(os.path.dirname(STATION_DAILY),
+                                                                "station_daily_nightly", "days-*.csv.gz")))]:
+        with gzip.open(path, "rt") as fh:
+            parts.append(pd.read_csv(fh, usecols=["city_key", "local_date"]))
+    sdays = pd.concat(parts, ignore_index=True)
 
     days = []
     for date, ev in dec.groupby("date"):

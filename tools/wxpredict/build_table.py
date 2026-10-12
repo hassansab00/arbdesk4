@@ -168,8 +168,9 @@ def station_events(venue_days, stations, sdaily, refused, first=None, last=None)
     return out, dict(left)
 
 
-def load_reports(station):
-    return Reports(common.read_csv(os.path.join(common.REPORTS, f"{station}.csv.gz")))
+def load_reports(station, nightly=None):
+    """The station's reports: its file and each night's new ones (common.station_report_rows)."""
+    return Reports(common.station_report_rows(station, nightly))
 
 
 def load_station_daily():
@@ -177,7 +178,7 @@ def load_station_daily():
     days, {station: {date: why not}} for the rest). Every past-day read -
     yesterday, climatology, the forecast's past error, the unlisted days -
     takes the first, so none can read a day that is not whole."""
-    rows = list(common.read_csv(common.STATION_DAILY))
+    rows = common.station_daily_rows()
     newest = collections.defaultdict(int)
     for r in rows:
         newest[r["station"]] = max(newest[r["station"]], unix_of(r["last_valid"]))
@@ -271,11 +272,19 @@ def build(limit=0, first=None, last=None, out_dir=OUT_DIR, write_meta=True):
         common.READ = None
 
 
-def _build(limit, first, last, out_dir, write_meta):
+def report_stations(nightly):
+    """The stations with reports: a file in REPORTS, or reports in a night's
+    increment only (a city added or moved since the last `reports` fetch;
+    Codex on #393). A station's reports decide which events are eligible."""
     listed_reports = sorted(f for f in os.listdir(common.REPORTS) if f.endswith(".csv.gz"))
-    for f in listed_reports:                  # a station's file decides which events are eligible
+    for f in listed_reports:
         common.note(os.path.join(common.REPORTS, f))
-    stations = {f[:-7] for f in listed_reports}
+    return {f[:-7] for f in listed_reports} | set(nightly)
+
+
+def _build(limit, first, last, out_dir, write_meta):
+    nightly = common.nightly_reports()
+    stations = report_stations(nightly)
     events, left, listed = load_events(stations, first, last)
     sdaily, refused = load_station_daily()
     unlisted, station_left = station_events(listed, stations, sdaily, refused, first, last)
@@ -287,7 +296,7 @@ def _build(limit, first, last, out_dir, write_meta):
     bm, md = load_daily_forecasts()
     hourly = load_hourly_forecasts()
     prices = load_prices([e for e in events if e["source"] == "venue"])
-    reports = {s: load_reports(s) for s in sorted({e["station"] for e in events})}
+    reports = {s: load_reports(s, nightly) for s in sorted({e["station"] for e in events})}
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, "wxpredict_table.csv.gz")
     cov = Coverage(left, station_left)
