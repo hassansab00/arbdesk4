@@ -298,6 +298,25 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
+      # EACH DAY REACHES THE TRAINING DATA (12 Oct). The settlement stations'
+      # reports and days in data/training/wxpredict were refreshed by hand (6
+      # and 11 Oct), so no new day reached WXPredict's training data on its
+      # own, and a live row read a stale yesterday. One IEM request for every
+      # station, from two days before the newest report held to today; the
+      # reports not held yet and the days they touch go into new files
+      # (tools/wxpredict/fetch_obs.py update). Run from the sandbox on 12 Oct
+      # against a copy of the files: 15.7 s, 3,167 new reports for 49
+      # stations, 130 days, 40 KB + 3 KB written. It deletes nothing. Its run
+      # is logged as P2.13_station_record (partial when a station had no new
+      # report), a crash as crash:fetch_obs.py.
+      - name: Append the station reports and days (WXPredict)
+        if: always()
+        timeout-minutes: 5
+        run: python tools/wxpredict/fetch_obs.py update
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
       # `if: always()`: a table that failed must not strand the ones that were
       # written and verified - the manifest is saved after every table, so
       # what is on disk is exactly what it records.

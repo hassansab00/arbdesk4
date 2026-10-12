@@ -7,7 +7,9 @@ Every source the training table reads is a file in the repository:
                                   (scripts/honest_record.py)
   data/training/wxpredict/        the settlement stations' own reports, every
                                   routine and special report with every field
-                                  (tools/wxpredict/fetch_obs.py)
+                                  (tools/wxpredict/fetch_obs.py), and each
+                                  night's new reports and recomputed station
+                                  days beside them (fetch_obs.py update)
   data/mirror/cities/             public.cities as mirrored nightly
 """
 import csv
@@ -110,6 +112,67 @@ def write_csv(path, header, rows):
             text.detach()
     os.replace(tmp, path)
     return n
+
+
+# ---------------------------------------------------------------------------
+# the station record: the files plus each night's increments
+# ---------------------------------------------------------------------------
+# EACH NIGHT ADDS TO IT (12 Oct). Until then the station reports and days were
+# refreshed by hand (6 and 11 Oct), so no new day reached the training data on
+# its own. fetch_obs.py update writes each night's new reports and its
+# recomputed days into a new file of their own; the files below are never
+# rewritten by it (the repository keeps every version of a rewritten file).
+# The increments sit beside the files they add to (station_reports_nightly
+# beside station_reports, station_daily_nightly beside station_daily.csv.gz),
+# so pointing REPORTS or STATION_DAILY elsewhere moves them too.
+def reports_nightly_dir():
+    return os.path.join(os.path.dirname(REPORTS), "station_reports_nightly")
+
+
+def station_daily_nightly_dir():
+    return os.path.join(os.path.dirname(STATION_DAILY), "station_daily_nightly")
+
+
+def nightly_files(directory, prefix):
+    return sorted(glob.glob(os.path.join(directory, f"{prefix}-*.csv.gz")))
+
+
+def nightly_reports():
+    """{station: [report row]} from every night's increment, oldest night first."""
+    out = {}
+    for path in nightly_files(reports_nightly_dir(), "reports"):
+        for r in read_csv(path):
+            out.setdefault(r["station"], []).append(r)
+    return out
+
+
+def station_report_rows(station, nightly=None):
+    """The station's reports, oldest first: its file in REPORTS, then the
+    nights' new reports. A report time already read is kept as first read (the
+    nightly fetch adds only times the record does not hold)."""
+    nightly = nightly_reports() if nightly is None else nightly
+    rows = {}
+    path = os.path.join(REPORTS, f"{station}.csv.gz")
+    if os.path.exists(path):
+        for r in read_csv(path):
+            rows.setdefault(r["valid"], r)
+    for r in nightly.get(station, []):
+        rows.setdefault(r["valid"], r)
+    return [rows[k] for k in sorted(rows)]
+
+
+def station_daily_rows():
+    """Every station day, by station and date: STATION_DAILY's row, or the
+    newest night's row for the same station and local date (a night recomputes
+    a day its new reports touch: a day that was partial becomes whole)."""
+    rows = {}
+    if os.path.exists(STATION_DAILY):
+        for r in read_csv(STATION_DAILY):
+            rows[(r["station"], r["local_date"])] = r
+    for path in nightly_files(station_daily_nightly_dir(), "days"):
+        for r in read_csv(path):
+            rows[(r["station"], r["local_date"])] = r
+    return [rows[k] for k in sorted(rows)]
 
 
 def cities():

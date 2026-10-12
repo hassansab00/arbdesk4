@@ -30,9 +30,20 @@ measured there too).
             reduction applied to the reports, so the file runs to the end date.
             Past-only climatology for every target day.
 
+  nightly   (12 Oct) each night, one request from two days before the newest
+            report held to today: the reports the record does not hold yet go
+            into station_reports_nightly/reports-<date>.csv.gz, and the days
+            those reports touch, recomputed from every report held, into
+            station_daily_nightly/days-<date>.csv.gz when they differ from the
+            day held (common.station_report_rows and station_daily_rows read
+            the files and the nights together). New files only: the files
+            above are not rewritten each night, and a report the night's
+            answer holds differently from the record is counted, not applied.
+
     python tools/wxpredict/fetch_obs.py reports [--end YYYY-MM-DD]
     python tools/wxpredict/fetch_obs.py climate
     python tools/wxpredict/fetch_obs.py daily      # station_daily from the cache + reports
+    python tools/wxpredict/fetch_obs.py update [--end YYYY-MM-DD]   # the night's increment
 
 Responses are cached per window in --cache, so an interrupted run resumes.
 """
@@ -61,6 +72,10 @@ REPORT_WINDOW_DAYS = 10
 CLIMATE_WINDOW_DAYS = 60
 PAUSE_S = 2
 TRIES = 6
+UPDATE_OVERLAP_DAYS = 2      # asked again before the newest report held: late and special reports
+UPDATE_MAX_DAYS = 14         # the most a night asks for; a station further behind is caught up by `reports`
+UPDATE_TIMEOUT_S = 120       # per request, in the nightly job
+UPDATE_TRIES = 3
 FIELDS = ["tmpf", "dwpf", "relh", "drct", "sknt", "gust", "p01i", "alti", "mslp", "vsby",
           "skyc1", "skyc2", "skyc3", "skyl1", "skyl2", "skyl3", "wxcodes"]
 REPORT_HEADER = ["valid", *FIELDS, "t10_c", "td10_c", "max6_c", "min6_c"]
@@ -102,22 +117,23 @@ def remarks(metar):
     return t, td, mx, mn
 
 
-def request(stations, start, end, data):
+def request(stations, start, end, data, timeout=600, tries=TRIES):
     p = {"station": [common.iem_id(s) for s in stations], "data": data,
          "year1": start.year, "month1": start.month, "day1": start.day,
          "year2": end.year, "month2": end.month, "day2": end.day,
          "tz": "Etc/UTC", "format": "onlycomma", "latlon": "no", "elev": "no",
          "missing": "empty", "trace": "T", "direct": "no", "report_type": ["3", "4"]}
     err = None
-    for i in range(TRIES):
+    for i in range(tries):
         try:
-            r = requests.get(IEM, params=p, headers=UA, timeout=600)
+            r = requests.get(IEM, params=p, headers=UA, timeout=timeout)
             if r.status_code == 200 and r.text.startswith("station,"):
                 return r.text
             err = RuntimeError(f"{r.status_code}: {r.text[:200]}")
         except requests.RequestException as e:
             err = e
-        time.sleep(min(120, 5 * 2 ** i))
+        if i + 1 < tries:
+            time.sleep(min(120, 5 * 2 ** i))
     raise err
 
 
@@ -154,6 +170,17 @@ def back_to_icao(stations):
     return {common.iem_id(s): s for s in stations}
 
 
+def report_out(rec):
+    """(valid, the report row as REPORT_HEADER's values) of one IEM record."""
+    valid = rec["valid"].replace(" ", "T") + "Z"
+    return valid, [valid, *[(rec.get(k) or "").strip() for k in FIELDS], *remarks(rec.get("metar"))]
+
+
+def as_written(values):
+    """Values as common.write_csv writes and read_csv reads them back."""
+    return ["" if v is None else str(v) for v in values]
+
+
 def cmd_reports(args):
     stations = list(common.event_stations())
     end = dt.date.fromisoformat(args.end) if args.end else dt.date.today()
@@ -169,8 +196,7 @@ def cmd_reports(args):
                 if st is None:
                     unknown[rec.get("station")] += 1
                     continue
-                valid = rec["valid"].replace(" ", "T") + "Z"
-                out = [valid, *[(rec.get(k) or "").strip() for k in FIELDS], *remarks(rec.get("metar"))]
+                valid, out = report_out(rec)
                 # One row per station and minute; a window edge can repeat one.
                 rows[st][valid] = out
     total = 0
@@ -226,6 +252,14 @@ def reduce_daily(readings, tz_of):
     return days
 
 
+def day_row(station, city, day, d):
+    """One station_daily row (DAILY_HEADER) of reduce_daily's summary, as written."""
+    return [station, city, day.isoformat(), str(d["n"]), d["first"].strftime("%Y-%m-%dT%H:%MZ"),
+            d["last"].strftime("%Y-%m-%dT%H:%MZ"), f"{d['tmax_f']:.2f}", f"{d['tmax_c']:.2f}",
+            d["tmax_at"].strftime("%Y-%m-%dT%H:%MZ"), f"{d['tmin_f']:.2f}", f"{d['tmin_c']:.2f}",
+            f"{d['max_gap_h']:.2f}"]
+
+
 def parse_valid(s):
     s = s.rstrip("Z").replace(" ", "T")
     return dt.datetime.fromisoformat(s).replace(tzinfo=common.UTC)
@@ -256,23 +290,16 @@ def cmd_daily(args):
                     if valid.date() >= REPORTS_FROM:
                         continue          # the reports carry these days, with the T group
                     yield st, valid, num(rec.get("tmpf")), None
+        nightly = common.nightly_reports()
         for st in stations:
-            path = os.path.join(common.REPORTS, f"{st}.csv.gz")
-            if not os.path.exists(path):
-                continue
-            for r in common.read_csv(path):
+            for r in common.station_report_rows(st, nightly):
                 valid = parse_valid(r["valid"])
                 if valid.date() < REPORTS_FROM:
                     continue              # the climate fetch ends where the reports begin (review of #314)
                 yield st, valid, num(r["tmpf"]), num(r["t10_c"])
 
     days = reduce_daily(readings(), tz_of)
-    rows = []
-    for (st, day), d in sorted(days.items()):
-        rows.append([st, stations[st], day.isoformat(), d["n"], d["first"].strftime("%Y-%m-%dT%H:%MZ"),
-                     d["last"].strftime("%Y-%m-%dT%H:%MZ"), f"{d['tmax_f']:.2f}", f"{d['tmax_c']:.2f}",
-                     d["tmax_at"].strftime("%Y-%m-%dT%H:%MZ"), f"{d['tmin_f']:.2f}", f"{d['tmin_c']:.2f}",
-                     f"{d['max_gap_h']:.2f}"])
+    rows = [day_row(st, stations[st], day, d) for (st, day), d in sorted(days.items())]
     # A STATION NOT ASKED THIS TIME KEEPS ITS DAYS (11 Oct). The stations are the
     # active cities' (common.event_stations); a city that has left the list
     # (Zhengzhou, ZHCC: 2,470 days on 11 Oct) is not fetched, and rewriting the
@@ -287,14 +314,129 @@ def cmd_daily(args):
     print(json.dumps({"station_days": n, "kept_from_stations_not_asked": len(kept)}), file=sys.stderr)
 
 
-def main():
+def cmd_update(args):
+    """The night's increment (module docstring, `nightly`). Returns its summary."""
+    stations = common.event_stations()
+    cities = common.cities()
+    tz_of = {s: common.zone(cities[c]) for s, c in stations.items()}
+    today = dt.date.fromisoformat(args.end) if args.end else dt.datetime.now(common.UTC).date()
+    nightly = common.nightly_reports()
+    held = {st: {r["valid"]: r for r in common.station_report_rows(st, nightly)} for st in stations}
+    newest = {st: max(v) for st, v in held.items() if v}
+    if not newest:
+        raise SystemExit("no station holds a report: run `reports` first")
+    start = max(parse_valid(min(newest.values())).date() - dt.timedelta(days=UPDATE_OVERLAP_DAYS),
+                today - dt.timedelta(days=UPDATE_MAX_DAYS))
+    end = today + dt.timedelta(days=1)
+    text = request(list(stations), start, end, ",".join(FIELDS + ["metar"]),
+                   timeout=UPDATE_TIMEOUT_S, tries=UPDATE_TRIES)
+
+    icao = back_to_icao(stations)
+    new = defaultdict(dict)
+    differ = defaultdict(int)
+    unknown = defaultdict(int)
+    for rec in csv.DictReader(io.StringIO(text)):
+        st = icao.get((rec.get("station") or "").strip().upper())
+        if st is None:
+            unknown[rec.get("station")] += 1
+            continue
+        valid, out = report_out(rec)
+        out = as_written(out)
+        old = held[st].get(valid)
+        if old is None:
+            new[st][valid] = out
+        elif [old.get(h, "") for h in REPORT_HEADER] != out:
+            differ[st] += 1                   # the record keeps what it read first
+
+    stamp = today.isoformat()
+    rep_path = os.path.join(common.reports_nightly_dir(), f"reports-{stamp}.csv.gz")
+    rep_rows = {}
+    if os.path.exists(rep_path):              # a second run the same day keeps the first's rows
+        for r in common.read_csv(rep_path):
+            rep_rows[(r["station"], r["valid"])] = [r["station"], *[r[h] for h in REPORT_HEADER]]
+    for st, by in new.items():
+        for valid, out in by.items():
+            rep_rows[(st, valid)] = [st, *out]
+    if rep_rows:
+        common.write_csv(rep_path, ["station", *REPORT_HEADER], [rep_rows[k] for k in sorted(rep_rows)])
+
+    # the days the asked window covers whole, from every report held now
+    t0 = dt.datetime.combine(start, dt.time(0), common.UTC)
+
+    def readings():
+        for st in stations:
+            rows = dict(held[st])
+            rows.update({v: dict(zip(REPORT_HEADER, out)) for v, out in new[st].items()})
+            for valid_s, r in rows.items():
+                valid = parse_valid(valid_s)
+                if valid >= t0:
+                    yield st, valid, num(r.get("tmpf")), num(r.get("t10_c"))
+
+    days = reduce_daily(readings(), tz_of)
+    current = {(r["station"], r["local_date"]): [r[h] for h in DAILY_HEADER] for r in common.station_daily_rows()}
+    changed = {}
+    for (st, day), d in sorted(days.items()):
+        if common.local_day_bounds(day, tz_of[st])[0] < t0.timestamp():
+            continue                          # the window starts inside this day
+        row = day_row(st, stations[st], day, d)
+        if current.get((st, row[2])) != row:
+            changed[(st, row[2])] = row
+    day_path = os.path.join(common.station_daily_nightly_dir(), f"days-{stamp}.csv.gz")
+    day_rows = {}
+    if os.path.exists(day_path):
+        for r in common.read_csv(day_path):
+            day_rows[(r["station"], r["local_date"])] = [r[h] for h in DAILY_HEADER]
+    day_rows.update(changed)
+    if day_rows:
+        common.write_csv(day_path, DAILY_HEADER, [day_rows[k] for k in sorted(day_rows)])
+
+    after = {st: max([newest.get(st, ""), *new[st]]) for st in stations if newest.get(st) or new[st]}
+    summary = {"night": stamp, "asked": [start.isoformat(), end.isoformat()], "stations": len(stations),
+               "new_reports": sum(len(v) for v in new.values()),
+               "stations_without_a_new_report": sorted(st for st in stations if not new[st]),
+               "reports_differing_from_the_record_not_applied": dict(differ),
+               "unknown_station_rows": dict(unknown), "days_written": len(changed),
+               "newest_report": {"oldest_station": min(after.values()) if after else None,
+                                 "newest_station": max(after.values()) if after else None}}
+    print(json.dumps(summary), file=sys.stderr)
+    return summary
+
+
+JOB = "P2.13_station_record"
+
+
+def ops_log():
+    """scripts/common.py's log_run when the job has the database's keys, else
+    None. Loaded by path: this script's own directory holds wxpredict's
+    common.py. Importing it also makes a crash leave its row (crash:<script>)."""
+    if not (os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_KEY")):
+        return None
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "ops_common", os.path.join(common.ROOT, "scripts", "common.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.log_run
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["reports", "climate", "daily"])
+    ap.add_argument("cmd", choices=["reports", "climate", "daily", "update"])
     ap.add_argument("--cache", default=os.environ.get("WXPREDICT_CACHE", ".wxpredict_cache/iem"))
     ap.add_argument("--end", default="")
-    args = ap.parse_args()
-    {"reports": cmd_reports, "climate": cmd_climate, "daily": cmd_daily}[args.cmd](args)
+    args = ap.parse_args(argv)
+    if args.cmd != "update":
+        {"reports": cmd_reports, "climate": cmd_climate, "daily": cmd_daily}[args.cmd](args)
+        return 0
+    log = ops_log()
+    s = cmd_update(args)
+    # partial: a station had no new report all night (a station gone quiet,
+    # or one IEM no longer answers for)
+    status = "ok" if not s["stations_without_a_new_report"] else "partial"
+    if log:
+        log(JOB, status, s["new_reports"], s)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
