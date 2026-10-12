@@ -31,7 +31,10 @@ BANDS = [(None, 22.0), (22.0, 23.0), (23.0, 24.0), (24.0, 25.0), (25.0, None)]
 
 def test_the_payload_is_what_the_tick_keeps():
     assert lr.PAYLOAD_FIELDS == live_capture.FULL_FIELDS
-    assert lr.KINDS == ("report", "hourly", "hourly2", "models1", "models2", "books")
+    assert lr.KINDS == ("report", "hourly", "hourly2", "models1", "models2", "books", "focus_book")
+    mig = (ROOT / "supabase" / "migrations" / "20261012170000_books_the_minute_reports_arrive.sql").read_text()
+    for kind in lr.KINDS:
+        assert f"'{kind}'" in mig, f"{kind}: the newest kind list keeps it"
     assert set(lr.HOURLY_KIND.values()) | set(lr.MODELS_KIND.values()) == \
         set(live_capture.HOURLY_KIND.values()) | set(live_capture.MODELS_KIND.values())
 

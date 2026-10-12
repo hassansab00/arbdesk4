@@ -7,10 +7,13 @@
 -- `_previous_day1` forecast ('hourly'), and every open bucket's book
 -- ('books'); from 12 Oct also best_match at `_previous_day2` ('hourly2') and
 -- the seven models' temperature at `_previous_day1` and `_previous_day2`
--- ('models1', 'models2'). scripts/live_capture.py writes it through
--- live_capture_put; the migrations 20261011210000_the_live_record.sql and
--- 20261012150000_the_live_record_keeps_the_evening_forecasts.sql say why each
--- kind is kept and how.
+-- ('models1', 'models2'), and the focus cities' same-day books every minute
+-- of their window ('focus_book', WP5, written by focus_obs_read).
+-- scripts/live_capture.py writes the rest through live_capture_put; the
+-- migrations 20261011210000_the_live_record.sql,
+-- 20261012150000_the_live_record_keeps_the_evening_forecasts.sql and
+-- 20261012170000_books_the_minute_reports_arrive.sql say why each kind is
+-- kept and how.
 --
 -- WHO READS IT: the nightly mirror (scripts/mirror_to_repo.py, append by
 -- captured_at), the archive (scripts/archive_observations.py, dataset
@@ -39,10 +42,10 @@ create index if not exists live_capture_captured_at on public.live_capture (capt
 -- The kinds it keeps, set here so a table made before 12 Oct widens too.
 alter table public.live_capture drop constraint if exists live_capture_kind_check;
 alter table public.live_capture add constraint live_capture_kind_check
-  check (kind in ('report', 'hourly', 'hourly2', 'models1', 'models2', 'books'));
+  check (kind in ('report', 'hourly', 'hourly2', 'models1', 'models2', 'books', 'focus_book'));
 
 comment on table public.live_capture is
-  'WXPredict WP3 (11 Oct): every live input the hourly tick had, as it arrived (captured_at): station reports with every training field, the hourly _previous_day1 forecast, every open bucket''s book; from 12 Oct also best_match at _previous_day2 and the seven models'' temperature at both leads (WP3b). A report or forecast value is stored once per change. Two days here; older rows in data/archive/live_capture.';
+  'WXPredict WP3 (11 Oct): every live input the hourly tick had, as it arrived (captured_at): station reports with every training field, the hourly _previous_day1 forecast, every open bucket''s book; from 12 Oct also best_match at _previous_day2 and the seven models'' temperature at both leads (WP3b), and the focus cities'' same-day books every minute of their window (focus_book, WP5). A report, forecast value or focus book is stored once per change. Two days here; older rows in data/archive/live_capture.';
 
 alter table public.live_capture enable row level security;
 revoke all on public.live_capture from public, anon, authenticated;
@@ -69,7 +72,7 @@ declare
   v_rows int;
   v_new  int;
 begin
-  if p_kind is null or p_kind not in ('report', 'hourly', 'hourly2', 'models1', 'models2', 'books') then
+  if p_kind is null or p_kind not in ('report', 'hourly', 'hourly2', 'models1', 'models2', 'books', 'focus_book') then
     raise exception 'live_capture_put: % is not a kind the live record keeps', p_kind using errcode = '22023';
   end if;
   if p_captured_at is null or p_captured_at > now() + interval '5 minutes' then

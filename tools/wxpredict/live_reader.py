@@ -80,7 +80,9 @@ from wxpredict.fetch_obs import FIELDS as REPORT_FIELDS, remarks  # noqa: E402
 import honest_record  # noqa: E402
 
 MODES = ("rule", "arrival")
-KINDS = ("report", "hourly", "hourly2", "models1", "models2", "books")
+# every kind the record keeps; 'focus_book' (WP5, the focus cities' books each
+# minute) is read by the same-day pilot, not by these rows
+KINDS = ("report", "hourly", "hourly2", "models1", "models2", "books", "focus_book")
 HOURLY_KIND = {1: "hourly", 2: "hourly2"}
 MODELS_KIND = {1: "models1", 2: "models2"}
 # what the record's report payload holds, in order (scripts/live_capture.py

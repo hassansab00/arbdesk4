@@ -673,6 +673,25 @@ can be known, and nothing recorded that. Hassan approved a poller (11 Oct:
   (the settlement source) or than the venue's prices move. That is what the
   record is for; the 28 Sep result (buying a new maximum's bucket 2 minutes
   after the reading lost -0.0110 a share) says speed alone has not paid.
+- **The books, the same minute (WP5, 12 Oct;
+  `20261012170000_books_the_minute_reports_arrive.sql`).** The same-day YES
+  pilot asks whether a new report moves a bucket's chance of being the day's
+  maximum more than its executable ask, so the ask and its depth around each
+  report must be on record at the minute; the tick's books are an hour apart.
+  Each minute of the window the poll, after the reports, asks for the focus
+  cities' open same-day books in one request and keeps each book in the live
+  record (`live_capture`, kind `focus_book`, keyed by its bucket) reduced: the
+  touch found by price (the venue lists asks worst first), up to 10 levels a
+  side with sizes summed per price, the last trade, the book's own time, the
+  minimum order and the tick; a book unchanged since the last minute is not
+  stored again. It has the live record's lifecycle (two days in Postgres, the
+  mirror, the archive). Measured before: one request answers all 22 same-day
+  books in 0.11 s, 45,723 bytes, 1,219 levels; raw every minute that would be
+  about 19 MB a day. **Applied 12 Oct ~16:03Z** (the six function bodies equal
+  to the file); a forced poll at 16:04:21Z read 9 reports (7 new) and all 22
+  books, stored 22 rows of 476-512 bytes. The day's books were decided by then
+  (one bucket a city bid 0.995-0.999, the rest asked 0.001), so the first
+  window, 13 Oct 07-14Z, measures the live rate and the storage.
 
 ### The live record: every input the tick had, as it arrived (WP3a, 11 Oct)
 
