@@ -26,6 +26,10 @@ const SQL = fs.readFileSync(path.join(__dirname, '..', '..', 'sql', 'ad4_prune_l
     insert into public.settings values ('workflow_schedules', '{"P0.4_trade_history": {"mode": "auto"}}');
     create table public.job_sla (job text primary key, cadence_minutes int not null, cadence text not null,
                                  scheduled_by text not null);
+    create table public.ingest_log (log_id bigserial primary key, job text, status text, rows int, detail jsonb,
+                                    logged_at timestamptz not null default now());
+    create function public.log_ingest(p_job text, p_status text, p_rows int, p_detail jsonb) returns void
+      language sql as $$ insert into public.ingest_log (job, status, rows, detail) values (p_job, p_status, p_rows, p_detail) $$;
     create schema cron;
     create table cron.calls (name text, expr text, cmd text);
     create function cron.schedule(n text, e text, c text) returns bigint language sql
@@ -41,6 +45,12 @@ const SQL = fs.readFileSync(path.join(__dirname, '..', '..', 'sql', 'ad4_prune_l
   await db.exec(MIG);
   assert.equal((await one(`select value -> 'P2.12_live_capture' ->> 'mode' m from public.settings`))[0].m, 'off');
   assert.equal((await one(`select value -> 'P0.4_trade_history' ->> 'mode' m from public.settings`))[0].m, 'auto');
+  // registered, not yet due: one row, written once, saying why (the watchdog
+  // counts a job with an SLA and no ok row as overdue)
+  const reg = await one(`select status, rows, detail from public.ingest_log where job = 'archive_live_capture'`);
+  assert.equal(reg.length, 1, 'one registration row, not one a re-run');
+  assert.equal(reg[0].status, 'ok');
+  assert.equal(reg[0].detail.registered, true);
   // the archive's watchdog row, and the backstop reclaim at 03:05
   assert.deepEqual((await one(`select cadence_minutes c from public.job_sla where job = 'archive_live_capture'`))[0], { c: 1440 });
   assert.ok((await one(`select 1 from cron.calls where name = 'ad4_reclaim_live_capture' and expr = '5 3 * * *'

@@ -87,6 +87,20 @@ insert into public.job_sla (job, cadence_minutes, cadence, scheduled_by) values
 on conflict (job) do update set cadence_minutes = excluded.cadence_minutes, cadence = excluded.cadence,
                                 scheduled_by = excluded.scheduled_by;
 
+-- REGISTERED, NOT YET DUE. The watchdog counts a job with an SLA and no ok row
+-- as overdue, and no live_capture row is two days old before 13 Oct, so the
+-- first archive with anything to do is 13 Oct 02:36Z. One row says so, in its
+-- own words, written only while the job has no row at all: the archive's own
+-- rows replace it from its first run.
+do $lc$ begin
+  if to_regprocedure('public.log_ingest(text,text,integer,jsonb)') is not null
+     and not exists (select 1 from public.ingest_log where job = 'archive_live_capture') then
+    perform public.log_ingest('archive_live_capture', 'ok', 0, jsonb_build_object(
+      'registered', true, 'by', '20261011210000_the_live_record.sql',
+      'note', 'a new dataset: no row is two days old before its first archive run (13 Oct 02:36Z)'));
+  end if;
+end $lc$;
+
 -- FRESHNESS: the browser's v_data_freshness gets a live_capture row (the
 -- tick writes a books row every hour; stale past 2 h), as
 -- sql/ad4_39_freshness.sql lists it. The view is assembled from
