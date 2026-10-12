@@ -165,7 +165,7 @@ def city_days():
         tops = {b: [round(p - 0.01, 4), round(p + 0.01, 4)] + [None] * 8 for b, p in zip(band_ids, ps)}
         record.append(("books", "all", t.timestamp(), {"buckets": len(BANDS), "complete": True, "failed": [],
                                                        "no_book": [], "tops": tops}))
-    sdays = {ICAO: {(DAY - dt.timedelta(days=k)).isoformat(): (17.0 + k * 0.1, 62.6, 15.0) for k in range(3, 400)}}
+    sdays = {ICAO: {(DAY - dt.timedelta(days=k)).isoformat(): (17.0 + k * 0.1, 62.6, 15.0) for k in range(1, 400)}}
     event = {"event_id": "m1", "source": "venue", "city": CITY, "date": DAY.isoformat(), "unit": "C",
              "station": ICAO, "bands": BANDS, "winner": None, "band_ids": band_ids}
     return {"rep": rep, "hourly": hourly, "bm": bm, "md": md, "series": series, "record": record,
@@ -190,7 +190,9 @@ def test_a_live_row_is_the_tables_row(city_days):
     d = city_days
     want = training_rows(d)
     record = lr.Record(d["record"])
-    rows = lr.build(record, [d["event"]], CITIES, d["sdays"], {}, {}, record.first, record.last, modes=("rule",))
+    # the repository's daily files are the training's own (history)
+    rows = lr.build(record, [d["event"]], CITIES, d["sdays"], d["bm"], d["md"], record.first, record.last,
+                    modes=("rule",))
     got = {r["decision_utc"]: r for r in rows}
     assert len(got) >= 20, "the record's span holds most of D-1 and D"
     compared = 0
@@ -206,7 +208,8 @@ def test_a_live_row_is_the_tables_row(city_days):
     assert compared == len(got) * len(features.COLUMNS)
     on_d = [r for r in got.values() if r["day_offset"] == 0 and r["local_hour"] >= 12]
     assert on_d and all(r["mkt_complete"] and r["rmax_c"] is not None and r["fc_bm_tmax_c"] is not None
-                        and r["fc_models_n"] == len(honest_record.MODELS) for r in on_d), "the rows are not empty"
+                        and r["fc_models_n"] == len(honest_record.MODELS) and r["bias_n30"] >= 1
+                        for r in on_d), "the rows are not empty"
 
 
 def test_arrival_knows_only_what_had_reached_the_tick(city_days):
@@ -220,7 +223,7 @@ def test_arrival_knows_only_what_had_reached_the_tick(city_days):
             at += 50 * 60                     # every report reached the tick 62 min after its reading
         late.append((kind, key, at, payload))
     record = lr.Record(late)
-    rows = lr.build(record, [d["event"]], CITIES, d["sdays"], {}, {}, record.first, record.last)
+    rows = lr.build(record, [d["event"]], CITIES, d["sdays"], d["bm"], d["md"], record.first, record.last)
     by = {}
     for r in rows:
         by.setdefault(r["decision_utc"], {})[r["live_mode"]] = r
@@ -233,19 +236,63 @@ def test_arrival_knows_only_what_had_reached_the_tick(city_days):
         "a book is known when the tick read it, either way"
 
 
-def test_a_day_the_record_does_not_hold_whole_reads_the_repository(city_days):
+def test_a_day_is_reduced_only_when_the_record_holds_it_whole(city_days):
     d = city_days
     record = lr.Record(d["record"])
     bm, md = lr.daily_rows(record, {CITY: TZ})
     assert (CITY, 1, DAY.isoformat()) in bm and (CITY, 2, DAY.isoformat()) in bm
     assert set(md[(CITY, 1, DAY.isoformat())]) == set(honest_record.MODELS)
     # the record's hours stop at 15 Oct 23Z: Madrid's 16 Oct has two of them,
-    # fewer than MIN_HOURS, so no row (the repository's, if it has one)
+    # fewer than MIN_HOURS, so no row
     assert (CITY, 1, (DAY + dt.timedelta(days=1)).isoformat()) in bm
     assert (CITY, 1, (DAY + dt.timedelta(days=2)).isoformat()) not in bm
-    hist = {(CITY, 1, "2026-09-30"): {"tmax_c": "20"}}
-    v = lr.View(record, {}, {CITY: TZ}, hist, {})
-    assert v.bm[(CITY, 1, "2026-09-30")] == {"tmax_c": "20"} and (CITY, 1, DAY.isoformat()) in v.bm
+
+
+def test_the_past_error_reads_the_repository_whatever_the_record_holds(city_days):
+    """Codex on #387: only the event's own day comes from the record. A day
+    the record holds (here 13 Oct, whole) is still read from the repository
+    by every other event's row, so a day at the record's edge, reduced from
+    20-23 of its hours, can never stand in for the archived day."""
+    d = city_days
+    live, _ = lr.daily_rows(lr.Record(d["record"]), {CITY: TZ})
+    prior = (CITY, 1, (DAY - dt.timedelta(days=1)).isoformat())
+    assert prior in live
+    history = {prior: {"tmax_c": "99"}, (CITY, 1, DAY.isoformat()): {"tmax_c": "-99"}}
+    own = lr.OwnDay(live, history, CITY, DAY.isoformat())
+    assert own.get(prior) == {"tmax_c": "99"}, "a day before the event's: the repository's"
+    assert own.get((CITY, 1, DAY.isoformat())) is live[(CITY, 1, DAY.isoformat())], "the event's day: the record's"
+    assert own.get((CITY, 1, "2026-01-01"), {}) == {} and own.get(("paris", 1, DAY.isoformat())) is None
+
+
+def test_the_command_writes_where_it_is_told(city_days, tmp_path, monkeypatch):
+    """Codex on #387: `--out rows.csv.gz` (no directory) wrote nothing."""
+    import csv
+    import gzip
+    import json
+    from wxpredict import build_table, common
+    d = city_days
+    rec = tmp_path / "record.csv.gz"
+    with gzip.open(rec, "wt", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["kind", "key", "captured_at", "payload", "written_at"])
+        for kind, key, at, payload in d["record"]:
+            stamp = dt.datetime.fromtimestamp(at, UTC).isoformat()
+            w.writerow([kind, key, stamp, json.dumps(payload), stamp])
+    markets = [{"market_id": "m1", "city_key": CITY, "resolution_date": DAY.isoformat(), "unit": "C"}]
+    bands = [{"band_id": f"b{i}", "market_id": "m1", "band_index": str(i),
+              "band_lo": "" if lo is None else str(lo), "band_hi": "" if hi is None else str(hi),
+              "open_low": str(lo is None), "open_high": str(hi is None)} for i, (lo, hi) in enumerate(BANDS)]
+    monkeypatch.setattr(lr, "read_definitions", lambda root=None: (markets, bands))
+    monkeypatch.setattr(common, "cities", lambda: CITIES)
+    monkeypatch.setattr(build_table, "load_station_daily", lambda: (d["sdays"], {}))
+    monkeypatch.setattr(build_table, "load_daily_forecasts", lambda: (d["bm"], d["md"]))
+    monkeypatch.chdir(tmp_path)
+    assert lr.main(["--from", DAY.isoformat(), "--to", DAY.isoformat(), "--record", str(rec),
+                    "--out", "rows.csv.gz"]) == 0
+    with gzip.open(tmp_path / "rows.csv.gz", "rt") as f:
+        rows = list(csv.DictReader(f))
+    assert rows and {r["live_mode"] for r in rows} == {"rule", "arrival"}
+    assert list(rows[0]) == lr.COLUMNS
 
 
 def test_only_whole_ladders_are_events():

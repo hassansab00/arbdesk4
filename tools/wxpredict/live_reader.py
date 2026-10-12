@@ -355,19 +355,29 @@ def instants(events, cities, first_t, last_t):
     return dict(sorted(out.items()))
 
 
-class View:
-    """The live sources as one way of knowing sees them at t (rule: t None).
-    A day's daily forecast comes from the record wherever the record makes a
-    row for it (MIN_HOURS of its hours known), from the repository otherwise:
-    the record begins 12 Oct, so the past error reads the repository's days
-    before it."""
+class OwnDay:
+    """The daily forecasts one event's row reads: its own day from the record,
+    every other day from the repository (Codex on #387). features reads them
+    with .get only (pick_daily for the event's day, bias_features for the
+    days before it), so the past error is the repository's whatever the
+    record holds: a day at the record's edge with 20-23 of its hours would
+    otherwise stand in for the whole archived day."""
 
-    def __init__(self, record, icao_of, tz_names, history_bm, history_md, t=None):
+    def __init__(self, live, history, city, day):
+        self.live, self.history, self.city, self.day = live, history, city, day
+
+    def get(self, key, default=None):
+        src = self.live if key[0] == self.city and key[2] == self.day else self.history
+        return src.get(key, default)
+
+
+class View:
+    """The live sources as one way of knowing sees them at t (rule: t None)."""
+
+    def __init__(self, record, icao_of, tz_names, t=None):
         self.reports = station_reports(record, icao_of, t)
         self.hourly = hourly_series(record, t)
-        live_bm, live_md = daily_rows(record, tz_names, t)
-        self.bm = {**history_bm, **live_bm}
-        self.md = {**history_md, **live_md}
+        self.bm, self.md = daily_rows(record, tz_names, t)
 
 
 def build(record, events, cities, sdays, history_bm, history_md, first_t, last_t, modes=MODES):
@@ -379,13 +389,13 @@ def build(record, events, cities, sdays, history_bm, history_md, first_t, last_t
     ticks = [at for at, _ in record.books()]
     empty = features.Reports([])
     rows = []
-    rule = View(record, icao_of, tz_names, history_bm, history_md) if "rule" in modes else None
+    rule = View(record, icao_of, tz_names) if "rule" in modes else None
     for t, todo in instants(events, cities, first_t, last_t).items():
         views = {}
         if rule is not None:
             views["rule"] = rule
         if "arrival" in modes:
-            views["arrival"] = View(record, icao_of, tz_names, history_bm, history_md, t)
+            views["arrival"] = View(record, icao_of, tz_names, t)
         for e, off, local in todo:
             tz = common.zone(cities[e["city"]])
             series = ladder_series(books, e["band_ids"])
@@ -393,7 +403,9 @@ def build(record, events, cities, sdays, history_bm, history_md, first_t, last_t
             for mode, v in views.items():
                 rep = v.reports.get(e["station"], empty)
                 ctx = features.event_context(e, rep, st_days, tz)
-                row = features.decision_row(e, ctx, off, local, rep, st_days, v.bm, v.md, v.hourly, series, tz)
+                bm = OwnDay(v.bm, history_bm, e["city"], e["date"])
+                md = OwnDay(v.md, history_md, e["city"], e["date"])
+                row = features.decision_row(e, ctx, off, local, rep, st_days, bm, md, v.hourly, series, tz)
                 row["live_mode"] = mode
                 sp = spreads_at(books, e["band_ids"], t)
                 row["mkt_spreads"] = ";".join("" if s is None else features.fmt(s, 4) for s in sp)
@@ -429,7 +441,7 @@ def main(argv=None):
     bm, md = build_table.load_daily_forecasts()
     modes = MODES if args.mode == "both" else (args.mode,)
     rows = build(record, events, cities, sdays, bm, md, record.first, record.last, modes)
-    n = write_rows(args.out, rows)
+    n = write_rows(os.path.abspath(args.out), rows)      # 'rows.csv.gz' has no directory (Codex on #387)
     filled = collections.Counter(c for r in rows for c in features.COLUMNS if r.get(c) not in (None, ""))
     print(json.dumps({"rows": n, "events": len(events), "record": [record.first, record.last],
                       "by_mode": dict(collections.Counter(r["live_mode"] for r in rows)),
