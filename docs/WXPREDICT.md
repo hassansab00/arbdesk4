@@ -737,10 +737,51 @@ it was seen; one that changes back is stored again, so the newest row is
 always what was being served. Two days stay in Postgres; the nightly archive takes
 the rest to `data/archive/live_capture` (verified count, then prune), and the
 mirror copies every row. Off or manual on the Workflows page
-(`P2.12_live_capture`) stores nothing. Next (WP3b): the live reader builds
-each decision's features from the record as known at that instant, through
-`features.py`; the parity test compares them with the builder's rows once the
-days are archived (3 days); then shadow probability records.
+(`P2.12_live_capture`) stores nothing.
+
+### The live reader: each decision's row from the record (WP3b, 12 Oct)
+
+`tools/wxpredict/live_reader.py` reads the record (the mirror's and the
+archive's copies) into the shapes `features.py` takes and makes each row with
+`features.decision_row`, the function the training table is built with. The
+reports become the training's report rows by `fetch_obs.remarks`; the event's
+own day's daily forecasts (best_match and the seven models, both leads) are
+reduced from the recorded hourly values by the nightly record's own functions
+(`honest_record.daily_best_match`, `daily_models`); the market is every
+bucket's book at each tick. History the live system reads, not live input
+(the station's whole past days, the past days' daily forecasts, the cities),
+comes from the repository through `build_table`'s own loaders.
+
+It knows in two ways. **rule**: the whole record, and the training's rules
+decide what a row may use - the row the builder would make from the live
+sources, which parity compares with the table's row. **arrival**: only what
+had reached the tick by the decision (`captured_at <= t`) - what the live
+system actually had; its difference from `rule` is the cost of the hourly :36
+tick against the rule's instants.
+
+**One implementation, tested:** one city's three days built as the training's
+sources and as the record give the same row, column for column, at every
+decision instant the record spans (`tests/test_wxpredict_live_reader.py`;
+floats within 1e-9, a book's midpoint being p to 1e-14).
+
+**The price of a one-sided book (step 2.1, extended).** Step 2.1 read
+two-sided books only, and on 11 Oct 428 of 847 open buckets had no bid. On the
+archived snapshots at stable hours (`what_is_p.py`, its "one-sided" lines,
+12 Oct), counting an empty bid as 0 and an empty ask as 1 and taking the
+midpoint matches the price record: no bid, ask/2 within 0.005 of p on 99.95%
+of 148,144 pairs; no ask, (bid + 1)/2 on 99.90% of 3,067. The live reader
+prices every bucket so.
+
+**Source differences the parity test will count**, named before it runs: the
+tick asks IEM with `trace=empty` and the training with `trace=T` (a trace of
+precipitation is 0.0 in the table, missing live); Lucknow's hours sit at :30
+UTC in the training's hourly file and at :00 in the record; and the record
+holds lead-1 hours 17 h ahead, so before 02:00 local on D fewer than 20 of D's
+hours are known and the daily row falls back to lead 2, where the table
+(built after the day) has lead 1.
+
+Next: the parity test over 3 whole days of record (13-15 Oct, from 16 Oct),
+then shadow probability records.
 
 ## Gaps (Phase 1)
 
