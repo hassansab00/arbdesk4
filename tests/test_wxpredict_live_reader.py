@@ -5,6 +5,7 @@ sources, once as the live record - and requires the live row to be the table's
 row, column for column; the rest pin each conversion and the two ways of
 knowing."""
 import datetime as dt
+import json
 import math
 import pathlib
 import sys
@@ -91,6 +92,20 @@ def test_the_record_reads_a_row_once_and_knows_when():
     assert rec.values("hourly") == {"madrid|2026-10-13T12:00": [21.0]}
     with pytest.raises(ValueError):
         lr.Record([("trades", "x", "2026-10-12 19:36:05+00", "[]")])
+
+
+def test_a_books_sides_are_kept_beside_its_spread():
+    """A one-sided book's spread counts the empty side as 0 or 1, so an
+    ask-only book at 0.05 has a spread of 0.05; its sides say so (Codex on #391)."""
+    payload = json.dumps({"tops": {"two": [0.40, 0.43], "ask_only": [None, 0.05], "bid_only": [0.95, None]}})
+    rec = lr.Record([("books", "all", "2026-10-13 08:36:05+00", payload)])
+    books = lr.book_series(rec)
+    t = lr.unix("2026-10-13 09:00:00+00")
+    ids = ["two", "ask_only", "bid_only", "none"]
+    assert lr.spreads_at(books, ids, t) == [pytest.approx(0.03), pytest.approx(0.05), pytest.approx(0.05), None]
+    assert lr.spreads_at(books, ids, t, which=3) == ["ba", "a", "b", None]
+    assert lr.spreads_at(books, ids, lr.unix("2026-10-13 08:00:00+00"), which=3) == [None] * 4, "nothing before the tick"
+    assert "mkt_sides" in lr.COLUMNS
 
 
 def test_the_live_price_is_the_price_records():

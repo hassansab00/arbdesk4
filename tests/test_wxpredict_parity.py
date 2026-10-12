@@ -27,8 +27,8 @@ def table_row(event="e1", t=1792000860, city="madrid", hour="12", offset="0"):
     return r
 
 
-def live_row(tr, mode="rule", spreads="0.01;0.02;0.01", **change):
-    r = dict(tr, live_mode=mode, mkt_spreads=spreads, mkt_book_age_min="20", books_seen="3")
+def live_row(tr, mode="rule", spreads="0.01;0.02;0.01", sides="ba;ba;ba", **change):
+    r = dict(tr, live_mode=mode, mkt_spreads=spreads, mkt_sides=sides, mkt_book_age_min="20", books_seen="3")
     r["decision_utc"] = tr["decision_utc"] + ".0"          # written another way, the same instant
     r["winner"] = ""                                       # the live row is made before the outcome
     r.update(change)
@@ -51,7 +51,7 @@ def test_a_number_is_judged_within_1e_6():
     assert out["unexplained"] == 1
     ex = out["rule_vs_table"]["t_now_c"]["examples"][0]
     assert (ex["reference"], ex["other"], ex["city"]) == ("1.5", "1.50002", "madrid")
-    assert out["verdict"] == "1 unexplained differences"
+    assert out["verdict"] == "parity fails: 1 unexplained differences, 0 rows only in the table, 0 only live"
 
 
 def test_one_side_empty_is_a_difference():
@@ -89,9 +89,10 @@ def test_the_market_by_step_2_1s_tolerance_and_wide_books_apart():
     assert out["unexplained"] == 1
     out = parity.run([t], [live_row(t, mkt_prices="0.2;0.5")], DAY, DAY)
     assert out["unexplained"] == 1, "a different number of buckets"
-    for spreads in ("0.01;0.2;0.01", "0.01;;0.01"):
-        out = parity.run([t], [live_row(t, spreads=spreads, mkt_top_p="1.9")], DAY, DAY)
-        assert out["unexplained"] == 0, spreads
+    for spreads, sides in (("0.01;0.2;0.01", "ba;ba;ba"), ("0.01;;0.01", "ba;;ba"),
+                           ("0.01;0.05;0.01", "ba;a;ba"), ("0.01;0.05;0.01", "b;ba;ba"), ("0.01;0.02;0.01", "")):
+        out = parity.run([t], [live_row(t, spreads=spreads, sides=sides, mkt_top_p="1.9")], DAY, DAY)
+        assert out["unexplained"] == 0, (spreads, sides)
         assert out["rows"]["market_wide_or_one_sided"] == 1
         assert out["market_wide_or_one_sided"]["mkt_top_p"]["unexplained"] == 1
         assert out["rule_vs_table"]["t_now_c"]["compared"] == 1, "the weather is still compared"
@@ -110,6 +111,9 @@ def test_rows_on_one_side_and_outside_the_window_are_counted():
     out = parity.run([a, b, other_day], [live_row(a), live_row(c)], DAY, DAY)
     assert out["rows"] == {"table": 2, "live_rule": 2, "live_arrival": 0, "matched": 1, "only_table": 1,
                            "only_live": 1, "market_narrow": 1, "market_wide_or_one_sided": 0}
+    assert out["unexplained"] == 0 and out["unmatched_rows"] == 2
+    assert out["verdict"] == "parity fails: 0 unexplained differences, 1 rows only in the table, 1 only live", \
+        "a row on one side only fails parity: a truncated output must not pass (Codex on #391)"
     assert parity.run([a], [], DAY, DAY)["verdict"] == "no matched rows"
 
 

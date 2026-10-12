@@ -90,7 +90,7 @@ MODELS_KIND = {1: "models1", 2: "models2"}
 PAYLOAD_FIELDS = REPORT_FIELDS + ["metar"]
 RECORD_GLOBS = ("data/archive/live_capture/*.csv.gz", "data/mirror/live_capture/*.csv.gz")
 WIDE_SPREAD = 0.10        # step 2.1: up to this spread the midpoint is the price
-COLUMNS = ["live_mode", *features.COLUMNS, "mkt_spreads", "mkt_book_age_min", "books_seen"]
+COLUMNS = ["live_mode", *features.COLUMNS, "mkt_spreads", "mkt_sides", "mkt_book_age_min", "books_seen"]
 
 
 def unix(stamp):
@@ -260,35 +260,41 @@ def live_price(bid, ask):
 
 
 def book_series(record):
-    """{band_id: (unix ticks, prices, spreads)}: every bucket's price at each
-    tick that read its book (a bucket the tick did not get is absent from that
-    tick, so its last price ages)."""
-    out = collections.defaultdict(lambda: ([], [], []))
+    """{band_id: (unix ticks, prices, spreads, sides)}: every bucket's price at
+    each tick that read its book (a bucket the tick did not get is absent from
+    that tick, so its last price ages). A one-sided book's spread counts the
+    empty side as 0 or 1, so its sides ('ba' both, 'b' a bid only, 'a' an ask
+    only) are kept beside it: a spread alone cannot tell an ask-only book at
+    0.05 from a two-sided one (Codex on #391)."""
+    out = collections.defaultdict(lambda: ([], [], [], []))
     for at, payload in record.books():
         for band, top in (payload.get("tops") or {}).items():
             bid, ask = top[0], top[1]
             p = live_price(bid, ask)
             if p is None:
                 continue
-            ts, ps, sp = out[band]
+            ts, ps, sp, sd = out[band]
             ts.append(at)
             ps.append(p)
             sp.append((1.0 if ask is None else ask) - (0.0 if bid is None else bid))
+            sd.append("ba" if bid is not None and ask is not None else "b" if bid is not None else "a")
     return dict(out)
 
 
 def ladder_series(books, band_ids):
     """[(ts, ps)] per bucket of one ladder, lowest first: features' price
     series shape (build_table.load_prices)."""
-    return [(books.get(b, ([], [], []))[0], books.get(b, ([], [], []))[1]) for b in band_ids]
+    return [(books.get(b, ([], [], [], []))[0], books.get(b, ([], [], [], []))[1]) for b in band_ids]
 
 
-def spreads_at(books, band_ids, t):
+def spreads_at(books, band_ids, t, which=2):
+    """Each bucket's spread (which=2) or sides (which=3) at its newest tick at
+    or before t; None for a bucket with no book by then."""
     out = []
     for b in band_ids:
-        ts, _, sp = books.get(b, ([], [], []))
-        i = bisect.bisect_right(ts, t) - 1
-        out.append(sp[i] if i >= 0 else None)
+        entry = books.get(b, ([], [], [], []))
+        i = bisect.bisect_right(entry[0], t) - 1
+        out.append(entry[which][i] if i >= 0 else None)
     return out
 
 
@@ -411,6 +417,7 @@ def build(record, events, cities, sdays, history_bm, history_md, first_t, last_t
                 row["live_mode"] = mode
                 sp = spreads_at(books, e["band_ids"], t)
                 row["mkt_spreads"] = ";".join("" if s is None else features.fmt(s, 4) for s in sp)
+                row["mkt_sides"] = ";".join(s or "" for s in spreads_at(books, e["band_ids"], t, which=3))
                 k = bisect.bisect_right(ticks, t)
                 row["mkt_book_age_min"] = (t - ticks[k - 1]) / 60 if k else None   # the newest tick's
                 row["books_seen"] = k

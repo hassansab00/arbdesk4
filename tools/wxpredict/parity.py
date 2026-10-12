@@ -114,9 +114,15 @@ def known(col, table_row, live_row):
 
 
 def wide_or_one_sided(live_row):
-    """True when the live books had a bucket with a spread over 0.10 or a side empty."""
+    """True when the live books had a bucket with no book, a side empty or a
+    spread over 0.10. The sides come from mkt_sides: a one-sided book's
+    spread counts the empty side as 0 or 1, so an ask-only book at 0.05 has a
+    spread of 0.05 (Codex on #391)."""
     spreads = (live_row.get("mkt_spreads") or "").split(";")
-    return any(s == "" or float(s) > WIDE_SPREAD for s in spreads) if spreads != [""] else True
+    sides = (live_row.get("mkt_sides") or "").split(";")
+    if spreads == [""] or len(sides) != len(spreads):
+        return True
+    return any(s == "" or d != "ba" or float(s) > WIDE_SPREAD for s, d in zip(spreads, sides))
 
 
 def compare(pairs, cols):
@@ -173,11 +179,19 @@ def run(table_rows, live_rows, first, last):
         "market_wide_or_one_sided": compare(wide, MARKET),
         "arrival_vs_rule": compare([(k, rule[k], arrival[k]) for k in sorted(set(rule) & set(arrival))], COMPARED),
     }
+    # A row on one side only is a failure too: a truncated live output must
+    # not pass because the rows it does hold agree (Codex on #391).
+    unmatched = out["rows"]["only_table"] + out["rows"]["only_live"]
     out["unexplained"] = unexplained(rule_vs_table)
-    out["verdict"] = ("parity holds: every difference is a named source difference"
-                      if out["unexplained"] == 0 and both else
-                      "no matched rows" if not both else
-                      f"{out['unexplained']} unexplained differences")
+    out["unmatched_rows"] = unmatched
+    if not both:
+        out["verdict"] = "no matched rows"
+    elif out["unexplained"] == 0 and unmatched == 0:
+        out["verdict"] = "parity holds: every row matched, every difference a named source difference"
+    else:
+        out["verdict"] = (f"parity fails: {out['unexplained']} unexplained differences, "
+                          f"{out['rows']['only_table']} rows only in the table, "
+                          f"{out['rows']['only_live']} only live")
     return out
 
 
@@ -195,7 +209,7 @@ def main(argv=None):
         os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
         with open(args.out, "w") as fh:
             fh.write(text + "\n")
-    print(json.dumps({k: result[k] for k in ("window", "rows", "unexplained", "verdict")}, indent=1))
+    print(json.dumps({k: result[k] for k in ("window", "rows", "unexplained", "unmatched_rows", "verdict")}, indent=1))
     return result
 
 
