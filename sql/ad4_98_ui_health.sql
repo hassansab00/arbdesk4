@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 290 of them - and for each MISSING one names the
+-- and function the app reads - 291 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -51,6 +51,7 @@ with expected(rel, owner, used_by) as (values
     ('derived_city_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_climb_profile', 'ad4_28_feature_cache.sql', ''),
     ('derived_corrected_forecast', 'supabase/migrations/20260926120000_station_correction.sql', ''),
+    ('derived_day_review', 'supabase/migrations/20261013020000_why_each_day_hit_or_missed.sql', '(CityPopup)'),
     ('derived_edge_marks', 'ad4_80_prune_edge_history.sql', ''),
     ('derived_forecast_latest', 'ad4_31_predictive.sql', ''),
     ('derived_forecast_postprocess', 'ad4_83_forecast_postprocess.sql', ''),
@@ -363,6 +364,7 @@ begin
     ('derived_city_day_volume', 'ad4_00_preflight.sql', ''),
     ('derived_climb_profile', 'ad4_28_feature_cache.sql', ''),
     ('derived_corrected_forecast', 'supabase/migrations/20260926120000_station_correction.sql', ''),
+    ('derived_day_review', 'supabase/migrations/20261013020000_why_each_day_hit_or_missed.sql', '(CityPopup)'),
     ('derived_edge_marks', 'ad4_80_prune_edge_history.sql', ''),
     ('derived_forecast_latest', 'ad4_31_predictive.sql', ''),
     ('derived_forecast_postprocess', 'ad4_83_forecast_postprocess.sql', ''),

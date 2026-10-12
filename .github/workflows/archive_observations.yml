@@ -317,6 +317,23 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
+      # WHY EACH DAY HIT OR MISSED (13 Oct; Hassan: "each day needs to teach
+      # the model ... why this weather hit/miss"). tools/wxpredict/day_review.py:
+      # one row a settled city-day in derived_day_review, read by the city
+      # popup - the outcome, the lead-1 forecast and its error, the afternoon's
+      # cloud, dew point, wind and rain against the forecast, and each
+      # checkpoint's engine, market and wxrd-v2 call. After the station data,
+      # so the day's reports are in. Rehearsed on 8-10 Oct against the live
+      # tables (rows read through SQL): 141 rows in 14.1 s. Logged as
+      # P7.7_day_review. Writes only its own table.
+      - name: Why each day hit or missed (WXPredict)
+        if: always()
+        timeout-minutes: 5
+        run: python tools/wxpredict/day_review.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
       # `if: always()`: a table that failed must not strand the ones that were
       # written and verified - the manifest is saved after every table, so
       # what is on disk is exactly what it records.

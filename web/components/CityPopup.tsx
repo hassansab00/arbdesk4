@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import ForecastValue from "@/components/ForecastValue";
 import { useQuery } from "@/lib/useQuery";
 import { fmtPct, fmtPp, fmtPrice, pnlColor, regimeColor } from "@/lib/format";
 import { fmtTemp, fmtTempDelta, type Unit } from "@/lib/units";
@@ -11,6 +12,10 @@ import {
   type CityCard, type CurrentRow, type LadderRow, type StatusRow,
 } from "@/lib/cityCards";
 import { cityEvidence, MOMENTS, momentLabel, type HindsightRow } from "@/lib/focus";
+import {
+  beforePeakTally, checkpointsOf, DAY_REVIEW_DAYS, DAY_REVIEW_SELECT, isBeforePeak, sumTallies, WHO,
+  type DayReviewRow,
+} from "@/lib/dayReview";
 import {
   bucketShares, ENSEMBLE_MODELS, ensembleUrl, memberMaxima, runTimes, summarise,
   type EnsembleJson, type EnsembleModel, type EnsembleSummary,
@@ -29,7 +34,9 @@ import {
  * record and the per-model scorecard (the Predictive page). Two reads are new
  * and per city: the typical peak hour (derived_weather_peak, 1 ms as anon,
  * 10 Oct) and the ensemble, asked of Open-Meteo by the browser when the popup
- * opens, so it is the newest run rather than last night's record.
+ * opens, so it is the newest run rather than last night's record. A third
+ * (12 Oct) is the city's newest settled days and why each hit or missed
+ * (derived_day_review, written nightly by tools/wxpredict/day_review.py).
  */
 
 export interface ScoreRow {
@@ -120,6 +127,14 @@ export default function CityPopup({
     [c.city_key, month]
   );
   const peak = peakQ.data?.[0] ?? null;
+  const reviewQ = useQuery<DayReviewRow[]>(
+    () => supabase.from("derived_day_review").select(DAY_REVIEW_SELECT)
+      .eq("city_key", c.city_key).order("target_date", { ascending: false }).limit(DAY_REVIEW_DAYS),
+    [c.city_key]
+  );
+  const review = useMemo(() => reviewQ.data ?? [], [reviewQ.data]);
+  const reviewCheckpoints = useMemo(() => checkpointsOf(review), [review]);
+  const reviewTally = useMemo(() => sumTallies(review), [review]);
 
   const ens = {
     ecmwf_ifs025: useEnsemble(city, c.for_date, "ecmwf_ifs025", "ecmwf_ifs025_ensemble"),
@@ -460,6 +475,90 @@ export default function CityPopup({
               </tbody>
             </table>
           )}
+        </section>
+
+        {/* WHY EACH DAY HIT OR MISSED */}
+        <section className="mt-3 overflow-x-auto rounded border border-border bg-panel2 p-2">
+          <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">Why each day hit or missed</h3>
+          {reviewQ.loading ? <p className="text-muted">reading…</p>
+            : reviewQ.error ? <p className="text-bad">{reviewQ.error}</p>
+            : review.length === 0 ? <p className="text-muted">No reviewed day for this city yet: each settled day is reviewed the night after it.</p>
+            : (
+              <>
+                <p className="mb-1.5 tabular-nums">
+                  Last {review.length} settled day{review.length === 1 ? "" : "s"}, calls before the peak:{" "}
+                  {WHO.map((w, i) => {
+                    const t = reviewTally[w.key];
+                    return (
+                      <span key={w.key}>{i > 0 && " · "}{w.label} <b>{t.n ? `${t.hits}/${t.n}` : "—"}</b>
+                        {t.n > 0 && <span className="text-muted"> ({fmtPct(t.hits / t.n, 0)})</span>}</span>
+                    );
+                  })}
+                  . <span className="text-muted">Each cell: P platform, W wxrd-v2 (shadow, not traded), M market; green won, red missed.</span>
+                </p>
+                <table className="w-full tabular-nums">
+                  <thead className="text-left text-[10px] uppercase tracking-wide text-muted">
+                    <tr>
+                      <th className="py-0.5 pr-2">Day</th><th className="pr-2">Settled</th><th className="pr-2">Day-ahead forecast</th>
+                      {reviewCheckpoints.map((k) => (
+                        <th key={k} className={`pr-2 ${isBeforePeak(k) ? "" : "opacity-60"}`}>{momentLabel(k)}</th>
+                      ))}
+                      <th>What the weather did</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {review.map((r) => {
+                      const byCp = new Map((r.calls ?? []).map((x) => [x.checkpoint, x]));
+                      const day = beforePeakTally(r.calls);
+                      return (
+                        <tr key={r.target_date} className="border-t border-border align-top">
+                          <td className="py-0.5 pr-2">{fmtResolutionDate(r.target_date)}</td>
+                          <td className="pr-2">
+                            {r.winner_label ?? "?"}
+                            {r.station_max_c != null && <span className="text-muted"> ({fmtTemp(Number(r.station_max_c), u)}</span>}
+                            {r.station_max_c != null && r.peak_local_hour != null && <span className="text-muted"> at {fmtCityHour(Number(r.peak_local_hour), null)}</span>}
+                            {r.station_max_c != null && <span className="text-muted">)</span>}
+                          </td>
+                          <td className="pr-2">
+                            {r.forecast_error_c != null
+                              ? <><ForecastValue unit={u} city={{ forecast_max_c: Number(r.forecast_max_c),
+                                    forecast_model: "Open-Meteo best match", forecast_lead_days: 1 }} showLead />
+                                  , station {fmtTempDelta(Number(r.forecast_error_c), u)}
+                                  {r.closest_model && <span className="text-muted"> · closest {r.closest_model.replace(/_/g, " ")}</span>}</>
+                              : <span className="text-muted">—</span>}
+                          </td>
+                          {reviewCheckpoints.map((k) => {
+                            const x = byCp.get(k);
+                            return (
+                              <td key={k} className={`pr-2 whitespace-nowrap ${isBeforePeak(k) ? "" : "opacity-60"}`}>
+                                {x ? WHO.map((w) => {
+                                  const hit = x[`${w.key}_hit`];
+                                  const label = x[`${w.key}_label`];
+                                  return (
+                                    <span key={w.key} title={`${w.label}: ${label ?? "no call"}`}
+                                      className={`mr-1 ${hit === null || hit === undefined ? "text-muted" : hit ? "text-good" : "text-bad"}`}>
+                                      {w.short}{hit === null || hit === undefined ? "·" : hit ? "✓" : "✗"}
+                                    </span>
+                                  );
+                                }) : <span className="text-muted">—</span>}
+                              </td>
+                            );
+                          })}
+                          <td>
+                            {r.why ?? "—"}
+                            {day.engine.n > 0 && (
+                              <span className="text-muted"> Before the peak: platform {day.engine.hits}/{day.engine.n}
+                                {day.wxrd.n > 0 && <>, wxrd-v2 {day.wxrd.hits}/{day.wxrd.n}</>}
+                                {day.market.n > 0 && <>, market {day.market.hits}/{day.market.n}</>}.</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </>
+            )}
         </section>
       </div>
     </div>
