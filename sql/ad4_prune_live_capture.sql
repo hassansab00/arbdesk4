@@ -5,9 +5,12 @@
 -- public.live_capture keeps every input the hourly tick had, as it arrived:
 -- station reports with every field the training reads ('report'), the hourly
 -- `_previous_day1` forecast ('hourly'), and every open bucket's book
--- ('books'). scripts/live_capture.py writes it through live_capture_put; the
--- migration 20261011210000_the_live_record.sql says why each kind is kept and
--- how.
+-- ('books'); from 12 Oct also best_match at `_previous_day2` ('hourly2') and
+-- the seven models' temperature at `_previous_day1` and `_previous_day2`
+-- ('models1', 'models2'). scripts/live_capture.py writes it through
+-- live_capture_put; the migrations 20261011210000_the_live_record.sql and
+-- 20261012150000_the_live_record_keeps_the_evening_forecasts.sql say why each
+-- kind is kept and how.
 --
 -- WHO READS IT: the nightly mirror (scripts/mirror_to_repo.py, append by
 -- captured_at), the archive (scripts/archive_observations.py, dataset
@@ -25,7 +28,7 @@
 
 create table if not exists public.live_capture (
   capture_id   bigserial primary key,
-  kind         text not null check (kind in ('report', 'hourly', 'books')),
+  kind         text not null,
   key          text not null,
   captured_at  timestamptz not null,
   payload      jsonb not null,
@@ -33,9 +36,13 @@ create table if not exists public.live_capture (
 );
 create index if not exists live_capture_newest on public.live_capture (kind, key, captured_at desc, capture_id desc);
 create index if not exists live_capture_captured_at on public.live_capture (captured_at);
+-- The kinds it keeps, set here so a table made before 12 Oct widens too.
+alter table public.live_capture drop constraint if exists live_capture_kind_check;
+alter table public.live_capture add constraint live_capture_kind_check
+  check (kind in ('report', 'hourly', 'hourly2', 'models1', 'models2', 'books'));
 
 comment on table public.live_capture is
-  'WXPredict WP3 (11 Oct): every live input the hourly tick had, as it arrived (captured_at): station reports with every training field, the hourly _previous_day1 forecast, every open bucket''s book. A report or hourly value is stored once per change. Two days here; older rows in data/archive/live_capture.';
+  'WXPredict WP3 (11 Oct): every live input the hourly tick had, as it arrived (captured_at): station reports with every training field, the hourly _previous_day1 forecast, every open bucket''s book; from 12 Oct also best_match at _previous_day2 and the seven models'' temperature at both leads (WP3b). A report or forecast value is stored once per change. Two days here; older rows in data/archive/live_capture.';
 
 alter table public.live_capture enable row level security;
 revoke all on public.live_capture from public, anon, authenticated;
@@ -53,7 +60,7 @@ end $lc$;
 
 
 -- One batch of one kind: p_rows is [{"key": ..., "payload": ...}]. A report
--- or hourly row whose payload equals its key's newest stored payload is not
+-- or forecast row whose payload equals its key's newest stored payload is not
 -- stored again; a key repeated inside the batch is stored once per distinct
 -- payload. Returns {"rows": asked, "new": stored}.
 create or replace function public.live_capture_put(p_kind text, p_captured_at timestamptz, p_rows jsonb)
@@ -62,7 +69,7 @@ declare
   v_rows int;
   v_new  int;
 begin
-  if p_kind is null or p_kind not in ('report', 'hourly', 'books') then
+  if p_kind is null or p_kind not in ('report', 'hourly', 'hourly2', 'models1', 'models2', 'books') then
     raise exception 'live_capture_put: % is not a kind the live record keeps', p_kind using errcode = '22023';
   end if;
   if p_captured_at is null or p_captured_at > now() + interval '5 minutes' then

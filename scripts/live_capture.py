@@ -25,6 +25,15 @@ public.live_capture (supabase/migrations/20261011210000_the_live_record.sql):
           24 - PUBLISH_H = 17 h before it). For an hour no run from a day
           before covers, the API answers with the current forecast (measured
           11 Oct 18:15Z), so what was served when is itself the record.
+  hourly2 the same seven at `_previous_day2`, to HORIZON2_H ahead (an hour is
+          known 48 - PUBLISH_H = 41 h before it), and
+  models1 the seven models' temperature (honest_record.MODELS, in that order)
+  models2 at `_previous_day1` to HORIZON_H and `_previous_day2` to HORIZON2_H
+          (12 Oct). The evening rows (D-1) read the day-ahead daily forecast
+          at lead 2, and every row reads the seven models' daily maxima
+          (features.pick_daily); the record had neither, so no live row could
+          carry them. One more request a chunk (the models), asked exactly as
+          the nightly record asks it (honest_record.previous_request).
   report  every report the tick's own IEM read returned (tick.py asks once
           for every field the training reads and leaves the answer in
           LIVE_CAPTURE_IEM; no second request), each field as IEM gave it.
@@ -56,8 +65,13 @@ CLOB_BOOKS = "https://clob.polymarket.com/books"
 BOOKS_PER_REQUEST = 400
 DEPTH_C = 0.05
 # The training's rule: an hourly value for H is known from H - (24 - PUBLISH_H) h
-# (tools/wxpredict/features.py hourly_known; PUBLISH_H 7).
+# (tools/wxpredict/features.py hourly_known; PUBLISH_H 7), and a lead-2 value
+# from H - (48 - PUBLISH_H) h (features.daily_known at lead 2).
 HORIZON_H = 17
+HORIZON2_H = 41
+LEAD_HORIZON = {1: HORIZON_H, 2: HORIZON2_H}
+HOURLY_KIND = {1: "hourly", 2: "hourly2"}
+MODELS_KIND = {1: "models1", 2: "models2"}
 CITIES_PER_REQUEST = honest_record.CHUNK
 REQUEST_TIMEOUT_S = 15
 # The tick reads the stations first; its answer is normally on disk a few
@@ -167,65 +181,113 @@ def fetch_books(band_of, left):
 # ---------------------------------------------------------------------------
 # the hourly forecast
 # ---------------------------------------------------------------------------
-def hourly_window(now):
-    """(first, last) naive UTC hours kept: yesterday's midnight to HORIZON_H ahead."""
+def hourly_window(now, horizon_h=HORIZON_H):
+    """(first, last) naive UTC hours kept: yesterday's midnight to horizon_h ahead."""
     first = dt.datetime(now.year, now.month, now.day) - dt.timedelta(days=1)
-    last = now.replace(tzinfo=None, minute=0, second=0, microsecond=0) + dt.timedelta(hours=HORIZON_H)
+    last = now.replace(tzinfo=None, minute=0, second=0, microsecond=0) + dt.timedelta(hours=horizon_h)
     return first, last
 
 
-def hourly_rows(city_key, answer, first, last):
-    """[{key, payload}] from one city's answer (asked in GMT): every hour in
-    [first, last] with a temperature, the seven HEATING values in order."""
+def _series_rows(city_key, answer, first, last, names, keep):
+    """[{key, payload}]: every hour of one city's answer (asked in GMT) in
+    [first, last] whose values `keep` accepts, the named series in order."""
     h = (answer or {}).get("hourly") or {}
-    cols = [h.get(f"{v}_previous_day1") or [] for v in honest_record.HEATING]
+    cols = [h.get(n) or [] for n in names]
     out = []
     for i, t in enumerate(h.get("time") or []):
         stamp = dt.datetime.fromisoformat(t)
         vals = [c[i] if i < len(c) else None for c in cols]
-        if stamp < first or stamp > last or vals[0] is None:
+        if stamp < first or stamp > last or not keep(vals):
             continue
         out.append({"key": f"{city_key}|{stamp.strftime('%Y-%m-%dT%H:%M')}", "payload": vals})
     return out
 
 
-def fetch_hourly(cities, now, left):
-    """([{key, payload}], detail). One request per CITIES_PER_REQUEST cities,
-    one at a time (honest_record: Open-Meteo refuses several open requests
-    from one address); a chunk that fails is recorded, the next tick asks
-    again."""
-    first, last = hourly_window(now)
-    rows, errors, answered = [], [], 0
+def hourly_rows(city_key, answer, first, last, lead=1):
+    """The seven HEATING values at `_previous_day<lead>`, in order, for every
+    hour with a temperature."""
+    return _series_rows(city_key, answer, first, last,
+                        [f"{v}_previous_day{lead}" for v in honest_record.HEATING],
+                        lambda vals: vals[0] is not None)
+
+
+def model_rows(city_key, answer, first, last, lead):
+    """The seven models' temperature at `_previous_day<lead>`, in
+    honest_record.MODELS order (the nightly record's own names,
+    honest_record.previous_rows), for every hour where any model has one."""
+    return _series_rows(city_key, answer, first, last,
+                        [f"temperature_2m_previous_day{lead}_{m}" for m in honest_record.MODELS],
+                        lambda vals: any(v is not None for v in vals))
+
+
+def _ask(chunk, params, left):
+    """One request for a chunk of cities: one answer per city, in order."""
+    params = dict(params, latitude=",".join(str(c["latitude"]) for c in chunk),
+                  longitude=",".join(str(c["longitude"]) for c in chunk), timezone="GMT")
+    r = _get(honest_record.PREVIOUS_API, params=params,
+             timeout=min(REQUEST_TIMEOUT_S, max(1.0, left() - RESERVE_S)))
+    r.raise_for_status()
+    js = r.json()
+    answers = [js] if isinstance(js, dict) else js
+    if not isinstance(answers, list) or len(answers) != len(chunk):
+        raise ValueError(f"{len(answers) if isinstance(answers, list) else 'no'} answers "
+                         f"for {len(chunk)} places")
+    return answers
+
+
+def _fetch(cities, now, left, hourly, rows_of):
+    """({kind: [{key, payload}]}, detail). One request per CITIES_PER_REQUEST
+    cities, one at a time (honest_record: Open-Meteo refuses several open
+    requests from one address); a chunk that fails is recorded, the next tick
+    asks again. `rows_of(city_key, answer, lead, first, last)` gives one
+    lead's rows inside that lead's window."""
+    windows = {lead: hourly_window(now, h) for lead, h in LEAD_HORIZON.items()}
+    first, last = windows[1][0], max(w[1] for w in windows.values())
+    rows = {lead: [] for lead in LEAD_HORIZON}
+    errors, answered = [], 0
     for i in range(0, len(cities), CITIES_PER_REQUEST):
         chunk = cities[i:i + CITIES_PER_REQUEST]
         if left() < RESERVE_S:
             errors.append(f"{chunk[0]['city_key']}..: not asked, out of time")
             break
-        params = {
-            "latitude": ",".join(str(c["latitude"]) for c in chunk),
-            "longitude": ",".join(str(c["longitude"]) for c in chunk),
-            "timezone": "GMT",
-            "start_date": first.date().isoformat(),
-            "end_date": last.date().isoformat(),
-            "hourly": ",".join(f"{v}_previous_day1" for v in honest_record.HEATING),
-        }
         try:
-            r = _get(honest_record.PREVIOUS_API, params=params,
-                     timeout=min(REQUEST_TIMEOUT_S, max(1.0, left() - RESERVE_S)))
-            r.raise_for_status()
-            js = r.json()
-            answers = [js] if isinstance(js, dict) else js
-            if not isinstance(answers, list) or len(answers) != len(chunk):
-                raise ValueError(f"{len(answers) if isinstance(answers, list) else 'no'} answers "
-                                 f"for {len(chunk)} places")
+            answers = _ask(chunk, dict(hourly, start_date=first.date().isoformat(),
+                                       end_date=last.date().isoformat()), left)
+            got = {lead: [] for lead in LEAD_HORIZON}
             for city, a in zip(chunk, answers):
-                rows += hourly_rows(city["city_key"], a, first, last)
+                for lead in LEAD_HORIZON:
+                    got[lead] += rows_of(city["city_key"], a, lead, *windows[lead])
+            for lead in LEAD_HORIZON:
+                rows[lead] += got[lead]
             answered += len(chunk)
         except Exception as e:
             errors.append(f"{chunk[0]['city_key']}..{chunk[-1]['city_key']}: "
                           f"{type(e).__name__}: {str(e)[:120]}")
-    return rows, {"cities": len(cities), "answered": answered, "values": len(rows),
-                  "window": [first.isoformat(), last.isoformat()], "errors": errors}
+    return rows, {"cities": len(cities), "answered": answered,
+                  "values": {lead: len(r) for lead, r in rows.items()},
+                  "window": {lead: [w[0].isoformat(), w[1].isoformat()] for lead, w in windows.items()},
+                  "errors": errors}
+
+
+def fetch_hourly(cities, now, left):
+    """({kind: rows}, detail): best_match's seven at both leads, one request a
+    chunk ('hourly' to HORIZON_H, 'hourly2' to HORIZON2_H)."""
+    rows, d = _fetch(cities, now, left,
+                     {"hourly": ",".join(f"{v}_previous_day{lead}" for v in honest_record.HEATING
+                                         for lead in LEAD_HORIZON)},
+                     lambda city_key, a, lead, first, last: hourly_rows(city_key, a, first, last, lead))
+    return {HOURLY_KIND[lead]: r for lead, r in rows.items()}, d
+
+
+def fetch_models(cities, now, left):
+    """({kind: rows}, detail): the seven models' temperature at both leads, one
+    request a chunk, asked as honest_record.previous_request asks it
+    ('models1' to HORIZON_H, 'models2' to HORIZON2_H)."""
+    rows, d = _fetch(cities, now, left,
+                     {"hourly": ",".join(f"temperature_2m_previous_day{lead}" for lead in LEAD_HORIZON),
+                      "models": ",".join(honest_record.MODELS)},
+                     lambda city_key, a, lead, first, last: model_rows(city_key, a, first, last, lead))
+    return {MODELS_KIND[lead]: r for lead, r in rows.items()}, d
 
 
 # ---------------------------------------------------------------------------
@@ -322,20 +384,31 @@ def run(now=None, dry_run=False, iem_path=None):
         detail["books"] = {"error": f"{type(e).__name__}: {str(e)[:160]}"}
         parts_ok.append(False)
 
-    # the hourly forecast
-    try:
-        t0 = time.monotonic()
-        cities = [c for c in get_cities() if c.get("latitude") is not None]
-        rows, d = fetch_hourly(cities, now, left)
-        captured = dt.datetime.now(dt.timezone.utc)
-        d["new"] = put("hourly", captured, rows, dry_run, left)[1]
-        d["seconds"] = round(time.monotonic() - t0, 1)
-        detail["hourly"] = d
-        parts_ok.append(d["answered"] == d["cities"] and not d["errors"])
-        new_total += d["new"]
-    except Exception as e:
-        detail["hourly"] = {"error": f"{type(e).__name__}: {str(e)[:160]}"}
-        parts_ok.append(False)
+    # the forecast, each part at both leads: best_match before the reports,
+    # the seven models after them, so a models request that hangs cannot take
+    # the reports' time (12 Oct)
+    cities = []
+
+    def forecast(part, fetch):
+        try:
+            t0 = time.monotonic()
+            if not cities:
+                cities.extend(c for c in get_cities() if c.get("latitude") is not None)
+            by_kind, d = fetch(cities, now, left)
+            captured = dt.datetime.now(dt.timezone.utc)
+            d["new"] = {}
+            for kind, rows in by_kind.items():
+                d["new"][kind] = put(kind, captured, rows, dry_run, left)[1]
+            d["seconds"] = round(time.monotonic() - t0, 1)
+            detail[part] = d
+            parts_ok.append(d["answered"] == d["cities"] and not d["errors"])
+            return sum(d["new"].values())
+        except Exception as e:
+            detail[part] = {"error": f"{type(e).__name__}: {str(e)[:160]}"}
+            parts_ok.append(False)
+            return 0
+
+    new_total += forecast("hourly", fetch_hourly)
 
     # the station reports, from the tick's own answer
     try:
@@ -357,6 +430,8 @@ def run(now=None, dry_run=False, iem_path=None):
     except Exception as e:
         detail["reports"] = {"error": f"{type(e).__name__}: {str(e)[:160]}"}
         parts_ok.append(False)
+
+    new_total += forecast("models", fetch_models)
 
     detail["seconds"] = round(time.monotonic() - started, 1)
     status = "ok" if all(parts_ok) else ("error" if not any(parts_ok) else "partial")

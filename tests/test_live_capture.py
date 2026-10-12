@@ -42,6 +42,23 @@ def test_the_horizon_is_the_training_rule():
     assert not features.hourly_known(int(hour.timestamp()), known_at - 1)
 
 
+def test_the_lead_two_horizon_is_the_training_rule():
+    """A lead-2 daily row is known from its window's last hour minus
+    (48 - PUBLISH_H) h (features.daily_known): the record reaches that far."""
+    assert lc.HORIZON2_H == 48 - features.PUBLISH_H
+    tz = dt.timezone.utc
+    day = dt.date(2026, 10, 14)
+    last_hour = dt.datetime(2026, 10, 14, 23, tzinfo=tz)
+    known_at = int(last_hour.timestamp()) - lc.HORIZON2_H * 3600
+    assert features.daily_known(day, 2, 23, known_at, tz)
+    assert not features.daily_known(day, 2, 23, known_at - 1, tz)
+    assert lc.LEAD_HORIZON == {1: lc.HORIZON_H, 2: lc.HORIZON2_H}
+
+
+def test_the_models_are_the_nightly_records_in_its_order():
+    assert features.MODELS == honest_record.MODELS, "one list of the seven, in one order"
+
+
 def test_the_wider_answer_parses_to_the_same_observation_rows():
     """The tick now asks for every field; parse() reads only its own columns
     (measured 11 Oct over 47 stations: 405 rows from each answer, 0 differ)."""
@@ -149,33 +166,93 @@ def test_the_hourly_values_kept_are_the_training_variables_in_its_order():
     assert re.fullmatch(r"jeddah\|\d{4}-\d\d-\d\dT\d\d:\d\d", keys[0])
 
 
+def test_the_lead_two_values_reach_further():
+    now = dt.datetime(2026, 10, 11, 21, 36, tzinfo=UTC)
+    first, last = lc.hourly_window(now, lc.HORIZON2_H)
+    assert first == dt.datetime(2026, 10, 10) and last == dt.datetime(2026, 10, 13, 14)
+    times = [(first + dt.timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M") for h in range(0, 96)]
+    answer = {"hourly": {"time": times,
+                         **{f"{v}_previous_day{lead}": [float(lead)] * len(times)
+                            for v in honest_record.HEATING for lead in (1, 2)}}}
+    rows = lc.hourly_rows("jeddah", answer, first, last, lead=2)
+    assert rows[-1]["key"] == "jeddah|2026-10-13T14:00"
+    assert all(r["payload"] == [2.0] * len(honest_record.HEATING) for r in rows), "the lead asked, not the other"
+
+
+def test_the_models_kept_are_the_seven_in_their_order():
+    first, last = dt.datetime(2026, 10, 10), dt.datetime(2026, 10, 11, 1)
+    times = ["2026-10-11T00:00", "2026-10-11T01:00", "2026-10-11T02:00"]
+    h = {"time": times}
+    for k, m in enumerate(honest_record.MODELS):
+        h[f"temperature_2m_previous_day1_{m}"] = [10.0 + k, None, 30.0]
+        h[f"temperature_2m_previous_day2_{m}"] = [20.0 + k, None, 40.0]
+    h["temperature_2m_previous_day1_jma_seamless"] = [None, None, None]
+    rows = lc.model_rows("tokyo", {"hourly": h}, first, last, 1)
+    (row,) = rows
+    assert row["key"] == "tokyo|2026-10-11T00:00", "an hour no model has is left out, and so is one past the window"
+    want = [10.0 + k for k in range(len(honest_record.MODELS))]
+    want[honest_record.MODELS.index("jma_seamless")] = None
+    assert row["payload"] == want, "a model without a value is null in its own place"
+    assert lc.model_rows("tokyo", {"hourly": h}, first, last, 2)[0]["payload"][0] == 20.0
+
+
+class _Answer:
+    def __init__(self, js):
+        self.js = js
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self.js
+
+
 def test_the_forecast_is_asked_a_chunk_at_a_time_in_gmt(monkeypatch):
     cities = [{"city_key": f"c{i}", "latitude": i, "longitude": -i} for i in range(lc.CITIES_PER_REQUEST + 3)]
     asked = []
-
-    class R:
-        def __init__(self, js):
-            self.js = js
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return self.js
 
     def get(url, params=None, timeout=None):
         n = len(params["latitude"].split(","))
         asked.append((url, params))
         if len(asked) == 2:
-            return R([{"hourly": {}}])            # one answer for three places: refused, recorded
-        return R([{"hourly": {"time": ["2026-10-11T12:00"],
-                              **{f"{v}_previous_day1": [1.0] for v in honest_record.HEATING}}}] * n)
+            return _Answer([{"hourly": {}}])      # one answer for three places: refused, recorded
+        return _Answer([{"hourly": {"time": ["2026-10-11T12:00", "2026-10-13T12:00"],
+                                    **{f"{v}_previous_day{lead}": [1.0, 2.0] for v in honest_record.HEATING
+                                       for lead in (1, 2)}}}] * n)
     monkeypatch.setattr(lc, "_get", get)
     rows, d = lc.fetch_hourly(cities, dt.datetime(2026, 10, 11, 21, 36, tzinfo=UTC), lambda: 60)
     url, params = asked[0]
     assert url == honest_record.PREVIOUS_API and params["timezone"] == "GMT"
-    assert params["hourly"] == ",".join(f"{v}_previous_day1" for v in honest_record.HEATING)
-    assert d["answered"] == lc.CITIES_PER_REQUEST and len(d["errors"]) == 1 and len(rows) == lc.CITIES_PER_REQUEST
+    assert set(params["hourly"].split(",")) == {f"{v}_previous_day{lead}" for v in honest_record.HEATING
+                                                for lead in (1, 2)}, "both leads in the one request"
+    assert params["end_date"] == "2026-10-13", "far enough for lead 2"
+    assert set(rows) == {"hourly", "hourly2"}
+    assert d["answered"] == lc.CITIES_PER_REQUEST and len(d["errors"]) == 1
+    assert len(rows["hourly"]) == lc.CITIES_PER_REQUEST, "lead 1 stops at 17 h"
+    assert len(rows["hourly2"]) == 2 * lc.CITIES_PER_REQUEST, "lead 2 reaches 41 h"
+
+
+def test_the_models_are_asked_as_the_nightly_record_asks(monkeypatch):
+    cities = [{"city_key": f"c{i}", "latitude": i, "longitude": -i} for i in range(3)]
+    asked = []
+
+    def get(url, params=None, timeout=None):
+        asked.append((url, params))
+        return _Answer([{"hourly": {"time": ["2026-10-11T12:00"],
+                                    **{f"temperature_2m_previous_day{lead}_{m}": [1.0] for m in honest_record.MODELS
+                                       for lead in (1, 2)}}}] * 3)
+    monkeypatch.setattr(lc, "_get", get)
+    rows, d = lc.fetch_models(cities, dt.datetime(2026, 10, 11, 21, 36, tzinfo=UTC), lambda: 60)
+    ((url, params),) = asked
+    # the nightly record's own models request (honest_record.previous_request)
+    nightly = []
+    monkeypatch.setattr(honest_record, "_get", lambda u, p, label: nightly.append((u, p)))
+    honest_record.previous_request(cities, "models", dt.date(2026, 10, 11), dt.date(2026, 10, 12))
+    ((n_url, n_params),) = nightly
+    same = ("hourly", "models", "timezone", "latitude", "longitude")
+    assert url == n_url and {k: params[k] for k in same} == {k: n_params[k] for k in same}
+    assert {k: len(v) for k, v in rows.items()} == {"models1": 3, "models2": 3}
+    assert d["answered"] == 3 and d["errors"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +292,13 @@ def desk(monkeypatch, tmp_path):
         {"buckets": 1, "asked": 1, "books": 1, "failed": 0, "no_book": 0, "errors": []}))
     monkeypatch.setattr(lc, "get_cities", lambda: [{"city_key": "jeddah", "latitude": 21.7, "longitude": 39.2}])
     monkeypatch.setattr(lc, "fetch_hourly", lambda cities, now, left: (
-        [{"key": "jeddah|2026-10-12T09:00", "payload": [31.0]}], {"cities": 1, "answered": 1, "values": 1, "errors": []}))
+        {"hourly": [{"key": "jeddah|2026-10-12T09:00", "payload": [31.0]}],
+         "hourly2": [{"key": "jeddah|2026-10-13T09:00", "payload": [32.0]}]},
+        {"cities": 1, "answered": 1, "values": {1: 1, 2: 1}, "errors": []}))
+    monkeypatch.setattr(lc, "fetch_models", lambda cities, now, left: (
+        {"models1": [{"key": "jeddah|2026-10-12T09:00", "payload": [31.0] * 7}],
+         "models2": [{"key": "jeddah|2026-10-12T09:00", "payload": [30.0] * 7}]},
+        {"cities": 1, "answered": 1, "values": {1: 1, 2: 1}, "errors": []}))
     monkeypatch.setattr(lc, "rpc", lambda fn, params, timeout=None: calls["put"].append((fn, params)) or {"new": 1})
     monkeypatch.setattr(lc, "log_run", lambda job, status, rows, detail: calls["log"].append((job, status, rows, detail)))
     iem = tmp_path / "iem.txt"
@@ -225,17 +308,20 @@ def desk(monkeypatch, tmp_path):
     return calls
 
 
-def test_a_run_keeps_all_three_and_writes_one_row(desk):
+def test_a_run_keeps_every_kind_and_writes_one_row(desk):
     status, detail = lc.run(now=dt.datetime(2026, 10, 11, 21, 36, tzinfo=UTC), iem_path=desk["iem"])
     assert status == "ok"
     kinds = [p["p_kind"] for fn, p in desk["put"]]
-    assert kinds == ["books", "hourly", "report"] and all(fn == "live_capture_put" for fn, _ in desk["put"])
-    report = desk["put"][2][1]
+    assert kinds == ["books", "hourly", "hourly2", "report", "models1", "models2"], \
+        "the models last: a hang there cannot take the reports' time"
+    assert all(fn == "live_capture_put" for fn, _ in desk["put"])
+    report = desk["put"][3][1]
     assert report["p_captured_at"] == "2026-10-11T21:36:02+00:00", "a report's time is when the tick received it"
     (books,) = desk["put"][0][1]["p_rows"]
     assert books["key"] == "all" and books["payload"]["complete"] is True and "b1" in books["payload"]["tops"]
     (job, st, rows, d), = desk["log"]
-    assert (job, st, rows) == (lc.JOB, "ok", 3) and d["reports"]["stations"] == 1
+    assert (job, st, rows) == (lc.JOB, "ok", 6) and d["reports"]["stations"] == 1
+    assert d["hourly"]["new"] == {"hourly": 1, "hourly2": 1} and d["models"]["new"] == {"models1": 1, "models2": 1}
 
 
 def test_one_part_failing_stops_nothing(desk, monkeypatch):
@@ -244,7 +330,17 @@ def test_one_part_failing_stops_nothing(desk, monkeypatch):
     monkeypatch.setattr(lc, "fetch_hourly", boom)
     status, detail = lc.run(now=dt.datetime(2026, 10, 11, 21, 36, tzinfo=UTC), iem_path=desk["iem"])
     assert status == "partial" and "Open-Meteo hung" in detail["hourly"]["error"]
-    assert [p["p_kind"] for _, p in desk["put"]] == ["books", "report"]
+    assert [p["p_kind"] for _, p in desk["put"]] == ["books", "report", "models1", "models2"]
+
+
+def test_the_models_failing_keeps_the_rest(desk, monkeypatch):
+    monkeypatch.setattr(lc, "fetch_models", lambda cities, now, left: (
+        {"models1": [], "models2": []},
+        {"cities": 1, "answered": 0, "values": {1: 0, 2: 0}, "errors": ["c0..c0: ReadTimeout: hung"]}))
+    status, detail = lc.run(now=dt.datetime(2026, 10, 11, 21, 36, tzinfo=UTC), iem_path=desk["iem"])
+    assert status == "partial" and detail["models"]["errors"] == ["c0..c0: ReadTimeout: hung"]
+    assert [p["p_kind"] for _, p in desk["put"]] == ["books", "hourly", "hourly2", "report"], \
+        "an empty batch is not sent; the rest are kept"
 
 
 def test_an_incomplete_snapshot_is_kept_and_marked(desk, monkeypatch):
