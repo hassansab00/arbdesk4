@@ -693,6 +693,33 @@ can be known, and nothing recorded that. Hassan approved a poller (11 Oct:
   (one bucket a city bid 0.995-0.999, the rest asked 0.001), so the first
   window, 13 Oct 07-14Z, measures the live rate and the storage.
 
+### The same-day YES pilot, frozen (WP5 step 2, 12 Oct)
+
+`docs/SAME_DAY_YES_PREREG.md` freezes `sdyes-v1` before any forward decision.
+- **The rule** (`tools/wxpredict/sdyes.py`, tested without the research stack):
+  - Jeddah and Istanbul, the event day, decisions at the table's instants
+    10:00-16:00 local, made by the live reader in arrival mode;
+  - the remaining-day model alone, fitted once on every eligible table row to
+    11 Oct (`data/models/sdyes/sdyes-v1_remaining.txt.gz`; a refit gives the
+    identical file);
+  - YES only, a $10 ticket walked level by level while p - (price + taker
+    fee) >= THETA 0.10, one entry per city-day, held to settlement;
+  - judged on the minute books (`focus_book`) 60-300 s after the decision.
+- **The controls:** the market's own prices and S10 `rd1`, on the same decisions.
+- **Looks:** the first at 20 valid settled dates from 13 Oct, a second at 40,
+  then stop.
+- **Development, which chose it** (`tools/wxpredict/sdyes_dev.py`, its choice
+  rule written before the run; 13 Sep - 8 Oct, 2-hourly archived books):
+  - THETA 0.10: +$2.17 per entry date (90% -8.49 to +15.69) over 41 entries on
+    24 dates, and -$97.34 without the best date;
+  - THETA 0.02 and 0.05 lost, with intervals below zero;
+  - the market-only control lost at every THETA;
+  - where the model was 0.10 or more above the market (1,218 bucket-decisions,
+    1 May - 9 Oct) it said 0.473, the market 0.247, and 0.295 won.
+
+**The development evidence leans against the candidate.** It is tested forward,
+in shadow, because the rule fixed beforehand says so.
+
 ### The live record: every input the tick had, as it arrived (WP3a, 11 Oct)
 
 The training table decides what a row may know by rule: a report 20 minutes

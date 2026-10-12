@@ -1,7 +1,7 @@
 {
  "about": "Which dates each WXPredict question has been scored on, so no rule is tested on dates it was found, tuned or looked at on. Every result in data/eval/wxpredict is registered here exactly once; tests/test_wxpredict_exposure_ledger.py checks it. A new result is registered in the same PR that commits it, and untouched_from moves past every date scored. Written 11 Oct 2026 (the Codex action plan of 11 Oct, section 2: one exposure ledger).",
  "untouched_from": "2026-10-10",
- "untouched_note": "No WXPredict model, rule or control has been scored on an event date from 10 Oct. H2 and H3a scored 5-9 Oct on 12 Oct: the newest dates with every event's market definition, books, prints, winner, whole local day of hourly forecasts and station day (data/eval/wxpredict/coverage/coverage_2026-10-05_on_2026-10-12.json; 10 and 11 Oct had no archived book yet). The market residual's own October log loss, which its --dump run also computes (1-11 Oct), went to a scratch file and was neither read nor committed. Data volumes after 4 Oct were counted (trade prints a day, R46) without outcomes or prices being scored.",
+ "untouched_note": "No WXPredict model, rule or control has been scored on an event date from 10 Oct. H2 and H3a scored 5-9 Oct on 12 Oct: the newest dates with every event's market definition, books, prints, winner, whole local day of hourly forecasts and station day (data/eval/wxpredict/coverage/coverage_2026-10-05_on_2026-10-12.json; 10 and 11 Oct had no archived book yet). The market residual's own October log loss, which its --dump run also computes (1-11 Oct), went to a scratch file and was neither read nor committed. Data volumes after 4 Oct were counted (trade prints a day, R46) without outcomes or prices being scored. The same-day YES pilot's development run (12 Oct) scored 13 Sep - 8 Oct; the remaining-day walk-forward run whose dump it read also computes that walk-forward's October log loss (1-11 Oct), which went to a scratch file and was neither read nor committed.",
  "table": {
   "recorded": {"file": "data/training/wxpredict/table_meta.json", "sha256": "d03b73e88b75", "dates": ["2025-07-15", "2026-10-04"], "rows": 684990},
   "results_built_on": {"table_gzip_sha256": "bd16da926ca6", "rows": 670686, "note": "every model result of 11 Oct was made on a table rebuilt from 11 Oct's sources (47 cities; R47), not the recorded one; build_table.py --recorded rebuilds the recorded one"},
@@ -119,6 +119,17 @@
    "scored": [],
    "verdict": "yes, back to 30 Dec 2025 (phase 2.4)",
    "results": ["trade_history_probe.json"]
+  },
+  {
+   "id": "sdyes_v1_same_day_yes",
+   "question": "The same-day YES pilot (docs/SAME_DAY_YES_PREREG.md): buying the YES of the bucket the remaining-day model puts at least THETA above its executable ask after the taker fee, one per city-day, Jeddah and Istanbul 10-16h local, held to settlement, makes money.",
+   "rule_file": "tools/wxpredict/sdyes_dev.py",
+   "rule_marker": "THE CHOICE, fixed before the run",
+   "developed_on": ["2026-09-13", "2026-10-08"],
+   "scored": ["2026-09-13", "2026-10-08"],
+   "verdict": "Development only (12 Oct): the rule fixed before the run chose the remaining-day model at THETA 0.10, +$2.17 per entry date (90% -8.49 to +15.69), 41 entries on 24 dates, -$97.34 without the best date; THETA 0.02 and 0.05 lost with intervals below zero; where the model was 0.10 or more above the market (1,218 bucket-decisions, 1 May - 9 Oct) it said 0.473, the market 0.247, and 0.295 won. Frozen as sdyes-v1; the development evidence leans against it.",
+   "pending": {"part": "sdyes-v1 forward, in shadow", "test_from": "2026-10-13", "tools": "the evaluator of docs/SAME_DAY_YES_PREREG.md: decisions by live_reader.py in arrival mode at the table's instants 10-16h local, the frozen model data/models/sdyes/sdyes-v1_remaining.txt.gz, the minute books (focus_book), sdyes.walk_yes and sdyes.choose at THETA 0.10; first look at 20 valid settled dates, a second at 40, then stop"},
+   "results": ["sdyes_dev_2026-10-12.json"]
   }
  ],
  "blind_elsewhere": [
