@@ -162,3 +162,25 @@ for k, h0, b, a, l in obs:
 for w in ('narrow', 'wide'):
     for c in ('mid', 'last'):
         print('tick books', w, c, summ(res[w][c]) if res[w][c] else 'none')
+
+# ONE-SIDED BOOKS (12 Oct, WP3b: the live reader prices every bucket). The
+# comparison above reads two-sided books only, and on 11 Oct 428 of 847 open
+# buckets had no bid. On the same stable hours: a book with no bid against
+# ask/2 (its bid counted as 0), one with no ask against (bid + 1)/2 (its ask
+# counted as 1), and each side alone.
+def price_or_none(x):        # `f` above is a file name by now (the loops reuse it)
+    try: return float(x)
+    except (TypeError, ValueError): return None
+one = collections.defaultdict(lambda: collections.defaultdict(list))
+for k, t, h0, r in rows:
+    p0, p1 = pts.get((k, h0)), pts.get((k, h0 + 3600))
+    bid, ask = price_or_none(r['best_bid']), price_or_none(r['best_ask'])
+    if p0 is None or p1 != p0 or (bid is None) == (ask is None):
+        continue
+    if bid is None:
+        one['no bid']['ask/2'].append(abs(p0 - ask / 2)); one['no bid']['ask'].append(abs(p0 - ask))
+    else:
+        one['no ask']['(bid+1)/2'].append(abs(p0 - (bid + 1) / 2)); one['no ask']['bid'].append(abs(p0 - bid))
+for side in ('no bid', 'no ask'):
+    for c, xs in one[side].items():
+        print('one-sided, stable,', side, c, summ(xs) if xs else 'none')
