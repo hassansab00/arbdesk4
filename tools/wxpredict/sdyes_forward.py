@@ -49,7 +49,8 @@ import walkforward as wf  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUT = os.path.join(ROOT, "data", "eval", "wxpredict", "sdyes")
-LEDGER_COLUMNS = ["version", "city", "date", "event_id", "t", "who", "bucket", "band_id", "books_at", "p",
+LEDGER_COLUMNS = ["version", "model_sha256", "row_hash", "city", "date", "event_id", "t", "who", "bucket", "band_id",
+                  "books_at", "p",
                   "touch", "shares", "usd", "fee", "cost", "edge", "qualified", "reason"]
 
 
@@ -127,23 +128,34 @@ def model_probs(rows, booster):
     return out
 
 
+def row_hashes(rows):
+    """{(event_id, t): sha256 of the live row as written (live_reader.write_rows'
+    columns and formatting)}: what binds each recorded probability to its inputs."""
+    out = {}
+    for r in rows:
+        vals = [r.get(c) if isinstance(r.get(c), str) else lr.features.fmt(r.get(c)) for c in lr.COLUMNS]
+        line = "\x1f".join("" if v is None else str(v) for v in vals)
+        out[(str(r["event_id"]), int(r["decision_utc"]))] = hashlib.sha256(line.encode()).hexdigest()
+    return out
+
+
 def decisions_for(rows, events, probs, cities):
-    """sdyes.ledger's decisions: every instant of the window, a row or not."""
+    """sdyes.ledger's decisions: every instant of the window, a row or not. A
+    missing row or running maximum leaves the candidate without a probability
+    (no_probs); the controls still decide on the same books (Codex on #392)."""
     h0, h1 = sdyes.WINDOW_LOCAL_H
     have = {(str(r["event_id"]), int(r["decision_utc"])) for r in rows}
+    hashes = row_hashes(rows)
     out = []
     for t, todo in lr.instants(events, cities, 0, 2 ** 40).items():
         for e, off, local in todo:
             if off != 0 or not (h0 <= local.hour < h1):
                 continue
             key = (e["event_id"], int(t))
-            skip = None
-            if key not in have:
-                skip = "no row"
-            elif probs.get(key) is None:
-                skip = "no running maximum"
+            no_probs = "no row" if key not in have else "no running maximum" if probs.get(key) is None else None
             out.append({"city": e["city"], "date": e["date"], "event_id": e["event_id"], "t": int(t),
-                        "icao": e["station"], "band_ids": e["band_ids"], "probs": probs.get(key), "skip": skip})
+                        "icao": e["station"], "band_ids": e["band_ids"], "probs": probs.get(key),
+                        "no_probs": no_probs, "row_hash": hashes.get(key), "skip": None})
     return sorted(out, key=lambda d: (d["date"], d["city"], d["t"]))
 
 

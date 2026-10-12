@@ -172,15 +172,24 @@ WHO = ("candidate", "market", "rd1")       # sdyes-v1, the market-only control, 
 def ledger(decisions, polls, books_at, rd1_at):
     """The forward record of docs/SAME_DAY_YES_PREREG.md. decisions: [{city,
     date, event_id, t, icao, band_ids, probs (the candidate's, ladder order;
-    None when the model made no row) , skip (a reason, or None)}]. books_at(at)
-    -> {band_id: focus_book payload} as captured at or before `at`. rd1_at(city,
+    None when it has none), no_probs (why the candidate has none: 'no row',
+    'no running maximum'), row_hash (sha256 of the decision's live row), skip
+    (a reason the whole decision is skipped, or None)}]. books_at(at) ->
+    {band_id: focus_book payload} as captured at or before `at`. rd1_at(city,
     date, t) -> {band_id: p} of the newest rd1 checkpoint at or before t, or
     None. Returns (rows, entries): a row for every bucket each who judged at
     each decision, or one row for a decision skipped whole, with its reason;
-    and each who's entry per city-day (sdyes.choose), not settled."""
+    and each who's entry per city-day (sdyes.choose), not settled.
+
+    A decision is skipped whole only when no fresh book judges it (or the
+    caller says so): a candidate without a row or a running maximum still
+    leaves the controls their decision on the same books (Codex on #392).
+    Every row carries the version, the model's sha256 and the decision's row
+    hash, so a recorded probability is bound to its inputs (Codex on #392)."""
     rows, qualifying = [], {}
     for d in decisions:
-        base = {"version": VERSION, "city": d["city"], "date": d["date"], "event_id": d["event_id"], "t": d["t"]}
+        base = {"version": VERSION, "model_sha256": MODEL_SHA256, "row_hash": d.get("row_hash"),
+                "city": d["city"], "date": d["date"], "event_id": d["event_id"], "t": d["t"]}
         answered = None if d.get("skip") else fresh_answer(polls, d["t"], d["icao"])
         if d.get("skip") or answered is None:
             rows.append(dict(base, who=None, bucket=None, band_id=None, books_at=None, qualified=False,
@@ -196,7 +205,7 @@ def ledger(decisions, polls, books_at, rd1_at):
             if probs[who] is None:
                 rows.append(dict(base, who=who, bucket=None, band_id=None, books_at=answered, qualified=False,
                                  reason="no market price on every bucket" if who == "market" else
-                                 "no rd1 checkpoint" if who == "rd1" else "no model row"))
+                                 "no rd1 checkpoint" if who == "rd1" else d.get("no_probs") or "no model row"))
                 continue
             for j in judge(d["t"], probs[who], books):
                 row = dict(base, who=who, band_id=d["band_ids"][j["bucket"]], books_at=answered, **j)
@@ -208,13 +217,16 @@ def ledger(decisions, polls, books_at, rd1_at):
 
 
 def counts(rows, entries):
-    """What may be read before the first look: decisions, skips by reason,
-    valid dates and the number of entries. No probability, price or profit."""
+    """What may be read before the first look: decisions, skips by reason, the
+    dates with a judged decision and the number of entries. No probability,
+    price or profit. A date with a judged decision is not yet a valid date:
+    the pre-registration's valid date is a settled one, counted by the
+    settlement pass (Codex on #392)."""
     decisions = {(r["city"], r["date"], r["t"]) for r in rows}
     skipped = {}
     for r in rows:
         if r["who"] is None:
             skipped[r["reason"]] = skipped.get(r["reason"], 0) + 1
-    valid = sorted({r["date"] for r in rows if r["who"] is not None})
-    return {"decisions": len(decisions), "decisions_skipped": skipped, "valid_dates": valid,
+    judged = sorted({r["date"] for r in rows if r["who"] is not None})
+    return {"decisions": len(decisions), "decisions_skipped": skipped, "dates_with_a_judged_decision": judged,
             "entries": {who: sum(1 for k in entries if k[0] == who) for who in WHO}}

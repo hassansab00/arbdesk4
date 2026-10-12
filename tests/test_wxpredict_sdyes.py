@@ -149,9 +149,10 @@ def test_each_bucket_is_judged_or_given_its_reason():
     assert [x["bucket"] for x in rows] == list(range(6)) and all(x["t"] == 1000 for x in rows)
 
 
-def _decision(t, skip=None, probs=(0.45, 0.30, 0.25), city="jeddah", date="2026-10-13"):
+def _decision(t, skip=None, probs=(0.45, 0.30, 0.25), city="jeddah", date="2026-10-13", no_probs=None):
     return {"city": city, "date": date, "event_id": "e1", "t": t, "icao": "OEJN",
-            "band_ids": ["b0", "b1", "b2"], "probs": list(probs) if probs else None, "skip": skip}
+            "band_ids": ["b0", "b1", "b2"], "probs": list(probs) if probs else None, "no_probs": no_probs,
+            "row_hash": f"h{t}", "skip": skip}
 
 
 def test_the_ledger_records_every_decision_and_skip_and_one_entry_a_city_day():
@@ -159,13 +160,12 @@ def test_the_ledger_records_every_decision_and_skip_and_one_entry_a_city_day():
     dear = {"bid": 0.5, "ask": 0.6, "asks": [[0.6, 100]], "min": 5}
     books = {"b0": cheap, "b1": dear, "b2": dear}
     polls = [{"source": "clob_books", "stations": ["OEJN"], "answered_at": a, "status_code": 200, "error": None}
-             for a in (1065, 4665)]
-    decisions = [_decision(1000), _decision(4600), _decision(8200), _decision(9000, skip="no running maximum"),
-                 _decision(5000, probs=None)]
+             for a in (1065, 4665, 9065)]
+    decisions = [_decision(1000), _decision(4600), _decision(8200),
+                 _decision(9000, probs=None, no_probs="no running maximum")]
     rd1 = {"b0": 0.10, "b1": 0.80, "b2": 0.10}
     rows, entries = sdyes.ledger(decisions, polls, lambda at: books, lambda c, d, t: rd1 if t >= 4000 else None)
-    by_reason = {r["reason"] for r in rows if r["who"] is None}
-    assert by_reason == {"no fresh book", "no running maximum"}, "8200 has no poll in 60-300 s; 5000 neither"
+    assert [r["reason"] for r in rows if r["who"] is None] == ["no fresh book"], "8200 has no poll in 60-300 s"
     cand = entries[("candidate", "jeddah", "2026-10-13")]
     assert (cand["t"], cand["band_id"]) == (1000, "b0"), "the first decision, the bucket that qualified"
     assert ("market", "jeddah", "2026-10-13") not in entries, "the market's own price leaves no edge"
@@ -173,10 +173,17 @@ def test_the_ledger_records_every_decision_and_skip_and_one_entry_a_city_day():
         entries[("rd1", "jeddah", "2026-10-13")]["t"] == 4600, "rd1 only from its first checkpoint"
     no_rd1 = [r for r in rows if r["who"] == "rd1" and r["t"] == 1000]
     assert len(no_rd1) == 1 and no_rd1[0]["reason"] == "no rd1 checkpoint"
-    assert all(r["version"] == sdyes.VERSION for r in rows)
+    # a candidate without a running maximum still leaves the controls their decision (Codex on #392)
+    at_9000 = {(r["who"], r["reason"]) for r in rows if r["t"] == 9000 and r["bucket"] is None}
+    assert at_9000 == {("candidate", "no running maximum")}
+    assert {r["who"] for r in rows if r["t"] == 9000 and r["bucket"] is not None} == {"market", "rd1"}
+    # every row bound to its inputs and the frozen model (Codex on #392)
+    assert all(r["version"] == sdyes.VERSION and r["model_sha256"] == sdyes.MODEL_SHA256 for r in rows)
+    assert {r["row_hash"] for r in rows if r["t"] == 1000} == {"h1000"}
     c = sdyes.counts(rows, entries)
-    assert c["decisions"] == 5 and c["valid_dates"] == ["2026-10-13"]
-    assert c["decisions_skipped"] == {"no fresh book": 2, "no running maximum": 1}
+    assert c["decisions"] == 4 and c["dates_with_a_judged_decision"] == ["2026-10-13"]
+    assert "valid_dates" not in c, "a valid date is a settled one: the settlement pass counts it (Codex on #392)"
+    assert c["decisions_skipped"] == {"no fresh book": 1}
     assert c["entries"] == {"candidate": 1, "market": 0, "rd1": 1}
     assert not any(k in c for k in ("pnl", "profit", "won")), "before the first look only counts are read"
 
@@ -184,7 +191,8 @@ def test_the_ledger_records_every_decision_and_skip_and_one_entry_a_city_day():
 def test_a_decision_without_a_model_row_still_judges_the_controls():
     books = {"b0": {"bid": 0.1, "ask": 0.2, "asks": [[0.2, 100]], "min": 5}, "b1": None, "b2": None}
     polls = [{"source": "clob_books", "stations": ["OEJN"], "answered_at": 1100, "status_code": 200, "error": None}]
-    rows, _ = sdyes.ledger([_decision(1000, probs=None)], polls, lambda at: books, lambda c, d, t: None)
+    rows, _ = sdyes.ledger([_decision(1000, probs=None, no_probs="no row")], polls, lambda at: books,
+                           lambda c, d, t: None)
     reasons = {(r["who"], r["reason"]) for r in rows if r["bucket"] is None}
-    assert reasons == {("candidate", "no model row"), ("market", "no market price on every bucket"),
+    assert reasons == {("candidate", "no row"), ("market", "no market price on every bucket"),
                        ("rd1", "no rd1 checkpoint")}
