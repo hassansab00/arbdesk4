@@ -713,9 +713,28 @@ arrived:
   `failed` and `no_book`, and `complete` is false whenever `failed` is not
   empty (Codex on #381).
 
-A report or hourly value is stored once per change, with the first time it
-was seen; one that changes back is stored again, so the newest row is always
-what was being served. Two days stay in Postgres; the nightly archive takes
+- **The evening's forecasts** (`hourly2`, `models1`, `models2`; WP3b,
+  12 Oct): best_match's same seven variables at `_previous_day2`, to 41 h
+  ahead (`48 - PUBLISH_H`), and the seven models' temperature at
+  `_previous_day1` (to 17 h) and `_previous_day2` (to 41 h). A row of D-1
+  reads the day-ahead daily forecast at lead 2, and every row reads the seven
+  models' daily maxima (`features.pick_daily`); the record had neither, so no
+  live row could carry them. best_match's lead 2 rides in the `hourly`
+  request; the models are one more request a chunk of 12 cities, asked
+  exactly as the nightly record asks it (`honest_record.previous_request`).
+  Measured before the change (12 Oct ~13:00Z): `hourly` grew by exactly 47
+  rows a tick (one new hour a city; no stored hour changed over the ticks
+  09-12Z), and both wider requests answered 200 for 12 cities over four days
+  (121,323 and 114,695 bytes). In those answers (asked 12:58Z) the two
+  leads' values for one hour differ on most hours up to 17 h ahead (models
+  4,286 of 4,536, best_match 3,376 of 4,536) and agree on almost every hour
+  past 41 h (models 1,493 of 1,512, best_match 1,417 of 1,512): past its
+  horizon a lead is mostly the current forecast, which is why each lead
+  keeps its own.
+
+A report or forecast value is stored once per change, with the first time
+it was seen; one that changes back is stored again, so the newest row is
+always what was being served. Two days stay in Postgres; the nightly archive takes
 the rest to `data/archive/live_capture` (verified count, then prune), and the
 mirror copies every row. Off or manual on the Workflows page
 (`P2.12_live_capture`) stores nothing. Next (WP3b): the live reader builds
