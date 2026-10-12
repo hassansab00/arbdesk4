@@ -60,8 +60,9 @@ def test_the_features_open_no_file_and_ask_no_network():
             imported |= {a.name.split(".")[0] for a in n.names}
         elif isinstance(n, ast.ImportFrom):
             imported.add((n.module or "").split(".")[0])
-    assert imported <= {"bisect", "calendar", "collections", "datetime", "math", "os", "statistics", "sys",
-                        "wxpredict"}, imported
+    # contextlib: report_lag()'s scope (12 Oct), no file and no network
+    assert imported <= {"bisect", "calendar", "collections", "contextlib", "datetime", "math", "os", "statistics",
+                        "sys", "wxpredict"}, imported
     called = {n.func.id if isinstance(n.func, ast.Name) else n.func.attr
               for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, (ast.Name, ast.Attribute))}
     # no network module is importable (above); dict.get is a dict's

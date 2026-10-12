@@ -1,11 +1,11 @@
 {
  "about": "Which dates each WXPredict question has been scored on, so no rule is tested on dates it was found, tuned or looked at on. Every result in data/eval/wxpredict is registered here exactly once; tests/test_wxpredict_exposure_ledger.py checks it. A new result is registered in the same PR that commits it, and untouched_from moves past every date scored. Written 11 Oct 2026 (the Codex action plan of 11 Oct, section 2: one exposure ledger).",
- "untouched_from": "2026-10-10",
- "untouched_note": "No WXPredict model, rule or control has been scored on an event date from 10 Oct. H2 and H3a scored 5-9 Oct on 12 Oct: the newest dates with every event's market definition, books, prints, winner, whole local day of hourly forecasts and station day (data/eval/wxpredict/coverage/coverage_2026-10-05_on_2026-10-12.json; 10 and 11 Oct had no archived book yet). The market residual's own October log loss, which its --dump run also computes (1-11 Oct), went to a scratch file and was neither read nor committed. Data volumes after 4 Oct were counted (trade prints a day, R46) without outcomes or prices being scored. The same-day YES pilot's development run (12 Oct) scored 13 Sep - 8 Oct; the remaining-day walk-forward run whose dump it read also computes that walk-forward's October log loss (1-11 Oct), which went to a scratch file and was neither read nor committed.",
+ "untouched_from": "2026-10-12",
+ "untouched_note": "No WXPredict model, rule or control has been scored on an event date from 10 Oct. H2 and H3a scored 5-9 Oct on 12 Oct: the newest dates with every event's market definition, books, prints, winner, whole local day of hourly forecasts and station day (data/eval/wxpredict/coverage/coverage_2026-10-05_on_2026-10-12.json; 10 and 11 Oct had no archived book yet). The market residual's own October log loss, which its --dump run also computes (1-11 Oct), went to a scratch file and was neither read nor committed. Data volumes after 4 Oct were counted (trade prints a day, R46) without outcomes or prices being scored. The same-day YES pilot's development run (12 Oct) scored 13 Sep - 8 Oct; the remaining-day walk-forward run whose dump it read also computes that walk-forward's October log loss (1-11 Oct), which went to a scratch file and was neither read nor committed. 12 Oct, evening: the report-lag and same-day forecast tests (report_lag_2026-10-12.json, same_day_forecast_2026-10-12.json) scored the remaining-day model on 15 Sep - 11 Oct, so the untouched dates start 12 Oct, and H3a's forward dates move from 10 to 12 Oct.",
  "table": {
   "recorded": {"file": "data/training/wxpredict/table_meta.json", "sha256": "d03b73e88b75", "dates": ["2025-07-15", "2026-10-04"], "rows": 684990},
   "results_built_on": {"table_gzip_sha256": "bd16da926ca6", "rows": 670686, "note": "every model result of 11 Oct was made on a table rebuilt from 11 Oct's sources (47 cities; R47), not the recorded one; build_table.py --recorded rebuilds the recorded one"},
-  "results_built_on_12_oct": {"table_gzip_sha256": "c0f9bb312c9a", "content_sha256": "efdee4fb792b", "rows": 679742, "dates": ["2025-07-15", "2026-10-11"], "note": "H2 and H3a of 12 Oct were made on a table rebuilt from 12 Oct's sources: #375's first nightly hourly append and Lucknow's 5-11 Oct hours (fetch_forecasts.py's own rules, its answer asked through pg_net); table_meta.json keeps the recorded table"}
+  "results_built_on_12_oct": {"table_gzip_sha256": "c0f9bb312c9a", "content_sha256": "efdee4fb792b", "rows": 679742, "dates": ["2025-07-15", "2026-10-11"], "note": "H2 and H3a of 12 Oct were made on a table rebuilt from 12 Oct's sources: #375's first nightly hourly append and Lucknow's 5-11 Oct hours (fetch_forecasts.py's own rules, its answer asked through pg_net); table_meta.json keeps the recorded table"}, "results_built_on_12_oct_v2": {"table_gzip_sha256": "b27874d38b8a", "content_sha256": "f6a7c5c27274", "rows": 679742, "dates": ["2025-07-15", "2026-10-11"], "note": "the v2 table of 12 Oct (build_table.py --v2: a report known 8 min after its reading), from the same sources as results_built_on_12_oct; table_v2_meta.json names them. report_lag_2026-10-12.json and same_day_forecast_2026-10-12.json were made on it and on results_built_on_12_oct"}
  },
  "sealed_test": "WXPREDICT_BUILD.md section 4 sealed 1 Sep - 4 Oct 2026 for WXPredict v1 until G4. From 11 Oct (Hassan: 'DO NOT FREEZE ... WE NEED TO BUILD A SOLID SYSTEM') the research models below were scored out of sample on those dates by walk-forward and at the real asks, so 1 Sep - 4 Oct is no longer an untouched test for any WXPredict model. The untouched dates start 5 Oct.",
  "questions": [
@@ -83,7 +83,7 @@
    "developed_on": ["2026-08-22", "2026-09-25"],
    "scored": ["2026-08-22", "2026-10-09"],
    "verdict": "H3b FAILED (-0.0410, -0.0727 to -0.0104, 718 fills, own snapshot). H3a not separable from zero on 26 Sep - 4 Oct (+0.0662, -0.0104 to +0.1316, 89 trades, own snapshot); the own-snapshot matching was fixed after that window was seen (Codex on #376), so H3a's test is the dates from 5 Oct. H3a on 5-9 Oct (12 Oct): after the taker fee +0.0440 a share (-0.0020 to +0.0939), 55 trades on 5 dates, not separable from zero (before the fee +0.0555, +0.0097 to +0.1055); the controls made no trade at THETA 0.05. At size, $10 tickets at the snapshot: 55 entries, $524.75 spent, net +$18.59, per date +$3.72 (90% -$8.05 to +$16.83), -$15.13 without the best date.",
-   "pending": {"part": "H3a, as the dates grow", "test_from": "2026-10-10", "tools": "the same steps (book_anchor.py on a market_residual.py dump, ask_backtest.py --model-col p_model --from 2026-10-05 through the newest covered date, after_taker_fee at THETA 0.05; capacity.py on its --trades-out); 5-9 Oct were not separable from zero, so the reading waits for more dates, 10 Oct on unseen"},
+   "pending": {"part": "H3a, as the dates grow", "test_from": "2026-10-12", "tools": "the same steps (book_anchor.py on a market_residual.py dump, ask_backtest.py --model-col p_model --from 2026-10-05 through the newest covered date, after_taker_fee at THETA 0.05; capacity.py on its --trades-out); 5-9 Oct were not separable from zero, so the reading waits for more dates, 12 Oct on unseen (10-11 Oct were scored for the remaining-day model on 12 Oct, report_lag_2026-10-12.json)"},
    "results": ["ask_backtest_book_anchor_2026-10-11.json", "ask_backtest_book_anchor_own_snapshot_2026-10-11.json",
                "maker_backtest_book_anchor_2026-10-11.json", "maker_backtest_book_anchor_own_snapshot_2026-10-11.json",
                "ask_backtest_h3_holdout_2026-10-11.json", "ask_backtest_h3_holdout_own_snapshot_2026-10-11.json",
@@ -130,6 +130,33 @@
    "verdict": "Development only (12 Oct): the rule fixed before the run chose the remaining-day model at THETA 0.10, +$2.17 per entry date (90% -8.49 to +15.69), 41 entries on 24 dates, -$97.34 without the best date; THETA 0.02 and 0.05 lost with intervals below zero; where the model was 0.10 or more above the market (1,218 bucket-decisions, 1 May - 9 Oct) it said 0.473, the market 0.247, and 0.295 won. Frozen as sdyes-v1; the development evidence leans against it.",
    "pending": {"part": "sdyes-v1 forward, in shadow", "test_from": "2026-10-13", "tools": "the evaluator of docs/SAME_DAY_YES_PREREG.md: decisions by live_reader.py in arrival mode at the table's instants 10-16h local, the frozen model data/models/sdyes/sdyes-v1_remaining.txt.gz, the minute books (focus_book), sdyes.walk_yes and sdyes.choose at THETA 0.10; first look at 20 valid settled dates, a second at 40, then stop"},
    "results": ["sdyes_dev_2026-10-12.json"]
+  },
+  {
+   "id": "v2_report_lag",
+   "question": "Does the remaining-day model whose rows count a station report 8 min after its reading (Aviation Weather's p90 receipt latency) instead of 20 min hit the venue's winning bucket more often and lose less log loss, on days it never saw?",
+   "rule_file": "tools/wxpredict/v2_eval.py",
+   "rule_marker": "v1 rows count a station report 20 min after its reading",
+   "scored": ["2026-09-15", "2026-10-11"],
+   "verdict": "Yes (12 Oct): 18,336 venue decisions, four weekly folds each fitted on the days before it. 09-16h local: hit 56.97% -> 59.19% (+2.2 points, 90% +1.7 to +2.8), log loss 1.0072 -> 0.9616 (-0.054 to -0.038); the market 65.98% and 0.8019. 15-16h: 81.19% -> 85.24% (+3.1 to +5.0 points); US (F) cities at 15-16h 71.50% -> 83.39%, the market 85.66%. 11-12h: hit +0.5 points (-0.7 to +1.8), log loss -0.029 (-0.043 to -0.015). The newest report the rows knew: 46 -> 31 min old at the median. Frozen as wxrd-v2 (data/models/wxrd).",
+   "results": ["report_lag_2026-10-12.json"]
+  },
+  {
+   "id": "same_day_forecast",
+   "question": "Does the newest forecast the platform had fetched by the decision (open_meteo_forecast, Sep 2026 on) improve the remaining-day model on days it never saw, (a) as features, (b) moving its forecast inputs by the revision?",
+   "rule_file": "tools/wxpredict/v2_eval.py",
+   "rule_marker": "the newest forecast the platform had fetched by the decision",
+   "scored": ["2026-09-15", "2026-10-11"],
+   "verdict": "No (12 Oct, on the v2 table, 18,337 venue decisions, each with a fetched forecast): (a) as features 09-16h hit 59.20% -> 59.21% (-0.6 to +0.6 points), log loss -0.0065 to +0.0076; (b) moving every forecast temperature input together (and the anomalies the other way) 59.20% -> 57.55% (-2.5 to -0.8 points), log loss +0.028 to +0.061, worse.",
+   "results": ["same_day_forecast_2026-10-12.json"]
+  },
+  {
+   "id": "report_latency_probe",
+   "question": "Data probe, no outcome scored: how long after its reading does a station report reach Aviation Weather?",
+   "rule_file": "tools/wxpredict/report_latency.py",
+   "rule_marker": "When does a station report reach a reader?",
+   "scored": [],
+   "verdict": "12 Oct, 400 reports of all 47 stations read 14:50-20:00Z: 4.47 min at the median, 6.22 p75, 8.35 p90, 13.27 p95 (the v2 table's 8 min is the p90); five hours of one day, to be re-measured from the minute poll.",
+   "results": ["report_latency_2026-10-12.json"]
   }
  ],
  "blind_elsewhere": [

@@ -1,0 +1,2848 @@
+{
+ "asked_at": "2026-10-12T20:12Z",
+ "source": "https://aviationweather.gov/api/data/metar",
+ "stations_asked": [
+  "CYYZ",
+  "EDDM",
+  "EFHK",
+  "EGLC",
+  "EHAM",
+  "EPWA",
+  "FACT",
+  "KATL",
+  "KAUS",
+  "KBKF",
+  "KDAL",
+  "KHOU",
+  "KLAX",
+  "KLGA",
+  "KMIA",
+  "KORD",
+  "KSEA",
+  "KSFO",
+  "LEMD",
+  "LFPB",
+  "LIMC",
+  "LLBG",
+  "LTAC",
+  "LTFM",
+  "MMMX",
+  "MPMG",
+  "NZWN",
+  "OEJN",
+  "OPKC",
+  "RJTT",
+  "RKPK",
+  "RKSI",
+  "RPLL",
+  "SAEZ",
+  "SBGR",
+  "UUWW",
+  "VILK",
+  "WMKK",
+  "WSSS",
+  "ZBAA",
+  "ZGGG",
+  "ZGSZ",
+  "ZHHH",
+  "ZSPD",
+  "ZSQD",
+  "ZUCK",
+  "ZUUU"
+ ],
+ "stations_answered": [
+  "CYYZ",
+  "EDDM",
+  "EFHK",
+  "EGLC",
+  "EHAM",
+  "EPWA",
+  "FACT",
+  "KATL",
+  "KAUS",
+  "KBKF",
+  "KDAL",
+  "KHOU",
+  "KLAX",
+  "KLGA",
+  "KMIA",
+  "KORD",
+  "KSEA",
+  "KSFO",
+  "LEMD",
+  "LFPB",
+  "LIMC",
+  "LLBG",
+  "LTAC",
+  "LTFM",
+  "MMMX",
+  "MPMG",
+  "NZWN",
+  "OEJN",
+  "OPKC",
+  "RJTT",
+  "RKPK",
+  "RKSI",
+  "RPLL",
+  "SAEZ",
+  "SBGR",
+  "UUWW",
+  "VILK",
+  "WMKK",
+  "WSSS",
+  "ZBAA",
+  "ZGGG",
+  "ZGSZ",
+  "ZHHH",
+  "ZSPD",
+  "ZSQD",
+  "ZUCK",
+  "ZUUU"
+ ],
+ "reports_read": [
+  "2026-10-12T14:50Z",
+  "2026-10-12T20:00Z"
+ ],
+ "summary": {
+  "all": {
+   "n": 400,
+   "p50": 4.47,
+   "p75": 6.22,
+   "p90": 8.35,
+   "p95": 13.27
+  },
+  "by_station": {
+   "CYYZ": {
+    "n": 7,
+    "p50": 8.25,
+    "p75": 8.33,
+    "p90": 8.37,
+    "p95": 8.37
+   },
+   "EDDM": {
+    "n": 10,
+    "p50": 3.46,
+    "p75": 3.52,
+    "p90": 3.65,
+    "p95": 3.65
+   },
+   "EFHK": {
+    "n": 10,
+    "p50": 6.16,
+    "p75": 6.42,
+    "p90": 6.72,
+    "p95": 6.72
+   },
+   "EGLC": {
+    "n": 11,
+    "p50": 4.23,
+    "p75": 4.26,
+    "p90": 4.26,
+    "p95": 4.43
+   },
+   "EHAM": {
+    "n": 11,
+    "p50": 2.28,
+    "p75": 2.32,
+    "p90": 2.37,
+    "p95": 2.38
+   },
+   "EPWA": {
+    "n": 11,
+    "p50": 2.33,
+    "p75": 2.36,
+    "p90": 2.42,
+    "p95": 6.25
+   },
+   "FACT": {
+    "n": 6,
+    "p50": 12.07,
+    "p75": 12.1,
+    "p90": 22.26,
+    "p95": 22.26
+   },
+   "KATL": {
+    "n": 6,
+    "p50": 4.59,
+    "p75": 4.6,
+    "p90": 4.66,
+    "p95": 4.66
+   },
+   "KAUS": {
+    "n": 6,
+    "p50": 3.72,
+    "p75": 3.75,
+    "p90": 5.9,
+    "p95": 5.9
+   },
+   "KBKF": {
+    "n": 6,
+    "p50": 14.07,
+    "p75": 14.08,
+    "p90": 20.13,
+    "p95": 20.13
+   },
+   "KDAL": {
+    "n": 8,
+    "p50": 3.75,
+    "p75": 4.79,
+    "p90": 5.86,
+    "p95": 5.86
+   },
+   "KHOU": {
+    "n": 5,
+    "p50": 3.87,
+    "p75": 5.25,
+    "p90": 5.79,
+    "p95": 5.79
+   },
+   "KLAX": {
+    "n": 6,
+    "p50": 3.92,
+    "p75": 5.75,
+    "p90": 47.44,
+    "p95": 47.44
+   },
+   "KLGA": {
+    "n": 6,
+    "p50": 3.14,
+    "p75": 3.15,
+    "p90": 3.19,
+    "p95": 3.19
+   },
+   "KMIA": {
+    "n": 6,
+    "p50": 3.81,
+    "p75": 3.84,
+    "p90": 5.84,
+    "p95": 5.84
+   },
+   "KORD": {
+    "n": 6,
+    "p50": 3.15,
+    "p75": 3.18,
+    "p90": 3.19,
+    "p95": 3.19
+   },
+   "KSEA": {
+    "n": 6,
+    "p50": 3.78,
+    "p75": 3.79,
+    "p90": 5.81,
+    "p95": 5.81
+   },
+   "KSFO": {
+    "n": 6,
+    "p50": 4.23,
+    "p75": 4.3,
+    "p90": 4.45,
+    "p95": 4.45
+   },
+   "LEMD": {
+    "n": 11,
+    "p50": 4.33,
+    "p75": 4.35,
+    "p90": 4.38,
+    "p95": 4.38
+   },
+   "LFPB": {
+    "n": 11,
+    "p50": 2.33,
+    "p75": 2.37,
+    "p90": 2.4,
+    "p95": 2.49
+   },
+   "LIMC": {
+    "n": 10,
+    "p50": 5.42,
+    "p75": 5.45,
+    "p90": 5.97,
+    "p95": 5.97
+   },
+   "LLBG": {
+    "n": 10,
+    "p50": 1.64,
+    "p75": 2.23,
+    "p90": 13.17,
+    "p95": 13.17
+   },
+   "LTAC": {
+    "n": 11,
+    "p50": 5.39,
+    "p75": 6.26,
+    "p90": 16.44,
+    "p95": 16.5
+   },
+   "LTFM": {
+    "n": 11,
+    "p50": 5.23,
+    "p75": 5.37,
+    "p90": 5.4,
+    "p95": 5.48
+   },
+   "MMMX": {
+    "n": 6,
+    "p50": 13.27,
+    "p75": 13.46,
+    "p90": 15.19,
+    "p95": 15.19
+   },
+   "MPMG": {
+    "n": 9,
+    "p50": 3.4,
+    "p75": 9.25,
+    "p90": 20.5,
+    "p95": 20.5
+   },
+   "NZWN": {
+    "n": 11,
+    "p50": 4.26,
+    "p75": 4.44,
+    "p90": 4.47,
+    "p95": 4.66
+   },
+   "OEJN": {
+    "n": 6,
+    "p50": 0.51,
+    "p75": 0.51,
+    "p90": 0.63,
+    "p95": 0.63
+   },
+   "OPKC": {
+    "n": 11,
+    "p50": 1.46,
+    "p75": 1.53,
+    "p90": 1.54,
+    "p95": 1.55
+   },
+   "RJTT": {
+    "n": 11,
+    "p50": 6.27,
+    "p75": 8.33,
+    "p90": 8.52,
+    "p95": 8.75
+   },
+   "RKPK": {
+    "n": 6,
+    "p50": 4.55,
+    "p75": 4.57,
+    "p90": 4.7,
+    "p95": 4.7
+   },
+   "RKSI": {
+    "n": 11,
+    "p50": 4.52,
+    "p75": 4.67,
+    "p90": 4.7,
+    "p95": 15.42
+   },
+   "RPLL": {
+    "n": 5,
+    "p50": 8.2,
+    "p75": 8.34,
+    "p90": 8.35,
+    "p95": 8.35
+   },
+   "SAEZ": {
+    "n": 6,
+    "p50": 4.13,
+    "p75": 4.14,
+    "p90": 4.14,
+    "p95": 4.14
+   },
+   "SBGR": {
+    "n": 7,
+    "p50": -0.77,
+    "p75": 1.41,
+    "p90": 3.1,
+    "p95": 3.1
+   },
+   "UUWW": {
+    "n": 11,
+    "p50": 6.32,
+    "p75": 6.36,
+    "p90": 6.41,
+    "p95": 6.42
+   },
+   "VILK": {
+    "n": 11,
+    "p50": 2.48,
+    "p75": 2.64,
+    "p90": 4.29,
+    "p95": 16.22
+   },
+   "WMKK": {
+    "n": 11,
+    "p50": 8.38,
+    "p75": 8.44,
+    "p90": 8.45,
+    "p95": 8.55
+   },
+   "WSSS": {
+    "n": 11,
+    "p50": 0.9,
+    "p75": 0.99,
+    "p90": 1.07,
+    "p95": 1.18
+   },
+   "ZBAA": {
+    "n": 18,
+    "p50": 6.23,
+    "p75": 11.07,
+    "p90": 21.05,
+    "p95": 21.18
+   },
+   "ZGGG": {
+    "n": 11,
+    "p50": 5.44,
+    "p75": 5.92,
+    "p90": 6.52,
+    "p95": 7.0
+   },
+   "ZGSZ": {
+    "n": 6,
+    "p50": 6.4,
+    "p75": 6.45,
+    "p90": 6.53,
+    "p95": 6.53
+   },
+   "ZHHH": {
+    "n": 6,
+    "p50": 6.41,
+    "p75": 6.47,
+    "p90": 6.54,
+    "p95": 6.54
+   },
+   "ZSPD": {
+    "n": 11,
+    "p50": 5.5,
+    "p75": 6.28,
+    "p90": 6.52,
+    "p95": 7.01
+   },
+   "ZSQD": {
+    "n": 6,
+    "p50": 8.31,
+    "p75": 20.82,
+    "p90": 20.97,
+    "p95": 20.97
+   },
+   "ZUCK": {
+    "n": 6,
+    "p50": 6.41,
+    "p75": 6.48,
+    "p90": 6.54,
+    "p95": 6.54
+   },
+   "ZUUU": {
+    "n": 6,
+    "p50": 6.41,
+    "p75": 6.46,
+    "p90": 6.54,
+    "p95": 6.54
+   }
+  }
+ },
+ "reports": [
+  {
+   "icao": "CYYZ",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:08:19Z",
+   "latency_min": 8.33
+  },
+  {
+   "icao": "CYYZ",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:08:17Z",
+   "latency_min": 8.28
+  },
+  {
+   "icao": "CYYZ",
+   "obs_time": "2026-10-12T16:37Z",
+   "receipt_time": "2026-10-12T16:39:04Z",
+   "latency_min": 2.07
+  },
+  {
+   "icao": "CYYZ",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:08:12Z",
+   "latency_min": 8.21
+  },
+  {
+   "icao": "CYYZ",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:08:10Z",
+   "latency_min": 8.18
+  },
+  {
+   "icao": "CYYZ",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:08:22Z",
+   "latency_min": 8.37
+  },
+  {
+   "icao": "CYYZ",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:08:14Z",
+   "latency_min": 8.25
+  },
+  {
+   "icao": "EDDM",
+   "obs_time": "2026-10-12T15:20Z",
+   "receipt_time": "2026-10-12T15:23:27Z",
+   "latency_min": 3.46
+  },
+  {
+   "icao": "EDDM",
+   "obs_time": "2026-10-12T15:50Z",
+   "receipt_time": "2026-10-12T15:53:30Z",
+   "latency_min": 3.5
+  },
+  {
+   "icao": "EDDM",
+   "obs_time": "2026-10-12T16:20Z",
+   "receipt_time": "2026-10-12T16:23:25Z",
+   "latency_min": 3.42
+  },
+  {
+   "icao": "EDDM",
+   "obs_time": "2026-10-12T16:50Z",
+   "receipt_time": "2026-10-12T16:53:20Z",
+   "latency_min": 3.34
+  },
+  {
+   "icao": "EDDM",
+   "obs_time": "2026-10-12T17:20Z",
+   "receipt_time": "2026-10-12T17:23:26Z",
+   "latency_min": 3.45
+  },
+  {
+   "icao": "EDDM",
+   "obs_time": "2026-10-12T17:50Z",
+   "receipt_time": "2026-10-12T17:53:20Z",
+   "latency_min": 3.34
+  },
+  {
+   "icao": "EDDM",
+   "obs_time": "2026-10-12T18:20Z",
+   "receipt_time": "2026-10-12T18:23:17Z",
+   "latency_min": 3.29
+  },
+  {
+   "icao": "EDDM",
+   "obs_time": "2026-10-12T18:50Z",
+   "receipt_time": "2026-10-12T18:53:30Z",
+   "latency_min": 3.52
+  },
+  {
+   "icao": "EDDM",
+   "obs_time": "2026-10-12T19:20Z",
+   "receipt_time": "2026-10-12T19:23:35Z",
+   "latency_min": 3.58
+  },
+  {
+   "icao": "EDDM",
+   "obs_time": "2026-10-12T19:50Z",
+   "receipt_time": "2026-10-12T19:53:38Z",
+   "latency_min": 3.65
+  },
+  {
+   "icao": "EFHK",
+   "obs_time": "2026-10-12T15:20Z",
+   "receipt_time": "2026-10-12T15:26:09Z",
+   "latency_min": 6.16
+  },
+  {
+   "icao": "EFHK",
+   "obs_time": "2026-10-12T15:50Z",
+   "receipt_time": "2026-10-12T15:56:23Z",
+   "latency_min": 6.39
+  },
+  {
+   "icao": "EFHK",
+   "obs_time": "2026-10-12T16:20Z",
+   "receipt_time": "2026-10-12T16:26:07Z",
+   "latency_min": 6.12
+  },
+  {
+   "icao": "EFHK",
+   "obs_time": "2026-10-12T16:50Z",
+   "receipt_time": "2026-10-12T16:51:27Z",
+   "latency_min": 1.46
+  },
+  {
+   "icao": "EFHK",
+   "obs_time": "2026-10-12T17:20Z",
+   "receipt_time": "2026-10-12T17:21:17Z",
+   "latency_min": 1.28
+  },
+  {
+   "icao": "EFHK",
+   "obs_time": "2026-10-12T17:50Z",
+   "receipt_time": "2026-10-12T17:56:43Z",
+   "latency_min": 6.72
+  },
+  {
+   "icao": "EFHK",
+   "obs_time": "2026-10-12T18:20Z",
+   "receipt_time": "2026-10-12T18:26:06Z",
+   "latency_min": 6.11
+  },
+  {
+   "icao": "EFHK",
+   "obs_time": "2026-10-12T18:50Z",
+   "receipt_time": "2026-10-12T18:56:25Z",
+   "latency_min": 6.42
+  },
+  {
+   "icao": "EFHK",
+   "obs_time": "2026-10-12T19:20Z",
+   "receipt_time": "2026-10-12T19:26:05Z",
+   "latency_min": 6.09
+  },
+  {
+   "icao": "EFHK",
+   "obs_time": "2026-10-12T19:50Z",
+   "receipt_time": "2026-10-12T19:56:36Z",
+   "latency_min": 6.61
+  },
+  {
+   "icao": "EGLC",
+   "obs_time": "2026-10-12T14:50Z",
+   "receipt_time": "2026-10-12T14:54:11Z",
+   "latency_min": 4.19
+  },
+  {
+   "icao": "EGLC",
+   "obs_time": "2026-10-12T15:20Z",
+   "receipt_time": "2026-10-12T15:24:12Z",
+   "latency_min": 4.21
+  },
+  {
+   "icao": "EGLC",
+   "obs_time": "2026-10-12T15:50Z",
+   "receipt_time": "2026-10-12T15:54:13Z",
+   "latency_min": 4.22
+  },
+  {
+   "icao": "EGLC",
+   "obs_time": "2026-10-12T16:20Z",
+   "receipt_time": "2026-10-12T16:24:15Z",
+   "latency_min": 4.25
+  },
+  {
+   "icao": "EGLC",
+   "obs_time": "2026-10-12T16:50Z",
+   "receipt_time": "2026-10-12T16:54:13Z",
+   "latency_min": 4.23
+  },
+  {
+   "icao": "EGLC",
+   "obs_time": "2026-10-12T17:20Z",
+   "receipt_time": "2026-10-12T17:24:07Z",
+   "latency_min": 4.13
+  },
+  {
+   "icao": "EGLC",
+   "obs_time": "2026-10-12T17:50Z",
+   "receipt_time": "2026-10-12T17:54:13Z",
+   "latency_min": 4.22
+  },
+  {
+   "icao": "EGLC",
+   "obs_time": "2026-10-12T18:20Z",
+   "receipt_time": "2026-10-12T18:24:15Z",
+   "latency_min": 4.26
+  },
+  {
+   "icao": "EGLC",
+   "obs_time": "2026-10-12T18:50Z",
+   "receipt_time": "2026-10-12T18:54:13Z",
+   "latency_min": 4.23
+  },
+  {
+   "icao": "EGLC",
+   "obs_time": "2026-10-12T19:20Z",
+   "receipt_time": "2026-10-12T19:24:15Z",
+   "latency_min": 4.26
+  },
+  {
+   "icao": "EGLC",
+   "obs_time": "2026-10-12T19:50Z",
+   "receipt_time": "2026-10-12T19:54:25Z",
+   "latency_min": 4.43
+  },
+  {
+   "icao": "EHAM",
+   "obs_time": "2026-10-12T14:55Z",
+   "receipt_time": "2026-10-12T14:57:12Z",
+   "latency_min": 2.21
+  },
+  {
+   "icao": "EHAM",
+   "obs_time": "2026-10-12T15:25Z",
+   "receipt_time": "2026-10-12T15:27:19Z",
+   "latency_min": 2.32
+  },
+  {
+   "icao": "EHAM",
+   "obs_time": "2026-10-12T15:55Z",
+   "receipt_time": "2026-10-12T15:57:22Z",
+   "latency_min": 2.37
+  },
+  {
+   "icao": "EHAM",
+   "obs_time": "2026-10-12T16:25Z",
+   "receipt_time": "2026-10-12T16:27:16Z",
+   "latency_min": 2.28
+  },
+  {
+   "icao": "EHAM",
+   "obs_time": "2026-10-12T16:55Z",
+   "receipt_time": "2026-10-12T16:57:13Z",
+   "latency_min": 2.23
+  },
+  {
+   "icao": "EHAM",
+   "obs_time": "2026-10-12T17:25Z",
+   "receipt_time": "2026-10-12T17:27:16Z",
+   "latency_min": 2.27
+  },
+  {
+   "icao": "EHAM",
+   "obs_time": "2026-10-12T17:55Z",
+   "receipt_time": "2026-10-12T17:57:13Z",
+   "latency_min": 2.22
+  },
+  {
+   "icao": "EHAM",
+   "obs_time": "2026-10-12T18:25Z",
+   "receipt_time": "2026-10-12T18:27:18Z",
+   "latency_min": 2.31
+  },
+  {
+   "icao": "EHAM",
+   "obs_time": "2026-10-12T18:55Z",
+   "receipt_time": "2026-10-12T18:57:15Z",
+   "latency_min": 2.26
+  },
+  {
+   "icao": "EHAM",
+   "obs_time": "2026-10-12T19:25Z",
+   "receipt_time": "2026-10-12T19:27:18Z",
+   "latency_min": 2.3
+  },
+  {
+   "icao": "EHAM",
+   "obs_time": "2026-10-12T19:55Z",
+   "receipt_time": "2026-10-12T19:57:22Z",
+   "latency_min": 2.38
+  },
+  {
+   "icao": "EPWA",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:02:20Z",
+   "latency_min": 2.35
+  },
+  {
+   "icao": "EPWA",
+   "obs_time": "2026-10-12T15:30Z",
+   "receipt_time": "2026-10-12T15:32:11Z",
+   "latency_min": 2.2
+  },
+  {
+   "icao": "EPWA",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:02:17Z",
+   "latency_min": 2.29
+  },
+  {
+   "icao": "EPWA",
+   "obs_time": "2026-10-12T16:30Z",
+   "receipt_time": "2026-10-12T16:32:19Z",
+   "latency_min": 2.33
+  },
+  {
+   "icao": "EPWA",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:02:19Z",
+   "latency_min": 2.32
+  },
+  {
+   "icao": "EPWA",
+   "obs_time": "2026-10-12T17:30Z",
+   "receipt_time": "2026-10-12T17:32:18Z",
+   "latency_min": 2.31
+  },
+  {
+   "icao": "EPWA",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:02:17Z",
+   "latency_min": 2.28
+  },
+  {
+   "icao": "EPWA",
+   "obs_time": "2026-10-12T18:30Z",
+   "receipt_time": "2026-10-12T18:32:21Z",
+   "latency_min": 2.36
+  },
+  {
+   "icao": "EPWA",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:02:24Z",
+   "latency_min": 2.42
+  },
+  {
+   "icao": "EPWA",
+   "obs_time": "2026-10-12T19:30Z",
+   "receipt_time": "2026-10-12T19:32:21Z",
+   "latency_min": 2.36
+  },
+  {
+   "icao": "EPWA",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:06:15Z",
+   "latency_min": 6.25
+  },
+  {
+   "icao": "FACT",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:05:16Z",
+   "latency_min": 5.28
+  },
+  {
+   "icao": "FACT",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:05:19Z",
+   "latency_min": 5.33
+  },
+  {
+   "icao": "FACT",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:12:05Z",
+   "latency_min": 12.1
+  },
+  {
+   "icao": "FACT",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:22:15Z",
+   "latency_min": 22.26
+  },
+  {
+   "icao": "FACT",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:12:04Z",
+   "latency_min": 12.07
+  },
+  {
+   "icao": "FACT",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:10:06Z",
+   "latency_min": 10.12
+  },
+  {
+   "icao": "KATL",
+   "obs_time": "2026-10-12T14:52Z",
+   "receipt_time": "2026-10-12T14:56:16Z",
+   "latency_min": 4.27
+  },
+  {
+   "icao": "KATL",
+   "obs_time": "2026-10-12T15:52Z",
+   "receipt_time": "2026-10-12T15:56:39Z",
+   "latency_min": 4.66
+  },
+  {
+   "icao": "KATL",
+   "obs_time": "2026-10-12T16:52Z",
+   "receipt_time": "2026-10-12T16:56:35Z",
+   "latency_min": 4.59
+  },
+  {
+   "icao": "KATL",
+   "obs_time": "2026-10-12T17:52Z",
+   "receipt_time": "2026-10-12T17:56:35Z",
+   "latency_min": 4.6
+  },
+  {
+   "icao": "KATL",
+   "obs_time": "2026-10-12T18:52Z",
+   "receipt_time": "2026-10-12T18:56:35Z",
+   "latency_min": 4.59
+  },
+  {
+   "icao": "KATL",
+   "obs_time": "2026-10-12T19:52Z",
+   "receipt_time": "2026-10-12T19:56:23Z",
+   "latency_min": 4.39
+  },
+  {
+   "icao": "KAUS",
+   "obs_time": "2026-10-12T14:53Z",
+   "receipt_time": "2026-10-12T14:58:54Z",
+   "latency_min": 5.9
+  },
+  {
+   "icao": "KAUS",
+   "obs_time": "2026-10-12T14:55Z",
+   "receipt_time": "2026-10-12T14:58:40Z",
+   "latency_min": 3.68
+  },
+  {
+   "icao": "KAUS",
+   "obs_time": "2026-10-12T15:53Z",
+   "receipt_time": "2026-10-12T15:56:37Z",
+   "latency_min": 3.63
+  },
+  {
+   "icao": "KAUS",
+   "obs_time": "2026-10-12T16:53Z",
+   "receipt_time": "2026-10-12T16:56:31Z",
+   "latency_min": 3.52
+  },
+  {
+   "icao": "KAUS",
+   "obs_time": "2026-10-12T17:53Z",
+   "receipt_time": "2026-10-12T17:56:45Z",
+   "latency_min": 3.75
+  },
+  {
+   "icao": "KAUS",
+   "obs_time": "2026-10-12T19:53Z",
+   "receipt_time": "2026-10-12T19:56:43Z",
+   "latency_min": 3.72
+  },
+  {
+   "icao": "KBKF",
+   "obs_time": "2026-10-12T14:58Z",
+   "receipt_time": "2026-10-12T15:08:15Z",
+   "latency_min": 10.26
+  },
+  {
+   "icao": "KBKF",
+   "obs_time": "2026-10-12T15:58Z",
+   "receipt_time": "2026-10-12T16:12:04Z",
+   "latency_min": 14.08
+  },
+  {
+   "icao": "KBKF",
+   "obs_time": "2026-10-12T16:58Z",
+   "receipt_time": "2026-10-12T17:12:03Z",
+   "latency_min": 14.07
+  },
+  {
+   "icao": "KBKF",
+   "obs_time": "2026-10-12T17:58Z",
+   "receipt_time": "2026-10-12T18:18:07Z",
+   "latency_min": 20.13
+  },
+  {
+   "icao": "KBKF",
+   "obs_time": "2026-10-12T18:58Z",
+   "receipt_time": "2026-10-12T19:08:16Z",
+   "latency_min": 10.28
+  },
+  {
+   "icao": "KBKF",
+   "obs_time": "2026-10-12T19:58Z",
+   "receipt_time": "2026-10-12T20:00:06Z",
+   "latency_min": 2.12
+  },
+  {
+   "icao": "KDAL",
+   "obs_time": "2026-10-12T14:53Z",
+   "receipt_time": "2026-10-12T14:58:51Z",
+   "latency_min": 5.86
+  },
+  {
+   "icao": "KDAL",
+   "obs_time": "2026-10-12T15:46Z",
+   "receipt_time": "2026-10-12T15:50:47Z",
+   "latency_min": 4.79
+  },
+  {
+   "icao": "KDAL",
+   "obs_time": "2026-10-12T15:53Z",
+   "receipt_time": "2026-10-12T15:56:41Z",
+   "latency_min": 3.7
+  },
+  {
+   "icao": "KDAL",
+   "obs_time": "2026-10-12T16:53Z",
+   "receipt_time": "2026-10-12T16:56:31Z",
+   "latency_min": 3.52
+  },
+  {
+   "icao": "KDAL",
+   "obs_time": "2026-10-12T17:14Z",
+   "receipt_time": "2026-10-12T17:18:09Z",
+   "latency_min": 4.16
+  },
+  {
+   "icao": "KDAL",
+   "obs_time": "2026-10-12T17:53Z",
+   "receipt_time": "2026-10-12T17:56:45Z",
+   "latency_min": 3.75
+  },
+  {
+   "icao": "KDAL",
+   "obs_time": "2026-10-12T18:53Z",
+   "receipt_time": "2026-10-12T18:56:42Z",
+   "latency_min": 3.71
+  },
+  {
+   "icao": "KDAL",
+   "obs_time": "2026-10-12T19:53Z",
+   "receipt_time": "2026-10-12T19:56:44Z",
+   "latency_min": 3.75
+  },
+  {
+   "icao": "KHOU",
+   "obs_time": "2026-10-12T14:53Z",
+   "receipt_time": "2026-10-12T14:58:47Z",
+   "latency_min": 5.79
+  },
+  {
+   "icao": "KHOU",
+   "obs_time": "2026-10-12T15:53Z",
+   "receipt_time": "2026-10-12T15:56:37Z",
+   "latency_min": 3.62
+  },
+  {
+   "icao": "KHOU",
+   "obs_time": "2026-10-12T16:53Z",
+   "receipt_time": "2026-10-12T16:56:37Z",
+   "latency_min": 3.63
+  },
+  {
+   "icao": "KHOU",
+   "obs_time": "2026-10-12T17:53Z",
+   "receipt_time": "2026-10-12T17:56:52Z",
+   "latency_min": 3.87
+  },
+  {
+   "icao": "KHOU",
+   "obs_time": "2026-10-12T19:53Z",
+   "receipt_time": "2026-10-12T19:58:14Z",
+   "latency_min": 5.25
+  },
+  {
+   "icao": "KLAX",
+   "obs_time": "2026-10-12T14:53Z",
+   "receipt_time": "2026-10-12T14:58:45Z",
+   "latency_min": 5.75
+  },
+  {
+   "icao": "KLAX",
+   "obs_time": "2026-10-12T15:53Z",
+   "receipt_time": "2026-10-12T16:40:26Z",
+   "latency_min": 47.44
+  },
+  {
+   "icao": "KLAX",
+   "obs_time": "2026-10-12T16:53Z",
+   "receipt_time": "2026-10-12T16:56:36Z",
+   "latency_min": 3.61
+  },
+  {
+   "icao": "KLAX",
+   "obs_time": "2026-10-12T17:53Z",
+   "receipt_time": "2026-10-12T17:56:55Z",
+   "latency_min": 3.92
+  },
+  {
+   "icao": "KLAX",
+   "obs_time": "2026-10-12T18:53Z",
+   "receipt_time": "2026-10-12T18:56:46Z",
+   "latency_min": 3.77
+  },
+  {
+   "icao": "KLAX",
+   "obs_time": "2026-10-12T19:53Z",
+   "receipt_time": "2026-10-12T19:56:49Z",
+   "latency_min": 3.83
+  },
+  {
+   "icao": "KLGA",
+   "obs_time": "2026-10-12T14:51Z",
+   "receipt_time": "2026-10-12T14:54:08Z",
+   "latency_min": 3.14
+  },
+  {
+   "icao": "KLGA",
+   "obs_time": "2026-10-12T15:51Z",
+   "receipt_time": "2026-10-12T15:54:05Z",
+   "latency_min": 3.09
+  },
+  {
+   "icao": "KLGA",
+   "obs_time": "2026-10-12T16:51Z",
+   "receipt_time": "2026-10-12T16:54:08Z",
+   "latency_min": 3.14
+  },
+  {
+   "icao": "KLGA",
+   "obs_time": "2026-10-12T17:51Z",
+   "receipt_time": "2026-10-12T17:54:11Z",
+   "latency_min": 3.19
+  },
+  {
+   "icao": "KLGA",
+   "obs_time": "2026-10-12T18:51Z",
+   "receipt_time": "2026-10-12T18:54:09Z",
+   "latency_min": 3.15
+  },
+  {
+   "icao": "KLGA",
+   "obs_time": "2026-10-12T19:51Z",
+   "receipt_time": "2026-10-12T19:54:06Z",
+   "latency_min": 3.12
+  },
+  {
+   "icao": "KMIA",
+   "obs_time": "2026-10-12T14:53Z",
+   "receipt_time": "2026-10-12T14:58:50Z",
+   "latency_min": 5.84
+  },
+  {
+   "icao": "KMIA",
+   "obs_time": "2026-10-12T15:53Z",
+   "receipt_time": "2026-10-12T15:56:42Z",
+   "latency_min": 3.71
+  },
+  {
+   "icao": "KMIA",
+   "obs_time": "2026-10-12T16:53Z",
+   "receipt_time": "2026-10-12T16:56:41Z",
+   "latency_min": 3.69
+  },
+  {
+   "icao": "KMIA",
+   "obs_time": "2026-10-12T17:53Z",
+   "receipt_time": "2026-10-12T17:56:50Z",
+   "latency_min": 3.84
+  },
+  {
+   "icao": "KMIA",
+   "obs_time": "2026-10-12T18:53Z",
+   "receipt_time": "2026-10-12T18:56:46Z",
+   "latency_min": 3.78
+  },
+  {
+   "icao": "KMIA",
+   "obs_time": "2026-10-12T19:53Z",
+   "receipt_time": "2026-10-12T19:56:48Z",
+   "latency_min": 3.81
+  },
+  {
+   "icao": "KORD",
+   "obs_time": "2026-10-12T14:51Z",
+   "receipt_time": "2026-10-12T14:54:10Z",
+   "latency_min": 3.18
+  },
+  {
+   "icao": "KORD",
+   "obs_time": "2026-10-12T15:51Z",
+   "receipt_time": "2026-10-12T15:54:05Z",
+   "latency_min": 3.1
+  },
+  {
+   "icao": "KORD",
+   "obs_time": "2026-10-12T16:51Z",
+   "receipt_time": "2026-10-12T16:54:07Z",
+   "latency_min": 3.13
+  },
+  {
+   "icao": "KORD",
+   "obs_time": "2026-10-12T17:51Z",
+   "receipt_time": "2026-10-12T17:54:11Z",
+   "latency_min": 3.19
+  },
+  {
+   "icao": "KORD",
+   "obs_time": "2026-10-12T18:51Z",
+   "receipt_time": "2026-10-12T18:54:09Z",
+   "latency_min": 3.15
+  },
+  {
+   "icao": "KORD",
+   "obs_time": "2026-10-12T19:51Z",
+   "receipt_time": "2026-10-12T19:54:07Z",
+   "latency_min": 3.12
+  },
+  {
+   "icao": "KSEA",
+   "obs_time": "2026-10-12T14:53Z",
+   "receipt_time": "2026-10-12T14:58:48Z",
+   "latency_min": 5.81
+  },
+  {
+   "icao": "KSEA",
+   "obs_time": "2026-10-12T15:53Z",
+   "receipt_time": "2026-10-12T15:56:43Z",
+   "latency_min": 3.73
+  },
+  {
+   "icao": "KSEA",
+   "obs_time": "2026-10-12T16:53Z",
+   "receipt_time": "2026-10-12T16:56:36Z",
+   "latency_min": 3.61
+  },
+  {
+   "icao": "KSEA",
+   "obs_time": "2026-10-12T17:53Z",
+   "receipt_time": "2026-10-12T17:56:47Z",
+   "latency_min": 3.79
+  },
+  {
+   "icao": "KSEA",
+   "obs_time": "2026-10-12T18:53Z",
+   "receipt_time": "2026-10-12T18:56:21Z",
+   "latency_min": 3.36
+  },
+  {
+   "icao": "KSEA",
+   "obs_time": "2026-10-12T19:53Z",
+   "receipt_time": "2026-10-12T19:56:46Z",
+   "latency_min": 3.78
+  },
+  {
+   "icao": "KSFO",
+   "obs_time": "2026-10-12T14:56Z",
+   "receipt_time": "2026-10-12T15:00:09Z",
+   "latency_min": 4.15
+  },
+  {
+   "icao": "KSFO",
+   "obs_time": "2026-10-12T15:56Z",
+   "receipt_time": "2026-10-12T16:00:12Z",
+   "latency_min": 4.2
+  },
+  {
+   "icao": "KSFO",
+   "obs_time": "2026-10-12T16:56Z",
+   "receipt_time": "2026-10-12T17:00:27Z",
+   "latency_min": 4.45
+  },
+  {
+   "icao": "KSFO",
+   "obs_time": "2026-10-12T17:56Z",
+   "receipt_time": "2026-10-12T18:00:13Z",
+   "latency_min": 4.23
+  },
+  {
+   "icao": "KSFO",
+   "obs_time": "2026-10-12T18:56Z",
+   "receipt_time": "2026-10-12T19:00:18Z",
+   "latency_min": 4.3
+  },
+  {
+   "icao": "KSFO",
+   "obs_time": "2026-10-12T19:56Z",
+   "receipt_time": "2026-10-12T20:00:06Z",
+   "latency_min": 4.11
+  },
+  {
+   "icao": "LEMD",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:04:20Z",
+   "latency_min": 4.34
+  },
+  {
+   "icao": "LEMD",
+   "obs_time": "2026-10-12T15:30Z",
+   "receipt_time": "2026-10-12T15:34:21Z",
+   "latency_min": 4.35
+  },
+  {
+   "icao": "LEMD",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:04:17Z",
+   "latency_min": 4.29
+  },
+  {
+   "icao": "LEMD",
+   "obs_time": "2026-10-12T16:30Z",
+   "receipt_time": "2026-10-12T16:34:20Z",
+   "latency_min": 4.34
+  },
+  {
+   "icao": "LEMD",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:04:11Z",
+   "latency_min": 4.2
+  },
+  {
+   "icao": "LEMD",
+   "obs_time": "2026-10-12T17:30Z",
+   "receipt_time": "2026-10-12T17:34:19Z",
+   "latency_min": 4.32
+  },
+  {
+   "icao": "LEMD",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:04:15Z",
+   "latency_min": 4.26
+  },
+  {
+   "icao": "LEMD",
+   "obs_time": "2026-10-12T18:30Z",
+   "receipt_time": "2026-10-12T18:34:23Z",
+   "latency_min": 4.38
+  },
+  {
+   "icao": "LEMD",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:04:19Z",
+   "latency_min": 4.32
+  },
+  {
+   "icao": "LEMD",
+   "obs_time": "2026-10-12T19:30Z",
+   "receipt_time": "2026-10-12T19:34:22Z",
+   "latency_min": 4.38
+  },
+  {
+   "icao": "LEMD",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:04:19Z",
+   "latency_min": 4.33
+  },
+  {
+   "icao": "LFPB",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:02:20Z",
+   "latency_min": 2.33
+  },
+  {
+   "icao": "LFPB",
+   "obs_time": "2026-10-12T15:30Z",
+   "receipt_time": "2026-10-12T15:32:24Z",
+   "latency_min": 2.4
+  },
+  {
+   "icao": "LFPB",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:02:17Z",
+   "latency_min": 2.29
+  },
+  {
+   "icao": "LFPB",
+   "obs_time": "2026-10-12T16:30Z",
+   "receipt_time": "2026-10-12T16:32:18Z",
+   "latency_min": 2.31
+  },
+  {
+   "icao": "LFPB",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:02:21Z",
+   "latency_min": 2.37
+  },
+  {
+   "icao": "LFPB",
+   "obs_time": "2026-10-12T17:30Z",
+   "receipt_time": "2026-10-12T17:32:21Z",
+   "latency_min": 2.36
+  },
+  {
+   "icao": "LFPB",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:02:17Z",
+   "latency_min": 2.29
+  },
+  {
+   "icao": "LFPB",
+   "obs_time": "2026-10-12T18:30Z",
+   "receipt_time": "2026-10-12T18:32:22Z",
+   "latency_min": 2.37
+  },
+  {
+   "icao": "LFPB",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:02:17Z",
+   "latency_min": 2.28
+  },
+  {
+   "icao": "LFPB",
+   "obs_time": "2026-10-12T19:30Z",
+   "receipt_time": "2026-10-12T19:32:29Z",
+   "latency_min": 2.49
+  },
+  {
+   "icao": "LFPB",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:02:15Z",
+   "latency_min": 2.26
+  },
+  {
+   "icao": "LIMC",
+   "obs_time": "2026-10-12T15:20Z",
+   "receipt_time": "2026-10-12T15:25:41Z",
+   "latency_min": 5.69
+  },
+  {
+   "icao": "LIMC",
+   "obs_time": "2026-10-12T15:50Z",
+   "receipt_time": "2026-10-12T15:55:26Z",
+   "latency_min": 5.45
+  },
+  {
+   "icao": "LIMC",
+   "obs_time": "2026-10-12T16:20Z",
+   "receipt_time": "2026-10-12T16:25:22Z",
+   "latency_min": 5.38
+  },
+  {
+   "icao": "LIMC",
+   "obs_time": "2026-10-12T16:50Z",
+   "receipt_time": "2026-10-12T16:55:25Z",
+   "latency_min": 5.42
+  },
+  {
+   "icao": "LIMC",
+   "obs_time": "2026-10-12T17:20Z",
+   "receipt_time": "2026-10-12T17:25:57Z",
+   "latency_min": 5.97
+  },
+  {
+   "icao": "LIMC",
+   "obs_time": "2026-10-12T17:50Z",
+   "receipt_time": "2026-10-12T17:55:26Z",
+   "latency_min": 5.44
+  },
+  {
+   "icao": "LIMC",
+   "obs_time": "2026-10-12T18:20Z",
+   "receipt_time": "2026-10-12T18:25:15Z",
+   "latency_min": 5.25
+  },
+  {
+   "icao": "LIMC",
+   "obs_time": "2026-10-12T18:50Z",
+   "receipt_time": "2026-10-12T18:55:15Z",
+   "latency_min": 5.26
+  },
+  {
+   "icao": "LIMC",
+   "obs_time": "2026-10-12T19:20Z",
+   "receipt_time": "2026-10-12T19:25:21Z",
+   "latency_min": 5.36
+  },
+  {
+   "icao": "LIMC",
+   "obs_time": "2026-10-12T19:50Z",
+   "receipt_time": "2026-10-12T19:55:20Z",
+   "latency_min": 5.35
+  },
+  {
+   "icao": "LLBG",
+   "obs_time": "2026-10-12T15:20Z",
+   "receipt_time": "2026-10-12T15:22:25Z",
+   "latency_min": 2.42
+  },
+  {
+   "icao": "LLBG",
+   "obs_time": "2026-10-12T15:50Z",
+   "receipt_time": "2026-10-12T15:51:00Z",
+   "latency_min": 1.01
+  },
+  {
+   "icao": "LLBG",
+   "obs_time": "2026-10-12T16:20Z",
+   "receipt_time": "2026-10-12T16:20:40Z",
+   "latency_min": 0.67
+  },
+  {
+   "icao": "LLBG",
+   "obs_time": "2026-10-12T16:50Z",
+   "receipt_time": "2026-10-12T16:50:11Z",
+   "latency_min": 0.18
+  },
+  {
+   "icao": "LLBG",
+   "obs_time": "2026-10-12T17:20Z",
+   "receipt_time": "2026-10-12T17:22:13Z",
+   "latency_min": 2.23
+  },
+  {
+   "icao": "LLBG",
+   "obs_time": "2026-10-12T17:50Z",
+   "receipt_time": "2026-10-12T17:50:41Z",
+   "latency_min": 0.69
+  },
+  {
+   "icao": "LLBG",
+   "obs_time": "2026-10-12T18:20Z",
+   "receipt_time": "2026-10-12T18:33:10Z",
+   "latency_min": 13.17
+  },
+  {
+   "icao": "LLBG",
+   "obs_time": "2026-10-12T18:50Z",
+   "receipt_time": "2026-10-12T18:51:11Z",
+   "latency_min": 1.19
+  },
+  {
+   "icao": "LLBG",
+   "obs_time": "2026-10-12T19:20Z",
+   "receipt_time": "2026-10-12T19:21:38Z",
+   "latency_min": 1.64
+  },
+  {
+   "icao": "LLBG",
+   "obs_time": "2026-10-12T19:50Z",
+   "receipt_time": "2026-10-12T19:51:40Z",
+   "latency_min": 1.67
+  },
+  {
+   "icao": "LTAC",
+   "obs_time": "2026-10-12T15:06Z",
+   "receipt_time": "2026-10-12T15:08:20Z",
+   "latency_min": 2.34
+  },
+  {
+   "icao": "LTAC",
+   "obs_time": "2026-10-12T15:20Z",
+   "receipt_time": "2026-10-12T15:25:28Z",
+   "latency_min": 5.47
+  },
+  {
+   "icao": "LTAC",
+   "obs_time": "2026-10-12T15:50Z",
+   "receipt_time": "2026-10-12T15:55:12Z",
+   "latency_min": 5.2
+  },
+  {
+   "icao": "LTAC",
+   "obs_time": "2026-10-12T16:20Z",
+   "receipt_time": "2026-10-12T16:25:23Z",
+   "latency_min": 5.39
+  },
+  {
+   "icao": "LTAC",
+   "obs_time": "2026-10-12T16:50Z",
+   "receipt_time": "2026-10-12T16:55:11Z",
+   "latency_min": 5.18
+  },
+  {
+   "icao": "LTAC",
+   "obs_time": "2026-10-12T17:20Z",
+   "receipt_time": "2026-10-12T17:26:15Z",
+   "latency_min": 6.26
+  },
+  {
+   "icao": "LTAC",
+   "obs_time": "2026-10-12T17:50Z",
+   "receipt_time": "2026-10-12T18:06:30Z",
+   "latency_min": 16.5
+  },
+  {
+   "icao": "LTAC",
+   "obs_time": "2026-10-12T18:20Z",
+   "receipt_time": "2026-10-12T18:25:06Z",
+   "latency_min": 5.11
+  },
+  {
+   "icao": "LTAC",
+   "obs_time": "2026-10-12T18:50Z",
+   "receipt_time": "2026-10-12T18:55:09Z",
+   "latency_min": 5.17
+  },
+  {
+   "icao": "LTAC",
+   "obs_time": "2026-10-12T19:20Z",
+   "receipt_time": "2026-10-12T19:26:12Z",
+   "latency_min": 6.22
+  },
+  {
+   "icao": "LTAC",
+   "obs_time": "2026-10-12T19:50Z",
+   "receipt_time": "2026-10-12T20:06:26Z",
+   "latency_min": 16.44
+  },
+  {
+   "icao": "LTFM",
+   "obs_time": "2026-10-12T14:50Z",
+   "receipt_time": "2026-10-12T14:55:15Z",
+   "latency_min": 5.25
+  },
+  {
+   "icao": "LTFM",
+   "obs_time": "2026-10-12T15:20Z",
+   "receipt_time": "2026-10-12T15:25:28Z",
+   "latency_min": 5.48
+  },
+  {
+   "icao": "LTFM",
+   "obs_time": "2026-10-12T15:50Z",
+   "receipt_time": "2026-10-12T15:55:12Z",
+   "latency_min": 5.21
+  },
+  {
+   "icao": "LTFM",
+   "obs_time": "2026-10-12T16:20Z",
+   "receipt_time": "2026-10-12T16:25:23Z",
+   "latency_min": 5.4
+  },
+  {
+   "icao": "LTFM",
+   "obs_time": "2026-10-12T16:50Z",
+   "receipt_time": "2026-10-12T16:55:11Z",
+   "latency_min": 5.19
+  },
+  {
+   "icao": "LTFM",
+   "obs_time": "2026-10-12T17:20Z",
+   "receipt_time": "2026-10-12T17:25:13Z",
+   "latency_min": 5.23
+  },
+  {
+   "icao": "LTFM",
+   "obs_time": "2026-10-12T17:50Z",
+   "receipt_time": "2026-10-12T17:55:14Z",
+   "latency_min": 5.23
+  },
+  {
+   "icao": "LTFM",
+   "obs_time": "2026-10-12T18:20Z",
+   "receipt_time": "2026-10-12T18:25:07Z",
+   "latency_min": 5.12
+  },
+  {
+   "icao": "LTFM",
+   "obs_time": "2026-10-12T18:50Z",
+   "receipt_time": "2026-10-12T18:55:10Z",
+   "latency_min": 5.18
+  },
+  {
+   "icao": "LTFM",
+   "obs_time": "2026-10-12T19:20Z",
+   "receipt_time": "2026-10-12T19:25:20Z",
+   "latency_min": 5.34
+  },
+  {
+   "icao": "LTFM",
+   "obs_time": "2026-10-12T19:50Z",
+   "receipt_time": "2026-10-12T19:55:21Z",
+   "latency_min": 5.37
+  },
+  {
+   "icao": "MMMX",
+   "obs_time": "2026-10-12T15:55Z",
+   "receipt_time": "2026-10-12T16:00:21Z",
+   "latency_min": 5.36
+  },
+  {
+   "icao": "MMMX",
+   "obs_time": "2026-10-12T16:33Z",
+   "receipt_time": "2026-10-12T16:35:03Z",
+   "latency_min": 2.06
+  },
+  {
+   "icao": "MMMX",
+   "obs_time": "2026-10-12T16:47Z",
+   "receipt_time": "2026-10-12T17:00:27Z",
+   "latency_min": 13.46
+  },
+  {
+   "icao": "MMMX",
+   "obs_time": "2026-10-12T17:50Z",
+   "receipt_time": "2026-10-12T18:00:16Z",
+   "latency_min": 10.28
+  },
+  {
+   "icao": "MMMX",
+   "obs_time": "2026-10-12T18:47Z",
+   "receipt_time": "2026-10-12T19:00:16Z",
+   "latency_min": 13.27
+  },
+  {
+   "icao": "MMMX",
+   "obs_time": "2026-10-12T19:45Z",
+   "receipt_time": "2026-10-12T20:00:11Z",
+   "latency_min": 15.19
+  },
+  {
+   "icao": "MPMG",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:03:06Z",
+   "latency_min": 3.1
+  },
+  {
+   "icao": "MPMG",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:16:44Z",
+   "latency_min": 16.75
+  },
+  {
+   "icao": "MPMG",
+   "obs_time": "2026-10-12T16:38Z",
+   "receipt_time": "2026-10-12T16:58:30Z",
+   "latency_min": 20.5
+  },
+  {
+   "icao": "MPMG",
+   "obs_time": "2026-10-12T17:16Z",
+   "receipt_time": "2026-10-12T17:19:04Z",
+   "latency_min": 3.07
+  },
+  {
+   "icao": "MPMG",
+   "obs_time": "2026-10-12T17:32Z",
+   "receipt_time": "2026-10-12T17:39:10Z",
+   "latency_min": 7.17
+  },
+  {
+   "icao": "MPMG",
+   "obs_time": "2026-10-12T17:52Z",
+   "receipt_time": "2026-10-12T18:01:14Z",
+   "latency_min": 9.25
+  },
+  {
+   "icao": "MPMG",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:01:34Z",
+   "latency_min": 1.57
+  },
+  {
+   "icao": "MPMG",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:03:23Z",
+   "latency_min": 3.4
+  },
+  {
+   "icao": "MPMG",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T19:58:01Z",
+   "latency_min": -1.97
+  },
+  {
+   "icao": "NZWN",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:04:13Z",
+   "latency_min": 4.23
+  },
+  {
+   "icao": "NZWN",
+   "obs_time": "2026-10-12T15:30Z",
+   "receipt_time": "2026-10-12T15:34:15Z",
+   "latency_min": 4.26
+  },
+  {
+   "icao": "NZWN",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:04:22Z",
+   "latency_min": 4.37
+  },
+  {
+   "icao": "NZWN",
+   "obs_time": "2026-10-12T16:30Z",
+   "receipt_time": "2026-10-12T16:34:15Z",
+   "latency_min": 4.26
+  },
+  {
+   "icao": "NZWN",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:04:14Z",
+   "latency_min": 4.25
+  },
+  {
+   "icao": "NZWN",
+   "obs_time": "2026-10-12T17:30Z",
+   "receipt_time": "2026-10-12T17:34:10Z",
+   "latency_min": 4.17
+  },
+  {
+   "icao": "NZWN",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:04:28Z",
+   "latency_min": 4.47
+  },
+  {
+   "icao": "NZWN",
+   "obs_time": "2026-10-12T18:30Z",
+   "receipt_time": "2026-10-12T18:34:15Z",
+   "latency_min": 4.26
+  },
+  {
+   "icao": "NZWN",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:04:26Z",
+   "latency_min": 4.44
+  },
+  {
+   "icao": "NZWN",
+   "obs_time": "2026-10-12T19:30Z",
+   "receipt_time": "2026-10-12T19:34:39Z",
+   "latency_min": 4.66
+  },
+  {
+   "icao": "NZWN",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:04:07Z",
+   "latency_min": 4.12
+  },
+  {
+   "icao": "OEJN",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:00:25Z",
+   "latency_min": 0.42
+  },
+  {
+   "icao": "OEJN",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:00:30Z",
+   "latency_min": 0.51
+  },
+  {
+   "icao": "OEJN",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:00:37Z",
+   "latency_min": 0.63
+  },
+  {
+   "icao": "OEJN",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:00:30Z",
+   "latency_min": 0.51
+  },
+  {
+   "icao": "OEJN",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:00:23Z",
+   "latency_min": 0.39
+  },
+  {
+   "icao": "OEJN",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:00:19Z",
+   "latency_min": 0.32
+  },
+  {
+   "icao": "OPKC",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:01:32Z",
+   "latency_min": 1.55
+  },
+  {
+   "icao": "OPKC",
+   "obs_time": "2026-10-12T15:30Z",
+   "receipt_time": "2026-10-12T15:31:27Z",
+   "latency_min": 1.46
+  },
+  {
+   "icao": "OPKC",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:01:31Z",
+   "latency_min": 1.53
+  },
+  {
+   "icao": "OPKC",
+   "obs_time": "2026-10-12T16:30Z",
+   "receipt_time": "2026-10-12T16:31:17Z",
+   "latency_min": 1.29
+  },
+  {
+   "icao": "OPKC",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:01:21Z",
+   "latency_min": 1.36
+  },
+  {
+   "icao": "OPKC",
+   "obs_time": "2026-10-12T17:30Z",
+   "receipt_time": "2026-10-12T17:31:31Z",
+   "latency_min": 1.52
+  },
+  {
+   "icao": "OPKC",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:01:25Z",
+   "latency_min": 1.42
+  },
+  {
+   "icao": "OPKC",
+   "obs_time": "2026-10-12T18:30Z",
+   "receipt_time": "2026-10-12T18:31:27Z",
+   "latency_min": 1.46
+  },
+  {
+   "icao": "OPKC",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:01:32Z",
+   "latency_min": 1.54
+  },
+  {
+   "icao": "OPKC",
+   "obs_time": "2026-10-12T19:30Z",
+   "receipt_time": "2026-10-12T19:31:28Z",
+   "latency_min": 1.48
+  },
+  {
+   "icao": "OPKC",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:01:26Z",
+   "latency_min": 1.44
+  },
+  {
+   "icao": "RJTT",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:05:27Z",
+   "latency_min": 5.46
+  },
+  {
+   "icao": "RJTT",
+   "obs_time": "2026-10-12T15:30Z",
+   "receipt_time": "2026-10-12T15:38:19Z",
+   "latency_min": 8.33
+  },
+  {
+   "icao": "RJTT",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:05:55Z",
+   "latency_min": 5.92
+  },
+  {
+   "icao": "RJTT",
+   "obs_time": "2026-10-12T16:30Z",
+   "receipt_time": "2026-10-12T16:38:31Z",
+   "latency_min": 8.52
+  },
+  {
+   "icao": "RJTT",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:05:45Z",
+   "latency_min": 5.76
+  },
+  {
+   "icao": "RJTT",
+   "obs_time": "2026-10-12T17:30Z",
+   "receipt_time": "2026-10-12T17:38:44Z",
+   "latency_min": 8.75
+  },
+  {
+   "icao": "RJTT",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:05:28Z",
+   "latency_min": 5.48
+  },
+  {
+   "icao": "RJTT",
+   "obs_time": "2026-10-12T18:30Z",
+   "receipt_time": "2026-10-12T18:38:04Z",
+   "latency_min": 8.08
+  },
+  {
+   "icao": "RJTT",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:05:39Z",
+   "latency_min": 5.65
+  },
+  {
+   "icao": "RJTT",
+   "obs_time": "2026-10-12T19:30Z",
+   "receipt_time": "2026-10-12T19:37:57Z",
+   "latency_min": 7.95
+  },
+  {
+   "icao": "RJTT",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:06:16Z",
+   "latency_min": 6.27
+  },
+  {
+   "icao": "RKPK",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:04:33Z",
+   "latency_min": 4.55
+  },
+  {
+   "icao": "RKPK",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:04:41Z",
+   "latency_min": 4.7
+  },
+  {
+   "icao": "RKPK",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:04:23Z",
+   "latency_min": 4.4
+  },
+  {
+   "icao": "RKPK",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:04:34Z",
+   "latency_min": 4.57
+  },
+  {
+   "icao": "RKPK",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:04:26Z",
+   "latency_min": 4.45
+  },
+  {
+   "icao": "RKPK",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:04:23Z",
+   "latency_min": 4.4
+  },
+  {
+   "icao": "RKSI",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:04:32Z",
+   "latency_min": 4.55
+  },
+  {
+   "icao": "RKSI",
+   "obs_time": "2026-10-12T15:30Z",
+   "receipt_time": "2026-10-12T15:34:31Z",
+   "latency_min": 4.52
+  },
+  {
+   "icao": "RKSI",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:04:41Z",
+   "latency_min": 4.7
+  },
+  {
+   "icao": "RKSI",
+   "obs_time": "2026-10-12T16:30Z",
+   "receipt_time": "2026-10-12T16:34:28Z",
+   "latency_min": 4.48
+  },
+  {
+   "icao": "RKSI",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:04:23Z",
+   "latency_min": 4.4
+  },
+  {
+   "icao": "RKSI",
+   "obs_time": "2026-10-12T17:30Z",
+   "receipt_time": "2026-10-12T17:34:39Z",
+   "latency_min": 4.67
+  },
+  {
+   "icao": "RKSI",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:04:34Z",
+   "latency_min": 4.57
+  },
+  {
+   "icao": "RKSI",
+   "obs_time": "2026-10-12T18:30Z",
+   "receipt_time": "2026-10-12T18:34:24Z",
+   "latency_min": 4.4
+  },
+  {
+   "icao": "RKSI",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:15:25Z",
+   "latency_min": 15.42
+  },
+  {
+   "icao": "RKSI",
+   "obs_time": "2026-10-12T19:30Z",
+   "receipt_time": "2026-10-12T19:34:30Z",
+   "latency_min": 4.51
+  },
+  {
+   "icao": "RKSI",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:04:23Z",
+   "latency_min": 4.4
+  },
+  {
+   "icao": "RPLL",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:08:20Z",
+   "latency_min": 8.34
+  },
+  {
+   "icao": "RPLL",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:06:30Z",
+   "latency_min": 6.51
+  },
+  {
+   "icao": "RPLL",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:08:11Z",
+   "latency_min": 8.2
+  },
+  {
+   "icao": "RPLL",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:06:33Z",
+   "latency_min": 6.55
+  },
+  {
+   "icao": "RPLL",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:08:21Z",
+   "latency_min": 8.35
+  },
+  {
+   "icao": "SAEZ",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:04:07Z",
+   "latency_min": 4.12
+  },
+  {
+   "icao": "SAEZ",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:04:08Z",
+   "latency_min": 4.14
+  },
+  {
+   "icao": "SAEZ",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:04:03Z",
+   "latency_min": 4.05
+  },
+  {
+   "icao": "SAEZ",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:04:08Z",
+   "latency_min": 4.14
+  },
+  {
+   "icao": "SAEZ",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:04:07Z",
+   "latency_min": 4.13
+  },
+  {
+   "icao": "SAEZ",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:04:04Z",
+   "latency_min": 4.07
+  },
+  {
+   "icao": "SBGR",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:00:23Z",
+   "latency_min": 0.38
+  },
+  {
+   "icao": "SBGR",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T15:59:13Z",
+   "latency_min": -0.77
+  },
+  {
+   "icao": "SBGR",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T16:58:00Z",
+   "latency_min": -1.99
+  },
+  {
+   "icao": "SBGR",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:01:24Z",
+   "latency_min": 1.41
+  },
+  {
+   "icao": "SBGR",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T18:58:36Z",
+   "latency_min": -1.39
+  },
+  {
+   "icao": "SBGR",
+   "obs_time": "2026-10-12T19:25Z",
+   "receipt_time": "2026-10-12T19:28:06Z",
+   "latency_min": 3.1
+  },
+  {
+   "icao": "SBGR",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T19:55:22Z",
+   "latency_min": -4.63
+  },
+  {
+   "icao": "UUWW",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:06:20Z",
+   "latency_min": 6.34
+  },
+  {
+   "icao": "UUWW",
+   "obs_time": "2026-10-12T15:30Z",
+   "receipt_time": "2026-10-12T15:36:18Z",
+   "latency_min": 6.32
+  },
+  {
+   "icao": "UUWW",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:06:17Z",
+   "latency_min": 6.29
+  },
+  {
+   "icao": "UUWW",
+   "obs_time": "2026-10-12T16:30Z",
+   "receipt_time": "2026-10-12T16:36:21Z",
+   "latency_min": 6.35
+  },
+  {
+   "icao": "UUWW",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:06:18Z",
+   "latency_min": 6.31
+  },
+  {
+   "icao": "UUWW",
+   "obs_time": "2026-10-12T17:30Z",
+   "receipt_time": "2026-10-12T17:36:19Z",
+   "latency_min": 6.32
+  },
+  {
+   "icao": "UUWW",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:06:24Z",
+   "latency_min": 6.42
+  },
+  {
+   "icao": "UUWW",
+   "obs_time": "2026-10-12T18:30Z",
+   "receipt_time": "2026-10-12T18:36:19Z",
+   "latency_min": 6.32
+  },
+  {
+   "icao": "UUWW",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:06:21Z",
+   "latency_min": 6.36
+  },
+  {
+   "icao": "UUWW",
+   "obs_time": "2026-10-12T19:30Z",
+   "receipt_time": "2026-10-12T19:36:19Z",
+   "latency_min": 6.32
+  },
+  {
+   "icao": "UUWW",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:06:24Z",
+   "latency_min": 6.41
+  },
+  {
+   "icao": "VILK",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:02:32Z",
+   "latency_min": 2.54
+  },
+  {
+   "icao": "VILK",
+   "obs_time": "2026-10-12T15:30Z",
+   "receipt_time": "2026-10-12T15:32:15Z",
+   "latency_min": 2.25
+  },
+  {
+   "icao": "VILK",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:04:17Z",
+   "latency_min": 4.29
+  },
+  {
+   "icao": "VILK",
+   "obs_time": "2026-10-12T16:30Z",
+   "receipt_time": "2026-10-12T16:32:28Z",
+   "latency_min": 2.47
+  },
+  {
+   "icao": "VILK",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:02:36Z",
+   "latency_min": 2.62
+  },
+  {
+   "icao": "VILK",
+   "obs_time": "2026-10-12T17:30Z",
+   "receipt_time": "2026-10-12T17:32:16Z",
+   "latency_min": 2.28
+  },
+  {
+   "icao": "VILK",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:02:29Z",
+   "latency_min": 2.48
+  },
+  {
+   "icao": "VILK",
+   "obs_time": "2026-10-12T18:30Z",
+   "receipt_time": "2026-10-12T18:46:13Z",
+   "latency_min": 16.22
+  },
+  {
+   "icao": "VILK",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:02:15Z",
+   "latency_min": 2.27
+  },
+  {
+   "icao": "VILK",
+   "obs_time": "2026-10-12T19:30Z",
+   "receipt_time": "2026-10-12T19:32:38Z",
+   "latency_min": 2.64
+  },
+  {
+   "icao": "VILK",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:02:17Z",
+   "latency_min": 2.3
+  },
+  {
+   "icao": "WMKK",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:08:20Z",
+   "latency_min": 8.34
+  },
+  {
+   "icao": "WMKK",
+   "obs_time": "2026-10-12T15:30Z",
+   "receipt_time": "2026-10-12T15:38:19Z",
+   "latency_min": 8.33
+  },
+  {
+   "icao": "WMKK",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:08:22Z",
+   "latency_min": 8.38
+  },
+  {
+   "icao": "WMKK",
+   "obs_time": "2026-10-12T16:30Z",
+   "receipt_time": "2026-10-12T16:38:15Z",
+   "latency_min": 8.26
+  },
+  {
+   "icao": "WMKK",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:08:25Z",
+   "latency_min": 8.43
+  },
+  {
+   "icao": "WMKK",
+   "obs_time": "2026-10-12T17:30Z",
+   "receipt_time": "2026-10-12T17:38:20Z",
+   "latency_min": 8.35
+  },
+  {
+   "icao": "WMKK",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:08:25Z",
+   "latency_min": 8.42
+  },
+  {
+   "icao": "WMKK",
+   "obs_time": "2026-10-12T18:30Z",
+   "receipt_time": "2026-10-12T18:38:26Z",
+   "latency_min": 8.45
+  },
+  {
+   "icao": "WMKK",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:08:26Z",
+   "latency_min": 8.44
+  },
+  {
+   "icao": "WMKK",
+   "obs_time": "2026-10-12T19:30Z",
+   "receipt_time": "2026-10-12T19:38:32Z",
+   "latency_min": 8.55
+  },
+  {
+   "icao": "WMKK",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:08:15Z",
+   "latency_min": 8.25
+  },
+  {
+   "icao": "WSSS",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:01:04Z",
+   "latency_min": 1.07
+  },
+  {
+   "icao": "WSSS",
+   "obs_time": "2026-10-12T15:30Z",
+   "receipt_time": "2026-10-12T15:31:10Z",
+   "latency_min": 1.18
+  },
+  {
+   "icao": "WSSS",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:00:53Z",
+   "latency_min": 0.88
+  },
+  {
+   "icao": "WSSS",
+   "obs_time": "2026-10-12T16:30Z",
+   "receipt_time": "2026-10-12T16:30:55Z",
+   "latency_min": 0.92
+  },
+  {
+   "icao": "WSSS",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:00:51Z",
+   "latency_min": 0.85
+  },
+  {
+   "icao": "WSSS",
+   "obs_time": "2026-10-12T17:30Z",
+   "receipt_time": "2026-10-12T17:30:46Z",
+   "latency_min": 0.78
+  },
+  {
+   "icao": "WSSS",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:00:50Z",
+   "latency_min": 0.84
+  },
+  {
+   "icao": "WSSS",
+   "obs_time": "2026-10-12T18:30Z",
+   "receipt_time": "2026-10-12T18:30:48Z",
+   "latency_min": 0.8
+  },
+  {
+   "icao": "WSSS",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:00:54Z",
+   "latency_min": 0.9
+  },
+  {
+   "icao": "WSSS",
+   "obs_time": "2026-10-12T19:30Z",
+   "receipt_time": "2026-10-12T19:30:59Z",
+   "latency_min": 0.99
+  },
+  {
+   "icao": "WSSS",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:00:55Z",
+   "latency_min": 0.92
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:05:54Z",
+   "latency_min": 5.91
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T15:30Z",
+   "receipt_time": "2026-10-12T15:35:28Z",
+   "latency_min": 5.48
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:21:10Z",
+   "latency_min": 21.18
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T16:30Z",
+   "receipt_time": "2026-10-12T16:38:14Z",
+   "latency_min": 8.24
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:21:02Z",
+   "latency_min": 21.05
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T17:14Z",
+   "receipt_time": "2026-10-12T17:25:04Z",
+   "latency_min": 11.07
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T17:30Z",
+   "receipt_time": "2026-10-12T17:38:10Z",
+   "latency_min": 8.17
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:20:58Z",
+   "latency_min": 20.98
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T18:17Z",
+   "receipt_time": "2026-10-12T18:22:05Z",
+   "latency_min": 5.09
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T18:30Z",
+   "receipt_time": "2026-10-12T18:36:10Z",
+   "latency_min": 6.17
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T18:47Z",
+   "receipt_time": "2026-10-12T18:51:03Z",
+   "latency_min": 4.06
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T18:49Z",
+   "receipt_time": "2026-10-12T18:52:03Z",
+   "latency_min": 3.06
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:20:48Z",
+   "latency_min": 20.81
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T19:04Z",
+   "receipt_time": "2026-10-12T19:10:07Z",
+   "latency_min": 6.13
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T19:08Z",
+   "receipt_time": "2026-10-12T19:14:06Z",
+   "latency_min": 6.11
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T19:16Z",
+   "receipt_time": "2026-10-12T19:22:09Z",
+   "latency_min": 6.15
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T19:30Z",
+   "receipt_time": "2026-10-12T19:36:13Z",
+   "latency_min": 6.23
+  },
+  {
+   "icao": "ZBAA",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:06:16Z",
+   "latency_min": 6.27
+  },
+  {
+   "icao": "ZGGG",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:05:55Z",
+   "latency_min": 5.92
+  },
+  {
+   "icao": "ZGGG",
+   "obs_time": "2026-10-12T15:30Z",
+   "receipt_time": "2026-10-12T15:35:28Z",
+   "latency_min": 5.48
+  },
+  {
+   "icao": "ZGGG",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:05:19Z",
+   "latency_min": 5.33
+  },
+  {
+   "icao": "ZGGG",
+   "obs_time": "2026-10-12T16:30Z",
+   "receipt_time": "2026-10-12T16:36:31Z",
+   "latency_min": 6.52
+  },
+  {
+   "icao": "ZGGG",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:05:16Z",
+   "latency_min": 5.27
+  },
+  {
+   "icao": "ZGGG",
+   "obs_time": "2026-10-12T17:30Z",
+   "receipt_time": "2026-10-12T17:37:00Z",
+   "latency_min": 7.0
+  },
+  {
+   "icao": "ZGGG",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:05:15Z",
+   "latency_min": 5.26
+  },
+  {
+   "icao": "ZGGG",
+   "obs_time": "2026-10-12T18:30Z",
+   "receipt_time": "2026-10-12T18:35:16Z",
+   "latency_min": 5.27
+  },
+  {
+   "icao": "ZGGG",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:05:26Z",
+   "latency_min": 5.44
+  },
+  {
+   "icao": "ZGGG",
+   "obs_time": "2026-10-12T19:30Z",
+   "receipt_time": "2026-10-12T19:35:29Z",
+   "latency_min": 5.5
+  },
+  {
+   "icao": "ZGGG",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:05:13Z",
+   "latency_min": 5.23
+  },
+  {
+   "icao": "ZGSZ",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:05:43Z",
+   "latency_min": 5.72
+  },
+  {
+   "icao": "ZGSZ",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:06:23Z",
+   "latency_min": 6.4
+  },
+  {
+   "icao": "ZGSZ",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:06:27Z",
+   "latency_min": 6.45
+  },
+  {
+   "icao": "ZGSZ",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:05:59Z",
+   "latency_min": 5.99
+  },
+  {
+   "icao": "ZGSZ",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:05:29Z",
+   "latency_min": 5.5
+  },
+  {
+   "icao": "ZGSZ",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:06:31Z",
+   "latency_min": 6.53
+  },
+  {
+   "icao": "ZHHH",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:05:58Z",
+   "latency_min": 5.97
+  },
+  {
+   "icao": "ZHHH",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:06:24Z",
+   "latency_min": 6.41
+  },
+  {
+   "icao": "ZHHH",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:06:28Z",
+   "latency_min": 6.47
+  },
+  {
+   "icao": "ZHHH",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:06:10Z",
+   "latency_min": 6.17
+  },
+  {
+   "icao": "ZHHH",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:05:47Z",
+   "latency_min": 5.79
+  },
+  {
+   "icao": "ZHHH",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:06:32Z",
+   "latency_min": 6.54
+  },
+  {
+   "icao": "ZSPD",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:06:10Z",
+   "latency_min": 6.17
+  },
+  {
+   "icao": "ZSPD",
+   "obs_time": "2026-10-12T15:30Z",
+   "receipt_time": "2026-10-12T15:35:28Z",
+   "latency_min": 5.48
+  },
+  {
+   "icao": "ZSPD",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:05:19Z",
+   "latency_min": 5.33
+  },
+  {
+   "icao": "ZSPD",
+   "obs_time": "2026-10-12T16:30Z",
+   "receipt_time": "2026-10-12T16:36:31Z",
+   "latency_min": 6.52
+  },
+  {
+   "icao": "ZSPD",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:05:16Z",
+   "latency_min": 5.27
+  },
+  {
+   "icao": "ZSPD",
+   "obs_time": "2026-10-12T17:30Z",
+   "receipt_time": "2026-10-12T17:37:00Z",
+   "latency_min": 7.01
+  },
+  {
+   "icao": "ZSPD",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:05:15Z",
+   "latency_min": 5.26
+  },
+  {
+   "icao": "ZSPD",
+   "obs_time": "2026-10-12T18:30Z",
+   "receipt_time": "2026-10-12T18:35:16Z",
+   "latency_min": 5.27
+  },
+  {
+   "icao": "ZSPD",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:06:12Z",
+   "latency_min": 6.21
+  },
+  {
+   "icao": "ZSPD",
+   "obs_time": "2026-10-12T19:30Z",
+   "receipt_time": "2026-10-12T19:35:29Z",
+   "latency_min": 5.5
+  },
+  {
+   "icao": "ZSPD",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:06:16Z",
+   "latency_min": 6.28
+  },
+  {
+   "icao": "ZSQD",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:20:58Z",
+   "latency_min": 20.97
+  },
+  {
+   "icao": "ZSQD",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:06:24Z",
+   "latency_min": 6.4
+  },
+  {
+   "icao": "ZSQD",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:06:27Z",
+   "latency_min": 6.46
+  },
+  {
+   "icao": "ZSQD",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:06:00Z",
+   "latency_min": 6.0
+  },
+  {
+   "icao": "ZSQD",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:20:48Z",
+   "latency_min": 20.82
+  },
+  {
+   "icao": "ZSQD",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:08:18Z",
+   "latency_min": 8.31
+  },
+  {
+   "icao": "ZUCK",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:05:58Z",
+   "latency_min": 5.98
+  },
+  {
+   "icao": "ZUCK",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:06:24Z",
+   "latency_min": 6.41
+  },
+  {
+   "icao": "ZUCK",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:06:28Z",
+   "latency_min": 6.48
+  },
+  {
+   "icao": "ZUCK",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:06:10Z",
+   "latency_min": 6.18
+  },
+  {
+   "icao": "ZUCK",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:05:47Z",
+   "latency_min": 5.79
+  },
+  {
+   "icao": "ZUCK",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:06:32Z",
+   "latency_min": 6.54
+  },
+  {
+   "icao": "ZUUU",
+   "obs_time": "2026-10-12T15:00Z",
+   "receipt_time": "2026-10-12T15:05:44Z",
+   "latency_min": 5.74
+  },
+  {
+   "icao": "ZUUU",
+   "obs_time": "2026-10-12T16:00Z",
+   "receipt_time": "2026-10-12T16:06:24Z",
+   "latency_min": 6.41
+  },
+  {
+   "icao": "ZUUU",
+   "obs_time": "2026-10-12T17:00Z",
+   "receipt_time": "2026-10-12T17:06:27Z",
+   "latency_min": 6.46
+  },
+  {
+   "icao": "ZUUU",
+   "obs_time": "2026-10-12T18:00Z",
+   "receipt_time": "2026-10-12T18:06:00Z",
+   "latency_min": 6.01
+  },
+  {
+   "icao": "ZUUU",
+   "obs_time": "2026-10-12T19:00Z",
+   "receipt_time": "2026-10-12T19:05:30Z",
+   "latency_min": 5.5
+  },
+  {
+   "icao": "ZUUU",
+   "obs_time": "2026-10-12T20:00Z",
+   "receipt_time": "2026-10-12T20:06:32Z",
+   "latency_min": 6.54
+  }
+ ]
+}

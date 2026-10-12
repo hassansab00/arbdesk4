@@ -829,6 +829,68 @@ hours are known and the daily row falls back to lead 2, where the table
 Next: the parity test over 3 whole days of record (13-15 Oct, from 16 Oct),
 then shadow probability records.
 
+### Before the peak: reports counted when they arrive (v2, 12 Oct)
+
+Hassan, 12 Oct: the prediction has to be right BEFORE the peak, and learn from
+the days before. Before the peak the market was well ahead of the model. On
+18,336 venue decisions of 15 Sep - 11 Oct (every bucket priced, four weekly
+folds, each fitted only on the days before it), the remaining-day model hit
+the winning bucket 41.0% / 46.5% / 59.1% / 81.2% of the time at 09-10 /
+11-12 / 13-14 / 15-16h local. The market hit 51.5% / 54.9% / 68.8% / 88.7%
+(`data/eval/wxpredict/report_lag_2026-10-12.json`).
+
+**Same-day forecasts are not the cause.** The platform fetches the forecast
+every three hours and archives each fetch with its time
+(`open_meteo_forecast`, September on). The newest fetch before each decision
+reduces the daily maximum's error only a little: mean absolute error 1.234 C
+at lead 1, 1.139 C as of 09h local, 1.128 C as of 12h (1,434 city-days, a
+scratch measurement, not committed). As features, refitted, it changes nothing:
+09-16h 59.20% -> 59.21%, 90% interval -0.6 to +0.6 points. Moving every
+forecast temperature input by the revision (and the observed-minus-forecast
+anomalies the other way) makes it worse: 57.55%, -2.5 to -0.8 points, log
+loss +0.028 to +0.061 (`same_day_forecast_2026-10-12.json`).
+
+**Stale reports are.** A v1 row counts a station report 20 minutes after its
+reading (IEM, 5 Oct), and decisions are on the hour. So a station that
+reports at :50-:59, as every US airport does, is never seen in its last
+report. In half the 11-12h decisions the newest report the row knew was over
+an hour old: the model hit 41.1% there, 52.1% when it was 30-40 min old, and
+the market's hit rate barely moved (a scratch breakdown of the v1 scores by
+report age, not committed). Aviation Weather's own receipt time of
+each METAR puts the report there 4.47 min after its reading at the median,
+6.22 at p75, 8.35 at p90 and 13.27 at p95. That is 400 reports from all 47
+stations, read 14:50-20:00Z on 12 Oct: five hours of one day, to be
+re-measured from the minute poll (`report_latency_2026-10-12.json`,
+`tools/wxpredict/report_latency.py`).
+
+**v2: a report known 8 minutes after its reading (the p90).** The same table
+was rebuilt with that one rule (`build_table.py --v2`; `table_v2_meta.json`
+records the lag and the sources), and the model refitted per fold:
+
+| local hour | v1 hit | v2 hit | market | v2 - v1, 90% | log loss v1 -> v2 |
+|---|---|---|---|---|---|
+| 09-10 | 41.0% | 43.0% | 51.5% | +0.3 to +3.8 | 1.408 -> 1.392 |
+| 11-12 | 46.5% | 47.1% | 54.9% | -0.7 to +1.8 | 1.213 -> 1.184 |
+| 13-14 | 59.1% | 61.4% | 68.8% | +1.2 to +3.4 | 0.927 -> 0.856 |
+| 15-16 | 81.2% | 85.2% | 88.7% | +3.1 to +5.0 | 0.482 -> 0.415 |
+| 09-16, all | 57.0% | 59.2% | 66.0% | +1.7 to +2.8 | 1.007 -> 0.962 |
+
+The US (F) cities gain most: 71.5% -> 83.4% at 15-16h, the market 85.7%. The
+newest report the rows knew went from 46 to 31 min old at the median. v2 is
+frozen as `wxrd-v2` (`tools/wxpredict/wxrd_fit.py`; model sha256 62b5de3e…,
+fitted on 318,609 rows to 11 Oct). v1 stays the default
+(`features.REPORT_LAG_S`), so the frozen sdyes-v1 pilot reads its rows as it
+was fitted. A build or a reader sets the lag (`features.report_lag()`;
+`live_reader.build(..., report_lag_s=)`).
+
+**Still open.** The market is still about 7 points ahead from 09 to 16h.
+The live tick at :36 reads IEM and saw each station's newest report a median
+36 min old (p10 16, p90 43; 376 station-ticks from 12:00Z, 12 Oct, SQL on
+`live_capture`). Next:
+serve `wxrd-v2` in shadow beside every same-day call (all 47 cities), score it
+against the engine and the market on the same checkpoints, and keep looking
+for what the market knows that the model does not.
+
 ## Gaps (Phase 1)
 
 - **Market activity is a proxy.** The venue's hourly price history has no volume. "Activity" is the number of

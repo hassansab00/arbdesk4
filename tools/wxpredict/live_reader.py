@@ -388,9 +388,17 @@ class View:
         self.bm, self.md = daily_rows(record, tz_names, t)
 
 
-def build(record, events, cities, sdays, history_bm, history_md, first_t, last_t, modes=MODES):
+def build(record, events, cities, sdays, history_bm, history_md, first_t, last_t, modes=MODES, report_lag_s=None):
     """[row dict]: every decision instant of the events between first_t and
-    last_t, one row per way of knowing, each made by features.decision_row."""
+    last_t, one row per way of knowing, each made by features.decision_row.
+    report_lag_s: when a report is known after its reading, as the table the
+    rows are compared with or scored by was built (v1's 20 min when None; the
+    v2 table's features.REPORT_LAG_V2_S)."""
+    with features.report_lag(features.REPORT_LAG_S if report_lag_s is None else report_lag_s):
+        return _build(record, events, cities, sdays, history_bm, history_md, first_t, last_t, modes)
+
+
+def _build(record, events, cities, sdays, history_bm, history_md, first_t, last_t, modes):
     icao_of = {common.iem_id(c["icao"]): c["icao"].upper() for c in cities.values() if c.get("icao")}
     tz_names = {k: c["timezone"] for k, c in cities.items() if c.get("timezone")}
     books = book_series(record)
