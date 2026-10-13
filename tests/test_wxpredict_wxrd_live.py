@@ -144,6 +144,12 @@ def test_every_repo_file_it_reads_is_checked_out():
             pathlib.Path(common.PR) / "best_match_daily.csv.gz", pathlib.Path(common.PR) / "models_daily.csv.gz",
             sorted(pathlib.Path(common.CITIES_GLOB).parent.glob("cities-*.csv.gz"))[-1],
             ROOT / "scripts" / "common.py", ROOT / "scripts" / "honest_record.py", ROOT / "scripts" / "cost_model.py"]
+    for model_json, _ in wl.VARIANTS.values():          # every variant's frozen model and its files
+        need.append(pathlib.Path(model_json))
+        if pathlib.Path(model_json).exists():
+            meta = json.loads(pathlib.Path(model_json).read_text())
+            files = [m["file"] for m in meta["models"]] if "models" in meta else [meta["model_file"]]
+            need += [pathlib.Path(model_json).parent / f for f in files]
     missing = [str(p) for p in need if not covered(p)]
     assert not missing, missing
     assert build_table.load_station_daily and build_table.load_daily_forecasts
