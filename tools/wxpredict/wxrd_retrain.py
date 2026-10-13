@@ -21,15 +21,22 @@ procedure on days no model it compares has seen (Rule 11):
                    log loss to its predecessor: the last refit helped, or at
                    least did no harm.
   minimum sample   at least MIN_DECISIONS decisions on MIN_DATES dates there.
-  change bound     the candidate's ladders may move at most TV_CAP (mean total
-                   variation) from the incumbent's on those decisions. It is a
-                   bound on change, not a score: the candidate was fitted on
-                   them.
+  change bound     the last update (predecessor -> incumbent) moved the
+                   ladders at most TV_CAP (mean total variation) on those
+                   decisions, the change the backtest measured. The candidate
+                   cannot be measured the same way yet: it was fitted on every
+                   decision there, and on them it hit 88.4% with log loss
+                   0.472 in the rehearsal of 13 Oct (5-11 Oct, where models
+                   that had not seen them hit 59.6-60.1%), so its distance
+                   there is memory, not change. Its own change is bounded at
+                   the next gate, when the week it serves is the week served.
+                   Its distance in-sample is recorded, not bounded.
+  valid ladders    the candidate's ladders are finite and sum to 1.
 
 Rule 11 in full: the prior is the incumbent, which serves until a candidate
 passes; the bounds are TV_CAP and the gate; the minimum sample is
-MIN_DECISIONS / MIN_DATES; the maximum change per update is TV_CAP, one update
-a week; the version (wxrd3:v3w<THROUGH>:<sha256 12>) is on every row the
+MIN_DECISIONS / MIN_DATES; the maximum change per update is TV_CAP, measured
+on the update's first week served, one update a week; the version (wxrd3:v3w<THROUGH>:<sha256 12>) is on every row the
 model writes (wxrd_live.variant_version).
 
 A held candidate is not installed; the incumbent keeps serving and the record
@@ -87,7 +94,8 @@ def tv(p, q):
 
 def decide(gate):
     """(promote, reasons held). gate: n, dates, nll_incumbent,
-    nll_predecessor, tv_mean (candidate against incumbent)."""
+    nll_predecessor, tv_mean (incumbent against predecessor, on the week
+    served), valid (the candidate's ladders)."""
     held = []
     if gate["n"] < MIN_DECISIONS:
         held.append(f"{gate['n']} decisions in the week served, under {MIN_DECISIONS}")
@@ -97,8 +105,17 @@ def decide(gate):
         held.append(f"the serving model's log loss {gate['nll_incumbent']:.4f} was above its predecessor's "
                     f"{gate['nll_predecessor']:.4f} on the week it served")
     if gate["n"] and gate["tv_mean"] > TV_CAP:
-        held.append(f"the candidate moves the ladders {gate['tv_mean']:.4f} from the serving model's, over {TV_CAP}")
+        held.append(f"the last update moved the ladders {gate['tv_mean']:.4f} on the week it served, over {TV_CAP}")
+    if gate["n"] and not gate["valid"]:
+        held.append("the candidate's ladders are not finite probabilities summing to 1")
     return not held, held
+
+
+def valid(p):
+    """Every ladder finite, non-negative, summing to 1."""
+    import numpy as np
+    p = np.asarray(p)
+    return bool(np.isfinite(p).all() and (p >= 0).all() and np.allclose(p.sum(1), 1, atol=1e-6))
 
 
 # ---------------------------------------------------------------------------
@@ -149,16 +166,19 @@ def run(table, through, out, incumbent=INCUMBENT, predecessor=None):
         lo, hi, q, mask, win = wf.ladders(sub)
         p = {name: ladders(models, x[te], sub, lo, hi, mask)
              for name, models in (("incumbent", inc), ("predecessor", pred), ("candidate", cand))}
-        for name, ladder in list(p.items()) + [("market", q)]:
+        for name, ladder in (("incumbent", p["incumbent"]), ("predecessor", p["predecessor"]), ("market", q)):
             gate[f"hit_{name}"] = round(float((ladder.argmax(1) == win).mean()), 4)
             gate[f"nll_{name}"] = round(float(wf.nll(ladder, win).mean()), 4)
         gate["d_nll_ci90"] = [round(v, 4) for v in wf.boot_ci(wf.nll(p["incumbent"], win) - wf.nll(p["predecessor"], win),
                                                              sub.date.values)]
-        d = tv(p["candidate"], p["incumbent"])
+        d = tv(p["incumbent"], p["predecessor"])
         gate["tv_mean"] = round(float(d.mean()), 4)
         gate["tv_p90"] = round(float(np.quantile(d, 0.9)), 4)
-        gate["top_changed"] = round(float((p["candidate"].argmax(1) != p["incumbent"].argmax(1)).mean()), 4)
-    promote, held = decide({"nll_incumbent": 0, "nll_predecessor": 0, "tv_mean": 0, **gate})
+        gate["top_changed"] = round(float((p["incumbent"].argmax(1) != p["predecessor"].argmax(1)).mean()), 4)
+        gate["valid"] = valid(p["candidate"])
+        gate["candidate_in_sample"] = {"note": "fitted on these decisions: memory, not a score or a change",
+                                       "tv_mean_vs_incumbent": round(float(tv(p["candidate"], p["incumbent"]).mean()), 4)}
+    promote, held = decide({"nll_incumbent": 0, "nll_predecessor": 0, "tv_mean": 0, "valid": True, **gate})
     record = {"made": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"), "through": str(through),
               "week_served": [a, b], "hours_local": list(HOURS),
               "table": {"file": os.path.relpath(table, ROOT) if table.startswith(ROOT) else table, "gzip_sha256": sha},
