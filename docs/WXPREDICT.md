@@ -724,6 +724,31 @@ can be known, and nothing recorded that. Hassan approved a poller (11 Oct:
 **The development evidence leans against the candidate.** It is tested forward,
 in shadow, because the rule fixed beforehand says so.
 
+**The first window, 13 Oct 07-14Z** (measured 13 Oct ~14:25Z, read-only
+queries on `live_capture`, `focus_obs_polls`, `focus_obs_reports`; the
+day's `focus_obs_day` row is written at 23:55Z):
+- **Books stored:** 5,410 `focus_book` rows for the 22 buckets (11 a city),
+  07:00:00Z-13:59:00Z, 2,987,676 bytes of payload (`pg_column_size`). Of the
+  9,240 books the polls carried (420 x 22), 5,410 had changed since the
+  minute before and were stored.
+- **Books polls:** 420 asked, one a minute, each for 22 books; 420 answered
+  200, 0 failed, 0 short, 0 unanswered, 0 minutes not asked. Answered a
+  median 0.06 s after asking, at most 2.24 s.
+- **Reports polls (Aviation Weather):** 420 asked, 419 answered 200, 1 timed
+  out at 10 s (12:36Z). 34 new reports: LTFM 25, first seen a median 8.0 min
+  after the reading and 1.7 min after Aviation Weather's receipt; OEJN 9,
+  1.0 and 0.7 min; no corrections.
+- **Every decision had its books:** at all 14 decision instants (10:00-16:00
+  local plus 60 s, 07:01-13:01Z, both cities UTC+3) the first clean books
+  poll for the city was answered 60.0-63.8 s after t, inside
+  `sdyes.fresh_answer`'s 60-300 s, with 4 clean polls in each window; every
+  bucket's first book was stored at 07:00:00Z, before every answer. No
+  decision of 13 Oct is skipped for 'no fresh book'.
+- **Next:** the evaluator (`sdyes_forward.py --to 2026-10-13`) on the
+  14 Oct 02:36Z mirror, which carries 13 Oct's `live_capture` and polls.
+  Before the first look only counts are read: decisions, skips by reason,
+  valid dates.
+
 ### The live record: every input the tick had, as it arrived (WP3a, 11 Oct)
 
 The training table decides what a row may know by rule: a report 20 minutes
