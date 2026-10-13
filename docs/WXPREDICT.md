@@ -930,6 +930,36 @@ minutes (`20261013010000_the_tick_has_room_for_wxpredict.sql`).
 first full day. The shadow's own log row (`P7.6_wxrd_shadow`) joins the
 watchdog after its first day of runs.
 
+### wxrd-v3: five seeds averaged (13 Oct)
+
+Before building a model that refits every week, `tools/wxpredict/stability_eval.py`
+asked how steady the remaining-day model is (`data/eval/wxpredict/stability_2026-10-13.json`).
+It used the v2 table and v2_eval's four weekly folds: 9,776 venue decisions,
+09-16h local, 15 Sep - 11 Oct, each week fitted only on the days before it.
+Intervals are 90%, resampling whole dates.
+
+- **Refitting each week against a model frozen at 14 Sep:** hit 58.80% ->
+  59.20% (-0.03 to +0.91 points), log loss 0.9682 -> 0.9615 (-0.0113 to
+  -0.0023). Learning from the newest weeks helps the probabilities, a little.
+- **How far a weekly refit moves the ladders:** the top bucket changes on
+  16.8-17.9% of decisions (mean total variation 0.093-0.096).
+- **How far the model's own randomness moves them:** two seeds fitted on the
+  same data change the top bucket on 17.2-17.9% of decisions (0.096-0.098).
+  The weekly churn is the seed, not the new days.
+- **Five seeds averaged against one** (each seed's ladder floored and
+  normalised, then the five averaged): hit 59.20% -> 60.27% (+0.74 to +1.45
+  points), log loss 0.9615 -> 0.9413 (-0.0240 to -0.0164). It is better in
+  each of the four weeks. The market on the same decisions: 65.98% and 0.8019.
+
+So **wxrd-v3** is wxrd-v2's recipe and data (the 8-minute table, every
+eligible row to 11 Oct), fitted with five seeds whose ladders are averaged
+(`wxrd_fit.py --version wxrd-v3 --seeds 5`, `data/models/wxrd/wxrd-v3_*`).
+Its version's id is the sha256 of the five models' sha256s, so each row names
+the exact models that priced it. It runs in shadow beside wxrd-v2 at the same
+checkpoints, as variant `wxrd3` (log row `P7.6_wxrd3_shadow`), so the two
+differ only in the seeds. The two run one after the other in the tick's step with one row budget between them (90 s), and a refused model or an error in one does not stop the other (Codex on #398). A weekly refit is worth building on this averaged
+model, not on one seed whose own noise is as large as a week's new data.
+
 ### Why each day hit or missed: the daily record (13 Oct)
 
 Hassan, 12 Oct: "each day needs to teach the model outcomes and data points on

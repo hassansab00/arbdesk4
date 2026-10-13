@@ -50,6 +50,13 @@ from wxpredict import common, live_reader as lr  # noqa: E402
 ROOT = common.ROOT
 VARIANT = "wxrd"
 MODEL_JSON = os.path.join(ROOT, "data", "models", "wxrd", "wxrd-v2_remaining.json")
+# Each shadow variant, its frozen model and its log row. wxrd3 (13 Oct): the
+# same model fitted with five seeds, their ladders averaged
+# (data/eval/wxpredict/stability_2026-10-13.json); skipped until its file exists.
+VARIANTS = {
+    "wxrd": (MODEL_JSON, "P7.6_wxrd_shadow"),
+    "wxrd3": (os.path.join(ROOT, "data", "models", "wxrd", "wxrd-v3_remaining.json"), "P7.6_wxrd3_shadow"),
+}
 CHECKPOINTS = ("morning", "noon", "prepeak_2h", "prepeak_1h", "postpeak_1h")
 SERVED_WITHIN_MIN = 30      # a row decided further back than this was written by a retry
 RETRY_HOURS = 6             # the record the row reads reaches RETRY_HOURS + RECORD_HOURS back, inside the prune's 2 days
@@ -66,8 +73,9 @@ JOB = "P7.6_wxrd_shadow"
 # ---------------------------------------------------------------------------
 # pure
 # ---------------------------------------------------------------------------
-def variant_version(meta):
-    return f"wxrd:v2:{meta['model_sha256'][:12]}"
+def variant_version(meta, variant=VARIANT):
+    """'<variant>:<model version>:<sha256 12>', e.g. 'wxrd:v2:62b5de3eace3'."""
+    return f"{variant}:{meta['version'].rsplit('-', 1)[-1]}:{meta['model_sha256'][:12]}"
 
 
 def due(served, held, limit=MAX_DUE):
@@ -85,7 +93,7 @@ def probs_of(band_ids, p):
     return {str(b): round(float(x), 6) for b, x in zip(band_ids, p)}
 
 
-def variant_row(served, unit, band_ids, p, version, calibrated):
+def variant_row(served, unit, band_ids, p, version, calibrated, variant=VARIANT):
     """calibrated: the served call's calibration as the tick recorded it on
     the other variants' rows of the same checkpoint (variant_shadow.py reads
     it from the engine's reasons; a separate step cannot)."""
@@ -93,7 +101,7 @@ def variant_row(served, unit, band_ids, p, version, calibrated):
     top = sorted(probs.items(), key=lambda kv: (-kv[1], kv[0]))[0]
     return {
         "city_key": served["city_key"], "target_date": str(served["target_date"]),
-        "checkpoint": served["checkpoint"], "variant": VARIANT, "variant_version": version,
+        "checkpoint": served["checkpoint"], "variant": variant, "variant_version": version,
         "decided_at": served["decided_at"], "engine_version": served["engine_version"],
         "station": served.get("station"), "served_centre_c": served.get("centre_c"),
         "served_sigma_c": served.get("sigma_c"),
@@ -133,23 +141,37 @@ def key_filter(cities, city_keys):
 # ---------------------------------------------------------------------------
 # the run
 # ---------------------------------------------------------------------------
-def load_model(meta):
-    import lightgbm as lgb
-    with open(os.path.join(os.path.dirname(MODEL_JSON), meta["model_file"]), "rb") as fh:
-        text = gzip.decompress(fh.read())
-    sha = hashlib.sha256(text).hexdigest()
-    if sha != meta["model_sha256"]:
-        raise SystemExit(f"wxrd-v2's sha256 is {sha}, not {meta['model_sha256']}: refusing to predict")
-    return lgb.Booster(model_str=text.decode())
+def load_model(meta, model_json=MODEL_JSON):
+    """The frozen model, or for a several-seed version the list of its models,
+    each one's sha256 checked, and the version's id checked against them -
+    every check before lightgbm is imported, so a refusal needs no model."""
+    def one(name, want):
+        with open(os.path.join(os.path.dirname(model_json), name), "rb") as fh:
+            text = gzip.decompress(fh.read())
+        sha = hashlib.sha256(text).hexdigest()
+        if sha != want:
+            raise SystemExit(f"{meta['version']}'s {name} sha256 is {sha}, not {want}: refusing to predict")
+        import lightgbm as lgb
+        return lgb.Booster(model_str=text.decode())
+    if "models" not in meta:
+        return one(meta["model_file"], meta["model_sha256"])
+    joined = hashlib.sha256("".join(m["sha256"] for m in meta["models"]).encode()).hexdigest()
+    if joined != meta["model_sha256"]:
+        raise SystemExit(f"{meta['version']}'s models do not make its id {meta['model_sha256']}: refusing to predict")
+    return [one(m["file"], m["sha256"]) for m in meta["models"]]
 
 
-def run(now=None, dry_run=False):
+def run(now=None, dry_run=False, variant=VARIANT, deadline=None):
+    """deadline: when rows stop being built (unix seconds); ROW_BUDGET_S after
+    the start unless given, and main() gives every variant the same one."""
     t0 = time.time()
+    deadline = t0 + ROW_BUDGET_S if deadline is None else deadline
     ops = common.ops()
     now = now or dt.datetime.now(dt.timezone.utc)
-    with open(MODEL_JSON) as fh:
+    model_json, job = VARIANTS[variant]
+    with open(model_json) as fh:
         meta = json.load(fh)
-    version = variant_version(meta)
+    version = variant_version(meta, variant)
     since = (now - dt.timedelta(hours=RETRY_HOURS)).isoformat()
     served = ops.rest_all("prediction_checkpoints", [
         ("select", "city_key,target_date,checkpoint,decided_at,engine_version,model_path,station,centre_c,"
@@ -159,15 +181,15 @@ def run(now=None, dry_run=False):
     variant_rows = ops.rest_all(TABLE, [("select", "city_key,target_date,checkpoint,variant,served_calibrated"),
                                         ("decided_at", f"gte.{since}")], order="shadow_id.asc")
     key = lambda r: (r["city_key"], str(r["target_date"]), r["checkpoint"])  # noqa: E731
-    todo, deferred = due(served, {key(r) for r in variant_rows if r["variant"] == VARIANT})
-    calibrated = {key(r): r["served_calibrated"] for r in variant_rows if r["variant"] != VARIANT}
+    todo, deferred = due(served, {key(r) for r in variant_rows if r["variant"] == variant})
+    calibrated = {key(r): r["served_calibrated"] for r in variant_rows if r["variant"] not in VARIANTS}
     late = (now - dt.timedelta(minutes=SERVED_WITHIN_MIN)).isoformat()
     detail = {"version": version, "served": len(served), "due": len(todo), "deferred": deferred,
               "retried": sum(str(r["decided_at"]) < late for r in todo), "written": 0, "skipped": {}}
     if not todo:
         detail["seconds"] = round(time.time() - t0, 1)
         if not dry_run:
-            ops.log_run(JOB, "ok", 0, detail)
+            ops.log_run(job, "ok", 0, detail)
         return detail
 
     cities = common.cities()
@@ -193,7 +215,7 @@ def run(now=None, dry_run=False):
     skipped = {}
     rows, pairs = [], []
     for i, s in enumerate(todo):
-        if time.time() - t0 > ROW_BUDGET_S:
+        if time.time() > deadline:
             detail["deferred"] += len(todo) - i
             break
         if key(s) not in calibrated:
@@ -214,14 +236,14 @@ def run(now=None, dry_run=False):
     out = []
     if rows:
         import sdyes_forward
-        probs = sdyes_forward.model_probs(rows, load_model(meta))
+        probs = sdyes_forward.model_probs(rows, load_model(meta, model_json))
         for s, e, row in pairs:
             p = probs.get((str(row["event_id"]), int(row["decision_utc"])))
             if p is None:
                 why = "before 09h local" if int(row["local_hour"]) < 9 else "no running maximum"
                 skipped[why] = skipped.get(why, 0) + 1
                 continue
-            out.append(variant_row(s, e["unit"], e["band_ids"], p, version, calibrated[key(s)]))
+            out.append(variant_row(s, e["unit"], e["band_ids"], p, version, calibrated[key(s)], variant))
     if out and not dry_run:
         ops.upsert(TABLE, out, ON_CONFLICT)
     detail.update(written=len(out), skipped=skipped, record_rows=len(record_rows),
@@ -230,7 +252,7 @@ def run(now=None, dry_run=False):
         detail["rows"] = out
     else:
         lost = sum(v for k, v in skipped.items() if k in ("no whole ladder", "not on the day"))
-        ops.log_run(JOB, "ok" if not lost else "partial", len(out), detail)
+        ops.log_run(job, "ok" if not lost else "partial", len(out), detail)
     return detail
 
 
@@ -240,8 +262,21 @@ def main(argv=None):
     ap.add_argument("--at", default="", help="rehearse as if it were this UTC time")
     args = ap.parse_args(argv)
     now = dt.datetime.fromisoformat(args.at.replace("Z", "+00:00")) if args.at else None
-    print(json.dumps(run(now, args.dry_run), indent=1, default=str))
-    return 0
+    failed = []
+    # one row budget for all the variants together (Codex on #398): the
+    # step's 3 minutes hold every variant, so the second gets what the first
+    # left and defers the rest to the next tick
+    deadline = time.time() + ROW_BUDGET_S
+    for variant, (model_json, _) in VARIANTS.items():
+        if not os.path.exists(model_json):
+            print(f"{variant}: no model at {os.path.relpath(model_json, ROOT)}, skipped")
+            continue
+        try:                                   # one variant failing does not stop the next
+            print(variant, json.dumps(run(now, args.dry_run, variant, deadline), indent=1, default=str), flush=True)
+        except (Exception, SystemExit) as exc:  # noqa: BLE001 - a refused model too (Codex on #398)
+            failed.append(variant)
+            print(f"{variant} failed: {exc!r}", flush=True)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

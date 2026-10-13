@@ -157,6 +157,15 @@
    "scored": [],
    "verdict": "12 Oct, 400 reports of all 47 stations read 14:50-20:00Z: 4.47 min at the median, 6.22 p75, 8.35 p90, 13.27 p95 (the v2 table's 8 min is the p90); five hours of one day, to be re-measured from the minute poll.",
    "results": ["report_latency_2026-10-12.json"]
+  },
+  {
+   "id": "model_stability",
+   "question": "On days it never saw, does the remaining-day model refitted before each week beat the one frozen before the first, how far does a weekly refit move its ladders, and does averaging five seeds' ladders beat one seed?",
+   "rule_file": "tools/wxpredict/stability_eval.py",
+   "rule_marker": "How steady is the remaining-day model, and what steadies it?",
+   "scored": ["2026-09-15", "2026-10-11"],
+   "verdict": "13 Oct, v2 table, 9,776 venue decisions 09-16h, v2_eval's four weekly folds. Refit against frozen at 14 Sep: hit 58.80% -> 59.20% (-0.03 to +0.91 points), log loss 0.9682 -> 0.9615 (-0.0113 to -0.0023). A weekly refit changes the top bucket on 16.8-17.9% of decisions (mean total variation 0.093-0.096), but two seeds on the same data change it on 17.2-17.9% (0.096-0.098): the churn is the model's own randomness. Five seeds averaged against one: hit 59.20% -> 60.27% (+0.74 to +1.45 points), log loss 0.9615 -> 0.9413 (-0.0240 to -0.0164), better in each of the four weeks. Frozen as wxrd-v3 (five seeds).",
+   "results": ["stability_2026-10-13.json"]
   }
  ],
  "blind_elsewhere": [

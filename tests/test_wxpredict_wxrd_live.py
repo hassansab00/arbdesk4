@@ -144,6 +144,12 @@ def test_every_repo_file_it_reads_is_checked_out():
             pathlib.Path(common.PR) / "best_match_daily.csv.gz", pathlib.Path(common.PR) / "models_daily.csv.gz",
             sorted(pathlib.Path(common.CITIES_GLOB).parent.glob("cities-*.csv.gz"))[-1],
             ROOT / "scripts" / "common.py", ROOT / "scripts" / "honest_record.py", ROOT / "scripts" / "cost_model.py"]
+    for model_json, _ in wl.VARIANTS.values():          # every variant's frozen model and its files
+        need.append(pathlib.Path(model_json))
+        if pathlib.Path(model_json).exists():
+            meta = json.loads(pathlib.Path(model_json).read_text())
+            files = [m["file"] for m in meta["models"]] if "models" in meta else [meta["model_file"]]
+            need += [pathlib.Path(model_json).parent / f for f in files]
     missing = [str(p) for p in need if not covered(p)]
     assert not missing, missing
     assert build_table.load_station_daily and build_table.load_daily_forecasts
@@ -189,3 +195,61 @@ def test_past_its_time_budget_the_rest_is_left_for_the_next_tick(monkeypatch):
     assert fake.upserts == [] and fake.logs[0][:3] == (wl.JOB, "ok", 0)
     detail, fake = _run_with(monkeypatch, 1)
     assert detail["deferred"] == 0 and detail["skipped"] == {"no whole ladder": 3}, "inside the budget: each tried"
+
+
+def test_the_five_seed_variant_names_its_version_and_its_models(tmp_path):
+    """wxrd3 (13 Oct): five seeds, their ladders averaged. Its version's id is
+    the sha256 of the models' sha256s in seed order, so a row's version names
+    exactly the models that priced it; a model whose bytes differ is refused."""
+    import gzip
+    import hashlib
+    v3 = {"version": "wxrd-v3", "models": [], "report_lag_s": 480}
+    for seed in (1, 2):
+        text = f"model {seed}".encode()
+        (tmp_path / f"m{seed}.txt.gz").write_bytes(gzip.compress(text))
+        v3["models"].append({"seed": seed, "file": f"m{seed}.txt.gz", "sha256": hashlib.sha256(text).hexdigest()})
+    v3["model_sha256"] = hashlib.sha256("".join(m["sha256"] for m in v3["models"]).encode()).hexdigest()
+    assert wl.variant_version(v3, "wxrd3") == "wxrd3:v3:" + v3["model_sha256"][:12]
+    assert wl.variant_version(META) == "wxrd:v2:" + META["model_sha256"][:12], "v2's version is unchanged"
+    bad = dict(v3, model_sha256="0" * 64)
+    try:
+        wl.load_model(bad, str(tmp_path / "x.json"))
+        raise AssertionError("an id that is not its models' must be refused")
+    except SystemExit as exc:
+        assert "do not make its id" in str(exc)
+    tampered = dict(v3, models=[dict(v3["models"][0], sha256="1" * 64), v3["models"][1]])
+    tampered["model_sha256"] = hashlib.sha256("".join(m["sha256"] for m in tampered["models"]).encode()).hexdigest()
+    try:
+        wl.load_model(tampered, str(tmp_path / "x.json"))
+        raise AssertionError("a model whose bytes differ must be refused")
+    except SystemExit as exc:
+        assert "refusing to predict" in str(exc)
+
+
+def test_each_variant_runs_on_its_own_and_a_missing_model_is_skipped(monkeypatch, tmp_path):
+    ran = []
+    monkeypatch.setattr(wl, "VARIANTS", {"wxrd": (wl.MODEL_JSON, "P7.6_wxrd_shadow"),
+                                         "wxrd3": (str(tmp_path / "absent.json"), "P7.6_wxrd3_shadow")})
+    deadlines = []
+    monkeypatch.setattr(wl, "run", lambda now, dry, variant, deadline: ran.append(variant) or
+                        deadlines.append(deadline) or {"variant": variant})
+    assert wl.main([]) == 0 and ran == ["wxrd"]
+
+    def boom(now, dry, variant, deadline):
+        ran.append(variant)
+        deadlines.append(deadline)
+        if variant == "wxrd":
+            raise SystemExit("wxrd-v2's sha256 is ..., not ...: refusing to predict")
+        raise RuntimeError("down")
+    monkeypatch.setattr(wl, "VARIANTS", {"wxrd": (wl.MODEL_JSON, "a"), "wxrd3": (wl.MODEL_JSON, "b")})
+    monkeypatch.setattr(wl, "run", boom)
+    ran.clear()
+    deadlines.clear()
+    assert wl.main([]) == 1 and ran == ["wxrd", "wxrd3"], \
+        "a refused model (SystemExit) or an error in one does not stop the next (Codex on #398); the step fails"
+    assert deadlines[0] == deadlines[1], "one row budget for every variant together (Codex on #398)"
+
+
+def test_a_variant_row_carries_its_variant():
+    row = wl.variant_row(served(), "C", ["b1", "b2"], [0.4, 0.6], "wxrd3:v3:abc", False, "wxrd3")
+    assert row["variant"] == "wxrd3" and row["variant_version"].startswith(row["variant"] + ":")

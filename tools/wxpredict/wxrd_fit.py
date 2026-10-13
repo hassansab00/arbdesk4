@@ -15,6 +15,7 @@ It is a frozen version: nothing here is refitted while it is scored (Rule 11);
 a refit on later dates is a new version with its own name and hashes.
 
     python tools/wxpredict/wxrd_fit.py [--table data/training/wxpredict/table_v2/wxpredict_table.csv.gz]
+    python tools/wxpredict/wxrd_fit.py --version wxrd-v3 --seeds 5     # the five-seed average (13 Oct)
 """
 import argparse
 import datetime as dt
@@ -40,10 +41,21 @@ OUT = os.path.join(ROOT, "data", "models", "wxrd")
 MODEL_FILE = f"data/models/wxrd/{VERSION}_remaining.txt.gz"
 
 
+def fit_one(x, j, seed, out, name):
+    """Fit, write the model text gzipped (no timestamp), return its sha256."""
+    raw = remaining.fit(x, j, seed).model_to_string().encode()
+    with open(os.path.join(out, name), "wb") as fh:
+        fh.write(gzip.compress(raw, compresslevel=9, mtime=0))
+    return hashlib.sha256(raw).hexdigest()
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--table", default=TABLE_V2)
     ap.add_argument("--out", default=OUT)
+    ap.add_argument("--version", default=VERSION)
+    ap.add_argument("--seeds", type=int, default=1,
+                    help="fit this many seeds (wf.SEED, wf.SEED + 1, ...) and average their ladders (wxrd-v3: 5)")
     args = ap.parse_args(argv)
     with open(args.table, "rb") as fh:
         table_sha = hashlib.sha256(fh.read()).hexdigest()
@@ -53,28 +65,36 @@ def main(argv=None):
     el = remaining.eligible(df)
     x = remaining.features(df, x_all)[el]
     j = remaining.target(df)[el]
-    model = remaining.fit(x, j, wf.SEED)
-    raw = model.model_to_string().encode()
     os.makedirs(args.out, exist_ok=True)
-    name = f"{VERSION}_remaining.txt.gz"
-    with open(os.path.join(args.out, name), "wb") as fh:
-        fh.write(gzip.compress(raw, compresslevel=9, mtime=0))
+    seeds = [wf.SEED + k for k in range(args.seeds)]
+    if args.seeds == 1:
+        name = f"{args.version}_remaining.txt.gz"
+        files = {"model_file": name, "model_sha256": fit_one(x, j, seeds[0], args.out, name)}
+    else:
+        # several seeds: each model its own file; the version's id is the
+        # sha256 of the models' sha256s in seed order, so a row's version names
+        # exactly the models whose ladders were averaged
+        models = []
+        for seed in seeds:
+            name = f"{args.version}_remaining_s{seed}.txt.gz"
+            models.append({"seed": seed, "file": name, "sha256": fit_one(x, j, seed, args.out, name)})
+        files = {"models": models,
+                 "model_sha256": hashlib.sha256("".join(m["sha256"] for m in models).encode()).hexdigest()}
     meta = {
-        "version": VERSION,
+        "version": args.version,
         "made": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
-        "model_file": name,
-        "model_sha256": hashlib.sha256(raw).hexdigest(),
+        **files,
         "table_gzip_sha256": table_sha,
         "report_lag_s": REPORT_LAG_S,
         "fit_last": FIT_LAST,
         "rows": int(el.sum()), "dates": [str(df.date[el].min()), str(df.date[el].max())],
         "cities": int(df.city_key[el].nunique()),
         "features": list(x.columns),
-        "params": dict(remaining.PARAMS, seed=wf.SEED, rounds=250),
+        "params": dict(remaining.PARAMS, seed=seeds[0] if args.seeds == 1 else seeds, rounds=250),
         "inc_from_hour": remaining.INC_FROM_HOUR, "k": remaining.K,
         "lightgbm": lgb.__version__,
     }
-    with open(os.path.join(args.out, f"{VERSION}_remaining.json"), "w") as fh:
+    with open(os.path.join(args.out, f"{args.version}_remaining.json"), "w") as fh:
         fh.write(json.dumps(meta, indent=1) + "\n")
     print(json.dumps({k: v for k, v in meta.items() if k != "features"}, indent=1))
     return meta
