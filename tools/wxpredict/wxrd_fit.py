@@ -16,6 +16,9 @@ a refit on later dates is a new version with its own name and hashes.
 
     python tools/wxpredict/wxrd_fit.py [--table data/training/wxpredict/table_v2/wxpredict_table.csv.gz]
     python tools/wxpredict/wxrd_fit.py --version wxrd-v3 --seeds 5     # the five-seed average (13 Oct)
+
+The weekly refit (wxrd_retrain.py) calls fit() with its own table, last date
+and version.
 """
 import argparse
 import datetime as dt
@@ -56,45 +59,52 @@ def main(argv=None):
     ap.add_argument("--version", default=VERSION)
     ap.add_argument("--seeds", type=int, default=1,
                     help="fit this many seeds (wf.SEED, wf.SEED + 1, ...) and average their ladders (wxrd-v3: 5)")
+    ap.add_argument("--fit-last", default=FIT_LAST, help="the last event date fitted on")
     args = ap.parse_args(argv)
-    with open(args.table, "rb") as fh:
+    return fit(args.table, args.out, args.version, args.seeds, args.fit_last)
+
+
+def fit(table, out, version, n_seeds, fit_last=FIT_LAST):
+    """Fit every eligible row of `table` dated up to fit_last with n_seeds
+    seeds; write the model files and the version's json into `out`."""
+    with open(table, "rb") as fh:
         table_sha = hashlib.sha256(fh.read()).hexdigest()
-    df = pd.read_csv(args.table, low_memory=False)
-    df = df[df.label_unit.notna() & (df.date.astype(str) <= FIT_LAST)].reset_index(drop=True).copy()
+    df = pd.read_csv(table, low_memory=False)
+    df = df[df.label_unit.notna() & (df.date.astype(str) <= fit_last)].reset_index(drop=True).copy()
     x_all = wf.features(df)
     el = remaining.eligible(df)
     x = remaining.features(df, x_all)[el]
     j = remaining.target(df)[el]
-    os.makedirs(args.out, exist_ok=True)
-    seeds = [wf.SEED + k for k in range(args.seeds)]
-    if args.seeds == 1:
-        name = f"{args.version}_remaining.txt.gz"
-        files = {"model_file": name, "model_sha256": fit_one(x, j, seeds[0], args.out, name)}
+    os.makedirs(out, exist_ok=True)
+    seeds = [wf.SEED + k for k in range(n_seeds)]
+    if n_seeds == 1:
+        name = f"{version}_remaining.txt.gz"
+        files = {"model_file": name, "model_sha256": fit_one(x, j, seeds[0], out, name)}
     else:
         # several seeds: each model its own file; the version's id is the
         # sha256 of the models' sha256s in seed order, so a row's version names
         # exactly the models whose ladders were averaged
         models = []
         for seed in seeds:
-            name = f"{args.version}_remaining_s{seed}.txt.gz"
-            models.append({"seed": seed, "file": name, "sha256": fit_one(x, j, seed, args.out, name)})
+            name = f"{version}_remaining_s{seed}.txt.gz"
+            models.append({"seed": seed, "file": name, "sha256": fit_one(x, j, seed, out, name)})
         files = {"models": models,
                  "model_sha256": hashlib.sha256("".join(m["sha256"] for m in models).encode()).hexdigest()}
     meta = {
-        "version": args.version,
+        "version": version,
         "made": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
         **files,
         "table_gzip_sha256": table_sha,
         "report_lag_s": REPORT_LAG_S,
-        "fit_last": FIT_LAST,
+        "fit_last": fit_last,
         "rows": int(el.sum()), "dates": [str(df.date[el].min()), str(df.date[el].max())],
         "cities": int(df.city_key[el].nunique()),
         "features": list(x.columns),
-        "params": dict(remaining.PARAMS, seed=seeds[0] if args.seeds == 1 else seeds, rounds=250),
+        "params": dict(remaining.PARAMS, seed=seeds[0] if n_seeds == 1 else seeds, rounds=250),
         "inc_from_hour": remaining.INC_FROM_HOUR, "k": remaining.K,
         "lightgbm": lgb.__version__,
     }
-    with open(os.path.join(args.out, f"{args.version}_remaining.json"), "w") as fh:
+    with open(os.path.join(out, f"{version}_remaining.json"), "w") as fh:
         fh.write(json.dumps(meta, indent=1) + "\n")
     print(json.dumps({k: v for k, v in meta.items() if k != "features"}, indent=1))
     return meta
