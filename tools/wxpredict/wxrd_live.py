@@ -161,8 +161,11 @@ def load_model(meta, model_json=MODEL_JSON):
     return [one(m["file"], m["sha256"]) for m in meta["models"]]
 
 
-def run(now=None, dry_run=False, variant=VARIANT):
+def run(now=None, dry_run=False, variant=VARIANT, deadline=None):
+    """deadline: when rows stop being built (unix seconds); ROW_BUDGET_S after
+    the start unless given, and main() gives every variant the same one."""
     t0 = time.time()
+    deadline = t0 + ROW_BUDGET_S if deadline is None else deadline
     ops = common.ops()
     now = now or dt.datetime.now(dt.timezone.utc)
     model_json, job = VARIANTS[variant]
@@ -212,7 +215,7 @@ def run(now=None, dry_run=False, variant=VARIANT):
     skipped = {}
     rows, pairs = [], []
     for i, s in enumerate(todo):
-        if time.time() - t0 > ROW_BUDGET_S:
+        if time.time() > deadline:
             detail["deferred"] += len(todo) - i
             break
         if key(s) not in calibrated:
@@ -260,13 +263,17 @@ def main(argv=None):
     args = ap.parse_args(argv)
     now = dt.datetime.fromisoformat(args.at.replace("Z", "+00:00")) if args.at else None
     failed = []
+    # one row budget for all the variants together (Codex on #398): the
+    # step's 3 minutes hold every variant, so the second gets what the first
+    # left and defers the rest to the next tick
+    deadline = time.time() + ROW_BUDGET_S
     for variant, (model_json, _) in VARIANTS.items():
         if not os.path.exists(model_json):
             print(f"{variant}: no model at {os.path.relpath(model_json, ROOT)}, skipped")
             continue
         try:                                   # one variant failing does not stop the next
-            print(variant, json.dumps(run(now, args.dry_run, variant), indent=1, default=str), flush=True)
-        except Exception as exc:               # noqa: BLE001 - reported, then the step fails
+            print(variant, json.dumps(run(now, args.dry_run, variant, deadline), indent=1, default=str), flush=True)
+        except (Exception, SystemExit) as exc:  # noqa: BLE001 - a refused model too (Codex on #398)
             failed.append(variant)
             print(f"{variant} failed: {exc!r}", flush=True)
     return 1 if failed else 0

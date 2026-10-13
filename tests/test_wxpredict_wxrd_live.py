@@ -230,16 +230,24 @@ def test_each_variant_runs_on_its_own_and_a_missing_model_is_skipped(monkeypatch
     ran = []
     monkeypatch.setattr(wl, "VARIANTS", {"wxrd": (wl.MODEL_JSON, "P7.6_wxrd_shadow"),
                                          "wxrd3": (str(tmp_path / "absent.json"), "P7.6_wxrd3_shadow")})
-    monkeypatch.setattr(wl, "run", lambda now, dry, variant: ran.append(variant) or {"variant": variant})
+    deadlines = []
+    monkeypatch.setattr(wl, "run", lambda now, dry, variant, deadline: ran.append(variant) or
+                        deadlines.append(deadline) or {"variant": variant})
     assert wl.main([]) == 0 and ran == ["wxrd"]
 
-    def boom(now, dry, variant):
+    def boom(now, dry, variant, deadline):
         ran.append(variant)
+        deadlines.append(deadline)
+        if variant == "wxrd":
+            raise SystemExit("wxrd-v2's sha256 is ..., not ...: refusing to predict")
         raise RuntimeError("down")
     monkeypatch.setattr(wl, "VARIANTS", {"wxrd": (wl.MODEL_JSON, "a"), "wxrd3": (wl.MODEL_JSON, "b")})
     monkeypatch.setattr(wl, "run", boom)
     ran.clear()
-    assert wl.main([]) == 1 and ran == ["wxrd", "wxrd3"], "one failing does not stop the next; the step fails"
+    deadlines.clear()
+    assert wl.main([]) == 1 and ran == ["wxrd", "wxrd3"], \
+        "a refused model (SystemExit) or an error in one does not stop the next (Codex on #398); the step fails"
+    assert deadlines[0] == deadlines[1], "one row budget for every variant together (Codex on #398)"
 
 
 def test_a_variant_row_carries_its_variant():

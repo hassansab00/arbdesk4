@@ -957,7 +957,7 @@ eligible row to 11 Oct), fitted with five seeds whose ladders are averaged
 Its version's id is the sha256 of the five models' sha256s, so each row names
 the exact models that priced it. It runs in shadow beside wxrd-v2 at the same
 checkpoints, as variant `wxrd3` (log row `P7.6_wxrd3_shadow`), so the two
-differ only in the seeds. A weekly refit is worth building on this averaged
+differ only in the seeds. The two run one after the other in the tick's step with one row budget between them (90 s), and a refused model or an error in one does not stop the other (Codex on #398). A weekly refit is worth building on this averaged
 model, not on one seed whose own noise is as large as a week's new data.
 
 ### Why each day hit or missed: the daily record (13 Oct)
