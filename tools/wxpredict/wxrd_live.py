@@ -143,15 +143,15 @@ def key_filter(cities, city_keys):
 # ---------------------------------------------------------------------------
 def load_model(meta, model_json=MODEL_JSON):
     """The frozen model, or for a several-seed version the list of its models,
-    each one's sha256 checked, and the version's id checked against them."""
-    import lightgbm as lgb
-
+    each one's sha256 checked, and the version's id checked against them -
+    every check before lightgbm is imported, so a refusal needs no model."""
     def one(name, want):
         with open(os.path.join(os.path.dirname(model_json), name), "rb") as fh:
             text = gzip.decompress(fh.read())
         sha = hashlib.sha256(text).hexdigest()
         if sha != want:
             raise SystemExit(f"{meta['version']}'s {name} sha256 is {sha}, not {want}: refusing to predict")
+        import lightgbm as lgb
         return lgb.Booster(model_str=text.decode())
     if "models" not in meta:
         return one(meta["model_file"], meta["model_sha256"])
