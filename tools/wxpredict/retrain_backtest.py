@@ -137,7 +137,7 @@ def main(argv=None):
                          **{f"nll_{n}": round(float(r[f'nll_{n}'].mean()), 4)
                             for n in ("gated", "frozen", "fresh", "market")}})
     out = {"made": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
-           "weeks": weeks, "hours_local": list(HOURS), "seeds": SEEDS,
+           "window": [weeks[0][0], weeks[-1][1]], "weeks": weeks, "hours_local": list(HOURS), "seeds": SEEDS,
            "table": {"file": os.path.relpath(ev.TABLE_V2, ROOT), "gzip_sha256": sha},
            "model": "remaining.py, five seeds, ladders averaged (wxrd-v3), fitted on every eligible row dated before",
            "rule": "promote when the candidate's log loss on the gate week is not above the incumbent's",

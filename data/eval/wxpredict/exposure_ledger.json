@@ -166,6 +166,15 @@
    "scored": ["2026-09-15", "2026-10-11"],
    "verdict": "13 Oct, v2 table, 9,776 venue decisions 09-16h, v2_eval's four weekly folds. Refit against frozen at 14 Sep: hit 58.80% -> 59.20% (-0.03 to +0.91 points), log loss 0.9682 -> 0.9615 (-0.0113 to -0.0023). A weekly refit changes the top bucket on 16.8-17.9% of decisions (mean total variation 0.093-0.096), but two seeds on the same data change it on 17.2-17.9% (0.096-0.098): the churn is the model's own randomness. Five seeds averaged against one: hit 59.20% -> 60.27% (+0.74 to +1.45 points), log loss 0.9615 -> 0.9413 (-0.0240 to -0.0164), better in each of the four weeks. Frozen as wxrd-v3 (five seeds).",
    "results": ["stability_2026-10-13.json"]
+  },
+  {
+   "id": "retrain_gate",
+   "question": "Replaying a weekly refit of wxrd-v3 (five seeds averaged) whose candidate, fitted before the gate week, must not lose log loss to the serving model on that week before it serves the next: does it serve better than the fit frozen before the first gate, and what does it give up against the fit on every day before the served week?",
+   "rule_file": "tools/wxpredict/retrain_backtest.py",
+   "rule_marker": "Would a weekly, gated refit of wxrd-v3 have served better?",
+   "scored": ["2026-09-15", "2026-10-11"],
+   "verdict": "13 Oct, v2 table, venue decisions 09-16h, v2_eval's four weeks. Three gates (15 Sep, 22 Sep, 29 Sep weeks): the candidate's log loss was at or below the serving model's each time (-0.0009, -0.0068, -0.0011), so all three were promoted; five-seed ladders moved a mean total variation of 0.050-0.052 a week (p90 0.105-0.111; top bucket changed on 9.2-10.9% of decisions), half the single-seed 0.093-0.096. Served on 22 Sep-11 Oct (7,149 decisions): gated against frozen before 8 Sep, hit 59.94% -> 60.22% (-0.19 to +0.77 points), log loss 0.9330 -> 0.9310 (-0.0069 to +0.0028): not shown better. The fit on every day before the served week against the gated one: hit 60.22% -> 60.93% (+0.38 to +1.06 points), log loss 0.9310 -> 0.9257 (-0.0087 to -0.0019). The week the strict gate holds back costs more than the gate protects: serve the newest fit, gate the procedure on the week the serving model never saw.",
+   "results": ["retrain_backtest_2026-10-13.json"]
   }
  ],
  "blind_elsewhere": [

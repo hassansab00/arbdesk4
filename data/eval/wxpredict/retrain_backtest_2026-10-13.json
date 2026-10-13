@@ -1,0 +1,205 @@
+{
+ "made": "2026-10-13T11:10Z",
+ "window": [
+  "2026-09-15",
+  "2026-10-11"
+ ],
+ "weeks": [
+  [
+   "2026-09-15",
+   "2026-09-21"
+  ],
+  [
+   "2026-09-22",
+   "2026-09-28"
+  ],
+  [
+   "2026-09-29",
+   "2026-10-05"
+  ],
+  [
+   "2026-10-06",
+   "2026-10-11"
+  ]
+ ],
+ "hours_local": [
+  9,
+  16
+ ],
+ "seeds": [
+  20261011,
+  20261012,
+  20261013,
+  20261014,
+  20261015
+ ],
+ "table": {
+  "file": "data/training/wxpredict/table_v2/wxpredict_table.csv.gz",
+  "gzip_sha256": "b27874d38b8aa3b618848a4017bc05d431e941c19b15567c4a302333d91f016b"
+ },
+ "model": "remaining.py, five seeds, ladders averaged (wxrd-v3), fitted on every eligible row dated before",
+ "rule": "promote when the candidate's log loss on the gate week is not above the incumbent's",
+ "gates": [
+  {
+   "gate_week": [
+    "2026-09-15",
+    "2026-09-21"
+   ],
+   "n": 2627,
+   "dates": 7,
+   "candidate_fitted_before": "2026-09-15",
+   "incumbent_fitted_before": "2026-09-08",
+   "hit_candidate": 0.5847,
+   "hit_incumbent": 0.5881,
+   "hit_market": 0.6475,
+   "nll_candidate": 0.9835,
+   "nll_incumbent": 0.9844,
+   "nll_market": 0.8356,
+   "d_nll_ci90": [
+    -0.0128,
+    0.0091
+   ],
+   "tv_candidate_vs_incumbent": {
+    "mean": 0.0506,
+    "p90": 0.1047,
+    "max": 0.4488
+   },
+   "top_changed": 0.1016,
+   "promoted": true
+  },
+  {
+   "gate_week": [
+    "2026-09-22",
+    "2026-09-28"
+   ],
+   "n": 2629,
+   "dates": 7,
+   "candidate_fitted_before": "2026-09-22",
+   "incumbent_fitted_before": "2026-09-15",
+   "hit_candidate": 0.6231,
+   "hit_incumbent": 0.6154,
+   "hit_market": 0.666,
+   "nll_candidate": 0.9016,
+   "nll_incumbent": 0.9084,
+   "nll_market": 0.7744,
+   "d_nll_ci90": [
+    -0.0122,
+    -0.0013
+   ],
+   "tv_candidate_vs_incumbent": {
+    "mean": 0.0517,
+    "p90": 0.1108,
+    "max": 0.321
+   },
+   "top_changed": 0.1092,
+   "promoted": true
+  },
+  {
+   "gate_week": [
+    "2026-09-29",
+    "2026-10-05"
+   ],
+   "n": 2632,
+   "dates": 7,
+   "candidate_fitted_before": "2026-09-29",
+   "incumbent_fitted_before": "2026-09-22",
+   "hit_candidate": 0.5904,
+   "hit_incumbent": 0.5836,
+   "hit_market": 0.6531,
+   "nll_candidate": 0.9747,
+   "nll_incumbent": 0.9758,
+   "nll_market": 0.8155,
+   "d_nll_ci90": [
+    -0.0071,
+    0.0049
+   ],
+   "tv_candidate_vs_incumbent": {
+    "mean": 0.0495,
+    "p90": 0.1059,
+    "max": 0.5083
+   },
+   "top_changed": 0.0916,
+   "promoted": true
+  }
+ ],
+ "served": [
+  {
+   "week": [
+    "2026-09-22",
+    "2026-09-28"
+   ],
+   "n": 2629,
+   "serving_fitted_before": "2026-09-15",
+   "hit_gated": 0.6154,
+   "hit_frozen": 0.6162,
+   "hit_fresh": 0.6231,
+   "hit_market": 0.666,
+   "nll_gated": 0.9084,
+   "nll_frozen": 0.9113,
+   "nll_fresh": 0.9016,
+   "nll_market": 0.7744
+  },
+  {
+   "week": [
+    "2026-09-29",
+    "2026-10-05"
+   ],
+   "n": 2632,
+   "serving_fitted_before": "2026-09-22",
+   "hit_gated": 0.5836,
+   "hit_frozen": 0.5771,
+   "hit_fresh": 0.5904,
+   "hit_market": 0.6531,
+   "nll_gated": 0.9758,
+   "nll_frozen": 0.9813,
+   "nll_fresh": 0.9747,
+   "nll_market": 0.8155
+  },
+  {
+   "week": [
+    "2026-10-06",
+    "2026-10-11"
+   ],
+   "n": 1888,
+   "serving_fitted_before": "2026-09-29",
+   "hit_gated": 0.6096,
+   "hit_frozen": 0.607,
+   "hit_fresh": 0.6165,
+   "hit_market": 0.678,
+   "nll_gated": 0.9002,
+   "nll_frozen": 0.8961,
+   "nll_fresh": 0.891,
+   "nll_market": 0.774
+  }
+ ],
+ "gated_vs_frozen": {
+  "n": 7149,
+  "hit_frozen": 0.5994,
+  "hit_gated": 0.6022,
+  "nll_frozen": 0.933,
+  "nll_gated": 0.931,
+  "d_hit_ci90": [
+   -0.0019,
+   0.0077
+  ],
+  "d_nll_ci90": [
+   -0.0069,
+   0.0028
+  ]
+ },
+ "fresh_vs_gated": {
+  "n": 7149,
+  "hit_gated": 0.6022,
+  "hit_fresh": 0.6093,
+  "nll_gated": 0.931,
+  "nll_fresh": 0.9257,
+  "d_hit_ci90": [
+   0.0038,
+   0.0106
+  ],
+  "d_nll_ci90": [
+   -0.0087,
+   -0.0019
+  ]
+ }
+}
