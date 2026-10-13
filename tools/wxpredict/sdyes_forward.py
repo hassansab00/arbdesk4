@@ -95,7 +95,11 @@ def read_rd1():
 def model_probs(rows, booster):
     """{(event_id, t): [bucket probabilities] or None} for the rows' decisions:
     the frozen model's, on the row as the training table would hold it (written
-    and read back as the table is)."""
+    and read back as the table is). booster: one model, or a list of models
+    fitted with different seeds, whose bucket ladders are averaged (each one
+    floored and normalised first, as stability_eval.py measured it)."""
+    boosters = list(booster) if isinstance(booster, (list, tuple)) else [booster]
+    booster = boosters[0]
     if not rows:
         return {}
     with tempfile.TemporaryDirectory() as tmp:
@@ -121,8 +125,8 @@ def model_probs(rows, booster):
             lo[i, :len(la)] = [-np.inf if v is None else v for v in la]
             hi[i, :len(lb)] = [np.inf if v is None else v for v in lb]
             mask[i, :len(la)] = True
-        pr = booster.predict(x[el])
-        w = remaining.bucket_probs(pr, sub.unit.values, sub.rmax_unit.values, lo, hi, mask)
+        w = np.mean([remaining.bucket_probs(b.predict(x[el]), sub.unit.values, sub.rmax_unit.values, lo, hi, mask)
+                     for b in boosters], axis=0)
         for (e, t), p, m in zip(zip(sub.event_id.values, sub.decision_utc.values), w, mask):
             out[(str(e), int(t))] = [float(v) for v in p[m]]
     return out
