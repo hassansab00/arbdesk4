@@ -1,0 +1,177 @@
+{
+ "made": "2026-10-13T08:55Z",
+ "window": [
+  "2026-09-15",
+  "2026-10-11"
+ ],
+ "folds_used": [
+  [
+   "2026-09-15",
+   "2026-09-21"
+  ],
+  [
+   "2026-09-22",
+   "2026-09-28"
+  ],
+  [
+   "2026-09-29",
+   "2026-10-05"
+  ],
+  [
+   "2026-10-06",
+   "2026-10-11"
+  ]
+ ],
+ "hours_local": [
+  9,
+  16
+ ],
+ "table": {
+  "file": "data/training/wxpredict/table_v2/wxpredict_table.csv.gz",
+  "gzip_sha256": "b27874d38b8aa3b618848a4017bc05d431e941c19b15567c4a302333d91f016b"
+ },
+ "seeds": [
+  20261011,
+  20261012,
+  20261013,
+  20261014,
+  20261015
+ ],
+ "model": "remaining.py, fitted per fold on every eligible row dated before it",
+ "refit_vs_frozen": {
+  "n": 9776,
+  "hit_frozen": 0.588,
+  "hit_refit": 0.592,
+  "nll_frozen": 0.9682,
+  "nll_refit": 0.9615,
+  "d_hit_ci90": [
+   -0.0003,
+   0.0091
+  ],
+  "d_nll_ci90": [
+   -0.0113,
+   -0.0023
+  ]
+ },
+ "seed_average_vs_one_seed": {
+  "n": 9776,
+  "hit_one_seed": 0.592,
+  "hit_seed_average": 0.6027,
+  "nll_one_seed": 0.9615,
+  "nll_seed_average": 0.9413,
+  "d_hit_ci90": [
+   0.0074,
+   0.0145
+  ],
+  "d_nll_ci90": [
+   -0.024,
+   -0.0164
+  ]
+ },
+ "per_fold": {
+  "2026-09-15": {
+   "n": 2627,
+   "hit_frozen": 0.5714,
+   "hit_one": 0.5714,
+   "hit_avg": 0.5847,
+   "hit_market": 0.6475,
+   "nll_frozen": 1.0009,
+   "nll_one": 1.0009,
+   "nll_avg": 0.9835,
+   "nll_market": 0.8356,
+   "seed_vs_seed": {
+    "tv": {
+     "mean": 0.0976,
+     "p90": 0.207,
+     "max": 0.675
+    },
+    "top_changed": 0.1763
+   },
+   "tv_model_vs_market": 0.199
+  },
+  "2026-09-22": {
+   "n": 2629,
+   "hit_frozen": 0.6071,
+   "hit_one": 0.6128,
+   "hit_avg": 0.6231,
+   "hit_market": 0.666,
+   "nll_frozen": 0.9293,
+   "nll_one": 0.9171,
+   "nll_avg": 0.9016,
+   "nll_market": 0.7744,
+   "seed_vs_seed": {
+    "tv": {
+     "mean": 0.0968,
+     "p90": 0.2034,
+     "max": 0.6472
+    },
+    "top_changed": 0.1771
+   },
+   "tv_model_vs_market": 0.1941,
+   "refit_vs_last_week": {
+    "tv": {
+     "mean": 0.095,
+     "p90": 0.2009,
+     "max": 0.5231
+    },
+    "top_changed": 0.1708
+   }
+  },
+  "2026-09-29": {
+   "n": 2632,
+   "hit_frozen": 0.5786,
+   "hit_one": 0.5775,
+   "hit_avg": 0.5904,
+   "hit_market": 0.6531,
+   "nll_frozen": 1.0054,
+   "nll_one": 0.9996,
+   "nll_avg": 0.9747,
+   "nll_market": 0.8155,
+   "seed_vs_seed": {
+    "tv": {
+     "mean": 0.0957,
+     "p90": 0.2056,
+     "max": 0.8426
+    },
+    "top_changed": 0.1722
+   },
+   "tv_model_vs_market": 0.1972,
+   "refit_vs_last_week": {
+    "tv": {
+     "mean": 0.0931,
+     "p90": 0.2027,
+     "max": 0.5848
+    },
+    "top_changed": 0.1679
+   }
+  },
+  "2026-10-06": {
+   "n": 1888,
+   "hit_frozen": 0.5975,
+   "hit_one": 0.6118,
+   "hit_avg": 0.6165,
+   "hit_market": 0.678,
+   "nll_frozen": 0.9248,
+   "nll_one": 0.9156,
+   "nll_avg": 0.891,
+   "nll_market": 0.774,
+   "seed_vs_seed": {
+    "tv": {
+     "mean": 0.0984,
+     "p90": 0.2081,
+     "max": 0.6992
+    },
+    "top_changed": 0.1789
+   },
+   "tv_model_vs_market": 0.1992,
+   "refit_vs_last_week": {
+    "tv": {
+     "mean": 0.0961,
+     "p90": 0.2021,
+     "max": 0.4975
+    },
+    "top_changed": 0.179
+   }
+  }
+ }
+}
