@@ -3,7 +3,44 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
-## Audit repair batch — 14 Oct UTC / 15 Oct Beirut, in review
+## Checkpoint scoreboard cache — 14 Oct UTC / 15 Oct Beirut
+
+Hassan approved merging/deploying #399 and asked for remaining findings to be
+listed before acting. At 14 Oct 23:00 UTC, production `storage_pressure()`
+reported **562 MiB, 112.4% of the configured 500 MiB limit**. The 24-hour
+window 13 Oct 23:00–14 Oct 23:00 UTC has **12 timeout entries in postgres_logs
+and 12 in postgrest_logs**, separate streams rather than 24 distinct failures.
+There were no open GitHub issues after #399 merged. Public operator access,
+historical station-report identity, actual-arrival training/live parity,
+forecast quality and profitable execution remain unresolved. The first
+`live_capture` prune is due 15 Oct 02:36 UTC; three whole days of parity can
+be checked from 16 Oct. Neither future check is called failed or accepted.
+
+**Next repair:** the page's `v_checkpoint_scoreboard` reads stored rows, using
+the existing page-cache machinery. Its exact live definition (including the
+first-call filter and common-ladder denominators) is copied; the view is
+replaced in place, retaining columns, grants and dependencies. The existing
+:12/:42 and post-pipeline refresh adds the copy. New scores appear at a
+refresh. No model, allocation, raw record or schedule changes.
+
+**Rehearsal, rolled back:** one REPEATABLE READ production snapshot, 294 rows,
+EXCEPT ALL **0 in both directions** before/after. Full scoreboard read before
+as owner: 1,674.432 ms; after as anon: 2.512 ms. These are this rehearsal's
+query timings, not a page-wide benchmark or a 24-hour timeout acceptance.
+Stored copy plus unique index: 114,688 bytes. The live scoreboard's only view
+dependency is `v_checkpoint_calls`; neither view contains a clock expression.
+No production function body reads the scoreboard. Executable scripts and
+workflows do not read it; `tools/audit_baseline.sql` remains an audit reader.
+
+**Validation:** full local suites passed: 4,054 Python tests, 9 skipped
+(168.75 s), and the complete database contracts. CI and production application
+are recorded in the PR deployment notes. The regression contract
+checks actual score columns and first-call logic, EXCEPT ALL both ways,
+anonymous reads/private copies, unchanged view identity and dependents,
+refreshing a new settled row, repeat applies, and reinstall recovery. R11's
+24 hours without browser timeouts remains open even after this repair.
+
+## Audit repair batch — 14 Oct UTC / 15 Oct Beirut, #399 live
 
 Hassan asked Codex to work directly on the repository after the fresh audit.
 The starting main is `30bde426` (the code remains #398; later commits add data).
@@ -29,8 +66,11 @@ The starting main is `30bde426` (the code remains #398; later commits add data).
   `derived_day_review` 172 rows, newest computed 14 Oct 02:48:59 UTC. The
   separate nightly record still logged 264 off-grid hours. The prior audit's
   day-review/mirror failure has recovered; the grid defect has not.
-- **Acceptance:** local validation and CI are recorded on the PR. Neither
-  code repair is called live until merged/deployed and checked on a real run.
+- **Deployment:** #399 merged at 14 Oct 23:00 UTC (`bcfbd4f8`). Vercel
+  reports deployment success; production GET returned 200 with `webhooks:
+  null` and 14 configured flags. The nightly grid repair is on main; its
+  first scheduled record run is still pending. Local validation and CI
+  passed (4,054 Python tests, database contracts and web checks).
   Database pressure, remaining page timeouts, historical report identity,
   actual-arrival parity, forecast accuracy and profitable execution remain
   open; this batch changes no model, trading allocation or schedule.

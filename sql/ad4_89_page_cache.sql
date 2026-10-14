@@ -3,7 +3,7 @@
 --
 -- v_prediction_ladder (ad4_31 / ad4_68), v_forecast_convergence_all (ad4_62),
 -- v_city_hit_history (ad4_85), v_opportunities (ad4_13; below, 2.E) and the
--- six views of 2.E part 2 - v_prediction_hindsight (supabase/migrations/
+-- checkpoint scoreboard (2.E part 3) and six views of 2.E part 2 - v_prediction_hindsight (supabase/migrations/
 -- 20261006180000), v_edge_scaling (ad4_31), v_calibration and
 -- v_edge_realisation (ad4_18), v_model_forecast_skill (ad4_25) and
 -- v_condition_skill (ad4_24) - are defined in full in those files. This
@@ -12,8 +12,8 @@
 -- refresh_page_cache(). It is re-runnable: after any of those files is
 -- reinstalled, run this one again and the changed definition is carried
 -- through. Why, with the measurements: supabase/migrations/
--- 20260924040000_pages_read_stored_rows.sql, 20261009210000 and
--- 20261011100000.
+-- 20260924040000_pages_read_stored_rows.sql, 20261009210000,
+-- 20261011100000 and 20261014230442 (checkpoint scoreboard).
 --
 -- A wrapper keeps its view's own options (security_invoker): CREATE OR
 -- REPLACE VIEW without them would reset them. An invoker wrapper reads the
@@ -52,7 +52,8 @@ begin
       ('v_calibration',              'mv_calibration',              'bucket',      '', '', ' order by bucket'),
       ('v_edge_realisation',         'mv_edge_realisation',         'edge_bucket', '', '', ' order by ord'),
       ('v_model_forecast_skill',     'mv_model_forecast_skill',     'city_key, lead_days', '', '', ''),
-      ('v_condition_skill',          'mv_condition_skill',          'city_key',    '', '', '')
+      ('v_condition_skill',          'mv_condition_skill',          'city_key',    '', '', ''),
+      ('v_checkpoint_scoreboard',    'mv_checkpoint_scoreboard',    'checkpoint, city_key', '', '', '')
     ) s(view_name, mv_name, key_cols, extra, keep, order_by)
   loop
     v := to_regclass('public.' || spec.view_name);
@@ -225,7 +226,7 @@ declare
   out jsonb := '{}'::jsonb;
 begin
   foreach m in array array['mv_opportunities', 'mv_prediction_ladder', 'mv_city_ladder_edges', 'mv_forecast_convergence_all', 'mv_city_hit_history',
-                           'mv_prediction_hindsight', 'mv_edge_scaling', 'mv_calibration', 'mv_edge_realisation', 'mv_model_forecast_skill', 'mv_condition_skill'] loop
+                           'mv_prediction_hindsight', 'mv_edge_scaling', 'mv_calibration', 'mv_edge_realisation', 'mv_model_forecast_skill', 'mv_condition_skill', 'mv_checkpoint_scoreboard'] loop
     continue when to_regclass('public.' || m) is null;
     t0 := clock_timestamp();
     execute format('refresh materialized view concurrently public.%I', m);
