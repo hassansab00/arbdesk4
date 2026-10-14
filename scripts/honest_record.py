@@ -36,8 +36,9 @@ the file is never rewritten: an hour asked again is compared value by value
 and a difference is reported, not merged (fetch_forecasts.py's rule). The
 file was built with timezone=auto, so a city on a half-hour offset (Lucknow,
 the only one on 11 Oct: 10,752 rows at :30) has its hours at :30 UTC, where
-a UTC answer has them at :00; an answer's hours off a city's own grid are
-counted and left out, so that city is extended by fetch_forecasts.py alone.
+a UTC answer has them at :00. The nightly append now asks those cities for
+their local-hour series separately and converts the answer with its stated
+fixed offset, as fetch_forecasts.py does. Daily aggregates still use UTC.
 
   python scripts/honest_record.py [--days 10] [--dry-run]
 """
@@ -428,20 +429,67 @@ def _text(row):
 
 
 def hourly_day1_rows(city_key, heating_js, before):
-    """The hourly lead-1 record's rows from a heating answer (asked in UTC, so
-    its stamps are the record's own): every hour before `before` (a naive UTC
-    datetime) with a temperature, the seven HEATING values in HOURLY_HEADER's
-    order."""
+    """Hourly lead-1 rows before `before` (naive UTC), with a temperature and
+    the seven HEATING values in HOURLY_HEADER order. Ordinary answers are UTC;
+    supplemental local-hour answers carry their fixed utc_offset_seconds.
+    """
     h = (heating_js or {}).get("hourly") or {}
+    offset = dt.timedelta(seconds=(heating_js or {}).get("utc_offset_seconds", 0))
     cols = [h.get(f"{v}_previous_day1") or [] for v in HEATING]
     out = []
     for i, t in enumerate(h.get("time") or []):
-        stamp = dt.datetime.fromisoformat(t)
+        stamp = dt.datetime.fromisoformat(t) - offset
         vals = [c[i] if i < len(c) else None for c in cols]
         if stamp >= before or vals[0] is None:
             continue
         out.append([city_key, stamp.strftime("%Y-%m-%dT%H:%M"), *vals])
     return out
+
+
+def record_grid_hourly(cities, grids, start, end, before, rounds):
+    """Extend non-:00 records from actual local-hour forecasts, never by
+    relabelling/interpolating a UTC answer. Reuse the run's deadline, retry
+    waits and single-worker policy; a failed supplemental ask is partial.
+    Daily feature aggregates continue to read the ordinary UTC answers.
+    """
+    from common import ask_in_rounds
+    selected = [c for c in cities if grids.get(c["city_key"], 0) != 0]
+    chunks = [selected[i:i + CHUNK] for i in range(0, len(selected), CHUNK)]
+    if not chunks:
+        return [], []
+
+    def ask(k):
+        chunk = chunks[k]
+        params = dict(_places(chunk), timezone="auto", start_date=(start - dt.timedelta(days=1)).isoformat(),
+                      end_date=(end + dt.timedelta(days=1)).isoformat(),
+                      hourly=",".join(f"{v}_previous_day1" for v in HEATING))
+        label = _label(chunk, "record-grid hourly")
+        answers = _per_place(_get(PREVIOUS_API, params, label), chunk, label)
+        if answers is None:
+            return None
+        rows = []
+        try:
+            for city, answer in zip(chunk, answers):
+                offset = answer.get("utc_offset_seconds")
+                if not isinstance(offset, (int, float)) or isinstance(offset, bool):
+                    raise ValueError("missing numeric UTC offset")
+                stamps = [dt.datetime.fromisoformat(t) for t in answer["hourly"]["time"]]
+                if any(b - a != dt.timedelta(hours=1) for a, b in zip(stamps, stamps[1:])):
+                    raise ValueError("local hours are not evenly spaced")
+                made = hourly_day1_rows(city["city_key"], answer, before)
+                if not made or any(dt.datetime.fromisoformat(r[1]).minute != grids[city["city_key"]] for r in made):
+                    raise ValueError("no usable hours on the recorded grid")
+                rows.extend(made)
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            print(f"  ! {label}: {exc}", file=sys.stderr)
+            return None
+        return rows
+
+    answers, done = ask_in_rounds(list(range(len(chunks))), ask, WORKERS, RETRY_WAITS, _left, MIN_LEFT)
+    rounds.extend(done)
+    rows = [r for k in sorted(answers) for r in answers[k]]
+    missing = [c["city_key"] for k, chunk in enumerate(chunks) if k not in answers for c in chunk]
+    return rows, missing
 
 
 def append_hourly(existing, new):
@@ -498,6 +546,8 @@ def main(argv=None, now=None):
     before = dt.datetime.combine(today, dt.time())          # the hourly record takes hours before today (UTC)
     cities = [c for c in get_cities() if c.get("latitude") is not None and c.get("timezone")
               and c.get("status", "active") == "active"]
+    old_hr = read_rows(HOURLY_FILE)
+    grids = {r[0]: dt.datetime.fromisoformat(r[1]).minute for r in old_hr}
     bm, md, hourly, missing, rounds = [], [], [], [], []
     for city, (h, m) in fetch_each(lambda chunk, part: previous_request(chunk, part, start, end), cities, rounds):
         if h is None or m is None:
@@ -505,22 +555,27 @@ def main(argv=None, now=None):
         b, x = previous_rows(city["city_key"], h, m, city["timezone"], start.isoformat(), end.isoformat())
         bm += b
         md += x
-        hourly += hourly_day1_rows(city["city_key"], h, before)
+        if grids.get(city["city_key"], 0) == 0:
+            hourly += hourly_day1_rows(city["city_key"], h, before)
+    grid_rounds = []
+    extra, hourly_missing = record_grid_hourly(cities, grids, start, end, before, grid_rounds)
+    hourly += extra
     old_bm, old_md = read_rows(BEST_MATCH_FILE), read_rows(MODELS_FILE)
     new_bm, new_md = merge(old_bm, bm, 3), merge(old_md, md, 4)
-    new_hr, hr_added, hr_same, hr_differ, hr_off = append_hourly(read_rows(HOURLY_FILE), hourly)
+    new_hr, hr_added, hr_same, hr_differ, hr_off = append_hourly(old_hr, hourly)
     detail = {"from": start.isoformat(), "to": end.isoformat(), "cities": len(cities),
               "unreached": missing, "best_match_rows": len(bm), "model_rows": len(md),
               "best_match_total": len(new_bm), "models_total": len(new_md), "rounds": rounds,
               "hourly_added": hr_added, "hourly_identical": hr_same, "hourly_differ": len(hr_differ),
-              "hourly_differ_first": hr_differ[:5], "hourly_off_grid": hr_off, "hourly_total": len(new_hr)}
+              "hourly_differ_first": hr_differ[:5], "hourly_off_grid": hr_off, "hourly_total": len(new_hr),
+              "hourly_unreached": hourly_missing, "hourly_grid_rounds": grid_rounds}
     print(detail)
     if args.dry_run:
         return 0
     write_rows(BEST_MATCH_FILE, BEST_MATCH_HEADER, new_bm)
     write_rows(MODELS_FILE, MODELS_HEADER, new_md)
     write_rows(HOURLY_FILE, HOURLY_HEADER, new_hr)
-    status = "ok" if not missing else ("partial" if len(missing) < len(cities) else "error")
+    status = "error" if cities and len(missing) == len(cities) else ("partial" if missing or hourly_missing else "ok")
     log_run(JOB, status, len(bm) + len(md), detail)
     return 0 if status != "error" else 1
 

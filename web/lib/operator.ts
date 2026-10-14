@@ -78,10 +78,14 @@ export function fireWorkflow(job: string, body: Record<string, unknown> = {}):
   return post({ op: "fire_workflow", job, body });
 }
 
+export function setWorkflowUrl(job: string, url: string): Promise<OperatorResult<{ ok: boolean }>> {
+  return post({ op: "set_webhook", job, url });
+}
+
 export interface WorkflowSettings {
   configured: Record<string, boolean>;
-  /** The URLs - only when the caller is a signed-in operator. */
-  webhooks: Record<string, { url?: string } & Record<string, unknown>> | null;
+  /** Saved URLs remain server-side in both sign-in modes. */
+  webhooks: null;
 }
 
 export async function readWorkflowSettings(): Promise<OperatorResult<WorkflowSettings>> {

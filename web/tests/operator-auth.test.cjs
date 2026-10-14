@@ -82,5 +82,74 @@ const forged = (url, extra = {}) => new Request(`${SITE}${url}`, {
   assert.match(hook.webhookRefusal(403, {}), /set N8N_WEBHOOK_KEY/);
   assert.ok(!hook.webhookRefusal(403, { N8N_WEBHOOK_KEY: 'k3y' }).includes('k3y'), 'a refusal echoed the key');
 
+  // Saved URLs never leave GET, including when the single-user write gate
+  // deliberately accepts requests without a session. Replacing one URL
+  // keeps the other jobs and metadata without first disclosing them.
+  const realClient = auth.serviceClient;
+  const realGate = auth.requireOperator;
+  const hooks = { P0_ignored: { url: '' },
+    'P0.2_market_discovery': { url: 'https://n8n.example/webhook/old-secret', label: 'keep this label' },
+    'P0.3_book_volume_snapshot': { url: 'https://n8n.example/webhook/other-secret' } };
+  let readError = null, rpcError = null, rpcData = null;
+  const writes = [];
+  auth.serviceClient = () => ({
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { value: hooks }, error: readError }) }) }) }),
+    rpc: async (name, params) => { writes.push({ name, params }); return { data: rpcData ?? { ok: true, secret: hooks }, error: rpcError }; },
+  });
+  // Keep the real authenticated refusal, while the no-session mode uses the
+  // fake configured server above rather than constructing a network client.
+  auth.requireOperator = (request) => auth.signInRequired()
+    ? realGate(request) : Promise.resolve({ ok: true, email: 'sign-in off' });
+  try {
+    for (const mode of [undefined, 'required']) {
+      if (mode) process.env.OPERATOR_SIGN_IN = mode; else delete process.env.OPERATOR_SIGN_IN;
+      const res = await route('operator').GET(new Request(`${SITE}/api/operator?what=workflows`));
+      assert.equal(res.status, 200);
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+      const json = await res.json();
+      assert.deepEqual(json.data, { configured: { P0_ignored: false, 'P0.2_market_discovery': true,
+        'P0.3_book_volume_snapshot': true }, webhooks: null });
+      assert.ok(!JSON.stringify(json).includes('secret'), 'GET exposed saved credentials');
+    }
+    delete process.env.OPERATOR_SIGN_IN;
+    const setUrl = (url, job = 'P0.2_market_discovery') => new Request(`${SITE}/api/operator`, {
+      method: 'POST', headers: { origin: SITE, 'content-type': 'application/json' },
+      body: JSON.stringify({ op: 'set_webhook', job, url }),
+    });
+    let res = await route('operator').POST(setUrl(' https://n8n.example/webhook/replacement '));
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { data: { ok: true }, error: null }, 'save echoed the RPC configuration');
+    assert.deepEqual(writes[0], { name: 'update_setting', params: { p_key: 'n8n_webhooks', p_value: {
+      ...hooks, 'P0.2_market_discovery': { label: 'keep this label', url: 'https://n8n.example/webhook/replacement' },
+    } } });
+    for (const url of ['http://n8n.example/x', 'not a URL', 'https://user:pass@n8n.example/x']) {
+      assert.equal((await route('operator').POST(setUrl(url))).status, 400);
+    }
+    assert.equal((await route('operator').POST(setUrl('https://n8n.example/x', '__proto__'))).status, 400);
+    assert.equal(writes.length, 1, 'an invalid URL or job reached the database');
+    readError = { message: 'database unavailable' };
+    assert.equal((await route('operator').GET(new Request(`${SITE}/api/operator?what=workflows`))).status, 503);
+    assert.equal((await route('operator').POST(setUrl('https://n8n.example/x'))).status, 500);
+    assert.equal(writes.length, 1, 'a failed configuration read overwrote the other jobs');
+    readError = null;
+    rpcError = { message: 'private database error' };
+    res = await route('operator').POST(setUrl('https://n8n.example/x'));
+    assert.equal(res.status, 400);
+    assert.ok(!(await res.text()).includes('private database error'));
+    rpcError = null;
+    rpcData = { ok: false, error: 'private setting value' };
+    assert.equal((await route('operator').POST(setUrl('https://n8n.example/x'))).status, 400);
+    rpcData = null;
+    assert.equal((await route('operator').POST(setUrl(''))).status, 200, 'clearing a URL must remain supported');
+    process.env.OPERATOR_SIGN_IN = 'required';
+    const count = writes.length;
+    assert.equal((await route('operator').POST(setUrl('https://n8n.example/x'))).status, 401);
+    assert.equal(writes.length, count, 'the URL replacement bypassed the operator gate');
+  } finally {
+    auth.serviceClient = realClient;
+    auth.requireOperator = realGate;
+    delete process.env.OPERATOR_SIGN_IN;
+  }
+
   console.log('PASS: operator gate - sign-in off passes to the service key; sign-in on refuses a forged Origin with 401 on every write route');
 })().catch((e) => { console.error(e); process.exit(1); });

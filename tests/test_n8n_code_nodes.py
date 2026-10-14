@@ -1609,6 +1609,11 @@ def test_every_rpc_the_ui_calls_is_granted_back():
     for path in glob.glob(os.path.join(ROOT, "web", "**", "*.ts*"), recursive=True):
         if "node_modules" in path:
             continue
+        # API routes execute server-side with the service role. Granting
+        # their write RPCs to anon would undo the operator boundary. This
+        # contract covers the browser's RPCs, not the server's handlers.
+        if path.startswith(os.path.join(ROOT, "web", "app", "api") + os.sep):
+            continue
         called |= set(re.findall(r'\.rpc\(\s*"([a-z0-9_]+)"', open(path).read()))
     assert called, "no RPC calls found - the scan is broken, not the grants"
 
@@ -1933,7 +1938,7 @@ def test_a_backfill_run_asks_for_days_that_have_already_passed():
     r = _p02_requests(days_back="3", days_ahead="1", max_requests="500")
     assert r["ok"], r
     dates = sorted({i["for_date"] for i in r["outputs"]["Build requests"]})
-    today = datetime.date.today()
+    today = datetime.datetime.now(datetime.timezone.utc).date()
     past = [d for d in dates
             if datetime.date.fromisoformat(d) < today]
     assert len(past) == 3, f"expected three past days, got {dates}"
@@ -1943,7 +1948,7 @@ def test_without_days_back_nothing_before_today_is_ever_requested():
     import datetime
     r = _p02_requests(days_ahead="2", max_requests="500")
     assert r["ok"], r
-    today = datetime.date.today()
+    today = datetime.datetime.now(datetime.timezone.utc).date()
     assert all(datetime.date.fromisoformat(i["for_date"]) >= today
                for i in r["outputs"]["Build requests"]), \
         "the old behaviour is the default and must stay the default"
@@ -1956,7 +1961,7 @@ def test_a_truncating_cap_drops_backfill_and_keeps_today():
     r = _p02_requests(days_ahead="1", days_back="5", max_requests="3")
     assert r["ok"], r
     dates = {i["for_date"] for i in r["outputs"]["Build requests"]}
-    assert dates == {datetime.date.today().isoformat()}, \
+    assert dates == {datetime.datetime.now(datetime.timezone.utc).date().isoformat()}, \
         f"the cap ate the live day: {sorted(dates)}"
 
 

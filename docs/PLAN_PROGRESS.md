@@ -3,6 +3,43 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Audit repair batch — 14 Oct UTC / 15 Oct Beirut, in review
+
+Hassan asked Codex to work directly on the repository after the fresh audit.
+The starting main is `30bde426` (the code remains #398; later commits add data).
+
+- **Workflow configuration exposure:** GET `/api/operator?what=workflows`
+  returns only configured flags and `webhooks: null` in both sign-in modes.
+  The page replaces one URL through the existing server/operator boundary;
+  saved URLs and the RPC's configuration payload are not returned. Reads that
+  fail stop replacement rather than overwriting other workflows with an empty
+  configuration. Single-user sign-in stays off by default; deployment access
+  protection is still required to secure mutations. No claim that hiding URLs
+  authenticates the deployment.
+- **Lucknow hourly training record:** `honest_record.py` now asks non-:00
+  recorded grids for local-hour lead-1 forecasts under the same deadline and
+  retry policy. Each answer's fixed UTC offset restores the existing grid;
+  old rows remain immutable, daily aggregates still use UTC, and a missed
+  supplemental request logs `hourly_unreached` and partial status. Read-only
+  live probe: committed Lucknow file has 10,920 rows through 11 Oct 17:30 UTC;
+  the new request/conversion produced 78 usable rows, through 13 Oct 23:30 UTC,
+  for the padded 12–13 Oct request. No forecast file was changed by the probe.
+- **Overnight recovery checked, not rebuilt:** production SQL at 14 Oct
+  22:18 UTC: `mirror_to_repo` last status ok (14 Oct 02:45:21 UTC),
+  `derived_day_review` 172 rows, newest computed 14 Oct 02:48:59 UTC. The
+  separate nightly record still logged 264 off-grid hours. The prior audit's
+  day-review/mirror failure has recovered; the grid defect has not.
+- **Acceptance:** local validation and CI are recorded on the PR. Neither
+  code repair is called live until merged/deployed and checked on a real run.
+  Database pressure, remaining page timeouts, historical report identity,
+  actual-arrival parity, forecast accuracy and profitable execution remain
+  open; this batch changes no model, trading allocation or schedule.
+- **Validation repairs:** the anonymous-RPC scan now excludes server API
+  routes, whose service-role writes must not be granted to anon. Three
+  discovery tests compare against UTC today, matching the workflow's UTC
+  dates instead of the test host's local date. The first full run exposed
+  both issues; no database grants or production discovery behaviour changed.
+
 **Latest handoff: `docs/handoff-2026-09-30/` (start with `00_START_HERE.md`)** (30 Sep ~09:00Z). It answers Hassan's three questions from the live database: are we running in circles, why the predictive section trails the market, and why US cities are missing from the hit/miss view (a regression since 25 Sep, plus a table cut to 8 cities). It lists the fixes in order (F1, F2, F3) and the checks due on 1 and 5 Oct. Read it after `CLAUDE.md` and before this checklist. The 27 Sep handoff (`docs/HANDOFF_2026-09-27.md`) is superseded.
 
 **WXPredict, the predictive core engine (Hassan, 5 Oct: "WE NEED TO BEAT THE MARKET ... APPROVED, PROCEED TO PHASE 1").** **The build is governed by `docs/WXPREDICT_BUILD.md`** (v2.2, the final build document, 5 Oct ~17:30Z, awaiting Hassan's approval; wave A, the Actions revamp, approved by Hassan: "as long as we maintain quality, don't cut corners, and improve the accuracy of the engines"; v2.2 adds wave P, the paper desks, which Hassan reported on 5 Oct are not visible or working: measured, the API answers and the page opens on an empty desk, and no paper trade has opened since 29 Sep 22:36Z because the strategies that traded were retired that day and the remaining ones made 0 BUY in 11,591 decisions since 30 Sep). It holds every open item on the platform, measured 5 Oct (section 3: minutes on course for about 3,300 in October, the database at 575 MB / 114.9%, the jobs warning, the unfinished plan steps), one order of work (waves A, 0, P and 2, phases 1-5), the full test that ends it (section 7), and Hassan's decisions (section 9). The sealed test (1 Sep - 4 Oct and later) is untouched. Resume from its status table. Everything else stops until it is built. The plan has five phases, set out in `docs/WXPREDICT.md`: (1) clean, refresh, one training table; (2) the market's price fresh at each decision; (3) the model: A weather, B buckets, C market fusion, D calibration; (4) walk-forward against the market; (5) nightly cycle, shadow and the board, with Hassan deciding serving. numpy and scikit-learn may be added to the jobs (approved).

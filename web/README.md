@@ -126,6 +126,14 @@ single-desk mode means anyone who can open the deployed application can use its
 enabled controls. Verify a downloaded file with
 `python scripts/verify_proprietary_export.py <file.ndjson>` from the repository
 root.
+
+The Workflows settings read returns presence flags only; saved webhook URLs
+stay on the server in both sign-in modes. **Replace URL** sends just the new
+URL for one job, retaining the other jobs and metadata server-side. The
+operator gate still controls writes: single-user mode needs a private
+deployment boundary, or set `OPERATOR_SIGN_IN=required` to enforce operator
+sessions. Hiding URLs does not authenticate an otherwise public deployment.
+
 `web/vercel.json` already sets the framework, build, dev
 and install commands for that root.
 

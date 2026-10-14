@@ -45,34 +45,41 @@ type Webhooks = Record<string, { url?: string } & Record<string, unknown>>;
 async function webhooks(): Promise<Webhooks | null> {
   const client = serviceClient();
   if (!client) return null;
-  const { data } = await client.from("settings").select("value").eq("key", "n8n_webhooks").maybeSingle();
+  const { data, error } = await client.from("settings").select("value").eq("key", "n8n_webhooks").maybeSingle();
+  if (error) throw new Error("Workflow settings could not be read.");
   const v = data?.value;
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Webhooks) : {};
 }
 
 /**
- * GET ?what=workflows - which n8n jobs have a webhook URL, and the URLs
- * themselves to whoever passes requireOperator (everyone who can reach the
- * site while sign-in is off; only an operator when it is on).
+ * GET ?what=workflows returns configuration flags only. In the single-user
+ * mode requireOperator deliberately allows requests without a session, so
+ * passing that gate must never make saved webhook credentials readable.
+ * URLs stay on the server even when sign-in is enabled.
  */
 export async function GET(request: Request) {
   const what = new URL(request.url).searchParams.get("what");
   if (what !== "workflows") return fail("Unknown read.", 400);
-  const hooks = await webhooks();
+  let hooks: Webhooks | null;
+  try {
+    hooks = await webhooks();
+  } catch {
+    return fail("Workflow settings could not be read.", 503);
+  }
   if (!hooks) return fail("Reads of workflow settings are not configured on this server.", 503);
   const configured: Record<string, boolean> = {};
   for (const [job, entry] of Object.entries(hooks)) {
     configured[job] = !!(entry && typeof entry === "object" && typeof entry.url === "string" && entry.url.trim());
   }
-  const verdict = await requireOperator(request);
   return NextResponse.json(
-    { data: { configured, webhooks: verdict?.ok ? hooks : null }, error: null },
+    { data: { configured, webhooks: null }, error: null },
     { headers: noStore },
   );
 }
 
 /**
  * POST { op: "rpc", rpc, params }
+ *      { op: "set_webhook", job, url }
  *      { op: "label_backtest", run_id, label }
  *      { op: "fire_workflow", job, body }
  */
@@ -92,6 +99,35 @@ export async function POST(request: Request) {
   if (!client) return fail("Writes are not configured on this server.", 503);
 
   try {
+    if (body.op === "set_webhook") {
+      const job = typeof body.job === "string" ? body.job : "";
+      const url = typeof body.url === "string" ? body.url.trim() : null;
+      if (!/^P\d+\.\d+_[a-z0-9_]+$/i.test(job) || url === null) {
+        return fail("A workflow job and URL are required.", 400);
+      }
+      if (url) {
+        try {
+          const parsed = new URL(url);
+          if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
+            return fail("Use an https webhook URL without embedded credentials.", 400);
+          }
+        } catch {
+          return fail("Use a valid https webhook URL.", 400);
+        }
+      }
+      // Merge on the server: a replacement never needs the old secret or
+      // the other workflows' URLs in the browser. Preserve their metadata.
+      const hooks = await webhooks();
+      if (!hooks) return fail("Workflow settings are not configured on this server.", 503);
+      const next = { ...hooks, [job]: { ...(hooks[job] ?? {}), url } };
+      const result = await client.rpc("update_setting", { p_key: "n8n_webhooks", p_value: next });
+      if (result.error || result.data?.ok === false) {
+        return fail("The workflow URL could not be saved.", 400);
+      }
+      // Do not echo the RPC result: its shape must not expose configuration.
+      return NextResponse.json({ data: { ok: true }, error: null }, { headers: noStore });
+    }
+
     if (body.op === "rpc") {
       const rpc = String(body.rpc || "");
       if (!WRITE_RPCS.has(rpc)) return fail(`Not a write this route performs: ${rpc || "(none)"}.`, 400);
