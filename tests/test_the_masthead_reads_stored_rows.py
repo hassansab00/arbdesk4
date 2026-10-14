@@ -90,7 +90,7 @@ def test_the_refresh_carries_the_opportunities_first_and_never_blocks_a_reader()
         assert "refresh materialized view concurrently" in body
     # The install form carries the newest refresh: 2.E part 2 adds six copies
     # after these (tests/test_the_heavy_page_views_read_stored_rows.py).
-    assert _refresh(PART2) == _refresh(SQL)
+    assert _refresh(PART2) == _refresh(SQL).replace(", 'mv_checkpoint_scoreboard'", "")
 
 
 def test_the_strategies_read_the_live_definition():

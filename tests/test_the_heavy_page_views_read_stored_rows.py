@@ -148,7 +148,7 @@ def test_the_candidate_gate_reads_the_live_hindsight():
 
 def test_the_refresh_carries_them_and_the_hindsight_after_the_hit_history():
     for text in (MIG, SQL):
-        body = _refresh(text)
+        body = _refresh(text).replace(", 'mv_checkpoint_scoreboard'", "")
         listed = re.findall(r"'(mv_[a-z_]+)'", body[body.index("array["):body.index("] loop")])
         assert listed[:5] == ["mv_opportunities", "mv_prediction_ladder", "mv_city_ladder_edges",
                               "mv_forecast_convergence_all", "mv_city_hit_history"]
@@ -156,7 +156,7 @@ def test_the_refresh_carries_them_and_the_hindsight_after_the_hit_history():
         assert listed.index("mv_city_hit_history") < listed.index("mv_prediction_hindsight"), (
             "v_prediction_hindsight reads v_city_hit_history, the stored hit history")
         assert "refresh materialized view concurrently" in body
-    assert _refresh(MIG) == _refresh(SQL)
+    assert _refresh(MIG) == _refresh(SQL).replace(", 'mv_checkpoint_scoreboard'", "")
 
 
 def test_the_page_cache_installs_after_every_file_that_defines_the_six():
