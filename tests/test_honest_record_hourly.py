@@ -76,6 +76,108 @@ def test_an_hour_off_a_citys_grid_is_left_out():
     assert [r[:2] for r in rows] == [["delhi", "2026-10-05T07:00"], ["lucknow", "2026-10-05T05:30"]]
 
 
+def test_local_hour_answer_uses_its_fixed_offset_and_the_utc_day_cutoff():
+    ans = _answer(["2026-10-11T04:00", "2026-10-11T05:00", "2026-10-11T06:00"], [31, 32, 33])
+    ans["utc_offset_seconds"] = 19800
+    rows = hr.hourly_day1_rows("lucknow", ans, dt.datetime(2026, 10, 11))
+    assert [r[1:3] for r in rows] == [["2026-10-10T22:30", 31], ["2026-10-10T23:30", 32]]
+
+
+def test_only_nonzero_record_grids_get_a_supplemental_request(monkeypatch):
+    cities = [{"city_key": k, "latitude": 1, "longitude": 2} for k in ("london", "lucknow", "new_city")]
+    seen = []
+    ans = _answer(["2026-10-10T10:00", "2026-10-10T11:00"], [30, 31])
+    ans["utc_offset_seconds"] = 19800
+
+    def get(url, params, label):
+        seen.append((url, params))
+        return ans
+    monkeypatch.setattr(hr, "_get", get)
+    rows, missing = hr.record_grid_hourly(cities, {"london": 0, "lucknow": 30},
+        dt.date(2026, 10, 9), dt.date(2026, 10, 10), dt.datetime(2026, 10, 11), [])
+    assert missing == [] and {r[0] for r in rows} == {"lucknow"}
+    assert len(seen) == 1
+    assert seen[0][0] == hr.PREVIOUS_API and seen[0][1]["timezone"] == "auto"
+    assert set(seen[0][1]["hourly"].split(",")) == {f"{v}_previous_day1" for v in hr.HEATING}
+    assert seen[0][1]["start_date"] == "2026-10-08" and seen[0][1]["end_date"] == "2026-10-11"
+    assert [r[1] for r in rows] == ["2026-10-10T04:30", "2026-10-10T05:30"]
+
+
+def test_grid_request_retries_only_missing_chunks_and_reports_failure(monkeypatch):
+    import common
+    monkeypatch.setattr(common.time, "sleep", lambda _: None)
+    monkeypatch.setattr(hr, "_deadline", None)
+    monkeypatch.setattr(hr, "RETRY_WAITS", (0,))
+    seen = []
+    ans = _answer(["2026-10-10T10:00"], [30])
+    ans["utc_offset_seconds"] = 19800
+
+    def get(*args):
+        seen.append(1)
+        return None if len(seen) == 1 else ans
+    monkeypatch.setattr(hr, "_get", get)
+    city = {"city_key": "lucknow", "latitude": 1, "longitude": 2}
+    args = ([city], {"lucknow": 30}, dt.date(2026, 10, 9), dt.date(2026, 10, 10), dt.datetime(2026, 10, 11))
+    rounds = []
+    rows, missing = hr.record_grid_hourly(*args, rounds)
+    assert len(rows) == 1 and missing == [] and len(seen) == 2
+    assert [r["answered"] for r in rounds] == [0, 1]
+    monkeypatch.setattr(hr, "_get", lambda *args: None)
+    assert hr.record_grid_hourly(*args, []) == ([], ["lucknow"])
+
+
+def test_malformed_or_wrong_grid_answers_are_not_appended(monkeypatch):
+    monkeypatch.setattr(hr, "RETRY_WAITS", ())
+    city = {"city_key": "lucknow", "latitude": 1, "longitude": 2}
+    args = ([city], {"lucknow": 30}, dt.date(2026, 10, 9), dt.date(2026, 10, 10), dt.datetime(2026, 10, 11))
+    for offset, times in [(None, ["2026-10-10T10:00"]), (0, ["2026-10-10T10:00"]),
+                          (19800, ["2026-10-10T10:00", "2026-10-10T12:00"])]:
+        ans = _answer(times, [30] * len(times))
+        ans["utc_offset_seconds"] = offset
+        monkeypatch.setattr(hr, "_get", lambda *args: ans)
+        assert hr.record_grid_hourly(*args, []) == ([], ["lucknow"])
+
+
+def test_supplemental_grid_request_uses_the_existing_deadline(monkeypatch):
+    monkeypatch.setattr(hr, "_deadline", hr.time.monotonic() - 1)
+    monkeypatch.setattr(hr.requests, "get", lambda *a, **kw: (_ for _ in ()).throw(AssertionError("asked after deadline")))
+    city = {"city_key": "lucknow", "latitude": 1, "longitude": 2}
+    rounds = []
+    rows, missing = hr.record_grid_hourly([city], {"lucknow": 30}, dt.date(2026, 10, 9),
+        dt.date(2026, 10, 10), dt.datetime(2026, 10, 11), rounds)
+    assert rows == [] and missing == ["lucknow"] and len(rounds) == 1
+
+
+def test_nightly_lucknow_rows_extend_automatically_or_log_partial(tmp_path, monkeypatch):
+    for name in ("BEST_MATCH_FILE", "MODELS_FILE", "HOURLY_FILE"):
+        monkeypatch.setattr(hr, name, str(tmp_path / f"{name}.csv.gz"))
+    old = ["lucknow", "2026-10-01T00:30", "9", "7", "50", "0", "5", "0", "1010"]
+    hr.write_rows(hr.HOURLY_FILE, hr.HOURLY_HEADER, [old])
+    city = {"city_key": "lucknow", "timezone": "Asia/Kolkata", "latitude": 26.76, "longitude": 80.88}
+    cm = importlib.import_module("common")
+    monkeypatch.setattr(cm, "get_cities", lambda: [city])
+    logged = {}
+    monkeypatch.setattr(cm, "log_run", lambda job, status, n, detail: logged.update(status=status, d=detail))
+    # The ordinary UTC request must not create a second grid or supply the values.
+    utc = _answer(["2026-10-10T04:00"], [99])
+    monkeypatch.setattr(hr, "fetch_each", lambda ask, cities, rounds=None: [(city, (utc, {"hourly": {}}))])
+    monkeypatch.setattr(hr, "previous_rows", lambda *args: ([], []))
+    local = _answer(["2026-10-10T10:00"], [31])
+    local["utc_offset_seconds"] = 19800
+    monkeypatch.setattr(hr, "_get", lambda *args: local)
+    now = dt.datetime(2026, 10, 11, tzinfo=dt.timezone.utc)
+    assert hr.main(["--days", "2"], now=now) == 0
+    made = hr.read_rows(hr.HOURLY_FILE)
+    assert made[0] == old and made[1][:3] == ["lucknow", "2026-10-10T04:30", "31"]
+    assert logged["status"] == "ok" and logged["d"]["hourly_unreached"] == []
+    assert logged["d"]["hourly_off_grid"] == 0
+    monkeypatch.setattr(hr, "RETRY_WAITS", ())
+    monkeypatch.setattr(hr, "_get", lambda *args: None)
+    assert hr.main(["--days", "2"], now=now) == 0
+    assert hr.read_rows(hr.HOURLY_FILE) == made
+    assert logged["status"] == "partial" and logged["d"]["hourly_unreached"] == ["lucknow"]
+
+
 def test_the_nightly_run_writes_the_hourly_record(tmp_path, monkeypatch):
     for name in ("BEST_MATCH_FILE", "MODELS_FILE", "HOURLY_FILE"):
         monkeypatch.setattr(hr, name, str(tmp_path / f"{name}.csv.gz"))

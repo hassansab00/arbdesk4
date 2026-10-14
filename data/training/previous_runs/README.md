@@ -69,8 +69,13 @@ before H (published, by the assumption above, by H - 17 h). **Appended nightly f
 before the run's day, no row rewritten, an hour asked again compared value
 by value and a difference logged (`hourly_differ`), not merged. Lucknow's
 hours sit at :30 UTC (the `timezone=auto` build on a +5:30 offset) and a UTC
-answer's at :00, so its hours are left out of the nightly append
-(`hourly_off_grid`) and extended by `tools/wxpredict/fetch_forecasts.py` alone.
+answer's at :00. The audit repair now requests those cities' local-hour
+series separately with `timezone=auto`, converts with each answer's fixed
+`utc_offset_seconds`, and appends only the recorded grid. It leaves daily
+aggregates on UTC answers and never interpolates or shifts a UTC value onto
+the half-hour grid. Supplemental requests share the existing run deadline
+and retry policy; missing answers appear in `hourly_unreached` and make the
+run partial. Production acceptance waits for a nightly run after merge.
 
 `models_daily.csv.gz` - the seven models the desk combines (ECMWF IFS 0.25,
 GFS, ICON, UKMO, JMA, GEM, Meteo-France), one row per (city, lead, model, day):

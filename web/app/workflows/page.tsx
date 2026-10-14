@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { fireWorkflow, operatorRpc, readWorkflowSettings, type WorkflowSettings } from "@/lib/operator";
+import { fireWorkflow, setWorkflowUrl, readWorkflowSettings, type WorkflowSettings } from "@/lib/operator";
 import ScheduleControl from "@/components/ScheduleControl";
 import ScopeControl from "@/components/ScopeControl";
 import { useQuery } from "@/lib/useQuery";
@@ -17,20 +17,15 @@ import CityReadiness from "@/components/CityReadiness";
  * The Run button asks this site's server to POST to the workflow's n8n
  * production webhook. The URLs live in settings.n8n_webhooks (see
  * sql/ad4_14_workflows.sql), readable only by the server since plan v2 P1.2:
- * anyone may see which jobs have one, only a signed-in operator sees or
- * changes the URLs or runs a job. A workflow with no URL saved shows a
- * disabled button and says why.
+ * the browser sees only which jobs have one. Replacing a URL sends the new
+ * value to the server without reading back any saved credentials. Writes
+ * use the site's existing operator gate. A workflow with no URL saved shows
+ * a disabled button and says why.
  *
  * Every workflow also writes to ingest_log at the end of every execution —
  * scheduled, manual-in-n8n, or fired from here — so the "Last run" column is
  * the truth for all three, not just the ones started from this page.
  */
-
-interface WebhookEntry {
-  url?: string;
-  path?: string;
-  label?: string;
-}
 
 interface WorkflowRun {
   job: string;
@@ -204,23 +199,13 @@ export default function WorkflowsPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Which jobs have a URL is public; the URLs themselves come back only to a
-  // signed-in operator (plan v2 P1.2).
+  // Only presence flags are read; saved URLs never come back to the browser.
   const settingsQ = useQuery<WorkflowSettings>(() => readWorkflowSettings(), []);
   const runsQ = useQuery<WorkflowRun[]>(
     () => supabase.from("v_workflow_runs").select("job,status,rows,logged_at,trigger,summary"),
     [],
     30000
   );
-
-  const webhooks: Record<string, WebhookEntry> = useMemo(() => {
-    const v = (settingsQ.data?.webhooks ?? {}) as Record<string, unknown>;
-    const out: Record<string, WebhookEntry> = {};
-    for (const [k, entry] of Object.entries(v)) {
-      if (entry && typeof entry === "object") out[k] = entry as WebhookEntry;
-    }
-    return out;
-  }, [settingsQ.data]);
 
   const runByJob = useMemo(() => {
     const m: Record<string, WorkflowRun> = {};
@@ -234,8 +219,7 @@ export default function WorkflowsPage() {
   async function fire(job: string, body: Record<string, unknown> = {}) {
     if (!isConfigured(job)) return;
     setRuns((s) => ({ ...s, [job]: { busy: true, ok: null, message: null } }));
-    // Through this site's server, which holds the URL and needs a signed-in
-    // operator (plan v2 P1.2) - the browser no longer sees webhook URLs.
+    // Through this site's server and its operator gate; saved URLs stay there.
     const { data, error } = await fireWorkflow(job, body);
     if (error || !data) {
       setRuns((s) => ({ ...s, [job]: { busy: false, ok: false, message: error?.message ?? "The run could not be started." } }));
@@ -265,17 +249,7 @@ export default function WorkflowsPage() {
   async function saveUrl(job: string) {
     setSaving(true);
     setSaveError(null);
-    const current = settingsQ.data?.webhooks;
-    if (!current) {
-      setSaving(false);
-      setSaveError("Sign in as an operator to see and change webhook URLs.");
-      return;
-    }
-    const next = {
-      ...current,
-      [job]: { ...(webhooks[job] ?? {}), url: draftUrl.trim() },
-    };
-    const { data, error } = await operatorRpc("update_setting", { p_key: "n8n_webhooks", p_value: next });
+    const { data, error } = await setWorkflowUrl(job, draftUrl);
     setSaving(false);
     if (error) {
       setSaveError(error.message);
@@ -299,8 +273,7 @@ export default function WorkflowsPage() {
           <code>ingest_log</code> when it finishes — whether it was fired from here, run by
           hand in n8n, or started by its own schedule — so &ldquo;Last run&rdquo; is the truth for all
           three. Running a job here asks this site&rsquo;s server to POST to its n8n production
-          webhook; the URLs are stored in <code>settings.n8n_webhooks</code>, and a signed-in
-          operator can see and edit them below.
+          webhook. Saved URLs stay on the server; use the controls below to replace one.
         </p>
         {settingsQ.data && configured === 0 && (
           <p className="mt-2 max-w-3xl rounded border border-border px-3 py-2 text-xs leading-relaxed text-muted">
@@ -348,7 +321,6 @@ export default function WorkflowsPage() {
             </thead>
             <tbody>
               {CATALOGUE.map((w) => {
-                const hook = webhooks[w.job];
                 const last = runByJob[w.job];
                 const st = runs[w.job];
                 const variants = w.externalOnly ? [] : w.variants ?? [{ label: "Run now", body: {} }];
@@ -418,7 +390,7 @@ export default function WorkflowsPage() {
                             disabled={!isConfigured(w.job) || st?.busy}
                             title={
                               isConfigured(w.job)
-                                ? "Runs this job in n8n through this site's server (sign in first)."
+                                ? "Runs this job in n8n through this site's server."
                                 : "No webhook URL saved for this workflow — use “set URL”."
                             }
                             className="whitespace-nowrap rounded border border-border px-2 py-1 text-xs hover:bg-panel2 disabled:cursor-not-allowed disabled:opacity-40"
@@ -429,12 +401,12 @@ export default function WorkflowsPage() {
                         {!w.externalOnly&&<button
                           onClick={() => {
                             setEditing(editing === w.job ? null : w.job);
-                            setDraftUrl(hook?.url ?? "");
+                            setDraftUrl("");
                             setSaveError(null);
                           }}
                           className="whitespace-nowrap text-[11px] text-muted underline hover:text-text"
                         >
-                          {isConfigured(w.job) ? "change URL" : "set URL"}
+                          {isConfigured(w.job) ? "replace URL" : "set URL"}
                         </button>}
                       </div>
                       {editing === w.job && (
@@ -442,7 +414,7 @@ export default function WorkflowsPage() {
                           <input
                             value={draftUrl}
                             onChange={(e) => setDraftUrl(e.target.value)}
-                            placeholder={`https://your-n8n/webhook/${hook?.path ?? ""}`}
+                            placeholder="https://your-n8n/webhook/…"
                             className="w-full rounded border border-border bg-panel px-2 py-1 font-mono text-[11px]"
                           />
                           <div className="flex gap-1">

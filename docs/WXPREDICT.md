@@ -639,9 +639,13 @@ and the one-share and at-size readings both lean positive, as they did on
 ledger's `untouched_from` is 10 Oct). Five dates resampled whole make a coarse
 interval; it is reported, not trusted further than that.
 
-**Found on the way:** a city on a half-hour offset (Lucknow) is not extended by
-the nightly append, so every later test needs its hours added by hand first.
-Not fixed here.
+**Found on the way:** a city on a half-hour offset (Lucknow) was not extended
+by the nightly append, so these tests needed its hours added by hand first.
+The audit repair adds a supplemental local-hour request within the existing
+nightly run, preserving the recorded UTC grid and old values. Daily features
+still use UTC. Missing supplemental answers make the run partial. This fixes
+the nightly training-record extension; the live/training parity difference
+listed below remains open until separately measured and repaired.
 
 ### Reports the minute they arrive: the focused capture (WP4, 11 Oct)
 
