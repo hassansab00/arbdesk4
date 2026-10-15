@@ -317,6 +317,25 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
+      # Venue labels and hourly market inputs must advance with station data.
+      # Settled additions only; original history and first answers preserved.
+      # Shared 180 s request deadline, 4 min step backstop; retry missing series next run.
+      - name: Append settled venue labels and prices (WXPredict)
+        if: always()
+        timeout-minutes: 4
+        run: python tools/wxpredict/market_update.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+      - name: Audit the candidate against serving on settled first calls
+        if: always()
+        timeout-minutes: 3
+        run: python tools/wxpredict/forward_audit.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
       # WHY EACH DAY HIT OR MISSED (13 Oct; Hassan: "each day needs to teach
       # the model ... why this weather hit/miss"). tools/wxpredict/day_review.py:
       # one row a settled city-day in derived_day_review, read by the city
@@ -343,7 +362,7 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           mkdir -p data/mirror data/training
-          git add data/mirror data/training
+          git add data/mirror data/training data/eval/wxpredict
           if git diff --staged --quiet; then
             echo "mirror unchanged - nothing new to copy"
             exit 0

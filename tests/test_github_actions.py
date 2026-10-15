@@ -257,7 +257,11 @@ MEASURED_MINUTES = {
     # deadline 240 -> 600 s and the ensemble record's 90 -> 360 s (the
     # repository is public, the steps' time is not billed), at most +11 min
     # on 15. Each run ends as soon as its cities answer; re-measure.
-    "archive_observations.yml": 26.0,
+    # 15 Oct: at most four additional minutes for the settled venue record,
+    # within this existing run (180 s shared deadline, four workers). This
+    # Plus three minutes for the paired forward audit. This 33-minute value
+    # is an upper bound, not a newly measured job duration.
+    "archive_observations.yml": 33.0,
     # Measured 1-4 Oct: 1 billed minute on each of 4 runs.
     "paper_trade_log.yml": 1.0,
     # 1.5 measured before 2026-09-22; the wind-direction backfill added a

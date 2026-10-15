@@ -1,0 +1,81 @@
+{
+ "experiment": "early-09-11-specialist",
+ "fit_last": "2026-10-11",
+ "evaluation": [
+  "2026-10-12",
+  "2026-10-14"
+ ],
+ "training_rows": 63853,
+ "training_first": "2025-07-15",
+ "training_last": "2026-10-11",
+ "training_class_counts": {
+  "0": 5198,
+  "1": 6439,
+  "2": 8948,
+  "3": 9802,
+  "4": 8990,
+  "5": 7386,
+  "6": 5668,
+  "7": 3984,
+  "8": 2751,
+  "9": 1836,
+  "10": 1203,
+  "11": 775,
+  "12": 414,
+  "13": 256,
+  "14": 117,
+  "15": 46,
+  "16": 40
+ },
+ "seed": 20261011,
+ "rounds": 250,
+ "model_sha256": "fd8c930805865d8f8f7583c60b2e03118261f01f0164197a9b0a5d0493fcc8b5",
+ "baseline_sha256": "2e88d630d16d81756f4abb82342102297db36dd20553fe777cf39a756f38ce44",
+ "table_gzip_sha256": "628119673ab74f88149ce7e8eef1c632c57dbad58beb607b0207a26c524ab5fd",
+ "test_table_gzip_sha256": "1330cf1f8e11e23cb96016d1b5dc8f967cc2389258cee6ee7e5cfceda2461aba",
+ "all": {
+  "n": 408,
+  "specialist_hits": 181,
+  "baseline_hits": 166,
+  "market_hits": 234,
+  "specialist_nll": 1.385515431130259,
+  "baseline_nll": 1.3735043499559645
+ },
+ "by_date": {
+  "2026-10-12": {
+   "n": 141,
+   "specialist_hits": 56,
+   "baseline_hits": 53,
+   "market_hits": 74,
+   "specialist_nll": 1.5317055011973806,
+   "baseline_nll": 1.5226615059166584
+  },
+  "2026-10-13": {
+   "n": 141,
+   "specialist_hits": 60,
+   "baseline_hits": 51,
+   "market_hits": 72,
+   "specialist_nll": 1.4601172282718784,
+   "baseline_nll": 1.451876977963485
+  },
+  "2026-10-14": {
+   "n": 126,
+   "specialist_hits": 65,
+   "baseline_hits": 62,
+   "market_hits": 88,
+   "specialist_nll": 1.1384388178252387,
+   "baseline_nll": 1.1188876869439155
+  }
+ },
+ "nll_gain_ci90_by_date": [
+  -0.01578139520782516,
+  -0.008508165299169541
+ ],
+ "hit_gain_ci90_by_date": [
+  0.022058823529411766,
+  0.051470588235294115
+ ],
+ "verdict": "reject specialist",
+ "changes_serving": false,
+ "seconds": 203.35
+}

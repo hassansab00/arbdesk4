@@ -94,7 +94,7 @@ def load_events(stations_with_reports, first=None, last=None):
     winner; the main listing when an 'arch' twin exists; a contiguous ladder;
     a settlement station whose reports are in the repository."""
     act = common.active_cities()
-    rows = list(common.read_csv(os.path.join(common.MH, "events.csv.gz")))
+    rows = list(common.market_rows("events"))
     main_days = {(r["city_key"], r["date"]) for r in rows if r["listing"] == "main"}
     listed = {(r["city_key"], r["date"]) for r in rows}
     left = collections.Counter()
@@ -117,7 +117,7 @@ def load_events(stations_with_reports, first=None, last=None):
             continue
         ev[r["event_id"]] = {"event_id": r["event_id"], "source": "venue", "city": r["city_key"],
                              "date": r["date"], "unit": r["unit"], "station": r["station_icao"], "bands": []}
-    for r in common.read_csv(os.path.join(common.MH, "bands.csv.gz")):
+    for r in common.market_rows("bands"):
         e = ev.get(r["event_id"])
         if e is not None:
             e["bands"].append((int(r["band_index"]), num(r["band_lo"]), num(r["band_hi"]),
@@ -249,7 +249,7 @@ def load_prices(events):
         hi = int(dt.datetime.combine(d + dt.timedelta(days=1), dt.time(0), tz).timestamp())
         want[e["event_id"]] = (lo, hi, len(e["bands"]))
     out = {k: [(array("q"), array("d")) for _ in range(n)] for k, (_, _, n) in want.items()}
-    for r in common.read_csv(os.path.join(common.MH, "prices.csv.gz")):
+    for r in common.market_rows("prices"):
         w = want.get(r["event_id"])
         if w is None:
             continue

@@ -43,6 +43,34 @@ def test_the_same_row_is_parity():
     assert "winner" not in out["rule_vs_table"], "labels are not compared"
 
 
+def test_live_uuids_are_mapped_only_by_verified_venue_identity():
+    t = table_row("123")
+    m = {"market_id": "uuid", "event_slug": "slug", "city_key": t["city_key"], "resolution_date": DAY}
+    e = {"event_id": "123", "slug": "slug", "city_key": t["city_key"], "date": DAY}
+    ids = parity.event_crosswalk([m], [e])
+    out = parity.run([t], [live_row(t, event_id="uuid")], DAY, DAY, event_ids=ids)
+    assert out["rows"]["matched"] == 1 and out["unexplained"] == 0
+    assert out["event_id_crosswalk"] == {"uuid": "123"}
+    # City/date alone cannot identify a twin listing.
+    assert parity.event_crosswalk([dict(m, event_slug=None)], [e]) == {}
+    ids = parity.event_crosswalk([dict(m, event_slug=None)], [e],
+                                [{"market_id": "uuid", "token_yes": "yes"}],
+                                [{"event_id": "123", "token_yes": "yes"}])
+    assert ids == {"uuid": "123"}
+    assert parity.event_crosswalk([dict(m, city_key="other")], [e]) == {}
+
+
+def test_duplicate_decisions_or_ambiguous_identifiers_are_refused():
+    import pytest
+    t = table_row()
+    with pytest.raises(ValueError, match="duplicate decision"):
+        parity.run([t, t], [live_row(t)], DAY, DAY)
+    with pytest.raises(ValueError, match="duplicate decision"):
+        parity.run([t], [live_row(t), live_row(t)], DAY, DAY)
+    with pytest.raises(ValueError, match="ambiguous venue slug"):
+        parity.event_crosswalk([], [{"slug": "s", "event_id": "1"}, {"slug": "s", "event_id": "2"}])
+
+
 def test_a_number_is_judged_within_1e_6():
     t = table_row()
     out = parity.run([t], [live_row(t, t_now_c="1.5000004")], DAY, DAY)
