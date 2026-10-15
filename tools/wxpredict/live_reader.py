@@ -469,6 +469,8 @@ def main(argv=None):
     ap.add_argument("--from", dest="first", required=True, help="first event date (ISO)")
     ap.add_argument("--to", dest="last", required=True, help="last event date (ISO)")
     ap.add_argument("--mode", choices=("rule", "arrival", "both"), default="both")
+    ap.add_argument("--report-lag-s", type=int, default=features.REPORT_LAG_S,
+                    help="match the training contract (v1: 1200, v2: 480)")
     ap.add_argument("--record", nargs="*", help="record files (default: the mirror's and the archive's)")
     ap.add_argument("--out", default=os.path.join(common.WX, "live", "live_rows.csv.gz"))
     args = ap.parse_args(argv)
@@ -482,7 +484,8 @@ def main(argv=None):
     sdays, _ = build_table.load_station_daily()
     bm, md = build_table.load_daily_forecasts()
     modes = MODES if args.mode == "both" else (args.mode,)
-    rows = build(record, events, cities, sdays, bm, md, record.first, record.last, modes)
+    rows = build(record, events, cities, sdays, bm, md, record.first, record.last, modes,
+                 report_lag_s=args.report_lag_s)
     n = write_rows(os.path.abspath(args.out), rows)      # 'rows.csv.gz' has no directory (Codex on #387)
     filled = collections.Counter(c for r in rows for c in features.COLUMNS if r.get(c) not in (None, ""))
     print(json.dumps({"rows": n, "events": len(events), "record": [record.first, record.last],

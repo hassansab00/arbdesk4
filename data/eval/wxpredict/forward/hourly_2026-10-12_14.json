@@ -1,0 +1,116 @@
+{
+ "fit_last": "2026-10-11",
+ "version": "wxrd3:v3:2e88d630d16d",
+ "results": {
+  "2026-10-12": {
+   "n": 376,
+   "hits": 208,
+   "market_hits": 244,
+   "nll": 1.0902694320381412,
+   "market_nll": 0.8254879244752786,
+   "hit_rate": 0.5531914893617021,
+   "market_hit_rate": 0.648936170212766
+  },
+  "all": {
+   "n": 1088,
+   "hits": 637,
+   "market_hits": 747,
+   "nll": 0.9836339637042489,
+   "market_nll": 0.7395378198864051,
+   "hit_rate": 0.5854779411764706,
+   "market_hit_rate": 0.6865808823529411
+  },
+  "hour:9": {
+   "n": 136,
+   "hits": 56,
+   "market_hits": 78,
+   "nll": 1.4663855433940718,
+   "market_nll": 1.0602711276995223,
+   "hit_rate": 0.4117647058823529,
+   "market_hit_rate": 0.5735294117647058
+  },
+  "hour:10": {
+   "n": 136,
+   "hits": 53,
+   "market_hits": 78,
+   "nll": 1.3536716780366564,
+   "market_nll": 1.0448323223508607,
+   "hit_rate": 0.3897058823529412,
+   "market_hit_rate": 0.5735294117647058
+  },
+  "hour:11": {
+   "n": 136,
+   "hits": 57,
+   "market_hits": 78,
+   "nll": 1.3004558284371648,
+   "market_nll": 0.9917752747426936,
+   "hit_rate": 0.41911764705882354,
+   "market_hit_rate": 0.5735294117647058
+  },
+  "hour:12": {
+   "n": 136,
+   "hits": 71,
+   "market_hits": 82,
+   "nll": 1.1460904487963992,
+   "market_nll": 0.9072321903663838,
+   "hit_rate": 0.5220588235294118,
+   "market_hit_rate": 0.6029411764705882
+  },
+  "hour:13": {
+   "n": 136,
+   "hits": 72,
+   "market_hits": 92,
+   "nll": 1.0395389311210899,
+   "market_nll": 0.7115544825639188,
+   "hit_rate": 0.5294117647058824,
+   "market_hit_rate": 0.6764705882352942
+  },
+  "hour:14": {
+   "n": 136,
+   "hits": 91,
+   "market_hits": 97,
+   "nll": 0.7633369268224254,
+   "market_nll": 0.6243501776115925,
+   "hit_rate": 0.6691176470588235,
+   "market_hit_rate": 0.7132352941176471
+  },
+  "hour:15": {
+   "n": 136,
+   "hits": 107,
+   "market_hits": 111,
+   "nll": 0.5325327848800854,
+   "market_nll": 0.4123108104248304,
+   "hit_rate": 0.7867647058823529,
+   "market_hit_rate": 0.8161764705882353
+  },
+  "hour:16": {
+   "n": 136,
+   "hits": 130,
+   "market_hits": 131,
+   "nll": 0.26705956814609455,
+   "market_nll": 0.16397617333144035,
+   "hit_rate": 0.9558823529411765,
+   "market_hit_rate": 0.9632352941176471
+  },
+  "2026-10-13": {
+   "n": 376,
+   "hits": 210,
+   "market_hits": 242,
+   "nll": 1.0518444457374325,
+   "market_nll": 0.7804215967611474,
+   "hit_rate": 0.5585106382978723,
+   "market_hit_rate": 0.6436170212765957
+  },
+  "2026-10-14": {
+   "n": 336,
+   "hits": 219,
+   "market_hits": 261,
+   "nll": 0.7879730192458548,
+   "market_nll": 0.5976046668199767,
+   "hit_rate": 0.6517857142857143,
+   "market_hit_rate": 0.7767857142857143
+  }
+ },
+ "input_gzip_sha256": "1330cf1f8e11e23cb96016d1b5dc8f967cc2389258cee6ee7e5cfceda2461aba",
+ "input_status": "Raw evaluation snapshot was not published; input hash retained. Rebuild with build_table and freeze a complete venue cohort."
+}

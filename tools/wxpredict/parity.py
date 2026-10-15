@@ -153,14 +153,68 @@ def unexplained(result):
     return sum(r["unexplained"] for r in result.values())
 
 
-def run(table_rows, live_rows, first, last):
+def event_crosswalk(markets, events, bands=(), venue_bands=()):
+    """Map UUIDs to venue IDs by slug or identical YES-token sets, city/date.
+
+    A city-day alone is insufficient: twin listings may share it. Ambiguous
+    slugs are refused. Geometry, unit and station still have to compare equal.
+    """
+    by_slug, by_id = {}, {}
+    for e in events:
+        slug = e.get("slug")
+        if slug in by_slug and by_slug[slug] != e:
+            raise ValueError("ambiguous venue slug: " + str(slug))
+        by_slug[slug] = e
+        by_id[e["event_id"]] = e
+    venue_tokens = collections.defaultdict(set)
+    for b in venue_bands:
+        if b.get("token_yes"):
+            venue_tokens[b["event_id"]].add(b["token_yes"])
+    tokens_to_id = {}
+    for eid, tokens in venue_tokens.items():
+        key = frozenset(tokens)
+        if key in tokens_to_id and tokens_to_id[key] != eid:
+            raise ValueError("ambiguous venue token set")
+        tokens_to_id[key] = eid
+    live_tokens = collections.defaultdict(set)
+    for b in bands:
+        if b.get("token_yes"):
+            live_tokens[b["market_id"]].add(b["token_yes"])
+    out = {}
+    for m in markets:
+        e = by_slug.get(m.get("event_slug"))
+        token_id = tokens_to_id.get(frozenset(live_tokens.get(m["market_id"], ())))
+        if e is not None and token_id is not None and e["event_id"] != token_id:
+            raise ValueError("slug and token identities disagree")
+        e = e or by_id.get(token_id)
+        if e and m.get("city_key") == e.get("city_key") and m.get("resolution_date") == e.get("date"):
+            out[m["market_id"]] = e["event_id"]
+    return out
+
+
+def indexed(rows, first, last, ids=None):
+    out = {}
+    for row in rows:
+        if not first <= row["date"] <= last:
+            continue
+        r = dict(row)
+        r["event_id"] = (ids or {}).get(r["event_id"], r["event_id"])
+        k = key(r)
+        if k in out:
+            raise ValueError("duplicate decision row: " + str(k))
+        out[k] = r
+    return out
+
+
+def run(table_rows, live_rows, first, last, event_ids=None):
     in_window = lambda r: first <= r["date"] <= last  # noqa: E731
-    table = {key(r): r for r in table_rows if in_window(r)}
-    by_mode = collections.defaultdict(dict)
+    table = indexed(table_rows, first, last)
+    by_mode = collections.defaultdict(list)
     for r in live_rows:
         if in_window(r):
-            by_mode[r["live_mode"]][key(r)] = r
-    rule, arrival = by_mode.get("rule", {}), by_mode.get("arrival", {})
+            by_mode[r["live_mode"]].append(r)
+    rule = indexed(by_mode.get("rule", []), first, last, event_ids)
+    arrival = indexed(by_mode.get("arrival", []), first, last, event_ids)
     both = sorted(set(table) & set(rule))
     narrow = [(k, table[k], rule[k]) for k in both if not wide_or_one_sided(rule[k])]
     wide = [(k, table[k], rule[k]) for k in both if wide_or_one_sided(rule[k])]
@@ -170,6 +224,7 @@ def run(table_rows, live_rows, first, last):
     out = {
         "made": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
         "window": [first, last],
+        "event_id_crosswalk": event_ids or {},
         "tolerances": {"numbers": NUM_TOL, "market": MARKET_TOL, "wide_spread": WIDE_SPREAD},
         "rows": {"table": len(table), "live_rule": len(rule), "live_arrival": len(arrival),
                  "matched": len(both), "only_table": len(set(table) - set(rule)),
@@ -203,7 +258,10 @@ def main(argv=None):
     ap.add_argument("--to", dest="last", required=True)
     ap.add_argument("--out")
     args = ap.parse_args(argv)
-    result = run(read_csv(args.table), read_csv(args.live), args.first, args.last)
+    from wxpredict import common, live_reader
+    markets, bands = live_reader.read_definitions()
+    ids = event_crosswalk(markets, common.market_rows("events"), bands, common.market_rows("bands"))
+    result = run(read_csv(args.table), read_csv(args.live), args.first, args.last, event_ids=ids)
     text = json.dumps(result, indent=1)
     if args.out:
         os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
@@ -214,4 +272,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    main()
+    result = main()
+    sys.exit(0 if result["verdict"].startswith("parity holds:") else 1)

@@ -42,6 +42,38 @@ use_root(ROOT)
 
 UTC = dt.timezone.utc
 
+
+def market_nights(kind):
+    return sorted(glob.glob(os.path.join(os.path.dirname(MH), "market_history_nightly", kind + "-*.csv.gz")))
+
+
+def market_rows(kind):
+    """The original venue record plus nightly additions; no closed label changes.
+
+    Each read goes through read_csv, so recorded builds name the exact blobs.
+    Prices are new series only; market_update never replaces a fetched series.
+    """
+    paths = [os.path.join(MH, kind + ".csv.gz"), *market_nights(kind)]
+    if kind == "prices":
+        for path in paths:
+            yield from read_csv(path)
+        return
+    if kind not in ("events", "bands"):
+        raise ValueError("unknown market record " + kind)
+    rows = {}
+    for path in paths:
+        for r in read_csv(path):
+            key = r["event_id"] if kind == "events" else (r["event_id"], r["band_index"])
+            old = rows.get(key)
+            if old is not None and old != r:
+                mutable = "closed" if kind == "events" else "winner"
+                if any(old.get(k) != r.get(k) for k in set(old) | set(r) if k != mutable):
+                    raise ValueError("market identity changed in " + path)
+                if old[mutable] not in ("", "0" if kind == "events" else ""):
+                    raise ValueError("a settled market label changed in " + path)
+            rows[key] = r
+    yield from (rows[k] for k in sorted(rows))
+
 # A station day is whole when its reports leave no gap over this many hours,
 # counting local midnight to the first report and the last report to the next
 # midnight (review of #314: one rule wherever a day's maximum is read).
@@ -219,7 +251,7 @@ def event_stations():
     name, plus each active city's station today."""
     act = active_cities()
     out = {}
-    for r in read_csv(os.path.join(MH, "events.csv.gz")):
+    for r in market_rows("events"):
         if r["city_key"] in act and r["station_icao"]:
             out[r["station_icao"].upper()] = r["city_key"]
     for k, c in act.items():

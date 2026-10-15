@@ -1,0 +1,101 @@
+{
+ "version": "wxrd3:v3:2e88d630d16d",
+ "fit_last": "2026-10-11",
+ "minimum_forward_dates": 14,
+ "all": {
+  "n": 391,
+  "dates": [
+   "2026-10-13",
+   "2026-10-14"
+  ],
+  "candidate_hits": 237,
+  "serving_hits": 206,
+  "candidate_nll": 0.8995634773482399,
+  "serving_nll": 1.1471003190288596
+ },
+ "before_peak": {
+  "n": 302,
+  "dates": [
+   "2026-10-13",
+   "2026-10-14"
+  ],
+  "candidate_hits": 166,
+  "serving_hits": 139,
+  "candidate_nll": 1.0090264188167557,
+  "serving_nll": 1.265686421872864
+ },
+ "checkpoints": {
+  "morning": {
+   "n": 73,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14"
+   ],
+   "candidate_hits": 27,
+   "serving_hits": 33,
+   "candidate_nll": 1.2415842220032491,
+   "serving_nll": 1.4151301181417777
+  },
+  "noon": {
+   "n": 75,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14"
+   ],
+   "candidate_hits": 47,
+   "serving_hits": 34,
+   "candidate_nll": 0.9597418092801129,
+   "serving_nll": 1.2328262578198437
+  },
+  "prepeak_2h": {
+   "n": 76,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14"
+   ],
+   "candidate_hits": 46,
+   "serving_hits": 32,
+   "candidate_nll": 1.0132116538099365,
+   "serving_nll": 1.2531843634246196
+  },
+  "prepeak_1h": {
+   "n": 78,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14"
+   ],
+   "candidate_hits": 46,
+   "serving_hits": 40,
+   "candidate_nll": 0.834687293472553,
+   "serving_nll": 1.169600254160194
+  },
+  "postpeak_1h": {
+   "n": 89,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14"
+   ],
+   "candidate_hits": 71,
+   "serving_hits": 67,
+   "candidate_nll": 0.5281274287696757,
+   "serving_nll": 0.7447070262323496
+  }
+ },
+ "regressed_checkpoints": [
+  "morning"
+ ],
+ "immature_checkpoints": [
+  "morning",
+  "noon",
+  "prepeak_2h",
+  "prepeak_1h"
+ ],
+ "excluded": {
+  "not_settled": 20
+ },
+ "settled_first_calls": 685,
+ "gate": "insufficient forward dates",
+ "changes_serving": false,
+ "made": "2026-10-15T08:43:46.811913+00:00",
+ "source": "Checked live SQL snapshot captured at made timestamp; raw optional snapshot was not published."
+}
