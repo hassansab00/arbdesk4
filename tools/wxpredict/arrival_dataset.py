@@ -82,7 +82,7 @@ def preflight(first, last, through, minimum_cities=20):
             "sparse_checkpoint_dates": sparse, "feature_policy": inputs.POLICY}
 
 
-def attach(call, payload, event, label):
+def attach(call, payload, event, label, include_current=False):
     """Strict contract identity, no reconstruction, the same decision's book."""
     r = payload["row"]
     if (str(payload["checkpoint_id"]) != str(call["checkpoint_id"])
@@ -109,11 +109,20 @@ def attach(call, payload, event, label):
         prices.append(price)
     if not prices or not sum(prices) or r["local_hour"] < 9 or r.get("rmax_unit") is None:
         return None
-    return {**r, **label, "event_id": event["event_id"], "checkpoint": call["checkpoint"],
-            "live_mode": "arrival", "mkt_complete": True, "mkt_prices": ";".join(map(str, prices))}
+    out = {**r, **label, "event_id": event["event_id"], "checkpoint": call["checkpoint"],
+           "live_mode": "arrival", "mkt_complete": True, "mkt_prices": ";".join(map(str, prices))}
+    if include_current:
+        from wxpredict import current_forecasts
+        current = inputs.current_context(payload)
+        out.update(current or dict.fromkeys(current_forecasts.FIELDS))
+        out.update(current_context_available=int(current is not None),
+                   recorded_checkpoint_id=str(call["checkpoint_id"]),
+                   recorded_row_sha256=payload["row_sha256"],
+                   recorded_current_sha256=payload.get("current_forecasts_sha256"))
+    return out
 
 
-def build(first, last, table, through):
+def build(first, last, table, through, include_current=False):
     from wxpredict import build_table as bt, parity
     labels = {}
     with gzip.open(table, "rt") as fh:
@@ -145,7 +154,7 @@ def build(first, last, table, through):
         if len(chosen) != 1 or chosen[0]["event_id"] not in labels:
             excluded["unsettled_or_missing_exact_identity"] += 1
             continue
-        r = attach(call, payload, chosen[0], labels[chosen[0]["event_id"]])
+        r = attach(call, payload, chosen[0], labels[chosen[0]["event_id"]], include_current=include_current)
         if r is None:
             excluded["ineligible_or_missing_first_call_market"] += 1
             continue

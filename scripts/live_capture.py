@@ -74,7 +74,7 @@ HORIZON_H = 17
 HORIZON2_H = 41
 LEAD_HORIZON = {1: HORIZON_H, 2: HORIZON2_H}
 # Current forecasts stay separate from frozen lead-1/lead-2 inputs.
-CAPTURE_HORIZONS = {0: 24, **LEAD_HORIZON}
+CAPTURE_HORIZONS = {**LEAD_HORIZON, 0: 24}
 HOURLY_KIND = {0: "hourly0", 1: "hourly", 2: "hourly2"}
 MODELS_KIND = {0: "models0", 1: "models1", 2: "models2"}
 CITIES_PER_REQUEST = honest_record.CHUNK
@@ -449,7 +449,12 @@ def run(now=None, dry_run=False, iem_path=None):
             by_kind, d = fetch(cities, now, left)
             d["new"] = {}
             for kind, batches in by_kind.items():
-                d["new"][kind] = sum(put(kind, captured, rows, dry_run, left)[1] for captured, rows in batches)
+                d["new"][kind] = 0
+                for captured, rows in batches:
+                    try:
+                        d["new"][kind] += put(kind, captured, rows, dry_run, left)[1]
+                    except Exception as e:
+                        d["errors"].append(f"{kind} write: {type(e).__name__}: {str(e)[:160]}")
             d["seconds"] = round(time.monotonic() - t0, 1)
             detail[part] = d
             parts_ok.append(d["answered"] == d["cities"] and not d["errors"])
