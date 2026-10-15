@@ -8,7 +8,8 @@
 -- ('books'); from 12 Oct also best_match at `_previous_day2` ('hourly2') and
 -- the seven models' temperature at `_previous_day1` and `_previous_day2`
 -- ('models1', 'models2'), and the focus cities' same-day books every minute
--- of their window ('focus_book', WP5, written by focus_obs_read).
+-- of their window ('focus_book', WP5, written by focus_obs_read), and exact
+-- engineered first-decision inputs ('wx_features', candidate evaluation).
 -- scripts/live_capture.py writes the rest through live_capture_put; the
 -- migrations 20261011210000_the_live_record.sql,
 -- 20261012150000_the_live_record_keeps_the_evening_forecasts.sql and
@@ -18,9 +19,9 @@
 -- WHO READS IT: the nightly mirror (scripts/mirror_to_repo.py, append by
 -- captured_at), the archive (scripts/archive_observations.py, dataset
 -- live_capture) and the WXPredict live reader and parity test, which read the
--- repository's copies. No view, page or engine reads it.
+-- repository's copies. The live shadow joins database and committed mirror inputs; no page reads it.
 --
--- WHAT IS KEPT: two days. prune_live_capture deletes rows captured before the
+-- WHAT IS KEPT: yesterday's UTC day and newer; older inputs stay in the repo. prune_live_capture deletes rows captured before the
 -- cutoff only after the archive has committed them to data/archive/live_capture
 -- and read the count back, never a row captured since yesterday's UTC midnight
 -- (the mirror copies a day after it ends), and exactly the count or nothing.
@@ -42,10 +43,10 @@ create index if not exists live_capture_captured_at on public.live_capture (capt
 -- The kinds it keeps, set here so a table made before 12 Oct widens too.
 alter table public.live_capture drop constraint if exists live_capture_kind_check;
 alter table public.live_capture add constraint live_capture_kind_check
-  check (kind in ('report', 'hourly', 'hourly2', 'models1', 'models2', 'books', 'focus_book'));
+  check (kind in ('report', 'hourly', 'hourly2', 'models1', 'models2', 'books', 'focus_book', 'wx_features'));
 
 comment on table public.live_capture is
-  'WXPredict WP3 (11 Oct): every live input the hourly tick had, as it arrived (captured_at): station reports with every training field, the hourly _previous_day1 forecast, every open bucket''s book; from 12 Oct also best_match at _previous_day2 and the seven models'' temperature at both leads (WP3b), and the focus cities'' same-day books every minute of their window (focus_book, WP5). A report, forecast value or focus book is stored once per change. Two days here; older rows in data/archive/live_capture.';
+  'WXPredict WP3 (11 Oct): every live input the hourly tick had, as it arrived (captured_at): station reports with every training field, the hourly _previous_day1 forecast, every open bucket''s book; from 12 Oct also best_match at _previous_day2 and the seven models'' temperature at both leads (WP3b), and the focus cities'' same-day books every minute of their window (focus_book, WP5). A report, forecast value or focus book is stored once per change. One mirrored UTC-day boundary here; older rows in data/archive/live_capture.';
 
 alter table public.live_capture enable row level security;
 revoke all on public.live_capture from public, anon, authenticated;
@@ -72,7 +73,7 @@ declare
   v_rows int;
   v_new  int;
 begin
-  if p_kind is null or p_kind not in ('report', 'hourly', 'hourly2', 'models1', 'models2', 'books', 'focus_book') then
+  if p_kind is null or p_kind not in ('report', 'hourly', 'hourly2', 'models1', 'models2', 'books', 'focus_book', 'wx_features') then
     raise exception 'live_capture_put: % is not a kind the live record keeps', p_kind using errcode = '22023';
   end if;
   if p_captured_at is null or p_captured_at > now() + interval '5 minutes' then
@@ -122,7 +123,8 @@ as $function$
 declare
   -- A cutoff may be older than the floor, never newer (plan v2 P1.1).
   v_before timestamptz := least(coalesce(p_before, now() - make_interval(days => p_keep_days)),
-                                now() - make_interval(days => p_keep_days));
+                                now() - make_interval(days => p_keep_days),
+                                (date_trunc('day', now() at time zone 'UTC') - interval '1 day') at time zone 'UTC');
   -- Tonight's mirror copies every row captured since this instant, after the
   -- prune has run.
   v_unmirrored timestamptz := (date_trunc('day', now() at time zone 'UTC') - interval '1 day') at time zone 'UTC';
@@ -130,12 +132,12 @@ declare
   v_young  bigint;
   v_gone   bigint;
 begin
-  -- TWO DAYS IS THE FLOOR: two days back is always before yesterday's UTC
-  -- midnight, so a row cannot leave before the mirror has it.
-  if p_keep_days is null or p_keep_days < 2 then
+  -- One day, capped at yesterday's UTC midnight. The mirror must have that
+  -- complete day, and the caller must prove the exact committed archive count.
+  if p_keep_days is null or p_keep_days < 1 then
     return jsonb_build_object(
       'ok', false,
-      'error', 'keep_days must be at least 2 - the repo mirror copies a day after it ends'
+      'error', 'keep_days must be at least 1 - the repo mirror copies a day after it ends'
     );
   end if;
 
@@ -217,4 +219,4 @@ revoke execute on function public.prune_live_capture(integer, boolean, timestamp
 grant execute on function public.prune_live_capture(integer, boolean, timestamptz, bigint) to service_role;
 
 comment on function public.prune_live_capture(integer, boolean, timestamptz, bigint) is
-  'Delete the live_capture rows captured before the cutoff (at least 2 days back), only when the caller''s count read back from the committed archive file matches exactly and none was captured since yesterday''s UTC midnight (WXPredict WP3).';
+  'Delete the live_capture rows captured before the cutoff (at least 1 day back, capped at yesterday UTC midnight), only when the caller''s count read back from the committed archive file matches exactly and none was captured since yesterday''s UTC midnight (WXPredict WP3).';

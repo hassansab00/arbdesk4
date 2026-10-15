@@ -8,6 +8,7 @@ import json
 import pathlib
 import sys
 
+import pytest
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -140,7 +141,8 @@ def test_every_repo_file_it_reads_is_checked_out():
         rel = pathlib.Path(p).resolve().relative_to(ROOT).as_posix()
         return any(rel == q or rel.startswith(q.rstrip("/") + "/") for q in paths)
     need = [wl.MODEL_JSON, pathlib.Path(wl.MODEL_JSON).parent / META["model_file"], __import__("wxrd_live").__file__,
-            common.STATION_DAILY, common.station_daily_nightly_dir(), ROOT / "requirements.wxpredict.txt",
+            common.STATION_DAILY, common.station_daily_nightly_dir(), ROOT / "requirements.wxpredict.txt", ROOT / "data/mirror/manifest.json",
+            ROOT / "data/mirror/live_capture",
             pathlib.Path(common.PR) / "best_match_daily.csv.gz", pathlib.Path(common.PR) / "models_daily.csv.gz",
             sorted(pathlib.Path(common.CITIES_GLOB).parent.glob("cities-*.csv.gz"))[-1],
             ROOT / "scripts" / "common.py", ROOT / "scripts" / "honest_record.py", ROOT / "scripts" / "cost_model.py"]
@@ -175,6 +177,8 @@ def _run_with(monkeypatch, seconds_after_start):
     served_rows = [served(city=c, decided_at="2026-10-14T08:36:29+00:00") for c in ("madrid", "paris", "rome")]
     siblings = [dict(r, variant="honest", served_calibrated=False) for r in served_rows]
     fake = _Ops({"prediction_checkpoints": served_rows, wl.TABLE: siblings})
+    from wxpredict import capture_history
+    monkeypatch.setattr(capture_history, "read", lambda *a, **k: [])
     monkeypatch.setattr(common, "ops", lambda: fake)
     monkeypatch.setattr(common, "cities", lambda: {c: {"icao": None} for c in ("madrid", "paris", "rome")})
     monkeypatch.setattr(wl.lr, "live_events", lambda *a, **k: [])
@@ -253,3 +257,62 @@ def test_each_variant_runs_on_its_own_and_a_missing_model_is_skipped(monkeypatch
 def test_a_variant_row_carries_its_variant():
     row = wl.variant_row(served(), "C", ["b1", "b2"], [0.4, 0.6], "wxrd3:v3:abc", False, "wxrd3")
     assert row["variant"] == "wxrd3" and row["variant_version"].startswith(row["variant"] + ":")
+
+
+def test_duplicate_engine_versions_choose_one_first_call():
+    early = dict(served(), checkpoint_id="a")
+    later = dict(served(decided_at="2026-10-14T11:36:29+00:00"), checkpoint_id="b")
+    assert wl.due([later, early, early], set()) == ([early], 0)
+
+
+@pytest.mark.parametrize("variant", ["wxrd", "wxrd3"])
+def test_failed_input_capture_leaves_the_first_call_due_until_saved(monkeypatch, variant):
+    """A transient input-save failure cannot permanently mark a call held."""
+    import types
+    from wxpredict import capture_history, decision_inputs
+
+    first = dict(served(), checkpoint_id=123)
+    sibling = dict(first, variant="honest", served_calibrated=False)
+    captures, predictions = [], []
+
+    class Ops(_Ops):
+        def rpc(self, name, params):
+            assert name == "live_capture_put"
+            captures.append(params)
+            if len(captures) == 1:
+                raise RuntimeError("temporary capture outage")
+            return {"rows": len(params["p_rows"]), "new": len(params["p_rows"])}
+
+        def upsert(self, table, rows, on_conflict):
+            super().upsert(table, rows, on_conflict)
+            self.tables[table].extend(rows)
+
+    fake = Ops({"prediction_checkpoints": [first], wl.TABLE: [sibling]})
+    event = {"city": "madrid", "date": first["target_date"],
+             "unit": "C", "band_ids": ["b1", "b2"]}
+    vector = {"event_id": "contract", "decision_utc": int(decision_inputs.unix(first["decided_at"])),
+              "local_hour": 12, "city_key": "madrid", "date": first["target_date"]}
+    monkeypatch.setattr(common, "ops", lambda: fake)
+    monkeypatch.setattr(common, "cities", lambda: {"madrid": {"icao": None}})
+    monkeypatch.setattr(capture_history, "read", lambda *a, **k: [])
+    monkeypatch.setattr(wl.lr, "live_events", lambda *a: [event])
+    monkeypatch.setattr(wl.lr, "row_at", lambda *a, **k: dict(vector))
+    monkeypatch.setattr(build_table, "load_station_daily", lambda: ({}, None))
+    monkeypatch.setattr(build_table, "load_daily_forecasts", lambda: ({}, {}))
+    monkeypatch.setattr(decision_inputs, "history_identity", lambda: ("a" * 40, 0))
+    monkeypatch.setattr(wl, "load_model", lambda *a: predictions.append("loaded") or object())
+    monkeypatch.setitem(sys.modules, "sdyes_forward", types.SimpleNamespace(
+        model_probs=lambda rows, model: {("contract", vector["decision_utc"]): [.4, .6]}))
+
+    failed = wl.run(now=dt.datetime(2026, 10, 14, 10, 37, tzinfo=dt.timezone.utc), variant=variant)
+    assert failed["written"] == 0 and "temporary capture outage" in failed["decision_input_capture_error"]
+    assert fake.upserts == [] and predictions == [] and fake.logs[-1][1] == "partial"
+
+    retried = wl.run(now=dt.datetime(2026, 10, 14, 10, 38, tzinfo=dt.timezone.utc), variant=variant)
+    assert retried["due"] == retried["written"] == 1
+    assert captures[0]["p_rows"] == captures[1]["p_rows"]
+    assert captures[1]["p_rows"][0]["payload"]["checkpoint_id"] == first["checkpoint_id"]
+    assert len(predictions) == len(fake.upserts) == 1 and fake.logs[-1][1] == "ok"
+
+    held = wl.run(now=dt.datetime(2026, 10, 14, 10, 39, tzinfo=dt.timezone.utc), variant=variant)
+    assert held["due"] == held["written"] == 0 and len(captures) == 2

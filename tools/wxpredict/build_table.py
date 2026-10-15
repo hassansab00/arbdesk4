@@ -175,8 +175,13 @@ def station_events(venue_days, stations, sdaily, refused, first=None, last=None)
     return out, dict(left)
 
 
-def load_reports(station, nightly=None):
-    """The station's reports: its file and each night's new ones (common.station_report_rows)."""
+def load_reports(station, nightly=None, received_by=None):
+    """Station reports, optionally limited to versions actually received by t."""
+    if received_by is not None:
+        from wxpredict import report_journal, fetch_obs
+        rows = [dict(zip(fetch_obs.REPORT_HEADER, fetch_obs.report_out(r)[1]))
+                for r in report_journal.asof(station, received_by, feat.REPORT_LAG_S)]
+        return feat.Reports(rows)
     return Reports(common.station_report_rows(station, nightly))
 
 

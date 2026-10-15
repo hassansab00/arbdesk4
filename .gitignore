@@ -21,3 +21,5 @@ data/training/wxpredict/table_v2/
 .wxpredict_cache/
 .market_history_cache/
 web/tests/render/out/
+.cache/wxpredict-models/
+.cache/wxpredict-cycle/

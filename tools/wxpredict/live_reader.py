@@ -2,7 +2,7 @@
 
 ONE IMPLEMENTATION. The live record (public.live_capture, written in the hourly
 tick by scripts/live_capture.py; copied to data/mirror/live_capture each night
-and archived to data/archive/live_capture after two days) keeps every input the
+and archived to data/archive/live_capture after the mirrored UTC-day boundary) keeps every input the
 tick had, with the time it arrived. This reads it into the shapes
 tools/wxpredict/features.py takes and builds each row with
 features.decision_row, the function the training table is built with
@@ -82,7 +82,7 @@ import honest_record  # noqa: E402
 MODES = ("rule", "arrival")
 # every kind the record keeps; 'focus_book' (WP5, the focus cities' books each
 # minute) is read by the same-day pilot, not by these rows
-KINDS = ("report", "hourly", "hourly2", "models1", "models2", "books", "focus_book")
+KINDS = ("report", "hourly", "hourly2", "models1", "models2", "books", "focus_book", "wx_features")
 HOURLY_KIND = {1: "hourly", 2: "hourly2"}
 MODELS_KIND = {1: "models1", 2: "models2"}
 # what the record's report payload holds, in order (scripts/live_capture.py
@@ -175,6 +175,15 @@ def report_row(key, payload):
     """(IEM station id, the training's report row) from one recorded report:
     fetch_obs.cmd_reports' own transformation of IEM's answer."""
     station, valid = key.split("|", 1)
+    if isinstance(payload, dict):
+        if payload.get("schema") != "iem-report-set-v1":
+            raise ValueError("unknown station report schema")
+        rows, selected = payload.get("rows"), payload.get("selected")
+        if not isinstance(rows, list) or not rows or type(selected) is not int or not 0 <= selected < len(rows):
+            raise ValueError("invalid station report set")
+        payload = rows[selected]
+    if not isinstance(payload, list) or len(payload) != len(PAYLOAD_FIELDS):
+        raise ValueError("invalid station report fields")
     rec = dict(zip(PAYLOAD_FIELDS, payload))
     row = {"valid": valid.strip().replace(" ", "T") + "Z"}
     for f in REPORT_FIELDS:

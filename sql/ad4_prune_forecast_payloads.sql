@@ -227,12 +227,12 @@ declare
   v_keep   bigint;
   v_done   bigint;
 begin
-  -- SEVEN DAYS: the one reader of the payloads, v_model_forecast_current,
+  -- TWO DAYS: the one reader of the payloads, v_model_forecast_current,
   -- reads yesterday on.
-  if p_keep_days is null or p_keep_days < 7 then
+  if p_keep_days is null or p_keep_days < 2 then
     return jsonb_build_object(
       'ok', false,
-      'error', 'keep_days must be at least 7 - v_model_forecast_current reads the payloads from yesterday on'
+      'error', 'keep_days must be at least 2 - v_model_forecast_current reads the payloads from yesterday on'
     );
   end if;
 
@@ -321,4 +321,4 @@ revoke execute on function public.prune_model_payloads(integer, boolean, date, b
 grant execute on function public.prune_model_payloads(integer, boolean, date, bigint) to service_role;
 
 comment on function public.prune_model_payloads(integer, boolean, date, bigint) is
-  'Move derived_model_forecast.contributions and inputs of rows dated before the cutoff (at least 7 days back) to the repository, marking inputs {"payload_in_repo": true}, only when the caller''s count read back from the committed archive file matches exactly and none was predicted since yesterday''s UTC midnight. The rows and their numbers stay (WXPredict build 2.A).';
+  'Move derived_model_forecast.contributions and inputs of rows dated before the cutoff (at least 2 days back) to the repository, marking inputs {"payload_in_repo": true}, only when the caller''s count read back from the committed archive file matches exactly and none was predicted since yesterday''s UTC midnight. The rows and their numbers stay (WXPredict build 2.A).';

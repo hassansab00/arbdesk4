@@ -226,7 +226,9 @@ MEASURED_MINUTES = {
     # and 27 billed (1,667, 1,838 and 1,590 s; jobs API). 7 Oct's 31 includes
     # the honest station model failing at its step timeout (fixed since). 31,
     # the slowest of the three (S4, 8 Oct).
-    "pipeline_daily.yml": 31.0,
+    # Existing 31-minute estimate plus the new candidate job's 35-minute
+    # timeout upper bound. Not a measured claim; the waiting gate skips ML.
+    "pipeline_daily.yml": 66.0,
     # Measured per night, every chained link included (the clock dispatches
     # one run; an incomplete ingest chains the next). 27 Sep, before the
     # parallel ingest (#204): three links, 67 billed minutes. 28 Sep, the
@@ -315,7 +317,12 @@ DEFAULT_MINUTES = 5.0
 # bound, 2,685 before; 4,426 from Wave 2.B, 9 Oct, with the nightly archive
 # at its 26.0 upper bound), so doubling the hourly tick's cadence (+2,160)
 # still fails here.
-SCHEDULED_MINUTE_BUDGET = 6000
+# P6.1, 15 Oct: the existing daily dispatch gains one bounded candidate job
+# (35 min upper bound, skipped by its planning gate until data is eligible).
+# The resulting upper-bound accounting is 6,406 min/30 days, not a measured
+# runtime or billed usage. Public standard runners remain free; cadence and
+# run budget are unchanged. Keep a finite guard, including the new job.
+SCHEDULED_MINUTE_BUDGET = 6500
 
 # The account's monthly allowance for PRIVATE repositories (GitHub Pro), for
 # the messages below. It does not apply while the repository is public.

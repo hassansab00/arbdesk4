@@ -504,8 +504,8 @@ TABLES = {
     # capture"). Every input the hourly tick had, as it arrived: station
     # reports, the hourly `_previous_day1` forecast, every open bucket's book
     # (scripts/live_capture.py). Its readers are the WXPredict live reader and
-    # parity test, which read the repository's copies; nothing in Postgres
-    # reads it. Kept two days; the export is the whole table older than the
+    # parity test and live shadow, which join verified repository copies.
+    # Kept to the mirrored UTC boundary; export covers the whole table before the
     # cutoff, keyed by capture_id, which is not exported (the rows carry their
     # own kind, key and time). The mirror copies it by captured_at after the
     # prune; prune_live_capture refuses a row captured since yesterday's
@@ -521,10 +521,12 @@ TABLES = {
         # NOT MEASURED YET: the first night's rows say. A books row carries
         # every open bucket (869 on 11 Oct), a report or hourly row one value set.
         "bytes_per_row": None,
-        # TWO DAYS, WANTED AND FLOOR: nothing in Postgres reads it, and two days
-        # back is always before the midnight the mirror has reached.
-        "keep_days": 2,
-        "min_keep_days": 2,
+        # One whole UTC day behind today, bounded to midnight: every reader
+        # reads the repository. The committed mirror and exact-count guards
+        # still apply; a rolling 24-hour cutoff would enter an unmirrored day.
+        "keep_days": 1,
+        "min_keep_days": 1,
+        "whole_utc_days": True,
         "mirror_first": True,
         "needs_feature_cache": False,
     },
@@ -584,8 +586,10 @@ TABLES = {
         "columns": ["city_key", "for_date", "run_at", "predicted_at", "contributions", "inputs"],
         # 3.62 MiB of payload over 11,665 rows (7 Oct)
         "bytes_per_row": 330,
-        "keep_days": 7,
-        "min_keep_days": 7,
+        # The sole payload reader starts yesterday; retain two full days.
+        # Forecast numbers/rows remain, and every stripped payload is archived.
+        "keep_days": 2,
+        "min_keep_days": 2,
         "mirror_first": True,
         "needs_feature_cache": False,
     },
@@ -1354,6 +1358,8 @@ def export_one(spec, name, args):
     job = f"archive_{name}"
     keep_days, pressure = effective_keep_days(spec, args.keep_days)
     stamp = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=keep_days)
+    if spec.get("whole_utc_days"):
+        stamp = utc_midnight(stamp)
     # A date column needs a date cutoff; comparing it to a timestamp shifts the
     # boundary by whatever time of day this happened to run.
     cutoff = stamp.date() if spec["cutoff_is_date"] else stamp
