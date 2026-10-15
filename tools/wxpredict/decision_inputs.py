@@ -60,12 +60,19 @@ def eligible(payload, captured_at):
     raw = json.dumps(row, sort_keys=True, separators=(",", ":"), allow_nan=False)
     if hashlib.sha256(raw.encode()).hexdigest() != payload["row_sha256"]:
         raise ValueError("recorded decision input hash mismatch")
-    if "current_forecasts" in payload:
-        from wxpredict import current_forecasts
-        context = payload["current_forecasts"]
-        if set(context) != set(current_forecasts.FIELDS):
-            raise ValueError("unexpected current-forecast predictors")
-        raw_context = json.dumps(context, sort_keys=True, separators=(",", ":"), allow_nan=False)
-        if hashlib.sha256(raw_context.encode()).hexdigest() != payload.get("current_forecasts_sha256"):
-            raise ValueError("current-forecast input hash mismatch")
+    current_context(payload)
     return True
+
+
+def current_context(payload):
+    """The recorded context only, verified independently of the frozen row."""
+    if "current_forecasts" not in payload:
+        return None
+    from wxpredict import current_forecasts
+    context = payload["current_forecasts"]
+    if not isinstance(context, dict) or set(context) != set(current_forecasts.FIELDS):
+        raise ValueError("unexpected current-forecast predictors")
+    encoded = json.dumps(context, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    if hashlib.sha256(encoded.encode()).hexdigest() != payload.get("current_forecasts_sha256"):
+        raise ValueError("current-forecast input hash mismatch")
+    return dict(context)

@@ -48,5 +48,8 @@ database rows. Snapshot tests verify identical context before and after
 compaction, receipt-time exclusion and unchanged frozen inputs.
 
 Hassan approved public publication, merge and deployment after CI passes.
-CI, production migration application and the first production capture with
-these changes remain pending.
+#403 passed CI and merged as `57b2047`. Migration `current_forecast_capture`
+is installed in production as `20261015192116`, with both new kinds accepted
+and service-role-only RPC access. Vercel reports a successful deployment for
+the merge; the production Predictive page returned HTTP 200. The first
+production capture with these changes remains pending.

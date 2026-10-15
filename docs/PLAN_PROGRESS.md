@@ -3,6 +3,22 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Current forecast research export — 15 Oct
+
+Built a separate, explicit research export of receipt-timed current context
+from exact first-call vectors. It verifies the independent context hash,
+keeps missing context missing, retains the checkpoint and source hashes,
+preserves numeric precision and reports every checkpoint-date's coverage.
+All first calls remain in its coverage denominator, including those without
+labels, books or on-time vectors. A whitelisted feature adapter expresses
+current forecast gaps and spread in venue steps without learning provenance
+or outcomes. The default dataset and automatic candidate recipe are unchanged.
+
+Local validation passed: 4,122 Python tests, 9 skipped (176.11 seconds),
+the complete database contracts, and 17 focused tests. No model was fitted
+or promoted. Independent recorded training/evaluation data and a registered
+recipe remain necessary. See `docs/CURRENT_FORECAST_RESEARCH_2026-10-15.md`.
+
 ## Current forecast follow-up — 15 Oct, approved for release
 
 Starting main is `a25454a` (#402). The follow-up repairs late American
@@ -26,8 +42,11 @@ Hassan approved public publication, merge and deployment on 15 Oct, after CI
 passes. Local validation passed: 4,118 Python
 tests, 9 skipped (166.49 seconds), and the complete database contracts. A
 read-only NYC API probe returned current hourly and model forecasts with no
-reported errors. CI, the migration and the first production capture remain
-pending.
+reported errors. #403 passed CI and merged as `57b2047`. Production migration
+`current_forecast_capture` is installed as `20261015192116`: both new kinds
+are accepted and the RPC remains service-role only. Vercel reports success
+for the merge and the production Predictive page returned HTTP 200. The
+first production capture with current context remains pending.
 
 ## Checkpoint scoreboard cache — 14 Oct UTC / 15 Oct Beirut
 
