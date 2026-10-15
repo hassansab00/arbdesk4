@@ -260,6 +260,10 @@ def run(now=None, dry_run=False, variant=VARIANT, deadline=None):
                     "p_kind": decision_inputs.KIND, "p_captured_at": dt.datetime.now(common.UTC).isoformat(), "p_rows": packed})
             except Exception as exc:
                 detail["decision_input_capture_error"] = type(exc).__name__ + ": " + str(exc)[:200]
+        # A shadow row marks the checkpoint held on the next tick. Leave it
+        # due when its exact inputs were not saved, so a transient capture
+        # failure can be retried instead of permanently losing evaluation data.
+    if rows and not detail.get("decision_input_capture_error"):
         import sdyes_forward
         probs = sdyes_forward.model_probs(rows, load_model(meta, model_json))
         for s, e, row in pairs:
