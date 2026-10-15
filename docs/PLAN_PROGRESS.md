@@ -13,9 +13,11 @@ All first calls remain in its coverage denominator, including those without
 labels, books or on-time vectors. A whitelisted feature adapter expresses
 current forecast gaps and spread in venue steps without learning provenance
 or outcomes. The default dataset and automatic candidate recipe are unchanged.
+Capture writes are isolated per batch, keep successful counts after a partial
+failure, and write the established forecast kinds before current snapshots.
 
-Local validation passed: 4,122 Python tests, 9 skipped (176.11 seconds),
-the complete database contracts, and 17 focused tests. No model was fitted
+Local validation passed: 4,123 Python tests, 9 skipped (177.88 seconds),
+the complete database contracts, and 48 focused tests. No model was fitted
 or promoted. Independent recorded training/evaluation data and a registered
 recipe remain necessary. See `docs/CURRENT_FORECAST_RESEARCH_2026-10-15.md`.
 

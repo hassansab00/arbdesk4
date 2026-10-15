@@ -5,6 +5,11 @@ make them predictors in the existing candidate recipe. This extension makes
 the exact first-call context available to explicit research exports. It does
 not fit a model, change automatic refits, replace a frozen model or trade.
 
+Capture also isolates each forecast write batch. A failed current snapshot
+does not prevent the remaining forecast kinds from being saved, successful
+write counts remain in the log, and the run reports partial status. Existing
+forecast kinds are written before the new current kinds.
+
 `arrival_dataset.build(..., include_current=True)` adds the current context
 only after verifying its independent hash. Missing context stays missing;
 neither later captures nor a weather replay fills an earlier call. The
@@ -44,9 +49,10 @@ against the frozen incumbent and market on the same calls, retain checkpoint
 regression and coverage gates, and judge any promotion on independent dates.
 There is no accuracy or profitability result from this dataset work.
 
-Local validation passed: 4,122 Python tests, 9 skipped (176.11 seconds),
-the complete database contracts, and 17 focused tests. Synthetic regressions
+Local validation passed: 4,123 Python tests, 9 skipped (177.88 seconds),
+the complete database contracts, and 48 focused tests. Synthetic regressions
 verify first-call identity, tamper refusal, missing and incomplete context,
 coverage denominators, stable export bytes, full precision, C/F conversion,
-and predictor exclusion of outcomes and provenance. No live training export
+predictor exclusion of outcomes and provenance, and capture batch failures
+that preserve the other kinds and successful counts. No live training export
 or current-context model fit is claimed before recorded coverage exists.

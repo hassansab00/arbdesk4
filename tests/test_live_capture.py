@@ -365,6 +365,33 @@ def test_one_part_failing_stops_nothing(desk, monkeypatch):
     assert [p["p_kind"] for _, p in desk["put"]] == ["books", "report", "models1", "models2"]
 
 
+def test_a_failed_current_batch_keeps_successful_counts_and_other_kinds(desk, monkeypatch):
+    assert list(lc.CAPTURE_HORIZONS) == [1, 2, 0], "established inputs are written first"
+    original_fetch, original_rpc = lc.fetch_hourly, lc.rpc
+    at = dt.datetime(2026, 10, 11, 21, 36, 7, tzinfo=UTC)
+    def fetch(*args):
+        rows, detail = original_fetch(*args)
+        current = [(at, [{"key": "jeddah|2026-10-12T09:00", "payload": [t]}]) for t in (31., 32.)]
+        # Exercise isolation even if a fetcher gives the new kind first.
+        return {"hourly0": current, **rows}, detail
+    attempted = []
+    def rpc(name, params, timeout=None):
+        if params["p_kind"] == "hourly0":
+            attempted.append(params)
+            if len(attempted) == 2:
+                raise TimeoutError("current snapshot write failed")
+        return original_rpc(name, params, timeout)
+    monkeypatch.setattr(lc, "fetch_hourly", fetch)
+    monkeypatch.setattr(lc, "rpc", rpc)
+    status, detail = lc.run(now=at, iem_path=desk["iem"])
+    assert status == "partial"
+    assert detail["hourly"]["new"] == {"hourly0": 1, "hourly": 1, "hourly2": 1}
+    assert detail["hourly"]["errors"] == ["hourly0 write: TimeoutError: current snapshot write failed"]
+    assert [p["p_kind"] for _, p in desk["put"]] == [
+        "books", "hourly0", "hourly", "hourly2", "report", "models1", "models2"]
+    assert desk["log"][0][1:3] == ("partial", 7)
+
+
 def test_the_models_failing_keeps_the_rest(desk, monkeypatch):
     monkeypatch.setattr(lc, "fetch_models", lambda cities, now, left: (
         {"models1": [], "models2": []},
