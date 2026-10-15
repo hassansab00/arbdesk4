@@ -30,8 +30,9 @@ THE HOURLY LEAD-1 RECORD TOO (11 Oct). best_match_hourly_day1_utc.csv.gz
 (WXPredict's hourly forecast features) was built once on 26 Sep and
 extended by hand (tools/wxpredict/fetch_forecasts.py), so it stopped on
 5 Oct while the daily files went on. The heating request below already asks
-for its seven variables, hourly, `_previous_day1`, in UTC; their hours before
-today are appended from the same answer, no request added. A row already in
+for its seven variables, hourly, `_previous_day1`, in UTC; hours through the
+previous local calendar date in every active city are appended from the same
+requests. The range includes late US hours after UTC midnight. A row already in
 the file is never rewritten: an hour asked again is compared value by value
 and a difference is reported, not merged (fetch_forecasts.py's rule). The
 file was built with timezone=auto, so a city on a half-hour offset (Lucknow,
@@ -521,6 +522,19 @@ def append_hourly(existing, new):
     return [by[k] for k in sorted(by)], added, same, differ, off
 
 
+def hourly_record_boundary(today, cities):
+    """UTC end of the previous calendar date in every active city's zone.
+
+    The old UTC-midnight cutoff truncated late American local-day forecasts.
+    These are lead-one forecasts, not observations from an unfinished day.
+    """
+    ends = [dt.datetime.combine(today, dt.time())]
+    for city in cities:
+        end = dt.datetime.combine(today, dt.time(), ZoneInfo(city["timezone"]))
+        ends.append(end.astimezone(dt.timezone.utc).replace(tzinfo=None))
+    return max(ends)
+
+
 def merge(existing, new, key_len):
     """Rows keyed by their first `key_len` columns; a new row replaces the old
     one with the same key (a run re-read later is the same run). Sorted."""
@@ -543,13 +557,14 @@ def main(argv=None, now=None):
 
     today = (now or dt.datetime.now(dt.timezone.utc)).date()
     start, end = today - dt.timedelta(days=args.days), today - dt.timedelta(days=1)
-    before = dt.datetime.combine(today, dt.time())          # the hourly record takes hours before today (UTC)
     cities = [c for c in get_cities() if c.get("latitude") is not None and c.get("timezone")
               and c.get("status", "active") == "active"]
+    before = hourly_record_boundary(today, cities)
+    request_end = max(end, (before - dt.timedelta(microseconds=1)).date())
     old_hr = read_rows(HOURLY_FILE)
     grids = {r[0]: dt.datetime.fromisoformat(r[1]).minute for r in old_hr}
     bm, md, hourly, missing, rounds = [], [], [], [], []
-    for city, (h, m) in fetch_each(lambda chunk, part: previous_request(chunk, part, start, end), cities, rounds):
+    for city, (h, m) in fetch_each(lambda chunk, part: previous_request(chunk, part, start, request_end), cities, rounds):
         if h is None or m is None:
             missing.append(city["city_key"])
         b, x = previous_rows(city["city_key"], h, m, city["timezone"], start.isoformat(), end.isoformat())
@@ -564,6 +579,7 @@ def main(argv=None, now=None):
     new_bm, new_md = merge(old_bm, bm, 3), merge(old_md, md, 4)
     new_hr, hr_added, hr_same, hr_differ, hr_off = append_hourly(old_hr, hourly)
     detail = {"from": start.isoformat(), "to": end.isoformat(), "cities": len(cities),
+              "hourly_before_utc": before.isoformat(), "request_to_utc": request_end.isoformat(),
               "unreached": missing, "best_match_rows": len(bm), "model_rows": len(md),
               "best_match_total": len(new_bm), "models_total": len(new_md), "rounds": rounds,
               "hourly_added": hr_added, "hourly_identical": hr_same, "hourly_differ": len(hr_differ),

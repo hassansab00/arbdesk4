@@ -217,21 +217,21 @@ def test_the_forecast_is_asked_a_chunk_at_a_time_in_gmt(monkeypatch):
         if len(asked) == 2:
             return _Answer([{"hourly": {}}])      # one answer for three places: refused, recorded
         return _Answer([{"hourly": {"time": ["2026-10-11T12:00", "2026-10-13T12:00"],
-                                    **{f"{v}_previous_day{lead}": [1.0, 2.0] for v in honest_record.HEATING
-                                       for lead in (1, 2)}}}] * n)
+                                    **{lc.series_name(v, lead): [1.0, 2.0] for v in honest_record.HEATING
+                                       for lead in (0, 1, 2)}}}] * n)
     monkeypatch.setattr(lc, "_get", get)
     rows, d = lc.fetch_hourly(cities, dt.datetime(2026, 10, 11, 21, 36, tzinfo=UTC), lambda: 60)
     url, params = asked[0]
     assert url == honest_record.PREVIOUS_API and params["timezone"] == "GMT"
-    assert set(params["hourly"].split(",")) == {f"{v}_previous_day{lead}" for v in honest_record.HEATING
-                                                for lead in (1, 2)}, "both leads in the one request"
+    assert set(params["hourly"].split(",")) == {lc.series_name(v, lead) for v in honest_record.HEATING
+                                                for lead in (0, 1, 2)}, "both leads in the one request"
     assert params["end_date"] == "2026-10-13", "far enough for lead 2"
-    assert set(rows) == {"hourly", "hourly2"}
+    assert set(rows) == {"hourly0", "hourly", "hourly2"}
     assert d["answered"] == lc.CITIES_PER_REQUEST and len(d["errors"]) == 1
     flat = {k: [r for _, batch in v for r in batch] for k, v in rows.items()}
     assert len(flat["hourly"]) == lc.CITIES_PER_REQUEST, "lead 1 stops at 17 h"
     assert len(flat["hourly2"]) == 2 * lc.CITIES_PER_REQUEST, "lead 2 reaches 41 h"
-    assert d["values"] == {1: lc.CITIES_PER_REQUEST, 2: 2 * lc.CITIES_PER_REQUEST}
+    assert d["values"] == {0: lc.CITIES_PER_REQUEST, 1: lc.CITIES_PER_REQUEST, 2: 2 * lc.CITIES_PER_REQUEST}
 
 
 def test_each_chunk_carries_the_time_its_answer_arrived(monkeypatch):
@@ -249,8 +249,8 @@ def test_each_chunk_carries_the_time_its_answer_arrived(monkeypatch):
     def get(url, params=None, timeout=None):
         n = len(params["latitude"].split(","))
         return _Answer([{"hourly": {"time": ["2026-10-11T12:00"],
-                                    **{f"temperature_2m_previous_day{lead}_{m}": [1.0] for m in honest_record.MODELS
-                                       for lead in (1, 2)}}}] * n)
+                                    **{lc.series_name("temperature_2m", lead, m): [1.0] for m in honest_record.MODELS
+                                       for lead in (0, 1, 2)}}}] * n)
     monkeypatch.setattr(lc, "_get", get)
     rows, d = lc.fetch_models(cities, dt.datetime(2026, 10, 11, 21, 36, tzinfo=UTC), lambda: 60)
     (a1, b1), (a2, b2) = rows["models1"]
@@ -268,8 +268,8 @@ def test_the_models_are_asked_as_the_nightly_record_asks(monkeypatch):
     def get(url, params=None, timeout=None):
         asked.append((url, params))
         return _Answer([{"hourly": {"time": ["2026-10-11T12:00"],
-                                    **{f"temperature_2m_previous_day{lead}_{m}": [1.0] for m in honest_record.MODELS
-                                       for lead in (1, 2)}}}] * 3)
+                                    **{lc.series_name("temperature_2m", lead, m): [1.0] for m in honest_record.MODELS
+                                       for lead in (0, 1, 2)}}}] * 3)
     monkeypatch.setattr(lc, "_get", get)
     rows, d = lc.fetch_models(cities, dt.datetime(2026, 10, 11, 21, 36, tzinfo=UTC), lambda: 60)
     rows = {k: [r for _, batch in v for r in batch] for k, v in rows.items()}
@@ -279,9 +279,10 @@ def test_the_models_are_asked_as_the_nightly_record_asks(monkeypatch):
     monkeypatch.setattr(honest_record, "_get", lambda u, p, label: nightly.append((u, p)))
     honest_record.previous_request(cities, "models", dt.date(2026, 10, 11), dt.date(2026, 10, 12))
     ((n_url, n_params),) = nightly
-    same = ("hourly", "models", "timezone", "latitude", "longitude")
+    same = ("models", "timezone", "latitude", "longitude")
     assert url == n_url and {k: params[k] for k in same} == {k: n_params[k] for k in same}
-    assert {k: len(v) for k, v in rows.items()} == {"models1": 3, "models2": 3}
+    assert set(params["hourly"].split(",")) == set(n_params["hourly"].split(",")) | {"temperature_2m"}
+    assert {k: len(v) for k, v in rows.items()} == {"models0": 3, "models1": 3, "models2": 3}
     assert d["answered"] == 3 and d["errors"] == []
 
 
@@ -448,3 +449,14 @@ def test_it_is_mirrored_and_archived():
 def test_it_is_in_the_database_suite():
     pkg = json.loads((ROOT / "tests" / "database" / "package.json").read_text())
     assert "node live-capture.cjs" in pkg["scripts"]["test"]
+
+
+def test_missing_current_values_do_not_become_a_day_one_forecast(monkeypatch):
+    answer={"hourly":{"time":["2026-10-15T12:00"],
+        **{f"{v}_previous_day{lead}":[21.] for v in honest_record.HEATING for lead in (1,2)}}}
+    monkeypatch.setattr(lc,"_get",lambda *a,**k:_Answer(answer))
+    rows,detail=lc.fetch_hourly([{"city_key":"city","latitude":1,"longitude":2}],
+                              dt.datetime(2026,10,15,9,tzinfo=UTC),lambda:60)
+    assert rows['hourly0'][0][1]==[]
+    assert rows['hourly'][0][1][0]['payload'][0]==21.
+    assert detail['errors']==['city: current forecast unavailable']

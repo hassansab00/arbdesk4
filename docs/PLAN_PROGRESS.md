@@ -3,6 +3,32 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Current forecast follow-up — 15 Oct, approved for release
+
+Starting main is `a25454a` (#402). The follow-up repairs late American
+local-day coverage in the immutable hourly forecast record and captures
+current forecasts in the existing live requests. Current forecasts stay in
+separate receipt-stamped snapshots, with complete local-day coverage required
+for maxima and a separately hashed context beside exact decision vectors.
+The frozen vectors, models, serving and allocation remain unchanged. No new
+workflow or request cadence is added. The schema migration must precede the
+first code run that writes the new capture kinds.
+
+The fixed forecast-error challenger was rejected on previously inspected
+September development dates. It has no serving or registry connection. The
+automatic candidate recipe still uses its existing features; a recipe using
+current context needs separate evaluation. Accuracy, historical/live parity,
+archive/reclaim acceptance and independent forward evidence remain open.
+Implementation and the rejected experiment are described in
+`docs/CURRENT_FORECAST_BUILD_2026-10-15.md`.
+
+Hassan approved public publication, merge and deployment on 15 Oct, after CI
+passes. Local validation passed: 4,118 Python
+tests, 9 skipped (166.49 seconds), and the complete database contracts. A
+read-only NYC API probe returned current hourly and model forecasts with no
+reported errors. CI, the migration and the first production capture remain
+pending.
+
 ## Checkpoint scoreboard cache — 14 Oct UTC / 15 Oct Beirut
 
 Hassan approved merging/deploying #399 and asked for remaining findings to be

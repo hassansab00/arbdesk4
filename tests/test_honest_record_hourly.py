@@ -209,3 +209,30 @@ def test_the_nightly_run_writes_the_hourly_record(tmp_path, monkeypatch):
     assert [r[1] for r in rows[1:]] == ["2026-10-01T00:00", yday], "yesterday's last hour, not today's"
     assert logged["d"]["hourly_added"] == 1 and logged["d"]["hourly_identical"] == 1
     assert logged["d"]["hourly_differ"] == 0 and logged["d"]["hourly_off_grid"] == 0
+
+
+def test_record_boundary_completes_american_local_days_and_observes_dst():
+    cities=[{"timezone":z} for z in ("Europe/London","Asia/Kolkata","America/Los_Angeles")]
+    assert hr.hourly_record_boundary(dt.date(2026,10,15),cities)==dt.datetime(2026,10,15,7)
+    assert hr.hourly_record_boundary(dt.date(2026,12,15),cities)==dt.datetime(2026,12,15,8)
+    assert hr.hourly_record_boundary(dt.date(2026,10,15),[{"timezone":"Asia/Kolkata"}])==dt.datetime(2026,10,15)
+
+
+def test_nightly_record_keeps_late_utc_forecasts_of_the_previous_local_day(tmp_path,monkeypatch):
+    for name in ("BEST_MATCH_FILE","MODELS_FILE","HOURLY_FILE"):
+        monkeypatch.setattr(hr,name,str(tmp_path/(name+".csv.gz")))
+    city={"city_key":"nyc","timezone":"America/New_York","latitude":40.,"longitude":-74.}
+    cm=importlib.import_module("common")
+    monkeypatch.setattr(cm,"get_cities",lambda:[city])
+    monkeypatch.setattr(cm,"log_run",lambda *a:None)
+    requested=[]
+    heating=_answer(["2026-10-15T00:00","2026-10-15T03:00","2026-10-15T04:00"],[18.,17.,16.])
+    def previous(chunk,part,start,end):
+        requested.append(end)
+        return heating
+    monkeypatch.setattr(hr,"previous_request",previous)
+    monkeypatch.setattr(hr,"fetch_each",lambda ask,cities,rounds:[(city,(ask([city],"heating"),{"hourly":{}}))])
+    monkeypatch.setattr(hr,"previous_rows",lambda *a:([],[]))
+    assert hr.main([],now=dt.datetime(2026,10,15,2,36,tzinfo=dt.timezone.utc))==0
+    assert requested==[dt.date(2026,10,15)]
+    assert [r[1] for r in hr.read_rows(hr.HOURLY_FILE)]==["2026-10-15T00:00","2026-10-15T03:00"]

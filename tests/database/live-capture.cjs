@@ -80,6 +80,10 @@ const KINDS = ['report', 'hourly', 'hourly2', 'models1', 'models2', 'books'];
   // Model payload objects are supplied by the separate payload contract suite.
   await db.exec(NEW_MIG);
   await db.exec(NEW_MIG);
+  const CURRENT_MIG = fs.readFileSync(path.join(__dirname, '..', '..', 'supabase', 'migrations',
+    '20261015174914_current_forecast_capture.sql'), 'utf-8');
+  await db.exec(CURRENT_MIG);
+  await db.exec(CURRENT_MIG);
 
   const put = async (kind, at, rows) => (await one('select public.live_capture_put($1, $2, $3::jsonb) r',
     [kind, at, JSON.stringify(rows)]))[0].r;
@@ -178,6 +182,15 @@ const KINDS = ['report', 'hourly', 'hourly2', 'models1', 'models2', 'books'];
   assert.equal((await one('select count(*)::int n from public.live_capture'))[0].n, n);
   assert.equal((await put('models1', T(0), [{ key: 'tokyo|2026-10-12T00:00', payload: m7(20) }])).new, 1,
     'the migrations in order leave every kind writable');
+  await db.exec(CURRENT_MIG);
+  for (const kind of ['hourly0', 'models0']) {
+    const r = [{key:'city|future-hour',payload:[21,22]}];
+    assert.equal((await put(kind,T(1),r)).new,1);
+    assert.equal((await put(kind,T(0),r)).new,0);
+  }
+  await db.exec(CURRENT_MIG);
+  await db.exec(SQL);
+  assert.equal((await put('hourly0', T(0), [{key:'city|new-hour',payload:[23]}])).new,1);
   assert.equal((await put('wx_features', T(1), [{key:'policy|city|date|morning',payload:{row_sha256:'test'}}])).new, 1);
   console.log('PASS: live-capture: a report or forecast value (best_match at leads 1 and 2, the seven models at both) stored once per change and again when it changes back, a books row every tick; a kind it does not keep refused by the function and the table, a future time and a non-list refused; the prune takes two-day-old rows only, only the verified count; request_reclaim may rewrite it; the switch seeded and kept; the archive watchdog row and the 03:05 backstop; closed to the browser; re-runnable');
 })().catch((e) => { console.error(e); process.exit(1); });

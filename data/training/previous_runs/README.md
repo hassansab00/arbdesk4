@@ -66,7 +66,7 @@ are unchanged, and the file now holds 516,096 rows. An hour H's value comes from
 before H (published, by the assumption above, by H - 17 h). **Appended nightly from 11 Oct** by `scripts/honest_record.py`
 (archive_observations.yml), from the heating answer it already asks for
 (the same seven variables at `_previous_day1`, asked in UTC): every hour
-before the run's day, no row rewritten, an hour asked again compared value
+through the previous local calendar date in every active city, including late US hours after UTC midnight; no row rewritten, an hour asked again compared value
 by value and a difference logged (`hourly_differ`), not merged. Lucknow's
 hours sit at :30 UTC (the `timezone=auto` build on a +5:30 offset) and a UTC
 answer's at :00. The audit repair now requests those cities' local-hour

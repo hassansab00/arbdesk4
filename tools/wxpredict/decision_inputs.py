@@ -27,7 +27,7 @@ def history_identity():
     return out[0], int(out[1])
 
 
-def pack(served, event, row, commit, committed_at):
+def pack(served, event, row, commit, committed_at, current=None):
     vector = {k: None if k in LABELS else row.get(k) for k in features.COLUMNS}
     raw = json.dumps(vector, sort_keys=True, separators=(",", ":"), allow_nan=False)
     payload = {"policy": POLICY, "checkpoint_id": served["checkpoint_id"], "city_key": served["city_key"],
@@ -35,6 +35,13 @@ def pack(served, event, row, commit, committed_at):
                "decided_at": served["decided_at"], "band_ids": list(event["band_ids"]),
                "history_commit": commit, "history_committed_at": committed_at,
                "row": vector, "row_sha256": hashlib.sha256(raw.encode()).hexdigest()}
+    if current is not None:
+        from wxpredict import current_forecasts
+        if set(current) != set(current_forecasts.FIELDS):
+            raise ValueError("unexpected current-forecast predictors")
+        encoded = json.dumps(current, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        payload.update(current_forecasts=current,
+                       current_forecasts_sha256=hashlib.sha256(encoded.encode()).hexdigest())
     return {"key": "|".join((POLICY, served["city_key"], str(served["target_date"]), served["checkpoint"])), "payload": payload}
 
 
@@ -53,4 +60,12 @@ def eligible(payload, captured_at):
     raw = json.dumps(row, sort_keys=True, separators=(",", ":"), allow_nan=False)
     if hashlib.sha256(raw.encode()).hexdigest() != payload["row_sha256"]:
         raise ValueError("recorded decision input hash mismatch")
+    if "current_forecasts" in payload:
+        from wxpredict import current_forecasts
+        context = payload["current_forecasts"]
+        if set(context) != set(current_forecasts.FIELDS):
+            raise ValueError("unexpected current-forecast predictors")
+        raw_context = json.dumps(context, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        if hashlib.sha256(raw_context.encode()).hexdigest() != payload.get("current_forecasts_sha256"):
+            raise ValueError("current-forecast input hash mismatch")
     return True

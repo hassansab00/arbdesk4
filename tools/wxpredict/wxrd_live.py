@@ -64,7 +64,7 @@ MAX_DUE = 30                # a tick wrote 2-19 such checkpoints an hour, 11-12 
 ROW_BUDGET_S = 90           # rows stop being built here and what is built is written, inside the step's 3 min;
                             # bounds, not measurements: the first ticks' seconds are in the log rows
 RECORD_HOURS = 40           # the day's hourly forecasts reach the record up to 17 h ahead; older hours come from the committed mirror
-KINDS = ("report", "hourly", "hourly2", "models1", "models2")
+KINDS = ("report", "hourly", "hourly2", "models1", "models2", "hourly0", "models0")
 TABLE = "variant_shadow_checkpoints"
 ON_CONFLICT = "city_key,target_date,checkpoint,variant"
 JOB = "P7.6_wxrd_shadow"
@@ -252,10 +252,12 @@ def run(now=None, dry_run=False, variant=VARIANT, deadline=None):
     out = []
     if rows:
         if not dry_run:
-            from wxpredict import decision_inputs
+            from wxpredict import decision_inputs, current_forecasts
             try:
                 commit, committed_at = decision_inputs.history_identity()
-                packed = [decision_inputs.pack(s, e, r, commit, committed_at) for s, e, r in pairs]
+                packed = [decision_inputs.pack(s, e, r, commit, committed_at,
+                    current=current_forecasts.context(record, e, int(r["decision_utc"]), common.zone(cities[s["city_key"]])))
+                    for s, e, r in pairs]
                 detail["recorded_decision_inputs"] = ops.rpc("live_capture_put", {
                     "p_kind": decision_inputs.KIND, "p_captured_at": dt.datetime.now(common.UTC).isoformat(), "p_rows": packed})
             except Exception as exc:
