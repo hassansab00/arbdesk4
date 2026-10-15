@@ -293,7 +293,7 @@ def test_failed_input_capture_leaves_the_first_call_due_until_saved(monkeypatch,
     vector = {"event_id": "contract", "decision_utc": int(decision_inputs.unix(first["decided_at"])),
               "local_hour": 12, "city_key": "madrid", "date": first["target_date"]}
     monkeypatch.setattr(common, "ops", lambda: fake)
-    monkeypatch.setattr(common, "cities", lambda: {"madrid": {"icao": None}})
+    monkeypatch.setattr(common, "cities", lambda: {"madrid": {"icao": None, "timezone":"UTC"}})
     monkeypatch.setattr(capture_history, "read", lambda *a, **k: [])
     monkeypatch.setattr(wl.lr, "live_events", lambda *a: [event])
     monkeypatch.setattr(wl.lr, "row_at", lambda *a, **k: dict(vector))

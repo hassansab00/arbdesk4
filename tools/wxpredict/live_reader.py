@@ -82,7 +82,7 @@ import honest_record  # noqa: E402
 MODES = ("rule", "arrival")
 # every kind the record keeps; 'focus_book' (WP5, the focus cities' books each
 # minute) is read by the same-day pilot, not by these rows
-KINDS = ("report", "hourly", "hourly2", "models1", "models2", "books", "focus_book", "wx_features")
+KINDS = ("report", "hourly", "hourly2", "models1", "models2", "books", "focus_book", "wx_features", "hourly0", "models0")
 HOURLY_KIND = {1: "hourly", 2: "hourly2"}
 MODELS_KIND = {1: "models1", 2: "models2"}
 # what the record's report payload holds, in order (scripts/live_capture.py
@@ -211,7 +211,12 @@ def _by_city(record, kind, t):
     out = collections.defaultdict(dict)
     for key, vals in record.values(kind, t).items():
         city, hour = key.split("|", 1)
-        out[city][hour] = vals
+        if kind in ("hourly0", "models0") and isinstance(vals, dict):
+            if vals.get("schema") != "nwp-current-snapshot-v1" or not isinstance(vals.get("hours"), dict):
+                raise ValueError("invalid current forecast snapshot")
+            out[city].update(vals["hours"])
+        else:
+            out[city][hour] = vals
     return out
 
 

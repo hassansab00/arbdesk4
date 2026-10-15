@@ -1,0 +1,57 @@
+{
+ "recipe": "forecast-error-v1",
+ "evidence": "retrospective development; previously inspected dates",
+ "fit_last": "2026-08-30",
+ "evaluation": [
+  "2026-09-01",
+  "2026-09-30"
+ ],
+ "seed": 20261011,
+ "rounds": 250,
+ "training_rows": 42994,
+ "all": {
+  "n": 21127,
+  "dates": 30,
+  "incumbent": {
+   "hits": 15837,
+   "nll": 0.6482528539128684
+  },
+  "candidate": {
+   "hits": 14844,
+   "nll": 0.9444736179775459
+  },
+  "market": {
+   "hits": 17246,
+   "nll": 0.44041011040949474
+  },
+  "candidate_nll_gain_ci90_by_date": [
+   -0.32780318415741266,
+   -0.26389295011733593
+  ]
+ },
+ "morning": {
+  "n": 4221,
+  "dates": 30,
+  "incumbent": {
+   "hits": 1707,
+   "nll": 1.5280344769799394
+  },
+  "candidate": {
+   "hits": 1493,
+   "nll": 2.1056014004934704
+  },
+  "market": {
+   "hits": 2261,
+   "nll": 1.0851298894174615
+  },
+  "candidate_nll_gain_ci90_by_date": [
+   -0.6348689147541337,
+   -0.5181134589434938
+  ]
+ },
+ "table_sha256": "18231753127bd894a6199ec14f8772e83cc0410f9547f911bb662826e60e6c3b",
+ "candidate_sha256": "89790ec368537d4cc195095552329395e54baa75a3a49595de066a507421bfa3",
+ "verdict": "reject challenger",
+ "changes_serving": false,
+ "seconds": 50.55
+}

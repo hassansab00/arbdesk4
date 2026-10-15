@@ -43,7 +43,7 @@ create index if not exists live_capture_captured_at on public.live_capture (capt
 -- The kinds it keeps, set here so a table made before 12 Oct widens too.
 alter table public.live_capture drop constraint if exists live_capture_kind_check;
 alter table public.live_capture add constraint live_capture_kind_check
-  check (kind in ('report', 'hourly', 'hourly2', 'models1', 'models2', 'books', 'focus_book', 'wx_features'));
+  check (kind in ('report', 'hourly', 'hourly2', 'models1', 'models2', 'books', 'focus_book', 'wx_features', 'hourly0', 'models0'));
 
 comment on table public.live_capture is
   'WXPredict WP3 (11 Oct): every live input the hourly tick had, as it arrived (captured_at): station reports with every training field, the hourly _previous_day1 forecast, every open bucket''s book; from 12 Oct also best_match at _previous_day2 and the seven models'' temperature at both leads (WP3b), and the focus cities'' same-day books every minute of their window (focus_book, WP5). A report, forecast value or focus book is stored once per change. One mirrored UTC-day boundary here; older rows in data/archive/live_capture.';
@@ -73,7 +73,7 @@ declare
   v_rows int;
   v_new  int;
 begin
-  if p_kind is null or p_kind not in ('report', 'hourly', 'hourly2', 'models1', 'models2', 'books', 'focus_book', 'wx_features') then
+  if p_kind is null or p_kind not in ('report', 'hourly', 'hourly2', 'models1', 'models2', 'books', 'focus_book', 'wx_features', 'hourly0', 'models0') then
     raise exception 'live_capture_put: % is not a kind the live record keeps', p_kind using errcode = '22023';
   end if;
   if p_captured_at is null or p_captured_at > now() + interval '5 minutes' then

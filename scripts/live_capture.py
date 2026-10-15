@@ -34,6 +34,9 @@ public.live_capture (supabase/migrations/20261011210000_the_live_record.sql):
           (features.pick_daily); the record had neither, so no live row could
           carry them. One more request a chunk (the models), asked exactly as
           the nightly record asks it (honest_record.previous_request).
+  hourly0 and models0 keep the current forecast as actually received, through
+          24 hours ahead, in those same requests. They never replace frozen
+          inputs. Receipt time is not a forecast model initialisation time.
   report  every report the tick's own IEM read returned (tick.py asks once
           for every field the training reads and leaves the answer in
           LIVE_CAPTURE_IEM; no second request), each field as IEM gave it.
@@ -70,8 +73,10 @@ DEPTH_C = 0.05
 HORIZON_H = 17
 HORIZON2_H = 41
 LEAD_HORIZON = {1: HORIZON_H, 2: HORIZON2_H}
-HOURLY_KIND = {1: "hourly", 2: "hourly2"}
-MODELS_KIND = {1: "models1", 2: "models2"}
+# Current forecasts stay separate from frozen lead-1/lead-2 inputs.
+CAPTURE_HORIZONS = {0: 24, **LEAD_HORIZON}
+HOURLY_KIND = {0: "hourly0", 1: "hourly", 2: "hourly2"}
+MODELS_KIND = {0: "models0", 1: "models1", 2: "models2"}
 CITIES_PER_REQUEST = honest_record.CHUNK
 REQUEST_TIMEOUT_S = 15
 # The tick reads the stations first; its answer is normally on disk a few
@@ -207,7 +212,7 @@ def hourly_rows(city_key, answer, first, last, lead=1):
     """The seven HEATING values at `_previous_day<lead>`, in order, for every
     hour with a temperature."""
     return _series_rows(city_key, answer, first, last,
-                        [f"{v}_previous_day{lead}" for v in honest_record.HEATING],
+                        [series_name(v, lead) for v in honest_record.HEATING],
                         lambda vals: vals[0] is not None)
 
 
@@ -216,8 +221,14 @@ def model_rows(city_key, answer, first, last, lead):
     honest_record.MODELS order (the nightly record's own names,
     honest_record.previous_rows), for every hour where any model has one."""
     return _series_rows(city_key, answer, first, last,
-                        [f"temperature_2m_previous_day{lead}_{m}" for m in honest_record.MODELS],
+                        [series_name("temperature_2m", lead, m) for m in honest_record.MODELS],
                         lambda vals: any(v is not None for v in vals))
+
+
+def series_name(variable, lead, model=None):
+    # Current values use unsuffixed names, not _previous_day0.
+    name = variable if lead == 0 else f"{variable}_previous_day{lead}"
+    return name + "_" + model if model else name
 
 
 def _ask(chunk, params, left):
@@ -245,9 +256,9 @@ def _fetch(cities, now, left, hourly, rows_of):
     EACH CHUNK CARRIES THE TIME ITS OWN ANSWER ARRIVED (Codex on #386): one
     time for the whole part would say a chunk that answered first arrived
     when the last one did, and the record is when each value arrived."""
-    windows = {lead: hourly_window(now, h) for lead, h in LEAD_HORIZON.items()}
+    windows = {lead: hourly_window(now, h) for lead, h in CAPTURE_HORIZONS.items()}
     first, last = windows[1][0], max(w[1] for w in windows.values())
-    rows = {lead: [] for lead in LEAD_HORIZON}
+    rows = {lead: [] for lead in CAPTURE_HORIZONS}
     errors, answered = [], 0
     for i in range(0, len(cities), CITIES_PER_REQUEST):
         chunk = cities[i:i + CITIES_PER_REQUEST]
@@ -258,11 +269,14 @@ def _fetch(cities, now, left, hourly, rows_of):
             answers = _ask(chunk, dict(hourly, start_date=first.date().isoformat(),
                                        end_date=last.date().isoformat()), left)
             arrived = dt.datetime.now(dt.timezone.utc)
-            got = {lead: [] for lead in LEAD_HORIZON}
+            got = {lead: [] for lead in CAPTURE_HORIZONS}
             for city, a in zip(chunk, answers):
-                for lead in LEAD_HORIZON:
-                    got[lead] += rows_of(city["city_key"], a, lead, *windows[lead])
-            for lead in LEAD_HORIZON:
+                for lead in CAPTURE_HORIZONS:
+                    made = rows_of(city["city_key"], a, lead, *windows[lead])
+                    got[lead] += made
+                    if lead == 0 and not made:
+                        errors.append(f"{city['city_key']}: current forecast unavailable")
+            for lead in CAPTURE_HORIZONS:
                 rows[lead].append((arrived, got[lead]))
             answered += len(chunk)
         except Exception as e:
@@ -279,8 +293,8 @@ def fetch_hourly(cities, now, left):
     leads, one request a chunk ('hourly' to HORIZON_H, 'hourly2' to
     HORIZON2_H)."""
     rows, d = _fetch(cities, now, left,
-                     {"hourly": ",".join(f"{v}_previous_day{lead}" for v in honest_record.HEATING
-                                         for lead in LEAD_HORIZON)},
+                     {"hourly": ",".join(series_name(v, lead) for v in honest_record.HEATING
+                                         for lead in CAPTURE_HORIZONS)},
                      lambda city_key, a, lead, first, last: hourly_rows(city_key, a, first, last, lead))
     return {HOURLY_KIND[lead]: r for lead, r in rows.items()}, d
 
@@ -290,7 +304,7 @@ def fetch_models(cities, now, left):
     at both leads, one request a chunk, asked as honest_record.previous_request
     asks it ('models1' to HORIZON_H, 'models2' to HORIZON2_H)."""
     rows, d = _fetch(cities, now, left,
-                     {"hourly": ",".join(f"temperature_2m_previous_day{lead}" for lead in LEAD_HORIZON),
+                     {"hourly": ",".join(series_name("temperature_2m", lead) for lead in CAPTURE_HORIZONS),
                       "models": ",".join(honest_record.MODELS)},
                      lambda city_key, a, lead, first, last: model_rows(city_key, a, first, last, lead))
     return {MODELS_KIND[lead]: r for lead, r in rows.items()}, d
@@ -343,6 +357,8 @@ def put(kind, captured_at, rows, dry_run, left=lambda: BUDGET_S):
     """Rows stored, in batches; (asked, new). Each write waits no longer than
     the run has left, so the backstop never ends a write half-way through the
     run's own row."""
+    if kind in ("hourly0", "models0"):
+        rows = current_snapshots(rows)
     if dry_run or not rows:
         return len(rows), 0
     new = 0
@@ -351,6 +367,25 @@ def put(kind, captured_at, rows, dry_run, left=lambda: BUDGET_S):
                                        "p_rows": rows[i:i + PUT_ROWS]}, timeout=max(3.0, min(60.0, left())))
         new += int(got.get("new") or 0)
     return len(rows), new
+
+
+def current_snapshots(rows):
+    """One receipt-stamped value per city, preserving every returned hour.
+
+    Current forecasts are stored as complete responses rather than paying
+    for a database row and index entry for every city/hour on every revision.
+    Previous snapshots stay available for as-of reads and the archive.
+    """
+    by_city = {}
+    for row in rows:
+        city, hour = row["key"].split("|", 1)
+        hours = by_city.setdefault(city, {})
+        if hour in hours and hours[hour] != row["payload"]:
+            raise ValueError("conflicting current forecast hour")
+        hours[hour] = row["payload"]
+    return [{"key": city + "|snapshot", "payload": {
+        "schema": "nwp-current-snapshot-v1", "hours": dict(sorted(hours.items()))}}
+        for city, hours in sorted(by_city.items())]
 
 
 def mode():
