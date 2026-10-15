@@ -247,12 +247,12 @@ select cron.schedule(
 
 -- The weather model's explanations (WXPredict build 2.A, 7 Oct): the archive
 -- moves a day of contributions and inputs out of the rows every night and
--- asks for its own reclaim, so this is the backstop - weekly, Monday 07:15,
+-- asks for its own reclaim, so this is the backstop - daily at 07:15 (15 Oct; weekly before),
 -- after the other weekly rewrites and before weather_model.yml (08:00) and
 -- the 08:00 intraday run write the table again.
 select cron.schedule(
   'ad4_reclaim_derived_model_forecast',
-  '15 7 * * 1',
+  '15 7 * * *',
   'VACUUM (FULL, ANALYZE) public.derived_model_forecast'
 );
 

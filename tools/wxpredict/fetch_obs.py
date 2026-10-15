@@ -330,6 +330,10 @@ def cmd_update(args):
     end = today + dt.timedelta(days=1)
     text = request(list(stations), start, end, ",".join(FIELDS + ["metar"]),
                    timeout=UPDATE_TIMEOUT_S, tries=UPDATE_TRIES)
+    # A separate receipt-time journal retains corrections and same-minute
+    # variants without rewriting any frozen historical station row.
+    from wxpredict import report_journal
+    journal = report_journal.append_response(text, stations, FIELDS + ["metar"])
 
     icao = back_to_icao(stations)
     new = defaultdict(dict)
@@ -392,6 +396,7 @@ def cmd_update(args):
 
     after = {st: max([newest.get(st, ""), *new[st]]) for st in stations if newest.get(st) or new[st]}
     summary = {"night": stamp, "asked": [start.isoformat(), end.isoformat()], "stations": len(stations),
+               "report_journal": journal,
                "new_reports": sum(len(v) for v in new.values()),
                "stations_without_a_new_report": sorted(st for st in stations if not new[st]),
                "reports_differing_from_the_record_not_applied": dict(differ),

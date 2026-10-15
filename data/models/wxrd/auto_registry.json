@@ -1,0 +1,12 @@
+{
+ "history": [
+  {
+   "action": "cycle",
+   "decision": "wait",
+   "night": "2026-10-15",
+   "report": "data/eval/wxpredict/cycles/2026-10-15.json"
+  }
+ ],
+ "paused": false,
+ "schema": 1
+}

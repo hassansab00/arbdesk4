@@ -21,6 +21,8 @@ const assert = require('node:assert/strict');
 const MIG = fs.readFileSync(path.join(__dirname, '..', '..', 'supabase', 'migrations',
   '20261007170000_forecast_payloads_go_to_the_repo.sql'), 'utf-8');
 
+const NEW_MIG = fs.readFileSync(path.join(__dirname, '..', '..', 'supabase', 'migrations', '20261015132932_archived_record_windows.sql'), 'utf-8');
+
 const BASE = `
   create role anon; create role authenticated; create role service_role;
   create schema cron;
@@ -61,6 +63,10 @@ const MODEL_TABLE = `
   await db.exec(BASE + MODEL_TABLE);
   await db.exec(MIG);
   await db.exec(MIG);                                            // re-runnable
+  await db.exec(NEW_MIG.slice(NEW_MIG.indexOf('create or replace function public.prune_model_payloads'),
+    NEW_MIG.indexOf('-- The existing reclaim job')));
+  await db.exec(NEW_MIG.slice(NEW_MIG.indexOf('create or replace function public.prune_model_payloads'),
+    NEW_MIG.indexOf('-- The existing reclaim job')));
   const q = async (sql) => (await db.query(sql)).rows;
   const d = (n) => `current_date - ${n}`;
   const obs = (n) => `now() - interval '${n} days'`;
@@ -107,10 +113,11 @@ const MODEL_TABLE = `
 
   // FLOORS AND THE VERIFIED COUNT.
   for (const [fn, prune] of [['prune_forecast_variables', wfPrune], ['prune_model_payloads', dmfPrune]]) {
-    for (const k of ['6', 'null']) {
+    const floor = fn === 'prune_model_payloads' ? 2 : 7;
+    for (const k of [String(floor - 1), 'null']) {
       const r = await prune(k);
       assert.equal(r.ok, false, `${fn} ${k}`);
-      assert.match(r.error, /at least 7/);
+      assert.match(r.error, new RegExp(`at least ${floor}`));
     }
     const blind = await prune('7, false');
     assert.equal(blind.ok, false);

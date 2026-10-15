@@ -81,6 +81,8 @@ jobs:
             tools/wxpredict
             data/models/wxrd
             data/mirror/cities
+            data/mirror/manifest.json
+            data/mirror/live_capture
             data/training/wxpredict/station_daily.csv.gz
             data/training/wxpredict/station_daily_nightly
             data/training/previous_runs/best_match_daily.csv.gz
@@ -236,6 +238,12 @@ jobs:
         with:
           path: .venv-wx
           key: tick-wx-venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-${{ hashFiles('requirements.wxpredict.txt') }}
+      - name: The accepted candidate weights
+        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' && hashFiles('data/models/wxrd/shadow-current.json') != '' }}
+        uses: actions/cache@v4
+        with:
+          path: .cache/wxpredict-models
+          key: wxpredict-model-${{ runner.os }}-${{ hashFiles('data/models/wxrd/shadow-current.json') }}
       - name: WXPredict on the day, in shadow (wxrd-v2)
         if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
         timeout-minutes: 3

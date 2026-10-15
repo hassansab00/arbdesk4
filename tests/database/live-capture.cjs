@@ -75,6 +75,12 @@ const KINDS = ['report', 'hourly', 'hourly2', 'models1', 'models2', 'books'];
   assert.equal((await one(`select count(*)::int n from pg_constraint
                             where conrelid = 'public.live_capture'::regclass and contype = 'c'`))[0].n, 1);
 
+  const NEW_MIG = fs.readFileSync(path.join(__dirname, '..', '..', 'supabase', 'migrations',
+    '20261015132932_archived_record_windows.sql'), 'utf-8');
+  // Model payload objects are supplied by the separate payload contract suite.
+  await db.exec(NEW_MIG);
+  await db.exec(NEW_MIG);
+
   const put = async (kind, at, rows) => (await one('select public.live_capture_put($1, $2, $3::jsonb) r',
     [kind, at, JSON.stringify(rows)]))[0].r;
   const T = (h) => new Date(Date.now() - h * 3600e3).toISOString();
@@ -125,7 +131,7 @@ const KINDS = ['report', 'hourly', 'hourly2', 'models1', 'models2', 'books'];
   await put('report', T(80), [rep('KLGA|2026-10-08 10:51', 60), rep('KLGA|2026-10-08 11:51', 61)]);
   await put('books', T(75), [{ key: 'all', payload: books }]);
   const p = async (args) => (await one(`select public.prune_live_capture(${args}) r`))[0].r;
-  assert.match((await p('1, true')).error, /at least 2/);
+  assert.match((await p('0, true')).error, /at least 1/);
   assert.match((await p('2, false')).error, /p_expected_rows is required/);
   assert.equal((await p('2, true')).would_delete, 3);
   assert.match((await p('2, false, null, 4')).error, /count mismatch/);
@@ -135,6 +141,18 @@ const KINDS = ['report', 'hourly', 'hourly2', 'models1', 'models2', 'books'];
   assert.equal((await one('select count(*)::int n from public.live_capture'))[0].n, before - 3);
   assert.equal((await one(`select count(*)::int n from public.live_capture where captured_at < now() - interval '2 days'`))[0].n, 0);
   assert.equal((await p('2, true')).deleted, 0, 'nothing left to take');
+
+  // One-day mode stops exactly at yesterday's mirrored UTC midnight,
+  // even when a caller asks for now(). A wrong verified count deletes nothing.
+  const boundary = (await one("select ((date_trunc('day', now() at time zone 'UTC') - interval '1 day') at time zone 'UTC') as b"))[0].b;
+  const b = new Date(boundary).getTime();
+  await put('report', new Date(b - 60000).toISOString(), [rep('mirror-old', 55)]);
+  await put('report', new Date(b + 60000).toISOString(), [rep('mirror-young', 56)]);
+  const dry1 = await p('1, true, now()');
+  assert.equal(dry1.would_delete, 1);
+  assert.match((await p('1, false, now(), 2')).error, /count mismatch/);
+  assert.equal((await p('1, false, now(), 1')).deleted, 1);
+  assert.equal((await one("select count(*)::int n from public.live_capture where key='mirror-young'"))[0].n, 1);
 
   // THE RECLAIM may rewrite it, and only what the archive prunes.
   const rr = (await one(`select public.request_reclaim('live_capture') r`))[0].r;
@@ -156,8 +174,10 @@ const KINDS = ['report', 'hourly', 'hourly2', 'models1', 'models2', 'books'];
   const n = (await one('select count(*)::int n from public.live_capture'))[0].n;
   await db.exec(MIG);
   await db.exec(MIG2);
+  await db.exec(NEW_MIG);
   assert.equal((await one('select count(*)::int n from public.live_capture'))[0].n, n);
   assert.equal((await put('models1', T(0), [{ key: 'tokyo|2026-10-12T00:00', payload: m7(20) }])).new, 1,
     'the migrations in order leave every kind writable');
+  assert.equal((await put('wx_features', T(1), [{key:'policy|city|date|morning',payload:{row_sha256:'test'}}])).new, 1);
   console.log('PASS: live-capture: a report or forecast value (best_match at leads 1 and 2, the seven models at both) stored once per change and again when it changes back, a books row every tick; a kind it does not keep refused by the function and the table, a future time and a non-list refused; the prune takes two-day-old rows only, only the verified count; request_reclaim may rewrite it; the switch seeded and kept; the archive watchdog row and the 03:05 backstop; closed to the browser; re-runnable');
 })().catch((e) => { console.error(e); process.exit(1); });

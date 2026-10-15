@@ -59,11 +59,11 @@ VARIANTS = {
 }
 CHECKPOINTS = ("morning", "noon", "prepeak_2h", "prepeak_1h", "postpeak_1h")
 SERVED_WITHIN_MIN = 30      # a row decided further back than this was written by a retry
-RETRY_HOURS = 6             # the record the row reads reaches RETRY_HOURS + RECORD_HOURS back, inside the prune's 2 days
+RETRY_HOURS = 6             # the record the row reads reaches RETRY_HOURS + RECORD_HOURS back, joined from the database and committed mirror
 MAX_DUE = 30                # a tick wrote 2-19 such checkpoints an hour, 11-12 Oct (prediction_checkpoints)
 ROW_BUDGET_S = 90           # rows stop being built here and what is built is written, inside the step's 3 min;
                             # bounds, not measurements: the first ticks' seconds are in the log rows
-RECORD_HOURS = 40           # the day's hourly forecasts reach the record up to 17 h ahead; the prune keeps 2 days
+RECORD_HOURS = 40           # the day's hourly forecasts reach the record up to 17 h ahead; older hours come from the committed mirror
 KINDS = ("report", "hourly", "hourly2", "models1", "models2")
 TABLE = "variant_shadow_checkpoints"
 ON_CONFLICT = "city_key,target_date,checkpoint,variant"
@@ -82,9 +82,13 @@ def due(served, held, limit=MAX_DUE):
     """The served rows at a checkpoint of CHECKPOINTS without a wxrd row,
     oldest decision first, at most `limit`: held is {(city, target_date,
     checkpoint)} of the wxrd rows written. Returns (due, deferred count)."""
-    todo = sorted((r for r in served if r["checkpoint"] in CHECKPOINTS
+    ordered = sorted((r for r in served if r["checkpoint"] in CHECKPOINTS
                    and (r["city_key"], str(r["target_date"]), r["checkpoint"]) not in held),
-                  key=lambda r: (str(r["decided_at"]), r["city_key"], r["checkpoint"]))
+                  key=lambda r: (str(r["decided_at"]), r["city_key"], r["checkpoint"], str(r.get("checkpoint_id", ""))))
+    first = {}
+    for r in ordered:
+        first.setdefault((r["city_key"], str(r["target_date"]), r["checkpoint"]), r)
+    todo = list(first.values())
     return todo[:limit], max(0, len(todo) - limit)
 
 
@@ -145,8 +149,12 @@ def load_model(meta, model_json=MODEL_JSON):
     """The frozen model, or for a several-seed version the list of its models,
     each one's sha256 checked, and the version's id checked against them -
     every check before lightgbm is imported, so a refusal needs no model."""
-    def one(name, want):
-        with open(os.path.join(os.path.dirname(model_json), name), "rb") as fh:
+    def one(name, want, asset_url=None):
+        path = os.path.join(os.path.dirname(model_json), name)
+        if asset_url:
+            from wxpredict import model_artifacts
+            path = model_artifacts.ensure({"asset_url": asset_url, "model_sha256": want})
+        with open(path, "rb") as fh:
             text = gzip.decompress(fh.read())
         sha = hashlib.sha256(text).hexdigest()
         if sha != want:
@@ -154,7 +162,7 @@ def load_model(meta, model_json=MODEL_JSON):
         import lightgbm as lgb
         return lgb.Booster(model_str=text.decode())
     if "models" not in meta:
-        return one(meta["model_file"], meta["model_sha256"])
+        return one(meta["model_file"], meta["model_sha256"], meta.get("asset_url"))
     joined = hashlib.sha256("".join(m["sha256"] for m in meta["models"]).encode()).hexdigest()
     if joined != meta["model_sha256"]:
         raise SystemExit(f"{meta['version']}'s models do not make its id {meta['model_sha256']}: refusing to predict")
@@ -174,7 +182,7 @@ def run(now=None, dry_run=False, variant=VARIANT, deadline=None):
     version = variant_version(meta, variant)
     since = (now - dt.timedelta(hours=RETRY_HOURS)).isoformat()
     served = ops.rest_all("prediction_checkpoints", [
-        ("select", "city_key,target_date,checkpoint,decided_at,engine_version,model_path,station,centre_c,"
+        ("select", "checkpoint_id,city_key,target_date,checkpoint,decided_at,engine_version,model_path,station,centre_c,"
                    "sigma_c,top_band_id"),
         ("decided_at", f"gte.{since}"), ("decided_at", f"lte.{now.isoformat()}"),
         ("checkpoint", f"in.({','.join(CHECKPOINTS)})")], order="checkpoint_id.asc")
@@ -199,7 +207,15 @@ def run(now=None, dry_run=False, variant=VARIANT, deadline=None):
         ("captured_at", f"gte.{(oldest(todo) - dt.timedelta(hours=RECORD_HOURS)).isoformat()}"),
         ("captured_at", f"lte.{now.isoformat()}"), ("or", key_filter(cities, city_keys))],
         order="capture_id.asc", page_size=1000)
-    record = lr.Record([(r["kind"], r["key"], r["captured_at"], r["payload"]) for r in record_rows])
+    from wxpredict import capture_history
+    boundary = (now.astimezone(dt.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+                - dt.timedelta(days=1)).timestamp()
+    prefixes = {c + "|" for c in city_keys}
+    prefixes.update(common.iem_id(cities[c]["icao"]) + "|" for c in city_keys if cities[c].get("icao"))
+    cold = capture_history.read((oldest(todo) - dt.timedelta(hours=RECORD_HOURS)).timestamp(),
+                                boundary, kinds=KINDS, prefixes=prefixes)
+    record = lr.Record([*cold, *[(r["kind"], r["key"], r["captured_at"], r["payload"]) for r in record_rows]])
+    detail["record_rows_from_repo"] = len(cold)
     dates = sorted({str(r["target_date"]) for r in todo})
     markets = ops.rest_all("markets", [("select", "market_id,city_key,resolution_date,unit"),
                                        ("city_key", f"in.({','.join(sorted(city_keys))})"),
@@ -235,6 +251,15 @@ def run(now=None, dry_run=False, variant=VARIANT, deadline=None):
         pairs.append((s, e, row))
     out = []
     if rows:
+        if not dry_run:
+            from wxpredict import decision_inputs
+            try:
+                commit, committed_at = decision_inputs.history_identity()
+                packed = [decision_inputs.pack(s, e, r, commit, committed_at) for s, e, r in pairs]
+                detail["recorded_decision_inputs"] = ops.rpc("live_capture_put", {
+                    "p_kind": decision_inputs.KIND, "p_captured_at": dt.datetime.now(common.UTC).isoformat(), "p_rows": packed})
+            except Exception as exc:
+                detail["decision_input_capture_error"] = type(exc).__name__ + ": " + str(exc)[:200]
         import sdyes_forward
         probs = sdyes_forward.model_probs(rows, load_model(meta, model_json))
         for s, e, row in pairs:
@@ -252,7 +277,7 @@ def run(now=None, dry_run=False, variant=VARIANT, deadline=None):
         detail["rows"] = out
     else:
         lost = sum(v for k, v in skipped.items() if k in ("no whole ladder", "not on the day"))
-        ops.log_run(job, "ok" if not lost else "partial", len(out), detail)
+        ops.log_run(job, "ok" if not lost and not detail.get("decision_input_capture_error") else "partial", len(out), detail)
     return detail
 
 
@@ -263,6 +288,17 @@ def main(argv=None):
     args = ap.parse_args(argv)
     now = dt.datetime.fromisoformat(args.at.replace("Z", "+00:00")) if args.at else None
     failed = []
+    # Frozen wxrd/wxrd3 keep their original files. An accepted automatic
+    # challenger gets its own variant and an immutable, checked lineage.
+    from wxpredict import cycle_registry
+    VARIANTS.pop("wxrd_auto", None)
+    try:
+        selected = cycle_registry.selected()
+        if selected:
+            VARIANTS["wxrd_auto"] = (selected[0], "P7.6_wxrd_auto_shadow")
+    except Exception as exc:
+        failed.append("wxrd_auto")
+        print(f"automatic shadow metadata refused: {exc!r}", flush=True)
     # one row budget for all the variants together (Codex on #398): the
     # step's 3 minutes hold every variant, so the second gets what the first
     # left and defers the rest to the next tick

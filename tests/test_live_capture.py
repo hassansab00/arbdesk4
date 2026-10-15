@@ -440,7 +440,8 @@ def test_it_is_mirrored_and_archived():
     import mirror_to_repo as mirror
     assert mirror.TABLES["live_capture"]["kind"] == "append" and mirror.TABLES["live_capture"]["time"] == "captured_at"
     spec = ao.TABLES["live_capture"]
-    assert spec["table"] == "live_capture" and spec["keep_days"] == 2 and spec["prune_rpc"] == "prune_live_capture"
+    assert spec["table"] == "live_capture" and spec["keep_days"] == 1 and spec["prune_rpc"] == "prune_live_capture"
+    assert spec["whole_utc_days"] is True and spec["min_keep_days"] == 1
     assert "capture_id" not in spec["columns"]
 
 

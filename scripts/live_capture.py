@@ -300,16 +300,27 @@ def fetch_models(cities, now, left):
 # the station reports
 # ---------------------------------------------------------------------------
 def report_rows(text):
-    """[{key, payload}] from IEM's CSV: key '<station>|<valid>', the payload
-    every FULL_FIELDS value exactly as IEM wrote it."""
-    out = []
+    """One report set per station/minute, retaining every distinct raw row.
+
+    The RPC previously inserted several payloads at the same capture time for
+    one key. Their order after export was undefined. A set is one versioned
+    value; source order is explicit and the existing reader uses its last row.
+    A single row keeps the original array format.
+    """
+    by = {}
     for rec in csv.DictReader(io.StringIO(text or "")):
         station = (rec.get("station") or "").strip()
         valid = (rec.get("valid") or "").strip()
         if not station or not valid:
             continue
-        out.append({"key": f"{station}|{valid}", "payload": [rec.get(f) for f in FULL_FIELDS]})
-    return out
+        key = f"{station}|{valid}"
+        payload = [rec.get(f) for f in FULL_FIELDS]
+        values = by.setdefault(key, [])
+        if payload not in values:
+            values.append(payload)
+    return [{"key": key, "payload": values[0] if len(values) == 1 else
+             {"schema": "iem-report-set-v1", "rows": values, "selected": len(values) - 1}}
+            for key, values in by.items()]
 
 
 def read_iem(path, wait_s, left):
