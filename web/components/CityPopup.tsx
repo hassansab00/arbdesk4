@@ -1,5 +1,7 @@
 "use client";
 
+import CityLearning from "./CityLearning";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import ForecastValue from "@/components/ForecastValue";
@@ -396,6 +398,8 @@ export default function CityPopup({
             </p>
           )}
         </section>
+
+        <CityLearning cityKey={c.city_key} unit={u} />
 
         {/* THE RECORD */}
         <section className="mt-3 rounded border border-border bg-panel2 p-2">

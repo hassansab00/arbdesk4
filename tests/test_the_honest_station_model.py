@@ -293,6 +293,19 @@ def test_a_broken_station_model_read_keeps_p39(monkeypatch):
     assert row["combined_c"] == 22.4 and "+" not in row["version"]
 
 
+@pytest.mark.parametrize("applies,city,lead,width,accepted", [
+    (True, "london", 1, 0.9, True), (False, "london", 1, 0.9, False),
+    (True, "nyc", 1, 0.9, False), (True, "london", 2, 0.9, False),
+    (True, "london", 1, float("nan"), False), (True, "london", 1, 0.01, False),
+])
+def test_blend_width_requires_this_city_and_leads_passing_bounded_fit(monkeypatch, applies, city, lead, width, accepted):
+    cal = {"applies": applies, "city_key": city, "lead_days": lead, "sigma_c": width,
+           "version": "city-blend-width:2026-09-27:test"}
+    row = _engine(monkeypatch, True, dict(MOS, calibration=cal))
+    assert row["combined_c"] == 22.2
+    assert (row.get("width_version") == cal["version"]) is accepted
+
+
 def test_labels_and_the_last_station_max_are_whole_days_only():
     rows = [{"city_key": "london", "obs_date": "2026-09-25", "max_c": 19.0,
              "computed_at": "2026-09-26T05:18:00+00:00"},

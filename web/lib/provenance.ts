@@ -358,6 +358,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/station_mos.py",
       "kind": "action",
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
+    {
+      "cadence": "manual (opt-in)",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/station_mos.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "derived_mos_forecast": [
@@ -374,6 +381,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/station_mos.py",
       "kind": "action",
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
+    {
+      "cadence": "manual (opt-in)",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/station_mos.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "derived_station_correction": [
@@ -1236,6 +1250,10 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "cities",
     "bands",
     "markets"
+  ],
+  "v_city_learning": [
+    "derived_mos_coefficients",
+    "derived_station_width"
   ],
   "v_city_metadata_health": [
     "cities"
