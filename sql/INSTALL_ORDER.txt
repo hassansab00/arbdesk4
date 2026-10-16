@@ -172,3 +172,7 @@ ad4_current_ladder.sql
 #                       SQL file creates it, and the pages it makes red
 # ad4_diagnose.sql      what can write what, and why a job is failing
 # ad4_99_verify.sql     does the schema match what the code expects
+
+ad4_page_status.sql
+ad4_city_calibration_forward.sql
+ad4_lineup_labels.sql

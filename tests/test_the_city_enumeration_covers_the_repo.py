@@ -212,6 +212,8 @@ SQL_FILTERS = {
     "sql/ad4_34_trade_plan.sql":                "v_trade_plan - the board, and the s5/s7 trust gate",
 }
 SQL_RECORD = {
+    "sql/ad4_city_calibration_forward.sql",  # Historical calls, including retired cities.
+
     # ad4_88 (plan v2.1 P3.8): cities.timezone only, to put the evening-before
     # cutoff on each city's clock. A settled day in a city retired since is
     # still evidence of which recipe predicts the winning bucket.
@@ -282,6 +284,9 @@ SQL_RECORD = {
 # rather than a bug. It is here because a blind spot is how the last four got
 # in.
 MIGRATION_RECORD = {
+    "supabase/migrations/20261016174633_city_calibration_forward_record.sql":
+        "Historical first calls; city timezone only decides whether their local day ended, including retired cities",
+
     "supabase/migrations/20261009090000_the_weather_tables_keep_three_days.sql":
         "prune_observations, as in sql/ad4_29 - its guards put each reading on its city's "
         "local day; every city the prune reaches, retired ones too",

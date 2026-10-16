@@ -39,6 +39,7 @@ export interface FreshRow {
    */
   rows_estimated?: boolean | null;
   newest: string | null;
+  sampled_at?: string;
   age_hours: number | null;
   fresh_hours: number | null;
   /** absent = no such table | empty = no rows | stale = old rows | ok */
@@ -69,7 +70,7 @@ function load(): Promise<void> {
   if (inflight) return inflight;
   inflight = (async () => {
     try {
-      const res = await supabase.from("v_data_freshness").select("*");
+      const res = await supabase.from("v_page_data_freshness").select("*");
       if (res.error) publish({ data: null, loading: false, error: messageOf(res.error) });
       else publish({ data: (res.data ?? []) as FreshRow[], loading: false, error: null });
     } catch (e) {

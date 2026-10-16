@@ -579,7 +579,7 @@ function CityDetail({ row, onClose }: { row: LiveWeather & { city: City | undefi
   );
 
   const volume = useQuery<Array<{ volume_usd: number; n_trades: number }>>(
-    () => supabase.from("v_city_volume").select("volume_usd,n_trades").eq("city_key", row.city_key).limit(1),
+    () => supabase.from("v_page_city_volume").select("volume_usd,n_trades").eq("city_key", row.city_key).limit(1),
     [row.city_key],
     60000
   );
@@ -634,7 +634,7 @@ function CityDetail({ row, onClose }: { row: LiveWeather & { city: City | undefi
         <Field
           label="Market vol 24h"
           value={volume.data?.[0] ? fmtCompactUsd(volume.data[0].volume_usd) : "—"}
-          hint="Traded volume across this city's bands. A city with no volume has no market to trade, whatever the weather does."
+          hint={volume.error ?? "Market volume over 24h; sampled every thirty minutes."}
         />
         <Field label="Last obs" value={fmtAge(row.observed_at)} />
         <Field

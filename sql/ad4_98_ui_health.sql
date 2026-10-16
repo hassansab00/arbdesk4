@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 292 of them - and for each MISSING one names the
+-- and function the app reads - 295 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -154,6 +154,7 @@ with expected(rel, owner, used_by) as (values
     ('v_checkpoint_calls', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', ''),
     ('v_checkpoint_outcome', 'supabase/migrations/20260930003000_the_market_scores_banked_before_the_fix.sql', ''),
     ('v_checkpoint_scoreboard', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', '/predictive'),
+    ('v_city_calibration_forward', 'ad4_city_calibration_forward.sql', '(CityLearning)'),
     ('v_city_climate', 'ad4_17_city_stats.sql', ''),
     ('v_city_climb_profile', 'ad4_26_temp_trend.sql', '(ModelAnalytics)'),
     ('v_city_climb_profile_live', 'ad4_26_temp_trend.sql', ''),
@@ -183,7 +184,7 @@ with expected(rel, owner, used_by) as (values
     ('v_city_today_readings', 'ad4_26_temp_trend.sql', '/monitor'),
     ('v_city_trajectory_now', 'ad4_86_trajectory.sql', ''),
     ('v_city_utc_day_max', 'ad4_weather_readers_read_the_caches.sql', ''),
-    ('v_city_volume', 'ad4_13_reconcile.sql', '(GlobalBar), /, /live'),
+    ('v_city_volume', 'ad4_13_reconcile.sql', ''),
     ('v_coherent_band_outcome', 'supabase/migrations/20260922120000_a_ladder_cannot_resolve_to_nothing.sql', ''),
     ('v_condition_skill', 'ad4_24_nws_gridpoint.sql', '(ModelAnalytics)'),
     ('v_current_prediction', 'ad4_current_ladder.sql', '(CityCards)'),
@@ -244,6 +245,8 @@ with expected(rel, owner, used_by) as (values
     ('v_opportunity_context', 'ad4_22_opportunity_context.sql', '/opportunities'),
     ('v_outcome_evidence_health', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', '(DataBank), /predictive, /synthesis'),
     ('v_outcome_pipeline', 'supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql', ''),
+    ('v_page_city_volume', 'ad4_page_status.sql', '(GlobalBar), /, /live'),
+    ('v_page_data_freshness', 'ad4_page_status.sql', ''),
     ('v_paper_desk_integrity', 'ad4_81_paper_desk_integrity.sql', ''),
     ('v_paper_desks', 'ad4_59_paper_desks.sql', ''),
     ('v_peak_hour_coverage', 'ad4_37_peak_hour.sql', '/globe'),
@@ -254,7 +257,7 @@ with expected(rel, owner, used_by) as (values
     ('v_prediction_ladder', 'ad4_31_predictive.sql', '(CityCards), /predictive'),
     ('v_prediction_ladder_bands', 'ad4_68_prediction_ladder_outcomes.sql', ''),
     ('v_prediction_ladder_live', 'supabase/migrations/20260927170000_the_card_shows_what_was_priced.sql', ''),
-    ('v_prediction_lineup', 'supabase/migrations/20261004200000_the_page_reads_the_contract.sql', '(PredictionLineup)'),
+    ('v_prediction_lineup', 'ad4_lineup_labels.sql', '(PredictionLineup)'),
     ('v_prediction_scorecard', 'ad4_31_predictive.sql', ''),
     ('v_prediction_scorecard_all', 'ad4_62_settled_history_ungated.sql', '/predictive'),
     ('v_priceable_markets', 'supabase/migrations/20260923180000_a_priceable_market_is_one_whose_local_day_has_not_ended.sql', ''),
@@ -468,6 +471,7 @@ begin
     ('v_checkpoint_calls', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', ''),
     ('v_checkpoint_outcome', 'supabase/migrations/20260930003000_the_market_scores_banked_before_the_fix.sql', ''),
     ('v_checkpoint_scoreboard', 'supabase/migrations/20260926090000_hit_and_miss_scores_frozen_calls.sql', '/predictive'),
+    ('v_city_calibration_forward', 'ad4_city_calibration_forward.sql', '(CityLearning)'),
     ('v_city_climate', 'ad4_17_city_stats.sql', ''),
     ('v_city_climb_profile', 'ad4_26_temp_trend.sql', '(ModelAnalytics)'),
     ('v_city_climb_profile_live', 'ad4_26_temp_trend.sql', ''),
@@ -497,7 +501,7 @@ begin
     ('v_city_today_readings', 'ad4_26_temp_trend.sql', '/monitor'),
     ('v_city_trajectory_now', 'ad4_86_trajectory.sql', ''),
     ('v_city_utc_day_max', 'ad4_weather_readers_read_the_caches.sql', ''),
-    ('v_city_volume', 'ad4_13_reconcile.sql', '(GlobalBar), /, /live'),
+    ('v_city_volume', 'ad4_13_reconcile.sql', ''),
     ('v_coherent_band_outcome', 'supabase/migrations/20260922120000_a_ladder_cannot_resolve_to_nothing.sql', ''),
     ('v_condition_skill', 'ad4_24_nws_gridpoint.sql', '(ModelAnalytics)'),
     ('v_current_prediction', 'ad4_current_ladder.sql', '(CityCards)'),
@@ -558,6 +562,8 @@ begin
     ('v_opportunity_context', 'ad4_22_opportunity_context.sql', '/opportunities'),
     ('v_outcome_evidence_health', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', '(DataBank), /predictive, /synthesis'),
     ('v_outcome_pipeline', 'supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql', ''),
+    ('v_page_city_volume', 'ad4_page_status.sql', '(GlobalBar), /, /live'),
+    ('v_page_data_freshness', 'ad4_page_status.sql', ''),
     ('v_paper_desk_integrity', 'ad4_81_paper_desk_integrity.sql', ''),
     ('v_paper_desks', 'ad4_59_paper_desks.sql', ''),
     ('v_peak_hour_coverage', 'ad4_37_peak_hour.sql', '/globe'),
@@ -568,7 +574,7 @@ begin
     ('v_prediction_ladder', 'ad4_31_predictive.sql', '(CityCards), /predictive'),
     ('v_prediction_ladder_bands', 'ad4_68_prediction_ladder_outcomes.sql', ''),
     ('v_prediction_ladder_live', 'supabase/migrations/20260927170000_the_card_shows_what_was_priced.sql', ''),
-    ('v_prediction_lineup', 'supabase/migrations/20261004200000_the_page_reads_the_contract.sql', '(PredictionLineup)'),
+    ('v_prediction_lineup', 'ad4_lineup_labels.sql', '(PredictionLineup)'),
     ('v_prediction_scorecard', 'ad4_31_predictive.sql', ''),
     ('v_prediction_scorecard_all', 'ad4_62_settled_history_ungated.sql', '/predictive'),
     ('v_priceable_markets', 'supabase/migrations/20260923180000_a_priceable_market_is_one_whose_local_day_has_not_ended.sql', ''),

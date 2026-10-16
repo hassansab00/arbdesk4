@@ -84,6 +84,23 @@ const PAGE = MIG('20261004200000_the_page_reads_the_contract.sql');
     ['rd3:2026-09-25:555719d4a1', ladder(3), B(3)]);
 
   // Everything below is read as the browser reads it.
+  await db.exec(`create table public.bands as select * from public.v_canonical_bands;
+    create table before_lineup as select * from public.v_prediction_lineup;`);
+  const labels = MIG('20261016175019_lineup_label_joins.sql');
+  await db.exec(labels); await db.exec(labels);
+  for (const [a,b] of [['before_lineup','v_prediction_lineup'],['v_prediction_lineup','before_lineup']]) {
+    assert.equal((await db.query(`select count(*)::int n from (select * from ${a} except all select * from ${b}) x`)).rows[0].n,0);
+  }
+  // UUID lookup preserves exact uuid::text equality for noncanonical ids.
+  const ids = [B(1), 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    'AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA', 'not-a-uuid', '', null];
+  for (const id of ids) {
+    const r = (await db.query(`with b as (select 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid id)
+      select coalesce(id::text=$1,false) old_match,
+        coalesce(id=case when $1 ~ '^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$' then $1::uuid end,false) new_match
+      from b`,[id])).rows[0];
+    assert.equal(r.old_match,r.new_match);
+  }
   await db.exec('set role anon');
   const lineup = (await db.query(`select city_key, current_date - target_date as days_ago, model_family, version, serving_role, top_label,
                                          blind, withheld, winner_band_id, winner_label, hit, prob_on_winner

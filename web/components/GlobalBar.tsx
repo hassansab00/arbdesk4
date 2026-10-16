@@ -39,6 +39,7 @@ export default function GlobalBar() {
   const [openExposure, setOpenExposure] = useState<number | null>(null);
   const [dayNetPnl, setDayNetPnl] = useState<number | null>(null);
   const [nextPeakMinutes, setNextPeakMinutes] = useState<number | null>(null);
+  const [volumeSampledAt, setVolumeSampledAt] = useState<string | null>(null);
   const [volume24h, setVolume24h] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -73,7 +74,9 @@ export default function GlobalBar() {
         // exposure does: it is a standing condition of the whole desk, not
         // a per-page detail. A day with no volume anywhere is a day with
         // nothing to trade, however good the edges look.
-        const { data: vol } = await supabase.from("v_city_volume").select("volume_usd");
+        const { data: vol, error: vErr } = await supabase.from("v_page_city_volume").select("volume_usd,sampled_at");
+        if (vErr) { setVolume24h(null); throw vErr; }
+        setVolumeSampledAt(vol?.[0]?.sampled_at ?? null);
         setVolume24h((vol ?? []).reduce((s: number, v: { volume_usd: number | null }) => s + (v.volume_usd ?? 0), 0));
 
         setError(null);
@@ -136,7 +139,7 @@ export default function GlobalBar() {
       <div><span className="text-muted">Day P&amp;L (net)</span> <span className={pnlColor(dayNetPnl)}>{fmtUsd(dayNetPnl, { signed: true })}</span></div>
       <div><span className="text-muted">UTC</span> {now ? now.toISOString().slice(11, 19) : "--:--:--"}</div>
       <div><span className="text-muted">Next model cycle</span> {now ? fmtCountdown(nextModelCycle(now), now) : "—"}</div>
-      <div title="Traded volume across every city in the last 24h, from trades_observed."><span className="text-muted">Vol 24h</span> {volume24h !== null ? fmtCompactUsd(volume24h) : "—"}</div>
+      <div title={`Market volume over 24h. Sampled ${volumeSampledAt ? new Date(volumeSampledAt).toLocaleTimeString() : "time unavailable"}; refreshed every thirty minutes.`}><span className="text-muted">Vol 24h</span> {volume24h !== null ? fmtCompactUsd(volume24h) : "—"}</div>
       <div className="hidden sm:block"><span className="text-muted">Next peak window</span> {nextPeakMinutes !== null ? `${nextPeakMinutes}m` : "—"}</div>
     </div>
     </>

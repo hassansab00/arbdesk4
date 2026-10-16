@@ -267,9 +267,8 @@ export function DataHealthStrip({ layers }: { layers?: string[] }) {
     // degrades quietly rather than putting a red box on every panel.
     return (
       <div className="rounded border border-border bg-panel/60 px-3 py-2 text-xs text-muted">
-        Freshness tracking is not installed — run{" "}
-        <code className="rounded bg-panel2 px-1">sql/ad4_39_freshness.sql</code> to see which jobs
-        have stopped filling which tables.
+        Freshness status could not be checked: {error}.{" "}
+        <button type="button" className="underline" onClick={() => window.location.reload()}>Reload</button>
       </div>
     );
   }
@@ -296,6 +295,8 @@ export function DataHealthStrip({ layers }: { layers?: string[] }) {
             ? `All ${scope.length} inputs current`
             : `${bad.length} of ${scope.length} inputs need attention`}
         </span>
+        {rows[0]?.sampled_at && <span className="text-[10px] text-muted">
+          sampled {new Date(rows[0].sampled_at).toLocaleTimeString()}</span>}
         <span className="ml-auto text-[10px] text-muted group-open:hidden">show</span>
         <span className="ml-auto hidden text-[10px] text-muted group-open:inline">hide</span>
       </summary>

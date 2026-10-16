@@ -156,7 +156,11 @@ def test_the_refresh_carries_them_and_the_hindsight_after_the_hit_history():
         assert listed.index("mv_city_hit_history") < listed.index("mv_prediction_hindsight"), (
             "v_prediction_hindsight reads v_city_hit_history, the stored hit history")
         assert "refresh materialized view concurrently" in body
-    assert _refresh(MIG) == _refresh(SQL).replace(", 'mv_checkpoint_scoreboard'", "")
+    # The latest guard serializes callers; the refresh queries stay identical.
+    before = _refresh(MIG)
+    after = _refresh(SQL).replace(", 'mv_checkpoint_scoreboard'", "")
+    assert before[before.index("foreach"):before.index("end loop;")] == after[after.index("foreach"):after.index("end loop;")]
+    assert "pg_try_advisory_xact_lock" in _refresh(SQL)
 
 
 def test_the_page_cache_installs_after_every_file_that_defines_the_six():

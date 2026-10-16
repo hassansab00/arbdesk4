@@ -1159,6 +1159,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "fact_checkpoint_outcome",
     "prediction_checkpoints"
   ],
+  "v_city_calibration_forward": [
+    "cities",
+    "fact_checkpoint_outcome",
+    "prediction_checkpoints"
+  ],
   "v_city_climate": [
     "cities",
     "weather_observations"

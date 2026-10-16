@@ -3,6 +3,80 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Remaining reliability and forward checks — 16 Oct, in progress
+
+The #407 release merged as 44c5f15c69a3. Its real capture completed at
+17:02:23 UTC in 44.7 seconds, with all 47 cities and five writes per forecast
+family. The complete intraday run 38936141217 and tick 38936460420 succeeded.
+Vercel deployed that source. These close #407's pending release checks below.
+
+The next audit found 596,544,659 database bytes at 17:41 UTC; the organization
+API confirms the free plan. Archives and reclaim do not make its permanent
+evidence stop growing. No retention rule is weakened, data removed, paid
+upgrade initiated, or capital setting changed by this repair. Capacity remains
+open pending a separately authorized plan decision or proven further archive
+reader work. The 24 hours to 17:35 UTC still contained page query timeouts,
+including 44 on freshness, 42 on city volume and 24 on the prediction lineup.
+The anon freshness read measured 3,855.265 ms plus 634.937 ms planning.
+
+P6.5 now gives only browser reads half-hourly samples of freshness and city
+volume. Each sample records its time; health ages and thresholds still use
+the current clock. A sample older than forty minutes raises an explicit error,
+so a stopped sampler cannot claim current health or silently report zero
+volume. The original live views and engine readers retain their definitions.
+P6.1 schedule review: auto-review rejected the proposed new two-minute cron.
+The revised design adds no job or cadence: refresh_page_status runs at the end
+of the existing :12/:42 page refresh and after existing pipeline refreshes.
+This reduces sampler rebuilds from the proposed 30/hour to the existing two
+scheduled refreshes/hour, plus pipeline calls. The browser still polls its
+small stored rows; sample times are explicit. Actions workflows and their
+run/minute budgets are unchanged. The existing heavy refresh gets a transaction advisory try-lock: a concurrent
+caller reports a skip instead of queuing another full rebuild. Neither change
+claims zero page timeouts over the required 24-hour acceptance window.
+
+Forward scoring is separate from recipe validation. At this audit the new
+blend widths had priced six cities for 17 Oct, with one recorded first
+checkpoint call (Milan); no completed target day was eligible yet. A readonly
+per-city view now reports served width versions separately by checkpoint,
+using only the first call across all engine versions, dates after the fit,
+valid inputs, completed local days and venue-confirmed outcomes. The popup
+shows pending calls separately from hit rate, Brier and log loss. These are
+actual forward scores, not a counterfactual comparison or a claim of gain.
+No candidate holdout or promotion rule changes. The global probability map's
+stopped label now names that map, so it cannot imply city learning stopped.
+
+The lineup's anon read measured 11,048.437 ms for 1,000 rows. Its top-label
+join removed 32,126,870 nonmatching band rows. The lineup needs only band_id
+and band_label, which the canonical view passes through unchanged. Joining
+those columns from bands directly avoids the correction overlay's nested
+loop, without changing ranking, withholding, registry blindness or scores.
+The final lookup guards a canonical lowercase UUID cast and uses the UUID
+key; invalid/noncanonical strings remain unmatched. The initial direct-label
+change alone still measured 8,052.065 ms, so it was not accepted as sufficient.
+With the guarded key lookup the anon read measured 1,492.957 ms. In one
+REPEATABLE READ production snapshot all 11,241 lineup rows, freshness rows
+and city volumes had zero EXCEPT ALL differences in both directions.
+
+Release validation passed: 4,181 Python tests, 9 skipped, on the CI's Python
+3.11 (188.49 seconds); the complete database contracts, web type checking,
+route contracts and production build passed. The guard's rehearsal used
+isolated copies of all 12 production cache relations in one REPEATABLE READ
+transaction: both row differences and both return-key differences were zero.
+Elapsed milliseconds are measurements and were not compared for equality.
+
+Production migrations: serialized refresh 20261016175849, city forward record
+20261016175857, lineup labels 20261016175905, and the revised page sampler
+20261016180320. No new cron job exists. Two real refreshes completed and logged
+successful sampler runs at 18:04:01 and 18:04:57 UTC; the two caller requests
+did not overlap, so this did not prove a live lock conflict. Anon
+reads 69 freshness rows, 47 city volumes and Milan's one pending call, with
+no fabricated accuracy score. The cached freshness read measured 0.286 ms.
+The two sample copies occupy 180,224 bytes. Their base relations and refresh
+functions remain service-only; owner-rights read views are intentional under
+the project's existing single-operator design. CI, merge and rendered-page
+acceptance will be recorded in the PR after publication. The required clean
+24-hour timeout window and forward accuracy gain are not yet established.
+
 ## City calibration and capture recovery — 16 Oct, in progress
 
 **Release #406:** merged as `15f149c9b503`, CI and Vercel passed. A real
