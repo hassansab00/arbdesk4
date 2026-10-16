@@ -465,6 +465,38 @@ def test_a_failed_current_batch_keeps_successful_counts_and_other_kinds(desk, mo
     assert desk["log"][0][1:3] == ("partial", 7)
 
 
+def test_receipt_packs_reduce_requests_without_retiming_or_merging_current_responses(monkeypatch):
+    a = dt.datetime(2026, 10, 16, 16, 0, 5, tzinfo=UTC)
+    b = a + dt.timedelta(seconds=14)
+    batches = [(at, [{"key": f"{city}|2026-10-17T12:00", "payload": [value]}])
+               for at, city, value in [(a, "london", 20.), (b, "nyc", 21.)]]
+    calls = []
+    monkeypatch.setattr(lc, "rpc", lambda fn, p, **kw: calls.append(p) or {"new": len(p["p_rows"])})
+    assert lc.put_received("hourly0", batches, False, lambda: 30) == (2, [], 1)
+    rows = calls[0]["p_rows"]
+    assert [r["captured_at"] for r in rows] == [a.isoformat(), b.isoformat()]
+    assert [r["key"] for r in rows] == ["london|snapshot", "nyc|snapshot"]
+    assert rows[0]["payload"]["hours"] == {"2026-10-17T12:00": [20.]}
+    assert "captured_at" not in rows[0]["payload"]
+
+
+def test_receipt_packs_keep_successive_versions_separate_and_cap_transport_size(monkeypatch):
+    at = dt.datetime(2026, 10, 16, tzinfo=UTC)
+    monkeypatch.setattr(lc, "PUT_ROWS", 2)
+    rows = [{"key": k, "payload": [v]} for k, v in [("a", 1), ("b", 2), ("c", 3), ("c", 4)]]
+    packs = list(lc.receipt_packs("hourly", [(at, rows)]))
+    assert [[r["key"] for r in p] for p in packs] == [["a", "b"], ["c"], ["c"]]
+    sent = []
+    def rpc(fn, p, **kw):
+        sent.append(p)
+        if len(sent) == 2:
+            raise TimeoutError("one write failed")
+        return {"new": len(p["p_rows"])}
+    monkeypatch.setattr(lc, "rpc", rpc)
+    n, errors, requests = lc.put_received("hourly", [(at, rows)], False, lambda: 30)
+    assert n == 3 and requests == 3 and errors == ["hourly write: TimeoutError: one write failed"]
+
+
 def test_the_models_failing_keeps_the_rest(desk, monkeypatch):
     monkeypatch.setattr(lc, "fetch_models", lambda cities, now, left: (
         {"models1": [], "models2": []},

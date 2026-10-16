@@ -49,7 +49,9 @@ def test_the_pipelines_refresh_after_they_write():
         doc = yaml.safe_load((ROOT / ".github/workflows" / wf).read_text())
         steps = next(iter(doc["jobs"].values()))["steps"]
         assert steps[-1]["name"] == "Refresh the stored page rows", wf
-        assert 'rpc("refresh_page_cache")' in steps[-1]["run"]
+        assert 'rpc("refresh_page_cache", timeout=270)' in steps[-1]["run"]
+        assert steps[-1]["timeout-minutes"] == 5
+        assert 270 < steps[-1]["timeout-minutes"] * 60
 
 
 def test_no_vacuum_full_is_scheduled_for_the_middle_of_the_day():

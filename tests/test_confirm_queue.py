@@ -299,6 +299,6 @@ def test_the_intraday_pipeline_asks_then_banks_then_refreshes():
     wf = (pathlib.Path(__file__).resolve().parents[1] / ".github/workflows/pipeline_intraday.yml").read_text()
     q = wf.index("python scripts/confirm_queue.py")
     b = wf.index("python scripts/databank.py --bands-only")
-    r = wf.index('rpc("refresh_page_cache")')
+    r = wf.index('rpc("refresh_page_cache",')
     assert q < b < r
     assert "schedule:" not in wf.split("on:")[1].split("concurrency:")[0]
