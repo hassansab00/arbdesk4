@@ -227,9 +227,11 @@ jobs:
       # CONCURRENTLY, so a page open during the refresh keeps reading.
       - name: Refresh the stored page rows
         if: ${{ !cancelled() }}
-        timeout-minutes: 3
+        # 16 Oct: the refresh continued successfully after the default
+        # 120-second HTTP deadline had reported failure. Bound both clocks.
+        timeout-minutes: 5
         run: |
           python - <<'PY'
           from common import rpc
-          print("page cache refreshed (ms):", rpc("refresh_page_cache"))
+          print("page cache refreshed (ms):", rpc("refresh_page_cache", timeout=270))
           PY

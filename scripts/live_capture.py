@@ -407,6 +407,42 @@ def current_snapshots(rows):
         for city, hours in sorted(by_city.items())]
 
 
+def receipt_packs(kind, batches):
+    """Combine disjoint keys up to PUT_ROWS, retaining each response's receipt.
+    Successive versions of one key stay in separate calls, in source order.
+    Compact current forecasts BEFORE packing, once per original response.
+    """
+    pack, keys = [], set()
+    for captured, rows in batches:
+        rows = current_snapshots(rows) if kind in ("hourly0", "models0") else rows
+        for row in rows:
+            if len(pack) >= PUT_ROWS or row["key"] in keys:
+                yield pack
+                pack, keys = [], set()
+            pack.append({**row, "captured_at": captured.isoformat()})
+            keys.add(row["key"])
+    if pack:
+        yield pack
+
+
+def put_received(kind, batches, dry_run, left):
+    """(new, errors, requests) with failed transport packs isolated as before."""
+    new, errors, requests = 0, [], 0
+    for rows in receipt_packs(kind, batches):
+        if dry_run:
+            continue
+        try:
+            if left() <= 0:
+                raise TimeoutError("capture part budget exhausted before write")
+            requests += 1
+            got = rpc("live_capture_put", {"p_kind": kind, "p_captured_at": rows[0]["captured_at"],
+                                           "p_rows": rows}, timeout=max(3., min(60., left())))
+            new += int(got.get("new") or 0)
+        except Exception as e:
+            errors.append(f"{kind} write: {type(e).__name__}: {str(e)[:160]}")
+    return new, errors, requests
+
+
 def mode():
     rows = rest("settings", {"select": "value", "key": "eq.workflow_schedules"})
     value = (rows[0].get("value") if rows else None) or {}
@@ -467,15 +503,12 @@ def run(now=None, dry_run=False, iem_path=None):
                 cities.extend(c for c in get_cities() if c.get("latitude") is not None)
             by_kind, d = fetch(cities, now, part_left)
             d["new"] = {}
+            d["write_requests"] = 0
             for kind, batches in by_kind.items():
-                d["new"][kind] = 0
-                for captured, rows in batches:
-                    try:
-                        if part_left() <= 0:
-                            raise TimeoutError("capture part budget exhausted before write")
-                        d["new"][kind] += put(kind, captured, rows, dry_run, part_left)[1]
-                    except Exception as e:
-                        d["errors"].append(f"{kind} write: {type(e).__name__}: {str(e)[:160]}")
+                new, errors, requests = put_received(kind, batches, dry_run, part_left)
+                d["new"][kind] = new
+                d["errors"] += errors
+                d["write_requests"] += requests
             d["seconds"] = round(time.monotonic() - t0, 1)
             detail[part] = d
             parts_ok.append(d["answered"] == d["cities"] and not d["errors"])

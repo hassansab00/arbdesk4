@@ -5,6 +5,41 @@ PR that advances a step.
 
 ## City calibration and capture recovery — 16 Oct, in progress
 
+**Release #406:** merged as `15f149c9b503`, CI and Vercel passed. A real
+station-model run at 16:23:06 UTC fitted 94 city/lead calibration cells:
+23 passed their later-date CRPS gate and 71 held. All 94 respected the width
+bounds and prior-night step. The 16:24 pricing run used six distinct blend
+width versions across six cities and 66 bucket prices. The production
+browser loaded all 47 active cities and London's popup showed its fit date,
+448 training days and held calibration with 14 validation days. This closes
+the earlier rendered-page blocker; forward accuracy remains to be measured.
+
+**Capture write follow-up:** the 16:28:45 UTC production capture was partial.
+Both forecast families answered all 47 cities without provider errors, but
+database latency exhausted the write budget (including a 20.1-second report
+write during the intraday cache refresh). The follow-up combines disjoint
+response chunks into bounded transport batches, preserving each row's actual
+receipt as metadata. Current responses are compacted separately first.
+Successive versions stay ordered in separate calls; failed packs retain the
+successful counts. The RPC keeps legacy callers' timestamp behaviour and
+rejects future row receipts or conflicting versions in one transport batch.
+No missing capture is fabricated or backdated. Release checks are pending.
+
+The intraday workflow's final step failed at its default 120-second HTTP
+deadline while the database refresh continued and logged success. Both
+pipeline callers now use a 270-second request inside a five-minute step.
+The refresh remains bounded and its real result is awaited; this does not
+claim that heavy maintenance or the page-query timeout checkpoint is fixed.
+The receipt RPC's production rehearsal used isolated temporary copies in
+one REPEATABLE READ transaction: return values and stored payload/receipt
+rows had zero EXCEPT ALL differences in both directions for legacy calls.
+
+Follow-up validation passed: 4,181 Python tests, 9 skipped (286.98 seconds),
+and the complete database contracts. The production receipt migration is
+`20261016163916`; execution remains service-only. The existing deployed
+capture recovered on its next scheduled run (16:37:09 UTC, ok, 50.9 seconds).
+The batching release still needs its own CI and actual write-count check.
+
 Hassan asked to continue the repairs and make learning respond to hits and
 misses per city. Production checks found nightly source-bias, station-model
 and width fits running, with city-specific parameters updated on 16 Oct.

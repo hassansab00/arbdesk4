@@ -192,5 +192,23 @@ const KINDS = ['report', 'hourly', 'hourly2', 'models1', 'models2', 'books'];
   await db.exec(SQL);
   assert.equal((await put('hourly0', T(0), [{key:'city|new-hour',payload:[23]}])).new,1);
   assert.equal((await put('wx_features', T(1), [{key:'policy|city|date|morning',payload:{row_sha256:'test'}}])).new, 1);
+  const RECEIPTS = fs.readFileSync(path.join(__dirname, '..', '..', 'supabase', 'migrations',
+    '20261016163242_capture_receipt_batches.sql'), 'utf-8');
+  await db.exec(RECEIPTS);
+  await db.exec(RECEIPTS);
+  const receipts = [{key:'receipt-a',payload:[1],captured_at:T(2)},
+                    {key:'receipt-b',payload:[2],captured_at:T(1)}];
+  assert.equal((await put('hourly',T(0),receipts)).new,2);
+  for (const row of receipts) {
+    assert.equal((await db.query(`select captured_at=$2::timestamptz as exact,
+      payload=$3::jsonb as same from public.live_capture where key=$1`,
+      [row.key,row.captured_at,JSON.stringify(row.payload)])).rows[0].exact,true);
+  }
+  assert.equal((await put('hourly',T(0),receipts)).new,0,'first receipts survive a repeated transport');
+  await assert.rejects(put('hourly',T(0),[{key:'future-row',payload:[1],captured_at:new Date(Date.now()+3600e3).toISOString()}]),/future/);
+  await assert.rejects(put('hourly',T(0),[receipts[0],{...receipts[0],captured_at:T(0),payload:[9]}]),/separate batches/);
+  assert.equal((await put('hourly',T(0),[{key:'legacy-receipt',payload:[3]}])).new,1);
+  assert.equal((await db.query(`select has_function_privilege('anon',
+    'public.live_capture_put(text,timestamptz,jsonb)','execute') as allowed`)).rows[0].allowed,false);
   console.log('PASS: live-capture: a report or forecast value (best_match at leads 1 and 2, the seven models at both) stored once per change and again when it changes back, a books row every tick; a kind it does not keep refused by the function and the table, a future time and a non-list refused; the prune takes two-day-old rows only, only the verified count; request_reclaim may rewrite it; the switch seeded and kept; the archive watchdog row and the 03:05 backstop; closed to the browser; re-runnable');
 })().catch((e) => { console.error(e); process.exit(1); });
