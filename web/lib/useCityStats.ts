@@ -103,9 +103,10 @@ export function useCityStats(pollMs = 60000): CityStatsResult {
             .eq("for_date", today)
             .order("lead_days", { ascending: true, nullsFirst: false })
             .order("run_at", { ascending: false }).limit(2000),
-          supabase.from("v_city_volume").select("city_key,volume_usd,n_trades"),
+          supabase.from("v_page_city_volume").select("city_key,volume_usd,n_trades"),
         ]);
         if (cities.error) throw cities.error;
+        if (vol.error) throw vol.error;
 
         // AND SAY SO IF THE SERVER CUT IT. This path is the fallback, so it
         // cannot use useQuery's truncation flag, and PostgREST's ceiling is

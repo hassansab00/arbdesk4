@@ -37,7 +37,7 @@ export default function OverviewPage() {
   );
 
   const volume = useQuery<Array<{ city_key: string; volume_usd: number }>>(
-    () => supabase.from("v_city_volume").select("city_key,volume_usd"),
+    () => supabase.from("v_page_city_volume").select("city_key,volume_usd"),
     [],
     60000
   );
@@ -62,8 +62,8 @@ export default function OverviewPage() {
         <Stat label="Open P&L (net)" value={fmtUsd(openPnl, { signed: true })} color={pnlColor(openPnl)} />
         <Stat
           label="Market volume (24h)"
-          value={volume.loading ? "…" : fmtCompactUsd(totalVolume)}
-          hint="Traded volume across every city, from trades_observed. Distinct from book depth — this is what actually printed."
+          value={volume.loading ? "…" : volume.error ? "Unavailable" : fmtCompactUsd(totalVolume)}
+          hint={volume.error ?? "Market volume across every city over 24h; sampled every thirty minutes."}
         />
         {/* WHAT THIS PAGE STANDS ON. A thin page and an unfed page look
             identical, and only one of them is worth investigating. */}

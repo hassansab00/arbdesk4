@@ -62,7 +62,7 @@ const LOOK: Record<string, { label: string; tone: string; means: string }> = {
   stopped: {
     label: "Stopped",
     tone: "text-muted border-border",
-    means: "The nightly refit was switched off by the WXPredict build (wave A.3), and no fitted map is in force, so raw probabilities price. WXPredict calibrates itself.",
+    means: "This global probability map is off. Per-city temperature learning and uncertainty calibration run separately; see each city’s learning panel.",
   },
   never_run: {
     label: "Never run",
@@ -85,7 +85,7 @@ export default function CalibrationStatus() {
   return (
     <div className={`rounded border bg-panel p-3 text-xs ${look.tone.split(" ")[1] ?? "border-border"}`}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="font-semibold">Calibration</span>
+        <span className="font-semibold">Global probability map</span>
         <span className={`font-semibold ${look.tone.split(" ")[0]}`}>{look.label}</span>
         {s.method && <code className="text-[10px] text-muted">{s.method}</code>}
         {s.last_run_at && (
