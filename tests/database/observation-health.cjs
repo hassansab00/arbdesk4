@@ -349,6 +349,38 @@ function middayZone() {
   assert.equal(age.model_only_city, 100.0, 'a city the readings no longer hold must read its newest cached day');
   assert.equal(age.floor_city, 30.0, 'yesterday\'s held reading is the age');
 
-  console.log(`observation-health: 7 contracts hold, the feed age held or cached, the settlement feed first and the basis counted over it (zone ${TZ}, local ${localToday})`);
+  // Another delivery of the same routine report must not double the series
+  // count. A new AWC report extends it, with the same floor in the view and
+  // stored refresh. NWS five-minute readings never enter that routine floor.
+  await db.exec(`
+    insert into public.cities(city_key, display_name, status, timezone)
+      values ('fallback_city', 'Fallback', 'active', '${TZ}');
+    insert into public.live_weather(city_key, local_date, source_kind)
+      values ('fallback_city', (now() at time zone '${TZ}')::date, 'model');
+    insert into public.weather_observations(city_key, valid_at, temp_c, source) values
+      ('fallback_city', now() - interval '2 hours', 20, 'IEM'),
+      ('fallback_city', now() - interval '2 hours', 20.1, 'AWC'),
+      ('fallback_city', now() - interval '1 hour', 23, 'AWC'),
+      ('fallback_city', now() - interval '10 minutes', 27, 'NWS');
+  `);
+  const fallback = async () => (await db.query(`select settlement_max_today_c::float8 as max,
+    settlement_readings_today::int as n from public.v_city_observation_health where city_key='fallback_city'`)).rows[0];
+  assert.deepEqual(await fallback(), { max: 23, n: 2 });
+  await db.exec(`select public.refresh_live_weather_timing()`);
+  assert.equal(Number((await db.query(`select running_max_c from public.live_weather where city_key='fallback_city'`)).rows[0].running_max_c), 23);
+  // IEM's later delivery wins at an already seen instant, once only.
+  await db.exec(`insert into public.weather_observations(city_key, valid_at, temp_c, source)
+    select city_key, valid_at, 22.9, 'IEM' from public.weather_observations
+    where city_key='fallback_city' and temp_c=23`);
+  assert.deepEqual(await fallback(), { max: 22.9, n: 2 });
+  const repair = fs.readFileSync(path.join(__dirname, '..', '..', 'supabase', 'migrations', '20261016081209_station_report_fallback.sql'), 'utf-8');
+  await db.exec(repair);
+  await db.exec(repair);
+  assert.deepEqual(await fallback(), { max: 22.9, n: 2 });
+  await db.exec(`select public.refresh_live_weather_timing(); set role anon`);
+  assert.deepEqual(await fallback(), { max: 22.9, n: 2 });
+  await db.exec('reset role');
+
+  console.log(`observation-health: existing contracts and AWC routine fallback, report deduplication, IEM precedence, matching stored/view floors, repeat migration and anonymous reads (zone ${TZ}, local ${localToday})`);
   await db.close();
 })().catch(err => { console.error(err); process.exit(1); });

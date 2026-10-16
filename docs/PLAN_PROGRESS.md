@@ -3,6 +3,52 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Predictive station delivery repair — 16 Oct
+
+The city cards' readiness badge became unavailable while forecasts remained
+present. The IEM six-hour response was returning old reports; the tick
+counted any historical row as successful station ingestion. The repair checks
+per-city reading-time freshness and requests AWC METAR/SPECI reports only for
+stale or missing stations, inside the existing hourly tick. Requests are
+bounded and split below the provider's result limit. A response at that limit
+is reported as incomplete. Missing temperatures, wrong ICAOs, inconsistent
+report times and future readings cannot restore freshness. AWC stays its own
+source with our receipt time, and never masquerades as an IEM research input.
+
+Routine floors include this second delivery, deduplicating city/reading time
+and preferring IEM where both exist. The stored refresh uses the same rule;
+NWS five-minute readings stay outside the routine floor. Status views accept
+the real station delivery without changing thresholds or rules. Card badges
+name the unavailable input, for example "Station data stale", separately
+from the recorded forecasts and picks. Models, allocation and schedules are
+unchanged.
+
+A rolled-back REPEATABLE READ production rehearsal returned zero EXCEPT ALL
+differences in both directions: both status views (658 rows each), health
+and running maxima (47 each), and refreshed live-weather rows (54). Browser
+reads remained available and the live gate view remained private. A read-only
+probe with the repaired reader returned 434 reports, fresh coverage for all
+47 active stations, three requests and no errors. These are validation probes;
+production ingestion and rendered-card acceptance remain pending release.
+
+Production migration `station_report_fallback` is installed as
+`20261016082238`. A logged recovery inserted 434 genuine station reports as
+AWC, preserving reading times and local receipts. Anonymous read-back found
+fresh reports for all 47 active cities, zero unavailable today, 39 Candidate
+and 8 Watch (forecast disagreement). The initial probe's one timed-out batch
+was rejected before insertion; the successful recovery fetched all batches
+without errors. The card's Reload also refreshes its parent-owned readiness
+query, which previously stayed stale until a full page reload. The automatic
+writer uses separate provider batches because PostgREST requires homogeneous
+JSON keys. Final release checks and rendered-card acceptance follow.
+
+Final local validation passed: 4,159 Python tests, 9 skipped (179.32 seconds),
+the complete database contracts, web type checking, route contracts and the
+production web build. The public Predictive route returns HTTP 200. The
+visual browser check is currently blocked by its gateway returning 502;
+this is not counted as rendered-card acceptance. Publication, CI, deployment
+and an automatic production ingestion run are the remaining release checks.
+
 ## Current forecast research export — 15 Oct
 
 Built a separate, explicit research export of receipt-timed current context

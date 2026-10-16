@@ -184,6 +184,10 @@ SQL_FILTERS = {
     "supabase/migrations/20261009090100_the_feed_age_reads_the_cache.sql":
         "v_city_observation_health again, as in sql/ad4_71 - the feed age read from the "
         "station-day cache for a city the readings no longer hold",
+    "supabase/migrations/20261016081209_station_report_fallback.sql":
+        "v_city_observation_health and refresh_live_weather_timing again, as in sql/ad4_71 "
+        "and ad4_live_weather_timing - real routine reports for the active roster; "
+        "the status predicates accept another station delivery without changing the roster",
     # The model inputs' freshness beside the main forecast's (audit P3, 5 Oct):
     # operational, like v_city_observation_health - is the desk's input fresh
     # for a city it prices - not the record.

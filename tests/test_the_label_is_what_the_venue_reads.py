@@ -59,8 +59,13 @@ def test_the_literal_is_obs_primary_source():
     assert m, "obs_primary_source() changed shape; re-check the literal in ad4_21, ad4_71 and ad4_live_weather_timing"
     feed = m.group(1)
     assert f"filter (where source = '{feed}')" in _read("sql", "ad4_21_weather_features.sql")
-    assert f"where r.source = '{feed}'" in _read("sql", "ad4_71_observation_health.sql")
-    assert f"from today where source = '{feed}'" in _read("sql", "ad4_live_weather_timing.sql")
+    # AWC delivers the same ICAO's METAR/SPECI during an IEM delivery stall.
+    # Labels still use IEM; live floors include that delivery, prefer IEM for
+    # duplicate instants, and never promote NWS five-minute data to routine.
+    for file in ("ad4_71_observation_health.sql", "ad4_live_weather_timing.sql"):
+        src = _read("sql", file)
+        assert f"where source in ('{feed}', 'AWC')" in src
+        assert f"order by city_key, valid_at, (source = '{feed}') desc" in src
 
 
 def _dump(name):

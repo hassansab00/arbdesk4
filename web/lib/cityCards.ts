@@ -69,8 +69,19 @@ export interface StatusRow {
 }
 
 export const STATUS_WORDS: Record<StatusRow["status"], string> = {
-  candidate: "Candidate", watch: "Watch", insufficient: "Insufficient evidence", unavailable: "Unavailable",
+  candidate: "Candidate", watch: "Watch", insufficient: "Insufficient evidence", unavailable: "Inputs unavailable",
 };
+
+/** Readiness is separate from whether this card has a recorded forecast. */
+export function statusLabel(row: StatusRow): string {
+  if (row.status !== "unavailable") return STATUS_WORDS[row.status];
+  if (row.reason.startsWith("Station reports stale")) return "Station data stale";
+  if (row.reason.startsWith("No station report")) return "Station data missing";
+  if (row.reason.startsWith("No usable forecast")) return "Forecast data stale or missing";
+  if (row.reason === "Market closed") return "Market closed";
+  if (row.reason.startsWith("No market listed")) return "Market not listed";
+  return STATUS_WORDS[row.status];
+}
 
 /** The status row for a card's day at the chosen moment, or null. */
 export function statusFor(rows: StatusRow[], city: string, date: string, moment: string): StatusRow | null {

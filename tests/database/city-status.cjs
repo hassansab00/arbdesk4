@@ -156,5 +156,21 @@ const MIG = (f) => fs.readFileSync(path.join(__dirname, '..', '..', 'supabase', 
   await db.exec(MIG('20261006180000_each_city_has_a_daily_status.sql'));
   assert.equal((await db.query(`select count(*)::int n from public.city_status_rules`)).rows[0].n, 2);
 
+  // A fresh model value cannot hide a stalled station delivery. The AWC
+  // delivery of that station's reports can; thresholds and other states stay.
+  await db.exec(`insert into public.weather_observations values ('stale', now(), 'open-meteo')`);
+  assert.equal((await at('stale')).status, 'unavailable');
+  const fallback = MIG('20261016081209_station_report_fallback.sql');
+  await db.exec(fallback);
+  assert.equal((await at('stale')).status, 'unavailable', 'adding a source without reports changes nothing');
+  await db.exec(`insert into public.weather_observations values ('stale', now() - interval '20 minutes', 'AWC')`);
+  assert.equal((await at('stale')).status, 'candidate');
+  assert.equal((await at('stale')).rules_version, 'status-v2');
+  await db.exec(fallback);
+  assert.equal((await at('stale')).status, 'candidate', 'the repair is repeatable');
+  await db.exec('set role anon');
+  assert.equal((await at('stale')).status, 'candidate', 'the browser can still read');
+  await db.exec('reset role');
+
   console.log('PASS: city-status: candidate, watch (disagreement, models not in), insufficient, unavailable (no market, closed, stale station); the worst wins with every reason kept; every active city today and tomorrow at seven moments; the newest rules version decides and is named; the rules are append-only and well-formed; anon reads, only the service role writes; the focus universe frozen (48, the hash of the study) and append-only; re-runnable');
 })().catch((e) => { console.error(e); process.exit(1); });

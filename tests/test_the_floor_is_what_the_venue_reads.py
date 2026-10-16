@@ -45,9 +45,10 @@ def test_the_migration_carries_the_shipped_statements_verbatim():
 def test_both_halves_take_the_settlement_feed_first():
     ad4_71 = _read("sql", "ad4_71_observation_health.sql")
     timing = _read("sql", "ad4_live_weather_timing.sql")
-    assert "where r.source = 'IEM'" in ad4_71
+    assert "where source in ('IEM', 'AWC')" in ad4_71
+    assert "order by city_key, valid_at, (source = 'IEM') desc" in ad4_71
     assert re.search(r"coalesce\(h\.settlement_max_today_c,\s+greatest\(", ad4_71)
-    assert "from today where source = 'IEM'" in timing
+    assert "from today where source in ('IEM', 'AWC')" in timing
     assert "when c.settle_max_c is not null then c.settle_max_c" in timing
     # the old rule stays visible, and which one answered is named
     assert "as all_sources_max_c" in ad4_71 and "as running_max_source" in ad4_71

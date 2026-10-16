@@ -321,14 +321,17 @@ def share_with_capture(text, received_at, path=None):
 
 
 def read_stations(now, dry_run=False):
-    """Every active station's METAR readings over the last STATION_HOURS, in ONE request.
+    """Every active station's METAR readings over the last STATION_HOURS.
 
     ingest_observations.fetch_station and parse are the same code the
     backfill uses: one request for the whole board (IEM rate-limits by
     request), US stations matched under their three-letter id, routine and
-    special reports. Returns a summary for the tick's log; raises nothing.
+    special reports. Stale/missing stations use bounded AWC batches, with
+    their own provenance. Only fresh thermometer reports restore readiness.
+    Returns a summary for the tick's log; raises nothing.
     """
     import ingest_observations as io
+    import station_fallback as sf
     t0 = time.monotonic()
     out = {"rows": 0, "cities": 0, "silent": [], "error": None}
     try:
@@ -339,18 +342,53 @@ def read_stations(now, dry_run=False):
         # day2 is EXCLUSIVE on the ASOS service (ingest_observations.window).
         # Every field the training reads, so the live record (WXPredict WP3)
         # keeps this same answer whole; parse() reads only its own columns.
-        txt = io.fetch_station(icaos, since.date(), now.date() + dt.timedelta(days=1),
-                               since=since, until=now, timeout=STATION_TIMEOUT_S, data=io.FULL_DATA)
+        txt = None
+        try:
+            txt = io.fetch_station(icaos, since.date(), now.date() + dt.timedelta(days=1),
+                                   since=since, until=now, timeout=STATION_TIMEOUT_S, data=io.FULL_DATA)
+        except Exception as e:
+            out["iem_error"] = f"{type(e).__name__}: {str(e)[:160]}"
         if txt and not dry_run:
             share_with_capture(txt, dt.datetime.now(dt.timezone.utc))
         rows = io.parse(txt, by_station=by_station) if txt else []
+        if not rows and "iem_error" not in out:
+            out["iem_error"] = "IEM returned nothing usable for any station" + (
+                ": rate limited" if txt and "too many requests" in txt.lower() else "")
+        missing = sf.stale_cities(cities, rows, now)
+        out["iem_stale"] = missing
+        if missing:
+            fallback, out["awc"] = sf.fetch([c for c in cities if c["city_key"] in missing], now)
+            rows.extend(fallback)
+        stale = sf.stale_cities(cities, rows, now)
+        out["stale"] = stale
         seen = {r["city_key"] for r in rows}
         out.update(cities=len(seen), silent=sorted(c["city_key"] for c in cities if c["city_key"] not in seen))
-        out["rows"] = (upsert("weather_observations", rows, "city_key,valid_at,source")
-                       if rows and not dry_run else len(rows))
-        if not rows:
-            out["error"] = "IEM returned nothing usable for any station" + (
-                ": rate limited" if txt and "too many requests" in txt.lower() else "")
+        # PostgREST requires identical object keys inside one JSON batch.
+        # IEM has richer fields and a server-default receipt; AWC keeps its
+        # own explicit receipt. Write homogeneous provider batches, retaining
+        # successful counts even if the other provider's write fails.
+        write_errors = []
+        for source in ("IEM", "AWC"):
+            batch = [r for r in rows if r["source"] == source]
+            if not batch:
+                continue
+            try:
+                out["rows"] += (len(batch) if dry_run else
+                                upsert("weather_observations", batch, "city_key,valid_at,source"))
+            except Exception as e:
+                write_errors.append(f"{source}: {type(e).__name__}: {str(e)[:160]}")
+        problems = []
+        if stale:
+            problems.append(f"No fresh station report for {len(stale)} cities")
+        if out.get("awc", {}).get("errors"):
+            problems.append("AWC fallback history incomplete")
+        if write_errors:
+            out["write_errors"] = write_errors
+            problems.extend(write_errors)
+        if problems:
+            out["error"] = "; ".join(problems)
+            if out.get("iem_error"):
+                out["error"] += "; " + out["iem_error"]
     except Exception as e:
         out["error"] = f"{type(e).__name__}: {str(e)[:160]}"
     out["seconds"] = round(time.monotonic() - t0, 1)
