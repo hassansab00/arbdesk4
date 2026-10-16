@@ -52,12 +52,18 @@ def _yaml_workflows():
         crons = re.findall(r"cron:\s*['\"]([^'\"]+)['\"]", src)
         manual = "workflow_dispatch" in src
         scripts = set(re.findall(r"scripts/([a-z0-9_/]+)\.py", src))
+        optional, regular = set(), set()
+        for step in re.split(r"(?m)^      - ", src)[1:]:
+            called = set(re.findall(r"scripts/([a-z0-9_/]+)\.py", step))
+            target = optional if re.search(
+                r"(?m)^        if:.*github\.event\.inputs\.\w+ == 'true'", step) else regular
+            target.update(called)
         # Turned off in the WXPredict build, wave A.6: the file stays, every job
         # is `if: false` (tests/test_github_actions.py, TURNED_OFF_WORKFLOWS).
         off = ("TURNED OFF by the WXPredict build, wave A.6" in src
                and re.search(r"^    if: false$", src, re.M) is not None)
         out[base] = {"name": name, "crons": crons, "manual": manual, "off": off,
-                     "scripts": sorted(scripts)}
+                     "scripts": sorted(scripts), "optional_scripts": sorted(optional - regular)}
     return out
 
 
@@ -322,7 +328,8 @@ def build():
                 targets.update(rpcs.get(fn, []))
             for t in sorted(targets):
                 add(t, {"kind": "action", "name": wf["name"], "file": base,
-                        "cadence": cadence, "how": f"scripts/{stem}.py"})
+                        "cadence": "manual (opt-in)" if stem in wf["optional_scripts"] else cadence,
+                        "how": f"scripts/{stem}.py"})
 
     for base, wf in n8n.items():
         for t in wf["tables"]:

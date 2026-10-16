@@ -3,7 +3,80 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
-## Predictive station delivery repair — 16 Oct
+## City calibration and capture recovery — 16 Oct, in progress
+
+Hassan asked to continue the repairs and make learning respond to hits and
+misses per city. Production checks found nightly source-bias, station-model
+and width fits running, with city-specific parameters updated on 16 Oct.
+The station model already learns residual temperature errors using forecast
+cloud, rain, humidity, wind, model disagreement and season. Day reviews
+record the observed differences beside each checkpoint's outcome; those
+differences are not established causes. Frozen WXPredict candidates retain
+their independent holdout and shadow promotion gates.
+
+The audit found a width mismatch: the engine can serve the station-model
+blend but retain a width fitted to P3.9's combination. The blend now fits
+its own per-city/lead residual width against venue truth in the existing
+nightly station-model step; missing venue labels are not replaced by station
+labels. Its temperature fit ends before the 30-day calibration window. The
+first 16 dates fit candidate and comparator widths; the later 14 validate
+them around the same blended centre. A city needs five earlier errors, the
+existing 200-error lead pool, ten later dates, and a positive lower 90%
+date-bootstrap CRPS gain. These are design priors, chosen before measuring
+the new recipe on production outcomes. Final live widths refit the completed
+window, retain the existing 0.5–3 C bounds and 10% nightly step, and record
+their versions. Repeated runs use the prior-night anchor; a first passing
+fit steps from the earlier combination width. Recipe validation is distinct
+from forward performance of the final refit. A held or failed calibration
+keeps the existing width; the existing pricing switches still apply.
+
+Each city popup now shows its training date/sample, whether its temperature
+correction uses the city or pool, and the blend calibration's decision. The
+read-only diagnostic view exposes no model coefficients or forecast inputs.
+
+Research capture now uses smaller serial requests, splits a transient failed
+chunk once after other first attempts, and preserves each response's receipt.
+Hourly capture and a missing station-file wait cannot consume the models'
+reserved turn. Rate limits and malformed answers are not retried. Current
+and frozen lead inputs remain separate. On the previous source version,
+14:37 UTC capture failed all forecast requests; 15:36 UTC recovered all 47
+hourly and model cities. The repaired source still needs a real-run check.
+
+Storage remains an open capacity constraint: the audited database was
+585,215,123 bytes, archives/reclaims were running, and no exact duplicate
+public indexes were found. No data was removed by this repair. Reaching the
+configured storage target and the remaining browser/24-hour acceptance
+checks are not claimed complete. Local suites, migration rehearsal, CI,
+publication and production acceptance are pending below.
+
+Release validation: 4,179 Python tests passed, 9 skipped (327.35 seconds),
+including the complete CI-path recording run. Database contracts passed;
+web type checking, route contracts and the production build passed. The
+provenance generator distinguishes the opt-in manual refit from scheduled
+learning. Deployment and real-run acceptance will be recorded in the PR's
+release notes after publication; forward accuracy of the final refit is not
+claimed by these implementation checks.
+
+The production migration is installed as `20261016155739`. Its rolled-back
+REPEATABLE READ rehearsal found zero differences in both directions for the
+existing coefficient and forecast rows. After installation, `anon` reads all
+96 diagnostic rows across 48 recorded cities; calibration is null until the
+first new fit. No pricing switch was changed by the migration.
+
+The intraday workflow has an opt-in manual recovery input that runs the same
+station-model/calibration entry point before pricing. Clock dispatches and
+the nightly cadence are unchanged. The earlier last-24-hour timeout check
+did not pass: 67 SQLSTATE 57014 cancellations, led by v_data_freshness (23)
+and v_city_volume (19), were observed for 15 Oct 16:00–16 Oct 16:00 UTC.
+
+## Station delivery release acceptance — 16 Oct
+
+PR #405 merged as 4efed3584cf8 and Vercel deployed that source. The production
+tick at 14:36:48 UTC returned status ok, fresh IEM reports for all 47 active
+cities and no stale station list. Earlier AWC fallback recovery was also
+verified. The browser gateway continued to prevent rendered-page acceptance.
+
+## Predictive station delivery repair — 16 Oct (original record)
 
 The city cards' readiness badge became unavailable while forecasts remained
 present. The IEM six-hour response was returning old reports; the tick

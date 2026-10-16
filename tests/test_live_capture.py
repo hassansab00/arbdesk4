@@ -11,6 +11,7 @@ import re
 import sys
 
 import pytest
+from requests import exceptions as http_errors
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -261,6 +262,55 @@ def test_each_chunk_carries_the_time_its_answer_arrived(monkeypatch):
     assert [p["p_captured_at"] for p in put] == [a1.isoformat(), a2.isoformat()]
 
 
+def test_transient_chunks_retry_once_smaller_after_other_first_attempts(monkeypatch):
+    cities = [{"city_key": f"c{i}", "latitude": i, "longitude": -i}
+              for i in range(2 * lc.CITIES_PER_REQUEST)]
+    asked = []
+    def get(url, params=None, timeout=None):
+        ids = params["latitude"].split(",")
+        asked.append(ids)
+        if len(asked) == 1:
+            raise http_errors.ReadTimeout("temporary stall")
+        return _Answer([{"hourly": {"time": ["2026-10-11T12:00"],
+            **{lc.series_name(v, lead): [1.] for v in honest_record.HEATING
+               for lead in lc.CAPTURE_HORIZONS}}}] * len(ids))
+    monkeypatch.setattr(lc, "_get", get)
+    rows, detail = lc.fetch_hourly(cities, dt.datetime(2026, 10, 11, tzinfo=UTC), lambda: 60)
+    assert [len(x) for x in asked] == [6, 6, 3, 3]
+    assert asked[1][0] == "6", "all first attempts precede recovery requests"
+    assert detail["answered"] == 12 and detail["recovered"] == 6
+    assert len(detail["retries"]) == 1 and detail["errors"] == []
+    keys = [r["key"] for _, batch in rows["hourly"] for r in batch]
+    assert len(keys) == len(set(keys)) == 12
+
+
+@pytest.mark.parametrize("status,retries", [(429, False), (400, False), (503, True)])
+def test_only_transient_http_failures_are_retried(monkeypatch, status, retries):
+    cities = [{"city_key": "one", "latitude": 1, "longitude": 2}]
+    calls = []
+    def get(*a, **kw):
+        calls.append(kw)
+        response = type("Response", (), {"status_code": status})()
+        raise http_errors.HTTPError("refused", response=response)
+    monkeypatch.setattr(lc, "_get", get)
+    _, detail = lc.fetch_hourly(cities, dt.datetime(2026, 10, 11, tzinfo=UTC), lambda: 60)
+    assert len(calls) == (2 if retries else 1)
+    assert detail["answered"] == 0 and len(detail["errors"]) == 1
+
+
+def test_retry_cannot_run_past_part_budget(monkeypatch):
+    left = [20.]
+    calls = []
+    def ask(chunk, params, remaining):
+        calls.append(chunk)
+        left[0] = 0.
+        raise http_errors.ReadTimeout("budget spent")
+    monkeypatch.setattr(lc, "_ask", ask)
+    _, detail = lc.fetch_hourly([{"city_key": "one"}], dt.datetime(2026, 10, 11, tzinfo=UTC), lambda: left[0])
+    assert len(calls) == 1 and detail["answered"] == 0
+    assert "one: not asked, out of time" in detail["errors"]
+
+
 def test_the_models_are_asked_as_the_nightly_record_asks(monkeypatch):
     cities = [{"city_key": f"c{i}", "latitude": i, "longitude": -i} for i in range(3)]
     asked = []
@@ -354,6 +404,29 @@ def test_a_run_keeps_every_kind_and_writes_one_row(desk):
     (job, st, rows, d), = desk["log"]
     assert (job, st, rows) == (lc.JOB, "ok", 6) and d["reports"]["stations"] == 1
     assert d["hourly"]["new"] == {"hourly": 1, "hourly2": 1} and d["models"]["new"] == {"models1": 1, "models2": 1}
+
+
+def test_slow_hourly_part_and_report_wait_preserve_models_turn(desk, monkeypatch):
+    clock, budgets = [0.], {}
+    monkeypatch.setattr(lc.time, "monotonic", lambda: clock[0])
+    def hourly(cities, now, left):
+        budgets["hourly"] = left()
+        clock[0] += left() - lc.RESERVE_S
+        return {}, {"cities": 1, "answered": 0, "errors": ["timed out"]}
+    def report(path, wait_s, left):
+        clock[0] += max(0., left() - lc.RESERVE_S)
+        return None
+    original = lc.fetch_models
+    def models(cities, now, left):
+        budgets["models"] = left()
+        return original(cities, now, left)
+    monkeypatch.setattr(lc, "fetch_hourly", hourly)
+    monkeypatch.setattr(lc, "read_iem", report)
+    monkeypatch.setattr(lc, "fetch_models", models)
+    status, _ = lc.run(iem_path=desk["iem"])
+    assert status == "partial"
+    assert budgets["models"] >= budgets["hourly"] > 0
+    assert "models1" in [p["p_kind"] for _, p in desk["put"]]
 
 
 def test_one_part_failing_stops_nothing(desk, monkeypatch):

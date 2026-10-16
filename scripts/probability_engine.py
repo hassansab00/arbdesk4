@@ -904,7 +904,7 @@ def _blend_station_model(cache):
         since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=max_age)).isoformat()
         updates = []
         for m in rest("derived_mos_forecast", [
-                ("select", "city_key,for_date,lead_days,mos_c,blend_c,p39_version,version,computed_at"),
+                ("select", "city_key,for_date,lead_days,mos_c,blend_c,p39_version,version,computed_at,calibration"),
                 ("computed_at", f"gte.{since}"), ("blend_c", "not.is.null")]):
             row = cache.get((m["city_key"], str(m["for_date"])))
             if row is None or m.get("p39_version") != row.get("version") or int(m["lead_days"]) < min_lead:
@@ -915,6 +915,20 @@ def _blend_station_model(cache):
             row["mos_c"] = m.get("mos_c")
             row["combined_c"] = blend
             row["version"] = f"{row.get('version')}+{m.get('version')}"
+            # P3.9's errors describe its own centre. A blend may replace
+            # that width only with its own independently checked city fit.
+            cal = m.get("calibration") or {}
+            cal = cal if isinstance(cal, dict) else {}
+            if (cal.get("applies") is True and cal.get("city_key") == m["city_key"]
+                    and cal.get("lead_days") == int(m["lead_days"])
+                    and str(cal.get("version", "")).startswith("city-blend-width:")):
+                try:
+                    width = float(cal["sigma_c"])
+                    if 0.5 <= width <= 3.0:
+                        row["width_c"] = width
+                        row["width_version"] = cal["version"]
+                except (TypeError, ValueError, KeyError):
+                    pass
         return len(updates)
     except Exception as e:
         print(f"  note: station model unavailable ({str(e)[:80]}) - "

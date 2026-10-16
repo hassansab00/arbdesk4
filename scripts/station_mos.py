@@ -47,6 +47,8 @@ import time
 
 import honest_record as hr
 import station_correction as sc
+import city_calibration
+import venue_truth
 from weather_model import solve
 
 JOB = "P2.9_station_mos"
@@ -277,10 +279,12 @@ def version_of(coefs, as_of, chosen):
 # ---------------------------------------------------------------------------
 # held out: the last EVAL_DAYS, against P3.9 replayed the same way
 # ---------------------------------------------------------------------------
-def p39_replay(rows, lead, days):
+def p39_replay(rows, lead, days, truth=None):
     """P3.9 as coded: refitted each day on the WINDOW_DAYS before it."""
     by_day = {}
     for r in rows:
+        if truth is not None:
+            r = dict(r, y=truth.get((r["city"], r["date"].isoformat())))
         if r["y"] is not None:
             by_day.setdefault(r["date"], []).append(r)
     out, previous = {}, None
@@ -299,20 +303,24 @@ def p39_replay(rows, lead, days):
     return out
 
 
-def held_out(rows, lead, as_of):
+def held_out(rows, lead, as_of, predictions=None, p39_truth=None):
     start = as_of - dt.timedelta(days=EVAL_DAYS)
     train = [r for r in rows if r["y"] is not None and r["date"] < start]
     test = [r for r in rows if r["y"] is not None and start <= r["date"] < as_of]
     if len(train) < 1000 or not test:
         return {"n": 0}
     praw, craw, chosen = choose_and_fit(train)
-    p39 = p39_replay([r for r in rows if r["date"] < as_of], lead, sorted({r["date"] for r in test}))
+    p39 = p39_replay([r for r in rows if r["date"] < as_of], lead,
+                     sorted({r["date"] for r in test}), truth=p39_truth)
     err = {"base": [], "mos": [], "p39": [], "blend": []}
     for r in test:
         p = p39.get((r["city"], r["date"]))
         if p is None:
             continue
         m = predict(craw.get(r["city"], praw), r)
+        if predictions is not None:
+            predictions.append({"city": r["city"], "date": r["date"], "y": r["y"],
+                                "p39": p, "blend": (m + p) / 2})
         err["base"].append(abs(r["base"] - r["y"]))
         err["mos"].append(abs(m - r["y"]))
         err["p39"].append(abs(p - r["y"]))
@@ -362,6 +370,27 @@ def load_p39(rest_all, today):
     return {(r["city_key"], str(r["for_date"])): (float(r["combined_c"]), r["version"]) for r in rows}
 
 
+def load_previous_calibration(rest_all, as_of):
+    rows = rest_all("derived_mos_coefficients", [
+        ("select", "city_key,lead_days,calibration,prev_calibration,as_of,prev_as_of")],
+        order="city_key.asc,lead_days.asc")
+    out = {}
+    for row in rows:
+        anchor = sc.anchor_before(row, as_of, "calibration", "prev_calibration")
+        if anchor is not None and anchor[0].get("applies") is True:
+            out[(row["city_key"], int(row["lead_days"]))] = anchor[0]
+    # Before a city has a passing blend fit, bound its first adjustment from
+    # the earlier combination width rather than an unused shadow candidate.
+    for row in rest_all("derived_station_width", [
+            ("select", "city_key,lead_days,sigma_c,prev_sigma_c,as_of,prev_as_of")],
+            order="city_key.asc,lead_days.asc"):
+        key = row["city_key"], int(row["lead_days"])
+        anchor = sc.anchor_before(row, as_of, "sigma_c", "prev_sigma_c")
+        if key not in out and anchor is not None:
+            out[key] = {"sigma_c": float(anchor[0]), "applies": False, "source": "combination_prior_night"}
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--as-of")
@@ -386,6 +415,16 @@ def main(argv=None):
     forward = assemble([hr._text(r) for r in fbm], [hr._text(r) for r in fmd], labels)
     previous = load_previous(rest_all, as_of)
     p39 = load_p39(rest_all, as_of)
+    calibration, previous_calibration, calibration_error = {}, {}, None
+    try:
+        previous_calibration = load_previous_calibration(rest_all, as_of)
+        calibration_truth = venue_truth.load(rest_all,
+            complete - dt.timedelta(days=EVAL_DAYS + sc.WINDOW_DAYS), complete,
+            icao={c["city_key"]: c.get("icao") for c in cities})
+        combination_truth = venue_truth.source(rest_all)
+    except Exception as e:
+        # A missing anchor must never bypass the nightly step bound.
+        calibration_error = f"{type(e).__name__}: {str(e)[:160]}"
 
     coefs, steps, chosen_by, scores, out_rows, coef_rows = {}, {}, {}, {}, [], []
     for lead in LEADS:
@@ -403,7 +442,18 @@ def main(argv=None):
             coefs[(city, lead)] = new
             steps[(city, lead)] = (a, n_city)
         if not args.no_eval:
-            scores[lead] = held_out(history[lead], lead, complete)
+            predictions = []
+            scores[lead] = held_out(history[lead], lead, complete, predictions,
+                p39_truth=calibration_truth if calibration_error is None and combination_truth == "venue" else None)
+            if calibration_error is None:
+                try:
+                    verified = [dict(r, y=calibration_truth[(r["city"], r["date"].isoformat())])
+                                for r in predictions if (r["city"], r["date"].isoformat()) in calibration_truth]
+                    fitted = city_calibration.fit(verified, lead, complete,
+                        {c: v for (c, l), v in previous_calibration.items() if l == lead})
+                    calibration.update({(c, lead): v for c, v in fitted.items()})
+                except Exception as e:
+                    calibration_error = f"lead {lead}: {type(e).__name__}: {str(e)[:160]}"
     version = version_of(coefs, as_of, chosen_by)
 
     for (city, lead), cf in coefs.items():
@@ -414,6 +464,8 @@ def main(argv=None):
         coef_rows.append({"city_key": city, "lead_days": lead, "coef": {k: round(v, 6) for k, v in cf.items()},
                           "n": n_city, "pooled": n_city < MIN_CITY_DAYS, "step_fraction": round(a, 4),
                           "version": version, "as_of": as_of.isoformat(), "computed_at": now.isoformat(),
+                          "calibration": calibration.get((city, lead)),
+                          "prev_calibration": previous_calibration.get((city, lead)),
                           "prev_coef": prev[0] if prev else None, "prev_as_of": prev[1] if prev else None})
     for lead in LEADS:
         for r in forward[lead]:
@@ -428,6 +480,7 @@ def main(argv=None):
                 "p39_c": round(p[0], 3) if p else None,
                 "blend_c": round((m + p[0]) / 2, 3) if p else None,
                 "inputs": dict(zip(FEATURES, [round(v, 4) for v in r["x"]])),
+                "calibration": calibration.get((r["city"], lead)),
                 "p39_version": p[1] if p else None, "version": version, "computed_at": now.isoformat()})
 
     detail = {"as_of": as_of.isoformat(), "version": version, "cells": len(coef_rows),
@@ -435,6 +488,12 @@ def main(argv=None):
               "unreached": unreached, "rounds": rounds, "chosen": chosen_by, "held_out": scores,
               "stepped": sum(1 for a, _ in steps.values() if a < 1.0),
               "pooled_cities": sum(1 for _, n in steps.values() if n < MIN_CITY_DAYS),
+              "calibration": {"error": calibration_error, "cells": len(calibration),
+                              "applies": sum(v["applies"] for v in calibration.values()),
+                              "held_reasons": {reason: sum(v["reason"] == reason for v in calibration.values())
+                                               for reason in sorted({v["reason"] for v in calibration.values()})},
+                              "validation_days": city_calibration.VALIDATION_DAYS,
+                              "min_validation_days": city_calibration.MIN_VALIDATION_DAYS},
               "priors": {"bound_c": BOUND_C, "min_city_days": MIN_CITY_DAYS, "max_step_c": MAX_STEP_C,
                          "eval_days": EVAL_DAYS}}
     print(json.dumps(detail, indent=1, default=str))
@@ -444,7 +503,7 @@ def main(argv=None):
         upsert_replace("derived_mos_coefficients", coef_rows, "city_key,lead_days")
     if out_rows:
         upsert_replace("derived_mos_forecast", out_rows, "city_key,for_date")
-    status = "ok" if coef_rows and out_rows and not unreached else ("partial" if coef_rows else "error")
+    status = "ok" if coef_rows and out_rows and not unreached and not calibration_error and (args.no_eval or len(calibration) == len(coef_rows)) else ("partial" if coef_rows else "error")
     log_run(JOB, status, len(out_rows), detail)
     return 0 if status != "error" else 1
 

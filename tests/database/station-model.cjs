@@ -42,6 +42,24 @@ const MIG = fs.readFileSync(path.join(__dirname, '..', '..', 'supabase', 'migrat
   assert.equal((await flag()).enabled, true, 're-runnable without resetting the switch');
   assert.equal((await db.query('select count(*)::int n from public.derived_mos_forecast')).rows[0].n, 1);
 
+  await db.exec(`create table public.derived_station_width (
+    city_key text, lead_days int, sigma_c numeric, prev_sigma_c numeric,
+    n int, as_of date, primary key(city_key,lead_days));`);
+  const calibration = fs.readFileSync(path.join(__dirname, '..', '..', 'supabase', 'migrations',
+    '20261016154021_city_blend_calibration.sql'), 'utf-8');
+  await db.exec(calibration);
+  await db.exec(calibration);
+  assert.equal((await db.query('select calibration from public.derived_mos_forecast')).rows[0].calibration, null);
+  await db.exec(`update public.derived_mos_coefficients set calibration =
+    '{"applies":false,"sigma_c":1.1,"reason":"later-date improvement unproven"}'::jsonb;
+    set role anon;`);
+  const learning = (await db.query('select * from public.v_city_learning')).rows;
+  assert.equal(learning[0].calibration.applies, false, 'anon can see the held city fit');
+  assert.equal(learning[0].training_days, 400);
+  assert.ok(!('coef' in learning[0]), 'private model coefficients are not exposed');
+  assert.equal((await db.query(`select has_table_privilege('anon', 'public.v_city_learning', 'UPDATE') ok`)).rows[0].ok, false);
+  await db.exec('reset role');
+
   for (const t of ['derived_mos_coefficients', 'derived_mos_forecast']) {
     const g = (await db.query(`select
         has_table_privilege('anon', 'public.${t}', 'select') a,

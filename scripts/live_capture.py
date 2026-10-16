@@ -57,6 +57,8 @@ import os
 import sys
 import time
 
+from requests import exceptions as http_errors
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import _get, _post, get_cities, log_run, rest, rest_all, rpc  # noqa: E402
 import honest_record  # noqa: E402
@@ -77,7 +79,9 @@ LEAD_HORIZON = {1: HORIZON_H, 2: HORIZON2_H}
 CAPTURE_HORIZONS = {**LEAD_HORIZON, 0: 24}
 HOURLY_KIND = {0: "hourly0", 1: "hourly", 2: "hourly2"}
 MODELS_KIND = {0: "models0", 1: "models1", 2: "models2"}
-CITIES_PER_REQUEST = honest_record.CHUNK
+# Smaller responses reduce the cost of a slow previous-runs request. Keep
+# serial requests: that endpoint refuses concurrent calls from one address.
+CITIES_PER_REQUEST = honest_record.CHUNK // 2
 REQUEST_TIMEOUT_S = 15
 # The tick reads the stations first; its answer is normally on disk a few
 # seconds in. Waited for no longer than this.
@@ -250,7 +254,9 @@ def _fetch(cities, now, left, hourly, rows_of):
     """({lead: [(captured_at, [{key, payload}])]}, detail). One request per
     CITIES_PER_REQUEST cities, one at a time (honest_record: Open-Meteo
     refuses several open requests from one address); a chunk that fails is
-    recorded, the next tick asks again. `rows_of(city_key, answer, lead, first,
+    split once and retried after the other first attempts when the failure
+    is transient. Bad identities, malformed answers and rate limits are not
+    retried. `rows_of(city_key, answer, lead, first,
     last)` gives one lead's rows inside that lead's window.
 
     EACH CHUNK CARRIES THE TIME ITS OWN ANSWER ARRIVED (Codex on #386): one
@@ -259,11 +265,13 @@ def _fetch(cities, now, left, hourly, rows_of):
     windows = {lead: hourly_window(now, h) for lead, h in CAPTURE_HORIZONS.items()}
     first, last = windows[1][0], max(w[1] for w in windows.values())
     rows = {lead: [] for lead in CAPTURE_HORIZONS}
-    errors, answered = [], 0
-    for i in range(0, len(cities), CITIES_PER_REQUEST):
-        chunk = cities[i:i + CITIES_PER_REQUEST]
+    errors, retries, answered, recovered = [], [], 0, 0
+    pending = [(cities[i:i + CITIES_PER_REQUEST], False)
+               for i in range(0, len(cities), CITIES_PER_REQUEST)]
+    for pos, (chunk, retry) in enumerate(pending):
         if left() < RESERVE_S:
-            errors.append(f"{chunk[0]['city_key']}..: not asked, out of time")
+            missing = [c["city_key"] for rest, _ in pending[pos:] for c in rest]
+            errors.append(f"{','.join(missing)}: not asked, out of time")
             break
         try:
             answers = _ask(chunk, dict(hourly, start_date=first.date().isoformat(),
@@ -279,13 +287,24 @@ def _fetch(cities, now, left, hourly, rows_of):
             for lead in CAPTURE_HORIZONS:
                 rows[lead].append((arrived, got[lead]))
             answered += len(chunk)
+            if retry:
+                recovered += len(chunk)
         except Exception as e:
-            errors.append(f"{chunk[0]['city_key']}..{chunk[-1]['city_key']}: "
-                          f"{type(e).__name__}: {str(e)[:120]}")
+            message = (f"{chunk[0]['city_key']}..{chunk[-1]['city_key']}: "
+                       f"{type(e).__name__}: {str(e)[:120]}")
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            transient = isinstance(e, (http_errors.Timeout, http_errors.ConnectionError, TimeoutError))
+            transient = transient or (isinstance(e, http_errors.HTTPError) and status in (500, 502, 503, 504))
+            if transient and not retry:
+                retries.append(message)
+                size = max(1, (len(chunk) + 1) // 2)
+                pending.extend((chunk[i:i + size], True) for i in range(0, len(chunk), size))
+            else:
+                errors.append(message)
     return rows, {"cities": len(cities), "answered": answered,
                   "values": {lead: sum(len(r) for _, r in batches) for lead, batches in rows.items()},
                   "window": {lead: [w[0].isoformat(), w[1].isoformat()] for lead, w in windows.items()},
-                  "errors": errors}
+                  "retries": retries, "recovered": recovered, "errors": errors}
 
 
 def fetch_hourly(cities, now, left):
@@ -441,18 +460,20 @@ def run(now=None, dry_run=False, iem_path=None):
     # the reports' time (12 Oct)
     cities = []
 
-    def forecast(part, fetch):
+    def forecast(part, fetch, part_left):
         try:
             t0 = time.monotonic()
             if not cities:
                 cities.extend(c for c in get_cities() if c.get("latitude") is not None)
-            by_kind, d = fetch(cities, now, left)
+            by_kind, d = fetch(cities, now, part_left)
             d["new"] = {}
             for kind, batches in by_kind.items():
                 d["new"][kind] = 0
                 for captured, rows in batches:
                     try:
-                        d["new"][kind] += put(kind, captured, rows, dry_run, left)[1]
+                        if part_left() <= 0:
+                            raise TimeoutError("capture part budget exhausted before write")
+                        d["new"][kind] += put(kind, captured, rows, dry_run, part_left)[1]
                     except Exception as e:
                         d["errors"].append(f"{kind} write: {type(e).__name__}: {str(e)[:160]}")
             d["seconds"] = round(time.monotonic() - t0, 1)
@@ -464,13 +485,20 @@ def run(now=None, dry_run=False, iem_path=None):
             parts_ok.append(False)
             return 0
 
-    new_total += forecast("hourly", fetch_hourly)
+    # Give both forecast families a turn even if one provider response hangs.
+    # The report wait also respects this reservation; an absent IEM file must
+    # not consume the models' turn. Unused hourly time remains available.
+    models_reserve = max(0.0, (left() - RESERVE_S) / 2)
+    hourly_end = time.monotonic() + models_reserve
+    hourly_left = lambda: min(left(), hourly_end - time.monotonic())  # noqa: E731
+    new_total += forecast("hourly", fetch_hourly, hourly_left)
 
     # the station reports, from the tick's own answer
     try:
         t0 = time.monotonic()
         path = iem_path or os.environ.get("LIVE_CAPTURE_IEM")
-        got = read_iem(path, IEM_WAIT_S, left) if path else None
+        report_left = lambda: left() - models_reserve  # noqa: E731
+        got = read_iem(path, IEM_WAIT_S, report_left) if path else None
         if got is None:
             detail["reports"] = {"error": "no IEM answer from the tick" + ("" if path else " (LIVE_CAPTURE_IEM unset)")}
             parts_ok.append(False)
@@ -487,7 +515,7 @@ def run(now=None, dry_run=False, iem_path=None):
         detail["reports"] = {"error": f"{type(e).__name__}: {str(e)[:160]}"}
         parts_ok.append(False)
 
-    new_total += forecast("models", fetch_models)
+    new_total += forecast("models", fetch_models, left)
 
     detail["seconds"] = round(time.monotonic() - started, 1)
     status = "ok" if all(parts_ok) else ("error" if not any(parts_ok) else "partial")

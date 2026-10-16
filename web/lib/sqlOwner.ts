@@ -157,6 +157,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_city_hit_history_live": "supabase/migrations/20260929220000_the_edges_keep_the_prices_the_record_reads.sql",
   "v_city_hit_summary": "ad4_85_city_hit_history.sql",
   "v_city_ladder_edges": "ad4_89_page_cache.sql",
+  "v_city_learning": "supabase/migrations/20261016154021_city_blend_calibration.sql",
   "v_city_metadata_health": "supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql",
   "v_city_metadata_verification": "supabase/migrations/20260913092000_phase1d_city_metadata_evidence.sql",
   "v_city_observation_health": "ad4_71_observation_health.sql",
