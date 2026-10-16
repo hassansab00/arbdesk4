@@ -1,0 +1,107 @@
+{
+ "version": "wxrd3:v3:2e88d630d16d",
+ "fit_last": "2026-10-11",
+ "minimum_forward_dates": 14,
+ "all": {
+  "n": 556,
+  "dates": [
+   "2026-10-13",
+   "2026-10-14",
+   "2026-10-15"
+  ],
+  "candidate_hits": 327,
+  "serving_hits": 285,
+  "candidate_nll": 0.9679659281018017,
+  "serving_nll": 1.2383235606034613
+ },
+ "before_peak": {
+  "n": 434,
+  "dates": [
+   "2026-10-13",
+   "2026-10-14",
+   "2026-10-15"
+  ],
+  "candidate_hits": 228,
+  "serving_hits": 192,
+  "candidate_nll": 1.085302417291216,
+  "serving_nll": 1.3662683988227895
+ },
+ "checkpoints": {
+  "morning": {
+   "n": 106,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15"
+   ],
+   "candidate_hits": 39,
+   "serving_hits": 47,
+   "candidate_nll": 1.32521457179759,
+   "serving_nll": 1.5099239888751974
+  },
+  "noon": {
+   "n": 108,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15"
+   ],
+   "candidate_hits": 63,
+   "serving_hits": 47,
+   "candidate_nll": 1.0168823620887304,
+   "serving_nll": 1.324470149220319
+  },
+  "prepeak_2h": {
+   "n": 109,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15"
+   ],
+   "candidate_hits": 62,
+   "serving_hits": 44,
+   "candidate_nll": 1.0874037672934274,
+   "serving_nll": 1.358996826759877
+  },
+  "prepeak_1h": {
+   "n": 111,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15"
+   ],
+   "candidate_hits": 64,
+   "serving_hits": 54,
+   "candidate_nll": 0.9207044932727613,
+   "serving_nll": 1.2768929012225116
+  },
+  "postpeak_1h": {
+   "n": 122,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15"
+   ],
+   "candidate_hits": 99,
+   "serving_hits": 93,
+   "candidate_nll": 0.5505557944279844,
+   "serving_nll": 0.7831755295609347
+  }
+ },
+ "regressed_checkpoints": [
+  "morning"
+ ],
+ "immature_checkpoints": [
+  "morning",
+  "noon",
+  "prepeak_2h",
+  "prepeak_1h"
+ ],
+ "excluded": {
+  "not_settled": 90
+ },
+ "settled_first_calls": 850,
+ "gate": "insufficient forward dates",
+ "changes_serving": false,
+ "made": "2026-10-16T02:51:24.771965+00:00"
+}
