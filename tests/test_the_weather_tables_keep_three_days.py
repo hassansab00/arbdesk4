@@ -103,7 +103,8 @@ def test_the_view_statement_is_ad4_71s_verbatim():
     closer = "left join live_weather lw  on lw.city_key = t.city_key;"
     oh = ad4_71[i:ad4_71.index(closer, i) + len(closer)].replace(
         opener, "create or replace view public.v_city_observation_health as", 1)
-    assert "$oh$" + oh + "$oh$" in VIEW.read_text(encoding="utf-8")
+    newest = ROOT / "supabase" / "migrations" / "20261016081209_station_report_fallback.sql"
+    assert "$oh$" + oh + "$oh$" in newest.read_text(encoding="utf-8")
     assert "from derived_station_day_sources k" in oh
 
 

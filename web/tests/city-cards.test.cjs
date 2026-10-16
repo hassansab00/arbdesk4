@@ -2,8 +2,12 @@
 // shows, which bucket it calls, which trade it offers. Run with: npm run test:routes
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { buildCards, disagreementRecord, venueRead, pickStanding, pricedFromWords } =
+const { buildCards, disagreementRecord, venueRead, pickStanding, pricedFromWords, statusLabel } =
   require(path.join(__dirname, '..', '.route-test', 'lib', 'cityCards.js'));
+
+assert.equal(statusLabel({ status: 'unavailable', reason: 'Station reports stale (last 5.0 h ago)' }), 'Station data stale');
+assert.equal(statusLabel({ status: 'unavailable', reason: 'No usable forecast in the last day' }), 'Forecast data stale or missing');
+assert.equal(statusLabel({ status: 'candidate', reason: 'Fresh data' }), 'Candidate');
 
 const cities = [
   { city_key: 'london', display_name: 'London', unit: 'C' },

@@ -9,7 +9,7 @@ import RefreshButton from "@/components/RefreshButton";
 import { fmtPct, fmtPp, fmtPrice, pnlColor, regimeColor } from "@/lib/format";
 import { fmtTemp, fmtTempDelta } from "@/lib/units";
 import {
-  buildCards, FORECASTS_DISAGREE_C, STATUS_WORDS, statusFor,
+  buildCards, FORECASTS_DISAGREE_C, statusLabel, statusFor,
   type CityCard, type CityRow, type CurrentRow, type ForecastRow, type LadderRow,
   type LiveRow, type OwnModelRow, type StatusRow,
 } from "@/lib/cityCards";
@@ -56,9 +56,9 @@ const STRIP = ["day_ahead", "noon", "prepeak_1h"] as const;
  * `scorecard` (v_prediction_scorecard_all) and `summary` (v_city_hit_summary)
  * are the page's own reads, handed to a city's popup.
  */
-export default function CityCards({ onPick, cities, moment = "day_ahead", hindsight = [], status = [], statusError = null,
+export default function CityCards({ onPick, onRefreshStatus, cities, moment = "day_ahead", hindsight = [], status = [], statusError = null,
                                     scorecard = [], summary = [] }: {
-  onPick?: (city: string) => void; cities?: string[]; moment?: string;
+  onPick?: (city: string) => void; onRefreshStatus?: () => void; cities?: string[]; moment?: string;
   hindsight?: HindsightRow[]; status?: StatusRow[]; statusError?: string | null;
   scorecard?: ScoreRow[]; summary?: HitSummaryRow[];
 }) {
@@ -110,6 +110,7 @@ export default function CityCards({ onPick, cities, moment = "day_ahead", hindsi
 
   const reload = () => {
     citiesQ.refresh(); ladderQ.refresh(); forecastQ.refresh(); ownQ.refresh(); liveQ.refresh(); currentQ.refresh();
+    onRefreshStatus?.();
   };
   const dates = useMemo(
     () => Array.from(new Set((ladderQ.data ?? []).map((r) => r.for_date))).sort(), [ladderQ.data]);
@@ -234,7 +235,7 @@ function Card({ c, onPick, moment, st, ev, strip, after, showRecord }: {
       {st && (
         <div className={`mt-1 rounded border px-2 py-0.5 text-[11px] ${STATUS_TONE[st.status]}`}
           title={`${(st.reasons ?? []).join("; ") || st.reason} · rules ${st.rules_version ?? "?"} · at ${momentLabel(moment)}`}>
-          <b>{STATUS_WORDS[st.status]}</b> · {st.reason}
+          <b>{statusLabel(st)}</b> · {st.reason}
         </div>
       )}
 

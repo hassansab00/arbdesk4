@@ -536,7 +536,8 @@ def test_read_stations_is_one_request_for_the_board_over_six_hours(monkeypatch):
 
     def fetch(station, start, end, since=None, until=None, timeout=300, data=io.DATA):
         calls.append((list(station), start, end, since, until, timeout, data))
-        return _iem_csv(["LGA,2026-09-24 20:51,70.0,60.0,70,180,5,0,FEW,1015.0"])
+        return _iem_csv(["LGA,2026-09-24 20:51,70.0,60.0,70,180,5,0,FEW,1015.0",
+                         "EGLC,2026-09-24 21:50,60.0,,,,,,,"])
     monkeypatch.setattr(io, "fetch_station", fetch)
     monkeypatch.setattr(tick, "upsert", lambda t, rows, k: written.append((t, rows, k)) or len(rows))
     monkeypatch.delenv("LIVE_CAPTURE_IEM", raising=False)
@@ -551,11 +552,14 @@ def test_read_stations_is_one_request_for_the_board_over_six_hours(monkeypatch):
     (table, rows, key), = written
     assert table == "weather_observations" and key == "city_key,valid_at,source"
     assert rows[0]["city_key"] == "nyc", "a US station answers under its three-letter id"
-    assert out["rows"] == 1 and out["cities"] == 1 and out["silent"] == ["london"] and out["error"] is None
+    assert out["rows"] == 2 and out["cities"] == 2 and out["silent"] == [] and out["error"] is None
+    assert out["iem_stale"] == [] and "awc" not in out
 
 
 def test_read_stations_never_raises(monkeypatch):
     import ingest_observations as io
+    import station_fallback
+    monkeypatch.setattr(station_fallback, "fetch", lambda *a: ([], {"errors": ["offline"]}))
     monkeypatch.setattr(tick, "get_cities", lambda **kw: [{"city_key": "nyc", "icao": "KLGA"}])
 
     def boom(*a, **k):

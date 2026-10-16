@@ -200,8 +200,12 @@ settled as (
   select r.city_key,
          count(*)                                                       as settlement_readings_today,
          max(r.temp_c)                                                  as settlement_max_today_c
-  from v_city_today_readings r
-  where r.source = 'IEM'
+  from (
+    select distinct on (city_key, valid_at) city_key, valid_at, temp_c
+      from v_city_today_readings
+     where source in ('IEM', 'AWC')
+     order by city_key, valid_at, (source = 'IEM') desc
+  ) r
   group by r.city_key
 ),
 -- ...and the part of it the refresh has had time to take in: readings known
@@ -211,13 +215,18 @@ settled as (
 settled_due as (
   select o.city_key,
          max(o.temp_c)                                                  as settlement_max_due_c
-  from weather_observations o
+  from (
+    select distinct on (city_key, valid_at) city_key, valid_at, temp_c
+      from weather_observations
+     where source in ('IEM', 'AWC')
+       and observed_at <= now() - interval '15 minutes'
+       and valid_at > now() - interval '36 hours'
+     order by city_key, valid_at, (source = 'IEM') desc
+  ) o
   join tz t on t.city_key = o.city_key
-  where o.source = 'IEM'
-    and o.temp_c is not null
+  where o.temp_c is not null
     and o.valid_at > now() - interval '36 hours'
     and (o.valid_at at time zone t.timezone)::date = t.local_date
-    and o.observed_at <= now() - interval '15 minutes'
   group by o.city_key
 )
 select

@@ -63,10 +63,15 @@ begin
   -- The venue settles on the routine reports (source 'IEM'). A US city's NWS
   -- five-minute readings run warm of them, and their maximum was outside the
   -- venue's winning bucket on 84 of 297 US city-days (5 Sep - 2 Oct).
+  routine as (
+    select distinct on (city_key, valid_at) city_key, valid_at, temp_c
+      from today where source in ('IEM', 'AWC')
+     order by city_key, valid_at, (source = 'IEM') desc
+  ),
   settle as (
     select distinct on (city_key) city_key, temp_c as settle_max_c, valid_at as settle_max_at,
            count(*) over (partition by city_key)::int as settle_readings
-      from today where source = 'IEM'
+      from routine
      order by city_key, temp_c desc, valid_at asc
   ),
   cnt as (

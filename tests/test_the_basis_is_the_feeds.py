@@ -33,19 +33,21 @@ def test_the_migration_carries_the_shipped_statements_verbatim():
     # 9 Oct its feed age reads the station cache for a city the readings no
     # longer hold (Fresh Supabase, part 2b). This one's view is ad4_71's but
     # for that one CTE.
-    newest = _read("supabase", "migrations", "20261009090100_the_feed_age_reads_the_cache.sql")
+    newest = _read("supabase", "migrations", "20261016081209_station_report_fallback.sql")
     assert "$oh$" + oh + "$oh$" in newest
-    feed = _stmt(oh, "feed as (", "\n),\n")
+    assert "$fn$" + fn + "$fn$" in newest
+    previous = _read("supabase", "migrations", "20261009090100_the_feed_age_reads_the_cache.sql")
+    previous_oh = previous[previous.index("$oh$") + 4:previous.index("$oh$", previous.index("$oh$") + 4)]
+    feed = _stmt(previous_oh, "feed as (", "\n),\n")
     old_feed = ("feed as (\n  select t.city_key,\n         (select max(o.valid_at)\n"
                 "            from weather_observations o\n           where o.city_key = t.city_key\n"
                 "             and o.temp_c is not null)                                  as newest_reading\n"
                 "  from tz t\n),\n")
     shipped = mig[mig.index("$oh$") + 4:mig.index("$oh$", mig.index("$oh$") + 4)]
     assert old_feed in shipped
-    comment = oh[:oh.index("feed as (")]
+    comment = previous_oh[:previous_oh.index("feed as (")]
     comment = comment[comment.rindex("),\n") + 3:]
-    assert shipped.replace(old_feed, comment + feed) == oh, "the 9 Oct view changed more than the feed age"
-    assert "$fn$" + fn + "$fn$" in mig
+    assert shipped.replace(old_feed, comment + feed) == previous_oh, "the 9 Oct view changed more than the feed age"
 
 
 def test_both_sides_count_the_settlement_readings_when_the_maximum_is_theirs():
@@ -66,4 +68,4 @@ def test_only_a_reading_the_maximum_is_built_from_can_be_impossible():
     # ...and a stale stored maximum still shows beside settlement readings,
     # once the refresh has had time to take them in (pg_cron every 10 min)
     assert "sd.settlement_max_due_c > lw.running_max_c" in flag
-    assert "o.observed_at <= now() - interval '15 minutes'" in ad4_71
+    assert "observed_at <= now() - interval '15 minutes'" in ad4_71
