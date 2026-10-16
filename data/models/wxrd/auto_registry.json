@@ -5,6 +5,12 @@
    "decision": "wait",
    "night": "2026-10-15",
    "report": "data/eval/wxpredict/cycles/2026-10-15.json"
+  },
+  {
+   "action": "cycle",
+   "decision": "wait",
+   "night": "2026-10-16",
+   "report": "data/eval/wxpredict/cycles/2026-10-16.json"
   }
  ],
  "paused": false,
