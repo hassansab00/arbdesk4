@@ -197,7 +197,7 @@ export default function CityPopup({
           <div>
             <h2 className="text-base font-semibold">{c.name}</h2>
             <div className="text-muted">
-              {fmtResolutionDate(c.for_date)} · {fmtDaysAhead(c.for_date)}
+              {fmtResolutionDate(c.for_date)} · {fmtDaysAhead(c.for_date, city.timezone ?? undefined)}
               {city.timezone && <> · local time {city.timezone}</>}
             </div>
           </div>
@@ -277,7 +277,7 @@ export default function CityPopup({
                       {c.live.day_decided ? <b className="ml-1 text-accent">day decided</b>
                         : c.live.peak_window_state ? <span className="ml-1 text-muted">{c.live.peak_window_state}</span> : null}
                       {c.live.observed_at && <span className="block text-[10px] text-muted">reading {fmtDateTime(c.live.observed_at)} · {c.live.source_kind ?? "source unknown"}</span>}</>
-                  : <span className="text-muted">no reading for this day yet{fmtDaysAhead(c.for_date) === "today" ? "" : " (the day has not started)"}</span>}
+                  : <span className="text-muted">no reading for this day yet{fmtDaysAhead(c.for_date, city.timezone ?? undefined) === "today" ? "" : " (the day has not started)"}</span>}
               </dd>
               <dt className="text-muted" title="The month's median local hour of the day's maximum, and its 10th-90th percentile window, from three years of this station's readings (derived_weather_peak).">
                 Usual peak
@@ -286,7 +286,7 @@ export default function CityPopup({
                 {peakQ.loading ? <span className="text-muted">reading…</span>
                   : peakQ.error ? <span className="text-bad">{peakQ.error}</span>
                   : peak?.peak_hour_local != null
-                    ? <>{fmtCityHour(peak.peak_hour_local, city.timezone)}
+                    ? <>{fmtCityHour(peak.peak_hour_local, city.timezone, undefined, c.for_date)}
                         {peak.window_width_h != null && <span className="text-muted"> · window {Number(peak.window_width_h).toFixed(1)} h</span>}
                         {peak.n_days != null && <span className="text-muted"> · {peak.n_days} days</span>}</>
                     : <span className="text-muted">not measured for this month</span>}

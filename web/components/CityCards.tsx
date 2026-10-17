@@ -225,7 +225,7 @@ function Card({ c, onPick, moment, st, ev, strip, after, showRecord }: {
           {c.name}
         </button>
         <span className="shrink-0 text-muted">
-          {fmtResolutionDate(c.for_date)} · {fmtDaysAhead(c.for_date)}
+          {fmtResolutionDate(c.for_date)} · {fmtDaysAhead(c.for_date, c.timezone ?? undefined)}
         </span>
       </div>
 

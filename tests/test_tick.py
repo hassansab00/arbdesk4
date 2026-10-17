@@ -721,3 +721,15 @@ def test_the_tick_starts_the_status_read_early_and_hands_it_to_the_engine(world)
     assert kw["status_read"] is world["status_read"]
     src = inspect.getsource(tick.run)
     assert src.index("read_stations(") < src.index("start_status_read()") < src.index("_upcoming_markets()")
+
+
+def test_historical_rehearsal_prepares_primary_at_the_requested_instant(world, monkeypatch):
+    import predictive_primary
+    seen = []
+    def prepare(markets, bands, cities, now, *a, **kw):
+        seen.append((now, kw["dry_run"]))
+        return {}
+    monkeypatch.setattr(predictive_primary, "prepare", prepare)
+    instant = at("2026-09-24T22:35")
+    tick.run(now=instant, dry_run=True)
+    assert seen == [(instant, True)], "a replay must not know captures from the wall-clock future"

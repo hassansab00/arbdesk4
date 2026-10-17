@@ -69,6 +69,19 @@ passed: 4,203 Python tests, 9 skips (176.89 seconds), full database contracts,
 and the five primary gate tests in a separate base environment without ML.
 The PR body records final CI, merge, runtime and rendered-page acceptance.
 
+The second real-workflow rehearsal 39040608977 passed in 60 seconds: the
+primary built three eligible ladders in 8.99 seconds with no fallback, and
+the tick captured all eight due calls with none failed/deferred (45.1 seconds).
+CI passed on 5e0f735. Review also identified that a historical --at rehearsal
+must pass its supplied instant to the primary's arrival reader. The tick now
+preserves that explicit instant while a normal live run still takes its actual
+post-ingest input snapshot. A regression test exercises the historical call.
+The city cards/popups also label today/tomorrow on the city's clock; viewer
+midnight cannot roll the weather day forward. Popup peak conversions use the
+target date so a future day crossing daylight saving keeps the right offset.
+Final review-fix validation passed 4,204 Python tests with 9 skips (172.06
+seconds), all database contracts and the web types/routes/production build.
+
 ## Remaining reliability and forward checks — 16 Oct, in progress
 
 The #407 release merged as 44c5f15c69a3. Its real capture completed at

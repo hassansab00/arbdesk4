@@ -438,6 +438,7 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     import current_ladder
 
     t0 = time.monotonic()
+    rehearsal_at = now
     now = now or dt.datetime.now(dt.timezone.utc)
     version = engine_version()
     import engine_shadow
@@ -514,7 +515,7 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
         checkpoint_names.setdefault((city, target), []).append(name)
     detail["primary"] = predictive_primary.prepare(
         [market_of[d] for d in days + reprice], bands_by_market, cities,
-        dt.datetime.now(dt.timezone.utc), checkpoint_names, dry_run=dry_run)
+        rehearsal_at or dt.datetime.now(dt.timezone.utc), checkpoint_names, dry_run=dry_run)
 
     history_cache = {}
     deferred, failed, results = [], [], {}
