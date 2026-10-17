@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-10-17T18:26:46.539803+00:00",
+  "as_of": "2026-10-17T18:59:25.520275+00:00",
   "policy": "wx-city-phase-season-v1",
   "states": [
     {
@@ -1112,144 +1112,6 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "kuala_lumpur",
-      "decision": "held",
-      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "params": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "phase": "before_peak",
-      "policy": "wx-city-phase-season-v1",
-      "priors": {
-        "bootstrap_samples": 1000,
-        "bootstrap_seed": 20261017,
-        "max_age_days": 3,
-        "max_temperature_step": 0.05,
-        "max_tilt_step": 0.025,
-        "min_pool_dates": 20,
-        "min_pool_rows": 200,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "shrink_dates": 30,
-        "temperature_bounds": [
-          0.8,
-          1.5
-        ],
-        "tilt_bounds": [
-          -0.2,
-          0.2
-        ],
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "insufficient independent training/validation dates",
-      "train_dates": 0,
-      "train_rows": 0,
-      "validated_through": null,
-      "validation_dates": 0,
-      "validation_rows": 0,
-      "version": "wx-city-phase-season-v1:identity"
-    },
-    {
-      "anchor": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "as_of": "2026-10-17",
-      "city_key": "kuala_lumpur",
-      "decision": "held",
-      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "params": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "phase": "near_peak",
-      "policy": "wx-city-phase-season-v1",
-      "priors": {
-        "bootstrap_samples": 1000,
-        "bootstrap_seed": 20261017,
-        "max_age_days": 3,
-        "max_temperature_step": 0.05,
-        "max_tilt_step": 0.025,
-        "min_pool_dates": 20,
-        "min_pool_rows": 200,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "shrink_dates": 30,
-        "temperature_bounds": [
-          0.8,
-          1.5
-        ],
-        "tilt_bounds": [
-          -0.2,
-          0.2
-        ],
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "insufficient independent training/validation dates",
-      "train_dates": 0,
-      "train_rows": 0,
-      "validated_through": null,
-      "validation_dates": 0,
-      "validation_rows": 0,
-      "version": "wx-city-phase-season-v1:identity"
-    },
-    {
-      "anchor": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "as_of": "2026-10-17",
-      "city_key": "kuala_lumpur",
-      "decision": "held",
-      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-      "model_version": "wxrd3:v3:2e88d630d16d",
-      "params": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "phase": "after_peak",
-      "policy": "wx-city-phase-season-v1",
-      "priors": {
-        "bootstrap_samples": 1000,
-        "bootstrap_seed": 20261017,
-        "max_age_days": 3,
-        "max_temperature_step": 0.05,
-        "max_tilt_step": 0.025,
-        "min_pool_dates": 20,
-        "min_pool_rows": 200,
-        "min_train_dates": 20,
-        "min_validation_dates": 10,
-        "shrink_dates": 30,
-        "temperature_bounds": [
-          0.8,
-          1.5
-        ],
-        "tilt_bounds": [
-          -0.2,
-          0.2
-        ],
-        "validation_days": 14,
-        "window_days": 180
-      },
-      "reason": "insufficient independent training/validation dates",
-      "train_dates": 0,
-      "train_rows": 0,
-      "validated_through": null,
-      "validation_dates": 0,
-      "validation_rows": 0,
-      "version": "wx-city-phase-season-v1:identity"
-    },
-    {
-      "anchor": {
-        "temperature": 1.0,
-        "tilt": 0.0
-      },
-      "as_of": "2026-10-17",
       "city_key": "austin",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
@@ -1388,7 +1250,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "chengdu",
+      "city_key": "kuala_lumpur",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -1434,7 +1296,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "chengdu",
+      "city_key": "kuala_lumpur",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -1480,7 +1342,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "chengdu",
+      "city_key": "kuala_lumpur",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -1619,6 +1481,144 @@
       },
       "as_of": "2026-10-17",
       "city_key": "los_angeles",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-17",
+      "city_key": "chengdu",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-17",
+      "city_key": "chengdu",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-17",
+      "city_key": "chengdu",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -2768,7 +2768,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "sao_paulo",
+      "city_key": "dallas",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -2814,7 +2814,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "sao_paulo",
+      "city_key": "dallas",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -2860,7 +2860,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "sao_paulo",
+      "city_key": "dallas",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -2906,7 +2906,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "dallas",
+      "city_key": "sao_paulo",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -2952,7 +2952,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "dallas",
+      "city_key": "sao_paulo",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -2998,7 +2998,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "dallas",
+      "city_key": "sao_paulo",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -4424,7 +4424,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "shenzhen",
+      "city_key": "houston",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -4470,7 +4470,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "shenzhen",
+      "city_key": "houston",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -4516,7 +4516,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "shenzhen",
+      "city_key": "houston",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -4562,7 +4562,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "houston",
+      "city_key": "shenzhen",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -4608,7 +4608,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "houston",
+      "city_key": "shenzhen",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -4654,7 +4654,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "houston",
+      "city_key": "shenzhen",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -5390,7 +5390,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "london",
+      "city_key": "nyc",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -5436,7 +5436,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "london",
+      "city_key": "nyc",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -5482,7 +5482,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "london",
+      "city_key": "nyc",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -5528,7 +5528,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "nyc",
+      "city_key": "london",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -5574,7 +5574,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "nyc",
+      "city_key": "london",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
@@ -5620,7 +5620,7 @@
         "tilt": 0.0
       },
       "as_of": "2026-10-17",
-      "city_key": "nyc",
+      "city_key": "london",
       "decision": "held",
       "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "model_version": "wxrd3:v3:2e88d630d16d",
