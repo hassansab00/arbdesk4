@@ -133,3 +133,20 @@ def test_a_primary_cannot_price_if_its_exact_input_record_was_not_saved(monkeypa
     assert payload["history_committed_at"] < now.timestamp()
     assert payload["row_sha256"] == next(iter(pp._predictions.values()))["input_sha256"]
     assert next(iter(pp._predictions.values()))["floor_unit"] == 35
+
+
+def test_served_call_freezes_raw_baseline_calibration_and_exact_lineage(monkeypatch):
+    monkeypatch.setenv('PREDICTIVE_PRIMARY',pp.POLICY)
+    monkeypatch.setattr('common.model_version_id',lambda kind,*a,**k: kind+'-id')
+    monkeypatch.setattr(pp,'_lineage',{})
+    key=('city','2026-10-17',frozenset(['a','b']))
+    state=dict(version='validated-fit',params=dict(temperature=1.05,tilt=.025))
+    monkeypatch.setattr(pp,'_predictions',{key:dict(version='wxrd3:v3:checked',as_of='2026-10-17T12:36:00Z',
+        probs={'a':.7,'b':.3},raw_probs={'a':.8,'b':.2},calibration=state,
+        floor_c=20,unit='C',floor_unit=20,input_sha256='digest',input_key='packet',predictive_context={'band_ids':['a','b']})})
+    baseline=([dict(band_id='a',calibrated_prob=.6),dict(band_id='b',calibrated_prob=.4)],None,['priced_from:baseline'])
+    rows,_,_=pp.apply('city','2026-10-17',baseline)
+    assert rows[0]['raw_prob']==.8 and rows[0]['calibrated_prob']==.7 and rows[0]['calibration_version']=='calibration-id'
+    saved=pp.checkpoint_lineage('city','2026-10-17',{'a':.7,'b':.3})
+    assert saved['raw_probs']=={'a':.8,'b':.2} and saved['baseline_probs']=={'a':.6,'b':.4} and saved['calibration']==state
+    assert not pp.checkpoint_lineage('city','2026-10-17',{'a':.6,'b':.4})

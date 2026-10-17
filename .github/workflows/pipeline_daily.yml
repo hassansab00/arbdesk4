@@ -28,6 +28,10 @@ on:
   # every scheduled workflow is on the CLOCK table in n8n/P6.1_clock.template.json.
   workflow_dispatch:
     inputs:
+      learning_only:
+        description: 'Run city validation and the existing shadow candidate job, skipping ingestion'
+        type: boolean
+        default: false
       databank_days:
         description: 'How many days back to look for settled days'
         required: false
@@ -52,6 +56,7 @@ env:
 
 jobs:
   daily:
+    if: ${{ inputs.learning_only != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -363,7 +368,7 @@ jobs:
     needs: daily
     if: ${{ !cancelled() && github.ref_name == 'main' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40 # Existing candidate plus bounded city validation and evidence commit.
     permissions:
       contents: write
     steps:
@@ -372,6 +377,25 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.11', cache: pip, cache-dependency-path: requirements.wxpredict.txt }
       - run: pip install -r requirements.runtime.txt
+      - name: Learn and validate the frozen city predictions
+        id: city_calibration
+        if: ${{ !cancelled() }}
+        timeout-minutes: 4
+        run: python scripts/predictive_validation.py
+      - name: Preserve the city calibration evidence
+        if: ${{ !cancelled() && steps.city_calibration.outcome == 'success' }}
+        timeout-minutes: 3
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/eval/wxpredict/city_calibration
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Frozen city calibration evidence [skip ci]'
+          for attempt in 1 2 3; do
+            git pull --rebase origin main
+            if git push origin HEAD:main; then exit 0; fi
+          done
+          exit 1
       - name: Check the independent candidate window
         id: plan
         if: ${{ !cancelled() }}

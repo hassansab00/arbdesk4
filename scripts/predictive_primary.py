@@ -23,6 +23,7 @@ PEAK_CALLS = {"prepeak_2h", "prepeak_1h", "postpeak_1h"}
 _predictions = {}
 _eligible = set()
 _detail = {}
+_lineage = {}
 
 
 def enabled():
@@ -63,8 +64,8 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
     """Prepare one immutable batch BEFORE pricing workers start. Read only
     inputs received by `now`; persist the exact vectors before they can price.
     All expensive dependencies are optional outside the two enabled jobs."""
-    global _predictions, _eligible, _detail
-    _predictions, _eligible = {}, set()
+    global _predictions, _eligible, _detail, _lineage
+    _predictions, _eligible, _lineage = {}, set(), {}
     _detail = {"policy": POLICY, "selected": 0, "fallbacks": {}}
     if not enabled():
         return _detail
@@ -91,6 +92,14 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
         with open(meta_path) as fh:
             meta = json.load(fh)
         version = wl.variant_version(meta, "wxrd3")
+        from wx_city_calibration import phase, transform, usable
+        try:
+            cells = ops.rest_all("derived_wx_city_calibration", [
+                ("select", "city_key,phase,state"), ("model_version", "eq."+version),
+                ("computed_at", "lte."+now.isoformat())], order="city_key.asc,phase.asc", page_size=1000)
+        except Exception:
+            cells = []  # A missing/unavailable fit keeps the raw distribution.
+        calibration = {(c["city_key"],c["phase"]): c["state"] for c in cells}
         model = wl.load_model(meta, meta_path)
         city_keys = {m["city_key"] for m in selected}
         first = now - dt.timedelta(hours=wl.RECORD_HOURS)
@@ -112,6 +121,9 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
         bm, md = build_table.load_daily_forecasts()
         vectors, pairs = [], []
         for e in events:
+            if not meta.get("fit_last") or str(meta["fit_last"])[:10] >= e["date"]:
+                skipped["model trained on or after target"] += 1
+                continue
             if time.monotonic() - t0 > MAX_PREPARE_S:
                 skipped["primary preparation budget"] += 1
                 continue
@@ -139,18 +151,32 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
             key = "|".join((POLICY, str(e["event_id"]), str(int(now.timestamp()))))
             payload = {"policy": POLICY, "version": version, "as_of": now.isoformat(),
                        "history_commit": commit, "history_committed_at": committed_at,
+                       "model_fit_through": str(meta["fit_last"])[:10],
                        "band_ids": list(e["band_ids"]), "row": vector, "row_sha256": sha}
             packed.append({"key": key, "payload": payload})
-            accepted.append((e, row, p, sha))
+            accepted.append((e, row, p, sha, key))
         if packed and not dry_run:
             ops.rpc("live_capture_put", {"p_kind": decision_inputs.KIND,
                 "p_captured_at": dt.datetime.now(dt.timezone.utc).isoformat(), "p_rows": packed})
-        for e, row, p, sha in accepted:
+        for e, row, p, sha, input_key in accepted:
             # Market identity includes the ladder; a twin market cannot borrow
             # another listing's probabilities just because its city/day match.
             key = (e["city"], e["date"], frozenset(map(str, e["band_ids"])))
+            raw_probs = dict(zip(map(str, e["band_ids"]), map(float, p)))
+            context = {k: row.get(k) for k in lr.features.COLUMNS if k not in decision_inputs.LABELS}
+            context.update(band_ids=list(map(str,e["band_ids"])), model_fit_through=str(meta["fit_last"])[:10])
+            state = calibration.get((e["city"], phase(context)))
+            served = raw_probs
+            if state and usable(state, e["date"], version):
+                try:
+                    served = transform(raw_probs, context["band_ids"], state["params"])
+                except (KeyError, TypeError, ValueError):
+                    state = None
+            else:
+                state = None
             _predictions[key] = {"version": version, "as_of": now.isoformat(),
-                "probs": dict(zip(map(str, e["band_ids"]), map(float, p))),
+                "probs": served, "raw_probs": raw_probs, "input_key": input_key,
+                "calibration": state, "predictive_context": context,
                 "floor_c": float(row["rmax_c"]), "unit": e["unit"],
                 "floor_unit": float(row["rmax_unit"]), "input_sha256": sha,
                 "history_commit": commit}
@@ -192,12 +218,20 @@ def apply(city, target, result):
         "max_obs_age_min": MAX_OBS_AGE_MIN}, structural=False)
     if not version:
         return rows, reg, [*reasons, f"primary_fallback:{POLICY}:version_not_registered"]
+    state = primary.get("calibration")
+    cal_id = None
+    served = primary["probs"]
+    if state:
+        cal_id = model_version_id("calibration", state["version"], config=state, structural=False)
+        if not cal_id:
+            state, served = None, primary["raw_probs"]
+    baseline_probs = {str(r["band_id"]): float(r["calibrated_prob"]) for r in rows}
     out = []
     for baseline in rows:
         r = dict(baseline)
-        p = round(primary["probs"][str(r["band_id"])], 6)
-        r.update(raw_prob=p, calibrated_prob=p, computed_at=primary["as_of"],
-                 forecast_version=version, calibration_version=None,
+        p = round(served[str(r["band_id"])], 6)
+        r.update(raw_prob=round(primary.get("raw_probs", primary["probs"])[str(r["band_id"])], 6), calibrated_prob=p, computed_at=primary["as_of"],
+                 forecast_version=version, calibration_version=cal_id,
                  forecast_max_c=None, input_forecast_run=None,
                  centre_c=None, sigma_c=None, forecast_sigma_c=None,
                  station_width_c=None, observed_floor_c=primary["floor_c"],
@@ -208,4 +242,18 @@ def apply(city, target, result):
         "station_correction:", "measurement_layer:", "trajectory:", "postprocessed:"))]
     keep.extend([f"primary_policy:{POLICY}", f"primary_inputs:{primary['input_sha256']}",
                  f"priced_from:{primary['version']}"])
+    if primary.get("input_key"):
+        _lineage[key] = dict(input_as_of=primary["as_of"], input_key=primary["input_key"],
+            input_sha256=primary["input_sha256"], raw_probs=primary["raw_probs"],
+            baseline_probs=baseline_probs, baseline_model=next((r for r in reasons if r.startswith("priced_from:")), "unknown"),
+            calibration=state, predictive_context=primary["predictive_context"],
+            served_probs={str(r["band_id"]): r["calibrated_prob"] for r in out})
     return out, reg, keep
+
+
+def checkpoint_lineage(city, target, probs):
+    """Only attach metadata for the exact ladder that was actually served."""
+    record = _lineage.get((city,str(target),frozenset(probs)))
+    if record is None or record["served_probs"] != probs:
+        return {}
+    return {k:v for k,v in record.items() if k != "served_probs"}

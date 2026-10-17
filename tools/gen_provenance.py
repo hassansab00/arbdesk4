@@ -84,7 +84,7 @@ def _script_writes():
         # for derived_model_promotion - the table went from "written daily by
         # the Daily Pipeline" to "nothing fills this", which is the opposite
         # of what the change did.
-        for pat in (r"upsert(?:_replace)?\(\s*[\"']([a-z0-9_]+)[\"']",
+        for pat in (r"(?:upsert(?:_replace)?|freeze_insert)\(\s*[\"']([a-z0-9_]+)[\"']",
                     r"(?<!_)insert\(\s*[\"']([a-z0-9_]+)[\"']",
                     r"write_rows\(\s*[\"']([a-z0-9_]+)[\"']",
                     r"rest/v1/([a-z0-9_]+)[\"'?]"):

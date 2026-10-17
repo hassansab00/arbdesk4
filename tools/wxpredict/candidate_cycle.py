@@ -94,7 +94,7 @@ def incumbent():
     selected = registry.selected()
     if selected:
         return selected
-    path = os.path.join(common.ROOT, "data/models/wxrd/wxrd-v2_remaining.json")
+    path = os.path.join(common.ROOT, "data/models/wxrd/wxrd-v3_remaining.json")
     with open(path) as fh:
         return path, json.load(fh)
 

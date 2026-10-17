@@ -275,12 +275,32 @@ def build_row(city, target, checkpoint, local_time, rows, reasons, books, readin
         # the settlement station as it stands now: cities keeps no history
         "station": station,
     }
+    import predictive_primary
+    row.update(predictive_primary.checkpoint_lineage(city, target, probs))
     return row, None
 
 
 # --------------------------------------------------------------------------
 # the run
 # --------------------------------------------------------------------------
+def freeze_rows(rows, failed):
+    """One refused/expired city must not discard every other valid call."""
+    try:
+        return upsert("prediction_checkpoints", rows, ON_CONFLICT)
+    except Exception as exc:
+        if "Freeze refused:" not in str(exc):
+            raise
+    written = 0
+    for row in rows:
+        try:
+            written += upsert("prediction_checkpoints", [row], ON_CONFLICT)
+        except Exception as exc:
+            if "Freeze refused:" not in str(exc):
+                raise
+            failed.append(f"{row['city_key']} {row['target_date']} {row['checkpoint']}: {str(exc)[:180]}")
+    return written
+
+
 def _written(keys):
     """The (city, target, checkpoint) already held among keys, under ANY
     engine version (4 Oct).
@@ -581,7 +601,7 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
 
     written = 0
     if out and not dry_run:
-        written = upsert("prediction_checkpoints", out, ON_CONFLICT)
+        written = freeze_rows(out, failed)
 
     # Every ladder this tick priced, as the city-day's current prediction
     # (plan v2.3 P4.9): one per city-day, the newest winning, never appended.

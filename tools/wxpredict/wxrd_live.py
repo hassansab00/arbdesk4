@@ -275,15 +275,19 @@ def run(now=None, dry_run=False, variant=VARIANT, deadline=None):
                 skipped[why] = skipped.get(why, 0) + 1
                 continue
             out.append(variant_row(s, e["unit"], e["band_ids"], p, version, calibrated[key(s)], variant))
+    written = len(out)
     if out and not dry_run:
-        ops.upsert(TABLE, out, ON_CONFLICT)
-    detail.update(written=len(out), skipped=skipped, record_rows=len(record_rows),
+        from frozen_calls import freeze_insert
+        written = freeze_insert(TABLE, out, ON_CONFLICT, writer=ops.upsert,
+            refused=detail.setdefault("freeze_refused", []),
+            deadline=time.monotonic()+max(0,deadline-time.time()))
+    detail.update(written=written, skipped=skipped, record_rows=len(record_rows),
                   seconds=round(time.time() - t0, 1))
     if dry_run:
         detail["rows"] = out
     else:
         lost = sum(v for k, v in skipped.items() if k in ("no whole ladder", "not on the day"))
-        ops.log_run(job, "ok" if not lost and not detail.get("decision_input_capture_error") else "partial", len(out), detail)
+        ops.log_run(job, "ok" if not lost and not detail.get("decision_input_capture_error") and not detail.get("freeze_refused") else "partial", written, detail)
     return detail
 
 

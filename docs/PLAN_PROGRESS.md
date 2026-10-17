@@ -3,6 +3,29 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Frozen city learning and validation — 17 Oct, in progress
+
+Hassan requested immutable predict → freeze → settle → score → learn → validate
+for every city, and a ranked accuracy view with evidence about misses. This
+change adds database receipt/schedule/outcome guards; exact raw/baseline/input
+and calibration lineage; bounded city/peak-phase/season calibration validated
+on later dates; nightly committed fit evidence; and all-city horizon rankings.
+It preserves every historical call, outcome, archive and blinded experiment.
+The existing nightly candidate, intraday and archive workflows provide the
+cadence; no scheduled workflow or capital setting is added. Policy priors and
+interpretation limits are in docs/FROZEN_CITY_LEARNING.md. Held identity cells
+are the expected initial state until sufficient newly receipted calls settle.
+
+PR review also preserves the causal six-hour shadow retry window while keeping
+late/outcome cutoffs, isolates refused shadow rows, and scopes displayed active
+calibration to the currently serving raw model version.
+
+The temporary workspace reset before publication. The work was restored from
+current main and the implementation handoff; earlier local test claims do not
+stand in for the fresh complete checks. Current CI, migration, deployment,
+real capture/learning acceptance and ranking results will be recorded in the
+PR body after verification. No claim of accuracy improvement is made yet.
+
 ## City clocks and the primary prediction — 17 Oct, in progress
 
 Hassan requested that the best predictive model take the heavy lifting while

@@ -226,6 +226,10 @@ jobs:
       # THE PAGES READ STORED ROWS (plan v2 P6.5): refresh them now that this
       # run has written, rather than at the next :12 / :42 of pg_cron.
       # CONCURRENTLY, so a page open during the refresh keeps reading.
+      - name: Score the original frozen city calls
+        if: ${{ !cancelled() }}
+        timeout-minutes: 4
+        run: python scripts/predictive_validation.py --score-only
       - name: Refresh the stored page rows
         if: ${{ !cancelled() }}
         # 16 Oct: the refresh continued successfully after the default

@@ -33,6 +33,7 @@ decision). This is its forward, as-of test (fec-v1 section 8). Its rows never
 reach `ladders` - the engine's S10 decisions read rd1 only - and no failure of
 it touches rd1's rows.
 """
+from frozen_calls import freeze_insert
 import datetime as dt
 import json
 import os
@@ -380,8 +381,8 @@ def record(due, market_of, bands_by_market, tz_of, unit_of, dry_run=False, ladde
                                     bands_of, pe.DEFAULT_Q_DOWN, pe.DEFAULT_Q_UP, spread_fallback)
         out["skipped"] = skipped
         if rows and not dry_run:
-            out["written"] = upsert("s10_shadow_checkpoints", rows,
-                                    "city_key,target_date,checkpoint,model_version")
+            out["written"] = freeze_insert("s10_shadow_checkpoints", rows,
+                                    "city_key,target_date,checkpoint,model_version", writer=upsert, refused=out.setdefault("freeze_refused", []))
         elif rows:
             out["would_write"] = len(rows)
         if ladders is not None and rows:
@@ -426,8 +427,8 @@ def _challenger(todo, inputs, obs_by_city, tz_of, unit_of, bands_of, dry_run):
         if dry_run:
             out["would_write"] = len(rows)
         else:
-            out["written"] = upsert("s10_shadow_checkpoints", rows,
-                                    "city_key,target_date,checkpoint,model_version") if rows else 0
+            out["written"] = freeze_insert("s10_shadow_checkpoints", rows,
+                                    "city_key,target_date,checkpoint,model_version", writer=upsert, refused=out.setdefault("freeze_refused", [])) if rows else 0
     except Exception as e:
         out["error"] = f"{type(e).__name__}: {str(e)[:160]}"
     return out
