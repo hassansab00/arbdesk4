@@ -64,6 +64,8 @@ BUDGET_S = 100.0
 # reached 253 of 253 city-days on (8-9 Oct); the job's timeout in tick.yml
 # leaves room for it.
 MIN_BUDGET_S = 45.0
+# Operational reserve for downstream baseline pricing, books and freezing.
+PRIMARY_DOWNSTREAM_RESERVE_S = 30.0
 # S10 in shadow fetches at most this long per tick (about four cities' two
 # requests each, in parallel); the engine's own work keeps the rest.
 S10_FETCH_S = 8.0
@@ -535,7 +537,8 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
         checkpoint_names.setdefault((city, target), []).append(name)
     detail["primary"] = predictive_primary.prepare(
         [market_of[d] for d in days + reprice], bands_by_market, cities,
-        rehearsal_at or dt.datetime.now(dt.timezone.utc), checkpoint_names, dry_run=dry_run)
+        rehearsal_at or dt.datetime.now(dt.timezone.utc), checkpoint_names, dry_run=dry_run,
+        deadline=t0 + budget_s - PRIMARY_DOWNSTREAM_RESERVE_S)
 
     history_cache = {}
     deferred, failed, results = [], [], {}

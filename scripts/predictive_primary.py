@@ -18,9 +18,10 @@ from zoneinfo import ZoneInfo
 
 POLICY = "wxrd3-horizons-v1"
 MAX_OBS_AGE_MIN = 90
-# Allow cold input/history loading before building the first vector, while
-# leaving sixty seconds of the nominal tick budget for pricing and capture.
+# The tick supplies its actual remaining deadline after reserving downstream
+# work. A short tick keeps the baseline before starting a cold preparation.
 MAX_PREPARE_S = 40
+MIN_PREPARE_S = 25
 PEAK_CALLS = {"prepeak_2h", "prepeak_1h", "postpeak_1h"}
 _predictions = {}
 _eligible = set()
@@ -62,7 +63,7 @@ def valid_distribution(ids, p):
             and abs(sum(map(float, p)) - 1) <= 1e-4)
 
 
-def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_run=False):
+def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_run=False, deadline=None):
     """Prepare one immutable batch BEFORE pricing workers start. Read only
     inputs received by `now`; persist the exact vectors before they can price.
     All expensive dependencies are optional outside the two enabled jobs."""
@@ -81,6 +82,11 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
         checkpoints.get((m["city_key"], str(m["resolution_date"])), ()))]
     _eligible = {(m["city_key"], str(m["resolution_date"])) for m in selected}
     if not selected:
+        return _detail
+    allowance = MAX_PREPARE_S if deadline is None else min(MAX_PREPARE_S, max(0, deadline-t0))
+    if allowance < MIN_PREPARE_S:
+        _detail.update(fallbacks={"insufficient remaining tick budget": len(selected)},
+                       seconds=round(time.monotonic()-t0, 2), allowance_s=round(allowance, 2))
         return _detail
     skipped = Counter()
     try:
@@ -126,7 +132,7 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
             if not meta.get("fit_last") or str(meta["fit_last"])[:10] >= e["date"]:
                 skipped["model trained on or after target"] += 1
                 continue
-            if time.monotonic() - t0 > MAX_PREPARE_S:
+            if time.monotonic() - t0 > allowance:
                 skipped["primary preparation budget"] += 1
                 continue
             row = lr.row_at(record, e, cities, sdays, bm, md, int(now.timestamp()),
@@ -188,7 +194,7 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
     except (Exception, SystemExit) as exc:
         _predictions = {}
         _detail["error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
-    _detail.update(fallbacks=dict(skipped), seconds=round(time.monotonic() - t0, 2))
+    _detail.update(fallbacks=dict(skipped), seconds=round(time.monotonic() - t0, 2), allowance_s=round(allowance, 2))
     print("predictive primary " + json.dumps(_detail), flush=True)
     return _detail
 

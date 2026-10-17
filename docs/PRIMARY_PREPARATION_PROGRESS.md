@@ -1,10 +1,10 @@
-## Primary preparation allowance — 17 Oct, follow-up
+# Primary preparation allowance — 17 Oct
 
-Cold input loading could exhaust the primary preparation allowance before
-any vector was built, leaving all affected calls on the baseline. The bounded
-allowance becomes 40 seconds, leaving sixty of the nominal 100-second tick
-budget for pricing/capture. This changes no model weights, probabilities,
-calibration gate or schedule, and no frozen call is rewritten. The complete
-Python suite and database contracts passed. CI and real acceptance will be
-recorded in the follow-up PR.
-
+Cold input loading could exhaust the former primary allowance before any
+vector was built. The upper bound is now 40 seconds. The tick passes its
+actual remaining allowance after reserving 30 seconds for downstream pricing,
+books and freezing. If less than the 25-second preparation minimum remains,
+it retains the baseline before starting expensive work. Intraday preparation
+keeps the bounded upper allowance. These are operational priors, not accuracy
+claims. Model weights, probability math, calibration gates and frozen calls
+are unchanged. Tests cover early fallback and the tick's deadline wiring.

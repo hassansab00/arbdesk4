@@ -150,3 +150,16 @@ def test_served_call_freezes_raw_baseline_calibration_and_exact_lineage(monkeypa
     saved=pp.checkpoint_lineage('city','2026-10-17',{'a':.7,'b':.3})
     assert saved['raw_probs']=={'a':.8,'b':.2} and saved['baseline_probs']=={'a':.6,'b':.4} and saved['calibration']==state
     assert not pp.checkpoint_lineage('city','2026-10-17',{'a':.6,'b':.4})
+
+
+def test_short_tick_keeps_baseline_before_loading_model_or_reading_inputs(monkeypatch):
+    monkeypatch.setenv('PREDICTIVE_PRIMARY',pp.POLICY)
+    monkeypatch.setattr(pp.time,'monotonic',lambda:100.)
+    now=dt.datetime(2026,10,17,12,36,tzinfo=UTC)
+    result=pp.prepare([dict(market_id='m',city_key='city',resolution_date='2026-10-17')],{},
+        [dict(city_key='city',timezone='UTC')],now,deadline=110.)
+    assert result['selected']==0 and result['allowance_s']==10
+    assert result['fallbacks']=={'insufficient remaining tick budget':1}
+    assert not pp._predictions
+    base=([dict(band_id='a',calibrated_prob=1)],None,[])
+    assert pp.apply('city','2026-10-17',base)[0] is base[0]
