@@ -29,6 +29,7 @@
     "../app/api/operator/route.ts",
     "../app/api/paper-desk/route.ts",
     "../app/api/paper-run/route.ts",
-    "../app/api/paper-cycle/route.ts"
+    "../app/api/paper-cycle/route.ts",
+    "../lib/cityValidation.ts"
   ]
 }

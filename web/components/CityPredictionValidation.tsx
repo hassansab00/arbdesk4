@@ -1,0 +1,65 @@
+"use client";
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useQuery } from '@/lib/useQuery';
+import { DataState } from '@/components/DataState';
+import { fmtDateTime } from '@/lib/time';
+import { HORIZONS, CityReport, rankCities, evidenceWords } from '@/lib/cityValidation';
+
+type Row = { city_key: string; checkpoint: string; scope: string; as_of: string; report: CityReport };
+const pct = (n: number | null | undefined) => n == null ? '—' : `${(100*n).toFixed(1)}%`;
+const num = (n: number | null | undefined) => n == null ? '—' : n.toFixed(3);
+export default function CityPredictionValidation({ cities, moment }: { cities: string[]; moment: string }) {
+  const [horizon,setHorizon] = useState('day_ahead');
+  const [scope,setScope] = useState('served');
+  useEffect(()=>{ if(HORIZONS.some(([k])=>k===moment)) setHorizon(moment); },[moment]);
+  const q = useQuery<Row[]>(()=>supabase.from('v_city_prediction_validation').select('*')
+    .eq('checkpoint',horizon).eq('scope',scope).in('city_key',cities).limit(500),[horizon,scope,cities.join(',')],60000,500);
+  const ranked = rankCities((q.data ?? []).map(r=>r.report));
+  const asOf = q.data?.map(r=>r.as_of).sort()[0];
+  const overdue = asOf && Date.now()-Date.parse(asOf)>36*3600000;
+  const total = ranked.reduce((a,r)=>({hits:a.hits+r.hits,n:a.n+r.n}),{hits:0,n:0});
+  return <section className="space-y-3 rounded border border-border bg-panel p-4">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <h2 className="text-sm font-semibold">City accuracy · original frozen calls</h2>
+      <div className="flex flex-wrap gap-2 text-xs">
+        <select aria-label="Accuracy horizon" className="rounded border border-border bg-panel p-1" value={horizon} onChange={e=>setHorizon(e.target.value)}>
+          {HORIZONS.map(([k,v])=><option key={k} value={k}>{v}</option>)}
+        </select>
+        <select aria-label="Accuracy predictor" className="rounded border border-border bg-panel p-1" value={scope} onChange={e=>setScope(e.target.value)}>
+          <option value="served">All served predictors</option><option value="wxrd3">WXPredict v3 only</option>
+        </select>
+      </div>
+    </div>
+    <p className="max-w-5xl text-xs leading-relaxed text-muted">
+      Predict → freeze → settle → score → learn → validate. Only the first call counts, after its local day ends and the venue confirms the winner.
+      Rank is observed winning-bucket accuracy, with uncertainty and sample counts. It does not measure trading returns.
+      Overall uses dates with all six scheduled calls, excluding the explicit after-peak call; noon can coincide with or follow a city’s typical peak.
+      Day ahead is the clean comparison before the local day starts.
+    </p>
+    <div className="text-xs">{total.hits}/{total.n} correct · {pct(total.n ? total.hits/total.n : null)}
+      <span className={overdue ? 'ml-3 text-orange-400' : 'ml-3 text-muted'}>{overdue ? 'Scoring overdue · ' : 'Scored '}{fmtDateTime(asOf)}</span>
+    </div>
+    <DataState relation="v_city_prediction_validation" loading={q.loading} error={q.error} truncated={q.truncated}
+      isEmpty={!q.data?.length} emptyTitle="City validation awaiting its first run"
+      emptyBody="The validation job publishes every active city, including cities with no eligible settled calls." onRetry={q.refresh}>
+      <div className="overflow-x-auto"><table className="w-full text-xs">
+        <thead className="text-muted"><tr>{['Rank / city','Correct / settled','Hit rate · 95% interval','Log loss / Brier','Confidence gap','Evidence / why'].map(h=><th key={h} className="px-2 py-2 text-left font-normal">{h}</th>)}</tr></thead>
+        <tbody>{ranked.map((r,i)=><tr key={r.city} className="border-t border-border align-top">
+          <td className="whitespace-nowrap px-2 py-2">{r.n ? i+1 : '—'}. {r.display_name}<span className="block text-[10px] text-muted">{r.timezone}</span></td>
+          <td className="whitespace-nowrap px-2 py-2">{r.hits}/{r.n}<span className="block text-muted">{r.dates} dates · {r.pending == null ? "pending not measured" : `${r.pending} pending`}</span></td>
+          <td className="whitespace-nowrap px-2 py-2">{pct(r.hit_rate)}<span className="block text-muted">{r.interval95 ? r.interval95.map(pct).join('–') : 'Not measured'}</span></td>
+          <td className="whitespace-nowrap px-2 py-2">{num(r.metrics.log_loss)} / {num(r.metrics.brier)}</td>
+          <td className="px-2 py-2">{pct(r.calibration_gap)}</td>
+          <td className="min-w-72 px-2 py-2"><p>{evidenceWords(r)}</p><details className="mt-1 text-muted"><summary className="cursor-pointer text-accent">Freeze, learning and validation</summary>
+            <p className="mt-1">{r.period_start}–{r.period_end} · {r.verified} server-receipted / {r.legacy} legacy calls. Legacy timestamps are not new training evidence.</p>
+            <p>Exact paired baseline: {r.baseline.n} calls · {pct(r.baseline.hit)} · log loss {num(r.baseline.log_loss)}. Raw v3: {r.raw.n} · {pct(r.raw.hit)} · {num(r.raw.log_loss)}.</p>
+            <p>Reviewed-miss public forecast MAE {r.why.public_forecast_mae_c?.toFixed(2) ?? '—'} °C; bias {r.why.public_forecast_bias_c?.toFixed(2) ?? '—'} °C. Associations are not causal explanations of the model.</p>
+            {r.learning.map(s=><p key={s.phase} className="mt-1">{s.phase.replaceAll('_',' ')}: {s.active ? 'active' : 'raw prediction'} · {s.decision} · {s.reason}. Training {s.train_dates} dates / validation {s.validation_dates} dates. T={s.effective_params.temperature.toFixed(3)}, tilt={s.effective_params.tilt.toFixed(3)}. Fit {s.as_of}, validated through {s.validated_through ?? 'not yet'}. Version {s.version}.</p>)}
+            <p className="mt-1">Predictors: {Object.entries(r.versions).map(([v,n])=>`${v}: ${n}`).join('; ') || 'Awaiting settled calls'}</p>
+          </details></td>
+        </tr>)}</tbody>
+      </table></div>
+    </DataState>
+  </section>;
+}

@@ -66,6 +66,8 @@ insert into data_freshness_spec (table_name, ts_column, fresh_hours, layer, plai
   -- timestamp column it finds, which on this table is nws_checked_at -
   -- when the NWS grid id was last looked up, not when the row changed.
   -- A city list has no cadence and no age worth reporting.
+  ('derived_wx_city_calibration','computed_at',36,'model','Each city and peak phase calibration, held until unseen dates validate it.'),
+  ('derived_city_prediction_validation','as_of',36,'model','Original frozen calls scored by city and horizon after venue confirmation.'),
   ('cities',                    '-',   null, 'market',    'The cities the desk trades. Edited by hand, not by a job.'),
   ('markets',                   'last_seen_at',   26, 'market',    'One row per Polymarket day-market the desk knows about.'),
   ('bands',                     null,             26, 'market',    'The temperature buckets inside each market.'),

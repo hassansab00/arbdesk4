@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 295 of them - and for each MISSING one names the
+-- and function the app reads - 300 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -49,6 +49,7 @@ with expected(rel, owner, used_by) as (values
     ('derived_city_day_hours', 'ad4_86_trajectory.sql', ''),
     ('derived_city_day_peak', 'ad4_97_evidence_cache.sql', ''),
     ('derived_city_day_volume', 'ad4_00_preflight.sql', ''),
+    ('derived_city_prediction_validation', 'supabase/migrations/20261017170738_frozen_city_learning.sql', ''),
     ('derived_climb_profile', 'ad4_28_feature_cache.sql', ''),
     ('derived_corrected_forecast', 'supabase/migrations/20260926120000_station_correction.sql', ''),
     ('derived_day_review', 'supabase/migrations/20261013020000_why_each_day_hit_or_missed.sql', '(CityPopup)'),
@@ -72,6 +73,7 @@ with expected(rel, owner, used_by) as (values
     ('derived_trajectory', 'ad4_86_trajectory.sql', ''),
     ('derived_weather_model', 'ad4_21_weather_features.sql', ''),
     ('derived_weather_peak', 'ad4_00_preflight.sql', '(CityPopup), /live'),
+    ('derived_wx_city_calibration', 'supabase/migrations/20261017170738_frozen_city_learning.sql', ''),
     ('desk_members', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),
     ('edges', 'ad4_phase2.sql', ''),
     ('fact_band_outcome', 'ad4_18_databank.sql', ''),
@@ -175,6 +177,7 @@ with expected(rel, owner, used_by) as (values
     ('v_city_observation_health', 'ad4_71_observation_health.sql', '(CityWeatherHealth)'),
     ('v_city_peak_approach', 'ad4_26_temp_trend.sql', '(RightRail), /live, /monitor'),
     ('v_city_prediction_confidence', 'ad4_58_city_prediction_confidence.sql', ''),
+    ('v_city_prediction_validation', 'supabase/migrations/20261017170738_frozen_city_learning.sql', ''),
     ('v_city_reasoning', 'ad4_23_reasoning.sql', '(Reasoning)'),
     ('v_city_running_max', 'ad4_71_observation_health.sql', ''),
     ('v_city_stats', 'ad4_17_city_stats.sql', ''),
@@ -191,6 +194,7 @@ with expected(rel, owner, used_by) as (values
     ('v_data_freshness', 'ad4_39_freshness.sql', ''),
     ('v_data_health', 'ad4_39_freshness.sql', ''),
     ('v_databank_coverage', 'ad4_18_databank.sql', '(DataBank)'),
+    ('v_day_ahead_frozen_validation', 'supabase/migrations/20261017170738_frozen_city_learning.sql', ''),
     ('v_decision_prediction', 'supabase/migrations/20261004210000_decisions_name_their_call.sql', ''),
     ('v_desk_equity_curve', 'ad4_84_risk_budget.sql', ''),
     ('v_desk_risk_state', 'ad4_84_risk_budget.sql', ''),
@@ -303,6 +307,7 @@ with expected(rel, owner, used_by) as (values
     ('v_workflow_gate_health', 'ad4_14_workflows.sql', ''),
     ('v_workflow_runs', 'ad4_14_workflows.sql', '/workflows'),
     ('v_write_access', 'ad4_38_grants.sql', ''),
+    ('v_wx_frozen_learning', 'supabase/migrations/20261017170738_frozen_city_learning.sql', ''),
     ('variant_shadow_checkpoints', 'supabase/migrations/20261004180000_engine_variants_in_shadow.sql', ''),
     ('weather_events', 'ad4_live_weather.sql', '(RightRail), /live'),
     ('weather_forecast_features', 'ad4_24_nws_gridpoint.sql', ''),
@@ -366,6 +371,7 @@ begin
     ('derived_city_day_hours', 'ad4_86_trajectory.sql', ''),
     ('derived_city_day_peak', 'ad4_97_evidence_cache.sql', ''),
     ('derived_city_day_volume', 'ad4_00_preflight.sql', ''),
+    ('derived_city_prediction_validation', 'supabase/migrations/20261017170738_frozen_city_learning.sql', ''),
     ('derived_climb_profile', 'ad4_28_feature_cache.sql', ''),
     ('derived_corrected_forecast', 'supabase/migrations/20260926120000_station_correction.sql', ''),
     ('derived_day_review', 'supabase/migrations/20261013020000_why_each_day_hit_or_missed.sql', '(CityPopup)'),
@@ -389,6 +395,7 @@ begin
     ('derived_trajectory', 'ad4_86_trajectory.sql', ''),
     ('derived_weather_model', 'ad4_21_weather_features.sql', ''),
     ('derived_weather_peak', 'ad4_00_preflight.sql', '(CityPopup), /live'),
+    ('derived_wx_city_calibration', 'supabase/migrations/20261017170738_frozen_city_learning.sql', ''),
     ('desk_members', 'supabase/migrations/20260912083705_paper_accounts_and_research_history.sql', ''),
     ('edges', 'ad4_phase2.sql', ''),
     ('fact_band_outcome', 'ad4_18_databank.sql', ''),
@@ -492,6 +499,7 @@ begin
     ('v_city_observation_health', 'ad4_71_observation_health.sql', '(CityWeatherHealth)'),
     ('v_city_peak_approach', 'ad4_26_temp_trend.sql', '(RightRail), /live, /monitor'),
     ('v_city_prediction_confidence', 'ad4_58_city_prediction_confidence.sql', ''),
+    ('v_city_prediction_validation', 'supabase/migrations/20261017170738_frozen_city_learning.sql', ''),
     ('v_city_reasoning', 'ad4_23_reasoning.sql', '(Reasoning)'),
     ('v_city_running_max', 'ad4_71_observation_health.sql', ''),
     ('v_city_stats', 'ad4_17_city_stats.sql', ''),
@@ -508,6 +516,7 @@ begin
     ('v_data_freshness', 'ad4_39_freshness.sql', ''),
     ('v_data_health', 'ad4_39_freshness.sql', ''),
     ('v_databank_coverage', 'ad4_18_databank.sql', '(DataBank)'),
+    ('v_day_ahead_frozen_validation', 'supabase/migrations/20261017170738_frozen_city_learning.sql', ''),
     ('v_decision_prediction', 'supabase/migrations/20261004210000_decisions_name_their_call.sql', ''),
     ('v_desk_equity_curve', 'ad4_84_risk_budget.sql', ''),
     ('v_desk_risk_state', 'ad4_84_risk_budget.sql', ''),
@@ -620,6 +629,7 @@ begin
     ('v_workflow_gate_health', 'ad4_14_workflows.sql', ''),
     ('v_workflow_runs', 'ad4_14_workflows.sql', '/workflows'),
     ('v_write_access', 'ad4_38_grants.sql', ''),
+    ('v_wx_frozen_learning', 'supabase/migrations/20261017170738_frozen_city_learning.sql', ''),
     ('variant_shadow_checkpoints', 'supabase/migrations/20261004180000_engine_variants_in_shadow.sql', ''),
     ('weather_events', 'ad4_live_weather.sql', '(RightRail), /live'),
     ('weather_forecast_features', 'ad4_24_nws_gridpoint.sql', ''),
