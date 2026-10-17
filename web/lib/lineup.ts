@@ -55,6 +55,15 @@ export const FAMILY: Record<string, string> = {
   weather_model: "Per-city weather models",
 };
 
+export function predictorName(family: string, version: string): string {
+  if (version.startsWith("wxrd3:")) return "WXPredict v3 · five-seed ensemble";
+  if (version.startsWith("wxrd:")) return "WXPredict v2";
+  if (version.startsWith("wxrd_auto:")) return "WXPredict candidate";
+  if (version.startsWith("da_floor:")) return "Day-ahead + observed floor";
+  if (version.startsWith("sd_corr:")) return "Same-day corrected forecast";
+  return `${FAMILY[family] ?? family} ${shortVersion(version)}`;
+}
+
 /** The checkpoints the lineup can show, earliest first. */
 export const CHECKPOINTS = ["d1_eve", "morning", "noon", "prepeak_2h", "prepeak_1h", "postpeak_1h"];
 
@@ -192,7 +201,7 @@ export function lineupTable(rows: LineupRow[], status: StatusRow[] = []): Lineup
       version: r.model_family === "engine" ? null : r.version,
       title: r.model_family === "engine"
         ? FAMILY.engine
-        : `${FAMILY[r.model_family] ?? r.model_family} ${shortVersion(r.version)}`,
+        : predictorName(r.model_family, r.version),
       blind: r.blind || Boolean(reg?.blind),
       state: reg?.state ?? null,
     });

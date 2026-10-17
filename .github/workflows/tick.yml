@@ -38,6 +38,7 @@ concurrency:
 
 env:
   PYTHONPATH: scripts
+  PREDICTIVE_PRIMARY: wxrd3-horizons-v1
   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
   SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
@@ -95,9 +96,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .venv
-          key: tick-venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-${{ hashFiles('requirements.runtime.txt') }}
+          key: tick-primary-venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-${{ hashFiles('requirements.wxpredict.txt') }}
       - if: steps.venv.outputs.cache-hit != 'true'
-        run: python -m venv .venv && .venv/bin/pip install -q -r requirements.runtime.txt
+        run: python -m venv .venv && .venv/bin/pip install -q -r requirements.wxpredict.txt
       - name: Trade prints, started beside the other steps (replaces n8n P0.4)
         # IN THE BACKGROUND, NOT LAST (28 Sep). Run last, the trade prints got
         # only what the other steps left before TICK_DEADLINE, and on 28 Sep

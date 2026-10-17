@@ -8,6 +8,7 @@ import { DataState } from "@/components/DataState";
 import PredictionHindsight from "@/components/PredictionHindsight";
 import CheckpointScoreboard from "@/components/CheckpointScoreboard";
 import PredictionLineup from "@/components/PredictionLineup";
+import PredictionClocks from "@/components/PredictionClocks";
 import CityCards from "@/components/CityCards";
 import CalibrationStatus from "@/components/CalibrationStatus";
 import FocusFilter, { type FocusSet } from "@/components/FocusFilter";
@@ -704,7 +705,9 @@ export default function PredictivePage() {
           rather than at the bottom of the page because a claim and its
           track record are one thought, and separating them is how a desk
           keeps believing a number nothing has checked. */}
+      <PredictionClocks cities={cities.filter(c => selected.includes(c.city_key))} />
       <PredictionHindsight rows={hindsightQ.data ?? []} loading={hindsightQ.loading} error={hindsightQ.error}
+        cityZones={Object.fromEntries(cities.map(c => [c.city_key, c.timezone]))}
         truncated={hindsightQ.truncated} onRetry={hindsightQ.refresh}
         cities={selected} active={activeKeys} focus={focus} universe={universe}
         moment={moment} setMoment={setMoment} />

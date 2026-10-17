@@ -6,7 +6,7 @@ import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
 import { MOMENT } from "@/components/PredictionHindsight";
 import {
-  CHECKPOINTS, FAMILY, compactRetired, learningStatus, lineupDates, lineupTable, num, shortVersion, utcDate,
+  CHECKPOINTS, FAMILY, compactRetired, learningStatus, lineupDates, lineupTable, num, predictorName, shortVersion, utcDate,
   type LineupRow, type StatusRow,
 } from "@/lib/lineup";
 
@@ -101,6 +101,13 @@ export default function PredictionLineup({ cities }: { cities?: string[] } = {})
     <div>
       <h2 className="text-sm font-semibold">Where each predictor stands</h2>
       <p className="max-w-3xl text-xs leading-relaxed text-muted">
+        The primary prediction uses the corrected weather-model blend before the day, the forecast
+        engine in the morning, and WXPredict v3 at noon and peak-relative checkpoints when its inputs
+        are fresh. Missing inputs keep the baseline forecast. The seven weather inputs and two weather
+        ensemble feeds remain active; WXPredict v3’s five seeds are fits of one predictor, not five
+        independent weather sources.
+      </p>
+      <p className="max-w-3xl text-xs leading-relaxed text-muted">
         Every predictor version and its latest recorded state: <strong>serving</strong> prices the
         desk, <strong>evaluation</strong> is recorded beside it and scored forward,{" "}
         <strong>candidate fitting</strong> has a fit that applies to nothing yet, and{" "}
@@ -135,7 +142,7 @@ export default function PredictionLineup({ cities }: { cities?: string[] } = {})
                 {s.blind && <span className="ml-1 rounded border border-border px-1.5 py-0.5 text-muted"
                   title="Under a pre-registered test: no score is shown before its first look.">blinded</span>}
               </td>
-              <td className="whitespace-nowrap px-2 py-1">{FAMILY[s.family] ?? s.family}</td>
+              <td className="whitespace-nowrap px-2 py-1">{predictorName(s.family, s.version)}</td>
               <td className="px-2 py-1 font-mono" title={s.version}>{s.version}</td>
               <td className="whitespace-nowrap px-2 py-1 text-muted">{s.horizon}</td>
               <td className="max-w-md px-2 py-1 text-muted"
@@ -170,7 +177,7 @@ export default function PredictionLineup({ cities }: { cities?: string[] } = {})
       </p>
     </div>
     <div className="flex flex-wrap items-center gap-2 text-xs">
-      <span className="text-muted">Target date (UTC)</span>
+      <span className="text-muted">Target date (city-local calendar)</span>
       {dates.map((d) =>
         <button key={d} onClick={() => setDate(d)}
           className={`rounded border px-2 py-0.5 font-mono ${date === d ? "border-accent text-accent" : "border-border text-muted"}`}>

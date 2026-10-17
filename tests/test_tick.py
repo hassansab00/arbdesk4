@@ -42,6 +42,16 @@ def test_a_city_east_of_utc_calls_its_eve_on_the_utc_morning_before():
     assert t["d1_eve"][1] == at("2026-09-24T09:00")
 
 
+def test_a_noon_peak_can_put_peak_checkpoints_before_noon():
+    j = tick.decision_times("2026-10-17", "Asia/Riyadh", 12)
+    assert j["prepeak_2h"][0].hour == 10
+    assert j["prepeak_1h"][0].hour == 11
+    assert j["postpeak_1h"][0].hour == 13
+    assert j["noon"][1] == at("2026-10-17T09:00")
+    m = tick.decision_times("2026-10-17", "Europe/Madrid", 17)
+    assert m["prepeak_1h"][0].hour == 16
+
+
 def test_the_clock_follows_daylight_saving():
     before = tick.decision_times("2026-11-01", "America/New_York", None)["morning"][1]
     after = tick.decision_times("2026-11-02", "America/New_York", None)["morning"][1]
@@ -711,3 +721,15 @@ def test_the_tick_starts_the_status_read_early_and_hands_it_to_the_engine(world)
     assert kw["status_read"] is world["status_read"]
     src = inspect.getsource(tick.run)
     assert src.index("read_stations(") < src.index("start_status_read()") < src.index("_upcoming_markets()")
+
+
+def test_historical_rehearsal_prepares_primary_at_the_requested_instant(world, monkeypatch):
+    import predictive_primary
+    seen = []
+    def prepare(markets, bands, cities, now, *a, **kw):
+        seen.append((now, kw["dry_run"]))
+        return {}
+    monkeypatch.setattr(predictive_primary, "prepare", prepare)
+    instant = at("2026-09-24T22:35")
+    tick.run(now=instant, dry_run=True)
+    assert seen == [(instant, True)], "a replay must not know captures from the wall-clock future"

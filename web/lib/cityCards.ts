@@ -176,6 +176,7 @@ const STANDING_RANK: Record<PickStanding, number> = { open: 0, one_below: 1, imp
  */
 export function pricedFromWords(label: string | null | undefined): string | null {
   if (!label) return null;
+  if (label.startsWith("wxrd3:")) return "WXPredict v3 · five-model seed ensemble, direct bucket probabilities";
   const parts: string[] = [];
   let rest = label;
   if (rest.startsWith("trajectory:")) {
@@ -188,6 +189,7 @@ export function pricedFromWords(label: string | null | undefined): string | null
       : "forecast models corrected at the station";
     // plan v2.3 P3.9 part 3: only while settings.station_width_pricing is on
     if (rest.includes("+station-width:")) words += ", with the width fitted to their own errors";
+    if (rest.includes("+city-blend-width:")) words += ", with per-city blend calibration";
     parts.push(words);
   } else if (rest.startsWith("model:")) {
     parts.push("the desk's promoted weather model");
@@ -199,6 +201,7 @@ export function pricedFromWords(label: string | null | undefined): string | null
 
 export interface CityCard {
   city_key: string; name: string; unit: Unit; for_date: string;
+  timezone?: string | null;
   /** The centre the ladder was integrated on (band_probabilities.centre_c), after
    *  every correction. null when the row does not record one: never the raw
    *  forecast in its place (Wuhan 28 Sep: raw 28.9 C, priced on 26.005 C). */
@@ -344,6 +347,7 @@ export function buildCards(
       (b.side === "YES" && b.band_id !== mkt.band_id) || (b.side === "NO" && b.band_id === mkt.band_id)));
     out.push({
       city_key: c.city_key, name: c.display_name ?? c.city_key,
+      timezone: c.timezone ?? null,
       unit, for_date,
       centre_c: centre, raw_forecast_c: any?.forecast_max_c ?? null,
       priced_floor_c: floorThen, sigma_c: newest ? newest.sigma_c : any?.sigma_c ?? null,

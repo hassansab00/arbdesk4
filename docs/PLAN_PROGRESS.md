@@ -3,6 +3,96 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## City clocks and the primary prediction — 17 Oct, in progress
+
+Hassan requested that the best predictive model take the heavy lifting while
+keeping multiple weather models and ensemble feeds active, and asked for all
+cities' checkpoint clocks to be checked, using Jeddah's early peak as the
+example. This is his G5 authorization for the forecast-serving choice below;
+it changes no capital allocation or safety rail. Four live dates are preliminary
+evidence, not an automatic statistical promotion or proof of a trading edge.
+
+The production audit found all 282 checkpoints for 16 Oct across 47 active
+cities on the correct city-local schedule, zero early captures, and a maximum
+capture delay of 46.77 minutes. Jeddah's October reference already is 12:00
+local (10:00/11:00/13:00 relative calls); Madrid's is 17:00. All 47 clocks,
+monthly references and sample sizes are in docs/CITY_CLOCK_AUDIT_2026-10-17.md.
+The references are typical monthly medians, not today's actual maximum. Their
+seasonal fits were last updated 13 Sep. No historical prediction or outcome is
+rewritten. The actual capture must stay visible beside its scheduled moment.
+
+The web now says city-local calendar instead of UTC for target dates, shows
+city-local and viewer capture times separately, names typical peaks explicitly,
+and offers a timing table for every selected city. The common viewer conversion
+now resolves the full local date as well as its hour, preserving dates across
+UTC and daylight-saving boundaries. Friendly predictor names distinguish
+WXPredict's five seeds from seven independent weather inputs and two weather
+ensemble feeds. All those inputs and the blinded experiments remain active.
+
+`wxrd3-horizons-v1` selects the hash-checked frozen v3 distribution at same-day
+noon/later and peak-relative calls (from 09:00, excluding morning). Morning,
+evening and day-ahead keep their existing horizon-specific paths. Whole exact
+ladders, reports at most 90 minutes old, four models, twenty known forecast
+hours and a saved exact input vector/hash/history vintage are required. These
+are versioned priors, not freshly learned thresholds. Failure keeps the baseline
+and is logged. Its direct bucket probabilities receive no legacy calibration;
+the old normal centre/width and single public run are not mislabelled as v3's.
+Existing trading-eligibility blocks remain. No new schedule or cadence is added;
+the two existing pricing workflows use pinned WXPredict dependencies. The local
+production-input rehearsal at 07:02:20 UTC built 18 valid eligible distributions
+in 8.08 seconds; production job latency still needs a real run before merge.
+
+The first full check had 4,199 Python passes, 9 skips and two failures in old
+wording/prop-order assertions. The required wording now says "typical peak";
+the component keeps the original row-prop order. The database contracts passed.
+Targeted checks, web types/routes/build passed before the final small changes.
+Final Python validation passed 4,203 tests with 9 skips in 172.19 seconds;
+the complete database contracts passed, as did web type and route checks.
+CI, merge, rendered-page and real model-serving acceptance remain pending and
+will be recorded in the PR. The recent timing diagnostic covers all 47 cities:
+last-thirty-completed-day medians differ from the monthly references by as much
+as 1.5 hours (Paris and Istanbul). These operational readings do not establish
+a new settlement truth or authorize rewriting frozen checkpoint schedules.
+
+Pre-merge real-workflow rehearsal 39039991832 completed in 55 seconds, with
+8 due calls and no failed/deferred checkpoint. Its primary correctly fell back
+because the shared canonical-band projection omitted band_index; the live
+ladder reader requires it. The shared projection now includes the index, with
+a regression assertion covering both tick and intraday readers. Initial CI's
+new persistence-failure test imported optional LightGBM; it now uses an injected
+predictor so the base CI environment can test the write gate without ML. Neither
+issue reached main. Updated complete checks and a second workflow rehearsal
+are required before merge.
+
+PR: https://github.com/hassansab00/arbdesk4/pull/409. The updated local suites
+passed: 4,203 Python tests, 9 skips (176.89 seconds), full database contracts,
+and the five primary gate tests in a separate base environment without ML.
+The PR body records final CI, merge, runtime and rendered-page acceptance.
+
+The second real-workflow rehearsal 39040608977 passed in 60 seconds: the
+primary built three eligible ladders in 8.99 seconds with no fallback, and
+the tick captured all eight due calls with none failed/deferred (45.1 seconds).
+CI passed on 5e0f735. Review also identified that a historical --at rehearsal
+must pass its supplied instant to the primary's arrival reader. The tick now
+preserves that explicit instant while a normal live run still takes its actual
+post-ingest input snapshot. A regression test exercises the historical call.
+The city cards/popups also label today/tomorrow on the city's clock; viewer
+midnight cannot roll the weather day forward. Popup peak conversions use the
+target date so a future day crossing daylight saving keeps the right offset.
+Final review-fix validation passed 4,204 Python tests with 9 skips (172.06
+seconds), all database contracts and the web types/routes/production build.
+
+Final freshness review also guards the handoff between capture and station
+ingest: a v3 input snapshot cannot replace a baseline that already knows a
+higher venue-rounded daily maximum. Both Celsius and Fahrenheit settlement
+rounding are exercised, and a change within the same settlement degree does
+not reject the primary. A stale primary keeps the complete baseline and its
+eligibility gates, recording `newer_station_maximum`; the frozen distribution
+is never reshaped. CI and the third dry tick passed on 1fc4a0a before this
+last guard. Its complete validation passed 4,206 Python tests with 9 skips
+(188.06 seconds), plus the full database contracts. Release acceptance will
+be recorded in the PR after final checks.
+
 ## Remaining reliability and forward checks — 16 Oct, in progress
 
 The #407 release merged as 44c5f15c69a3. Its real capture completed at

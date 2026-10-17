@@ -118,7 +118,8 @@ def test_after_the_peak_is_marked_and_kept_out_of_the_headline():
     assert "cp.checkpoint = 'postpeak_1h' as after_peak" in s
     src = PANEL.read_text(encoding="utf-8")
     assert 'x.called_when === "day_ahead"' in src, "the headline is the day-ahead call"
-    assert "After the peak — not a forecast" in src
+    assert "After the typical peak" in src
+    assert "the maximum may still rise" in src
 
 
 def test_the_market_favourite_is_priced_inside_its_quote():

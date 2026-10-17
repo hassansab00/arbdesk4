@@ -562,7 +562,7 @@ def _bands_for_markets(market_ids):
     for i in range(0, len(market_ids), chunk):
         batch = market_ids[i:i + chunk]
         rows = rest_all("v_canonical_bands", [
-            ("select", "band_id,market_id,band_lo,band_hi,open_low,open_high,band_label,correction_id"),
+            ("select", "band_id,market_id,band_index,band_lo,band_hi,open_low,open_high,band_label,correction_id"),
             ("market_id", f"in.({','.join(str(m) for m in batch)})"),
         ], order="band_id", page_size=500)
         out.extend(rows)
@@ -1639,7 +1639,8 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
             if cal["method"] == "temperature"
             else f"calibrated:platt(a={cal['a']:.3f},b={cal['b']:+.3f},n={cal.get('n')})")
 
-    return out, reg, reasons
+    import predictive_primary
+    return predictive_primary.apply(city_key, for_date, (out, reg, reasons))
 
 
 def _warm_caches():
@@ -1701,6 +1702,8 @@ def main():
     # post-processing, divergence or the measurement layer - silently. Filled
     # here, serially, the workers only ever read.
     _warm_caches()
+    import predictive_primary
+    primary = predictive_primary.prepare(markets, bands_by_market, cities)
     workers = max(1, int(os.environ.get("ENGINE_WORKERS", "8")))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         results = list(pool.map(_price, jobs))
@@ -1731,7 +1734,7 @@ def main():
         "ok" if all_rows else "attention",
         len(all_rows),
         {"city_days": priced_city_days, "upcoming_markets": len(markets),
-         "cities_with_observed_floor": len(floors)},
+         "cities_with_observed_floor": len(floors), "primary": primary},
     )
     print(f"\nwrote {len(all_rows)} band_probabilities rows")
 
