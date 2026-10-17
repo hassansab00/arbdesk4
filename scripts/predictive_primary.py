@@ -18,7 +18,9 @@ from zoneinfo import ZoneInfo
 
 POLICY = "wxrd3-horizons-v1"
 MAX_OBS_AGE_MIN = 90
-MAX_PREPARE_S = 25
+# Allow cold input/history loading before building the first vector, while
+# leaving sixty seconds of the nominal tick budget for pricing and capture.
+MAX_PREPARE_S = 40
 PEAK_CALLS = {"prepeak_2h", "prepeak_1h", "postpeak_1h"}
 _predictions = {}
 _eligible = set()
