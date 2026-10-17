@@ -68,6 +68,7 @@ concurrency:
 
 env:
   PYTHONPATH: scripts
+  PREDICTIVE_PRIMARY: wxrd3-horizons-v1
   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
   SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
@@ -78,8 +79,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11', cache: 'pip', cache-dependency-path: 'requirements.runtime.txt' }
-      - run: pip install -r requirements.runtime.txt
+        with: { python-version: '3.11', cache: 'pip', cache-dependency-path: 'requirements.wxpredict.txt' }
+      - run: pip install -r requirements.wxpredict.txt
 
       # Manual recovery uses the nightly entry point and its prior-night
       # anchors. Normal clock dispatches keep their existing work/cadence.

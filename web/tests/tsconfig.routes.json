@@ -15,6 +15,7 @@
   },
   "include": [],
   "files": [
+    "../lib/time.ts",
     "../lib/operatorAuth.ts",
     "../lib/n8nWebhook.ts",
     "../lib/cityCards.ts",

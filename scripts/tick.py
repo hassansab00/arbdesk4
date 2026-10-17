@@ -90,7 +90,7 @@ def engine_version():
 def decision_times(target_date, timezone, peak_hour_local):
     """{checkpoint: (local naive datetime, utc datetime)} for one city-day.
 
-    peak_hour_local is the measured modal peak (fractional hours) or None."""
+    peak_hour_local is the measured monthly median peak (fractional hours) or None."""
     zone = ZoneInfo(timezone)
     day = dt.date.fromisoformat(str(target_date))
     out = {}
@@ -217,6 +217,8 @@ def _path_and_model(reasons):
             rest_label = tail
     if rest_label.startswith("model:"):
         path = "model" if path == "forecast" else "trajectory+model"
+    if rest_label.startswith("wxrd3:"):
+        path = "wxpredict"
     model = rest_label.split(":", 1)[0] if rest_label else None
     if model == "model":
         model = "arbdesk_weather_model"
@@ -506,6 +508,13 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     promoted = pe._promoted_models()
     model_forecasts = pe._model_forecasts(promoted)
     pe._warm_caches()
+    import predictive_primary
+    checkpoint_names = {}
+    for city, target, name, _ in due:
+        checkpoint_names.setdefault((city, target), []).append(name)
+    detail["primary"] = predictive_primary.prepare(
+        [market_of[d] for d in days + reprice], bands_by_market, cities,
+        dt.datetime.now(dt.timezone.utc), checkpoint_names, dry_run=dry_run)
 
     history_cache = {}
     deferred, failed, results = [], [], {}

@@ -42,6 +42,16 @@ def test_a_city_east_of_utc_calls_its_eve_on_the_utc_morning_before():
     assert t["d1_eve"][1] == at("2026-09-24T09:00")
 
 
+def test_a_noon_peak_can_put_peak_checkpoints_before_noon():
+    j = tick.decision_times("2026-10-17", "Asia/Riyadh", 12)
+    assert j["prepeak_2h"][0].hour == 10
+    assert j["prepeak_1h"][0].hour == 11
+    assert j["postpeak_1h"][0].hour == 13
+    assert j["noon"][1] == at("2026-10-17T09:00")
+    m = tick.decision_times("2026-10-17", "Europe/Madrid", 17)
+    assert m["prepeak_1h"][0].hour == 16
+
+
 def test_the_clock_follows_daylight_saving():
     before = tick.decision_times("2026-11-01", "America/New_York", None)["morning"][1]
     after = tick.decision_times("2026-11-02", "America/New_York", None)["morning"][1]

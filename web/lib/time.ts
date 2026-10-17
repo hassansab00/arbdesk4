@@ -136,39 +136,52 @@ export function fmtDaysAhead(ymd: string | null | undefined, tz = displayTz()): 
   return n > 0 ? `in ${n} days` : `${-n} days ago`;
 }
 
-/** An hour-of-day in the CITY's zone rendered as the viewer's wall clock:
- *  "15:00 CDT · 23:00 your time". Peak windows are the case this exists for. */
-export function fmtCityHour(
-  hourLocal: number | null | undefined,
-  cityTz: string | null | undefined,
-  viewerTz = displayTz()
-): string {
-  if (hourLocal === null || hourLocal === undefined || Number.isNaN(hourLocal)) return "—";
-  const h = Math.floor(hourLocal);
-  const mm = Math.round((hourLocal - h) * 60);
-  const there = `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-  if (!cityTz) return there;
+/** The calendar date on a named city's clock, independent of the browser. */
+export function cityDate(at: Date, zone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(at);
+  const get = (name: string) => parts.find(p => p.type === name)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
 
-  // Build today's instant at that local hour in the city, then read it back
-  // in the viewer's zone. Intl both ways, so DST is handled on both sides.
+/** Resolve a city's calendar date/hour to an instant using the full date on
+ * both sides. Comparing hours alone loses a day across UTC and DST boundaries. */
+export function cityInstant(ymd: string, hour: number, zone: string): Date | null {
   try {
-    const now = new Date();
-    const ymd = new Intl.DateTimeFormat("en-CA", {
-      timeZone: cityTz, year: "numeric", month: "2-digit", day: "2-digit",
-    }).format(now);
-    const guess = new Date(`${ymd}T${there}:00Z`);
-    const asCity = new Intl.DateTimeFormat("en-US", {
-      timeZone: cityTz, hour: "2-digit", minute: "2-digit", hour12: false,
-    }).format(guess);
-    const [gh, gm] = asCity.split(":").map(Number);
-    const driftMin = (gh * 60 + gm) - (h * 60 + mm);
-    const instant = new Date(guess.getTime() - driftMin * 60000);
-    const here = new Intl.DateTimeFormat("en-GB", {
-      timeZone: viewerTz, hour: "2-digit", minute: "2-digit", hour12: false,
-    }).format(instant);
-    if (here === there) return `${there} ${shortZone(cityTz)}`;
-    return `${there} ${shortZone(cityTz)} · ${here} your time`;
-  } catch {
-    return there;
-  }
+    if (!Number.isFinite(hour)) return null;
+    const wall = Date.parse(`${ymd}T00:00:00Z`) + Math.round(hour * 60) * 60000;
+    const read = new Intl.DateTimeFormat("en-CA", { timeZone: zone, hourCycle: "h23",
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+    let instant = wall;
+    for (let i = 0; i < 4; i++) {
+      const parts = read.formatToParts(new Date(instant));
+      const get = (name: string) => Number(parts.find(p => p.type === name)?.value);
+      const shown = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"));
+      if (shown === wall) return new Date(instant);
+      instant += wall - shown;
+    }
+    return null; // a nonexistent wall time must not masquerade as a different hour
+  } catch { return null; }
+}
+
+/** City-local weather time first, followed by the viewer's equivalent. */
+export function fmtCityHour(
+  hourLocal: number | null | undefined, cityTz: string | null | undefined,
+  viewerTz = displayTz(), date?: string
+): string {
+  if (hourLocal == null || !Number.isFinite(hourLocal)) return "—";
+  const mins = ((Math.round(hourLocal * 60) % 1440) + 1440) % 1440;
+  const there = `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+  if (!cityTz) return there;
+  try {
+    const ymd = date ?? cityDate(new Date(), cityTz);
+    const at = cityInstant(ymd, hourLocal, cityTz);
+    if (!at) return `${there} ${cityTz} (time unavailable)`;
+    const local = `${there} ${shortZone(cityTz, at)}`;
+    if (cityTz === viewerTz) return local;
+    const here = cityDate(at, viewerTz) === cityDate(at, cityTz)
+      ? fmtTime(at.toISOString(), viewerTz) : fmtDateTime(at.toISOString(), viewerTz);
+    return `${local} · ${here} your time`;
+  } catch { return there; }
 }

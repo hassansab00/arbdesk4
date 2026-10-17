@@ -176,6 +176,7 @@ const STANDING_RANK: Record<PickStanding, number> = { open: 0, one_below: 1, imp
  */
 export function pricedFromWords(label: string | null | undefined): string | null {
   if (!label) return null;
+  if (label.startsWith("wxrd3:")) return "WXPredict v3 · five-model seed ensemble, direct bucket probabilities";
   const parts: string[] = [];
   let rest = label;
   if (rest.startsWith("trajectory:")) {
@@ -188,6 +189,7 @@ export function pricedFromWords(label: string | null | undefined): string | null
       : "forecast models corrected at the station";
     // plan v2.3 P3.9 part 3: only while settings.station_width_pricing is on
     if (rest.includes("+station-width:")) words += ", with the width fitted to their own errors";
+    if (rest.includes("+city-blend-width:")) words += ", with per-city blend calibration";
     parts.push(words);
   } else if (rest.startsWith("model:")) {
     parts.push("the desk's promoted weather model");

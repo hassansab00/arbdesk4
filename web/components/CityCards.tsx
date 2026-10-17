@@ -394,10 +394,12 @@ function Card({ c, onPick, moment, st, ev, strip, after, showRecord }: {
         <div className="text-[10px] uppercase tracking-wide text-muted">What the pick is built from</div>
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
           <dt className="text-muted" title="The temperature this ladder was integrated on (band_probabilities.centre_c): the forecast after every correction the engine applied - the station correction, the station-model blend, the day's trajectory. The raw public input it started from is shown under it. A forecast, not the pick - the pick is the bucket with the most probability once the width is spread around this centre and the day's maximum so far is counted.">
-            Forecast centre
+            {c.priced_from?.startsWith("wxrd3:") ? "Prediction model" : "Forecast centre"}
           </dt>
           <dd className="tabular-nums">
-            {c.centre_c !== null ? fmtTemp(c.centre_c, u) : <span className="text-muted">not recorded for this price</span>}
+            {c.priced_from?.startsWith("wxrd3:")
+              ? <span>WXPredict v3 · direct bucket distribution</span>
+              : c.centre_c !== null ? fmtTemp(c.centre_c, u) : <span className="text-muted">not recorded for this price</span>}
             {c.sigma_c !== null && <span className="text-muted"> ± {fmtTempDelta(c.sigma_c, u).replace("+", "")}</span>}
             {c.confidence !== null && <span className="text-muted"> · confidence {fmtPct(c.confidence, 0)}</span>}
             {c.regime && <span className={`ml-1 ${regimeColor(c.regime)}`}>{c.regime}</span>}

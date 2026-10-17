@@ -6,6 +6,7 @@ import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
 import { compareFocus, summariseByMoment, type HindsightRow } from "@/lib/focus";
 import type { FocusSet } from "@/components/FocusFilter";
+import { displayTz, fmtDateTime, tzLabel } from "@/lib/time";
 
 /**
  * WAS THE DESK RIGHT? - graded only on calls frozen before the answer.
@@ -77,19 +78,19 @@ export const MOMENT: Record<string, string> = {
   d1_eve: "Evening before",
   morning: "Morning",
   noon: "Noon",
-  prepeak_2h: "2 h before peak",
-  prepeak_1h: "1 h before peak",
-  postpeak_1h: "1 h after peak",
+  prepeak_2h: "2 h before typical peak",
+  prepeak_1h: "1 h before typical peak",
+  postpeak_1h: "1 h after typical peak",
 };
 
 const WHEN: Record<string, string> = {
   day_ahead: "the last pricing before the city's local day began",
-  d1_eve: "frozen the evening before, local time",
-  morning: "frozen at the city's morning checkpoint",
+  d1_eve: "scheduled at 18:00 on the previous day in the city's timezone",
+  morning: "scheduled at 09:00 in the city's timezone",
   noon: "frozen at local noon",
   prepeak_2h: "frozen two hours before the usual peak",
   prepeak_1h: "frozen one hour before the usual peak",
-  postpeak_1h: "an hour after the peak - the day has mostly answered itself",
+  postpeak_1h: "scheduled one hour after the city's typical monthly peak; today's maximum is not guaranteed final",
 };
 
 /** One moment's record, with the interval that says whether its gap means anything. */
@@ -131,7 +132,7 @@ export const utcClock = (v: string | null) => {
 export const verdict = (hit: boolean | null) => (hit === null ? "pending" : hit ? "hit" : "miss");
 
 export default function PredictionHindsight({
-  rows: allRows, loading, error, truncated, onRetry, cities, active, focus, universe, moment, setMoment,
+  rows: allRows, loading, error, truncated, onRetry, cities, active, focus, universe, moment, setMoment, cityZones = {},
 }: {
   rows: HindsightRow[]; loading: boolean; error: string | null; truncated: boolean; onRetry: () => void;
   /** the page's selection and every active city today */
@@ -139,6 +140,7 @@ export default function PredictionHindsight({
   /** the cities the focus is judged against, frozen when it was recorded (focus_set_universes) */
   universe: string[] | null;
   moment: string; setMoment: (m: string) => void;
+  cityZones?: Record<string, string | null>;
 }) {
   // The database's own total over every city, the reference the rows must add up to.
   const sq = useQuery<Summary[]>(
@@ -205,8 +207,9 @@ export default function PredictionHindsight({
     <p className="max-w-3xl text-xs leading-relaxed text-muted">
       Every call graded here was <strong>frozen before the answer was known</strong> and scored only
       after the day settled: the day-ahead call is the last pricing before the city&apos;s local day
-      began, and each checkpoint is written once at a fixed local time and never changed. Nothing
-      priced after the moment it names counts. <strong>The number that matters is the gap</strong>{" "}
+      began, and each checkpoint is recorded once after its scheduled city-local time. Nothing
+      captured before its scheduled local moment counts. The actual capture time is shown separately;
+      the hourly tick can arrive after the scheduled time. <strong>The number that matters is the gap</strong>{" "}
       between what the desk claimed and what happened — a hit rate on its own says nothing, since
       eleven buckets means blind guessing scores about 9%.
     </p>
@@ -287,7 +290,7 @@ export default function PredictionHindsight({
             {before.map(line)}
             {after.length > 0 && <tr className="border-t border-border bg-panel2">
               <td colSpan={8} className="px-2 py-1 text-muted">
-                After the peak — not a forecast: the running maximum is mostly known by now.
+                After the typical peak — later information, shown separately; the maximum may still rise.
               </td>
             </tr>}
             {after.map(line)}
@@ -330,7 +333,7 @@ export default function PredictionHindsight({
       <div className="overflow-x-auto rounded border border-border">
         <table className="w-full text-xs">
           <thead className="bg-panel2 text-muted"><tr>
-            {["Day", "City", "Scheduled (local)", "Captured", "Engine called", "Sure", "Market called", "Actual", "Observed", "Priced centre", "Error", "", "Source"]
+            {["Day", "City", "Scheduled (city local)", "Captured (city local)", "Your time", "Engine called", "Sure", "Market called", "Actual", "Observed", "Priced centre", "Error", "", "Source"]
               .map((h, i) => <th key={i} className="px-2 py-1.5 text-left font-normal">{h}</th>)}
           </tr></thead>
           <tbody>
@@ -343,7 +346,12 @@ export default function PredictionHindsight({
               </td>
               <td className="whitespace-nowrap px-2 py-1 font-mono text-muted"
                   title={`${r.called_at ?? ""}${r.engine_version ? ` - engine ${r.engine_version}` : ""}`}>
-                {utcClock(r.called_at)}
+                {cityZones[r.city_key]
+                  ? `${fmtDateTime(r.called_at, cityZones[r.city_key]!)} ${r.called_at ? tzLabel(cityZones[r.city_key]!, new Date(r.called_at)) : ""}`
+                  : utcClock(r.called_at)}
+              </td>
+              <td className="whitespace-nowrap px-2 py-1 font-mono text-muted" title={displayTz()}>
+                {fmtDateTime(r.called_at)}
               </td>
               <td className="px-2 py-1">{r.predicted_band ?? "—"}</td>
               <td className="px-2 py-1 font-mono">{r.predicted_pct === null ? "—" : `${r.predicted_pct}%`}</td>
