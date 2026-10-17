@@ -1,0 +1,114 @@
+{
+ "version": "wxrd3:v3:2e88d630d16d",
+ "fit_last": "2026-10-11",
+ "minimum_forward_dates": 14,
+ "all": {
+  "n": 794,
+  "dates": [
+   "2026-10-13",
+   "2026-10-14",
+   "2026-10-15",
+   "2026-10-16"
+  ],
+  "candidate_hits": 444,
+  "serving_hits": 399,
+  "candidate_nll": 1.0392381377664408,
+  "serving_nll": 1.3253550548437125
+ },
+ "before_peak": {
+  "n": 624,
+  "dates": [
+   "2026-10-13",
+   "2026-10-14",
+   "2026-10-15",
+   "2026-10-16"
+  ],
+  "candidate_hits": 311,
+  "serving_hits": 275,
+  "candidate_nll": 1.15945972305204,
+  "serving_nll": 1.4661942597985813
+ },
+ "checkpoints": {
+  "morning": {
+   "n": 153,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15",
+    "2026-10-16"
+   ],
+   "candidate_hits": 57,
+   "serving_hits": 69,
+   "candidate_nll": 1.3527749914740894,
+   "serving_nll": 1.677266403217604
+  },
+  "noon": {
+   "n": 155,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15",
+    "2026-10-16"
+   ],
+   "candidate_hits": 84,
+   "serving_hits": 66,
+   "candidate_nll": 1.1362397931929233,
+   "serving_nll": 1.427211546322119
+  },
+  "prepeak_2h": {
+   "n": 157,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15",
+    "2026-10-16"
+   ],
+   "candidate_hits": 80,
+   "serving_hits": 63,
+   "candidate_nll": 1.1961945507479868,
+   "serving_nll": 1.4598759104033396
+  },
+  "prepeak_1h": {
+   "n": 159,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15",
+    "2026-10-16"
+   ],
+   "candidate_hits": 90,
+   "serving_hits": 77,
+   "candidate_nll": 0.9598023967081769,
+   "serving_nll": 1.3073279925079753
+  },
+  "postpeak_1h": {
+   "n": 170,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15",
+    "2026-10-16"
+   ],
+   "candidate_hits": 133,
+   "serving_hits": 124,
+   "candidate_nll": 0.5979542011887166,
+   "serving_nll": 0.8083923260681914
+  }
+ },
+ "regressed_checkpoints": [
+  "morning"
+ ],
+ "immature_checkpoints": [
+  "morning",
+  "noon",
+  "prepeak_2h",
+  "prepeak_1h"
+ ],
+ "excluded": {
+  "not_settled": 85
+ },
+ "settled_first_calls": 1090,
+ "gate": "insufficient forward dates",
+ "changes_serving": false,
+ "made": "2026-10-17T02:51:24.286488+00:00"
+}
