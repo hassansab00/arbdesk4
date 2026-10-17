@@ -82,6 +82,17 @@ target date so a future day crossing daylight saving keeps the right offset.
 Final review-fix validation passed 4,204 Python tests with 9 skips (172.06
 seconds), all database contracts and the web types/routes/production build.
 
+Final freshness review also guards the handoff between capture and station
+ingest: a v3 input snapshot cannot replace a baseline that already knows a
+higher venue-rounded daily maximum. Both Celsius and Fahrenheit settlement
+rounding are exercised, and a change within the same settlement degree does
+not reject the primary. A stale primary keeps the complete baseline and its
+eligibility gates, recording `newer_station_maximum`; the frozen distribution
+is never reshaped. CI and the third dry tick passed on 1fc4a0a before this
+last guard. Its complete validation passed 4,206 Python tests with 9 skips
+(188.06 seconds), plus the full database contracts. Release acceptance will
+be recorded in the PR after final checks.
+
 ## Remaining reliability and forward checks — 16 Oct, in progress
 
 The #407 release merged as 44c5f15c69a3. Its real capture completed at

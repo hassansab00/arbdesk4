@@ -151,7 +151,8 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
             key = (e["city"], e["date"], frozenset(map(str, e["band_ids"])))
             _predictions[key] = {"version": version, "as_of": now.isoformat(),
                 "probs": dict(zip(map(str, e["band_ids"]), map(float, p))),
-                "floor_c": float(row["rmax_c"]), "input_sha256": sha,
+                "floor_c": float(row["rmax_c"]), "unit": e["unit"],
+                "floor_unit": float(row["rmax_unit"]), "input_sha256": sha,
                 "history_commit": commit}
         _detail.update(selected=len(_predictions), version=version)
         if len(events) < len(selected):
@@ -176,6 +177,14 @@ def apply(city, target, result):
         if (city, str(target)) in _eligible:
             return rows, reg, [*reasons, f"primary_fallback:{POLICY}:baseline_kept"]
         return result
+    # Capture may still contain an older report after the engine has ingested
+    # a new maximum. Compare settlement degrees, including Fahrenheit rounding,
+    # before replacing the baseline; never reshape the frozen distribution.
+    from venue import venue_round
+    if any(venue_round(float(r["observed_floor_c"]), primary["unit"]) > primary["floor_unit"]
+           for r in rows if r.get("observed_floor_c") is not None
+           and math.isfinite(float(r["observed_floor_c"]))):
+        return rows, reg, [*reasons, f"primary_fallback:{POLICY}:newer_station_maximum"]
     from common import model_version_id
     version = model_version_id("forecast", primary["version"], config={
         "policy": POLICY, "version": primary["version"], "distribution": "direct buckets",

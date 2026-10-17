@@ -44,7 +44,7 @@ def test_one_complete_primary_replaces_the_ladder_without_old_calibration(monkey
                 SimpleNamespace(label="NORMAL"), ["priced_from:nws:old", "calibrated:old", "station_width:old"])
     monkeypatch.setattr(pp, "_predictions", {("jeddah", "2026-10-17", frozenset(("a", "b"))):
         dict(version="wxrd3:v3:checked", as_of="2026-10-17T09:36:00+00:00", probs={"a": .25, "b": .75},
-             floor_c=35, input_sha256="input")})
+             floor_c=35, unit="C", floor_unit=35, input_sha256="input")})
     out, reg, why = pp.apply("jeddah", "2026-10-17", baseline)
     assert [r["calibrated_prob"] for r in out] == [.25, .75]
     assert [r["raw_prob"] for r in out] == [.25, .75]
@@ -72,6 +72,29 @@ def test_a_refused_primary_keeps_the_working_baseline_and_marks_fallback(monkeyp
     assert pp.apply("jeddah", "2026-10-17", base) is base
 
 
+@pytest.mark.parametrize("unit,primary_degree,same_degree_c,new_degree_c", [
+    ("C", 35, 35.4, 35.5),
+    ("F", 95, 35.1, (95.5 - 32) * 5 / 9),
+])
+def test_a_newer_station_maximum_keeps_the_baseline_before_version_registration(
+        monkeypatch, unit, primary_degree, same_degree_c, new_degree_c):
+    monkeypatch.setenv("PREDICTIVE_PRIMARY", pp.POLICY)
+    registrations = []
+    monkeypatch.setattr("common.model_version_id", lambda *a, **k: registrations.append(a) or "registered")
+    monkeypatch.setattr(pp, "_predictions", {("city", "2026-10-17", frozenset(("a",))):
+        dict(version="wxrd3:v3:checked", as_of="2026-10-17T09:36:00+00:00", probs={"a": 1},
+             floor_c=35, unit=unit, floor_unit=primary_degree, input_sha256="input")})
+    base = ([dict(band_id="a", observed_floor_c=new_degree_c, calibrated_prob=.8,
+                  pricing_eligible=False, pricing_block_reason="no_verified_skill")], None, ["priced_from:nws"])
+    rows, reg, why = pp.apply("city", "2026-10-17", base)
+    assert rows is base[0] and why[-1].endswith(":newer_station_maximum")
+    assert not registrations, "a stale primary must not register or replace any band"
+    base[0][0]["observed_floor_c"] = same_degree_c
+    rows, reg, why = pp.apply("city", "2026-10-17", base)
+    assert rows[0]["calibrated_prob"] == 1 and registrations
+    assert rows[0]["pricing_eligible"] is False
+
+
 def test_a_primary_cannot_price_if_its_exact_input_record_was_not_saved(monkeypatch):
     import sys
     import pathlib
@@ -82,7 +105,7 @@ def test_a_primary_cannot_price_if_its_exact_input_record_was_not_saved(monkeypa
     now = dt.datetime(2026, 10, 17, 9, 36, tzinfo=UTC)
     event = dict(event_id="m", city="jeddah", date="2026-10-17", unit="C", band_ids=["a", "b"])
     vector = dict(event_id="m", city_key="jeddah", date="2026-10-17", decision_utc=int(now.timestamp()),
-                  rmax_c=35, obs_age_min=15, fc_models_n=7, fch_n_known=24,
+                  rmax_c=35, rmax_unit=35, obs_age_min=15, fc_models_n=7, fch_n_known=24,
                   winner="must be removed", label_unit=36)
     monkeypatch.setattr(wl, "load_model", lambda *a: object())
     monkeypatch.setattr(lr, "live_events", lambda *a: [event])
@@ -109,3 +132,4 @@ def test_a_primary_cannot_price_if_its_exact_input_record_was_not_saved(monkeypa
     assert payload["row"]["winner"] is None and payload["row"]["label_unit"] is None
     assert payload["history_committed_at"] < now.timestamp()
     assert payload["row_sha256"] == next(iter(pp._predictions.values()))["input_sha256"]
+    assert next(iter(pp._predictions.values()))["floor_unit"] == 35
