@@ -745,3 +745,20 @@ def test_freeze_refusal_isolated_to_city(monkeypatch):
     monkeypatch.setattr(tick,'upsert',write)
     failed=[]
     assert tick.freeze_rows(rows,failed)==1 and len(failed)==1 and 'expired' in failed[0]
+
+
+@pytest.mark.parametrize('budget_s',[45.,100.])
+def test_primary_receives_actual_remaining_deadline_with_downstream_reserve(world,monkeypatch,budget_s):
+    import predictive_primary
+    import time
+    deadlines=[]
+    def prepare(*a,**kw):
+        deadlines.append(kw['deadline'])
+        return {}
+    monkeypatch.setattr(predictive_primary,'prepare',prepare)
+    before=time.monotonic()
+    tick.run(now=at('2026-09-24T22:35'),dry_run=True,budget_s=budget_s)
+    after=time.monotonic()
+    assert len(deadlines)==1
+    assert before+budget_s-tick.PRIMARY_DOWNSTREAM_RESERVE_S <= deadlines[0]
+    assert deadlines[0] <= after+budget_s-tick.PRIMARY_DOWNSTREAM_RESERVE_S
