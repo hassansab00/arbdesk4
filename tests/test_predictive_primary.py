@@ -78,7 +78,6 @@ def test_a_primary_cannot_price_if_its_exact_input_record_was_not_saved(monkeypa
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
     from wxpredict import common, live_reader as lr, wxrd_live as wl
     from wxpredict import build_table, capture_history, decision_inputs
-    import sdyes_forward
     monkeypatch.setenv("PREDICTIVE_PRIMARY", pp.POLICY)
     now = dt.datetime(2026, 10, 17, 9, 36, tzinfo=UTC)
     event = dict(event_id="m", city="jeddah", date="2026-10-17", unit="C", band_ids=["a", "b"])
@@ -92,7 +91,8 @@ def test_a_primary_cannot_price_if_its_exact_input_record_was_not_saved(monkeypa
     monkeypatch.setattr(build_table, "load_station_daily", lambda: ({}, {}))
     monkeypatch.setattr(build_table, "load_daily_forecasts", lambda: ({}, {}))
     monkeypatch.setattr(decision_inputs, "history_identity", lambda: ("old-commit", int(now.timestamp())-100))
-    monkeypatch.setattr(sdyes_forward, "model_probs", lambda *a: {("m", int(now.timestamp())): [.2, .8]})
+    monkeypatch.setitem(sys.modules, "sdyes_forward", SimpleNamespace(
+        model_probs=lambda *a: {("m", int(now.timestamp())): [.2, .8]}))
     writes = []
     def refuse(*a):
         raise RuntimeError("input record refused")

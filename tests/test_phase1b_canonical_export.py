@@ -69,6 +69,8 @@ def test_probability_band_scope_is_paginated(monkeypatch):
     pe._bands_for_markets([str(i) for i in range(101)])
     assert len(calls) == 2
     assert all(call[0] == "v_canonical_bands" for call in calls)
+    assert all("band_index" in call[1]["select"].split(",") for call in calls), (
+        "WXPredict's whole-ladder check needs the canonical order on both pricing paths")
     assert all(call[2] == {"order": "band_id", "page_size": 500} for call in calls)
 
 

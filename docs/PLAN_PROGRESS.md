@@ -54,6 +54,21 @@ last-thirty-completed-day medians differ from the monthly references by as much
 as 1.5 hours (Paris and Istanbul). These operational readings do not establish
 a new settlement truth or authorize rewriting frozen checkpoint schedules.
 
+Pre-merge real-workflow rehearsal 39039991832 completed in 55 seconds, with
+8 due calls and no failed/deferred checkpoint. Its primary correctly fell back
+because the shared canonical-band projection omitted band_index; the live
+ladder reader requires it. The shared projection now includes the index, with
+a regression assertion covering both tick and intraday readers. Initial CI's
+new persistence-failure test imported optional LightGBM; it now uses an injected
+predictor so the base CI environment can test the write gate without ML. Neither
+issue reached main. Updated complete checks and a second workflow rehearsal
+are required before merge.
+
+PR: https://github.com/hassansab00/arbdesk4/pull/409. The updated local suites
+passed: 4,203 Python tests, 9 skips (176.89 seconds), full database contracts,
+and the five primary gate tests in a separate base environment without ML.
+The PR body records final CI, merge, runtime and rendered-page acceptance.
+
 ## Remaining reliability and forward checks — 16 Oct, in progress
 
 The #407 release merged as 44c5f15c69a3. Its real capture completed at

@@ -562,7 +562,7 @@ def _bands_for_markets(market_ids):
     for i in range(0, len(market_ids), chunk):
         batch = market_ids[i:i + chunk]
         rows = rest_all("v_canonical_bands", [
-            ("select", "band_id,market_id,band_lo,band_hi,open_low,open_high,band_label,correction_id"),
+            ("select", "band_id,market_id,band_index,band_lo,band_hi,open_low,open_high,band_label,correction_id"),
             ("market_id", f"in.({','.join(str(m) for m in batch)})"),
         ], order="band_id", page_size=500)
         out.extend(rows)
