@@ -733,3 +733,15 @@ def test_historical_rehearsal_prepares_primary_at_the_requested_instant(world, m
     instant = at("2026-09-24T22:35")
     tick.run(now=instant, dry_run=True)
     assert seen == [(instant, True)], "a replay must not know captures from the wall-clock future"
+
+
+def test_freeze_refusal_isolated_to_city(monkeypatch):
+    import tick
+    rows=[dict(city_key=c,target_date='2026-10-17',checkpoint='noon') for c in ['expired','valid']]
+    def write(table,batch,conflict):
+        if any(r['city_key']=='expired' for r in batch):
+            raise RuntimeError('Freeze refused: completed local day')
+        return len(batch)
+    monkeypatch.setattr(tick,'upsert',write)
+    failed=[]
+    assert tick.freeze_rows(rows,failed)==1 and len(failed)==1 and 'expired' in failed[0]

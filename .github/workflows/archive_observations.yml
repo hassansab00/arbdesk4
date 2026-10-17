@@ -356,6 +356,13 @@ jobs:
       # `if: always()`: a table that failed must not strand the ones that were
       # written and verified - the manifest is saved after every table, so
       # what is on disk is exactly what it records.
+      - name: Score the original frozen city calls
+        if: ${{ !cancelled() }}
+        timeout-minutes: 4
+        run: PYTHONPATH=scripts python scripts/predictive_validation.py --score-only
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       - name: Commit the mirror
         if: always()
         run: |

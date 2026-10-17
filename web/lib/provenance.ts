@@ -240,6 +240,29 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "AD4 P0.4 - Trade History"
     }
   ],
+  "derived_city_prediction_validation": [
+    {
+      "cadence": "daily",
+      "file": "archive_observations.yml",
+      "how": "scripts/predictive_validation.py",
+      "kind": "action",
+      "name": "Archive Observations"
+    },
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/predictive_validation.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
+    {
+      "cadence": "several times a day",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/predictive_validation.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
+    }
+  ],
   "derived_climb_profile": [
     {
       "cadence": "daily",
@@ -440,6 +463,29 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/capacity.py",
       "kind": "action",
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    }
+  ],
+  "derived_wx_city_calibration": [
+    {
+      "cadence": "daily",
+      "file": "archive_observations.yml",
+      "how": "scripts/predictive_validation.py",
+      "kind": "action",
+      "name": "Archive Observations"
+    },
+    {
+      "cadence": "daily",
+      "file": "pipeline_daily.yml",
+      "how": "scripts/predictive_validation.py",
+      "kind": "action",
+      "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
+    {
+      "cadence": "several times a day",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/predictive_validation.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "edges": [
@@ -1289,6 +1335,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "paper_resolution_evidence",
     "resolution_verdicts"
   ],
+  "v_city_prediction_validation": [
+    "derived_city_prediction_validation"
+  ],
   "v_city_reasoning": [
     "cities",
     "derived_forecast_skill",
@@ -1386,6 +1435,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "fact_band_outcome",
     "fact_forecast_outcome",
     "fact_signal_outcome"
+  ],
+  "v_day_ahead_frozen_validation": [
+    "derived_city_prediction_validation",
+    "derived_wx_city_calibration",
+    "live_capture"
   ],
   "v_decision_prediction": [
     "decisions",
@@ -1966,6 +2020,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
   ],
   "v_workflow_runs": [
     "ingest_log"
+  ],
+  "v_wx_frozen_learning": [
+    "cities",
+    "fact_checkpoint_outcome",
+    "prediction_checkpoints"
   ]
 };
 

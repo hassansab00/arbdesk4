@@ -212,6 +212,7 @@ SQL_FILTERS = {
     "sql/ad4_34_trade_plan.sql":                "v_trade_plan - the board, and the s5/s7 trust gate",
 }
 SQL_RECORD = {
+    "supabase/migrations/20261017170738_frozen_city_learning.sql",  # Historical clock and label lookup; not roster selection.
     "sql/ad4_city_calibration_forward.sql",  # Historical calls, including retired cities.
 
     # ad4_88 (plan v2.1 P3.8): cities.timezone only, to put the evening-before
