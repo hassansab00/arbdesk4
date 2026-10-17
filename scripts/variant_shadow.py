@@ -214,6 +214,14 @@ def write(rows, timeout_s):
     return len(rows)
 
 
+def write_frozen(rows, timeout_s, refused):
+    from frozen_calls import freeze_insert
+    end = time.monotonic()+timeout_s
+    return freeze_insert(TABLE, rows, ON_CONFLICT,
+        writer=lambda _table, batch, _conflict: write(batch, max(1.,end-time.monotonic())),
+        refused=refused, deadline=end)
+
+
 def day_ahead_call(band_ids, starts_at, timeout_s=8.0):
     """The last pricing of these buckets before starts_at, or None.
 
@@ -395,7 +403,7 @@ def record(out, results, market_of, bands_by_market, tz_of, unit_of, dry_run=Fal
                 skip("out_of_time", len(rows))
             else:
                 try:
-                    counts["written"] = write(rows, min(8.0, left))
+                    counts["written"] = write_frozen(rows, min(8.0, left), counts.setdefault("freeze_refused", []))
                 except Exception as e:
                     counts["error"] = f"{type(e).__name__}: {str(e)[:160]}"
         if sd_rows and not dry_run:
@@ -404,10 +412,13 @@ def record(out, results, market_of, bands_by_market, tz_of, unit_of, dry_run=Fal
                 sd_skip("out_of_time", len(sd_rows))
             else:
                 try:
-                    sd["written"] = write(sd_rows, min(8.0, left))
+                    sd["written"] = write_frozen(sd_rows, min(8.0, left), sd.setdefault("freeze_refused", []))
                 except Exception as e:
                     sd["error"] = f"{type(e).__name__}: {str(e)[:160]}"
     except Exception as e:
         counts["error"] = f"{type(e).__name__}: {str(e)[:160]}"
+    for detail in (counts, sd):
+        if not detail.get("freeze_refused"):
+            detail.pop("freeze_refused", None)
     counts["seconds"] = round(time.monotonic() - t0, 2)
     return counts

@@ -167,6 +167,7 @@ class _Ops:
 
     def upsert(self, table, rows, on_conflict):
         self.upserts.append((table, rows))
+        return len(rows)
 
     def log_run(self, job, status, n, detail):
         self.logs.append((job, status, n, detail))
@@ -286,6 +287,7 @@ def test_failed_input_capture_leaves_the_first_call_due_until_saved(monkeypatch,
         def upsert(self, table, rows, on_conflict):
             super().upsert(table, rows, on_conflict)
             self.tables[table].extend(rows)
+            return len(rows)
 
     fake = Ops({"prediction_checkpoints": [first], wl.TABLE: [sibling]})
     event = {"city": "madrid", "date": first["target_date"],

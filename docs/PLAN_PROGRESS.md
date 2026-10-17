@@ -16,6 +16,10 @@ cadence; no scheduled workflow or capital setting is added. Policy priors and
 interpretation limits are in docs/FROZEN_CITY_LEARNING.md. Held identity cells
 are the expected initial state until sufficient newly receipted calls settle.
 
+PR review also preserves the causal six-hour shadow retry window while keeping
+late/outcome cutoffs, isolates refused shadow rows, and scopes displayed active
+calibration to the currently serving raw model version.
+
 The temporary workspace reset before publication. The work was restored from
 current main and the implementation handoff; earlier local test claims do not
 stand in for the fresh complete checks. Current CI, migration, deployment,

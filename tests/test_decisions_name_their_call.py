@@ -116,7 +116,7 @@ def test_the_tick_writes_the_call_each_decision_acted_on():
     assert "stored = stored_calls(rows, rest_all)" in s10
     # the ladders are filled after the write, from what it stored
     rec = s10[s10.index("def record("):s10.index("def _challenger(")]
-    assert rec.index('out["written"] = upsert(') < rec.index("stored_calls(rows, rest_all)")
+    assert rec.index('out["written"] = freeze_insert(') < rec.index("stored_calls(rows, rest_all)")
 
 
 def test_the_suites_run_the_new_test():

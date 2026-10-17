@@ -47,3 +47,14 @@ def test_missing_cities_are_retained_and_postpeak_does_not_inflate_overall():
     overall=next(r['report'] for r in out if r['city_key']=='city' and r['checkpoint']=='overall' and r['scope']=='served')
     assert overall['hits']==0 and overall['n']==6 and overall['dates']==1
     assert all(r['report']['n']==0 for r in out if r['city_key']=='empty')
+
+
+def test_learning_activity_only_names_current_serving_model():
+    import wx_city_calibration as c
+    state=dict(city_key='city',phase='before_peak',model_version='old',as_of='2026-10-17',
+               validated_through='2026-10-16',params=dict(temperature=1.05,tilt=.025),version='fit')
+    reports=v.reports([],CITIES,[],[state,dict(state,model_version='current')],NOW,'current')
+    for row in reports:
+        assert len(row['report']['learning'])==1
+        assert row['report']['learning'][0]['model_version']=='current'
+        assert row['report']['learning'][0]['active']

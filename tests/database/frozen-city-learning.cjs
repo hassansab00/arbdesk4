@@ -1,7 +1,7 @@
 const {PGlite}=require('@electric-sql/pglite');
 const fs=require('node:fs'); const assert=require('node:assert/strict');
 const root=require('node:path').join(__dirname,'../..');
-const migration=fs.readFileSync(root+'/supabase/migrations/20261017170738_frozen_city_learning.sql','utf8');
+const migration=fs.readFileSync(root+'/supabase/migrations/20261017170738_frozen_city_learning.sql','utf8')+'\n'+fs.readFileSync(root+'/supabase/migrations/20261017174142_frozen_city_shadow_retry.sql','utf8');
 async function refused(db,sql,params=[]){await assert.rejects(()=>db.query(sql,params));}
 (async()=>{
   const db=new PGlite();
@@ -22,15 +22,27 @@ async function refused(db,sql,params=[]){await assert.rejects(()=>db.query(sql,p
     create table fact_checkpoint_outcome(checkpoint_id uuid primary key,winner_band_id text,settled_at timestamptz,banked_at timestamptz);
     insert into prediction_checkpoints(city_key,target_date,checkpoint,local_decision_time,engine_version,model_path,probs,top_band_id,top_prob)
       values('legacy','2026-09-01','noon','2026-09-01 12:00','old','forecast','{"a":0.8,"b":0.2}','a',.8);`);
-  const before=(await db.query('select to_jsonb(p) p from prediction_checkpoints p')).rows[0].p;
+  const before=(await db.query("select to_jsonb(p) p from prediction_checkpoints p where city_key='legacy'")).rows[0].p;
   await db.exec(`create table variant_shadow_checkpoints(city_key text,target_date date,checkpoint text,decided_at timestamptz default now());
     create table s10_shadow_checkpoints(city_key text,target_date date,checkpoint text,decided_at timestamptz default now());`);
+  const utcHour=new Date().getUTCHours(),shift=utcHour-12;
+  const retryZone=shift===0?'UTC':`Etc/GMT${shift>0?'+':''}${shift}`;
+  const retryDay=new Date(Date.now()-shift*3600000).toISOString().slice(0,10);
+  await db.query("insert into cities values('retry',$1,'C'),('too-old',$1,'C')",[retryZone]);
+  await db.query(`insert into prediction_checkpoints(city_key,target_date,checkpoint,local_decision_time,engine_version,model_path,probs,top_band_id,top_prob,decided_at)
+    values('retry',$1::date,'morning',$1::date+time '09:00','old','forecast','{"a":0.8,"b":0.2}','a',.8,clock_timestamp()-interval '1 hour'),
+          ('too-old',$1::date,'morning',$1::date+time '09:00','old','forecast','{"a":0.8,"b":0.2}','a',.8,clock_timestamp()-interval '7 hours')`,[retryDay]);
   await db.exec(migration); await db.exec(migration);
-  const legacy=(await db.query("select to_jsonb(p)-array['frozen_at','input_as_of','input_key','input_sha256','raw_probs','baseline_probs','baseline_model','calibration','predictive_context'] p,frozen_at from prediction_checkpoints p")).rows[0];
+  const legacy=(await db.query("select to_jsonb(p)-array['frozen_at','input_as_of','input_key','input_sha256','raw_probs','baseline_probs','baseline_model','calibration','predictive_context'] p,frozen_at from prediction_checkpoints p where city_key='legacy'")).rows[0];
   assert.deepEqual(legacy.p,before); assert.equal(legacy.frozen_at,null);
   assert.equal((await db.query('select count(*)::int n from v_data_freshness')).rows[0].n,3);
   assert.deepEqual((await db.query("select rows,rows_estimated,state from v_data_freshness where table_name='old'")).rows[0],{rows:7,rows_estimated:false,state:'ok'});
   assert.deepEqual((await db.query("select reloptions from pg_class where oid='v_data_freshness'::regclass")).rows[0].reloptions,['security_barrier=true']);
+  for(const table of ['variant_shadow_checkpoints','s10_shadow_checkpoints']) {
+    await db.query(`insert into ${table}(city_key,target_date,checkpoint,decided_at) select city_key,target_date,checkpoint,decided_at from prediction_checkpoints where city_key='retry'`);
+    await refused(db,`insert into ${table}(city_key,target_date,checkpoint) values('retry',$1,'morning')`,[retryDay]);
+    await refused(db,`insert into ${table}(city_key,target_date,checkpoint,decided_at) select city_key,target_date,checkpoint,decided_at from prediction_checkpoints where city_key='too-old'`);
+  }
   const hour=new Date().getUTCHours(); const offset=hour-12;
   const zone=offset===0?'UTC':`Etc/GMT${offset>0?'+':''}${offset}`;
   const day=new Date(Date.now()-offset*3600000).toISOString().slice(0,10);

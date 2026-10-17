@@ -5,7 +5,7 @@ server receipts reject completed city-local days, confirmed outcomes,
 backdated decisions, future input timestamps, incorrect schedules, invalid
 probabilities and replacement calls under another engine version. Existing
 update/delete/truncate prohibitions remain. Old calls keep their original
-fields and receive no invented receipt. Shadows need a recent original call.
+fields and receive no invented receipt. Shadows need an original call: a fresh calculation has thirty minutes; a causal replay may retain its exact original decision time within the existing six-hour retry window. Both still refuse known outcomes or ended local days, and their later server receipt stays visible. A refused row is isolated so other cities remain writable.
 
 WXPredict v3 retains the authorized horizon routing. Each served call freezes
 its exact input key/hash/as-of and training cutoff, raw probabilities, paired

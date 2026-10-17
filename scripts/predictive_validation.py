@@ -143,7 +143,7 @@ def diagnostic(rows,reviews):
                 interpretation='Observed associations on reviewed misses; not causal attribution to WXPredict.')
 
 
-def reports(rows,cities,reviews,states,now):
+def reports(rows,cities,reviews,states,now,model_version=None):
     period_start=(now.date()-dt.timedelta(days=29)).isoformat()
     period_end=now.date().isoformat()
     rows=[r for r in rows if period_start<=r['target_date']<=period_end]
@@ -163,9 +163,9 @@ def reports(rows,cities,reviews,states,now):
                 report.update(city=city,display_name=c.get('display_name') or city,timezone=c['timezone'],
                     scope=scope,horizon=horizon,period_start=period_start,period_end=period_end,
                     why=diagnostic(chosen,[r for r in reviews if r['city_key']==city]),
-                    learning=[dict(s,active=cal.usable(s,now.date().isoformat(),s['model_version']),
-                                   effective_params=s['params'] if cal.usable(s,now.date().isoformat(),s['model_version']) else cal.IDENTITY)
-                              for s in states if s['city_key']==city])
+                    learning=[dict(s,active=cal.usable(s,now.date().isoformat(),model_version),
+                                   effective_params=s['params'] if cal.usable(s,now.date().isoformat(),model_version) else cal.IDENTITY)
+                              for s in states if s['city_key']==city and s['model_version']==model_version])
                 result.append(dict(city_key=city,checkpoint=horizon,scope=scope,as_of=now.isoformat(),report=report))
     return result
 
@@ -181,14 +181,14 @@ def run(score_only=False):
     peak_rows=rest_all('derived_weather_peak',[('select','city_key,month,peak_hour_local')],order='city_key.asc,month.asc',page_size=1000)
     peaks={(r['city_key'],int(r['month'])):r['peak_hour_local'] for r in peak_rows}
     states=[r['state'] for r in rest_all('derived_wx_city_calibration',[('select','state')],order='model_version.asc,city_key.asc,phase.asc',page_size=1000)]
+    meta=json.loads((ROOT/'data/models/wxrd/wxrd-v3_remaining.json').read_text())
+    # Same version identity as the serving/shadow readers; no ML dependency.
+    import sys
+    sys.path.insert(0,str(ROOT/'tools'))
+    from wxpredict.wxrd_live import variant_version
+    version=variant_version(meta,'wxrd3')
     detail={'score_only':score_only,'active_cities':len(cities)}
     if not score_only:
-        meta=json.loads((ROOT/'data/models/wxrd/wxrd-v3_remaining.json').read_text())
-        # Same version identity as the serving/shadow readers; no ML dependency.
-        import sys
-        sys.path.insert(0,str(ROOT/'tools'))
-        from wxpredict.wxrd_live import variant_version
-        version=variant_version(meta,'wxrd3')
         learning=rest_all('v_wx_frozen_learning',[('select','*'),('target_date','gte.'+(now.date()-dt.timedelta(days=180)).isoformat())],order='city_key.asc,target_date.asc,checkpoint.asc',page_size=1000)
         fitted=cal.fit(learning,[c['city_key'] for c in cities],version,now.date(),states)
         path=ROOT/'data/eval/wxpredict/city_calibration'/f'{now.date()}.json'
@@ -197,7 +197,7 @@ def run(score_only=False):
         upsert('derived_wx_city_calibration',[dict(model_version=s['model_version'],city_key=s['city_key'],phase=s['phase'],as_of=s['as_of'],version=s['version'],state=s) for s in fitted], 'model_version,city_key,phase')
         states=[s for s in states if s['model_version']!=version]+fitted
         detail.update(calibration_cells=len(fitted),decisions=dict(Counter(s['decision'] for s in fitted)),eligible_learning_calls=len(cal.eligible_rows(learning,now.date(),version)))
-    data=reports(collect(p,outcomes,da,cities,peaks,now),cities,reviews,states,now)
+    data=reports(collect(p,outcomes,da,cities,peaks,now),cities,reviews,states,now,version)
     n=upsert('derived_city_prediction_validation',data,'city_key,checkpoint,scope')
     log_run(JOB,'ok',n,detail)
     print(json.dumps(dict(rows=n,**detail)),flush=True)
