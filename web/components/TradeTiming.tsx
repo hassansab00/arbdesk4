@@ -36,7 +36,7 @@ export function WindowPill({ p }: { p: TradePlan }) {
     timed && p.in_entry_window ? `ENTER NOW · peak in ${mins}m`
     : state === "INSIDE" ? `peak in ${mins}m`
     : state === "BEFORE" ? `window opens in ${mins}m`
-    : p.day_decided ? "day decided" : "past the peak";
+    : p.day_decided ? "cooling trend" : "past the peak";
 
   return (
     <span
@@ -64,8 +64,8 @@ export function DayPath({ p }: { p: TradePlan }) {
 
   const verdict = p.day_decided
     ? p.holds_running_max
-      ? { tone: "text-good", text: "the banked maximum is inside this band" }
-      : { tone: "text-muted", text: "the day is over and its maximum is elsewhere" }
+      ? { tone: "text-good", text: "the observed maximum so far is inside this band" }
+      : { tone: "text-muted", text: "the observed maximum so far is in another band" }
     : p.holds_implied_max
     ? { tone: "text-good", text: "the day is heading into this band" }
     : p.out_of_reach

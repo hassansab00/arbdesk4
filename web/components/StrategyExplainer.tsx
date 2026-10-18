@@ -423,14 +423,14 @@ export const PLAYS: Record<string, Play> = {
     headline: "Wait until the day is provably over, then buy the bucket holding the maximum while it is still cheap.",
     steps: [
       "This one does not forecast. It waits.",
-      "The day is decided when the temperature has fallen far enough, for long enough, that the remaining daylight cannot recover it.",
+      "The cooling flag marks consecutive readings below the running maximum. It does not establish the final maximum or settlement.",
       "At that moment the bucket containing the day's running maximum is the winner — the outcome is settled, not predicted.",
       "If the market has not caught up, buy it. Here the maximum landed in 30–31 and it is still priced at 30c.",
       "There is no exit rule and that is deliberate: the outcome is already known, so it is held to settlement.",
     ],
     legs: [{ i: CENTRE, side: "YES" }],
     gates: [
-      { label: "day decided", value: "yes", ok: true },
+      { label: "cooling trend", value: "yes", ok: true },
       { label: "maximum rests on", value: "a series of readings, not one point", ok: true },
       { label: "seasonal window", value: "under 12h — a peak exists to be past", ok: true },
       { label: "price", value: "30c, under the 90c ceiling", ok: true },

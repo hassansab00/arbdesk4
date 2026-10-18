@@ -7,7 +7,7 @@
 --
 -- A RED box on an AD4 page is one thing: a query that failed, almost always
 -- because the view behind it does not exist yet. This checks every relation
--- and function the app reads - 301 of them - and for each MISSING one names the
+-- and function the app reads - 303 of them - and for each MISSING one names the
 -- SQL file that creates it and the pages that go red without it.
 --
 -- An EMPTY box (dashed border, grey text, naming a job to run) is NOT a fault
@@ -167,6 +167,7 @@ with expected(rel, owner, used_by) as (values
     ('v_city_day_plan', 'ad4_34_trade_plan.sql', '/opportunities'),
     ('v_city_day_readiness', 'supabase/migrations/20260912234500_phase1c_operational_readiness.sql', ''),
     ('v_city_forecast_inputs', 'supabase/migrations/20261005110000_the_model_inputs_have_their_own_freshness.sql', '(CityForecastInputs)'),
+    ('v_city_forecast_today', 'ad4_19_stats_cache.sql', ''),
     ('v_city_hit_history', 'ad4_85_city_hit_history.sql', '/predictive'),
     ('v_city_hit_history_live', 'supabase/migrations/20260929220000_the_edges_keep_the_prices_the_record_reads.sql', ''),
     ('v_city_hit_summary', 'ad4_85_city_hit_history.sql', '/predictive'),
@@ -177,7 +178,7 @@ with expected(rel, owner, used_by) as (values
     ('v_city_observation_health', 'ad4_71_observation_health.sql', '(CityWeatherHealth)'),
     ('v_city_peak_approach', 'ad4_26_temp_trend.sql', '(RightRail), /live, /monitor'),
     ('v_city_prediction_confidence', 'ad4_58_city_prediction_confidence.sql', ''),
-    ('v_city_prediction_validation', 'supabase/migrations/20261017170738_frozen_city_learning.sql', ''),
+    ('v_city_prediction_validation', 'supabase/migrations/20261017170738_frozen_city_learning.sql', '(FrozenLearningStatus)'),
     ('v_city_predictor_pairs', 'supabase/migrations/20261018084700_city_predictor_selection.sql', ''),
     ('v_city_reasoning', 'ad4_23_reasoning.sql', '(Reasoning)'),
     ('v_city_running_max', 'ad4_71_observation_health.sql', ''),
@@ -232,7 +233,7 @@ with expected(rel, owner, used_by) as (values
     ('v_latest_book', 'ad4_13_reconcile.sql', ''),
     ('v_latest_edge', 'ad4_phase2.sql', ''),
     ('v_latest_prob', 'ad4_phase2.sql', ''),
-    ('v_learning_state', 'ad4_40_synthesis.sql', '/synthesis'),
+    ('v_learning_state', 'ad4_40_synthesis.sql', ''),
     ('v_learning_status', 'supabase/migrations/20261004200000_the_page_reads_the_contract.sql', '(PredictionLineup)'),
     ('v_market_settlement_gaps', 'ad4_87_market_settlement_gaps.sql', ''),
     ('v_mirror_book_kept', 'supabase/migrations/20260923200000_what_the_archive_never_takes.sql', ''),
@@ -248,10 +249,11 @@ with expected(rel, owner, used_by) as (values
     ('v_opportunities', 'ad4_13_reconcile.sql', '(Header), (ModelAnalytics), /, /analytics, /board, /globe, /goals, /live, /monitor'),
     ('v_opportunities_live', 'ad4_89_page_cache.sql', ''),
     ('v_opportunity_context', 'ad4_22_opportunity_context.sql', '/opportunities'),
-    ('v_outcome_evidence_health', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', '(DataBank), /predictive, /synthesis'),
+    ('v_outcome_evidence_health', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', '(DataBank)'),
     ('v_outcome_pipeline', 'supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql', ''),
     ('v_page_city_volume', 'ad4_page_status.sql', '(GlobalBar), /, /live'),
     ('v_page_data_freshness', 'ad4_page_status.sql', ''),
+    ('v_page_outcome_evidence_health', 'ad4_page_status.sql', '/predictive, /synthesis'),
     ('v_paper_desk_integrity', 'ad4_81_paper_desk_integrity.sql', ''),
     ('v_paper_desks', 'ad4_59_paper_desks.sql', ''),
     ('v_peak_hour_coverage', 'ad4_37_peak_hour.sql', '(PredictionClocks), /globe'),
@@ -490,6 +492,7 @@ begin
     ('v_city_day_plan', 'ad4_34_trade_plan.sql', '/opportunities'),
     ('v_city_day_readiness', 'supabase/migrations/20260912234500_phase1c_operational_readiness.sql', ''),
     ('v_city_forecast_inputs', 'supabase/migrations/20261005110000_the_model_inputs_have_their_own_freshness.sql', '(CityForecastInputs)'),
+    ('v_city_forecast_today', 'ad4_19_stats_cache.sql', ''),
     ('v_city_hit_history', 'ad4_85_city_hit_history.sql', '/predictive'),
     ('v_city_hit_history_live', 'supabase/migrations/20260929220000_the_edges_keep_the_prices_the_record_reads.sql', ''),
     ('v_city_hit_summary', 'ad4_85_city_hit_history.sql', '/predictive'),
@@ -500,7 +503,7 @@ begin
     ('v_city_observation_health', 'ad4_71_observation_health.sql', '(CityWeatherHealth)'),
     ('v_city_peak_approach', 'ad4_26_temp_trend.sql', '(RightRail), /live, /monitor'),
     ('v_city_prediction_confidence', 'ad4_58_city_prediction_confidence.sql', ''),
-    ('v_city_prediction_validation', 'supabase/migrations/20261017170738_frozen_city_learning.sql', ''),
+    ('v_city_prediction_validation', 'supabase/migrations/20261017170738_frozen_city_learning.sql', '(FrozenLearningStatus)'),
     ('v_city_predictor_pairs', 'supabase/migrations/20261018084700_city_predictor_selection.sql', ''),
     ('v_city_reasoning', 'ad4_23_reasoning.sql', '(Reasoning)'),
     ('v_city_running_max', 'ad4_71_observation_health.sql', ''),
@@ -555,7 +558,7 @@ begin
     ('v_latest_book', 'ad4_13_reconcile.sql', ''),
     ('v_latest_edge', 'ad4_phase2.sql', ''),
     ('v_latest_prob', 'ad4_phase2.sql', ''),
-    ('v_learning_state', 'ad4_40_synthesis.sql', '/synthesis'),
+    ('v_learning_state', 'ad4_40_synthesis.sql', ''),
     ('v_learning_status', 'supabase/migrations/20261004200000_the_page_reads_the_contract.sql', '(PredictionLineup)'),
     ('v_market_settlement_gaps', 'ad4_87_market_settlement_gaps.sql', ''),
     ('v_mirror_book_kept', 'supabase/migrations/20260923200000_what_the_archive_never_takes.sql', ''),
@@ -571,10 +574,11 @@ begin
     ('v_opportunities', 'ad4_13_reconcile.sql', '(Header), (ModelAnalytics), /, /analytics, /board, /globe, /goals, /live, /monitor'),
     ('v_opportunities_live', 'ad4_89_page_cache.sql', ''),
     ('v_opportunity_context', 'ad4_22_opportunity_context.sql', '/opportunities'),
-    ('v_outcome_evidence_health', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', '(DataBank), /predictive, /synthesis'),
+    ('v_outcome_evidence_health', 'supabase/migrations/20260913100000_phase2a_verified_outcome_truth.sql', '(DataBank)'),
     ('v_outcome_pipeline', 'supabase/migrations/20260930100000_the_ladders_are_asked_market_by_market.sql', ''),
     ('v_page_city_volume', 'ad4_page_status.sql', '(GlobalBar), /, /live'),
     ('v_page_data_freshness', 'ad4_page_status.sql', ''),
+    ('v_page_outcome_evidence_health', 'ad4_page_status.sql', '/predictive, /synthesis'),
     ('v_paper_desk_integrity', 'ad4_81_paper_desk_integrity.sql', ''),
     ('v_paper_desks', 'ad4_59_paper_desks.sql', ''),
     ('v_peak_hour_coverage', 'ad4_37_peak_hour.sql', '(PredictionClocks), /globe'),

@@ -295,13 +295,13 @@ select
   -- what is on the board now plus what this city usually still adds from here.
   -- Deliberately NOT a forecast - it is the number to hold a forecast against.
   case when p.typical_climb_left_c is null then null
-       else round((t.latest_temp_c + p.typical_climb_left_c)::numeric, 2)
+       else greatest(t.running_max_c, round((t.latest_temp_c + p.typical_climb_left_c)::numeric, 2))
   end                                                    as implied_max_c,
   case when p.climb_left_p10_c is null then null
-       else round((t.latest_temp_c + p.climb_left_p10_c)::numeric, 2)
+       else greatest(t.running_max_c, round((t.latest_temp_c + p.climb_left_p10_c)::numeric, 2))
   end                                                    as implied_max_low_c,
   case when p.climb_left_p90_c is null then null
-       else round((t.latest_temp_c + p.climb_left_p90_c)::numeric, 2)
+       else greatest(t.running_max_c, round((t.latest_temp_c + p.climb_left_p90_c)::numeric, 2))
   end                                                    as implied_max_high_c
 from v_city_temp_trend t
 left join v_city_climb_profile p

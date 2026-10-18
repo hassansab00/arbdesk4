@@ -131,7 +131,7 @@ type BoardConditions = {
  *
  * s5 and s7 are the two whose gate is a property of the board rather than of
  * a price, and they are also two of the five that have never fired. s5 needs
- * all three of: the day decided, a station reading rather than a model grid,
+ * all three of: the cooling trend, a station reading rather than a model grid,
  * and a running maximum resting on a series. On 20 Sep that was ONE city of
  * 54 - not a misconfiguration, but worth knowing before waiting on it.
  */
@@ -141,7 +141,7 @@ const NEEDS: Record<string, { text: string; count?: keyof BoardConditions }> = {
   s3_concentration: { text: "a band the model concentrates enough probability into" },
   s4_tail_fade: { text: "an outer band the market is paying too much for" },
   s5_running_max_lock: {
-    text: "the day decided, a station reading behind the maximum, and that maximum resting on a series",
+    text: "the cooling trend, a station reading behind the maximum, and that maximum resting on a series",
     count: "lock_eligible",
   },
   s6_anchor_insurance: { text: "an anchor band plus a cheap neighbour worth insuring it with" },
@@ -327,7 +327,7 @@ export default function StrategiesPage() {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded border border-border bg-panel px-3 py-2 text-xs">
           <span className="text-muted">On the board now</span>
           <span className="font-mono">{cond.cities} cities</span>
-          <span className="font-mono text-muted">{cond.day_decided} day decided</span>
+          <span className="font-mono text-muted">{cond.day_decided} cooling trend</span>
           <span className="font-mono text-muted">{cond.station_backed} station-backed</span>
           <span className={`font-mono ${cond.inside_peak_window > 0 ? "text-good" : "text-muted"}`}>
             {cond.inside_peak_window} inside a peak window

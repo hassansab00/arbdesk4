@@ -13,13 +13,18 @@ const mig=fs.readFileSync(require('path').join(__dirname,'../../supabase/migrati
  create table volume(city_key text,volume_usd numeric,n_trades int);
  insert into volume values('milan',123,2);
  create view v_city_volume as select * from volume;
+ create table evidence_health(raw_band_facts bigint,verified_band_facts bigint,mismatched_band_facts bigint,raw_forecast_facts bigint,verified_forecast_facts bigint,venue_evidence_rows bigint,weather_evidence_rows bigint,confirmed_markets bigint,latest_venue_evidence_at timestamptz,latest_weather_evidence_at timestamptz);
+ insert into evidence_health values(10,9,1,20,18,30,40,3,now(),now());
+ create view v_outcome_evidence_health as select * from evidence_health;
  `);
  await db.exec(mig);await db.exec(mig);
+ const latest=fs.readFileSync(require("path").join(__dirname,"../../supabase/migrations/20261018172215_page_evidence_health_sample.sql"),"utf8");
+ await db.exec(latest);await db.exec(latest);
  // Fresh installs apply the serialization migration after the sampler's file.
  // That later replacement must retain the sampler hook.
  await db.exec(fs.readFileSync(require('path').join(__dirname,'../../supabase/migrations/20261016174555_serialized_page_cache.sql'),'utf8'));
 
- for(const [live,page,omit] of [['v_data_freshness','v_page_data_freshness','sampled_at'],['v_city_volume','v_page_city_volume','sampled_at']]){
+ for(const [live,page,omit] of [['v_data_freshness','v_page_data_freshness','sampled_at'],['v_city_volume','v_page_city_volume','sampled_at'],['v_outcome_evidence_health','v_page_outcome_evidence_health','sampled_at']]){
   const cols=(await q(`select attname from pg_attribute where attrelid='${live}'::regclass and attnum>0 order by attnum`)).map(x=>x.attname).join(',');
   for(const [a,b] of [[live,page],[page,live]])assert.equal((await q(`select count(*)::int n from(select ${cols} from ${a} except all select ${cols} from ${b})x`))[0].n,0);
  }
@@ -31,6 +36,8 @@ const mig=fs.readFileSync(require('path').join(__dirname,'../../supabase/migrati
  for(const role of ['anon','authenticated']){
   await db.exec(`set role ${role}`);assert.equal((await q('select * from v_page_data_freshness')).length,2);
   await assert.rejects(q('select * from mv_page_data_freshness'),/permission denied/);
+  assert.equal((await q('select verified_band_facts from v_page_outcome_evidence_health'))[0].verified_band_facts,9);
+  await assert.rejects(q('select * from mv_page_outcome_evidence_health'),/permission denied/);
   await assert.rejects(q('select refresh_page_status()'),/permission denied/);
   await assert.rejects(q("select page_sample_current(now()-interval '41 minutes')"),/overdue/);
   await db.exec('reset role');

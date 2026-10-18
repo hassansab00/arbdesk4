@@ -146,6 +146,8 @@ def test_every_n8n_collector_asks_for_active_cities_only():
 # Every .sql file that SELECTs FROM or JOINs the cities table. Classified, with
 # the reason, so that adding one forces a decision rather than a default.
 SQL_FILTERS = {
+    "sql/ad4_page_status.sql": "Refresh climate only for active cities after a local day rollover",
+    "supabase/migrations/20261018172215_page_evidence_health_sample.sql": "Same active-city rollover guard as ad4_page_status",
     "sql/ad4_13_reconcile.sql":                 "v_opportunities - and through it v_band_ladder, v_trade_plan, v_city_day_plan",
     "sql/ad4_22_opportunity_context.sql":       "v_opportunity_context - the movement panel behind each card",
     "sql/ad4_68_prediction_ladder_outcomes.sql":"v_prediction_ladder - the Predictive page",
@@ -212,6 +214,7 @@ SQL_FILTERS = {
     "sql/ad4_34_trade_plan.sql":                "v_trade_plan - the board, and the s5/s7 trust gate",
 }
 SQL_RECORD = {
+    "supabase/migrations/20261018171559_monitoring_city_clocks_and_daily_maximum.sql",  # City clocks for existing monitoring records, not a trading roster.
     "supabase/migrations/20261017170738_frozen_city_learning.sql",  # Historical clock and label lookup; not roster selection.
     "supabase/migrations/20261018084700_city_predictor_selection.sql",  # Frozen paired evidence keeps retired history; cities supplies its clock.
     "sql/ad4_city_calibration_forward.sql",  # Historical calls, including retired cities.

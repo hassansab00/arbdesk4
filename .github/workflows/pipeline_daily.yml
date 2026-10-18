@@ -36,6 +36,14 @@ on:
         description: 'How many days back to look for settled days'
         required: false
         default: '7'
+      evidence_only:
+        description: Recover authoritative weather evidence only; skips fitting and the heavy pipeline
+        type: boolean
+        default: false
+      outcome_cities:
+        description: Comma-separated city keys for evidence recovery; blank means all
+        required: false
+        default: ""
       skill_days:
         description: 'How many days of history to measure skill over'
         required: false
@@ -79,7 +87,7 @@ jobs:
       #    missing tonight's current run (audit P3, 5 Oct; same 26-minute rule).
       #    tests/test_github_actions.py holds it first.
       - name: Ingest forecasts (last 10 days)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.evidence_only != true }}
         timeout-minutes: 40
         run: python scripts/forecast_nightly.py
 
@@ -88,7 +96,10 @@ jobs:
       - name: Authoritative weather outcome evidence
         if: ${{ !cancelled() }}
         timeout-minutes: 20
-        run: python scripts/weather_outcomes.py --days ${{ github.event.inputs.outcome_days || '14' }}
+        env:
+          OUTCOME_DAYS: ${{ inputs.outcome_days || '14' }}
+          OUTCOME_CITIES: ${{ inputs.outcome_cities }}
+        run: python scripts/weather_outcomes.py --days "$OUTCOME_DAYS" --cities "$OUTCOME_CITIES"
 
       # 3. Capture final venue truth. Gamma and CLOB must agree on condition,
       #    token identities and winner. This also settles matching paper
@@ -104,7 +115,7 @@ jobs:
       # a run is never. Fifteen minutes inside a twenty-minute timeout walks
       # roughly 700 a run instead, and the walk remembers what it captured.
       - name: Venue-confirmed settlement sweep
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.evidence_only != true }}
         timeout-minutes: 20
         run: python scripts/paper_settlement.py --budget-seconds 900 --max-evidence 2000
 
@@ -112,7 +123,7 @@ jobs:
       #    evidence. Until that evidence exists, this writes nothing rather
       #    than training sigma on an incomplete running maximum.
       - name: Measure forecast skill
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.evidence_only != true }}
         timeout-minutes: 30
         run: python scripts/measure_skill.py ${{ github.event.inputs.skill_days || '400' }}
 
@@ -142,7 +153,7 @@ jobs:
       #     it confirms are added here, before databank freezes signal
       #     outcomes from the clean record. Idempotent; adds, never rewrites.
       - name: Rebuild the early record from the venue
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.evidence_only != true }}
         timeout-minutes: 5
         run: |
           python - <<'PY'
@@ -154,7 +165,7 @@ jobs:
       #    said, what happened. These rows are never updated: a maximum frozen
       #    too early is wrong forever, which is why it waits for settlement.
       - name: Freeze settled city-days
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.evidence_only != true }}
         timeout-minutes: 20
         run: python scripts/databank.py --days ${{ github.event.inputs.databank_days || '7' }}
 
@@ -185,7 +196,7 @@ jobs:
       # city clusters, which only tighten the cluster rail. Nothing reaches
       # capital: meta_allocator reports, Hassan promotes.
       - name: Learn strategy parameters
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.evidence_only != true }}
         timeout-minutes: 5
         run: python scripts/strategy_learn.py
 
@@ -198,7 +209,7 @@ jobs:
       #     is seconds of arithmetic on a few thousand rows, so it rides here
       #     rather than paying for a schedule of its own.
       - name: Fit forecast post-processing
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.evidence_only != true }}
         timeout-minutes: 10
         run: python scripts/forecast_postprocess.py
 
@@ -225,7 +236,7 @@ jobs:
       #    sigma the desk quoted turned out honest. After the databank freeze,
       #    which is the ordering the old schedule had backwards.
       - name: Derived recompute
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.evidence_only != true }}
         timeout-minutes: 30
         run: python scripts/capacity.py
 
@@ -240,7 +251,7 @@ jobs:
       #      settings.station_correction_pricing is on. Scores itself
       #      walk-forward every night (logged). Seconds of arithmetic.
       - name: Fit the station correction per forecast model
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.evidence_only != true }}
         timeout-minutes: 5
         run: python scripts/station_correction.py
 
@@ -257,7 +268,7 @@ jobs:
       #      (station_mos.FETCH_SECONDS; 7 Oct a hung Open-Meteo outlived the
       #      step and nothing was written). A city not reached prices on P3.9.
       - name: The honest station model
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.evidence_only != true }}
         timeout-minutes: 5
         run: python scripts/station_mos.py
 
@@ -271,7 +282,7 @@ jobs:
       #      verdict. It turns nothing on: settings.station_width_pricing is a
       #      person's decision on that verdict. Reads a few thousand rows.
       - name: Score the station width forward
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.evidence_only != true }}
         timeout-minutes: 5
         run: python scripts/station_width_score.py
 
@@ -283,7 +294,7 @@ jobs:
       #      on the same parameters (the plan's bar is 95%) and the first
       #      mismatches. Reads only. Its minutes are not measured yet.
       - name: Replay yesterday's engine decisions
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.evidence_only != true }}
         timeout-minutes: 5
         run: python scripts/engine_replay_live.py
 
@@ -292,7 +303,7 @@ jobs:
       #     v_settlement_agreement judges against ladders that have settled -
       #     running it earlier measures yesterday.
       - name: Refresh observation trust
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.evidence_only != true }}
         timeout-minutes: 5
         run: |
           python - <<'PY'
@@ -325,7 +336,7 @@ jobs:
       #     suspended for 14 days back in shadow for a re-test. After the
       #     settlement sweep, so tonight's closed trades count.
       - name: Strategy lifecycle
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.evidence_only != true }}
         timeout-minutes: 3
         run: python scripts/strategy_lifecycle.py
 
@@ -335,14 +346,14 @@ jobs:
       #     allocation. After the lifecycle, so a strategy suspended tonight
       #     is already out of the portfolio.
       - name: Meta-allocator
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.evidence_only != true }}
         timeout-minutes: 3
         run: python scripts/meta_allocator.py
 
       # 8. Safety net: run anything left queued in backtest_runs. Usually a
       #    no-op. An explicit backtest is backtest.yml, run by hand.
       - name: Queued backtests
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.evidence_only != true }}
         timeout-minutes: 30
         # The runner stops itself four minutes before this axe falls and
         # records why. A process killed here cannot update its own row, which
@@ -355,7 +366,7 @@ jobs:
       # run has written, rather than at the next :12 / :42 of pg_cron.
       # CONCURRENTLY, so a page open during the refresh keeps reading.
       - name: Refresh the stored page rows
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.evidence_only != true }}
         # Same bounded maintenance deadline as the intraday pipeline.
         timeout-minutes: 5
         run: |
@@ -366,7 +377,7 @@ jobs:
 
   candidate:
     needs: daily
-    if: ${{ !cancelled() && github.ref_name == 'main' }}
+    if: ${{ !cancelled() && inputs.evidence_only != true && github.ref_name == 'main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40 # Existing candidate plus bounded city validation and evidence commit.
     permissions:

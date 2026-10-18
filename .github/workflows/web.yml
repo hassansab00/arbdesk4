@@ -54,7 +54,7 @@ jobs:
 
       - run: npm ci
       - name: Typecheck
-        run: npx tsc --noEmit
+        run: npm run typecheck
       # The operator gate (plan v2 P1.2): the real write routes, compiled and
       # called with a forged Origin and no session, must answer 401.
       - name: Route tests

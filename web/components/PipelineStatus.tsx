@@ -4,6 +4,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { fmtAge } from "@/lib/format";
+import {feedState, observationFeed, type FeedRun} from "@/lib/pipelineHealth";
 
 /**
  * What is actually running, and what each stopped job costs you.
@@ -18,7 +19,7 @@ import { fmtAge } from "@/lib/format";
  * to fix, and everything below it is a symptom rather than a separate problem.
  */
 
-interface Row { job: string; status: string | null; logged_at: string | null; rows: number | null }
+type Row = FeedRun;
 
 /**
  * THE JOB NAMES HERE HAVE TO BE THE ONES SOMETHING ACTUALLY WRITES.
@@ -58,8 +59,8 @@ const CHAIN: Array<{
     staleAfterH: 12, feeds: "the buckets on the Board. Missing ones mean a ladder that cannot sum to 100\u00a2." },
   { jobs: ["P0.3_book_volume_snapshot"], mode: "either", label: "Order books", where: "n8n · P0.3",
     staleAfterH: 3, feeds: "every price. Without it each bucket is blocked, and Opportunities and Overview have nothing to rank." },
-  { jobs: ["ingest_observations", "P1.6_iem_observations"], mode: "either", label: "Station observations", where: "Actions · Observations",
-    staleAfterH: 6, feeds: "the running max, the climate baseline, hotness and the weather model." },
+  { jobs: ["tick", "ingest_observations", "P1.6_iem_observations"], mode: "either", label: "Station observations", where: "Hourly tick · Observations fallback",
+    staleAfterH: 2, feeds: "the running max, the climate baseline, hotness and the weather model." },
   { jobs: ["P1.2_nws_monitor", "live_weather"], mode: "either", label: "Live weather", where: "n8n · P1.2 — Actions · Live Weather is manual only",
     staleAfterH: 2, feeds: "the temperatures on the Board and City Watch." },
   { jobs: ["P1.5_open_meteo", "P1.3_nws_forecast", "ingest_forecasts"], mode: "either", label: "Forecasts", where: "n8n · P1.5 / Actions · Forecasts",
@@ -72,37 +73,24 @@ const CHAIN: Array<{
 
 export default function PipelineStatus({ compact }: { compact?: boolean }) {
   const q = useQuery<Row[]>(
-    () => supabase.from("ingest_log").select("job,status,logged_at,rows").order("logged_at", { ascending: false }).limit(400),
+    () => supabase.from("ingest_log").select("job,status,logged_at,rows,detail").in("job", [...new Set(CHAIN.flatMap(f => f.jobs))]).order("logged_at", { ascending: false }).limit(400),
     [],
     60000
   );
 
   const latest = new Map<string, Row>();
-  for (const r of q.data ?? []) if (!latest.has(r.job)) latest.set(r.job, r);
+  for (const raw of q.data ?? []) {
+    const r = observationFeed(raw);
+    if (r && !latest.has(r.job)) latest.set(r.job, r);
+  }
 
-  const state = CHAIN.map((c) => {
-    const rows = c.jobs.map((j) => latest.get(j)).filter((r): r is Row => !!r);
-    // "either" takes the newest writer, "both" the oldest - see the note on
-    // CHAIN. With one job name the two are the same thing.
-    const r = rows.length === 0 ? undefined
-      : rows.reduce((pick, row) => {
-          const a = new Date(row.logged_at ?? 0).getTime();
-          const b = new Date(pick.logged_at ?? 0).getTime();
-          return (c.mode === "either" ? a > b : a < b) ? row : pick;
-        });
-    // A "both" feed is only whole when every writer has reported at least once.
-    const complete = c.mode === "either" ? rows.length > 0 : rows.length === c.jobs.length;
-    const ageH = r?.logged_at ? (Date.now() - new Date(r.logged_at).getTime()) / 3600_000 : null;
-    return {
-      ...c, row: r, ageH,
-      status: !r || !complete ? "never" : ageH !== null && ageH > c.staleAfterH ? "stale" : "ok",
-    };
-  });
+  const state = CHAIN.map(c => ({...c, ...feedState(c, latest)}));
 
   const broken = state.filter((s) => s.status !== "ok");
   // The first broken link. Everything after it is a symptom of this one.
   const first = broken[0] ?? null;
 
+  if (q.error) return <div role="alert" className="rounded border border-warn p-3 text-xs text-warn">Feed status unavailable: {q.error}</div>;
   if (q.loading) return null;
 
   if (broken.length === 0) {
@@ -117,7 +105,7 @@ export default function PipelineStatus({ compact }: { compact?: boolean }) {
     <div className="rounded border border-warn/40 bg-warn/5">
       <div className="border-b border-warn/30 px-3 py-2">
         <div className="text-xs font-semibold text-warn">
-          {broken.length} of {CHAIN.length} feeds {broken.length === 1 ? "is" : "are"} not running
+          {broken.length} of {CHAIN.length} feeds need attention
         </div>
         {first && (
           <p className="mt-1 max-w-3xl text-[11px] leading-relaxed text-muted">

@@ -436,8 +436,8 @@ select
       b.resolution_date)
     when coalesce(b.day_decided, false)
      and b.holds_running_max and b.side = 'YES'
-                                             then 'The maximum is banked and this band holds it - s5 territory'
-    when coalesce(b.day_decided, false)      then 'Day decided - this band is settled, not traded'
+                                             then 'Cooling trend: this band contains the observed high so far; settlement remains unconfirmed'
+    when coalesce(b.day_decided, false)      then 'Cooling trend: the observed high is in another band; settlement remains unconfirmed'
     when cardinality(b.would_fire) > 0
                                              then format('%s would take %s at %s%s',
                                                     array_to_string(b.would_fire, ' + '), b.side,

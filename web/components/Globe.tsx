@@ -625,7 +625,7 @@ export default function Globe({
                  sub={hover.ageH == null ? "no reading" : `${hover.ageH.toFixed(1)}h old`}
                  warn={hover.ageH != null && hover.ageH > 3} />
             <Row k="max so far" v={hover.c.running_max_c == null ? "—" : `${hover.c.running_max_c.toFixed(1)}°C`}
-                 sub={hover.c.day_decided ? "day decided" : hover.c.peak_window_state ?? ""} />
+                 sub={hover.c.day_decided ? "cooling trend" : hover.c.peak_window_state ?? ""} />
             <Row k="vs normal"
                  v={hover.c.hotness_sigma == null ? "—" : `${hover.c.hotness_sigma > 0 ? "+" : ""}${hover.c.hotness_sigma.toFixed(1)}σ`}
                  sub={hover.c.normal_max_c == null ? "no baseline" : `normal ${hover.c.normal_max_c.toFixed(1)}°C`}
@@ -755,7 +755,7 @@ function implication(c: CityStats, ageH: number | null): { text: string; tone: s
     return { text: "The feed has stopped. Every other number here is out of date - fix the feed before reading the colour.", tone: "text-bad" };
   }
   if (c.day_decided) {
-    return { text: "The day is decided - the maximum is in. Nothing forward-looking left to trade here today.", tone: "text-muted" };
+    return { text: "Recent readings are below the observed high. A later rise remains possible; only venue confirmation settles the market.", tone: "text-muted" };
   }
   if (c.forecast_max_c == null) {
     return { text: "No forward forecast, so there is nothing to price against. The colour says how today feels, not what to do.", tone: "text-warn" };

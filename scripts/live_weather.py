@@ -122,7 +122,7 @@ def trend_from_change(change_1h):
 
 def compute_day_decided(observations_today, running_max_c, consecutive_needed=3, min_drop_c=0.5):
     """
-    Noise-resistant trade cutoff: TRUE once the most recent
+    Cooling heuristic, not final settlement: TRUE once the most recent
     `consecutive_needed` observations are each at least `min_drop_c` below
     the running max, AND none of them re-set a new max. A single reading
     below the max is a passing cloud, not the day turning over.

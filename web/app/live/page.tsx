@@ -517,7 +517,7 @@ export default function LiveWeatherPage() {
                           model
                         </span>
                       )}
-                      {r.day_decided && <span className="ml-1 text-muted">· DAY DECIDED</span>}
+                      {r.day_decided && <span className="ml-1 text-muted">· COOLING TREND</span>}
                       {crossed && <span className="ml-1 text-bad">· BAND CROSS</span>}
                     </div>
                   </div>
@@ -630,7 +630,7 @@ function CityDetail({ row, onClose }: { row: LiveWeather & { city: City | undefi
           }
           wide
         />
-        <Field label="Day decided" value={row.day_decided ? "yes" : "no"} />
+        <Field label="Cooling trend" value={row.day_decided ? "yes" : "no"} />
         <Field
           label="Market vol 24h"
           value={volume.data?.[0] ? fmtCompactUsd(volume.data[0].volume_usd) : "—"}

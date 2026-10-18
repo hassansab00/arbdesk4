@@ -276,12 +276,12 @@ export function DataHealthStrip({ layers }: { layers?: string[] }) {
   const scope = layers?.length ? rows.filter((r) => layers.includes(r.layer)) : rows;
   if (!scope.length) return null;
 
-  const bad = scope.filter((r) => r.state !== "ok");
-  const worst = scope.some((r) => r.state === "absent")
+  const bad = scope.filter((r) => r.state === "absent" || (!r.activity_only && (r.state === "stale" || (r.state === "empty" && r.fresh_hours !== null))));
+  const worst = bad.some((r) => r.state === "absent")
     ? "absent"
-    : scope.some((r) => r.state === "stale")
+    : bad.some((r) => r.state === "stale")
       ? "stale"
-      : scope.some((r) => r.state === "empty")
+      : bad.some((r) => r.state === "empty")
         ? "empty"
         : "ok";
   const s = STATE_STYLE[worst as FreshRow["state"]];

@@ -130,29 +130,28 @@ $ad4$;
 --    'stale' when the cache was computed for an earlier local date, so a page
 --    can say the normal is a day old rather than quietly showing yesterday's.
 -- --------------------------------------------------------------------------
+create or replace view public.v_city_forecast_today
+with (security_invoker=true) as
+select c.city_key, d.for_date, f.forecast_max_c, f.model, f.run_at, f.lead_days
+from public.cities c
+cross join lateral (
+  select (now() at time zone coalesce(c.timezone, 'UTC'))::date as for_date
+) d
+left join lateral (
+  select forecast_max_c, model, run_at, lead_days
+  from public.weather_forecasts f
+  where f.city_key=c.city_key and f.for_date=d.for_date
+    and f.forecast_max_c is not null
+  order by f.lead_days asc nulls last, f.run_at desc, f.forecast_id desc
+  limit 1
+) f on true;
+revoke all on public.v_city_forecast_today from public;
+grant select on public.v_city_forecast_today to anon,authenticated,service_role;
+
 drop view if exists v_city_stats;
 create view v_city_stats as
 with fc as (
-  -- TODAY's forecast, on the CITY's calendar, at the shortest lead available.
-  --
-  -- Two bugs lived in this CTE and both put a wrong temperature on the board.
-  -- First, the only date filter was `for_date >= current_date - 1`, so
-  -- `distinct on (city_key) order by run_at desc` could pick a forecast for
-  -- NEXT WEEK and the page would label it Today - in a heat wave that is
-  -- several degrees, silently. Second, ordering by run_at alone prefers the
-  -- newest RUN over the shortest LEAD, and weather_forecasts is filled by the
-  -- Open-Meteo previous-runs archive: a day seven days out has exactly one
-  -- row, a lead-7 guess issued a week ago, and run_at picked it happily.
-  --
-  -- The city's own date comes from the climate cache rather than a per-row
-  -- `at time zone`, which is what this file exists to avoid paying for.
-  select distinct on (f.city_key)
-    f.city_key, f.forecast_max_c, f.model, f.run_at, f.lead_days
-  from weather_forecasts f
-  join derived_city_climate dc on dc.city_key = f.city_key
-  where f.forecast_max_c is not null
-    and f.for_date = dc.local_today
-  order by f.city_key, f.lead_days asc nulls last, f.run_at desc
+  select * from public.v_city_forecast_today
 ),
 -- The highest temperature actually observed here in three local days. Not
 -- used to price anything - used to CONTRADICT a forecast when the two are far
@@ -199,8 +198,10 @@ select
   lw.running_max_c,
   fc.forecast_max_c,
   fc.model                                                 as forecast_model,
-  (coalesce(fc.forecast_max_c, lw.running_max_c) - cl.normal_max_c)::numeric(6,2) as anomaly_c,
+  case when cl.local_today = (now() at time zone coalesce(c.timezone, 'UTC'))::date
+    then (coalesce(fc.forecast_max_c, lw.running_max_c) - cl.normal_max_c)::numeric(6,2) end as anomaly_c,
   case
+    when cl.local_today is distinct from (now() at time zone coalesce(c.timezone, 'UTC'))::date then null
     when cl.sd_max_c is null or cl.sd_max_c <= 0 then null
     when coalesce(fc.forecast_max_c, lw.running_max_c) is null then null
     else round((coalesce(fc.forecast_max_c, lw.running_max_c) - cl.normal_max_c) / cl.sd_max_c, 2)
@@ -239,7 +240,7 @@ left join div dv            on dv.city_key = c.city_key
 left join edges e           on e.city_key = c.city_key
 left join v_city_volume v   on v.city_key = c.city_key
 left join derived_weather_peak pk
-       on pk.city_key = c.city_key and pk.month = extract(month from current_date)::int;
+       on pk.city_key = c.city_key and pk.month = extract(month from now() at time zone coalesce(c.timezone, 'UTC'))::int;
 
 
 -- --------------------------------------------------------------------------
