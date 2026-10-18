@@ -13,7 +13,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from common import get_cities, log_run, rest_all, upsert
+from common import get_cities, log_run, rest_all, upsert_replace
 from tick import CHECKPOINTS, decision_times
 import wx_city_calibration as cal
 
@@ -170,8 +170,8 @@ def reports(rows,cities,reviews,states,now,model_version=None):
     return result
 
 
-def run(score_only=False):
-    now=dt.datetime.now(dt.timezone.utc)
+def run(score_only=False, now=None):
+    now=now or dt.datetime.now(dt.timezone.utc)
     first=(now.date()-dt.timedelta(days=30)).isoformat()
     cities=get_cities(require_coords=False,extra=('display_name',))
     p=rest_all('prediction_checkpoints',[('select','*'),('target_date','gte.'+first)],order='checkpoint_id.asc',page_size=1000)
@@ -194,11 +194,11 @@ def run(score_only=False):
         path=ROOT/'data/eval/wxpredict/city_calibration'/f'{now.date()}.json'
         path.parent.mkdir(parents=True,exist_ok=True)
         path.write_text(json.dumps(dict(as_of=now.isoformat(),policy=cal.POLICY,states=fitted),sort_keys=True,indent=2)+'\n')
-        upsert('derived_wx_city_calibration',[dict(model_version=s['model_version'],city_key=s['city_key'],phase=s['phase'],as_of=s['as_of'],version=s['version'],state=s) for s in fitted], 'model_version,city_key,phase')
+        upsert_replace('derived_wx_city_calibration',[dict(model_version=s['model_version'],city_key=s['city_key'],phase=s['phase'],as_of=s['as_of'],version=s['version'],state=s) for s in fitted], 'model_version,city_key,phase')
         states=[s for s in states if s['model_version']!=version]+fitted
         detail.update(calibration_cells=len(fitted),decisions=dict(Counter(s['decision'] for s in fitted)),eligible_learning_calls=len(cal.eligible_rows(learning,now.date(),version)))
     data=reports(collect(p,outcomes,da,cities,peaks,now),cities,reviews,states,now,version)
-    n=upsert('derived_city_prediction_validation',data,'city_key,checkpoint,scope')
+    n=upsert_replace('derived_city_prediction_validation',data,'city_key,checkpoint,scope')
     log_run(JOB,'ok',n,detail)
     print(json.dumps(dict(rows=n,**detail)),flush=True)
     return detail
