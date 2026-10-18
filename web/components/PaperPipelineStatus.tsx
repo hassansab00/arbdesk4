@@ -26,7 +26,7 @@ const STEPS = [
   { job: "signal_engine", label: "Signals",
     count: (d: Detail) => d.fired,
     unit: "fired",
-    blank: "No strategy fired. Check that strategies are enabled and the board has priced edges." },
+    blank: "No legacy signal fired. Hourly engine decisions and model-only paper orders are recorded separately; this counter does not measure them." },
   { job: "paper_plans", label: "Proposals",
     count: (d: Detail) => d.proposals,
     unit: "proposed",
@@ -113,7 +113,7 @@ export default function PaperPipelineStatus({ refresh }: { refresh: () => void }
 
   return <div className={`${card} space-y-3`}>
     <div className="flex flex-wrap items-baseline justify-between gap-2">
-      <h2 className="font-semibold">Automation</h2>
+      <h2 className="font-semibold">Automation · signal-based chain</h2>
       <div className="text-xs text-muted">
         Runs in GitHub Actions every six hours · next scheduled{" "}
         <span className="text-text">{due.toISOString().slice(11, 16)}Z</span>
@@ -122,6 +122,8 @@ export default function PaperPipelineStatus({ refresh }: { refresh: () => void }
         </span>
       </div>
     </div>
+
+    <p className="text-xs text-muted">Model-only shadow desks can decide and fill during the hourly tick independently of these signal counters. Their actual orders, activity and trades are listed below.</p>
 
     {runs.error && <div role="alert" className="text-sm text-bad">{runs.error}</div>}
 
@@ -156,12 +158,12 @@ export default function PaperPipelineStatus({ refresh }: { refresh: () => void }
       });
       const never = STEPS.find(s => !latest.get(s.job));
       if (never) return <p className="text-sm text-warn">
-        <strong>{never.label}</strong> has not run in the last three days. The chain stops there.
+        <strong>{never.label}</strong> has not run in the last three days. This legacy-chain step has no recent record; check the hourly engine record separately.
       </p>;
       if (stuck) return <p className="text-sm text-warn">
         <strong>{stuck.label}</strong> ran and produced nothing. {stuck.blank}
       </p>;
-      return <p className="text-sm text-good">Every step ran and produced something on its last cycle.</p>;
+      return <p className="text-sm text-good">Every legacy-chain step produced activity on its last cycle.</p>;
     })()}
 
     <div className="flex flex-wrap items-center gap-3">

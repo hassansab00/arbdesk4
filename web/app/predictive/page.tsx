@@ -18,7 +18,7 @@ import type { StatusRow } from "@/lib/cityCards";
 import { Freshness, FreshnessRow } from "@/components/Provenance";
 import { Empty, LineChart, Scatter } from "@/components/charts";
 import Convergence3D, { type ConvergencePoint } from "@/components/Convergence3D";
-import { fmtInt, fmtPct, fmtPp, fmtPrice, fmtUsd, pnlColor } from "@/lib/format";
+import { fmtAge, fmtInt, fmtPct, fmtPp, fmtPrice, fmtUsd, pnlColor } from "@/lib/format";
 import { fmtTemp, fmtTempDelta, type Unit } from "@/lib/units";
 import { fmtResolutionDate } from "@/lib/time";
 import {
@@ -126,7 +126,7 @@ interface CityRow {
  */
 interface EvidenceHealth {
   raw_forecast_facts: number; verified_forecast_facts: number;
-  weather_evidence_rows: number; latest_weather_evidence_at: string | null;
+  weather_evidence_rows: number; latest_weather_evidence_at: string | null; sampled_at: string;
 }
 
 const MISSING = (file: string, extra?: string) => (
@@ -144,8 +144,8 @@ export default function PredictivePage() {
       .eq("status", "active").order("city_key"), []
   );
   const evidenceQ = useQuery<EvidenceHealth[]>(
-    () => supabase.from("v_outcome_evidence_health")
-      .select("raw_forecast_facts,verified_forecast_facts,weather_evidence_rows,latest_weather_evidence_at"),
+    () => supabase.from("v_page_outcome_evidence_health")
+      .select("raw_forecast_facts,verified_forecast_facts,weather_evidence_rows,latest_weather_evidence_at,sampled_at"),
     []
   );
   const cities = citiesQ.data ?? [];
@@ -1123,6 +1123,8 @@ export default function PredictivePage() {
           shows. The practical use is picking the lead day at which to stop trusting it: where the
           line crosses one bucket wide, the forecast has stopped resolving which bucket wins.
         </p>
+        {evidenceQ.error ? <p role="alert" className="text-xs text-warn">Evidence counts unavailable: {evidenceQ.error}</p>
+          : evidenceQ.data?.[0]?.sampled_at && <p className="text-xs text-muted">Evidence counts sampled {fmtAge(evidenceQ.data[0].sampled_at)}; refreshed on the existing page cadence.</p>}
         {unverifiedNote}
         <DataState
           relation="v_prediction_scorecard"

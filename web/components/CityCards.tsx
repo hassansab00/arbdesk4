@@ -325,7 +325,7 @@ function Card({ c, onPick, moment, st, ev, strip, after, showRecord }: {
             <dt className="text-muted">Today so far</dt>
             <dd className="tabular-nums">
               max {fmtTemp(c.live.running_max_c, u)} · now {fmtTemp(c.live.temp_c, u)}
-              {c.live.day_decided ? <b className="ml-1 text-accent">day decided</b>
+              {c.live.day_decided ? <b className="ml-1 text-accent">cooling trend</b>
                 : c.live.peak_window_state ? <span className="ml-1 text-muted">{c.live.peak_window_state}</span> : null}
             </dd>
           </>

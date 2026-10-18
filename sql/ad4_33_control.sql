@@ -479,7 +479,7 @@ select
   )                                                                         as in_entry_window,
   case
     when a.city_key is null                          then 'no reading today - nothing to time'
-    when coalesce(lw.day_decided, false)             then 'the maximum is banked - this is S5 territory, not S7'
+    when coalesce(lw.day_decided, false)             then 'recent readings are below the observed high; a later rise remains possible'
     when coalesce(a.rolling_over, false)             then 'rolling over - the bands above are dead'
     when a.reading_age_min > 90                      then format('reading is %s min old - too stale to act on', round(a.reading_age_min))
     when (w.peak_hour - w.local_hour_f) * 60 > 60    then format('too early - peak in %s min', round((w.peak_hour - w.local_hour_f) * 60))

@@ -30,6 +30,7 @@
     "../app/api/paper-desk/route.ts",
     "../app/api/paper-run/route.ts",
     "../app/api/paper-cycle/route.ts",
-    "../lib/cityValidation.ts"
+    "../lib/cityValidation.ts",
+    "../lib/pipelineHealth.ts"
   ]
 }

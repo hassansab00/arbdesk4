@@ -7,11 +7,12 @@ declare s record;
 begin
   for s in select * from (values
     ('v_data_freshness','mv_page_data_freshness','table_name'),
-    ('v_city_volume','mv_page_city_volume','city_key')
+    ('v_city_volume','mv_page_city_volume','city_key'),
+    ('v_outcome_evidence_health','mv_page_outcome_evidence_health','singleton')
   ) x(source_name,copy_name,key_column) loop
     continue when to_regclass('public.' || s.source_name) is null;
     if to_regclass('public.' || s.copy_name) is null then
-      execute format('create materialized view public.%I as select v.*, statement_timestamp() as sampled_at from public.%I v', s.copy_name,s.source_name);
+      execute format('create materialized view public.%I as select v.*,%s statement_timestamp() as sampled_at from public.%I v', s.copy_name,case when s.key_column='singleton' then ' true as singleton,' else '' end,s.source_name);
       execute format('create unique index %I on public.%I (%I)',s.copy_name || '_key',s.copy_name,s.key_column);
     end if;
     execute format('revoke all on public.%I from public, anon, authenticated',s.copy_name);
@@ -50,6 +51,18 @@ begin
     revoke all on public.v_page_city_volume from public;
     grant select on public.v_page_city_volume to anon,authenticated,service_role;
   end if;
+  if to_regclass('public.mv_page_outcome_evidence_health') is not null then
+    -- Only the same public aggregate is exposed. Storage and refresh stay
+    -- service-only, following the other page samples' owner-rights boundary.
+    execute $v$create or replace view public.v_page_outcome_evidence_health as
+      select raw_band_facts,verified_band_facts,mismatched_band_facts,
+        raw_forecast_facts,verified_forecast_facts,venue_evidence_rows,
+        weather_evidence_rows,confirmed_markets,latest_venue_evidence_at,
+        latest_weather_evidence_at,sampled_at
+      from public.mv_page_outcome_evidence_health where public.page_sample_current(sampled_at)$v$;
+    revoke all on public.v_page_outcome_evidence_health from public;
+    grant select on public.v_page_outcome_evidence_health to anon,authenticated,service_role;
+  end if;
 end $$;
 
 create or replace function public.refresh_page_status()
@@ -59,7 +72,16 @@ begin
   if not pg_try_advisory_xact_lock(hashtextextended('arbdesk:page-status',0)) then
     return jsonb_build_object('skipped','refresh already running');
   end if;
-  foreach m in array array['mv_page_data_freshness','mv_page_city_volume'] loop
+  -- Rebuild the climate date only at a city's day rollover. A stored date
+  -- must never choose the forecast, and stale climate must not look current.
+  if to_regclass('public.derived_city_climate') is not null
+     and to_regprocedure('public.refresh_city_climate()') is not null then
+    if exists(select 1 from public.cities c left join public.derived_city_climate d using(city_key)
+       where c.status='active' and d.local_today is distinct from (now() at time zone coalesce(c.timezone,'UTC'))::date) then
+      perform public.refresh_city_climate();
+    end if;
+  end if;
+  foreach m in array array['mv_page_data_freshness','mv_page_city_volume','mv_page_outcome_evidence_health'] loop
     continue when to_regclass('public.' || m) is null;
     t0 := clock_timestamp();
     execute format('refresh materialized view concurrently public.%I',m);

@@ -5,8 +5,8 @@ import { supabase } from "@/lib/supabase";
 import type { CityStats } from "@/lib/types";
 
 /**
- * City rows, from v_city_stats where it exists and from the base tables where
- * it does not.
+ * City rows, from v_city_stats where available, with a smaller fallback
+ * joining city records and bounded local-day forecasts without climate calculations.
  *
  * This exists because of a mistake worth naming. Three surfaces - City
  * Clusters, Analytics and City Watch - were written against v_city_stats,
@@ -17,13 +17,9 @@ import type { CityStats } from "@/lib/types";
  * `weather_forecasts` and `v_city_volume` were all sitting there full of the
  * data those pages mostly wanted.
  *
- * A page must not require a migration to render. The view is an optimisation -
- * it computes the climatological normal in Postgres instead of pulling every
- * observation into the browser - and everything else it returns is a join over
- * tables that have existed since Phase 0. So: try the view, and if it is not
- * there, do the join client-side and leave the climate fields null. Hotness
- * then reads "—" with one line saying which file supplies it, and every other
- * figure on the page works.
+ * The fallback leaves climate fields null and reports the primary view's
+ * error. Forecast selection still belongs in the bounded local-day view,
+ * so a stale climate cache or a raw forecast row cap cannot pick the day.
  */
 
 export type StatsMode = "view" | "fallback" | "empty";
@@ -83,7 +79,6 @@ export function useCityStats(pollMs = 60000): CityStatsResult {
           setReason(MISSING.test(emsg) ? "missing" : TIMEOUT.test(emsg) ? "timeout" : "other");
         }
 
-        const today = new Date().toISOString().slice(0, 10);
         const [cities, live, fc, vol] = await Promise.all([
           // Active only. This is the FALLBACK that rebuilds the per-city list
           // client-side when v_city_stats is unavailable, so an unfiltered
@@ -93,35 +88,13 @@ export function useCityStats(pollMs = 60000): CityStatsResult {
           supabase.from("cities").select("city_key,display_name,icao,timezone,unit,latitude,longitude")
             .eq("status", "active"),
           supabase.from("live_weather").select("city_key,temp_c,running_max_c,peak_window_state,day_decided,observed_at"),
-          // Shortest lead first, THEN newest run. Ordering by run_at alone
-          // picks a seven-day-lead guess issued a week ago over this
-          // morning's one-day forecast, because the previous-runs archive
-          // stores both and the old row is a perfectly valid "newest run for
-          // that lead". Same bug the view had.
-          supabase.from("weather_forecasts")
-            .select("city_key,forecast_max_c,model,run_at,for_date,lead_days")
-            .eq("for_date", today)
-            .order("lead_days", { ascending: true, nullsFirst: false })
-            .order("run_at", { ascending: false }).limit(2000),
+          supabase.from("v_city_forecast_today")
+            .select("city_key,forecast_max_c,model,run_at,for_date,lead_days"),
           supabase.from("v_page_city_volume").select("city_key,volume_usd,n_trades"),
         ]);
         if (cities.error) throw cities.error;
+        if (fc.error) throw fc.error;
         if (vol.error) throw vol.error;
-
-        // AND SAY SO IF THE SERVER CUT IT. This path is the fallback, so it
-        // cannot use useQuery's truncation flag, and PostgREST's ceiling is
-        // 1,000 rows however large a .limit() asks for. 54 cities x 3 models
-        // x 8 leads is about 1,300 forecast rows for one day, so the cut is
-        // reachable - and a page that quietly shows the alphabetically first
-        // cities is worse than one that errors.
-        if ((fc.data ?? []).length >= 2000 || (fc.data ?? []).length === 1000) {
-          if (!cancelled) {
-            setViewError((prev) => [prev, "Forecast rows were cut short by the "
-              + "server's 1,000-row ceiling, so some cities may be missing a "
-              + "forecast here. The city stats view does not have this limit - "
-              + "fix it and this fallback goes away."].filter(Boolean).join(" "));
-          }
-        }
 
         const liveBy = new Map((live.data ?? []).map((r: Record<string, unknown>) => [r.city_key as string, r]));
         const volBy = new Map((vol.data ?? []).map((r: Record<string, unknown>) => [r.city_key as string, r]));

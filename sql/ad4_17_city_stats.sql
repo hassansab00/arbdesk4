@@ -244,7 +244,7 @@ left join edges e           on e.city_key = c.city_key
 left join v_city_volume v   on v.city_key = c.city_key
 left join derived_weather_peak pk
        on pk.city_key = c.city_key
-      and pk.month = extract(month from coalesce(cl.local_today, current_date))::int;
+      and pk.month = extract(month from now() at time zone coalesce(c.timezone, 'UTC'))::int;
 
 
 -- --------------------------------------------------------------------------

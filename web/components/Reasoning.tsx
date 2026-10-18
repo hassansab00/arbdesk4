@@ -363,7 +363,7 @@ export default function ReasoningPanel({ r }: { r: Reasoning }) {
               .
               <div className="mt-0.5 text-muted">
                 Peak window {r.peak_window_state ?? "unknown"}
-                {r.day_decided && " · the day is decided — the weather risk is spent"}
+                {r.day_decided && " · cooling below the observed high; a later rise remains possible"}
                 {r.observed_at && (
                   <span className={Date.now() - new Date(r.observed_at).getTime() > 3 * 3600_000 ? " text-bad" : ""}>
                     {" "}· reading {fmtAge(r.observed_at)}

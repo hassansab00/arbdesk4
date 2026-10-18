@@ -1,13 +1,12 @@
 "use client";
 
 import { useMemo } from "react";
-import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@/lib/useQuery";
 import { DataState } from "@/components/DataState";
 import { Freshness, FreshnessRow } from "@/components/Provenance";
-import RefreshButton from "@/components/RefreshButton";
-import { fmtInt } from "@/lib/format";
+import FrozenLearningStatus from "@/components/FrozenLearningStatus";
+import { fmtAge, fmtInt } from "@/lib/format";
 
 /**
  * SYNTHESIS — what the archive has actually established, and what the desk is
@@ -46,28 +45,10 @@ interface Finding {
   threshold_note: string;
 }
 
-interface LearningStage {
-  stage: string;
-  step: number;
-  rows: number;
-  last_run: string | null;
-  detail: string;
-  job: string;
-  state: "not started" | "collecting" | "ready";
-  why: string;
-}
-
 interface OutcomeHealth {
+  sampled_at: string;
   raw_band_facts: number; verified_band_facts: number;
   raw_forecast_facts: number; verified_forecast_facts: number;
-}
-
-function since(ts: string | null): string {
-  if (!ts) return "never";
-  const h = (Date.now() - new Date(ts).getTime()) / 3600000;
-  if (h < 1) return "just now";
-  if (h < 48) return `${Math.round(h)} h ago`;
-  return `${Math.round(h / 24)} days ago`;
 }
 
 export default function SynthesisPage() {
@@ -76,19 +57,14 @@ export default function SynthesisPage() {
     [],
     180000
   );
-  const learningQ = useQuery<LearningStage[]>(
-    () => supabase.from("v_learning_state").select("*").order("step"),
-    [],
-    180000
-  );
   const evidenceQ = useQuery<OutcomeHealth[]>(
-    () => supabase.from("v_outcome_evidence_health").select("*"),
+    () => supabase.from("v_page_outcome_evidence_health").select("*"),
     [],
     180000
   );
 
   const findings = findingsQ.data ?? [];
-  const evidence = evidenceQ.data?.[0];
+  const evidence = evidenceQ.error ? undefined : evidenceQ.data?.[0];
   const backward = useMemo(
     () => findings.filter((f) => f.direction === "backward")
                   .filter((f) => f.key !== "forecast_lean" || Number(evidence?.verified_forecast_facts ?? 0) > 0)
@@ -97,13 +73,6 @@ export default function SynthesisPage() {
     [findings, evidence]
   );
   const forward = useMemo(() => findings.filter((f) => f.direction === "forward"), [findings]);
-  const stages = learningQ.data ?? [];
-
-  // Where the chain stops. Learning is sequential: nothing can be measured
-  // from a day that has not settled, nothing fitted from accuracy that has
-  // not been measured, nothing predicted from a fit that does not exist. The
-  // first stage that is not ready is the only one worth acting on.
-  const blocked = stages.find((s) => s.state !== "ready") ?? null;
 
   return (
     <div className="space-y-8">
@@ -124,6 +93,9 @@ export default function SynthesisPage() {
         </div>
       </div>
 
+      {evidenceQ.error ? <p role="alert" className="text-xs text-warn">Evidence counts unavailable: {evidenceQ.error}</p>
+        : evidence?.sampled_at && <p className="text-xs text-muted">Evidence counts sampled {fmtAge(evidence.sampled_at)}; refreshed on the existing page cadence.</p>}
+
       {evidence && (evidence.raw_band_facts > evidence.verified_band_facts ||
                     evidence.raw_forecast_facts > evidence.verified_forecast_facts) && (
         <div className="rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn">
@@ -133,105 +105,7 @@ export default function SynthesisPage() {
         </div>
       )}
 
-      {/* ===================================================== LEARNING STATE */}
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 className="text-sm font-semibold">Is the desk still learning?</h2>
-          <Freshness relation="derived_weather_model" />
-        </div>
-        <p className="max-w-3xl text-xs leading-relaxed text-muted">
-          Learning is not a mood, it is four dated artefacts, each written by a named job and each
-          needing the one before it. A day has to settle before its accuracy can be measured;
-          accuracy has to be measured before a correction can be fitted; a correction has to exist
-          before a corrected forecast can be produced. The first stage below that is not ready is
-          the only one worth doing anything about.
-        </p>
-
-        <DataState
-          relation="v_learning_state"
-          loading={learningQ.loading}
-          error={learningQ.error}
-          isEmpty={stages.length === 0}
-          emptyTitle="Learning state unavailable"
-          emptyBody="Run sql/ad4_40_synthesis.sql to publish it."
-          onRetry={learningQ.refresh}
-        >
-          <div className="space-y-2">
-            <ol className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-              {stages.map((s) => {
-                const tone =
-                  s.state === "ready" ? "border-good/50" : s.state === "collecting" ? "border-warn/50" : "border-border";
-                const dot =
-                  s.state === "ready" ? "bg-good" : s.state === "collecting" ? "bg-warn" : "bg-muted";
-                const isBlocker = blocked?.stage === s.stage;
-                return (
-                  <li
-                    key={s.stage}
-                    className={`rounded border ${tone} bg-panel/60 p-3 ${isBlocker ? "ring-1 ring-warn/40" : ""}`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className={`h-2 w-2 rounded-full ${dot}`} />
-                      <span className="text-xs font-semibold capitalize">
-                        {s.step}. {s.stage}
-                      </span>
-                      <span className="ml-auto text-[10px] text-muted">{since(s.last_run)}</span>
-                    </div>
-                    <div className="mt-1.5 text-xs tabular-nums text-text">{s.detail}</div>
-                    <p className="mt-1 text-[10px] leading-snug text-muted">{s.why}</p>
-                    <div className="mt-1.5 text-[10px] text-muted">
-                      written by <span className="text-text">{s.job}</span>
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-
-            {/* ---- the one thing to do about it ------------------------- */}
-            <div className="rounded border border-border bg-panel2/40 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="max-w-2xl">
-                  <div className="text-xs font-semibold">
-                    {blocked
-                      ? `Blocked at “${blocked.stage}”`
-                      : "Every stage is current — the desk is learning from everything that has settled"}
-                  </div>
-                  <p className="mt-0.5 text-[11px] leading-relaxed text-muted">
-                    {blocked ? (
-                      <>
-                        {blocked.why} Run <span className="text-text">{blocked.job}</span> — nothing
-                        after it can move until it does.
-                      </>
-                    ) : (
-                      <>
-                        Re-running teaches it from days that have settled since the last fit. It is
-                        safe at any time; each stage only re-reads what it needs.
-                      </>
-                    )}
-                  </p>
-                </div>
-                <RefreshButton
-                  job="P2.1_relearn"
-                  label="Learn from what has settled"
-                  onDone={() => {
-                    learningQ.refresh();
-                    findingsQ.refresh();
-                  }}
-                />
-              </div>
-              <p className="mt-2 text-[10px] leading-relaxed text-muted">
-                The button fires the <code className="rounded bg-panel2 px-1">P2.1_relearn</code>{" "}
-                workflow, which asks GitHub to run the four learning Actions in order. The token
-                that lets it do that lives in n8n, never in this page — a browser that could start
-                a workflow is a browser holding a credential.{" "}
-                <Link href="/workflows" className="text-accent hover:underline">
-                  Workflows
-                </Link>{" "}
-                is where its URL is set, and where each Action&apos;s last run is shown.
-              </p>
-            </div>
-          </div>
-        </DataState>
-      </section>
+      <FrozenLearningStatus />
 
       {/* ==================================================== WHAT WE KNOW */}
       <section className="space-y-3">

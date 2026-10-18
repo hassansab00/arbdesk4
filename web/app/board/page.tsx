@@ -100,15 +100,18 @@ export default function BoardPage() {
     [],
     60000
   );
+  const forecastDay = day === LIVE
+    ? localToday(q.data?.find(r => r.city_key === city)?.timezone ?? null)
+    : day;
   const forecasts = useQuery<Array<{ city_key: string; for_date: string; forecast_max_c: number | null; model: string | null; run_at: string | null }>>(
-    () =>
+    () => !city || !forecastDay ? Promise.resolve({data: [], error: null}) :
       supabase.from("weather_forecasts")
         .select("city_key,for_date,forecast_max_c,model,run_at")
-        .gte("for_date", new Date().toISOString().slice(0, 10))
-        .order("run_at", { ascending: false }).limit(2000),
-    [],
-    5 * 60000,
-    2000
+        .eq("city_key", city).eq("for_date", forecastDay)
+        .not("forecast_max_c", "is", null)
+        .order("lead_days", {ascending: true, nullsFirst: false})
+        .order("run_at", {ascending: false}).order("forecast_id", {ascending: false}).limit(1),
+    [city, forecastDay], 5 * 60000
   );
 
   const rows = q.data ?? [];
@@ -219,7 +222,7 @@ export default function BoardPage() {
   }, [board, cities]);
   const unit = (board?.head.unit ?? "C") as Unit;
   const lw = board ? liveByCity.get(board.city_key) : undefined;
-  const fc = board && day ? fcByCityDay.get(`${board.city_key}|${day}`) : undefined;
+  const fc = board ? fcByCityDay.get(`${board.city_key}|${board.head.resolution_date}`) : undefined;
 
   // ---- the position ------------------------------------------------------
   // THE REAL LADDER. The board capped a leg at its depth figure and priced the
@@ -363,7 +366,9 @@ export default function BoardPage() {
                   {lw?.trend === "FALLING" && <span className="ml-0.5 text-bad">↓</span>}
                 </span>
                 <span><span className="text-muted">Max </span>{fmtTemp(lw?.running_max_c, unit)}</span>
-                <span><span className="text-muted">Forecast </span>{fmtTemp(fc?.max, unit)}</span>
+                <span><span className="text-muted">Forecast </span>{fmtTemp(fc?.max, unit)}
+                  {forecasts.error && <span role="alert" className="ml-2 text-bad">{forecasts.error}</span>}
+                </span>
                 <span className={lw?.peak_window_state === "INSIDE" ? "text-accent" : "text-muted"}>
                   peak {lw?.peak_window_state ?? "—"}
                 </span>

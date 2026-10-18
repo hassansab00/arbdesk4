@@ -1273,6 +1273,10 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "weather_forecast_models",
     "weather_forecasts"
   ],
+  "v_city_forecast_today": [
+    "cities",
+    "weather_forecasts"
+  ],
   "v_city_hit_history": [
     "band_probabilities",
     "cities",
@@ -1374,10 +1378,10 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "edges",
     "live_weather",
     "weather_observations",
+    "weather_forecasts",
     "bands",
     "markets",
     "trades_observed",
-    "weather_forecasts",
     "book_snapshots"
   ],
   "v_city_status": [
@@ -1732,6 +1736,10 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "ingest_log",
     "market_confirmation_attempts",
     "markets"
+  ],
+  "v_page_outcome_evidence_health": [
+    "cities",
+    "derived_city_climate"
   ],
   "v_paper_desk_integrity": [
     "anomalies",

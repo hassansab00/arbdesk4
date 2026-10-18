@@ -420,19 +420,19 @@ export const PLAYS: Record<string, Play> = {
   },
 
   s5_running_max_lock: {
-    headline: "Wait until the day is provably over, then buy the bucket holding the maximum while it is still cheap.",
+    headline: "Retired cooling heuristic: buy the band containing the observed maximum while recent readings are lower.",
     steps: [
-      "This one does not forecast. It waits.",
-      "The day is decided when the temperature has fallen far enough, for long enough, that the remaining daylight cannot recover it.",
-      "At that moment the bucket containing the day's running maximum is the winner — the outcome is settled, not predicted.",
-      "If the market has not caught up, buy it. Here the maximum landed in 30–31 and it is still priced at 30c.",
-      "There is no exit rule and that is deliberate: the outcome is already known, so it is held to settlement.",
+      "This retired strategy uses recent observations; it does not establish the final winner.",
+      "The cooling flag marks consecutive readings below the running maximum. It does not establish the final maximum or settlement.",
+      "The band containing the observed high remains a candidate; later warming can move the final maximum into another band.",
+      "Here the observed maximum so far is in 30–31 and the band costs 30c. Neither fact proves that band will win.",
+      "It holds to settlement without an exit rule, retaining the risk of a later higher maximum.",
     ],
     legs: [{ i: CENTRE, side: "YES" }],
     gates: [
-      { label: "day decided", value: "yes", ok: true },
+      { label: "cooling trend", value: "yes", ok: true },
       { label: "maximum rests on", value: "a series of readings, not one point", ok: true },
-      { label: "seasonal window", value: "under 12h — a peak exists to be past", ok: true },
+      { label: "seasonal window", value: "under 12h — a historical peak window exists", ok: true },
       { label: "price", value: "30c, under the 90c ceiling", ok: true },
     ],
     reads: "scripts/strategies/s5_running_max_lock.py · day_decided from sql/ad4_26_temp_trend.sql",

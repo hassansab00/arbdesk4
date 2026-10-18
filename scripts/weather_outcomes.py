@@ -19,6 +19,8 @@ import re
 import sys
 import time
 import uuid
+from email.utils import parsedate_to_datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -37,6 +39,7 @@ PARSER_VERSION = "weather-outcomes-v1"
 # not resolved by then is backlog, not news.
 RECENT_DAYS = 3
 USER_AGENT = "ArbDesk4/2.0 (+https://github.com/hassansab00/arbdesk4)"
+MAX_RETRY_WAIT_S = 30  # Bounded recovery; longer provider waits defer to a later run.
 WRH_KEY_URL = "https://www.weather.gov/source/wrh/apiKey.js"
 WRH_API_URL = "https://api.synopticdata.com/v2/stations/timeseries"
 HKO_DATA_URL = "https://www.weather.gov.hk/cis/dailyExtract/dailyExtract_{year}{month:02d}.xml"
@@ -120,10 +123,39 @@ def parse_rule_spec(rules_text: str | None, market_unit: str | None = None) -> R
     raise OutcomeError("unsupported_source", "No supported authoritative source found in saved rules")
 
 
+def retry_wait(response, attempt: int, now: dt.datetime | None = None) -> float:
+    """Respect the provider's Retry-After; never retry earlier to fit our budget."""
+    value = getattr(response, "headers", {}).get("Retry-After")
+    if value is not None:
+        try:
+            return max(0.0, float(value))
+        except (TypeError, ValueError):
+            try:
+                until = parsedate_to_datetime(value)
+                if until.tzinfo is None:
+                    until = until.replace(tzinfo=dt.timezone.utc)
+                return max(0.0, (until - (now or dt.datetime.now(dt.timezone.utc))).total_seconds())
+            except (TypeError, ValueError, OverflowError):
+                pass
+    return float(2 ** attempt)
+
+
+def local_day_finished(for_date: str, timezone: str | None, now: dt.datetime) -> bool:
+    if not timezone:
+        raise OutcomeError("source_clock_unavailable", "City timezone is missing; final evidence was not requested")
+    try:
+        end = dt.datetime.combine(dt.date.fromisoformat(for_date) + dt.timedelta(days=1),
+                                  dt.time(), ZoneInfo(timezone))
+    except ZoneInfoNotFoundError as exc:
+        raise OutcomeError("source_clock_unavailable", "City timezone is unknown; final evidence was not requested") from exc
+    return now >= end
+
+
 def _get(session: requests.Session, url: str, **kwargs) -> requests.Response:
     headers = {"User-Agent": USER_AGENT, **kwargs.pop("headers", {})}
     last_error: Exception | None = None
     for attempt in range(4):
+        response = None
         try:
             response = session.get(url, headers=headers, timeout=45, **kwargs)
             if response.status_code < 400:
@@ -136,7 +168,10 @@ def _get(session: requests.Session, url: str, **kwargs) -> requests.Response:
         except (requests.ConnectionError, requests.Timeout) as exc:
             last_error = exc
         if attempt < 3:
-            time.sleep(2 ** attempt)
+            wait = retry_wait(response, attempt)
+            if wait > MAX_RETRY_WAIT_S:
+                break  # Preserve the failure and defer; do not hammer before Retry-After.
+            time.sleep(wait)
     raise OutcomeError("source_unavailable", str(last_error or f"Unable to read {url}"))
 
 
@@ -503,6 +538,7 @@ def _unparseable(days: int) -> dict[tuple[str, str], str]:
 def _load_targets(days: int, maximum: int,
                   finalized: set[tuple[str, str]] | None = None,
                   unparseable: dict[tuple[str, str], str] | None = None,
+                  city_keys: set[str] | None = None,
                   ) -> list[dict[str, Any]]:
     """The city-days that still NEED collecting, recent first, capped at `maximum`.
 
@@ -594,6 +630,8 @@ def _load_targets(days: int, maximum: int,
     stuck = unparseable or {}
     outstanding = []
     for row in latest.values():
+        if city_keys and row["city_key"] not in city_keys:
+            continue
         key = (row["city_key"], row["resolution_date"])
         if key in done:
             continue
@@ -628,9 +666,16 @@ def _existing_evidence(days: int) -> dict[tuple[str, str], dict[str, Any]]:
     return latest
 
 
-def run(days: int = 14, maximum: int = 250, dry_run: bool = False) -> dict[str, int]:
+def run(days: int = 14, maximum: int = 250, dry_run: bool = False,
+        cities: str = "", now: dt.datetime | None = None) -> dict[str, int]:
     if days < 1 or maximum < 1:
         raise ValueError("days and max-city-days must be positive")
+    now = now or dt.datetime.now(dt.timezone.utc)
+    clocks = {r["city_key"]: r.get("timezone") for r in rest_all(
+        "cities", [("select", "city_key,timezone")], order="city_key.asc")}
+    city_keys = {c.strip() for c in cities.split(",") if c.strip()}
+    if city_keys - clocks.keys():
+        raise ValueError("Unknown recovery city: " + ", ".join(sorted(city_keys - clocks.keys())))
     # Evidence first: the finalized set decides which city-days are still
     # worth a slot, and the cap is applied to what remains rather than to the
     # whole window. See _load_targets.
@@ -640,7 +685,7 @@ def run(days: int = 14, maximum: int = 250, dry_run: bool = False) -> dict[str, 
     # Verdicts already reached on rules that have not changed. Skipped rather
     # than re-derived; see _load_targets.
     unparseable = _unparseable(days)
-    targets = _load_targets(days, maximum, finalized, unparseable)
+    targets = _load_targets(days, maximum, finalized, unparseable, city_keys or None)
     run_id = os.environ.get("GITHUB_RUN_ID", "local-" + uuid.uuid4().hex)
     run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
     session = requests.Session()
@@ -668,6 +713,8 @@ def run(days: int = 14, maximum: int = 250, dry_run: bool = False) -> dict[str, 
         error: str | None = None
         try:
             spec = parse_rule_spec(market.get("rules_text"), market.get("unit"))
+            if not local_day_finished(market["resolution_date"], clocks.get(market["city_key"]), now):
+                raise OutcomeError("not_final", "The city's local day has not ended; final evidence was not requested")
             outcome = collect_one(session, spec, dt.date.fromisoformat(market["resolution_date"]))
             if prior:
                 if prior.get("payload_sha256") == outcome.payload_sha256:
@@ -771,8 +818,9 @@ def main() -> None:
     parser.add_argument("--days", type=int, default=14)
     parser.add_argument("--max-city-days", type=int, default=250)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--cities", default="", help="Comma-separated city keys for bounded manual recovery")
     args = parser.parse_args()
-    counts = run(days=args.days, maximum=args.max_city_days, dry_run=args.dry_run)
+    counts = run(days=args.days, maximum=args.max_city_days, dry_run=args.dry_run, cities=args.cities)
     print(json.dumps(counts, sort_keys=True))
     # Unsupported authorities are an explicit coverage limitation. Genuine
     # source/parser/revision failures still fail the workflow loudly.

@@ -29,6 +29,8 @@ import { messageOf } from "@/lib/useQuery";
  */
 export interface FreshRow {
   table_name: string;
+  /** Event records can remain unchanged while their writer completes normally. */
+  activity_only?: boolean;
   layer: string;
   plain_english: string;
   rows: number | null;
@@ -72,7 +74,12 @@ function load(): Promise<void> {
     try {
       const res = await supabase.from("v_page_data_freshness").select("*");
       if (res.error) publish({ data: null, loading: false, error: messageOf(res.error) });
-      else publish({ data: (res.data ?? []) as FreshRow[], loading: false, error: null });
+      else publish({ data: ((res.data ?? []) as FreshRow[]).map(r => {
+        const activity = ["signals", "fact_signal_outcome", "backtest_trades"].includes(r.table_name);
+        return activity ? {...r, activity_only: true, fresh_hours: null,
+          state: r.state === "stale" ? "ok" : r.state,
+          plain_english: r.plain_english + " Event record: no new event does not mean its job stopped; feed health tracks the writer."} : r;
+      }), loading: false, error: null });
     } catch (e) {
       // Thrown, not returned: an unconfigured client lands here.
       publish({ data: null, loading: false, error: messageOf(e) });

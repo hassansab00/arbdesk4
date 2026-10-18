@@ -68,11 +68,6 @@ def _declarations(src):
 def test_every_query_that_can_hit_the_ceiling_declares_its_limit():
     offenders = []
     for f in _sources():
-        # useCityStats' fallback is a plain Promise.all, not a useQuery, so it
-        # has no flag to set. It reports the cut in words instead, which
-        # test_the_fallback_path_says_so_too pins.
-        if f.name == "useCityStats.ts":
-            continue
         # The masthead counts markets with the server's own exact count and
         # only reads rows for the distinct days, saying "days+" when that read
         # was cut short. test_the_masthead_counts_with_the_server pins it.
@@ -97,12 +92,15 @@ def test_the_flag_fires_at_exactly_the_ceiling_not_only_at_the_asked_limit():
     assert "truncated" in src
 
 
-def test_the_fallback_path_says_so_too():
-    """useCityStats builds the same shape from raw tables when v_city_stats is
-    unavailable, in a plain Promise.all that cannot use the flag. 54 cities by
-    3 models by 8 leads is about 1,300 forecast rows for one day."""
+def test_the_fallback_forecast_read_is_bounded_per_city():
+    """The fallback reads one server-selected local-day forecast per city,
+    rather than asking for every lead and model and silently losing cities.
+    monitoring-city-clock.cjs verifies the view's date and ordering contract.
+    """
     src = (WEB / "lib" / "useCityStats.ts").read_text()
-    assert "1,000-row ceiling" in src
+    assert 'from("v_city_forecast_today")' in src
+    assert 'from("weather_forecasts")' not in src
+    assert 'if (fc.error) throw fc.error' in src
 
 
 def test_a_page_that_shows_the_truncation_exists():

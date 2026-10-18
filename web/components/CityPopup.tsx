@@ -274,7 +274,7 @@ export default function CityPopup({
               <dd className="tabular-nums">
                 {c.live
                   ? <>max {fmtTemp(c.live.running_max_c, u)} · now {fmtTemp(c.live.temp_c, u)}
-                      {c.live.day_decided ? <b className="ml-1 text-accent">day decided</b>
+                      {c.live.day_decided ? <b className="ml-1 text-accent">cooling trend</b>
                         : c.live.peak_window_state ? <span className="ml-1 text-muted">{c.live.peak_window_state}</span> : null}
                       {c.live.observed_at && <span className="block text-[10px] text-muted">reading {fmtDateTime(c.live.observed_at)} · {c.live.source_kind ?? "source unknown"}</span>}</>
                   : <span className="text-muted">no reading for this day yet{fmtDaysAhead(c.for_date, city.timezone ?? undefined) === "today" ? "" : " (the day has not started)"}</span>}
