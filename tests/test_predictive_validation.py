@@ -58,3 +58,64 @@ def test_learning_activity_only_names_current_serving_model():
         assert len(row['report']['learning'])==1
         assert row['report']['learning'][0]['model_version']=='current'
         assert row['report']['learning'][0]['active']
+
+
+def test_repeat_runs_replace_derived_answers_and_preserve_original_calls(tmp_path,monkeypatch):
+    """Exercise the real HTTP write helpers, including duplicate handling."""
+    import copy
+    import json
+    import pathlib
+    from types import SimpleNamespace
+    monkeypatch.syspath_prepend(str(pathlib.Path(__file__).resolve().parents[1]/'tools'))
+    metadata=tmp_path/'data/models/wxrd/wxrd-v3_remaining.json'
+    metadata.parent.mkdir(parents=True)
+    metadata.write_text(json.dumps(dict(version='wxrd-v3',model_sha256='a'*64,fit_last='2026-10-11')))
+    monkeypatch.setattr(v,'ROOT',tmp_path)
+    original=call()
+    preserved=copy.deepcopy(original)
+    facts=[]
+    saved={}
+    modes=[]
+    def read(table,*a,**kw):
+        if table=='prediction_checkpoints': return [original]
+        if table=='fact_checkpoint_outcome': return list(facts)
+        if table=='derived_wx_city_calibration':
+            return list(saved.get(table,{}).values())
+        return []
+    def post(url,*,headers,params,data,**kw):
+        table=url.rsplit('/',1)[-1]
+        mode=headers['Prefer']
+        modes.append((table,mode))
+        target=saved.setdefault(table,{})
+        for row in json.loads(data):
+            key=tuple(row[k] for k in params['on_conflict'].split(','))
+            if key not in target or 'merge-duplicates' in mode:
+                target[key]=copy.deepcopy(row)
+        return SimpleNamespace(status_code=201)
+    monkeypatch.setattr(v,'get_cities',lambda **kw:CITIES)
+    monkeypatch.setattr(v,'rest_all',read)
+    monkeypatch.setattr(v,'log_run',lambda *a:None)
+    # The suite loads common under several identities; patch the globals of
+    # the actual bound writer rather than a separately imported module.
+    wire=v.upsert_replace.__globals__
+    monkeypatch.setitem(wire,'_cfg',lambda:{'url':'https://fixture.invalid'})
+    monkeypatch.setitem(wire,'_headers',lambda:{})
+    monkeypatch.setitem(wire,'_post',post)
+    key=('city','noon','served')
+    v.run(now=NOW)
+    first=saved['derived_city_prediction_validation'][key]
+    assert first['report']['n']==0 and first['report']['pending']==1
+    facts.append(outcome())
+    v.run(now=NOW+dt.timedelta(days=1))
+    second=saved['derived_city_prediction_validation'][key]
+    assert second['as_of']!=first['as_of'] and second['report']['n']==1 and second['report']['hits']==0
+    assert len(saved['derived_city_prediction_validation'])==16
+    states=list(saved['derived_wx_city_calibration'].values())
+    assert len(states)==3 and all(s['as_of']=='2026-10-18' for s in states)
+    v.run(score_only=True,now=NOW+dt.timedelta(days=2))
+    assert saved['derived_city_prediction_validation'][key]['as_of'].startswith('2026-10-19')
+    assert all(s['as_of']=='2026-10-18' for s in saved['derived_wx_city_calibration'].values())
+    assert set(saved)=={'derived_city_prediction_validation','derived_wx_city_calibration'}
+    assert all('merge-duplicates' in mode for _,mode in modes)
+    assert original==preserved
+    assert len(list((tmp_path/'data/eval/wxpredict/city_calibration').glob('*.json')))==2
