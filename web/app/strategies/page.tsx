@@ -47,7 +47,7 @@ const WHAT_IT_DOES: Record<string, string> = {
   s4_tail_fade:
     "Sells the outer buckets. The only sourced support is the fee curve: p(1−p) → 0 at the extremes, so the tails are cheap to transact.",
   s5_running_max_lock:
-    "Waits for the day to be provably over, then buys the bucket holding the locked maximum while it is still cheap. The outcome is already decided; the only question is the price.",
+    "Retired cooling heuristic: buys the band containing the observed maximum while recent readings are lower. Later warming can change the winner; cooling does not confirm settlement.",
   s6_anchor_insurance:
     "An anchor position in the likely bucket plus a cheap hedge in its neighbour, sized so being wrong costs less than being right pays.",
   s7_pre_peak_gradient:

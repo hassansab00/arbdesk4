@@ -134,7 +134,7 @@ export default function CityWeatherHealth() {
           <i>today</i> is going, which is what an entry window needs.{" "}
           <b>A single reading is a floor, not a maximum.</b> If the only thing known about today is
           the current temperature, the day&rsquo;s maximum is at least that and possibly much more —
-          so s5, whose whole premise is a locked maximum, is refused on those cities rather than
+          so the retired s5 heuristic, which relies on the observed high, is refused on those cities rather than
           buying the band that happens to hold the floor.
           {impossible > 0 && (
             <>

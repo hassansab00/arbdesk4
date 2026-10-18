@@ -77,7 +77,7 @@ begin
   if to_regclass('public.derived_city_climate') is not null
      and to_regprocedure('public.refresh_city_climate()') is not null then
     if exists(select 1 from public.cities c left join public.derived_city_climate d using(city_key)
-       where c.status='active' and d.local_today is distinct from (now() at time zone c.timezone)::date) then
+       where c.status='active' and d.local_today is distinct from (now() at time zone coalesce(c.timezone,'UTC'))::date) then
       perform public.refresh_city_climate();
     end if;
   end if;

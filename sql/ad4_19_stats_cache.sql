@@ -198,8 +198,8 @@ select
   lw.running_max_c,
   fc.forecast_max_c,
   fc.model                                                 as forecast_model,
-  case when cl.local_today = (now() at time zone coalesce(c.timezone, 'UTC'))::date
-    then (coalesce(fc.forecast_max_c, lw.running_max_c) - cl.normal_max_c)::numeric(6,2) end as anomaly_c,
+  (case when cl.local_today = (now() at time zone coalesce(c.timezone, 'UTC'))::date
+    then coalesce(fc.forecast_max_c, lw.running_max_c) - cl.normal_max_c end)::numeric(6,2) as anomaly_c,
   case
     when cl.local_today is distinct from (now() at time zone coalesce(c.timezone, 'UTC'))::date then null
     when cl.sd_max_c is null or cl.sd_max_c <= 0 then null
