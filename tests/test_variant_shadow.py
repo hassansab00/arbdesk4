@@ -204,6 +204,16 @@ def test_a_calibrated_served_ladder_is_marked(io):
     assert io["written"][0][1][0]["served_calibrated"] is True
 
 
+def test_each_parent_keeps_its_own_input_flags_when_horizon_choices_differ(io):
+    parents=[_served('london','noon'),_served('london','prepeak_1h')]
+    latest={('london','2026-10-05'):([],None,[])}
+    per_call={('london','2026-10-05','noon'):([],None,['calibrated:baseline']),
+              ('london','2026-10-05','prepeak_1h'):([],None,['priced_from:wxrd3:v3:test'])}
+    _record(io,parents,latest,checkpoint_results=per_call)
+    rows=io['written'][0][1]
+    assert {r['checkpoint']:r['served_calibrated'] for r in rows}=={'noon':True,'prepeak_1h':False}
+
+
 def test_every_skip_is_counted_by_reason(io):
     out = [_served("paris", "noon"),                       # no pricing before midnight
            dict(_served("london", "noon"), city_key="rome")]   # no market, no timezone

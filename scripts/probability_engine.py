@@ -1207,7 +1207,7 @@ def _skill_for(city_key, lead_days, model=None):
 
 
 def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None,
-                     promoted=None, model_forecasts=None):
+                     promoted=None, model_forecasts=None, use_primary=True):
     forecast = _forecast_for(city_key, for_date)
     if forecast is None or forecast.get("forecast_max_c") is None:
         print(f"  TODO: unmeasured - no forecast for {city_key} {for_date}", file=sys.stderr)
@@ -1640,7 +1640,8 @@ def process_city_day(city_key, for_date, unit, bands, history_cache, floors=None
             else f"calibrated:platt(a={cal['a']:.3f},b={cal['b']:+.3f},n={cal.get('n')})")
 
     import predictive_primary
-    return predictive_primary.apply(city_key, for_date, (out, reg, reasons))
+    baseline=(out,reg,reasons)
+    return predictive_primary.apply(city_key, for_date, baseline) if use_primary else baseline
 
 
 def _warm_caches():

@@ -1,7 +1,7 @@
 const {PGlite}=require('@electric-sql/pglite');
 const fs=require('node:fs'); const assert=require('node:assert/strict');
 const root=require('node:path').join(__dirname,'../..');
-const migration=fs.readFileSync(root+'/supabase/migrations/20261017170738_frozen_city_learning.sql','utf8')+'\n'+fs.readFileSync(root+'/supabase/migrations/20261017174142_frozen_city_shadow_retry.sql','utf8');
+const migration=['20261017170738_frozen_city_learning.sql','20261017174142_frozen_city_shadow_retry.sql','20261018084700_city_predictor_selection.sql'].map(p=>fs.readFileSync(root+'/supabase/migrations/'+p,'utf8')).join('\n');
 async function refused(db,sql,params=[]){await assert.rejects(()=>db.query(sql,params));}
 (async()=>{
   const db=new PGlite();
@@ -23,6 +23,14 @@ async function refused(db,sql,params=[]){await assert.rejects(()=>db.query(sql,p
     insert into prediction_checkpoints(city_key,target_date,checkpoint,local_decision_time,engine_version,model_path,probs,top_band_id,top_prob)
       values('legacy','2026-09-01','noon','2026-09-01 12:00','old','forecast','{"a":0.8,"b":0.2}','a',.8);`);
   const before=(await db.query("select to_jsonb(p) p from prediction_checkpoints p where city_key='legacy'")).rows[0].p;
+  // A completed, previously receipted baseline choice retains its raw alternative.
+  await db.exec(`alter table prediction_checkpoints add column frozen_at timestamptz,
+    add column input_as_of timestamptz,add column input_sha256 text,add column raw_probs jsonb,
+    add column baseline_probs jsonb,add column predictive_context jsonb;
+    insert into cities values('paired-seed','UTC','C');
+    insert into prediction_checkpoints(city_key,target_date,checkpoint,local_decision_time,engine_version,model_path,probs,top_band_id,top_prob,priced_from,frozen_at,input_as_of,input_sha256,raw_probs,baseline_probs,predictive_context)
+      values('paired-seed',current_date-1,'noon',(current_date-1)+time '12:00','seed','forecast','{"a":0.2,"b":0.8}','b',.8,'baseline:seed',(current_date-1)+time '12:01',(current_date-1)+time '12:00','seed','{"a":0.8,"b":0.2}','{"a":0.2,"b":0.8}','{"raw_model_version":"wxrd3:v3:seed"}');
+    insert into fact_checkpoint_outcome select checkpoint_id,'b',current_date::timestamptz,clock_timestamp() from prediction_checkpoints where city_key='paired-seed';`);
   await db.exec(`create table variant_shadow_checkpoints(city_key text,target_date date,checkpoint text,decided_at timestamptz default now());
     create table s10_shadow_checkpoints(city_key text,target_date date,checkpoint text,decided_at timestamptz default now());`);
   const utcHour=new Date().getUTCHours(),shift=utcHour-12;
@@ -33,6 +41,10 @@ async function refused(db,sql,params=[]){await assert.rejects(()=>db.query(sql,p
     values('retry',$1::date,'morning',$1::date+time '09:00','old','forecast','{"a":0.8,"b":0.2}','a',.8,clock_timestamp()-interval '1 hour'),
           ('too-old',$1::date,'morning',$1::date+time '09:00','old','forecast','{"a":0.8,"b":0.2}','a',.8,clock_timestamp()-interval '7 hours')`,[retryDay]);
   await db.exec(migration); await db.exec(migration);
+  const paired=(await db.query("select model_version,probs,raw_probs,baseline_probs from v_city_predictor_pairs where city_key='paired-seed'")).rows[0];
+  assert.equal(paired.model_version,'wxrd3:v3:seed');
+  assert.deepEqual(paired.probs,{a:.2,b:.8}); assert.deepEqual(paired.raw_probs,{a:.8,b:.2});
+  assert.deepEqual(paired.baseline_probs,paired.probs);
   const legacy=(await db.query("select to_jsonb(p)-array['frozen_at','input_as_of','input_key','input_sha256','raw_probs','baseline_probs','baseline_model','calibration','predictive_context'] p,frozen_at from prediction_checkpoints p where city_key='legacy'")).rows[0];
   assert.deepEqual(legacy.p,before); assert.equal(legacy.frozen_at,null);
   assert.equal((await db.query('select count(*)::int n from v_data_freshness')).rows[0].n,3);
@@ -73,6 +85,21 @@ async function refused(db,sql,params=[]){await assert.rejects(()=>db.query(sql,p
   await db.query("insert into live_capture(kind,key,captured_at,payload) values('wx_features','key',now(),$1::jsonb)",[JSON.stringify(payload)]);
   await db.query(packetIns,[day,now,JSON.stringify(ctx)]);
   assert.equal((await db.query("select count(*)::int n from prediction_checkpoints where city_key='packet'")).rows[0].n,1);
+  await db.query('insert into cities values ($1,$2,$3)',['selected',zone,'C']);
+  const choice={policy:'city-horizon-selector-v1',checkpoint:'noon',selected:'baseline',active:true,
+    fit_at:now,validated_through:new Date(Date.parse(day+'T00:00Z')-86400000).toISOString().slice(0,10)};
+  const selectedCtx={...ctx,raw_model_version:'wxrd3:v3:x',model_selection:choice};
+  const selectedPacket={...payload,row:{city_key:'selected',date:day}};
+  await db.query("insert into live_capture(kind,key,captured_at,payload) values('wx_features','selected-key',now(),$1::jsonb)",[JSON.stringify(selectedPacket)]);
+  const selectedIns=`insert into prediction_checkpoints(city_key,target_date,checkpoint,local_decision_time,engine_version,model_path,probs,top_band_id,top_prob,priced_from,input_key,input_sha256,input_as_of,raw_probs,baseline_probs,baseline_model,predictive_context)
+    values('selected',$1::date,'noon',$1::date+time '12:00','v','forecast',$2::jsonb,'b',.8,$3,'selected-key','digest',$4::timestamptz,'{"a":0.8,"b":0.2}','{"a":0.2,"b":0.8}','priced_from:baseline:test',$5::jsonb)`;
+  await refused(db,selectedIns,[day,'{"a":0.1,"b":0.8,"c":0.1}','baseline:test',now,JSON.stringify(selectedCtx)]);
+  await refused(db,selectedIns,[day,'{"a":0.2,"b":0.8}','wxrd3:v3:x',now,JSON.stringify(selectedCtx)]);
+  await refused(db,selectedIns,[day,'{"a":0.2,"b":0.8}','baseline:test',now,JSON.stringify({...selectedCtx,model_selection:{...choice,active:false}})]);
+  await refused(db,selectedIns,[day,'{"a":0.2,"b":0.8}','baseline:test',now,JSON.stringify({...selectedCtx,raw_model_version:'wrong-version'})]);
+  await refused(db,selectedIns,[day,'{"a":0.2,"b":0.8}','baseline:test',now,JSON.stringify({...selectedCtx,model_selection:{...choice,validated_through:day}})]);
+  await db.query(selectedIns,[day,'{"a":0.2,"b":0.8}','baseline:test',now,JSON.stringify(selectedCtx)]);
+  assert.equal((await db.query("select priced_from from prediction_checkpoints where city_key='selected'")).rows[0].priced_from,'baseline:test');
   await db.query("insert into venue values('valid',$1,'confirmed')",[day]);
   await refused(db,ins,[day,'post-settlement','{"a":0.8,"b":0.2}','a',.8,new Date().toISOString()]);
   await db.query("insert into derived_wx_city_calibration values('v','valid','before_peak',current_date,'fit','{}','2000-01-01')");
@@ -82,6 +109,7 @@ async function refused(db,sql,params=[]){await assert.rejects(()=>db.query(sql,p
   assert.equal((await db.query('select count(*)::int n from v_city_prediction_validation')).rows[0].n,1);
   await refused(db,'select * from v_wx_frozen_learning');
   await refused(db,'select * from v_day_ahead_frozen_validation');
+  await refused(db,'select * from v_city_predictor_pairs');
   await refused(db,"insert into derived_city_prediction_validation values('x','noon','served',now(),'{}')");
-  await db.close(); console.log('frozen-city-learning: server receipt, first-call identity, late insert refusal, immutable history, health equivalence and role contracts passed');
+  await db.close(); console.log('frozen-city-learning: server receipt, first-call identity, late insert refusal, immutable history, paired predictor selection, health equivalence and role contracts passed');
 })().catch(e=>{console.error(e);process.exit(1)});

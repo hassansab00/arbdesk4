@@ -31,6 +31,7 @@ public from 9 Oct (Hassan), and standard runners are free for a public one.
 """
 import datetime as dt
 import json
+import math
 import os
 import sys
 import time
@@ -278,7 +279,19 @@ def build_row(city, target, checkpoint, local_time, rows, reasons, books, readin
         "station": station,
     }
     import predictive_primary
-    row.update(predictive_primary.checkpoint_lineage(city, target, probs))
+    lineage=predictive_primary.checkpoint_lineage(city, target, probs, checkpoint)
+    row.update(lineage)
+    if lineage and str(row.get('priced_from') or '').startswith('wxrd3:'):
+        # The baseline may have a newer station report than the arrival-mode
+        # vector. Name the report actually used, never borrow that newer stamp.
+        context=lineage.get('predictive_context') or {}
+        age=context.get('obs_age_min')
+        if age is not None and math.isfinite(float(age)) and float(age)>=0:
+            as_of=dt.datetime.fromisoformat(lineage['input_as_of'].replace('Z','+00:00'))
+            row['reading_at']=(as_of-dt.timedelta(minutes=float(age))).isoformat()
+            row['reading_source']='wx_features'
+        else:
+            row['reading_at'],row['reading_source']=None,None
     return row, None
 
 
@@ -555,7 +568,7 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
             failed.append(f"{city} {target}: no canonical bands")
             continue
         futures[pool.submit(pe.process_city_day, city, target, unit, band_rows,
-                            history_cache, floors, promoted, model_forecasts)] = (city, target)
+                            history_cache, floors, promoted, model_forecasts, False)] = (city, target)
     remaining = max(1.0, budget_s - 8.0 - (time.monotonic() - t0))   # 8 s kept for books + write
     done, not_done = wait(futures, timeout=remaining)
     reprice_set = set(reprice)
@@ -578,6 +591,21 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
         results[(city, target)] = res
     pool.shutdown(wait=False, cancel_futures=True)
 
+    # Price the baseline once, then choose independently for every due horizon.
+    # Two checkpoints caught by one tick may legitimately serve different models.
+    baseline_results=results
+    checkpoint_results={}
+    newest={}
+    for city,target,name,local in due:
+        base=baseline_results.get((city,target))
+        if base is None:
+            continue
+        checkpoint_results[(city,target,name)]=predictive_primary.apply(city,target,base,checkpoint=name)
+        if (city,target) not in newest or local>newest[(city,target)][1]:
+            newest[(city,target)]=(name,local)
+    results={key:(checkpoint_results[(*key,newest[key][0])] if key in newest
+                  else predictive_primary.apply(*key,base)) for key,base in baseline_results.items()}
+
     token_rows = []
     priced_bands = [str(r["band_id"]) for rows, _, _ in results.values() for r in rows]
     for i in range(0, len(priced_bands), 100):
@@ -591,7 +619,7 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
 
     out = []
     for city, target, name, local in due:
-        res = results.get((city, target))
+        res = checkpoint_results.get((city, target, name))
         if res is None:
             continue
         rows, _reg, reasons = res
@@ -657,7 +685,8 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     import variant_shadow
     detail["variants"] = variant_shadow.record(out, results, market_of, bands_by_market, tz_of,
                                                unit_of, dry_run=dry_run,
-                                               deadline=t0 + budget_s - 2.0)
+                                               deadline=t0 + budget_s - 2.0,
+                                               checkpoint_results=checkpoint_results)
     detail.update({"written": written if not dry_run else 0, "would_write": len(out),
                    "deferred": deferred, "failed": failed[:30],
                    "books": len(books), "seconds": round(time.monotonic() - t0, 1)})

@@ -213,6 +213,7 @@ SQL_FILTERS = {
 }
 SQL_RECORD = {
     "supabase/migrations/20261017170738_frozen_city_learning.sql",  # Historical clock and label lookup; not roster selection.
+    "supabase/migrations/20261018084700_city_predictor_selection.sql",  # Frozen paired evidence keeps retired history; cities supplies its clock.
     "sql/ad4_city_calibration_forward.sql",  # Historical calls, including retired cities.
 
     # ad4_88 (plan v2.1 P3.8): cities.timezone only, to put the evening-before

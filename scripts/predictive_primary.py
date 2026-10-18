@@ -1,9 +1,10 @@
 """Horizon-specific primary prediction, authorized by Hassan on 17 Oct.
 
 The corrected multi-model path keeps day-ahead/evening and morning calls.
-The frozen five-seed wxrd3 supplies same-day noon and peak-relative calls,
-with fresh station/forecast inputs. Its *whole bucket distribution* replaces
-the baseline; no normal width or old calibration is applied to it. Every
+The frozen five-seed wxrd3 is the prior for same-day noon and peak-relative
+calls with fresh station/forecast inputs. A city/horizon can select the paired
+baseline only after later-date validation. Both alternatives remain recorded.
+Its whole bucket distribution replaces the baseline; no old calibration is applied. Every
 failure keeps the baseline and records why. No capital setting changes.
 """
 import datetime as dt
@@ -41,7 +42,7 @@ def eligible(target, timezone, now, checkpoints=()):
     local = now.astimezone(ZoneInfo(timezone))
     if str(target) != local.date().isoformat() or local.hour < 9:
         return False
-    if "morning" in checkpoints:
+    if "morning" in checkpoints and not set(checkpoints) & PEAK_CALLS:
         return False
     return local.hour >= 12 or bool(set(checkpoints) & PEAK_CALLS)
 
@@ -108,6 +109,19 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
         except Exception:
             cells = []  # A missing/unavailable fit keeps the raw distribution.
         calibration = {(c["city_key"],c["phase"]): c["state"] for c in cells}
+        import city_model_selection as selector
+        try:
+            choices = ops.rest_all('derived_city_prediction_validation',[
+                ('select','city_key,checkpoint,model_selection:report->model_selection'),
+                ('scope','eq.served'),('as_of','lte.'+now.isoformat())],
+                order='city_key.asc,checkpoint.asc',page_size=1000)
+            peaks = ops.rest_all('derived_weather_peak',[
+                ('select','city_key,month,peak_hour_local')],order='city_key.asc,month.asc',page_size=1000)
+        except Exception as exc:
+            choices, peaks = [], []
+            _detail['selection_state_error'] = type(exc).__name__
+        choices={(r['city_key'],r['checkpoint']):r['model_selection'] for r in choices if r.get('model_selection')}
+        peaks={(r['city_key'],int(r['month'])):r['peak_hour_local'] for r in peaks}
         model = wl.load_model(meta, meta_path)
         city_keys = {m["city_key"] for m in selected}
         first = now - dt.timedelta(hours=wl.RECORD_HOURS)
@@ -188,6 +202,9 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
                 "floor_c": float(row["rmax_c"]), "unit": e["unit"],
                 "floor_unit": float(row["rmax_unit"]), "input_sha256": sha,
                 "history_commit": commit}
+            _predictions[key].update(selection_states={h:choices.get((e['city'],h)) for h in selector.HORIZONS},
+                horizon=selector.horizon_at(e['date'],cities[e['city']]['timezone'],
+                    peaks.get((e['city'],int(e['date'][5:7]))),now))
         _detail.update(selected=len(_predictions), version=version)
         if len(events) < len(selected):
             skipped["no complete canonical ladder"] += len(selected) - len(events)
@@ -199,7 +216,7 @@ def prepare(markets, bands_by_market, cities, now=None, checkpoints=None, dry_ru
     return _detail
 
 
-def apply(city, target, result):
+def apply(city, target, result, checkpoint=None):
     """Replace all probabilities together, preserving existing eligibility
     gates. A missing primary keeps the baseline."""
     if not enabled() or result is None:
@@ -211,6 +228,12 @@ def apply(city, target, result):
         if (city, str(target)) in _eligible:
             return rows, reg, [*reasons, f"primary_fallback:{POLICY}:baseline_kept"]
         return result
+    import city_model_selection as selector
+    horizon=checkpoint if checkpoint is not None else primary.get('horizon')
+    if horizon is not None and horizon not in selector.SUPPORTED:
+        return result  # A coincident peak call must not replace the morning call.
+    choice=selector.choose((primary.get('selection_states') or {}).get(horizon),city,horizon,
+        primary['version'],str(target),primary['as_of'])
     # Capture may still contain an older report after the engine has ingested
     # a new maximum. Compare settlement degrees, including Fahrenheit rounding,
     # before replacing the baseline; never reshape the frozen distribution.
@@ -234,6 +257,14 @@ def apply(city, target, result):
         if not cal_id:
             state, served = None, primary["raw_probs"]
     baseline_probs = {str(r["band_id"]): float(r["calibrated_prob"]) for r in rows}
+    context=dict(primary.get('predictive_context') or {},raw_model_version=primary['version'],model_selection=choice)
+    if choice['selected']=='baseline':
+        if primary.get('input_key'):
+            _lineage[(*key,checkpoint)] = dict(input_as_of=primary['as_of'],input_key=primary['input_key'],
+                input_sha256=primary['input_sha256'],raw_probs=primary['raw_probs'],
+                baseline_probs=baseline_probs,baseline_model=next((r for r in reasons if r.startswith('priced_from:')),'unknown'),
+                calibration=None,predictive_context=context,served_probs=baseline_probs)
+        return rows,reg,[*reasons,f"model_choice:{choice['version']}:baseline:{horizon}"]
     out = []
     for baseline in rows:
         r = dict(baseline)
@@ -249,19 +280,19 @@ def apply(city, target, result):
     keep = [r for r in reasons if not r.startswith(("priced_from:", "calibrated:", "station_width:",
         "station_correction:", "measurement_layer:", "trajectory:", "postprocessed:"))]
     keep.extend([f"primary_policy:{POLICY}", f"primary_inputs:{primary['input_sha256']}",
-                 f"priced_from:{primary['version']}"])
+                 f"priced_from:{primary['version']}",f"model_choice:{choice['version']}:wxrd3:{horizon}"])
     if primary.get("input_key"):
-        _lineage[key] = dict(input_as_of=primary["as_of"], input_key=primary["input_key"],
+        _lineage[(*key,checkpoint)] = dict(input_as_of=primary["as_of"], input_key=primary["input_key"],
             input_sha256=primary["input_sha256"], raw_probs=primary["raw_probs"],
             baseline_probs=baseline_probs, baseline_model=next((r for r in reasons if r.startswith("priced_from:")), "unknown"),
-            calibration=state, predictive_context=primary["predictive_context"],
+            calibration=state, predictive_context=context,
             served_probs={str(r["band_id"]): r["calibrated_prob"] for r in out})
     return out, reg, keep
 
 
-def checkpoint_lineage(city, target, probs):
+def checkpoint_lineage(city, target, probs, checkpoint=None):
     """Only attach metadata for the exact ladder that was actually served."""
-    record = _lineage.get((city,str(target),frozenset(probs)))
+    record = _lineage.get((city,str(target),frozenset(probs),checkpoint))
     if record is None or record["served_probs"] != probs:
         return {}
     return {k:v for k,v in record.items() if k != "served_probs"}

@@ -167,6 +167,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_city_peak_approach": "ad4_26_temp_trend.sql",
   "v_city_prediction_confidence": "ad4_58_city_prediction_confidence.sql",
   "v_city_prediction_validation": "supabase/migrations/20261017170738_frozen_city_learning.sql",
+  "v_city_predictor_pairs": "supabase/migrations/20261018084700_city_predictor_selection.sql",
   "v_city_reasoning": "ad4_23_reasoning.sql",
   "v_city_running_max": "ad4_71_observation_health.sql",
   "v_city_stats": "ad4_17_city_stats.sql",

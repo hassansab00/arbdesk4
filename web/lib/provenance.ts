@@ -1338,6 +1338,11 @@ export const VIEW_TABLES: Record<string, string[]> = {
   "v_city_prediction_validation": [
     "derived_city_prediction_validation"
   ],
+  "v_city_predictor_pairs": [
+    "cities",
+    "fact_checkpoint_outcome",
+    "prediction_checkpoints"
+  ],
   "v_city_reasoning": [
     "cities",
     "derived_forecast_skill",

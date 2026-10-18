@@ -6,6 +6,9 @@ export const HORIZONS = [
 export type Learning = { phase: string; as_of: string; decision: string; reason: string;
   train_dates: number; validation_dates: number; version: string; validated_through: string | null;
   active: boolean; effective_params: { temperature: number; tilt: number } };
+export type ModelSelection = { selected: string; decision: string; reason: string; fit_at: string;
+  train_dates: number; validation_dates: number; validated_through: string | null; version: string;
+  effective: { selected: string; active: boolean; reason: string } };
 export type CityReport = { city: string; display_name: string; timezone: string; scope: string; horizon: string;
   n: number; hits: number; hit_rate: number | null; interval95: number[] | null; dates: number;
   pending: number | null; verified: number; legacy: number; calibration_gap: number | null;
@@ -15,7 +18,11 @@ export type CityReport = { city: string; display_name: string; timezone: string;
   raw: { n: number; hit: number | null; log_loss: number | null };
   why: { missed_dates: number; reviewed_dates: number; weather: Record<string, number>;
     mean_peak_shift_h: number | null; public_forecast_mae_c: number | null; public_forecast_bias_c: number | null };
-  learning: Learning[]; versions: Record<string,number> };
+  learning: Learning[]; versions: Record<string,number>;
+  model_selection?: ModelSelection | null;
+  paired_audit?: { calls: number; dates: number; raw_hits: number; baseline_hits: number;
+    raw_only_hits: number; baseline_only_hits: number; both_missed: number;
+    raw_warmer_misses: number; raw_cooler_misses: number; mean_report_age_min: number | null } };
 export function rankCities(rows: CityReport[]) {
   return [...rows].sort((a,b) => (b.hit_rate ?? -1)-(a.hit_rate ?? -1) || b.n-a.n || a.display_name.localeCompare(b.display_name));
 }
