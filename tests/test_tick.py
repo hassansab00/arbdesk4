@@ -309,6 +309,25 @@ def test_a_tick_writes_one_row_per_due_checkpoint(world):
     assert out["written"] == 1 and world["logged"][0][1] == "ok"
 
 
+def test_overlapping_checkpoints_choose_each_model_and_publish_the_latest(world,monkeypatch):
+    import predictive_primary as pp
+    due=[('nyc','2026-09-25','noon',dt.datetime(2026,9,25,12)),
+         ('nyc','2026-09-25','prepeak_2h',dt.datetime(2026,9,25,12,30))]
+    monkeypatch.setattr(tick,'due_checkpoints',lambda *a,**k:(due,[]))
+    seen=[]
+    def choose(city,target,result,checkpoint=None):
+        seen.append((checkpoint,[r['calibrated_prob'] for r in result[0]]))
+        q={'b1':.8,'b2':.2} if checkpoint=='noon' else {'b1':.1,'b2':.9}
+        return _rows(q,computed_at='2026-09-25T16:35:00Z'),None,['priced_from:matched:'+str(checkpoint)]
+    monkeypatch.setattr(pp,'apply',choose)
+    tick.run(now=at('2026-09-25T16:35'))
+    rows=world['written'][0][1]
+    assert [(r['checkpoint'],r['top_band_id']) for r in rows]==[('noon','b1'),('prepeak_2h','b2')]
+    assert seen==[('noon',[.4,.6]),('prepeak_2h',[.4,.6])], 'both choices start from the same original baseline'
+    assert world['published'][0][0]['checkpoint']=='prepeak_2h'
+    assert set(world['variants'][0][2]['checkpoint_results'])=={('nyc','2026-09-25','noon'),('nyc','2026-09-25','prepeak_2h')}
+
+
 def test_the_variant_shadow_gets_the_rows_written_and_the_engine_s_reasons(world):
     """P1.1's candidate (docs/P11_DA_FLOOR_PREREG.md) is built beside each
     call from the row the tick writes and the pricing behind it, inside the

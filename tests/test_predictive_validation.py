@@ -32,7 +32,7 @@ def test_day_ahead_local_midnight_and_common_horizon_overall():
     da['called_at']='2026-10-15T23:59:00Z'
     rows=v.collect([],[],[da],CITIES,{},NOW)
     reports=v.reports(rows,CITIES,[],[],NOW)
-    assert len(reports)==16
+    assert len(reports)==24
     overall=next(r for r in reports if r['checkpoint']=='overall' and r['scope']=='served')['report']
     assert overall['n']==0, 'one horizon cannot masquerade as complete overall coverage'
     assert next(r for r in reports if r['checkpoint']=='day_ahead' and r['scope']=='served')['report']['hits']==1
@@ -81,6 +81,8 @@ def test_repeat_runs_replace_derived_answers_and_preserve_original_calls(tmp_pat
         if table=='fact_checkpoint_outcome': return list(facts)
         if table=='derived_wx_city_calibration':
             return list(saved.get(table,{}).values())
+        if table=='derived_city_prediction_validation':
+            return [r for r in saved.get(table,{}).values() if r['scope']=='served']
         return []
     def post(url,*,headers,params,data,**kw):
         table=url.rsplit('/',1)[-1]
@@ -109,13 +111,44 @@ def test_repeat_runs_replace_derived_answers_and_preserve_original_calls(tmp_pat
     v.run(now=NOW+dt.timedelta(days=1))
     second=saved['derived_city_prediction_validation'][key]
     assert second['as_of']!=first['as_of'] and second['report']['n']==1 and second['report']['hits']==0
-    assert len(saved['derived_city_prediction_validation'])==16
+    assert len(saved['derived_city_prediction_validation'])==24
     states=list(saved['derived_wx_city_calibration'].values())
     assert len(states)==3 and all(s['as_of']=='2026-10-18' for s in states)
+    selection_fit=second['report']['model_selection']['fit_at']
     v.run(score_only=True,now=NOW+dt.timedelta(days=2))
     assert saved['derived_city_prediction_validation'][key]['as_of'].startswith('2026-10-19')
     assert all(s['as_of']=='2026-10-18' for s in saved['derived_wx_city_calibration'].values())
+    assert saved['derived_city_prediction_validation'][key]['report']['model_selection']['fit_at']==selection_fit
     assert set(saved)=={'derived_city_prediction_validation','derived_wx_city_calibration'}
     assert all('merge-duplicates' in mode for _,mode in modes)
     assert original==preserved
     assert len(list((tmp_path/'data/eval/wxpredict/city_calibration').glob('*.json')))==2
+
+
+def test_raw_comparison_keeps_misses_when_baseline_is_the_served_predictor():
+    p=call(frozen_at='2026-10-16T12:36:00Z',priced_from='corrected-baseline',
+        probs={'a':.1,'b':.9},raw_probs={'a':.8,'b':.2},baseline_probs={'a':.1,'b':.9},
+        predictive_context=dict(raw_model_version='wxrd3:v3:checked',band_ids=['a','b'],obs_age_min=43))
+    rows=v.collect([p],[outcome()],[],CITIES,{},NOW)
+    reports=v.reports(rows,CITIES,[],[],NOW)
+    by={r['scope']:r['report'] for r in reports if r['checkpoint']=='noon'}
+    assert by['served']['hits']==1 and by['wxrd3']['n']==0
+    assert by['wxrd3_raw']['n']==1 and by['wxrd3_raw']['hits']==0
+    assert by['served']['paired_audit']['baseline_only_hits']==1
+    assert by['served']['paired_audit']['raw_cooler_misses']==1
+
+
+def test_raw_overall_requires_its_three_prepeak_supported_calls_and_never_counts_postpeak():
+    rows=[]
+    for h in ('noon','prepeak_2h','prepeak_1h','postpeak_1h'):
+        p=call(checkpoint=h,local_decision_time='2026-10-16T12:00:00Z',frozen_at='2026-10-16T12:36:00Z',
+            priced_from='corrected-baseline',probs={'a':.1,'b':.9},raw_probs={'a':.8,'b':.2},
+            baseline_probs={'a':.1,'b':.9},predictive_context=dict(raw_model_version='wxrd3:v3:checked',band_ids=['a','b']))
+        # The source clock guards are covered in collect's tests; test aggregation here.
+        r=v.collect([dict(p,checkpoint='noon')],[outcome()],[],CITIES,{},NOW)[0]
+        r['checkpoint']=h
+        if h=='postpeak_1h':r['raw']=dict(hit=1,log_loss=.1,brier=.01)
+        rows.append(r)
+    raw=next(r['report'] for r in v.reports(rows,CITIES,[],[],NOW) if r['checkpoint']=='overall' and r['scope']=='wxrd3_raw')
+    assert raw['n']==3 and raw['hits']==0 and raw['dates']==1
+    assert next(r['report'] for r in v.reports(rows[:-2],CITIES,[],[],NOW) if r['checkpoint']=='overall' and r['scope']=='wxrd3_raw')['n']==0

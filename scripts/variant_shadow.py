@@ -276,7 +276,7 @@ def corrected_max_age(timeout_s=8.0):
 
 
 def record(out, results, market_of, bands_by_market, tz_of, unit_of, dry_run=False,
-           deadline=None):
+           deadline=None, checkpoint_results=None):
     """Write the da_floor and sd_corr rows for each same-day checkpoint row in
     `out` (the rows the tick is writing). results: {(city, target): (rows, reg, reasons)}
     from process_city_day. Returns the counts for the tick's log."""
@@ -329,7 +329,10 @@ def record(out, results, market_of, bands_by_market, tz_of, unit_of, dry_run=Fal
             """(unit, q, calibrated) the engine used for this call, for both variants."""
             fitted = pe._measurement_layer_for(r["city_key"])
             q = fitted if fitted is not None else (pe.DEFAULT_Q_DOWN, pe.DEFAULT_Q_UP)
-            reasons = (results.get(key) or (None, None, []))[2] or []
+            # Two calls caught by one tick can now select different predictors.
+            # Keep each blinded variant's input flags tied to its own parent.
+            source=(checkpoint_results or {}).get((*key,r['checkpoint'])) or results.get(key)
+            reasons = (source or (None, None, []))[2] or []
             calibrated = any(str(x).startswith("calibrated:") for x in reasons)
             unit = (market_of.get(key) or {}).get("unit") or unit_of.get(r["city_key"], "C")
             return unit, q, calibrated

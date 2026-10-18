@@ -27,16 +27,19 @@ export default function CityPredictionValidation({ cities, moment }: { cities: s
           {HORIZONS.map(([k,v])=><option key={k} value={k}>{v}</option>)}
         </select>
         <select aria-label="Accuracy predictor" className="rounded border border-border bg-panel p-1" value={scope} onChange={e=>setScope(e.target.value)}>
-          <option value="served">All served predictors</option><option value="wxrd3">WXPredict v3 only</option>
+          <option value="served">All served predictors</option><option value="wxrd3">Served WXPredict v3</option>
+          <option value="wxrd3_raw">WXPredict v3 · all raw paired calls</option>
         </select>
       </div>
     </div>
     <p className="max-w-5xl text-xs leading-relaxed text-muted">
       Predict → freeze → settle → score → learn → validate. Only the first call counts, after its local day ends and the venue confirms the winner.
       Rank is observed winning-bucket accuracy, with uncertainty and sample counts. It does not measure trading returns.
-      Overall uses dates with all six scheduled calls, excluding the explicit after-peak call; noon can coincide with or follow a city’s typical peak.
+      Overall uses dates with {scope === 'served' ? 'all six common scheduled calls' : 'noon and both before-peak checkpoints'}, excluding the explicit after-peak call; noon can coincide with or follow a city’s typical peak.
       Day ahead is the clean comparison before the local day starts.
+      Raw paired calls include WXPredict even when the baseline was selected, so model selection cannot hide its misses.
     </p>
+    {scope !== 'served' && ['day_ahead','d1_eve','morning'].includes(horizon) && <p className="text-xs text-muted">WXPredict v3 is not used at this horizon. Choose noon or a peak-relative checkpoint to inspect its record.</p>}
     <div className="text-xs">{total.hits}/{total.n} correct · {pct(total.n ? total.hits/total.n : null)}
       <span className={overdue ? 'ml-3 text-orange-400' : 'ml-3 text-muted'}>{overdue ? 'Scoring overdue · ' : 'Scored '}{fmtDateTime(asOf)}</span>
     </div>
@@ -51,9 +54,13 @@ export default function CityPredictionValidation({ cities, moment }: { cities: s
           <td className="whitespace-nowrap px-2 py-2">{pct(r.hit_rate)}<span className="block text-muted">{r.interval95 ? r.interval95.map(pct).join('–') : 'Not measured'}</span></td>
           <td className="whitespace-nowrap px-2 py-2">{num(r.metrics.log_loss)} / {num(r.metrics.brier)}</td>
           <td className="px-2 py-2">{pct(r.calibration_gap)}</td>
-          <td className="min-w-72 px-2 py-2"><p>{evidenceWords(r)}</p><details className="mt-1 text-muted"><summary className="cursor-pointer text-accent">Freeze, learning and validation</summary>
+          <td className="min-w-72 px-2 py-2"><p>{evidenceWords(r)}</p>
+            {r.model_selection && <p className="mt-1">Horizon choice: {r.model_selection.effective.selected === 'baseline' ? 'corrected weather baseline' : 'WXPredict v3'} · {r.model_selection.effective.active ? 'validated selection' : 'horizon prior'}</p>}
+            <details className="mt-1 text-muted"><summary className="cursor-pointer text-accent">Freeze, learning and validation</summary>
             <p className="mt-1">{r.period_start}–{r.period_end} · {r.verified} server-receipted / {r.legacy} legacy calls. Legacy timestamps are not new training evidence.</p>
             <p>Exact paired baseline: {r.baseline.n} calls · {pct(r.baseline.hit)} · log loss {num(r.baseline.log_loss)}. Raw v3: {r.raw.n} · {pct(r.raw.hit)} · {num(r.raw.log_loss)}.</p>
+            {r.paired_audit && <p>Matched forward audit: {r.paired_audit.calls} calls across {r.paired_audit.dates} dates · baseline alone right {r.paired_audit.baseline_only_hits}, raw v3 alone right {r.paired_audit.raw_only_hits}, both missed {r.paired_audit.both_missed}. Raw misses warmer than settlement {r.paired_audit.raw_warmer_misses}, cooler {r.paired_audit.raw_cooler_misses}. Mean saved report age {r.paired_audit.mean_report_age_min?.toFixed(1) ?? '—'} min. These describe the frozen evidence, not a causal explanation.</p>}
+            {r.model_selection && <p>Model selection: {r.model_selection.effective.reason}. Training {r.model_selection.train_dates} older dates / validation {r.model_selection.validation_dates} later dates. Fit {fmtDateTime(r.model_selection.fit_at)}, validated through {r.model_selection.validated_through ?? 'not yet'}. Version {r.model_selection.version}.</p>}
             <p>Reviewed-miss public forecast MAE {r.why.public_forecast_mae_c?.toFixed(2) ?? '—'} °C; bias {r.why.public_forecast_bias_c?.toFixed(2) ?? '—'} °C. Associations are not causal explanations of the model.</p>
             {r.learning.map(s=><p key={s.phase} className="mt-1">{s.phase.replaceAll('_',' ')}: {s.active ? 'active' : 'raw prediction'} · {s.decision} · {s.reason}. Training {s.train_dates} dates / validation {s.validation_dates} dates. T={s.effective_params.temperature.toFixed(3)}, tilt={s.effective_params.tilt.toFixed(3)}. Fit {s.as_of}, validated through {s.validated_through ?? 'not yet'}. Version {s.version}.</p>)}
             <p className="mt-1">Predictors: {Object.entries(r.versions).map(([v,n])=>`${v}: ${n}`).join('; ') || 'Awaiting settled calls'}</p>

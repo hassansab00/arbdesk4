@@ -17,7 +17,7 @@ def test_horizon_routing_is_city_local_and_retains_the_better_morning_path():
     assert not pp.eligible("2026-10-16", "Asia/Riyadh", now)
     early = now - dt.timedelta(hours=2)
     assert pp.eligible("2026-10-17", "Asia/Riyadh", early, ["prepeak_2h"])
-    assert not pp.eligible("2026-10-17", "Asia/Riyadh", early, ["morning", "prepeak_2h"])
+    assert pp.eligible("2026-10-17", "Asia/Riyadh", early, ["morning", "prepeak_2h"])
     assert not pp.eligible("2026-10-17", None, now)
 
 
@@ -163,3 +163,40 @@ def test_short_tick_keeps_baseline_before_loading_model_or_reading_inputs(monkey
     assert not pp._predictions
     base=([dict(band_id='a',calibrated_prob=1)],None,[])
     assert pp.apply('city','2026-10-17',base)[0] is base[0]
+
+
+def test_two_horizons_select_independently_and_keep_both_frozen_alternatives(monkeypatch):
+    import city_model_selection as s
+    monkeypatch.setenv('PREDICTIVE_PRIMARY',pp.POLICY)
+    monkeypatch.setattr('common.model_version_id',lambda *a,**k:'registered')
+    monkeypatch.setattr(pp,'_lineage',{})
+    version='wxrd3:v3:checked'
+    fit=dict(policy=s.POLICY,baseline_policy=s.BASELINE_POLICY,model_version=version,
+        city_key='city',checkpoint='prepeak_1h',selected='baseline',version='validated-choice',
+        fit_at='2026-10-18T00:10:00Z',as_of='2026-10-18',validated_through='2026-10-16',
+        train_dates=20,validation_dates=10,train_through='2026-09-20',validation_from='2026-10-07',
+        validation=dict(passed=True),reason='validated baseline')
+    key=('city','2026-10-18',frozenset(['a','b']))
+    monkeypatch.setattr(pp,'_predictions',{key:dict(version=version,as_of='2026-10-18T12:36:24Z',
+        probs={'a':.8,'b':.2},raw_probs={'a':.8,'b':.2},calibration=None,
+        floor_c=20,unit='C',floor_unit=20,input_sha256='digest',input_key='packet',
+        predictive_context=dict(band_ids=['a','b'],obs_age_min=43.4),selection_states={'prepeak_1h':fit})})
+    baseline=([dict(band_id='a',calibrated_prob=.2,centre_c=21),dict(band_id='b',calibrated_prob=.8,centre_c=21)],
+              None,['priced_from:nws:test'])
+    noon=pp.apply('city','2026-10-18',baseline,checkpoint='noon')
+    peak=pp.apply('city','2026-10-18',baseline,checkpoint='prepeak_1h')
+    assert [r['calibrated_prob'] for r in noon[0]]==[.8,.2]
+    assert [r['calibrated_prob'] for r in peak[0]]==[.2,.8]
+    assert peak[0] is baseline[0] and peak[0][0]['centre_c']==21
+    assert pp.apply('city','2026-10-18',baseline,checkpoint='morning') is baseline
+    assert 'priced_from:nws:test' in peak[2] and 'priced_from:wxrd3:v3:checked' not in peak[2]
+    for horizon,q in [('noon',{'a':.8,'b':.2}),('prepeak_1h',{'a':.2,'b':.8})]:
+        saved=pp.checkpoint_lineage('city','2026-10-18',q,horizon)
+        assert saved['raw_probs']=={'a':.8,'b':.2} and saved['baseline_probs']=={'a':.2,'b':.8}
+        assert saved['predictive_context']['model_selection']['checkpoint']==horizon
+        assert saved['predictive_context']['raw_model_version']==version
+    assert not pp.checkpoint_lineage('city','2026-10-18',{'a':.8,'b':.2},'prepeak_1h')
+    import tick
+    reading={'latest_reading_at':'2026-10-18T12:20:00Z','live_source_kind':'newer-baseline-report'}
+    raw_call,_=tick.build_row('city','2026-10-18','noon',dt.datetime(2026,10,18,12),noon[0],noon[2],{},reading,'v')
+    assert raw_call['reading_at']=='2026-10-18T11:53:00+00:00' and raw_call['reading_source']=='wx_features'
