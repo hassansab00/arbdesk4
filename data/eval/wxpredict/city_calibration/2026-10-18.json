@@ -1,0 +1,6492 @@
+{
+  "as_of": "2026-10-18T05:12:56.917368+00:00",
+  "policy": "wx-city-phase-season-v1",
+  "states": [
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "ankara",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "ankara",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "ankara",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "cape_town",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "cape_town",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "cape_town",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "munich",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "munich",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "munich",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "singapore",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "singapore",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "singapore",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "tokyo",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "tokyo",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "tokyo",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "atlanta",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "atlanta",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "atlanta",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "denver",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "denver",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "denver",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "wuhan",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "wuhan",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "wuhan",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "helsinki",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "helsinki",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "helsinki",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "jeddah",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "jeddah",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "jeddah",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "austin",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "austin",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "austin",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "kuala_lumpur",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "kuala_lumpur",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "kuala_lumpur",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "chengdu",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "chengdu",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "chengdu",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "los_angeles",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "los_angeles",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "los_angeles",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "warsaw",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "warsaw",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "warsaw",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "mexico_city",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "mexico_city",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "mexico_city",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "tel_aviv",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "tel_aviv",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "tel_aviv",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "miami",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "miami",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "miami",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "busan",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "busan",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "busan",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "manila",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "manila",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "manila",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "dallas",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "dallas",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "dallas",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "sao_paulo",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "sao_paulo",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "sao_paulo",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "milan",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "milan",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "milan",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "istanbul",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "istanbul",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "istanbul",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "amsterdam",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "amsterdam",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "amsterdam",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "moscow",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "moscow",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "moscow",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "qingdao",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "qingdao",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "qingdao",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "seoul",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "seoul",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "seoul",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "toronto",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "toronto",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "toronto",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "wellington",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "wellington",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "wellington",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "lucknow",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "lucknow",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "lucknow",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "paris",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "paris",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "paris",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "houston",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "houston",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "houston",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "shenzhen",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "shenzhen",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "shenzhen",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "chicago",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "chicago",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "chicago",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "buenos_aires",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "buenos_aires",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "buenos_aires",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "san_francisco",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "san_francisco",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "san_francisco",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "karachi",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "karachi",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "karachi",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "chongqing",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "chongqing",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "chongqing",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "london",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "london",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "london",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "nyc",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "nyc",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "nyc",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "seattle",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "seattle",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "seattle",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "guangzhou",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "guangzhou",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "guangzhou",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "shanghai",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "shanghai",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "shanghai",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "beijing",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "beijing",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "beijing",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "panama_city",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "panama_city",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "panama_city",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "madrid",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "before_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "madrid",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "near_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    },
+    {
+      "anchor": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "as_of": "2026-10-18",
+      "city_key": "madrid",
+      "decision": "held",
+      "input_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "model_version": "wxrd3:v3:2e88d630d16d",
+      "params": {
+        "temperature": 1.0,
+        "tilt": 0.0
+      },
+      "phase": "after_peak",
+      "policy": "wx-city-phase-season-v1",
+      "priors": {
+        "bootstrap_samples": 1000,
+        "bootstrap_seed": 20261017,
+        "max_age_days": 3,
+        "max_temperature_step": 0.05,
+        "max_tilt_step": 0.025,
+        "min_pool_dates": 20,
+        "min_pool_rows": 200,
+        "min_train_dates": 20,
+        "min_validation_dates": 10,
+        "shrink_dates": 30,
+        "temperature_bounds": [
+          0.8,
+          1.5
+        ],
+        "tilt_bounds": [
+          -0.2,
+          0.2
+        ],
+        "validation_days": 14,
+        "window_days": 180
+      },
+      "reason": "insufficient independent training/validation dates",
+      "train_dates": 0,
+      "train_rows": 0,
+      "validated_through": null,
+      "validation_dates": 0,
+      "validation_rows": 0,
+      "version": "wx-city-phase-season-v1:identity"
+    }
+  ]
+}
