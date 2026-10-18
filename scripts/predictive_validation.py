@@ -180,6 +180,7 @@ def reports(rows,cities,reviews,states,now,model_version=None,selections=()):
     result=[]
     for c in cities:
         city=c['city_key']
+        local_target=now.astimezone(ZoneInfo(c['timezone'])).date().isoformat()
         for scope in SCOPES:
             group=[]
             for r in rows:
@@ -204,11 +205,11 @@ def reports(rows,cities,reviews,states,now,model_version=None,selections=()):
                     scope=scope,horizon=horizon,period_start=period_start,period_end=period_end,
                     why=diagnostic(chosen,[r for r in reviews if r['city_key']==city]),
                     paired_audit=paired_diagnostic(chosen),
-                    learning=[dict(s,active=cal.usable(s,now.date().isoformat(),model_version),
-                                   effective_params=s['params'] if cal.usable(s,now.date().isoformat(),model_version) else cal.IDENTITY)
+                    learning=[dict(s,active=cal.usable(s,local_target,model_version),
+                                   effective_params=s['params'] if cal.usable(s,local_target,model_version) else cal.IDENTITY)
                               for s in states if s['city_key']==city and s['model_version']==model_version])
                 state=next((s for s in selections if s['city_key']==city and s['checkpoint']==horizon and s['model_version']==model_version),None)
-                report['model_selection']=dict(state,effective=selector.choose(state,city,horizon,model_version,now.date(),now)) if state else None
+                report['model_selection']=dict(state,effective=selector.choose(state,city,horizon,model_version,local_target,now)) if state else None
                 result.append(dict(city_key=city,checkpoint=horizon,scope=scope,as_of=now.isoformat(),report=report))
     return result
 

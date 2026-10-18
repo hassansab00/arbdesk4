@@ -152,3 +152,19 @@ def test_raw_overall_requires_its_three_prepeak_supported_calls_and_never_counts
     raw=next(r['report'] for r in v.reports(rows,CITIES,[],[],NOW) if r['checkpoint']=='overall' and r['scope']=='wxrd3_raw')
     assert raw['n']==3 and raw['hits']==0 and raw['dates']==1
     assert next(r['report'] for r in v.reports(rows[:-2],CITIES,[],[],NOW) if r['checkpoint']=='overall' and r['scope']=='wxrd3_raw')['n']==0
+
+
+def test_displayed_active_parameters_expire_on_the_city_calendar():
+    import city_model_selection as selector
+    now=dt.datetime(2026,10,18,12,tzinfo=dt.timezone.utc)  # Wellington is already on 19 October.
+    city=dict(city_key='city',timezone='Pacific/Auckland')
+    fit=dict(policy=selector.POLICY,baseline_policy=selector.BASELINE_POLICY,model_version='current',
+        city_key='city',checkpoint='noon',selected='baseline',version='validated',as_of='2026-10-18',
+        fit_at='2026-10-18T08:00:00Z',validated_through='2026-10-15',train_dates=20,validation_dates=10,
+        train_through='2026-09-30',validation_from='2026-10-06',validation=dict(passed=True),reason='validated')
+    calibration=dict(city_key='city',phase='before_peak',model_version='current',as_of='2026-10-18',
+        validated_through='2026-10-15',params=dict(temperature=1.05,tilt=.025),version='fit')
+    row=next(r['report'] for r in v.reports([],[city],[],[calibration],now,'current',[fit])
+             if r['checkpoint']=='noon' and r['scope']=='served')
+    assert not row['model_selection']['effective']['active']
+    assert not row['learning'][0]['active'] and row['learning'][0]['effective_params']==v.cal.IDENTITY
