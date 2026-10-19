@@ -121,7 +121,8 @@ def run(bands, commit, rpc, rest_all):
     if wrong:
         raise SystemExit(f"{wrong} restored marks disagree with data/archive/edges")
 
-    print(f"page cache: {rpc('refresh_page_cache', {}, timeout=180)}")
+    # Completion includes the next-minute handoff as well as the refresh.
+    print(f"page cache: {rpc('refresh_page_cache', {}, timeout=270)}")
     again = summarise([rpc("restore_edge_marks", {"p_rows": b, "p_dry_run": True}, timeout=180) for b in parts])
     print(f"dry run after: {again}")
     if again["to_write"] != 0:

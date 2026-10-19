@@ -94,3 +94,12 @@ def test_install_and_migration_are_identical():
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
     assert (root/'sql/ad4_page_cache_requests.sql').read_text() == (root/'supabase/migrations/20261019083757_page_cache_background_receipts.sql').read_text()
+
+
+def test_every_existing_refresh_caller_leaves_queue_and_execution_time():
+    from pathlib import Path
+    root=Path(__file__).resolve().parents[1]
+    restore=(root/'tools/restore_edge_marks.py').read_text()
+    assert "rpc('refresh_page_cache', {}, timeout=270)" in restore
+    for name in ('pipeline_daily.yml','pipeline_intraday.yml'):
+        assert 'rpc("refresh_page_cache", timeout=270)' in (root/'.github/workflows'/name).read_text()
