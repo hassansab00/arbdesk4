@@ -286,6 +286,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/station_correction.py",
       "kind": "action",
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
+    {
+      "cadence": "several times a day",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/refresh_station_forecasts.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "derived_forecast_postprocess": [
@@ -406,9 +413,9 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
     },
     {
-      "cadence": "manual (opt-in)",
+      "cadence": "several times a day",
       "file": "pipeline_intraday.yml",
-      "how": "scripts/station_mos.py",
+      "how": "scripts/refresh_station_forecasts.py",
       "kind": "action",
       "name": "Intraday Pipeline (model, probabilities, edges)"
     }
@@ -922,6 +929,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/ingest_forecasts.py",
       "kind": "action",
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
+    {
+      "cadence": "several times a day",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/refresh_station_forecasts.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "weather_forecasts": [
