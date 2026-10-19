@@ -137,3 +137,47 @@ def test_engine_rejects_previous_input_blend_and_accepts_matching_refresh(monkey
     selected[:] = mos
     assert pe._blend_station_model(cache) == 1
     assert cache[key]['combined_c'] == mos[0]['blend_c']
+
+
+def test_missing_completed_day_uses_the_cache_source_view_without_rewriting_labels(monkeypatch):
+    cities = [dict(city_key='seoul', timezone='Asia/Seoul'),
+              dict(city_key='seattle', timezone='America/Los_Angeles')]
+    before = dt.datetime(2026, 10, 19, 17, tzinfo=UTC)
+    cached = {('seoul', '2026-10-18'): 20}
+    monkeypatch.setattr(rf.sm, 'load_labels', lambda rest: dict(cached))
+    asks = []
+    def rest(table, params, **kw):
+        asks.append((table, params))
+        return [dict(city_key='seoul', obs_date='2026-10-19', max_c=16, n_obs=30),
+                dict(city_key='seattle', obs_date='2026-10-18', max_c=14, n_obs=25),
+                dict(city_key='seoul', obs_date='2026-10-18', max_c=99, n_obs=25),
+                dict(city_key='seoul', obs_date='2026-10-20', max_c=99, n_obs=25),
+                dict(city_key='seattle', obs_date='2026-10-19', max_c=99, n_obs=25),
+                dict(city_key='other', obs_date='2026-10-19', max_c=99, n_obs=25)]
+    labels, detail = rf.forward_labels(rest, cities, before)
+    assert labels == cached | {('seoul','2026-10-19'):16, ('seattle','2026-10-18'):14}
+    assert cached == {('seoul', '2026-10-18'):20}
+    assert len(detail['days']) == 2 and detail['error'] is None
+    assert asks[0][0] == 'v_city_day_features'
+    assert ('obs_date','gte.2026-10-18') in asks[0][1]
+    assert ('obs_date','lte.2026-10-19') in asks[0][1]
+
+
+@pytest.mark.parametrize('bad', [None, float('nan'), float('inf')])
+def test_unavailable_or_invalid_completed_day_does_not_invent_a_feature(monkeypatch, bad):
+    monkeypatch.setattr(rf.sm, 'load_labels', lambda rest: {})
+    rows = [dict(city_key='seoul', obs_date='2026-10-18', max_c=bad, n_obs=24),
+            dict(city_key='seoul', obs_date='2026-10-18', max_c=20, n_obs=0)]
+    labels, detail = rf.forward_labels(lambda *a, **k: rows, fixture()[0], NOW)
+    assert not labels and not detail['days']
+    def refused(*a, **k): raise RuntimeError('source unavailable')
+    labels, detail = rf.forward_labels(refused, fixture()[0], NOW)
+    assert not labels and detail['error']
+
+
+def test_existing_completed_cache_day_does_not_need_a_second_read(monkeypatch):
+    cached = {('seoul','2026-10-18'):21}
+    monkeypatch.setattr(rf.sm, 'load_labels', lambda rest: dict(cached))
+    def refused(*a, **k): raise AssertionError('not needed')
+    labels, detail = rf.forward_labels(refused, fixture()[0], NOW)
+    assert labels == cached and detail['days'] == []
