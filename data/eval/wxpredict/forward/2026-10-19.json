@@ -1,0 +1,128 @@
+{
+ "version": "wxrd3:v3:2e88d630d16d",
+ "fit_last": "2026-10-11",
+ "minimum_forward_dates": 14,
+ "all": {
+  "n": 1237,
+  "dates": [
+   "2026-10-13",
+   "2026-10-14",
+   "2026-10-15",
+   "2026-10-16",
+   "2026-10-17",
+   "2026-10-18"
+  ],
+  "candidate_hits": 687,
+  "serving_hits": 646,
+  "candidate_nll": 1.0248339030313907,
+  "serving_nll": 1.291336520937122
+ },
+ "before_peak": {
+  "n": 980,
+  "dates": [
+   "2026-10-13",
+   "2026-10-14",
+   "2026-10-15",
+   "2026-10-16",
+   "2026-10-17",
+   "2026-10-18"
+  ],
+  "candidate_hits": 486,
+  "serving_hits": 455,
+  "candidate_nll": 1.1445734852307854,
+  "serving_nll": 1.4210774586007342
+ },
+ "checkpoints": {
+  "morning": {
+   "n": 244,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15",
+    "2026-10-16",
+    "2026-10-17",
+    "2026-10-18"
+   ],
+   "candidate_hits": 96,
+   "serving_hits": 107,
+   "candidate_nll": 1.3604707021461149,
+   "serving_nll": 1.6876313218731744
+  },
+  "noon": {
+   "n": 244,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15",
+    "2026-10-16",
+    "2026-10-17",
+    "2026-10-18"
+   ],
+   "candidate_hits": 131,
+   "serving_hits": 113,
+   "candidate_nll": 1.1056130726163873,
+   "serving_nll": 1.3504778448858814
+  },
+  "prepeak_2h": {
+   "n": 245,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15",
+    "2026-10-16",
+    "2026-10-17",
+    "2026-10-18"
+   ],
+   "candidate_hits": 125,
+   "serving_hits": 109,
+   "candidate_nll": 1.1578825846980048,
+   "serving_nll": 1.4141119191882996
+  },
+  "prepeak_1h": {
+   "n": 247,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15",
+    "2026-10-16",
+    "2026-10-17",
+    "2026-10-18"
+   ],
+   "candidate_hits": 134,
+   "serving_hits": 126,
+   "candidate_nll": 0.956584377461979,
+   "serving_nll": 1.2344123584549591
+  },
+  "postpeak_1h": {
+   "n": 257,
+   "dates": [
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15",
+    "2026-10-16",
+    "2026-10-17",
+    "2026-10-18"
+   ],
+   "candidate_hits": 201,
+   "serving_hits": 191,
+   "candidate_nll": 0.568239387251599,
+   "serving_nll": 0.7966045407412428
+  }
+ },
+ "regressed_checkpoints": [
+  "morning"
+ ],
+ "immature_checkpoints": [
+  "morning",
+  "noon",
+  "prepeak_2h",
+  "prepeak_1h"
+ ],
+ "excluded": {
+  "not_settled": 88
+ },
+ "settled_first_calls": 1545,
+ "gate": "insufficient forward dates",
+ "changes_serving": false,
+ "made": "2026-10-19T02:52:27.499235+00:00"
+}
