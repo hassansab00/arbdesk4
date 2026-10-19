@@ -10,6 +10,7 @@ import datetime as dt
 import hashlib
 import json
 import math
+import sys
 import time
 from zoneinfo import ZoneInfo
 
@@ -19,6 +20,7 @@ import station_mos as sm
 
 JOB = "early_weather_forward_refresh"
 MAX_FIT_AGE = dt.timedelta(hours=36)  # existing served correction freshness ceiling
+MIN_STATION_OBSERVATIONS = 12  # existing weather_model/databank daily-maximum floor
 
 
 def finite(value):
@@ -81,6 +83,43 @@ def fresh_fit(row, received, target):
 def version(base, received):
     # Input identity differs even when the fitted parameters did not change.
     return f"{base}:forward:{hashlib.sha256(received.isoformat().encode()).hexdigest()[:16]}"
+
+
+def forward_labels(rest_all, cities, before):
+    """Supply only the last completed station day needed by future features.
+
+    The nightly cache can have been built before that day ended. Read the
+    exact view that fills it, with its existing settlement-feed preference;
+    never substitute a different source or a still-running local day. This
+    is an input to forward prediction, not a training-label/cache update.
+    """
+    labels = sm.load_labels(rest_all)
+    required = {(c['city_key'], (before.astimezone(ZoneInfo(c['timezone'])).date()
+                               - dt.timedelta(days=1)).isoformat()) for c in cities}
+    missing = required - labels.keys()
+    detail = {'source': 'v_city_day_features', 'days': [], 'error': None}
+    if not missing:
+        return labels, detail
+    first, last = min(day for _, day in missing), max(day for _, day in missing)
+    try:
+        rows = rest_all('v_city_day_features', [
+            ('select', 'city_key,obs_date,max_c,n_obs'), ('obs_date', 'gte.'+first),
+            ('obs_date', 'lte.'+last),
+            ('city_key', 'in.('+','.join(sorted({city for city, _ in missing}))+')')],
+            order='city_key.asc,obs_date.asc')
+        for row in rows:
+            key = (row['city_key'], str(row['obs_date']))
+            if key not in missing or not finite(row.get('max_c')) or not finite(row.get('n_obs')):
+                continue
+            if float(row['n_obs']) < MIN_STATION_OBSERVATIONS:
+                continue
+            labels[key] = float(row['max_c'])
+            detail['days'].append({'city_key': key[0], 'obs_date': key[1],
+                                   'max_c': labels[key], 'n_obs': row['n_obs']})
+    except Exception as exc:
+        detail['error'] = f'{type(exc).__name__}: {str(exc)[:200]}'
+        print('completed forward station days unavailable: '+detail['error'], file=sys.stderr)
+    return labels, detail
 
 
 def build(cities, bm, md, cells, widths, coefficients, labels, started, received):
@@ -169,7 +208,7 @@ def main(argv=None):
     cells = rest_all("derived_station_correction", [("select", "*")], order="city_key.asc,source.asc,lead_days.asc")
     widths = rest_all("derived_station_width", [("select", "*")], order="city_key.asc,lead_days.asc")
     coefficients = rest_all("derived_mos_coefficients", [("select", "*")], order="city_key.asc,lead_days.asc")
-    labels = sm.load_labels(rest_all)
+    labels, station_days = forward_labels(rest_all, cities, started)
     rounds = []
     previous_deadline = hr._deadline
     try:
@@ -181,7 +220,7 @@ def main(argv=None):
     raw, corrected, mos = build(cities, bm, md, cells, widths, coefficients, labels, started, received)
     expected = {(c["city_key"], lead) for c in cities for lead in hr.LEADS}
     detail = dict(inputs_received_at=received.isoformat(), raw_rows=len(raw), corrected_rows=len(corrected),
-                  mos_rows=len(mos), unreached=missing, rounds=rounds, refit=False,
+                  mos_rows=len(mos), unreached=missing, rounds=rounds, refit=False, station_days=station_days,
                   missing_corrected=sorted(expected - {(r["city_key"], r["lead_days"]) for r in corrected}),
                   missing_mos=sorted(expected - {(r["city_key"], r["lead_days"]) for r in mos}))
     print(json.dumps(detail, default=str))
