@@ -93,23 +93,16 @@ export default function LiveWeatherPage() {
   );
   // Today's forecast maximum, per city. The card needs it beside the running
   // max: "23.1 now, 28.4 forecast, 24.6 so far" is a position; "23.1 now" is
-  // a thermometer. Every model that has an opinion on today is fetched, and
-  // the shortest lead time wins - that is the freshest view of the same day.
+  // a thermometer. The shared view selects each city's actual local date,
+  // shortest lead, then newest run, without a client-side UTC date filter.
   const forecasts = useQuery<Array<{ city_key: string; forecast_max_c: number | null; lead_days: number | null; model: string | null; run_at: string | null }>>(
     () =>
       supabase
-        .from("weather_forecasts")
+        .from("v_city_forecast_today")
         .select("city_key,forecast_max_c,lead_days,model,run_at,for_date")
-        .eq("for_date", new Date().toISOString().slice(0, 10))
-        .order("run_at", { ascending: false })
-        .limit(1000),
+        .order("city_key"),
     [],
-    5 * 60000,
-    // 54 cities x 3 models x 8 leads is about 1,300 rows for one day, past
-    // PostgREST's 1,000-row ceiling - so this can be cut short, and without
-    // the declaration it would be cut short SILENTLY and the page would show
-    // the alphabetically first cities as though that were all of them.
-    1000
+    5 * 60000
   );
 
   // Supabase Realtime: a new weather_events row refreshes the cards and the
@@ -273,10 +266,10 @@ export default function LiveWeatherPage() {
       <div>
         <h1 className="mb-1 text-lg font-semibold">Live Weather</h1>
         <p className="mb-3 max-w-3xl text-xs leading-relaxed text-muted">
-          Reading directly from the resolution stations that settle the markets — not a generic
-          weather widget. Sorted: inside peak window first, then before, then after. A pulsing border
+          Current station reports and model estimates, with each source marked on its card.
+          Sorted: inside peak window first, then before, then after. A pulsing border
           means the peak window is open, a flash means the running max just moved, a dimmed card
-          means the day is decided, and a red border means a band was crossed in the last hour.
+          marks a cooling trend below the observed high, and a red border means a band was crossed in the last hour.
         </p>
 
         {feed && (
@@ -321,6 +314,7 @@ export default function LiveWeatherPage() {
         {/* The forecasts' two clocks per city (audit P3): the main forecast,
             fetched every 3 h, and the models' nightly run, judged apart. */}
         <CityForecastInputs />
+        <InlineError message={forecasts.error ? `Current city forecasts: ${forecasts.error}` : null} />
 
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
           <input

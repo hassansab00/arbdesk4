@@ -9,6 +9,11 @@ export type Learning = { phase: string; as_of: string; decision: string; reason:
 export type ModelSelection = { selected: string; decision: string; reason: string; fit_at: string;
   train_dates: number; validation_dates: number; validated_through: string | null; version: string;
   effective: { selected: string; active: boolean; reason: string } };
+export type EarlyComparison = { calls: number; dates: number; raw_centre_hits: number;
+  corrected_hits: number; correction_helped: number; correction_hurt: number;
+  mean_log_loss_gain: number | null };
+export type DailyScore = { date: string; n: number; hits: number; hit_rate: number | null;
+  pending: number | null; claimed: number | null; early_comparison: EarlyComparison };
 export type CityReport = { city: string; display_name: string; timezone: string; scope: string; horizon: string;
   n: number; hits: number; hit_rate: number | null; interval95: number[] | null; dates: number;
   pending: number | null; verified: number; legacy: number; calibration_gap: number | null;
@@ -20,11 +25,28 @@ export type CityReport = { city: string; display_name: string; timezone: string;
     mean_peak_shift_h: number | null; public_forecast_mae_c: number | null; public_forecast_bias_c: number | null };
   learning: Learning[]; versions: Record<string,number>;
   model_selection?: ModelSelection | null;
+  recent_dates?: DailyScore[];
+  early_comparison?: EarlyComparison;
+  early_learning?: Array<{lead_days: number; as_of: string; computed_at: string; version: string;
+    calibration: {applies?: boolean; reason?: string; n_fit?: number; n_validation?: number} | null}>;
   paired_audit?: { calls: number; dates: number; raw_hits: number; baseline_hits: number;
     raw_only_hits: number; baseline_only_hits: number; both_missed: number;
     raw_warmer_misses: number; raw_cooler_misses: number; mean_report_age_min: number | null } };
 export function rankCities(rows: CityReport[]) {
   return [...rows].sort((a,b) => (b.hit_rate ?? -1)-(a.hit_rate ?? -1) || b.n-a.n || a.display_name.localeCompare(b.display_name));
+}
+/** Aggregate only the selected cities' same target dates; missing is not a miss. */
+export function recentCityScores(rows: CityReport[]) {
+  const dates = new Map<string, { date: string; n: number; hits: number; cities: Set<string>; pending: number | null }>();
+  for (const row of rows) for (const d of row.recent_dates ?? []) {
+    const total = dates.get(d.date) ?? { date: d.date, n: 0, hits: 0, cities: new Set<string>(), pending: 0 };
+    total.n += d.n; total.hits += d.hits;
+    if (d.n) total.cities.add(row.city);
+    total.pending = total.pending == null || d.pending == null ? null : total.pending + d.pending;
+    dates.set(d.date, total);
+  }
+  return [...dates.values()].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,7)
+    .map(d=>({...d, cities: d.cities.size, hit_rate: d.n ? d.hits/d.n : null}));
 }
 export function evidenceWords(r: CityReport) {
   const parts: string[] = [];

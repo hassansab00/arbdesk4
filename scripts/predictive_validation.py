@@ -17,6 +17,7 @@ from common import get_cities, log_run, rest_all, upsert_replace
 from tick import CHECKPOINTS, decision_times
 import wx_city_calibration as cal
 import city_model_selection as selector
+import early_forecast_audit
 
 JOB = 'P7.10_city_prediction_validation'
 HORIZONS = ('day_ahead', *CHECKPOINTS)
@@ -72,6 +73,9 @@ def collect(checkpoints, outcomes, day_ahead, cities, peaks, now):
                  paired_context=p.get('predictive_context') or {},probs=probs,
                  raw_probs=p.get('raw_probs'),baseline_probs=p.get('baseline_probs'),winner=winner)
         if settled:
+            if p['checkpoint'] == 'd1_eve' and p.get('frozen_at'):
+                r['early_comparison'] = early_forecast_audit.score(
+                    (p.get('predictive_context') or {}).get('early_forecast_audit') or {}, probs, winner)
             for src,dest in [('baseline_probs','baseline'),('raw_probs','raw')]:
                 q=p.get(src)
                 if q and set(q)==set(probs):
@@ -124,6 +128,24 @@ def average_metrics(rows, key='metrics'):
                 if any(p[k] is not None for p in pairs) else None for k in ('hit','log_loss','brier')})
 
 
+def daily_scores(rows):
+    """Show recent deterioration without claiming a target date is complete."""
+    by_date = defaultdict(list)
+    for r in rows:
+        by_date[r['target_date']].append(r)
+    result = []
+    for day in sorted(by_date, reverse=True)[:7]:
+        group = by_date[day]
+        settled = [r for r in group if r['settled']]
+        hits = sum(r['metrics']['hit'] for r in settled)
+        result.append(dict(date=day, n=len(settled), hits=hits,
+            hit_rate=hits/len(settled) if settled else None,
+            pending=None if any(r['checkpoint']=='day_ahead' for r in group) else sum(not r['settled'] for r in group),
+            claimed=statistics.fmean(r['top_prob'] for r in settled) if settled else None,
+            metrics=average_metrics(settled),early_comparison=early_forecast_audit.summarize(settled)))
+    return result
+
+
 def summarize(rows, horizon):
     settled=[r for r in rows if r['settled']]
     hits=sum(r['metrics']['hit'] for r in settled)
@@ -173,7 +195,7 @@ def diagnostic(rows,reviews):
                 interpretation='Observed associations on reviewed misses; not causal attribution to WXPredict.')
 
 
-def reports(rows,cities,reviews,states,now,model_version=None,selections=()):
+def reports(rows,cities,reviews,states,now,model_version=None,selections=(),early_states=()):
     period_start=(now.date()-dt.timedelta(days=29)).isoformat()
     period_end=now.date().isoformat()
     rows=[r for r in rows if period_start<=r['target_date']<=period_end]
@@ -205,9 +227,14 @@ def reports(rows,cities,reviews,states,now,model_version=None,selections=()):
                     scope=scope,horizon=horizon,period_start=period_start,period_end=period_end,
                     why=diagnostic(chosen,[r for r in reviews if r['city_key']==city]),
                     paired_audit=paired_diagnostic(chosen),
+                    recent_dates=daily_scores(chosen),
+                    early_comparison=early_forecast_audit.summarize(chosen),
                     learning=[dict(s,active=cal.usable(s,local_target,model_version),
                                    effective_params=s['params'] if cal.usable(s,local_target,model_version) else cal.IDENTITY)
-                              for s in states if s['city_key']==city and s['model_version']==model_version])
+                              for s in states if s['city_key']==city and s['model_version']==model_version
+                              and horizon in (*selector.SUPPORTED, 'overall')],
+                    early_learning=[s for s in early_states if s['city_key']==city]
+                        if scope=='served' and horizon in ('day_ahead','d1_eve') else [])
                 state=next((s for s in selections if s['city_key']==city and s['checkpoint']==horizon and s['model_version']==model_version),None)
                 report['model_selection']=dict(state,effective=selector.choose(state,city,horizon,model_version,local_target,now)) if state else None
                 result.append(dict(city_key=city,checkpoint=horizon,scope=scope,as_of=now.isoformat(),report=report))
@@ -227,6 +254,9 @@ def run(score_only=False, now=None):
     states=[r['state'] for r in rest_all('derived_wx_city_calibration',[('select','state')],order='model_version.asc,city_key.asc,phase.asc',page_size=1000)]
     prior_reports=rest_all('derived_city_prediction_validation',[('select','report'),('scope','eq.served')],order='city_key.asc,checkpoint.asc',page_size=1000)
     selections=[r['report']['model_selection'] for r in prior_reports if r.get('report',{}).get('model_selection')]
+    early_states=rest_all('derived_mos_coefficients',[
+        ('select','city_key,lead_days,as_of,computed_at,version,calibration')],
+        order='city_key.asc,lead_days.asc',page_size=1000)
     meta=json.loads((ROOT/'data/models/wxrd/wxrd-v3_remaining.json').read_text())
     # Same version identity as the serving/shadow readers; no ML dependency.
     import sys
@@ -245,7 +275,7 @@ def run(score_only=False, now=None):
         states=[s for s in states if s['model_version']!=version]+fitted
         detail.update(calibration_cells=len(fitted),decisions=dict(Counter(s['decision'] for s in fitted)),eligible_learning_calls=len(cal.eligible_rows(learning,now.date(),version)))
         detail.update(selection_cells=len(selections),selection_decisions=dict(Counter(s['decision'] for s in selections)))
-    data=reports(collect(p,outcomes,da,cities,peaks,now),cities,reviews,states,now,version,selections)
+    data=reports(collect(p,outcomes,da,cities,peaks,now),cities,reviews,states,now,version,selections,early_states)
     n=upsert_replace('derived_city_prediction_validation',data,'city_key,checkpoint,scope')
     log_run(JOB,'ok',n,detail)
     print(json.dumps(dict(rows=n,**detail)),flush=True)
