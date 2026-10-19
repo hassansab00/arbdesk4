@@ -281,7 +281,7 @@ def build_row(city, target, checkpoint, local_time, rows, reasons, books, readin
     import predictive_primary
     lineage=predictive_primary.checkpoint_lineage(city, target, probs, checkpoint)
     row.update(lineage)
-    if checkpoint == 'd1_eve' and inputs_ok:
+    if checkpoint == 'd1_eve':
         import early_forecast_audit
         comparison = early_forecast_audit.freeze(rows, bands, unit)
         if comparison:

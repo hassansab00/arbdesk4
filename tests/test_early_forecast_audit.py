@@ -83,6 +83,18 @@ def test_tick_attaches_the_pair_only_to_the_original_evening_call():
     assert 'predictive_context' not in tick.build_row(*morning, bands=bands, unit='C')[0]
 
 
+def test_valid_blocked_forecasts_still_collect_comparisons_without_changing_trading_gates():
+    rows, bands = fixture()
+    for row in rows:
+        row.update(pricing_eligible=False, pricing_block_reason='no_verified_skill')
+    original = copy.deepcopy(rows)
+    call, why = tick.build_row('city', '2026-10-20', 'd1_eve', dt.datetime(2026, 10, 19, 18),
+        rows, ['priced_from:station_correction:test'], {}, None, 'git:test', bands=bands, unit='C')
+    assert why is None and call['inputs_ok'] is False and call['block_reason'] == 'no_verified_skill'
+    assert call['predictive_context']['early_forecast_audit']['policy'] == audit.POLICY
+    assert rows == original
+
+
 def test_learning_only_scores_original_receipted_pairs_after_city_day_ends():
     rows, bands = fixture()
     p = dict(checkpoint_id='first', city_key='city', target_date='2026-10-18', checkpoint='d1_eve',
