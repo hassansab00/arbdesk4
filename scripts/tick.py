@@ -233,7 +233,7 @@ def _priced_from(reasons):
     return next((r[len("priced_from:"):] for r in reasons or [] if r.startswith("priced_from:")), None) or None
 
 
-def build_row(city, target, checkpoint, local_time, rows, reasons, books, reading, version, station=None):
+def build_row(city, target, checkpoint, local_time, rows, reasons, books, reading, version, station=None, bands=None, unit=None):
     """One prediction_checkpoints row, or (None, why) when it cannot be one.
 
     Checked here against the table's own constraints, because one row the
@@ -281,6 +281,11 @@ def build_row(city, target, checkpoint, local_time, rows, reasons, books, readin
     import predictive_primary
     lineage=predictive_primary.checkpoint_lineage(city, target, probs, checkpoint)
     row.update(lineage)
+    if checkpoint == 'd1_eve':
+        import early_forecast_audit
+        comparison = early_forecast_audit.freeze(rows, bands, unit)
+        if comparison:
+            row['predictive_context'] = dict(row.get('predictive_context') or {}, early_forecast_audit=comparison)
     if lineage and str(row.get('priced_from') or '').startswith('wxrd3:'):
         # The baseline may have a newer station report than the arrival-mode
         # vector. Name the report actually used, never borrow that newer stamp.
@@ -624,7 +629,9 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
             continue
         rows, _reg, reasons = res
         row, why = build_row(city, target, name, local, rows, reasons, books,
-                             running.get(city), version, station=station_of.get(city))
+                             running.get(city), version, station=station_of.get(city),
+                             bands=bands_by_market.get(market_of[(city, target)]['market_id']),
+                             unit=market_of[(city, target)].get('unit') or unit_of.get(city, 'C'))
         if row is None:
             failed.append(f"{city} {target} {name}: {why}")
             continue

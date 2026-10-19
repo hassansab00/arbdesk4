@@ -55,6 +55,9 @@ def test_learning_activity_only_names_current_serving_model():
                validated_through='2026-10-16',params=dict(temperature=1.05,tilt=.025),version='fit')
     reports=v.reports([],CITIES,[],[state,dict(state,model_version='current')],NOW,'current')
     for row in reports:
+        if row['checkpoint'] in ('day_ahead','d1_eve','morning'):
+            assert row['report']['learning']==[], 'noon/peak calibration must not be displayed as early-horizon learning'
+            continue
         assert len(row['report']['learning'])==1
         assert row['report']['learning'][0]['model_version']=='current'
         assert row['report']['learning'][0]['active']
