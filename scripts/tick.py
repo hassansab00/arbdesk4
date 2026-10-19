@@ -56,7 +56,10 @@ GRACE_MIN = 75
 # ticks; their share fell with a later start, correlation -0.78). The tick
 # itself took 25-43 s. 100 s leaves the twins about a minute more; the job's
 # deadline in tick.yml (110 s) and its 5-minute timeout stay above it.
-BUDGET_S = 100.0
+# P6.1, 19 Oct: after primary inference was added, the 18 Oct 18:36 run
+# took 116.3 s against 100 and lost both paired captures. This is an
+# operational allowance, not a prediction or calibration parameter.
+BUDGET_S = 140.0
 # THE JOB'S DEADLINE BINDS THE TICK TOO (Codex on #353, 9 Oct). tick.py
 # starts after the checkout and the virtualenv, so BUDGET_S counted from its
 # own start can run past TICK_DEADLINE when the setup is slow: budget() takes
@@ -67,6 +70,8 @@ BUDGET_S = 100.0
 MIN_BUDGET_S = 45.0
 # Operational reserve for downstream baseline pricing, books and freezing.
 PRIMARY_DOWNSTREAM_RESERVE_S = 30.0
+# Outside the optional engine's deadline: paired captures and the final log.
+PAIRED_CAPTURE_RESERVE_S = 12.0
 # S10 in shadow fetches at most this long per tick (about four cities' two
 # requests each, in parallel); the engine's own work keeps the rest.
 S10_FETCH_S = 8.0
@@ -679,16 +684,15 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     # acts only on a fresh reading, so the engine needs the reading's time.
     engine_floors = {c: (d, f, (running.get(c) or {}).get("running_max_basis"),
                          (running.get(c) or {}).get("latest_reading_at")) for c, (d, f) in floors.items()}
-    detail["engine"] = engine_shadow.record(out, s10_ladders, bands_by_market,
-                                            market_of, unit_of, engine_floors, now,
-                                            deadline=t0 + budget_s, dry_run=dry_run,
-                                            status_read=status_read)
-    # The same-day candidates beside each same-day call, observe only:
-    # da_floor (docs/P11_DA_FLOOR_PREREG.md) and sd_corr
-    # (docs/SD_CORR_PREREG.md). After the engine's decisions, which act
-    # on this tick; in what is left of the budget, 2 s kept for the log row.
-    # Measured 2-4 Oct (72 ticks): the whole tick took 26.5 s at the median and
-    # 38.4 s at most, the engine's step 3.7 s and 7.3 s. Never raises.
+    engine_deadline = t0 + budget_s - PAIRED_CAPTURE_RESERVE_S
+    from common import request_deadline
+    with request_deadline(engine_deadline):
+        detail["engine"] = engine_shadow.record(out, s10_ladders, bands_by_market,
+                                                market_of, unit_of, engine_floors, now,
+                                                deadline=engine_deadline, dry_run=dry_run,
+                                                status_read=status_read)
+    # Experimental captures only observe the already decided call. The engine
+    # keeps their reserve even when one of its requests needs to retry.
     import variant_shadow
     detail["variants"] = variant_shadow.record(out, results, market_of, bands_by_market, tz_of,
                                                unit_of, dry_run=dry_run,
@@ -708,8 +712,12 @@ def run(now=None, budget_s=BUDGET_S, dry_run=False):
     # So is an S10 ladder the engine acted on that the record does not hold
     # (P2.2 part 3): its decisions are written naming no call.
     s10_unnamed = bool((s10.get("shadow") or {}).get("unrecorded"))
+    engine_lost = {key: detail["engine"][key] for key in ("out_of_time", "model_only_out_of_time")
+                   if detail["engine"].get(key)}
+    if engine_lost:
+        detail["coverage_incomplete"] = engine_lost
     status = ("ok" if not failed and not deferred and not stations["error"] and not engine_error
-              and not current_error and not variant_lost and not s10_unnamed else "attention")
+              and not current_error and not variant_lost and not s10_unnamed and not engine_lost else "attention")
     print(f"tick {now:%Y-%m-%d %H:%MZ}: {len(due)} due, {len(out)} rows, "
           f"{len(reprice)} re-priced, {len(ladders)} current ladders, "
           f"{len(deferred)} deferred, {len(failed)} failed, {detail['seconds']} s")
