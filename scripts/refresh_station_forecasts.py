@@ -20,6 +20,7 @@ import station_mos as sm
 
 JOB = "early_weather_forward_refresh"
 MAX_FIT_AGE = dt.timedelta(hours=36)  # existing served correction freshness ceiling
+MIN_STATION_OBSERVATIONS = 12  # existing weather_model/databank daily-maximum floor
 
 
 def finite(value):
@@ -110,7 +111,7 @@ def forward_labels(rest_all, cities, before):
             key = (row['city_key'], str(row['obs_date']))
             if key not in missing or not finite(row.get('max_c')) or not finite(row.get('n_obs')):
                 continue
-            if float(row['n_obs']) <= 0:
+            if float(row['n_obs']) < MIN_STATION_OBSERVATIONS:
                 continue
             labels[key] = float(row['max_c'])
             detail['days'].append({'city_key': key[0], 'obs_date': key[1],

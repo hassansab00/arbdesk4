@@ -181,3 +181,12 @@ def test_existing_completed_cache_day_does_not_need_a_second_read(monkeypatch):
     def refused(*a, **k): raise AssertionError('not needed')
     labels, detail = rf.forward_labels(refused, fixture()[0], NOW)
     assert labels == cached and detail['days'] == []
+
+
+@pytest.mark.parametrize('n_obs', [0, 1, 11, 12])
+def test_completed_day_respects_the_existing_observation_floor(monkeypatch, n_obs):
+    monkeypatch.setattr(rf.sm, 'load_labels', lambda rest: {})
+    rows = [dict(city_key='seoul', obs_date='2026-10-18', max_c=21, n_obs=n_obs)]
+    labels, detail = rf.forward_labels(lambda *a, **k: rows, fixture()[0], NOW)
+    assert bool(labels) == (n_obs >= 12)
+    assert bool(detail['days']) == (n_obs >= 12)
