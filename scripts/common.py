@@ -380,6 +380,9 @@ def rpc(fn, params=None, timeout=120):
     the identical string "500 Server Error for url: .../refresh_feature_cache",
     which is not a diagnosis.
     """
+    if fn == 'refresh_page_cache' and not params:
+        from page_cache_refresh import refresh
+        return refresh(timeout=timeout, rpc_fn=rpc)
     r = _post(f"{_cfg()['url']}/rest/v1/rpc/{fn}", headers=_headers(),
                       data=json.dumps(params or {}), timeout=timeout)
     if r.status_code >= 400:

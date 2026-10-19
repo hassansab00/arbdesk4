@@ -1,0 +1,49 @@
+"""Wait for an acknowledged database refresh using short HTTP requests.
+
+The gateway can abandon a synchronous refresh before the client's deadline.
+A durable request ID survives an ambiguous submission; retries reuse it.
+Errors and an unacknowledged deadline remain failures, never synthetic success.
+"""
+import time
+import uuid
+import requests
+
+
+def refresh(timeout=270, *, request_id=None, rpc_fn=None):
+    if rpc_fn is None:
+        from common import rpc as rpc_fn
+    request_id = request_id or str(uuid.uuid4())
+    deadline = time.monotonic()+timeout
+    def call(name):
+        for attempt in range(3):
+            remaining = deadline-time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"page cache refresh {request_id}: completion deadline reached")
+            try:
+                return rpc_fn(name, {'p_request_id':request_id}, timeout=min(15,remaining))
+            except requests.RequestException as exc:
+                response = getattr(exc,'response',None)
+                status = response.status_code if response is not None else None
+                if attempt==2 or status is not None and status not in (408,429,500,502,503,504):
+                    raise RuntimeError(f"page cache refresh {request_id}: transport failed: {exc}") from exc
+                time.sleep(min(2**attempt,max(0,deadline-time.monotonic())))
+    receipt = call('request_page_cache_refresh')
+    while True:
+        state = receipt.get('status')
+        if state == 'ok':
+            result = (receipt.get('detail') or {}).get('ms')
+            if not isinstance(result, dict) or 'skipped' in result:
+                raise RuntimeError(f"page cache refresh {request_id}: invalid completion receipt")
+            return result
+        if state in ('error','missing'):
+            raise RuntimeError(f"page cache refresh {request_id}: {state}: {receipt.get('detail')}")
+        if state not in ('queued','running','waiting'):
+            raise RuntimeError(f"page cache refresh {request_id}: unknown state {state}")
+        remaining = deadline-time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(f"page cache refresh {request_id} has no completion receipt within {timeout}s; check the request before retrying")
+        time.sleep(min(5,remaining))
+        remaining = deadline-time.monotonic()
+        if remaining <= 0:
+            continue
+        receipt = call('page_cache_refresh_status')
