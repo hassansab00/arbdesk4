@@ -1,0 +1,9 @@
+# Early weather forward refresh
+
+The nightly correction and MOS fit were also the only writers of their forward forecasts. This let an overnight corrected blend replace a more recent public forecast in early prediction. The existing intraday pipeline now fetches the current four-day weather grids and recalculates future forecasts with the existing fitted parameters. It does not refit or step coefficients, bias, widths or calibration.
+
+Only complete city-local days are accepted, with explicit UTC-hour coverage across daylight-saving changes. Missing models are omitted; correction still requires its existing minimum source count. A stale, future, mixed-version or unavailable fit cannot be relabelled as a fresh forecast. A city crossing midnight during the fetch is skipped rather than assigned the wrong lead.
+
+Raw source maxima are stored before the corrected forecast. Corrected and MOS rows share a unique forward input identity, so failure to publish MOS leaves the new correction eligible on its own and prevents an old blend from matching. Existing frozen predictions and historical outcomes are never rewritten. The nightly fitting and validation path remains unchanged.
+
+Validation covers exact calculation parity, unchanged fitted parameters, incomplete weather grids, source identities, stale and future fits, local midnight and daylight-saving boundaries, and interrupted publication. Deployment additionally requires a real intraday refresh and verification of source receipts and frozen-call integrity. This change does not establish improved forecast accuracy; that requires future settled cohorts.

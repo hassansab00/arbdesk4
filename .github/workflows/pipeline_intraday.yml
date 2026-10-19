@@ -89,6 +89,12 @@ jobs:
         timeout-minutes: 5
         run: python scripts/station_mos.py
 
+      # Refresh forward weather only; nightly learning and its step limits stay nightly.
+      - name: Refresh early weather inputs with the existing fitted parameters
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: python scripts/refresh_station_forecasts.py ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
+
       # 1. The model's own forecast, so probabilities have a second opinion
       #    to price against rather than only the ingested one.
       - name: Model forecast
