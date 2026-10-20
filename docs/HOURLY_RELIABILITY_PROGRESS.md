@@ -4,6 +4,8 @@ The primary's inference shares the hourly collector's original runtime.
 The collector now has a bounded larger allowance, with an explicit reserve
 outside the shadow engine's deadline for paired same-day captures and the
 final log. Engine requests and retry waits respect that earlier deadline.
+Each fill worker inherits its own copy of the earlier engine deadline, which
+also limits public venue HTTP requests and prevents claims without fill time.
 Experimental captures still follow the engine's decisions. Missing anchored
 or model-only coverage is attention even
 when checkpoint persistence succeeded. No capture is reconstructed later.

@@ -30,7 +30,7 @@ def request_deadline(deadline):
     previous = _request_end.get()
     token = _request_end.set(min(deadline, previous) if previous is not None else deadline)
     try:
-        yield
+        yield _request_end.get()
     finally:
         _request_end.reset(token)
 

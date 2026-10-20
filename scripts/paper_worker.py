@@ -10,7 +10,8 @@ from paper_execution import simulate, number
 
 
 def public_json(url, params):
-    response = requests.get(url, params=params, timeout=20)
+    from common import _get
+    response = _get(url, params=params, timeout=20)
     response.raise_for_status()
     return response.json()
 

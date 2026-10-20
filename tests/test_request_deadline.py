@@ -45,3 +45,55 @@ def test_other_threads_do_not_inherit_the_engine_request_budget():
     with common.request_deadline(123.):
         with ThreadPoolExecutor(max_workers=1) as pool:
             assert pool.submit(common._request_end.get).result() is None
+
+
+def test_fill_workers_carry_the_earlier_engine_deadline_into_public_requests(monkeypatch):
+    import threading
+    import engine_orders, paper_worker
+    from common import request_deadline
+    import common as transport
+    monkeypatch.setattr(transport.time, 'monotonic', lambda: 100.)
+    barrier = threading.Barrier(2)
+    claimed, timeouts = set(), []
+    class Response:
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return {}
+    def get(*args, **kwargs):
+        timeouts.append(kwargs['timeout'])
+        return Response()
+    monkeypatch.setattr(transport.requests, 'get', get)
+    def claim(aid):
+        assert transport._request_end.get() == 110.
+        if aid in claimed:
+            return None
+        claimed.add(aid)
+        barrier.wait(timeout=5)
+        return {'order_id': aid}
+    def fill(order):
+        paper_worker.public_json('https://example.test/book', {})
+        return {'status': 'filled'}
+    with request_deadline(110.):
+        result = engine_orders.fill_ledgers(['a', 'b'], 150., claim, fill)
+    assert result == {'filled': 2} and timeouts == [5., 5.]
+    assert transport._request_end.get() is None
+
+
+def test_a_failed_claim_is_reported_without_abandoning_other_ledgers():
+    import engine_orders, time
+    def claim(aid):
+        if aid == 'broken':
+            raise TimeoutError('claim exhausted its budget')
+        return None
+    assert engine_orders.fill_ledgers(['broken', 'empty'], time.monotonic()+30,
+                                     claim, lambda order: {}) == {'error: TimeoutError': 1}
+
+
+def test_a_parent_deadline_with_no_fill_time_starts_no_claim(monkeypatch):
+    import common as transport, engine_orders
+    monkeypatch.setattr(transport.time, 'monotonic', lambda: 100.)
+    def claim(aid):
+        pytest.fail('claim started without the engine fill allowance')
+    with transport.request_deadline(101.):
+        assert engine_orders.fill_ledgers(['a'], 150., claim, lambda order: {}) == {}
