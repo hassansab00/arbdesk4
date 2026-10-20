@@ -52,20 +52,22 @@ jobs:
     # before the NWS steps; 300 leaves them a minute (Codex on #353).
     # 8 from 13 Oct: WXPredict's shadow, the last step, has 3 minutes of its
     # own (a cold virtualenv installs numpy, pandas, scipy and lightgbm).
-    timeout-minutes: 8
+    # P6.1, 19 Oct: retain the collectors' backstops and shadow timeout with
+    # the longer bounded checkpoint allowance. No dispatch cadence change.
+    timeout-minutes: 9
     steps:
       # THE DEADLINE. Every step after the fixed ones may use only the time
-      # left before it: 110 s after this step. Until 9 Oct it was 48 s, to
+      # left before it: 150 s after this step. Until 9 Oct it was 48 s, to
       # keep the job inside one billed minute (measured 27 Sep: this step
       # starts 2-4 s into the job, the post steps add 2-6 s). The repository
       # is public from 9 Oct and standard runners are free for it, so the
-      # deadline follows the work: tick.py's BUDGET_S (100 s) gives the
+      # deadline follows the work: tick.py's BUDGET_S (140 s) gives the
       # model-only twins the time they lacked. tick.py reads it too
       # (tick.budget): a slow checkout or a cold install comes out of the
-      # tick's 100 s instead of running past the deadline. Only a setup over
-      # 65 s takes it below its 45 s floor, and then it keeps the 45 s.
+      # tick's allowance instead of running past the deadline. The 45 s
+      # minimum still protects checkpoint capture after a slow setup.
       - name: Deadline
-        run: echo "TICK_DEADLINE=$(( $(date +%s) + 110 ))" >> "$GITHUB_ENV"
+        run: echo "TICK_DEADLINE=$(( $(date +%s) + 150 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1

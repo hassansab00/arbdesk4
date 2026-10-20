@@ -253,6 +253,14 @@ jobs:
             exit 1
           fi
 
+      - name: Measure database headroom independently of archive success
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        run: PYTHONPATH=scripts python scripts/storage_acceptance.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
       # THE NIGHTLY MIRROR (plan v2.1 P1.7). The steps above export only what
       # the prune is about to remove. Every price, every settled outcome and
       # every learned parameter the platform keeps lived in Postgres alone;

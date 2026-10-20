@@ -3,6 +3,8 @@ import os, sys, time, json
 import requests
 import threading
 import traceback
+from contextlib import contextmanager
+from contextvars import ContextVar
 from concurrent.futures import ThreadPoolExecutor
 
 # ONE CONNECTION POOL FOR THE PROCESS (plan v2 P6.1). Every call used to be a
@@ -15,6 +17,46 @@ from concurrent.futures import ThreadPoolExecutor
 _REAL_GET, _REAL_POST = requests.get, requests.post
 _session_obj = None
 _session_lock = threading.Lock()
+_request_end = ContextVar('request_end', default=None)
+
+
+@contextmanager
+def request_deadline(deadline):
+    """Limit this context's requests and retry waits; reset even on failure.
+
+    Used by the optional hourly engine to preserve subsequent capture time.
+    Other jobs and background threads retain their existing request policy.
+    """
+    previous = _request_end.get()
+    token = _request_end.set(min(deadline, previous) if previous is not None else deadline)
+    try:
+        yield _request_end.get()
+    finally:
+        _request_end.reset(token)
+
+
+def _request_kwargs(kwargs):
+    deadline = _request_end.get()
+    if deadline is None:
+        return kwargs
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise TimeoutError('request budget exhausted')
+    # requests applies a numeric timeout separately to connect and read.
+    # Bound each by half the remaining allowance; never raise an existing
+    # tighter timeout. Recompute before every request, including retries.
+    limit = left / 2
+    original = kwargs.get('timeout')
+    bound = lambda value: limit if value is None else min(float(value), limit)
+    timeout = tuple(bound(x) for x in original) if isinstance(original, tuple) else bound(original)
+    return dict(kwargs, timeout=timeout)
+
+
+def _budget_sleep(seconds):
+    deadline = _request_end.get()
+    if deadline is not None and time.monotonic() + seconds >= deadline:
+        raise TimeoutError('retry would exceed request budget')
+    time.sleep(seconds)
 
 
 def _session():
@@ -31,12 +73,14 @@ def _session():
 
 
 def _get(url, **kw):
+    kw = _request_kwargs(kw)
     if requests.get is not _REAL_GET:
         return requests.get(url, **kw)
     return _session().get(url, **kw)
 
 
 def _post(url, **kw):
+    kw = _request_kwargs(kw)
     if requests.post is not _REAL_POST:
         return requests.post(url, **kw)
     return _session().post(url, **kw)
@@ -103,7 +147,7 @@ def rest(path, params=None, tries=4):
                 raise
             print(f"  . GET {path} {type(e).__name__}, retrying "
                   f"({attempt + 1}/{tries})", file=sys.stderr)
-            time.sleep(5 * (attempt + 1))
+            _budget_sleep(5 * (attempt + 1))
             continue
 
         if r.status_code < 400:
@@ -125,7 +169,7 @@ def rest(path, params=None, tries=4):
             auth_retried = True
             print(f"  . GET {path} 401 PGRST303 (token claims refused), retrying once in "
                   f"{AUTH_RETRY_DELAY_S:.0f}s", file=sys.stderr)
-            time.sleep(AUTH_RETRY_DELAY_S)
+            _budget_sleep(AUTH_RETRY_DELAY_S)
             try:
                 r = _get(url, headers=_headers(), params=params or {}, timeout=90)
             except (requests.ConnectionError, requests.Timeout,
@@ -144,7 +188,7 @@ def rest(path, params=None, tries=4):
             delay = 5 * (attempt + 1)
         print(f"  . GET {path} {r.status_code}, retrying in {delay:.0f}s "
               f"({attempt + 1}/{tries}): {r.text[:120]}", file=sys.stderr)
-        time.sleep(min(delay, 120))
+        _budget_sleep(min(delay, 120))
 
 AUTH_RETRY_DELAY_S = 2.0
 
@@ -265,7 +309,7 @@ def _post_batch(url, headers, params, batch, table, verb, tries=4):
                 auth_retried = True
                 print(f"  . {table} {verb} 401 PGRST303 (token claims refused, nothing written), "
                       f"retrying once in {AUTH_RETRY_DELAY_S:.0f}s", file=sys.stderr)
-                time.sleep(AUTH_RETRY_DELAY_S)
+                _budget_sleep(AUTH_RETRY_DELAY_S)
                 r = _post(url, headers=headers, params=params or {},
                                   data=json.dumps(batch), timeout=120)
         except (requests.ConnectionError, requests.Timeout,
@@ -275,7 +319,7 @@ def _post_batch(url, headers, params, batch, table, verb, tries=4):
                 raise
             print(f"  . {table} {verb} {type(e).__name__}, retrying "
                   f"({attempt + 1}/{tries})", file=sys.stderr)
-            time.sleep(5 * (attempt + 1))
+            _budget_sleep(5 * (attempt + 1))
             continue
 
         if r.status_code < 400:
@@ -291,7 +335,7 @@ def _post_batch(url, headers, params, batch, table, verb, tries=4):
             delay = 5 * (attempt + 1)
         print(f"  . {table} {verb} {r.status_code}, retrying in {delay:.0f}s "
               f"({attempt + 1}/{tries}): {body[:120]}", file=sys.stderr)
-        time.sleep(min(delay, 120))
+        _budget_sleep(min(delay, 120))
 
 def _post_rows(table, rows, headers, params, chunk, verb):
     written = 0
@@ -800,13 +844,13 @@ def retry(fn, tries=4, wait=5, label=""):
                           file=sys.stderr)
                     return None
                 print(f"  . {label} rate-limited, waiting {delay:.0f}s", file=sys.stderr)
-                time.sleep(min(delay, 120))
+                _budget_sleep(min(delay, 120))
                 continue
 
             if last:
                 print(f"  ! {label} gave up after {tries}: {e}", file=sys.stderr)
                 return None
-            time.sleep(wait * (a + 1))
+            _budget_sleep(wait * (a + 1))
 
 
 def ask_in_rounds(keys, ask, workers, waits, left=lambda: None, min_left=5):
@@ -840,7 +884,7 @@ def ask_in_rounds(keys, ask, workers, waits, left=lambda: None, min_left=5):
                 s = left()
                 if s is not None and s < waits[n - 1] + min_left:
                     break
-                time.sleep(waits[n - 1])
+                _budget_sleep(waits[n - 1])
             started = time.monotonic() - t0
             got = list(pool.map(timed, todo))
             answered = [secs for (answer, secs) in got if answer is not None]

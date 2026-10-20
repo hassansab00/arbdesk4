@@ -356,6 +356,37 @@ def test_a_lost_capture_turns_the_tick_to_attention(world, counts, status):
     assert world["logged"][0][1] == status
 
 
+@pytest.mark.parametrize('key', ['out_of_time', 'model_only_out_of_time'])
+def test_missing_engine_coverage_is_attention_without_losing_frozen_calls(world, key):
+    world['engine'][key] = 2
+    detail = tick.run(now=at('2026-09-24T22:35'))
+    assert detail['written'] > 0
+    assert detail['coverage_incomplete'] == {key: 2}
+    assert world['logged'][0][1] == 'attention'
+
+
+def test_engine_cannot_spend_the_paired_capture_reserve(world, monkeypatch):
+    import common, engine_shadow, variant_shadow
+    order = []
+    original_engine, original_variants = engine_shadow.record, variant_shadow.record
+    def engine(*args, **kwargs):
+        order.append('engine')
+        assert common._request_end.get() == kwargs['deadline']
+        return original_engine(*args, **kwargs)
+    def variants(*args, **kwargs):
+        order.append('paired')
+        assert common._request_end.get() is None
+        return original_variants(*args, **kwargs)
+    monkeypatch.setattr(engine_shadow, 'record', engine)
+    monkeypatch.setattr(variant_shadow, 'record', variants)
+    detail = tick.run(now=at('2026-09-24T22:35'), budget_s=140.)
+    engine_deadline = world['engine_kw'][0]['deadline']
+    paired_deadline = world['variants'][0][2]['deadline']
+    assert order == ['engine', 'paired']
+    assert paired_deadline - engine_deadline == pytest.approx(tick.PAIRED_CAPTURE_RESERVE_S - 2.)
+    assert 'coverage_incomplete' not in detail
+
+
 def test_a_checkpoint_already_held_is_not_priced(world):
     world["held"] = [{"city_key": "nyc", "target_date": "2026-09-25", "checkpoint": "d1_eve"}]
     out = tick.run(now=at("2026-09-24T22:35"))
@@ -403,7 +434,7 @@ def test_the_tick_is_one_job_with_no_matrix():
     assert len(jobs) == 1, "each job bills its own whole minutes"
     job = next(iter(jobs.values()))
     assert "strategy" not in job and "matrix" not in json.dumps(job)
-    assert job["timeout-minutes"] == 8, "5 until 13 Oct; WXPredict's shadow step has 3 of its own"
+    assert job["timeout-minutes"] == 9, "includes the bounded collector, backstops and WXPredict shadow"
     assert doc["concurrency"] == {"group": "tick", "cancel-in-progress": False}
 
 

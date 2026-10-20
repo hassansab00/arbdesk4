@@ -36,6 +36,7 @@ import math
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 
 FEE_RATE = 0.05          # measured: every paper_book_evidence fee_rate, 16-27 Sep
 MIN_ORDER_USD = 5.0      # measured: every paper_book_evidence min_order_size (USDC), 16-27 Sep
@@ -177,10 +178,14 @@ def fill_ledgers(account_ids, deadline, claim, fill_one, max_fills=MAX_FILLS):
             budget["left"] -= 1
             return True
 
-    def one_ledger(aid):
+    def one_ledger(aid, end):
         done = []
-        while time.monotonic() + FILL_SECONDS < deadline and take():
-            order = claim(aid)
+        while time.monotonic() + FILL_SECONDS < end and take():
+            try:
+                order = claim(aid)
+            except Exception as e:
+                done.append(f"error: {type(e).__name__}")
+                break
             if not order:
                 with lock:
                     budget["left"] += 1
@@ -195,8 +200,16 @@ def fill_ledgers(account_ids, deadline, claim, fill_one, max_fills=MAX_FILLS):
     ids = list(dict.fromkeys(str(a) for a in account_ids))
     if not ids:
         return out
+    def budgeted_ledger(aid):
+        from common import request_deadline
+        with request_deadline(deadline) as end:
+            return one_ledger(aid, end)
     with ThreadPoolExecutor(max_workers=len(ids)) as pool:
-        for statuses in pool.map(one_ledger, ids):
+        # A separate copy per worker preserves any earlier engine deadline;
+        # the same Context cannot be entered concurrently by two ledgers.
+        futures = [pool.submit(copy_context().run, budgeted_ledger, aid) for aid in ids]
+        for future in futures:
+            statuses = future.result()
             for s in statuses:
                 out[s] = out.get(s, 0) + 1
     return out
