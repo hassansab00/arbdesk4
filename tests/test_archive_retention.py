@@ -192,7 +192,7 @@ def test_every_table_carries_a_window_shorter_than_its_own_history():
               "forecast_variables": 7, "model_payloads": 2,
               # the live record: nothing in Postgres reads it (its readers read
               # the repository); 2 keeps the prune behind the mirror (WXPredict WP3)
-              "live_capture": 1}
+              "live_capture": 1, "model_skill": 7}
     assert set(limits) == set(TABLES), (
         f"a dataset was added to the archive without a reasoned retention ceiling here: "
         f"{sorted(set(TABLES) ^ set(limits))}")

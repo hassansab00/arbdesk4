@@ -36,13 +36,14 @@ MIRRORED = sorted(n for n, s in ao.TABLES.items() if s.get("mirror_first"))
 
 def test_the_datasets_the_mirror_copies_by_day_are_marked():
     assert MIRRORED == ["correlation", "forecast_features", "forecast_models", "forecast_variables",
-                        "live_capture", "model_payloads", "probabilities", "trades"]
+                        "live_capture", "model_payloads", "model_skill", "probabilities", "trades"]
     assert ao.TABLES["trades"]["mirrored_on"] == "ingested_at"
 
 
 # A dataset that refuses (rather than holds back) a row the mirror has not had:
 # the file its prune is written in, and the column the mirror copies it by.
 REFUSES_UNMIRRORED = {
+    "model_skill": ("ad4_model_skill_archive.sql", "computed_at"),
     "forecast_features": ("ad4_93_prune_forecast_features.sql", "captured_at"),
     "forecast_models": ("ad4_95_prune_forecast_models.sql", "observed_at"),
     "probabilities": ("ad4_96_prune_band_probabilities.sql", "computed_at"),

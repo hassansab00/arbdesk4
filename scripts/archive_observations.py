@@ -57,6 +57,7 @@ import argparse
 import csv
 import datetime as dt
 import gzip
+import hashlib
 import io
 import json
 import os
@@ -83,6 +84,24 @@ PAGE = 50000
 # share a timestamp), Postgres gives no order among ties, and OFFSET paging
 # over a non-unique order silently skips rows the prune then deletes anyway.
 TABLES = {
+    "model_skill": {
+        "table": "derived_forecast_skill_model",
+        "read_from": "v_prunable_model_skill",
+        "pk": "skill_key",
+        "pk_joins": ["city_key", "model", "computed_at", "lead_days"],
+        "cutoff_col": "computed_at",
+        "cutoff_is_date": False,
+        "prune_rpc": "prune_model_skill",
+        "tag": "model-skill-archive",
+        "columns": ["city_key", "model", "computed_at", "lead_days", "n_days", "mae_c", "bias_c",
+                    "p90_abs_err_c", "mae_bands", "pct_within_one_band", "band_width_c", "evidence_scope", "captured_at"],
+        "keep_days": 7,
+        "min_keep_days": 7,
+        "mirror_first": True,
+        "needs_feature_cache": False,
+        "bytes_per_row": 345,
+        "content_addressed": True,
+    },
     "observations": {
         "table": "weather_observations",
         "pk": "obs_id",
@@ -773,6 +792,14 @@ def effective_keep_days(spec, override=None):
                   "pct_of_tier": p.get("pct_of_tier"), "db_mb": p.get("db_mb")}
 
 
+def archive_asset_name(name, spec, lo, hi, blob):
+    # Later supersession can put new rows in an already archived date range.
+    stem = f"{name}-{str(lo)[:10]}-to-{str(hi)[:10]}"
+    if spec.get("content_addressed"):
+        stem += "-" + hashlib.sha256(gzip.decompress(blob)).hexdigest()
+    return stem + ".csv.gz"
+
+
 def read_source(spec):
     """The relation the export reads - the view when one is declared.
 
@@ -1416,7 +1443,7 @@ def export_one(spec, name, args):
         log_run(job, "ok", 0, {"keep_days": keep_days, "storage": pressure})
         return 0
 
-    asset_name = f"{name}-{str(lo)[:10]}-to-{str(hi)[:10]}.csv.gz"
+    asset_name = archive_asset_name(name, spec, lo, hi, blob)
 
     # 3 - THE SAME INSTANT, both phases. Letting the database recompute its own
     # cutoff deletes the minutes that passed while this ran - unarchived. The

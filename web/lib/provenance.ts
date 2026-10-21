@@ -1892,6 +1892,9 @@ export const VIEW_TABLES: Record<string, string[]> = {
     "cities",
     "markets"
   ],
+  "v_prunable_model_skill": [
+    "derived_forecast_skill_model"
+  ],
   "v_prunable_resolution_evidence": [
     "paper_position_settlements",
     "paper_resolution_evidence",

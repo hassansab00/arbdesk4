@@ -34,6 +34,12 @@ const assert = require('node:assert/strict');
     -- v_station_day_max over them.
     create table public.weather_observations(obs_id bigint primary key,city_key text,valid_at timestamptz,
       observed_at timestamptz,temp_c numeric,temp_f numeric,source text,station text);
+    create table public.derived_forecast_skill_model(
+      city_key text not null,model text not null,computed_at timestamptz not null default now(),
+      lead_days int not null,n_days int,mae_c numeric,bias_c numeric,p90_abs_err_c numeric,
+      mae_bands numeric,pct_within_one_band numeric,band_width_c numeric,evidence_scope text,
+      primary key(city_key,model,computed_at,lead_days));
+    alter table public.derived_forecast_skill_model enable row level security;
     -- observed_at, variables and source are live columns (timestamptz, jsonb,
     -- text): 20260923160000 builds v_forecast_issued over them.
     create table public.weather_forecasts(forecast_id bigint primary key,city_key text,model text,run_at timestamptz,

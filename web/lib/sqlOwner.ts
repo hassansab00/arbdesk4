@@ -263,6 +263,7 @@ export const SQL_OWNER: Record<string, string> = {
   "v_prunable_book_redundancy": "ad4_79_prune_book_redundancy.sql",
   "v_prunable_city_correlation": "ad4_prune_city_correlation.sql",
   "v_prunable_edge_history": "ad4_80_prune_edge_history.sql",
+  "v_prunable_model_skill": "ad4_model_skill_archive.sql",
   "v_prunable_resolution_evidence": "ad4_74_prune_resolution_evidence.sql",
   "v_risk_budget_health": "ad4_84_risk_budget.sql",
   "v_run_arrivals": "supabase/migrations/20260930001000_a_dispatched_run_that_never_logged.sql",
