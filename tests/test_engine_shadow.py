@@ -343,6 +343,23 @@ def test_the_twins_stop_in_time_to_fill_what_they_bought(monkeypatch):
 def test_the_tick_hands_the_twins_the_fill_time():
     src = (ROOT / "scripts" / "engine_shadow.py").read_text()
     assert "model_only_last=twins_last, model_only_fill_s=engine_orders.FILL_SECONDS)" in src
+    assert 'fill_enabled=fill_enabled' in src
+
+
+def test_disabled_research_orders_do_not_reserve_fill_time(monkeypatch):
+    _buy_everything(monkeypatch, [])
+    for enabled, reached in [(set(), 2), (set(es.MODEL_ONLY), 1)]:
+        clock=iter([0.,0.,0.,0.,0.,33.,33.,33.])
+        monkeypatch.setattr(es.time,'monotonic',lambda:next(clock,33.))
+        buys=[]
+        rows,detail=es.decide_all([('c1',ROW),('c2',dict(ROW,city_key='paris'))],{},{},
+            {'london':'C','paris':'C'},{},{sid:flat for sid in es.STRATEGIES},{},None,50.,'r',
+            '2026-09-28T11:36:00+00:00',buys=buys,model_only_deadline=40.,model_only_fill_s=2.5,
+            fill_enabled=enabled)
+        assert detail['model_only_reached']==reached
+        assert detail['model_only_out_of_time']==2-reached
+        assert len([r for r in rows if r['strategy_id'] in es.MODEL_ONLY])==6*reached
+        assert len([b for b in buys if b[0]['strategy_id'] in es.MODEL_ONLY])==3*reached
 
 
 def test_it_never_raises_into_the_tick(monkeypatch):
