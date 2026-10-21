@@ -323,7 +323,8 @@ declare
     -- appended (7 Oct, WXPredict build 2.A)
     'derived_city_correlation', 'derived_model_forecast',
     -- appended (11 Oct, WXPredict WP3)
-    'live_capture'];
+    'live_capture',
+    'derived_forecast_skill_model'];
   v_now   timestamptz := now();
   v_hour  int := extract(hour from (v_now at time zone 'UTC'))::int;
   v_at    timestamptz;
@@ -361,3 +362,10 @@ comment on function public.request_reclaim(text) is
 
 revoke all on function public.request_reclaim(text) from public, anon, authenticated;
 grant execute on function public.request_reclaim(text) to service_role;
+
+-- Quiet-window backstop; the archive also asks for reclaim after pruning.
+select cron.schedule(
+  'ad4_reclaim_derived_forecast_skill_model',
+  '25 3 * * *',
+  'VACUUM (FULL, ANALYZE) public.derived_forecast_skill_model'
+);

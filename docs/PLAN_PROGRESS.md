@@ -3,7 +3,16 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
-## Bounded weather recovery — 21 Oct, release checks pending
+## Superseded model skill archive — 21 Oct, release checks pending
+
+The existing nightly archive adds superseded model skill measurements while
+retaining each city/model/lead/evidence scope's latest full row. Mirror-first,
+committed export/read-back/count guards, signed-dataset refusal and latest-row
+rollback checks protect the cut. Content-addressed assets preserve overlapping
+date ranges. Details are in docs/MODEL_SKILL_ARCHIVE_PROGRESS.md. No prediction
+or outcome is rewritten. This cut alone does not establish free-tier capacity.
+
+## Bounded weather recovery — 21 Oct, deployed with provider coverage open
 
 The existing intraday workflow now retries recent final authority evidence
 within a request budget. Provider cooldowns cover subsequent city-days;
@@ -14,7 +23,13 @@ are in docs/WEATHER_RECOVERY_PROGRESS.md. Free-storage capacity remains open.
 
 The restored implementation tree matches the version that passed the full
 Python and database suites and web types, routes and production build.
-Hosted CI and the real deployed recovery run remain release checks.
+PR #421 passed hosted Python/database and web CI and merged as c46431614f6f.
+Its real intraday run 39579985584 refreshed all forward inputs without refitting.
+Bounded outcome recovery retained successful evidence and deferred remaining
+work, but provider HTTP 429 responses kept that step and the overall run red.
+Later scoring and page refresh completed. Source availability is still open;
+no clean recovery or accuracy improvement is claimed. Frozen history matches
+its original verification hash.
 
 ## Frozen city learning and validation — 17 Oct, in progress
 

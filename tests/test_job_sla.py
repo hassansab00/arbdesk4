@@ -19,7 +19,8 @@ SLA_MIGRATION = MIGRATIONS / "20261009200000_the_watchdog_knows_when_each_job_la
 # SLAs added after the seed, each with the switch it follows (R46, 11 Oct)
 SLA_ADDED = [MIGRATIONS / "20261011160000_the_trade_backfill_joins_the_watchdog.sql",
              # the live record's archive dataset (WXPredict WP3, 11 Oct)
-             MIGRATIONS / "20261011210000_the_live_record.sql"]
+             MIGRATIONS / "20261011210000_the_live_record.sql",
+             MIGRATIONS / "20261021094547_archive_superseded_model_skill.sql"]
 AD4_91 = (ROOT / "sql" / "ad4_91_database_jobs.sql").read_text()
 
 

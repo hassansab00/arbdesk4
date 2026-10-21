@@ -321,9 +321,8 @@ def test_the_archive_names_its_files_as_the_reader_reads_them():
     column's values (for_date for both forecast datasets). A new name format
     would hide every file from station correction and regime."""
     import archive_observations as ao
-    src = (ROOT / "scripts" / "archive_observations.py").read_text()
-    assert 'asset_name = f"{name}-{str(lo)[:10]}-to-{str(hi)[:10]}.csv.gz"' in src
     for name in {s["dataset"] for s in wh.SOURCES.values()}:
+        assert ao.archive_asset_name(name, ao.TABLES[name], '2026-08-20', '2026-08-29', b'') == f'{name}-2026-08-20-to-2026-08-29.csv.gz'
         assert ao.TABLES[name]["cutoff_col"] == "for_date"
         m = wh._NAME.search(f"{name}-2026-08-20-to-2026-08-29.csv.gz")
         assert m and m.groups() == ("2026-08-20", "2026-08-29"), name

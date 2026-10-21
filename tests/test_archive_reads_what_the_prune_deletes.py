@@ -96,6 +96,7 @@ def test_every_page_of_a_view_backed_export_stays_on_the_view(monkeypatch):
 # and side". The other four prune on a plain timestamp, which a REST filter
 # says perfectly well.
 EXPORT_SOURCE = {
+    "model_skill": "v_prunable_model_skill",
     "observations": "weather_observations",
     "forecasts":    "weather_forecasts",
     "trades":       "trades_observed",
@@ -175,6 +176,7 @@ def test_the_exported_columns_exist_on_whatever_is_read(name):
     # Each view-backed dataset names the file that defines its view. A new one
     # without an entry fails here rather than silently skipping the check.
     defines = {
+        "v_prunable_model_skill": "ad4_model_skill_archive.sql",
         "v_prunable_resolution_evidence": "ad4_74_prune_resolution_evidence.sql",
         "v_prunable_book_redundancy":     "ad4_79_prune_book_redundancy.sql",
         "v_prunable_edge_history":        "ad4_80_prune_edge_history.sql",

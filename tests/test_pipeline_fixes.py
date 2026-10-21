@@ -800,7 +800,8 @@ def test_the_archive_name_comes_from_the_min_and_max_seen():
     import archive_observations as ao
     assert "if lo is None or v < lo" in inspect.getsource(ao.export_cold)
     body = inspect.getsource(ao.export_one)
-    assert "{str(lo)[:10]}-to-{str(hi)[:10]}" in body
+    assert "archive_asset_name(name, spec, lo, hi, blob)" in body
+    assert ao.archive_asset_name('trades', ao.TABLES['trades'], '2026-01-01', '2026-01-03', b'') == 'trades-2026-01-01-to-2026-01-03.csv.gz'
     assert "rows[0]['valid_at']" not in body
 
 
