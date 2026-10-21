@@ -218,7 +218,7 @@ jobs:
       - name: Recover recent final weather evidence
         if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
         timeout-minutes: 3
-        run: python scripts/weather_outcomes.py --days 3 --max-city-days 12 --budget-seconds 90
+        run: python scripts/weather_outcomes.py --days 3 --max-city-days 48 --budget-seconds 90
 
       # THE TRADES BEFORE WE KNEW THE MARKET (R46, 10 Oct). P0.2 discovery
       # (n8n, 03:20Z) first sees each next-day market about a day after the

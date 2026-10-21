@@ -31,7 +31,7 @@ import requests
 from common import log_run, rest_all, upsert
 
 
-PARSER_VERSION = "weather-outcomes-v1"
+PARSER_VERSION = "weather-outcomes-v2"
 
 # How far back "recent" reaches. City-days inside this window are offered a
 # slot BEFORE the backlog, so yesterday is always attempted no matter how big
@@ -176,7 +176,7 @@ def _get(session: requests.Session, url: str, **kwargs) -> requests.Response:
             if response.status_code < 400:
                 return response
             if response.status_code not in {408, 429, 500, 502, 503, 504}:
-                response.raise_for_status()
+                raise OutcomeError("source_unavailable", f"HTTP {response.status_code} from {url}")
             last_error = requests.HTTPError(
                 f"HTTP {response.status_code} from {url}", response=response
             )
@@ -277,6 +277,16 @@ def parse_wrh_payload(
         raise OutcomeError(
             "parse_error", f"Requested {spec.station_id}, source returned {returned_id or 'no station'}"
         )
+    # The current named interface (weather.gov/source/wrh/timeseries/obs.js,
+    # v202610211630) only renders COUNTRY == US; it explicitly withholds
+    # international observations. API reachability alone is not publication
+    # by the contract's authority. Keep prior finalized evidence immutable.
+    country = station.get("COUNTRY")
+    if country is None:
+        raise OutcomeError("parse_error", "WRH station country is missing")
+    if country != "US":
+        raise OutcomeError("unsupported_source",
+                           "The named weather.gov WRH interface no longer publishes international observations")
     observations = station.get("OBSERVATIONS") or {}
     times = observations.get("date_time") or []
     temperatures = observations.get("air_temp_set_1") or []
@@ -369,16 +379,31 @@ def parse_wrh_payload(
     )
 
 
+def parse_wrh_token(source: str) -> str:
+    """Read the active static assignment, preserving strings while removing JS comments.
+
+    weather.gov retains a retired assignment in a line comment. Matching the
+    first occurrence of the variable sends that retired token to the provider.
+    Do not execute the downloaded JavaScript or fall back to commented values.
+    """
+    uncommented = re.sub(
+        r'''("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|/\*[\s\S]*?\*/|//[^\r\n]*''',
+        lambda match: match.group(1) or "", source,
+    )
+    matches = re.findall(
+        r'''(?m)^[ \t]*(?:var|let|const)\s+mesoToken\s*=\s*(['"])([A-Za-z0-9]+)\1\s*;''',
+        uncommented,
+    )
+    if not matches:
+        raise OutcomeError("parse_error", "weather.gov did not publish an active WRH data token")
+    return matches[-1][1]
+
+
 def fetch_wrh_outcome(
     session: requests.Session, spec: RuleSpec, for_date: dt.date,
 ) -> Outcome:
     key_response = _get(session, WRH_KEY_URL)
-    match = re.search(
-        r"mesoToken\s*=\s*['\"]([^'\"]+)['\"]", key_response.text, re.IGNORECASE
-    )
-    if not match:
-        raise OutcomeError("parse_error", "weather.gov did not publish its WRH data token")
-    token = match.group(1)
+    token = parse_wrh_token(key_response.text)
     start = (for_date - dt.timedelta(days=1)).strftime("%Y%m%d0000")
     end = (for_date + dt.timedelta(days=2)).strftime("%Y%m%d2359")
     params = {
@@ -564,6 +589,9 @@ def _load_targets(days: int, maximum: int,
                   finalized: set[tuple[str, str]] | None = None,
                   unparseable: dict[tuple[str, str], str] | None = None,
                   city_keys: set[str] | None = None,
+                  clocks: dict[str, str | None] | None = None,
+                  now: dt.datetime | None = None,
+                  last_attempts: dict[tuple[str, str], str] | None = None,
                   ) -> list[dict[str, Any]]:
     """The city-days that still NEED collecting, recent first, capped at `maximum`.
 
@@ -662,18 +690,36 @@ def _load_targets(days: int, maximum: int,
             continue
         if stuck.get(key) == _rules_fingerprint(row.get("rules_text"), row.get("unit")):
             continue
+        if clocks is not None:
+            try:
+                if not local_day_finished(str(row["resolution_date"]), clocks.get(row["city_key"]),
+                                          now or dt.datetime.now(dt.timezone.utc)):
+                    continue
+            except OutcomeError:
+                pass  # A missing/invalid city clock must produce an explicit attempt error.
         outstanding.append(row)
 
-    def oldest_first(row: dict[str, Any]) -> tuple[str, str]:
-        return (row["resolution_date"], row["city_key"])
+    def oldest_first(row: dict[str, Any]) -> tuple[str, str, str]:
+        key = (row["city_key"], row["resolution_date"])
+        return ((last_attempts or {}).get(key, ""), row["resolution_date"], row["city_key"])
 
     recent = sorted([r for r in outstanding if r["resolution_date"] >= recent_from],
                     key=oldest_first)
     backlog = sorted([r for r in outstanding if r["resolution_date"] < recent_from],
                      key=oldest_first)
-    # Oldest-first WITHIN the recent window as well: the 15th is likelier to
-    # have a final published figure than the 16th, which is still happening.
+    # Untried/least recently attempted first within each pool, then older days.
+    # Ongoing local days never consume a collection slot when clocks are supplied.
     return (recent + backlog)[:maximum]
+
+
+def _last_attempts(days: int) -> dict[tuple[str, str], str]:
+    """Least recently attempted first, so a bounded retry can reach later cities."""
+    cutoff = (dt.date.today() - dt.timedelta(days=days)).isoformat()
+    rows = rest_all("weather_resolution_attempts", [
+        ("select", "city_key,for_date,captured_at"), ("for_date", f"gte.{cutoff}"),
+    ], order="city_key.asc,for_date.asc,captured_at.asc", page_size=1000)
+    return {(r["city_key"], str(r["for_date"])): str(r["captured_at"])
+            for r in rows if r.get("captured_at")}
 
 
 def _existing_evidence(days: int) -> dict[tuple[str, str], dict[str, Any]]:
@@ -723,7 +769,8 @@ def _run(days, maximum, dry_run, cities, now, bounded=False):
     # Verdicts already reached on rules that have not changed. Skipped rather
     # than re-derived; see _load_targets.
     unparseable = _unparseable(days)
-    targets = _load_targets(days, maximum, finalized, unparseable, city_keys or None)
+    targets = _load_targets(days, maximum, finalized, unparseable, city_keys or None,
+                            clocks, now, _last_attempts(days))
     run_id = os.environ.get("GITHUB_RUN_ID", "local-" + uuid.uuid4().hex)
     run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
     session = requests.Session()
@@ -806,8 +853,12 @@ def _run(days, maximum, dry_run, cities, now, bounded=False):
                 # Without it the next run cannot tell an answer it already has
                 # from a question worth asking again.
                 **({"rules_sha256": _rules_fingerprint(market.get("rules_text"), market.get("unit"))}
-                   if status == "unsupported_source"
+                   if status == "unsupported_source" and spec is None
                    and not rules_are_absent(market.get("rules_text")) else {}),
+                # A publisher's coverage can return without the saved rules
+                # changing. Unlike unparseable rules, retry this source scope.
+                **({"source_scope_unavailable": True}
+                   if status == "unsupported_source" and spec is not None else {}),
                 # Said out loud, because "no rules_sha256" is otherwise just an
                 # absence and absences do not get investigated.
                 **({"rules_missing": True}
