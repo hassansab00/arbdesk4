@@ -171,6 +171,38 @@ def test_a_hung_ask_is_not_repeated_at_once(monkeypatch):
     assert hr._get("u", {}, "paris previous heating") is None and len(calls) == 1
 
 
+def test_forward_short_timeout_leaves_room_for_retry_rounds(monkeypatch):
+    seen = []
+    monkeypatch.setattr(hr, '_deadline', None)
+    monkeypatch.setattr(hr.requests, 'get', lambda *a, **kw:
+                        seen.append(kw['timeout']) or _Answer({'ok': 1}))
+    assert hr._get('u', {}, 'forward', timeout_s=10) == {'ok': 1}
+    assert seen == [(3, 5)]
+    hr._get('u', {}, 'nightly')
+    assert seen[-1] == hr.TIMEOUT
+
+
+def test_forward_rate_limit_covers_other_chunks_without_early_retry(monkeypatch):
+    from types import SimpleNamespace
+    clock, seen = [100.0], []
+    monkeypatch.setattr(hr.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(hr, '_deadline', None)
+    monkeypatch.setattr(hr, '_forward_not_before', {})
+    def get(*a, **kw):
+        seen.append(kw)
+        if len(seen) == 1:
+            def fail(): raise hr.requests.HTTPError('HTTP 429')
+            return SimpleNamespace(status_code=429, headers={'Retry-After':'120'}, raise_for_status=fail)
+        return _Answer({'ok': 1})
+    monkeypatch.setattr(hr.requests, 'get', get)
+    assert hr._get('https://example.test/a', {}, 'first', timeout_s=10) is None
+    clock[0] = 219
+    assert hr._get('https://example.test/b', {}, 'other chunk', timeout_s=10) is None
+    assert len(seen) == 1
+    clock[0] = 220
+    assert hr._get('https://example.test/b', {}, 'retry', timeout_s=10) == {'ok': 1}
+
+
 def test_no_round_starts_without_time_for_it(monkeypatch):
     slept = []
     monkeypatch.setattr(common.time, "sleep", slept.append)

@@ -213,6 +213,13 @@ jobs:
         timeout-minutes: 3
         run: python scripts/databank.py --bands-only --days 3 --proof-days 3
 
+      # Retry final authority evidence after western local days have ended.
+      # Existing cadence only; no fitting or frozen prediction writes.
+      - name: Recover recent final weather evidence
+        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
+        timeout-minutes: 3
+        run: python scripts/weather_outcomes.py --days 3 --max-city-days 12 --budget-seconds 90
+
       # THE TRADES BEFORE WE KNEW THE MARKET (R46, 10 Oct). P0.2 discovery
       # (n8n, 03:20Z) first sees each next-day market about a day after the
       # venue lists it, and the hourly trade ingest reads only from its

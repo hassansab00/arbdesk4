@@ -47,10 +47,13 @@ import argparse
 import csv
 import datetime as dt
 import gzip
+import math
 import os
 import sys
 import time
 from decimal import Decimal, ROUND_HALF_UP
+from email.utils import parsedate_to_datetime
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 import requests
@@ -117,6 +120,7 @@ TIMEOUT = 30
 RUN_SECONDS = 600
 MIN_LEFT = 5
 _deadline = None                # time.monotonic() value, or None: no deadline
+_forward_not_before = {}
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 DIR = os.path.join(ROOT, "data", "training", "previous_runs")
@@ -291,15 +295,41 @@ def _left():
     return None if _deadline is None else _deadline - time.monotonic()
 
 
-def _get(url, params, label):
+def _get(url, params, label, timeout_s=None):
     """One ask: the answer, or None. Asked again later by fetch_each's rounds,
     not here: on 10 Oct no hung URL answered when asked again at once."""
     left = _left()
+    host = urlsplit(url).netloc
+    if timeout_s is not None and time.monotonic() < _forward_not_before.get(host, 0):
+        print(f"  ! {label} deferred: provider cooldown", file=sys.stderr)
+        return None
     if left is not None and left < MIN_LEFT:
         print(f"  ! {label} not asked: the run's deadline", file=sys.stderr)
         return None
     try:
-        r = requests.get(url, params=params, timeout=TIMEOUT if left is None else min(TIMEOUT, left))
+        timeout = TIMEOUT if timeout_s is None else float(timeout_s)
+        if left is not None:
+            timeout = min(timeout, left)
+        # The short forward refresh must keep room for later retry rounds.
+        # requests applies a scalar separately to connect and read.
+        if timeout_s is not None:
+            timeout = (min(3.0, timeout / 2), timeout / 2)
+        r = requests.get(url, params=params, timeout=timeout)
+        if timeout_s is not None and r.status_code in {429, 503}:
+            value = (getattr(r, 'headers', None) or {}).get('Retry-After')
+            wait = 0.0
+            try:
+                wait = float(value)
+            except (TypeError, ValueError):
+                try:
+                    until = parsedate_to_datetime(value)
+                    if until.tzinfo is None:
+                        until = until.replace(tzinfo=dt.timezone.utc)
+                    wait = (until - dt.datetime.now(dt.timezone.utc)).total_seconds()
+                except (TypeError, ValueError, OverflowError):
+                    pass
+            if math.isfinite(wait) and wait > 0:
+                _forward_not_before[host] = time.monotonic() + wait
         if r.status_code == 400:
             print(f"  ! {label} 400: {r.text[:200]}", file=sys.stderr)
             return None
@@ -351,7 +381,7 @@ def previous_request(cities, part, start, end):
     return _per_place(_get(PREVIOUS_API, params, label), cities, label)
 
 
-def current_request(cities, part):
+def current_request(cities, part, timeout_s=None):
     base = dict(_places(cities), timezone="GMT",
                 forecast_days=4)        # UTC days: enough for local day+2 at any offset
     if part == "heating":
@@ -359,7 +389,9 @@ def current_request(cities, part):
     else:
         params = dict(base, hourly="temperature_2m", models=",".join(MODELS))
     label = _label(cities, f"current {part}")
-    return _per_place(_get(CURRENT_API, params, label), cities, label)
+    answer = (_get(CURRENT_API, params, label) if timeout_s is None else
+              _get(CURRENT_API, params, label, timeout_s=timeout_s))
+    return _per_place(answer, cities, label)
 
 
 def fetch_each(ask, cities, rounds=None):
