@@ -138,23 +138,26 @@ export function localDayEnd(date: string, tz: string): number {
 }
 
 export interface MarketDay { resolution_date: string; resolution_verified_at: string | null }
-export interface SettlementMarket extends MarketDay { city_key: string }
+export interface SettlementMarket extends MarketDay { city_key: string; event_slug?: string | null }
+export interface SettlementResult {
+  city_key: string; for_date: string; called_when: string; actual_band?: string | null;
+}
 export interface SettlementCity { city_key: string; display_name: string | null; timezone: string | null }
-export type SettlementState = "recorded" | "awaiting_score" | "awaiting_venue" | "day_not_ended" | "clock_unavailable";
+export type SettlementState = "recorded" | "awaiting_score" | "awaiting_venue" | "day_not_ended" | "clock_unavailable" | "record_unavailable";
 export interface SettlementCoverage extends Record<SettlementState, number> {
   date: string; tracked: number; confirmed: number;
-  details: Array<{ city_key: string; name: string; state: SettlementState }>;
+  details: Array<{ city_key: string; name: string; state: SettlementState;
+    actual_band: string | null; event_slug: string | null }>;
 }
 
 /** Show missing recent dates without treating weather finality as a venue result. */
 export function settlementCoverage(
   markets: SettlementMarket[], cities: SettlementCity[],
-  calls: Array<{ city_key: string; for_date: string; called_when: string }>,
-  moment: string, now: number,
+  calls: SettlementResult[], moment: string, now: number, recordsReady = true,
 ): SettlementCoverage[] {
   const roster = new Map(cities.map(c => [c.city_key, c]));
-  const recorded = new Set(calls.filter(c => c.called_when === moment)
-    .map(c => `${c.city_key}|${c.for_date}`));
+  const recorded = new Map((recordsReady ? calls : []).filter(c => c.called_when === moment && c.actual_band)
+    .map(c => [`${c.city_key}|${c.for_date}`, c]));
   const unique = new Map<string, SettlementMarket>();
   for (const m of markets) {
     if (!roster.has(m.city_key)) continue;
@@ -166,7 +169,7 @@ export function settlementCoverage(
     const city = roster.get(m.city_key)!;
     let state: SettlementState = "clock_unavailable";
     if (recorded.has(key)) state = "recorded";
-    else if (m.resolution_verified_at) state = "awaiting_score";
+    else if (m.resolution_verified_at) state = recordsReady ? "awaiting_score" : "record_unavailable";
     else if (city.timezone) {
       try { state = localDayEnd(m.resolution_date, city.timezone) > now ? "day_not_ended" : "awaiting_venue"; }
       catch { /* A missing city clock is visible instead of defaulting to UTC. */ }
@@ -174,13 +177,15 @@ export function settlementCoverage(
     let group = groups.get(m.resolution_date);
     if (!group) {
       group = { date: m.resolution_date, tracked: 0, confirmed: 0,
-        recorded: 0, awaiting_score: 0, awaiting_venue: 0, day_not_ended: 0, clock_unavailable: 0, details: [] };
+        recorded: 0, awaiting_score: 0, awaiting_venue: 0, day_not_ended: 0, clock_unavailable: 0,
+        record_unavailable: 0, details: [] };
       groups.set(m.resolution_date, group);
     }
     group.tracked++;
     group[state]++;
     if (m.resolution_verified_at) group.confirmed++;
-    group.details.push({ city_key: m.city_key, name: city.display_name || m.city_key, state });
+    group.details.push({ city_key: m.city_key, name: city.display_name || m.city_key, state,
+      actual_band: recorded.get(key)?.actual_band ?? null, event_slug: m.event_slug ?? null });
   }
   return [...groups.values()].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3)
     .map(g => ({ ...g, details: g.details.sort((a, b) => a.name.localeCompare(b.name)) }));
