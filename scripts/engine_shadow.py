@@ -352,7 +352,7 @@ def _num(x):
 
 def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, params, anchor_table,
                deadline, run_id, decided_at, buys=None, exits=None, status=None, model_only_deadline=None,
-               model_only_last=None, model_only_fill_s=0.0):
+               model_only_last=None, model_only_fill_s=0.0, fill_enabled=None):
     """(rows, detail). checkpoints: [(checkpoint_id, row)] written this tick,
     latest per city-day. deadline: time.monotonic() to stop at. `buys`, when
     given, collects (row, decision, checkpoint_id) for every BUY: its orders
@@ -384,6 +384,15 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
         twin = group_name == "model_only"
         g_params = dict(params or {}, book_iters=ev.MODEL_ONLY_BOOK_ITERS) if twin else params
         acted_before = len(buys or []) + len(exits or [])
+        buys_before, exits_before = len(buys or []), len(exits or [])
+
+        def reserve():
+            if not twin:
+                return 0.0
+            eligible = lambda sid: fill_enabled is None or sid in fill_enabled
+            count = sum(eligible(r['strategy_id']) for r, _d, _c in (buys or [])[buys_before:])
+            count += sum(eligible(e['row']['strategy_id']) for e in (exits or [])[exits_before:])
+            return model_only_fill_s * count
         todo = checkpoints
         left = stop_at - time.monotonic() if group_name == "model_only" and model_only_last is not None else 0.0
         if left > 0:
@@ -391,7 +400,7 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
                                       else model_only_last)
         for checkpoint_id, row in todo:
             acted = len(buys or []) + len(exits or []) - acted_before if twin else 0
-            if time.monotonic() >= stop_at - model_only_fill_s * acted:
+            if time.monotonic() >= stop_at - reserve():
                 counts[group_name][1] += 1
                 continue
             counts[group_name][0] += 1
@@ -413,7 +422,7 @@ def decide_all(checkpoints, s10_ladders, bands_of, unit_of, floors, ledgers, par
                 # fill window up.
                 if twin and sid != group[0]:
                     acted = len(buys or []) + len(exits or []) - acted_before
-                    if acted and time.monotonic() >= stop_at - model_only_fill_s * acted:
+                    if acted and time.monotonic() >= stop_at - reserve():
                         cut_short += 1
                         break
                 if sid in S10:
@@ -700,6 +709,13 @@ def record(written_rows, s10_ladders, bands_by_market, market_of, unit_of, floor
         run_id = str(uuid.uuid4())
         buys, exits = [], []
         import engine_orders
+        # Disabled research decisions stay recorded, but cannot place orders
+        # and need no fill reserve. Submission still rechecks enablement.
+        fill_enabled = set()
+        if ledgers:
+            fill_enabled = {r['strategy_id'] for r in rest('strategies', [
+                ('select', 'strategy_id'), ('enabled', 'eq.true'),
+                ('strategy_id', 'in.('+','.join(MODEL_ONLY)+')')]) or []} & ledgers.keys()
         twin_orders_by = deadline - MODEL_ONLY_RESERVE_S
 
         def twins_last(left):
@@ -714,6 +730,7 @@ def record(written_rows, s10_ladders, bands_by_market, market_of, unit_of, floor
                                   anchor_table, deadline - WRITE_RESERVE_S, run_id,
                                   now.isoformat(), buys=buys, exits=exits, status=seen,
                                   model_only_deadline=twin_orders_by - 2 * engine_orders.FILL_SECONDS,
+                                  fill_enabled=fill_enabled,
                                   model_only_last=twins_last, model_only_fill_s=engine_orders.FILL_SECONDS)
         out.update(detail)
         out["actions"] = {}
