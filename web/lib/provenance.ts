@@ -1019,6 +1019,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/weather_outcomes.py",
       "kind": "action",
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
+    {
+      "cadence": "several times a day",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/weather_outcomes.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ],
   "weather_resolution_evidence": [
@@ -1028,6 +1035,13 @@ export const FILLED_BY: Record<string, Filler[]> = {
       "how": "scripts/weather_outcomes.py",
       "kind": "action",
       "name": "Daily Pipeline (forecasts, settlement, skill, databank, derived)"
+    },
+    {
+      "cadence": "several times a day",
+      "file": "pipeline_intraday.yml",
+      "how": "scripts/weather_outcomes.py",
+      "kind": "action",
+      "name": "Intraday Pipeline (model, probabilities, edges)"
     }
   ]
 };

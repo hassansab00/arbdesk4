@@ -21,6 +21,7 @@ import station_mos as sm
 JOB = "early_weather_forward_refresh"
 MAX_FIT_AGE = dt.timedelta(hours=36)  # existing served correction freshness ceiling
 MIN_STATION_OBSERVATIONS = 12  # existing weather_model/databank daily-maximum floor
+FORWARD_REQUEST_SECONDS = 10
 
 
 def finite(value):
@@ -56,7 +57,9 @@ def complete(hourly, series, day, timezone):
 def fetch(cities, started, rounds):
     """Reuse bounded batched requests, retaining only complete input days."""
     bm, md, missing = [], [], []
-    for city, (heating, models) in hr.fetch_each(hr.current_request, cities, rounds):
+    def ask(chunk, part):
+        return hr.current_request(chunk, part, timeout_s=FORWARD_REQUEST_SECONDS)
+    for city, (heating, models) in hr.fetch_each(ask, cities, rounds):
         timezone = city["timezone"]
         b, m = hr.current_rows(city["city_key"], heating, models, started, timezone)
         b = [row for row in b if all(complete((heating or {}).get("hourly", {}), var, row[2], timezone)

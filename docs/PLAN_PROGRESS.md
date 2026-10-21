@@ -3,6 +3,19 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Bounded weather recovery — 21 Oct, release checks pending
+
+The existing intraday workflow now retries recent final authority evidence
+within a request budget. Provider cooldowns cover subsequent city-days;
+forward requests use a shorter optional timeout so later retry rounds have
+room. Daily historical timeouts, predictions, frozen calls, calibration gates
+and capital settings retain their existing policies. Implementation and scope
+are in docs/WEATHER_RECOVERY_PROGRESS.md. Free-storage capacity remains open.
+
+The restored implementation tree matches the version that passed the full
+Python and database suites and web types, routes and production build.
+Hosted CI and the real deployed recovery run remain release checks.
+
 ## Frozen city learning and validation — 17 Oct, in progress
 
 Hassan requested immutable predict → freeze → settle → score → learn → validate

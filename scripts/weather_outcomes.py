@@ -20,6 +20,7 @@ import sys
 import time
 import uuid
 from email.utils import parsedate_to_datetime
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -128,7 +129,9 @@ def retry_wait(response, attempt: int, now: dt.datetime | None = None) -> float:
     value = getattr(response, "headers", {}).get("Retry-After")
     if value is not None:
         try:
-            return max(0.0, float(value))
+            seconds = float(value)
+            if math.isfinite(seconds):
+                return max(0.0, seconds)
         except (TypeError, ValueError):
             try:
                 until = parsedate_to_datetime(value)
@@ -152,12 +155,24 @@ def local_day_finished(for_date: str, timezone: str | None, now: dt.datetime) ->
 
 
 def _get(session: requests.Session, url: str, **kwargs) -> requests.Response:
+    import common
     headers = {"User-Agent": USER_AGENT, **kwargs.pop("headers", {})}
+    # A provider's rate limit covers later cities too, not just this URL.
+    cooldowns = getattr(session, "_outcome_cooldowns", None)
+    if cooldowns is None:
+        cooldowns = session._outcome_cooldowns = {}
+    host = urlsplit(url).netloc
     last_error: Exception | None = None
     for attempt in range(4):
         response = None
         try:
-            response = session.get(url, headers=headers, timeout=45, **kwargs)
+            remaining_wait = cooldowns.get(host, 0) - time.monotonic()
+            if remaining_wait > MAX_RETRY_WAIT_S:
+                raise OutcomeError("source_unavailable", f"Provider cooldown active for {host}")
+            if remaining_wait > 0:
+                common._budget_sleep(remaining_wait)
+            response = session.get(url, headers=headers,
+                                   **common._request_kwargs(dict(kwargs, timeout=45)))
             if response.status_code < 400:
                 return response
             if response.status_code not in {408, 429, 500, 502, 503, 504}:
@@ -165,13 +180,23 @@ def _get(session: requests.Session, url: str, **kwargs) -> requests.Response:
             last_error = requests.HTTPError(
                 f"HTTP {response.status_code} from {url}", response=response
             )
+            if response.status_code in {429, 503}:
+                cooldowns[host] = time.monotonic() + retry_wait(response, attempt)
         except (requests.ConnectionError, requests.Timeout) as exc:
             last_error = exc
+        except TimeoutError as exc:
+            raise OutcomeError("source_unavailable", str(exc)) from exc
         if attempt < 3:
             wait = retry_wait(response, attempt)
             if wait > MAX_RETRY_WAIT_S:
                 break  # Preserve the failure and defer; do not hammer before Retry-After.
-            time.sleep(wait)
+            try:
+                common._budget_sleep(wait)
+                # This serial session has waited out its own cooldown.
+                if response is not None and response.status_code in {429, 503}:
+                    cooldowns.pop(host, None)
+            except TimeoutError as exc:
+                raise OutcomeError("source_unavailable", str(exc)) from exc
     raise OutcomeError("source_unavailable", str(last_error or f"Unable to read {url}"))
 
 
@@ -667,7 +692,20 @@ def _existing_evidence(days: int) -> dict[tuple[str, str], dict[str, Any]]:
 
 
 def run(days: int = 14, maximum: int = 250, dry_run: bool = False,
-        cities: str = "", now: dt.datetime | None = None) -> dict[str, int]:
+        cities: str = "", now: dt.datetime | None = None,
+        budget_seconds: float | None = None) -> dict[str, int]:
+    import common
+    if budget_seconds is not None:
+        if not math.isfinite(budget_seconds) or budget_seconds <= 0:
+            raise ValueError("budget-seconds must be finite and positive")
+        # Include setup, evidence writes and logging in the recovery allowance.
+        with common.request_deadline(time.monotonic() + budget_seconds):
+            return _run(days, maximum, dry_run, cities, now, bounded=True)
+    return _run(days, maximum, dry_run, cities, now)
+
+
+def _run(days, maximum, dry_run, cities, now, bounded=False):
+    import common
     if days < 1 or maximum < 1:
         raise ValueError("days and max-city-days must be positive")
     now = now or dt.datetime.now(dt.timezone.utc)
@@ -696,9 +734,14 @@ def run(days: int = 14, maximum: int = 250, dry_run: bool = False,
         # Visible in ingest_log, because a number that silently grows is how
         # the budget got eaten in the first place.
         "skipped_unparseable": len(unparseable),
+        "deferred": 0,
     }
 
-    for market in targets:
+    for index, market in enumerate(targets):
+        deadline = common._request_end.get()
+        if bounded and deadline is not None and deadline - time.monotonic() < 15:
+            counts["deferred"] = len(targets) - index
+            break
         key = (market["city_key"], market["resolution_date"])
         prior = existing.get(key)
         # The contract freezes the first finalized publication. Never poll and
@@ -715,7 +758,11 @@ def run(days: int = 14, maximum: int = 250, dry_run: bool = False,
             spec = parse_rule_spec(market.get("rules_text"), market.get("unit"))
             if not local_day_finished(market["resolution_date"], clocks.get(market["city_key"]), now):
                 raise OutcomeError("not_final", "The city's local day has not ended; final evidence was not requested")
-            outcome = collect_one(session, spec, dt.date.fromisoformat(market["resolution_date"]))
+            if bounded:
+                with common.request_deadline(deadline - 10):
+                    outcome = collect_one(session, spec, dt.date.fromisoformat(market["resolution_date"]))
+            else:
+                outcome = collect_one(session, spec, dt.date.fromisoformat(market["resolution_date"]))
             if prior:
                 if prior.get("payload_sha256") == outcome.payload_sha256:
                     status = "unchanged"
@@ -807,7 +854,8 @@ def run(days: int = 14, maximum: int = 250, dry_run: bool = False,
             counts["needs_attention"] += 1
         print(f"{market['city_key']} {market['resolution_date']}: {status}")
 
-    overall = "ok" if counts["needs_attention"] == 0 else "attention"
+    overall = ("attention" if counts["needs_attention"] else
+               "partial" if counts["deferred"] else "ok")
     if not dry_run:
         log_run("weather_outcomes", overall, counts["captured"], counts)
     return counts
@@ -819,8 +867,10 @@ def main() -> None:
     parser.add_argument("--max-city-days", type=int, default=250)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--cities", default="", help="Comma-separated city keys for bounded manual recovery")
+    parser.add_argument("--budget-seconds", type=float, default=None)
     args = parser.parse_args()
-    counts = run(days=args.days, maximum=args.max_city_days, dry_run=args.dry_run, cities=args.cities)
+    counts = run(days=args.days, maximum=args.max_city_days, dry_run=args.dry_run,
+                 cities=args.cities, budget_seconds=args.budget_seconds)
     print(json.dumps(counts, sort_keys=True))
     # Unsupported authorities are an explicit coverage limitation. Genuine
     # source/parser/revision failures still fail the workflow loudly.
