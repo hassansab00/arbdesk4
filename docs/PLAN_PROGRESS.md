@@ -3,6 +3,27 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Settlement recovery and date visibility — 22 Oct, release checks pending
+
+The WRH collector now reads the active JavaScript token assignment, ignoring
+retired assignments in comments. Upstream authorization failures retain their
+source-unavailable classification. The named WRH interface currently restricts
+publication to US stations; accessible international API data is held as a
+source-coverage limitation, retried, and never promoted to final authority evidence.
+Existing finalized evidence stays intact. Recovery filters ongoing city-local days
+before applying its cap and prioritizes untried or least-recently-attempted
+city-days inside the recent/backlog pools. The existing intraday deadline is
+unchanged; its candidate cap accommodates the active roster.
+
+Predictive shows recent dates for the selected cities and prediction time,
+with recorded results, venue-confirmed dates awaiting a record, pending venue
+settlements, and ongoing local days. Pending dates do not enter accuracy totals.
+This is a read of existing public market metadata and frozen result availability;
+it adds no database privileges, prediction backfill, fitting or schedule.
+The full Python and database suites, web type checks, route checks and production
+build pass on the combined source. Hosted CI and real deployed evidence capture
+remain release checks.
+
 ## Superseded model skill archive — 21 Oct, release checks pending
 
 The existing nightly archive adds superseded model skill measurements while

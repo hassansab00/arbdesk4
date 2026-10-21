@@ -28,6 +28,7 @@ def _wrh_payload(*, include_following=True):
         "SUMMARY": {"RESPONSE_MESSAGE": "OK"},
         "STATION": [{
             "STID": "KSFO",
+            "COUNTRY": "US",
             "NAME": "San Francisco International Airport",
             "TIMEZONE": "America/Los_Angeles",
             "SHORTNAME": "ASOS/AWOS",
@@ -371,3 +372,82 @@ def test_unparseable_reads_only_the_newest_attempt_per_city_day(monkeypatch):
     ]
     monkeypatch.setattr(outcomes, "rest_all", lambda path, params=None, **kw: list(rows))
     assert outcomes._unparseable(30) == {("paris", "2026-09-01"): "def"}
+
+
+def test_wrh_token_ignores_retired_line_and_block_comments():
+    source = '''//var mesoToken='retired';
+/* prior release:
+var mesoToken="alsoRetired";
+*/
+var mesoToken='active'; // current token
+// var mesoToken='retiredAgain';
+'''
+    assert outcomes.parse_wrh_token(source) == "active"
+    assert outcomes.parse_wrh_token("var mesoToken='first';\nlet mesoToken='current';") == "current"
+
+
+@pytest.mark.parametrize("source", [
+    "//var mesoToken='retired';", "/* var mesoToken='retired'; */",
+    '''var note = "var mesoToken='example';";''', "var mesoToken = getToken();",
+])
+def test_wrh_token_refuses_comments_examples_and_dynamic_code(source):
+    with pytest.raises(outcomes.OutcomeError, match="active WRH"):
+        outcomes.parse_wrh_token(source)
+
+
+def test_fetch_wrh_uses_active_token_and_keeps_the_existing_outcome_parser(monkeypatch):
+    from types import SimpleNamespace
+    payload = _wrh_payload()
+    raw = json.dumps(payload).encode()
+    requests = []
+    def get(session, url, **kwargs):
+        requests.append((url, kwargs))
+        if url == outcomes.WRH_KEY_URL:
+            return SimpleNamespace(text="//var mesoToken='retired';\nvar mesoToken='active';")
+        return SimpleNamespace(content=raw)
+    monkeypatch.setattr(outcomes, "_get", get)
+    spec = outcomes.RuleSpec("weather_gov_wrh", "authority", "KSFO", "source", "F", True)
+    got = outcomes.fetch_wrh_outcome(object(), spec, dt.date(2026, 9, 12))
+    assert requests[1][1]["params"]["token"] == "active"
+    assert got == outcomes.parse_wrh_payload(payload, raw, spec, dt.date(2026, 9, 12))
+
+
+def test_ongoing_local_days_do_not_consume_the_candidate_cap(markets):
+    today = dt.date.today()
+    markets([_market("a_new_york", today.isoformat()), _market("z_tokyo", today.isoformat())])
+    picked = outcomes._load_targets(7, 1, clocks={"a_new_york": "America/New_York", "z_tokyo": "Asia/Tokyo"},
+        now=dt.datetime.combine(today, dt.time(21), dt.timezone.utc))
+    assert [r["city_key"] for r in picked] == ["z_tokyo"]
+
+
+def test_bounded_retries_reach_untried_and_least_recently_attempted_cities(markets):
+    date = (dt.date.today() - dt.timedelta(days=1)).isoformat()
+    markets([_market(c, date) for c in ("a", "b", "c")])
+    attempts = {("a", date): "2026-10-21T10:00:00Z", ("b", date): "2026-10-21T09:00:00Z"}
+    assert outcomes._load_targets(7, 1, last_attempts=attempts)[0]["city_key"] == "c"
+    attempts[("c", date)] = "2026-10-21T11:00:00Z"
+    assert outcomes._load_targets(7, 1, last_attempts=attempts)[0]["city_key"] == "b"
+
+
+def test_unknown_city_clock_remains_an_explicit_error_target(markets):
+    date = (dt.date.today() - dt.timedelta(days=1)).isoformat()
+    markets([_market("unknown", date)])
+    assert outcomes._load_targets(7, 1, clocks={})[0]["city_key"] == "unknown"
+
+
+def test_unpublished_international_api_data_is_not_promoted_to_authority_evidence():
+    spec = outcomes.RuleSpec("weather_gov_wrh", "authority", "ZBAA", "source", "C", True)
+    payload = _wrh_payload()
+    payload["STATION"][0].update(STID="ZBAA", COUNTRY="CN", SHORTNAME="GLOBAL-METAR")
+    with pytest.raises(outcomes.OutcomeError) as error:
+        outcomes.parse_wrh_payload(payload, json.dumps(payload).encode(), spec, dt.date(2026, 9, 12))
+    assert error.value.status == "unsupported_source"
+    assert "international" in str(error.value)
+
+
+def test_missing_source_scope_is_not_assumed_to_be_supported():
+    payload = _wrh_payload()
+    del payload["STATION"][0]["COUNTRY"]
+    spec = outcomes.RuleSpec("weather_gov_wrh", "authority", "KSFO", "source", "F", True)
+    with pytest.raises(outcomes.OutcomeError, match="country"):
+        outcomes.parse_wrh_payload(payload, json.dumps(payload).encode(), spec, dt.date(2026, 9, 12))

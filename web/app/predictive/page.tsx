@@ -6,6 +6,7 @@ import { useQuery } from "@/lib/useQuery";
 import { readAllRows } from "@/lib/readAll";
 import { DataState } from "@/components/DataState";
 import PredictionHindsight from "@/components/PredictionHindsight";
+import SettlementStatus from "@/components/SettlementStatus";
 import CheckpointScoreboard from "@/components/CheckpointScoreboard";
 import PredictionLineup from "@/components/PredictionLineup";
 import CityPredictionValidation from "@/components/CityPredictionValidation";
@@ -610,6 +611,9 @@ export default function PredictivePage() {
       {/* ======================================= THE SELECTION, FOR EVERY PANEL == */}
       <FocusFilter scope={scope} setScope={setScope} custom={custom} setCustom={setCustom}
         moment={moment} setMoment={setMoment} cities={cities} focus={focus} shown={selected.length} />
+
+      <SettlementStatus cities={cities.filter(c => selectedSet.has(c.city_key))}
+        calls={hindsightQ.data ?? []} moment={moment} />
 
       {/* ================================================ 0. EVERY CITY == */}
       <CityCards onPick={setCity} cities={selected} moment={moment}

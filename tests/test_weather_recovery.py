@@ -29,6 +29,16 @@ def test_long_retry_after_defers_without_retrying_early(monkeypatch):
     assert len(calls) == 1
 
 
+def test_auth_failure_is_a_source_failure_with_no_credential_disclosure():
+    calls = []
+    session = SimpleNamespace(get=lambda *a, **kw: calls.append(kw) or SimpleNamespace(status_code=401))
+    with pytest.raises(w.OutcomeError) as exc:
+        w._get(session, "https://example.test/authority", params={"token": "secret"})
+    assert exc.value.status == "source_unavailable"
+    assert "401" in str(exc.value) and "secret" not in str(exc.value)
+    assert len(calls) == 1
+
+
 def test_recovery_request_and_retry_cannot_outlive_budget(monkeypatch):
     import common
     clock = [100.0]
@@ -117,6 +127,39 @@ def test_run_records_ongoing_day_without_requesting_final_weather(monkeypatch):
     assert called == [dt.date(2026,10,17)]
     assert result['captured']==1 and result['not_final']==1 and result['failures']==0
     assert [r['city_key'] for t,r in writes if t=='weather_resolution_evidence']==['los_angeles']
+
+
+def test_publisher_scope_gap_stays_visible_and_retryable_without_final_evidence(monkeypatch):
+    target=dict(city_key='jeddah',resolution_date='2026-10-20',market_id='j',rules_text='saved rules',unit='C')
+    monkeypatch.setattr(w,'rest_all',lambda *a,**kw:[{'city_key':'jeddah','timezone':'Asia/Riyadh'}])
+    monkeypatch.setattr(w,'_existing_evidence',lambda _: {})
+    monkeypatch.setattr(w,'_unparseable',lambda _: {})
+    monkeypatch.setattr(w,'_load_targets',lambda *a:[target])
+    monkeypatch.setattr(w,'parse_rule_spec',lambda *a:w.RuleSpec('weather_gov_wrh','authority','OEJN','source','C',True))
+    def collect(*args):
+        raise w.OutcomeError('unsupported_source','Named interface does not publish this station')
+    monkeypatch.setattr(w,'collect_one',collect)
+    writes,logs=[],[]
+    monkeypatch.setattr(w,'upsert',lambda table,rows,key:writes.extend((table,r) for r in rows))
+    monkeypatch.setattr(w,'log_run',lambda *a:logs.append(a))
+    result=w.run(now=dt.datetime(2026,10,22,tzinfo=dt.timezone.utc))
+    assert result['unsupported']==result['needs_attention']==1 and not result['failures']
+    assert [table for table,_ in writes]==['weather_resolution_attempts']
+    detail=writes[0][1]['detail']
+    assert detail['source_scope_unavailable'] and 'rules_sha256' not in detail
+    assert logs[0][1]=='attention'
+
+
+def test_a_verified_first_publication_is_never_repolled_or_replaced(monkeypatch):
+    target=dict(city_key='jeddah',resolution_date='2026-10-20',market_id='j',rules_text='saved rules',unit='C')
+    monkeypatch.setattr(w,'rest_all',lambda *a,**kw:[{'city_key':'jeddah','timezone':'Asia/Riyadh'}])
+    monkeypatch.setattr(w,'_existing_evidence',lambda _:{('jeddah','2026-10-20'):{'record_status':'verified','payload_sha256':'original'}})
+    monkeypatch.setattr(w,'_unparseable',lambda _: {})
+    monkeypatch.setattr(w,'_load_targets',lambda *a:[target])
+    monkeypatch.setattr(w,'collect_one',lambda *a:pytest.fail('the first final publication is frozen'))
+    monkeypatch.setattr(w,'upsert',lambda *a:pytest.fail('no historical evidence is rewritten'))
+    monkeypatch.setattr(w,'log_run',lambda *a:None)
+    assert w.run(now=dt.datetime(2026,10,22,tzinfo=dt.timezone.utc))['already_final']==1
 
 
 def test_evidence_only_workflow_never_fits_or_runs_heavy_steps():
