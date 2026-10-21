@@ -3,6 +3,17 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Recent settlement result visibility — 22 Oct, release checks pending
+
+Recent settlement details read the selected moment's bounded recent result
+metadata independently of the full prediction history. Recorded venue bands and
+the exact Polymarket event links appear beside each city; the latest date with
+recorded results opens automatically. A loading, failed or truncated result read
+keeps the record status unknown instead of claiming a confirmed result is missing.
+This changes display reads only, with no prediction, settlement or scoring writes.
+Full Python and database suites, web type and route checks and the production
+build passed. Hosted CI and deployed anonymous-read acceptance are pending.
+
 ## Settlement recovery and date visibility — 22 Oct, release checks pending
 
 The WRH collector now reads the active JavaScript token assignment, ignoring
@@ -20,9 +31,9 @@ with recorded results, venue-confirmed dates awaiting a record, pending venue
 settlements, and ongoing local days. Pending dates do not enter accuracy totals.
 This is a read of existing public market metadata and frozen result availability;
 it adds no database privileges, prediction backfill, fitting or schedule.
-The full Python and database suites, web type checks, route checks and production
-build pass on the combined source. Hosted CI and real deployed evidence capture
-remain release checks.
+PR #423 merged and deployed. Full local and hosted checks passed, as did the main
+intraday acceptance run, including weather recovery, banking, scoring and page
+refresh. International publisher coverage remains an explicit attention state.
 
 ## Superseded model skill archive — 21 Oct, release checks pending
 

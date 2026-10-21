@@ -613,7 +613,7 @@ export default function PredictivePage() {
         moment={moment} setMoment={setMoment} cities={cities} focus={focus} shown={selected.length} />
 
       <SettlementStatus cities={cities.filter(c => selectedSet.has(c.city_key))}
-        calls={hindsightQ.data ?? []} moment={moment} />
+        moment={moment} />
 
       {/* ================================================ 0. EVERY CITY == */}
       <CityCards onPick={setCity} cities={selected} moment={moment}
