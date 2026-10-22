@@ -70,7 +70,9 @@ def test_eligibility_is_the_timezone_not_the_unit():
 
 def test_a_ladder_found_unresolved_waits_longer_each_time():
     assert [cq.backoff_minutes(k) for k in range(7)] == [0, 20, 40, 80, 160, 160, 160]
-    markets = [_m(1, "nyc"), _m(2, "la"), _m(3, "seattle")]
+    # Older backlog retains the growing interval.
+    markets = [_m(1, "nyc", "2026-09-27"), _m(2, "la", "2026-09-27"),
+               _m(3, "seattle", "2026-09-27")]
     attempts = {
         "m1": {"last_asked_at": "2026-09-30T09:26:00+00:00", "unresolved_streak": 1},   # 10 min ago, waits 20
         "m2": {"last_asked_at": "2026-09-30T08:36:00+00:00", "unresolved_streak": 2},   # 60 min ago, waits 40
@@ -79,6 +81,18 @@ def test_a_ladder_found_unresolved_waits_longer_each_time():
     due, counts = cq.queue_order(markets, TZ, attempts, NOW)
     assert [m["market_id"] for m in due] == ["m2"]
     assert counts["backing_off"] == 2
+
+
+def test_recent_city_days_do_not_skip_hourly_polls_after_an_overnight_delay():
+    markets = [_m(1, "tokyo"), _m(2, "nyc"), _m(3, "la", "2026-09-27")]
+    attempts = {m["market_id"]: {"last_asked_at": "2026-09-30T08:37:00+00:00",
+                                  "unresolved_streak": 20} for m in markets}
+    due, counts = cq.queue_order(markets, TZ, attempts, NOW)
+    assert [m["market_id"] for m in due] == ["m1", "m2"]
+    assert counts["backing_off"] == 1
+    # An intraday sweep shortly after the tick still respects the short wait.
+    due, _ = cq.queue_order(markets[:2], TZ, attempts, NOW - dt.timedelta(minutes=40))
+    assert due == []
 
 
 def test_a_market_never_asked_goes_before_nothing_it_is_just_due():

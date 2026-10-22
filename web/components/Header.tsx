@@ -100,8 +100,8 @@ export default function Header() {
       }
 
       setFeeds([
-        { label: "Books", at: books, staleAfterMin: 120,
-          what: "order books from Polymarket — P0.3, hourly" },
+        { label: "Books", at: books, staleAfterMin: 180,
+          what: "order books from Polymarket — P0.3, every 2 hours; warning after 3 hours" },
         { label: "Weather", at: weather, staleAfterMin: 60,
           what: "current readings — Live Weather Action (15 min) and P1.2 (2h)" },
         { label: "Forecast", at: forecasts, staleAfterMin: 12 * 60,
