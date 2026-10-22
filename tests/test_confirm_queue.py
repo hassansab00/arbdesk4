@@ -111,6 +111,20 @@ def test_manual_poll_cannot_suppress_next_hourly_check_of_recent_days():
     assert counts == {"backing_off": 1, "not_ended": 1, "no_timezone": 0}
 
 
+def test_hourly_partial_sweeps_rotate_to_the_least_recently_polled_city():
+    markets = [_m(1, "tokyo"), _m(2, "nyc"), _m(3, "la")]
+    attempts = {"m1": {"last_asked_at": "2026-09-30T09:30:00Z"},
+                "m2": {"last_asked_at": "2026-09-30T09:15:00Z"}}
+    due, _ = cq.queue_order(markets, TZ, attempts, NOW, hourly=True)
+    assert [m["market_id"] for m in due] == ["m3", "m2", "m1"]
+    attempts["m3"] = {"last_asked_at": NOW.isoformat()}
+    due, _ = cq.queue_order(markets, TZ, attempts, NOW + dt.timedelta(minutes=1), hourly=True)
+    assert [m["market_id"] for m in due] == ["m2", "m1", "m3"]
+    # Other collectors retain the existing oldest-local-day ordering.
+    due, _ = cq.queue_order(markets, TZ, attempts, NOW)
+    assert [m["market_id"] for m in due] == ["m1", "m2", "m3"]
+
+
 def test_gamma_is_asked_with_repeated_condition_ids():
     """A comma list returns [] (tested against the venue 30 Sep)."""
     p = cq.gamma_params(["0xa", "0xb"])

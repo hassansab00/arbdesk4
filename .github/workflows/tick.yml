@@ -132,16 +132,16 @@ jobs:
         # from the same deadline (confirm_recent.budget). `timeout` is the
         # backstop; the last step collects its log. Not on a rehearsal:
         # dry_run writes nothing.
-        # 110 s from 9 Oct (was 40): above the sweep's 60 s, the slowest
-        # ladder and the 25 s kept for the bank (confirm_recent.py, "KILLED,
-        # NOT SLOW"), so it ends only a hang; at 40 it ended six runs in 72 h.
+        # P6.1/P4.7, 22 Oct: 180 s covers the bounded 120 s sweep, last
+        # ladder, bank reserve and logging. The existing tick deadline can
+        # still shorten the sweep. Dispatch cadence and job timeout stay put.
         id: confirm
         if: ${{ github.event.inputs.dry_run != 'true' }}
         run: |
           date +%s > "$RUNNER_TEMP/confirm.start"
           (
             set +e
-            timeout 110 .venv/bin/python scripts/confirm_recent.py > "$RUNNER_TEMP/confirm.log" 2>&1
+            timeout 180 .venv/bin/python scripts/confirm_recent.py > "$RUNNER_TEMP/confirm.log" 2>&1
             echo $? > "$RUNNER_TEMP/confirm.rc.tmp" && mv "$RUNNER_TEMP/confirm.rc.tmp" "$RUNNER_TEMP/confirm.rc"
           ) < /dev/null > /dev/null 2>&1 &
       - name: The live record, started beside the other steps (WXPredict WP3)
@@ -192,15 +192,15 @@ jobs:
         # A run its timeout ended (exit 124) writes neither, so this step
         # writes its row, attention with the exit code (Wave 2.C, 9 Oct: six
         # such hours in 72 h were silent gaps). It waits until the run's own
-        # 110 s backstop has passed, counted from when the run started, so a
+        # 180 s backstop has passed, counted from when the run started, so a
         # hung run's 124 is always seen (Codex on #355: a fixed 45 s from
         # here could end before the backstop when the steps above are quick).
         if: ${{ !cancelled() && steps.confirm.outcome == 'success' }}
         run: |
           started="$(cat "$RUNNER_TEMP/confirm.start" 2>/dev/null || date +%s)"
-          until [ -f "$RUNNER_TEMP/confirm.rc" ] || [ "$(date +%s)" -gt $(( started + 110 + 5 )) ]; do sleep 0.5; done
+          until [ -f "$RUNNER_TEMP/confirm.rc" ] || [ "$(date +%s)" -gt $(( started + 180 + 5 )) ]; do sleep 0.5; done
           cat "$RUNNER_TEMP/confirm.log" 2>/dev/null || true
-          [ -f "$RUNNER_TEMP/confirm.rc" ] || echo "confirm_recent still running past its 110 s timeout"
+          [ -f "$RUNNER_TEMP/confirm.rc" ] || echo "confirm_recent still running past its 180 s timeout"
           rc="$(cat "$RUNNER_TEMP/confirm.rc" 2>/dev/null || true)"
           echo "confirm_recent exit code: ${rc:-none yet}"
           if [ "$rc" = "124" ]; then
@@ -224,7 +224,7 @@ jobs:
           fi
       # The hourly collector banks checkpoints; the day-ahead hit record also
       # needs fact_band_outcome. Do that after confirmations have finished,
-      # outside their 110-second backstop, using the existing immutable bank.
+      # outside their 180-second backstop, using the existing immutable bank.
       # A new result requests a durable page refresh without blocking the tick
       # on the refresh queue. No fitting or checkpoint capture happens here.
       - name: Bank newly confirmed settlement ladders
