@@ -44,6 +44,19 @@ def test_common_routes_only_the_long_refresh_through_the_handoff(monkeypatch):
     assert common.rpc('refresh_page_cache',timeout=270) == ('acknowledged',270)
 
 
+def test_completion_committed_at_the_deadline_gets_a_final_read(monkeypatch):
+    clock(monkeypatch)
+    calls = []
+    def rpc(fn, params, timeout):
+        calls.append(fn)
+        if refresh.time.monotonic() >= 11:
+            return {'status': 'ok', 'detail': {'ms': {'mv': 9}}}
+        return {'status': 'queued'}
+    assert refresh.refresh(11, request_id='completed-at-boundary', rpc_fn=rpc) == {'mv': 9}
+    assert calls.count('request_page_cache_refresh') == 1
+    assert calls[-1] == 'page_cache_refresh_status'
+
+
 def test_ambiguous_submission_retries_with_the_identical_id(monkeypatch):
     import requests
     clock(monkeypatch)

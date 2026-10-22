@@ -67,6 +67,11 @@ CLOB_URL = "https://clob.polymarket.com/markets/"
 # ladder still open after three hours is asked every other tick, then every
 # third; a void one is asked at most every ~3 h for DAYS_BACK days.
 BACKOFF_MINUTES = (0, 20, 40, 80, 160)
+# Recent outcomes must remain eligible on each hourly sweep, including when
+# a venue delay lasts overnight. Leave ten minutes for dispatch jitter;
+# older backlog keeps the growing backoff and the existing oldest-first order.
+RECENT_WINDOW_HOURS = 48
+RECENT_BACKOFF_MINUTES = 50
 DAYS_BACK = 3
 GAMMA_CHUNK = 25          # condition ids per Gamma request (a ladder is 11)
 CLOB_WORKERS = 6
@@ -127,6 +132,8 @@ def queue_order(markets, timezones, attempts, now):
         a = attempts.get(str(m["market_id"])) or {}
         last = _ts(a.get("last_asked_at"))
         wait = backoff_minutes(a.get("unresolved_streak"))
+        if now - end <= dt.timedelta(hours=RECENT_WINDOW_HOURS):
+            wait = min(wait, RECENT_BACKOFF_MINUTES)
         if last is not None and wait and now - last < dt.timedelta(minutes=wait):
             counts["backing_off"] += 1
             continue

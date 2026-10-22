@@ -28,6 +28,7 @@ def refresh(timeout=270, *, request_id=None, rpc_fn=None):
                     raise RuntimeError(f"page cache refresh {request_id}: transport failed: {exc}") from exc
                 time.sleep(min(2**attempt,max(0,deadline-time.monotonic())))
     receipt = call('request_page_cache_refresh')
+    final_read = False
     while True:
         state = receipt.get('status')
         if state == 'ok':
@@ -41,6 +42,15 @@ def refresh(timeout=270, *, request_id=None, rpc_fn=None):
             raise RuntimeError(f"page cache refresh {request_id}: unknown state {state}")
         remaining = deadline-time.monotonic()
         if remaining <= 0:
+            if not final_read:
+                # A status request can hold an older transaction snapshot
+                # while the worker commits its receipt. Read once more at
+                # the boundary before declaring an acknowledged job lost.
+                # Read only: never submit a second refresh.
+                final_read = True
+                receipt = rpc_fn('page_cache_refresh_status',
+                                 {'p_request_id': request_id}, timeout=15)
+                continue
             raise TimeoutError(f"page cache refresh {request_id} has no completion receipt within {timeout}s; check the request before retrying")
         time.sleep(min(5,remaining))
         remaining = deadline-time.monotonic()

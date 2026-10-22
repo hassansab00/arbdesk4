@@ -222,6 +222,15 @@ jobs:
           if [ "$rc" = "124" ]; then
             .venv/bin/python scripts/live_capture.py --killed "$rc" || true
           fi
+      # The hourly collector banks checkpoints; the day-ahead hit record also
+      # needs fact_band_outcome. Do that after confirmations have finished,
+      # outside their 110-second backstop, using the existing immutable bank.
+      # A new result requests a durable page refresh without blocking the tick
+      # on the refresh queue. No fitting or checkpoint capture happens here.
+      - name: Bank newly confirmed settlement ladders
+        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
+        timeout-minutes: 2
+        run: .venv/bin/python scripts/settlement_followup.py
       # WXPREDICT ON THE DAY, IN SHADOW (13 Oct). wxrd-v2, the remaining-day
       # model that counts a report 8 minutes after its reading (#394), beside
       # every same-day call this tick wrote, all cities, at the engine's own

@@ -3,6 +3,25 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Hourly settlement banking and book freshness — 22 Oct, release checks pending
+
+The hourly tick follows its confirmation collector with the existing immutable
+whole-ladder band bank when recent confirmed markets remain unbanked. Newly
+banked results request the existing durable page refresh, whose acceptance is
+reported separately from completion. This closes the delay between checkpoint
+scoring and the day-ahead hit history without capturing historical predictions
+or changing fitting, source verification, capital settings or dispatch cadence.
+The follow-up has its own two-minute backstop outside the confirmation deadline.
+For the first 48 hours after each city's local day ends, unresolved answers
+wait at most 50 minutes so an overnight venue delay cannot suppress the next
+hourly poll. Older backlog retains its existing backoff and oldest-first order.
+The refresh client makes one final status read before reporting a timeout, so
+a completion committed at its polling boundary can still be acknowledged.
+The header now describes the book collector's actual two-hour cadence and uses
+the pipeline panel's three-hour stale threshold. Partial captures still surface
+as attention. Full Python and database suites, web types, route tests and the
+production build passed. Hosted CI and deployed acceptance are pending.
+
 ## Recent settlement result visibility — 22 Oct, release checks pending
 
 Recent settlement details read the selected moment's bounded recent result
