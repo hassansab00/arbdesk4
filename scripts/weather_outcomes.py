@@ -20,6 +20,8 @@ import sys
 import time
 import uuid
 from email.utils import parsedate_to_datetime
+from html.parser import HTMLParser
+from collections import Counter
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from dataclasses import dataclass
@@ -31,7 +33,7 @@ import requests
 from common import log_run, rest_all, upsert
 
 
-PARSER_VERSION = "weather-outcomes-v2"
+PARSER_VERSION = "weather-outcomes-v3"
 
 # How far back "recent" reaches. City-days inside this window are offered a
 # slot BEFORE the backlog, so yesterday is always attempted no matter how big
@@ -55,6 +57,8 @@ class OutcomeError(RuntimeError):
     def __init__(self, status: str, message: str):
         super().__init__(message)
         self.status = status
+        self.source_authority = None
+        self.source_url = None
 
 
 @dataclass(frozen=True)
@@ -65,6 +69,7 @@ class RuleSpec:
     source_url: str
     unit: str
     hourly_only: bool
+    wu_fallback: bool = False
 
 
 @dataclass(frozen=True)
@@ -78,7 +83,7 @@ class Outcome:
 
 def parse_rule_spec(rules_text: str | None, market_unit: str | None = None) -> RuleSpec:
     rules = (rules_text or "").strip()
-    lower = rules.lower()
+    lower = re.sub(r"\s+", " ", rules.lower().replace("\\n", " "))
     if not rules:
         raise OutcomeError("unsupported_source", "Market has no saved resolution rules")
 
@@ -112,6 +117,12 @@ def parse_rule_spec(rules_text: str | None, market_unit: str | None = None) -> R
             source_url=wrh.group(0).rstrip(".,)"),
             unit=unit,
             hourly_only="hourly data" in lower,
+            wu_fallback=bool(re.search(
+                r"if noaa data for the observation date is unavailable by 11:59 pm et "
+                r"on the day following the observation date, the weather underground "
+                r"daily observations table will be used as the resolution source",
+                lower,
+            )),
         )
 
     wu = WU_URL_RE.search(rules)
@@ -492,6 +503,190 @@ def collect_one(
     raise OutcomeError("unsupported_source", f"Unsupported adapter: {spec.adapter}")
 
 
+def wu_fallback_cutoff(for_date: dt.date) -> dt.datetime:
+    """The saved contract's ET deadline, including DST, not the city's clock."""
+    return dt.datetime.combine(for_date + dt.timedelta(days=1), dt.time(23, 59),
+                               ZoneInfo("America/New_York"))
+
+
+class _WUDailyPage(HTMLParser):
+    """Read only the airport daily table and its timestamped chart twin.
+
+    Never retain the whole HTML: WU's unrelated page configuration contains
+    client keys. The canonical evidence below contains observation data only.
+    """
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.airports = []
+        self.in_airport = False
+        self.table_depth = 0
+        self.tables = 0
+        self.rows = []
+        self.cells = None
+        self.cell = None
+        self.charts = []
+        self.chart = None
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "airport-body":
+            self.airports.append(attrs)
+            self.in_airport = True
+        if not self.in_airport:
+            return
+        if tag == "table":
+            if self.table_depth:
+                self.table_depth += 1
+            elif "observations-table" in attrs.get("class", "").split():
+                self.tables += 1
+                self.table_depth = 1
+        if self.table_depth:
+            if tag == "tr":
+                self.cells = []
+            elif tag in {"th", "td"} and self.cells is not None:
+                self.cell = []
+        if (tag == "script" and attrs.get("type") == "application/json"
+                and "chart-data" in attrs.get("class", "").split()):
+            self.chart = []
+
+    def handle_data(self, data):
+        if self.cell is not None:
+            self.cell.append(data)
+        if self.chart is not None:
+            self.chart.append(data)
+
+    def handle_endtag(self, tag):
+        if tag in {"th", "td"} and self.cell is not None:
+            self.cells.append(" ".join("".join(self.cell).split()))
+            self.cell = None
+        elif tag == "tr" and self.cells is not None:
+            self.rows.append(self.cells)
+            self.cells = None
+        elif tag == "table" and self.table_depth:
+            self.table_depth -= 1
+        elif tag == "script" and self.chart is not None:
+            self.charts.append("".join(self.chart))
+            self.chart = None
+        elif tag == "airport-body":
+            self.in_airport = False
+
+
+def parse_wu_daily(raw: bytes, spec: RuleSpec, for_date: dt.date,
+                   timezone: str, now: dt.datetime) -> Outcome:
+    cutoff = wu_fallback_cutoff(for_date)
+    if now < cutoff:
+        raise OutcomeError("not_final", "The saved rules' Weather Underground fallback deadline has not passed")
+    page = _WUDailyPage()
+    try:
+        page.feed(raw.decode("utf-8-sig"))
+        if len(page.airports) != 1 or page.tables != 1 or len(page.charts) != 1:
+            raise ValueError("Expected one airport, daily table and timestamped chart")
+        airport = page.airports[0]
+        if (airport.get("data-icao-code") != spec.station_id
+                or airport.get("data-location-id", "").split(":")[0] != spec.station_id
+                or airport.get("data-mode") != "daily"):
+            raise ValueError("Airport identity or daily page mode does not match the contract")
+        if dt.date(*map(int, airport.get("data-date", "").split("-"))) != for_date:
+            raise ValueError("Daily page returned a different observation date")
+        source_zone = ZoneInfo(airport["data-time-zone"])
+        expected_zone = ZoneInfo(timezone)
+        for day in (for_date, for_date + dt.timedelta(days=1)):
+            midnight = dt.datetime.combine(day, dt.time())
+            if midnight.replace(tzinfo=source_zone).utcoffset() != midnight.replace(tzinfo=expected_zone).utcoffset():
+                raise ValueError("Airport timezone does not match the city's local day")
+        if not local_day_finished(for_date.isoformat(), timezone, now):
+            raise ValueError("The airport's local observation day has not ended")
+        if not page.rows or page.rows[0][:2] != ["Time", "Temperature"]:
+            raise ValueError("Daily Observations table columns changed")
+        table = []
+        for row in page.rows[1:]:
+            if len(row) != len(page.rows[0]):
+                raise ValueError("Daily Observations row is incomplete")
+            clock = dt.datetime.strptime(row[0], "%I:%M %p").time().isoformat()
+            if row[1] in {"-", "--", ""}:
+                table.append((clock, None))
+                continue
+            reading = re.fullmatch(r"([+-]?\d+(?:\.\d+)?)\s*°([CF])", row[1])
+            if not reading or reading.group(2) != spec.unit:
+                raise ValueError("Daily table temperature unit does not match the contract")
+            table.append((clock, Decimal(reading.group(1))))
+        points = json.loads(page.charts[0], parse_float=Decimal)
+        if not isinstance(points, list) or not points:
+            raise ValueError("No timestamped daily observations")
+        canonical_rows = []
+        twin = []
+        timestamps = set()
+        for point in points:
+            stamp = point["ts"]
+            if isinstance(stamp, bool) or not isinstance(stamp, (int, Decimal)):
+                raise ValueError("Observation timestamp is invalid")
+            when = dt.datetime.fromtimestamp(float(stamp) / 1000, dt.timezone.utc).astimezone(source_zone)
+            if when.date() != for_date or stamp in timestamps:
+                raise ValueError("Observation timestamp is duplicated or outside the target local day")
+            timestamps.add(stamp)
+            value = point.get("temp")
+            if value is not None:
+                if isinstance(value, bool) or not isinstance(value, (int, Decimal)):
+                    raise ValueError("Observation temperature is invalid")
+                value = Decimal(value)
+                celsius = value if spec.unit == "C" else (value - 32) * Decimal(5) / 9
+                if not value.is_finite() or not Decimal(-100) <= celsius <= Decimal(70):
+                    raise ValueError("Observation temperature is outside physical bounds")
+            twin.append((when.time().isoformat(), value))
+            canonical_rows.append({"date_time": when.isoformat(),
+                                   "temperature": str(value) if value is not None else None})
+        if Counter(table) != Counter(twin):
+            raise ValueError("Daily table and timestamped observations disagree")
+        values = [(row["date_time"], Decimal(row["temperature"]))
+                  for row in canonical_rows if row["temperature"] is not None]
+        if not values:
+            raise ValueError("Daily table has no measured temperatures")
+    except (ValueError, KeyError, TypeError, OverflowError, InvalidOperation, ZoneInfoNotFoundError) as exc:
+        raise OutcomeError("parse_error", "Weather Underground daily page failed station/date/unit/table validation") from exc
+
+    # Contracts use whole degrees; read the table directly in that unit before
+    # rounding. Converting rounded Fahrenheit back to Celsius loses precision.
+    display_max = _js_round(float(max(value for _, value in values)))
+    observed_at = min(when for when, value in values if _js_round(float(value)) == display_max)
+    max_c = Decimal(display_max) if spec.unit == "C" else (Decimal(display_max) - 32) * Decimal(5) / 9
+    source_url = f"https://www.wunderground.com/history/daily/{spec.station_id}/date/{for_date.isoformat()}"
+    canonical = {"schema": "wunderground-airport-daily-table-v1", "station_id": spec.station_id,
+                 "source_timezone": str(source_zone), "for_date": for_date.isoformat(),
+                 "display_unit": spec.unit, "observations": sorted(canonical_rows, key=lambda r: r["date_time"]),
+                 "fallback_cutoff": cutoff.isoformat()}
+    packed = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()
+    return Outcome(max_c.quantize(Decimal("0.000001")), observed_at, _sha(packed),
+                   _packed_raw(packed, "application/json; profile=wunderground-airport-daily-table-v1"),
+                   {"source_authority": "Weather Underground Daily Observations",
+                    "source_url": source_url, "source_response_sha256": _sha(raw),
+                    "source_timezone": str(source_zone), "target_readings": len(values),
+                    "display_max": display_max, "display_unit": spec.unit,
+                    "fallback_cutoff": cutoff.isoformat(), "fallback_reason": "named_primary_withholds_international_observations"})
+
+
+def collect_with_fallback(session, spec, for_date, timezone, now):
+    try:
+        return collect_one(session, spec, for_date)
+    except OutcomeError as exc:
+        # A local timeout, bad credential or novel parser failure says nothing
+        # about publication by the primary authority. Only the known WRH
+        # international publication restriction establishes this fallback.
+        if not (spec.adapter == "weather_gov_wrh" and spec.wu_fallback
+                and exc.status == "unsupported_source"):
+            raise
+        if now < wu_fallback_cutoff(for_date):
+            raise OutcomeError("not_final", "Primary publication unavailable; awaiting the saved rules' Weather Underground deadline") from exc
+        url = f"https://www.wunderground.com/history/daily/{spec.station_id}/date/{for_date.isoformat()}"
+        # This is WU's own anonymous UI preference (scale-change / preference-model).
+        try:
+            response = _get(session, url, headers={"Cookie": "wu_units=" + ("m" if spec.unit == "C" else "e")})
+            return parse_wu_daily(response.content, spec, for_date, timezone, now)
+        except OutcomeError as error:
+            error.source_authority = "Weather Underground Daily Observations"
+            error.source_url = url
+            raise
+
+
 def _id(*parts: Any) -> str:
     return hashlib.sha256("|".join(str(x) for x in parts).encode("utf-8")).hexdigest()
 
@@ -801,15 +996,16 @@ def _run(days, maximum, dry_run, cities, now, bounded=False):
         outcome: Outcome | None = None
         status = "captured"
         error: str | None = None
+        failed_authority = failed_source_url = None
         try:
             spec = parse_rule_spec(market.get("rules_text"), market.get("unit"))
             if not local_day_finished(market["resolution_date"], clocks.get(market["city_key"]), now):
                 raise OutcomeError("not_final", "The city's local day has not ended; final evidence was not requested")
             if bounded:
                 with common.request_deadline(deadline - 10):
-                    outcome = collect_one(session, spec, dt.date.fromisoformat(market["resolution_date"]))
+                    outcome = collect_with_fallback(session, spec, dt.date.fromisoformat(market["resolution_date"]), clocks[market["city_key"]], now)
             else:
-                outcome = collect_one(session, spec, dt.date.fromisoformat(market["resolution_date"]))
+                outcome = collect_with_fallback(session, spec, dt.date.fromisoformat(market["resolution_date"]), clocks[market["city_key"]], now)
             if prior:
                 if prior.get("payload_sha256") == outcome.payload_sha256:
                     status = "unchanged"
@@ -818,13 +1014,17 @@ def _run(days, maximum, dry_run, cities, now, bounded=False):
         except OutcomeError as exc:
             status = exc.status
             error = _safe_error(exc)
+            failed_authority, failed_source_url = exc.source_authority, exc.source_url
         except Exception as exc:  # A novel parser bug is recorded, never promoted to evidence.
             status = "parse_error"
             error = _safe_error(exc)
 
-        authority = spec.source_authority if spec else "Unresolved saved market rules"
+        authority = failed_authority or (spec.source_authority if spec else "Unresolved saved market rules")
         station_id = spec.station_id if spec else None
-        source_url = spec.source_url if spec else "saved-market-rules"
+        source_url = failed_source_url or (spec.source_url if spec else "saved-market-rules")
+        if outcome:
+            authority = outcome.detail.get("source_authority", authority)
+            source_url = outcome.detail.get("source_url", source_url)
         if dry_run:
             counts["dry_run"] += 1
             print(f"DRY RUN {market['city_key']} {market['resolution_date']}: {status}")
