@@ -3,6 +3,27 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Contract-authorized Weather Underground fallback — 22 Oct, release checks pending
+
+The final-weather collector recognizes the saved NOAA-to-Weather-Underground
+fallback clause. When the named WRH interface explicitly withholds international
+observations, it waits for 23:59 America/New_York on the following date before
+reading the exact airport's public WU Daily Observations table. Local connection,
+authorization and parser failures do not establish primary-source unavailability.
+The anonymous WU unit preference requests the contract's own unit; a response in
+another unit is refused rather than converting a rounded display value. Airport,
+local date, timezone, column identities and the table's timestamped observation
+twin must agree. Canonical observation data and response digests retain provenance
+without copying unrelated page configuration. Evidence names WU as its actual
+authority. Previously finalized evidence and frozen predictions remain immutable;
+the independent Gamma/CLOB settlement verifier, fitting and schedules are unchanged.
+This adapter handles the verified WRH publication restriction; other primary-source
+failures remain visible for investigation.
+The complete Python suite and database contracts passed locally. Public airport
+pages were checked read-only against already frozen weather evidence; provider
+pages reporting an invalid location remain refused, with no station substitution
+or invented lowest-bracket outcome. Hosted CI and deployed acceptance pending.
+
 ## Settlement sweep capacity and fair rotation — 22 Oct, release checks pending
 
 The hourly confirmation queue visits never-polled or least-recently-polled
