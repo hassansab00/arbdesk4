@@ -3,6 +3,18 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Settlement sweep capacity and fair rotation — 22 Oct, release checks pending
+
+The hourly confirmation queue visits never-polled or least-recently-polled
+city-days first, using local day-end and market identity to break ties. A run
+that exhausts its allowance therefore leaves its untouched cities first for
+the next run. Other collectors retain their existing ordering and backoff.
+P6.1/P4.7 raises the bounded hourly sweep allowance to 120 seconds, still cut
+by the same tick deadline and bank reserve, with a matching 180-second shell
+backstop and collector wait. Dispatch cadence, total job timeout, proof checks,
+prediction freezes and immutable banking are unchanged. The full Python suite
+and database contracts passed. Hosted CI and live acceptance are pending.
+
 ## Recent settlement checks on every hourly tick — 22 Oct, release checks pending
 
 For the first 48 hours after a city's local day ends, the hourly confirmation

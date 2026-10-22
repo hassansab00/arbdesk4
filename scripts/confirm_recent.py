@@ -48,7 +48,10 @@ HOURS_UTC = tuple(range(24))        # eligibility is local (confirm_queue.queue_
 # 9 Oct); RESERVE_S keeps 25 s before the deadline for the bank and the log
 # row; the backstop is above the sweep, the slowest ladder and the reserve
 # together, so it can only end a hang (test_confirm_recent).
-BUDGET_S = 60.0
+# P6.1/P4.7, 22 Oct: allow a recent-city sweep to cover a larger pending
+# roster. Setup and venue/proof writes are inside this bound; the same tick
+# deadline and bank reserve can reduce it. The shell backstop is 180 s.
+BUDGET_S = 120.0
 RESERVE_S = 25.0
 LADDER_OVERRUN_S = 12.0     # the slowest ladder measured, 11.8 s (above)
 DAYS_BACK = 3

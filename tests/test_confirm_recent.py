@@ -18,7 +18,8 @@ def test_the_budget_is_cut_from_the_tick_deadline():
     assert cr.budget(None) == cr.BUDGET_S
     assert cr.budget(1000.0, now_epoch=970.0) == 5.0      # 30 left less 25 reserve
     assert cr.budget(1000.0, now_epoch=1000.0) == 0.0
-    assert cr.budget(1000.0, now_epoch=900.0) == cr.BUDGET_S
+    assert cr.budget(1000.0, now_epoch=900.0) == 75.0
+    assert cr.budget(1000.0, now_epoch=800.0) == cr.BUDGET_S
 
 
 def _wire(monkeypatch, deadline_left, sweep=None):
@@ -82,7 +83,7 @@ def test_the_tick_starts_it_beside_the_checkpoints_with_a_backstop():
     like the trade prints, with its budget cut from the same deadline, and the
     last steps collect both."""
     wf = (ROOT / ".github" / "workflows" / "tick.yml").read_text()
-    assert "timeout 110 .venv/bin/python scripts/confirm_recent.py" in wf
+    assert "timeout 180 .venv/bin/python scripts/confirm_recent.py" in wf
     run = lambda script: wf.index(f".venv/bin/python scripts/{script}")
     assert run("confirm_recent.py") < run("tick.py")
     assert run("ingest_trades.py") < run("tick.py")
@@ -269,17 +270,19 @@ def test_a_late_timeout_is_still_seen_and_logged(tmp_path):
 
 
 def test_the_wait_is_counted_from_the_runs_start(tmp_path):
-    """A run that started 114 s ago is past its 110 s backstop plus the margin
+    """A run that started just before its backstop plus the margin
     within a few seconds: the collector stops waiting and says so."""
     import os
     import subprocess
     import time
-    _, collect = _collect_and_start()
-    (tmp_path / "confirm.start").write_text(f"{int(time.time()) - 114}\n")
+    import re
+    start, collect = _collect_and_start()
+    backstop = int(re.search(r"timeout (\d+) ", start).group(1))
+    (tmp_path / "confirm.start").write_text(f"{int(time.time()) - backstop - 4}\n")
     env = {**os.environ, "RUNNER_TEMP": str(tmp_path)}
     t0 = time.monotonic()
     done = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", collect],
                           cwd=tmp_path, env=env, capture_output=True, text=True, timeout=30)
     assert time.monotonic() - t0 < 10
-    assert done.returncode == 0 and "still running past its 110 s timeout" in done.stdout
+    assert done.returncode == 0 and f"still running past its {backstop} s timeout" in done.stdout
     assert "exit code: none yet" in done.stdout

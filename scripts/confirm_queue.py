@@ -140,7 +140,16 @@ def queue_order(markets, timezones, attempts, now, *, hourly=False):
             counts["backing_off"] += 1
             continue
         due.append(dict(m, local_day_end=end))
-    due.sort(key=lambda m: (m["local_day_end"], str(m["market_id"])))
+    if hourly:
+        # After a bounded sweep, the untouched cities must lead the next
+        # one. Repeating the oldest date first can starve later cities when
+        # earlier markets remain under venue review.
+        never = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
+        due.sort(key=lambda m: (
+            _ts((attempts.get(str(m["market_id"])) or {}).get("last_asked_at")) or never,
+            m["local_day_end"], str(m["market_id"])))
+    else:
+        due.sort(key=lambda m: (m["local_day_end"], str(m["market_id"])))
     return due, counts
 
 
