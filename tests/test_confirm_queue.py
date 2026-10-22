@@ -100,6 +100,17 @@ def test_a_market_never_asked_goes_before_nothing_it_is_just_due():
     assert len(due) == 1
 
 
+def test_manual_poll_cannot_suppress_next_hourly_check_of_recent_days():
+    markets = [_m(1, "tokyo"), _m(2, "nyc"), _m(3, "la", "2026-09-27"),
+               _m(4, "tokyo", "2026-09-30")]
+    attempts = {m["market_id"]: {"last_asked_at": "2026-09-30T09:20:00Z",
+                                  "unresolved_streak": 20} for m in markets}
+    assert cq.queue_order(markets, TZ, attempts, NOW)[0] == []
+    due, counts = cq.queue_order(markets, TZ, attempts, NOW, hourly=True)
+    assert [m["market_id"] for m in due] == ["m1", "m2"]
+    assert counts == {"backing_off": 1, "not_ended": 1, "no_timezone": 0}
+
+
 def test_gamma_is_asked_with_repeated_condition_ids():
     """A comma list returns [] (tested against the venue 30 Sep)."""
     p = cq.gamma_params(["0xa", "0xb"])
@@ -228,6 +239,17 @@ def test_a_ladder_the_venue_has_not_closed_costs_one_request(world):
     rec = [a for fn, a in world["rpcs"] if fn == "record_market_confirmation_attempts"][0]["p_rows"]
     assert rec[0]["outcome"] == "not_closed" and rec[0]["venue_closed_at"] is None
     assert d["venue_calls"] == 1 and d["pending_after"] == 1 and d["oldest_pending_hours"] == 2.6
+
+
+def test_hourly_run_asks_recent_venue_even_after_a_manual_poll(world):
+    _ladder(world, "mB", "la", n=11)
+    world["attempts"].append({"market_id": "mB", "last_asked_at": "2026-09-30T09:20:00Z",
+                              "unresolved_streak": 20})
+    d = cq.run(budget_seconds=30, now=NOW, get=world["get"], trigger="intraday")
+    assert d["asked"] == 0 and world["gamma_calls"] == []
+    d = cq.run(budget_seconds=30, now=NOW, get=world["get"], trigger="tick")
+    assert d["asked"] == 1 and len(world["gamma_calls"]) == 1
+    assert d["evidence_captured"] == 0  # No resolved answer is fabricated.
 
 
 def test_proposed_is_not_resolved_and_a_void_payout_is_never_a_proof(world):

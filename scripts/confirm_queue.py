@@ -116,7 +116,7 @@ def _ts(value):
     return out if out.tzinfo else out.replace(tzinfo=dt.timezone.utc)
 
 
-def queue_order(markets, timezones, attempts, now):
+def queue_order(markets, timezones, attempts, now, *, hourly=False):
     """(due, counts). A market is due when its local day has ended and it was
     never asked or its backoff has expired; due markets come oldest local day
     end first, then market id. counts says why the others are not due."""
@@ -133,7 +133,9 @@ def queue_order(markets, timezones, attempts, now):
         last = _ts(a.get("last_asked_at"))
         wait = backoff_minutes(a.get("unresolved_streak"))
         if now - end <= dt.timedelta(hours=RECENT_WINDOW_HOURS):
-            wait = min(wait, RECENT_BACKOFF_MINUTES)
+            # A manual/intraday poll can fall less than 50 minutes before the
+            # next scheduled tick. It must not suppress that hour's check.
+            wait = 0 if hourly else min(wait, RECENT_BACKOFF_MINUTES)
         if last is not None and wait and now - last < dt.timedelta(minutes=wait):
             counts["backing_off"] += 1
             continue
@@ -221,7 +223,7 @@ def run(budget_seconds=60.0, days_back=DAYS_BACK, now=None, get=None, trigger="i
     started = time.monotonic()
     now = now or dt.datetime.now(dt.timezone.utc)
     markets, tz, attempts = _read_candidates(days_back, now.date())
-    due, counts = queue_order(markets, tz, attempts, now)
+    due, counts = queue_order(markets, tz, attempts, now, hourly=trigger == "tick")
     bands_of = _read_bands([str(m["market_id"]) for m in due]) if due else {}
     conditions = {str(b["condition_id"]) for ladder in bands_of.values() for b in ladder
                   if b.get("condition_id")}

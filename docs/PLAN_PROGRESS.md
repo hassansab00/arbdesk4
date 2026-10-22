@@ -3,6 +3,17 @@
 This file is where a new session resumes. Keep it accurate. Update it in every
 PR that advances a step.
 
+## Recent settlement checks on every hourly tick — 22 Oct, release checks pending
+
+For the first 48 hours after a city's local day ends, the hourly confirmation
+collector checks the venue even when a manual or intraday poll happened just
+before its scheduled slot. Other collectors retain the recent backoff; older
+backlog retains the growing backoff. The existing sweep deadline, oldest-first
+ordering, exact Gamma/CLOB proof checks and immutable banking stay in place.
+This prevents a recovery poll from postponing the next scheduled check.
+The full Python suite and database contracts passed. Hosted CI and production
+acceptance are pending.
+
 ## Hourly settlement banking and book freshness — 22 Oct, release checks pending
 
 The hourly tick follows its confirmation collector with the existing immutable
